@@ -12,13 +12,18 @@ const Hero = () => (
     <Section yPadding="py-6">
       <NavbarTwoColumns logo={<Logo xl />}>
         <li>
-          <Link href="https://github.com/ixartz/Next-JS-Landing-Page-Starter-Template">
-            <a>GitHub</a>
+          <Link href="/">
+            <a>Home</a>
           </Link>
         </li>
         <li>
-          <Link href="/">
-            <a>Sign in</a>
+          <Link href="/about-us">
+            <a>About us</a>
+          </Link>
+        </li>
+        <li>
+          <Link href="/reservation">
+            <a>Reservation</a>
           </Link>
         </li>
       </NavbarTwoColumns>
@@ -28,8 +33,8 @@ const Hero = () => (
       <HeroOneButton
         title={
           <>
-            {'The modern landing page for\n'}
-            <span className="text-primary-500">React developers</span>
+            {"Let's taste "}
+            <span className="text-primary-500">Perfection</span>
           </>
         }
         description="The easiest way to build a React landing page in seconds."
