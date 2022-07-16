@@ -1,0 +1,45 @@
+@import '_scaffold';
+
+// Site variables
+$typeSans: 'urw-din', 'Poppins', Helvetica, Arial, sans-serif;
+$typeSerif: Georgia, Times, serif;
+$radius: 4px;
+
+$color-light: #e4eff0;
+$color-text: #333333;
+$color-color-text: #032749;
+$color-accent: #E31A4E;
+$color-background: #fbfbfa;
+$color-borders: #e5e5e5;
+
+//
+// bootstrap variable overrides
+//
+
+$font-family-sans-serif: $typeSans;
+$font-family-base: $typeSans;
+$headings-font-family: $typeSans;
+$font-size-base: rem-calc(22px);
+$line-height-base: 1.4;
+$border-radius: 0;
+$border-radius-lg: 0;
+$border-radius-sm: 0;
+
+// customize grid
+$grid-gutter-width: 40px;
+
+// $container-max-widths: (
+//   sm: 540px,
+//   md: 720px,
+//   lg: 960px,
+//   xl: 1140px,
+//   xxl: 1141px,
+// );
+
+// forms
+$form-text-color: rgba(#000, 0.5);
+$input-color: rgba(#000, 0.5);
+$input-focus-color: rgba(#000, 1);
+$input-padding-y: rem-calc(12px);
+$input-padding-x: rem-calc(20px);
+$input-border-width: 0;
