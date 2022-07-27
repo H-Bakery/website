@@ -1,4 +1,4 @@
-import { Box } from '@mui/material'
+import { Box, Typography } from '@mui/material'
 import React from 'react'
 
 const Map: React.FC = () => {
@@ -8,7 +8,10 @@ const Map: React.FC = () => {
         Map Goes here
       </Box>
       <Box sx={styles.info}>
-        Map Goes here
+        <Typography>Öffnungszeiten</Typography>
+        <Box>
+          
+        </Box>
       </Box>
     </Box>
   )
