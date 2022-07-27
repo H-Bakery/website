@@ -1,6 +1,6 @@
 import { Base } from '../layout/Base';
-import { Hero } from '../components/hero/Hero';
-import Map from '../components/map';
+import { Hero } from '../components/home/hero/Hero';
+import Map from '../components/home/map';
 
 const Index = () => (
   <Base>
