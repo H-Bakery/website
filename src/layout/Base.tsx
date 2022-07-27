@@ -1,17 +1,14 @@
 import { Meta } from "./Meta";
 import { AppConfig } from "../utils/AppConfig";
-import { Footer } from "../components/Footer";
-import { Hero } from "../components/hero/Hero";
-import { VerticalFeatures } from "../components/VerticalFeatures";
+import { Footer } from "../components/footer/Index";
 import { Navigation } from "../components/navigation";
 
 
-const Base = () => (
+const Base: React.FC = ({children}) => (
   <div className="antialiased text-gray-600">
     <Meta title={AppConfig.title} description={AppConfig.description} />
     <Navigation />
-    <Hero />
-    <VerticalFeatures />
+    {children}
     <Footer />
   </div>
 );

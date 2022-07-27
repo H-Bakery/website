@@ -1,5 +1,5 @@
 const Footer = () => (
-  <div className="page-footer">
+  <div className="page-Index">
     <p className="small">
       <em>Case studies available upon request.</em>
     </p>
