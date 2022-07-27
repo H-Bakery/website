@@ -55,34 +55,18 @@ const Map: React.FC = () => {
         <Typography variant='h6' gutterBottom>
           Adresse
         </Typography>
-        <Typography fontWeight='bold'>
-          Eckstraße 3
-        </Typography>
-        <Typography>
-          66424 Homburg
-        </Typography>
-        <Typography>
-          Deutschland
-        </Typography>
-        <Button sx={{ mt: 2 }} fullWidth variant='contained'>
-          Karte anzeigen
-        </Button>
+        <Typography fontWeight='bold'>Eckstraße 3</Typography>
+        <Typography color='text.secondary'>66424 Homburg</Typography>
+        <Typography color='text.secondary'>Deutschland</Typography>
+        <Button sx={{mt: 2}} fullWidth variant='contained'>Karte anzeigen</Button>
         <Divider sx={{ my: 2 }} />
         <Typography variant='h6' gutterBottom>
           Kontakt
         </Typography>
-        <Typography>
-          06841 2229
-        </Typography>
-        <Typography>
-          01522 6621236
-        </Typography>
-        <Button sx={{ mt: 2 }} fullWidth variant='contained'>
-          Anrufen
-        </Button>
-        <Button sx={{ mt: 2 }} fullWidth variant='contained'>
-          Bestellen
-        </Button>
+        <Typography>06841 2229</Typography>
+        <Typography>01522 6621236</Typography>
+        <Button sx={{mt: 2}} fullWidth variant='contained'>Anrufen</Button>
+        <Button sx={{mt: 2}} fullWidth variant='contained'>Bestellen</Button>
       </Box>
     </Box>
   );
@@ -92,23 +76,29 @@ const styles = {
   section: {
     height: '100vh',
     width: '100%',
+    bgcolor: 'grey.300',
     position: 'relative'
   },
   map: {
     position: 'absolute',
     zIndex: 1,
+    top: 0,
+    left: 0,
     height: '100vh',
     width: '100%',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   info: {
     position: 'absolute',
     zIndex: 2,
-    top: 120,
     left: 40,
+    top: 120,
     bgcolor: 'background.paper',
-    boxShadow: 1,
     borderRadius: '8px',
-    p: 3,
+    boxShadow: 1,
+    p: 3
   }
 }
 
