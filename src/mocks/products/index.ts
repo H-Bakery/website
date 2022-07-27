@@ -10,8 +10,8 @@ export const PRODUCTS = [
   ...BREADS,
   ...BAGUETTES,
   ...BUNS,
+  ...SNACKS,
   ...SWEETS,
   ...CAKES,
   ...SPECIAL_CAKES,
-  ...SNACKS,
 ];
