@@ -18,7 +18,7 @@ const theme: ThemeOptions = {
       50: '#F6F8FC',
       100: '#F2F5FB',
       200: '#E8EEFB',
-      300: '#E8EEFB',
+      300: '#D8E1F4',
       400: '#B0BFD9',
       500: '#909FBE',
       600: '#677695',
@@ -27,8 +27,8 @@ const theme: ThemeOptions = {
       900: '#131F37',
     },
     background: {
-      paper: '',
-      default: '',
+      paper: '#FFFFFF',
+      default: '#F6F8FC',
     },
     text: {
       primary: '#131F37',
