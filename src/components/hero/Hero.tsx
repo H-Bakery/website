@@ -61,6 +61,6 @@ const styles = {
     left: 0,
     width: '100%',
     height: '100vh',
-    bgcolor: 'rgba(0,0,0,0.33)'
+    bgcolor: 'rgba(0,0,0,0.5)'
   }
 }
