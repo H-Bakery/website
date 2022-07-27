@@ -1,12 +1,17 @@
+import { Box } from '@mui/material';
+import React from 'react'
+import Baeckerei from '../icons/Baeckerei';
+import Wappen from '../icons/Wappen';
 
-const Hero = () => (
-  <div className='hero'>
-    <div className='overlay' />
-    <div className='logo'>
-      <img src="/assets/images/products/Type=Baguette.svg" />
-    </div>
+const Hero: React.FC = () => (
+  <Box sx={styles.hero}>
+    <Box sx={styles.logo}>
+      <Wappen />
+      <Baeckerei />
+    </Box>
+    <Box sx={styles.overlay} />
     <video
-      className='backgroundVideo'
+      className='video'
       id="background-video"
       autoPlay
       muted
@@ -16,34 +21,46 @@ const Hero = () => (
       <source src="/assets/images/stock/bg_video.mp4" type="video/ogg" />
       Your browser does not support the video tag.
     </video>
-  </div>
+  </Box>
 );
 
 export { Hero };
 
-// .overlay {
-//   background-color: #000;
-//   opacity: 0.6;
-//   filter: alpha(opacity=60); /* For IE8 and earlier */
-//   z-index: 1;
-//   width: 100vw;
-//   height: 100vh;
-//   position: absolute;
-// }
+const styles = {
+  hero: {
+    height: '100vh',
+    widht: '100%',
+    overflow: 'hidden',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
 
-// .logo {
-//   width: 100px;
-//   height: 100px;
-//   position: absolute;
-// }
-
-// .backgroundVideo {
-//   width: 100vw;
-//   height: 100vh;
-//   object-fit: cover;
-//   left: 0;
-//   right: 0;
-//   top: 0;
-//   bottom: 0;
-//   z-index: -1;
-// }
+    '& .video': {
+      position: 'absolute',
+      width: '100%',
+      height: '100vh',
+      objectFit: 'cover',
+      left: 0,
+      right: 0,
+      top: 0,
+      bottom: 0,
+      zIndex: -1,
+    }
+  },
+  logo: {
+    position: 'relative',
+    zIndex: 10,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    color: 'white'
+  },
+  overlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100vh',
+    bgcolor: 'rgba(0,0,0,0.33)'
+  }
+}
