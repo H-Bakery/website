@@ -1,7 +1,7 @@
 import { Meta } from "./Meta";
 import { AppConfig } from "../utils/AppConfig";
 import { Footer } from "../components/Footer";
-import { Hero } from "../components/Hero";
+import { Hero } from "../components/hero/Hero";
 import { VerticalFeatures } from "../components/VerticalFeatures";
 import { Navigation } from "../components/navigation";
 
