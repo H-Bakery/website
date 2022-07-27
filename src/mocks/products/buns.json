@@ -1,0 +1,107 @@
+[
+  {
+    "id": 31,
+    "name": "Doppelweck",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.8
+  },
+  {
+    "id": 32,
+    "name": "Samstagsweck",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.8
+  },
+  {
+    "id": 33,
+    "name": "Sternweck",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.6
+  },
+  {
+    "id": 34,
+    "name": "Flitweck",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.8
+  },
+  {
+    "id": 35,
+    "name": "Elsässer",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.6
+  },
+  {
+    "id": 36,
+    "name": "Knusperweck",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.6
+  },
+  {
+    "id": 37,
+    "name": "Roggenweck",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.7
+  },
+  {
+    "id": 38,
+    "name": "Körnerweck",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.8
+  },
+  {
+    "id": 39,
+    "name": "Mohn-Brötchen",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.7
+  },
+  {
+    "id": 40,
+    "name": "Sesam-Brötchen",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.7
+  },
+  {
+    "id": 41,
+    "name": "Kümmel-Brötchen",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.7
+  },
+  {
+    "id": 42,
+    "name": "Dinkel-Brötchen",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 0.85
+  },
+  {
+    "id": 43,
+    "name": "Mohn-Hörnchen",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 1.2
+  },
+  {
+    "id": 44,
+    "name": "Sesam-Hörnchen",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 1.2
+  },
+  {
+    "id": 45,
+    "name": "Käse-Brötchen",
+    "category": "Brötchen",
+    "image": "images/",
+    "price": 1.2
+  }
+]

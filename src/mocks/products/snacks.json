@@ -1,0 +1,58 @@
+[
+  {
+    "id": 46,
+    "name": "Brezel",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 1
+  },
+  {
+    "id": 47,
+    "name": "Laugenstange",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 1
+  },
+  {
+    "id": 48,
+    "name": "Laugenbrötchen",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 1
+  },
+  {
+    "id": 49,
+    "name": "Laugenecke",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 1.89
+  },
+  {
+    "id": 50,
+    "name": "Laugencroquette",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 1.89
+  },
+  {
+    "id": 51,
+    "name": "Keimkraft-Hörnchen",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 1.89
+  },
+  {
+    "id": 52,
+    "name": "Käsestange",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 2.69
+  },
+  {
+    "id": 53,
+    "name": "Käsestange mit Schinken",
+    "category": "Snacks",
+    "image": "images/",
+    "price": 2.69
+  }
+]

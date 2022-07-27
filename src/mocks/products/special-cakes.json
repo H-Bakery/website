@@ -1,0 +1,58 @@
+[
+  {
+    "id": 96,
+    "name": "Obstboden",
+    "category": "Torten",
+    "image": "images/",
+    "price": 5.5
+  },
+  {
+    "id": 97,
+    "name": "Tortenboden",
+    "category": "Torten",
+    "image": "images/",
+    "price": 5.5
+  },
+  {
+    "id": 98,
+    "name": "Sahnerollen",
+    "category": "Torten",
+    "image": "images/",
+    "price": 20
+  },
+  {
+    "id": 99,
+    "name": "Sahnerollen (1 Stück)",
+    "category": "Torten",
+    "image": "images/",
+    "price": 2
+  },
+  {
+    "id": 100,
+    "name": "Schwarzwälder-Kirsch-Torte",
+    "category": "Torten",
+    "image": "images/",
+    "price": 45
+  },
+  {
+    "id": 101,
+    "name": "Sahne-Torte",
+    "category": "Torten",
+    "image": "images/",
+    "price": 36
+  },
+  {
+    "id": 102,
+    "name": "Buttercreme-Torte",
+    "category": "Torten",
+    "image": "images/",
+    "price": 45
+  },
+  {
+    "id": 103,
+    "name": "Buttercreme-Rolle",
+    "category": "Torten",
+    "image": "images/",
+    "price": 28
+  }
+]
