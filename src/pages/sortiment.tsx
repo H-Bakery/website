@@ -23,7 +23,7 @@ const Index = () => {
 
   return (
     <>
-      <h1>Hello Products!</h1>
+      <h1>Unser Sortiment</h1>
       <button onClick={() => setProducts(PRODUCTS)}>Alles</button>
       <button onClick={() => filter("Brot")}>Brote</button>
       <button onClick={() => filter("Kaffeestückchen")}>Kaffeestückchen</button>
