@@ -1,8 +1,8 @@
-import { NextSeo } from 'next-seo';
-import Head from 'next/head';
-import { useRouter } from 'next/router';
+import { NextSeo } from "next-seo";
+import Head from "next/head";
+import { useRouter } from "next/router";
 
-import { AppConfig } from '../utils/AppConfig';
+import { AppConfig } from "../utils/AppConfig";
 
 type IMetaProps = {
   title: string;
@@ -45,6 +45,13 @@ const Meta = (props: IMetaProps) => {
           rel="icon"
           href={`${router.basePath}/favicon.ico`}
           key="favicon"
+        />
+
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="true" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Averia+Serif+Libre:wght@700&family=Ubuntu&display=swap"
+          rel="stylesheet"
         />
       </Head>
       <NextSeo
