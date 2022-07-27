@@ -3,28 +3,28 @@
     "id": 26,
     "name": "Kasten Weißbrot",
     "category": "Baguette",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kasten-Weißbrot.svg",
     "price": 3.4
   },
   {
     "id": 27,
     "name": "Baguette klein",
     "category": "Baguette",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Baguette.svg",
     "price": 2.2
   },
   {
     "id": 28,
     "name": "Baguette groß",
     "category": "Baguette",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Baguette.svg",
     "price": 3.4
   },
   {
     "id": 29,
     "name": "Roggenflit klein",
     "category": "Baguette",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Baguette.svg",
     "price": 2.6
   },
   {

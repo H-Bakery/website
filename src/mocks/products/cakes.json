@@ -31,28 +31,28 @@
     "id": 74,
     "name": "Apfelkuchen",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kuchen.svg",
     "price": 18
   },
   {
     "id": 75,
     "name": "Apfelkuchen (1 Stück)",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kuchenstück.svg",
     "price": 1.8
   },
   {
     "id": 76,
     "name": "Kirschkuchen",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kuchen.svg",
     "price": 18
   },
   {
     "id": 77,
     "name": "Kirschkuchen (1 Stück)",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kuchenstück.svg",
     "price": 1.8
   },
   {
@@ -115,28 +115,28 @@
     "id": 86,
     "name": "Kranzkuchen ungefüllt",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kranzkuchen.svg",
     "price": 18
   },
   {
     "id": 87,
     "name": "Kranzkuchen ungefüllt (1/4 Stück)",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kranzkuchen.svg",
     "price": 4.5
   },
   {
     "id": 88,
     "name": "Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kranzkuchen.svg",
     "price": 20
   },
   {
     "id": 89,
     "name": "Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding (1/4 Stück)",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kranzkuchen.svg",
     "price": 5
   },
   {
@@ -164,14 +164,14 @@
     "id": 93,
     "name": "Zopf ungefüllt",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Hefezopf.svg",
     "price": 7
   },
   {
     "id": 94,
-    "name": "Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding)",
+    "name": "Zopf gefüllt (Nuss, Schoko, Quark oder Pudding)",
     "category": "Kuchen",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Hefezopf.svg",
     "price": 10
   },
   {

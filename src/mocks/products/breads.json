@@ -3,7 +3,7 @@
     "id": 1,
     "name": "Kornbrot 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kornbrot.svg",
     "price": 2.5
   },
 
@@ -11,168 +11,168 @@
     "id": 2,
     "name": "Kornbrot 1000g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Kornbrot.svg",
     "price": 4.4
   },
   {
     "id": 3,
     "name": "Mischbrot 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Mischbrot.svg",
     "price": 2.5
   },
   {
     "id": 4,
     "name": "Mischbrot 1000g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Mischbrot.svg",
     "price": 4.4
   },
   {
     "id": 5,
     "name": "Holzluken 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 2.9
   },
   {
     "id": 6,
     "name": "Holzluken 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 4
   },
   {
     "id": 7,
     "name": "Bergsteiger 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 2.9
   },
   {
     "id": 8,
     "name": "Bergsteiger 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 4
   },
   {
     "id": 9,
     "name": "Sommerkorn 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 2.9
   },
   {
     "id": 10,
     "name": "Sommerkorn 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 4
   },
   {
     "id": 11,
     "name": "Biker 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 2.9
   },
   {
     "id": 12,
     "name": "Biker 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 4
   },
   {
     "id": 13,
     "name": "Kerbricher 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 2.9
   },
   {
     "id": 14,
     "name": "Kerbricher 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 4
   },
   {
     "id": 15,
     "name": "Haferflocken 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Vollkorn Kastenbrot.svg",
     "price": 3.2
   },
   {
     "id": 16,
     "name": "Haferflocken 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Vollkorn Kastenbrot.svg",
     "price": 4.4
   },
   {
     "id": 17,
     "name": "Voll-Gut 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Vollkorn Kastenbrot.svg",
     "price": 3.2
   },
   {
     "id": 18,
     "name": "Voll-Gut 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Vollkorn Kastenbrot.svg",
     "price": 4.4
   },
   {
     "id": 19,
     "name": "Schwabenkornt 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Vollkorn Kastenbrot.svg",
     "price": 3.5
   },
   {
     "id": 20,
     "name": "Schwabenkorn 1000g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Vollkorn Kastenbrot.svg",
     "price": 6
   },
   {
     "id": 21,
     "name": "Feel Happy 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Vollkorn Kastenbrot.svg",
     "price": 4.2
   },
   {
     "id": 22,
     "name": "Hildegard von Bingen 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 3.5
   },
   {
     "id": 23,
     "name": "Hildegard von Bingen 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 4.6
   },
   {
     "id": 24,
     "name": "König Ludwig 500g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 3.5
   },
   {
     "id": 25,
     "name": "König Ludwig 750g",
     "category": "Brot",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Brot Rund.svg",
     "price": 4.6
   }
 ]

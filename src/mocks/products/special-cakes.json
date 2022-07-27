@@ -17,13 +17,13 @@
     "id": 98,
     "name": "Sahnerollen",
     "category": "Torten",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Rolle.svg",
     "price": 20
   },
   {
     "id": 99,
     "name": "Sahnerollen (1 Stück)",
-    "category": "Torten",
+    "category": "/assets/images/products/Type=Rolle.svg",
     "image": "images/",
     "price": 2
   },
@@ -52,7 +52,7 @@
     "id": 103,
     "name": "Buttercreme-Rolle",
     "category": "Torten",
-    "image": "images/",
+    "image": "/assets/images/products/Type=Rolle.svg",
     "price": 28
   }
 ]
