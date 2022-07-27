@@ -19,7 +19,7 @@ const ctaItems: MenuItem[] = [
   { label: 'Bestellen', path: '/bestellen', cta: true },
 ]
 
-const Navigation = () => {
+const Header = () => {
   return (
     <Box sx={styles.header}>
       <Link href='/' passHref={true}>
@@ -75,4 +75,4 @@ const styles = {
   }
 }
 
-export { Navigation };
+export { Header };
