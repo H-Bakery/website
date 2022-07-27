@@ -2,23 +2,8 @@ import { Box, Typography, Divider, Button  } from '@mui/material'
 import React from 'react'
 import GoogleMapReact from 'google-map-react';
 import Info from './Info';
-
-const AnyReactComponent = ({ text }: any) => <h1>{text}</h1>;
-
-const ZEITEN = [
-  {
-    label: 'Mo, Di, Do, Fr',
-    value: '05:00 - 12:00 Uhr, 14:00 - 17:00 Uhr',
-  },
-  {
-    label: 'Sa',
-    value: '05:00 - 12:00 Uhr, 14:00 - 17:00 Uhr',
-  },
-  {
-    label: 'Mi, So',
-    value: 'Ruhetag (geschlossen)',
-  },
-]
+import Marker from './Marker';
+import { ZEITEN } from './zeiten';
 
 const Map: React.FC = () => {
   const defaultProps = {
@@ -37,10 +22,10 @@ const Map: React.FC = () => {
           defaultCenter={defaultProps.center}
           defaultZoom={defaultProps.zoom}
         >
-          <AnyReactComponent
+          <Marker
+            // @ts-ignore
             lat={49.301429495245586}
             lng={7.369493502873482}
-            text="Bäckerei Heusser"
           />
         </GoogleMapReact>
       </Box>
