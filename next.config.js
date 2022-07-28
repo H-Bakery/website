@@ -4,7 +4,8 @@ let basePath = process.env.production == undefined ? '' : '/website'
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  basePath: basePath
+  basePath: basePath,
+  webpack5: true,
 }
 
 module.exports = nextConfig
