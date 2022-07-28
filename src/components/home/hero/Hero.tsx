@@ -44,7 +44,7 @@ const styles = {
       right: 0,
       top: 0,
       bottom: 0,
-      zIndex: -1,
+      zIndex: 0,
     }
   },
   logo: {
@@ -57,6 +57,7 @@ const styles = {
   },
   overlay: {
     position: 'absolute',
+    zIndex: 1,
     top: 0,
     left: 0,
     width: '100%',

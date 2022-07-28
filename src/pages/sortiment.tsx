@@ -1,17 +1,10 @@
 import { PRODUCTS } from "../mocks/products";
 import React, { useState } from "react";
+import { formatter } from "../utils/formatPrice";
 
 const Index = () => {
   const [products, setProducts] = useState(PRODUCTS);
-
-  const x = "Hello";
-  console.log("Products", PRODUCTS);
-  const formatter = new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "EUR",
-    minimumFractionDigits: 2,
-  });
-
+  
   const filter = (input: String) => {
     console.log("input", input);
     const newArray = PRODUCTS.filter((product) =>
