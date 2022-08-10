@@ -1,11 +1,14 @@
+import { Box } from "@mui/material"
+
 import { Meta } from "./Meta"
 import { AppConfig } from "../utils/AppConfig"
 import { Header } from "../components/header"
-import { Box } from "@mui/material"
 import Footer from "../components/footer/Index";
+
 interface Props {
   children: React.ReactNode;
 }
+
 const Base: React.FC<Props> = ({children}) => (
   <Box 
     sx={{
@@ -14,7 +17,9 @@ const Base: React.FC<Props> = ({children}) => (
   >
     <Meta title={AppConfig.title} description={AppConfig.description} />
     <Header />
-    {children}
+    <Box sx={{ minHeight: 'calc(100vh - 332px)'}}>
+      {children}
+    </Box>
     <Footer />
   </Box>
 );

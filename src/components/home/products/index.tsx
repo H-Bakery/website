@@ -1,7 +1,7 @@
 import React from 'react'
 import { Box, BoxProps, Button, Container, Grid, Typography } from '@mui/material'
 import ProductCard from './ProductCard'
-import { Product } from '../../sortiment/types'
+import { Product } from '../../products/types'
 
 interface Props extends BoxProps {
   header?: React.ReactNode

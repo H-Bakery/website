@@ -1,6 +1,7 @@
 export const NEWS = [
   {
     id: 1,
+    slug: "verkaufspartner-gesucht",
     name: "Verkaufspartner gesucht!",
     published: "25.07.2022",
     category: "Internes",
@@ -9,7 +10,8 @@ export const NEWS = [
     text: `Wir suchen in der Vorstadt Homburg, Bereich Birkensiedlung-Realschule-Saarpfalz-Gymnasium- Waldstadion Jemanden, der in Eigenverantwortung und mit eigenem Verkaufsplatz bereit wäre, unsere Backwaren an unseren Öffnungstagen Mo, Di, Do, Fr und Sa zu verkaufen. Bitte kontaktieren Sie uns hierzu über die angegebenen Kontaktmöglichkeiten. Alles Weitere können wir in einen persönlichen Gespräch besprechen.`,
   },
   {
-    id: 1,
+    id: 2,
+    slug: 'geaenderte-oeffnungszeiten',
     name: "Geänderte Öffnungszeiten in den Sommerferien!",
     published: "25.07.2022",
     category: "Internes",
@@ -18,16 +20,18 @@ export const NEWS = [
     text: `Sehr geehrte Kunden, bitte beachten Sie unsere geänderten Öffnungszeiten in den Ferien: Montag, Dienstag, Donnerstag und Freitag von 5 bis 11 Uhr und von 15:30 bis 18 Uhr. Samstag von 6 bis 13 Uhr und Mittwoch und Sonntags sind wie gehabt Ruhetage.`,
   },
   {
-    id: 1,
+    id: 3,
+    slug: "neue-abholstation",
     name: "Neue Abholstation!",
     published: "24.07.2022",
     category: "Internes",
     image: "https://images.pexels.com/photos/4694432/pexels-photo-4694432.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1",
-    shortDescription: '`Unsere Abholstation zum Abholen von vorbestellten Backwaren ...',
+    shortDescription: 'Unsere Abholstation zum Abholen von vorbestellten Backwaren ...',
     text: `Unsere Abholstation zum Abholen von vorbestellten Backwaren in der Mittagspause oder nach Feierabend.`,
   },
   {
-    id: 1,
+    id: 4,
+    slug: "aushilfe-gesucht",
     name: "Aushilfe gesucht!",
     published: "15.06.2022",
     category: "Internes",

@@ -12,14 +12,20 @@ const Hero: React.FC<Props> = (props) => {
   return (
     <Box sx={{
 			pt: '160px',
-			pb: '80px'
+			pb: 3
 		}}>
 			<Container sx={{
 				display: 'flex',
 				flexDirection: 'column',
-				alignItems: 'center'
+				alignItems: 'center',
+
+        '& svg': {
+          maxWidth: '80vw',
+        }
 			}}>
-				<Typography variant='h3'>{title}</Typography>
+				<Typography variant='h3' textAlign='center'>
+          {title}
+        </Typography>
 				<Divider />
 			</Container>
 		</Box>

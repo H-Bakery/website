@@ -10,7 +10,7 @@ interface MenuItem {
 }
 
 const items: MenuItem[] = [
-  { label: 'Sortiment', path: '/sortiment' },
+  { label: 'Sortiment', path: '/products' },
   { label: 'Neuigkeiten', path: '/news' },
   { label: 'Über uns', path: '/about' },
 ]

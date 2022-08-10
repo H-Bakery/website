@@ -1,20 +1,23 @@
 import React from 'react'
 import { Box, Chip, Typography } from '@mui/material'
+import { useRouter } from 'next/router'
 
-interface Props {
+export interface NewsType {
   id: number
   name: string
   category: string
   image: string
   text: string
   shortDescription: string
+  slug: string
 }
 
-const Card: React.FC<Props> = (props) => {
-  const {id, name, category, image, text, shortDescription } = props
+const Card: React.FC<NewsType> = (props) => {
+  const {id, name, category, image, shortDescription, slug } = props
+  const router = useRouter()
 
   return (
-    <Box key={id} sx={styles.card}>
+    <Box key={id} sx={styles.card} onClick={() => router.push(`/news/${slug}`)}>
       <Box sx={{
         ...styles.image,
         backgroundImage: `url(${image})`
@@ -43,6 +46,8 @@ const styles = {
     p: 1,
     transition: 'all ease-in-out 200ms',
     cursor: 'pointer',
+    height: '100%',
+
     '&:hover': {
       transform: 'translateY(-4px)',
       bgcolor: 'grey.300',

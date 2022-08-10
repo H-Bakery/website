@@ -36,7 +36,8 @@ const Index: React.FC = () => (
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
-        mb: 4
+        mt: 4,
+        mb: 2
       }}>
         <Typography variant='h3'>
           Neuigkeiten

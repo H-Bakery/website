@@ -1,11 +1,11 @@
 import React, { useState } from "react"
 import { Box, Container } from "@mui/material"
 
-import { PRODUCTS } from "../mocks/products"
-import { Base } from "../layout/Base"
-import Hero from "../components/Hero"
-import Filter from "../components/sortiment/Filter"
-import Products from "../components/home/products"
+import { PRODUCTS } from "../../mocks/products"
+import { Base } from "../../layout/Base"
+import Hero from "../../components/Hero"
+import Filter from "../../components/products/Filter"
+import Products from "../../components/home/products"
 
 const Index = () => {
   const [products, setProducts] = useState(PRODUCTS)

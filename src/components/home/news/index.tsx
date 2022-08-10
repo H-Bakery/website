@@ -15,9 +15,9 @@ const News: React.FC<Props> = (props) => {
     <Box sx={sx}>
       <Container>
         {header}
-        <Grid container spacing={4}>
+        <Grid container spacing={2}>
           {NEWS.map((item) => (
-            <Grid key={item.id} item xs={3}>
+            <Grid key={item.id} item xs={12} sm={6} md={4} lg={3} >
               <Card {...item} />
             </Grid>
           ))}
