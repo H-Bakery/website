@@ -1,43 +1,22 @@
 import React, { useState } from "react";
+import { Box, Container } from "@mui/material";
+
 import { PRODUCTS } from "../mocks/products";
 import { formatter } from "../utils/formatPrice";
 import { Base } from "../layout/Base";
-import { Box, Button, Container, Grid, Typography } from "@mui/material";
+import Hero from "../components/Hero";
+import Filter from "../components/sortiment/Filter";
 
 const Index = () => {
-  const [products, setProducts] = useState(PRODUCTS);
-
-  const filter = (input: String) => {
-    console.log("input", input);
-    const newArray = PRODUCTS.filter((product) =>
-      product.category.includes(input)
-    ).map((filteredName) => filteredName);
-    console.log("newArray", newArray);
-    setProducts(newArray);
-  };
+  const [products, setProducts] = useState(PRODUCTS)
 
   return (
     <Base>
-      <Box sx={{ py: 6 }}>
+      <Hero title='Sortiment' />
+      <Box>
         <Container>
-          <Box
-            sx={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              mb: 4,
-            }}
-          >
-            <Typography variant="h1">Unser Sortiment</Typography>
-          </Box>
-          <button onClick={() => setProducts(PRODUCTS)}>Alles</button>
-          <button onClick={() => filter("Brot")}>Brote</button>
-          <button onClick={() => filter("Kaffeestückchen")}>
-            Kaffeestückchen
-          </button>
-          <button onClick={() => filter("Snacks")}>Snacks</button>
-          <button onClick={() => filter("Kuchen")}>Kuchen</button>
-          <button onClick={() => filter("Torten")}>Torten</button>
+          <Filter setProducts={setProducts} />
+           
           <table className="table-auto">
             <thead>
               <tr>

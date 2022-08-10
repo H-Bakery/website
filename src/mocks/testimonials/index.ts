@@ -1,4 +1,4 @@
-export const KUNDENBEWERTUNGEN = [
+export const TESTIMONIALS = [
     {
       stars: 5,
       name: "Freyja7",

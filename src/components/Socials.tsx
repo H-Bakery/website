@@ -1,21 +1,21 @@
-import { Box, Typography } from '@mui/material'
-import Link from 'next/link'
 import React from 'react'
-import Facebook from './icons/Facebook'
-import Instagram from './icons/Instagram'
-import Whatsapp from './icons/Whatsapp'
+import { Box } from '@mui/material'
+
+import Facebook from './icons/socials/Facebook'
+import Instagram from './icons/socials/Instagram'
+import Whatsapp from './icons/socials/Whatsapp'
 
 const SOCIALS = [
 	{
-		link: 'facebook.de',
+		link: 'https://www.facebook.com/profile.php?id=100068876322773',
 		icon: <Facebook />
 	},
 	{
-		link: 'instagram.de',
+		link: 'https://www.instagram.com/backereiheusser',
 		icon: <Instagram />
 	},
 	{
-		link: 'https://we.me/01522 66 2 12 36',
+		link: 'https://wa.me/015226621236',
 		icon: <Whatsapp />
 	},
 ]
@@ -24,9 +24,9 @@ const Socials: React.FC = () => {
   return (
     <Box sx={styles.root}>
 			{SOCIALS.map((item) => (
-				<Link href={item.link}>
+				<a key={item.link} href={item.link} target="_blank" >
 					{item.icon}
-				</Link>
+				</a>
 			))}
     </Box>
   )
@@ -35,6 +35,14 @@ const Socials: React.FC = () => {
 const styles = {
 	root: {
 		mb: 2,
+
+		'& a': {
+			color: 'text.secondary',
+			
+			'&:hover': {
+				color :'primary.main'
+			}
+		},
 
 		'& svg': {
 			minHeight: 24,
