@@ -2,112 +2,112 @@
   {
     "id": 54,
     "name": "Gefüllte Schnecken (Schoko, Pudding, Rosinen, Nuss oder Mohn)",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 2
   },
   {
     "id": 55,
     "name": "Plunder-Hörnchen",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 2
   },
   {
     "id": 56,
     "name": "Taschen Schleifen",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 2
   },
   {
     "id": 57,
     "name": "Kirsch-Plotzer",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 2
   },
   {
     "id": 58,
     "name": "Puddingstückchen",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 2
   },
   {
     "id": 59,
     "name": "Butterkuchen",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 2
   },
   {
     "id": 60,
     "name": "Streusel",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.8
   },
   {
     "id": 61,
     "name": "Schoko-Vanille-Hörnchen",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.8
   },
   {
     "id": 62,
     "name": "Quarktasche",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.8
   },
   {
     "id": 63,
     "name": "Einback",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.2
   },
   {
     "id": 64,
     "name": "Sckokobrötchen",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.5
   },
   {
     "id": 65,
     "name": "Rosinenbrötchen",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.5
   },
   {
     "id": 66,
     "name": "Croissant",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.2
   },
   {
     "id": 67,
     "name": "Pain Chocolate",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.5
   },
   {
     "id": 68,
     "name": "Muffin",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 1.6
   },
   {
     "id": 69,
     "name": "Granatsplitter",
-    "category": "Kaffeestückchen",
+    "category": "Teilchen",
     "image": "images/",
     "price": 2.2
   }
