@@ -1,8 +1,8 @@
-import { Meta } from "./Meta";
-import { AppConfig } from "../utils/AppConfig";
-import { Footer } from "../components/footer/Index";
-import { Header } from "../components/header";
-import { Box } from "@mui/material";
+import { Meta } from "./Meta"
+import { AppConfig } from "../utils/AppConfig"
+import { Header } from "../components/header"
+import { Box } from "@mui/material"
+import Footer from "../components/footer/Index";
 interface Props {
   children: React.ReactNode;
 }
