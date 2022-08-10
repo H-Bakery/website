@@ -1,7 +1,7 @@
 import { Box } from '@mui/material';
 import React from 'react'
-import Baeckerei from '../../icons/Baeckerei';
-import Wappen from '../../icons/Wappen';
+import Baeckerei from '../../icons/brand/Baeckerei';
+import Wappen from '../../icons/brand/Wappen';
 
 const Hero: React.FC = () => (
   <Box sx={styles.hero}>

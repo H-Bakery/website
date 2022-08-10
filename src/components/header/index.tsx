@@ -1,6 +1,6 @@
 import { Box } from "@mui/material";
 import Link from "next/link";
-import Heusser from "../icons/Heusser";
+import Heusser from "../icons/brand/Heusser";
 import Item from "./Item";
 
 interface MenuItem {
