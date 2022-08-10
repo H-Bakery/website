@@ -7,17 +7,10 @@ import Teilchen from '../icons/products/Teilchen'
 import Kuchen from '../icons/products/Kuchen'
 import Torten from '../icons/products/Torten'
 import Getranke from '../icons/products/Getranke'
-
-interface Item {
-	id: number
-	name: string
-	category: string
-	image: string
-	price: number
-}
+import { Product } from './types'
 
 interface Props {
-	setProducts: (items: Item[]) => void
+	setProducts: (items: Product[]) => void
 }
 
 const FILTERS = [
@@ -54,7 +47,7 @@ const Filter: React.FC<Props> = (props) => {
     <Box sx={styles.root}>
       <Grid container spacing={4}>
         {FILTERS.map((item) => (
-          <Grid item xs={2}>
+          <Grid key={item.label} item xs={2}>
             <Box
               sx={styles.item}
               onClick={() => filter(item.label)}
@@ -77,7 +70,6 @@ const styles = {
     mb: 4
   },
   item: {
-    bgcolor: 'background.paper',
     borderRadius: '8px',
     boxShadow: 1,
     p: 2,
@@ -85,12 +77,32 @@ const styles = {
     flexDirection: 'column',
     justifyContent: 'center',
     alignItems: 'center',
-    opacity: 0.66,
-    transition: 'opacity ease-in-out 200ms',
+    bgcolor: 'background.default',
+    transition: 'all ease-in-out 200ms',
+    cursor: 'pointer',
+    
+    '& *': {
+      transition: 'all ease-in-out 200ms',
+      color: 'text.primary',
+    },
+
+    '&:hover': {
+      bgcolor: 'grey.300',
+      transform: 'translateY(-2px)',
+
+      '& *': {
+        fontWeight: 'bold',
+      }
+    },
     
     '&.active': {
-      opacity: 1,
-    }
+      bgcolor: 'primary.main',
+      
+      '& *': {
+        color: 'background.paper',
+        fontWeight: 'bold',
+      }
+    },
   }
 }
 

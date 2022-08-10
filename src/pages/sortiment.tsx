@@ -1,11 +1,11 @@
-import React, { useState } from "react";
-import { Box, Container } from "@mui/material";
+import React, { useState } from "react"
+import { Box, Container } from "@mui/material"
 
-import { PRODUCTS } from "../mocks/products";
-import { formatter } from "../utils/formatPrice";
-import { Base } from "../layout/Base";
-import Hero from "../components/Hero";
-import Filter from "../components/sortiment/Filter";
+import { PRODUCTS } from "../mocks/products"
+import { Base } from "../layout/Base"
+import Hero from "../components/Hero"
+import Filter from "../components/sortiment/Filter"
+import Products from "../components/home/products"
 
 const Index = () => {
   const [products, setProducts] = useState(PRODUCTS)
@@ -13,39 +13,14 @@ const Index = () => {
   return (
     <Base>
       <Hero title='Sortiment' />
-      <Box>
+      <Box mb={6}>
         <Container>
           <Filter setProducts={setProducts} />
-           
-          <table className="table-auto">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Bild</th>
-                <th>Name</th>
-                <th>Kategorie</th>
-                <th>Preis</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => (
-                <tr key={product.id}>
-                  <td>{product.id}</td>
-                  <td>
-                    {" "}
-                    <img src={product.image} alt={product.name} />
-                  </td>
-                  <td>{product.name}</td>
-                  <td>{product.category}</td>
-                  <td>{formatter.format(product.price)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </Container>
+        <Products items={products} />
       </Box>
     </Base>
-  );
-};
+  )
+}
 
-export default Index;
+export default Index

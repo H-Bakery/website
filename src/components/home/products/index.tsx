@@ -1,25 +1,22 @@
 import React from 'react'
-import { Box, Button, Container, Grid, Typography } from '@mui/material'
-import { featuredProducts } from '../../../mocks/products/featured'
+import { Box, BoxProps, Button, Container, Grid, Typography } from '@mui/material'
 import ProductCard from './ProductCard'
+import { Product } from '../../sortiment/types'
 
-const Products: React.FC = () => {
+interface Props extends BoxProps {
+  header?: React.ReactNode
+  items: Product[]
+}
+
+const Products: React.FC<Props> = (props) => {
+  const { items, header, sx } = props
+
   return (
-    <Box sx={{ py: 6 }}>
+    <Box sx={sx}>
       <Container>
-        <Box sx={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          mb: 4
-        }}>
-          <Typography variant='h3'>
-            Sortiment
-          </Typography>  
-          <Button variant='contained'>Alle entdecken</Button>
-        </Box>
+        {header}
         <Grid container spacing={4}>
-          {featuredProducts.map((item) => (
+          {items.map((item) => (
             <Grid key={item.id} item xs={3}>
               <ProductCard {...item} />
             </Grid>

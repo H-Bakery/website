@@ -87,10 +87,11 @@ const styles = {
   },
   image: {
     position: 'absolute',
+    top: 0,
+    left: 0,
     opacity: 0.05,
     backgroundPosition: 'center',
     backgroundSize: 'cover',
-    transform: 'translate(-50px, -50px)'
   }
 }
 
