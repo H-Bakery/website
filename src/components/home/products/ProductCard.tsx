@@ -15,7 +15,7 @@ const ProductCard: React.FC<Props> = (props) => {
 
   return (
     <Box key={id} sx={styles.card}>
-      <Box sx={styles.image}>
+      <Box sx={styles.image} className='image'>
         <img src={image} alt={name} />
       </Box>
       <Typography sx={styles.name}>
@@ -34,11 +34,20 @@ const ProductCard: React.FC<Props> = (props) => {
 const styles = {
   card: {
     bgcolor: 'background.paper',
-      borderRadius: '8px',
-      boxShadow: 1,
-      display: 'flex',
-      flexDirection: 'column',
-      p: 1
+    borderRadius: '8px',
+    boxShadow: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    p: 1,
+    transition: 'all ease-in-out 200ms',
+    cursor: 'pointer',
+    '&:hover': {
+      transform: 'translateY(-4px)',
+      bgcolor: 'grey.300',
+      '& .image': {
+        bgcolor: 'grey.50'
+      }
+    }
   },
   image: {
     bgcolor: 'grey.200',
@@ -48,6 +57,7 @@ const styles = {
     justifyContent: 'center',
     mb: 1,
     minHeight: 140,
+    transition: 'all ease-in-out 300ms',
     '& img': {
       maxHeight: 120
     }
