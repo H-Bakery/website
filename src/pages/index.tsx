@@ -31,7 +31,19 @@ const Index: React.FC = () => (
       items={featuredProducts}
     />
     <Testimonial />
-    <News />
+    <News header={
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        mb: 4
+      }}>
+        <Typography variant='h3'>
+          Neuigkeiten
+        </Typography>  
+        <Button variant='contained'>Alle entdecken</Button>
+      </Box>
+    } />
   </Base>
 );
 

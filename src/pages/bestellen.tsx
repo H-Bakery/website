@@ -5,6 +5,18 @@ import Hero from "../components/Hero";
 const Index = () => (
   <Base>
     <Hero title="Bestellen" />
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        mb: 6,
+      }}
+    >
+      <Container>
+        <Button>Anrufen</Button>
+        <Button>WhatsApp</Button>
+      </Container>
+    </Box>
   </Base>
 );
 
