@@ -4,14 +4,14 @@ import ShoppingCartRoundedIcon from '@mui/icons-material/ShoppingCartRounded'
 import { CartContext } from '../../context/CartContext'
 
 const CartButton: React.FC<BoxProps> = (props) => {
-  const { items } = React.useContext(CartContext)
-  const count = items.length
+  const { totalCount } = React.useContext(CartContext)
+
 
   return (
     <Box sx={styles.root} {...props} >
       <Box sx={styles.wrapper}>
         <Box sx={styles.badge}>
-          <Typography fontWeight='bold'>{count}</Typography>
+          <Typography fontWeight='bold'>{totalCount}</Typography>
         </Box>
         <ShoppingCartRoundedIcon />
       </Box>

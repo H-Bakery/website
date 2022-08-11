@@ -1,13 +1,16 @@
 import React from "react";
 import emailjs from "@emailjs/browser"
 
-import { Box, Typography } from "@mui/material"
+import { Box, Grid, Typography } from "@mui/material"
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
 import EmailRoundedIcon from '@mui/icons-material/EmailRounded'
 import ChatRoundedIcon from '@mui/icons-material/ChatRounded'
+import { CartContext } from '../../context/CartContext'
+import { formatter } from '../../utils/formatPrice'
 
 import Input from "../Input"
 import Button from "../button/Index";
+import Card from '../cart/Card'
 
 const INPUTS = [
   {
@@ -38,7 +41,8 @@ const OrderForm: React.FC = () => {
   const form = React.useRef<HTMLFormElement | string>("null")
   const [loading, setLoading] = React.useState(false)
   const [showSuccess, setShowSuccess] = React.useState(false);
-  
+  const {items, totalPrice} = React.useContext(CartContext)
+
   const sendEmail = (e: any) => {
     e.preventDefault();
     setLoading(true);
@@ -104,6 +108,12 @@ const OrderForm: React.FC = () => {
                   minRows={3}
                 />
               ))}
+              <Grid container spacing={2}>
+              {items.map((item) => (
+                <Card key={item.id} {...item} />
+              ))}
+            </Grid>
+            <Typography variant='h2'>Summe: {formatter.format(totalPrice)}</Typography>
               <Button disabled={loading} type="submit" size='large'>
                 Bestellen
               </Button>

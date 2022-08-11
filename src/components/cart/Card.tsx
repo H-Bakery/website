@@ -8,7 +8,12 @@ import Button from '../button/Index'
 const Card: React.FC<CartItem> = (props) => {
   const { id, image, name, category, price, count } = props
 
-  const { remove, changeCount } = React.useContext(CartContext)
+  const { items, remove, changeCount } = React.useContext(CartContext)
+
+  
+  React.useEffect(() => {
+    console.log("cont", items)
+  }, [items])
 
   return (
     <Box sx={styles.root}>
