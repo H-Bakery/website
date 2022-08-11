@@ -1,30 +1,40 @@
-import { Box } from '@mui/material';
 import React from 'react'
-import Baeckerei from '../../icons/brand/Baeckerei';
-import Wappen from '../../icons/brand/Wappen';
+import { Box } from '@mui/material'
+import Baeckerei from '../../icons/brand/Baeckerei'
+import Wappen from '../../icons/brand/Wappen'
 
-const Hero: React.FC = () => (
-  <Box sx={styles.hero}>
-    <Box sx={styles.logo}>
-      <Wappen />
-      <Baeckerei />
+const Hero: React.FC = () => {
+  React.useEffect(() => {
+    const video: HTMLVideoElement = document.getElementById('background-video') as HTMLVideoElement
+    console.log(video)
+    video.play()
+  }, [])
+
+  return (
+    <Box sx={styles.hero}>
+      <Box sx={styles.logo}>
+        <Wappen />
+        <Baeckerei />
+      </Box>
+      <Box sx={styles.overlay} />
+      <video
+        className='video'
+        id="background-video"
+        playsInline
+        preload='none'
+        autoPlay
+        muted={true}
+        loop
+      >
+        <source src="/assets/images/stock/bg_video.mp4" type="video/mp4" />
+        <source src="/assets/images/stock/bg_video.webm" type="video/webm" />
+        Your browser does not support the video tag.
+      </video>
     </Box>
-    <Box sx={styles.overlay} />
-    <video
-      className='video'
-      id="background-video"
-      autoPlay
-      muted
-      loop
-    >
-      <source src="/assets/images/stock/bg_video.mp4" type="video/mp4" />
-      <source src="/assets/images/stock/bg_video.mp4" type="video/ogg" />
-      Your browser does not support the video tag.
-    </video>
-  </Box>
-);
+  )
+};
 
-export { Hero };
+export default Hero
 
 const styles = {
   hero: {

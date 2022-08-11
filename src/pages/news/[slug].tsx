@@ -1,7 +1,7 @@
 import React from 'react'
 import { Box, Container, Typography } from '@mui/material'
 
-import { Base } from '../../layout/Base'
+import Base from '../../layout/Base'
 import Hero from '../../components/Hero'
 import { useRouter } from 'next/router'
 import { NEWS } from '../../mocks/news'

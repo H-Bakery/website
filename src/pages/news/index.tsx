@@ -1,7 +1,7 @@
 import React from 'react'
-import { Box, Button, Typography } from '@mui/material'
+import { Box } from '@mui/material'
 
-import { Base } from '../../layout/Base'
+import Base from '../../layout/Base'
 import News from '../../components/home/news'
 import Hero from '../../components/Hero'
 

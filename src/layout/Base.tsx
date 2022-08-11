@@ -3,10 +3,10 @@ import { Box } from "@mui/material"
 import { Meta } from "./Meta"
 import { AppConfig } from "../utils/AppConfig"
 import { Header } from "../components/header"
-import Footer from "../components/footer/Index";
+import Footer from "../components/footer/Index"
 
 interface Props {
-  children: React.ReactNode;
+  children: React.ReactNode
 }
 
 const Base: React.FC<Props> = ({children}) => (
@@ -22,6 +22,6 @@ const Base: React.FC<Props> = ({children}) => (
     </Box>
     <Footer />
   </Box>
-);
+)
 
-export { Base };
+export default Base

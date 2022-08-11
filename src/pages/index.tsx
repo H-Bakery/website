@@ -2,8 +2,8 @@ import React from 'react'
 import { useRouter } from 'next/router'
 import { Box, Typography } from '@mui/material'
 
-import { Base } from '../layout/Base'
-import { Hero } from '../components/home/hero/Hero'
+import Base from '../layout/Base'
+import Hero from '../components/home/hero/Hero'
 import Map from '../components/home/map'
 import Products from '../components/home/products'
 import Testimonial from '../components/home/testimonial'
@@ -12,7 +12,7 @@ import { featuredProducts } from '../mocks/products/featured'
 import Button from '../components/button/Index'
 
 const Index: React.FC = () => {
-  const router = useRouter();
+  const router = useRouter()
   return (
   <Base>
     <Hero />
@@ -54,6 +54,6 @@ const Index: React.FC = () => {
       </Box>
     } />
   </Base>
-)};
+)}
 
-export default Index;
+export default Index

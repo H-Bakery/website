@@ -1,5 +1,5 @@
 import React from 'react'
-import { Base } from "../layout/Base"
+import Base from "../layout/Base"
 import { Box, Container, Typography } from "@mui/material"
 import Hero from "../components/Hero"
 
