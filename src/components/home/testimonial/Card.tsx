@@ -21,7 +21,7 @@ const Card: React.FC<Props> = (props) => {
 				mb: 1
 			}}>
 				{starsArray.map((item) => (
-					<Typography sx={{ mr: 1 / 2 }} variant='h5'>⭐️</Typography>	
+					<Typography key={item} sx={{ mr: 1 / 2 }} variant='h5'>⭐️</Typography>	
 				))}
 			</Box>
 			<Typography color='text.secondary'>{text}</Typography>

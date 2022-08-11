@@ -8,8 +8,10 @@ import Products from '../components/home/products'
 import Testimonial from '../components/home/testimonial'
 import News from '../components/home/news'
 import { featuredProducts } from '../mocks/products/featured'
-
-const Index: React.FC = () => (
+import { useRouter } from 'next/router'
+const Index: React.FC = () => {
+  const router = useRouter();
+  return (
   <Base>
     <Hero />
     <Map />
@@ -22,10 +24,10 @@ const Index: React.FC = () => (
           alignItems: 'center',
           mb: 4
         }}>
-          <Typography variant='h3'>
+          <Typography sx={{fontSize: {xs: '9vw'}}} variant='h3'>
             Sortiment
           </Typography>  
-          <Button variant='contained'>Mehr</Button>
+          <Button onClick={() => router.push("products")} variant='contained'>Mehr</Button>
         </Box>
       }
       items={featuredProducts}
@@ -39,13 +41,13 @@ const Index: React.FC = () => (
         mt: 4,
         mb: 2
       }}>
-        <Typography variant='h3'>
+        <Typography sx={{fontSize: {xs: '9vw'}}} variant='h3'>
           Neuigkeiten
         </Typography>  
-        <Button variant='contained'>Mehr</Button>
+        <Button onClick={() => router.push("news")} variant='contained'>Mehr</Button>
       </Box>
     } />
   </Base>
-);
+)};
 
 export default Index;

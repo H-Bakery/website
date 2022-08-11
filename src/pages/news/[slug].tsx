@@ -11,8 +11,14 @@ const Index: React.FC = () => {
   const router = useRouter()
   const { slug } = router.query
 
+  const  Default = {
+    name: '',
+    image: '',
+    text: '',
+  }
+
   const news: NewsType[] = NEWS.filter((item) => slug === item.slug)
-  const currentNews = news[0]
+  const currentNews = news[0] || Default
 
   return (  
     <Base>

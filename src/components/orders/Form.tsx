@@ -89,7 +89,8 @@ const OrderForm: React.FC<Props> = (props) => {
             {/* @ts-ignore */}
             <form ref={form} onSubmit={sendEmail}>
               {INPUTS.map((item) => (
-                <Input 
+                <Input
+                  key={item.name}
                   label={item.label}
                   placeholder={item.placeholder}
                   type={item.type}

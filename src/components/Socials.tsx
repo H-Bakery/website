@@ -24,7 +24,7 @@ const Socials: React.FC = () => {
   return (
     <Box sx={styles.root}>
 			{SOCIALS.map((item) => (
-				<a key={item.link} href={item.link} target="_blank" >
+				<a key={item.link} href={item.link} target="_blank" rel="noreferrer">
 					{item.icon}
 				</a>
 			))}

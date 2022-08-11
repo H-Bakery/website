@@ -3,7 +3,7 @@ import { useRouter } from 'next/router'
 import { Box, Container, Grid, Typography } from '@mui/material'
 
 import Wappen from '../icons/brand/Wappen'
-import H from '../icons/brand/H'
+import Heusser from '../icons/brand/Heusser'
 import Menu from './Menu'
 import Contact from './Contact'
 import Openings from './Openings'
@@ -19,7 +19,7 @@ const Footer: React.FC = () => {
       <Grid sx={styles.header} container spacing={4}>
         <Grid item xs={12} sm={6} md={3} sx={styles.about}>
           <Box>
-            <H />
+            <Heusser />
             <Typography variant='body2' color='text.secondary' mb={2}>
               Wir backen mit Herz, nach Tradition und nur für euch.
             </Typography>

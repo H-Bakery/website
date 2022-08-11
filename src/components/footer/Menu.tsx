@@ -14,7 +14,7 @@ const Menu: React.FC = () => {
 				Menu
 			</Typography>
 			{MENU.map((item) => (
-        <Link {...item} />
+        <Link key={item.label} {...item} />
       ))}
     </Box>
   )
