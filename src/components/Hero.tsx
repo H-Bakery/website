@@ -11,7 +11,7 @@ const Hero: React.FC<Props> = (props) => {
 
   return (
     <Box sx={{
-			pt: '160px',
+			pt: { xs: '120px', md: '160px'},
 			pb: 3
 		}}>
 			<Container sx={{
@@ -23,7 +23,9 @@ const Hero: React.FC<Props> = (props) => {
           maxWidth: '80vw',
         }
 			}}>
-				<Typography variant='h3' textAlign='center'>
+				<Typography variant='h3' textAlign='center' sx={{
+          fontSize: { xs: '8vw', md: '3rem' }
+        }}>
           {title}
         </Typography>
 				<Divider />

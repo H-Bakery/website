@@ -17,22 +17,22 @@ const Footer: React.FC = () => {
   <Box sx={styles.root}>
     <Container >
       <Grid sx={styles.header} container spacing={4}>
-        <Grid item xs={3} sx={styles.about}>
+        <Grid item xs={12} sm={6} md={3} sx={styles.about}>
           <Box>
             <H />
-            <Typography variant='body2' color='text.secondary'>
+            <Typography variant='body2' color='text.secondary' mb={2}>
               Wir backen mit Herz, nach Tradition und nur für euch.
             </Typography>
           </Box>
           <Socials />
         </Grid>
-        <Grid item xs={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <Menu />
         </Grid>
-        <Grid item xs={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <Contact />
         </Grid>
-        <Grid item xs={3}>
+        <Grid item xs={12} sm={6} md={3}>
           <Openings />
         </Grid>
       </Grid>
@@ -58,6 +58,7 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     m: 2,
+    mt: 6,
     p: 2,
     bgcolor: 'background.paper',
     boxShadow: 1,
@@ -80,6 +81,7 @@ const styles = {
   },
   footer: {
     display: 'flex',
+    alignItems: 'center',
     justifyContent: 'space-between',
     borderTop: '1px solid',
     borderColor: 'grey.300',

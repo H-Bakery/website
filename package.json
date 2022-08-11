@@ -10,6 +10,7 @@
     "prepare-deploy": "export production=true && next build && next export"
   },
   "dependencies": {
+    "@emailjs/browser": "^3.6.2",
     "@emotion/cache": "^11.9.3",
     "@emotion/react": "^11.9.3",
     "@emotion/server": "^11.4.0",

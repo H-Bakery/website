@@ -25,7 +25,7 @@ const Index: React.FC = () => (
           <Typography variant='h3'>
             Sortiment
           </Typography>  
-          <Button variant='contained'>Alle entdecken</Button>
+          <Button variant='contained'>Mehr</Button>
         </Box>
       }
       items={featuredProducts}
@@ -42,7 +42,7 @@ const Index: React.FC = () => (
         <Typography variant='h3'>
           Neuigkeiten
         </Typography>  
-        <Button variant='contained'>Alle entdecken</Button>
+        <Button variant='contained'>Mehr</Button>
       </Box>
     } />
   </Base>

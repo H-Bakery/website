@@ -62,6 +62,7 @@ const styles = {
     minHeight: 140,
     transition: 'all ease-in-out 300ms',
     '& img': {
+      maxWidth: '90%',
       maxHeight: 120
     }
   },

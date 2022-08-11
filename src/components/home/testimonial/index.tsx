@@ -13,7 +13,7 @@ const Testimonial = () => {
         <Typography variant='h3' gutterBottom>Kundenmeinungen</Typography>
         <Grid container spacing={4}>
           {TESTIMONIALS.map((item) => (
-            <Grid key={item.name} item xs={4}>
+            <Grid key={item.name} item xs={12} md={4}>
               <Card {...item} />
             </Grid>
           ))}

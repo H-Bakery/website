@@ -14,6 +14,9 @@ const theme: ThemeOptions = {
     primary: {
       main: '#D038BA'
     },
+    success: {
+      main: '#1ADA67'
+    },
     grey: {
       50: '#F6F8FC',
       100: '#F2F5FB',

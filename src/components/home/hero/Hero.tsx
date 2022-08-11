@@ -53,7 +53,8 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    color: 'white'
+    color: 'white',
+    transform: { xs: 'scale(0.5)' ,  sm: 'scale(0.6)', md: 'scale(1)'}
   },
   overlay: {
     position: 'absolute',
@@ -62,6 +63,6 @@ const styles = {
     left: 0,
     width: '100%',
     height: '100vh',
-    bgcolor: 'rgba(0,0,0,0.5)'
+    bgcolor: '#8e68116b'
   }
 }

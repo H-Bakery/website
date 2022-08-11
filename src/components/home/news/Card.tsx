@@ -58,7 +58,7 @@ const styles = {
   },
   image: {
     mb: 1,
-    minHeight: 140,
+    minHeight: 160,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
