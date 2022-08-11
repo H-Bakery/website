@@ -7,13 +7,16 @@ import { useRouter } from 'next/router'
 import { PRODUCTS } from '../../mocks/products'
 import { Product } from '../../components/products/types'
 import { formatter } from '../../utils/formatPrice'
+import Button from '../../components/button/Index'
+import { CartContext } from '../../context/CartContext'
 
 const Index: React.FC = () => { 
   const router = useRouter()
   const { pid } = router.query
 
+  const { add } = React.useContext(CartContext)
+
   const products: Product[] = PRODUCTS.filter((item) => Number(pid) === Number(item.id))
-  console.log('products: ', products)
   const currentProduct: Product = products[0]
 
   return (  
@@ -34,6 +37,9 @@ const Index: React.FC = () => {
                 {formatter.format(currentProduct?.price)}
               </Typography>
             </Box>
+            <Button sx={{ mt: 2 }} onClick={() => add(currentProduct?.id)}>
+              Zum Warenkorb
+            </Button>
           </Grid>
         </Grid>
       </Container>

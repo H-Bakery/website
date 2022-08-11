@@ -6,6 +6,7 @@ const Input: React.FC<TextFieldProps> = (props) => {
     <TextField 
       {...props}
       variant='filled'
+      fullWidth
       sx={{
         mb: 2,
         boxShadow: 1,

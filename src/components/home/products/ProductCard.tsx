@@ -3,6 +3,7 @@ import { useRouter } from 'next/router'
 import { Box, Chip, Typography } from '@mui/material'
 
 import { formatter } from '../../../utils/formatPrice'
+import { CartContext } from '../../../context/CartContext'
 
 interface Props {
   id: number
@@ -14,10 +15,11 @@ interface Props {
 
 const ProductCard: React.FC<Props> = (props) => {
   const {id, name, category, image, price } = props
+  
   const router = useRouter()
 
   return (
-    <Box key={id} sx={styles.card} onClick={() => router.push(`products/${id}`)}>
+    <Box sx={styles.card} onClick={() => router.push(`products/${id}`)}>
       <Box sx={styles.image} className='image'>
         <img src={image} alt={name} />
       </Box>
