@@ -1,9 +1,12 @@
+import React from 'react'
+import { Box, Container } from "@mui/material"
+
 import { Base } from "../layout/Base"
-import { Box, Button, Container } from "@mui/material"
 import Hero from "../components/Hero"
 import Form from "../components/orders/Form"
+import Button from "../components/button/Index"
 
-const Index = () => (
+const Index: React.FC = () => (
   <Base>
     <Hero title="Bestellen" />
     <Box
@@ -22,16 +25,10 @@ const Index = () => (
             mb: 6,
           }}
         >
-          <Button
-            variant='contained'
-            sx={styles.button}
-          >
+          <Button sx={styles.button}>
             Anrufen
           </Button>
-          <Button
-            variant='contained'
-            sx={styles.button}
-          >
+          <Button sx={styles.button}>
             WhatsApp
           </Button>
         </Box>
@@ -49,9 +46,7 @@ const Index = () => (
 )
 
 const styles = {
-  button: {
-    mx: 2,
-  }
+  button: { mx: 1 }
 }
 
 export default Index;

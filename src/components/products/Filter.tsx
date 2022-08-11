@@ -43,7 +43,7 @@ const Filter: React.FC<Props> = (props) => {
 
   return (
     <Box sx={styles.root}>
-      <Grid container spacing={4}>
+      <Grid container spacing={2}>
         {FILTERS.map((item) => (
           <Grid key={item.label} item xs={4} sm={2} md={2}>
             <Box

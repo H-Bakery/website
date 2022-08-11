@@ -1,12 +1,13 @@
-import { Box, Button, Container, Typography } from "@mui/material";
 import React from "react";
-import emailjs from "@emailjs/browser";
-import Input from "../Input";
+import emailjs from "@emailjs/browser"
+
+import { Box, Typography } from "@mui/material"
 import PersonRoundedIcon from '@mui/icons-material/PersonRounded'
 import EmailRoundedIcon from '@mui/icons-material/EmailRounded'
 import ChatRoundedIcon from '@mui/icons-material/ChatRounded'
 
-interface Props {}
+import Input from "../Input"
+import Button from "../button/Index";
 
 const INPUTS = [
   {
@@ -33,9 +34,9 @@ const INPUTS = [
   },
 ]
 
-const OrderForm: React.FC<Props> = (props) => {
-  const form = React.useRef<HTMLFormElement | string>("null");
-  const [loading, setLoading] = React.useState(false);
+const OrderForm: React.FC = () => {
+  const form = React.useRef<HTMLFormElement | string>("null")
+  const [loading, setLoading] = React.useState(false)
   const [showSuccess, setShowSuccess] = React.useState(false);
   
   const sendEmail = (e: any) => {
@@ -65,14 +66,14 @@ const OrderForm: React.FC<Props> = (props) => {
 
   return (
     <Box sx={styles.container}>
-        <Typography variant="h4">Online bestellen</Typography>
+        <Typography variant="h5">Online bestellen</Typography>
 
         {showSuccess && (
           <Box sx={styles.success}>
             <Typography variant="body1" mb={2}>
               Vielen Dank für deine Bestellung!
             </Typography>
-            <Button onClick={() => setShowSuccess(false) } color='inherit' variant='contained'>
+            <Button onClick={() => setShowSuccess(false) } color='inherit'>
               Noch etwas bestellen
             </Button>
           </Box>
@@ -103,7 +104,7 @@ const OrderForm: React.FC<Props> = (props) => {
                   minRows={3}
                 />
               ))}
-              <Button disabled={loading} type="submit" variant='contained'>
+              <Button disabled={loading} type="submit" size='large'>
                 Bestellen
               </Button>
             </form>

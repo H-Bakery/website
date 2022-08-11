@@ -1,9 +1,10 @@
-import { Box, Typography, Divider, Button, useTheme, useMediaQuery, Container  } from '@mui/material'
 import React from 'react'
-import GoogleMapReact from 'google-map-react';
-import Info from './Info';
-import Marker from './Marker';
-import { ZEITEN } from './zeiten';
+import { Box, Typography, Divider, useTheme, useMediaQuery, Container  } from '@mui/material'
+import GoogleMapReact from 'google-map-react'
+import Info from './Info'
+import Marker from './Marker'
+import { ZEITEN } from './zeiten'
+import Button from '../../button/Index'
 
 const Map: React.FC = () => {
   const theme = useTheme()
@@ -52,19 +53,19 @@ const Map: React.FC = () => {
           <Typography fontWeight='bold'>Eckstraße 3</Typography>
           <Typography color='text.secondary'>66424 Homburg</Typography>
           <Typography color='text.secondary'>Deutschland</Typography>
-          <Button sx={{mt: 2}} fullWidth variant='contained'>Karte anzeigen</Button>
+          <Button sx={{mt: 2}} fullWidth>Karte anzeigen</Button>
           <Divider sx={{ my: 2 }} />
           <Typography variant='h6' gutterBottom>
             Kontakt
           </Typography>
           <Typography>06841 2229</Typography>
           <Typography>01522 6621236</Typography>
-          <Button sx={{mt: 2}} fullWidth variant='contained'>Anrufen</Button>
-          <Button sx={{mt: 2}} fullWidth variant='contained'>Bestellen</Button>
+          <Button sx={{mt: 2}} fullWidth>Anrufen</Button>
+          <Button sx={{mt: 2}} fullWidth>Bestellen</Button>
         </Box>
       </Container>
     </Box>
-  );
+  )
 }
 
 const styles = {
