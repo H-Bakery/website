@@ -108,12 +108,12 @@ const OrderForm: React.FC = () => {
                   minRows={3}
                 />
               ))}
-              <Grid container spacing={2}>
+              {/* <Grid container spacing={2}>
               {items.map((item) => (
                 <Card key={item.id} {...item} />
               ))}
-            </Grid>
-            <Typography variant='h2'>Summe: {formatter.format(totalPrice)}</Typography>
+            </Grid> */}
+            {/* <Typography variant='h2'>Summe: {formatter.format(totalPrice)}</Typography> */}
               <Button disabled={loading} type="submit" size='large'>
                 Bestellen
               </Button>

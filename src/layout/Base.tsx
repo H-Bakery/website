@@ -21,7 +21,7 @@ const Base: React.FC<Props> = ({children}) => (
     <Box sx={{ minHeight: 'calc(100vh - 332px)'}}>
       {children}
     </Box>
-    <Cart />
+    {/* <Cart /> */}
     <Footer />
   </Box>
 )
