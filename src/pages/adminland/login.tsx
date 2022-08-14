@@ -16,7 +16,7 @@ const DEFAULT = {
   password: ''
 }
 
-const login = () => {
+const Login: React.FC  = () => {
   const [data, setData] = React.useState<Data>(DEFAULT)
 
   const submit = () => {
@@ -50,4 +50,4 @@ const login = () => {
   )
 }
 
-export default login
+export default Login
