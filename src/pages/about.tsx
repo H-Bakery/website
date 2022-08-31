@@ -5,14 +5,14 @@ import Hero from "../components/Hero"
 
 const sections = [
   {
-    image: 'https://images.pexels.com/photos/5272995/pexels-photo-5272995.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-    title: 'Eine Geschichte',
-    description: 'Weit hinten, hinter den Wortbergen, fern der Länder Vokalien und Konsonantien leben die Blindtexte. Abgeschieden wohnen sie in Buchstabhausen an der Küste des Semantik, eines großen Sprachozeans. Ein kleines Bächlein namens Duden fließt durch ihren Ort und versorgt sie mit den nötigen Regelialien. Es ist ein paradiesmatisches Land, in dem einem gebratene Satzteile in den Mund fliegen. '
+    image: '/assets/images/bakery/1933.png',
+    title: 'Familienbetrieb seit 1933',
+    description: 'Seit nun fast einem Jahrhundert backen wir Backwaren mit höchster Qualität. Der Bäckermeister Heinrich Heusser eröffnete im Jahr 1933 die kleine, aber feine Bäckerei in Kirrberg, um die Bewohner in einer schweren Zeit mit frischem Brot und leckeren Backwaren zu versorgen. Heute ist der Betrieb in der vierten Generation.'
   },
   {
-    image: 'https://images.pexels.com/photos/2350366/pexels-photo-2350366.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1',
-    title: 'Und eine Anektode',
-    description: 'Weit hinten, hinter den Wortbergen, fern der Länder Vokalien und Konsonantien leben die Blindtexte. Abgeschieden wohnen sie in Buchstabhausen an der Küste des Semantik, eines großen Sprachozeans. Ein kleines Bächlein namens Duden fließt durch ihren Ort und versorgt sie mit den nötigen Regelialien. Es ist ein paradiesmatisches Land, in dem einem gebratene Satzteile in den Mund fliegen. '
+    image: '/assets/images/bakery/neu_theke3.jpeg',
+    title: 'Liebe zu Local',
+    description: 'In dem Laden direkt neben der Backstube verkaufen wir unsere frischen Backwaren liebevoll an unsere Kunden. Nach dem "Tante Emma Laden" Prinzip bieten wir alles rund um Brot und Brötchen an, sowie regionale Produkte wie Eier, Honig oder Nudeln.'
   },
 ]
 
