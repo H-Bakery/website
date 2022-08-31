@@ -45,18 +45,15 @@ const Calendar: React.FC = () => {
     <div>
       <FullCalendar
         // initialView="dayGridMonth"
+        // eventClick={(event) => {}}
+        // select={this.handleSelectedDates}
+        // eventLimit={3}
         initialView="dayGridWeek"
         displayEventTime={true}
         headerToolbar={false}
         selectable={true}
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-
-        // eventClick={(event) => {
-        //   console.log(event.event._def.publicId);
-        // }}
         initialEvents={events}
-        // select={this.handleSelectedDates}
-        // eventLimit={3}
         contentHeight={"450px"}
         locale={"de"}
         firstDay={1}

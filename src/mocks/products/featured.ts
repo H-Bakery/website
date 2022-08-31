@@ -7,7 +7,7 @@ export const featuredProducts = [
   buns[1],
   cakes[2],
   cakes[4],
-  cakes[2],
+  cakes[3],
   breads[1],
   breads[3],
   breads[5],

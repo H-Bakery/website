@@ -3,7 +3,7 @@ import React from "react";
 import * as reader from "feed-reader";
 import axios from "axios";
 import { Fade } from "react-slideshow-image";
-import {QRCodeSVG} from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 import "../../../node_modules/react-slideshow-image/dist/styles.css";
 
 const RSSFeed: React.FC = () => {

@@ -8,7 +8,7 @@ import News from "../components/info/News";
 import useDate from "../components/info/useDate";
 import { featuredProducts } from "../mocks/products/featured";
 
-import { Box, Container, Typography, Grid } from "@mui/material";
+import { Typography, Grid } from "@mui/material";
 
 const Info: React.FC = () => {
   return (

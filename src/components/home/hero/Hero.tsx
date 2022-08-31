@@ -6,7 +6,6 @@ import Wappen from '../../icons/brand/Wappen'
 const Hero: React.FC = () => {
   React.useEffect(() => {
     const video: HTMLVideoElement = document.getElementById('background-video') as HTMLVideoElement
-    console.log(video)
     video.play()
   }, [])
 
