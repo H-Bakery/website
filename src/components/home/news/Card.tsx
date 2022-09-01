@@ -13,24 +13,29 @@ export interface NewsType {
 }
 
 const Card: React.FC<NewsType> = (props) => {
-  const {id, name, category, image, shortDescription, slug } = props
+  const { id, name, category, image, shortDescription, slug } = props
   const router = useRouter()
 
   return (
-    <Box key={id} sx={styles.card} onClick={() => router.push(`/news/${slug}`)}>
-      <Box sx={{
-        ...styles.image,
-        backgroundImage: `url(${image})`
-      }} className='image'>
-      </Box>
-      <Typography sx={styles.name}>
-        {name}
-      </Typography>
-      <Typography variant='body2' color='text.secondary'>
+    <Box
+      key={id}
+      sx={styles.card}
+      onClick={() => router.push(`/news/${slug}`)}
+      className="news-card"
+    >
+      <Box
+        sx={{
+          ...styles.image,
+          backgroundImage: `url(${image})`,
+        }}
+        className="image"
+      ></Box>
+      <Typography sx={styles.name}>{name}</Typography>
+      <Typography variant="body2" color="text.secondary">
         {shortDescription}
       </Typography>
       <Box sx={styles.footer}>
-        <Chip size='small' label={category} />
+        <Chip size="small" label={category} />
       </Box>
     </Box>
   )
@@ -46,15 +51,14 @@ const styles = {
     p: 1,
     transition: 'all ease-in-out 200ms',
     cursor: 'pointer',
-    height: '100%',
 
     '&:hover': {
       transform: 'translateY(-4px)',
       bgcolor: 'grey.300',
       '& .image': {
-        bgcolor: 'grey.50'
-      }
-    }
+        bgcolor: 'grey.50',
+      },
+    },
   },
   image: {
     mb: 1,
@@ -68,8 +72,8 @@ const styles = {
     borderRadius: '8px',
     transition: 'all ease-in-out 300ms',
     '& img': {
-      maxHeight: 120
-    }
+      maxHeight: 120,
+    },
   },
   name: {
     fontWeight: 'bold',
@@ -78,7 +82,7 @@ const styles = {
     mt: 1,
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
   },
 }
 

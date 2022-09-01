@@ -14,21 +14,24 @@ interface Props {
 }
 
 const ProductCard: React.FC<Props> = (props) => {
-  const {id, name, category, image, price } = props
-  
+  const { id, name, category, image, price } = props
+
   const router = useRouter()
 
   return (
-    <Box sx={styles.card} onClick={() => router.push(`products/${id}`)}>
-      <Box sx={styles.image} className='image'>
+    <Box
+      sx={styles.card}
+      onClick={() => router.push(`products/${id}`)}
+      className="product-card"
+    >
+      <Box sx={styles.image} className="image">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={image} alt={name} />
       </Box>
-      <Typography sx={styles.name}>
-        {name}
-      </Typography>
+      <Typography sx={styles.name}>{name}</Typography>
       <Box sx={styles.footer}>
-        <Chip size='small' label={category} />
-        <Typography variant='button' fontSize='16px'>
+        <Chip size="small" label={category} />
+        <Typography variant="button" fontSize="16px">
           {formatter.format(price)}
         </Typography>
       </Box>
@@ -50,9 +53,9 @@ const styles = {
       transform: 'translateY(-4px)',
       bgcolor: 'grey.300',
       '& .image': {
-        bgcolor: 'grey.50'
-      }
-    }
+        bgcolor: 'grey.50',
+      },
+    },
   },
   image: {
     bgcolor: 'grey.200',
@@ -65,17 +68,17 @@ const styles = {
     transition: 'all ease-in-out 300ms',
     '& img': {
       maxWidth: '90%',
-      maxHeight: 120
-    }
+      maxHeight: 120,
+    },
   },
   name: {
     fontWeight: 'bold',
-    mb: 1
+    mb: 1,
   },
   footer: {
     display: 'flex',
     justifyContent: 'space-between',
-    alignItems: 'center'
+    alignItems: 'center',
   },
 }
 

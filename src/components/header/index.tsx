@@ -1,11 +1,11 @@
-import React from "react";
-import { Box, useMediaQuery, useTheme } from "@mui/material";
-import Link from "next/link";
-import Heusser from "../icons/brand/Heusser";
-import Hamburger from "./Hamburger";
-import Item from "./Item";
-import Modal from "./Modal";
-import MobileItem from "./MobileItem";
+import React from 'react'
+import { Box, useMediaQuery, useTheme } from '@mui/material'
+import Link from 'next/link'
+import Heusser from '../icons/brand/Heusser'
+import Hamburger from './Hamburger'
+import Item from './Item'
+import Modal from './Modal'
+import MobileItem from './MobileItem'
 
 interface MenuItem {
   label: string
@@ -29,19 +29,23 @@ const Header = () => {
   const [open, setOpen] = React.useState(false)
 
   return (
-    <Box sx={{
-      position: 'relative'
-    }}>
+    <Box
+      sx={{
+        position: 'relative',
+      }}
+    >
       <Box sx={styles.header}>
-        <Link href='/'>
+        <Link href="/">
           <Box sx={styles.logo}>
             <Heusser />
           </Box>
         </Link>
         {!isMobile && (
-          <Box sx={{
-            display: 'flex',
-          }}>
+          <Box
+            sx={{
+              display: 'flex',
+            }}
+          >
             <Box sx={styles.menu}>
               {items.map((item) => (
                 <Item key={item.label} {...item} />
@@ -70,7 +74,7 @@ const Header = () => {
       )}
     </Box>
   )
-};
+}
 
 const styles = {
   header: {
@@ -92,8 +96,8 @@ const styles = {
     cursor: 'pointer',
     '& svg': {
       maxHeight: 40,
-      width: 'auto'
-    }
+      width: 'auto',
+    },
   },
   menu: {
     display: 'flex',
@@ -101,25 +105,25 @@ const styles = {
     top: 16,
     left: '50%',
     transform: 'translateX(-50%)',
-    
+
     '& .menu-item': {
-      mx: 1
-    }
+      mx: 1,
+    },
   },
   mobileMenu: {
     display: 'flex',
     flexDirection: 'column',
-    
+
     '& .menu-item': {
-      mb: 2
-    }
+      mb: 2,
+    },
   },
   ctas: {
     display: 'flex',
     '& .menu-item': {
-      ml: 1
-    }
-  }
+      ml: 1,
+    },
+  },
 }
 
-export { Header };
+export { Header }

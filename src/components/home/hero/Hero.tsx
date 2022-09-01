@@ -5,7 +5,9 @@ import Wappen from '../../icons/brand/Wappen'
 
 const Hero: React.FC = () => {
   React.useEffect(() => {
-    const video: HTMLVideoElement = document.getElementById('background-video') as HTMLVideoElement
+    const video: HTMLVideoElement = document.getElementById(
+      'background-video'
+    ) as HTMLVideoElement
     video.play()
   }, [])
 
@@ -17,10 +19,10 @@ const Hero: React.FC = () => {
       </Box>
       <Box sx={styles.overlay} />
       <video
-        className='video'
+        className="video"
         id="background-video"
         playsInline
-        preload='none'
+        preload="none"
         autoPlay
         muted={true}
         loop
@@ -31,7 +33,7 @@ const Hero: React.FC = () => {
       </video>
     </Box>
   )
-};
+}
 
 export default Hero
 
@@ -54,7 +56,7 @@ const styles = {
       top: 0,
       bottom: 0,
       zIndex: 0,
-    }
+    },
   },
   logo: {
     position: 'relative',
@@ -63,7 +65,7 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     color: 'white',
-    transform: { xs: 'scale(0.5)' ,  sm: 'scale(0.6)', md: 'scale(1)'}
+    transform: { xs: 'scale(0.5)', sm: 'scale(0.6)', md: 'scale(1)' },
   },
   overlay: {
     position: 'absolute',
@@ -72,6 +74,6 @@ const styles = {
     left: 0,
     width: '100%',
     height: '100vh',
-    bgcolor: '#8e68116b'
-  }
+    bgcolor: '#8e68116b',
+  },
 }

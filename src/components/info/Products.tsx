@@ -1,4 +1,4 @@
-import React from "react";
+import React from 'react'
 import {
   Box,
   BoxProps,
@@ -6,32 +6,49 @@ import {
   Container,
   Grid,
   Typography,
-} from "@mui/material";
-import ProductCard from "../home/products/ProductCard";
-import { Product } from "../products/types";
-import { Fade } from "react-slideshow-image";
+} from '@mui/material'
+import ProductCard from '../home/products/ProductCard'
+import { Product } from '../products/types'
+import { Fade } from 'react-slideshow-image'
 
 interface Props extends BoxProps {
-  header?: React.ReactNode;
-  items: Product[];
+  header?: React.ReactNode
+  items: Product[]
 }
 
 const Products: React.FC<Props> = (props) => {
-  const { items, header, sx } = props;
+  const { items, header, sx } = props
 
   return (
-    <Box sx={sx}>
-      <Container>
-        <Fade arrows={false}>
-          {items.map((item, index) => (
-            <Grid key={item.id} item xs={12} sm={12} md={12}>
-              <ProductCard {...item} />
-            </Grid>
-          ))}
-        </Fade>
-      </Container>
+    <Box
+      sx={{
+        ...sx,
+        '& .product-card': {
+          p: 2,
+          '& .MuiTypography-root': {
+            fontSize: 24,
+          },
+          '& .MuiChip-root': {
+            p: 1,
+            height: 'auto',
+            borderRadius: '50px',
+          },
+          '& .MuiChip-label': {
+            fontSize: 20,
+          },
+        },
+      }}
+    >
+      <Typography sx={{ mb: 1 }} variant="h4">
+        {header}
+      </Typography>
+      <Fade arrows={false}>
+        {items.map((item, index) => (
+          <ProductCard {...item} key={item.id} />
+        ))}
+      </Fade>
     </Box>
-  );
-};
+  )
+}
 
-export default Products;
+export default Products
