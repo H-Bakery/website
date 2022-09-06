@@ -3,4 +3,4 @@ export const AppConfig = {
   title: 'Bäckerei Heusser',
   description: '[Site description]',
   locale: 'en',
-};
+}

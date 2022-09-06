@@ -1,25 +1,25 @@
-import React from "react";
-import { Box, Chip, Container, Grid, Typography } from "@mui/material";
+import React from 'react'
+import { Box, Chip, Container, Grid, Typography } from '@mui/material'
 
-import Base from "../../layout/Base";
-import Hero from "../../components/Hero";
-import { useRouter } from "next/router";
-import { PRODUCTS } from "../../mocks/products";
-import { Product } from "../../components/products/types";
-import { formatter } from "../../utils/formatPrice";
-import Button from "../../components/button/Index";
-import { CartContext } from "../../context/CartContext";
+import Base from '../../layout/Base'
+import Hero from '../../components/Hero'
+import { useRouter } from 'next/router'
+import { PRODUCTS } from '../../mocks/products'
+import { Product } from '../../components/products/types'
+import { formatter } from '../../utils/formatPrice'
+import Button from '../../components/button/Index'
+import { CartContext } from '../../context/CartContext'
 
 const Index: React.FC = () => {
-  const router = useRouter();
-  const { pid } = router.query;
+  const router = useRouter()
+  const { pid } = router.query
 
-  const { add } = React.useContext(CartContext);
+  const { add } = React.useContext(CartContext)
 
   const products: Product[] = PRODUCTS.filter(
     (item) => Number(pid) === Number(item.id)
-  );
-  const currentProduct: Product = products[0];
+  )
+  const currentProduct: Product = products[0]
 
   return (
     <Base>
@@ -46,44 +46,44 @@ const Index: React.FC = () => {
         </Grid>
       </Container>
     </Base>
-  );
-};
+  )
+}
 
 const styles = {
   image: {
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    height: { xs: "45vw", sm: "260px" },
-    width: "100%",
-    borderRadius: "8px",
+    backgroundSize: 'cover',
+    backgroundPosition: 'center',
+    height: { xs: '45vw', sm: '260px' },
+    width: '100%',
+    borderRadius: '8px',
     boxShadow: 1,
     mb: 2,
-    bgcolor: "background.paper",
-    display: "flex",
-    justifyContent: "center",
-    alignItems: "center",
+    bgcolor: 'background.paper',
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
 
-    "& img": {
-      maxWidth: "80%",
+    '& img': {
+      maxWidth: '80%',
     },
   },
   footer: {
     mt: 2,
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
   },
-};
+}
 
 export async function getStaticProps({ ...ctx }) {
-  const { pid } = ctx.params;
+  const { pid } = ctx.params
 
-  console.log("products pid", pid);
+  console.log('products pid', pid)
   return {
     props: {
-      pid
+      pid,
     },
-  };
+  }
 }
 export async function getStaticPaths() {
   // const files = fs.readdirSync('projects')
@@ -93,12 +93,12 @@ export async function getStaticPaths() {
     params: {
       pid: item.id.toString(),
     },
-  }));
+  }))
 
   return {
     paths,
     fallback: false,
-  };
+  }
 }
 
-export default Index;
+export default Index

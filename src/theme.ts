@@ -1,21 +1,21 @@
-import { ThemeOptions } from "@mui/material";
+import { ThemeOptions } from '@mui/material'
 
 const headlines = {
-  fontFamily: 'Averia Serif Libre'
+  fontFamily: 'Averia Serif Libre',
 }
 
 const buttons = {
-  fontFamily: 'Averia Serif Libre'
+  fontFamily: 'Averia Serif Libre',
 }
 
 const theme: ThemeOptions = {
   palette: {
     mode: 'light',
     primary: {
-      main: '#D038BA'
+      main: '#D038BA',
     },
     success: {
-      main: '#1ADA67'
+      main: '#1ADA67',
     },
     grey: {
       50: '#F6F8FC',
@@ -48,7 +48,7 @@ const theme: ThemeOptions = {
     h5: { ...headlines },
     h6: { ...headlines },
     button: { ...buttons },
-  }
+  },
 }
 
 export default theme
