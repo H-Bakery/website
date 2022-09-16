@@ -5,7 +5,7 @@ import ReactWeather, { useVisualCrossing } from 'react-open-weather'
 
 const Weather: React.FC = () => {
   const { data, isLoading, errorMessage } = useVisualCrossing({
-    key: process.env.NEXT_PUBLIC_WEATHER_KEY,
+    key: 'GKURCMTJ2FMZRGF7DHG7JFWEA',
     lat: '49.30107377123533',
     lon: '7.369370264295438',
     lang: 'de',

@@ -5,7 +5,7 @@ import '../../../node_modules/react-slideshow-image/dist/styles.css'
 import { Box, Typography } from '@mui/material'
 
 const RSSFeed: React.FC = () => {
-  const KEY = process.env.NEXT_PUBLIC_RSS_KEY
+  const KEY = 'qazc8r9hi6tso17ml77ug9u21i4ydytiaslmbbeh'
   const URL =
     'https://www.homburg.de/index.php/aktuelles/nachrichten?format=feed&type=rss'
 
