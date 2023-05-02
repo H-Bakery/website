@@ -1,14 +1,14 @@
 export const ZEITEN = [
   {
     label: 'Mo, Di, Do, Fr',
-    value: '05:00 - 12:00 Uhr, 14:00 - 17:00 Uhr',
+    value: '05:00 - 12:30 Uhr, 15:30 - 17:00 Uhr',
   },
   {
-    label: 'Sa',
-    value: '05:00 - 12:00 Uhr, 14:00 - 17:00 Uhr',
+    label: 'Mi, Sa',
+    value: '06:00 - 12:30 Uhr',
   },
   {
-    label: 'Mi, So',
+    label: 'So',
     value: 'Ruhetag (geschlossen)',
   },
 ]
