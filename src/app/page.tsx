@@ -6,6 +6,7 @@ import { Box, Typography } from '@mui/material'
 import Base from '../layouts/Base'
 import Hero from '../components/home/hero/Hero'
 import Map from '../components/home/map'
+import Wochenanfebote from '../components/home/wochenanfebote'
 import Products from '../components/home/products'
 import Testimonial from '../components/home/testimonial'
 import News from '../components/home/news'
@@ -20,6 +21,8 @@ const Index: React.FC = () => {
     <Base>
       <Hero />
       <Map />
+      <Wochenanfebote />
+
       <Products
         sx={{ py: 6 }}
         header={
