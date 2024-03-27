@@ -1,6 +1,6 @@
 import React from 'react'
 import { Box, Chip, Typography } from '@mui/material'
-import { useRouter } from 'next/router'
+import { useRouter } from 'next/navigation'
 
 export interface NewsType {
   id: number

@@ -6,12 +6,11 @@ import { CartContext } from '../../context/CartContext'
 const CartButton: React.FC<BoxProps> = (props) => {
   const { totalCount } = React.useContext(CartContext)
 
-
   return (
-    <Box sx={styles.root} {...props} >
+    <Box sx={styles.root} {...props}>
       <Box sx={styles.wrapper}>
         <Box sx={styles.badge}>
-          <Typography fontWeight='bold'>{totalCount}</Typography>
+          <Typography fontWeight="bold">{totalCount}</Typography>
         </Box>
         <ShoppingCartRoundedIcon />
       </Box>
@@ -30,10 +29,10 @@ const styles = {
     height: 50,
     width: 50,
     boxShadow: 1,
-    
+
     '& svg': {
-      color: 'common.white'
-    }
+      color: 'common.white',
+    },
   },
   wrapper: {
     position: 'relative',
@@ -55,7 +54,7 @@ const styles = {
     justifyContent: 'center',
     alignItems: 'center',
     boxShadow: 1,
-  }
+  },
 }
 
 export default CartButton

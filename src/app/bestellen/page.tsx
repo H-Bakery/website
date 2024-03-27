@@ -1,10 +1,11 @@
+'use client'
 import React from 'react'
 import { Box, Container } from '@mui/material'
 
-import Base from '../layout/Base'
-import Hero from '../components/Hero'
-import Form from '../components/orders/Form'
-import Button from '../components/button/Index'
+import Base from '../../layouts/Base'
+import Hero from '../../components/Hero'
+import Form from '../../components/orders/Form'
+import Button from '../../components/button/Index'
 
 const Index: React.FC = () => (
   <Base>

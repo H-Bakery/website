@@ -1,7 +1,8 @@
+'use client'
 import React from 'react'
 import { Box, Chip, Container, Grid, Typography } from '@mui/material'
 
-import Base from '../../layout/Base'
+import Base from '../../layouts/BasePagesRouter'
 import Hero from '../../components/Hero'
 import { useRouter } from 'next/router'
 import { PRODUCTS } from '../../mocks/products'
@@ -10,7 +11,7 @@ import { formatter } from '../../utils/formatPrice'
 import Button from '../../components/button/Index'
 import { CartContext } from '../../context/CartContext'
 
-const Index: React.FC = () => {
+const Index = ({ params }: { params: { pid: number } }) => {
   const router = useRouter()
   const { pid } = router.query
 
@@ -85,6 +86,9 @@ export async function getStaticProps({ ...ctx }) {
     },
   }
 }
+
+export const dynamicParams = false
+
 export async function getStaticPaths() {
   // const files = fs.readdirSync('projects')
   // const news: NewsType[] = NEWS.filter((item) => slug === item.slug)

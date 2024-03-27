@@ -1,7 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { Box, Typography } from '@mui/material'
-import { useRouter } from 'next/router'
+import { usePathname } from 'next/navigation'
 
 interface Props {
   label: string
@@ -11,13 +11,16 @@ interface Props {
 
 const MobileItem: React.FC<Props> = (props) => {
   const { label, path, cta = false } = props
-  const { pathname } = useRouter()
+  const pathname = usePathname()
   const isActive = pathname === path
 
   return (
     <Link href={path}>
-      <Box sx={styles} className={`menu-item ${isActive && 'active'} ${cta && 'cta'}`}>
-        <Typography variant='button' fontSize='8vw'>
+      <Box
+        sx={styles}
+        className={`menu-item ${isActive && 'active'} ${cta && 'cta'}`}
+      >
+        <Typography variant="button" fontSize="8vw">
           {label}
         </Typography>
       </Box>
@@ -32,7 +35,7 @@ const styles = {
   mb: '20px !important',
 
   '&.active': {
-    color: 'primary.main'
+    color: 'primary.main',
   },
 }
 

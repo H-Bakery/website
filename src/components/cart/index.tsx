@@ -10,22 +10,24 @@ import Link from 'next/link'
 
 const Cart = () => {
   const [open, setOpen] = React.useState(false)
-  const {items, totalPrice} = React.useContext(CartContext)
+  const { items, totalPrice } = React.useContext(CartContext)
 
   return (
     <Box>
       <CartButton onClick={() => setOpen(!open)} />
       <Modal setOpen={setOpen} open={open}>
         <Box>
-          <Container maxWidth='sm'>
-            <Hero title='Warenkorb' />
+          <Container maxWidth="sm">
+            <Hero title="Warenkorb" />
             <Grid container spacing={2}>
               {items.map((item) => (
                 <Card key={item.id} {...item} />
               ))}
             </Grid>
-            <Typography variant='h2'>Summe: {formatter.format(totalPrice)}</Typography>
-            <Link href='/bestellen'>Bestellen</Link>
+            <Typography variant="h2">
+              Summe: {formatter.format(totalPrice)}
+            </Typography>
+            <Link href="/bestellen">Bestellen</Link>
           </Container>
         </Box>
       </Modal>

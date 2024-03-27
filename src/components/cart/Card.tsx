@@ -10,9 +10,8 @@ const Card: React.FC<CartItem> = (props) => {
 
   const { items, remove, changeCount } = React.useContext(CartContext)
 
-  
   React.useEffect(() => {
-    console.log("cont", items)
+    console.log('cont', items)
   }, [items])
 
   return (
@@ -22,29 +21,25 @@ const Card: React.FC<CartItem> = (props) => {
       </Box>
       <Box sx={styles.content}>
         <Box sx={styles.tags}>
-          <Typography
-            gutterBottom
-            variant='h6'
-            fontSize={20}
-          >
+          <Typography gutterBottom variant="h6" fontSize={20}>
             {name}
           </Typography>
           <Box sx={styles.counter}>
             <Button
               onClick={() => changeCount(id, -1)}
-              color='inherit'
-              size='small'
+              color="inherit"
+              size="small"
               sx={{ minWidth: 32 }}
             >
               -
             </Button>
-            <Typography fontWeight='bold' mx={2}>
+            <Typography fontWeight="bold" mx={2}>
               {count}
             </Typography>
             <Button
               onClick={() => changeCount(id, 1)}
-              color='inherit'
-              size='small'
+              color="inherit"
+              size="small"
               sx={{ minWidth: 32 }}
             >
               +
@@ -53,20 +48,17 @@ const Card: React.FC<CartItem> = (props) => {
         </Box>
         <Box sx={styles.tags}>
           <Chip label={category} />
-          <Box onClick={() => remove(id)}>
-            remove
-          </Box>
-          <Typography variant='h6' fontSize={20}>
+          <Box onClick={() => remove(id)}>remove</Box>
+          <Typography variant="h6" fontSize={20}>
             {formatter.format(price)}
           </Typography>
         </Box>
       </Box>
-
     </Box>
   )
 }
 
-const styles ={
+const styles = {
   root: {
     boxShadow: 1,
     borderRadius: '8px',
@@ -91,23 +83,23 @@ const styles ={
     '& img': {
       maxWidth: '80%',
       maxHeight: '80%',
-    }
+    },
   },
   content: {
     flex: 1,
     display: 'flex',
     flexDirection: 'column',
-    justifyContent: 'center'
+    justifyContent: 'center',
   },
   counter: {
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
   },
   tags: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between'
-  }
+    justifyContent: 'space-between',
+  },
 }
 
 export default Card

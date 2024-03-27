@@ -1,3 +1,5 @@
+'use client'
+
 import { ThemeOptions } from '@mui/material'
 
 const headlines = {

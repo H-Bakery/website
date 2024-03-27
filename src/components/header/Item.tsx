@@ -1,7 +1,7 @@
 import React from 'react'
 import Link from 'next/link'
 import { Box, Typography } from '@mui/material'
-import { useRouter } from 'next/router'
+import { usePathname } from 'next/navigation'
 
 interface Props {
   label: string
@@ -11,18 +11,17 @@ interface Props {
 
 const Item: React.FC<Props> = (props) => {
   const { label, path, cta = false } = props
-  const { pathname } = useRouter()
+  const pathname = usePathname()
+
   const isActive = pathname === path
 
   return (
-    <Link href={path}>
+    <Link style={{ textDecoration: 'none' }} href={path}>
       <Box
         sx={styles}
         className={`menu-item ${cta && 'cta'} ${isActive && 'active'}`}
       >
-        <Typography variant='button'>
-          {label}
-        </Typography>
+        <Typography variant="button">{label}</Typography>
       </Box>
     </Link>
   )
@@ -37,23 +36,23 @@ const styles = {
   boxShadow: 1,
   cursor: 'pointer',
   transition: 'all ease-in-out 200ms',
-  
+
   '&:hover': {
-    bgcolor: 'grey.300'
+    bgcolor: 'grey.300',
   },
-  
+
   '&.active': {
     bgcolor: 'primary.main',
-    color: 'common.white'
+    color: 'common.white',
   },
-  
+
   '&.cta': {
     color: 'common.white',
     bgcolor: 'primary.main',
 
     '&:hover': {
-      bgcolor: 'primary.dark'
-    }
+      bgcolor: 'primary.dark',
+    },
   },
 }
 

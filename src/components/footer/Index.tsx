@@ -1,5 +1,5 @@
 import React from 'react'
-import { useRouter } from 'next/router'
+import { useRouter } from 'next/navigation'
 import { Box, Container, Grid, Typography } from '@mui/material'
 
 import Wappen from '../icons/brand/Wappen'
@@ -12,44 +12,45 @@ import Socials from '../Socials'
 
 const Footer: React.FC = () => {
   const router = useRouter()
-  
+
   return (
-  <Box sx={styles.root}>
-    <Container >
-      <Grid sx={styles.header} container spacing={4}>
-        <Grid item xs={12} sm={6} md={3} sx={styles.about}>
+    <Box sx={styles.root}>
+      <Container>
+        <Grid sx={styles.header} container spacing={4}>
+          <Grid item xs={12} sm={6} md={3} sx={styles.about}>
+            <Box>
+              <Heusser />
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Wir backen mit Herz, nach Tradition und nur für euch.
+              </Typography>
+            </Box>
+            <Socials />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Menu />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Contact />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Openings />
+          </Grid>
+        </Grid>
+        <Box sx={styles.footer}>
+          <Typography variant="body2" color="text.disabled">
+            © Bäckerei Heusser 2022
+          </Typography>
           <Box>
-            <Heusser />
-            <Typography variant='body2' color='text.secondary' mb={2}>
-              Wir backen mit Herz, nach Tradition und nur für euch.
-            </Typography>
+            <Link label="Impressum" path="/imprint" />
           </Box>
-          <Socials />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Menu />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Contact />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Openings />
-        </Grid>
-      </Grid>
-      <Box sx={styles.footer}>
-        <Typography variant='body2' color='text.disabled'>
-          © Bäckerei Heusser 2022
-        </Typography>
-        <Box>
-          <Link label='Impressum' path='/imprint' />
         </Box>
-      </Box>
-      <Box sx={styles.image}>
-        <Wappen />
-      </Box>
-    </Container>
-  </Box>
-)}
+        <Box sx={styles.image}>
+          <Wappen />
+        </Box>
+      </Container>
+    </Box>
+  )
+}
 
 const styles = {
   root: {
@@ -76,8 +77,8 @@ const styles = {
 
     '& svg': {
       maxHeight: 50,
-      width: 'auto'
-    }
+      width: 'auto',
+    },
   },
   footer: {
     display: 'flex',
@@ -94,7 +95,7 @@ const styles = {
     opacity: 0.05,
     backgroundPosition: 'center',
     backgroundSize: 'cover',
-  }
+  },
 }
 
 export default Footer

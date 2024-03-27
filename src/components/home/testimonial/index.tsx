@@ -5,12 +5,16 @@ import Card from './Card'
 
 const Testimonial = () => {
   return (
-    <Box sx={{
-      bgcolor: 'background.paper',
-      py: 6
-    }}>
+    <Box
+      sx={{
+        bgcolor: 'background.paper',
+        py: 6,
+      }}
+    >
       <Container>
-        <Typography sx={{fontSize: {xs: '9vw'}}} variant='h3' gutterBottom>Kundenmeinungen</Typography>
+        <Typography sx={{ fontSize: { xs: '9vw' } }} variant="h3" gutterBottom>
+          Kundenmeinungen
+        </Typography>
         <Grid container spacing={4}>
           {TESTIMONIALS.map((item) => (
             <Grid key={item.name} item xs={12} md={4}>

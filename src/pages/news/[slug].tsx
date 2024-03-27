@@ -1,14 +1,15 @@
+'use client'
 import React from 'react'
 import { Box, Container, Typography } from '@mui/material'
 
-import Base from '../../layout/Base'
+import Base from '../../layouts/BasePagesRouter'
 import Hero from '../../components/Hero'
 import { useRouter } from 'next/router'
 import { NEWS } from '../../mocks/news'
 import { NewsType } from '../../components/home/news/Card'
 import { CollectionsBookmarkOutlined } from '@mui/icons-material'
 
-const Index: React.FC = () => {
+const Index = ({ params }: { params: { slug: string } }) => {
   const router = useRouter()
   const { slug } = router.query
 
@@ -45,15 +46,16 @@ const Index: React.FC = () => {
   )
 }
 
-export async function getStaticProps({ ...ctx }) {
-  const { slug } = ctx.params
+// export async function getStaticProps({ ...ctx }) {
+//   const { slug } = ctx.params
 
-  console.log('slug', slug)
-  return {
-    props: {},
-  }
-}
-export async function getStaticPaths() {
+//   console.log('slug', slug)
+//   return {
+//     props: {},
+//   }
+// }
+
+export async function generateStaticParams() {
   // const files = fs.readdirSync('projects')
   // const news: NewsType[] = NEWS.filter((item) => slug === item.slug)
 
@@ -68,5 +70,6 @@ export async function getStaticPaths() {
     fallback: false,
   }
 }
+export const dynamicParams = false
 
 export default Index

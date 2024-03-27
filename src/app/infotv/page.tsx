@@ -1,3 +1,4 @@
+'use client'
 import React from 'react'
 import {
   Box,
@@ -7,21 +8,21 @@ import {
   useMediaQuery,
   Container,
 } from '@mui/material'
-import { ZEITEN } from '../components/home/map/zeiten'
+import { ZEITEN } from '../../components/home/map/zeiten'
 
-import Weather from '../components/info/Weather'
-import Calendar from '../components/info/Calendar'
-import RSSFeed from '../components/info/RSSFeed'
-import Products from '../components/info/Products'
-import News from '../components/info/News'
-import useDate from '../components/info/useDate'
+import Weather from '../../components/info/Weather'
+import Calendar from '../../components/info/Calendar'
+// import RSSFeed from '../../components/info/RSSFeed'
+import Products from '../../components/info/Products'
+import News from '../../components/info/News'
+import useDate from '../../components/info/useDate'
 
-import { featuredProducts } from '../mocks/products/featured'
+import { featuredProducts } from '../../mocks/products/featured'
 import Image from 'next/image'
-import Heusser from '../components/icons/brand/Heusser'
-import Baeckerei from '../components/icons/brand/Baeckerei'
-import Wappen from '../components/icons/brand/Wappen'
-import Info from '../components/home/map/Info'
+import Heusser from '../../components/icons/brand/Heusser'
+import Baeckerei from '../../components/icons/brand/Baeckerei'
+import Wappen from '../../components/icons/brand/Wappen'
+import Info from '../../components/home/map/Info'
 
 const InfoTV: React.FC = () => {
   const [isOpen, setOpen] = React.useState(false)
@@ -221,7 +222,7 @@ const InfoTV: React.FC = () => {
                     <Typography sx={{ mb: 1 }} variant="h4">
                       Regionales
                     </Typography>
-                    <RSSFeed />
+                    {/* <RSSFeed /> */}
                   </Box>
                 </Box>
                 <Box sx={{ mt: 6 }}>

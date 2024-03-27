@@ -1,19 +1,19 @@
 import React from 'react'
-import { useRouter } from 'next/router'
+import { useRouter } from 'next/navigation'
 import { Box, Typography } from '@mui/material'
 
 import { MENU } from './data'
 import Link from './Link'
 
 const Menu: React.FC = () => {
-	const router = useRouter()
+  const router = useRouter()
 
   return (
     <Box sx={styles.root}>
-			<Typography variant='h6' fontSize={16} gutterBottom>
-				Menu
-			</Typography>
-			{MENU.map((item) => (
+      <Typography variant="h6" fontSize={16} gutterBottom>
+        Menu
+      </Typography>
+      {MENU.map((item) => (
         <Link key={item.label} {...item} />
       ))}
     </Box>
@@ -21,7 +21,7 @@ const Menu: React.FC = () => {
 }
 
 const styles = {
-	root: {
+  root: {
     display: 'flex',
     flexDirection: 'column',
   },

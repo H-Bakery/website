@@ -10,32 +10,30 @@ import Getranke from '../icons/products/Getranke'
 import { Product } from './types'
 
 interface Props {
-	setProducts: (items: Product[]) => void
+  setProducts: (items: Product[]) => void
 }
 
 const FILTERS = [
   { label: 'Brot', icon: <Brot /> },
-  { label: 'Brötchen',  icon: <Broetchen /> },
-  { label: 'Teilchen',  icon: <Teilchen /> },
-  { label: 'Kuchen',  icon: <Kuchen /> },
-  { label: 'Torten',  icon: <Torten /> },
-  { label: 'Getränke',  icon: <Getranke /> },
+  { label: 'Brötchen', icon: <Broetchen /> },
+  { label: 'Teilchen', icon: <Teilchen /> },
+  { label: 'Kuchen', icon: <Kuchen /> },
+  { label: 'Torten', icon: <Torten /> },
+  { label: 'Getränke', icon: <Getranke /> },
 ]
 
 const Filter: React.FC<Props> = (props) => {
-	const { setProducts } = props
+  const { setProducts } = props
   const [selected, setSelected] = React.useState('')
 
   React.useEffect(() => {
-	  filter("Brot")
+    filter('Brot')
   }, [])
-  
-	const filter = (input: String) => {
-    const newArray = 
-      PRODUCTS.filter((product) =>
-        product.category.includes(input)
-      )
-      .map((filteredName) => filteredName)
+
+  const filter = (input: String) => {
+    const newArray = PRODUCTS.filter((product) =>
+      product.category.includes(input)
+    ).map((filteredName) => filteredName)
 
     setProducts(newArray)
     setSelected(input as string)
@@ -65,7 +63,7 @@ const styles = {
   root: {
     display: 'flex',
     justifyContent: 'space-between',
-    mb: 4
+    mb: 4,
   },
   item: {
     borderRadius: '8px',
@@ -78,7 +76,7 @@ const styles = {
     bgcolor: 'background.default',
     transition: 'all ease-in-out 200ms',
     cursor: 'pointer',
-    
+
     '& *': {
       transition: 'all ease-in-out 200ms',
       color: 'text.primary',
@@ -90,18 +88,18 @@ const styles = {
 
       '& *': {
         fontWeight: 'bold',
-      }
+      },
     },
-    
+
     '&.active': {
       bgcolor: 'primary.main',
-      
+
       '& *': {
         color: 'background.paper',
         fontWeight: 'bold',
-      }
+      },
     },
-  }
+  },
 }
 
 export default Filter
