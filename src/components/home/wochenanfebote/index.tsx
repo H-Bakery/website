@@ -6,34 +6,34 @@ const Wochenangebote = () => {
   const ANGEBOTE = [
     {
       name: 'Dienstag',
-      date: '26.03.',
+      date: '09.04.',
       text: 'Brot des Tages: Haferbrot.',
     },
     {
       name: 'Mittwoch',
-      date: '27.03.',
-      text: 'Schnittentag: jede Schnitte 1,50 Euro. Schnitzeltag.',
+      date: '10.04.',
+      text: 'Schnittentag: jede Schnitte 1,50 Euro. Ab 11 Uhr, Brötchen mit Schnitzel.',
     },
     {
       name: 'Donnerstag',
-      date: '28.03.',
+      date: '11.04.',
       text: 'Mittagstisch: Ab 11 Uhr, Pizza und Flammkuchen.',
     },
     {
       name: 'Freitag',
-      date: '29.03.',
-      text: '(Karfreitag), Geänderte Öffnungszeigen: 8-14 Uhr. Ab 12 Uhr Tagliatelle mit Lachs in Krustentier-Sahnesoße.',
+      date: '12.04.',
+      text: 'Mittagstisch: Ab 11 Uhr, Kerschdcher mit Eiersalat.',
     },
     {
       name: 'Samstag',
-      date: '30.03.',
+      date: '13.04.',
       text: 'Hefezöpfe und gefüllte Kranzkuchen',
     },
     ,
     {
       name: 'Sonntag',
-      date: '31.03.',
-      text: '(Ostersonntag) Geschlossen. Wir wünschen Ihnen und Ihrere Familie ein schönes Osterfest!',
+      date: '14.04.',
+      text: 'Frische Brötchen und Kaffeestückchen zum Sonntag.',
     },
   ]
   return (
