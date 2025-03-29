@@ -9,7 +9,7 @@ const Openings: React.FC = () => {
       </Typography>
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" color="text.disabled">
-          Di, Do, Fr
+          Di, Mi, Do, Fr
         </Typography>
         <Typography variant="body2" color="text.secondary">
           06:00 - 15:00 Uhr
@@ -20,7 +20,7 @@ const Openings: React.FC = () => {
           Sa
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          06:00 - 13:00 Uhr
+          06:00 - 12:30 Uhr
         </Typography>
       </Box>
       <Box sx={{ mb: 2 }}>
@@ -33,10 +33,10 @@ const Openings: React.FC = () => {
       </Box>
       <Box sx={{ mb: 2 }}>
         <Typography variant="body2" color="text.disabled">
-          Mo
+          Monttag
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Ruhetag
+          ist Ruhetag
         </Typography>
       </Box>
     </Box>
