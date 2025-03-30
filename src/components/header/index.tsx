@@ -37,7 +37,8 @@ const Header = () => {
       <Box sx={styles.header}>
         <Link href="/">
           <Box sx={styles.logo}>
-            <Heusser />
+            {/* Pass the CI color to the Heusser logo component */}
+            <Heusser color={theme.palette.primary.main} />
           </Box>
         </Link>
         {!isMobile && (

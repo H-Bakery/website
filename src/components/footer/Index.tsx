@@ -1,6 +1,7 @@
 import React from 'react'
 import { useRouter } from 'next/navigation'
 import { Box, Container, Grid, Typography } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 
 import Wappen from '../icons/brand/Wappen'
 import Heusser from '../icons/brand/Heusser'
@@ -12,6 +13,7 @@ import Socials from '../Socials'
 
 const Footer: React.FC = () => {
   const router = useRouter()
+  const theme = useTheme()
 
   return (
     <Box sx={styles.root}>
@@ -19,7 +21,7 @@ const Footer: React.FC = () => {
         <Grid sx={styles.header} container spacing={4}>
           <Grid item xs={12} sm={6} md={3} sx={styles.about}>
             <Box>
-              <Heusser />
+              <Heusser color={theme.palette.primary.main} />
               <Typography variant="body2" color="text.secondary" mb={2}>
                 Wir backen mit Herz, nach Tradition und nur für euch.
               </Typography>
