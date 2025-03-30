@@ -4,6 +4,7 @@ import { Box, Chip, Typography } from '@mui/material'
 import { CartContext, CartItem } from '../../context/CartContext'
 import { formatter } from '../../utils/formatPrice'
 import Button from '../button/Index'
+import Image from 'next/image'
 
 const Card: React.FC<CartItem> = (props) => {
   const { id, image, name, category, price, count } = props
@@ -17,7 +18,7 @@ const Card: React.FC<CartItem> = (props) => {
   return (
     <Box sx={styles.root}>
       <Box sx={styles.image}>
-        <img src={image} />
+        <Image src={image} alt={name} />
       </Box>
       <Box sx={styles.content}>
         <Box sx={styles.tags}>

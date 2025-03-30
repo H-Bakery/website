@@ -1,36 +1,36 @@
+// website/src/components/home/map/index.tsx
 import React from 'react'
-import { Box, Typography, Divider, useTheme, useMediaQuery, Container  } from '@mui/material'
-import GoogleMapReact from 'google-map-react'
+import {
+  Box,
+  Typography,
+  Divider,
+  useTheme,
+  useMediaQuery,
+  Container,
+} from '@mui/material'
 import Info from './Info'
-import Marker from './Marker'
 import { ZEITEN } from './zeiten'
 import Button from '../../button/Index'
+import DynamicMap from './DynamicMap'
+import DirectionsIcon from '@mui/icons-material/Directions'
 
 const Map: React.FC = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
-  const defaultProps = {
-    center: {
-      lat: 49.30107377123533,
-      lng: 7.369370264295438
-    },
-    zoom: 18
-  }
+  // Position for map marker [latitude, longitude]
+  const position: [number, number] = [49.301429495245586, 7.369493502873482]
+
+  // Create Google Maps direction URL
+  const googleMapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${position[0]},${position[1]}&travelmode=driving`
 
   const map = (
     <Box sx={styles.map}>
-      <GoogleMapReact
-        bootstrapURLKeys={{ key: "AIzaSyAqcU5e900koplaN_FRB_b8v2Iw44KoK4s" }}
-        defaultCenter={defaultProps.center}
-        defaultZoom={defaultProps.zoom}
-      >
-        <Marker
-          // @ts-ignore
-          lat={49.301429495245586}
-          lng={7.369493502873482}
-        />
-      </GoogleMapReact>
+      <DynamicMap
+        position={position}
+        name="Böckerei Heusser"
+        address="Eckstraße 3, 66424 Homburg, Deutschland"
+      />
     </Box>
   )
 
@@ -39,29 +39,42 @@ const Map: React.FC = () => {
       {!isMobile && map}
       <Container>
         <Box sx={styles.info}>
-          <Typography variant='h6' gutterBottom>
+          <Typography variant="h6" gutterBottom>
             Öffnungszeiten
           </Typography>
           {ZEITEN.map((item) => (
             <Info key={item.label} {...item} />
           ))}
           <Divider sx={{ my: 2 }} />
-          <Typography variant='h6' gutterBottom>
+          <Typography variant="h6" gutterBottom>
             Adresse
           </Typography>
           {isMobile && map}
-          <Typography fontWeight='bold'>Eckstraße 3</Typography>
-          <Typography color='text.secondary'>66424 Homburg</Typography>
-          <Typography color='text.secondary'>Deutschland</Typography>
-          <Button sx={{mt: 2}} fullWidth>Karte anzeigen</Button>
+          <Typography fontWeight="bold">Eckstraße 3</Typography>
+          <Typography color="text.secondary">66424 Homburg</Typography>
+          <Typography color="text.secondary">Deutschland</Typography>
+          <Button
+            sx={{ mt: 2 }}
+            fullWidth
+            startIcon={<DirectionsIcon />}
+            href={googleMapsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Route starten
+          </Button>
           <Divider sx={{ my: 2 }} />
-          <Typography variant='h6' gutterBottom>
+          <Typography variant="h6" gutterBottom>
             Kontakt
           </Typography>
           <Typography>06841 2229</Typography>
           <Typography>01522 6621236</Typography>
-          <Button sx={{mt: 2}} fullWidth>Anrufen</Button>
-          <Button sx={{mt: 2}} fullWidth>Bestellen</Button>
+          <Button sx={{ mt: 2 }} fullWidth>
+            Anrufen
+          </Button>
+          <Button sx={{ mt: 2 }} fullWidth>
+            Bestellen
+          </Button>
         </Box>
       </Container>
     </Box>
@@ -74,7 +87,7 @@ const styles = {
     width: '100%',
     bgcolor: 'grey.300',
     position: 'relative',
-    py: { xs: 3, sm: 0 }
+    py: { xs: 3, sm: 0 },
   },
   map: {
     position: { xs: 'relative', sm: 'absolute' },
@@ -96,8 +109,8 @@ const styles = {
     bgcolor: 'background.paper',
     borderRadius: '8px',
     boxShadow: 1,
-    p: 3
-  }
+    p: 3,
+  },
 }
 
 export default Map

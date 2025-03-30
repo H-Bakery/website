@@ -25,7 +25,7 @@ import Wappen from '../../components/icons/brand/Wappen'
 import Info from '../../components/home/map/Info'
 
 const InfoTV: React.FC = () => {
-  const [isOpen, setOpen] = React.useState(false)
+  const [isOpen, setOpen] = React.useState(true)
 
   console.log('ZEITEN')
   console.log(ZEITEN)

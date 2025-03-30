@@ -1,6 +1,5 @@
 'use client'
-
-import { ThemeOptions } from '@mui/material'
+import { ThemeOptions, createTheme } from '@mui/material'
 
 const headlines = {
   fontFamily: 'Averia Serif Libre',
@@ -10,7 +9,7 @@ const buttons = {
   fontFamily: 'Averia Serif Libre',
 }
 
-const theme: ThemeOptions = {
+const themeOptions: ThemeOptions = {
   palette: {
     mode: 'light',
     primary: {
@@ -52,5 +51,8 @@ const theme: ThemeOptions = {
     button: { ...buttons },
   },
 }
+
+// Create the theme directly in the theme file
+const theme = createTheme(themeOptions)
 
 export default theme

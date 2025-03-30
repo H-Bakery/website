@@ -1,41 +1,19 @@
 import React from 'react'
-import { Box, Container, Grid, Typography } from '@mui/material'
-import Card from './Card'
+import {
+  Box,
+  Container,
+  Grid,
+  Typography,
+  Button,
+  Divider,
+} from '@mui/material'
+import Card, { DailyOffer } from './Card'
+
+import { ANGEBOTE } from './offers'
 
 const Wochenangebote = () => {
-  const ANGEBOTE = [
-    {
-      name: 'Dienstag',
-      date: '09.04.',
-      text: 'Brot des Tages: Haferbrot.',
-    },
-    {
-      name: 'Mittwoch',
-      date: '10.04.',
-      text: 'Schnittentag: jede Schnitte 1,50 Euro. Ab 11 Uhr, Brötchen mit Schnitzel.',
-    },
-    {
-      name: 'Donnerstag',
-      date: '11.04.',
-      text: 'Mittagstisch: Ab 11 Uhr, Pizza und Flammkuchen.',
-    },
-    {
-      name: 'Freitag',
-      date: '12.04.',
-      text: 'Mittagstisch: Ab 11 Uhr, Kerschdcher mit Eiersalat.',
-    },
-    {
-      name: 'Samstag',
-      date: '13.04.',
-      text: 'Hefezöpfe und gefüllte Kranzkuchen',
-    },
-    ,
-    {
-      name: 'Sonntag',
-      date: '14.04.',
-      text: 'Frische Brötchen und Kaffeestückchen zum Sonntag.',
-    },
-  ]
+  // Properly typed data with explicit type annotations
+
   return (
     <Box
       sx={{
@@ -44,16 +22,62 @@ const Wochenangebote = () => {
       }}
     >
       <Container>
-        <Typography sx={{ fontSize: { xs: '9vw' } }} variant="h3" gutterBottom>
-          Wochenangebote
-        </Typography>
-        <Grid container spacing={4}>
+        <Box
+          sx={{
+            mb: 5,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}
+        >
+          <Typography
+            variant="h3"
+            align="center"
+            sx={{
+              fontSize: { xs: '9vw', sm: '2.5rem' },
+              fontWeight: 'bold',
+              mb: 1,
+            }}
+          >
+            Unsere Wochenangebote
+          </Typography>
+          <Divider
+            sx={{
+              width: '80px',
+              borderWidth: 2,
+              borderColor: 'primary.main',
+              mb: 2,
+            }}
+          />
+          <Typography
+            variant="subtitle1"
+            align="center"
+            color="text.secondary"
+            sx={{ maxWidth: '800px' }}
+          >
+            Entdecken Sie unsere täglichen Spezialitäten - von knusprigen Broten
+            über herzhafte Mittagsgerichte bis hin zu süßen Leckereien. Jeder
+            Tag bringt neue Geschmackserlebnisse!
+          </Typography>
+        </Box>
+
+        <Grid container spacing={3}>
           {ANGEBOTE.map((item) => (
-            <Grid key={item?.name} item xs={12} md={4}>
+            <Grid key={item.name} item xs={12} sm={6} md={4}>
               <Card {...item} />
             </Grid>
           ))}
         </Grid>
+
+        <Box sx={{ mt: 4, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Die Angebote können nach Verfügbarkeit variieren. Bitte fragen Sie
+            bei Interesse nach.
+          </Typography>
+          <Button variant="outlined" color="primary" href="/products">
+            Unser komplettes Sortiment entdecken
+          </Button>
+        </Box>
       </Container>
     </Box>
   )

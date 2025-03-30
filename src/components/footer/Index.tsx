@@ -38,7 +38,7 @@ const Footer: React.FC = () => {
         </Grid>
         <Box sx={styles.footer}>
           <Typography variant="body2" color="text.disabled">
-            © Bäckerei Heusser 2024
+            © Bäckerei Heusser 2025
           </Typography>
           <Box>
             <Link label="Impressum" path="/imprint" />
