@@ -15,7 +15,7 @@ This is the frontend component of the Bakery Management System. The application 
 ## Key Features
 
 - Customer-facing website with product catalog
-- Admin interface with dark mode support
+- Admin interface with dark mode support (admin area only)
 - Staff management dashboard
 - Order processing system
 - Production process management
@@ -27,14 +27,16 @@ The admin area (`/admin` routes) provides administrative functions and includes:
 - Staff management (`/admin/staff`)
 - System settings including theme preferences (`/admin/settings`)
 
-The admin interface includes dark mode support that can be toggled in the settings page or directly from the navbar.
+The admin interface includes dark mode support that can be toggled in the settings page or directly from the navbar. Dark mode is exclusively available in the admin area, while the main customer-facing website always uses light mode.
 
 ## Theme Configuration
 
-The application supports both light and dark themes:
-- Theme preferences are stored in local storage
-- Theme settings are managed through ThemeContext
-- Material UI theming is used for consistent styling
+The application implements a split theming approach:
+- Main site: Always uses light theme for a consistent brand experience
+- Admin area: Supports toggle between light and dark themes
+- Admin theme preferences are stored in local storage
+- Theme settings are managed through ThemeContext with path-based checks
+- The ThemeToggler component only appears in admin routes
 
 ## Getting Started
 

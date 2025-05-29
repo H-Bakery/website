@@ -12,7 +12,8 @@ This directory contains higher-order layout components used to structure pages t
 The `BakeryLayout.tsx` provides the following features:
 - Responsive sidebar navigation with collapsible menu
 - App bar with user information and actions
-- Theme toggle for switching between light and dark modes
+- Theme toggle for switching between light and dark modes (admin routes only)
+- Path-based theme detection to apply dark mode styling only in admin area
 - Role-based navigation items
 - Persistent drawer on desktop and temporary drawer on mobile
 
@@ -45,7 +46,7 @@ function MyPage() {
 
 ## Theme Integration
 
-Layout components are theme-aware and will adapt their styling based on the current theme mode (light or dark). The BakeryLayout includes the theme toggle component in its app bar for easy access.
+Layout components are theme-aware and will adapt their styling based on the current theme mode (light or dark). The BakeryLayout includes path-based checks to ensure dark mode styling is only applied within admin routes. The theme toggle component is conditionally rendered in the app bar only when in admin routes.
 
 ## Responsive Design
 

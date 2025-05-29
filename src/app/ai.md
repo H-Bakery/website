@@ -6,7 +6,7 @@ This directory contains all the routes and pages for the Next.js application usi
 
 - `layout.tsx`: Root layout that wraps all pages
 - `page.tsx`: Homepage component
-- `ThemeRegistry.tsx`: Material UI theme configuration for the App Router
+- `ThemeRegistry.tsx`: Material UI theme configuration for the App Router (always uses light theme)
 - `admin/`: Admin area routes with dark mode support
 - `bakery/`: Bakery production process management
 - `dashboard/`: Analytics and metrics dashboards
@@ -26,10 +26,12 @@ The Next.js App Router uses a folder-based routing system where:
 ## Admin Area
 
 The admin area (`/admin`) includes the following key features:
-- Dark/light mode toggle in the navigation bar
+- Dark/light mode toggle in the navigation bar (exclusive to admin area)
 - Staff management interface
 - System settings including theme preferences
 - Responsive layout for all device sizes
+
+The admin area has its own theming context separate from the main application. While the main site always uses light theme, the admin area supports toggling between light and dark themes. This separation ensures a consistent experience for customers while providing flexibility for administrators.
 
 ## Special Files
 
