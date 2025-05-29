@@ -142,3 +142,32 @@ export interface SummaryData {
   wastageRate: number
   profitMargin: number
 }
+
+/**
+ * Represents a customer review for a recipe.
+ */
+export interface Review {
+  id: string;
+  recipeId: string; // Links to the Recipe
+  author: string; // Name of the reviewer
+  rating: number; // e.g., 1-5 stars
+  comment?: string; // Optional review text
+  date: string; // ISO date string
+}
+
+/**
+ * Represents a bakery recipe, including ingredients, instructions, and reviews.
+ */
+export interface Recipe {
+  id: string;
+  name: string;
+  description?: string;
+  ingredients: Array<{ name: string; quantity: string }>; // Array of ingredient objects
+  instructions: Array<string>; // Array of instruction steps
+  category: string; // e.g., "Cakes", "Breads", "Pastries"
+  prepTime?: string; // e.g., "30 minutes"
+  cookTime?: string; // e.g., "1 hour"
+  servings?: number;
+  image?: string; // URL or path to an image
+  reviews?: Review[]; // Array of Review objects
+}
