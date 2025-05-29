@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { Order, OrderItem, Product } from '../../services/types'
 import {
   Box,
   Paper,
@@ -28,7 +29,7 @@ import {
   CardContent,
   useTheme,
   alpha,
-  Autocomplete
+  Autocomplete,
 } from '@mui/material'
 import { format, parseISO } from 'date-fns'
 import { de } from 'date-fns/locale'
@@ -39,7 +40,6 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import PrintIcon from '@mui/icons-material/Print'
 import AddCircleIcon from '@mui/icons-material/AddCircle'
 import RemoveCircleIcon from '@mui/icons-material/RemoveCircle'
-import { Order, OrderItem, Product } from '../../services/types'
 
 interface OrderDetailViewProps {
   order: Order
@@ -54,10 +54,10 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   products,
   onSave,
   onDelete,
-  onCancel
+  onCancel,
 }) => {
   // Form validation state
-  const [formErrors, setFormErrors] = useState<{[key: string]: string}>({})
+  const [formErrors, setFormErrors] = useState<{ [key: string]: string }>({})
   const theme = useTheme()
   const [editMode, setEditMode] = useState(false)
   const [editedOrder, setEditedOrder] = useState<Order>({ ...order })
@@ -99,7 +99,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     const { name, value } = e.target
     setEditedOrder({
       ...editedOrder,
-      [name]: value
+      [name]: value,
     })
   }
 
@@ -107,7 +107,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   const handleStatusChange = (e: any) => {
     setEditedOrder({
       ...editedOrder,
-      status: e.target.value
+      status: e.target.value,
     })
   }
 
@@ -116,7 +116,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     if (!selectedProduct) return
 
     const existingItemIndex = editedOrder.items.findIndex(
-      item => item.productId === selectedProduct.id
+      (item) => item.productId === selectedProduct.id
     )
 
     let newItems
@@ -130,7 +130,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
         productId: selectedProduct.id,
         productName: selectedProduct.name,
         quantity,
-        unitPrice: selectedProduct.price
+        unitPrice: selectedProduct.price,
       }
       newItems = [...editedOrder.items, newItem]
     }
@@ -144,7 +144,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     setEditedOrder({
       ...editedOrder,
       items: newItems,
-      totalPrice: newTotalPrice
+      totalPrice: newTotalPrice,
     })
 
     // Reset selection
@@ -166,7 +166,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     setEditedOrder({
       ...editedOrder,
       items: newItems,
-      totalPrice: newTotalPrice
+      totalPrice: newTotalPrice,
     })
   }
 
@@ -186,28 +186,28 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     setEditedOrder({
       ...editedOrder,
       items: newItems,
-      totalPrice: newTotalPrice
+      totalPrice: newTotalPrice,
     })
   }
 
   // Handle save changes
   const handleSave = () => {
     // Validate required fields
-    const errors: {[key: string]: string} = {}
-    
+    const errors: { [key: string]: string } = {}
+
     if (!editedOrder.customerName) {
       errors.customerName = 'Kundenname ist erforderlich'
     }
-    
+
     if (!editedOrder.pickupDate) {
       errors.pickupDate = 'Abholdatum ist erforderlich'
     }
-    
+
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors)
       return
     }
-    
+
     onSave(editedOrder)
     setEditMode(false)
     setFormErrors({})
@@ -255,22 +255,23 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   return (
     <Box sx={{ mb: 4 }}>
       {editMode && (
-        <Paper 
+        <Paper
           elevation={0}
-          sx={{ 
-            p: 2, 
-            mb: 3, 
+          sx={{
+            p: 2,
+            mb: 3,
             bgcolor: alpha(theme.palette.primary.main, 0.08),
             borderLeft: `4px solid ${theme.palette.primary.main}`,
-            borderRadius: 1
+            borderRadius: 1,
           }}
         >
           <Typography variant="subtitle1" fontWeight={500}>
-            Sie bearbeiten diese Bestellung. Bitte klicken Sie auf Speichern, um Ihre Änderungen zu übernehmen.
+            Sie bearbeiten diese Bestellung. Bitte klicken Sie auf Speichern, um
+            Ihre Änderungen zu übernehmen.
           </Typography>
         </Paper>
       )}
-      
+
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5" fontWeight={600}>
           Bestellung #{editedOrder.id}
@@ -438,7 +439,9 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       <Select
                         value={
                           typeof editedOrder.pickupDate === 'string'
-                            ? editedOrder.pickupDate.split('T')[1].substring(0, 5)
+                            ? editedOrder.pickupDate
+                                .split('T')[1]
+                                .substring(0, 5)
                             : format(editedOrder.pickupDate, 'HH:mm')
                         }
                         onChange={(e) => {
@@ -448,7 +451,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           date.setMinutes(parseInt(minutes, 10))
                           setEditedOrder({
                             ...editedOrder,
-                            pickupDate: format(date, "yyyy-MM-dd'T'HH:mm")
+                            pickupDate: format(date, "yyyy-MM-dd'T'HH:mm"),
                           })
                         }}
                         label="Uhrzeit"
@@ -537,7 +540,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               bgcolor:
                 theme.palette.mode === 'dark'
                   ? theme.palette.background.paper
-                  : alpha(theme.palette.primary.main, 0.03)
+                  : alpha(theme.palette.primary.main, 0.03),
             }}
           >
             <Typography variant="h6" gutterBottom>
@@ -564,10 +567,18 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   </Typography>
                 </Grid>
                 <Grid item xs={12}>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ mt: 2 }}
+                  >
                     Gesamtbetrag
                   </Typography>
-                  <Typography variant="h5" fontWeight={600} color="primary.main">
+                  <Typography
+                    variant="h5"
+                    fontWeight={600}
+                    color="primary.main"
+                  >
                     {editedOrder.totalPrice.toFixed(2)} €
                   </Typography>
                 </Grid>
@@ -586,7 +597,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                mb: 2
+                mb: 2,
               }}
             >
               <Typography variant="h6">Bestellte Artikel</Typography>
@@ -600,14 +611,15 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             {/* Add Product Form (Only in Edit Mode) */}
             {editMode && (
-              <Paper 
-                variant="outlined" 
-                sx={{ 
-                  p: 3, 
-                  mb: 3, 
-                  bgcolor: theme.palette.mode === 'dark' 
-                    ? alpha(theme.palette.primary.main, 0.1)
-                    : alpha(theme.palette.primary.main, 0.03)
+              <Paper
+                variant="outlined"
+                sx={{
+                  p: 3,
+                  mb: 3,
+                  bgcolor:
+                    theme.palette.mode === 'dark'
+                      ? alpha(theme.palette.primary.main, 0.1)
+                      : alpha(theme.palette.primary.main, 0.03),
                 }}
               >
                 <Typography variant="subtitle1" fontWeight={500} sx={{ mb: 2 }}>
@@ -617,7 +629,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   <Grid item xs={12} sm={6}>
                     <Autocomplete
                       options={products}
-                      getOptionLabel={(option) => 
+                      getOptionLabel={(option) =>
                         `${option.name} (${option.price.toFixed(2)} €)`
                       }
                       value={selectedProduct}
@@ -633,7 +645,9 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       renderOption={(props, option) => (
                         <li {...props}>
                           <Box>
-                            <Typography variant="body1">{option.name}</Typography>
+                            <Typography variant="body1">
+                              {option.name}
+                            </Typography>
                             <Typography variant="body2" color="text.secondary">
                               {option.price.toFixed(2)} € pro Stück
                             </Typography>
@@ -647,12 +661,12 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       label="Menge"
                       type="number"
                       value={quantity}
-                      onChange={(e) => 
+                      onChange={(e) =>
                         setQuantity(Math.max(1, parseInt(e.target.value) || 1))
                       }
-                      InputProps={{ 
+                      InputProps={{
                         inputProps: { min: 1 },
-                        startAdornment: <Box sx={{ mr: 1 }}>×</Box>
+                        startAdornment: <Box sx={{ mr: 1 }}>×</Box>,
                       }}
                       fullWidth
                       size="small"
@@ -676,7 +690,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
             {/* Order Items Table */}
             <TableContainer component={Paper} variant="outlined">
-              <Table size={editMode ? "medium" : "small"}>
+              <Table size={editMode ? 'medium' : 'small'}>
                 <TableHead>
                   <TableRow sx={{ bgcolor: 'background.default' }}>
                     <TableCell width="40%">Produkt</TableCell>
@@ -689,38 +703,55 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 <TableBody>
                   {editedOrder.items.length > 0 ? (
                     editedOrder.items.map((item, index) => (
-                      <TableRow 
+                      <TableRow
                         key={index}
-                        sx={{ 
-                          bgcolor: editMode ? alpha(theme.palette.primary.main, 0.03) : 'inherit',
+                        sx={{
+                          bgcolor: editMode
+                            ? alpha(theme.palette.primary.main, 0.03)
+                            : 'inherit',
                           '&:hover': {
-                            bgcolor: editMode ? alpha(theme.palette.primary.main, 0.05) : 'inherit'
-                          }
+                            bgcolor: editMode
+                              ? alpha(theme.palette.primary.main, 0.05)
+                              : 'inherit',
+                          },
                         }}
                       >
                         <TableCell>
-                          <Typography variant="body1">{item.productName}</Typography>
+                          <Typography variant="body1">
+                            {item.productName}
+                          </Typography>
                         </TableCell>
                         <TableCell align="center">
                           {editMode ? (
-                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Box
+                              sx={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                              }}
+                            >
                               <IconButton
                                 size="small"
                                 color="primary"
-                                onClick={() => 
+                                onClick={() =>
                                   handleUpdateQuantity(index, item.quantity - 1)
                                 }
                                 disabled={item.quantity <= 1}
-                                sx={{ border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}` }}
+                                sx={{
+                                  border: `1px solid ${alpha(
+                                    theme.palette.primary.main,
+                                    0.5
+                                  )}`,
+                                }}
                               >
                                 <RemoveCircleIcon fontSize="small" />
                               </IconButton>
-                              <Typography 
-                                sx={{ 
+                              <Typography
+                                sx={{
                                   mx: 1,
                                   minWidth: '30px',
                                   textAlign: 'center',
-                                  fontWeight: 600
+                                  fontWeight: 600,
                                 }}
                               >
                                 {item.quantity}
@@ -728,16 +759,23 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                               <IconButton
                                 size="small"
                                 color="primary"
-                                onClick={() => 
+                                onClick={() =>
                                   handleUpdateQuantity(index, item.quantity + 1)
                                 }
-                                sx={{ border: `1px solid ${alpha(theme.palette.primary.main, 0.5)}` }}
+                                sx={{
+                                  border: `1px solid ${alpha(
+                                    theme.palette.primary.main,
+                                    0.5
+                                  )}`,
+                                }}
                               >
                                 <AddCircleIcon fontSize="small" />
                               </IconButton>
                             </Box>
                           ) : (
-                            <Typography variant="body1" fontWeight={500}>{item.quantity}</Typography>
+                            <Typography variant="body1" fontWeight={500}>
+                              {item.quantity}
+                            </Typography>
                           )}
                         </TableCell>
                         <TableCell align="right">
@@ -798,14 +836,12 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
         <DialogTitle>Bestellung löschen</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Möchten Sie diese Bestellung wirklich löschen? Diese Aktion kann nicht
-            rückgängig gemacht werden.
+            Möchten Sie diese Bestellung wirklich löschen? Diese Aktion kann
+            nicht rückgängig gemacht werden.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setConfirmDeleteOpen(false)}>
-            Abbrechen
-          </Button>
+          <Button onClick={() => setConfirmDeleteOpen(false)}>Abbrechen</Button>
           <Button
             onClick={() => {
               onDelete(editedOrder.id)
@@ -821,12 +857,16 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
       {/* Cancel/Back Button */}
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 3 }}>
         {editMode ? (
-          <Button 
-            variant="outlined" 
-            color="inherit" 
+          <Button
+            variant="outlined"
+            color="inherit"
             startIcon={<CancelIcon />}
             onClick={() => {
-              if (confirm('Möchten Sie den Bearbeitungsmodus verlassen? Ungespeicherte Änderungen gehen verloren.')) {
+              if (
+                confirm(
+                  'Möchten Sie den Bearbeitungsmodus verlassen? Ungespeicherte Änderungen gehen verloren.'
+                )
+              ) {
                 setEditMode(false)
                 setEditedOrder({ ...order })
                 setFormErrors({})
@@ -837,11 +877,7 @@ const OrderDetailView: React.FC<OrderDetailViewProps> = ({
             Bearbeitung abbrechen
           </Button>
         ) : (
-          <Button 
-            variant="outlined" 
-            color="inherit" 
-            onClick={onCancel}
-          >
+          <Button variant="outlined" color="inherit" onClick={onCancel}>
             Zurück zur Übersicht
           </Button>
         )}

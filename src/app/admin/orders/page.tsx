@@ -42,7 +42,7 @@ import QuickOrderForm from '../../../components/orders/QuickOrderForm'
 import WeeklyCalendar from '../../../components/orders/weekly-view/WeeklyCalendar'
 import OrderDetailDialog from '../../../components/orders/weekly-view/OrderDetailDialog'
 import OrderDetailView from '../../../components/orders/OrderDetailView'
-import { Order as ApiOrder, OrderItem, Product } from '../../../services/types'
+import { Order, OrderItem, Product } from '../../../services/types'
 
 // Define the order status type that the form expects
 type OrderStatus = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled'
@@ -64,10 +64,10 @@ interface FormOrder {
 }
 
 // Map API order to form order
-const mapApiOrderToFormOrder = (apiOrder: ApiOrder): FormOrder => {
+const mapOrderToFormOrder = (Order: Order): FormOrder => {
   return {
-    ...apiOrder,
-    status: apiOrder.status as OrderStatus,
+    ...Order,
+    status: Order.status as OrderStatus,
   }
 }
 
@@ -104,16 +104,16 @@ const OrderManagement: React.FC = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [loading, setLoading] = useState<boolean>(true)
-  const [orders, setOrders] = useState<ApiOrder[]>([])
-  const [filteredOrders, setFilteredOrders] = useState<ApiOrder[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [filteredOrders, setFilteredOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [viewMode, setViewMode] = useState<ViewMode>('weekly')
-  const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [showQuickOrderForm, setShowQuickOrderForm] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  const [orderToDelete, setOrderToDelete] = useState<ApiOrder | null>(null)
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false)
   const [detailDialogOpen, setDetailDialogOpen] = useState<boolean>(false)
   const [isDetailView, setIsDetailView] = useState<boolean>(false)
@@ -169,7 +169,7 @@ const OrderManagement: React.FC = () => {
     setViewMode('detail')
   }, [])
 
-  const handleEditOrder = useCallback((order: ApiOrder) => {
+  const handleEditOrder = useCallback((order: Order) => {
     setSelectedOrder(order)
     setViewMode('form')
   }, [])
@@ -183,7 +183,7 @@ const OrderManagement: React.FC = () => {
     setShowQuickOrderForm(true)
   }, [])
 
-  const handleOrderClick = useCallback((order: ApiOrder) => {
+  const handleOrderClick = useCallback((order: Order) => {
     setSelectedOrder(order)
     setViewMode('detail')
   }, [])
@@ -207,21 +207,21 @@ const OrderManagement: React.FC = () => {
   }, [])
 
   const handleSaveOrder = useCallback(
-    async (orderData: Partial<FormOrder>) => {
-      // Convert FormOrder back to ApiOrder if needed
-      const apiOrderData: Partial<ApiOrder> = orderData
+    async (orderData: Partial<Order>) => {
+      // Convert FormOrder back to Order if needed
+      const OrderData: Partial<Order> = orderData
       setLoading(true)
       setError(null)
 
       try {
-        let updatedOrder: ApiOrder
+        let updatedOrder: Order
 
         if (selectedOrder) {
           // Update existing order
           updatedOrder = (await bakeryAPI.updateOrder(
             selectedOrder.id,
             orderData
-          )) as ApiOrder
+          )) as Order
 
           setOrders((prevOrders) =>
             prevOrders.map((order) =>
@@ -230,7 +230,7 @@ const OrderManagement: React.FC = () => {
           )
         } else {
           // Create new order
-          updatedOrder = (await bakeryAPI.createOrder(orderData)) as ApiOrder
+          updatedOrder = (await bakeryAPI.createOrder(orderData)) as Order
           setOrders((prevOrders) => [...prevOrders, updatedOrder])
         }
 
@@ -240,7 +240,6 @@ const OrderManagement: React.FC = () => {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : 'An unknown error occurred'
-        console.error('Error saving order:', errorMessage)
         setError(`Failed to save order: ${errorMessage}`)
       } finally {
         setLoading(false)
@@ -570,7 +569,7 @@ const OrderManagement: React.FC = () => {
           products={products}
           order={
             selectedOrder
-              ? mapApiOrderToFormOrder(selectedOrder)
+              ? mapOrderToFormOrder(selectedOrder)
               : createDefaultOrder()
           }
           onSave={handleSaveOrder}
@@ -597,11 +596,7 @@ const OrderManagement: React.FC = () => {
           <OrderDetailView
             order={selectedOrder}
             products={products}
-            // onSave={handleSaveOrder}
-            onSave={(order) => {
-              // Add your custom logic here
-              console.log('Order saved', order)
-            }}
+            onSave={handleSaveOrder}
             onDelete={handleShowDeleteDialog}
             onCancel={handleCloseForm}
           />
