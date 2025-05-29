@@ -1,11 +1,39 @@
-import { Recipe, Review } from '@/services/types';
+import { Recipe, Review } from '../services/types'
 
 export const mockReviews: Review[] = [
-  { id: 'rev1', recipeId: 'recipe1', author: 'Jane Doe', rating: 5, comment: 'Absolutely delicious!', date: new Date().toISOString() },
-  { id: 'rev2', recipeId: 'recipe1', author: 'John Smith', rating: 4, comment: 'Very good, will make again.', date: new Date().toISOString() },
-  { id: 'rev3', recipeId: 'recipe2', author: 'Alice Brown', rating: 5, comment: 'My new favorite cake!', date: new Date().toISOString() },
-  { id: 'rev4', recipeId: 'recipe3', author: 'Bob Green', rating: 3, comment: 'Good, but a bit dry.', date: new Date().toISOString() },
-];
+  {
+    id: 'rev1',
+    recipeId: 'recipe1',
+    author: 'Jane Doe',
+    rating: 5,
+    comment: 'Absolutely delicious!',
+    date: new Date().toISOString(),
+  },
+  {
+    id: 'rev2',
+    recipeId: 'recipe1',
+    author: 'John Smith',
+    rating: 4,
+    comment: 'Very good, will make again.',
+    date: new Date().toISOString(),
+  },
+  {
+    id: 'rev3',
+    recipeId: 'recipe2',
+    author: 'Alice Brown',
+    rating: 5,
+    comment: 'My new favorite cake!',
+    date: new Date().toISOString(),
+  },
+  {
+    id: 'rev4',
+    recipeId: 'recipe3',
+    author: 'Bob Green',
+    rating: 3,
+    comment: 'Good, but a bit dry.',
+    date: new Date().toISOString(),
+  },
+]
 
 export const mockRecipes: Recipe[] = [
   {
@@ -37,7 +65,7 @@ export const mockRecipes: Recipe[] = [
     cookTime: '35 minutes',
     servings: 8,
     image: '/images/mock/chocolate-cake.jpg', // Placeholder image path
-    reviews: mockReviews.filter(r => r.recipeId === 'recipe1'),
+    reviews: mockReviews.filter((r) => r.recipeId === 'recipe1'),
   },
   {
     id: 'recipe2',
@@ -65,38 +93,39 @@ export const mockRecipes: Recipe[] = [
     cookTime: '45 minutes',
     servings: 12, // 1 loaf
     image: '/images/mock/sourdough-bread.jpg', // Placeholder image path
-    reviews: mockReviews.filter(r => r.recipeId === 'recipe2'),
+    reviews: mockReviews.filter((r) => r.recipeId === 'recipe2'),
   },
   {
     id: 'recipe3',
     name: 'Blueberry Muffins',
-    description: 'Classic blueberry muffins with a tender crumb and bursting with fresh blueberries.',
+    description:
+      'Classic blueberry muffins with a tender crumb and bursting with fresh blueberries.',
     ingredients: [
-        { name: 'All-purpose flour', quantity: '2 cups (250g)' },
-        { name: 'Granulated sugar', quantity: '3/4 cup (150g)' },
-        { name: 'Baking powder', quantity: '2 tsp' },
-        { name: 'Salt', quantity: '1/2 tsp' },
-        { name: 'Egg', quantity: '1 large' },
-        { name: 'Milk', quantity: '3/4 cup (180ml)' },
-        { name: 'Unsalted butter, melted', quantity: '1/2 cup (113g)' },
-        { name: 'Vanilla extract', quantity: '1 tsp' },
-        { name: 'Fresh blueberries', quantity: '1 1/2 cups (200g)' },
+      { name: 'All-purpose flour', quantity: '2 cups (250g)' },
+      { name: 'Granulated sugar', quantity: '3/4 cup (150g)' },
+      { name: 'Baking powder', quantity: '2 tsp' },
+      { name: 'Salt', quantity: '1/2 tsp' },
+      { name: 'Egg', quantity: '1 large' },
+      { name: 'Milk', quantity: '3/4 cup (180ml)' },
+      { name: 'Unsalted butter, melted', quantity: '1/2 cup (113g)' },
+      { name: 'Vanilla extract', quantity: '1 tsp' },
+      { name: 'Fresh blueberries', quantity: '1 1/2 cups (200g)' },
     ],
     instructions: [
-        'Preheat oven to 400°F (200°C). Line a 12-cup muffin tin with paper liners.',
-        'In a large bowl, whisk together flour, sugar, baking powder, and salt.',
-        'In a separate medium bowl, whisk together the egg, milk, melted butter, and vanilla extract.',
-        'Pour the wet ingredients into the dry ingredients and stir until just combined. Do not overmix; a few lumps are okay.',
-        'Gently fold in the blueberries.',
-        'Divide the batter evenly among the prepared muffin cups.',
-        'Bake for 18-20 minutes, or until a toothpick inserted into the center of a muffin comes out clean.',
-        'Let the muffins cool in the tin for a few minutes before transferring them to a wire rack to cool completely.',
+      'Preheat oven to 400°F (200°C). Line a 12-cup muffin tin with paper liners.',
+      'In a large bowl, whisk together flour, sugar, baking powder, and salt.',
+      'In a separate medium bowl, whisk together the egg, milk, melted butter, and vanilla extract.',
+      'Pour the wet ingredients into the dry ingredients and stir until just combined. Do not overmix; a few lumps are okay.',
+      'Gently fold in the blueberries.',
+      'Divide the batter evenly among the prepared muffin cups.',
+      'Bake for 18-20 minutes, or until a toothpick inserted into the center of a muffin comes out clean.',
+      'Let the muffins cool in the tin for a few minutes before transferring them to a wire rack to cool completely.',
     ],
     category: 'Muffins',
     prepTime: '15 minutes',
     cookTime: '20 minutes',
     servings: 12,
     image: '/images/mock/blueberry-muffins.jpg',
-    reviews: mockReviews.filter(r => r.recipeId === 'recipe3'),
-  }
-];
+    reviews: mockReviews.filter((r) => r.recipeId === 'recipe3'),
+  },
+]
