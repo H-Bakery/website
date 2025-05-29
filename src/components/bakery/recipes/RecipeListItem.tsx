@@ -8,18 +8,21 @@ interface RecipeListItemProps {
 
 const RecipeListItem: React.FC<RecipeListItemProps> = ({ recipe, onClick }) => {
   return (
-    <div
+    <button
       onClick={onClick}
       style={{
         cursor: 'pointer',
         marginBottom: '10px',
         padding: '10px',
         border: '1px solid #ccc',
+        background: 'none',
+        borderRadius: '4px',
+        textAlign: 'left',
       }}
     >
       <h3>{recipe.name}</h3>
       <p>{recipe.category}</p>
-    </div>
+    </button>
   )
 }
 
