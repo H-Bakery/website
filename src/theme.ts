@@ -9,9 +9,10 @@ const buttons = {
   fontFamily: 'Averia Serif Libre',
 }
 
-const themeOptions: ThemeOptions = {
+// Define common options across both themes
+const getThemeOptions = (mode: 'light' | 'dark'): ThemeOptions => ({
   palette: {
-    mode: 'light',
+    mode,
     primary: {
       main: '#D038BA',
     },
@@ -30,15 +31,26 @@ const themeOptions: ThemeOptions = {
       800: '#293858',
       900: '#131F37',
     },
-    background: {
-      paper: '#FFFFFF',
-      default: '#F6F8FC',
-    },
-    text: {
-      primary: '#131F37',
-      secondary: '#485776',
-      disabled: '#909FBE',
-    },
+    background: mode === 'light' 
+      ? {
+          paper: '#FFFFFF',
+          default: '#F6F8FC',
+        }
+      : {
+          paper: '#1E1E1E',
+          default: '#121212',
+        },
+    text: mode === 'light'
+      ? {
+          primary: '#131F37',
+          secondary: '#485776',
+          disabled: '#909FBE',
+        }
+      : {
+          primary: '#FFFFFF',
+          secondary: '#B0BFD9',
+          disabled: '#677695',
+        },
   },
   typography: {
     fontFamily: "'Ubuntu', sans-serif",
@@ -50,9 +62,13 @@ const themeOptions: ThemeOptions = {
     h6: { ...headlines },
     button: { ...buttons },
   },
-}
+})
 
-// Create the theme directly in the theme file
-const theme = createTheme(themeOptions)
+// Create themes for both light and dark mode
+export const lightTheme = createTheme(getThemeOptions('light'))
+export const darkTheme = createTheme(getThemeOptions('dark'))
+
+// Default to light theme
+const theme = lightTheme
 
 export default theme

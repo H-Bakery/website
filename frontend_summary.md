@@ -1,6 +1,6 @@
 # Frontend Application Summary
 This file contains essential information about the Next.js frontend application using App Router.
-Generated on Tue Apr 15 20:41:04 CEST 2025
+Generated on Do 29 Mai 2025 14:39:35 CEST
 
 ## Core Configuration
 ### Package.json
@@ -248,7 +248,6 @@ import PhoneIcon from '@mui/icons-material/Phone'
 import Hero from '../components/home/hero/Hero'
 import Map from '../components/home/map'
 import Wochenanfebote from '../components/home/wochenanfebote'
-import Products from '../components/home/products'
 import Testimonial from '../components/home/testimonial'
 import News from '../components/home/news'
 import CallToAction from '../components/CallToAction'
@@ -294,26 +293,6 @@ export default function HomePage() {
 
       <Box id="map-section">
         <Map />
-      </Box>
-
-      {/* Products Section */}
-      <Box component="section" sx={{ py: { xs: 4, md: 6 } }}>
-        <Container>
-          <Box
-            sx={{
-              mb: 3,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Typography variant="h3" component="h2" fontWeight="bold">
-              Sortiment
-            </Typography>
-            <Button onClick={navigateToProducts}>Mehr</Button>
-          </Box>
-          <Products items={featuredProducts} />
-        </Container>
       </Box>
 
       <Testimonial />
@@ -463,6 +442,8 @@ export default function ProductPage({ params }) {
                 aria-label={`Bild von ${product.name}`}
               >
                 <Image
+                  width={200}
+                  height={150}
                   src={product.image}
                   alt={product.name}
                   style={styles.productImage}
@@ -966,6 +947,7 @@ import {
   CardMedia,
 } from '@mui/material'
 import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew'
+import Image from 'next/image'
 
 import { formatter } from '../../../utils/formatPrice'
 
@@ -1008,7 +990,9 @@ const ProductCard: React.FC<Props> = (props) => {
       <CardActionArea>
         <CardMedia component="div" sx={styles.imageContainer}>
           {/* Using alt text for better accessibility */}
-          <img
+          <Image
+            width={200}
+            height={150}
             src={image}
             alt={`Bild von ${name}`}
             style={{
@@ -1155,6 +1139,7 @@ No API routes found in src/app/api
 #### Sample workflowUtils.ts
 ```javascript
 import { Workflow } from '../types/workflow'
+import { format } from 'date-fns'
 
 export const calculateProgress = (workflow: Workflow): number => {
   const totalSteps = workflow.steps.length

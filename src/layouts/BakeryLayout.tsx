@@ -19,7 +19,8 @@ import {
   MenuItem,
   useMediaQuery,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import { useTheme as useMuiTheme } from '@mui/material/styles'
+import { useTheme } from '../context/ThemeContext'
 import { useRouter, usePathname } from 'next/navigation'
 import MenuIcon from '@mui/icons-material/Menu'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -35,6 +36,7 @@ import StorefrontIcon from '@mui/icons-material/Storefront'
 import CloseIcon from '@mui/icons-material/Close'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import '../app/print.css'
+import ThemeToggler from '../components/theme/ThemeToggler'
 
 // Define types for user role
 type UserRole = 'Management' | 'Production' | 'Sales'
@@ -76,8 +78,9 @@ const CURRENT_USER: CurrentUser = {
 const DRAWER_WIDTH = 260
 
 const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
+  const muiTheme = useMuiTheme()
+  const { mode } = useTheme()
+  const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const router = useRouter()
   const pathname = usePathname() // Use usePathname instead of window.location.pathname
   const [drawerOpen, setDrawerOpen] = useState(!isMobile)
@@ -249,8 +252,8 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
       <AppBar
         position="fixed"
         sx={{
-          zIndex: theme.zIndex.drawer + 1,
-          backgroundColor: 'white',
+          zIndex: muiTheme.zIndex.drawer + 1,
+          backgroundColor: mode === 'dark' ? 'background.paper' : 'white',
           color: 'text.primary',
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         }}
@@ -281,6 +284,11 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
               </Typography>
             </Box>
           </Typography>
+          
+          {/* Theme Toggle Button */}
+          <Box sx={{ mr: 2 }}>
+            <ThemeToggler />
+          </Box>
 
           {/* User Menu */}
           <Chip
@@ -459,9 +467,9 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           p: 3,
           width: { sm: `calc(100% - ${drawerOpen ? DRAWER_WIDTH : 0}px)` },
           mt: '64px', // Height of the AppBar
-          transition: theme.transitions.create(['width', 'margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.leavingScreen,
+          transition: muiTheme.transitions.create(['width', 'margin'], {
+            easing: muiTheme.transitions.easing.sharp,
+            duration: muiTheme.transitions.duration.leavingScreen,
           }),
         }}
       >
