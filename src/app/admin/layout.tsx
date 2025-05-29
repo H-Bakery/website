@@ -1,10 +1,6 @@
 'use client'
 import React from 'react'
-import {
-  Box,
-  Typography,
-  ThemeProvider as MuiThemeProvider,
-} from '@mui/material'
+import { Box, Card, ThemeProvider as MuiThemeProvider } from '@mui/material'
 import BakeryLayout from '../../layouts/BakeryLayout'
 import { ThemeProvider } from '../../context/ThemeContext'
 import { useTheme } from '../../context/ThemeContext'
@@ -23,14 +19,16 @@ function ThemedAdminContent({ children }: { children: React.ReactNode }) {
             mb: 4,
           }}
         >
-          <Typography
-            variant="h4"
-            component="h1"
-            sx={{ mb: 2, fontWeight: 'bold' }}
+          <Card
+            elevation={mode === 'dark' ? 1 : 2}
+            sx={{
+              p: { xs: 2, sm: 3 },
+              borderRadius: 2,
+              bgcolor: mode === 'dark' ? 'background.paper' : 'white',
+            }}
           >
-            Administration
-          </Typography>
-          <Box sx={{ mt: 1 }}>{children}</Box>
+            {children}
+          </Card>
         </Box>
       </BakeryLayout>
     </MuiThemeProvider>

@@ -18,6 +18,10 @@ import {
   Menu,
   MenuItem,
   useMediaQuery,
+  Badge,
+  Tooltip,
+  Button,
+  alpha,
 } from '@mui/material'
 import { useTheme as useMuiTheme } from '@mui/material/styles'
 import { useTheme } from '../context/ThemeContext'
@@ -35,6 +39,11 @@ import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
 import StorefrontIcon from '@mui/icons-material/Storefront'
 import CloseIcon from '@mui/icons-material/Close'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
+import NotificationsIcon from '@mui/icons-material/Notifications'
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
+import SecurityIcon from '@mui/icons-material/Security'
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
+import Image from 'next/image'
 import '../app/print.css'
 import ThemeToggler from '../components/theme/ThemeToggler'
 
@@ -75,7 +84,7 @@ const CURRENT_USER: CurrentUser = {
 }
 
 // Width of the drawer when open
-const DRAWER_WIDTH = 260
+const DRAWER_WIDTH = 280
 
 const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
   const muiTheme = useMuiTheme()
@@ -93,9 +102,9 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
   // Set page title based on current path
   useEffect(() => {
     if (pathname) {
-      if (pathname.includes('/admin/bakery/processes'))
+      if (pathname.includes('/admin/production/processes'))
         setPageTitle('Backstube: Produktionsprozesse')
-      else if (pathname.includes('/admin/orders/baking-list'))
+      else if (pathname.includes('/admin/production/orders'))
         setPageTitle('Backstube: Bestelllisten')
       else if (pathname.includes('/admin/orders'))
         setPageTitle('Verkaufsbereich: Bestellungen')
@@ -194,13 +203,13 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         {
           name: 'Mitarbeiter',
           icon: <PeopleIcon />,
-          path: '/admin/admin/staff',
+          path: '/admin/staff',
           roles: ['Management'],
         },
         {
           name: 'Einstellungen',
           icon: <SettingsIcon />,
-          path: '/admin/admin/settings',
+          path: '/admin/settings',
           roles: ['Management'],
         },
       ],
@@ -259,98 +268,226 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
       {/* App Bar */}
       <AppBar
         position="fixed"
+        color={effectiveMode === 'dark' ? 'inherit' : 'primary'}
         sx={{
           zIndex: muiTheme.zIndex.drawer + 1,
           backgroundColor:
-            effectiveMode === 'dark' ? 'background.paper' : 'white',
-          color: 'text.primary',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+            effectiveMode === 'dark'
+              ? alpha(muiTheme.palette.background.paper, 0.9)
+              : muiTheme.palette.primary.main,
+          backdropFilter: 'blur(8px)',
+          color: effectiveMode === 'dark' ? 'text.primary' : '#fff',
+          boxShadow:
+            effectiveMode === 'dark'
+              ? '0 1px 8px rgba(0,0,0,0.15)'
+              : '0 3px 10px rgba(0,0,0,0.2)',
         }}
       >
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="toggle menu"
-            onClick={() => setDrawerOpen(!drawerOpen)}
-            edge="start"
-            sx={{ mr: 2 }}
-          >
-            {drawerOpen && isMobile ? <CloseIcon /> : <MenuIcon />}
-          </IconButton>
+        <Toolbar
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <IconButton
+              color="inherit"
+              aria-label="toggle menu"
+              onClick={() => setDrawerOpen(!drawerOpen)}
+              edge="start"
+              sx={{ mr: 1 }}
+            >
+              {drawerOpen && isMobile ? <CloseIcon /> : <MenuIcon />}
+            </IconButton>
 
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Typography
-                variant="h6"
-                component="span"
+              <Box
                 sx={{
-                  fontWeight: 'bold',
                   display: 'flex',
                   alignItems: 'center',
+                  mr: 1,
+                  bgcolor:
+                    effectiveMode === 'dark'
+                      ? 'rgba(255,255,255,0.1)'
+                      : 'rgba(255,255,255,0.2)',
+                  borderRadius: '50%',
+                  width: 38,
+                  height: 38,
+                  justifyContent: 'center',
                 }}
               >
-                {pageTitle}
-              </Typography>
-            </Box>
-          </Typography>
-
-          {/* Theme Toggle Button - only in admin */}
-          {isAdminRoute && (
-            <Box sx={{ mr: 2 }}>
-              <ThemeToggler />
-            </Box>
-          )}
-
-          {/* User Menu */}
-          <Chip
-            avatar={
-              CURRENT_USER.avatar ? (
-                <Avatar src={CURRENT_USER.avatar} />
-              ) : (
-                <Avatar>{CURRENT_USER.name.charAt(0)}</Avatar>
-              )
-            }
-            label={
+                <Image
+                  src="/admin/admin-logo.svg"
+                  width={24}
+                  height={24}
+                  alt="Admin Logo"
+                  style={{
+                    filter: 'brightness(0) invert(1)',
+                  }}
+                />
+              </Box>
               <Box>
-                <Typography variant="body2" component="span">
-                  {CURRENT_USER.name}
+                <Typography
+                  variant="h6"
+                  component="span"
+                  sx={{ fontWeight: 'bold', letterSpacing: '0.5px' }}
+                >
+                  Admin
                 </Typography>
                 <Typography
                   variant="caption"
-                  component="span"
-                  sx={{ display: 'block', opacity: 0.7 }}
+                  component="div"
+                  sx={{
+                    opacity: 0.85,
+                    fontWeight: 500,
+                    fontSize: '0.75rem',
+                    letterSpacing: '0.5px',
+                    mt: -0.5,
+                    display: { xs: 'none', sm: 'block' },
+                  }}
                 >
-                  {(() => {
-                    switch (CURRENT_USER.role) {
-                      case 'Management':
-                        return 'Geschäftsführung'
-                      case 'Production':
-                        return 'Bäckermeister'
-                      case 'Sales':
-                        return 'Verkauf'
-                      default:
-                        return CURRENT_USER.role
-                    }
-                  })()}
+                  Bäckerei-Verwaltung
                 </Typography>
               </Box>
-            }
-            onClick={(e: React.MouseEvent<HTMLDivElement>) =>
-              setAnchorEl(e.currentTarget)
-            }
-            sx={{
-              height: 'auto',
-              pl: 0.5,
-              pr: 1.5,
-              py: 0.75,
-              borderRadius: 2,
-              cursor: 'pointer',
-              '& .MuiChip-label': {
-                px: 1,
-              },
-            }}
-          />
+            </Box>
+          </Box>
 
+          <Box
+            sx={{
+              flexGrow: 1,
+              textAlign: 'center',
+              px: 2,
+              display: { xs: 'none', md: 'block' },
+            }}
+          >
+            <Typography
+              variant="h6"
+              component="div"
+              sx={{
+                fontWeight: 600,
+                opacity: 0.95,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {pageTitle}
+            </Typography>
+          </Box>
+
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            {/* Help Button */}
+            <Tooltip title="Hilfe">
+              <IconButton color="inherit" size="small" sx={{ ml: 1 }}>
+                <HelpOutlineIcon />
+              </IconButton>
+            </Tooltip>
+
+            {/* Notifications */}
+            <Tooltip title="Benachrichtigungen">
+              <IconButton color="inherit" size="small" sx={{ ml: 1 }}>
+                <Badge badgeContent={3} color="error">
+                  <NotificationsIcon />
+                </Badge>
+              </IconButton>
+            </Tooltip>
+
+            {/* Theme Toggle Button - only in admin */}
+            {isAdminRoute && (
+              <Box sx={{ ml: 1 }}>
+                <ThemeToggler />
+              </Box>
+            )}
+
+            {/* User Menu */}
+            <Chip
+              avatar={
+                CURRENT_USER.avatar ? (
+                  <Avatar
+                    src={CURRENT_USER.avatar}
+                    sx={{
+                      bgcolor: 'primary.light',
+                      color: '#fff',
+                      boxShadow:
+                        effectiveMode === 'dark'
+                          ? '0 0 0 2px rgba(255,255,255,0.1)'
+                          : 'none',
+                    }}
+                  />
+                ) : (
+                  <Avatar
+                    sx={{
+                      bgcolor: 'primary.light',
+                      color: '#fff',
+                      boxShadow:
+                        effectiveMode === 'dark'
+                          ? '0 0 0 2px rgba(255,255,255,0.1)'
+                          : 'none',
+                    }}
+                  >
+                    {CURRENT_USER.name.charAt(0)}
+                  </Avatar>
+                )
+              }
+              label={
+                <Box sx={{ display: { xs: 'none', sm: 'block' } }}>
+                  <Typography
+                    variant="body2"
+                    component="span"
+                    sx={{ fontWeight: 500 }}
+                  >
+                    {CURRENT_USER.name}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    component="span"
+                    sx={{ display: 'block', opacity: 0.85 }}
+                  >
+                    {(() => {
+                      switch (CURRENT_USER.role) {
+                        case 'Management':
+                          return 'Geschäftsführung'
+                        case 'Production':
+                          return 'Bäckermeister'
+                        case 'Sales':
+                          return 'Verkauf'
+                        default:
+                          return CURRENT_USER.role
+                      }
+                    })()}
+                  </Typography>
+                </Box>
+              }
+              onClick={(e: React.MouseEvent<HTMLDivElement>) =>
+                setAnchorEl(e.currentTarget)
+              }
+              sx={{
+                height: 'auto',
+                pl: 0.5,
+                pr: { xs: 0.5, sm: 1.5 },
+                py: 0.75,
+                ml: 1.5,
+                borderRadius: 2,
+                cursor: 'pointer',
+                bgcolor: 'transparent',
+                border: '1px solid',
+                borderColor:
+                  effectiveMode === 'dark'
+                    ? 'rgba(255,255,255,0.1)'
+                    : 'rgba(255,255,255,0.3)',
+                '&:hover': {
+                  bgcolor:
+                    effectiveMode === 'dark'
+                      ? 'rgba(255,255,255,0.05)'
+                      : 'rgba(255,255,255,0.15)',
+                },
+                '& .MuiChip-label': {
+                  px: 1,
+                  color: effectiveMode === 'dark' ? 'text.primary' : '#fff',
+                },
+              }}
+            />
+          </Box>
           <Menu
             anchorEl={anchorEl}
             open={Boolean(anchorEl)}
@@ -363,34 +500,77 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
               vertical: 'top',
               horizontal: 'right',
             }}
+            elevation={6}
+            PaperProps={{
+              sx: {
+                minWidth: 200,
+                borderRadius: 2,
+                boxShadow:
+                  effectiveMode === 'dark'
+                    ? '0 4px 20px rgba(0,0,0,0.4)'
+                    : '0 4px 20px rgba(0,0,0,0.15)',
+              },
+            }}
           >
+            <Box sx={{ px: 2, py: 1.5 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                {CURRENT_USER.name}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {CURRENT_USER.role === 'Management'
+                  ? 'Geschäftsführung'
+                  : CURRENT_USER.role === 'Production'
+                  ? 'Bäckermeister'
+                  : 'Verkauf'}
+              </Typography>
+            </Box>
+            <Divider />
             <MenuItem
               onClick={() => {
                 handleMenuClose()
-                router.push('/profile')
+                router.push('/admin/profile')
               }}
+              sx={{ py: 1.5 }}
             >
               <ListItemIcon>
                 <AccountCircleIcon fontSize="small" />
               </ListItemIcon>
               <ListItemText>Mein Profil</ListItemText>
             </MenuItem>
-            <Divider />
             <MenuItem
               onClick={() => {
                 handleMenuClose()
-                // Implement logout functionality (client-side only)
-                if (typeof window !== 'undefined') {
-                  localStorage.removeItem('token')
-                }
-                setIsAuthenticated(false)
+                router.push('/admin/security')
               }}
+              sx={{ py: 1.5 }}
             >
               <ListItemIcon>
-                <LogoutIcon fontSize="small" />
+                <SecurityIcon fontSize="small" />
               </ListItemIcon>
-              <ListItemText>Abmelden</ListItemText>
+              <ListItemText>Sicherheitseinstellungen</ListItemText>
             </MenuItem>
+            <Divider />
+            <Box
+              sx={{ px: 2, py: 1, display: 'flex', justifyContent: 'center' }}
+            >
+              <Button
+                variant="outlined"
+                color="primary"
+                fullWidth
+                startIcon={<LogoutIcon />}
+                onClick={() => {
+                  handleMenuClose()
+                  // Implement logout functionality (client-side only)
+                  if (typeof window !== 'undefined') {
+                    localStorage.removeItem('token')
+                  }
+                  setIsAuthenticated(false)
+                }}
+                sx={{ borderRadius: 2 }}
+              >
+                Abmelden
+              </Button>
+            </Box>
           </Menu>
         </Toolbar>
       </AppBar>
@@ -406,8 +586,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           '& .MuiDrawer-paper': {
             width: DRAWER_WIDTH,
             boxSizing: 'border-box',
-            borderRight: '1px solid rgba(0, 0, 0, 0.08)',
-            boxShadow: 'none',
+            borderRight:
+              effectiveMode === 'dark'
+                ? '1px solid rgba(255, 255, 255, 0.05)'
+                : '1px solid rgba(0, 0, 0, 0.08)',
+            boxShadow:
+              effectiveMode === 'dark' ? 'none' : '2px 0 8px rgba(0,0,0,0.02)',
             bgcolor: effectiveMode === 'dark' ? 'background.paper' : 'white',
           },
         }}
@@ -421,7 +605,14 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
               <Typography
                 variant="overline"
                 color="text.secondary"
-                sx={{ px: 3, py: 1, display: 'block' }}
+                sx={{
+                  px: 3,
+                  py: 1,
+                  display: 'block',
+                  fontWeight: 600,
+                  letterSpacing: '1px',
+                  fontSize: '0.7rem',
+                }}
               >
                 {section.section}
               </Typography>
@@ -436,28 +627,38 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
                       if (isMobile) setDrawerOpen(false)
                     }}
                     sx={{
-                      borderRadius: '0 24px 24px 0',
-                      mr: 1,
+                      borderRadius: '8px',
+                      mx: 1,
+                      my: 0.3,
                       color:
                         pathname === item.path
-                          ? 'primary.main'
+                          ? effectiveMode === 'dark'
+                            ? '#fff'
+                            : '#fff'
                           : 'text.primary',
                       bgcolor:
                         pathname === item.path
-                          ? 'rgba(0, 0, 0, 0.04)'
+                          ? effectiveMode === 'dark'
+                            ? 'primary.dark'
+                            : 'primary.main'
                           : 'transparent',
                       '&:hover': {
                         bgcolor:
                           pathname === item.path
-                            ? 'rgba(0, 0, 0, 0.08)'
+                            ? effectiveMode === 'dark'
+                              ? 'primary.dark'
+                              : 'primary.main'
+                            : effectiveMode === 'dark'
+                            ? 'rgba(255, 255, 255, 0.05)'
                             : 'rgba(0, 0, 0, 0.04)',
                       },
+                      transition: 'all 0.2s',
                     }}
                   >
                     <ListItemIcon
                       sx={{
-                        color:
-                          pathname === item.path ? 'primary.main' : 'inherit',
+                        color: pathname === item.path ? '#fff' : 'inherit',
+                        minWidth: '42px',
                       }}
                     >
                       {item.icon}
@@ -476,9 +677,11 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${drawerOpen ? DRAWER_WIDTH : 0}px)` },
+          width: {
+            sm: `calc(100% - ${drawerOpen ? DRAWER_WIDTH : 0}px)`,
+          },
           mt: '64px', // Height of the AppBar
+          p: { xs: 2, sm: 3 },
           transition: muiTheme.transitions.create(['width', 'margin'], {
             easing: muiTheme.transitions.easing.sharp,
             duration: muiTheme.transitions.duration.leavingScreen,

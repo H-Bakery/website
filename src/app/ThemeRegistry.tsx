@@ -22,9 +22,7 @@ function ThemedContent({ children }: { children: React.ReactNode }) {
               'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #D8E1F4',
           }}
         >
-          <Header />
           <Box sx={{ minHeight: 'calc(100vh - 332px)' }}>{children}</Box>
-          <Footer />
         </Box>
       </CartProvider>
     </MuiThemeProvider>

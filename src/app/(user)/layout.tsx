@@ -1,14 +1,14 @@
 // website/src/layouts/Base.tsx
 'use client'
 import { Box } from '@mui/material'
-import { Header } from '../components/header' // Import Header
-import Footer from '../components/footer/Index' // Import Footer
+import { Header } from '../../components/header' // Import Header
+import Footer from '../../components/footer/Index' // Import Footer
 
 interface Props {
   children: React.ReactNode
 }
 
-const Base: React.FC<Props> = ({ children }) => (
+const BaseLayout: React.FC<Props> = ({ children }) => (
   <Box
     sx={{
       background:
@@ -22,4 +22,4 @@ const Base: React.FC<Props> = ({ children }) => (
   </Box>
 )
 
-export default Base
+export default BaseLayout

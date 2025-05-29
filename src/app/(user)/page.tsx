@@ -15,14 +15,14 @@ import DirectionsIcon from '@mui/icons-material/Directions'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import PhoneIcon from '@mui/icons-material/Phone'
 
-import Hero from '../components/home/hero/Hero'
-import Map from '../components/home/map'
-import Wochenanfebote from '../components/home/wochenanfebote'
-import Testimonial from '../components/home/testimonial'
-import News from '../components/home/news'
-import CallToAction from '../components/CallToAction'
-import { featuredProducts } from '../mocks/products/featured'
-import Button from '../components/button/Index'
+import Hero from '../../components/home/hero/Hero'
+import Map from '../../components/home/map'
+import Wochenanfebote from '../../components/home/wochenanfebote'
+import Testimonial from '../../components/home/testimonial'
+import News from '../../components/home/news'
+import CallToAction from '../../components/CallToAction'
+import { featuredProducts } from '../../mocks/products/featured'
+import Button from '../../components/button/Index'
 
 export default function HomePage() {
   const router = useRouter()
