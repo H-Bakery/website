@@ -129,6 +129,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
       section: 'Hauptnavigation',
       items: [
         {
+          name: 'Start',
+          icon: <DashboardIcon />,
+          path: '/admin',
+          roles: ['Management', 'Production', 'Sales'],
+        },
+        {
           name: 'Dashboard',
           icon: <DashboardIcon />,
           path: '/admin/dashboard',
