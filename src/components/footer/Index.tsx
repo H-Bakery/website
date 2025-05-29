@@ -45,7 +45,7 @@ const Footer: React.FC = () => {
             <Link label="Impressum" path="/imprint" />
           </Box>
           <Box>
-            <Link label="Login" path="/login" />
+            <Link label="Admin" path="/admin" />
           </Box>
         </Box>
         <Box sx={styles.image}>
