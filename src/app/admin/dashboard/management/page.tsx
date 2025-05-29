@@ -16,17 +16,20 @@ import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 
-import BakeryLayout from '../../../layouts/BakeryLayout'
 import DateRangeSelector, {
   TimeRange,
-} from '../../../components/dashboard/DateRangeSelector'
-import MetricCard from '../../../components/dashboard/MetricCard'
-import ChartComponent from '../../../components/dashboard/ChartComponent'
-import DataTable from '../../../components/dashboard/DataTable'
-import StatsComparison from '../../../components/dashboard/StatsComparison'
+} from '../../../../components/dashboard/DateRangeSelector'
+import MetricCard from '../../../../components/dashboard/MetricCard'
+import ChartComponent from '../../../../components/dashboard/ChartComponent'
+import DataTable from '../../../../components/dashboard/DataTable'
+import StatsComparison from '../../../../components/dashboard/StatsComparison'
 
-import bakeryAPI from '../../../services/bakeryAPI'
-import { FinancialData, Product, TimeSeriesData } from '../../../services/types'
+import bakeryAPI from '../../../../services/bakeryAPI'
+import {
+  FinancialData,
+  Product,
+  TimeSeriesData,
+} from '../../../../services/types'
 
 const ManagementDashboard: React.FC = () => {
   const router = useRouter()
@@ -143,7 +146,7 @@ const ManagementDashboard: React.FC = () => {
   }
 
   return (
-    <BakeryLayout>
+    <>
       {loading ? (
         <Container
           sx={{
@@ -363,7 +366,7 @@ const ManagementDashboard: React.FC = () => {
           )}
         </Container>
       )}
-    </BakeryLayout>
+    </>
   )
 }
 

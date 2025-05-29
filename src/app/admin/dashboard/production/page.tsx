@@ -14,21 +14,20 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import DeleteIcon from '@mui/icons-material/Delete'
 import SpeedIcon from '@mui/icons-material/Speed'
 
-import BakeryLayout from '../../../layouts/BakeryLayout'
 import DateRangeSelector, {
   TimeRange,
-} from '../../../components/dashboard/DateRangeSelector'
-import MetricCard from '../../../components/dashboard/MetricCard'
-import ChartComponent from '../../../components/dashboard/ChartComponent'
-import DataTable from '../../../components/dashboard/DataTable'
-import ProductivityChart from '../../../components/dashboard/ProductivityChart'
+} from '../../../../components/dashboard/DateRangeSelector'
+import MetricCard from '../../../../components/dashboard/MetricCard'
+import ChartComponent from '../../../../components/dashboard/ChartComponent'
+import DataTable from '../../../../components/dashboard/DataTable'
+import ProductivityChart from '../../../../components/dashboard/ProductivityChart'
 
-import bakeryAPI from '../../../services/bakeryAPI'
+import bakeryAPI from '../../../../services/bakeryAPI'
 import {
   ProductionData,
   InventoryItem,
   StaffData,
-} from '../../../services/types'
+} from '../../../../services/types'
 
 const ProductionDashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('day')
@@ -207,7 +206,7 @@ const ProductionDashboard: React.FC = () => {
   }
 
   return (
-    <BakeryLayout>
+    <>
       {loading ? (
         <Container
           sx={{
@@ -479,7 +478,7 @@ const ProductionDashboard: React.FC = () => {
           )}
         </Container>
       )}
-    </BakeryLayout>
+    </>
   )
 }
 

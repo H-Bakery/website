@@ -12,7 +12,7 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  // Use localStorage to persist theme preference if available
+  // Always default to light mode
   const [mode, setMode] = useState<ThemeMode>('light')
   
   // Initialize theme from localStorage when component mounts (client-side only)
@@ -20,14 +20,11 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     // Check if we're in the browser environment
     if (typeof window !== 'undefined') {
       const savedMode = localStorage.getItem('themeMode') as ThemeMode
-      // Check if the saved mode is valid, otherwise use system preference
+      // Check if the saved mode is valid, only then apply it
       if (savedMode === 'light' || savedMode === 'dark') {
         setMode(savedMode)
-      } else {
-        // Use system preference as fallback
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
-        setMode(prefersDark ? 'dark' : 'light')
       }
+      // Always default to light mode, no system preference check
     }
   }, [])
 

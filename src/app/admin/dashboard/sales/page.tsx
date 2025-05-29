@@ -12,28 +12,26 @@ import {
   Rating,
   Alert,
 } from '@mui/material'
-import PeopleIcon from '@mui/icons-material/People'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
 import LocalOfferIcon from '@mui/icons-material/LocalOffer'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 
-import BakeryLayout from '../../../layouts/BakeryLayout'
 import DateRangeSelector, {
   TimeRange,
-} from '../../../components/dashboard/DateRangeSelector'
-import MetricCard from '../../../components/dashboard/MetricCard'
-import ChartComponent from '../../../components/dashboard/ChartComponent'
-import DataTable from '../../../components/dashboard/DataTable'
-import StatsComparison from '../../../components/dashboard/StatsComparison'
+} from '../../../../components/dashboard/DateRangeSelector'
+import MetricCard from '../../../../components/dashboard/MetricCard'
+import ChartComponent from '../../../../components/dashboard/ChartComponent'
+import DataTable from '../../../../components/dashboard/DataTable'
+import StatsComparison from '../../../../components/dashboard/StatsComparison'
 
-import bakeryAPI from '../../../services/bakeryAPI'
+import bakeryAPI from '../../../../services/bakeryAPI'
 import {
   SalesData,
   CustomerData,
   Product,
   TimeSeriesData,
-} from '../../../services/types'
+} from '../../../../services/types'
 
 const SalesDashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('day')
@@ -180,7 +178,7 @@ const SalesDashboard: React.FC = () => {
   }
 
   return (
-    <BakeryLayout>
+    <>
       {loading ? (
         <Container
           sx={{
@@ -564,7 +562,7 @@ const SalesDashboard: React.FC = () => {
           )}
         </Container>
       )}
-    </BakeryLayout>
+    </>
   )
 }
 

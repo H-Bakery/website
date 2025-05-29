@@ -83,6 +83,8 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const router = useRouter()
   const pathname = usePathname() // Use usePathname instead of window.location.pathname
+  const isAdminRoute = pathname?.startsWith('/admin')
+  const effectiveMode = isAdminRoute ? mode : 'light'
   const [drawerOpen, setDrawerOpen] = useState(!isMobile)
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
   const [isAuthenticated, setIsAuthenticated] = useState(true) // This should be from your auth system
@@ -91,17 +93,17 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
   // Set page title based on current path
   useEffect(() => {
     if (pathname) {
-      if (pathname.includes('/bakery/processes'))
+      if (pathname.includes('/admin/bakery/processes'))
         setPageTitle('Backstube: Produktionsprozesse')
-      else if (pathname.includes('/orders/baking-list'))
+      else if (pathname.includes('/admin/orders/baking-list'))
         setPageTitle('Backstube: Bestelllisten')
-      else if (pathname.includes('/orders'))
+      else if (pathname.includes('/admin/orders'))
         setPageTitle('Verkaufsbereich: Bestellungen')
-      else if (pathname.includes('/dashboard/sales'))
+      else if (pathname.includes('/admin/dashboard/sales'))
         setPageTitle('Verkaufsbereich: Statistik')
-      else if (pathname.includes('/dashboard/production'))
+      else if (pathname.includes('/admin/dashboard/production'))
         setPageTitle('Backstube: Statistik')
-      else if (pathname.includes('/dashboard/management'))
+      else if (pathname.includes('/admin/dashboard/management'))
         setPageTitle('Verwaltung: Kennzahlen')
       else setPageTitle('Bäckerei-Management')
     }
@@ -129,7 +131,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         {
           name: 'Dashboard',
           icon: <DashboardIcon />,
-          path: '/dashboard',
+          path: '/admin/dashboard',
           roles: ['Management', 'Production', 'Sales'],
         },
       ],
@@ -140,19 +142,19 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         {
           name: 'Produktionsprozesse',
           icon: <BakeryDiningIcon />,
-          path: '/bakery/processes',
+          path: '/admin/bakery/processes',
           roles: ['Management', 'Production'],
         },
         {
           name: 'Bestelllisten',
           icon: <AssignmentIcon />,
-          path: '/orders',
+          path: '/admin/orders',
           roles: ['Management', 'Production'],
         },
         {
           name: 'Samstag Spezialproduktion',
           icon: <BakeryDiningIcon />,
-          path: '/bakery/saturday-production',
+          path: '/admin/bakery/saturday-production',
           roles: ['Management', 'Production'],
         },
       ],
@@ -163,19 +165,19 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         {
           name: 'Bestellungen',
           icon: <ShoppingBasketIcon />,
-          path: '/orders',
+          path: '/admin/orders',
           roles: ['Management', 'Sales'],
         },
         {
           name: 'Produkte',
           icon: <InventoryIcon />,
-          path: '/products',
+          path: '/admin/products',
           roles: ['Management', 'Sales'],
         },
         {
           name: 'Verkaufsstatistik',
           icon: <BarChartIcon />,
-          path: '/dashboard/sales',
+          path: '/admin/dashboard/sales',
           roles: ['Management', 'Sales'],
         },
       ],
@@ -186,13 +188,13 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         {
           name: 'Mitarbeiter',
           icon: <PeopleIcon />,
-          path: '/admin/staff',
+          path: '/admin/admin/staff',
           roles: ['Management'],
         },
         {
           name: 'Einstellungen',
           icon: <SettingsIcon />,
-          path: '/admin/settings',
+          path: '/admin/admin/settings',
           roles: ['Management'],
         },
       ],
@@ -253,7 +255,8 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         position="fixed"
         sx={{
           zIndex: muiTheme.zIndex.drawer + 1,
-          backgroundColor: mode === 'dark' ? 'background.paper' : 'white',
+          backgroundColor:
+            effectiveMode === 'dark' ? 'background.paper' : 'white',
           color: 'text.primary',
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         }}
@@ -284,11 +287,13 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
               </Typography>
             </Box>
           </Typography>
-          
-          {/* Theme Toggle Button */}
-          <Box sx={{ mr: 2 }}>
-            <ThemeToggler />
-          </Box>
+
+          {/* Theme Toggle Button - only in admin */}
+          {isAdminRoute && (
+            <Box sx={{ mr: 2 }}>
+              <ThemeToggler />
+            </Box>
+          )}
 
           {/* User Menu */}
           <Chip
@@ -397,6 +402,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
             boxSizing: 'border-box',
             borderRight: '1px solid rgba(0, 0, 0, 0.08)',
             boxShadow: 'none',
+            bgcolor: effectiveMode === 'dark' ? 'background.paper' : 'white',
           },
         }}
       >
@@ -471,6 +477,8 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
             easing: muiTheme.transitions.easing.sharp,
             duration: muiTheme.transitions.duration.leavingScreen,
           }),
+          bgcolor:
+            effectiveMode === 'dark' ? 'background.default' : 'transparent',
         }}
       >
         {children}

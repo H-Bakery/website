@@ -16,16 +16,14 @@ import {
   Select,
   MenuItem,
 } from '@mui/material'
-import BakeryLayout from '../../layouts/BakeryLayout'
 import { useRouter } from 'next/navigation'
 import AddIcon from '@mui/icons-material/Add'
-import Base from '../../layouts/Base'
-import Hero from '../../components/Hero'
-import Button from '../../components/button/Index'
-import DataTable from '../../components/dashboard/DataTable'
-import bakeryAPI from '../../services/bakeryAPI'
-import OrderForm from '../../components/orders/OrderForm'
-import { Order as ApiOrder, OrderItem, Product } from '../../services/types'
+import Base from '../../../layouts/Base'
+import Button from '../../../components/button/Index'
+import DataTable from '../../../components/dashboard/DataTable'
+import bakeryAPI from '../../../services/bakeryAPI'
+import OrderForm from '../../../components/orders/OrderForm'
+import { Order as ApiOrder, OrderItem, Product } from '../../../services/types'
 
 // Define the order status type that the form expects
 type OrderStatus = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled'
@@ -319,64 +317,62 @@ const OrderManagement: React.FC = () => {
   ]
 
   return (
-    <BakeryLayout>
-      <Container maxWidth="xl">
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
-            {error}
-          </Alert>
-        )}
+    <Container maxWidth="xl">
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
-        <Box
-          sx={{
-            mb: 3,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <Button onClick={handleNavigateBack}>← Back to Dashboard</Button>
-          <Box>
-            <Button
-              onClick={handleGenerateBakingList}
-              style={{ marginRight: '10px' }}
-            >
-              Generate Baking List
-            </Button>
-            <Fab
-              color="primary"
-              size="medium"
-              onClick={handleAddOrder}
-              aria-label="add order"
-            >
-              <AddIcon />
-            </Fab>
-          </Box>
+      <Box
+        sx={{
+          mb: 3,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}
+      >
+        <Button onClick={handleNavigateBack}>← Back to Dashboard</Button>
+        <Box>
+          <Button
+            onClick={handleGenerateBakingList}
+            style={{ marginRight: '10px' }}
+          >
+            Generate Baking List
+          </Button>
+          <Fab
+            color="primary"
+            size="medium"
+            onClick={handleAddOrder}
+            aria-label="add order"
+          >
+            <AddIcon />
+          </Fab>
         </Box>
+      </Box>
 
-        {showAddForm ? (
-          <OrderForm
-            products={products}
-            order={
-              selectedOrder
-                ? mapApiOrderToFormOrder(selectedOrder)
-                : createDefaultOrder()
-            }
-            onSave={handleSaveOrder}
-            onCancel={handleCloseForm}
-          />
-        ) : (
-          <DataTable
-            title="Orders"
-            subtitle="Manage customer orders"
-            columns={columns}
-            data={formatOrders()}
-            searchEnabled={true}
-            emptyMessage="No orders available"
-          />
-        )}
-      </Container>
-    </BakeryLayout>
+      {showAddForm ? (
+        <OrderForm
+          products={products}
+          order={
+            selectedOrder
+              ? mapApiOrderToFormOrder(selectedOrder)
+              : createDefaultOrder()
+          }
+          onSave={handleSaveOrder}
+          onCancel={handleCloseForm}
+        />
+      ) : (
+        <DataTable
+          title="Orders"
+          subtitle="Manage customer orders"
+          columns={columns}
+          data={formatOrders()}
+          searchEnabled={true}
+          emptyMessage="No orders available"
+        />
+      )}
+    </Container>
   )
 }
 
