@@ -81,6 +81,7 @@ export interface OrderItem {
 
 export interface Order {
   id: string | number
+  createdAt: string
   customerName: string
   customerPhone?: string
   customerEmail?: string

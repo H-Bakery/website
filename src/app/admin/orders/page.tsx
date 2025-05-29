@@ -41,13 +41,14 @@ import OrderForm from '../../../components/orders/OrderForm'
 import QuickOrderForm from '../../../components/orders/QuickOrderForm'
 import WeeklyCalendar from '../../../components/orders/weekly-view/WeeklyCalendar'
 import OrderDetailDialog from '../../../components/orders/weekly-view/OrderDetailDialog'
+import OrderDetailView from '../../../components/orders/OrderDetailView'
 import { Order as ApiOrder, OrderItem, Product } from '../../../services/types'
 
 // Define the order status type that the form expects
 type OrderStatus = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled'
 
 // Define view modes
-type ViewMode = 'weekly' | 'table' | 'form'
+type ViewMode = 'weekly' | 'table' | 'form' | 'detail'
 
 // Define the form-specific order type
 interface FormOrder {
@@ -115,6 +116,7 @@ const OrderManagement: React.FC = () => {
   const [orderToDelete, setOrderToDelete] = useState<ApiOrder | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false)
   const [detailDialogOpen, setDetailDialogOpen] = useState<boolean>(false)
+  const [isDetailView, setIsDetailView] = useState<boolean>(false)
 
   // Fetch orders and products with useCallback
   const fetchData = useCallback(async () => {
@@ -164,7 +166,7 @@ const OrderManagement: React.FC = () => {
 
   const handleAddOrder = useCallback(() => {
     setSelectedOrder(null)
-    setViewMode('form')
+    setViewMode('detail')
   }, [])
 
   const handleEditOrder = useCallback((order: ApiOrder) => {
@@ -183,7 +185,7 @@ const OrderManagement: React.FC = () => {
 
   const handleOrderClick = useCallback((order: ApiOrder) => {
     setSelectedOrder(order)
-    setDetailDialogOpen(true)
+    setViewMode('detail')
   }, [])
 
   const handleShowDeleteDialog = useCallback(
@@ -201,6 +203,7 @@ const OrderManagement: React.FC = () => {
     setViewMode('weekly')
     setSelectedOrder(null)
     setShowQuickOrderForm(false)
+    setIsDetailView(false)
   }, [])
 
   const handleSaveOrder = useCallback(
@@ -311,18 +314,30 @@ const OrderManagement: React.FC = () => {
     )
   }
 
-  // Define table columns with proper typing
+  {
+    /* Define table columns with proper typing */
+  }
   const columns: ColumnFormat[] = [
-    { id: 'id', label: 'Order ID', minWidth: 80 },
-    { id: 'customerName', label: 'Customer', minWidth: 150 },
-    { id: 'date', label: 'Pickup Date', minWidth: 120 },
+    { id: 'id', label: 'Bestell-ID', minWidth: 80 },
+    { id: 'customerName', label: 'Kunde', minWidth: 150 },
+    { id: 'date', label: 'Abholung', minWidth: 120 },
     {
       id: 'status',
       label: 'Status',
       minWidth: 120,
       format: (value: string) => (
         <Chip
-          label={value}
+          label={
+            value === 'Pending'
+              ? 'Ausstehend'
+              : value === 'Confirmed'
+              ? 'Bestätigt'
+              : value === 'Completed'
+              ? 'Abgeschlossen'
+              : value === 'Cancelled'
+              ? 'Storniert'
+              : value
+          }
           color={
             value === 'Pending'
               ? 'warning'
@@ -340,20 +355,20 @@ const OrderManagement: React.FC = () => {
     },
     {
       id: 'totalItems',
-      label: 'Items',
+      label: 'Artikel',
       minWidth: 80,
       align: 'right',
     },
     {
       id: 'totalPrice',
-      label: 'Total',
+      label: 'Gesamt',
       minWidth: 100,
       align: 'right',
     },
     {
       id: 'actions',
-      label: 'Actions',
-      minWidth: 150,
+      label: 'Aktionen',
+      minWidth: 220,
       align: 'center',
       // Use type assertion to make TypeScript accept our format function
       format: ((value: any, row: any) => {
@@ -361,9 +376,24 @@ const OrderManagement: React.FC = () => {
         if (!row) return null
 
         return (
-          <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'center', gap: 1 }}>
             <Button
               size="small"
+              variant="outlined"
+              color="primary"
+              onClick={() => {
+                // Use the row ID to find the original order
+                const orderToView = orders.find((o) => o.id === row.id)
+                if (orderToView) {
+                  handleOrderClick(orderToView)
+                }
+              }}
+            >
+              Details
+            </Button>
+            <Button
+              size="small"
+              variant="outlined"
               onClick={() => {
                 // Use the row ID to find the original order
                 const orderToEdit = orders.find((o) => o.id === row.id)
@@ -371,16 +401,16 @@ const OrderManagement: React.FC = () => {
                   handleEditOrder(orderToEdit)
                 }
               }}
-              style={{ marginRight: '8px' }}
             >
-              Edit
+              Bearbeiten
             </Button>
             <Button
               size="small"
+              variant="outlined"
               color="error"
-              onClick={() => handleDeleteOrder(row.id)}
+              onClick={() => handleShowDeleteDialog(row.id)}
             >
-              Delete
+              Löschen
             </Button>
           </Box>
         )
@@ -441,11 +471,31 @@ const OrderManagement: React.FC = () => {
                   <FilterListIcon fontSize="small" sx={{ mr: 0.5 }} />
                 }
               >
-                <MenuItem value="all">Alle</MenuItem>
-                <MenuItem value="Pending">Ausstehend</MenuItem>
-                <MenuItem value="Confirmed">Bestätigt</MenuItem>
-                <MenuItem value="Completed">Abgeschlossen</MenuItem>
-                <MenuItem value="Cancelled">Storniert</MenuItem>
+                <MenuItem value="all">Alle Status</MenuItem>
+                <MenuItem value="Pending">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="warning" label="Ausstehend" />
+                    <Typography variant="body2">Ausstehend</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="Confirmed">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="primary" label="Bestätigt" />
+                    <Typography variant="body2">Bestätigt</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="Completed">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="success" label="Abgeschlossen" />
+                    <Typography variant="body2">Abgeschlossen</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="Cancelled">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="error" label="Storniert" />
+                    <Typography variant="body2">Storniert</Typography>
+                  </Box>
+                </MenuItem>
               </Select>
             </FormControl>
           )}
@@ -495,12 +545,14 @@ const OrderManagement: React.FC = () => {
               label="Wochenübersicht"
               value="weekly"
               iconPosition="start"
+              disabled={viewMode === 'detail'}
             />
             <Tab
               icon={<TableViewIcon />}
               label="Tabelle"
               value="table"
               iconPosition="start"
+              disabled={viewMode === 'detail'}
             />
           </Tabs>
         </Paper>
@@ -524,6 +576,36 @@ const OrderManagement: React.FC = () => {
           onSave={handleSaveOrder}
           onCancel={handleCloseForm}
         />
+      ) : viewMode === 'detail' && selectedOrder && isDetailView ? (
+        <Box>
+          <Paper
+            elevation={0}
+            sx={{
+              p: 2,
+              mb: 3,
+              bgcolor: alpha(theme.palette.info.main, 0.08),
+              borderLeft: `4px solid ${theme.palette.info.main}`,
+              borderRadius: 1,
+            }}
+          >
+            <Typography>
+              Sie sehen die detaillierte Ansicht für Bestellung #
+              {selectedOrder.id} von Kunde{' '}
+              <strong>{selectedOrder.customerName}</strong>.
+            </Typography>
+          </Paper>
+          <OrderDetailView
+            order={selectedOrder}
+            products={products}
+            // onSave={handleSaveOrder}
+            onSave={(order) => {
+              // Add your custom logic here
+              console.log('Order saved', order)
+            }}
+            onDelete={handleShowDeleteDialog}
+            onCancel={handleCloseForm}
+          />
+        </Box>
       ) : viewMode === 'weekly' ? (
         <WeeklyCalendar
           orders={filteredOrders}
@@ -546,11 +628,31 @@ const OrderManagement: React.FC = () => {
                 label="Status Filter"
                 size="small"
               >
-                <MenuItem value="all">Alle Bestellungen</MenuItem>
-                <MenuItem value="Pending">Nur Ausstehend</MenuItem>
-                <MenuItem value="Confirmed">Nur Bestätigt</MenuItem>
-                <MenuItem value="Completed">Nur Abgeschlossen</MenuItem>
-                <MenuItem value="Cancelled">Nur Storniert</MenuItem>
+                <MenuItem value="all">Alle Status</MenuItem>
+                <MenuItem value="Pending">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="warning" label="Ausstehend" />
+                    <Typography variant="body2">Ausstehend</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="Confirmed">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="primary" label="Bestätigt" />
+                    <Typography variant="body2">Bestätigt</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="Completed">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="success" label="Abgeschlossen" />
+                    <Typography variant="body2">Abgeschlossen</Typography>
+                  </Box>
+                </MenuItem>
+                <MenuItem value="Cancelled">
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Chip size="small" color="error" label="Storniert" />
+                    <Typography variant="body2">Storniert</Typography>
+                  </Box>
+                </MenuItem>
               </Select>
             </FormControl>
           </Box>
@@ -559,7 +661,21 @@ const OrderManagement: React.FC = () => {
             title="Bestellungen"
             subtitle={`${filteredOrders.length} Kundenbestellung${
               filteredOrders.length !== 1 ? 'en' : ''
-            } ${statusFilter !== 'all' ? `(Status: ${statusFilter})` : ''}`}
+            } ${
+              statusFilter !== 'all'
+                ? `(Status: ${
+                    statusFilter === 'Pending'
+                      ? 'Ausstehend'
+                      : statusFilter === 'Confirmed'
+                      ? 'Bestätigt'
+                      : statusFilter === 'Completed'
+                      ? 'Abgeschlossen'
+                      : statusFilter === 'Cancelled'
+                      ? 'Storniert'
+                      : statusFilter
+                  })`
+                : ''
+            }`}
             columns={columns}
             data={formatOrders()}
             searchEnabled={true}
@@ -594,14 +710,30 @@ const OrderManagement: React.FC = () => {
         </Box>
       )}
 
-      {/* Order Detail Dialog */}
-      <OrderDetailDialog
-        order={selectedOrder}
-        open={detailDialogOpen}
-        onClose={() => setDetailDialogOpen(false)}
-        onEdit={handleEditOrder}
-        onDelete={handleShowDeleteDialog}
-      />
+      {/* Row Action Instructions */}
+      {viewMode === 'table' && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            mt: 2,
+            mb: 4,
+            bgcolor: alpha(theme.palette.info.main, 0.08),
+            borderRadius: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+          }}
+        >
+          <NotificationsIcon color="info" />
+          <Typography variant="body2">
+            Klicken Sie auf &quot;Details&quot;, um eine vollständige Ansicht
+            der Bestellung zu sehen. Verwenden Sie &quot;Bearbeiten&quot;, um
+            Änderungen vorzunehmen oder &quot;Löschen&quot;, um eine Bestellung
+            zu entfernen.
+          </Typography>
+        </Paper>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <Dialog
