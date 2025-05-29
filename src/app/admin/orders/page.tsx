@@ -8,25 +8,46 @@ import {
   Grid,
   Paper,
   CircularProgress,
-  Fab,
   Chip,
   TextField,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
+  Tab,
+  Tabs,
+  Button as MuiButton,
+  useTheme,
+  alpha,
+  Badge,
+  useMediaQuery,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
 } from '@mui/material'
 import { useRouter } from 'next/navigation'
 import AddIcon from '@mui/icons-material/Add'
-import Base from '../../../layouts/Base'
+import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek'
+import TableViewIcon from '@mui/icons-material/TableView'
+import InsertDriveFileIcon from '@mui/icons-material/InsertDriveFile'
+import FilterListIcon from '@mui/icons-material/FilterList'
+import NotificationsIcon from '@mui/icons-material/Notifications'
 import Button from '../../../components/button/Index'
 import DataTable from '../../../components/dashboard/DataTable'
 import bakeryAPI from '../../../services/bakeryAPI'
 import OrderForm from '../../../components/orders/OrderForm'
+import QuickOrderForm from '../../../components/orders/QuickOrderForm'
+import WeeklyCalendar from '../../../components/orders/weekly-view/WeeklyCalendar'
+import OrderDetailDialog from '../../../components/orders/weekly-view/OrderDetailDialog'
 import { Order as ApiOrder, OrderItem, Product } from '../../../services/types'
 
 // Define the order status type that the form expects
 type OrderStatus = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled'
+
+// Define view modes
+type ViewMode = 'weekly' | 'table' | 'form'
 
 // Define the form-specific order type
 interface FormOrder {
@@ -79,12 +100,21 @@ interface ColumnFormat {
 
 const OrderManagement: React.FC = () => {
   const router = useRouter()
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [loading, setLoading] = useState<boolean>(true)
   const [orders, setOrders] = useState<ApiOrder[]>([])
+  const [filteredOrders, setFilteredOrders] = useState<ApiOrder[]>([])
   const [products, setProducts] = useState<Product[]>([])
-  const [showAddForm, setShowAddForm] = useState<boolean>(false)
+  const [viewMode, setViewMode] = useState<ViewMode>('weekly')
   const [selectedOrder, setSelectedOrder] = useState<ApiOrder | null>(null)
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date())
+  const [showQuickOrderForm, setShowQuickOrderForm] = useState<boolean>(false)
   const [error, setError] = useState<string | null>(null)
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [orderToDelete, setOrderToDelete] = useState<ApiOrder | null>(null)
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState<boolean>(false)
+  const [detailDialogOpen, setDetailDialogOpen] = useState<boolean>(false)
 
   // Fetch orders and products with useCallback
   const fetchData = useCallback(async () => {
@@ -95,6 +125,7 @@ const OrderManagement: React.FC = () => {
       ])
 
       setOrders(ordersData)
+      setFilteredOrders(ordersData)
       setProducts(productsData)
     } catch (error) {
       const errorMessage =
@@ -106,28 +137,70 @@ const OrderManagement: React.FC = () => {
     }
   }, [])
 
+  // Filter orders when status filter changes
+  useEffect(() => {
+    if (statusFilter === 'all') {
+      setFilteredOrders(orders)
+    } else {
+      setFilteredOrders(orders.filter((order) => order.status === statusFilter))
+    }
+  }, [statusFilter, orders])
+
   // Use the memoized fetchData in useEffect
   useEffect(() => {
     fetchData()
   }, [fetchData])
 
   const handleNavigateBack = useCallback(() => {
-    router.push('/dashboard')
+    router.push('/admin/dashboard')
   }, [router])
+
+  const handleViewModeChange = (
+    _event: React.SyntheticEvent,
+    newMode: ViewMode
+  ) => {
+    setViewMode(newMode)
+  }
 
   const handleAddOrder = useCallback(() => {
     setSelectedOrder(null)
-    setShowAddForm(true)
+    setViewMode('form')
   }, [])
 
   const handleEditOrder = useCallback((order: ApiOrder) => {
     setSelectedOrder(order)
-    setShowAddForm(true)
+    setViewMode('form')
   }, [])
 
+  const handleDateSelect = useCallback((date: Date) => {
+    setSelectedDate(date)
+  }, [])
+
+  const handleQuickAdd = useCallback((date: Date) => {
+    setSelectedDate(date)
+    setShowQuickOrderForm(true)
+  }, [])
+
+  const handleOrderClick = useCallback((order: ApiOrder) => {
+    setSelectedOrder(order)
+    setDetailDialogOpen(true)
+  }, [])
+
+  const handleShowDeleteDialog = useCallback(
+    (orderId: string | number) => {
+      const orderToRemove = orders.find((order) => order.id === orderId)
+      if (orderToRemove) {
+        setOrderToDelete(orderToRemove)
+        setDeleteDialogOpen(true)
+      }
+    },
+    [orders]
+  )
+
   const handleCloseForm = useCallback(() => {
-    setShowAddForm(false)
+    setViewMode('weekly')
     setSelectedOrder(null)
+    setShowQuickOrderForm(false)
   }, [])
 
   const handleSaveOrder = useCallback(
@@ -158,8 +231,9 @@ const OrderManagement: React.FC = () => {
           setOrders((prevOrders) => [...prevOrders, updatedOrder])
         }
 
-        setShowAddForm(false)
+        setViewMode('weekly')
         setSelectedOrder(null)
+        setShowQuickOrderForm(false)
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : 'An unknown error occurred'
@@ -194,7 +268,7 @@ const OrderManagement: React.FC = () => {
   }, [])
 
   const handleGenerateBakingList = useCallback(() => {
-    router.push('/dashboard/orders/baking-list')
+    router.push('/admin/orders/baking-list')
   }, [router])
 
   const formatOrders = () => {
@@ -224,18 +298,16 @@ const OrderManagement: React.FC = () => {
 
   if (loading) {
     return (
-      <Base>
-        <Container
-          sx={{
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            height: '60vh',
-          }}
-        >
-          <CircularProgress />
-        </Container>
-      </Base>
+      <Container
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '60vh',
+        }}
+      >
+        <CircularProgress />
+      </Container>
     )
   }
 
@@ -326,32 +398,122 @@ const OrderManagement: React.FC = () => {
 
       <Box
         sx={{
-          mb: 3,
+          mb: 2,
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: 1,
         }}
       >
-        <Button onClick={handleNavigateBack}>← Back to Dashboard</Button>
-        <Box>
-          <Button
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography
+            variant="h5"
+            fontWeight={600}
+            sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+          >
+            Bestellungen
+            <Badge
+              badgeContent={orders.length}
+              color="primary"
+              sx={{
+                '& .MuiBadge-badge': {
+                  fontSize: '0.7rem',
+                  height: '18px',
+                  minWidth: '18px',
+                },
+              }}
+            />
+          </Typography>
+        </Box>
+
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {!isMobile && viewMode === 'weekly' && (
+            <FormControl size="small" variant="outlined" sx={{ minWidth: 120 }}>
+              <InputLabel id="status-filter-label">Status</InputLabel>
+              <Select
+                labelId="status-filter-label"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                label="Status"
+                size="small"
+                startAdornment={
+                  <FilterListIcon fontSize="small" sx={{ mr: 0.5 }} />
+                }
+              >
+                <MenuItem value="all">Alle</MenuItem>
+                <MenuItem value="Pending">Ausstehend</MenuItem>
+                <MenuItem value="Confirmed">Bestätigt</MenuItem>
+                <MenuItem value="Completed">Abgeschlossen</MenuItem>
+                <MenuItem value="Cancelled">Storniert</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+
+          <MuiButton
+            variant="outlined"
+            size="small"
+            color="inherit"
+            startIcon={<InsertDriveFileIcon />}
             onClick={handleGenerateBakingList}
-            style={{ marginRight: '10px' }}
           >
-            Generate Baking List
-          </Button>
-          <Fab
-            color="primary"
-            size="medium"
-            onClick={handleAddOrder}
-            aria-label="add order"
-          >
-            <AddIcon />
-          </Fab>
+            Backliste
+          </MuiButton>
+
+          {viewMode !== 'form' && (
+            <MuiButton
+              variant="contained"
+              size="small"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={handleAddOrder}
+            >
+              Neue Bestellung
+            </MuiButton>
+          )}
         </Box>
       </Box>
 
-      {showAddForm ? (
+      <Box sx={{ width: '100%', mb: 3 }}>
+        <Paper
+          sx={{
+            borderRadius: 1,
+            bgcolor: alpha(theme.palette.background.paper, 0.7),
+          }}
+          elevation={0}
+        >
+          <Tabs
+            value={viewMode}
+            onChange={handleViewModeChange}
+            variant="fullWidth"
+            indicatorColor="primary"
+            textColor="primary"
+            sx={{ borderBottom: 1, borderColor: 'divider' }}
+          >
+            <Tab
+              icon={<CalendarViewWeekIcon />}
+              label="Wochenübersicht"
+              value="weekly"
+              iconPosition="start"
+            />
+            <Tab
+              icon={<TableViewIcon />}
+              label="Tabelle"
+              value="table"
+              iconPosition="start"
+            />
+          </Tabs>
+        </Paper>
+      </Box>
+
+      {showQuickOrderForm ? (
+        <QuickOrderForm
+          products={products}
+          selectedDate={selectedDate}
+          onSave={handleSaveOrder}
+          onCancel={() => setShowQuickOrderForm(false)}
+        />
+      ) : viewMode === 'form' ? (
         <OrderForm
           products={products}
           order={
@@ -362,16 +524,116 @@ const OrderManagement: React.FC = () => {
           onSave={handleSaveOrder}
           onCancel={handleCloseForm}
         />
-      ) : (
-        <DataTable
-          title="Orders"
-          subtitle="Manage customer orders"
-          columns={columns}
-          data={formatOrders()}
-          searchEnabled={true}
-          emptyMessage="No orders available"
+      ) : viewMode === 'weekly' ? (
+        <WeeklyCalendar
+          orders={filteredOrders}
+          onDateSelect={handleDateSelect}
+          onOrderClick={handleOrderClick}
+          onAddOrder={handleQuickAdd}
+          onDeleteOrder={handleShowDeleteDialog}
         />
+      ) : (
+        <>
+          <Box sx={{ mb: 2, display: { xs: 'block', md: 'none' } }}>
+            <FormControl size="small" variant="outlined" fullWidth>
+              <InputLabel id="mobile-status-filter-label">
+                Status Filter
+              </InputLabel>
+              <Select
+                labelId="mobile-status-filter-label"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                label="Status Filter"
+                size="small"
+              >
+                <MenuItem value="all">Alle Bestellungen</MenuItem>
+                <MenuItem value="Pending">Nur Ausstehend</MenuItem>
+                <MenuItem value="Confirmed">Nur Bestätigt</MenuItem>
+                <MenuItem value="Completed">Nur Abgeschlossen</MenuItem>
+                <MenuItem value="Cancelled">Nur Storniert</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
+
+          <DataTable
+            title="Bestellungen"
+            subtitle={`${filteredOrders.length} Kundenbestellung${
+              filteredOrders.length !== 1 ? 'en' : ''
+            } ${statusFilter !== 'all' ? `(Status: ${statusFilter})` : ''}`}
+            columns={columns}
+            data={formatOrders()}
+            searchEnabled={true}
+            emptyMessage="Keine Bestellungen vorhanden"
+          />
+        </>
       )}
+
+      {/* Quick action button for mobile when in weekly view */}
+      {viewMode === 'weekly' && isMobile && (
+        <Box
+          sx={{
+            position: 'fixed',
+            bottom: 20,
+            right: 20,
+            zIndex: 10,
+          }}
+        >
+          <MuiButton
+            variant="contained"
+            color="primary"
+            onClick={() => handleQuickAdd(selectedDate)}
+            sx={{
+              width: 56,
+              height: 56,
+              borderRadius: '50%',
+              boxShadow: theme.shadows[8],
+            }}
+          >
+            <AddIcon />
+          </MuiButton>
+        </Box>
+      )}
+
+      {/* Order Detail Dialog */}
+      <OrderDetailDialog
+        order={selectedOrder}
+        open={detailDialogOpen}
+        onClose={() => setDetailDialogOpen(false)}
+        onEdit={handleEditOrder}
+        onDelete={handleShowDeleteDialog}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={deleteDialogOpen}
+        onClose={() => setDeleteDialogOpen(false)}
+      >
+        <DialogTitle>Bestellung löschen</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Möchten Sie diese Bestellung wirklich löschen? Diese Aktion kann
+            nicht rückgängig gemacht werden.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <MuiButton onClick={() => setDeleteDialogOpen(false)}>
+            Abbrechen
+          </MuiButton>
+          <MuiButton
+            onClick={() => {
+              if (orderToDelete) {
+                handleDeleteOrder(orderToDelete.id)
+                setDeleteDialogOpen(false)
+                setDetailDialogOpen(false)
+              }
+            }}
+            color="error"
+            autoFocus
+          >
+            Löschen
+          </MuiButton>
+        </DialogActions>
+      </Dialog>
     </Container>
   )
 }
