@@ -1,6 +1,9 @@
 // src/services/types.ts
 export type TimeRange = 'day' | 'week' | 'month' | 'year'
-
+export interface Ingredient {
+  name: string
+  quantity: string
+}
 export interface Product {
   id: number
   name: string

@@ -1,5 +1,5 @@
 import React from 'react'
-import { Recipe } from '@/types/recipe'
+import { Recipe } from '../../../services/types'
 import {
   Table,
   TableBody,
@@ -11,7 +11,7 @@ import {
   Button,
   Typography,
   Box,
-  Tooltip
+  Tooltip,
 } from '@mui/material'
 import EditIcon from '@mui/icons-material/Edit'
 import VisibilityIcon from '@mui/icons-material/Visibility'
@@ -19,16 +19,24 @@ import VisibilityIcon from '@mui/icons-material/Visibility'
 interface RecipeListProps {
   recipes: Recipe[]
   onSelectRecipe: (recipe: Recipe) => void // For viewing details
-  onEditRecipe: (recipe: Recipe) => void   // For jumping to edit form
+  onEditRecipe: (recipe: Recipe) => void // For jumping to edit form
   // onDeleteRecipe: (recipeId: string) => void // Placeholder
 }
 
-const RecipeList: React.FC<RecipeListProps> = ({ recipes, onSelectRecipe, onEditRecipe }) => {
+const RecipeList: React.FC<RecipeListProps> = ({
+  recipes,
+  onSelectRecipe,
+  onEditRecipe,
+}) => {
   if (!recipes.length) {
     return (
       <Paper elevation={1} sx={{ p: 3, textAlign: 'center', mt: 2 }}>
-        <Typography variant="subtitle1" gutterBottom>No recipes found.</Typography>
-        <Typography variant="body2">Try adding a new recipe to get started!</Typography>
+        <Typography variant="subtitle1" gutterBottom>
+          No recipes found.
+        </Typography>
+        <Typography variant="body2">
+          Try adding a new recipe to get started!
+        </Typography>
       </Paper>
     )
   }
@@ -41,7 +49,9 @@ const RecipeList: React.FC<RecipeListProps> = ({ recipes, onSelectRecipe, onEdit
             <TableCell sx={{ fontWeight: 'bold' }}>Recipe Name</TableCell>
             <TableCell sx={{ fontWeight: 'bold' }}>Category</TableCell>
             <TableCell sx={{ fontWeight: 'bold' }}>Prep Time</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>Actions</TableCell>
+            <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>
+              Actions
+            </TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
