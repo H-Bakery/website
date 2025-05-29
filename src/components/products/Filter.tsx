@@ -25,19 +25,22 @@ const FILTERS = [
 const Filter: React.FC<Props> = (props) => {
   const { setProducts } = props
   const [selected, setSelected] = React.useState('')
+  // Define filter function with useCallback
+  const filter = React.useCallback(
+    (input: string) => {
+      const newArray = PRODUCTS.filter((product) =>
+        product.category.includes(input)
+      ).map((filteredName) => filteredName)
+
+      setProducts(newArray)
+      setSelected(input)
+    },
+    [setProducts]
+  )
 
   React.useEffect(() => {
     filter('Brot')
-  }, [])
-
-  const filter = (input: String) => {
-    const newArray = PRODUCTS.filter((product) =>
-      product.category.includes(input)
-    ).map((filteredName) => filteredName)
-
-    setProducts(newArray)
-    setSelected(input as string)
-  }
+  }, [setProducts, filter])
 
   return (
     <Box sx={styles.root}>

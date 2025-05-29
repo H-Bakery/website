@@ -18,7 +18,6 @@ import PhoneIcon from '@mui/icons-material/Phone'
 import Hero from '../components/home/hero/Hero'
 import Map from '../components/home/map'
 import Wochenanfebote from '../components/home/wochenanfebote'
-import Products from '../components/home/products'
 import Testimonial from '../components/home/testimonial'
 import News from '../components/home/news'
 import CallToAction from '../components/CallToAction'
@@ -64,26 +63,6 @@ export default function HomePage() {
 
       <Box id="map-section">
         <Map />
-      </Box>
-
-      {/* Products Section */}
-      <Box component="section" sx={{ py: { xs: 4, md: 6 } }}>
-        <Container>
-          <Box
-            sx={{
-              mb: 3,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <Typography variant="h3" component="h2" fontWeight="bold">
-              Sortiment
-            </Typography>
-            <Button onClick={navigateToProducts}>Mehr</Button>
-          </Box>
-          <Products items={featuredProducts} />
-        </Container>
       </Box>
 
       <Testimonial />

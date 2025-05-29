@@ -10,6 +10,7 @@ import {
   CardMedia,
 } from '@mui/material'
 import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew'
+import Image from 'next/image'
 
 import { formatter } from '../../../utils/formatPrice'
 
@@ -52,7 +53,9 @@ const ProductCard: React.FC<Props> = (props) => {
       <CardActionArea>
         <CardMedia component="div" sx={styles.imageContainer}>
           {/* Using alt text for better accessibility */}
-          <img
+          <Image
+            width={200}
+            height={150}
             src={image}
             alt={`Bild von ${name}`}
             style={{

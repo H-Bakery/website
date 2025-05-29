@@ -76,6 +76,8 @@ export default function ProductPage({ params }) {
                 aria-label={`Bild von ${product.name}`}
               >
                 <Image
+                  width={200}
+                  height={150}
                   src={product.image}
                   alt={product.name}
                   style={styles.productImage}

@@ -7,6 +7,7 @@ import { Product } from '../../components/products/types'
 import { formatter } from '../../utils/formatPrice'
 import Button from '../../components/button/Index'
 import { CartContext } from '../../context/CartContext'
+import Image from 'next/image'
 
 interface ProductDetailProps {
   product: Product
@@ -21,7 +22,7 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       <Grid container spacing={2}>
         <Grid item xs={6}>
           <Box sx={styles.image}>
-            <img src={product?.image} alt={product?.name} />
+            <Image src={product?.image} alt={product?.name} />
           </Box>
         </Grid>
         <Grid item xs={6}>

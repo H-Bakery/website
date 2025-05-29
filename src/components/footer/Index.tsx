@@ -12,7 +12,6 @@ import Link from './Link'
 import Socials from '../Socials'
 
 const Footer: React.FC = () => {
-  const router = useRouter()
   const theme = useTheme()
 
   return (
@@ -44,6 +43,9 @@ const Footer: React.FC = () => {
           </Typography>
           <Box>
             <Link label="Impressum" path="/imprint" />
+          </Box>
+          <Box>
+            <Link label="Login" path="/login" />
           </Box>
         </Box>
         <Box sx={styles.image}>
