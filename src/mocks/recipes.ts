@@ -115,7 +115,7 @@ export const mockRecipes: Recipe[] = [
       'Preheat oven to 400°F (200°C). Line a 12-cup muffin tin with paper liners.',
       'In a large bowl, whisk together flour, sugar, baking powder, and salt.',
       'In a separate medium bowl, whisk together the egg, milk, melted butter, and vanilla extract.',
-      'Pour the wet ingredients into the dry ingredients and stir until just combined. Do not overmix; a few lumps are okay.',
+      'Pour the wet ingredients into the dry ingredients and stir until just combined. Do not overmix a few lumps are okay',
       'Gently fold in the blueberries.',
       'Divide the batter evenly among the prepared muffin cups.',
       'Bake for 18-20 minutes, or until a toothpick inserted into the center of a muffin comes out clean.',
