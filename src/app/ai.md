@@ -8,7 +8,9 @@ This directory contains all the routes and pages for the Next.js application usi
 - `page.tsx`: Homepage component
 - `ThemeRegistry.tsx`: Material UI theme configuration for the App Router (always uses light theme)
 - `admin/`: Admin area routes with dark mode support
-- `bakery/`: Bakery production process management
+  - `bakery/`:
+    - `processes/`: Production process management.
+    - `recipes/`: Recipe and review management for bakery products.
 - `dashboard/`: Analytics and metrics dashboards
 - `products/`: Product catalog and management
 - `orders/`: Order processing system

@@ -37,6 +37,9 @@ The settings section provides configuration options for:
 - Language and localization preferences
 - Security settings
 
+### Recipe Management
+Allows administrators to manage professional recipes, including ingredients, instructions, and customer reviews. Accessible via `/admin/bakery/recipes`.
+
 ## Integration
 
 The admin area integrates with:

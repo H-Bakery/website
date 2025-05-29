@@ -37,6 +37,7 @@ import LogoutIcon from '@mui/icons-material/Logout'
 import BarChartIcon from '@mui/icons-material/BarChart'
 import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
 import StorefrontIcon from '@mui/icons-material/Storefront'
+import MenuBookIcon from '@mui/icons-material/MenuBook';
 import CloseIcon from '@mui/icons-material/Close'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import NotificationsIcon from '@mui/icons-material/Notifications'
@@ -158,6 +159,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           name: 'Produktionsprozesse',
           icon: <BakeryDiningIcon />,
           path: '/admin/bakery/processes',
+          roles: ['Management', 'Production'],
+        },
+        {
+          name: 'Rezepte',
+          icon: <MenuBookIcon />,
+          path: '/admin/bakery/recipes',
           roles: ['Management', 'Production'],
         },
         {
