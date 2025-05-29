@@ -8,23 +8,27 @@ import { lightTheme, darkTheme } from '../theme'
 import CartProvider from '../context/CartContext'
 import { Header } from '../components/header'
 import Footer from '../components/footer/Index'
-import { ThemeProvider as CustomThemeProvider, useTheme } from '../context/ThemeContext'
+import {
+  ThemeProvider as CustomThemeProvider,
+  useTheme,
+} from '../context/ThemeContext'
 
 // Inner component that uses the theme context
 function ThemedContent({ children }: { children: React.ReactNode }) {
-  const { mode } = useTheme();
-  const currentTheme = mode === 'dark' ? darkTheme : lightTheme;
-  
+  const { mode } = useTheme()
+  const currentTheme = mode === 'dark' ? darkTheme : lightTheme
+
   return (
     <MuiThemeProvider theme={currentTheme}>
       <CartProvider>
         <CssBaseline />
         <Box
           sx={{
-            background: mode === 'light' 
-              ? 'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #D8E1F4'
-              : 'none', // No gradient in dark mode
-            bgcolor: mode === 'dark' ? 'background.default' : 'transparent'
+            background:
+              mode === 'light'
+                ? 'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #D8E1F4'
+                : 'none', // No gradient in dark mode
+            bgcolor: mode === 'dark' ? 'background.default' : 'transparent',
           }}
         >
           <Header />
@@ -33,7 +37,7 @@ function ThemedContent({ children }: { children: React.ReactNode }) {
         </Box>
       </CartProvider>
     </MuiThemeProvider>
-  );
+  )
 }
 
 export default function ThemeRegistry({
