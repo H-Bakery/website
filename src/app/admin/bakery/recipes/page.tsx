@@ -64,36 +64,42 @@ export default function RecipeManagementPage() {
       recipeId: recipeId,
       date: new Date().toISOString(),
     }
+    let updatedSelectedRecipe: RecipeType | null = null;
     setRecipes((prevRecipes) =>
       prevRecipes.map((recipe) => {
         if (recipe.id === recipeId) {
-          const updatedReviews = [...(recipe.reviews || []), newReview]
-          const updatedSelectedRecipe = { ...recipe, reviews: updatedReviews }
-          setSelectedRecipe(updatedSelectedRecipe) // Update the view immediately
-          return updatedSelectedRecipe
+          const updatedReviews = [...(recipe.reviews || []), newReview];
+          updatedSelectedRecipe = { ...recipe, reviews: updatedReviews };
+          return updatedSelectedRecipe;
         }
-        return recipe
+        return recipe;
       })
-    )
+    );
+    if (updatedSelectedRecipe) {
+      setSelectedRecipe(updatedSelectedRecipe); // Update the view separately
+    }
   }
 
   const handleUpdateReviewInRecipe = (
     recipeId: string,
     updatedReview: ReviewType
   ) => {
+    let updatedSelectedRecipe: RecipeType | null = null;
     setRecipes((prevRecipes) =>
       prevRecipes.map((recipe) => {
         if (recipe.id === recipeId) {
           const updatedReviews = (recipe.reviews || []).map((r) =>
             r.id === updatedReview.id ? updatedReview : r
-          )
-          const updatedSelectedRecipe = { ...recipe, reviews: updatedReviews }
-          setSelectedRecipe(updatedSelectedRecipe) // Update the view immediately
-          return updatedSelectedRecipe
+          );
+          updatedSelectedRecipe = { ...recipe, reviews: updatedReviews };
+          return updatedSelectedRecipe;
         }
-        return recipe
+        return recipe;
       })
-    )
+    );
+    if (updatedSelectedRecipe) {
+      setSelectedRecipe(updatedSelectedRecipe); // Update the view separately
+    }
   }
 
   const handleDeleteReviewFromRecipe = (recipeId: string, reviewId: string) => {
