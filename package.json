@@ -25,6 +25,7 @@
     "@mui/material-nextjs": "^5.15.11",
     "date-fns": "^4.1.0",
     "feed-reader": "^6.0.2",
+    "html-to-image": "^1.11.13",
     "leaflet": "^1.9.4",
     "next": "^15.2.4",
     "next-seo": "^5.5.0",
