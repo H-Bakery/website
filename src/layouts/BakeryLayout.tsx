@@ -44,6 +44,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications'
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import SecurityIcon from '@mui/icons-material/Security'
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
+import ImageIcon from '@mui/icons-material/Image' // Added import
 import Image from 'next/image'
 import '../app/print.css'
 import ThemeToggler from '../components/theme/ThemeToggler'
@@ -149,6 +150,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           icon: <DashboardIcon />,
           path: '/admin/dashboard',
           roles: ['Management', 'Production', 'Sales'],
+        },
+        {
+          name: 'Social Media',
+          icon: <ImageIcon />,
+          path: '/admin/social-media',
+          roles: ['Management', 'Production', 'Sales'], // Assuming Sales might also use this
         },
       ],
     },
