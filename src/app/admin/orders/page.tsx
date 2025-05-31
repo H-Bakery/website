@@ -42,7 +42,8 @@ import QuickOrderForm from '../../../components/orders/QuickOrderForm'
 import WeeklyCalendar from '../../../components/orders/weekly-view/WeeklyCalendar'
 import OrderDetailDialog from '../../../components/orders/weekly-view/OrderDetailDialog'
 import OrderDetailView from '../../../components/orders/OrderDetailView'
-import { Order, OrderItem, Product } from '../../../services/types'
+import { Product } from '../../../types/product'
+import { Order, OrderItem } from '../../../services/types'
 
 // Define the order status type that the form expects
 type OrderStatus = 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled'

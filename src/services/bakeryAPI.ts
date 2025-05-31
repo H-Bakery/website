@@ -1,7 +1,7 @@
 // src/services/bakeryAPI.ts
 'use client'
+import { Product } from '../types/product'
 import {
-  Product,
   SalesData,
   ProductionData,
   FinancialData,
@@ -25,13 +25,16 @@ const generateMockData = () => {
   // Use real product data and enhance it with additional fields needed for dashboards
   const products: Product[] = PRODUCTS.map((product) => ({
     ...product,
-    // Add cost field (simulate 30-40% margin)
-    cost: Number((product.price * (0.6 + Math.random() * 0.1)).toFixed(2)),
-    // Add stock field (random amount)
-    stock: Math.floor(Math.random() * 50) + 5,
-    // Make sure we have description field
+    // Ensure image and description are present, falling back to defaults if necessary
+    image: product.image || 'default_image_path.jpg', // Add a default image path
     description:
       product.description || `Frische ${product.name} aus unserer Bäckerei.`,
+    // Add stock field (random amount)
+    stock: Math.floor(Math.random() * 50) + 5,
+    // Add dailyTarget field (random number between 10 and 50)
+    dailyTarget: Math.floor(Math.random() * 41) + 10,
+    // Add isActive field (randomly true or false)
+    isActive: Math.random() < 0.5,
   }))
 
   // Add sales data based on real products
@@ -645,6 +648,114 @@ const bakeryAPI = {
       console.error('Error fetching products, using mock data:', error)
       // Fall back to mock data if API fails
       return mockData.products
+    }
+  },
+
+  getProductById: async (id: number): Promise<Product> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/products/${id}`)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch product with id ${id}`)
+      }
+      return await response.json()
+    } catch (error) {
+      console.error(
+        `Error fetching product with id ${id}, using mock data:`,
+        error
+      )
+      // Fallback to mock data: find product by id
+      const product = mockData.products.find((p) => p.id === id)
+      if (product) {
+        return product
+      } else {
+        throw new Error(`Mock product with id ${id} not found`)
+      }
+    }
+  },
+
+  createProduct: async (productData: Omit<Product, 'id'>): Promise<Product> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productData),
+      })
+      if (!response.ok) {
+        throw new Error('Failed to create product')
+      }
+      return await response.json()
+    } catch (error) {
+      console.error('Error creating product, using mock implementation:', error)
+      // Mock implementation: add to mockData.products
+      const newId =
+        mockData.products.length > 0
+          ? Math.max(...mockData.products.map((p) => p.id)) + 1
+          : 1
+      const newProduct: Product = { id: newId, ...productData }
+      mockData.products.push(newProduct)
+      return newProduct
+    }
+  },
+
+  updateProduct: async (
+    id: number,
+    productData: Partial<Omit<Product, 'id'>>
+  ): Promise<Product> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/products/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(productData),
+      })
+      if (!response.ok) {
+        throw new Error(`Failed to update product with id ${id}`)
+      }
+      return await response.json()
+    } catch (error) {
+      console.error(
+        `Error updating product with id ${id}, using mock implementation:`,
+        error
+      )
+      // Mock implementation: update in mockData.products
+      const productIndex = mockData.products.findIndex((p) => p.id === id)
+      if (productIndex > -1) {
+        mockData.products[productIndex] = {
+          ...mockData.products[productIndex],
+          ...productData,
+        }
+        return mockData.products[productIndex]
+      } else {
+        throw new Error(`Mock product with id ${id} not found for update`)
+      }
+    }
+  },
+
+  deleteProduct: async (id: number): Promise<{ message: string }> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/products/${id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        throw new Error(`Failed to delete product with id ${id}`)
+      }
+      return await response.json()
+    } catch (error) {
+      console.error(
+        `Error deleting product with id ${id}, using mock implementation:`,
+        error
+      )
+      // Mock implementation: remove from mockData.products
+      const productIndex = mockData.products.findIndex((p) => p.id === id)
+      if (productIndex > -1) {
+        mockData.products.splice(productIndex, 1)
+        return { message: `Product with id ${id} deleted successfully (mock)` }
+      } else {
+        throw new Error(`Mock product with id ${id} not found for deletion`)
+      }
     }
   },
 

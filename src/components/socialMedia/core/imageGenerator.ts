@@ -585,6 +585,7 @@ const drawLogoPlaceholder = (
   ctx.fill()
 
   // Add simple "H" text as logo placeholder
+  // TODO: Replace with actual "wappen"
   ctx.font = 'bold 70px "Averia Serif Libre", serif'
   ctx.fillStyle = '#FFFFFF'
   ctx.textAlign = 'center'

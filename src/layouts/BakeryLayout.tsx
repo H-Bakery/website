@@ -152,6 +152,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           roles: ['Management', 'Production', 'Sales'],
         },
         {
+          name: 'Produkte',
+          icon: <DashboardIcon />,
+          path: '/admin/products',
+          roles: ['Management', 'Production', 'Sales'],
+        },
+        {
           name: 'Social Media',
           icon: <ImageIcon />,
           path: '/admin/social-media',
