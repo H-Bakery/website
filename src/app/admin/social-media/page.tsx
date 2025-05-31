@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import SocialMediaContentCreator from '../../../components/social-media/ContentCreator'
+import SocialMediaContentCreator from '../../../components/socialMedia/SocialMediaContentCreator'
 import {
   Container,
   Typography,
@@ -11,8 +11,8 @@ import {
 } from '@mui/material'
 import Link from 'next/link'
 import HomeIcon from '@mui/icons-material/Home'
+import TextSnippetIcon from '@mui/icons-material/TextSnippet'
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
-import TextFieldsIcon from '@mui/icons-material/PhotoCamera'
 
 export default function SocialMediaPage() {
   const theme = useTheme()
@@ -76,7 +76,7 @@ export default function SocialMediaPage() {
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', mt: 1, mb: 1 }}>
             <Chip
-              icon={<TextFieldsIcon />}
+              icon={<TextSnippetIcon />}
               label="Text-fokussierte Designs"
               size="small"
               color="primary"
