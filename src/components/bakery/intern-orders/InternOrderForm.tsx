@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { InternOrder } from '../../../types';
+import React, { useState, useEffect } from 'react'
+import { InternOrder } from '../../../types'
 import {
   Box,
   Button,
@@ -18,82 +18,97 @@ import {
   ListItemSecondaryAction,
   Divider,
   Tooltip,
-} from '@mui/material';
-import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline';
-import DeleteIcon from '@mui/icons-material/Delete';
-import CloudUploadIcon from '@mui/icons-material/CloudUpload'; // For file input
+} from '@mui/material'
+import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'
+import DeleteIcon from '@mui/icons-material/Delete'
+import CloudUploadIcon from '@mui/icons-material/CloudUpload' // For file input
 
 // Define a type for the item within the form state
 interface FormItem {
-  itemName: string;
-  itemQuantity: number;
-  unit?: string;
+  itemName: string
+  itemQuantity: number
+  unit?: string
 }
 
 interface InternOrderFormProps {
-  order?: InternOrder | null; // For editing, null for new order
-  onSubmit: (formData: Omit<InternOrder, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  onCancel: () => void;
+  order?: InternOrder | null // For editing, null for new order
+  onSubmit: (
+    formData: Omit<InternOrder, 'id' | 'createdAt' | 'updatedAt'>
+  ) => void
+  onCancel: () => void
 }
 
-const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCancel }) => {
-  const [orderName, setOrderName] = useState('');
-  const [description, setDescription] = useState('');
-  const [quantity, setQuantity] = useState<number | ''>('');
-  const [status, setStatus] = useState<InternOrder['status']>('pending');
-  const [assignedTo, setAssignedTo] = useState('');
-  const [billImage, setBillImage] = useState<File | null>(null);
-  const [billImageUrlPreview, setBillImageUrlPreview] = useState<string | null>(null);
-  const [items, setItems] = useState<FormItem[]>([]);
-  const [newItemName, setNewItemName] = useState('');
-  const [newItemQuantity, setNewItemQuantity] = useState<number | ''>('');
-  const [newItemUnit, setNewItemUnit] = useState('');
+const InternOrderForm: React.FC<InternOrderFormProps> = ({
+  order,
+  onSubmit,
+  onCancel,
+}) => {
+  const [orderName, setOrderName] = useState('')
+  const [description, setDescription] = useState('')
+  const [quantity, setQuantity] = useState<number | ''>('')
+  const [status, setStatus] = useState<InternOrder['status']>('pending')
+  const [assignedTo, setAssignedTo] = useState('')
+  const [billImage, setBillImage] = useState<File | null>(null)
+  const [billImageUrlPreview, setBillImageUrlPreview] = useState<string | null>(
+    null
+  )
+  const [items, setItems] = useState<FormItem[]>([])
+  const [newItemName, setNewItemName] = useState('')
+  const [newItemQuantity, setNewItemQuantity] = useState<number | ''>('')
+  const [newItemUnit, setNewItemUnit] = useState('')
 
   useEffect(() => {
     if (order) {
-      setOrderName(order.orderName);
-      setDescription(order.description);
-      setQuantity(order.quantity || '');
-      setStatus(order.status);
-      setAssignedTo(order.assignedTo || '');
-      setBillImageUrlPreview(order.billImageUrl || null);
-      setItems(order.items || []);
+      setOrderName(order.orderName)
+      setDescription(order.description)
+      setQuantity(order.quantity || '')
+      setStatus(order.status)
+      setAssignedTo(order.assignedTo || '')
+      setBillImageUrlPreview(order.billImageUrl || null)
+      setItems(order.items || [])
     } else {
       // Reset form for new order
-      setOrderName('');
-      setDescription('');
-      setQuantity('');
-      setStatus('pending');
-      setAssignedTo('');
-      setBillImage(null);
-      setBillImageUrlPreview(null);
-      setItems([]);
+      setOrderName('')
+      setDescription('')
+      setQuantity('')
+      setStatus('pending')
+      setAssignedTo('')
+      setBillImage(null)
+      setBillImageUrlPreview(null)
+      setItems([])
     }
-  }, [order]);
+  }, [order])
 
   const handleAddItem = () => {
     if (newItemName && newItemQuantity > 0) {
-      setItems([...items, { itemName: newItemName, itemQuantity: Number(newItemQuantity), unit: newItemUnit }]);
-      setNewItemName('');
-      setNewItemQuantity('');
-      setNewItemUnit('');
+      setItems([
+        ...items,
+        {
+          itemName: newItemName,
+          itemQuantity: Number(newItemQuantity),
+          unit: newItemUnit,
+        },
+      ])
+      setNewItemName('')
+      setNewItemQuantity('')
+      setNewItemUnit('')
     }
-  };
+  }
 
   const handleRemoveItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index));
-  };
+    setItems(items.filter((_, i) => i !== index))
+  }
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
-      const file = event.target.files[0];
-      setBillImage(file);
-      setBillImageUrlPreview(URL.createObjectURL(file)); // Show preview
+      const file = event.target.files[0]
+      setBillImage(file)
+      setBillImageUrlPreview(URL.createObjectURL(file)) // Show preview
     }
-  };
+  }
 
   const handleSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
+    event.preventDefault()
     const formData: Omit<InternOrder, 'id' | 'createdAt' | 'updatedAt'> = {
       orderName,
       description,
@@ -101,17 +116,24 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
       assignedTo: assignedTo || undefined,
       // For mock purposes, we'll just pass the preview URL or existing URL.
       // A real backend would handle the file upload and return a URL.
-      billImageUrl: billImage ? billImageUrlPreview || undefined : order?.billImageUrl || undefined,
+      billImageUrl: billImage
+        ? billImageUrlPreview || undefined
+        : order?.billImageUrl || undefined,
       items: items.length > 0 ? items : undefined,
       quantity: quantity ? Number(quantity) : undefined,
       // createdBy will be handled by the service/backend
-    };
-    onSubmit(formData);
-  };
+    }
+    onSubmit(formData)
+  }
 
   return (
     <Paper elevation={2} sx={{ p: { xs: 2, md: 3 }, borderRadius: '12px' }}>
-      <Typography variant="h5" component="h2" gutterBottom sx={{ fontWeight: 'bold', mb: 3 }}>
+      <Typography
+        variant="h5"
+        component="h2"
+        gutterBottom
+        sx={{ fontWeight: 'bold', mb: 3 }}
+      >
         {order ? 'Edit Intern Order' : 'Create New Intern Order'}
       </Typography>
       <form onSubmit={handleSubmit}>
@@ -132,7 +154,9 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
               <Select
                 labelId="status-label"
                 value={status}
-                onChange={(e) => setStatus(e.target.value as InternOrder['status'])}
+                onChange={(e) =>
+                  setStatus(e.target.value as InternOrder['status'])
+                }
                 label="Status"
                 required
               >
@@ -169,7 +193,9 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
               label="General Quantity (Optional, if no specific items)"
               type="number"
               value={quantity}
-              onChange={(e) => setQuantity(e.target.value === '' ? '' : Number(e.target.value))}
+              onChange={(e) =>
+                setQuantity(e.target.value === '' ? '' : Number(e.target.value))
+              }
               fullWidth
               variant="outlined"
               inputProps={{ min: 1 }}
@@ -178,7 +204,11 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
 
           {/* Itemized List Section */}
           <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom sx={{ mt: 2, fontWeight: 500 }}>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ mt: 2, fontWeight: 500 }}
+            >
               Items (Optional)
             </Typography>
             <List dense>
@@ -199,7 +229,12 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
                   />
                   <ListItemSecondaryAction>
                     <Tooltip title="Remove Item">
-                      <IconButton edge="end" aria-label="delete" onClick={() => handleRemoveItem(index)} color="error">
+                      <IconButton
+                        edge="end"
+                        aria-label="delete"
+                        onClick={() => handleRemoveItem(index)}
+                        color="error"
+                      >
                         <DeleteIcon />
                       </IconButton>
                     </Tooltip>
@@ -207,7 +242,18 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
                 </ListItem>
               ))}
             </List>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: items.length > 0 ? 1 : 0, p: 1, border: '1px dashed', borderColor: 'divider', borderRadius: '4px' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                mt: items.length > 0 ? 1 : 0,
+                p: 1,
+                border: '1px dashed',
+                borderColor: 'divider',
+                borderRadius: '4px',
+              }}
+            >
               <TextField
                 label="Item Name"
                 value={newItemName}
@@ -219,7 +265,11 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
                 label="Qty"
                 type="number"
                 value={newItemQuantity}
-                onChange={(e) => setNewItemQuantity(e.target.value === '' ? '' : Number(e.target.value))}
+                onChange={(e) =>
+                  setNewItemQuantity(
+                    e.target.value === '' ? '' : Number(e.target.value)
+                  )
+                }
                 size="small"
                 sx={{ width: '80px' }}
                 inputProps={{ min: 1 }}
@@ -233,9 +283,17 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
               />
               <Tooltip title="Add Item">
                 <span>
-                <IconButton onClick={handleAddItem} color="primary" disabled={!newItemName || !newItemQuantity || Number(newItemQuantity) <= 0}>
-                  <AddCircleOutlineIcon />
-                </IconButton>
+                  <IconButton
+                    onClick={handleAddItem}
+                    color="primary"
+                    disabled={
+                      !newItemName ||
+                      !newItemQuantity ||
+                      Number(newItemQuantity) <= 0
+                    }
+                  >
+                    <AddCircleOutlineIcon />
+                  </IconButton>
                 </span>
               </Tooltip>
             </Box>
@@ -243,7 +301,11 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
 
           {/* Bill Image Upload Section */}
           <Grid item xs={12}>
-            <Typography variant="h6" gutterBottom sx={{ mt: 2, fontWeight: 500 }}>
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{ mt: 2, fontWeight: 500 }}
+            >
               Bill Image (Optional)
             </Typography>
             <Button
@@ -254,7 +316,12 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
               sx={{ py: 1.5 }}
             >
               Upload Bill Image
-              <input type="file" hidden accept="image/*" onChange={handleFileChange} />
+              <input
+                type="file"
+                hidden
+                accept="image/*"
+                onChange={handleFileChange}
+              />
             </Button>
             {billImageUrlPreview && (
               <Box sx={{ mt: 2, textAlign: 'center' }}>
@@ -262,19 +329,31 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
                 <img
                   src={billImageUrlPreview}
                   alt="Bill preview"
-                  style={{ maxHeight: '150px', maxWidth: '100%', marginTop: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  style={{
+                    maxHeight: '150px',
+                    maxWidth: '100%',
+                    marginTop: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                  }}
                 />
               </Box>
             )}
-             {!billImage && order?.billImageUrl && !billImageUrlPreview && (
-                <Box sx={{ mt: 2, textAlign: 'center' }}>
-                    <Typography variant="caption">Current Bill Image:</Typography>
-                    <img
-                        src={order.billImageUrl}
-                        alt="Current bill"
-                        style={{ maxHeight: '150px', maxWidth: '100%', marginTop: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
-                    />
-                </Box>
+            {!billImage && order?.billImageUrl && !billImageUrlPreview && (
+              <Box sx={{ mt: 2, textAlign: 'center' }}>
+                <Typography variant="caption">Current Bill Image:</Typography>
+                <img
+                  src={order.billImageUrl}
+                  alt="Current bill"
+                  style={{
+                    maxHeight: '150px',
+                    maxWidth: '100%',
+                    marginTop: '8px',
+                    borderRadius: '4px',
+                    border: '1px solid #ddd',
+                  }}
+                />
+              </Box>
             )}
           </Grid>
 
@@ -291,7 +370,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({ order, onSubmit, onCa
         </Grid>
       </form>
     </Paper>
-  );
-};
+  )
+}
 
-export default InternOrderForm;
+export default InternOrderForm

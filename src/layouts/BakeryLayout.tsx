@@ -38,7 +38,7 @@ import BarChartIcon from '@mui/icons-material/BarChart'
 import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
 import StorefrontIcon from '@mui/icons-material/Storefront'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
-import ListAltIcon from '@mui/icons-material/ListAlt'; // Or another suitable icon
+import ListAltIcon from '@mui/icons-material/ListAlt'
 import CloseIcon from '@mui/icons-material/Close'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import NotificationsIcon from '@mui/icons-material/Notifications'

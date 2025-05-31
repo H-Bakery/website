@@ -1,10 +1,11 @@
-import { InternOrder } from '../types/internOrder';
+import { InternOrder } from '../types/internOrder'
 
 export const mockInternOrders: InternOrder[] = [
   {
     id: 'order-001',
     orderName: 'Weekly Market Stock Replenish',
-    description: 'Restock vegetables, fruits, and packaging for the weekend market stall.',
+    description:
+      'Restock vegetables, fruits, and packaging for the weekend market stall.',
     status: 'pending',
     assignedTo: 'John Doe',
     createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
@@ -31,7 +32,8 @@ export const mockInternOrders: InternOrder[] = [
   {
     id: 'order-003',
     orderName: 'Cleaning Supplies for Bakery',
-    description: 'Order standard cleaning supplies - detergent, sponges, paper towels.',
+    description:
+      'Order standard cleaning supplies - detergent, sponges, paper towels.',
     status: 'done',
     assignedTo: 'Mike Lee',
     createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
@@ -52,4 +54,4 @@ export const mockInternOrders: InternOrder[] = [
     updatedAt: new Date().toISOString(),
     createdBy: 'Sales Team',
   },
-];
+]
