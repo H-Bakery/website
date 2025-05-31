@@ -68,7 +68,8 @@ export default function AdminProductsPage() {
   const uniqueCategories = React.useMemo(() => {
     if (!products) return []
     const allCategories = products.map((p) => p.category)
-    return [...new Set(allCategories)].sort()
+    // Fixed: converted Set to Array explicitly to avoid iteration issues
+    return Array.from(new Set(allCategories)).sort()
   }, [products])
 
   const filteredProducts = React.useMemo(() => {

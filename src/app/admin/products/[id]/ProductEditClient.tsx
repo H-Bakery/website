@@ -307,7 +307,7 @@ export default function ProductEditClient({ productId }: { productId: string }) 
                   InputProps={{
                     startAdornment: (
                       <InputAdornment position="start">
-                        {formatter.currencySymbol || '€'}
+                        {'€'}
                       </InputAdornment>
                     ),
                     inputProps: { min: 0, step: 0.01 },
