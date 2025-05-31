@@ -12,6 +12,7 @@ export interface TextElement {
   fontWeight?: 'normal' | 'bold'
   placeholder: string
   required: boolean
+  highlight?: boolean
 }
 
 export interface ImageElement {
@@ -19,6 +20,8 @@ export interface ImageElement {
   src?: string
   alt?: string
   required: boolean
+  aspectRatio?: string
+  isBackground?: boolean
 }
 
 export interface ColorScheme {
@@ -27,6 +30,11 @@ export interface ColorScheme {
   background: string
   text: string
   accent: string
+}
+
+export interface TextPanelStyle {
+  background: string
+  textColor: string
 }
 
 export interface Template {
@@ -40,6 +48,9 @@ export interface Template {
   imageElements: ImageElement[]
   backgroundImage?: string
   colors: ColorScheme
+  backgroundStyle?: string
+  textPanelStyle?: TextPanelStyle
+  overlayStyle?: string
 }
 
 export interface SocialMediaContent {
