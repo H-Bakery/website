@@ -1,7 +1,7 @@
 // src/components/admin/products/ProductFilters.tsx
-'use client';
+'use client'
 
-import React from 'react';
+import React from 'react'
 import {
   Box,
   TextField,
@@ -11,16 +11,19 @@ import {
   InputLabel,
   Grid,
   SelectChangeEvent,
-} from '@mui/material';
+} from '@mui/material'
 
 interface ProductFiltersProps {
-  categories: string[];
+  categories: string[]
   filterValues: {
-    name: string;
-    category: string;
-    status: string;
-  };
-  onFilterChange: (filterName: keyof ProductFiltersProps['filterValues'], value: string) => void;
+    name: string
+    category: string
+    status: string
+  }
+  onFilterChange: (
+    filterName: keyof ProductFiltersProps['filterValues'],
+    value: string
+  ) => void
 }
 
 export default function ProductFilters({
@@ -29,12 +32,18 @@ export default function ProductFilters({
   onFilterChange,
 }: ProductFiltersProps) {
   const handleInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    onFilterChange(event.target.name as keyof ProductFiltersProps['filterValues'], event.target.value);
-  };
+    onFilterChange(
+      event.target.name as keyof ProductFiltersProps['filterValues'],
+      event.target.value
+    )
+  }
 
   const handleSelectChange = (event: SelectChangeEvent<string>) => {
-    onFilterChange(event.target.name as keyof ProductFiltersProps['filterValues'], event.target.value);
-  };
+    onFilterChange(
+      event.target.name as keyof ProductFiltersProps['filterValues'],
+      event.target.value
+    )
+  }
 
   return (
     <Box sx={{ mb: 3, p: 2, border: '1px solid #ddd', borderRadius: '4px' }}>
@@ -91,5 +100,5 @@ export default function ProductFilters({
         </Grid>
       </Grid>
     </Box>
-  );
+  )
 }

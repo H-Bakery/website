@@ -1,6 +1,6 @@
 // src/services/bakeryAPI.ts
 'use client'
-import { Product } from '../types/product';
+import { Product } from '../types/product'
 import {
   SalesData,
   ProductionData,
@@ -27,7 +27,8 @@ const generateMockData = () => {
     ...product,
     // Ensure image and description are present, falling back to defaults if necessary
     image: product.image || 'default_image_path.jpg', // Add a default image path
-    description: product.description || `Frische ${product.name} aus unserer Bäckerei.`,
+    description:
+      product.description || `Frische ${product.name} aus unserer Bäckerei.`,
     // Add stock field (random amount)
     stock: Math.floor(Math.random() * 50) + 5,
     // Add dailyTarget field (random number between 10 and 50)
@@ -652,19 +653,22 @@ const bakeryAPI = {
 
   getProductById: async (id: number): Promise<Product> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/products/${id}`);
+      const response = await fetch(`${API_BASE_URL}/products/${id}`)
       if (!response.ok) {
-        throw new Error(`Failed to fetch product with id ${id}`);
+        throw new Error(`Failed to fetch product with id ${id}`)
       }
-      return await response.json();
+      return await response.json()
     } catch (error) {
-      console.error(`Error fetching product with id ${id}, using mock data:`, error);
+      console.error(
+        `Error fetching product with id ${id}, using mock data:`,
+        error
+      )
       // Fallback to mock data: find product by id
-      const product = mockData.products.find(p => p.id === id);
+      const product = mockData.products.find((p) => p.id === id)
       if (product) {
-        return product;
+        return product
       } else {
-        throw new Error(`Mock product with id ${id} not found`);
+        throw new Error(`Mock product with id ${id} not found`)
       }
     }
   },
@@ -677,22 +681,28 @@ const bakeryAPI = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(productData),
-      });
+      })
       if (!response.ok) {
-        throw new Error('Failed to create product');
+        throw new Error('Failed to create product')
       }
-      return await response.json();
+      return await response.json()
     } catch (error) {
-      console.error('Error creating product, using mock implementation:', error);
+      console.error('Error creating product, using mock implementation:', error)
       // Mock implementation: add to mockData.products
-      const newId = mockData.products.length > 0 ? Math.max(...mockData.products.map(p => p.id)) + 1 : 1;
-      const newProduct: Product = { id: newId, ...productData };
-      mockData.products.push(newProduct);
-      return newProduct;
+      const newId =
+        mockData.products.length > 0
+          ? Math.max(...mockData.products.map((p) => p.id)) + 1
+          : 1
+      const newProduct: Product = { id: newId, ...productData }
+      mockData.products.push(newProduct)
+      return newProduct
     }
   },
 
-  updateProduct: async (id: number, productData: Partial<Omit<Product, 'id'>>): Promise<Product> => {
+  updateProduct: async (
+    id: number,
+    productData: Partial<Omit<Product, 'id'>>
+  ): Promise<Product> => {
     try {
       const response = await fetch(`${API_BASE_URL}/products/${id}`, {
         method: 'PUT',
@@ -700,20 +710,26 @@ const bakeryAPI = {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(productData),
-      });
+      })
       if (!response.ok) {
-        throw new Error(`Failed to update product with id ${id}`);
+        throw new Error(`Failed to update product with id ${id}`)
       }
-      return await response.json();
+      return await response.json()
     } catch (error) {
-      console.error(`Error updating product with id ${id}, using mock implementation:`, error);
+      console.error(
+        `Error updating product with id ${id}, using mock implementation:`,
+        error
+      )
       // Mock implementation: update in mockData.products
-      const productIndex = mockData.products.findIndex(p => p.id === id);
+      const productIndex = mockData.products.findIndex((p) => p.id === id)
       if (productIndex > -1) {
-        mockData.products[productIndex] = { ...mockData.products[productIndex], ...productData };
-        return mockData.products[productIndex];
+        mockData.products[productIndex] = {
+          ...mockData.products[productIndex],
+          ...productData,
+        }
+        return mockData.products[productIndex]
       } else {
-        throw new Error(`Mock product with id ${id} not found for update`);
+        throw new Error(`Mock product with id ${id} not found for update`)
       }
     }
   },
@@ -722,20 +738,23 @@ const bakeryAPI = {
     try {
       const response = await fetch(`${API_BASE_URL}/products/${id}`, {
         method: 'DELETE',
-      });
+      })
       if (!response.ok) {
-        throw new Error(`Failed to delete product with id ${id}`);
+        throw new Error(`Failed to delete product with id ${id}`)
       }
-      return await response.json();
+      return await response.json()
     } catch (error) {
-      console.error(`Error deleting product with id ${id}, using mock implementation:`, error);
+      console.error(
+        `Error deleting product with id ${id}, using mock implementation:`,
+        error
+      )
       // Mock implementation: remove from mockData.products
-      const productIndex = mockData.products.findIndex(p => p.id === id);
+      const productIndex = mockData.products.findIndex((p) => p.id === id)
       if (productIndex > -1) {
-        mockData.products.splice(productIndex, 1);
-        return { message: `Product with id ${id} deleted successfully (mock)` };
+        mockData.products.splice(productIndex, 1)
+        return { message: `Product with id ${id} deleted successfully (mock)` }
       } else {
-        throw new Error(`Mock product with id ${id} not found for deletion`);
+        throw new Error(`Mock product with id ${id} not found for deletion`)
       }
     }
   },

@@ -1,8 +1,8 @@
 // src/components/admin/products/ProductTable.tsx
-'use client';
+'use client'
 
-import React from 'react';
-import Link from 'next/link';
+import React from 'react'
+import Link from 'next/link'
 import {
   Table,
   TableBody,
@@ -16,16 +16,16 @@ import {
   Box,
   Typography,
   Chip,
-} from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import DeleteIcon from '@mui/icons-material/Delete';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import { Product } from '../../../types/product';
-import { formatter } from '../../../utils/formatPrice'; // Assuming this utility exists
+} from '@mui/material'
+import EditIcon from '@mui/icons-material/Edit'
+import DeleteIcon from '@mui/icons-material/Delete'
+import VisibilityIcon from '@mui/icons-material/Visibility'
+import { Product } from '../../../types/product'
+import { formatter } from '../../../utils/formatPrice' // Assuming this utility exists
 
 interface ProductTableProps {
-  products: Product[];
-  onDelete: (productId: number) => void;
+  products: Product[]
+  onDelete: (productId: number) => void
   // Add more props later for sorting, pagination, etc.
 }
 
@@ -38,11 +38,18 @@ const headCells = [
   { id: 'dailyTarget', label: 'Daily Target' },
   { id: 'status', label: 'Status' },
   { id: 'actions', label: 'Actions' },
-];
+]
 
-export default function ProductTable({ products, onDelete }: ProductTableProps) {
+export default function ProductTable({
+  products,
+  onDelete,
+}: ProductTableProps) {
   if (!products || products.length === 0) {
-    return <Typography sx={{ mt: 2, textAlign: 'center' }}>No products to display.</Typography>;
+    return (
+      <Typography sx={{ mt: 2, textAlign: 'center' }}>
+        No products to display.
+      </Typography>
+    )
   }
 
   return (
@@ -114,5 +121,5 @@ export default function ProductTable({ products, onDelete }: ProductTableProps) 
         </TableBody>
       </Table>
     </TableContainer>
-  );
+  )
 }
