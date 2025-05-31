@@ -38,6 +38,7 @@ import BarChartIcon from '@mui/icons-material/BarChart'
 import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
 import StorefrontIcon from '@mui/icons-material/Storefront'
 import MenuBookIcon from '@mui/icons-material/MenuBook'
+import ListAltIcon from '@mui/icons-material/ListAlt'; // Or another suitable icon
 import CloseIcon from '@mui/icons-material/Close'
 import AccountCircleIcon from '@mui/icons-material/AccountCircle'
 import NotificationsIcon from '@mui/icons-material/Notifications'
@@ -108,6 +109,8 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         setPageTitle('Backstube: Produktionsprozesse')
       else if (pathname.includes('/admin/production/orders'))
         setPageTitle('Backstube: Bestelllisten')
+      else if (pathname.includes('/admin/bakery/intern-orders'))
+        setPageTitle('Backstube: Internbestellungen')
       else if (pathname.includes('/admin/orders'))
         setPageTitle('Verkaufsbereich: Bestellungen')
       else if (pathname.includes('/admin/dashboard/sales'))
@@ -185,6 +188,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           icon: <AssignmentIcon />,
           path: '/admin/orders',
           roles: ['Management', 'Production'],
+        },
+        {
+          name: 'Internbestellungen', // Intern Orders
+          icon: <ListAltIcon />,
+          path: '/admin/bakery/intern-orders',
+          roles: ['Management', 'Production', 'Sales'], // Assuming all internal staff might need access
         },
         {
           name: 'Samstag Spezialproduktion',
