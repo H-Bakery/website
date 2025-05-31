@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Order, OrderItem, Product } from '../../services/types'
+import { Product } from '../../types/product'
+import { Order, OrderItem } from '../../services/types'
 import {
   Box,
   Paper,

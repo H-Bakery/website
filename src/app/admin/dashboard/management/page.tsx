@@ -25,11 +25,8 @@ import DataTable from '../../../../components/dashboard/DataTable'
 import StatsComparison from '../../../../components/dashboard/StatsComparison'
 
 import bakeryAPI from '../../../../services/bakeryAPI'
-import {
-  FinancialData,
-  Product,
-  TimeSeriesData,
-} from '../../../../services/types'
+import { Product } from '../../../../types/product'
+import { FinancialData, TimeSeriesData } from '../../../../services/types'
 
 const ManagementDashboard: React.FC = () => {
   const router = useRouter()

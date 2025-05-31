@@ -18,7 +18,8 @@ import {
 } from '@mui/material'
 import AddCircleIcon from '@mui/icons-material/AddCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
-import { Product, OrderItem } from '../../services/types'
+import { Product } from '../../types/product'
+import { OrderItem } from '../../services/types'
 import { format, addDays, setHours, setMinutes } from 'date-fns'
 
 interface QuickOrderFormProps {

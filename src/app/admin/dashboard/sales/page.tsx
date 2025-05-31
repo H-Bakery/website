@@ -29,9 +29,9 @@ import bakeryAPI from '../../../../services/bakeryAPI'
 import {
   SalesData,
   CustomerData,
-  Product,
   TimeSeriesData,
 } from '../../../../services/types'
+import { Product } from '../../../../types/product'
 
 const SalesDashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('day')
