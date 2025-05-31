@@ -11,6 +11,7 @@ import RestaurantIcon from '@mui/icons-material/Restaurant'
 import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
 import NewReleasesIcon from '@mui/icons-material/NewReleases'
 import CampaignIcon from '@mui/icons-material/Campaign'
+import TextFieldsIcon from '@mui/icons-material/TextFields'
 import { TemplateType } from '../../../types/socialMedia'
 
 interface TemplateSelectorProps {
@@ -76,6 +77,13 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({ value, onChange }) 
           iconPosition="start"
           label="Bäckerei News"
           value="bakery-news"
+          sx={{ minHeight: '60px' }}
+        />
+        <Tab
+          icon={<TextFieldsIcon sx={{ mr: 1 }} />}
+          iconPosition="start"
+          label="Einfache Nachricht"
+          value="message"
           sx={{ minHeight: '60px' }}
         />
       </Tabs>

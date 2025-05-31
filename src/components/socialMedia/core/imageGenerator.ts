@@ -24,6 +24,8 @@ export const generateTemplateImage = async (
       return generateOfferImage(content, template, width, height)
     case 'bakery-news':
       return generateNewsImage(content, template, width, height)
+    case 'message':
+      return generateMessageImage(content, template, width, height)
     default:
       return generateBasicImage(content, template, width, height)
   }
@@ -491,7 +493,7 @@ const generateNewsImage = (
 }
 
 /**
- * Generate a basic image for any template type
+ * Generate basic image for any template type
  */
 const generateBasicImage = (
   content: Partial<SocialMediaContent>,
@@ -591,6 +593,108 @@ const drawLogoPlaceholder = (
   ctx.textAlign = 'center'
   ctx.fillText('H', width - 80, height - 55)
   ctx.restore()
+}
+
+/**
+ * Generate message image (large text focus)
+ */
+const generateMessageImage = (
+  content: Partial<SocialMediaContent>,
+  template: Template,
+  width: number,
+  height: number
+): string => {
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+
+  if (!ctx) return ''
+
+  // Determine if using white or primary background variant
+  const isWhiteVariant = content.textElements?.variant === 'white'
+
+  // Background color
+  ctx.fillStyle = isWhiteVariant ? '#FFFFFF' : '#D038BA'
+  ctx.fillRect(0, 0, width, height)
+
+  // Add subtle pattern for interest
+  if (isWhiteVariant) {
+    ctx.fillStyle = 'rgba(208, 56, 186, 0.03)'
+  } else {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.05)'
+  }
+  
+  for (let i = 0; i < width; i += 50) {
+    for (let j = 0; j < height; j += 50) {
+      if ((i + j) % 100 === 0) {
+        ctx.fillRect(i, j, 25, 25)
+      }
+    }
+  }
+
+  // Header with brand name
+  ctx.font = 'bold 48px "Averia Serif Libre", serif'
+  ctx.textAlign = 'left'
+  
+  // Text color depends on background
+  ctx.fillStyle = isWhiteVariant ? '#D038BA' : '#FFFFFF'
+  ctx.fillText('Bäckerei Heusser', 60, 80)
+  
+  // Decorative underline
+  ctx.beginPath()
+  ctx.moveTo(60, 100)
+  ctx.lineTo(400, 100)
+  ctx.strokeStyle = isWhiteVariant ? '#D038BA' : '#FFFFFF'
+  ctx.lineWidth = 3
+  ctx.stroke()
+
+  // Main message text
+  ctx.font = 'bold 86px "Averia Serif Libre", serif'
+  ctx.textAlign = 'center'
+  ctx.fillStyle = isWhiteVariant ? '#D038BA' : '#FFFFFF'
+  
+  // Add shadow for better readability if on primary background
+  if (!isWhiteVariant) {
+    ctx.shadowColor = 'rgba(0,0,0,0.3)'
+    ctx.shadowBlur = 8
+    ctx.shadowOffsetX = 2
+    ctx.shadowOffsetY = 2
+  }
+
+  // Message text
+  const message = content.textElements?.message || content.textElements?.title || 'Ihre Nachricht hier'
+  wrapText(ctx, message, width/2, height/2 - 50, width * 0.8, 100)
+  
+  // Reset shadow
+  ctx.shadowBlur = 0
+  ctx.shadowOffsetX = 0
+  ctx.shadowOffsetY = 0
+  
+  // Decorative accents
+  const accentColor = isWhiteVariant ? 'rgba(208, 56, 186, 0.1)' : 'rgba(255, 255, 255, 0.1)'
+  
+  // Top left corner accent
+  ctx.fillStyle = accentColor
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(200, 0)
+  ctx.lineTo(0, 200)
+  ctx.closePath()
+  ctx.fill()
+  
+  // Bottom right corner accent
+  ctx.beginPath()
+  ctx.moveTo(width, height)
+  ctx.lineTo(width - 200, height)
+  ctx.lineTo(width, height - 200)
+  ctx.closePath()
+  ctx.fill()
+
+  // Add logo placeholder
+  drawLogoPlaceholder(ctx, width, height)
+
+  return canvas.toDataURL('image/png')
 }
 
 /**

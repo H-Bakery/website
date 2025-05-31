@@ -47,6 +47,7 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
       showPrice: true,
       additionalInfoLabel: 'Verfügbarkeit',
       additionalInfoPlaceholder: 'z.B. Verfügbar von 11:30 - 14:00 Uhr',
+      hideDescription: false
     },
     'bread-of-day': {
       titleLabel: 'Brotname',
@@ -58,6 +59,7 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
       showPrice: true,
       additionalInfoLabel: 'Zutaten',
       additionalInfoPlaceholder: 'z.B. Dinkelmehl, Wasser, Sauerteig, Salz',
+      hideDescription: false
     },
     'offer': {
       titleLabel: 'Titel des Angebots',
@@ -69,6 +71,7 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
       showPrice: true,
       additionalInfoLabel: 'Gültigkeitszeitraum',
       additionalInfoPlaceholder: 'z.B. Nur für kurze Zeit erhältlich',
+      hideDescription: false
     },
     'bakery-news': {
       titleLabel: 'Titel der Nachricht',
@@ -80,6 +83,19 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
       showPrice: false,
       additionalInfoLabel: 'Gültigkeitsdatum',
       additionalInfoPlaceholder: 'z.B. Gültig ab 01.06.2024',
+      hideDescription: false
+    },
+    'message': {
+      titleLabel: 'Nachrichtentext',
+      titlePlaceholder: 'z.B. Wir machen Urlaub!',
+      titleMaxLength: 150,
+      descriptionLabel: '',
+      descriptionPlaceholder: '',
+      descriptionMaxLength: 0,
+      showPrice: false,
+      additionalInfoLabel: 'Stil',
+      additionalInfoPlaceholder: 'Lassen Sie leer für roten Hintergrund oder "white" für weißen Hintergrund',
+      hideDescription: true
     }
   }
   
@@ -124,6 +140,8 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
           placeholder={config.titlePlaceholder}
           variant="outlined"
           required
+          multiline={templateType === 'message'}
+          rows={templateType === 'message' ? 5 : 1}
           inputProps={{ 
             maxLength: config.titleMaxLength 
           }}
@@ -138,29 +156,31 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
           }}
         />
         
-        <TextField
-          fullWidth
-          label={config.descriptionLabel}
-          value={values.description}
-          onChange={(e) => onChange('description', e.target.value)}
-          placeholder={config.descriptionPlaceholder}
-          variant="outlined"
-          required
-          multiline
-          rows={4}
-          inputProps={{ 
-            maxLength: config.descriptionMaxLength 
-          }}
-          helperText={`${values.description.length}/${config.descriptionMaxLength} Zeichen`}
-          FormHelperTextProps={{
-            sx: { display: 'flex', justifyContent: 'flex-end' }
-          }}
-          sx={{
-            '& .MuiOutlinedInput-root': {
-              borderRadius: 2,
-            },
-          }}
-        />
+        {!config.hideDescription && (
+          <TextField
+            fullWidth
+            label={config.descriptionLabel}
+            value={values.description}
+            onChange={(e) => onChange('description', e.target.value)}
+            placeholder={config.descriptionPlaceholder}
+            variant="outlined"
+            required
+            multiline
+            rows={4}
+            inputProps={{ 
+              maxLength: config.descriptionMaxLength 
+            }}
+            helperText={`${values.description.length}/${config.descriptionMaxLength} Zeichen`}
+            FormHelperTextProps={{
+              sx: { display: 'flex', justifyContent: 'flex-end' }
+            }}
+            sx={{
+              '& .MuiOutlinedInput-root': {
+                borderRadius: 2,
+              },
+            }}
+          />
+        )}
         
         {config.showPrice && (
           <TextField
@@ -169,6 +189,7 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
             onChange={(e) => onChange('price', e.target.value)}
             placeholder="z.B. 4,90"
             variant="outlined"
+            required
             InputProps={{
               startAdornment: <InputAdornment position="start"><EuroIcon /></InputAdornment>,
             }}

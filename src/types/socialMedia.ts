@@ -3,6 +3,7 @@ export type TemplateType =
   | 'offer' 
   | 'bread-of-day' 
   | 'bakery-news'
+  | 'message'
 
 export interface TextElement {
   id: string
@@ -13,6 +14,7 @@ export interface TextElement {
   placeholder: string
   required: boolean
   highlight?: boolean
+  hidden?: boolean
 }
 
 export interface ImageElement {

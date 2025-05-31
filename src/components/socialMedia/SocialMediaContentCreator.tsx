@@ -58,7 +58,9 @@ const SocialMediaContentCreator: React.FC = () => {
     setContent(prev => ({
       ...prev,
       title: '',
-      price: type === 'bakery-news' ? '' : prev.price,
+      price: (type === 'bakery-news' || type === 'message') ? '' : prev.price,
+      // Clear description for message type since it's not used
+      description: type === 'message' ? '' : prev.description,
     }))
     setIsComplete(false)
   }
@@ -142,13 +144,17 @@ const SocialMediaContentCreator: React.FC = () => {
   }, [content, templateType])
 
   // Check if any required fields are missing
-  const isDownloadDisabled = !content.title.trim() || !content.description.trim() || 
-    (templateType !== 'bakery-news' && !content.price.trim())
+  const isDownloadDisabled = !content.title.trim() || 
+    (templateType !== 'message' && !content.description.trim()) || 
+    (templateType !== 'bakery-news' && templateType !== 'message' && !content.price.trim())
 
   // Provide helpful error message
   const errorMessage = isDownloadDisabled ? 
-    'Bitte füllen Sie die Pflichtfelder aus (Titel, Beschreibung' + 
-    (templateType !== 'bakery-news' ? ' und Preis)' : ')') : ''
+    'Bitte füllen Sie die Pflichtfelder aus (' + 
+    'Titel' + 
+    (templateType !== 'message' ? ', Beschreibung' : '') + 
+    (templateType !== 'bakery-news' && templateType !== 'message' ? ' und Preis' : '') + 
+    ')' : ''
 
   return (
     <Container maxWidth="xl" sx={{ py: 4, position: 'relative' }}>
@@ -184,6 +190,7 @@ const SocialMediaContentCreator: React.FC = () => {
                 {templateType === 'bread-of-day' && 'Brot des Tages erstellen'}
                 {templateType === 'offer' && 'Angebot erstellen'}
                 {templateType === 'bakery-news' && 'Bäckerei-News erstellen'}
+                {templateType === 'message' && 'Einfache Nachricht erstellen'}
               </Typography>
               
               <FormControlLabel

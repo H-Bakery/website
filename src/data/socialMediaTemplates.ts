@@ -10,6 +10,18 @@ const BAKERY_COLORS = {
   highlight: '#FFD700'    // Gold highlight for text
 }
 
+// Message template variants
+const MESSAGE_VARIANTS = {
+  primaryBg: {
+    background: '#D038BA',
+    textColor: '#FFFFFF'
+  },
+  whiteBg: {
+    background: '#FFFFFF',
+    textColor: '#D038BA'
+  }
+}
+
 // Background options for templates
 const BACKGROUNDS = {
   plain: '#FFFFFF',
@@ -41,6 +53,46 @@ const TEXT_PANELS = {
 }
 
 export const socialMediaTemplates: Template[] = [
+  {
+    id: 'simple-message',
+    name: 'Einfache Nachricht',
+    type: 'message',
+    description: 'Große, einzelne Textnachricht ideal für Ankündigungen oder Zitate',
+    width: 1080,
+    height: 1080,
+    textElements: [
+      {
+        id: 'message',
+        text: '',
+        maxLength: 150,
+        fontSize: 72,
+        fontWeight: 'bold',
+        placeholder: 'Ihre Nachricht hier eingeben...',
+        required: true
+      },
+      {
+        id: 'variant',
+        text: 'primary',
+        maxLength: 10,
+        fontSize: 0,
+        fontWeight: 'normal',
+        placeholder: 'primary',
+        required: false,
+        hidden: true
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '1:1',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: MESSAGE_VARIANTS.primaryBg.background,
+    textPanelStyle: MESSAGE_VARIANTS.primaryBg
+  },
   {
     id: 'tagesangebot-mittagstisch',
     name: 'Tagesangebot: Mittagstisch',
@@ -375,5 +427,45 @@ export const socialMediaTemplates: Template[] = [
     colors: BAKERY_COLORS,
     backgroundStyle: BACKGROUNDS.plain,
     textPanelStyle: TEXT_PANELS.primary
+  },
+  {
+    id: 'simple-message-white',
+    name: 'Nachricht (Weiß)',
+    type: 'message',
+    description: 'Große Nachricht auf weißem Hintergrund',
+    width: 1080,
+    height: 1080,
+    textElements: [
+      {
+        id: 'message',
+        text: '',
+        maxLength: 150,
+        fontSize: 72,
+        fontWeight: 'bold',
+        placeholder: 'Ihre Nachricht hier eingeben...',
+        required: true
+      },
+      {
+        id: 'variant',
+        text: 'white',
+        maxLength: 10,
+        fontSize: 0,
+        fontWeight: 'normal',
+        placeholder: 'white',
+        required: false,
+        hidden: true
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '1:1',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: MESSAGE_VARIANTS.whiteBg.background,
+    textPanelStyle: MESSAGE_VARIANTS.whiteBg
   }
 ]

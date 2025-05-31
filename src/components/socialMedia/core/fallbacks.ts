@@ -71,44 +71,80 @@ export const createBasicImage = (
 
   if (!ctx) return ''
 
-  // Draw background - use white or light gradient
-  const bgGradient = ctx.createLinearGradient(0, 0, 0, height)
-  bgGradient.addColorStop(0, '#FFFFFF')
-  bgGradient.addColorStop(1, '#F6F8FC')
-  ctx.fillStyle = bgGradient
-  ctx.fillRect(0, 0, width, height)
+  // Draw background - use appropriate color based on template
+  const isMessageTemplate = template.type === 'message'
+  const isWhiteMessageVariant = content.textElements?.variant === 'white'
+  
+  if (isMessageTemplate) {
+    // Message template background - either primary or white
+    if (isWhiteMessageVariant) {
+      ctx.fillStyle = '#FFFFFF'
+    } else {
+      ctx.fillStyle = '#D038BA' // Primary color
+    }
+    ctx.fillRect(0, 0, width, height)
+  } else {
+    // Standard gradient background for other templates
+    const bgGradient = ctx.createLinearGradient(0, 0, 0, height)
+    bgGradient.addColorStop(0, '#FFFFFF')
+    bgGradient.addColorStop(1, '#F6F8FC')
+    ctx.fillStyle = bgGradient
+    ctx.fillRect(0, 0, width, height)
+  }
 
-  // Draw text panel background - use primary color with transparency
-  const panelGradient = ctx.createLinearGradient(0, height * 0.3, 0, height)
-  panelGradient.addColorStop(0, '#D038BA')
-  panelGradient.addColorStop(1, '#C030AA')
-  ctx.fillStyle = panelGradient
-  ctx.fillRect(0, height * 0.33, width, height * 0.67)
+  // Draw text panel background for non-message templates or keep full background for message template
+  if (!isMessageTemplate) {
+    const panelGradient = ctx.createLinearGradient(0, height * 0.3, 0, height)
+    panelGradient.addColorStop(0, '#D038BA')
+    panelGradient.addColorStop(1, '#C030AA')
+    ctx.fillStyle = panelGradient
+    ctx.fillRect(0, height * 0.33, width, height * 0.67)
+  }
 
-  // Set text styles - use white text for better contrast
-  ctx.fillStyle = '#FFFFFF'
-  ctx.textAlign = 'left'
-  ctx.font = 'bold 60px Averia Serif Libre, serif'
+  // Set text styles - use appropriate color based on template
+  if (isMessageTemplate && isWhiteMessageVariant) {
+    ctx.fillStyle = '#D038BA' // Primary color for white background
+  } else {
+    ctx.fillStyle = '#FFFFFF' // White text for colored backgrounds
+  }
+  
+  // For message templates, use center alignment and larger font
+  if (isMessageTemplate) {
+    ctx.textAlign = 'center'
+    ctx.font = 'bold 72px Averia Serif Libre, serif'
+  } else {
+    ctx.textAlign = 'left'
+    ctx.font = 'bold 60px Averia Serif Libre, serif'
+  }
 
   // Draw title
+  // Draw title - find the title from different possible fields
   const title =
+    content.textElements?.message ||
     content.textElements?.title ||
     content.textElements?.breadName ||
     content.textElements?.newsTitle ||
     'Bäckerei Heusser'
 
-  wrapText(ctx, title, 80, height * 0.45, width * 0.85, 70)
+  // Position text differently for message template vs others
+  if (isMessageTemplate) {
+    wrapText(ctx, title, width/2, height * 0.5, width * 0.8, 80)
+  } else {
+    wrapText(ctx, title, 80, height * 0.45, width * 0.85, 70)
+  }
 
-  // Draw description if available
-  const description =
-    content.textElements?.description ||
-    content.textElements?.breadDescription ||
-    content.textElements?.newsContent ||
-    ''
+  // Draw description if available and not a message template
+  if (!isMessageTemplate) {
+    const description =
+      content.textElements?.description ||
+      content.textElements?.breadDescription ||
+      content.textElements?.newsContent ||
+      ''
 
-  if (description) {
-    ctx.font = '32px Ubuntu, sans-serif'
-    wrapText(ctx, description, 80, height * 0.58, width * 0.85, 40)
+    if (description) {
+      ctx.font = '32px Ubuntu, sans-serif'
+      wrapText(ctx, description, 80, height * 0.58, width * 0.85, 40)
+    }
   }
 
   // Draw price if available
@@ -128,15 +164,25 @@ export const createBasicImage = (
   // Add branding and decorative elements
   // Draw header with brand name
   ctx.font = 'bold 48px Averia Serif Libre, serif'
-  ctx.fillStyle = '#D038BA' // Primary brand color
   ctx.textAlign = 'left'
+  // For message templates with primary background, use white for the header
+  if (isMessageTemplate && !isWhiteMessageVariant) {
+    ctx.fillStyle = '#FFFFFF'
+  } else {
+    ctx.fillStyle = '#D038BA' // Primary brand color
+  }
   ctx.fillText('Bäckerei Heusser', 60, 80)
   
   // Add separator line
   ctx.beginPath()
   ctx.moveTo(60, 100)
   ctx.lineTo(400, 100)
-  ctx.strokeStyle = '#D038BA'
+  // For message templates with primary background, use white for separator
+  if (isMessageTemplate && !isWhiteMessageVariant) {
+    ctx.strokeStyle = '#FFFFFF'
+  } else {
+    ctx.strokeStyle = '#D038BA'
+  }
   ctx.lineWidth = 3
   ctx.stroke()
   

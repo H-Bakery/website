@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import {
   Box,
   Typography,
@@ -6,6 +6,8 @@ import {
   CircularProgress,
   useTheme,
   alpha,
+  Switch,
+  FormControlLabel,
 } from '@mui/material'
 import { Template, TemplateType } from '../../../types/socialMedia'
 import { socialMediaTemplates } from '../../../data/socialMediaTemplates'
@@ -31,8 +33,25 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
 }) => {
   const theme = useTheme()
 
-  // Get first template of the selected type
-  const template = socialMediaTemplates.find(t => t.type === templateType) || socialMediaTemplates[0]
+  // For message type, we need to track if we want white or primary background
+  const [messageVariant, setMessageVariant] = useState<'primary' | 'white'>('primary')
+  
+  // Get first template of the selected type or the variant for message type
+  const template = templateType === 'message' 
+    ? (socialMediaTemplates.find(t => 
+        t.type === templateType && 
+        (messageVariant === 'white' ? t.id === 'simple-message-white' : t.id === 'simple-message')
+      ) || socialMediaTemplates.find(t => t.type === templateType) || socialMediaTemplates[0])
+    : (socialMediaTemplates.find(t => t.type === templateType) || socialMediaTemplates[0])
+
+  // Handle message variant change
+  useEffect(() => {
+    if (content.additionalInfo === 'white') {
+      setMessageVariant('white')
+    } else {
+      setMessageVariant('primary')
+    }
+  }, [content.additionalInfo])
 
   // Map content to the template structure
   const getTextContent = (template: Template) => {
@@ -40,6 +59,10 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
     
     // Map content based on template type
     switch (templateType) {
+      case 'message':
+        if (template.textElements.some(el => el.id === 'message')) mapped.message = content.title || ''
+        if (template.textElements.some(el => el.id === 'variant')) mapped.variant = messageVariant
+        break
       case 'daily-special':
         // Get relevant text fields from the template
         const dailySpecialFields = template.textElements.map(el => el.id)
@@ -200,63 +223,88 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                   zIndex: 3,
                 }}
               >
-                {/* Main title */}
-                <Typography
-                  sx={{
-                    color: 'white',
-                    fontWeight: 'bold',
-                    fontSize: '56px',
-                    mb: 3,
-                    fontFamily: "'Averia Serif Libre', serif",
-                    letterSpacing: 0.5,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {content.title || 'Titel eingeben...'}
-                </Typography>
-                
-                {/* Description */}
-                <Typography
-                  sx={{
-                    color: 'white',
-                    fontWeight: 'normal',
-                    fontSize: '28px',
-                    mb: 3,
-                    fontFamily: "'Averia Serif Libre', serif",
-                    letterSpacing: 0.2,
-                    lineHeight: 1.4,
-                  }}
-                >
-                  {content.description || 'Beschreibung eingeben...'}
-                </Typography>
-                
-                {/* Price if available */}
-                {content.price && (
+                {templateType === 'message' ? (
+                  /* Message template - large centered text */
                   <Typography
                     sx={{
-                      color: 'white',
+                      color: messageVariant === 'primary' ? 'white' : template.colors.primary,
                       fontWeight: 'bold',
-                      fontSize: '42px',
-                      mb: 2,
+                      fontSize: '72px',
+                      textAlign: 'center',
+                      width: '100%',
                       fontFamily: "'Averia Serif Libre', serif",
+                      letterSpacing: 0.5,
+                      lineHeight: 1.3,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      height: '100%',
                     }}
                   >
-                    {content.price} €
+                    {content.title || 'Ihre Nachricht hier eingeben...'}
                   </Typography>
-                )}
-                
-                {/* Additional info if available */}
-                {content.additionalInfo && (
-                  <Typography
-                    sx={{
-                      color: 'white',
-                      fontSize: '24px',
-                      fontFamily: "'Averia Serif Libre', serif",
-                      opacity: 0.9,
-                    }}
-                  >
-                    {content.additionalInfo}
-                  </Typography>
+                ) : (
+                  <>
+                    {/* Main title */}
+                    <Typography
+                      sx={{
+                        color: 'white',
+                        fontWeight: 'bold',
+                        fontSize: '56px',
+                        mb: 3,
+                        fontFamily: "'Averia Serif Libre', serif",
+                        letterSpacing: 0.5,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {content.title || 'Titel eingeben...'}
+                    </Typography>
+                  
+                    {/* Description */}
+                    <Typography
+                      sx={{
+                        color: 'white',
+                        fontWeight: 'normal',
+                        fontSize: '28px',
+                        mb: 3,
+                        fontFamily: "'Averia Serif Libre', serif",
+                        letterSpacing: 0.2,
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      {content.description || 'Beschreibung eingeben...'}
+                    </Typography>
+                  
+                    {/* Price if available */}
+                    {content.price && (
+                      <Typography
+                        sx={{
+                          color: 'white',
+                          fontWeight: 'bold',
+                          fontSize: '42px',
+                          mb: 2,
+                          fontFamily: "'Averia Serif Libre', serif",
+                        }}
+                      >
+                        {content.price} €
+                      </Typography>
+                    )}
+                  
+                    {/* Additional info if available */}
+                    {content.additionalInfo && (templateType === 'daily-special' || templateType === 'bread-of-day' || templateType === 'offer' || templateType === 'bakery-news') && (
+                      <Typography
+                        sx={{
+                          color: 'white',
+                          fontSize: '24px',
+                          fontFamily: "'Averia Serif Libre', serif",
+                          opacity: 0.9,
+                        }}
+                      >
+                        {content.additionalInfo}
+                      </Typography>
+                    )}
+                  </>
                 )}
               </Box>
             </Box>
@@ -264,6 +312,23 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
         )}
       </Box>
       
+      {templateType === 'message' && (
+        <FormControlLabel
+          control={
+            <Switch
+              checked={messageVariant === 'white'}
+              onChange={(e) => {
+                const newVariant = e.target.checked ? 'white' : 'primary';
+                setMessageVariant(newVariant);
+              }}
+              color="primary"
+              size="small"
+            />
+          }
+          label="Weißer Hintergrund"
+          sx={{ mt: 1, mb: 1, justifyContent: 'center', width: '100%', '& .MuiTypography-root': { fontSize: '0.875rem' } }}
+        />
+      )}
       <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary', mt: 2, mb: 2, display: 'block' }}>
         Mit Wappen-Logo in der rechten unteren Ecke
       </Typography>
