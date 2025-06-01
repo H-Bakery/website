@@ -21,10 +21,10 @@ import ChecklistIcon from '@mui/icons-material/Checklist'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
 
-import SaturdayProductionDashboard from '../../../../components/bakery/SaturdayProductionDashboard'
-import ProductionChecklist from '../../../../components/bakery/ProductionChecklist'
-import FillingPreparation from '../../../../components/bakery/FillingPreparation'
-import { HefezopfCalculator } from '../../../../utils/productionCalculator'
+import SaturdayProductionDashboard from '../../../../features/production/components/SaturdayProductionDashboard'
+import ProductionChecklist from '../../../../features/production/components/ProductionChecklist'
+import FillingPreparation from '../../../../features/production/components/FillingPreparation'
+import { HefezopfCalculator } from '../../../../features/production/utils/productionCalculator'
 
 // Mock initial order data - will work offline
 const MOCK_ORDERS = {
@@ -33,9 +33,14 @@ const MOCK_ORDERS = {
   'Hefekranz Schoko': 8,
   'Hefekranz Pudding': 3,
   'Hefekranz Marzipan': 2,
+  'Hefekranz Quark': 1,
   'Mini Hefezopf': 15,
-  'Hefeschnecken Nuss': 20,
-  'Hefeschnecken Schoko': 18,
+  'Gefüllter Zopf Nuss': 10,
+  'Gefüllter Zopf Schoko': 8,
+  'Gefüllter Zopf Marzipan': 5,
+  'Rosinenbrot': 5,
+  'Streuselkuchen Klein': 3,
+  'Streuselkuchen Groß': 2,
 }
 
 export default function SaturdayProductionPage() {
@@ -91,6 +96,24 @@ export default function SaturdayProductionPage() {
     const plan = calculator.calculateProductionNeeds(orders)
     setProductionPlan(plan)
   }, [orders])
+
+  // Load saved plan from localStorage when date changes
+  useEffect(() => {
+    if (!saturdays[selectedDateIndex]) return
+
+    const savedPlan = localStorage.getItem(`bakery-plan-${saturdays[selectedDateIndex].dateStr}`)
+    
+    if (savedPlan) {
+      try {
+        const { orders: savedOrders } = JSON.parse(savedPlan)
+        if (savedOrders) {
+          setOrders(savedOrders)
+        }
+      } catch (error) {
+        console.error('Failed to load saved plan:', error)
+      }
+    }
+  }, [selectedDateIndex, saturdays])
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setSelectedTab(newValue)
