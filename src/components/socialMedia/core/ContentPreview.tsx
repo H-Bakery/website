@@ -34,15 +34,24 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
   const theme = useTheme()
 
   // For message type, we need to track if we want white or primary background
-  const [messageVariant, setMessageVariant] = useState<'primary' | 'white'>('primary')
-  
+  const [messageVariant, setMessageVariant] = useState<'primary' | 'white'>(
+    'primary'
+  )
+
   // Get first template of the selected type or the variant for message type
-  const template = templateType === 'message' 
-    ? (socialMediaTemplates.find(t => 
-        t.type === templateType && 
-        (messageVariant === 'white' ? t.id === 'simple-message-white' : t.id === 'simple-message')
-      ) || socialMediaTemplates.find(t => t.type === templateType) || socialMediaTemplates[0])
-    : (socialMediaTemplates.find(t => t.type === templateType) || socialMediaTemplates[0])
+  const template =
+    templateType === 'message'
+      ? socialMediaTemplates.find(
+          (t) =>
+            t.type === templateType &&
+            (messageVariant === 'white'
+              ? t.id === 'simple-message-white'
+              : t.id === 'simple-message')
+        ) ||
+        socialMediaTemplates.find((t) => t.type === templateType) ||
+        socialMediaTemplates[0]
+      : socialMediaTemplates.find((t) => t.type === templateType) ||
+        socialMediaTemplates[0]
 
   // Handle message variant change
   useEffect(() => {
@@ -56,47 +65,67 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
   // Map content to the template structure
   const getTextContent = (template: Template) => {
     const mapped: Record<string, string> = {}
-    
+
     // Map content based on template type
     switch (templateType) {
       case 'message':
-        if (template.textElements.some(el => el.id === 'message')) mapped.message = content.title || ''
-        if (template.textElements.some(el => el.id === 'variant')) mapped.variant = messageVariant
+        if (template.textElements.some((el) => el.id === 'message'))
+          mapped.message = content.title || ''
+        if (template.textElements.some((el) => el.id === 'variant'))
+          mapped.variant = messageVariant
         break
       case 'daily-special':
         // Get relevant text fields from the template
-        const dailySpecialFields = template.textElements.map(el => el.id)
-        
-        if (dailySpecialFields.includes('title')) mapped.title = content.title || 'Tagesangebot'
-        if (dailySpecialFields.includes('description')) mapped.description = content.description
-        if (dailySpecialFields.includes('price')) mapped.price = content.price ? `${content.price} €` : ''
-        if (dailySpecialFields.includes('callToAction')) mapped.callToAction = content.additionalInfo || ''
-        if (dailySpecialFields.includes('subtitle')) mapped.subtitle = 'Unser Angebot heute'
+        const dailySpecialFields = template.textElements.map((el) => el.id)
+
+        if (dailySpecialFields.includes('title'))
+          mapped.title = content.title || 'Tagesangebot'
+        if (dailySpecialFields.includes('description'))
+          mapped.description = content.description
+        if (dailySpecialFields.includes('price'))
+          mapped.price = content.price ? `${content.price} €` : ''
+        if (dailySpecialFields.includes('callToAction'))
+          mapped.callToAction = content.additionalInfo || ''
+        if (dailySpecialFields.includes('subtitle'))
+          mapped.subtitle = 'Unser Angebot heute'
         break
-        
+
       case 'bread-of-day':
-        if (template.textElements.some(el => el.id === 'breadName')) mapped.breadName = content.title || 'Brot des Tages'
-        if (template.textElements.some(el => el.id === 'breadDescription')) mapped.breadDescription = content.description
-        if (template.textElements.some(el => el.id === 'price')) mapped.price = content.price ? `${content.price} €` : ''
-        if (template.textElements.some(el => el.id === 'ingredients')) mapped.ingredients = content.additionalInfo || ''
+        if (template.textElements.some((el) => el.id === 'breadName'))
+          mapped.breadName = content.title || 'Brot des Tages'
+        if (template.textElements.some((el) => el.id === 'breadDescription'))
+          mapped.breadDescription = content.description
+        if (template.textElements.some((el) => el.id === 'price'))
+          mapped.price = content.price ? `${content.price} €` : ''
+        if (template.textElements.some((el) => el.id === 'ingredients'))
+          mapped.ingredients = content.additionalInfo || ''
         break
-        
+
       case 'offer':
-        if (template.textElements.some(el => el.id === 'title')) mapped.title = content.title || 'Sonderangebot'
-        if (template.textElements.some(el => el.id === 'description')) mapped.description = content.description
-        if (template.textElements.some(el => el.id === 'priceInfo')) mapped.priceInfo = content.price ? `${content.price} €` : ''
-        if (template.textElements.some(el => el.id === 'callToAction')) mapped.callToAction = 'Jetzt zugreifen!'
-        if (template.textElements.some(el => el.id === 'subtitle')) mapped.subtitle = content.additionalInfo || ''
+        if (template.textElements.some((el) => el.id === 'title'))
+          mapped.title = content.title || 'Sonderangebot'
+        if (template.textElements.some((el) => el.id === 'description'))
+          mapped.description = content.description
+        if (template.textElements.some((el) => el.id === 'priceInfo'))
+          mapped.priceInfo = content.price ? `${content.price} €` : ''
+        if (template.textElements.some((el) => el.id === 'callToAction'))
+          mapped.callToAction = 'Jetzt zugreifen!'
+        if (template.textElements.some((el) => el.id === 'subtitle'))
+          mapped.subtitle = content.additionalInfo || ''
         break
-        
+
       case 'bakery-news':
-        if (template.textElements.some(el => el.id === 'newsTitle')) mapped.newsTitle = content.title || 'Neuigkeiten'
-        if (template.textElements.some(el => el.id === 'newsContent')) mapped.newsContent = content.description
-        if (template.textElements.some(el => el.id === 'date')) mapped.date = content.additionalInfo || ''
-        if (template.textElements.some(el => el.id === 'category')) mapped.category = 'INFORMATION'
+        if (template.textElements.some((el) => el.id === 'newsTitle'))
+          mapped.newsTitle = content.title || 'Neuigkeiten'
+        if (template.textElements.some((el) => el.id === 'newsContent'))
+          mapped.newsContent = content.description
+        if (template.textElements.some((el) => el.id === 'date'))
+          mapped.date = content.additionalInfo || ''
+        if (template.textElements.some((el) => el.id === 'category'))
+          mapped.category = 'INFORMATION'
         break
     }
-    
+
     return mapped
   }
 
@@ -120,14 +149,11 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
       >
         Vorschau
       </Typography>
-      <Typography
-        variant="body2"
-        sx={{ mb: 3, color: 'text.secondary' }}
-      >
+      <Typography variant="body2" sx={{ mb: 3, color: 'text.secondary' }}>
         So wird Ihr Inhalt in sozialen Medien aussehen
       </Typography>
-      
-      <Box 
+
+      <Box
         sx={{
           display: 'flex',
           alignItems: 'center',
@@ -157,7 +183,8 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
               sx={{
                 width: 1080,
                 height: 1080,
-                background: template.backgroundStyle || template.colors.background,
+                background:
+                  template.backgroundStyle || template.colors.background,
                 transformOrigin: '0 0',
                 transform: 'scale(0.25)',
                 position: 'absolute',
@@ -189,7 +216,7 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                   Bäckerei Heusser
                 </Typography>
               </Box>
-              
+
               {/* Wappen logo */}
               <Box
                 sx={{
@@ -205,7 +232,7 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
               >
                 <Wappen />
               </Box>
-              
+
               {/* Text panel */}
               <Box
                 sx={{
@@ -214,7 +241,9 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                   left: 0,
                   width: '100%',
                   padding: '7% 15% 7% 8%', // Extra space for Wappen
-                  backgroundColor: template.textPanelStyle?.background || `${template.colors.primary}E0`,
+                  backgroundColor:
+                    template.textPanelStyle?.background ||
+                    `${template.colors.primary}E0`,
                   color: template.textPanelStyle?.textColor || '#FFFFFF',
                   minHeight: '67%',
                   display: 'flex',
@@ -227,7 +256,10 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                   /* Message template - large centered text */
                   <Typography
                     sx={{
-                      color: messageVariant === 'primary' ? 'white' : template.colors.primary,
+                      color:
+                        messageVariant === 'primary'
+                          ? 'white'
+                          : template.colors.primary,
                       fontWeight: 'bold',
                       fontSize: '72px',
                       textAlign: 'center',
@@ -260,7 +292,7 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                     >
                       {content.title || 'Titel eingeben...'}
                     </Typography>
-                  
+
                     {/* Description */}
                     <Typography
                       sx={{
@@ -275,7 +307,7 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                     >
                       {content.description || 'Beschreibung eingeben...'}
                     </Typography>
-                  
+
                     {/* Price if available */}
                     {content.price && (
                       <Typography
@@ -290,20 +322,24 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                         {content.price} €
                       </Typography>
                     )}
-                  
+
                     {/* Additional info if available */}
-                    {content.additionalInfo && (templateType === 'daily-special' || templateType === 'bread-of-day' || templateType === 'offer' || templateType === 'bakery-news') && (
-                      <Typography
-                        sx={{
-                          color: 'white',
-                          fontSize: '24px',
-                          fontFamily: "'Averia Serif Libre', serif",
-                          opacity: 0.9,
-                        }}
-                      >
-                        {content.additionalInfo}
-                      </Typography>
-                    )}
+                    {content.additionalInfo &&
+                      (templateType === 'daily-special' ||
+                        templateType === 'bread-of-day' ||
+                        templateType === 'offer' ||
+                        templateType === 'bakery-news') && (
+                        <Typography
+                          sx={{
+                            color: 'white',
+                            fontSize: '24px',
+                            fontFamily: "'Averia Serif Libre', serif",
+                            opacity: 0.9,
+                          }}
+                        >
+                          {content.additionalInfo}
+                        </Typography>
+                      )}
                   </>
                 )}
               </Box>
@@ -311,25 +347,40 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
           </Box>
         )}
       </Box>
-      
+
       {templateType === 'message' && (
         <FormControlLabel
           control={
             <Switch
               checked={messageVariant === 'white'}
               onChange={(e) => {
-                const newVariant = e.target.checked ? 'white' : 'primary';
-                setMessageVariant(newVariant);
+                const newVariant = e.target.checked ? 'white' : 'primary'
+                setMessageVariant(newVariant)
               }}
               color="primary"
               size="small"
             />
           }
           label="Weißer Hintergrund"
-          sx={{ mt: 1, mb: 1, justifyContent: 'center', width: '100%', '& .MuiTypography-root': { fontSize: '0.875rem' } }}
+          sx={{
+            mt: 1,
+            mb: 1,
+            justifyContent: 'center',
+            width: '100%',
+            '& .MuiTypography-root': { fontSize: '0.875rem' },
+          }}
         />
       )}
-      <Typography variant="caption" sx={{ textAlign: 'center', color: 'text.secondary', mt: 2, mb: 2, display: 'block' }}>
+      <Typography
+        variant="caption"
+        sx={{
+          textAlign: 'center',
+          color: 'text.secondary',
+          mt: 2,
+          mb: 2,
+          display: 'block',
+        }}
+      >
         Mit Wappen-Logo in der rechten unteren Ecke
       </Typography>
     </Paper>

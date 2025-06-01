@@ -1,14 +1,14 @@
 export interface Filling {
-  name: string;
-  id: string;
-  ingredients: Ingredient[];
-  recipeBatchSize: number; // in grams - size of one recipe batch
+  name: string
+  id: string
+  ingredients: Ingredient[]
+  recipeBatchSize: number // in grams - size of one recipe batch
 }
 
 export interface Ingredient {
-  name: string;
-  amount: number;
-  unit: 'g' | 'ml' | 'stk';
+  name: string
+  amount: number
+  unit: 'g' | 'ml' | 'stk'
 }
 
 /**
@@ -116,13 +116,13 @@ export const FILLINGS: Filling[] = [
       },
     ],
   },
-];
+]
 
 export const getFillingById = (id: string): Filling | undefined => {
-  return FILLINGS.find(filling => filling.id === id);
-};
+  return FILLINGS.find((filling) => filling.id === id)
+}
 
 export const formatFillingName = (fillingId: string): string => {
-  const filling = getFillingById(fillingId);
-  return filling ? filling.name : fillingId;
-};
+  const filling = getFillingById(fillingId)
+  return filling ? filling.name : fillingId
+}

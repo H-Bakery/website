@@ -1,8 +1,8 @@
 export interface DoughPiece {
-  name: string;
-  weight: number;
-  count: number;
-  description?: string;
+  name: string
+  weight: number
+  count: number
+  description?: string
 }
 
 /**
@@ -11,57 +11,57 @@ export interface DoughPiece {
  */
 export const DOUGH_PIECES: DoughPiece[] = [
   {
-    name: "Kranz",
+    name: 'Kranz',
     weight: 600,
     count: 3,
-    description: "Standard Kranz ohne Füllung"
+    description: 'Standard Kranz ohne Füllung',
   },
   {
-    name: "Gefüllter Kranz",
+    name: 'Gefüllter Kranz',
     weight: 1200,
     count: 1,
-    description: "Kranz mit verschiedenen Füllungen"
+    description: 'Kranz mit verschiedenen Füllungen',
   },
   {
-    name: "Gefüllter Zopf",
+    name: 'Gefüllter Zopf',
     weight: 500,
     count: 1,
-    description: "Zopf mit Füllung"
+    description: 'Zopf mit Füllung',
   },
   {
-    name: "Kleiner Zopf",
+    name: 'Kleiner Zopf',
     weight: 300,
     count: 2,
-    description: "Kleine Zopfvariante"
+    description: 'Kleine Zopfvariante',
   },
   {
-    name: "Großer Zopf",
+    name: 'Großer Zopf',
     weight: 300,
     count: 3,
-    description: "Große Zopfvariante (aus mehreren Teigstücken)"
+    description: 'Große Zopfvariante (aus mehreren Teigstücken)',
   },
   {
-    name: "Rosinenbrot",
+    name: 'Rosinenbrot',
     weight: 600,
     count: 1,
-    description: "Hefebrot mit Rosinen"
+    description: 'Hefebrot mit Rosinen',
   },
   {
-    name: "Kleiner Streusel",
+    name: 'Kleiner Streusel',
     weight: 500,
     count: 1,
-    description: "Streuselkuchen (klein)"
+    description: 'Streuselkuchen (klein)',
   },
   {
-    name: "Großer Streusel",
+    name: 'Großer Streusel',
     weight: 900,
     count: 1,
-    description: "Streuselkuchen (groß)"
+    description: 'Streuselkuchen (groß)',
   },
   {
-    name: "Teig, ausgerollt",
+    name: 'Teig, ausgerollt',
     weight: 500,
     count: 1,
-    description: "Ausgerollter Teig für diverse Gebäcke"
-  }
-];
+    description: 'Ausgerollter Teig für diverse Gebäcke',
+  },
+]
