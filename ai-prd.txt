@@ -1,0 +1,197 @@
+<context>
+# Overview
+The Bakery Management System frontend is built using Next.js with TypeScript and Material UI. It serves as the user interface for both customers and bakery staff, providing a responsive and intuitive experience across devices. The frontend implements a split theming approach, with the customer-facing website using a consistent light theme and the admin area supporting toggle between light and dark themes.
+
+# Core Features
+## Customer-Facing Website
+- Product catalog with detailed product information and imagery
+- Category-based product browsing (Bread, Rolls, Cakes, Pastries, Pies/Tarts, Snacks, Baguette)
+- Responsive design optimized for both desktop and mobile devices
+- Consistent light theme that reinforces brand identity
+- Online ordering functionality
+
+## Admin Interface
+- Staff management dashboard for employee information and scheduling
+- Production process management tools
+- Order processing system with status tracking
+- Analytics and reporting dashboard
+- System settings including theme preferences
+- Dark mode support exclusive to the admin area
+- Theme toggle component in admin navigation
+
+## Component Architecture
+- Reusable UI components organized in a component library
+- Layout components including BakeryLayout with admin navigation
+- Context providers for state management across the application
+- Service modules for API integration and data fetching
+
+# User Experience
+## User Personas
+### Karin – Traditional Bakery Owner
+- Needs simple navigation and intuitive interfaces
+- Uses admin dashboard for business oversight
+- Prefers consistent layout and clear visual hierarchy
+
+### Lena – Business-Savvy Manager
+- Heavily uses analytics and reporting features
+- Appreciates data visualization and dashboard components
+- May toggle between light and dark modes based on working conditions
+
+### Tobias – Young Digital Baker
+- Comfortable with modern UI patterns
+- Likely to use mobile admin interface during production
+- Appreciates dark mode for evening work sessions
+
+## Key User Flows
+- Admin login and dashboard navigation
+- Product management (browsing, adding, editing)
+- Order tracking and fulfillment
+- Theme switching in admin interface
+- Customer product browsing and ordering
+</context>
+<PRD>
+# Technical Architecture
+## Framework and Libraries
+- **Next.js**: Core framework using the App Router pattern
+- **TypeScript**: For type safety and developer experience
+- **Material UI**: Component library for consistent design language
+- **React Context**: For state management (including theme context)
+
+## Directory Structure
+- `src/app/`: Contains Next.js pages and routes using App Router pattern
+  - `src/app/(public)/`: Customer-facing routes
+  - `src/app/admin/`: Admin interface routes
+- `src/components/`: Reusable UI components
+  - `src/components/common/`: Shared components (buttons, cards, etc.)
+  - `src/components/admin/`: Admin-specific components
+  - `src/components/products/`: Product-related components
+- `src/context/`: React context providers
+  - `src/context/ThemeContext.tsx`: Theme management
+  - `src/context/AuthContext.tsx`: Authentication state
+- `src/layouts/`: Layout components
+  - `src/layouts/BakeryLayout.tsx`: Main layout with navigation
+  - `src/layouts/AdminLayout.tsx`: Admin-specific layout
+- `src/services/`: API service integrations
+- `src/utils/`: Utility functions
+- `src/types/`: TypeScript type definitions
+
+## Theming System
+- Split theming approach using Material UI ThemeProvider
+- Customer-facing routes always use light theme
+- Admin routes support toggle between light and dark themes
+- Theme preferences stored in localStorage
+- Path-based theme determination
+- ThemeToggler component only appears in admin routes
+
+## Responsive Design
+- Mobile-first approach with responsive breakpoints
+- Optimized layouts for desktop, tablet, and mobile
+- Collapsible navigation for smaller screens
+- Grid-based layout system from Material UI
+
+## Data Fetching
+- API integration through service modules
+- SWR for data fetching, caching, and revalidation
+- Loading states and error handling patterns
+- Typed API responses using TypeScript interfaces
+
+# Development Roadmap
+## Phase 1: Foundation
+- Next.js project setup with TypeScript and Material UI
+- Basic routing structure (public and admin areas)
+- Core layout components
+- Theme context and basic theming
+- Essential UI components (navigation, cards, buttons)
+- Product listing page (customer-facing)
+
+## Phase 2: Customer Experience
+- Complete product catalog with categories
+- Product detail pages
+- Responsive design implementation
+- Image optimization
+- Basic cart functionality
+- Checkout flow UI
+
+## Phase 3: Admin Dashboard
+- Admin layout with navigation
+- Staff management interface
+- Product management CRUD operations
+- Order tracking dashboard
+- Dark mode implementation
+- Settings page with theme toggle
+
+## Phase 4: Advanced Features
+- Analytics dashboard with charts
+- Production planning interface
+- Advanced filtering and search
+- Performance optimizations
+- Animation and transition refinements
+- Accessibility improvements
+
+# Logical Dependency Chain
+## Foundation Components
+1. Project configuration and structure
+2. Theme provider and base styling
+3. Layout components and navigation
+4. API service setup
+5. Authentication flow
+
+## User Interface Development
+1. Reusable component library
+2. Product listing components
+3. Admin dashboard shell
+4. Form components for data entry
+5. Table components for data display
+
+## Feature Implementation
+1. Customer-facing product catalog
+2. Admin product management
+3. Order tracking interface
+4. Staff management dashboard
+5. Settings and preferences
+
+## Enhancement Layer
+1. Dark mode implementation
+2. Analytics and reporting
+3. Advanced filtering and sorting
+4. Performance optimizations
+5. Animation and micro-interactions
+
+# Risks and Mitigations
+## Technical Challenges
+- **Risk**: Performance issues with large product catalogs
+  - **Mitigation**: Implement pagination, virtualization, and image optimization
+- **Risk**: Theme inconsistencies across components
+  - **Mitigation**: Comprehensive theme testing and component theming guidelines
+
+## User Experience
+- **Risk**: Complex admin interface overwhelming for traditional users
+  - **Mitigation**: Progressive disclosure, contextual help, and intuitive navigation
+- **Risk**: Responsive design breaking on certain devices
+  - **Mitigation**: Comprehensive device testing and flexible layout system
+
+## Development Efficiency
+- **Risk**: Component redundancy and inconsistency
+  - **Mitigation**: Establish component library and reuse patterns
+- **Risk**: API integration challenges
+  - **Mitigation**: Mock API services for frontend development independence
+
+# Appendix
+## UI/UX Guidelines
+- Typography: Use system font stack with Material UI defaults
+- Color Palette:
+  - Primary: #5D4037 (brown for bakery theme)
+  - Secondary: #FFC107 (amber/wheat color)
+  - Error: #D32F2F
+  - Background (light): #FAFAFA
+  - Background (dark): #121212
+- Spacing: Follow Material UI's 8px grid system
+- Icons: Material Icons with consistent sizing
+
+## Component Standards
+- All components should accept className prop for styling overrides
+- Form components must include proper accessibility attributes
+- Components should be responsive by default
+- Theme-aware components should respect current theme context
+- Consistent loading and error states across components
+</PRD>
