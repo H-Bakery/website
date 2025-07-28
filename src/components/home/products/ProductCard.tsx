@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useContext } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -8,27 +8,24 @@ import {
   CardContent,
   CardActionArea,
   CardMedia,
+  Button,
+  CardActions,
 } from '@mui/material'
-import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew'
+import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import Image from 'next/image'
 
 import { formatter } from '../../../utils/formatPrice'
+import { CartContext } from '../../../context/CartContext'
+import { Product } from '../../../types/product'
 
-interface Props {
-  id: number
-  name: string
-  category: string
-  image: string
-  price: number
-  description?: string
-}
+interface Props extends Product {}
 
 const ProductCard: React.FC<Props> = (props) => {
-  const { id, name, category, image, price, description } = props
+  const { addToCart } = useContext(CartContext)
   const router = useRouter()
 
   const handleCardClick = () => {
-    router.push(`products/${id}`)
+    router.push(`products/${props.id}`)
   }
 
   const handleKeyPress = (event: React.KeyboardEvent) => {
@@ -38,30 +35,31 @@ const ProductCard: React.FC<Props> = (props) => {
     }
   }
 
+  const handleAddToCart = (event: React.MouseEvent) => {
+    event.stopPropagation()
+    addToCart(props)
+  }
+
   return (
-    <Card
-      elevation={2}
-      sx={styles.card}
-      onClick={handleCardClick}
-      onKeyDown={handleKeyPress}
-      tabIndex={0}
-      role="button"
-      aria-label={`Produkt anzeigen: ${name}, Preis: ${formatter.format(
-        price
-      )}`}
-    >
-      <CardActionArea>
+    <Card elevation={2} sx={styles.card}>
+      <CardActionArea
+        onClick={handleCardClick}
+        onKeyDown={handleKeyPress}
+        tabIndex={0}
+        aria-label={`Produkt anzeigen: ${props.name}, Preis: ${formatter.format(
+          props.price
+        )}`}
+      >
         <CardMedia component="div" sx={styles.imageContainer}>
-          {/* Using alt text for better accessibility */}
           <Image
             width={200}
             height={150}
-            src={image}
-            alt={`Bild von ${name}`}
+            src={props.image}
+            alt={`Bild von ${props.name}`}
             style={{
               maxWidth: '85%',
               maxHeight: '85%',
-              objectFit: 'contain' as const, // Use type assertion here
+              objectFit: 'contain' as const,
               transition: 'transform 0.3s ease',
             }}
           />
@@ -70,17 +68,16 @@ const ProductCard: React.FC<Props> = (props) => {
         <CardContent sx={styles.content}>
           <Box sx={styles.nameContainer}>
             <Typography variant="h6" component="h3" sx={styles.name}>
-              {name}
+              {props.name}
             </Typography>
 
-            {/* Optional description with truncation */}
-            {description && (
+            {props.description && (
               <Typography
                 variant="body2"
                 color="text.secondary"
                 sx={styles.description}
               >
-                {description}
+                {props.description}
               </Typography>
             )}
           </Box>
@@ -88,7 +85,7 @@ const ProductCard: React.FC<Props> = (props) => {
           <Box sx={styles.footer}>
             <Chip
               size="small"
-              label={category}
+              label={props.category}
               color="primary"
               variant="outlined"
               sx={styles.categoryChip}
@@ -97,13 +94,26 @@ const ProductCard: React.FC<Props> = (props) => {
               variant="button"
               fontWeight="bold"
               fontSize="16px"
-              aria-label={`Preis: ${formatter.format(price)}`}
+              aria-label={`Preis: ${formatter.format(props.price)}`}
             >
-              {formatter.format(price)}
+              {formatter.format(props.price)}
             </Typography>
           </Box>
         </CardContent>
       </CardActionArea>
+      
+      <CardActions sx={styles.actions}>
+        <Button
+          variant="contained"
+          color="primary"
+          startIcon={<AddShoppingCartIcon />}
+          onClick={handleAddToCart}
+          fullWidth
+          size="small"
+        >
+          In den Warenkorb
+        </Button>
+      </CardActions>
     </Card>
   )
 }
@@ -180,6 +190,10 @@ const styles = {
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
     },
+  },
+  actions: {
+    padding: 2,
+    paddingTop: 0,
   },
 }
 

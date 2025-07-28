@@ -2,15 +2,16 @@ import React from 'react'
 import { Box, BoxProps, Container, Grid, Typography } from '@mui/material'
 
 import Card from '../home/news/Card'
-import { NEWS } from '../../mocks/news'
 import { Fade } from 'react-slideshow-image'
+import { NewsItem } from '../../services/newsService'
 
 interface Props extends BoxProps {
   header?: React.ReactNode
+  news: NewsItem[]
 }
 
 const News: React.FC<Props> = (props) => {
-  const { header, sx } = props
+  const { header, sx, news } = props
 
   return (
     <Box
@@ -36,7 +37,7 @@ const News: React.FC<Props> = (props) => {
         {header}
       </Typography>
       <Fade arrows={false}>
-        {NEWS.map((item) => (
+        {news.map((item) => (
           <Card {...item} key={item.id} />
         ))}
       </Fade>

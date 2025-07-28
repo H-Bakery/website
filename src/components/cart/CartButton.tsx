@@ -1,20 +1,37 @@
 import React from 'react'
-import { Box, BoxProps, Typography } from '@mui/material'
+import { Box, BoxProps, Typography, IconButton } from '@mui/material'
 import ShoppingCartRoundedIcon from '@mui/icons-material/ShoppingCartRounded'
+import { useRouter } from 'next/navigation'
 import { CartContext } from '../../context/CartContext'
 
 const CartButton: React.FC<BoxProps> = (props) => {
   const { totalCount } = React.useContext(CartContext)
+  const router = useRouter()
+
+  const handleClick = () => {
+    router.push('/cart')
+  }
+
+  if (totalCount === 0) {
+    return null // Don't show cart button when empty
+  }
 
   return (
-    <Box sx={styles.root} {...props}>
+    <IconButton
+      sx={styles.root}
+      onClick={handleClick}
+      aria-label={`Warenkorb mit ${totalCount} Artikel${totalCount !== 1 ? 'n' : ''}`}
+      {...props}
+    >
       <Box sx={styles.wrapper}>
         <Box sx={styles.badge}>
-          <Typography fontWeight="bold">{totalCount}</Typography>
+          <Typography fontWeight="bold" fontSize="0.75rem">
+            {totalCount > 99 ? '99+' : totalCount}
+          </Typography>
         </Box>
         <ShoppingCartRoundedIcon />
       </Box>
-    </Box>
+    </IconButton>
   )
 }
 
@@ -28,8 +45,11 @@ const styles = {
     bgcolor: 'primary.main',
     height: 50,
     width: 50,
-    boxShadow: 1,
-
+    boxShadow: 3,
+    '&:hover': {
+      bgcolor: 'primary.dark',
+      boxShadow: 6,
+    },
     '& svg': {
       color: 'common.white',
     },

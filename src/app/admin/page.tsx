@@ -43,7 +43,7 @@ export default function AdminPage() {
       title: 'Dashboard',
       description: 'Übersicht über Kennzahlen und aktuelle Statistiken',
       icon: <DashboardIcon fontSize="large" />,
-      path: '/dashboard/management',
+      path: '/admin/dashboard/management',
     },
   ]
 

@@ -4,6 +4,12 @@ export type TemplateType =
   | 'bread-of-day' 
   | 'bakery-news'
   | 'message'
+  | 'facebook-post'
+  | 'instagram-square'
+  | 'instagram-story'
+  | 'website-banner'
+  | 'website-card'
+  | 'simple-square'
 
 export interface TextElement {
   id: string
@@ -53,6 +59,9 @@ export interface Template {
   backgroundStyle?: string
   textPanelStyle?: TextPanelStyle
   overlayStyle?: string
+  platform?: 'facebook' | 'instagram' | 'website' | 'general'
+  aspectRatio?: string
+  recommendedUse?: string
 }
 
 export interface SocialMediaContent {

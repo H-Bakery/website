@@ -13,6 +13,7 @@ import {
   Order,
   BakingListResponse,
   SummaryData,
+  CashEntry,
 } from './types'
 
 // Import real product data
@@ -1111,6 +1112,397 @@ const bakeryAPI = {
       console.error('Error saving production plan:', error)
       // Mock successful response
       return { success: true, id: 'mock-plan-id' }
+    }
+  },
+
+  // Cash Management
+  getCashHistory: async (): Promise<CashEntry[]> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/cash`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to fetch cash history')
+      }
+
+      const data = await response.json()
+      return data
+    } catch (error) {
+      console.error('Error fetching cash history:', error)
+      
+      // Only fall back to mock data if it's a network error, not auth error
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
+      // Generate mock cash data for development when backend is unavailable
+      console.warn('Backend unavailable, using mock data for development')
+      const mockCashEntries: CashEntry[] = []
+      const today = new Date()
+      
+      for (let i = 0; i < 30; i++) {
+        const date = new Date(today)
+        date.setDate(date.getDate() - i)
+        const dateStr = date.toISOString().split('T')[0]
+        
+        // Skip some days randomly to simulate missing entries
+        if (Math.random() > 0.8) continue
+        
+        // Generate realistic cash amounts (€200-€800 range with some outliers)
+        let baseAmount = 300 + Math.random() * 300 // €300-€600 base
+        const isWeekend = date.getDay() === 0 || date.getDay() === 6
+        if (isWeekend) {
+          baseAmount *= 1.2 // 20% more on weekends
+        }
+        
+        // Add some random variation
+        const amount = Math.round((baseAmount + (Math.random() - 0.5) * 100) * 100) / 100
+        
+        mockCashEntries.push({
+          id: i + 1,
+          UserId: 1,
+          amount,
+          date: dateStr,
+          createdAt: new Date(date.getTime() + 20 * 60 * 60 * 1000).toISOString(), // 8 PM
+          updatedAt: new Date(date.getTime() + 20 * 60 * 60 * 1000).toISOString(),
+        })
+      }
+      
+      return mockCashEntries.reverse() // Return in chronological order
+    }
+  },
+
+  addCashEntry: async (amount: number): Promise<{ message: string }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/cash`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ amount }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 400 && errorData.error === 'Invalid user') {
+          throw new Error('Your user session is invalid. Please log in again.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to save cash entry')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error saving cash entry:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
+      // Mock successful response for development when backend is unavailable
+      console.warn('Backend unavailable, using mock response for development')
+      return { message: 'Cash entry saved (mock)' }
+    }
+  },
+
+  updateCashEntry: async (id: number, amount: number, date?: string): Promise<{ message: string; entry: CashEntry }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const updateData: { amount: number; date?: string } = { amount }
+      if (date) {
+        updateData.date = date
+      }
+
+      const response = await fetch(`${API_BASE_URL}/cash/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(updateData),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        
+        if (response.status === 404) {
+          throw new Error('Cash entry not found.')
+        }
+        
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 400 && errorData.error === 'Invalid user') {
+          throw new Error('Your user session is invalid. Please log in again.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to update cash entry')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error updating cash entry:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && (
+          error.message.includes('Authentication') || 
+          error.message.includes('not found')
+        )) {
+        throw error
+      }
+      
+      // Mock successful response for development when backend is unavailable
+      console.warn('Backend unavailable, using mock response for development')
+      return { 
+        message: 'Cash entry updated (mock)',
+        entry: { id, UserId: 1, amount, date: date || new Date().toISOString().split('T')[0], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }
+      }
+    }
+  },
+
+  deleteCashEntry: async (id: number): Promise<{ message: string }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/cash/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        
+        if (response.status === 404) {
+          throw new Error('Cash entry not found.')
+        }
+        
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 400 && errorData.error === 'Invalid user') {
+          throw new Error('Your user session is invalid. Please log in again.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to delete cash entry')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error deleting cash entry:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && (
+          error.message.includes('Authentication') || 
+          error.message.includes('not found')
+        )) {
+        throw error
+      }
+      
+      // Mock successful response for development when backend is unavailable
+      console.warn('Backend unavailable, using mock response for development')
+      return { message: 'Cash entry deleted (mock)' }
+    }
+  },
+
+  // Unsold Products Management
+  addUnsoldProduct: async (productId: number, quantity: number): Promise<{ message: string }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/unsold-products`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ productId, quantity }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to save unsold product entry')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error saving unsold product entry:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
+      // Mock successful response for development when backend is unavailable
+      console.warn('Backend unavailable, using mock response for development')
+      return { message: 'Unsold product entry saved (mock)' }
+    }
+  },
+
+  getUnsoldProducts: async (): Promise<any[]> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/unsold-products`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to fetch unsold products')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching unsold products:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
+      // Generate mock unsold products data for development when backend is unavailable
+      console.warn('Backend unavailable, using mock data for development')
+      const mockUnsoldProducts = []
+      const today = new Date()
+      
+      for (let i = 0; i < 15; i++) {
+        const date = new Date(today)
+        date.setDate(date.getDate() - i)
+        const dateStr = date.toISOString().split('T')[0]
+        
+        // Generate 1-3 unsold product entries per day
+        const entriesCount = Math.floor(Math.random() * 3) + 1
+        
+        for (let j = 0; j < entriesCount; j++) {
+          const productNames = ['Vollkornbrot', 'Baguette', 'Croissant', 'Apfelkuchen', 'Brötchen', 'Pretzel']
+          const productName = productNames[Math.floor(Math.random() * productNames.length)]
+          const quantity = Math.floor(Math.random() * 10) + 1
+          
+          mockUnsoldProducts.push({
+            id: i * 10 + j + 1,
+            productId: j + 1,
+            quantity,
+            date: dateStr,
+            createdAt: new Date(date.getTime() + 20 * 60 * 60 * 1000).toISOString(),
+            updatedAt: new Date(date.getTime() + 20 * 60 * 60 * 1000).toISOString(),
+            Product: {
+              name: productName,
+              category: ['Brot', 'Gebäck', 'Kuchen'][Math.floor(Math.random() * 3)]
+            },
+            User: {
+              username: 'MockUser'
+            }
+          })
+        }
+      }
+      
+      return mockUnsoldProducts.reverse() // Return in chronological order
+    }
+  },
+
+  getUnsoldProductsSummary: async (): Promise<any[]> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/unsold-products/summary`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to fetch unsold products summary')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching unsold products summary:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
+      // Generate mock summary data for development when backend is unavailable
+      console.warn('Backend unavailable, using mock summary data for development')
+      const mockSummary = [
+        {
+          productId: 1,
+          totalUnsold: 25,
+          Product: { name: 'Vollkornbrot', category: 'Brot' }
+        },
+        {
+          productId: 2,
+          totalUnsold: 18,
+          Product: { name: 'Baguette', category: 'Brot' }
+        },
+        {
+          productId: 3,
+          totalUnsold: 12,
+          Product: { name: 'Croissant', category: 'Gebäck' }
+        },
+        {
+          productId: 4,
+          totalUnsold: 8,
+          Product: { name: 'Apfelkuchen', category: 'Kuchen' }
+        }
+      ]
+      
+      return mockSummary
     }
   },
 }

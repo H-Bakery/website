@@ -22,12 +22,11 @@ interface RecipeCollection {
 }
 
 export interface ProductionPlan {
-  totalDoughWeight: number
-  doughPieces: { [key: string]: number } // Map of dough piece name to count
-  doughBatches: number
-  fillings: { [key: string]: number } // Map of filling ID to total grams
-  fillingBatches: { [key: string]: number } // Map of filling ID to batch count
-  calculator?: HefezopfCalculator // Reference to calculator for recipe access
+  totalDoughWeight: number;
+  doughPieces: { [key: string]: number }; // Map of dough piece name to count
+  doughBatches: number;
+  fillings: { [key: string]: number }; // Map of filling ID to total grams
+  calculator?: HefezopfCalculator; // Reference to calculator for recipe access
 }
 
 export class HefezopfCalculator {
@@ -166,21 +165,11 @@ export class HefezopfCalculator {
     // Calculate number of dough batches needed
     const doughBatches = Math.ceil(totalDoughWeight / this.standardBatchSize)
 
-    // Calculate filling batches (15kg per batch)
-    const standardFillingBatchSize = 15000 // 15kg per batch
-    const fillingBatches: StringNumberMap = {}
-    Object.entries(fillings).forEach(([fillingId, weight]) => {
-      if (weight > 0) {
-        fillingBatches[fillingId] = Math.ceil(weight / standardFillingBatchSize)
-      }
-    })
-
     return {
       totalDoughWeight,
       doughPieces,
       doughBatches,
       fillings,
-      fillingBatches,
       calculator: this, // Include calculator for recipe access
     }
   }

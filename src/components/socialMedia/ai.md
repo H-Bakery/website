@@ -30,8 +30,9 @@ socialMedia/
 
 ## Template Types
 
-The component provides several specialized templates:
+The component provides several specialized templates organized by platform:
 
+### Classic Templates
 1. **Daily Special** (`daily-special`)
    - Designed for lunch or meal specials
    - Features title, description, price, and availability
@@ -51,6 +52,33 @@ The component provides several specialized templates:
 5. **Simple Message** (`message`)
    - For bold, text-focused announcements
    - Available in two color variants (primary/white)
+
+### Social Media Templates
+6. **Facebook Post** (`facebook-post`)
+   - Optimized for Facebook feed posts (1200x630px)
+   - Includes hashtags field for better engagement
+   - Designed for Facebook's image display format
+
+7. **Instagram Square** (`instagram-square`)
+   - Perfect square format for Instagram feed (1080x1080px)
+   - Includes hashtags and engaging visual elements
+   - Optimized for Instagram's aesthetic
+
+8. **Instagram Story** (`instagram-story`)
+   - Vertical format for Instagram Stories (1080x1920px)
+   - Designed for mobile viewing
+   - Perfect for behind-the-scenes content
+
+### Website Templates
+9. **Website Banner** (`website-banner`)
+   - Large banner format for website headers (1920x800px)
+   - Includes call-to-action button text
+   - Professional look for web integration
+
+10. **Website Card** (`website-card`)
+    - Compact card format for product listings (600x400px)
+    - Perfect for category overviews
+    - Clean, minimal design
 
 ## Integration Points
 

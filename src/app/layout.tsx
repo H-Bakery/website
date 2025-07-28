@@ -1,6 +1,7 @@
 // src/app/layout.tsx
 import { AppConfig } from '../utils/AppConfig'
 import ThemeRegistry from './ThemeRegistry'
+import AuthWrapper from '../components/providers/AuthWrapper'
 
 // This works because this file is now a Server Component
 export const metadata = {
@@ -35,7 +36,11 @@ export default function RootLayout({
         <link rel="icon" href={`${process.env.basePath}/favicon.ico`} />
       </head>
       <body>
-        <ThemeRegistry>{children}</ThemeRegistry>
+        <ThemeRegistry>
+          <AuthWrapper>
+            {children}
+          </AuthWrapper>
+        </ThemeRegistry>
       </body>
     </html>
   )

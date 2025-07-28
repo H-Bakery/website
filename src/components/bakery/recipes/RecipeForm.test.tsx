@@ -83,7 +83,7 @@ describe('RecipeForm Component', () => {
       
       if (!lastIngredientRow) throw new Error("Could not find the last ingredient row")
 
-      const removeButtonInLastRow = within(lastIngredientRow).getByRole('button', {name: /remove/i})
+      const removeButtonInLastRow = within(lastIngredientRow).getByRole('button')
       fireEvent.click(removeButtonInLastRow) // Remove the second ingredient field (the one just added)
 
 

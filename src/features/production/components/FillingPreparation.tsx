@@ -32,7 +32,6 @@ import {
 import { getFillingById } from '../data/fillings'
 
 interface ProductionPlan {
-  fillingBatches: { [key: string]: number }
   fillings: { [key: string]: number }
   calculator?: HefezopfCalculator
   // Add other properties that might exist in productionPlan
@@ -53,24 +52,21 @@ const FillingPreparation: React.FC<FillingPreparationProps> = ({
   const [showAllIngredients, setShowAllIngredients] = useState(false)
 
   // Extract fillings that are needed
-  const neededFillings = Object.entries(productionPlan.fillingBatches)
-    .filter(([_, batches]) => batches > 0)
+  const neededFillings = Object.entries(productionPlan.fillings)
+    .filter(([_, amount]) => amount > 0)
     .map(([filling, _]) => filling)
 
   const getIngredientsForFilling = (
     fillingId: string,
-    batches: number
+    totalAmount: number
   ): { [ingredient: string]: { amount: number; unit: string } } => {
     const filling = getFillingById(fillingId)
     if (!filling) return {}
 
     const scaledIngredients: { [ingredient: string]: { amount: number; unit: string } } = {}
     
-    // 15kg pro Batch (15000g)
-    const batchSizeInGrams = 15000
-    
     // Berechne wie viele Rezept-Durchgänge erforderlich sind
-    const recipeMultiplier = (batches * batchSizeInGrams) / filling.recipeBatchSize
+    const recipeMultiplier = totalAmount / filling.recipeBatchSize
     
     filling.ingredients.forEach((ingredient) => {
       scaledIngredients[ingredient.name] = {
@@ -151,9 +147,7 @@ const FillingPreparation: React.FC<FillingPreparationProps> = ({
                         {formatFillingName(filling)}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        {productionPlan.fillingBatches[filling]} Charge(n) à 15kg (
-                        {(productionPlan.fillings[filling] / 1000).toFixed(1)}{' '}
-                        kg gesamt)
+                        {(productionPlan.fillings[filling] / 1000).toFixed(1)} kg
                       </Typography>
                     </Box>
                     <Chip
@@ -176,7 +170,7 @@ const FillingPreparation: React.FC<FillingPreparationProps> = ({
             <Card sx={{ mb: 3 }}>
               <CardContent>
                 <Typography variant="subtitle1" gutterBottom>
-                  {formatFillingName(selectedFilling)} - Zutaten (15kg pro Charge)
+                  {formatFillingName(selectedFilling)} - Zutaten
                 </Typography>
 
                 <FormControlLabel
@@ -197,7 +191,7 @@ const FillingPreparation: React.FC<FillingPreparationProps> = ({
                     {Object.entries(
                       getIngredientsForFilling(
                         selectedFilling,
-                        productionPlan.fillingBatches[selectedFilling]
+                        productionPlan.fillings[selectedFilling]
                       )
                     ).map(([ingredient, details]) => (
                       <TableRow key={ingredient}>
@@ -223,7 +217,7 @@ const FillingPreparation: React.FC<FillingPreparationProps> = ({
                             (acc: { [key: string]: { amount: number; unit: string } }, filling) => {
                               const ingredients = getIngredientsForFilling(
                                 filling,
-                                productionPlan.fillingBatches[filling]
+                                productionPlan.fillings[filling]
                               )
 
                               Object.entries(ingredients).forEach(

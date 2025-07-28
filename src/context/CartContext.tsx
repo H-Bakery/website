@@ -1,19 +1,18 @@
 import React from 'react'
-import { Product } from '../components/products/types'
-import { PRODUCTS } from '../mocks/products'
+import { Product } from '../types/product'
 
 export interface CartItem extends Product {
-  count: number
+  quantity: number
 }
 
 interface CartContextProps {
   items: CartItem[]
   totalPrice: number
   totalCount: number
-  setItems: (items: CartItem[]) => void
-  add: (id: number) => void
-  remove: (id: number) => void
-  changeCount: (id: number, diff: number) => void
+  addToCart: (product: Product) => void
+  removeFromCart: (id: number) => void
+  updateQuantity: (id: number, quantity: number) => void
+  clearCart: () => void
 }
 
 export const CartContext = React.createContext({} as CartContextProps)
@@ -24,72 +23,64 @@ interface Props {
 
 const CartProvider: React.FC<Props> = ({ children }) => {
   const [items, setItems] = React.useState<CartItem[]>([])
-  const [totalCount, setTotalCount] = React.useState(0)
-  const [totalPrice, setTotalPrice] = React.useState(0)
 
-  const alreadyExists = (id: number): boolean => {
-    let item = items.find((product) => product.id === id)
-    if (item) return true
-    return false
-  }
+  // Calculate totals from items
+  const totalCount = React.useMemo(() => {
+    return items.reduce((sum, item) => sum + item.quantity, 0)
+  }, [items])
 
-  const getCartItem = (id: number): CartItem => {
-    return items.find((product) => product.id === id) as CartItem
-  }
+  const totalPrice = React.useMemo(() => {
+    return items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+  }, [items])
 
-  const getProduct = (id: number): CartItem => {
-    return PRODUCTS.find((product) => product.id === id)
-  }
-
-  const add = (id: number) => {
-    let product = getProduct(id)
-    if (!alreadyExists(id)) {
-      setItems([
-        ...items,
-        {
-          ...product,
-          count: 1,
-        },
-      ])
-    } else {
-      changeCount(id, 1)
-    }
-    setTotalCount(totalCount + 1)
-    setTotalPrice(totalPrice + product.price)
-  }
-
-  const remove = (id: number) => {
-    setItems(items.filter((item) => item.id !== id))
-  }
-
-  const changeCount = (id: number, diff: number) => {
-    let newArray: CartItem[] = []
-    let newTotalCount = 0
-    let newTotalPrice = 0
-    items.forEach((item) => {
-      if (item.id === id) {
-        item.count = item.count + diff
+  const addToCart = React.useCallback((product: Product) => {
+    setItems(prevItems => {
+      const existingItem = prevItems.find(item => item.id === product.id)
+      
+      if (existingItem) {
+        // If item already exists, increase quantity
+        return prevItems.map(item =>
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      } else {
+        // Add new item with quantity 1
+        return [...prevItems, { ...product, quantity: 1 }]
       }
-      if (item.count > 0) {
-        newArray.push(item)
-        newTotalPrice = newTotalPrice + item.count * item.price
-      }
-      newTotalCount = newTotalCount + item.count
     })
-    setItems(newArray)
-    setTotalCount(newTotalCount)
-    setTotalPrice(newTotalPrice)
-  }
+  }, [])
 
-  const value = {
-    totalPrice,
+  const removeFromCart = React.useCallback((id: number) => {
+    setItems(prevItems => prevItems.filter(item => item.id !== id))
+  }, [])
+
+  const updateQuantity = React.useCallback((id: number, quantity: number) => {
+    if (quantity <= 0) {
+      removeFromCart(id)
+      return
+    }
+    
+    setItems(prevItems =>
+      prevItems.map(item =>
+        item.id === id ? { ...item, quantity } : item
+      )
+    )
+  }, [removeFromCart])
+
+  const clearCart = React.useCallback(() => {
+    setItems([])
+  }, [])
+
+  const value = React.useMemo(() => ({
     items,
+    totalPrice,
     totalCount,
-    setItems,
-    add,
-    remove,
-    changeCount,
-  }
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    clearCart,
+  }), [items, totalPrice, totalCount, addToCart, removeFromCart, updateQuantity, clearCart])
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>
 }

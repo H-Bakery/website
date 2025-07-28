@@ -1,13 +1,9 @@
-'use client'
 import React from 'react'
-import { useRouter } from 'next/navigation'
 import {
   Box,
   Typography,
   Container,
   Divider,
-  useTheme,
-  useMediaQuery,
 } from '@mui/material'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
@@ -23,17 +19,11 @@ import News from '../../components/home/news'
 import CallToAction from '../../components/CallToAction'
 import { featuredProducts } from '../../mocks/products/featured'
 import Button from '../../components/button/Index'
+import { getAllNews } from '../../services/newsService'
+import NavigationButton from '../../components/NavigationButton'
 
-export default function HomePage() {
-  const router = useRouter()
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-
-  // Function to handle navigation to products page
-  const navigateToProducts = () => router.push('/products')
-
-  // Function to handle navigation to news page
-  const navigateToNews = () => router.push('/news')
+export default async function HomePage() {
+  const news = getAllNews()
 
   return (
     <>
@@ -68,6 +58,7 @@ export default function HomePage() {
       <Testimonial />
 
       <News
+        news={news}
         header={
           <Box
             sx={{
@@ -80,7 +71,7 @@ export default function HomePage() {
             <Typography variant="h3" component="h2" fontWeight="bold">
               Neuigkeiten
             </Typography>
-            <Button onClick={navigateToNews}>Mehr</Button>
+            <NavigationButton href="/news">Mehr</NavigationButton>
           </Box>
         }
       />

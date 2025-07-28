@@ -18,8 +18,8 @@ export const DOUGH_PIECES: DoughPiece[] = [
   },
   {
     name: 'Gefüllter Kranz',
-    weight: 1200,
-    count: 1,
+    weight: 600,
+    count: 3,
     description: 'Kranz mit verschiedenen Füllungen',
   },
   {
