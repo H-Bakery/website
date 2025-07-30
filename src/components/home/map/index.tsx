@@ -1,4 +1,5 @@
 // website/src/components/home/map/index.tsx
+'use client'
 import React from 'react'
 import {
   Box,

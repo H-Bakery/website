@@ -20,7 +20,7 @@ The production feature enables bakery staff to plan and manage production for sp
 ## Key Components
 
 1. **SaturdayProductionDashboard** - Main component for production planning (40kg dough batches)
-2. **FillingPreparation** - Component for preparing different types of fillings (15kg per batch)
+2. **FillingPreparation** - Component for preparing different types of fillings
 3. **ProductionChecklist** - Checklist for production tasks
 
 ## Data Sources
@@ -44,7 +44,7 @@ The Saturday production focuses on:
 The production calculator uses the following approach:
 1. Calculate total dough required based on orders
 2. Determine number of batches needed (40kg per batch)
-3. Calculate filling requirements based on product specifications (15kg per filling batch)
+3. Calculate filling requirements based on product specifications
 4. Count the individual dough pieces needed (based on the "Teigstückübersicht")
 5. Generate a comprehensive production plan
 

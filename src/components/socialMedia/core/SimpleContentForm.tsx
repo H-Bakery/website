@@ -16,6 +16,7 @@ import TextFieldsIcon from '@mui/icons-material/TextFields'
 import EuroIcon from '@mui/icons-material/Euro'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import { TemplateType } from '../../../types/socialMedia'
+import { getTemplateConfig } from '../config/templateConfig'
 
 interface SimpleContentFormProps {
   templateType: TemplateType
@@ -35,8 +36,11 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
 }) => {
   const theme = useTheme()
   
-  // Determine content type specific settings
-  const contentConfig = {
+  // Get template configuration
+  const templateConfig = getTemplateConfig(templateType)
+  
+  // Legacy content configuration - will be replaced by templateConfig
+  const contentConfig: Record<TemplateType, any> = {
     'daily-special': {
       titleLabel: 'Titel des Angebots',
       titlePlaceholder: 'z.B. Mittagstisch am Freitag',
@@ -96,10 +100,93 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
       additionalInfoLabel: 'Stil',
       additionalInfoPlaceholder: 'Lassen Sie leer für roten Hintergrund oder "white" für weißen Hintergrund',
       hideDescription: true
+    },
+    'facebook-post': {
+      titleLabel: 'Post-Titel',
+      titlePlaceholder: 'Heute im Angebot 🥖',
+      titleMaxLength: 60,
+      descriptionLabel: 'Post-Beschreibung',
+      descriptionPlaceholder: 'Frisch gebackene Laugenbrezeln mit hausgemachter Butter...',
+      descriptionMaxLength: 200,
+      showPrice: true,
+      additionalInfoLabel: 'Hashtags',
+      additionalInfoPlaceholder: '#BäckereiHeusser #Laugenbrezeln #Regional',
+      hideDescription: false
+    },
+    'instagram-square': {
+      titleLabel: 'Post-Titel',
+      titlePlaceholder: 'Fresh Daily Special ✨',
+      titleMaxLength: 40,
+      descriptionLabel: 'Kurze Beschreibung',
+      descriptionPlaceholder: 'Handcrafted with love 💕',
+      descriptionMaxLength: 80,
+      showPrice: true,
+      additionalInfoLabel: 'Hashtags',
+      additionalInfoPlaceholder: '#freshbaked #dailyspecial #handcrafted',
+      hideDescription: false
+    },
+    'instagram-story': {
+      titleLabel: 'Story-Titel',
+      titlePlaceholder: 'Behind the Scenes',
+      titleMaxLength: 30,
+      descriptionLabel: 'Story-Text',
+      descriptionPlaceholder: 'Early morning magic in our bakery ✨',
+      descriptionMaxLength: 60,
+      showPrice: false,
+      additionalInfoLabel: 'Hashtags',
+      additionalInfoPlaceholder: '#behindthescenes #bakinglife',
+      hideDescription: false
+    },
+    'website-banner': {
+      titleLabel: 'Banner-Titel',
+      titlePlaceholder: 'Willkommen bei Bäckerei Heusser',
+      titleMaxLength: 50,
+      descriptionLabel: 'Untertitel',
+      descriptionPlaceholder: 'Tradition trifft Innovation',
+      descriptionMaxLength: 120,
+      showPrice: false,
+      additionalInfoLabel: 'Call-to-Action',
+      additionalInfoPlaceholder: 'Jetzt entdecken',
+      hideDescription: false
+    },
+    'website-card': {
+      titleLabel: 'Karten-Titel',
+      titlePlaceholder: 'Unser Sortiment',
+      titleMaxLength: 35,
+      descriptionLabel: 'Beschreibung',
+      descriptionPlaceholder: 'Von traditionellen Broten bis zu modernen Kreationen',
+      descriptionMaxLength: 80,
+      showPrice: false,
+      additionalInfoLabel: 'Button-Text',
+      additionalInfoPlaceholder: 'Mehr erfahren',
+      hideDescription: false
+    },
+    'simple-square': {
+      titleLabel: 'Nachrichtentext',
+      titlePlaceholder: 'Ihre Nachricht hier...',
+      titleMaxLength: 300,
+      descriptionLabel: '',
+      descriptionPlaceholder: '',
+      descriptionMaxLength: 0,
+      showPrice: false,
+      additionalInfoLabel: '',
+      additionalInfoPlaceholder: '',
+      hideDescription: true
     }
   }
   
-  const config = contentConfig[templateType]
+  const config = contentConfig[templateType] || {
+    titleLabel: 'Titel',
+    titlePlaceholder: templateConfig.placeholders.title,
+    titleMaxLength: 50,
+    descriptionLabel: 'Beschreibung',
+    descriptionPlaceholder: templateConfig.placeholders.description,
+    descriptionMaxLength: 200,
+    showPrice: templateConfig.layout.showPrice,
+    additionalInfoLabel: templateConfig.layout.formatHashtags ? 'Hashtags' : 'Zusätzliche Informationen',
+    additionalInfoPlaceholder: templateConfig.layout.formatHashtags ? '#hashtag1 #hashtag2' : 'Zusätzliche Informationen...',
+    hideDescription: !templateConfig.layout.showDescription
+  }
   
   return (
     <Paper
@@ -140,8 +227,8 @@ const SimpleContentForm: React.FC<SimpleContentFormProps> = ({
           placeholder={config.titlePlaceholder}
           variant="outlined"
           required
-          multiline={templateType === 'message'}
-          rows={templateType === 'message' ? 5 : 1}
+          multiline={templateType === 'message' || templateType === 'simple-square'}
+          rows={(templateType === 'message' || templateType === 'simple-square') ? 5 : 1}
           inputProps={{ 
             maxLength: config.titleMaxLength 
           }}

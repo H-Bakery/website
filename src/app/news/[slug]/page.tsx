@@ -1,16 +1,21 @@
-// @ts-nocheck
-
 import React from 'react'
 import { Box, Container, Typography } from '@mui/material'
 import Base from '../../../layouts/Base'
 import Hero from '../../../components/Hero'
-import { NEWS } from '../../../mocks/news'
+import { getNewsBySlug, getAllSlugs } from '../../../services/newsService'
 import { notFound } from 'next/navigation'
+import MarkdownDisplay from '../../../components/MarkdownDisplay'
 
-export default function NewsArticlePage({ params }: any) {
+interface NewsArticlePageProps {
+  params: {
+    slug: string
+  }
+}
+
+export default function NewsArticlePage({ params }: NewsArticlePageProps) {
   const { slug } = params
 
-  const news = NEWS.find((item) => item.slug === slug)
+  const news = getNewsBySlug(slug)
 
   if (!news) {
     notFound()
@@ -33,7 +38,10 @@ export default function NewsArticlePage({ params }: any) {
           }}
         />
         <Box mb={6}>
-          <Typography color="text.secondary">{news.text}</Typography>
+          <Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>
+            {news.published} • {news.category}
+          </Typography>
+          <MarkdownDisplay content={news.content || news.text} />
         </Box>
       </Container>
     </Base>
@@ -41,7 +49,8 @@ export default function NewsArticlePage({ params }: any) {
 }
 
 export async function generateStaticParams() {
-  return NEWS.map((article) => ({
-    slug: article.slug,
+  const slugs = getAllSlugs()
+  return slugs.map((slug) => ({
+    slug,
   }))
 }

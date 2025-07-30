@@ -6,6 +6,7 @@ import BakeryLayout from '../../layouts/BakeryLayout'
 import { ThemeProvider } from '../../context/ThemeContext'
 import { useTheme } from '../../context/ThemeContext'
 import { lightTheme, darkTheme } from '../../theme'
+import ProtectedRoute from '../../components/auth/ProtectedRoute'
 
 // Create a client
 const queryClient = new QueryClient()
@@ -46,9 +47,11 @@ interface AdminLayoutProps {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <ThemeProvider>
-      <QueryClientProvider client={queryClient}>
-        <ThemedAdminContent>{children}</ThemedAdminContent>
-      </QueryClientProvider>
+      <ProtectedRoute>
+        <QueryClientProvider client={queryClient}>
+          <ThemedAdminContent>{children}</ThemedAdminContent>
+        </QueryClientProvider>
+      </ProtectedRoute>
     </ThemeProvider>
   )
 }

@@ -25,6 +25,7 @@ import {
 } from '@mui/material'
 import { useTheme as useMuiTheme } from '@mui/material/styles'
 import { useTheme } from '../context/ThemeContext'
+import { useAuth } from '../context/AuthContext'
 import { useRouter, usePathname } from 'next/navigation'
 import MenuIcon from '@mui/icons-material/Menu'
 import DashboardIcon from '@mui/icons-material/Dashboard'
@@ -46,6 +47,10 @@ import HelpOutlineIcon from '@mui/icons-material/HelpOutline'
 import SecurityIcon from '@mui/icons-material/Security'
 import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings'
 import ImageIcon from '@mui/icons-material/Image' // Added import
+import AssignmentTurnedInIcon from '@mui/icons-material/AssignmentTurnedIn'
+import EuroIcon from '@mui/icons-material/Euro'
+import AssessmentIcon from '@mui/icons-material/Assessment'
+import ChatIcon from '@mui/icons-material/Chat'
 import Image from 'next/image'
 import '../app/print.css'
 import ThemeToggler from '../components/theme/ThemeToggler'
@@ -92,6 +97,7 @@ const DRAWER_WIDTH = 280
 const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
   const muiTheme = useMuiTheme()
   const { mode } = useTheme()
+  const { user, logout } = useAuth()
   const isMobile = useMediaQuery(muiTheme.breakpoints.down('md'))
   const router = useRouter()
   const pathname = usePathname() // Use usePathname instead of window.location.pathname
@@ -99,7 +105,6 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
   const effectiveMode = isAdminRoute ? mode : 'light'
   const [drawerOpen, setDrawerOpen] = useState(!isMobile)
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null)
-  const [isAuthenticated, setIsAuthenticated] = useState(true) // This should be from your auth system
   const [pageTitle, setPageTitle] = useState('Bäckerei-Management') // Default title
 
   // Set page title based on current path
@@ -111,6 +116,8 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         setPageTitle('Backstube: Bestelllisten')
       else if (pathname.includes('/admin/bakery/intern-orders'))
         setPageTitle('Backstube: Internbestellungen')
+      else if (pathname.includes('/admin/bakery/daily-prep'))
+        setPageTitle('Backstube: Tägliche Vorbereitung')
       else if (pathname.includes('/admin/orders'))
         setPageTitle('Verkaufsbereich: Bestellungen')
       else if (pathname.includes('/admin/dashboard/sales'))
@@ -119,18 +126,20 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
         setPageTitle('Backstube: Statistik')
       else if (pathname.includes('/admin/dashboard/management'))
         setPageTitle('Verwaltung: Kennzahlen')
+      else if (pathname.includes('/admin/cash'))
+        setPageTitle('Verkaufsbereich: Kassenverwaltung')
+      else if (pathname.includes('/admin/unsold-products'))
+        setPageTitle('Verkaufsbereich: Unverkaufte Produkte')
       else setPageTitle('Bäckerei-Management')
     }
   }, [pathname])
 
-  // Check authentication - redirect to login if not authenticated
-  useEffect(() => {
-    // For demo purposes, we're just using a constant
-    // In a real app, you'd check with your auth provider
-    if (!isAuthenticated) {
-      router.push('/login')
-    }
-  }, [isAuthenticated, router])
+  // Use the current user from AuthContext or fallback to mock
+  const currentUser = user || CURRENT_USER || {
+    name: 'Guest User',
+    role: 'Production' as UserRole,
+    avatar: null
+  }
 
   // Handle menu close
   const handleMenuClose = () => {
@@ -165,6 +174,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           icon: <ImageIcon />,
           path: '/admin/social-media',
           roles: ['Management', 'Production', 'Sales'], // Assuming Sales might also use this
+        },
+        {
+          name: 'Team Chat',
+          icon: <ChatIcon />,
+          path: '/admin/chat',
+          roles: ['Management', 'Production', 'Sales'],
         },
       ],
     },
@@ -201,6 +216,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           path: '/admin/bakery/saturday-production',
           roles: ['Management', 'Production'],
         },
+        {
+          name: 'Tägliche Vorbereitung',
+          icon: <AssignmentTurnedInIcon />,
+          path: '/admin/bakery/daily-prep',
+          roles: ['Management', 'Production'],
+        },
       ],
     },
     {
@@ -223,6 +244,18 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           icon: <BarChartIcon />,
           path: '/admin/dashboard/sales',
           roles: ['Management', 'Sales'],
+        },
+        {
+          name: 'Kassenverwaltung',
+          icon: <EuroIcon />,
+          path: '/admin/cash',
+          roles: ['Management', 'Sales'],
+        },
+        {
+          name: 'Unverkaufte Produkte',
+          icon: <AssessmentIcon />,
+          path: '/admin/unsold-products',
+          roles: ['Management', 'Sales', 'Production'],
         },
       ],
     },
@@ -250,7 +283,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
     .map((section) => ({
       ...section,
       items: section.items.filter((item) =>
-        item.roles.includes(CURRENT_USER.role)
+        item.roles.includes(currentUser?.role || 'Production')
       ),
     }))
     .filter((section) => section.items.length > 0)
@@ -261,26 +294,6 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
     return true
   }
 
-  // For client-side only localStorage operations
-  const [authChecked, setAuthChecked] = useState(false)
-
-  useEffect(() => {
-    // Client-side check for localStorage and auth
-    const checkLocalStorage = () => {
-      // Example localStorage check - adjust according to your auth system
-      const token = localStorage.getItem('token')
-      if (!token && !authChecked) {
-        setIsAuthenticated(false)
-      }
-      setAuthChecked(true)
-    }
-
-    checkLocalStorage()
-  }, [authChecked])
-
-  if (!isAuthenticated) {
-    return null // Will redirect to login
-  }
 
   if (!checkAccess()) {
     return (
@@ -431,9 +444,9 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
             {/* User Menu */}
             <Chip
               avatar={
-                CURRENT_USER.avatar ? (
+                currentUser.avatar ? (
                   <Avatar
-                    src={CURRENT_USER.avatar}
+                    src={currentUser.avatar}
                     sx={{
                       bgcolor: 'primary.light',
                       color: '#fff',
@@ -454,7 +467,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
                           : 'none',
                     }}
                   >
-                    {CURRENT_USER.name.charAt(0)}
+                    {currentUser?.name?.charAt(0) || 'U'}
                   </Avatar>
                 )
               }
@@ -465,7 +478,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
                     component="span"
                     sx={{ fontWeight: 500 }}
                   >
-                    {CURRENT_USER.name}
+                    {currentUser?.name || 'Guest User'}
                   </Typography>
                   <Typography
                     variant="caption"
@@ -473,7 +486,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
                     sx={{ display: 'block', opacity: 0.85 }}
                   >
                     {(() => {
-                      switch (CURRENT_USER.role) {
+                      switch (currentUser?.role) {
                         case 'Management':
                           return 'Geschäftsführung'
                         case 'Production':
@@ -481,7 +494,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
                         case 'Sales':
                           return 'Verkauf'
                         default:
-                          return CURRENT_USER.role
+                          return currentUser?.role || 'Mitarbeiter'
                       }
                     })()}
                   </Typography>
@@ -543,12 +556,12 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
           >
             <Box sx={{ px: 2, py: 1.5 }}>
               <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                {CURRENT_USER.name}
+                {currentUser?.name || 'Guest User'}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {CURRENT_USER.role === 'Management'
+                {currentUser?.role === 'Management'
                   ? 'Geschäftsführung'
-                  : CURRENT_USER.role === 'Production'
+                  : currentUser?.role === 'Production'
                   ? 'Bäckermeister'
                   : 'Verkauf'}
               </Typography>
@@ -589,11 +602,8 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
                 startIcon={<LogoutIcon />}
                 onClick={() => {
                   handleMenuClose()
-                  // Implement logout functionality (client-side only)
-                  if (typeof window !== 'undefined') {
-                    localStorage.removeItem('token')
-                  }
-                  setIsAuthenticated(false)
+                  logout()
+                  router.push('/login')
                 }}
                 sx={{ borderRadius: 2 }}
               >

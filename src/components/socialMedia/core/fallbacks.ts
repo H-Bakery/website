@@ -60,13 +60,17 @@ export const renderToCanvas = async (
 export const createBasicImage = (
   content: Partial<SocialMediaContent>,
   template: Template,
-  width = 1080,
-  height = 1080
+  width?: number,
+  height?: number
 ): string => {
+  // Use template dimensions if not provided
+  const canvasWidth = width || template.width || 1080
+  const canvasHeight = height || template.height || 1080
+  
   // Create canvas
   const canvas = document.createElement('canvas')
-  canvas.width = width
-  canvas.height = height
+  canvas.width = canvasWidth
+  canvas.height = canvasHeight
   const ctx = canvas.getContext('2d')
 
   if (!ctx) return ''
@@ -82,28 +86,70 @@ export const createBasicImage = (
     } else {
       ctx.fillStyle = '#D038BA' // Primary color
     }
-    ctx.fillRect(0, 0, width, height)
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
   } else {
-    // Standard gradient background for other templates
-    const bgGradient = ctx.createLinearGradient(0, 0, 0, height)
-    bgGradient.addColorStop(0, '#FFFFFF')
-    bgGradient.addColorStop(1, '#F6F8FC')
-    ctx.fillStyle = bgGradient
-    ctx.fillRect(0, 0, width, height)
+    // Different backgrounds for different template types
+    if (template.platform === 'facebook') {
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, canvasHeight)
+      bgGradient.addColorStop(0, '#FFFFFF')
+      bgGradient.addColorStop(1, '#E3F2FD')
+      ctx.fillStyle = bgGradient
+    } else if (template.platform === 'instagram') {
+      const bgGradient = ctx.createLinearGradient(0, 0, canvasWidth, canvasHeight)
+      bgGradient.addColorStop(0, '#E91E63')
+      bgGradient.addColorStop(0.5, '#9C27B0')
+      bgGradient.addColorStop(1, '#D038BA')
+      ctx.fillStyle = bgGradient
+    } else if (template.platform === 'website') {
+      ctx.fillStyle = '#FFFFFF'
+    } else {
+      const bgGradient = ctx.createLinearGradient(0, 0, 0, canvasHeight)
+      bgGradient.addColorStop(0, '#FFFFFF')
+      bgGradient.addColorStop(1, '#F6F8FC')
+      ctx.fillStyle = bgGradient
+    }
+    ctx.fillRect(0, 0, canvasWidth, canvasHeight)
   }
 
-  // Draw text panel background for non-message templates or keep full background for message template
+  // Draw text panel background for non-message templates
   if (!isMessageTemplate) {
-    const panelGradient = ctx.createLinearGradient(0, height * 0.3, 0, height)
-    panelGradient.addColorStop(0, '#D038BA')
-    panelGradient.addColorStop(1, '#C030AA')
-    ctx.fillStyle = panelGradient
-    ctx.fillRect(0, height * 0.33, width, height * 0.67)
+    if (template.platform === 'facebook') {
+      // Facebook style panel
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.95)'
+      ctx.fillRect(40, canvasHeight * 0.4, canvasWidth - 80, canvasHeight * 0.55)
+      
+      // Add border
+      ctx.strokeStyle = '#D038BA'
+      ctx.lineWidth = 3
+      ctx.strokeRect(40, canvasHeight * 0.4, canvasWidth - 80, canvasHeight * 0.55)
+    } else if (template.platform === 'instagram') {
+      // Instagram story style panel
+      const panelGradient = ctx.createLinearGradient(0, canvasHeight * 0.3, 0, canvasHeight)
+      panelGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)')
+      panelGradient.addColorStop(1, 'rgba(255, 255, 255, 0.8)')
+      ctx.fillStyle = panelGradient
+      ctx.fillRect(0, canvasHeight * 0.5, canvasWidth, canvasHeight * 0.5)
+    } else if (template.platform === 'website') {
+      // Website banner style - minimal overlay
+      ctx.fillStyle = 'rgba(208, 56, 186, 0.1)'
+      ctx.fillRect(0, canvasHeight * 0.6, canvasWidth, canvasHeight * 0.4)
+    } else {
+      // Default panel
+      const panelGradient = ctx.createLinearGradient(0, canvasHeight * 0.3, 0, canvasHeight)
+      panelGradient.addColorStop(0, '#D038BA')
+      panelGradient.addColorStop(1, '#C030AA')
+      ctx.fillStyle = panelGradient
+      ctx.fillRect(0, canvasHeight * 0.33, canvasWidth, canvasHeight * 0.67)
+    }
   }
 
-  // Set text styles - use appropriate color based on template
+  // Set text styles - use appropriate color based on template and platform
   if (isMessageTemplate && isWhiteMessageVariant) {
     ctx.fillStyle = '#D038BA' // Primary color for white background
+  } else if (template.platform === 'facebook') {
+    ctx.fillStyle = '#D038BA' // Brand color for Facebook
+  } else if (template.platform === 'website') {
+    ctx.fillStyle = '#131F37' // Dark text for website
   } else {
     ctx.fillStyle = '#FFFFFF' // White text for colored backgrounds
   }
@@ -117,7 +163,6 @@ export const createBasicImage = (
     ctx.font = 'bold 60px Averia Serif Libre, serif'
   }
 
-  // Draw title
   // Draw title - find the title from different possible fields
   const title =
     content.textElements?.message ||
@@ -126,11 +171,17 @@ export const createBasicImage = (
     content.textElements?.newsTitle ||
     'Bäckerei Heusser'
 
-  // Position text differently for message template vs others
+  // Position text differently for message template vs others and platform
   if (isMessageTemplate) {
-    wrapText(ctx, title, width/2, height * 0.5, width * 0.8, 80)
+    wrapText(ctx, title, canvasWidth/2, canvasHeight * 0.5, canvasWidth * 0.8, 80)
+  } else if (template.platform === 'facebook') {
+    wrapText(ctx, title, 80, canvasHeight * 0.5, canvasWidth * 0.85, 60)
+  } else if (template.platform === 'instagram' && template.type === 'instagram-story') {
+    wrapText(ctx, title, 80, canvasHeight * 0.6, canvasWidth * 0.85, 80)
+  } else if (template.platform === 'website') {
+    wrapText(ctx, title, 80, canvasHeight * 0.7, canvasWidth * 0.85, 70)
   } else {
-    wrapText(ctx, title, 80, height * 0.45, width * 0.85, 70)
+    wrapText(ctx, title, 80, canvasHeight * 0.45, canvasWidth * 0.85, 70)
   }
 
   // Draw description if available and not a message template
@@ -142,8 +193,19 @@ export const createBasicImage = (
       ''
 
     if (description) {
-      ctx.font = '32px Ubuntu, sans-serif'
-      wrapText(ctx, description, 80, height * 0.58, width * 0.85, 40)
+      if (template.platform === 'facebook') {
+        ctx.font = '28px Ubuntu, sans-serif'
+        wrapText(ctx, description, 80, canvasHeight * 0.6, canvasWidth * 0.85, 35)
+      } else if (template.platform === 'instagram' && template.type === 'instagram-story') {
+        ctx.font = '36px Ubuntu, sans-serif'
+        wrapText(ctx, description, 80, canvasHeight * 0.7, canvasWidth * 0.85, 45)
+      } else if (template.platform === 'website') {
+        ctx.font = '24px Ubuntu, sans-serif'
+        wrapText(ctx, description, 80, canvasHeight * 0.8, canvasWidth * 0.85, 30)
+      } else {
+        ctx.font = '32px Ubuntu, sans-serif'
+        wrapText(ctx, description, 80, canvasHeight * 0.58, canvasWidth * 0.85, 40)
+      }
     }
   }
 
@@ -155,9 +217,9 @@ export const createBasicImage = (
     // Add price highlight
     ctx.save()
     ctx.fillStyle = 'rgba(255,255,255,0.15)'
-    ctx.fillRect(60, height * 0.77, 220, 70)
+    ctx.fillRect(60, canvasHeight * 0.77, 220, 70)
     ctx.fillStyle = '#FFFFFF'
-    ctx.fillText(price, 80, height * 0.83)
+    ctx.fillText(price, 80, canvasHeight * 0.83)
     ctx.restore()
   }
 
@@ -171,12 +233,19 @@ export const createBasicImage = (
   } else {
     ctx.fillStyle = '#D038BA' // Primary brand color
   }
-  ctx.fillText('Bäckerei Heusser', 60, 80)
   
-  // Add separator line
+  // Platform-specific header positioning
+  if (template.platform === 'instagram' && template.type === 'instagram-story') {
+    ctx.fillText('Bäckerei Heusser', 60, 120)
+  } else {
+    ctx.fillText('Bäckerei Heusser', 60, 80)
+  }
+  
+  // Add separator line - adjust for different platforms
   ctx.beginPath()
-  ctx.moveTo(60, 100)
-  ctx.lineTo(400, 100)
+  const separatorY = template.platform === 'instagram' && template.type === 'instagram-story' ? 140 : 100
+  ctx.moveTo(60, separatorY)
+  ctx.lineTo(400, separatorY)
   // For message templates with primary background, use white for separator
   if (isMessageTemplate && !isWhiteMessageVariant) {
     ctx.strokeStyle = '#FFFFFF'
@@ -186,18 +255,33 @@ export const createBasicImage = (
   ctx.lineWidth = 3
   ctx.stroke()
   
-  // Add logo placeholder in bottom right
+  // Add logo placeholder in bottom right - adjust for different platforms
   ctx.save()
   ctx.beginPath()
-  ctx.arc(width - 80, height - 80, 60, 0, Math.PI * 2)
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'
+  const logoSize = template.platform === 'website' ? 40 : 60
+  const logoMargin = template.platform === 'website' ? 60 : 80
+  ctx.arc(canvasWidth - logoMargin, canvasHeight - logoMargin, logoSize, 0, Math.PI * 2)
+  
+  if (template.platform === 'website') {
+    ctx.fillStyle = 'rgba(208, 56, 186, 0.3)'
+  } else {
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'
+  }
   ctx.fill()
   
   // Add simple "H" text as logo placeholder
-  ctx.font = 'bold 70px Averia Serif Libre, serif'
-  ctx.fillStyle = '#FFFFFF'
+  const logoFontSize = template.platform === 'website' ? 50 : 70
+  ctx.font = `bold ${logoFontSize}px Averia Serif Libre, serif`
+  
+  if (template.platform === 'website') {
+    ctx.fillStyle = '#D038BA'
+  } else {
+    ctx.fillStyle = '#FFFFFF'
+  }
+  
   ctx.textAlign = 'center'
-  ctx.fillText('H', width - 80, height - 55)
+  const logoYOffset = template.platform === 'website' ? 35 : 55
+  ctx.fillText('H', canvasWidth - logoMargin, canvasHeight - logoYOffset)
   ctx.restore()
 
   // Return the data URL

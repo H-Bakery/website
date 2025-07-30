@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Container } from '@mui/material'
 import { useRouter } from 'next/navigation'
 
@@ -7,6 +7,7 @@ import Hero from '../../components/Hero'
 import Base from '../../layouts/Base'
 import Input from '../../components/Input'
 import Button from '../../components/button/Index'
+import { useAuth } from '../../context/AuthContext'
 
 interface Data {
   username: string
@@ -20,44 +21,35 @@ const DEFAULT = {
 
 const Login: React.FC = () => {
   const [data, setData] = useState<Data>(DEFAULT)
-  const [error, setError] = useState<string>('')
-  const [loading, setLoading] = useState<boolean>(false)
+  const [localError, setLocalError] = useState<string>('')
+  const { login, loading, error, isAuthenticated } = useAuth()
   const router = useRouter()
 
-  const login = async () => {
-    setLoading(true)
-    setError('')
+  // Redirect if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.push('/admin')
+    }
+  }, [isAuthenticated, router])
+
+  const handleLogin = async () => {
+    setLocalError('')
 
     try {
-      const response = await fetch('http://localhost:5000/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(data),
-      })
-
-      const result = await response.json()
-
-      if (!response.ok) {
-        throw new Error(result.error || 'Login failed')
-      }
-
-      // Store token in localStorage
-      localStorage.setItem('token', result.token)
-
-      // Redirect to dashboard or home
-      router.push('/dashboard')
+      await login(data.username, data.password)
+      // Redirect to admin dashboard on successful login
+      router.push('/admin')
     } catch (error: any) {
-      setError(error.message || 'Failed to login. Please try again.')
-    } finally {
-      setLoading(false)
+      setLocalError(error.message || 'Failed to login. Please try again.')
     }
   }
 
+  const [registrationLoading, setRegistrationLoading] = useState(false)
+  const [registrationError, setRegistrationError] = useState('')
+
   const register = async () => {
-    setLoading(true)
-    setError('')
+    setRegistrationLoading(true)
+    setRegistrationError('')
 
     try {
       const response = await fetch('http://localhost:5000/register', {
@@ -80,9 +72,9 @@ const Login: React.FC = () => {
       // Clear form
       setData(DEFAULT)
     } catch (error: any) {
-      setError(error.message || 'Failed to register. Please try again.')
+      setRegistrationError(error.message || 'Failed to register. Please try again.')
     } finally {
-      setLoading(false)
+      setRegistrationLoading(false)
     }
   }
 
@@ -90,11 +82,11 @@ const Login: React.FC = () => {
     <Base>
       <Hero title="Anmelden" />
       <Container maxWidth="sm">
-        {error && (
+        {(error || localError || registrationError) && (
           <div
             style={{ color: 'red', marginBottom: '20px', textAlign: 'center' }}
           >
-            {error}
+            {error || localError || registrationError}
           </div>
         )}
         <Input
@@ -116,17 +108,17 @@ const Login: React.FC = () => {
         />
         <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
           <Button
-            onClick={login}
-            disabled={loading || !data.username || !data.password}
+            onClick={handleLogin}
+            disabled={loading || registrationLoading || !data.username || !data.password}
           >
             {loading ? 'Anmelden...' : 'Anmelden'}
           </Button>
           <Button
             onClick={register}
-            disabled={loading || !data.username || !data.password}
+            disabled={loading || registrationLoading || !data.username || !data.password}
             variant="outlined"
           >
-            {loading ? 'Registrieren...' : 'Registrieren'}
+            {registrationLoading ? 'Registrieren...' : 'Registrieren'}
           </Button>
         </div>
       </Container>

@@ -1,6 +1,6 @@
 import React from 'react'
 import { Box, Chip, Typography } from '@mui/material'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 export interface NewsType {
   id: number
@@ -14,30 +14,30 @@ export interface NewsType {
 
 const Card: React.FC<NewsType> = (props) => {
   const { id, name, category, image, shortDescription, slug } = props
-  const router = useRouter()
 
   return (
-    <Box
-      key={id}
-      sx={styles.card}
-      onClick={() => router.push(`/news/${slug}`)}
-      className="news-card"
-    >
+    <Link href={`/news/${slug}`} style={{ textDecoration: 'none' }}>
       <Box
-        sx={{
-          ...styles.image,
-          backgroundImage: `url(${image})`,
-        }}
-        className="image"
-      ></Box>
-      <Typography sx={styles.name}>{name}</Typography>
-      <Typography variant="body2" color="text.secondary">
-        {shortDescription}
-      </Typography>
-      <Box sx={styles.footer}>
-        <Chip size="small" label={category} />
+        key={id}
+        sx={styles.card}
+        className="news-card"
+      >
+        <Box
+          sx={{
+            ...styles.image,
+            backgroundImage: `url(${image})`,
+          }}
+          className="image"
+        ></Box>
+        <Typography sx={styles.name}>{name}</Typography>
+        <Typography variant="body2" color="text.secondary">
+          {shortDescription}
+        </Typography>
+        <Box sx={styles.footer}>
+          <Chip size="small" label={category} />
+        </Box>
       </Box>
-    </Box>
+    </Link>
   )
 }
 

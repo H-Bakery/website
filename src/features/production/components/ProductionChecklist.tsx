@@ -101,20 +101,16 @@ const ProductionChecklist: React.FC<ProductionChecklistProps> = ({
         </Typography>
         <Divider sx={{ mb: 2 }} />
 
-        {Object.entries(productionPlan.fillingBatches).length > 0 ? (
+        {Object.entries(productionPlan.fillings).some(([_, amount]) => amount > 0) ? (
           <Grid container spacing={2}>
-            {Object.entries(productionPlan.fillingBatches).map(
-              ([filling, batches]) => {
-                if (batches > 0) {
+            {Object.entries(productionPlan.fillings).map(
+              ([filling, amount]) => {
+                if (amount > 0) {
                   return (
                     <Grid item xs={12} key={`filling-${filling}`}>
                       <FormControlLabel
                         control={<Checkbox />}
-                        label={`${formatFillingName(
-                          filling
-                        )}: ${batches} Charge(n) à 15kg (${(
-                          productionPlan.fillings[filling] / 1000
-                        ).toFixed(1)} kg gesamt)`}
+                        label={`${formatFillingName(filling)}: ${(amount / 1000).toFixed(1)} kg`}
                       />
                     </Grid>
                   )

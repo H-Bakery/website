@@ -285,8 +285,8 @@ const SaturdayProductionDashboard: React.FC<
       <Accordion sx={{ mt: 2 }}>
         <AccordionSummary expandIcon={<ExpandMoreIcon />}>
           <Typography fontWeight="bold">Füllungen</Typography>
-          {Object.values(productionPlan.fillingBatches).some(
-            (b) => b > 0
+          {Object.values(productionPlan.fillings).some(
+            (amount) => amount > 0
           ) && (
             <Chip
               size="small"
@@ -304,13 +304,13 @@ const SaturdayProductionDashboard: React.FC<
           )}
         </AccordionSummary>
         <AccordionDetails>
-          {Object.entries(productionPlan.fillingBatches).some(
-            ([_, batches]) => batches > 0
+          {Object.entries(productionPlan.fillings).some(
+            ([_, amount]) => amount > 0
           ) ? (
             <Grid container spacing={2}>
-              {Object.entries(productionPlan.fillingBatches).map(
-                ([filling, batches]) => {
-                  if (batches > 0) {
+              {Object.entries(productionPlan.fillings).map(
+                ([filling, amount]) => {
+                  if (amount > 0) {
                     return (
                       <Grid item xs={12} key={filling}>
                         <Paper sx={{ p: 1.5 }}>
@@ -320,21 +320,11 @@ const SaturdayProductionDashboard: React.FC<
                           <Box
                             sx={{
                               display: 'flex',
-                              justifyContent: 'space-between',
+                              justifyContent: 'flex-end',
                             }}
                           >
                             <Chip
-                              label={`${batches} Charge${
-                                batches > 1 ? 'n' : ''
-                              } à 15kg`}
-                              size="small"
-                              color="primary"
-                              variant="outlined"
-                            />
-                            <Chip
-                              label={`${(
-                                productionPlan.fillings[filling] / 1000
-                              ).toFixed(1)} kg`}
+                              label={`${(amount / 1000).toFixed(1)} kg`}
                               size="small"
                               color="secondary"
                             />

@@ -164,3 +164,12 @@ export interface Recipe {
   image?: string // URL or path to an image
   reviews?: Review[] // Array of Review objects
 }
+
+export interface CashEntry {
+  id: number
+  UserId: number
+  amount: number
+  date: string
+  createdAt: string
+  updatedAt: string
+}

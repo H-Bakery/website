@@ -467,5 +467,312 @@ export const socialMediaTemplates: Template[] = [
     colors: BAKERY_COLORS,
     backgroundStyle: MESSAGE_VARIANTS.whiteBg.background,
     textPanelStyle: MESSAGE_VARIANTS.whiteBg
+  },
+  // Social Media Templates
+  {
+    id: 'facebook-post',
+    name: 'Facebook Post',
+    type: 'facebook-post',
+    description: 'Optimiert für Facebook-Posts (1200x630px)',
+    width: 1200,
+    height: 630,
+    platform: 'facebook',
+    aspectRatio: '1.91:1',
+    recommendedUse: 'Alle Arten von Facebook-Posts',
+    textElements: [
+      {
+        id: 'title',
+        text: '',
+        maxLength: 60,
+        fontSize: 48,
+        fontWeight: 'bold',
+        placeholder: 'Heute im Angebot 🥖',
+        required: true
+      },
+      {
+        id: 'description',
+        text: '',
+        maxLength: 200,
+        fontSize: 24,
+        fontWeight: 'normal',
+        placeholder: 'Frisch gebackene Laugenbrezeln mit hausgemachter Butter...',
+        required: true
+      },
+      {
+        id: 'price',
+        text: '',
+        maxLength: 20,
+        fontSize: 36,
+        fontWeight: 'bold',
+        placeholder: '2,50 €',
+        required: false
+      },
+      {
+        id: 'hashtags',
+        text: '',
+        maxLength: 100,
+        fontSize: 18,
+        fontWeight: 'normal',
+        placeholder: '#BäckereiHeusser #Laugenbrezeln #Regional',
+        required: false
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '1.91:1',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: BACKGROUNDS.lightGradient,
+    textPanelStyle: TEXT_PANELS.light
+  },
+  {
+    id: 'instagram-square',
+    name: 'Instagram Post',
+    type: 'instagram-square',
+    description: 'Quadratisches Format für Instagram Feed (1080x1080px)',
+    width: 1080,
+    height: 1080,
+    platform: 'instagram',
+    aspectRatio: '1:1',
+    recommendedUse: 'Instagram Feed-Posts',
+    textElements: [
+      {
+        id: 'title',
+        text: '',
+        maxLength: 40,
+        fontSize: 56,
+        fontWeight: 'bold',
+        placeholder: 'Fresh Daily Special ✨',
+        required: true
+      },
+      {
+        id: 'description',
+        text: '',
+        maxLength: 80,
+        fontSize: 28,
+        fontWeight: 'normal',
+        placeholder: 'Handcrafted with love 💕',
+        required: true
+      },
+      {
+        id: 'price',
+        text: '',
+        maxLength: 15,
+        fontSize: 44,
+        fontWeight: 'bold',
+        placeholder: '2,50 €',
+        required: false
+      },
+      {
+        id: 'hashtags',
+        text: '',
+        maxLength: 150,
+        fontSize: 20,
+        fontWeight: 'normal',
+        placeholder: '#freshbaked #dailyspecial #handcrafted',
+        required: false
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '1:1',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: BACKGROUNDS.primaryGradient,
+    textPanelStyle: TEXT_PANELS.primary
+  },
+  {
+    id: 'instagram-story',
+    name: 'Instagram Story',
+    type: 'instagram-story',
+    description: 'Vertikales Format für Instagram Stories (1080x1920px)',
+    width: 1080,
+    height: 1920,
+    platform: 'instagram',
+    aspectRatio: '9:16',
+    recommendedUse: 'Instagram Stories und Quick Updates',
+    textElements: [
+      {
+        id: 'title',
+        text: '',
+        maxLength: 30,
+        fontSize: 72,
+        fontWeight: 'bold',
+        placeholder: 'Behind the Scenes',
+        required: true
+      },
+      {
+        id: 'description',
+        text: '',
+        maxLength: 60,
+        fontSize: 36,
+        fontWeight: 'normal',
+        placeholder: 'Early morning magic ✨',
+        required: false
+      },
+      {
+        id: 'hashtags',
+        text: '',
+        maxLength: 100,
+        fontSize: 24,
+        fontWeight: 'normal',
+        placeholder: '#behindthescenes #bakinglife',
+        required: false
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '9:16',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: BACKGROUNDS.primaryGradient,
+    textPanelStyle: TEXT_PANELS.primary
+  },
+  {
+    id: 'website-banner',
+    name: 'Website Banner',
+    type: 'website-banner',
+    description: 'Banner für Website-Header (1920x800px)',
+    width: 1920,
+    height: 800,
+    platform: 'website',
+    aspectRatio: '2.4:1',
+    recommendedUse: 'Website-Header und Landingpages',
+    textElements: [
+      {
+        id: 'title',
+        text: '',
+        maxLength: 50,
+        fontSize: 64,
+        fontWeight: 'bold',
+        placeholder: 'Willkommen bei Bäckerei Heusser',
+        required: true
+      },
+      {
+        id: 'description',
+        text: '',
+        maxLength: 120,
+        fontSize: 32,
+        fontWeight: 'normal',
+        placeholder: 'Tradition trifft Innovation',
+        required: false
+      },
+      {
+        id: 'callToAction',
+        text: '',
+        maxLength: 25,
+        fontSize: 28,
+        fontWeight: 'bold',
+        placeholder: 'Jetzt entdecken',
+        required: false
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '2.4:1',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: BACKGROUNDS.lightGradient,
+    textPanelStyle: TEXT_PANELS.light
+  },
+  {
+    id: 'website-card',
+    name: 'Website Karte',
+    type: 'website-card',
+    description: 'Kompakte Karte für Website (600x400px)',
+    width: 600,
+    height: 400,
+    platform: 'website',
+    aspectRatio: '3:2',
+    recommendedUse: 'Produktkarten und Kategorien',
+    textElements: [
+      {
+        id: 'title',
+        text: '',
+        maxLength: 35,
+        fontSize: 36,
+        fontWeight: 'bold',
+        placeholder: 'Unser Sortiment',
+        required: true
+      },
+      {
+        id: 'description',
+        text: '',
+        maxLength: 80,
+        fontSize: 20,
+        fontWeight: 'normal',
+        placeholder: 'Von traditionellen Broten bis zu modernen Kreationen',
+        required: false
+      },
+      {
+        id: 'callToAction',
+        text: '',
+        maxLength: 20,
+        fontSize: 18,
+        fontWeight: 'bold',
+        placeholder: 'Mehr erfahren',
+        required: false
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '3:2',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: BACKGROUNDS.plain,
+    textPanelStyle: TEXT_PANELS.light
+  },
+  {
+    id: 'simple-square',
+    name: 'Simple Square',
+    type: 'simple-square',
+    description: 'Minimalistisches quadratisches Format mit dynamischer Textgröße',
+    width: 1080,
+    height: 1080,
+    platform: 'general',
+    aspectRatio: '1:1',
+    recommendedUse: 'Einfache Ankündigungen und Text-fokussierte Posts',
+    textElements: [
+      {
+        id: 'title',
+        text: '',
+        maxLength: 200,
+        fontSize: 72,
+        fontWeight: 'bold',
+        placeholder: 'Ihre Nachricht hier...',
+        required: true
+      }
+    ],
+    imageElements: [
+      {
+        id: 'backgroundImage',
+        required: false,
+        aspectRatio: '1:1',
+        isBackground: true
+      }
+    ],
+    colors: BAKERY_COLORS,
+    backgroundStyle: BACKGROUNDS.lightGradient,
+    textPanelStyle: TEXT_PANELS.light
   }
 ]

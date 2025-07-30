@@ -1,0 +1,83 @@
+{
+	"meta": {
+		"generatedAt": "2025-07-18T21:35:36.778Z",
+		"tasksAnalyzed": 10,
+		"totalTasks": 10,
+		"analysisCount": 10,
+		"thresholdScore": 5,
+		"projectName": "Taskmaster",
+		"usedResearch": true
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down the authentication implementation into granular steps: context setup, API integration, custom hooks, route protection, and session persistence. Each subtask should be independently testable.",
+			"reasoning": "Authentication is foundational and security-critical. The task already has well-defined subtasks covering context creation, API integration, custom hooks, route protection, and session persistence. Medium-high complexity due to security considerations and integration points."
+		},
+		{
+			"taskId": 2,
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Divide admin layout enhancement into: sidebar component creation, responsive navigation implementation, dashboard widget integration, and header user display functionality.",
+			"reasoning": "UI layout work with responsive design and Material UI integration. Moderate complexity involving multiple UI components and responsive behavior patterns."
+		},
+		{
+			"taskId": 3,
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Structure chat system into: page setup, message components creation, API integration, real-time polling implementation, and authentication integration.",
+			"reasoning": "Real-time features and API integration add complexity. Requires multiple React components, polling mechanism, and secure API communication."
+		},
+		{
+			"taskId": 4,
+			"complexityScore": 5,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Split backend analytics into: route setup and middleware, SQL aggregation queries implementation, and endpoint testing and validation.",
+			"reasoning": "Backend API development with database aggregation. Standard CRUD operations with SQL complexity for analytics queries."
+		},
+		{
+			"taskId": 5,
+			"complexityScore": 4,
+			"recommendedSubtasks": 3,
+			"expansionPrompt": "Organize dashboard connection into: API integration setup, data fetching library implementation, and UI component data binding with loading states.",
+			"reasoning": "Frontend integration work replacing mock data. Lower complexity as it builds on existing UI components and follows established patterns."
+		},
+		{
+			"taskId": 6,
+			"complexityScore": 6,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Structure order management into: DataGrid setup and configuration, filtering and sorting implementation, detail view creation, and status update functionality.",
+			"reasoning": "Comprehensive CRUD interface with DataGrid, filtering, and detail views. Moderate complexity with multiple UI patterns and API integrations."
+		},
+		{
+			"taskId": 7,
+			"complexityScore": 8,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Break staff management into: backend CRUD endpoints, role-based authorization, frontend user listing, modal forms for CRUD operations, role management UI, and permission testing.",
+			"reasoning": "Full-stack implementation with security implications. High complexity due to role-based access control, both backend and frontend development, and security testing requirements."
+		},
+		{
+			"taskId": 8,
+			"complexityScore": 5,
+			"recommendedSubtasks": 4,
+			"expansionPrompt": "Divide recipe management into: backend API endpoints creation, markdown parsing integration, frontend component refactoring, and content rendering implementation.",
+			"reasoning": "Full-stack CRUD with markdown processing. Moderate complexity involving file parsing and content management patterns."
+		},
+		{
+			"taskId": 9,
+			"complexityScore": 8,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Structure workflow system into: YAML parsing backend, workflow database schema, execution tracking system, frontend workflow listing, scheduling interface, and status monitoring UI.",
+			"reasoning": "Complex system involving file parsing, workflow execution tracking, and scheduling. High complexity due to multiple moving parts and state management requirements."
+		},
+		{
+			"taskId": 10,
+			"complexityScore": 7,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Organize inventory system into: database schema design, backend CRUD APIs, frontend data grid implementation, stock adjustment functionality, and reorder alerting system.",
+			"reasoning": "Full-stack system from scratch with business logic for reordering alerts. Medium-high complexity involving complete CRUD operations, business rules, and visual indicators."
+		}
+	]
+}

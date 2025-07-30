@@ -14,6 +14,7 @@ import {
 import { TemplateType } from '../../types/socialMedia'
 import { socialMediaTemplates } from '../../data/socialMediaTemplates'
 import { createBasicImage } from './core/fallbacks'
+import { getTemplateForType } from './utils/contentMapper'
 import TemplateSelector from './core/TemplateSelector'
 import SimpleContentForm from './core/SimpleContentForm'
 import ContentPreview from './core/ContentPreview'
@@ -58,9 +59,9 @@ const SocialMediaContentCreator: React.FC = () => {
     setContent(prev => ({
       ...prev,
       title: '',
-      price: (type === 'bakery-news' || type === 'message') ? '' : prev.price,
-      // Clear description for message type since it's not used
-      description: type === 'message' ? '' : prev.description,
+      price: (type === 'bakery-news' || type === 'message' || type === 'simple-square') ? '' : prev.price,
+      // Clear description for message and simple-square types since they're not used
+      description: (type === 'message' || type === 'simple-square') ? '' : prev.description,
     }))
     setIsComplete(false)
   }
@@ -80,8 +81,8 @@ const SocialMediaContentCreator: React.FC = () => {
   const handleDownload = useCallback(async () => {
     setLoading(true)
     try {
-      // Find the matching template
-      const template = socialMediaTemplates.find(t => t.type === templateType) || socialMediaTemplates[0]
+      // Find the matching template using the same logic as ContentPreview
+      const template = getTemplateForType(templateType, socialMediaTemplates)
       
       // Map our content fields to social media content format
       const mappedContent = {
@@ -143,18 +144,25 @@ const SocialMediaContentCreator: React.FC = () => {
     }
   }, [content, templateType])
 
-  // Check if any required fields are missing
+  // Simplified validation - only title is always required
+  const isRequiredField = (field: string): boolean => {
+    if (field === 'title') return true
+    if (field === 'description') {
+      return !['message', 'instagram-story', 'simple-square'].includes(templateType)
+    }
+    if (field === 'price') {
+      return ['daily-special', 'bread-of-day', 'offer'].includes(templateType)
+    }
+    return false
+  }
+  
   const isDownloadDisabled = !content.title.trim() || 
-    (templateType !== 'message' && !content.description.trim()) || 
-    (templateType !== 'bakery-news' && templateType !== 'message' && !content.price.trim())
+    (isRequiredField('description') && !content.description.trim()) || 
+    (isRequiredField('price') && !content.price?.trim())
 
-  // Provide helpful error message
+  // Simplified error message
   const errorMessage = isDownloadDisabled ? 
-    'Bitte füllen Sie die Pflichtfelder aus (' + 
-    'Titel' + 
-    (templateType !== 'message' ? ', Beschreibung' : '') + 
-    (templateType !== 'bakery-news' && templateType !== 'message' ? ' und Preis' : '') + 
-    ')' : ''
+    'Bitte füllen Sie alle Pflichtfelder aus (*)' : ''
 
   return (
     <Container maxWidth="xl" sx={{ py: 4, position: 'relative' }}>
@@ -191,6 +199,12 @@ const SocialMediaContentCreator: React.FC = () => {
                 {templateType === 'offer' && 'Angebot erstellen'}
                 {templateType === 'bakery-news' && 'Bäckerei-News erstellen'}
                 {templateType === 'message' && 'Einfache Nachricht erstellen'}
+                {templateType === 'facebook-post' && 'Facebook Post erstellen'}
+                {templateType === 'instagram-square' && 'Instagram Post erstellen'}
+                {templateType === 'instagram-story' && 'Instagram Story erstellen'}
+                {templateType === 'website-banner' && 'Website Banner erstellen'}
+                {templateType === 'website-card' && 'Website Karte erstellen'}
+                {templateType === 'simple-square' && 'Simple Square erstellen'}
               </Typography>
               
               <FormControlLabel

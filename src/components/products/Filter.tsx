@@ -1,19 +1,21 @@
 import React from 'react'
 import { Box, Grid, Typography } from '@mui/material'
-import { PRODUCTS } from '../../mocks/products'
 import Brot from '../icons/products/Brot'
 import Broetchen from '../icons/products/Broetchen'
 import Teilchen from '../icons/products/Teilchen'
 import Kuchen from '../icons/products/Kuchen'
 import Torten from '../icons/products/Torten'
 import Getranke from '../icons/products/Getranke'
-import { Product } from './types'
+import { Product } from '../../types/product'
+import GridViewIcon from '@mui/icons-material/GridView'
 
 interface Props {
   setProducts: (items: Product[]) => void
+  allProducts: Product[]
 }
 
 const FILTERS = [
+  { label: 'Alle', icon: <GridViewIcon /> },
   { label: 'Brot', icon: <Brot /> },
   { label: 'Brötchen', icon: <Broetchen /> },
   { label: 'Teilchen', icon: <Teilchen /> },
@@ -23,24 +25,30 @@ const FILTERS = [
 ]
 
 const Filter: React.FC<Props> = (props) => {
-  const { setProducts } = props
-  const [selected, setSelected] = React.useState('')
+  const { setProducts, allProducts } = props
+  const [selected, setSelected] = React.useState('Alle')
+  
   // Define filter function with useCallback
   const filter = React.useCallback(
     (input: string) => {
-      const newArray = PRODUCTS.filter((product) =>
-        product.category.includes(input)
-      ).map((filteredName) => filteredName)
-
-      setProducts(newArray)
+      if (input === 'Alle') {
+        setProducts(allProducts)
+      } else {
+        const newArray = allProducts.filter((product) =>
+          product.category.includes(input)
+        )
+        setProducts(newArray)
+      }
       setSelected(input)
     },
-    [setProducts]
+    [setProducts, allProducts]
   )
 
   React.useEffect(() => {
-    filter('Brot')
-  }, [setProducts, filter])
+    if (allProducts.length > 0) {
+      filter('Alle')
+    }
+  }, [allProducts, filter])
 
   return (
     <Box sx={styles.root}>

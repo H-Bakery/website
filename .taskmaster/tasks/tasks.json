@@ -1,0 +1,689 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Complete Authentication Context and Route Protection",
+        "description": "Complete the partially implemented AuthContext (Task 5) to manage user login state, JWT token handling, and protect all administrative routes from unauthorized access. This is a foundational requirement for all subsequent secure features.",
+        "details": "Create a `AuthContext.tsx` using React's Context API. The provider will manage `user`, `token`, and `isAuthenticated` states. Implement `login` and `logout` functions to interact with the backend API and manage the JWT in `localStorage`. Create a route-wrapping component or logic in `_app.tsx` to check authentication status for any route under `/admin/*` and redirect to `/login` if the user is not authenticated. Expose the context's state and functions through a `useAuth` custom hook.",
+        "testStrategy": "Verify that accessing any `/admin` route without logging in redirects to the login page. After logging in, confirm that admin routes are accessible and user data from the context is available. Confirm that logging out revokes access and clears session data.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Initialize AuthContext and Provider Structure",
+            "description": "Create the foundational `AuthContext.tsx` file. This includes defining the context's data structure (type/interface) and setting up the basic `AuthProvider` component with initial state management for `user`, `token`, and `isAuthenticated`.",
+            "dependencies": [],
+            "details": "Create a new file `AuthContext.tsx`. Use React's `createContext` to initialize the context with a default value. Build the `AuthProvider` component that accepts `children` as props. Inside the provider, use the `useState` hook to manage the `user`, `token`, and `isAuthenticated` states.",
+            "status": "done",
+            "testStrategy": "Wrap the main application component in `_app.tsx` with the newly created `AuthProvider`. Verify that the application renders without any errors and that child components are correctly passed through."
+          },
+          {
+            "id": 2,
+            "title": "Implement Login and Logout Functions with API Integration",
+            "description": "Develop the `login` and `logout` functions within the `AuthProvider`. The `login` function will handle API calls to the backend for authentication, and both functions will manage the JWT in `localStorage` and update the context's state.",
+            "dependencies": [
+              1
+            ],
+            "details": "Inside `AuthProvider`, create an async `login` function that takes credentials, sends a POST request to the backend's login endpoint, and on success, stores the received JWT in `localStorage` and updates the context state. Create a `logout` function that removes the JWT from `localStorage` and resets the context state to its initial values.",
+            "status": "done",
+            "testStrategy": "Using a temporary UI or a testing tool, call the `login` function with correct credentials and verify that the `token` is set in `localStorage` and `isAuthenticated` becomes true. Call `logout` and verify the token is removed and state is reset."
+          },
+          {
+            "id": 3,
+            "title": "Create and Export `useAuth` Custom Hook",
+            "description": "Create a custom hook named `useAuth` to provide a clean and standardized way for components to access the authentication context's state and functions (`user`, `token`, `login`, `logout`).",
+            "dependencies": [
+              1
+            ],
+            "details": "Within the `AuthContext.tsx` file, define and export a new function `useAuth`. This function will use React's `useContext` hook to access the `AuthContext` and return its value. This encapsulates the `useContext` logic, making it easier to consume.",
+            "status": "done",
+            "testStrategy": "Create a test component that imports and calls the `useAuth` hook. Use `console.log` or display the values on the screen to confirm that it correctly retrieves the `user`, `isAuthenticated` state, and `login`/`logout` functions from the context."
+          },
+          {
+            "id": 4,
+            "title": "Implement Protected Route Logic for Admin Area",
+            "description": "Develop the route protection mechanism to secure all pages under the `/admin/*` path, redirecting unauthenticated users to the `/login` page.",
+            "dependencies": [
+              3
+            ],
+            "details": "In the `_app.tsx` file, get the current component and its page properties. Check if the current route (`router.pathname`) starts with `/admin`. If it does, use the `useAuth` hook to check the `isAuthenticated` status. If `false`, programmatically redirect the user to `/login` using `router.push('/login')`. Render a loading state while the check is in progress to avoid a flash of unprotected content.",
+            "status": "done",
+            "testStrategy": "While logged out, attempt to access any `/admin` URL (e.g., `/admin/dashboard`). Verify that the application immediately redirects to `/login`. After logging in, verify that accessing the same `/admin` URL is now successful."
+          },
+          {
+            "id": 5,
+            "title": "Implement Session Persistence on Application Load",
+            "description": "Enhance the `AuthProvider` to check for an existing JWT in `localStorage` when the application first loads. This will re-hydrate the authentication state and maintain the user's session across page refreshes.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Inside the `AuthProvider` component, add a `useEffect` hook with an empty dependency array `[]` so it runs only once on mount. Inside this effect, read the JWT from `localStorage`. If a token exists, set the `token` and `isAuthenticated` states accordingly. Optionally, you can also decode the token to retrieve user data and populate the `user` state.",
+            "status": "done",
+            "testStrategy": "Log in to the application. Navigate to an admin page. Refresh the browser. Verify that you remain on the admin page and are still logged in, without being redirected to the login page."
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Enhance Admin Layout and Navigation",
+        "description": "Enhance the existing admin layout (Tasks 3 & 7) by implementing a fully functional, responsive sidebar for navigation and integrating key widgets into the main dashboard area. This creates the primary shell for all administrative interfaces.",
+        "details": "Modify the `AdminLayout` component to include a persistent sidebar using Material UI's `<Drawer>`. Populate the sidebar with `<ListItem>` elements linking to all admin pages (`/admin/dashboard`, `/admin/orders`, etc.) using Next.js `<Link>`. Ensure the layout is responsive, with the drawer collapsing to a menu icon on smaller screens. The main content area should be prepared to host dashboard widgets. The header should display user information from the `useAuth` hook.",
+        "testStrategy": "Verify the sidebar appears on all admin pages and that navigation links work correctly. Test responsiveness on desktop, tablet, and mobile viewports. Confirm the theme toggle and user display in the header function as expected.",
+        "priority": "high",
+        "dependencies": [
+          1
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Responsive Sidebar Component",
+            "description": "Implement a Material UI Drawer-based sidebar component with navigation items and responsive behavior",
+            "dependencies": [],
+            "details": "Create a sidebar component using Material UI's Drawer that includes navigation items for all admin pages (/admin/dashboard, /admin/orders, etc.) using Next.js Link components. Implement responsive behavior where the drawer collapses to a menu icon on smaller screens. Include proper styling and hover states for navigation items.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Responsive Navigation Implementation",
+            "description": "Add mobile-responsive navigation controls and menu toggle functionality",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement the mobile navigation controls including hamburger menu icon, drawer toggle functionality, and proper responsive breakpoints. Ensure the sidebar opens/closes correctly on mobile devices and maintains state appropriately. Add proper touch interactions and keyboard navigation support.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Integrate Dashboard Widget Areas",
+            "description": "Prepare main content area layout structure for hosting dashboard widgets",
+            "dependencies": [
+              1
+            ],
+            "details": "Modify the AdminLayout component to include a properly structured main content area that can host dashboard widgets. Set up the grid system and container components using Material UI that will accommodate various widget sizes and layouts. Ensure proper spacing and responsive behavior for the widget container area.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Implement Header User Display Functionality",
+            "description": "Add user information display and theme toggle to the admin header",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement the header component that displays user information from the useAuth hook including username, role, and avatar. Add the theme toggle functionality for switching between light and dark modes. Include user menu dropdown with logout option and user profile access. Ensure proper styling and alignment within the header layout.",
+            "status": "done",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Implement Frontend for Real-time Chat System",
+        "description": "Build the frontend interface for the internal staff communication system. This task involves creating all necessary React components to connect to the existing, complete chat backend API (`chatRoutes.js`).",
+        "details": "Create a new page at `/admin/chat` within the `AdminLayout`. Develop components for `MessageList`, `MessageItem`, and `MessageInput`. Use the existing API service layer to fetch message history from `GET /chat` and send new messages via `POST /chat`. For real-time updates, implement a polling mechanism using `setInterval` or a library like SWR/React Query with a refetch interval. All API requests must include the JWT Bearer token from the `AuthContext`.",
+        "testStrategy": "Confirm that message history loads upon entering the chat page. Send a message and verify it appears for all users (test with two logged-in browser sessions). Ensure the UI updates automatically via polling. Verify that only authenticated users can access or use the chat.",
+        "priority": "high",
+        "dependencies": [
+          1,
+          2
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set up chat page structure and routing",
+            "description": "Create the main chat page at /admin/chat with proper layout integration and routing setup",
+            "dependencies": [],
+            "details": "Create src/app/admin/chat/page.tsx with AdminLayout integration. Set up proper TypeScript interfaces for chat-related types. Ensure the page is accessible only to authenticated users through the existing auth system.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Create message display components",
+            "description": "Build MessageList and MessageItem components for displaying chat messages with proper styling and user information",
+            "dependencies": [
+              1
+            ],
+            "details": "Create MessageList component to render array of messages. Build MessageItem component to display individual messages with timestamp, sender name, and message content. Use Material UI components for consistent styling with admin theme.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Implement message input component",
+            "description": "Create MessageInput component for composing and sending new messages with form validation",
+            "dependencies": [
+              1
+            ],
+            "details": "Build MessageInput component with text input field and send button. Implement form validation to prevent empty messages. Handle message submission with proper error handling and loading states.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Integrate chat API endpoints",
+            "description": "Connect components to existing chat backend API for fetching messages and sending new ones",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Update bakeryAPI.ts service to include chat endpoints (GET /chat for history, POST /chat for new messages). Ensure all requests include JWT Bearer token from AuthContext. Handle API errors gracefully with user feedback.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Implement real-time polling mechanism",
+            "description": "Add automatic message updates using polling to simulate real-time chat functionality",
+            "dependencies": [
+              4
+            ],
+            "details": "Implement polling mechanism using setInterval to fetch new messages every 3-5 seconds. Ensure polling starts when component mounts and stops when unmounted. Optimize to only update UI when new messages are received.",
+            "status": "done",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "Create Backend Endpoints for Dashboard Analytics",
+        "description": "Develop new backend endpoints under the `/dashboard/*` namespace to aggregate and serve real business data from the SQLite database, replacing the current frontend-only mock data for analytics.",
+        "details": "In the Node.js/Express backend, create a new `dashboardRoutes.js` file. Implement endpoints such as `GET /dashboard/sales-summary` and `GET /dashboard/production-overview`. These endpoints will execute SQL queries using aggregate functions (`SUM`, `COUNT`, `GROUP BY`) on the `orders`, `products`, and other relevant tables to generate meaningful time-series data. Protect all new endpoints with the existing JWT authentication middleware.",
+        "testStrategy": "Use an API client like Postman to test each new endpoint. Verify that endpoints are protected and return a 401/403 error for unauthenticated requests. Validate that the aggregated data returned is accurate by comparing it with manual calculations on sample database entries.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set up dashboard routes structure and authentication middleware",
+            "description": "Create the dashboardRoutes.js file, establish the /dashboard/* namespace, and integrate JWT authentication middleware to protect all analytics endpoints.",
+            "dependencies": [],
+            "details": "Create backend/routes/dashboardRoutes.js and establish the Express router structure. Import and apply the existing JWT authentication middleware to protect all dashboard endpoints. Set up the basic route structure for /dashboard/sales-summary and /dashboard/production-overview endpoints with placeholder responses.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement SQL aggregation queries for analytics endpoints",
+            "description": "Develop SQL queries using aggregate functions (SUM, COUNT, GROUP BY) on orders, products, and related tables to generate meaningful analytics data for dashboard endpoints.",
+            "dependencies": [
+              1
+            ],
+            "details": "Write SQL queries using Sequelize ORM to aggregate data from the orders, products, and other relevant database tables. Implement time-series data generation with proper date grouping for sales summaries and production overviews. Ensure queries are optimized and handle edge cases like empty data sets.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Create comprehensive endpoint testing and validation",
+            "description": "Test all new dashboard endpoints using API client tools, verify authentication protection, and validate data accuracy against manual calculations.",
+            "dependencies": [
+              2
+            ],
+            "details": "Use Postman or similar API client to test each dashboard endpoint. Verify that unauthenticated requests return 401/403 errors. Test with sample database entries and manually calculate expected results to validate the accuracy of aggregated data returned by the endpoints. Document test cases and expected responses.",
+            "status": "done",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "Connect Admin Dashboard to Real Analytics Backend",
+        "description": "Refactor the admin dashboard frontend to consume data from the new analytics backend API, completely removing all mock data sources and providing real-time business insights.",
+        "details": "In the `/pages/admin/dashboard.tsx` component, replace all mock data hooks and objects with API calls to the `/dashboard/*` endpoints. Use a data-fetching library like SWR or React Query to handle loading, caching, and error states gracefully. Connect the fetched data to the existing Material UI chart and stat card components. Implement loading skeletons to improve user experience during data fetching.",
+        "testStrategy": "Load the dashboard and verify that all widgets display data fetched from the backend. Cross-reference the data shown with the database to ensure accuracy. Simulate an API failure (e.g., stop the backend) and confirm that the UI displays a user-friendly error message instead of crashing.",
+        "priority": "medium",
+        "dependencies": [
+          2,
+          4
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set up API integration infrastructure",
+            "description": "Configure API service layer with authentication headers, error handling, and base configuration for dashboard analytics endpoints",
+            "dependencies": [],
+            "details": "Create or extend the existing API service in src/services/bakeryAPI.ts to include dashboard-specific endpoints. Set up proper JWT authentication headers from AuthContext, implement error handling with user-friendly messages, and configure base URL and request interceptors. Add TypeScript interfaces for dashboard data responses.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement data fetching with SWR/React Query",
+            "description": "Replace all mock data hooks with real API calls using a data fetching library, including caching, loading states, and error handling",
+            "dependencies": [
+              1
+            ],
+            "details": "Install and configure SWR or React Query for the dashboard page. Create custom hooks for each dashboard endpoint (sales summary, production overview, etc.). Implement proper loading states, error boundaries, and data caching strategies. Remove all existing mock data imports and hooks from the dashboard components.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Connect UI components with loading states and error handling",
+            "description": "Bind fetched data to existing Material UI charts and stat cards, implementing loading skeletons and error states for better UX",
+            "dependencies": [
+              2
+            ],
+            "details": "Update all dashboard widgets (charts, stat cards, tables) to consume data from the new API hooks. Implement Material UI skeleton components for loading states. Add error boundaries and fallback UI for failed API requests. Ensure all existing chart components work seamlessly with the new real data structure.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "Build Comprehensive Order Management UI",
+        "description": "Build a comprehensive user interface for managing customer orders (Task 13). The interface will allow staff to view, search, filter, and update the status of orders by connecting to the existing order management backend API.",
+        "details": "Create a new page at `/admin/orders`. Use a Material UI `<DataGrid>` to display a list of all orders with columns for key details like ID, customer, date, and status. Implement server-side filtering and sorting. Create a detail view at `/admin/orders/[id]` to show complete order information and provide controls (e.g., a dropdown) to update the order status via a `PUT` request to `/orders/:id`.",
+        "testStrategy": "Verify the order list page correctly fetches and displays orders. Test filtering by status (e.g., 'pending'). Navigate to a detail page, update an order's status, and confirm the change is reflected in the list view and the database.",
+        "priority": "medium",
+        "dependencies": [
+          2
+        ],
+        "status": "done",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set up DataGrid with Order Data",
+            "description": "Create the main order management page with Material UI DataGrid displaying order list with columns for ID, customer, date, and status",
+            "dependencies": [],
+            "details": "Create `/admin/orders/page.tsx` within AdminLayout. Configure Material UI DataGrid with proper columns for order data. Implement data fetching from the orders API endpoint. Set up proper TypeScript types for order data structure.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Filtering and Sorting",
+            "description": "Add server-side filtering and sorting capabilities to the orders DataGrid",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement DataGrid filtering controls for order status, date ranges, and customer search. Add server-side sorting functionality. Create search and filter UI components. Ensure proper API parameter handling for filter/sort requests.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Create Order Detail View",
+            "description": "Build detailed order view page showing complete order information",
+            "dependencies": [
+              1
+            ],
+            "details": "Create `/admin/orders/[id]/page.tsx` for individual order details. Display comprehensive order information including customer details, order items, timestamps, and current status. Implement navigation from DataGrid to detail view.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Add Status Update Functionality",
+            "description": "Implement order status update controls with API integration",
+            "dependencies": [
+              3
+            ],
+            "details": "Add status update dropdown/controls to the order detail view. Implement PUT request to `/orders/:id` endpoint for status updates. Add optimistic UI updates and error handling. Ensure status changes reflect in both detail view and main order list.",
+            "status": "done",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Implement Full-Stack Staff Management System",
+        "description": "Implement a full-stack staff management system (Task 16) that allows administrators to create, read, update, and delete user accounts and manage their roles and permissions.",
+        "details": "Backend: Create CRUD endpoints under `/api/staff` in the Node.js/Express application for user management. Ensure these endpoints are protected and only accessible by users with an 'admin' role. Frontend: Develop the UI on the `/admin/staff` page. Use a table to list users and their roles. Implement forms within modals for creating and editing users. API calls from the frontend must be authenticated.",
+        "testStrategy": "As an admin, test all CRUD operations on staff members through the UI. Verify changes persist in the database. Log in as a non-admin user and confirm that access to the staff management page is denied or functionality is restricted, as per the defined permissions.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          2
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Backend CRUD Endpoints for Staff Management",
+            "description": "Create comprehensive REST API endpoints under /api/staff for user management operations including create, read, update, and delete functionality.",
+            "dependencies": [],
+            "details": "Develop endpoints: GET /api/staff (list all users), GET /api/staff/:id (get user by ID), POST /api/staff (create new user), PUT /api/staff/:id (update user), DELETE /api/staff/:id (delete user). Include proper request validation, error handling, and database operations using Sequelize ORM. Ensure all endpoints return consistent JSON responses with appropriate HTTP status codes.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Role-Based Authorization Middleware",
+            "description": "Create authentication and authorization middleware to protect staff management endpoints and enforce admin-only access.",
+            "dependencies": [
+              1
+            ],
+            "details": "Develop middleware to verify JWT tokens and check user roles. Create role-checking functions that ensure only users with 'admin' role can access staff management endpoints. Implement proper error responses (401 Unauthorized, 403 Forbidden) for invalid or insufficient permissions. Add middleware to all /api/staff routes.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Create Frontend User Listing Interface",
+            "description": "Build the main staff listing page with a table displaying all users and their roles at /admin/staff.",
+            "dependencies": [
+              2
+            ],
+            "details": "Create /admin/staff page component within AdminLayout. Implement a Material UI DataGrid or Table to display user information (name, email, role, status, actions). Add search and filtering capabilities. Include loading states and error handling for API calls. Fetch data from GET /api/staff endpoint with proper authentication headers.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Develop Modal Forms for CRUD Operations",
+            "description": "Create reusable modal components for creating, editing, and deleting staff members with form validation.",
+            "dependencies": [
+              3
+            ],
+            "details": "Build CreateUserModal and EditUserModal components with Material UI forms. Include fields for name, email, password, and role selection. Implement form validation using libraries like Formik or react-hook-form. Create DeleteConfirmationModal for safe deletion. Connect forms to respective API endpoints (POST, PUT, DELETE /api/staff) and handle success/error states.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Build Role Management UI Components",
+            "description": "Create interface components for managing user roles and displaying role-based permissions clearly.",
+            "dependencies": [
+              4
+            ],
+            "details": "Develop RoleSelector component with dropdown/chip interface for role assignment. Create PermissionsDisplay component to show what each role can access. Add role-based UI visibility (hide/show buttons based on current user's permissions). Implement role change confirmation dialogs and proper state management for role updates.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 6,
+            "title": "Implement Comprehensive Permission Testing",
+            "description": "Create thorough testing suite to verify role-based access control and security implementation across the staff management system.",
+            "dependencies": [
+              5
+            ],
+            "details": "Write unit tests for backend middleware and endpoints testing admin-only access. Create integration tests for complete CRUD workflows. Test frontend components with different user roles using Jest and React Testing Library. Verify that non-admin users cannot access staff management features. Include security tests for unauthorized access attempts and proper error handling.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Implement Recipe Management Backend and Integration",
+        "description": "Create a backend API for recipe management (Task 15) that can serve markdown-based recipes and connect the existing frontend components to this new, persistent data source.",
+        "details": "Backend: Create CRUD endpoints under `/api/recipes`. The `POST` and `PUT` endpoints will accept raw markdown. Use a library like `marked` to parse markdown to HTML before sending it in `GET` responses. Store the raw markdown in the database. Frontend: Refactor the recipe management components to fetch data from the `/api/recipes` endpoints. Use `dangerouslySetInnerHTML` to render the parsed HTML content from the API.",
+        "testStrategy": "Use the UI to create a recipe with markdown formatting (headings, lists, bold). Verify it is saved and renders correctly when viewed. Test the edit and delete functionalities and confirm the changes are reflected in the database.",
+        "priority": "low",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Backend Recipe API Endpoints",
+            "description": "Implement CRUD endpoints for recipe management with markdown storage and HTML parsing",
+            "dependencies": [],
+            "details": "Create `/api/recipes` endpoints in the Node.js/Express backend. Implement GET (list/single), POST, PUT, DELETE operations. Use `marked` library to parse markdown to HTML for GET responses while storing raw markdown in database. Add proper error handling and validation.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Integrate Markdown Parsing Service",
+            "description": "Set up markdown parsing pipeline with proper sanitization and content processing",
+            "dependencies": [
+              1
+            ],
+            "details": "Install and configure `marked` library for markdown-to-HTML conversion. Implement content sanitization to prevent XSS. Create parsing utilities for recipe-specific markdown features like ingredient lists and step numbering. Handle parsing errors gracefully.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Refactor Frontend Recipe Components",
+            "description": "Update existing recipe management components to use backend API instead of mock data",
+            "dependencies": [
+              1
+            ],
+            "details": "Refactor RecipeForm and related components in `src/components/bakery/recipes/` to consume `/api/recipes` endpoints. Replace mock data sources with API calls using the existing service layer pattern. Implement proper loading states and error handling.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Implement Recipe Content Rendering",
+            "description": "Build recipe display components that safely render parsed HTML content from markdown",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Create recipe viewing components that use `dangerouslySetInnerHTML` to render parsed HTML from the API. Implement proper content styling for markdown elements (headings, lists, bold text). Add recipe display pages and integrate with the admin interface.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "Implement Production Workflow Management System",
+        "description": "Build a system for managing production workflows. This involves creating a backend to parse YAML workflow files and a frontend interface for staff to schedule and track the execution of these workflows.",
+        "details": "Backend: Create `/api/workflows` endpoints. Use the `js-yaml` library to parse YAML files that define production steps. Implement endpoints to list workflows and track their execution status (e.g., 'pending', 'in-progress', 'completed') in the database. Frontend: Create a `/admin/production` page. Build a UI to list available workflows, view their steps, and trigger or schedule an execution.",
+        "testStrategy": "Upload a sample YAML workflow file. Use the UI to view its parsed steps. Schedule a workflow execution and verify that its status can be tracked and updated through the interface. Test the backend by sending malformed YAML to ensure proper error handling.",
+        "priority": "low",
+        "dependencies": [
+          2,
+          6
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design and implement YAML workflow parsing backend",
+            "description": "Create backend services to parse YAML workflow files using js-yaml library and validate workflow structure",
+            "dependencies": [],
+            "details": "Install js-yaml dependency. Create workflow parser service that can read YAML files, validate required fields (name, steps, dependencies), and convert to internal workflow object format. Implement error handling for malformed YAML and missing required fields. Create utility functions for workflow validation.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Create workflow database schema and models",
+            "description": "Design and implement database schema for storing workflows, workflow executions, and step progress tracking",
+            "dependencies": [
+              1
+            ],
+            "details": "Create Sequelize models for Workflow (id, name, description, steps, created_at), WorkflowExecution (id, workflow_id, status, started_at, completed_at), and WorkflowStep (id, execution_id, step_name, status, started_at, completed_at). Define relationships between models. Create migrations for new tables.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Build workflow execution tracking system",
+            "description": "Implement backend logic for tracking workflow execution state and step progress with status updates",
+            "dependencies": [
+              2
+            ],
+            "details": "Create WorkflowExecutionService to manage workflow state transitions (pending -> in-progress -> completed/failed). Implement step-by-step execution tracking with timestamps. Add methods to update execution status, mark steps complete, and handle execution failures. Include logging for audit trail.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Create workflow API endpoints",
+            "description": "Implement RESTful API endpoints under /api/workflows for listing, creating, and managing workflow executions",
+            "dependencies": [
+              3
+            ],
+            "details": "Create routes: GET /api/workflows (list all), GET /api/workflows/:id (get specific), POST /api/workflows/execute (start execution), GET /api/workflows/executions (list executions), PUT /api/workflows/executions/:id/steps/:stepId (update step status). Include authentication middleware and proper error handling.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Build frontend workflow listing and scheduling interface",
+            "description": "Create admin interface at /admin/production for displaying available workflows and scheduling executions",
+            "dependencies": [
+              4
+            ],
+            "details": "Create ProductionPage component with workflow list display. Implement WorkflowCard components showing workflow name, description, and steps. Add schedule execution functionality with date/time picker. Include workflow details modal for viewing complete step breakdown. Use Material UI components consistent with existing admin design.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 6,
+            "title": "Implement workflow status monitoring UI",
+            "description": "Build real-time status monitoring interface for tracking active and completed workflow executions",
+            "dependencies": [
+              5
+            ],
+            "details": "Create WorkflowExecutionMonitor component with real-time status updates. Display execution progress with step completion indicators. Implement polling mechanism for live status updates. Add filtering options (active, completed, failed). Include execution history with timestamps and duration tracking. Provide manual step completion controls for admin users.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Build Full-Stack Inventory Management System",
+        "description": "Build a full-stack inventory management system (Task 18) from scratch, including a backend API and a frontend interface for tracking stock levels, managing suppliers, and flagging items for reordering.",
+        "details": "Backend: Define a new database schema for `inventory_items` (e.g., name, quantity, reorder_level). Create full CRUD endpoints at `/api/inventory`. Include an endpoint for stock adjustments (e.g., `POST /api/inventory/:id/adjust`). Frontend: Create an `/admin/inventory` page. Display inventory in a `<DataGrid>`, highlighting items where `quantity` is below `reorder_level`. Implement forms for adding/editing items and quick controls for adjusting stock.",
+        "testStrategy": "Use the UI to add, edit, and delete inventory items. Perform stock adjustments and verify the quantity updates correctly. Manually set an item's stock below its reorder level and confirm it is visually highlighted in the UI.",
+        "priority": "low",
+        "dependencies": [
+          2
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design Database Schema for Inventory System",
+            "description": "Create database schema for inventory_items table with fields for name, SKU, quantity, reorder_level, supplier_info, unit_cost, and timestamps",
+            "dependencies": [],
+            "details": "Define the inventory_items table structure in the backend database models. Include fields: id (primary key), name (string), sku (unique string), quantity (integer), reorder_level (integer), supplier_name (string), supplier_contact (string), unit_cost (decimal), created_at, updated_at. Set up Sequelize model with proper validations and constraints.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Backend CRUD APIs for Inventory",
+            "description": "Create RESTful API endpoints under /api/inventory for full CRUD operations on inventory items",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement GET /api/inventory (list all items), GET /api/inventory/:id (get single item), POST /api/inventory (create new item), PUT /api/inventory/:id (update item), DELETE /api/inventory/:id (delete item). Include proper authentication middleware, request validation, and error handling. Add pagination and filtering options for the list endpoint.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Build Frontend Data Grid for Inventory Display",
+            "description": "Create /admin/inventory page with DataGrid component to display inventory items with visual indicators for low stock",
+            "dependencies": [
+              2
+            ],
+            "details": "Create the inventory management page using Material UI DataGrid component. Display columns for name, SKU, quantity, reorder level, supplier, and actions. Implement row highlighting for items where quantity <= reorder_level using conditional styling. Add search and filter functionality to the grid.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Implement Stock Adjustment Functionality",
+            "description": "Add backend endpoint and frontend interface for adjusting inventory stock levels with reason tracking",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Backend: Create POST /api/inventory/:id/adjust endpoint that accepts adjustment_type ('add' or 'subtract'), quantity, and reason. Update the item quantity and log the adjustment. Frontend: Add quick adjustment controls in the DataGrid and a detailed adjustment modal form with quantity input and reason dropdown (received, sold, damaged, etc.).",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Build Reorder Alerting System",
+            "description": "Implement automated reorder alerts and notifications for low stock items",
+            "dependencies": [
+              4
+            ],
+            "details": "Backend: Create GET /api/inventory/alerts endpoint that returns items below reorder level. Add background job or scheduled task to check stock levels periodically. Frontend: Create alerts dashboard widget showing low stock count and list. Add visual indicators (badges, colors) throughout the admin interface to highlight reorder alerts. Implement email notification system for critical low stock situations.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Implement Customer Product Listing and Shopping Experience",
+        "description": "Develop the complete customer-facing product browsing experience. This includes displaying products from the product management system, enabling filtering by category, implementing a search feature, and integrating a fully functional shopping cart using the existing `CartContext`.",
+        "status": "done",
+        "dependencies": [
+          2
+        ],
+        "priority": "medium",
+        "details": "On the customer-facing side of the application, implement a comprehensive shopping experience. First, create a product listing page at `/products` that fetches and displays all available items using the existing `getProducts()` function in `bakeryAPI.ts`. Each product card should display an image, name, price, and an 'Add to Cart' button. Implement UI controls for filtering products by category and a search bar for text-based searches; these should trigger API calls with appropriate query parameters. The 'Add to Cart' button's functionality should be wired into the existing `CartContext`, updating the application's state with the selected product and quantity. Finally, build out the `/cart` page to display the contents of the `CartContext`, allowing users to view items, adjust quantities, remove items, and see a running total.",
+        "testStrategy": "Navigate to the `/products` page and verify that product data from the product management system is correctly loaded and displayed. Test the category filtering and search functionality to ensure the product list updates accurately. Add multiple different products to the cart and confirm the cart icon/count updates. Navigate to the `/cart` page and verify all added items are present with the correct details and pricing. Test the functionality for updating an item's quantity and removing an item from the cart, ensuring the subtotal and grand total update in real-time. Refresh the page or navigate away and back to the cart to confirm that the cart's state is persisted correctly by the `CartContext`.",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Product Listing Page and Display Products",
+            "description": "Develop the `/products` page to fetch all available items from the `/api/products` endpoint and render them as a grid of product cards. Each card will display the product's image, name, and price.",
+            "status": "done",
+            "dependencies": [],
+            "details": "Create a new React component for the `/products` page and set up its route. Use the existing `getProducts()` function from `bakeryAPI.ts` (which calls `GET /api/products`) to fetch the data. Map over the returned product array to render a `ProductCard` component for each item. The `ProductCard` should display the product's image, name, and price. Include a non-functional 'Add to Cart' button as a placeholder for now.",
+            "testStrategy": "Navigate to the `/products` page. Verify that a loading state is shown initially, followed by a grid of products fetched from the backend. Check the browser's network tab to confirm the API call to `/api/products` is successful. Ensure product data (image, name, price) is displayed correctly on each card."
+          },
+          {
+            "id": 2,
+            "title": "Implement Product Filtering and Search Functionality",
+            "description": "Add UI controls to the `/products` page for filtering the product list by category and searching by name. Connect these controls to re-fetch data from the API with appropriate query parameters.",
+            "status": "done",
+            "dependencies": [],
+            "details": "On the `/products` page, add a search input field and a dropdown or set of buttons for category selection. Manage the state for the current search term and selected category using `useState`. When these state values change, trigger a new API call to `/api/products` with query parameters (e.g., `/api/products?search=...&category=...`). The product grid should update to display the filtered results.",
+            "testStrategy": "Use the search bar and type a product name; verify the list updates to show only matching products. Select a category from the filter controls and confirm that only products from that category are displayed. Test combining a search term and a category filter to ensure they work together."
+          },
+          {
+            "id": 3,
+            "title": "Integrate 'Add to Cart' Button with CartContext",
+            "description": "Connect the 'Add to Cart' button on each `ProductCard` to the existing `CartContext`, allowing users to add products to their shopping cart.",
+            "status": "done",
+            "dependencies": [],
+            "details": "In the `ProductCard` component, import the `CartContext` using the `useContext` hook. Implement the `onClick` handler for the 'Add to Cart' button. This handler should call the `addToCart` function (or equivalent) provided by the context, passing the full product object. The cart state should update globally. Use React DevTools to confirm the context is updated.",
+            "testStrategy": "Click the 'Add to Cart' button on several different products. Use React DevTools to inspect the `CartContext` and confirm that the items have been added correctly with a default quantity of 1. Verify that clicking the button on the same item multiple times increases its quantity in the cart context."
+          },
+          {
+            "id": 4,
+            "title": "Build the Shopping Cart Display Page",
+            "description": "Create the `/cart` page to display the items currently in the `CartContext`. The page should list each item's image, name, price, quantity, and a subtotal for that line item.",
+            "status": "done",
+            "dependencies": [],
+            "details": "Create a new React component for the `/cart` page and set up its route. Use the `useContext` hook to access the `CartContext`. If the cart is empty, display a 'Your cart is empty' message. If it has items, map over the cart items array and render a row or component for each one, displaying the product's image, name, price, and current quantity. Calculate and display the subtotal for each line item (price * quantity).",
+            "testStrategy": "Add several items to the cart from the `/products` page. Navigate to the `/cart` page. Verify that all added items are listed correctly with their respective quantities and prices. Check that the line item subtotals are calculated and displayed accurately."
+          },
+          {
+            "id": 5,
+            "title": "Implement Cart Item Management and Total Calculation",
+            "description": "On the `/cart` page, add functionality for users to adjust the quantity of items, remove items from the cart, and view the total price for all items.",
+            "status": "done",
+            "dependencies": [],
+            "details": "In the cart item row component on the `/cart` page, add UI controls (e.g., '+' and '-' buttons, or a number input) to adjust the quantity. Wire these controls to the `updateQuantity` function in the `CartContext`. Add a 'Remove' button that calls the `removeFromCart` function from the context. Below the list of items, calculate and display the total price of all items in the cart by iterating through the context's items array.",
+            "testStrategy": "On the `/cart` page, use the quantity controls to increase and decrease an item's quantity; verify the line item subtotal and the overall cart total update immediately. Click the 'Remove' button for an item and confirm it disappears from the list and the total is recalculated. Empty the cart and verify the 'Your cart is empty' message appears."
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2025-07-18T21:29:08.352Z",
+      "updated": "2025-07-19T05:44:25.498Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

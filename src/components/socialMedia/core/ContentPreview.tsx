@@ -12,6 +12,15 @@ import {
 import { Template, TemplateType } from '../../../types/socialMedia'
 import { socialMediaTemplates } from '../../../data/socialMediaTemplates'
 import Wappen from '../../icons/brand/Wappen'
+import { 
+  getTemplateConfig, 
+  shouldShowDescription, 
+  shouldShowPrice, 
+  formatAdditionalInfo, 
+  getPlaceholderText 
+} from '../config/templateConfig'
+import { mapContentToTemplate, getTemplateForType } from '../utils/contentMapper'
+import { getSimpleSquareTextStyles } from '../utils/textSizing'
 
 interface ContentPreviewProps {
   templateType: TemplateType
@@ -34,24 +43,13 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
   const theme = useTheme()
 
   // For message type, we need to track if we want white or primary background
-  const [messageVariant, setMessageVariant] = useState<'primary' | 'white'>(
-    'primary'
-  )
+  const [messageVariant, setMessageVariant] = useState<'primary' | 'white'>('primary')
 
-  // Get first template of the selected type or the variant for message type
-  const template =
-    templateType === 'message'
-      ? socialMediaTemplates.find(
-          (t) =>
-            t.type === templateType &&
-            (messageVariant === 'white'
-              ? t.id === 'simple-message-white'
-              : t.id === 'simple-message')
-        ) ||
-        socialMediaTemplates.find((t) => t.type === templateType) ||
-        socialMediaTemplates[0]
-      : socialMediaTemplates.find((t) => t.type === templateType) ||
-        socialMediaTemplates[0]
+  // Get template using utility function
+  const template = getTemplateForType(templateType, socialMediaTemplates, messageVariant)
+  
+  // Get template configuration
+  const templateConfig = getTemplateConfig(templateType)
 
   // Handle message variant change
   useEffect(() => {
@@ -62,70 +60,15 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
     }
   }, [content.additionalInfo])
 
-  // Map content to the template structure
+  // Map content to template structure using utility function
   const getTextContent = (template: Template) => {
-    const mapped: Record<string, string> = {}
-
-    // Map content based on template type
-    switch (templateType) {
-      case 'message':
-        if (template.textElements.some((el) => el.id === 'message'))
-          mapped.message = content.title || ''
-        if (template.textElements.some((el) => el.id === 'variant'))
-          mapped.variant = messageVariant
-        break
-      case 'daily-special':
-        // Get relevant text fields from the template
-        const dailySpecialFields = template.textElements.map((el) => el.id)
-
-        if (dailySpecialFields.includes('title'))
-          mapped.title = content.title || 'Tagesangebot'
-        if (dailySpecialFields.includes('description'))
-          mapped.description = content.description
-        if (dailySpecialFields.includes('price'))
-          mapped.price = content.price ? `${content.price} €` : ''
-        if (dailySpecialFields.includes('callToAction'))
-          mapped.callToAction = content.additionalInfo || ''
-        if (dailySpecialFields.includes('subtitle'))
-          mapped.subtitle = 'Unser Angebot heute'
-        break
-
-      case 'bread-of-day':
-        if (template.textElements.some((el) => el.id === 'breadName'))
-          mapped.breadName = content.title || 'Brot des Tages'
-        if (template.textElements.some((el) => el.id === 'breadDescription'))
-          mapped.breadDescription = content.description
-        if (template.textElements.some((el) => el.id === 'price'))
-          mapped.price = content.price ? `${content.price} €` : ''
-        if (template.textElements.some((el) => el.id === 'ingredients'))
-          mapped.ingredients = content.additionalInfo || ''
-        break
-
-      case 'offer':
-        if (template.textElements.some((el) => el.id === 'title'))
-          mapped.title = content.title || 'Sonderangebot'
-        if (template.textElements.some((el) => el.id === 'description'))
-          mapped.description = content.description
-        if (template.textElements.some((el) => el.id === 'priceInfo'))
-          mapped.priceInfo = content.price ? `${content.price} €` : ''
-        if (template.textElements.some((el) => el.id === 'callToAction'))
-          mapped.callToAction = 'Jetzt zugreifen!'
-        if (template.textElements.some((el) => el.id === 'subtitle'))
-          mapped.subtitle = content.additionalInfo || ''
-        break
-
-      case 'bakery-news':
-        if (template.textElements.some((el) => el.id === 'newsTitle'))
-          mapped.newsTitle = content.title || 'Neuigkeiten'
-        if (template.textElements.some((el) => el.id === 'newsContent'))
-          mapped.newsContent = content.description
-        if (template.textElements.some((el) => el.id === 'date'))
-          mapped.date = content.additionalInfo || ''
-        if (template.textElements.some((el) => el.id === 'category'))
-          mapped.category = 'INFORMATION'
-        break
+    const mapped = mapContentToTemplate(content, template, templateType)
+    
+    // Add message variant for message templates
+    if (templateType === 'message' && template.textElements.some((el) => el.id === 'variant')) {
+      mapped.variant = messageVariant
     }
-
+    
     return mapped
   }
 
@@ -181,12 +124,11 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
               id="social-media-content-preview"
               ref={previewRef}
               sx={{
-                width: 1080,
-                height: 1080,
-                background:
-                  template.backgroundStyle || template.colors.background,
+                width: template.width || 1080,
+                height: template.height || 1080,
+                background: template.backgroundStyle || template.colors.background,
                 transformOrigin: '0 0',
-                transform: 'scale(0.25)',
+                transform: `scale(${Math.min(280 / (template.width || 1080), 280 / (template.height || 1080))})`,
                 position: 'absolute',
                 top: 0,
                 left: 0,
@@ -240,12 +182,12 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                   bottom: 0,
                   left: 0,
                   width: '100%',
-                  padding: '7% 15% 7% 8%', // Extra space for Wappen
+                  padding: templateConfig.textPanel.padding,
                   backgroundColor:
                     template.textPanelStyle?.background ||
                     `${template.colors.primary}E0`,
                   color: template.textPanelStyle?.textColor || '#FFFFFF',
-                  minHeight: '67%',
+                  minHeight: templateConfig.textPanel.minHeight,
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'center',
@@ -261,10 +203,10 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                           ? 'white'
                           : template.colors.primary,
                       fontWeight: 'bold',
-                      fontSize: '72px',
+                      fontSize: templateConfig.typography.title.fontSize,
                       textAlign: 'center',
                       width: '100%',
-                      fontFamily: "'Averia Serif Libre', serif",
+                      fontFamily: templateConfig.typography.title.fontFamily,
                       letterSpacing: 0.5,
                       lineHeight: 1.3,
                       display: 'flex',
@@ -274,72 +216,84 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                       height: '100%',
                     }}
                   >
-                    {content.title || 'Ihre Nachricht hier eingeben...'}
+                    {content.title || getPlaceholderText(templateType, 'title')}
+                  </Typography>
+                ) : templateType === 'simple-square' ? (
+                  /* Simple Square template - dynamically sized centered text */
+                  <Typography
+                    sx={{
+                      color: template.textPanelStyle?.textColor || template.colors.primary,
+                      fontWeight: 'bold',
+                      fontFamily: templateConfig.typography.title.fontFamily,
+                      letterSpacing: 0.5,
+                      ...getSimpleSquareTextStyles(content.title || getPlaceholderText(templateType, 'title')),
+                    }}
+                  >
+                    {content.title || getPlaceholderText(templateType, 'title')}
                   </Typography>
                 ) : (
                   <>
                     {/* Main title */}
                     <Typography
                       sx={{
-                        color: 'white',
+                        color: template.textPanelStyle?.textColor || 'white',
                         fontWeight: 'bold',
-                        fontSize: '56px',
-                        mb: 3,
-                        fontFamily: "'Averia Serif Libre', serif",
+                        fontSize: templateConfig.typography.title.fontSize,
+                        mb: 2,
+                        fontFamily: templateConfig.typography.title.fontFamily,
                         letterSpacing: 0.5,
-                        lineHeight: 1.4,
+                        lineHeight: 1.3,
                       }}
                     >
-                      {content.title || 'Titel eingeben...'}
+                      {content.title || getPlaceholderText(templateType, 'title')}
                     </Typography>
 
                     {/* Description */}
-                    <Typography
-                      sx={{
-                        color: 'white',
-                        fontWeight: 'normal',
-                        fontSize: '28px',
-                        mb: 3,
-                        fontFamily: "'Averia Serif Libre', serif",
-                        letterSpacing: 0.2,
-                        lineHeight: 1.4,
-                      }}
-                    >
-                      {content.description || 'Beschreibung eingeben...'}
-                    </Typography>
-
-                    {/* Price if available */}
-                    {content.price && (
+                    {shouldShowDescription(templateType, !!content.description) && (
                       <Typography
                         sx={{
-                          color: 'white',
-                          fontWeight: 'bold',
-                          fontSize: '42px',
+                          color: template.textPanelStyle?.textColor || 'white',
+                          fontWeight: 'normal',
+                          fontSize: templateConfig.typography.description.fontSize,
                           mb: 2,
-                          fontFamily: "'Averia Serif Libre', serif",
+                          fontFamily: templateConfig.typography.description.fontFamily,
+                          letterSpacing: 0.2,
+                          lineHeight: 1.4,
                         }}
                       >
-                        {content.price} €
+                        {content.description || getPlaceholderText(templateType, 'description')}
+                      </Typography>
+                    )}
+
+                    {/* Price if available */}
+                    {(content.price || shouldShowPrice(templateType)) && (
+                      <Typography
+                        sx={{
+                          color: template.textPanelStyle?.textColor || 'white',
+                          fontWeight: 'bold',
+                          fontSize: templateConfig.typography.price.fontSize,
+                          mb: 1,
+                          fontFamily: templateConfig.typography.price.fontFamily,
+                        }}
+                      >
+                        {content.price ? `${content.price} €` : getPlaceholderText(templateType, 'price')}
                       </Typography>
                     )}
 
                     {/* Additional info if available */}
-                    {content.additionalInfo &&
-                      (templateType === 'daily-special' ||
-                        templateType === 'bread-of-day' ||
-                        templateType === 'offer' ||
-                        templateType === 'bakery-news') && (
-                        <Typography
-                          sx={{
-                            color: 'white',
-                            fontSize: '24px',
-                            fontFamily: "'Averia Serif Libre', serif",
-                            opacity: 0.9,
-                          }}
-                        >
-                          {content.additionalInfo}
-                        </Typography>
-                      )}
+                    {content.additionalInfo && (
+                      <Typography
+                        sx={{
+                          color: template.textPanelStyle?.textColor || 'white',
+                          fontSize: templateConfig.typography.additionalInfo.fontSize,
+                          fontFamily: templateConfig.typography.additionalInfo.fontFamily,
+                          opacity: 0.9,
+                          mt: 1,
+                        }}
+                      >
+                        {formatAdditionalInfo(content.additionalInfo, templateType)}
+                      </Typography>
+                    )}
                   </>
                 )}
               </Box>
