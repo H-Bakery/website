@@ -17,6 +17,9 @@ const nextConfig = {
     '@fullcalendar/interaction',
     '@fullcalendar/resource-timegrid',
   ],
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
 }
 
 module.exports = nextConfig

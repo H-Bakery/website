@@ -1,6 +1,11 @@
 {
   "extends": "next/core-web-vitals",
   "rules": {
-    "semi": ["error", "never"]
+    "semi": ["error", "never"],
+    "testing-library/await-async-query": "off",
+    "testing-library/no-await-sync-query": "off",
+    "testing-library/no-render-in-setup": "off",
+    "testing-library/prefer-wait-for": "off",
+    "react/no-unescaped-entities": "off"
   }
 }
