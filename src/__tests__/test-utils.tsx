@@ -1,3 +1,4 @@
+/* eslint-disable testing-library/await-async-query, testing-library/no-await-sync-query, testing-library/no-render-in-setup, testing-library/prefer-wait-for */
 import React, { ReactElement } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
