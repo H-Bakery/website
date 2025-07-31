@@ -144,22 +144,13 @@ export function calculateSimpleSquareFontSize(text: string): TextSizingResult {
 /**
  * Get CSS styles for Simple Square text based on calculated sizing
  */
-export function getSimpleSquareTextStyles(text: string): {
-  fontSize: string
-  lineHeight: string
-  textAlign: string
-  display: string
-  alignItems: string
-  justifyContent: string
-  height: string
-  overflow: string
-} {
+export function getSimpleSquareTextStyles(text: string): React.CSSProperties {
   const sizingResult = calculateSimpleSquareFontSize(text)
   
   return {
     fontSize: `${sizingResult.fontSize}px`,
     lineHeight: `${sizingResult.lineHeight}px`,
-    textAlign: 'center',
+    textAlign: 'center' as const,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
