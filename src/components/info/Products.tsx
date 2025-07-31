@@ -8,7 +8,7 @@ import {
   Typography,
 } from '@mui/material'
 import ProductCard from '../home/products/ProductCard'
-import { Product } from '../products/types'
+import { Product } from '../../types/product'
 import { Fade } from 'react-slideshow-image'
 
 interface Props extends BoxProps {

@@ -3,7 +3,7 @@
 import React from 'react'
 import { Box, Chip, Container, Grid, Typography } from '@mui/material'
 import Hero from '../../components/Hero'
-import { Product } from '../../components/products/types'
+import { Product } from '../../types/product'
 import { formatter } from '../../utils/formatPrice'
 import Button from '../../components/button/Index'
 import { CartContext } from '../../context/CartContext'
@@ -14,7 +14,7 @@ interface ProductDetailProps {
 }
 
 export default function ProductDetail({ product }: ProductDetailProps) {
-  const { add } = React.useContext(CartContext)
+  const { addToCart } = React.useContext(CartContext)
 
   return (
     <Container maxWidth="sm">
@@ -33,9 +33,9 @@ export default function ProductDetail({ product }: ProductDetailProps) {
               {formatter.format(product?.price)}
             </Typography>
           </Box>
-          {/* <Button sx={{ mt: 2 }} onClick={() => add(product?.id)}>
+          <Button sx={{ mt: 2 }} onClick={() => addToCart(product)}>
             Zum Warenkorb
-          </Button> */}
+          </Button>
         </Grid>
       </Grid>
     </Container>

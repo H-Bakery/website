@@ -17,7 +17,7 @@ import {
 import SearchIcon from '@mui/icons-material/Search'
 import SortIcon from '@mui/icons-material/Sort'
 import ProductCard from './ProductCard'
-import { Product } from '../../products/types'
+import { Product } from '../../../types/product'
 
 interface Props extends BoxProps {
   header?: React.ReactNode

@@ -7,9 +7,9 @@ import Button from '../button/Index'
 import Image from 'next/image'
 
 const Card: React.FC<CartItem> = (props) => {
-  const { id, image, name, category, price, count } = props
+  const { id, image, name, category, price, quantity } = props
 
-  const { items, remove, changeCount } = React.useContext(CartContext)
+  const { items, removeFromCart, updateQuantity } = React.useContext(CartContext)
 
   React.useEffect(() => {
     console.log('cont', items)
@@ -27,7 +27,7 @@ const Card: React.FC<CartItem> = (props) => {
           </Typography>
           <Box sx={styles.counter}>
             <Button
-              onClick={() => changeCount(id, -1)}
+              onClick={() => updateQuantity(id, Math.max(0, quantity - 1))}
               color="inherit"
               size="small"
               sx={{ minWidth: 32 }}
@@ -35,10 +35,10 @@ const Card: React.FC<CartItem> = (props) => {
               -
             </Button>
             <Typography fontWeight="bold" mx={2}>
-              {count}
+              {quantity}
             </Typography>
             <Button
-              onClick={() => changeCount(id, 1)}
+              onClick={() => updateQuantity(id, quantity + 1)}
               color="inherit"
               size="small"
               sx={{ minWidth: 32 }}
@@ -49,7 +49,7 @@ const Card: React.FC<CartItem> = (props) => {
         </Box>
         <Box sx={styles.tags}>
           <Chip label={category} />
-          <Box onClick={() => remove(id)}>remove</Box>
+          <Box onClick={() => removeFromCart(id)}>remove</Box>
           <Typography variant="h6" fontSize={20}>
             {formatter.format(price)}
           </Typography>

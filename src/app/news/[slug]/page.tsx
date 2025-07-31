@@ -7,13 +7,13 @@ import { notFound } from 'next/navigation'
 import MarkdownDisplay from '../../../components/MarkdownDisplay'
 
 interface NewsArticlePageProps {
-  params: {
+  params: Promise<{
     slug: string
-  }
+  }>
 }
 
-export default function NewsArticlePage({ params }: NewsArticlePageProps) {
-  const { slug } = params
+export default async function NewsArticlePage({ params }: NewsArticlePageProps) {
+  const { slug } = await params
 
   const news = getNewsBySlug(slug)
 

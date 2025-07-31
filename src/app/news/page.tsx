@@ -6,7 +6,7 @@ import News from '../../components/home/news'
 import Hero from '../../components/Hero'
 import { getAllNews } from '../../services/newsService'
 
-const Index: React.FC = async () => {
+export default async function Index() {
   const news = getAllNews()
   
   return (
@@ -18,5 +18,3 @@ const Index: React.FC = async () => {
     </Base>
   )
 }
-
-export default Index

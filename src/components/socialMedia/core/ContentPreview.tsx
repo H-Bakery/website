@@ -221,12 +221,12 @@ const ContentPreview: React.FC<ContentPreviewProps> = ({
                 ) : templateType === 'simple-square' ? (
                   /* Simple Square template - dynamically sized centered text */
                   <Typography
+                    style={getSimpleSquareTextStyles(content.title || getPlaceholderText(templateType, 'title'))}
                     sx={{
                       color: template.textPanelStyle?.textColor || template.colors.primary,
                       fontWeight: 'bold',
                       fontFamily: templateConfig.typography.title.fontFamily,
                       letterSpacing: 0.5,
-                      ...getSimpleSquareTextStyles(content.title || getPlaceholderText(templateType, 'title')),
                     }}
                   >
                     {content.title || getPlaceholderText(templateType, 'title')}

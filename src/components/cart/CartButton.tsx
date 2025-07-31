@@ -1,10 +1,10 @@
 import React from 'react'
-import { Box, BoxProps, Typography, IconButton } from '@mui/material'
+import { Box, Typography, IconButton, IconButtonProps } from '@mui/material'
 import ShoppingCartRoundedIcon from '@mui/icons-material/ShoppingCartRounded'
 import { useRouter } from 'next/navigation'
 import { CartContext } from '../../context/CartContext'
 
-const CartButton: React.FC<BoxProps> = (props) => {
+const CartButton: React.FC<IconButtonProps> = (props) => {
   const { totalCount } = React.useContext(CartContext)
   const router = useRouter()
 

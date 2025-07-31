@@ -135,10 +135,10 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
   }, [pathname])
 
   // Use the current user from AuthContext or fallback to mock
-  const currentUser = user || CURRENT_USER || {
-    name: 'Guest User',
-    role: 'Production' as UserRole,
-    avatar: null
+  const currentUser = {
+    name: user?.username || CURRENT_USER?.name || 'Guest User',
+    role: (user?.role as UserRole) || CURRENT_USER?.role || ('Production' as UserRole),
+    avatar: CURRENT_USER?.avatar || null
   }
 
   // Handle menu close
@@ -283,7 +283,7 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
     .map((section) => ({
       ...section,
       items: section.items.filter((item) =>
-        item.roles.includes(currentUser?.role || 'Production')
+        item.roles.includes(currentUser.role)
       ),
     }))
     .filter((section) => section.items.length > 0)

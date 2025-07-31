@@ -153,8 +153,11 @@ const BakingCategoryCard: React.FC<BakingCategoryCardProps> = ({
                       onChange={(e) => handleQuantityChange(index, e.target.value)}
                       sx={{ width: 80 }}
                       type="number"
-                      step={isDecimal ? "0.1" : "1"}
-                      inputProps={{ min: 0, max: maxQuantity }}
+                      inputProps={{ 
+                        min: 0, 
+                        max: maxQuantity,
+                        step: isDecimal ? "0.1" : "1"
+                      }}
                     />
                     <Typography
                       variant="body2"
