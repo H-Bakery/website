@@ -152,17 +152,21 @@ export interface Review {
  * Represents a bakery recipe, including ingredients, instructions, and reviews.
  */
 export interface Recipe {
-  id: string
+  id: string | number
   name: string
+  slug: string // URL-friendly slug generated from name
   description?: string
   ingredients: Array<{ name: string; quantity: string }> // Array of ingredient objects
-  instructions: Array<string> // Array of instruction steps
+  instructions: string // Markdown text (backend stores as markdown)
+  instructionsHtml?: string // Parsed HTML from markdown (returned by API)
   category: string // e.g., "Cakes", "Breads", "Pastries"
   prepTime?: string // e.g., "30 minutes"
   cookTime?: string // e.g., "1 hour"
   servings?: number
   image?: string // URL or path to an image
   reviews?: Review[] // Array of Review objects
+  createdAt?: string // ISO date string
+  updatedAt?: string // ISO date string
 }
 
 export interface CashEntry {

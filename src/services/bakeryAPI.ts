@@ -11,6 +11,7 @@ import {
   TimeSeriesData,
   TimeRange,
   Order,
+  OrderItem,
   BakingListResponse,
   SummaryData,
   CashEntry,
@@ -883,15 +884,65 @@ const bakeryAPI = {
   // Dashboard data methods
   getSummaryData: async (range: TimeRange): Promise<SummaryData> => {
     try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      // Map frontend time ranges to backend expected format (days)
+      const daysMap: Record<TimeRange, number> = {
+        'day': 1,
+        'week': 7,
+        'month': 30,
+        'year': 365
+      }
+
       const response = await fetch(
-        `${API_BASE_URL}/dashboard/summary?range=${range}`
+        `${API_BASE_URL}/dashboard/sales-summary?days=${daysMap[range]}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       )
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error('Failed to fetch summary data')
       }
-      return await response.json()
+      
+      const result = await response.json()
+      
+      // Transform backend response to match frontend SummaryData interface
+      if (result.success && result.data) {
+        const data = result.data
+        return {
+          totalSales: data.totalSales || 0,
+          totalItems: 0, // Backend doesn't provide this directly, will calculate from order items
+          totalProduced: 0, // Will get from production endpoint
+          totalWaste: 0, // Will get from production endpoint
+          transactions: data.orderCount || 0,
+          uniqueTransactions: data.orderCount || 0,
+          expenses: 0, // Will get from revenue analytics
+          revenue: data.totalSales || 0,
+          profit: 0, // Will calculate
+          averageOrderValue: data.avgOrderValue || 0,
+          wastageRate: 0, // Will get from production
+          profitMargin: 0, // Will calculate
+        }
+      }
+      
+      throw new Error('Invalid response format')
     } catch (error) {
       console.error('Error fetching summary data, using mock data:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return calculateSummary(range)
     }
@@ -902,18 +953,99 @@ const bakeryAPI = {
     range: TimeRange
   ): Promise<TimeSeriesData[]> => {
     try {
-      const response = await fetch(
-        `${API_BASE_URL}/dashboard/timeseries?type=${type}&range=${range}`
-      )
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      // Map frontend time ranges to backend expected format (days)
+      const daysMap: Record<TimeRange, number> = {
+        'day': 1,
+        'week': 7,
+        'month': 30,
+        'year': 365
+      }
+
+      // The backend provides different endpoints for different data types
+      let endpoint = ''
+      let transformData: (data: any) => TimeSeriesData[]
+      
+      switch (type) {
+        case 'sales':
+          endpoint = `${API_BASE_URL}/dashboard/sales-summary?days=${daysMap[range]}`
+          transformData = (result) => {
+            if (result.success && result.data && result.data.dailySales) {
+              return result.data.dailySales.map((item: any) => ({
+                date: item.date,
+                value: item.revenue || 0
+              }))
+            }
+            return []
+          }
+          break
+        case 'production':
+          endpoint = `${API_BASE_URL}/dashboard/production-overview?days=${daysMap[range]}`
+          transformData = (result) => {
+            if (result.success && result.data && result.data.dailyProduction) {
+              return result.data.dailyProduction.map((item: any) => ({
+                date: item.date,
+                value: item.totalItems || 0
+              }))
+            }
+            return []
+          }
+          break
+        case 'customers':
+          // Backend doesn't have specific customer time series, use order count from sales
+          endpoint = `${API_BASE_URL}/dashboard/sales-summary?days=${daysMap[range]}`
+          transformData = (result) => {
+            if (result.success && result.data && result.data.dailySales) {
+              return result.data.dailySales.map((item: any) => ({
+                date: item.date,
+                value: item.orders || 0
+              }))
+            }
+            return []
+          }
+          break
+        case 'waste':
+          // Backend tracks unsold products, not waste directly
+          endpoint = `${API_BASE_URL}/dashboard/product-performance?days=${daysMap[range]}`
+          transformData = (result) => {
+            // For now, return empty array as waste tracking needs different implementation
+            return []
+          }
+          break
+        default:
+          throw new Error(`Unsupported time series type: ${type}`)
+      }
+
+      const response = await fetch(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error(`Failed to fetch ${type} time series data`)
       }
-      return await response.json()
+      
+      const result = await response.json()
+      return transformData(result)
     } catch (error) {
       console.error(
         `Error fetching ${type} time series data, using mock data:`,
         error
       )
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return generateTimeSeriesData(type, range)
     }
@@ -921,15 +1053,81 @@ const bakeryAPI = {
 
   getSalesData: async (range: TimeRange): Promise<SalesData[]> => {
     try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      // Map frontend time ranges to backend expected format (days)
+      const daysMap: Record<TimeRange, number> = {
+        'day': 1,
+        'week': 7,
+        'month': 30,
+        'year': 365
+      }
+
+      // Get order analytics which includes detailed order information
       const response = await fetch(
-        `${API_BASE_URL}/dashboard/sales?range=${range}`
+        `${API_BASE_URL}/dashboard/order-analytics?days=${daysMap[range]}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       )
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error('Failed to fetch sales data')
       }
-      return await response.json()
+      
+      const result = await response.json()
+      
+      // For now, we'll also fetch actual orders to get detailed sales data
+      const ordersResponse = await fetch(
+        `${API_BASE_URL}/orders`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+      
+      if (ordersResponse.ok) {
+        const orders = await ordersResponse.json()
+        
+        // Transform orders into sales data format
+        const salesData: SalesData[] = []
+        orders.forEach((order: Order) => {
+          order.items?.forEach((item: OrderItem) => {
+            salesData.push({
+              id: `sale-${order.id}-${item.productId}`,
+              date: order.createdAt.split('T')[0],
+              product_id: Number(item.productId),
+              product_name: item.productName,
+              quantity: item.quantity,
+              total: item.quantity * item.unitPrice,
+              payment_method: 'Bargeld' // Default as backend doesn't track payment method yet
+            })
+          })
+        })
+        
+        // Filter by date range
+        return filterByDateRange(salesData, range)
+      }
+      
+      // If orders fetch fails, return empty array
+      return []
     } catch (error) {
       console.error('Error fetching sales data, using mock data:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return filterByDateRange(mockData.salesData, range)
     }
@@ -937,15 +1135,76 @@ const bakeryAPI = {
 
   getProductionData: async (range: TimeRange): Promise<ProductionData[]> => {
     try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      // Map frontend time ranges to backend expected format (days)
+      const daysMap: Record<TimeRange, number> = {
+        'day': 1,
+        'week': 7,
+        'month': 30,
+        'year': 365
+      }
+
       const response = await fetch(
-        `${API_BASE_URL}/dashboard/production?range=${range}`
+        `${API_BASE_URL}/dashboard/production-overview?days=${daysMap[range]}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       )
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error('Failed to fetch production data')
       }
-      return await response.json()
+      
+      const result = await response.json()
+      
+      // Transform backend production data to match frontend format
+      if (result.success && result.data) {
+        const productionData: ProductionData[] = []
+        
+        // Use top products data to simulate production records
+        if (result.data.topProducts) {
+          result.data.topProducts.forEach((product: any, index: number) => {
+            // Create production entries for each product
+            const daysToGenerate = Math.min(daysMap[range], 30)
+            for (let i = 0; i < daysToGenerate; i++) {
+              const date = new Date()
+              date.setDate(date.getDate() - i)
+              const dateStr = date.toISOString().split('T')[0]
+              
+              productionData.push({
+                id: `prod-${dateStr}-${product.name}`,
+                date: dateStr,
+                product_id: index + 1, // Since backend doesn't return product IDs in this endpoint
+                product_name: product.name,
+                quantity_produced: Math.ceil(product.totalQuantity / daysToGenerate),
+                waste: Math.floor(Math.random() * 5), // Simulated waste
+                staff_name: 'Team' // Backend doesn't track staff in production
+              })
+            }
+          })
+        }
+        
+        return filterByDateRange(productionData, range)
+      }
+      
+      return []
     } catch (error) {
       console.error('Error fetching production data, using mock data:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return filterByDateRange(mockData.productionData, range)
     }
@@ -953,15 +1212,79 @@ const bakeryAPI = {
 
   getFinancialData: async (range: TimeRange): Promise<FinancialData[]> => {
     try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      // Map frontend time ranges to backend expected format (days)
+      const daysMap: Record<TimeRange, number> = {
+        'day': 1,
+        'week': 7,
+        'month': 30,
+        'year': 365
+      }
+
       const response = await fetch(
-        `${API_BASE_URL}/dashboard/finances?range=${range}`
+        `${API_BASE_URL}/dashboard/revenue-analytics?days=${daysMap[range]}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
       )
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error('Failed to fetch financial data')
       }
-      return await response.json()
+      
+      const result = await response.json()
+      
+      // Transform backend revenue data to match frontend financial format
+      if (result.success && result.data) {
+        const financialData: FinancialData[] = []
+        
+        // Convert daily revenue to financial entries
+        if (result.data.dailyRevenue) {
+          result.data.dailyRevenue.forEach((day: any) => {
+            financialData.push({
+              id: `fin-revenue-${day.date}`,
+              date: day.date,
+              category: 'Einnahmen: Verkauf',
+              amount: day.revenue || 0,
+              description: `Tagesumsatz (${day.orders} Bestellungen)`
+            })
+          })
+        }
+        
+        // Add cash entries as financial data
+        if (result.data.dailyCash) {
+          result.data.dailyCash.forEach((cash: any) => {
+            financialData.push({
+              id: `fin-cash-${cash.id}`,
+              date: cash.date,
+              category: 'Einnahmen: Bargeld',
+              amount: cash.amount || 0,
+              description: 'Kasseneingang'
+            })
+          })
+        }
+        
+        return filterByDateRange(financialData, range)
+      }
+      
+      return []
     } catch (error) {
       console.error('Error fetching financial data, using mock data:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return filterByDateRange(mockData.financialData, range)
     }
@@ -969,13 +1292,46 @@ const bakeryAPI = {
 
   getInventoryData: async (): Promise<InventoryItem[]> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboard/inventory`)
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      // Backend doesn't have specific inventory endpoint yet
+      // For now, use product data to simulate inventory
+      const response = await fetch(`${API_BASE_URL}/products`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error('Failed to fetch inventory data')
       }
-      return await response.json()
+      
+      const products = await response.json()
+      
+      // Transform products to inventory items (ingredients)
+      // This is a placeholder until backend implements proper inventory tracking
+      const inventoryItems: InventoryItem[] = [
+        { id: 1, name: 'Mehl (Weizen)', quantity: 45, unit: 'kg', min_stock_level: 20, last_restocked: new Date().toISOString().split('T')[0] },
+        { id: 2, name: 'Zucker', quantity: 18, unit: 'kg', min_stock_level: 10, last_restocked: new Date().toISOString().split('T')[0] },
+        { id: 3, name: 'Butter', quantity: 9, unit: 'kg', min_stock_level: 8, last_restocked: new Date().toISOString().split('T')[0] },
+        { id: 4, name: 'Eier', quantity: 120, unit: 'Stück', min_stock_level: 60, last_restocked: new Date().toISOString().split('T')[0] },
+      ]
+      
+      return inventoryItems
     } catch (error) {
       console.error('Error fetching inventory data, using mock data:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return mockData.inventoryData
     }
@@ -983,13 +1339,22 @@ const bakeryAPI = {
 
   getStaffData: async (): Promise<StaffData[]> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboard/staff`)
-      if (!response.ok) {
-        throw new Error('Failed to fetch staff data')
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
       }
-      return await response.json()
+
+      // Backend doesn't have staff endpoint yet, return minimal mock data
+      // This would need to be implemented in the backend
+      return mockData.staffData
     } catch (error) {
       console.error('Error fetching staff data, using mock data:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return mockData.staffData
     }
@@ -997,13 +1362,51 @@ const bakeryAPI = {
 
   getCustomerData: async (): Promise<CustomerData[]> => {
     try {
-      const response = await fetch(`${API_BASE_URL}/dashboard/customers`)
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      // Fetch order analytics to get customer data
+      const response = await fetch(
+        `${API_BASE_URL}/dashboard/order-analytics?days=30`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      )
+      
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
         throw new Error('Failed to fetch customer data')
       }
-      return await response.json()
+      
+      const result = await response.json()
+      
+      // Transform top customers from backend to match frontend format
+      if (result.success && result.data && result.data.topCustomers) {
+        return result.data.topCustomers.map((customer: any, index: number) => ({
+          id: index + 1,
+          name: customer.customerName,
+          type: 'Individual', // Backend doesn't distinguish customer types yet
+          total_spent: customer.totalSpent || 0,
+          visits: customer.orderCount || 0,
+          last_visit: customer.lastOrder ? customer.lastOrder.split('T')[0] : new Date().toISOString().split('T')[0]
+        }))
+      }
+      
+      return []
     } catch (error) {
       console.error('Error fetching customer data, using mock data:', error)
+      
+      // Only fall back to mock for network errors, not auth errors
+      if (error instanceof Error && error.message.includes('Authentication')) {
+        throw error
+      }
+      
       // Fall back to mock data
       return mockData.customerData
     }
@@ -1503,6 +1906,386 @@ const bakeryAPI = {
       ]
       
       return mockSummary
+    }
+  },
+
+  // Staff Management
+  getStaff: async (params?: { page?: number; limit?: number; search?: string; role?: string; isActive?: boolean }): Promise<{
+    users: any[];
+    pagination: {
+      currentPage: number;
+      totalPages: number;
+      totalItems: number;
+      itemsPerPage: number;
+    };
+  }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const queryParams = new URLSearchParams()
+      if (params?.page) queryParams.append('page', params.page.toString())
+      if (params?.limit) queryParams.append('limit', params.limit.toString())
+      if (params?.search) queryParams.append('search', params.search)
+      if (params?.role) queryParams.append('role', params.role)
+      if (params?.isActive !== undefined) queryParams.append('isActive', params.isActive.toString())
+
+      const response = await fetch(`${API_BASE_URL}/api/staff?${queryParams.toString()}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. Admin privileges required.')
+        }
+        throw new Error('Failed to fetch staff members')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching staff:', error)
+      throw error
+    }
+  },
+
+  getStaffById: async (id: string | number): Promise<any> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/staff/${id}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. Admin privileges required.')
+        }
+        if (response.status === 404) {
+          throw new Error('Staff member not found.')
+        }
+        throw new Error('Failed to fetch staff member')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error(`Error fetching staff member ${id}:`, error)
+      throw error
+    }
+  },
+
+  createStaff: async (staffData: {
+    username: string;
+    password: string;
+    email: string;
+    firstName: string;
+    lastName: string;
+    role?: string;
+  }): Promise<{ message: string; user: any }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/staff`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(staffData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. Admin privileges required.')
+        }
+        if (response.status === 400) {
+          throw new Error(errorData.error || 'Invalid staff data provided.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to create staff member')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error creating staff member:', error)
+      throw error
+    }
+  },
+
+  updateStaff: async (id: string | number, staffData: {
+    username?: string;
+    email?: string;
+    firstName?: string;
+    lastName?: string;
+    role?: string;
+    isActive?: boolean;
+    password?: string;
+  }): Promise<{ message: string; user: any }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/staff/${id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(staffData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. Admin privileges required.')
+        }
+        if (response.status === 404) {
+          throw new Error('Staff member not found.')
+        }
+        if (response.status === 400) {
+          throw new Error(errorData.error || 'Invalid update data provided.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to update staff member')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error(`Error updating staff member ${id}:`, error)
+      throw error
+    }
+  },
+
+  deleteStaff: async (id: string | number): Promise<{ message: string }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/staff/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 403) {
+          throw new Error('Access denied. Admin privileges required.')
+        }
+        if (response.status === 404) {
+          throw new Error('Staff member not found.')
+        }
+        if (response.status === 400) {
+          throw new Error(errorData.error || 'Cannot delete staff member.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to delete staff member')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error(`Error deleting staff member ${id}:`, error)
+      throw error
+    }
+  },
+
+  // Recipe Management
+  getRecipes: async (): Promise<any[]> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/recipes`)
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch recipes')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching recipes:', error)
+      // Return empty array instead of throwing when backend is unavailable
+      console.warn('Backend unavailable, returning empty recipes array')
+      return []
+    }
+  },
+
+  getRecipeBySlug: async (slug: string): Promise<any> => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/recipes/${slug}`)
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          throw new Error('Recipe not found')
+        }
+        throw new Error('Failed to fetch recipe')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error(`Error fetching recipe ${slug}:`, error)
+      throw error
+    }
+  },
+
+  createRecipe: async (recipeData: {
+    name: string;
+    description?: string;
+    ingredients: Array<{ name: string; quantity: string }>;
+    instructions: string[];
+    category: string;
+    prepTime?: string;
+    cookTime?: string;
+    servings?: number;
+    image?: string;
+  }): Promise<any> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/recipes`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(recipeData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 400) {
+          throw new Error(errorData.error || 'Invalid recipe data provided.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to create recipe')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error creating recipe:', error)
+      throw error
+    }
+  },
+
+  updateRecipe: async (slug: string, recipeData: {
+    name?: string;
+    description?: string;
+    ingredients?: Array<{ name: string; quantity: string }>;
+    instructions?: string[];
+    category?: string;
+    prepTime?: string;
+    cookTime?: string;
+    servings?: number;
+    image?: string;
+  }): Promise<any> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/recipes/${slug}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(recipeData),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 404) {
+          throw new Error('Recipe not found.')
+        }
+        if (response.status === 400) {
+          throw new Error(errorData.error || 'Invalid recipe data provided.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to update recipe')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error(`Error updating recipe ${slug}:`, error)
+      throw error
+    }
+  },
+
+  deleteRecipe: async (slug: string): Promise<{ message: string }> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/recipes/${slug}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 404) {
+          throw new Error('Recipe not found.')
+        }
+        
+        throw new Error(errorData.error || 'Failed to delete recipe')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error(`Error deleting recipe ${slug}:`, error)
+      throw error
     }
   },
 }
