@@ -58,12 +58,15 @@ interface EnhancedTestimonial {
   verified?: boolean
 }
 
+// Define roles as a constant for reusability and maintainability
+const ROLES = ['Stammkunde', 'Lokaler Kunde', 'Geschäftskunde', 'Familienkunde'];
+
 // Enhanced testimonials with additional data
 const enhancedTestimonials: EnhancedTestimonial[] = TESTIMONIALS.map((testimonial, index) => ({
   name: testimonial.name,
   rating: testimonial.stars,
   message: testimonial.text,
-  role: ['Stammkunde', 'Lokaler Kunde', 'Geschäftskunde', 'Familienkunde'][index % 4],
+  role: ROLES[index % ROLES.length],
   image: `/assets/images/testimonials/customer-${index + 1}.jpg`,
   date: new Date(Date.now() - (index * 7 * 24 * 60 * 60 * 1000) % (30 * 24 * 60 * 60 * 1000)).toLocaleDateString('de-DE'),
   verified: true,
