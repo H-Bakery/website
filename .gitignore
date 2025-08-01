@@ -59,19 +59,14 @@ node_modules/
 # tasks/ 
 
 # Claude Flow generated files
-.claude/settings.local.json
+.claude/
+.claude-flow/
+memory/
 .mcp.json
 claude-flow.config.json
 .swarm/
 .hive-mind/
-memory/claude-flow-data.json
-memory/sessions/*
-!memory/sessions/README.md
-memory/agents/*
-!memory/agents/README.md
-coordination/memory_bank/*
-coordination/subtasks/*
-coordination/orchestration/*
+coordination/
 *.db
 *.db-journal
 *.db-wal
