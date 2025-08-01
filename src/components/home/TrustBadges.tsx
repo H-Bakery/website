@@ -237,7 +237,7 @@ const TrustBadges: React.FC = () => {
           sx={{
             mt: 6,
             p: 3,
-            backgroundColor: theme.palette.mode === 'light' ? theme.palette.grey[100] : theme.palette.grey[800],
+            backgroundColor: theme.palette.background.paper,
             borderRadius: 2,
             textAlign: 'center',
             border: '1px solid',
