@@ -2,11 +2,13 @@
 import { ThemeOptions, createTheme } from '@mui/material'
 
 const headlines = {
-  fontFamily: 'Averia Serif Libre',
+  fontFamily: '"Playfair Display", serif',
+  fontWeight: 700,
 }
 
 const buttons = {
-  fontFamily: 'Averia Serif Libre',
+  fontFamily: '"Lora", serif',
+  fontWeight: 500,
 }
 
 // Define common options across both themes
@@ -15,6 +17,9 @@ const getThemeOptions = (mode: 'light' | 'dark'): ThemeOptions => ({
     mode,
     primary: {
       main: '#D038BA',
+      dark: '#A02E94', // WCAG AA compliant on white backgrounds
+      light: '#E666D3',
+      contrastText: '#FFFFFF',
     },
     success: {
       main: '#1ADA67',
@@ -53,14 +58,16 @@ const getThemeOptions = (mode: 'light' | 'dark'): ThemeOptions => ({
         },
   },
   typography: {
-    fontFamily: "'Ubuntu', sans-serif",
-    h1: { ...headlines },
-    h2: { ...headlines },
-    h3: { ...headlines },
-    h4: { ...headlines },
-    h5: { ...headlines },
-    h6: { ...headlines },
-    button: { ...buttons },
+    fontFamily: '"Lora", "Ubuntu", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    h1: { ...headlines, fontSize: '3.5rem', lineHeight: 1.2 },
+    h2: { ...headlines, fontSize: '2.75rem', lineHeight: 1.3 },
+    h3: { ...headlines, fontSize: '2.25rem', lineHeight: 1.4 },
+    h4: { ...headlines, fontSize: '1.75rem', lineHeight: 1.4 },
+    h5: { ...headlines, fontSize: '1.5rem', lineHeight: 1.5 },
+    h6: { ...headlines, fontSize: '1.25rem', lineHeight: 1.5 },
+    button: { ...buttons, letterSpacing: '0.5px' },
+    body1: { lineHeight: 1.7, fontSize: '1.05rem' },
+    body2: { lineHeight: 1.6, fontSize: '0.95rem' },
   },
 })
 

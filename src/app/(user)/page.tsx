@@ -11,12 +11,16 @@ import DirectionsIcon from '@mui/icons-material/Directions'
 import RestaurantIcon from '@mui/icons-material/Restaurant'
 import PhoneIcon from '@mui/icons-material/Phone'
 
-import Hero from '../../components/home/hero/Hero'
+import EnhancedHero from '../../components/home/hero/EnhancedHero'
 import Map from '../../components/home/map'
 import Wochenanfebote from '../../components/home/wochenanfebote'
-import Testimonial from '../../components/home/testimonial'
+import EnhancedTestimonial from '../../components/home/testimonial/EnhancedTestimonial'
 import News from '../../components/home/news'
 import CallToAction from '../../components/CallToAction'
+import TrustBadges from '../../components/home/TrustBadges'
+import QuickOrder from '../../components/home/QuickOrder'
+import SeasonalHighlights from '../../components/home/SeasonalHighlights'
+import InstagramFeed from '../../components/home/InstagramFeed'
 import { featuredProducts } from '../../mocks/products/featured'
 import Button from '../../components/button/Index'
 import { getAllNews } from '../../services/newsService'
@@ -27,35 +31,41 @@ export default async function HomePage() {
 
   return (
     <>
-      <Hero />
+      <EnhancedHero />
 
       {/* Top CTA for new visitors */}
       <CallToAction
         position="top"
-        title="Traditionelle Backkunst seit 1933"
-        subtitle="WILLKOMMEN IN UNSERER BÄCKEREI"
-        description="Entdecken Sie unsere handwerklich hergestellten Backwaren aus regionalen Zutaten. Frisch gebacken und mit Liebe zubereitet – besuchen Sie uns oder bestellen Sie bequem per Telefon oder WhatsApp."
+        title="Frisch gebacken, täglich für Sie!"
+        subtitle="🥐 JETZT NEU: ONLINE VORBESTELLEN"
+        description="Sichern Sie sich Ihre Lieblings-Backwaren schon heute für morgen. Keine Wartezeiten, garantierte Verfügbarkeit – einfach vorbestellen und abholen!"
         primaryAction={{
-          label: 'Bestellung aufgeben',
-          icon: <PhoneIcon />,
+          label: 'Jetzt vorbestellen',
+          icon: <ShoppingBasketIcon />,
           href: '/bestellen',
           variant: 'contained',
         }}
         secondaryAction={{
-          label: 'Wegbeschreibung',
-          icon: <DirectionsIcon />,
-          href: '#map-section', // Scroll to map section
+          label: 'Unser Sortiment',
+          icon: <ArrowForwardIcon />,
+          href: '/products',
           variant: 'outlined',
         }}
       />
 
+      <TrustBadges />
+
+      <QuickOrder />
+
       <Wochenanfebote />
+
+      <SeasonalHighlights />
 
       <Box id="map-section">
         <Map />
       </Box>
 
-      <Testimonial />
+      <EnhancedTestimonial />
 
       <News
         news={news}
@@ -76,25 +86,28 @@ export default async function HomePage() {
         }
       />
 
+      <InstagramFeed />
+
       {/* Bottom CTA for informed visitors */}
       <CallToAction
         position="bottom"
-        title="Probieren Sie unsere frischen Backwaren"
-        subtitle="HANDGEMACHT & KÖSTLICH"
-        description="Unsere Türen stehen Ihnen offen und wir freuen uns auf Ihren Besuch!"
+        title="Werden Sie Teil unserer Bäckerei-Familie"
+        subtitle="🍞 TREUEAKTION: 10. BROT GRATIS"
+        description="Sammeln Sie bei jedem Einkauf Stempel und genießen Sie exklusive Vorteile. Ab sofort in unserer Filiale!"
         primaryAction={{
-          label: 'Jetzt bestellen',
-          icon: <RestaurantIcon />,
-          href: '/bestellen',
+          label: 'Zur Filiale navigieren',
+          icon: <DirectionsIcon />,
+          href: '#map-section',
           variant: 'contained',
           color: 'primary',
         }}
         secondaryAction={{
-          label: 'Mehr erfahren',
+          label: 'Anrufen: 06841 2229',
+          icon: <PhoneIcon />,
           variant: 'outlined',
-          href: '/about',
+          href: 'tel:068412229',
         }}
-        backgroundImage="/images/bakery-background.jpg" // Add a background image path if you have one
+        compact={true}
       />
     </>
   )

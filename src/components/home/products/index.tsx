@@ -16,7 +16,7 @@ import {
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import SortIcon from '@mui/icons-material/Sort'
-import ProductCard from './ProductCard'
+import EnhancedProductCard from './EnhancedProductCard'
 import { Product } from '../../../types/product'
 
 interface Props extends BoxProps {
@@ -155,7 +155,7 @@ const Products: React.FC<Props> = (props) => {
           <Grid container spacing={3} aria-live="polite">
             {displayedItems.map((item) => (
               <Grid key={item.id} item xs={12} sm={6} md={4} lg={3}>
-                <ProductCard {...item} />
+                <EnhancedProductCard {...item} />
               </Grid>
             ))}
           </Grid>

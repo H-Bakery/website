@@ -7,6 +7,7 @@ import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import Base from '../../layouts/Base'
 import Hero from '../../components/Hero'
 import Button from '../../components/button/Index'
+import { createWhatsAppLink, createPhoneLink, contactConfig } from '../../config/contact'
 // import Form from '../../components/orders/Form'  // Commented out as requested
 
 const BestellenPage: React.FC = () => (
@@ -53,9 +54,9 @@ const BestellenPage: React.FC = () => (
                 Unsere Telefonnummer:
               </Typography>
               <Typography variant="h6" gutterBottom fontWeight="bold">
-                06841 2229
+                {contactConfig.store.phone}
               </Typography>
-              <Button startIcon={<PhoneIcon />} href="tel:068412229" fullWidth>
+              <Button startIcon={<PhoneIcon />} href={createPhoneLink()} fullWidth>
                 Jetzt anrufen
               </Button>
             </Paper>
@@ -83,11 +84,11 @@ const BestellenPage: React.FC = () => (
                 Unsere WhatsApp-Nummer:
               </Typography>
               <Typography variant="h6" gutterBottom fontWeight="bold">
-                01522 6621236
+                {contactConfig.whatsapp.fallback.phone}
               </Typography>
               <Button
                 startIcon={<WhatsAppIcon />}
-                href="https://wa.me/4915226621236"
+                href={createWhatsAppLink('Hallo! Ich möchte gerne eine Bestellung aufgeben.')}
                 target="_blank"
                 rel="noopener noreferrer"
                 fullWidth

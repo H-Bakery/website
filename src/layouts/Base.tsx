@@ -3,6 +3,8 @@
 import { Box } from '@mui/material'
 import { Header } from '../components/header' // Import Header
 import Footer from '../components/footer/Index' // Import Footer
+import MobileBottomNav from '../components/MobileBottomNav'
+import EnhancedCartButton from '../components/cart/EnhancedCartButton'
 
 interface Props {
   children: React.ReactNode
@@ -16,9 +18,16 @@ const Base: React.FC<Props> = ({ children }) => (
     }}
   >
     <Header />
-    <Box sx={{ minHeight: 'calc(100vh - 332px)' }}>{children}</Box>
-    {/* <Cart /> */}
+    <Box sx={{ 
+      minHeight: 'calc(100vh - 332px)', 
+      pb: { 
+        xs: 'calc(80px + env(safe-area-inset-bottom))', // Account for bottom nav + safe area
+        md: 0 
+      } 
+    }}>{children}</Box>
+    <EnhancedCartButton />
     <Footer />
+    <MobileBottomNav />
   </Box>
 )
 

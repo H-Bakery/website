@@ -15,6 +15,7 @@ import DirectionsIcon from '@mui/icons-material/Directions'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 import PhoneIcon from '@mui/icons-material/Phone'
 import { useRouter } from 'next/navigation'
+import EnhancedButton from './button/EnhancedButton'
 
 interface CTAAction {
   label: string
@@ -192,39 +193,39 @@ const CallToAction: React.FC<CallToActionProps> = ({
                 gap: 2,
               }}
             >
-              <Button
+              <EnhancedButton
                 variant={primaryAction.variant || 'contained'}
                 color={primaryAction.color || 'primary'}
                 size={compact ? 'medium' : 'large'}
                 startIcon={primaryAction.icon}
                 onClick={() => handleActionClick(primaryAction)}
                 fullWidth={isMobile}
+                pulse={position === 'top'}
                 sx={{
                   px: 3,
                   py: compact ? 1 : 1.5,
                   minWidth: { md: '200px' },
                   fontWeight: 'bold',
                   fontSize: compact ? 'inherit' : '1.1rem',
-                  borderRadius: '8px',
                 }}
               >
                 {primaryAction.label}
-              </Button>
+              </EnhancedButton>
 
               {secondaryAction && (
-                <Button
+                <EnhancedButton
                   variant={secondaryAction.variant || 'outlined'}
                   color={secondaryAction.color || 'primary'}
                   size={compact ? 'medium' : 'large'}
                   startIcon={secondaryAction.icon}
                   onClick={() => handleActionClick(secondaryAction)}
                   fullWidth={isMobile}
+                  shimmer={false}
                   sx={{
                     px: 3,
                     py: compact ? 1 : 1.5,
                     minWidth: { md: '200px' },
                     fontWeight: 'medium',
-                    borderRadius: '8px',
                     borderColor: backgroundImage ? 'white' : undefined,
                     color: backgroundImage ? 'white' : undefined,
                     '&:hover': {
@@ -236,7 +237,7 @@ const CallToAction: React.FC<CallToActionProps> = ({
                   }}
                 >
                   {secondaryAction.label}
-                </Button>
+                </EnhancedButton>
               )}
             </Grid>
           </Grid>

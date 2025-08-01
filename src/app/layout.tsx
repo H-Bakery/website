@@ -2,6 +2,7 @@
 import { AppConfig } from '../utils/AppConfig'
 import ThemeRegistry from './ThemeRegistry'
 import AuthWrapper from '../components/providers/AuthWrapper'
+import './globals.css'
 
 // This works because this file is now a Server Component
 export const metadata = {
@@ -34,6 +35,12 @@ export default function RootLayout({
           href={`${process.env.basePath}/favicon-16x16.png`}
         />
         <link rel="icon" href={`${process.env.basePath}/favicon.ico`} />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Lora:wght@400;500;600&family=Ubuntu:wght@300;400;500;700&display=swap"
+          rel="stylesheet"
+        />
       </head>
       <body>
         <ThemeRegistry>
