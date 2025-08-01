@@ -352,7 +352,7 @@ const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({
                 {editingReview ? 'Edit Your Review' : 'Add Your Review'}
               </Typography>
               <ReviewForm
-                recipeId={recipe.id}
+                recipeId={String(recipe.id)}
                 initialData={editingReview}
                 onSubmit={handleSaveReview}
                 onCancel={handleCancelReviewForm}

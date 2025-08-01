@@ -366,7 +366,7 @@ export default function StaffPage() {
                         <IconButton 
                           size="small" 
                           onClick={() => handleEdit(staff)}
-                          disabled={currentUser?.id === staff.id && staff.role === 'admin'}
+                          disabled={currentUser?.id === String(staff.id) && staff.role === 'admin'}
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -376,7 +376,7 @@ export default function StaffPage() {
                           size="small" 
                           color="error" 
                           onClick={() => handleDelete(staff)}
-                          disabled={currentUser?.id === staff.id}
+                          disabled={currentUser?.id === String(staff.id)}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>

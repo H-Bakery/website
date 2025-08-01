@@ -47,6 +47,7 @@ interface FormErrors {
   lastName?: string
   role?: string
   password?: string
+  isActive?: string
 }
 
 export default function EditUserModal({

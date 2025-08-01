@@ -39,13 +39,14 @@ export default function RecipeManagementPage() {
   // --- Form Submission Handlers ---
   const handleAddRecipeSubmit = async (
     // RecipeForm submits 'category' and 'description' distinctly now
-    newRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'instructions' | 'slug' | 'instructionsHtml'> & { instructions: string[] } // instructions as string[]
+    newRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'slug' | 'instructionsHtml' | 'createdAt' | 'updatedAt'> & { category: string; prepTime: string }
   ) => {
     try {
       setError(null)
       const createdRecipe = await bakeryAPI.createRecipe({
         ...newRecipeData,
-        instructions: newRecipeData.instructions as string[],
+        // Convert string instructions to array for API
+        instructions: newRecipeData.instructions.split('\n').filter(line => line.trim()),
       })
       
       // Add the new recipe to the list
@@ -59,7 +60,7 @@ export default function RecipeManagementPage() {
   }
 
   const handleUpdateRecipeSubmit = async (
-    updatedRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'instructions' | 'slug' | 'instructionsHtml'> & { instructions: string[] }
+    updatedRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'slug' | 'instructionsHtml' | 'createdAt' | 'updatedAt'> & { category: string; prepTime: string }
   ) => {
     if (!editingRecipe) return
 
@@ -67,7 +68,8 @@ export default function RecipeManagementPage() {
       setError(null)
       const updatedRecipe = await bakeryAPI.updateRecipe(editingRecipe.slug, {
         ...updatedRecipeData,
-        instructions: updatedRecipeData.instructions as string[],
+        // Convert string instructions to array for API
+        instructions: updatedRecipeData.instructions.split('\n').filter(line => line.trim()),
       })
       
       // Update the recipe in the list
@@ -186,9 +188,9 @@ export default function RecipeManagementPage() {
         onBack={handleBackToListFromDetailView}
         onEditRequest={handleEditRecipeRequest}
         onDeleteRecipe={handleDeleteRecipe}
-        onAddReview={(reviewData) => handleAddReview(viewingRecipe.id, reviewData)}
-        onUpdateReview={(reviewData) => handleUpdateReview(viewingRecipe.id, reviewData)}
-        onDeleteReview={(reviewId) => handleDeleteReview(viewingRecipe.id, reviewId)}
+        onAddReview={(reviewData) => handleAddReview(String(viewingRecipe.id), reviewData)}
+        onUpdateReview={(reviewData) => handleUpdateReview(String(viewingRecipe.id), reviewData)}
+        onDeleteReview={(reviewId) => handleDeleteReview(String(viewingRecipe.id), reviewId)}
       />
     )
   }

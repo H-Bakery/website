@@ -16,7 +16,7 @@ interface RecipeFormProps {
   recipe?: Recipe | null
   // The onSubmit prop already expects 'category' and 'prepTime' correctly
   onSubmit: (
-    recipe: Omit<Recipe, 'id' | 'reviews'> & {
+    recipe: Omit<Recipe, 'id' | 'reviews' | 'slug' | 'instructionsHtml' | 'createdAt' | 'updatedAt'> & {
       category: string
       prepTime: string
     }
@@ -54,11 +54,12 @@ const RecipeForm: React.FC<RecipeFormProps> = ({
       )
       // Instructions come from backend as markdown string, not array
       // Convert numbered list back to plain lines for editing
-      const instructionText = typeof recipe.instructions === 'string' 
-        ? recipe.instructions.split('\n').map(line => line.replace(/^\d+\.\s*/, '')).join('\n')
-        : Array.isArray(recipe.instructions) 
-          ? recipe.instructions.join('\n')
-          : ''
+      let instructionText = ''
+      if (typeof recipe.instructions === 'string') {
+        instructionText = recipe.instructions.split('\n').map(line => line.replace(/^\d+\.\s*/, '')).join('\n')
+      } else if (Array.isArray(recipe.instructions)) {
+        instructionText = (recipe.instructions as string[]).join('\n')
+      }
       setInstructions(instructionText)
       // setCookTime(recipe.cookTime || 'N/A')
       // setServings(recipe.servings || 'N/A')
@@ -82,7 +83,7 @@ const RecipeForm: React.FC<RecipeFormProps> = ({
       description, // Use description state
       prepTime,
       ingredients,
-      instructions: instructions.split('\n'), // Split back into array
+      instructions: instructions, // Keep as string
       // cookTime,
       // servings: Number(servings) || undefined,
     })
