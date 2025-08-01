@@ -1,6 +1,6 @@
 // src/app/dashboard/management/page.tsx
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Container,
   Typography,
@@ -10,6 +10,7 @@ import {
   Paper,
   Alert,
   Snackbar,
+  Skeleton,
 } from '@mui/material'
 import { useRouter } from 'next/navigation'
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
@@ -24,79 +25,45 @@ import ChartComponent from '../../../../components/dashboard/ChartComponent'
 import DataTable from '../../../../components/dashboard/DataTable'
 import StatsComparison from '../../../../components/dashboard/StatsComparison'
 
-import bakeryAPI from '../../../../services/bakeryAPI'
-import { Product } from '../../../../types/product'
-import { FinancialData, TimeSeriesData } from '../../../../services/types'
+import { useManagementDashboardData, useSummaryData, useProductData } from '../../../../hooks/useDashboard'
+import { useAuth } from '../../../../context/AuthContext'
+import { FinancialData } from '../../../../services/types'
 
 const ManagementDashboard: React.FC = () => {
   const router = useRouter()
   const [timeRange, setTimeRange] = useState<TimeRange>('day')
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-  const [summary, setSummary] = useState<any>(null)
-  const [salesTrend, setSalesTrend] = useState<TimeSeriesData[]>([])
-  const [profitTrend, setProfitTrend] = useState<TimeSeriesData[]>([])
-  const [productData, setProductData] = useState<Product[]>([])
-  const [financialData, setFinancialData] = useState<FinancialData[]>([])
-  const [previousSummary, setPreviousSummary] = useState<any>(null)
+  const { token } = useAuth()
 
-  // Fetch data based on selected time range
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
+  // Fetch management dashboard data
+  const {
+    financialData,
+    summary,
+    salesTrend,
+    isLoading,
+    error,
+    refetch
+  } = useManagementDashboardData(timeRange)
 
-      try {
-        // Get current period data
-        const summaryData = await bakeryAPI.getSummaryData(timeRange)
-        setSummary(summaryData)
+  // Get product data separately
+  const { data: productData } = useProductData()
 
-        // Get previous period data for comparison (using previous period of same length)
-        let previousTimeRange = timeRange
-        const previousSummaryData = await bakeryAPI.getSummaryData(
-          previousTimeRange
-        )
-        setPreviousSummary(previousSummaryData)
+  // Get previous period summary for comparison
+  const previousTimeRange = timeRange // In real implementation, calculate previous period
+  const { data: previousSummary } = useSummaryData(previousTimeRange)
 
-        // Get sales trend data
-        const salesData = await bakeryAPI.getTimeSeriesData('sales', timeRange)
-        setSalesTrend(salesData)
+  // Calculate profit trend from sales trend (35% margin assumption)
+  const profitTrend = salesTrend.map((item) => ({
+    ...item,
+    value: item.value * 0.35,
+  }))
 
-        // Get profit trend data (real data or simulated from sales)
-        try {
-          const profitData = await bakeryAPI.getTimeSeriesData(
-            'sales',
-            timeRange as any
-          )
-          setProfitTrend(profitData)
-        } catch {
-          // Fallback if profit data not available - calculate from sales
-          const profitData = salesData.map((item) => ({
-            ...item,
-            value: item.value * 0.35, // Assume 35% profit margin
-          }))
-          setProfitTrend(profitData)
-        }
-
-        // Get product data
-        const products = await bakeryAPI.getProducts()
-        setProductData(products)
-
-        // Get financial data
-        const finances = await bakeryAPI.getFinancialData(timeRange)
-        setFinancialData(finances)
-      } catch (error) {
-        console.error('Error fetching dashboard data:', error)
-        setError(
-          'Beim Laden der Daten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'
-        )
-      } finally {
-        setLoading(false)
-      }
+  // Check for authentication errors
+  React.useEffect(() => {
+    if (error && error.message && error.message.includes('Authentication')) {
+      // Redirect to login or show auth error
+      console.error('Authentication error:', error)
     }
-
-    fetchData()
-  }, [timeRange])
+  }, [error])
 
   // Calculate percentage changes
   const calculatePercentageChange = (current: number, previous: number) => {
@@ -124,12 +91,14 @@ const ManagementDashboard: React.FC = () => {
 
   // Get product performance data
   const getProductPerformanceData = () => {
+    if (!productData) return []
+    
     const products = productData
-      .filter((product) => product.cost > 0) // Filter out products without cost data
+      .filter((product) => product.cost && product.cost > 0) // Filter out products without cost data
       .map((product) => ({
         name: product.name,
-        profit: product.price - product.cost,
-        margin: ((product.price - product.cost) / product.price) * 100,
+        profit: product.price - (product.cost || 0),
+        margin: product.cost ? ((product.price - product.cost) / product.price) * 100 : 0,
       }))
       .sort((a, b) => b.margin - a.margin) // Sort by margin
       .slice(0, 5) // Top 5 products
@@ -139,12 +108,13 @@ const ManagementDashboard: React.FC = () => {
 
   // Handle close error alert
   const handleCloseError = () => {
-    setError(null)
+    // Error is managed by React Query
+    refetch()
   }
 
   return (
     <>
-      {loading ? (
+      {isLoading ? (
         <Container
           sx={{
             display: 'flex',
@@ -177,23 +147,23 @@ const ManagementDashboard: React.FC = () => {
 
           {error && (
             <Alert severity="error" sx={{ mb: 4 }} onClose={handleCloseError}>
-              {error}
+              {error.message || 'Beim Laden der Daten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'}
             </Alert>
           )}
 
-          {summary && (
+          {!isLoading && (
             <>
               {/* KPI Summary Cards */}
               <Grid container spacing={3} sx={{ mb: 4 }}>
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Gesamtumsatz"
-                    value={`${summary.revenue.toFixed(2)} €`}
+                    value={summary ? `${summary.revenue.toFixed(2)} €` : '0 €'}
                     icon={<AttachMoneyIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.revenue,
-                      previousSummary?.revenue || 0
-                    )}
+                      previousSummary.revenue || 0
+                    ) : 0}
                     color="#4caf50"
                     tooltip="Gesamtumsatz im ausgewählten Zeitraum"
                   />
@@ -201,12 +171,12 @@ const ManagementDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Nettogewinn"
-                    value={`${summary.profit.toFixed(2)} €`}
+                    value={summary ? `${summary.profit.toFixed(2)} €` : '0 €'}
                     icon={<TrendingUpIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.profit,
-                      previousSummary?.profit || 0
-                    )}
+                      previousSummary.profit || 0
+                    ) : 0}
                     color="#2196f3"
                     tooltip="Nettogewinn nach allen Ausgaben im ausgewählten Zeitraum"
                   />
@@ -214,12 +184,12 @@ const ManagementDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Transaktionen"
-                    value={summary.transactions}
+                    value={summary?.transactions || 0}
                     icon={<ShoppingCartIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.transactions,
-                      previousSummary?.transactions || 0
-                    )}
+                      previousSummary.transactions || 0
+                    ) : 0}
                     color="#ff9800"
                     tooltip="Anzahl der Verkaufstransaktionen im ausgewählten Zeitraum"
                   />
@@ -227,12 +197,12 @@ const ManagementDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Gewinnmarge"
-                    value={`${summary.profitMargin.toFixed(1)}%`}
+                    value={summary ? `${summary.profitMargin.toFixed(1)}%` : '0%'}
                     icon={<TrendingUpIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.profitMargin,
-                      previousSummary?.profitMargin || 0
-                    )}
+                      previousSummary.profitMargin || 0
+                    ) : 0}
                     color="#9c27b0"
                     tooltip="Gewinn als Prozentsatz des Umsatzes"
                   />
@@ -240,12 +210,12 @@ const ManagementDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Durchsch. Bestellwert"
-                    value={`${summary.averageOrderValue.toFixed(2)} €`}
+                    value={summary ? `${summary.averageOrderValue.toFixed(2)} €` : '0 €'}
                     icon={<AttachMoneyIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.averageOrderValue,
-                      previousSummary?.averageOrderValue || 0
-                    )}
+                      previousSummary.averageOrderValue || 0
+                    ) : 0}
                     color="#f44336"
                     tooltip="Durchschnittlicher Wert pro Transaktion"
                   />
@@ -272,7 +242,7 @@ const ManagementDashboard: React.FC = () => {
                     items={[
                       {
                         label: 'Umsatz',
-                        current: summary.revenue,
+                        current: summary?.revenue || 0,
                         previous: previousSummary?.revenue || 0,
                         unit: '€',
                         color: '#4caf50',
@@ -280,7 +250,7 @@ const ManagementDashboard: React.FC = () => {
                       },
                       {
                         label: 'Ausgaben',
-                        current: summary.expenses,
+                        current: summary?.expenses || 0,
                         previous: previousSummary?.expenses || 0,
                         unit: '€',
                         color: '#f44336',
@@ -288,7 +258,7 @@ const ManagementDashboard: React.FC = () => {
                       },
                       {
                         label: 'Nettogewinn',
-                        current: summary.profit,
+                        current: summary?.profit || 0,
                         previous: previousSummary?.profit || 0,
                         unit: '€',
                         color: '#2196f3',
@@ -296,7 +266,7 @@ const ManagementDashboard: React.FC = () => {
                       },
                       {
                         label: 'Gewinnmarge',
-                        current: summary.profitMargin,
+                        current: summary?.profitMargin || 0,
                         previous: previousSummary?.profitMargin || 0,
                         unit: '%',
                         color: '#9c27b0',

@@ -1,6 +1,6 @@
 // src/app/dashboard/sales/page.tsx
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Container,
   Typography,
@@ -11,6 +11,7 @@ import {
   Avatar,
   Rating,
   Alert,
+  Skeleton,
 } from '@mui/material'
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart'
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney'
@@ -25,93 +26,37 @@ import ChartComponent from '../../../../components/dashboard/ChartComponent'
 import DataTable from '../../../../components/dashboard/DataTable'
 import StatsComparison from '../../../../components/dashboard/StatsComparison'
 
-import bakeryAPI from '../../../../services/bakeryAPI'
-import {
-  SalesData,
-  CustomerData,
-  TimeSeriesData,
-} from '../../../../services/types'
-import { Product } from '../../../../types/product'
+import { useSalesDashboardData, useSummaryData } from '../../../../hooks/useDashboard'
+import { useAuth } from '../../../../context/AuthContext'
 
 const SalesDashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('day')
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-  const [salesData, setSalesData] = useState<SalesData[]>([])
-  const [customerData, setCustomerData] = useState<CustomerData[]>([])
-  const [productData, setProductData] = useState<Product[]>([])
-  const [salesTrend, setSalesTrend] = useState<TimeSeriesData[]>([])
-  const [customerTrend, setCustomerTrend] = useState<TimeSeriesData[]>([])
-  const [summary, setSummary] = useState<any>(null)
-  const [previousSummary, setPreviousSummary] = useState<any>(null)
+  const { token } = useAuth()
 
-  // Fetch data based on selected time range
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
+  // Fetch current period data
+  const {
+    summary,
+    salesData,
+    customerData,
+    productData,
+    salesTrend,
+    customerTrend,
+    isLoading,
+    error,
+    refetch
+  } = useSalesDashboardData(timeRange)
 
-      try {
-        // Get sales data
-        const sales = await bakeryAPI.getSalesData(timeRange)
-        setSalesData(sales)
+  // Fetch previous period data for comparison
+  const previousTimeRange = timeRange // In real implementation, calculate previous period
+  const { data: previousSummary } = useSummaryData(previousTimeRange)
 
-        // Get customer data
-        const customers = await bakeryAPI.getCustomerData()
-        setCustomerData(customers)
-
-        // Get product data
-        const products = await bakeryAPI.getProducts()
-        setProductData(products)
-
-        // Get sales trend
-        const salesTrendData = await bakeryAPI.getTimeSeriesData(
-          'sales',
-          timeRange
-        )
-        setSalesTrend(salesTrendData)
-
-        // Get customer trend (or fallback if not available)
-        try {
-          const customerTrendData = await bakeryAPI.getTimeSeriesData(
-            'customers',
-            timeRange
-          )
-          setCustomerTrend(customerTrendData)
-        } catch (error) {
-          // Use sales trend as fallback with modified values
-          const modifiedSalesTrend = salesTrendData.map((item) => ({
-            ...item,
-            value: Math.max(
-              1,
-              Math.floor(item.value / (Math.random() * 5 + 10))
-            ),
-          }))
-          setCustomerTrend(modifiedSalesTrend)
-        }
-
-        // Calculate summary data
-        const summaryData = await bakeryAPI.getSummaryData(timeRange)
-        setSummary(summaryData)
-
-        // Get previous period summary for comparison
-        let previousTimeRange = timeRange
-        const previousSummaryData = await bakeryAPI.getSummaryData(
-          previousTimeRange
-        )
-        setPreviousSummary(previousSummaryData)
-      } catch (error) {
-        console.error('Error fetching sales data:', error)
-        setError(
-          'Beim Laden der Verkaufsdaten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'
-        )
-      } finally {
-        setLoading(false)
-      }
+  // Check for authentication errors
+  React.useEffect(() => {
+    if (error && error.message && error.message.includes('Authentication')) {
+      // Redirect to login or show auth error
+      console.error('Authentication error:', error)
     }
-
-    fetchData()
-  }, [timeRange])
+  }, [error])
 
   // Handle time range change
   const handleTimeRangeChange = (range: TimeRange) => {
@@ -120,7 +65,8 @@ const SalesDashboard: React.FC = () => {
 
   // Handle close error alert
   const handleCloseError = () => {
-    setError(null)
+    // Error is managed by React Query
+    refetch()
   }
 
   // Format sales data for display
@@ -179,7 +125,7 @@ const SalesDashboard: React.FC = () => {
 
   return (
     <>
-      {loading ? (
+      {isLoading ? (
         <Container
           sx={{
             display: 'flex',
@@ -212,23 +158,23 @@ const SalesDashboard: React.FC = () => {
 
           {error && (
             <Alert severity="error" sx={{ mb: 4 }} onClose={handleCloseError}>
-              {error}
+              {error.message || 'Beim Laden der Verkaufsdaten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'}
             </Alert>
           )}
 
-          {summary && (
+          {!isLoading && (
             <>
               {/* KPI Summary Cards */}
               <Grid container spacing={3} sx={{ mb: 4 }}>
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Gesamtumsatz"
-                    value={`${summary.totalSales.toFixed(2)} €`}
+                    value={summary ? `${summary.totalSales.toFixed(2)} €` : '0 €'}
                     icon={<AttachMoneyIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.totalSales,
-                      previousSummary?.totalSales || 0
-                    )}
+                      previousSummary.totalSales || 0
+                    ) : 0}
                     color="#4caf50"
                     tooltip="Gesamtumsatz im ausgewählten Zeitraum"
                   />
@@ -236,12 +182,12 @@ const SalesDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Transaktionen"
-                    value={summary.transactions}
+                    value={summary?.transactions || 0}
                     icon={<ShoppingCartIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.transactions,
-                      previousSummary?.transactions || 0
-                    )}
+                      previousSummary.transactions || 0
+                    ) : 0}
                     color="#2196f3"
                     tooltip="Anzahl der Verkäufe im ausgewählten Zeitraum"
                   />
@@ -249,12 +195,12 @@ const SalesDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Ø Bestellwert"
-                    value={`${summary.averageOrderValue.toFixed(2)} €`}
+                    value={summary ? `${summary.averageOrderValue.toFixed(2)} €` : '0 €'}
                     icon={<LocalOfferIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.averageOrderValue,
-                      previousSummary?.averageOrderValue || 0
-                    )}
+                      previousSummary.averageOrderValue || 0
+                    ) : 0}
                     color="#ff9800"
                     tooltip="Durchschnittlicher Wert pro Transaktion"
                   />
@@ -262,12 +208,12 @@ const SalesDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Verkaufte Artikel"
-                    value={summary.totalItems}
+                    value={summary?.totalItems || 0}
                     icon={<ShoppingCartIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary ? calculatePercentageChange(
                       summary.totalItems,
-                      previousSummary?.totalItems || 0
-                    )}
+                      previousSummary.totalItems || 0
+                    ) : 0}
                     color="#9c27b0"
                     tooltip="Gesamtzahl der verkauften Artikel"
                   />
@@ -275,18 +221,15 @@ const SalesDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={2.4}>
                   <MetricCard
                     title="Konversionsrate"
-                    value={`${(
+                    value={summary && summary.uniqueTransactions > 0 ? `${(
                       (summary.transactions / summary.uniqueTransactions) *
                       100
-                    ).toFixed(1)}%`}
+                    ).toFixed(1)}%` : '0%'}
                     icon={<TrendingUpIcon />}
-                    percentageChange={calculatePercentageChange(
+                    percentageChange={summary && previousSummary && summary.uniqueTransactions > 0 && previousSummary.uniqueTransactions > 0 ? calculatePercentageChange(
                       summary.transactions / summary.uniqueTransactions,
-                      previousSummary
-                        ? previousSummary.transactions /
-                            previousSummary.uniqueTransactions
-                        : 0
-                    )}
+                      previousSummary.transactions / previousSummary.uniqueTransactions
+                    ) : 0}
                     color="#607d8b"
                     tooltip="Prozentsatz der Laden-Besucher, die einen Kauf getätigt haben"
                   />
@@ -341,7 +284,7 @@ const SalesDashboard: React.FC = () => {
                     items={[
                       {
                         label: 'Gesamtumsatz',
-                        current: summary.totalSales,
+                        current: summary?.totalSales || 0,
                         previous: previousSummary?.totalSales || 0,
                         unit: '€',
                         color: '#4caf50',
@@ -349,14 +292,14 @@ const SalesDashboard: React.FC = () => {
                       },
                       {
                         label: 'Transaktionen',
-                        current: summary.transactions,
+                        current: summary?.transactions || 0,
                         previous: previousSummary?.transactions || 0,
                         color: '#2196f3',
                         isHigherBetter: true,
                       },
                       {
                         label: 'Durchschn. Bestellwert',
-                        current: summary.averageOrderValue,
+                        current: summary?.averageOrderValue || 0,
                         previous: previousSummary?.averageOrderValue || 0,
                         unit: '€',
                         color: '#ff9800',
@@ -364,7 +307,7 @@ const SalesDashboard: React.FC = () => {
                       },
                       {
                         label: 'Verkaufte Artikel',
-                        current: summary.totalItems,
+                        current: summary?.totalItems || 0,
                         previous: previousSummary?.totalItems || 0,
                         color: '#9c27b0',
                         isHigherBetter: true,

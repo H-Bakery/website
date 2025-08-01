@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Container,
   Typography,
@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Chip,
   Alert,
+  Skeleton,
 } from '@mui/material'
 import InventoryIcon from '@mui/icons-material/Inventory'
 import LocalShippingIcon from '@mui/icons-material/LocalShipping'
@@ -22,79 +23,43 @@ import ChartComponent from '../../../../components/dashboard/ChartComponent'
 import DataTable from '../../../../components/dashboard/DataTable'
 import ProductivityChart from '../../../../components/dashboard/ProductivityChart'
 
-import bakeryAPI from '../../../../services/bakeryAPI'
-import {
-  ProductionData,
-  InventoryItem,
-  StaffData,
-} from '../../../../services/types'
+import { useProductionDashboardData, useSummaryData } from '../../../../hooks/useDashboard'
+import { useAuth } from '../../../../context/AuthContext'
 
 const ProductionDashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('day')
-  const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
-  const [productionData, setProductionData] = useState<ProductionData[]>([])
-  const [inventoryData, setInventoryData] = useState<InventoryItem[]>([])
-  const [staffData, setStaffData] = useState<StaffData[]>([])
-  const [productionTrend, setProductionTrend] = useState<any[]>([])
-  const [wasteTrend, setWasteTrend] = useState<any[]>([])
-  const [summary, setSummary] = useState<any>(null)
+  const { token } = useAuth()
 
-  // Fetch data based on selected time range
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true)
-      setError(null)
+  // Fetch production dashboard data
+  const {
+    productionData,
+    productionTrend,
+    wasteTrend,
+    inventoryData,
+    staffData: allStaffData,
+    isLoading,
+    error,
+    refetch
+  } = useProductionDashboardData(timeRange)
 
-      try {
-        // Get production data
-        const production = await bakeryAPI.getProductionData(timeRange)
-        setProductionData(production)
+  // Filter staff data for production roles
+  const staffData = allStaffData.filter(
+    (s) =>
+      s.role === 'Bäckermeister' ||
+      s.role === 'Bäcker' ||
+      s.role === 'Konditorin'
+  )
 
-        // Get inventory data
-        const inventory = await bakeryAPI.getInventoryData()
-        setInventoryData(inventory)
+  // Get summary data
+  const { data: summary } = useSummaryData(timeRange)
 
-        // Get staff data
-        const staff = await bakeryAPI.getStaffData()
-        setStaffData(
-          staff.filter(
-            (s) =>
-              s.role === 'Bäckermeister' ||
-              s.role === 'Bäcker' ||
-              s.role === 'Konditorin'
-          )
-        )
-
-        // Get production trend
-        const productionTrendData = await bakeryAPI.getTimeSeriesData(
-          'production',
-          timeRange
-        )
-        setProductionTrend(productionTrendData)
-
-        // Get waste trend
-        const wasteTrendData = await bakeryAPI.getTimeSeriesData(
-          'waste',
-          timeRange
-        )
-        setWasteTrend(wasteTrendData)
-
-        // Calculate summary data
-        const summaryData = await bakeryAPI.getSummaryData(timeRange)
-        setSummary(summaryData)
-      } catch (error) {
-        console.error('Error fetching production data:', error)
-        setError(
-          'Beim Laden der Produktionsdaten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'
-        )
-      } finally {
-        setLoading(false)
-      }
+  // Check for authentication errors
+  React.useEffect(() => {
+    if (error && error.message && error.message.includes('Authentication')) {
+      // Redirect to login or show auth error
+      console.error('Authentication error:', error)
     }
-
-    fetchData()
-  }, [timeRange])
+  }, [error])
 
   // Handle time range change
   const handleTimeRangeChange = (range: TimeRange) => {
@@ -103,7 +68,8 @@ const ProductionDashboard: React.FC = () => {
 
   // Handle close error alert
   const handleCloseError = () => {
-    setError(null)
+    // Error is managed by React Query
+    refetch()
   }
 
   // Format production data for display
@@ -207,7 +173,7 @@ const ProductionDashboard: React.FC = () => {
 
   return (
     <>
-      {loading ? (
+      {isLoading ? (
         <Container
           sx={{
             display: 'flex',
@@ -240,7 +206,7 @@ const ProductionDashboard: React.FC = () => {
 
           {error && (
             <Alert severity="error" sx={{ mb: 4 }} onClose={handleCloseError}>
-              {error}
+              {error.message || 'Beim Laden der Produktionsdaten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'}
             </Alert>
           )}
 
@@ -281,7 +247,7 @@ const ProductionDashboard: React.FC = () => {
                 <Grid item xs={12} sm={6} md={3}>
                   <MetricCard
                     title="Ausschussrate"
-                    value={summary.wastageRate.toFixed(1)}
+                    value={summary?.wastageRate?.toFixed(1) || '0'}
                     unit="%"
                     icon={<SpeedIcon />}
                     color="#ff9800"
