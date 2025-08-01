@@ -246,7 +246,7 @@
           2,
           4
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -254,7 +254,7 @@
             "description": "Configure API service layer with authentication headers, error handling, and base configuration for dashboard analytics endpoints",
             "dependencies": [],
             "details": "Create or extend the existing API service in src/services/bakeryAPI.ts to include dashboard-specific endpoints. Set up proper JWT authentication headers from AuthContext, implement error handling with user-friendly messages, and configure base URL and request interceptors. Add TypeScript interfaces for dashboard data responses.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -265,7 +265,7 @@
               1
             ],
             "details": "Install and configure SWR or React Query for the dashboard page. Create custom hooks for each dashboard endpoint (sales summary, production overview, etc.). Implement proper loading states, error boundaries, and data caching strategies. Remove all existing mock data imports and hooks from the dashboard components.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -276,7 +276,7 @@
               2
             ],
             "details": "Update all dashboard widgets (charts, stat cards, tables) to consume data from the new API hooks. Implement Material UI skeleton components for loading states. Add error boundaries and fallback UI for failed API requests. Ensure all existing chart components work seamlessly with the new real data structure.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -426,7 +426,7 @@
         "dependencies": [
           2
         ],
-        "status": "pending",
+        "status": "done",
         "subtasks": [
           {
             "id": 1,
@@ -434,7 +434,7 @@
             "description": "Implement CRUD endpoints for recipe management with markdown storage and HTML parsing",
             "dependencies": [],
             "details": "Create `/api/recipes` endpoints in the Node.js/Express backend. Implement GET (list/single), POST, PUT, DELETE operations. Use `marked` library to parse markdown to HTML for GET responses while storing raw markdown in database. Add proper error handling and validation.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -445,7 +445,7 @@
               1
             ],
             "details": "Install and configure `marked` library for markdown-to-HTML conversion. Implement content sanitization to prevent XSS. Create parsing utilities for recipe-specific markdown features like ingredient lists and step numbering. Handle parsing errors gracefully.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -456,7 +456,7 @@
               1
             ],
             "details": "Refactor RecipeForm and related components in `src/components/bakery/recipes/` to consume `/api/recipes` endpoints. Replace mock data sources with API calls using the existing service layer pattern. Implement proper loading states and error handling.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           },
           {
@@ -468,7 +468,7 @@
               3
             ],
             "details": "Create recipe viewing components that use `dangerouslySetInnerHTML` to render parsed HTML from the API. Implement proper content styling for markdown elements (headings, lists, bold text). Add recipe display pages and integrate with the admin interface.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": ""
           }
         ]
@@ -682,7 +682,7 @@
     ],
     "metadata": {
       "created": "2025-07-18T21:29:08.352Z",
-      "updated": "2025-07-19T05:44:25.498Z",
+      "updated": "2025-07-31T14:03:14.678Z",
       "description": "Tasks for master context"
     }
   }
