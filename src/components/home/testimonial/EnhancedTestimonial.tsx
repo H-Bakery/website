@@ -67,7 +67,18 @@ const enhancedTestimonials: EnhancedTestimonial[] = TESTIMONIALS.map((testimonia
   rating: testimonial.stars,
   message: testimonial.text,
   role: ROLES[index % ROLES.length],
-  image: `/assets/images/testimonials/customer-${index + 1}.jpg`,
+  image: (() => {
+    const imagePath = `/assets/images/testimonials/customer-${index + 1}.jpg`;
+    try {
+      // Check if the image exists
+      const img = new Image();
+      img.src = imagePath;
+      return imagePath;
+    } catch {
+      // Fallback to default image
+      return '/assets/images/testimonials/default.jpg';
+    }
+  })(),
   date: new Date(Date.now() - (index * 7 * 24 * 60 * 60 * 1000) % (30 * 24 * 60 * 60 * 1000)).toLocaleDateString('de-DE'),
   verified: true,
 }))
