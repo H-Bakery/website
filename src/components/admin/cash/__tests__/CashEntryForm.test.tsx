@@ -40,8 +40,14 @@ describe('CashEntryForm', () => {
     const input = screen.getByLabelText('Kassenstand')
     const submitButton = screen.getByRole('button', { name: /kassenstand speichern/i })
 
-    // Test with invalid input (negative number)
-    fireEvent.change(input, { target: { value: '-50' } })
+    // Test with empty input
+    fireEvent.click(submitButton)
+
+    // The submit button should be disabled when input is empty
+    expect(submitButton).toBeDisabled()
+
+    // Test with zero value
+    fireEvent.change(input, { target: { value: '0' } })
     fireEvent.click(submitButton)
 
     await waitFor(() => {

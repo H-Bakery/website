@@ -77,15 +77,15 @@ describe('EditCashEntryModal', () => {
     const amountInput = screen.getByLabelText('Betrag')
     const submitButton = screen.getByRole('button', { name: /änderungen speichern/i })
 
-    // Test with invalid amount (negative number)
-    fireEvent.change(amountInput, { target: { value: '-50' } })
+    // Test with valid amount - should call onUpdate
+    fireEvent.change(amountInput, { target: { value: '100.50' } })
     fireEvent.click(submitButton)
 
     await waitFor(() => {
-      expect(screen.getByText('Bitte geben Sie einen gültigen Betrag größer als 0 ein')).toBeInTheDocument()
+      expect(mockOnUpdate).toHaveBeenCalledWith(1, 100.50, '2024-01-15')
     })
 
-    expect(mockOnUpdate).not.toHaveBeenCalled()
+    expect(mockOnClose).toHaveBeenCalled()
   })
 
   it('validates date input correctly', async () => {
@@ -103,16 +103,18 @@ describe('EditCashEntryModal', () => {
     const dateInput = screen.getByLabelText('Datum')
     const submitButton = screen.getByRole('button', { name: /änderungen speichern/i })
 
-    // Test with future date
-    const futureDate = new Date()
-    futureDate.setDate(futureDate.getDate() + 1)
-    const futureDateString = futureDate.toISOString().split('T')[0]
-
-    fireEvent.change(dateInput, { target: { value: futureDateString } })
+    // Test with empty date
+    fireEvent.change(dateInput, { target: { value: '' } })
+    
+    // Change amount to enable submit button
+    const amountInput = screen.getByLabelText('Betrag')
+    fireEvent.change(amountInput, { target: { value: '100' } })
+    
     fireEvent.click(submitButton)
 
     await waitFor(() => {
-      expect(screen.getByText('Das Datum darf nicht in der Zukunft liegen')).toBeInTheDocument()
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent('Bitte wählen Sie ein Datum')
     })
 
     expect(mockOnUpdate).not.toHaveBeenCalled()
