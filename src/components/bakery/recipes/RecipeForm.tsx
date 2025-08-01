@@ -52,7 +52,14 @@ const RecipeForm: React.FC<RecipeFormProps> = ({
           ? recipe.ingredients
           : [{ name: '', quantity: '' }]
       )
-      setInstructions(recipe.instructions.join('\n')) // Join for textarea, assuming instructions is string[]
+      // Instructions come from backend as markdown string, not array
+      // Convert numbered list back to plain lines for editing
+      const instructionText = typeof recipe.instructions === 'string' 
+        ? recipe.instructions.split('\n').map(line => line.replace(/^\d+\.\s*/, '')).join('\n')
+        : Array.isArray(recipe.instructions) 
+          ? recipe.instructions.join('\n')
+          : ''
+      setInstructions(instructionText)
       // setCookTime(recipe.cookTime || 'N/A')
       // setServings(recipe.servings || 'N/A')
     } else {

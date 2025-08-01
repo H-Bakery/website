@@ -47,7 +47,7 @@ interface RecipeDetailViewProps {
   onUpdateReview: (reviewData: ReviewType) => void
   onDeleteReview: (reviewId: string) => void
   onEditRequest: (recipe: RecipeType) => void // Changed from onUpdateRecipe
-  onDeleteRecipe: (recipeId: string) => void
+  onDeleteRecipe: (recipeId: string | number) => void
 }
 
 const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({
@@ -234,20 +234,34 @@ const RecipeDetailView: React.FC<RecipeDetailViewProps> = ({
             <Typography variant="h5" component="h2" gutterBottom>
               Instructions
             </Typography>
-            <List dense>
-              {recipe.instructions.map((step: string, index: number) => (
-                <ListItem
-                  key={index}
-                  disablePadding
-                  sx={{ alignItems: 'flex-start' }}
-                >
-                  <ListItemIcon sx={{ minWidth: '30px', mt: '5px' }}>
-                    <NotesIcon fontSize="small" color="primary" />
-                  </ListItemIcon>
-                  <ListItemText primary={`${index + 1}. ${step}`} />
-                </ListItem>
-              ))}
-            </List>
+            {recipe.instructionsHtml ? (
+              <Box
+                sx={{ 
+                  '& ol, & ul': { pl: 3 },
+                  '& li': { mb: 1 },
+                  '& p': { mb: 1 }
+                }}
+                dangerouslySetInnerHTML={{ __html: recipe.instructionsHtml }}
+              />
+            ) : (
+              <List dense>
+                {(Array.isArray(recipe.instructions) 
+                  ? recipe.instructions 
+                  : recipe.instructions.split('\n').filter(line => line.trim())
+                ).map((step: string, index: number) => (
+                  <ListItem
+                    key={index}
+                    disablePadding
+                    sx={{ alignItems: 'flex-start' }}
+                  >
+                    <ListItemIcon sx={{ minWidth: '30px', mt: '5px' }}>
+                      <NotesIcon fontSize="small" color="primary" />
+                    </ListItemIcon>
+                    <ListItemText primary={`${index + 1}. ${step}`} />
+                  </ListItem>
+                ))}
+              </List>
+            )}
           </Grid>
         </Grid>
 

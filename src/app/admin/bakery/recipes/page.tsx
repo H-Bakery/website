@@ -1,66 +1,110 @@
 'use client'
 
-import React, { useState } from 'react'
-import { Container, Button, Typography, Box, Paper } from '@mui/material'
+import React, { useState, useEffect } from 'react'
+import { Container, Button, Typography, Box, Paper, CircularProgress, Alert } from '@mui/material'
 import { Recipe as RecipeType, Review as ReviewType } from '../../../../services/types' // Added ReviewType for handlers
-import { mockRecipes as initialMockRecipes } from '../../../../mocks/recipes'
 import RecipeList from '../../../../components/bakery/recipes/RecipeList'
 import RecipeForm from '../../../../components/bakery/recipes/RecipeForm'
 import RecipeDetailView from '../../../../components/bakery/recipes/RecipeDetailView' // Import RecipeDetailView
 import AddIcon from '@mui/icons-material/Add'
+import bakeryAPI from '../../../../services/bakeryAPI'
 
 export default function RecipeManagementPage() {
-  const [recipes, setRecipes] = useState<RecipeType[]>(initialMockRecipes)
+  const [recipes, setRecipes] = useState<RecipeType[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showRecipeForm, setShowRecipeForm] = useState(false)
   const [editingRecipe, setEditingRecipe] = useState<RecipeType | null>(null)
   const [viewingRecipe, setViewingRecipe] = useState<RecipeType | null>(null) // State for viewing recipe
 
-  // --- Form Submission Handlers ---
-  const handleAddRecipeSubmit = (
-    // RecipeForm submits 'category' and 'description' distinctly now
-    newRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'instructions'> & { instructions: string[] } // instructions as string[]
-  ) => {
-    const newRecipe: RecipeType = {
-      ...newRecipeData, // name, category, description, prepTime, ingredients
-      id: `recipe${Date.now()}`,
-      instructions: newRecipeData.instructions, // Ensure instructions are string[]
-      reviews: [],
-      // cookTime and servings can be added if they are part of newRecipeData
+  // Fetch recipes on component mount
+  useEffect(() => {
+    fetchRecipes()
+  }, [])
+
+  const fetchRecipes = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      const fetchedRecipes = await bakeryAPI.getRecipes()
+      setRecipes(fetchedRecipes)
+    } catch (err) {
+      console.error('Error fetching recipes:', err)
+      setError('Failed to load recipes. Please try again later.')
+    } finally {
+      setLoading(false)
     }
-    setRecipes((prev) => [...prev, newRecipe])
-    setShowRecipeForm(false)
-    setEditingRecipe(null)
   }
 
-  const handleUpdateRecipeSubmit = (
-    updatedRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'instructions'> & { instructions: string[] }
+  // --- Form Submission Handlers ---
+  const handleAddRecipeSubmit = async (
+    // RecipeForm submits 'category' and 'description' distinctly now
+    newRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'instructions' | 'slug' | 'instructionsHtml'> & { instructions: string[] } // instructions as string[]
+  ) => {
+    try {
+      setError(null)
+      const createdRecipe = await bakeryAPI.createRecipe({
+        ...newRecipeData,
+        instructions: newRecipeData.instructions as string[],
+      })
+      
+      // Add the new recipe to the list
+      setRecipes((prev) => [createdRecipe, ...prev])
+      setShowRecipeForm(false)
+      setEditingRecipe(null)
+    } catch (err) {
+      console.error('Error creating recipe:', err)
+      setError(err instanceof Error ? err.message : 'Failed to create recipe')
+    }
+  }
+
+  const handleUpdateRecipeSubmit = async (
+    updatedRecipeData: Omit<RecipeType, 'id' | 'reviews' | 'instructions' | 'slug' | 'instructionsHtml'> & { instructions: string[] }
   ) => {
     if (!editingRecipe) return
 
-    const updatedRecipe: RecipeType = {
-      ...editingRecipe, // Retain original ID, reviews, etc.
-      ...updatedRecipeData, // Apply new data: name, category, description, prepTime, ingredients
-      instructions: updatedRecipeData.instructions, // Ensure instructions are string[]
+    try {
+      setError(null)
+      const updatedRecipe = await bakeryAPI.updateRecipe(editingRecipe.slug, {
+        ...updatedRecipeData,
+        instructions: updatedRecipeData.instructions as string[],
+      })
+      
+      // Update the recipe in the list
+      setRecipes((prev) =>
+        prev.map((r) => (r.slug === updatedRecipe.slug ? updatedRecipe : r))
+      )
+      setShowRecipeForm(false)
+      setEditingRecipe(null)
+    } catch (err) {
+      console.error('Error updating recipe:', err)
+      setError(err instanceof Error ? err.message : 'Failed to update recipe')
     }
-    
-    setRecipes((prev) =>
-      prev.map((r) => (r.id === updatedRecipe.id ? updatedRecipe : r))
-    )
-    setShowRecipeForm(false)
-    setEditingRecipe(null)
   }
 
   // --- Recipe Action Handlers ---
-  const handleDeleteRecipe = (recipeId: string) => {
-    setRecipes((prev) => prev.filter((r) => r.id !== recipeId))
-    if (editingRecipe && editingRecipe.id === recipeId) {
-      setEditingRecipe(null)
-      setShowRecipeForm(false)
+  const handleDeleteRecipe = async (recipeId: string | number) => {
+    try {
+      setError(null)
+      // Find the recipe to get its slug
+      const recipeToDelete = recipes.find(r => r.id === recipeId)
+      if (!recipeToDelete) return
+
+      await bakeryAPI.deleteRecipe(recipeToDelete.slug)
+      
+      // Remove from local state
+      setRecipes((prev) => prev.filter((r) => r.id !== recipeId))
+      if (editingRecipe && editingRecipe.id === recipeId) {
+        setEditingRecipe(null)
+        setShowRecipeForm(false)
+      }
+      if (viewingRecipe && viewingRecipe.id === recipeId) {
+        setViewingRecipe(null) // Stop viewing if deleted
+      }
+    } catch (err) {
+      console.error('Error deleting recipe:', err)
+      setError(err instanceof Error ? err.message : 'Failed to delete recipe')
     }
-    if (viewingRecipe && viewingRecipe.id === recipeId) {
-      setViewingRecipe(null) // Stop viewing if deleted
-    }
-    // No need to call onBack from RecipeDetailView if it's already handled by setViewingRecipe(null)
   }
 
   const handleEditRecipeRequest = (recipe: RecipeType) => {
@@ -174,15 +218,29 @@ export default function RecipeManagementPage() {
               setViewingRecipe(null) // Clear any recipe being viewed
               setShowRecipeForm(true) // Show the form for adding
             }}
+            disabled={loading}
           >
             Add New Recipe
           </Button>
         </Box>
-        <RecipeList
-          recipes={recipes}
-          onSelectRecipe={handleSelectRecipeForViewing} // For viewing details
-          onEditRecipe={handleEditRecipeRequest}      // For editing
-        />
+
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+            {error}
+          </Alert>
+        )}
+
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+            <CircularProgress />
+          </Box>
+        ) : (
+          <RecipeList
+            recipes={recipes}
+            onSelectRecipe={handleSelectRecipeForViewing} // For viewing details
+            onEditRecipe={handleEditRecipeRequest}      // For editing
+          />
+        )}
       </Paper>
     </Container>
   )
