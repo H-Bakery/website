@@ -65,7 +65,7 @@ const enhancedTestimonials: EnhancedTestimonial[] = TESTIMONIALS.map((testimonia
   message: testimonial.text,
   role: ['Stammkunde', 'Lokaler Kunde', 'Geschäftskunde', 'Familienkunde'][index % 4],
   image: `/assets/images/testimonials/customer-${index + 1}.jpg`,
-  date: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toLocaleDateString('de-DE'),
+  date: new Date(Date.now() - (index * 7 * 24 * 60 * 60 * 1000) % (30 * 24 * 60 * 60 * 1000)).toLocaleDateString('de-DE'),
   verified: true,
 }))
 
