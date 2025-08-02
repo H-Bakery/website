@@ -678,11 +678,246 @@
             "testStrategy": "On the `/cart` page, use the quantity controls to increase and decrease an item's quantity; verify the line item subtotal and the overall cart total update immediately. Click the 'Remove' button for an item and confirm it disappears from the list and the total is recalculated. Empty the cart and verify the 'Your cart is empty' message appears."
           }
         ]
+      },
+      {
+        "id": 12,
+        "title": "Foundation: Create Nx Workspace and Install Core Plugins",
+        "description": "Establish the monorepo structure using Nx with the 'apps' preset. Install essential plugins for developing Next.js, React, Node.js, and Express applications to provide the foundational tooling for the project.",
+        "details": "Initialize a new Nx workspace using the `create-nx-workspace` command with the 'apps' preset to create a scalable monorepo structure. Once the workspace is created, install the necessary Nx plugins to support the project's technology stack. The command to create the workspace will be: `npx create-nx-workspace@latest <workspace-name> --preset=apps`. After setup, navigate into the project directory and install the following plugins using npm or yarn: `@nx/next` for Next.js frontend applications, `@nx/react` for React libraries and components, `@nx/node` for generic Node.js applications, and `@nx/express` for the Express.js backend API.",
+        "testStrategy": "Verify the successful creation of the Nx workspace by checking for the existence of `nx.json`, `project.json`, and the `apps/` and `libs/` directories at the root level. Open the `package.json` file and confirm that `@nx/next`, `@nx/react`, `@nx/node`, and `@nx/express` are listed under `devDependencies`. Run the command `nx report` from the terminal and inspect the output to ensure all installed plugins are listed and correctly configured. As a final check, attempt to generate a boilerplate application using one of the plugins, for example: `nx g @nx/express:app api`.",
+        "status": "pending",
+        "dependencies": [],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Initialize Nx Workspace with 'apps' Preset",
+            "description": "Create the foundational monorepo structure by running the `create-nx-workspace` command. This will set up the initial directory layout, including `apps/` and `libs/`, and configure the core Nx tooling.",
+            "dependencies": [],
+            "details": "Open your terminal in the desired parent directory and execute the command: `npx create-nx-workspace@latest your-workspace-name --preset=apps`. Replace `your-workspace-name` with the actual project name. Follow the prompts, selecting your preferred package manager (e.g., npm).",
+            "status": "pending",
+            "testStrategy": "After the command completes, verify that a new directory with your chosen workspace name has been created. Inside this directory, confirm the existence of `nx.json`, `package.json`, and the empty `apps/` and `libs/` directories."
+          },
+          {
+            "id": 2,
+            "title": "Install @nx/next Plugin",
+            "description": "Install the Nx plugin for Next.js to enable generating, serving, building, and testing Next.js applications within the monorepo.",
+            "dependencies": [
+              "12.1"
+            ],
+            "details": "Navigate into the newly created workspace directory. Run the following command to add the Next.js plugin as a development dependency: `npm install -D @nx/next` (or use your chosen package manager like yarn or pnpm).",
+            "status": "pending",
+            "testStrategy": "Check the `devDependencies` section of the root `package.json` file to confirm that `@nx/next` has been added with a valid version number. Run `nx list @nx/next` to see the available generators provided by the plugin."
+          },
+          {
+            "id": 3,
+            "title": "Install @nx/react Plugin",
+            "description": "Install the Nx plugin for React to support the creation of buildable and publishable React libraries for shared components, hooks, and utilities.",
+            "dependencies": [
+              "12.1"
+            ],
+            "details": "In the workspace root directory, execute the command to install the React plugin: `npm install -D @nx/react`. This plugin is essential for creating shared UI libraries as described in subsequent tasks.",
+            "status": "pending",
+            "testStrategy": "Verify that `@nx/react` is listed in the `devDependencies` of the root `package.json`. You can also run `nx list @nx/react` to ensure the plugin and its generators are recognized by Nx."
+          },
+          {
+            "id": 4,
+            "title": "Install @nx/node and @nx/express Plugins",
+            "description": "Install the Nx plugins for Node.js and Express to provide the necessary tooling for developing backend services and APIs.",
+            "dependencies": [
+              "12.1"
+            ],
+            "details": "From the workspace root, run the command to install both the generic Node.js plugin and the Express-specific plugin: `npm install -D @nx/node @nx/express`.",
+            "status": "pending",
+            "testStrategy": "Confirm that both `@nx/node` and `@nx/express` are present in the `devDependencies` within the `package.json` file. Run `nx list @nx/express` to check for available Express application generators."
+          },
+          {
+            "id": 5,
+            "title": "Verify Final Workspace Configuration and Dependencies",
+            "description": "Perform a final check to ensure the workspace is correctly initialized and all required plugins are installed, confirming the environment is ready for application and library generation.",
+            "dependencies": [
+              "12.2",
+              "12.3",
+              "12.4"
+            ],
+            "details": "Review the root `package.json` file to ensure all four plugins (`@nx/next`, `@nx/react`, `@nx/node`, `@nx/express`) are listed under `devDependencies`. Run `nx report` in the terminal to get a summary of the workspace environment and installed plugins, ensuring there are no errors.",
+            "status": "pending",
+            "testStrategy": "The execution of the `nx report` command should complete successfully and list all the installed plugins with their versions. This confirms that the Nx workspace recognizes all the new capabilities."
+          }
+        ]
+      },
+      {
+        "id": 13,
+        "title": "Configure Workspace Structure and Tooling",
+        "description": "Establish the core configuration for the Nx monorepo. This includes setting up target defaults in nx.json, defining TypeScript path aliases in tsconfig.base.json, enforcing module boundaries with ESLint, and integrating shared tooling like Prettier and Husky.",
+        "details": "1. **nx.json Configuration**: Edit the root `nx.json` file. Define `targetDefaults` for common executors like `@nx/js:tsc`, `@nx/eslint:lint`, and `@nx/jest:jest`. Set default options such as `outputs` directories and configurations to ensure consistency across all projects. Also, review and configure `cacheableOperations` to include all relevant tasks. 2. **TypeScript Path Aliases**: Modify the `tsconfig.base.json` file. Under `compilerOptions.paths`, add aliases for shared libraries to simplify imports. For example, add `\"@my-workspace/shared-ui\": [\"libs/shared/ui/src/index.ts\"]`. This avoids relative import paths like `../../..`. 3. **ESLint Module Boundaries**: In the root `.eslintrc.json`, configure the `@nx/enforce-module-boundaries` rule. Define constraints to control dependency flow between library types (e.g., `feature` libs can depend on `ui` and `util` libs, but `ui` libs cannot depend on `feature` libs). 4. **Shared Tooling**: Install and configure Prettier by creating a `.prettierrc` file at the root. Install Husky and lint-staged (`npx husky-init && npm install lint-staged`). Configure a `pre-commit` hook in the `.husky/` directory to run `npx lint-staged`, which will execute Prettier and ESLint on staged files before they are committed.",
+        "testStrategy": "1. **Verify nx.json**: Inspect the `nx.json` file to confirm the presence of the `targetDefaults` section. Run a lint or test command on a newly generated library and confirm it uses the default settings without local configuration. 2. **Verify TS Paths**: Create two libraries, `test-util` and `test-feature`. Attempt to import a component from `test-util` into `test-feature` using the new path alias (e.g., `import { MyUtil } from '@my-workspace/test-util'`). The build process (`nx build test-feature`) should complete successfully. 3. **Verify ESLint Rules**: In the `test-util` library, add an import statement that references the `test-feature` library, violating the dependency constraints. Run `nx lint test-util` and confirm that an error is reported regarding the illegal module boundary crossing. 4. **Verify Pre-commit Hook**: Modify a source file with code that violates Prettier's formatting rules. Stage the file (`git add .`) and attempt to commit it (`git commit -m \"test\"`). The commit should be blocked, and the pre-commit hook should automatically reformat the file. Staging the corrected file should allow the commit to succeed.",
+        "status": "pending",
+        "dependencies": [
+          12
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 14,
+        "title": "Create Foundational Shared Libraries (UI, Types, Data-Access)",
+        "description": "Establish core shared libraries for UI components, TypeScript types, and data access. These libraries will centralize common code, enforce consistency, and improve reusability across different applications in the monorepo.",
+        "details": "Use Nx generators to create three foundational libraries within the `libs/` directory. 1. **Shared UI Library**: Generate a 'buildable' React library named `ui`. Command: `nx g @nx/react:lib ui --buildable --style=css`. The `--buildable` flag is crucial as it configures the library to be compiled and published independently. Create a simple, generic `Button` component within this library and export it from the main `index.ts` file to serve as an initial shared component. 2. **Shared Types Library**: Generate a plain TypeScript library named `types`. Command: `nx g @nx/js:lib types`. This library will not contain any UI or logic, only TypeScript interface and type definitions (e.g., `Product`, `Order`, `User`) to be shared between the frontend and backend projects. 3. **Shared Data-Access Library**: Generate a TypeScript library named `data-access`. Command: `nx g @nx/js:lib data-access`. This library will encapsulate all API communication logic, centralizing how frontend applications interact with backend endpoints. It should depend on the `types` library for request/response models.",
+        "testStrategy": "1. **Verify Library Creation**: Check for the existence of `libs/ui`, `libs/types`, and `libs/data-access` directories, each containing a `project.json` file. 2. **Test UI Library**: Run `nx build ui` and verify it completes without errors, producing output in the `dist/` directory. Import the sample `Button` component from `@<workspace-name>/ui` into a frontend application and render it to confirm path aliases and functionality. 3. **Test Types Library**: Define a sample interface (e.g., `interface User`) in the `types` library. Import and use this interface in both a frontend application and the `data-access` library to ensure it is correctly resolved. 4. **Test Data-Access Library**: Create a mock function within the `data-access` library. Import and call this function from a frontend component to verify the library is consumable.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          13
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 15,
+        "title": "Import and Restructure API into a Modular Monolith",
+        "description": "Import the existing backend API into the Nx monorepo and restructure it from a single application into a modular monolith. This involves creating separate libraries for core business domains like orders, inventory, customers, and delivery.",
+        "details": "First, create a new Node/Express application within the monorepo using the command `nx g @nx/express:app api`. Next, migrate the source code from the existing, standalone API repository into this new `apps/api/src` directory. Once imported, create separate, buildable libraries for each logical domain: `nx g @nx/js:lib orders --buildable --directory=libs/api`, `nx g @nx/js:lib inventory --buildable --directory=libs/api`, `nx g @nx/js:lib customers --buildable --directory=libs/api`, and `nx g @nx/js:lib delivery --buildable --directory=libs/api`. Systematically refactor the code from `apps/api` by moving routes, services, controllers, and data access logic into their respective feature libraries. The main `apps/api/src/main.ts` should be updated to import and mount the routers from these new libraries, serving as the composition root. Ensure that shared logic, especially types and data-access patterns, leverages the foundational libraries created in Task 14.",
+        "testStrategy": "1. Verify the creation of the `apps/api` application and the new libraries under `libs/api/`. 2. Run `nx build api` and confirm that it completes successfully, demonstrating that all library dependencies are correctly resolved. 3. Use an API client like Postman or Insomnia to test at least one key endpoint from each refactored module (e.g., `GET /api/orders`, `GET /api/inventory/:id`, `POST /api/customers`). Confirm they return the expected data and status codes. 4. Run `nx graph` to visualize the dependency graph and ensure the `api` application correctly depends on the `orders`, `inventory`, `customers`, and `delivery` libraries, and that those libraries in turn depend on shared libraries like `types` and `data-access`.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          13,
+          14
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 16,
+        "title": "Implement Event-Driven Communication Between API Modules",
+        "description": "Introduce an event bus system to enable asynchronous, decoupled communication between the domain libraries (e.g., orders, inventory) within the modular monolith API, replacing direct synchronous calls.",
+        "details": "First, select and install a lightweight, in-process event emitter library like `eventemitter3`. Create a new shared library, `libs/api/event-bus`, to instantiate and export a singleton instance of the event emitter, ensuring all modules use the same bus. Second, define event contracts using TypeScript interfaces within the `libs/types` library (from Task #14). For example, create an `OrderCreatedEvent` interface. Finally, refactor existing module interactions. As an initial use case, modify the `orders` module to publish an `ORDER_CREATED` event when a new order is successfully created. The `inventory` module should then subscribe to this event and execute its logic to decrement stock levels, thus decoupling it from the `orders` module.",
+        "testStrategy": "1. **Unit Tests**: Create unit tests for the publishing module (e.g., `orders` service) to verify that `eventBus.emit` is called with the correct event name and payload. Create separate unit tests for the subscribing module (e.g., `inventory` service) to ensure its handler logic executes correctly when a mock event is received. 2. **Integration Test**: Write an end-to-end test that uses an API client to call the endpoint for creating an order. After the call succeeds, assert that the inventory levels for the ordered items have been correctly updated in the database, confirming the event was successfully published and consumed.",
+        "status": "pending",
+        "dependencies": [
+          14,
+          15
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 17,
+        "title": "Migrate Landing Page to a Static, Deployable Application",
+        "description": "Create a new, standalone Next.js application named `bakery-landing` within the monorepo. Migrate the existing public-facing landing page content into this app and configure it for static site generation (SSG) to enable deployment on GitHub Pages.",
+        "details": "First, use the Nx generator to create a new Next.js application: `nx g @nx/next:app bakery-landing --style=css`. Once created, migrate all existing HTML, CSS, and image assets for the public landing page into the `apps/bakery-landing` directory, primarily within the `pages/index.tsx` file. Refactor components to leverage the shared `ui` library (from Task #14) for consistency. Next, configure the application for static deployment by modifying `apps/bakery-landing/next.config.js` to include the `output: 'export'` option. This will generate a static version of the site in the `dist/` directory when built. Finally, create a new deployment script or configure a CI/CD pipeline step that runs `nx export bakery-landing` and then pushes the contents of the generated `out` directory to the `gh-pages` branch of the GitHub repository.",
+        "testStrategy": "1. Run `nx build bakery-landing` and verify it completes successfully. 2. Run `nx export bakery-landing` and confirm that a static `out` directory is created in `dist/apps/bakery-landing/`, containing `index.html` and all related assets. 3. Use a local static file server (e.g., `npx serve dist/apps/bakery-landing/out`) to preview the exported site and ensure it renders correctly with all styles and images. 4. Manually trigger the deployment process or push a commit to trigger the CI pipeline. Verify that the `gh-pages` branch is updated and the site is live and accessible at its GitHub Pages URL.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          13,
+          14
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 18,
+        "title": "Create Bakery Management App with Micro-Frontend Architecture",
+        "description": "Create a new 'bakery-management' Next.js application to serve as the main shell and establish a micro-frontend architecture using Module Federation for feature domains like inventory, orders, and reports.",
+        "details": "First, generate the main host application using the Nx generator: `nx g @nx/next:app bakery-management --style=css`. This app will act as the shell. Next, create the remote micro-frontend applications for each feature area: `nx g @nx/next:app inventory --style=css`, `nx g @nx/next:app orders --style=css`, and `nx g @nx/next:app reports --style=css`. Configure Module Federation by modifying the `next.config.js` file in each application. In `apps/bakery-management/next.config.js`, define the `remotes` property to point to the inventory, orders, and reports applications. In the `next.config.js` of each remote app (e.g., `inventory`), configure the `exposes` property to make its primary page or components available (e.g., `exposes: { './index': './pages/index.tsx' }`). Finally, implement dynamic loading in the host app by using `next/dynamic` to import and render components from the remotes, and ensure all new applications leverage the shared libraries from Task #14 for UI, types, and data access.",
+        "testStrategy": "1. Run `nx serve bakery-management`. The application should start without errors. 2. Navigate to the root URL of the management app and verify the shell/host UI loads correctly. 3. Create navigation links in the host app to routes handled by the remotes (e.g., `/inventory`, `/orders`). 4. Click on a link and verify that the corresponding micro-frontend is dynamically loaded and rendered within the host application's layout. 5. Confirm that components imported from the shared `ui` library (Task #14) render correctly in both the host and at least one remote application.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 19,
+        "title": "Create Bakery Shop Application and Core E-commerce Libraries",
+        "description": "Create a new customer-facing 'bakery-shop' Next.js application and establish dedicated, buildable libraries for core e-commerce features including product catalog, shopping cart, and checkout.",
+        "details": "First, generate the main customer-facing storefront application using the Nx generator: `nx g @nx/next:app bakery-shop --style=css`. This application will serve as the primary interface for customers. Next, create a set of domain-specific, buildable libraries to encapsulate e-commerce functionality. Use the `--directory` flag to organize them under a `shop` scope: 1. `nx g @nx/react:lib catalog --directory=libs/shop --buildable` for product display components. 2. `nx g @nx/react:lib cart --directory=libs/shop --buildable` for cart state management, components, and hooks. 3. `nx g @nx/react:lib checkout --directory=libs/shop --buildable` for the checkout form and process logic. Within the `shop-cart` library, implement a service or set of hooks that utilize the browser's `localStorage` to persist the user's cart contents across sessions. This ensures the cart is not lost when the page is refreshed or closed.",
+        "testStrategy": "1. Verify the creation of the new application and libraries by checking for the existence of `apps/bakery-shop` and `libs/shop/catalog`, `libs/shop/cart`, `libs/shop/checkout` directories. 2. Run `nx build` for `bakery-shop` and each of the new libraries to ensure they are configured correctly and build without errors. 3. Create a basic placeholder component in the `shop-catalog` library (e.g., `<ProductList />`) and import it into the main page of the `bakery-shop` application. 4. Run `nx serve bakery-shop` and navigate to the root URL. Verify the application loads and the placeholder component is rendered correctly, confirming successful library integration. 5. Write a unit test for the `localStorage` cart persistence utility to confirm it can correctly save and retrieve cart data.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 20,
+        "title": "Implement CI/CD Pipeline with GitHub Actions and Docker",
+        "description": "Set up a CI/CD pipeline using GitHub Actions to automate testing, building, and deployment. The pipeline will leverage Nx affected commands for efficiency and include Dockerization for the backend API.",
+        "details": "1. **GitHub Actions Workflow Setup**: Create a directory `.github/workflows` at the monorepo root. Inside, create a `ci.yml` file. Configure the workflow to trigger on `push` and `pull_request` events targeting the `main` branch. 2. **Implement Affected Commands**: Define jobs for `lint`, `test`, and `build`. For each job, use Nx affected commands to only run tasks on projects impacted by a change. For example, in a pull request, the test job would run `nx affected --target=test --base=origin/main --head=HEAD`. This significantly speeds up CI checks. 3. **Backend Dockerization**: Create a multi-stage `Dockerfile` in the `apps/api` directory. The first `builder` stage will install all monorepo dependencies and run `nx build api` to leverage the Nx cache. The second `runner` stage will copy only the compiled output from `dist/apps/api` and production `node_modules` to create a lean, production-ready image. 4. **Selective Deployment**: Add a `deploy` job to the workflow that runs only on pushes to `main`. This job will first check if the `api` project was affected by the push. If it was, the job proceeds to build the Docker image, tag it, log in to a container registry (e.g., GitHub Container Registry), and push the image.",
+        "testStrategy": "1. **PR Check Simulation**: Make a code change within a single, non-API library (e.g., `libs/ui`). Open a pull request and verify that the GitHub Actions workflow correctly identifies and runs `lint` and `test` jobs only for the affected projects. Confirm that the `deploy` job is not triggered. 2. **API Change Simulation**: Make a code change within the `apps/api` project. Open a pull request and verify the CI runs `lint`, `test`, and `build` for the API. 3. **Deployment Verification**: Merge the API pull request into the `main` branch. Confirm the `deploy` job is triggered, successfully builds, and pushes the `api` Docker image to the container registry. 4. **Image Validation**: Pull the newly pushed Docker image from the registry to a local machine. Run the container, ensuring the correct port is exposed. Use an API client like Postman to send a request to a known endpoint and verify a successful response, confirming the containerized application is functional.",
+        "status": "pending",
+        "dependencies": [
+          13,
+          15,
+          17,
+          18,
+          19
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 21,
+        "title": "Create Bakery Delivery App and Core Delivery Libraries",
+        "description": "Create a new 'bakery-delivery' Next.js application for drivers and staff. Establish dedicated, buildable libraries for core delivery features like real-time location tracking and route management.",
+        "details": "First, generate the main delivery application using the Nx generator: `nx g @nx/next:app bakery-delivery --style=css`. This application will serve as the primary interface for delivery personnel. Next, create a set of domain-specific, buildable libraries to encapsulate delivery functionality, organized under a `delivery` scope: 1. `nx g @nx/js:lib tracking --directory=libs/delivery --buildable` for WebSocket connection management and real-time location data handling. 2. `nx g @nx/js:lib routing --directory=libs/delivery --buildable` for integrating with mapping services (e.g., Mapbox, Google Maps) and handling route optimization logic. This task focuses on creating the structural foundation; the implementation of WebSocket clients and mapping components will be handled in subsequent tasks.",
+        "testStrategy": "1. Verify the creation of the new application and libraries by checking for the existence of `apps/bakery-delivery` and `libs/delivery/tracking`, `libs/delivery/routing` directories. 2. Run `nx build` for `bakery-delivery` and each of the new libraries to ensure they are configured correctly and compile without errors. 3. Run the new application using `nx serve bakery-delivery` and navigate to its root URL in a browser to confirm that the default Next.js page loads successfully.",
+        "status": "pending",
+        "dependencies": [
+          12,
+          13,
+          14,
+          15
+        ],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": 22,
+        "title": "Implement Lazy Loading for Feature Modules",
+        "description": "Refactor the main Next.js applications to use dynamic imports for feature-specific components and pages, improving initial load times by splitting code into smaller chunks that are loaded on demand.",
+        "details": "This task involves implementing code-splitting via lazy loading in the primary frontend applications: 'bakery-management', 'bakery-shop', and 'bakery-delivery'. The primary mechanism will be Next.js's built-in dynamic import functionality (`next/dynamic`). Identify large components, components that are conditionally rendered (e.g., in modals or separate tabs), or components that rely on heavy third-party libraries. Convert their static imports into dynamic ones. For example, in 'bakery-shop', the checkout flow component could be loaded only when the user proceeds to checkout. In 'bakery-management', complex data grids or reporting charts within the micro-frontends are prime candidates. Implement a simple loading state (e.g., a spinner) to provide user feedback while the component chunk is being fetched. Example conversion:\n\n// Before:\nimport CheckoutForm from '@/libs/shop/checkout/ui/CheckoutForm';\n\n// After:\nimport dynamic from 'next/dynamic';\nconst CheckoutForm = dynamic(() => import('@/libs/shop/checkout/ui/CheckoutForm'), {\n  loading: () => <p>Loading checkout...</p>,\n});",
+        "testStrategy": "Use the browser's developer tools to verify the implementation. First, clear the browser cache and load a page like the main storefront. Using the 'Network' tab (filtered for JS/XHR), confirm that only the essential JavaScript chunks are loaded initially. Next, perform an action that should trigger a lazy-loaded component (e.g., clicking 'Proceed to Checkout'). Observe a new JavaScript chunk being fetched over the network at that moment. The UI should display the specified loading state, which is then replaced by the fully-rendered component. Use a performance analysis tool like Lighthouse to run audits before and after the changes to measure improvements in metrics like 'Time to Interactive' and 'Total Blocking Time'.",
+        "status": "pending",
+        "dependencies": [
+          18,
+          19,
+          21
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 23,
+        "title": "Document Backend API with OpenAPI/Swagger",
+        "description": "Create and integrate OpenAPI (Swagger) specifications for the backend API to provide interactive documentation, making it easier for developers to understand and consume the endpoints.",
+        "details": "Integrate OpenAPI documentation into the main backend application (`apps/api`). Install `swagger-jsdoc` and `swagger-ui-express` packages. Configure `swagger-jsdoc` to parse JSDoc comments from the API route files. Set up a new endpoint, `/api-docs`, in the Express application to serve the interactive Swagger UI. Systematically add OpenAPI-compliant JSDoc annotations to all existing API endpoints, including those for staff management (Task 7), recipes (Task 8), and dashboard analytics (Task 4). The documentation for each endpoint should clearly define its path, method, parameters, request body, and possible response schemas, including error responses. Special attention should be given to documenting the JWT-based authentication mechanism (from Task 1) by defining a security scheme.",
+        "testStrategy": "After implementing the changes, start the backend API server. Navigate to the `/api-docs` endpoint in a web browser and verify that the Swagger UI loads correctly. Confirm that all major API sections (e.g., staff, recipes, dashboard) and their respective endpoints are listed. Check that the schemas for models like 'User' or 'Order' are defined and referenced correctly. Use the 'Try it out' feature in the UI to execute a GET request against a protected endpoint and verify it returns a 401/403 Unauthorized error. Then, use the 'Authorize' feature to input a valid JWT and re-run the request to confirm it succeeds and returns the expected data. Validate that the documented request/response bodies match the actual API behavior.",
+        "status": "pending",
+        "dependencies": [
+          1,
+          4,
+          7,
+          8,
+          15
+        ],
+        "priority": "medium",
+        "subtasks": []
       }
     ],
     "metadata": {
       "created": "2025-07-18T21:29:08.352Z",
-      "updated": "2025-08-02T00:26:33.646Z",
+      "updated": "2025-08-02T00:51:36.141Z",
       "description": "Tasks for master context"
     }
   }
