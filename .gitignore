@@ -56,7 +56,7 @@ node_modules/
 
 # Task files
 # tasks.json
-# tasks/ 
+# tasks/
 
 # Claude Flow generated files
 .claude/
@@ -88,3 +88,5 @@ hive-mind-prompt-*.txt
 # Next.js
 .next
 out
+vite.config.*.timestamp*
+vitest.config.*.timestamp*
