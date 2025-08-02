@@ -12,18 +12,48 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  Divider
+  Divider,
+  Chip,
+  CircularProgress
 } from '@mui/material'
 import { useRouter } from 'next/navigation'
 import PeopleIcon from '@mui/icons-material/People'
 import SettingsIcon from '@mui/icons-material/Settings'
 import DashboardIcon from '@mui/icons-material/Dashboard'
 import NotificationsIcon from '@mui/icons-material/Notifications'
+import { 
+  Info as InfoIcon,
+  CheckCircle as SuccessIcon,
+  Warning as WarningIcon,
+  Error as ErrorIcon,
+} from '@mui/icons-material'
 import { useTheme } from '../../context/ThemeContext'
+import { useNotifications } from '../../context/NotificationContext'
+import { formatDistanceToNow } from 'date-fns'
+import { de } from 'date-fns/locale'
 
 export default function AdminPage() {
   const router = useRouter()
   const { mode } = useTheme()
+  const { notifications, loading: notificationsLoading } = useNotifications()
+
+  // Get the 3 most recent notifications
+  const recentNotifications = notifications.slice(0, 3)
+
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case 'info':
+        return <InfoIcon color="info" />;
+      case 'success':
+        return <SuccessIcon color="success" />;
+      case 'warning':
+        return <WarningIcon color="warning" />;
+      case 'error':
+        return <ErrorIcon color="error" />;
+      default:
+        return <InfoIcon />;
+    }
+  }
 
   // Quick access modules
   const adminModules = [
@@ -47,27 +77,6 @@ export default function AdminPage() {
     },
   ]
 
-  // Recent notifications
-  const notifications = [
-    {
-      id: 1,
-      message: 'Lisa Wagner hat sich für den morgigen Tag krank gemeldet',
-      time: '14:35 Uhr',
-      date: 'Heute',
-    },
-    {
-      id: 2,
-      message: 'Neue Bestellung #4528 wurde aufgegeben',
-      time: '09:15 Uhr',
-      date: 'Heute',
-    },
-    {
-      id: 3,
-      message: 'Systemupdate erfolgreich abgeschlossen',
-      time: '23:00 Uhr',
-      date: 'Gestern',
-    },
-  ]
 
   return (
     <Box>
@@ -142,37 +151,67 @@ export default function AdminPage() {
                   Aktuelle Benachrichtigungen
                 </Typography>
               </Box>
-              <List>
-                {notifications.map((notification, index) => (
-                  <React.Fragment key={notification.id}>
-                    <ListItem alignItems="flex-start">
-                      <ListItemText
-                        primary={notification.message}
-                        secondary={
-                          <React.Fragment>
+              {notificationsLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                  <CircularProgress />
+                </Box>
+              ) : recentNotifications.length === 0 ? (
+                <Box sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography color="text.secondary">
+                    Keine Benachrichtigungen vorhanden
+                  </Typography>
+                </Box>
+              ) : (
+                <List>
+                  {recentNotifications.map((notification, index) => (
+                    <React.Fragment key={notification.id}>
+                      <ListItem alignItems="flex-start">
+                        <ListItemIcon>
+                          {getNotificationIcon(notification.type)}
+                        </ListItemIcon>
+                        <ListItemText
+                          primary={
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body1">
+                                {notification.message}
+                              </Typography>
+                              {!notification.read && (
+                                <Chip
+                                  label="Neu"
+                                  size="small"
+                                  color="primary"
+                                  sx={{ height: 20 }}
+                                />
+                              )}
+                            </Box>
+                          }
+                          secondary={
                             <Typography
-                              sx={{ display: 'inline' }}
                               component="span"
                               variant="body2"
-                              color="text.primary"
+                              color="text.secondary"
                             >
-                              {notification.date} - {notification.time}
+                              {formatDistanceToNow(new Date(notification.createdAt), {
+                                addSuffix: true,
+                                locale: de,
+                              })}
                             </Typography>
-                          </React.Fragment>
-                        }
-                      />
-                    </ListItem>
-                    {index < notifications.length - 1 && (
-                      <Divider variant="inset" component="li" />
-                    )}
-                  </React.Fragment>
-                ))}
-              </List>
+                          }
+                        />
+                      </ListItem>
+                      {index < recentNotifications.length - 1 && (
+                        <Divider variant="inset" component="li" />
+                      )}
+                    </React.Fragment>
+                  ))}
+                </List>
+              )}
             </CardContent>
             <CardActions>
               <Button 
                 size="small" 
                 sx={{ ml: 1, mb: 1 }}
+                onClick={() => router.push('/admin/notifications')}
               >
                 Alle anzeigen
               </Button>
