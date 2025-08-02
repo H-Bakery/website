@@ -45,7 +45,9 @@
       "@bakery/shop/feature-catalog": [
         "libs/bakery-shop/feature-catalog/src/index.ts"
       ],
+      "api": ["libs/api/src/index.ts"],
       "contexts": ["libs/shared/contexts/src/index.ts"],
+      "event-bus": ["libs/api/event-bus/src/index.ts"],
       "shared": ["libs/shared/src/index.ts"]
     }
   },

@@ -682,7 +682,53 @@
         "status": "pending",
         "dependencies": [14, 15],
         "priority": "high",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create and Configure the Shared Event Bus Library",
+            "description": "Set up the foundational event bus module. This involves creating a new shared library, installing the necessary event emitter package, and exporting a singleton instance of the event bus to be used across the entire API.",
+            "dependencies": [],
+            "details": "1. Generate a new shared library using the workspace tools: `nx g @nrwl/node:lib api/event-bus`.\n2. Install the `eventemitter3` package as a dependency for the new library.\n3. Inside `libs/api/event-bus/src/lib/`, create a file (e.g., `event-bus.service.ts`) that instantiates `EventEmitter3` and exports it as a singleton constant (e.g., `export const eventBus = new EventEmitter3();`).\n4. Ensure the library's `index.ts` exports this singleton instance so other modules can import it.",
+            "status": "pending",
+            "testStrategy": "Create a simple unit test within the `api/event-bus` library to verify that the exported `eventBus` object is a valid instance of `EventEmitter3` and that it is indeed a singleton (i.e., multiple imports reference the same object)."
+          },
+          {
+            "id": 2,
+            "title": "Define Event Contracts in the Types Library",
+            "description": "Establish strongly-typed contracts for events that will be passed through the bus. This ensures consistency and type safety between publishing and subscribing modules. Start with the `OrderCreatedEvent`.",
+            "dependencies": ["16.1"],
+            "details": "1. Navigate to the existing `libs/types` library.\n2. Create a new file, `src/lib/events.ts`.\n3. In this file, define a string enum for event names, starting with `OrderEvents { CREATED = 'order.created' }`.\n4. Define a TypeScript interface for the event payload, e.g., `interface OrderCreatedEvent { orderId: string; items: { productId: string; quantity: number }[]; }`.\n5. Export both the enum and the interface from the library's main `index.ts` file.",
+            "status": "pending",
+            "testStrategy": "This is a type-definition task, so no runtime tests are needed. Code review should ensure the interfaces accurately represent the data required by downstream consumers and that they are correctly exported."
+          },
+          {
+            "id": 3,
+            "title": "Refactor Orders Module to Publish 'OrderCreated' Event",
+            "description": "Modify the order creation logic to emit an event on the event bus upon successful order creation, instead of directly calling the inventory service.",
+            "dependencies": ["16.1", "16.2"],
+            "details": "1. In the `orders` module's service file (e.g., `orders.service.ts`), import the `eventBus` singleton from `@<workspace>/api/event-bus`.\n2. Import the `OrderEvents` enum and `OrderCreatedEvent` interface from `@<workspace>/types`.\n3. Locate the function responsible for creating an order.\n4. After the order is successfully saved to the database, use the event bus to publish the event: `eventBus.emit(OrderEvents.CREATED, payload);`, where `payload` is an object matching the `OrderCreatedEvent` interface.",
+            "status": "pending",
+            "testStrategy": "In the unit tests for the `orders` service, mock the `eventBus` and verify that `eventBus.emit` is called exactly once with the correct event name (`OrderEvents.CREATED`) and a payload that matches the expected structure and data after an order is created."
+          },
+          {
+            "id": 4,
+            "title": "Refactor Inventory Module to Subscribe to 'OrderCreated' Event",
+            "description": "Modify the inventory module to listen for the `OrderCreated` event and trigger its stock deduction logic accordingly. This will be the consumer side of the new event-driven flow.",
+            "dependencies": ["16.1", "16.2"],
+            "details": "1. In the `inventory` module's service file (e.g., `inventory.service.ts`), import the `eventBus` singleton and the event contracts (`OrderEvents`, `OrderCreatedEvent`).\n2. Create a new method to handle the event, e.g., `handleOrderCreated(payload: OrderCreatedEvent)`. This method will contain the existing logic for decrementing stock.\n3. In the service's constructor or an initialization method, set up the listener: `eventBus.on(OrderEvents.CREATED, this.handleOrderCreated.bind(this));`.\n4. Ensure the stock decrement logic now uses the data from the event payload.",
+            "status": "pending",
+            "testStrategy": "Unit test the `inventory` service. Manually call the event handler method (`handleOrderCreated`) with a mock event payload and assert that the stock decrement logic is executed correctly (e.g., by mocking the database call and verifying its parameters)."
+          },
+          {
+            "id": 5,
+            "title": "Remove Direct Synchronous Call from Orders to Inventory",
+            "description": "Complete the decoupling process by removing the old, direct method call from the `orders` service to the `inventory` service. This final step ensures the modules are only connected via the event bus.",
+            "dependencies": ["16.3", "16.4"],
+            "details": "1. Go back to the `orders` service (`orders.service.ts`).\n2. Remove the import statement for the `inventory` service.\n3. Delete the line of code that makes the direct, synchronous call to the inventory service's stock decrement method.\n4. Remove the `inventory` service from the `orders` module's dependencies/providers if it was injected.\n5. Run end-to-end tests to confirm that creating an order still results in inventory being correctly decremented, proving the event-driven flow is working.",
+            "status": "pending",
+            "testStrategy": "Perform an integration test. Use an API client to create a new order via the `/orders` endpoint. After the request is successful, query the `/inventory` endpoint or check the database directly to verify that the stock levels for the ordered products have been correctly reduced. This confirms the entire event flow is functional."
+          }
+        ]
       },
       {
         "id": 17,
@@ -767,7 +813,7 @@
         "description": "Migrate the remaining routes (auth, cash, chat, dashboard, products, recipes, staff) from local imports in main.ts to their respective domain libraries, completing the modular monolith architecture transformation.",
         "details": "Complete the API modularization by creating domain-specific libraries for the remaining routes and migrating them from local imports. First, create buildable libraries for each remaining domain: `nx g @nx/js:lib auth --buildable --directory=libs/api`, `nx g @nx/js:lib cash --buildable --directory=libs/api`, `nx g @nx/js:lib chat --buildable --directory=libs/api`, `nx g @nx/js:lib dashboard --buildable --directory=libs/api`, `nx g @nx/js:lib products --buildable --directory=libs/api`, `nx g @nx/js:lib recipes --buildable --directory=libs/api`, and `nx g @nx/js:lib staff --buildable --directory=libs/api`. For each library, migrate the corresponding route files from the local routes directory to the new library's `src/lib` folder. Update each route file to export the router as the default export and ensure all dependencies (models, middleware, utilities) are properly imported. Create an `index.ts` file in each library to export the router. Update the main application's `main.ts` file to import routes from the new libraries instead of local files: `import authRoutes from '@bakery/api/auth'`, `import cashRoutes from '@bakery/api/cash'`, etc. Ensure all route mounting in main.ts uses the imported library routes. Update the workspace's `tsconfig.base.json` to include path mappings for each new library. Verify that all middleware, database models, and utility functions are accessible from the new library locations. Follow the established patterns from the previously migrated libraries (orders, inventory, customers, production, notifications) to maintain consistency in structure and imports.",
         "testStrategy": "Verify successful migration by running `nx build api` to ensure all dependencies resolve correctly. Test each migrated route endpoint using an API client to confirm functionality is preserved. Run the full API test suite to verify no regressions were introduced. Check that `main.ts` no longer contains any local route imports and only uses library imports. Verify that each new library can be built independently with `nx build auth`, `nx build cash`, etc. Test authentication flows, cash management operations, chat functionality, dashboard analytics, product CRUD operations, recipe management, and staff management through their respective endpoints. Confirm that the application starts successfully and all routes respond correctly. Validate that the modular structure allows for independent testing and building of each domain library.",
-        "status": "pending",
+        "status": "done",
         "dependencies": [15],
         "priority": "medium",
         "subtasks": []
@@ -775,7 +821,7 @@
     ],
     "metadata": {
       "created": "2025-07-18T21:29:08.352Z",
-      "updated": "2025-08-02T22:55:29.281Z",
+      "updated": "2025-08-02T22:55:43.291Z",
       "description": "Tasks for master context"
     }
   }

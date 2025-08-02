@@ -15,6 +15,9 @@ export * from './lib/user'
 // Export order types
 export * from './lib/order'
 
+// Export notification types
+export * from './lib/notification'
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,
@@ -58,3 +61,18 @@ export type {
   PaymentStatus,
   PaymentMethod,
 } from './lib/order'
+
+export type {
+  Notification,
+  NotificationCategory,
+  NotificationPriority,
+  NotificationChannel,
+  NotificationType,
+  NotificationAction,
+  NotificationPreferences,
+  CreateNotificationInput,
+  UpdateNotificationInput,
+  NotificationFilters,
+  NotificationStats,
+  NotificationEvent,
+} from './lib/notification'

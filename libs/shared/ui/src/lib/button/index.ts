@@ -25,10 +25,12 @@
 // Export components
 export { Button } from './button'
 export { EnhancedButton } from './enhanced-button'
+export { CallToActionButton } from './call-to-action-button'
 
 // Export types
 export type { ButtonProps } from './button'
 export type { EnhancedButtonProps } from './enhanced-button'
+export type { CallToActionButtonProps } from './call-to-action-button'
 
 // Re-export default for backwards compatibility
 export { Button as default } from './button'

@@ -86,6 +86,7 @@
     "@types/sequelize": "^4.28.20",
     "bcrypt": "^6.0.0",
     "date-fns": "^4.1.0",
+    "eventemitter3": "^5.0.1",
     "express-validator": "^7.2.1",
     "feed-reader": "^6.0.2",
     "gray-matter": "^4.0.3",

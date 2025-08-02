@@ -1,6 +1,6 @@
 import { Box, Container, Typography } from '@mui/material'
 import React from 'react'
-import Divider from './icons/brand/Divider'
+import { DividerIcon as Divider } from '@bakery/shared/ui'
 
 interface Props {
   title: string

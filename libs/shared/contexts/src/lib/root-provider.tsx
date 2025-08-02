@@ -7,7 +7,8 @@ import React from 'react'
 import { ThemeProvider, ThemeProviderProps } from './theme/theme.context'
 import { AuthProvider, AuthProviderProps } from './auth/auth.context'
 import { CartProvider, CartProviderProps } from './cart/cart.context'
-import { NotificationProvider, NotificationProviderProps } from './notification/notification.context'
+// TODO: Re-enable after fixing dependencies
+// import { NotificationProvider, NotificationProviderProps } from './notification/notification.context'
 
 /**
  * Root provider props combining all context provider props
@@ -22,12 +23,13 @@ export interface RootProviderProps {
   /** Cart provider configuration */
   cart?: Omit<CartProviderProps, 'children'>
   /** Notification provider configuration */
-  notification?: Omit<NotificationProviderProps, 'children'>
+  // TODO: Re-enable after fixing dependencies
+  // notification?: Omit<NotificationProviderProps, 'children'>
 }
 
 /**
  * Root provider that combines all application contexts
- * 
+ *
  * @example
  * ```tsx
  * <RootProvider
@@ -45,16 +47,16 @@ export const RootProvider: React.FC<RootProviderProps> = ({
   theme,
   auth,
   cart,
-  notification,
+  // TODO: Re-enable after fixing dependencies
+  // notification,
 }) => {
   return (
     <ThemeProvider {...theme}>
       <AuthProvider {...auth}>
-        <NotificationProvider {...notification}>
-          <CartProvider {...cart}>
-            {children}
-          </CartProvider>
-        </NotificationProvider>
+        {/* TODO: Re-enable after fixing dependencies */}
+        {/* <NotificationProvider {...notification}> */}
+        <CartProvider {...cart}>{children}</CartProvider>
+        {/* </NotificationProvider> */}
       </AuthProvider>
     </ThemeProvider>
   )
@@ -62,7 +64,7 @@ export const RootProvider: React.FC<RootProviderProps> = ({
 
 /**
  * HOC to wrap a component with the root provider
- * 
+ *
  * @example
  * ```tsx
  * export default withRootProvider(App, {
@@ -81,7 +83,9 @@ export function withRootProvider<P extends object>(
     </RootProvider>
   )
 
-  WrappedComponent.displayName = `withRootProvider(${Component.displayName || Component.name})`
+  WrappedComponent.displayName = `withRootProvider(${
+    Component.displayName || Component.name
+  })`
 
   return WrappedComponent
 }

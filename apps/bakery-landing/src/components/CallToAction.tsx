@@ -15,7 +15,7 @@ import DirectionsIcon from '@mui/icons-material/Directions'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 import PhoneIcon from '@mui/icons-material/Phone'
 import { useRouter } from 'next/navigation'
-import EnhancedButton from './button/EnhancedButton'
+import { EnhancedButton } from '@bakery/shared/ui'
 
 interface CTAAction {
   label: string
