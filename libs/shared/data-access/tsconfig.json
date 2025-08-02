@@ -1,11 +1,5 @@
 {
-  "compilerOptions": {
-    "jsx": "react-jsx",
-    "allowJs": false,
-    "esModuleInterop": false,
-    "allowSyntheticDefaultImports": true,
-    "strict": true
-  },
+  "extends": "../../../tsconfig.base.json",
   "files": [],
   "include": [],
   "references": [
@@ -16,5 +10,12 @@
       "path": "./tsconfig.spec.json"
     }
   ],
-  "extends": "../../../tsconfig.base.json"
+  "compilerOptions": {
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true
+  }
 }

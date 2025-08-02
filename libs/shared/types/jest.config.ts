@@ -1,5 +1,6 @@
+/* eslint-disable */
 export default {
-  displayName: 'types',
+  displayName: 'shared-types',
   preset: '../../../jest.preset.js',
   testEnvironment: 'node',
   transform: {

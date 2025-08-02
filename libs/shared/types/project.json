@@ -1,9 +1,9 @@
 {
-  "name": "types",
+  "name": "shared-types",
   "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/shared/types/src",
   "projectType": "library",
-  "tags": ["scope:shared", "type:util"],
+  "tags": ["scope:shared", "type:types"],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
