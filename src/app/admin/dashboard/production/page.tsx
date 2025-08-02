@@ -9,11 +9,27 @@ import {
   Chip,
   Alert,
   Skeleton,
+  Card,
+  CardContent,
+  Tab,
+  Tabs,
+  Button,
+  IconButton,
+  Tooltip,
+  Divider,
 } from '@mui/material'
-import InventoryIcon from '@mui/icons-material/Inventory'
-import LocalShippingIcon from '@mui/icons-material/LocalShipping'
-import DeleteIcon from '@mui/icons-material/Delete'
-import SpeedIcon from '@mui/icons-material/Speed'
+import {
+  Inventory as InventoryIcon,
+  LocalShipping as LocalShippingIcon,
+  Delete as DeleteIcon,
+  Speed as SpeedIcon,
+  Schedule as ScheduleIcon,
+  Assessment as AssessmentIcon,
+  MonitorHeart as MonitorIcon,
+  CalendarToday as CalendarIcon,
+  Refresh as RefreshIcon,
+  Dashboard as DashboardIcon,
+} from '@mui/icons-material'
 
 import DateRangeSelector, {
   TimeRange,
@@ -23,11 +39,27 @@ import ChartComponent from '../../../../components/dashboard/ChartComponent'
 import DataTable from '../../../../components/dashboard/DataTable'
 import ProductivityChart from '../../../../components/dashboard/ProductivityChart'
 
+// New production planning components
+import ProductionScheduleBoard from '../../../../components/production/ProductionScheduleBoard'
+import ProductionSchedulerDragDrop from '../../../../components/production/ProductionSchedulerDragDrop'
+import ProductionMetricsCard from '../../../../components/production/ProductionMetricsCard'
+import ProductionStatusPanel from '../../../../components/production/ProductionStatusPanel'
+import CapacityPlanningPanel from '../../../../components/production/CapacityPlanningPanel'
+import ResourceOptimizationPanel from '../../../../components/production/ResourceOptimizationPanel'
+
 import { useProductionDashboardData, useSummaryData } from '../../../../hooks/useDashboard'
+import { useProductionAnalytics } from '../../../../hooks/useProduction'
 import { useAuth } from '../../../../context/AuthContext'
+import { ScheduleViewMode } from '../../../../types/production'
 
 const ProductionDashboard: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('day')
+  const [activeTab, setActiveTab] = useState(0)
+  const [selectedDate, setSelectedDate] = useState(new Date())
+  const [viewMode, setViewMode] = useState<ScheduleViewMode>({
+    type: 'calendar',
+    period: 'day'
+  })
   const { token } = useAuth()
 
   // Fetch production dashboard data
@@ -53,6 +85,18 @@ const ProductionDashboard: React.FC = () => {
   // Get summary data
   const { data: summary } = useSummaryData(timeRange)
 
+  // Fetch production analytics for new components
+  const {
+    data: analyticsData,
+    isLoading: analyticsLoading,
+    error: analyticsError,
+  } = useProductionAnalytics({
+    startDate: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0],
+    includeSteps: true,
+    groupBy: 'day',
+  })
+
   // Check for authentication errors
   React.useEffect(() => {
     if (error && error.message && error.message.includes('Authentication')) {
@@ -64,6 +108,21 @@ const ProductionDashboard: React.FC = () => {
   // Handle time range change
   const handleTimeRangeChange = (range: TimeRange) => {
     setTimeRange(range)
+  }
+
+  // Handle tab change
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue)
+  }
+
+  // Handle date change for production scheduling
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date)
+  }
+
+  // Handle view mode change for production scheduling
+  const handleViewModeChange = (mode: ScheduleViewMode) => {
+    setViewMode(mode)
   }
 
   // Handle close error alert
@@ -173,7 +232,7 @@ const ProductionDashboard: React.FC = () => {
 
   return (
     <>
-      {isLoading ? (
+      {(isLoading || analyticsLoading) ? (
         <Container
           sx={{
             display: 'flex',
@@ -186,31 +245,89 @@ const ProductionDashboard: React.FC = () => {
         </Container>
       ) : (
         <Container maxWidth="xl">
-          <Box
-            sx={{
-              mb: 3,
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              flexWrap: 'wrap',
-            }}
-          >
-            <Typography variant="h4" component="h1">
-              Backstube: Produktionsübersicht
-            </Typography>
-            <DateRangeSelector
-              timeRange={timeRange}
-              onTimeRangeChange={handleTimeRangeChange}
-            />
-          </Box>
+          <>
+            <Box
+              sx={{
+                mb: 3,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+              }}
+            >
+              <Typography variant="h4" component="h1">
+                Produktions-Dashboard
+              </Typography>
+              <Box display="flex" gap={2} alignItems="center">
+                {activeTab === 0 && (
+                  <DateRangeSelector
+                    timeRange={timeRange}
+                    onTimeRangeChange={handleTimeRangeChange}
+                  />
+                )}
+                {activeTab === 1 && (
+                  <Box display="flex" gap={1} alignItems="center">
+                    <input
+                      type="date"
+                      value={selectedDate.toISOString().split('T')[0]}
+                      onChange={(e) => handleDateChange(new Date(e.target.value))}
+                      style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                    />
+                    <Tooltip title="Ansicht aktualisieren">
+                      <IconButton size="small">
+                        <RefreshIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Box>
+                )}
+              </Box>
+            </Box>
 
-          {error && (
+            {/* Tab Navigation */}
+            <Card sx={{ mb: 3 }}>
+              <Tabs
+                value={activeTab}
+                onChange={handleTabChange}
+                variant="fullWidth"
+                indicatorColor="primary"
+                textColor="primary"
+              >
+                <Tab
+                  icon={<DashboardIcon />}
+                  label="Produktionsübersicht"
+                  sx={{ minHeight: 64 }}
+                />
+                <Tab
+                  icon={<ScheduleIcon />}
+                  label="Produktionsplanung"
+                  sx={{ minHeight: 64 }}
+                />
+                <Tab
+                  icon={<MonitorIcon />}
+                  label="Live-Monitoring"
+                  sx={{ minHeight: 64 }}
+                />
+                <Tab
+                  icon={<AssessmentIcon />}
+                  label="Analytics"
+                  sx={{ minHeight: 64 }}
+                />
+                <Tab
+                  icon={<SpeedIcon />}
+                  label="Kapazitätsplanung"
+                  sx={{ minHeight: 64 }}
+                />
+              </Tabs>
+            </Card>
+
+          {(error || analyticsError) && (
             <Alert severity="error" sx={{ mb: 4 }} onClose={handleCloseError}>
-              {error.message || 'Beim Laden der Produktionsdaten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'}
+              {error?.message || (analyticsError as any)?.message || 'Beim Laden der Produktionsdaten ist ein Fehler aufgetreten. Bitte versuchen Sie es später erneut.'}
             </Alert>
           )}
 
-          {summary && (
+          {/* Tab Content */}
+          {activeTab === 0 && summary && (
             <>
               {/* KPI Summary Cards */}
               <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -442,6 +559,109 @@ const ProductionDashboard: React.FC = () => {
               </Grid>
             </>
           )}
+
+          {/* Production Planning Tab */}
+          {activeTab === 1 && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <ProductionSchedulerDragDrop
+                  selectedDate={selectedDate}
+                  viewMode={viewMode}
+                  onDateChange={handleDateChange}
+                  onViewModeChange={handleViewModeChange}
+                />
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Live Monitoring Tab */}
+          {activeTab === 2 && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <ProductionStatusPanel
+                  selectedDate={selectedDate}
+                  refreshInterval={30000}
+                  showAlerts={true}
+                  showTimeline={true}
+                />
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Analytics Tab */}
+          {activeTab === 3 && analyticsData && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <ProductionMetricsCard
+                  metrics={analyticsData}
+                  title="Produktionsanalytics"
+                  showTrends={true}
+                  compact={false}
+                />
+              </Grid>
+              
+              {/* Additional analytics charts can be added here */}
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Workflow-Performance
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Detaillierte Analyse der Workflow-Effizienz wird hier angezeigt.
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              
+              <Grid item xs={12} md={6}>
+                <Card>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Qualitätstrends
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Qualitätsmetriken und Trends über Zeit werden hier dargestellt.
+                    </Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Loading state for analytics tab */}
+          {activeTab === 3 && !analyticsData && !analyticsError && (
+            <Box display="flex" justifyContent="center" py={4}>
+              <CircularProgress />
+            </Box>
+          )}
+
+          {/* Capacity Planning Tab Content */}
+          {activeTab === 4 && (
+            <Grid container spacing={3}>
+              <Grid item xs={12}>
+                <CapacityPlanningPanel
+                  selectedDate={selectedDate}
+                  onOptimizeSchedule={() => {
+                    // Trigger optimization
+                    console.log('Optimize schedule triggered')
+                  }}
+                />
+              </Grid>
+              
+              <Grid item xs={12}>
+                <ResourceOptimizationPanel
+                  selectedDate={selectedDate}
+                  onOptimizationComplete={() => {
+                    // Refresh data after optimization
+                    refetch()
+                    console.log('Optimization completed')
+                  }}
+                />
+              </Grid>
+            </Grid>
+          )}
+          </>
         </Container>
       )}
     </>
