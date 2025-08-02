@@ -16,6 +16,8 @@ import {
   SummaryData,
   CashEntry,
 } from './types'
+import { NotificationPreferences, PreferencesResponse } from '../types/notificationPreferences'
+import { NotificationTemplate, TemplateResponse } from '../types/notificationTemplate'
 
 // Import real product data
 import { PRODUCTS } from '../mocks/products'
@@ -2285,6 +2287,891 @@ const bakeryAPI = {
       return await response.json()
     } catch (error) {
       console.error(`Error deleting recipe ${slug}:`, error)
+      throw error
+    }
+  },
+
+  // Notification Preferences
+  getNotificationPreferences: async (): Promise<PreferencesResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/preferences`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to fetch notification preferences')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching notification preferences:', error)
+      throw error
+    }
+  },
+
+  updateNotificationPreferences: async (preferences: Partial<NotificationPreferences>): Promise<PreferencesResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/preferences`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(preferences),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to update notification preferences')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error updating notification preferences:', error)
+      throw error
+    }
+  },
+
+  resetNotificationPreferences: async (): Promise<PreferencesResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/preferences/reset`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to reset notification preferences')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error resetting notification preferences:', error)
+      throw error
+    }
+  },
+
+  // Notification Templates
+  getNotificationTemplates: async (category?: string): Promise<TemplateResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const url = category ? 
+        `${API_BASE_URL}/api/templates?category=${category}` : 
+        `${API_BASE_URL}/api/templates`
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to fetch notification templates')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching notification templates:', error)
+      throw error
+    }
+  },
+
+  getNotificationTemplate: async (key: string): Promise<TemplateResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/templates/${key}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 404) {
+          throw new Error('Template not found')
+        }
+        throw new Error('Failed to fetch notification template')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error fetching notification template:', error)
+      throw error
+    }
+  },
+
+  previewNotificationTemplate: async (key: string, variables: Record<string, any>, language: string = 'de'): Promise<TemplateResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/templates/${key}/preview`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ variables, language }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to preview template')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error previewing notification template:', error)
+      throw error
+    }
+  },
+
+  createNotificationTemplate: async (template: Omit<NotificationTemplate, 'id' | 'createdAt' | 'updatedAt'>): Promise<TemplateResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/templates`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(template),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to create template')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error creating notification template:', error)
+      throw error
+    }
+  },
+
+  updateNotificationTemplate: async (key: string, template: Partial<NotificationTemplate>): Promise<TemplateResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/templates/${key}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ...template, key }),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to update template')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error updating notification template:', error)
+      throw error
+    }
+  },
+
+  deleteNotificationTemplate: async (key: string): Promise<TemplateResponse> => {
+    try {
+      const token = localStorage.getItem('token')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/templates/${key}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 404) {
+          throw new Error('Template not found')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to delete template')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error deleting notification template:', error)
+      throw error
+    }
+  },
+
+  // Email API methods
+  async getEmailConfig() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/email/test`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to get email configuration')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error getting email configuration:', error)
+      throw error
+    }
+  },
+
+  async sendTestEmail(email: string) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/email/test`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ email })
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to send test email')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error sending test email:', error)
+      throw error
+    }
+  },
+
+  async getEmailStats() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/email/stats`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to get email statistics')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error getting email statistics:', error)
+      throw error
+    }
+  },
+
+  // Notification Archive API methods
+  async getArchivedNotifications(options: {
+    limit?: number;
+    offset?: number;
+    category?: string;
+    priority?: string;
+    search?: string;
+    startDate?: string;
+    endDate?: string;
+  } = {}) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const searchParams = new URLSearchParams()
+      if (options.limit) searchParams.append('limit', options.limit.toString())
+      if (options.offset) searchParams.append('offset', options.offset.toString())
+      if (options.category) searchParams.append('category', options.category)
+      if (options.priority) searchParams.append('priority', options.priority)
+      if (options.search) searchParams.append('search', options.search)
+      if (options.startDate) searchParams.append('startDate', options.startDate)
+      if (options.endDate) searchParams.append('endDate', options.endDate)
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive?${searchParams}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to get archived notifications')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error getting archived notifications:', error)
+      throw error
+    }
+  },
+
+  async getArchiveStats() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive/stats`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        throw new Error('Failed to get archive statistics')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error getting archive statistics:', error)
+      throw error
+    }
+  },
+
+  async archiveNotification(id: number) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive/${id}/archive`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 404) {
+          throw new Error('Notification not found')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to archive notification')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error archiving notification:', error)
+      throw error
+    }
+  },
+
+  async archiveBulkNotifications(notificationIds: number[]) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive/archive/bulk`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ notificationIds })
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to archive notifications')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error bulk archiving notifications:', error)
+      throw error
+    }
+  },
+
+  async restoreNotification(id: number) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive/${id}/restore`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 404) {
+          throw new Error('Archived notification not found')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to restore notification')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error restoring notification:', error)
+      throw error
+    }
+  },
+
+  async restoreBulkNotifications(notificationIds: number[]) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive/restore/bulk`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ notificationIds })
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to restore notifications')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error bulk restoring notifications:', error)
+      throw error
+    }
+  },
+
+  async permanentDeleteNotification(id: number) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive/${id}/permanent`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        if (response.status === 404) {
+          throw new Error('Notification not found')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to delete notification permanently')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error permanently deleting notification:', error)
+      throw error
+    }
+  },
+
+  async searchNotifications(query: string, options: {
+    limit?: number;
+    offset?: number;
+    includeArchived?: boolean;
+    category?: string;
+    priority?: string;
+    startDate?: string;
+    endDate?: string;
+  } = {}) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const searchParams = new URLSearchParams()
+      searchParams.append('q', query)
+      if (options.limit) searchParams.append('limit', options.limit.toString())
+      if (options.offset) searchParams.append('offset', options.offset.toString())
+      if (options.includeArchived !== undefined) searchParams.append('includeArchived', options.includeArchived.toString())
+      if (options.category) searchParams.append('category', options.category)
+      if (options.priority) searchParams.append('priority', options.priority)
+      if (options.startDate) searchParams.append('startDate', options.startDate)
+      if (options.endDate) searchParams.append('endDate', options.endDate)
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archive/search?${searchParams}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to search notifications')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error searching notifications:', error)
+      throw error
+    }
+  },
+
+  // Notification Archival Service APIs
+  async getArchivalPolicies() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/policies`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to get archival policies')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error getting archival policies:', error)
+      throw error
+    }
+  },
+
+  async updateArchivalPolicies(policies: {
+    autoArchiveAfterDays?: number;
+    permanentDeleteAfterDays?: number;
+    archiveReadOnly?: boolean;
+    excludeCategories?: string[];
+    excludePriorities?: string[];
+    batchSize?: number;
+    enabled?: boolean;
+  }) {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/policies`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(policies),
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to update archival policies')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error updating archival policies:', error)
+      throw error
+    }
+  },
+
+  async getArchivalStatus() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/status`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to get archival status')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error getting archival status:', error)
+      throw error
+    }
+  },
+
+  async triggerArchival() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/trigger`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to trigger archival')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error triggering archival:', error)
+      throw error
+    }
+  },
+
+  async triggerCleanup() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/cleanup`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to trigger cleanup')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error triggering cleanup:', error)
+      throw error
+    }
+  },
+
+  async startArchivalService() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/start`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to start archival service')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error starting archival service:', error)
+      throw error
+    }
+  },
+
+  async stopArchivalService() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/stop`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to stop archival service')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error stopping archival service:', error)
+      throw error
+    }
+  },
+
+  async getNextArchivalRuns() {
+    try {
+      const token = localStorage.getItem('bakeryToken')
+      if (!token) {
+        throw new Error('No authentication token found')
+      }
+
+      const response = await fetch(`${API_BASE_URL}/api/notifications/archival/next-run`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('Authentication failed. Please log in again.')
+        }
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Failed to get next run information')
+      }
+
+      return await response.json()
+    } catch (error) {
+      console.error('Error getting next run information:', error)
       throw error
     }
   },
