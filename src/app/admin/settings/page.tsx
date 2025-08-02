@@ -27,11 +27,12 @@ import SecurityIcon from '@mui/icons-material/Security'
 import PaletteIcon from '@mui/icons-material/Palette'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import { useTheme } from '../../../context/ThemeContext'
+import NotificationPreferences from '../../../components/admin/notifications/NotificationPreferences'
+import EmailSettings from '../../../components/admin/settings/EmailSettings'
 
 export default function SettingsPage() {
   const { mode, toggleTheme, setMode } = useTheme()
   const isMobile = useMediaQuery((theme: any) => theme.breakpoints.down('md'))
-  const [notifications, setNotifications] = useState(true)
   const [language, setLanguage] = useState('de')
   const [timeFormat, setTimeFormat] = useState('24')
 
@@ -107,11 +108,10 @@ export default function SettingsPage() {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={6}>
+        <Grid item xs={12}>
           <Card 
             elevation={mode === 'dark' ? 2 : 1}
             sx={{ 
-              height: '100%', 
               bgcolor: mode === 'dark' ? 'background.paper' : 'white',
             }}
           >
@@ -119,25 +119,23 @@ export default function SettingsPage() {
               <Typography variant="h6" component="h3" sx={{ mb: 2, fontWeight: 'bold' }}>
                 Benachrichtigungen
               </Typography>
-              <List disablePadding>
-                <ListItem>
-                  <ListItemIcon>
-                    <NotificationsIcon />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary="Benachrichtigungen aktivieren" 
-                    secondary="Benachrichtigungen über neue Bestellungen und Updates" 
-                  />
-                  <Switch
-                    edge="end"
-                    checked={notifications}
-                    onChange={() => setNotifications(!notifications)}
-                    inputProps={{
-                      'aria-labelledby': 'switch-notifications',
-                    }}
-                  />
-                </ListItem>
-              </List>
+              <NotificationPreferences />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12}>
+          <Card 
+            elevation={mode === 'dark' ? 2 : 1}
+            sx={{ 
+              bgcolor: mode === 'dark' ? 'background.paper' : 'white',
+            }}
+          >
+            <CardContent>
+              <Typography variant="h6" component="h3" sx={{ mb: 2, fontWeight: 'bold' }}>
+                E-Mail Einstellungen
+              </Typography>
+              <EmailSettings />
             </CardContent>
           </Card>
         </Grid>
@@ -234,16 +232,6 @@ export default function SettingsPage() {
           </Card>
         </Grid>
 
-        <Grid item xs={12}>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
-            <Button variant="outlined" sx={{ mr: 2 }}>
-              Abbrechen
-            </Button>
-            <Button variant="contained" color="primary">
-              Einstellungen speichern
-            </Button>
-          </Box>
-        </Grid>
       </Grid>
     </Box>
   )
