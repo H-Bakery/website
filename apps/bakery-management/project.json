@@ -1,0 +1,9 @@
+{
+  "name": "bakery-management",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/bakery-management",
+  "projectType": "application",
+  "tags": [],
+  "// targets": "to see all targets run: nx show project bakery-management --web",
+  "targets": {}
+}

@@ -20,7 +20,7 @@
     "test": {
       "executor": "@nx/jest:jest",
       "options": {
-        "jestConfig": "jest.config.mjs",
+        "jestConfig": "jest.config.app.ts",
         "passWithNoTests": true
       }
     },

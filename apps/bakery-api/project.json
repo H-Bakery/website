@@ -5,9 +5,10 @@
   "sourceRoot": "backend",
   "targets": {
     "serve": {
-      "executor": "@nx/js:node",
+      "executor": "nx:run-commands",
       "options": {
-        "buildTarget": "backend:build"
+        "command": "node index.js",
+        "cwd": "backend"
       }
     },
     "build": {

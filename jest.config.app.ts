@@ -1,19 +1,16 @@
-import nextJest from 'next/jest.js';
+import nextJest from 'next/jest.js'
 
 // Providing the path to your Next.js app which will enable loading next.config.js and .env files
-const createJestConfig = nextJest({ dir: './' });
+const createJestConfig = nextJest({ dir: './' })
 
 // Any custom config you want to pass to Jest
 const customJestConfig = {
   testEnvironment: 'jsdom',
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  testPathIgnorePatterns: [
-    '<rootDir>/node_modules/',
-    '<rootDir>/.next/'
-  ],
+  testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
-    '\\.(css|less|scss|sass)$': 'identity-obj-proxy'
+    '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
   transformIgnorePatterns: [
     '/node_modules/(?!(@mui|@fullcalendar|react-leaflet)/)',
@@ -25,7 +22,7 @@ const customJestConfig = {
     '!src/**/*.d.ts',
     '!src/**/*.stories.{ts,tsx}',
     '!src/mocks/**',
-    '!**/node_modules/**'
+    '!**/node_modules/**',
   ],
   coverageThreshold: {
     global: {
@@ -37,10 +34,10 @@ const customJestConfig = {
   },
   testMatch: [
     '**/__tests__/**/*.test.[jt]s?(x)',
-    '**/?(*.)+(spec|test).[jt]s?(x)'
+    '**/?(*.)+(spec|test).[jt]s?(x)',
   ],
-  verbose: true
-};
+  verbose: true,
+}
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config
-export default createJestConfig(customJestConfig);
+export default createJestConfig(customJestConfig)
