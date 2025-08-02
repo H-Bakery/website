@@ -1,0 +1,114 @@
+# Prometheus Configuration for Bakery Monitoring
+# Version: 2.0
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'bakery-monitor'
+    environment: 'production'
+
+# Alertmanager configuration
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - localhost:9093
+
+# Load rules
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# Scrape configurations
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Node Exporter - System metrics
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'bakery-server'
+
+  # Bakery API metrics
+  - job_name: 'bakery-api'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['localhost:5000']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'bakery-api'
+
+  # Bakery Shop metrics
+  - job_name: 'bakery-shop'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['localhost:3000']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'bakery-shop'
+
+  # Bakery Management metrics
+  - job_name: 'bakery-management'
+    metrics_path: '/api/metrics'
+    static_configs:
+      - targets: ['localhost:3001']
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: 'bakery-management'
+
+  # nginx metrics (if nginx-prometheus-exporter is installed)
+  - job_name: 'nginx'
+    static_configs:
+      - targets: ['localhost:9113']
+
+  # PM2 metrics
+  - job_name: 'pm2'
+    static_configs:
+      - targets: ['localhost:9209']
+
+  # SQLite metrics (custom exporter)
+  - job_name: 'sqlite'
+    static_configs:
+      - targets: ['localhost:9187']
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: 'sqlite_.*'
+        target_label: __tmp_prefix
+        replacement: 'bakery_'
+
+  # Blackbox exporter for endpoint monitoring
+  - job_name: 'blackbox'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - http://localhost:3000
+          - http://localhost:3001
+          - http://localhost:3002
+          - http://localhost:5000/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: localhost:9115
+
+# Service discovery for dynamic targets
+# Uncomment if using file-based service discovery
+# scrape_configs:
+#   - job_name: 'dynamic-services'
+#     file_sd_configs:
+#       - files:
+#           - '/etc/prometheus/targets/*.json'
+#         refresh_interval: 30s

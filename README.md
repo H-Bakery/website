@@ -1,73 +1,70 @@
-# Bakery Monorepo
+# Bakery Website - Nx Monorepo
 
-A modern bakery management system built with Nx, featuring a modular monolith backend and micro-frontend architecture.
+Modern bakery management system with e-commerce, admin dashboard, and marketing site.
 
-## Prerequisites
-
-- Node.js 18+
-- npm 8+
-- Git
-
-## Quick Start
+## 🚀 Quick Start
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/bakery-monorepo.git
-cd bakery-monorepo
-
-# Install dependencies
 npm install
-
-# Start development servers
-nx serve bakery-shop        # Customer shop at http://localhost:4200
-nx serve bakery-management  # Management system at http://localhost:4201
-nx serve bakery-api         # Backend API at http://localhost:3333
+npm run serve:all        # Start all applications
 ```
 
-## Project Structure
+**Applications:**
+
+- Shop: http://localhost:4200
+- Management: http://localhost:3001
+- Landing: http://localhost:3000
+- API: http://localhost:3333
+
+## 📁 Structure
 
 ```
-bakery-monorepo/
-├── apps/                    # Applications
-│   ├── bakery-landing/      # Static landing page
-│   ├── bakery-shop/         # Customer e-commerce
-│   ├── bakery-management/   # Internal management
-│   └── bakery-api/          # Backend API
-├── libs/                    # Shared libraries
-│   ├── shared/              # Cross-app utilities
-│   ├── bakery-shop/         # Shop-specific features
-│   └── bakery-management/   # Management features
-└── docs/                    # Documentation
+apps/
+├── bakery-landing/      # Marketing site (Next.js)
+├── bakery-shop/         # E-commerce (Next.js + Material UI)
+├── bakery-management/   # Admin dashboard (Next.js)
+└── bakery-api/          # Backend API (Express)
+
+libs/
+├── shared/              # Shared code (types, utils, UI, contexts)
+├── bakery-shop/         # Shop features (cart, catalog)
+└── bakery-management/   # Admin features (orders, inventory)
 ```
 
-## Key Commands
+## 🛠️ Development
 
 ```bash
-# Development
-nx serve <app-name>          # Start dev server
-nx build <app-name>          # Build for production
-nx test <app-name>           # Run tests
-nx affected:build            # Build only affected projects
+# Serve specific apps
+npm run serve:shop
+npm run serve:management
+npm run serve:landing
+
+# Testing
+npm run test:unit        # All unit tests
+npm run test:e2e         # All E2E tests
+npm run test:unit:shop   # App-specific tests
 
 # Code quality
-nx lint <project-name>       # Lint a project
-nx format:write              # Format all files
-
-# Deployment
-nx deploy bakery-landing     # Deploy landing to GitHub Pages
-nx deploy bakery-shop        # Deploy shop to Vercel
-nx deploy bakery-api         # Deploy API to Cloud Run
+npm run lint:all
+npm run format
+npm run validate        # Lint + type-check + test
 ```
 
-## Documentation
+## 🚢 Deployment
 
-- [Architecture Overview](./docs/architecture.md) - System design and technical decisions
-- [Migration Guide](./docs/migration-guide.md) - Step-by-step migration from current setup
-- [Development Guide](./docs/development.md) - Development workflow and conventions
-- [Deployment Guide](./docs/deployment.md) - CI/CD and deployment strategies
-- [Testing Guide](./docs/testing.md) - Testing strategies and best practices
-- [Monitoring Guide](./docs/monitoring.md) - Performance metrics and monitoring
+**Automatic:** Push to `main` deploys to production
 
-## License
+**Platforms:**
 
-MIT
+- Landing → GitHub Pages
+- Shop/Management → Vercel
+- API → Google Cloud Run
+
+## 📚 Documentation
+
+- [Architecture](./docs/architecture.md)
+- [Development](./docs/development.md)
+- [CI/CD](./docs/ci-cd.md)
+- [Testing](./docs/testing.md)
+- [Deployment](./docs/deployment.md)
+- [Monitoring](./docs/monitoring.md)

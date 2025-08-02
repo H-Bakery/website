@@ -1,0 +1,76 @@
+# Nx Cloud Configuration for CI/CD
+# This file configures distributed caching and task execution
+
+# Enable distributed caching
+cacheDirectory: .nx/cache
+
+# Configure distributed task execution
+tasksRunnerOptions:
+  default:
+    runner: "@nrwl/nx-cloud"
+    options:
+      # Operations that can be cached
+      cacheableOperations:
+        - build
+        - test
+        - lint
+        - e2e
+        - type-check
+      
+      # Parallel execution settings
+      parallel: 3
+      
+      # Access token is set via environment variable
+      # NX_CLOUD_ACCESS_TOKEN
+      
+      # Enable performance analytics
+      canTrackAnalytics: true
+      
+      # Show warnings for inefficient operations
+      showUsageWarnings: true
+      
+      # Distributed execution agents
+      agents:
+        - name: "linux-medium"
+          count: 3
+          machineType: "linux-x64-medium"
+        
+        - name: "linux-large"
+          count: 1
+          machineType: "linux-x64-large"
+          
+      # Task distribution strategy
+      distribution:
+        # Distribute long-running tasks first
+        taskDistribution: "longest-first"
+        
+        # Minimum task duration to distribute (ms)
+        minTaskDuration: 5000
+        
+        # Task batching for small operations
+        batchSize: 5
+
+# Performance optimizations
+performance:
+  # Enable computation memoization
+  memoization: true
+  
+  # Cache task inputs/outputs
+  cacheTaskInputs: true
+  
+  # Optimize for CI environments
+  ciOptimizations: true
+  
+  # Skip redundant dependency checks
+  skipNxCache: false
+
+# Error reporting
+errorReporting:
+  # Send error telemetry
+  enabled: true
+  
+  # Include stack traces
+  includeStackTraces: true
+  
+  # Anonymize paths
+  anonymizePaths: true
