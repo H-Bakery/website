@@ -1,0 +1,43 @@
+# Hefeteig Base Production Workflow
+name: hefeteig_production
+version: 1.0
+steps:
+  - name: zutaten_vorbereiten
+    timeout: 15m
+    activities:
+      - mehl_abwiegen
+      - zucker_abwiegen
+      - butter_vorbereiten
+      - hefe_aktivieren
+    notes: "Milch auf 30-35°C erwärmen für die Hefeaktivierung"
+
+  - name: teig_herstellen
+    timeout: 30m
+    activities:
+      - mixen
+      - kneten
+    params:
+      knetzeit: "12m bei mittlerer Stufe"
+    notes: "Teig sollte glatt und elastisch sein"
+
+  - name: erste_gehzeit
+    type: sleep
+    duration: 45m
+    conditions:
+      - temp > 25°C: 30m
+      - temp < 20°C: 60m
+    notes: "Abgedeckt an einem warmen Ort gehen lassen"
+
+  - name: teig_portionieren
+    timeout: 25m
+    activities:
+      - teig_abwiegen
+      - teig_formen
+    params:
+      einheit_groesse: 300g
+    notes: "Gleichmäßige Portionen für konsistente Backwaren"
+
+  - name: zweite_gehzeit
+    type: sleep
+    duration: 20m
+    notes: "Kurze Gehzeit vor der Weiterverarbeitung"

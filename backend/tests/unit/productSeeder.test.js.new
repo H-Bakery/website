@@ -1,0 +1,127 @@
+const { parseCSV } = require('../../utils/csvParser')
+const logger = require('../../utils/logger')
+
+// Mock the dependencies
+jest.mock('../../utils/csvParser')
+jest.mock('../../utils/logger')
+
+// Create a fresh mock of models for each test
+jest.mock('../../models', () => {
+  const mockProduct = {
+    count: jest.fn(),
+    bulkCreate: jest.fn().mockResolvedValue([])
+  }
+  
+  return {
+    Product: mockProduct
+  }
+}, { virtual: true })
+
+describe('Product Seeder', () => {
+  let productSeeder
+  let models
+  
+  beforeEach(() => {
+    // Clear all mocks before each test
+    jest.clearAllMocks()
+    
+    // Reset modules to get fresh instances
+    jest.resetModules()
+    
+    // Get fresh instances for each test
+    models = require('../../models')
+    productSeeder = require('../../seeders/productSeeder')
+  })
+  
+  test('should seed products when no products exist', async () => {
+    // Arrange
+    models.Product.count.mockResolvedValue(0)
+    
+    const mockProductsData = [
+      { id: '1', name: 'Test Bread', category: 'Bread', image: '/test.jpg', price: '2.99' },
+      { id: '2', name: 'Test Cake', category: 'Cake', image: '/test2.jpg', price: '5.99' }
+    ]
+    
+    parseCSV.mockReturnValue(mockProductsData)
+    
+    // Act
+    await productSeeder.seed()
+    
+    // Assert
+    expect(models.Product.count).toHaveBeenCalled()
+    expect(parseCSV).toHaveBeenCalledWith(expect.stringContaining('products.csv'))
+    
+    expect(models.Product.bulkCreate).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: 1,
+        name: 'Test Bread',
+        price: 2.99,
+        image: '/test.jpg'
+      }),
+      expect.objectContaining({
+        id: 2,
+        name: 'Test Cake',
+        price: 5.99,
+        image: '/test2.jpg'
+      })
+    ])
+    
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Created 2 products'))
+  })
+  
+  test('should skip seeding when products already exist', async () => {
+    // Arrange
+    models.Product.count.mockResolvedValue(5)
+    
+    // Act
+    await productSeeder.seed()
+    
+    // Assert
+    expect(models.Product.count).toHaveBeenCalled()
+    expect(parseCSV).not.toHaveBeenCalled()
+    expect(models.Product.bulkCreate).not.toHaveBeenCalled()
+    expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('Products already exist'))
+  })
+  
+  test('should handle errors gracefully', async () => {
+    // Arrange
+    models.Product.count.mockRejectedValue(new Error('Database error'))
+    
+    // Act
+    await productSeeder.seed()
+    
+    // Assert
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Error seeding products'), expect.any(Error))
+  })
+  
+  test('should handle missing Product model', async () => {
+    // Manually mock the models module with a missing Product
+    jest.resetModules()
+    
+    // Mock models without Product
+    jest.doMock('../../models', () => ({}), { virtual: true })
+    
+    // Re-require the seeder with our mock
+    const seederToTest = require('../../seeders/productSeeder')
+    
+    // Act
+    await seederToTest.seed()
+    
+    // Assert
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Product model not found'))
+  })
+  
+  test('should handle CSV parsing errors', async () => {
+    // Arrange
+    models.Product.count.mockResolvedValue(0)
+    parseCSV.mockImplementation(() => {
+      throw new Error('CSV parsing error')
+    })
+    
+    // Act
+    await productSeeder.seed()
+    
+    // Assert
+    expect(logger.error).toHaveBeenCalledWith(expect.stringContaining('Error seeding products'), expect.any(Error))
+  })
+})

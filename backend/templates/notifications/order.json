@@ -1,0 +1,82 @@
+[
+  {
+    "key": "order.new",
+    "name": "New Order Received",
+    "category": "order",
+    "defaultTitle": {
+      "de": "Neue Bestellung #{{orderId}}",
+      "en": "New Order #{{orderId}}"
+    },
+    "defaultMessage": {
+      "de": "Neue Bestellung von {{customerName}} eingegangen. Abholdatum: {{pickupDate}}. Gesamtbetrag: €{{totalAmount}}",
+      "en": "New order received from {{customerName}}. Pickup date: {{pickupDate}}. Total amount: €{{totalAmount}}"
+    },
+    "variables": ["orderId", "customerName", "pickupDate", "totalAmount"],
+    "defaultPriority": "medium",
+    "defaultType": "info"
+  },
+  {
+    "key": "order.ready",
+    "name": "Order Ready for Pickup",
+    "category": "order",
+    "defaultTitle": {
+      "de": "Bestellung bereit zur Abholung",
+      "en": "Order Ready for Pickup"
+    },
+    "defaultMessage": {
+      "de": "Bestellung #{{orderId}} für {{customerName}} ist bereit zur Abholung um {{pickupTime}}.",
+      "en": "Order #{{orderId}} for {{customerName}} is ready for pickup at {{pickupTime}}."
+    },
+    "variables": ["orderId", "customerName", "pickupTime"],
+    "defaultPriority": "medium",
+    "defaultType": "info"
+  },
+  {
+    "key": "order.modified",
+    "name": "Order Modified",
+    "category": "order",
+    "defaultTitle": {
+      "de": "Bestellung geändert #{{orderId}}",
+      "en": "Order Modified #{{orderId}}"
+    },
+    "defaultMessage": {
+      "de": "Bestellung #{{orderId}} wurde geändert. {{changeDescription}}. Neuer Gesamtbetrag: €{{newTotal}}",
+      "en": "Order #{{orderId}} has been modified. {{changeDescription}}. New total: €{{newTotal}}"
+    },
+    "variables": ["orderId", "changeDescription", "newTotal"],
+    "defaultPriority": "medium",
+    "defaultType": "warning"
+  },
+  {
+    "key": "order.cancelled",
+    "name": "Order Cancelled",
+    "category": "order",
+    "defaultTitle": {
+      "de": "Bestellung storniert #{{orderId}}",
+      "en": "Order Cancelled #{{orderId}}"
+    },
+    "defaultMessage": {
+      "de": "Bestellung #{{orderId}} von {{customerName}} wurde storniert. Grund: {{reason}}",
+      "en": "Order #{{orderId}} from {{customerName}} has been cancelled. Reason: {{reason}}"
+    },
+    "variables": ["orderId", "customerName", "reason"],
+    "defaultPriority": "high",
+    "defaultType": "warning"
+  },
+  {
+    "key": "order.large",
+    "name": "Large Order Alert",
+    "category": "order",
+    "defaultTitle": {
+      "de": "Großbestellung eingegangen",
+      "en": "Large Order Received"
+    },
+    "defaultMessage": {
+      "de": "Große Bestellung #{{orderId}} von {{customerName}} eingegangen. {{itemCount}} Artikel, Gesamtbetrag: €{{totalAmount}}. Besondere Aufmerksamkeit erforderlich.",
+      "en": "Large order #{{orderId}} received from {{customerName}}. {{itemCount}} items, total: €{{totalAmount}}. Special attention required."
+    },
+    "variables": ["orderId", "customerName", "itemCount", "totalAmount"],
+    "defaultPriority": "high",
+    "defaultType": "info"
+  }
+]

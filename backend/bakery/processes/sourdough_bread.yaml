@@ -1,0 +1,57 @@
+# Sourdough Bread Production
+name: sourdough_bread
+version: 1.0
+steps:
+  - name: starter_füttern
+    timeout: 15m
+    activities:
+      - mischen
+    notes: "Sauerteig im Verhältnis 1:1:1 (Starter:Mehl:Wasser) füttern"
+  - name: starter_reifen
+    type: sleep
+    duration: 8h
+    conditions:
+      - temp < 20°C: 10h
+    notes: "Starter sollte sich verdoppeln"
+  - name: teig_mischen
+    timeout: 30m
+    activities:
+      - mehl_wiegen
+      - wasser_zugeben
+      - salz_zugeben
+      - mischen
+  - name: autolyse
+    type: sleep
+    duration: 1h
+  - name: kneten_und_falten
+    timeout: 30m
+    activities:
+      - kneten
+      - stretch_and_fold
+  - name: erste_gehzeit
+    type: sleep
+    duration: 4h
+    conditions:
+      - temp > 26°C: 3h
+  - name: vorformen
+    timeout: 15m
+  - name: ruhen
+    type: sleep
+    duration: 30m
+  - name: formen
+    timeout: 15m
+    notes: "In Gärkörbchen legen"
+  - name: final_proofing
+    type: sleep
+    duration: 12h
+    location: "Kühlschrank"
+  - name: backen
+    timeout: 45m
+    activities:
+      - vorheizen
+      - einschneiden
+      - backen
+    params:
+      temp: 230°C
+      dampf: true
+    notes: "Erste 25 Min mit Dampf, dann ohne"

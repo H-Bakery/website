@@ -1,0 +1,205 @@
+<context>
+# Overview
+The Bakery Management System backend is a Node.js application built with Express and Sequelize ORM, serving as the data and business logic layer for the entire system. It provides RESTful API endpoints that power both the customer-facing website and admin dashboard. The backend handles crucial operations including product management, order processing, user authentication, cash management, and chat functionality, all while maintaining data integrity and security.
+
+# Core Features
+## RESTful API
+- Complete set of endpoints for products, orders, users, and bakery operations
+- Authentication and authorization system with role-based access control
+- Structured response formats with appropriate HTTP status codes
+- Error handling and validation
+
+## Data Management
+- Sequelize ORM integration with SQLite database (adaptable to PostgreSQL)
+- CSV product import functionality for easy product catalog management
+- Data models for products, orders, users, and bakery operations
+- Database seeding and migration capabilities
+
+## Business Logic
+- Order processing and fulfillment workflows
+- Cash management system for financial tracking
+- Production planning assistance (baking lists)
+- Staff management logic
+- Internal chat system
+
+## Security & Performance
+- Authentication middleware with JWT implementation
+- Input validation and sanitization
+- Error logging and monitoring
+- Query optimization for performance
+
+# User Experience
+## API Consumers
+### Frontend Developers
+- Need well-documented, consistent API endpoints
+- Require predictable response formats and error handling
+- Benefit from robust validation feedback
+
+### System Administrators
+- Need secure authentication and authorization
+- Require data integrity and backup capabilities
+- Benefit from logging and monitoring
+
+## Key Technical Flows
+- Authentication flow (login, token verification, refresh)
+- Product data lifecycle (CSV import, database storage, API access)
+- Order processing pipeline
+- Data validation and error handling patterns
+- Backup and restore procedures
+</context>
+<PRD>
+# Technical Architecture
+## Core Components
+- **Framework**: Node.js with Express
+- **Database**: Sequelize ORM with SQLite (configurable for PostgreSQL)
+- **Authentication**: JWT-based auth with middleware protection
+- **Validation**: Express-validator for input validation
+- **Parsing**: Body-parser for request handling
+
+## Directory Structure
+- `config/`: Database and environment configuration
+  - `config/database.js`: Sequelize configuration
+  - `config/auth.js`: Authentication settings
+- `controllers/`: Request handlers organized by domain
+  - `controllers/productController.js`: Product-related logic
+  - `controllers/orderController.js`: Order processing
+  - `controllers/authController.js`: Authentication handlers
+- `middleware/`: Express middleware
+  - `middleware/auth.js`: Authentication middleware
+  - `middleware/validation.js`: Input validation
+  - `middleware/errorHandler.js`: Centralized error handling
+- `models/`: Sequelize data models
+  - `models/Product.js`: Product schema and methods
+  - `models/Order.js`: Order schema and methods
+  - `models/User.js`: User schema and authentication
+- `routes/`: API route definitions
+  - `routes/productRoutes.js`: Product endpoints
+  - `routes/orderRoutes.js`: Order endpoints
+  - `routes/authRoutes.js`: Authentication endpoints
+- `seeders/`: Database seed data
+  - `seeders/productSeeder.js`: Imports products from CSV
+- `utils/`: Utility functions
+  - `utils/csvParser.js`: CSV file processing
+  - `utils/responseFormatter.js`: API response standardization
+
+## Data Models
+- **Product**: id, name, category, image, price
+- **Order**: id, customer details, items, status, timestamps
+- **User**: id, username, password (hashed), role, permissions
+- **BakingList**: id, date, products, quantities, status
+- **Cash**: id, transaction type, amount, notes, timestamps
+- **Chat**: id, user, message, timestamp
+
+## API Endpoints
+- **Authentication**:
+  - `POST /api/auth/login`: User authentication
+  - `POST /api/auth/register`: User registration
+  - `GET /api/auth/me`: Current user info
+- **Products**:
+  - `GET /api/products`: List all products
+  - `GET /api/products/:id`: Product details
+  - `POST /api/products`: Create product (admin)
+  - `PUT /api/products/:id`: Update product (admin)
+  - `DELETE /api/products/:id`: Delete product (admin)
+- **Orders**:
+  - `GET /api/orders`: List orders (filtered by status)
+  - `POST /api/orders`: Create new order
+  - `PUT /api/orders/:id/status`: Update order status
+- **Baking List**:
+  - `GET /api/baking-list/:date`: Get production plan
+  - `POST /api/baking-list`: Create production plan
+- **Cash**:
+  - `GET /api/cash`: Get cash transactions
+  - `POST /api/cash`: Record transaction
+- **Chat**:
+  - `GET /api/chat`: Get messages
+  - `POST /api/chat`: Send message
+
+# Development Roadmap
+## Phase 1: Core API
+- Express server setup with basic configuration
+- Database connection and initial models (Product, User)
+- Authentication system with JWT
+- Basic product endpoints (CRUD operations)
+- CSV import utility for products
+- Error handling middleware
+
+## Phase 2: Order Management
+- Order model and relationships
+- Order creation and management endpoints
+- Status tracking and updates
+- Email notifications (optional)
+- Basic reporting functionality
+
+## Phase 3: Production Features
+- Baking list generation and management
+- Stock tracking functionality
+- Production planning algorithms
+- Staff assignment capabilities
+- Enhanced reporting
+
+## Phase 4: Advanced Features
+- Cash management system
+- Internal chat functionality
+- Analytics data aggregation
+- Performance optimizations
+- Backup and restore utilities
+
+# Logical Dependency Chain
+## Foundation Layer
+1. Express server configuration
+2. Database connection and configuration
+3. Basic middleware setup (body parsing, CORS, etc.)
+4. Authentication system
+5. Error handling patterns
+
+## Core Data Layer
+1. Product model and CRUD operations
+2. User model and management
+3. CSV import functionality
+4. Validation middleware
+5. File handling utilities
+
+## Business Logic Layer
+1. Order processing system
+2. Baking list generation
+3. Production planning logic
+4. Inventory management
+5. Reporting utilities
+
+## Advanced Features Layer
+1. Cash transaction tracking
+2. Chat system implementation
+3. Analytics aggregation
+4. Background processing
+5. Data export functionality
+
+# Risks and Mitigations
+## Technical Challenges
+- **Risk**: Data integrity issues during CSV import
+  - **Mitigation**: Robust validation, transaction support, and rollback capabilities
+- **Risk**: Authentication security vulnerabilities
+  - **Mitigation**: Regular security audits, token expiration, HTTPS enforcement
+
+## Performance Concerns
+- **Risk**: Database performance with large product catalogs
+  - **Mitigation**: Indexing, query optimization, pagination
+- **Risk**: API response times under heavy load
+  - **Mitigation**: Caching strategies, rate limiting, performance monitoring
+
+## Operational Risks
+- **Risk**: Data loss or corruption
+  - **Mitigation**: Automated backups, transaction logging, data validation
+- **Risk**: Deployment complications
+  - **Mitigation**: CI/CD pipeline, containerization, environment parity
+
+# Appendix
+## Database Schema Details
+- All tables include standard timestamps (created_at, updated_at)
+- Foreign key relationships with appropriate cascading
+- Indexes on frequently queried fields
+- SQLite for development, PostgreSQL option for production
+
+## API Standards
+- RESTful design principles
+- JSON response format with consistent structure:

@@ -1,0 +1,82 @@
+[
+  {
+    "key": "staff.sick_leave",
+    "name": "Sick Leave",
+    "category": "staff",
+    "defaultTitle": {
+      "de": "Krankmeldung",
+      "en": "Sick Leave Notification"
+    },
+    "defaultMessage": {
+      "de": "{{staffName}} hat sich für {{date}} krank gemeldet. {{coverageInfo}}",
+      "en": "{{staffName}} has called in sick for {{date}}. {{coverageInfo}}"
+    },
+    "variables": ["staffName", "date", "coverageInfo"],
+    "defaultPriority": "high",
+    "defaultType": "warning"
+  },
+  {
+    "key": "staff.shift_change",
+    "name": "Shift Change",
+    "category": "staff",
+    "defaultTitle": {
+      "de": "Schichtänderung",
+      "en": "Shift Change"
+    },
+    "defaultMessage": {
+      "de": "{{staffName}} hat die Schicht für {{date}} geändert. Neue Zeit: {{newTime}}. Grund: {{reason}}",
+      "en": "{{staffName}} has changed their shift for {{date}}. New time: {{newTime}}. Reason: {{reason}}"
+    },
+    "variables": ["staffName", "date", "newTime", "reason"],
+    "defaultPriority": "medium",
+    "defaultType": "info"
+  },
+  {
+    "key": "staff.new_employee",
+    "name": "New Employee",
+    "category": "staff",
+    "defaultTitle": {
+      "de": "Neuer Mitarbeiter",
+      "en": "New Employee"
+    },
+    "defaultMessage": {
+      "de": "{{staffName}} wurde dem Team hinzugefügt. Position: {{position}}. Startdatum: {{startDate}}",
+      "en": "{{staffName}} has joined the team. Position: {{position}}. Start date: {{startDate}}"
+    },
+    "variables": ["staffName", "position", "startDate"],
+    "defaultPriority": "low",
+    "defaultType": "info"
+  },
+  {
+    "key": "staff.shift_reminder",
+    "name": "Shift Reminder",
+    "category": "staff",
+    "defaultTitle": {
+      "de": "Schichterinnerung",
+      "en": "Shift Reminder"
+    },
+    "defaultMessage": {
+      "de": "Erinnerung: Sie haben morgen ({{date}}) Schicht von {{startTime}} bis {{endTime}}.",
+      "en": "Reminder: You have a shift tomorrow ({{date}}) from {{startTime}} to {{endTime}}."
+    },
+    "variables": ["date", "startTime", "endTime"],
+    "defaultPriority": "low",
+    "defaultType": "info"
+  },
+  {
+    "key": "staff.schedule_published",
+    "name": "Schedule Published",
+    "category": "staff",
+    "defaultTitle": {
+      "de": "Dienstplan veröffentlicht",
+      "en": "Schedule Published"
+    },
+    "defaultMessage": {
+      "de": "Der Dienstplan für {{weekStart}} bis {{weekEnd}} wurde veröffentlicht. Bitte überprüfen Sie Ihre Schichten.",
+      "en": "The schedule for {{weekStart}} to {{weekEnd}} has been published. Please check your shifts."
+    },
+    "variables": ["weekStart", "weekEnd"],
+    "defaultPriority": "medium",
+    "defaultType": "info"
+  }
+]

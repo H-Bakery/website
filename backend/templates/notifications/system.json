@@ -1,0 +1,82 @@
+[
+  {
+    "key": "system.backup_complete",
+    "name": "Backup Complete",
+    "category": "system",
+    "defaultTitle": {
+      "de": "Backup abgeschlossen",
+      "en": "Backup Complete"
+    },
+    "defaultMessage": {
+      "de": "System-Backup wurde erfolgreich durchgeführt. Größe: {{backupSize}}. Dauer: {{duration}} Minuten.",
+      "en": "System backup completed successfully. Size: {{backupSize}}. Duration: {{duration}} minutes."
+    },
+    "variables": ["backupSize", "duration"],
+    "defaultPriority": "low",
+    "defaultType": "success"
+  },
+  {
+    "key": "system.maintenance_scheduled",
+    "name": "Maintenance Scheduled",
+    "category": "system",
+    "defaultTitle": {
+      "de": "Wartung geplant",
+      "en": "Maintenance Scheduled"
+    },
+    "defaultMessage": {
+      "de": "Systemwartung geplant für {{date}} von {{startTime}} bis {{endTime}}. {{affectedServices}}",
+      "en": "System maintenance scheduled for {{date}} from {{startTime}} to {{endTime}}. {{affectedServices}}"
+    },
+    "variables": ["date", "startTime", "endTime", "affectedServices"],
+    "defaultPriority": "medium",
+    "defaultType": "warning"
+  },
+  {
+    "key": "system.error",
+    "name": "System Error",
+    "category": "system",
+    "defaultTitle": {
+      "de": "Systemfehler",
+      "en": "System Error"
+    },
+    "defaultMessage": {
+      "de": "Systemfehler aufgetreten: {{errorMessage}}. Betroffener Bereich: {{component}}. Bitte IT kontaktieren.",
+      "en": "System error occurred: {{errorMessage}}. Affected area: {{component}}. Please contact IT."
+    },
+    "variables": ["errorMessage", "component"],
+    "defaultPriority": "urgent",
+    "defaultType": "error"
+  },
+  {
+    "key": "system.update_available",
+    "name": "Update Available",
+    "category": "system",
+    "defaultTitle": {
+      "de": "Update verfügbar",
+      "en": "Update Available"
+    },
+    "defaultMessage": {
+      "de": "Version {{version}} ist verfügbar. {{updateDescription}}. Bitte planen Sie ein Update-Fenster.",
+      "en": "Version {{version}} is available. {{updateDescription}}. Please schedule an update window."
+    },
+    "variables": ["version", "updateDescription"],
+    "defaultPriority": "low",
+    "defaultType": "info"
+  },
+  {
+    "key": "system.security_alert",
+    "name": "Security Alert",
+    "category": "system",
+    "defaultTitle": {
+      "de": "Sicherheitswarnung",
+      "en": "Security Alert"
+    },
+    "defaultMessage": {
+      "de": "{{alertType}}: {{description}}. Benutzer: {{userName}}, IP: {{ipAddress}}. Sofortige Überprüfung erforderlich.",
+      "en": "{{alertType}}: {{description}}. User: {{userName}}, IP: {{ipAddress}}. Immediate review required."
+    },
+    "variables": ["alertType", "description", "userName", "ipAddress"],
+    "defaultPriority": "urgent",
+    "defaultType": "error"
+  }
+]
