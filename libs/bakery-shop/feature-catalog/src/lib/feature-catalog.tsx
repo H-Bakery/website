@@ -1,11 +1,4 @@
-import styles from './feature-catalog.module.css'
-
-export function FeatureCatalog() {
-  return (
-    <div className={styles['container']}>
-      <h1>Welcome to FeatureCatalog!</h1>
-    </div>
-  )
-}
-
-export default FeatureCatalog
+// Export all catalog feature components
+export { default as CatalogPage } from './catalog-page'
+export { default as ProductDetailPage } from './product-detail-page'
+export { default as ProductsInfo } from './products-info'
