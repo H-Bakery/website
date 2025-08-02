@@ -105,6 +105,7 @@ const ChatPage: React.FC = () => {
     const interval = setInterval(fetchMessages, 3000) // Poll every 3 seconds
 
     return () => clearInterval(interval)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token])
 
   if (loading) {

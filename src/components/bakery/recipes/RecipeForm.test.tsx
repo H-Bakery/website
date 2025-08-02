@@ -108,7 +108,7 @@ describe('RecipeForm Component', () => {
         prepTime: '45 mins',
         description: 'Classic Italian dish',
         ingredients: [{ name: 'Minced Beef', quantity: '500g' }],
-        instructions: ['Sauté onions', 'Add beef', 'Simmer with tomatoes'],
+        instructions: 'Sauté onions\nAdd beef\nSimmer with tomatoes',
       })
     })
   })
@@ -155,7 +155,7 @@ describe('RecipeForm Component', () => {
           { name: 'Flour', quantity: '1.5 cups' }, // Changed
           { name: 'Milk', quantity: '1 cup' },
         ],
-        instructions: mockRecipeToEdit.instructions, // Submitted as array
+        instructions: 'Mix ingredients\nCook on griddle', // Submitted as string
       })
     })
   })

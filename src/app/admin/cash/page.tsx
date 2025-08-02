@@ -59,6 +59,7 @@ const CashManagement: React.FC = () => {
 
   useEffect(() => {
     fetchCashHistory()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const fetchCashHistory = async () => {
