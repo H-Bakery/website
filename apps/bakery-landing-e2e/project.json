@@ -1,0 +1,25 @@
+{
+  "name": "bakery-landing-e2e",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/bakery-landing-e2e/src",
+  "projectType": "application",
+  "tags": ["type:e2e"],
+  "implicitDependencies": ["bakery-landing"],
+  "targets": {
+    "e2e": {
+      "executor": "@nx/playwright:playwright",
+      "outputs": ["{workspaceRoot}/dist/.playwright/apps/bakery-landing-e2e"],
+      "options": {
+        "config": "apps/bakery-landing-e2e/playwright.config.ts"
+      }
+    },
+    "e2e-ci": {
+      "executor": "@nx/playwright:playwright",
+      "outputs": ["{workspaceRoot}/dist/.playwright/apps/bakery-landing-e2e"],
+      "options": {
+        "config": "apps/bakery-landing-e2e/playwright.config.ts",
+        "skipServe": true
+      }
+    }
+  }
+}
