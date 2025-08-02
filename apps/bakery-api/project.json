@@ -1,30 +1,43 @@
 {
-  "name": "backend",
-  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "name": "bakery-api",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "projectType": "application",
-  "sourceRoot": "backend",
+  "sourceRoot": "apps/bakery-api/src",
   "targets": {
     "serve": {
       "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "buildTarget": "bakery-api:build",
+        "command": "node dist/apps/bakery-api/main.js"
+      }
+    },
+    "serve-legacy": {
+      "executor": "nx:run-commands",
       "options": {
         "command": "node index.js",
-        "cwd": "backend"
+        "cwd": "apps/bakery-api"
       }
     },
     "build": {
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
+      "dependsOn": ["^build"],
       "options": {
-        "outputPath": "dist/backend",
-        "main": "backend/index.js",
-        "tsConfig": "backend/tsconfig.json",
-        "assets": ["backend/assets"]
+        "outputPath": "dist/apps/bakery-api",
+        "main": "apps/bakery-api/src/main.ts",
+        "tsConfig": "apps/bakery-api/tsconfig.app.json",
+        "assets": [
+          "apps/bakery-api/bakery",
+          "apps/bakery-api/content",
+          "apps/bakery-api/templates"
+        ]
       }
     },
     "test": {
       "executor": "@nx/jest:jest",
       "options": {
-        "jestConfig": "backend/jest.config.js",
+        "jestConfig": "apps/bakery-api/jest.config.js",
         "passWithNoTests": true
       }
     }
