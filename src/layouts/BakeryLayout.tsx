@@ -54,6 +54,7 @@ import ChatIcon from '@mui/icons-material/Chat'
 import Image from 'next/image'
 import '../app/print.css'
 import ThemeToggler from '../components/theme/ThemeToggler'
+import NotificationBell from '../components/admin/notifications/NotificationBell'
 
 // Define types for user role
 type UserRole = 'Management' | 'Production' | 'Sales'
@@ -426,13 +427,9 @@ const BakeryLayout: React.FC<BakeryLayoutProps> = ({ children }) => {
             </Tooltip>
 
             {/* Notifications */}
-            <Tooltip title="Benachrichtigungen">
-              <IconButton color="inherit" size="small" sx={{ ml: 1 }}>
-                <Badge badgeContent={3} color="error">
-                  <NotificationsIcon />
-                </Badge>
-              </IconButton>
-            </Tooltip>
+            <Box sx={{ ml: 1 }}>
+              <NotificationBell />
+            </Box>
 
             {/* Theme Toggle Button - only in admin */}
             {isAdminRoute && (

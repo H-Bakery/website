@@ -7,6 +7,7 @@ import { ThemeProvider } from '../../context/ThemeContext'
 import { useTheme } from '../../context/ThemeContext'
 import { lightTheme, darkTheme } from '../../theme'
 import ProtectedRoute from '../../components/auth/ProtectedRoute'
+import { NotificationProvider } from '../../context/NotificationContext'
 
 // Create a client
 const queryClient = new QueryClient()
@@ -48,9 +49,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   return (
     <ThemeProvider>
       <ProtectedRoute>
-        <QueryClientProvider client={queryClient}>
-          <ThemedAdminContent>{children}</ThemedAdminContent>
-        </QueryClientProvider>
+        <NotificationProvider>
+          <QueryClientProvider client={queryClient}>
+            <ThemedAdminContent>{children}</ThemedAdminContent>
+          </QueryClientProvider>
+        </NotificationProvider>
       </ProtectedRoute>
     </ThemeProvider>
   )
