@@ -4,9 +4,9 @@ import { TextFieldProps, TextField } from '@mui/material'
 
 /**
  * Enhanced input props extending Material UI TextFieldProps
- * @interface InputProps
+ * @type InputProps
  */
-export interface InputProps extends TextFieldProps {
+export type InputProps = TextFieldProps & {
   /** Custom icon to display in the input */
   icon?: React.ReactNode
 }
@@ -48,7 +48,8 @@ export interface InputProps extends TextFieldProps {
  */
 export const Input: React.FC<InputProps> = ({
   icon,
-  InputProps: inputProps,
+  InputProps: inputPropsFromParent,
+  sx,
   ...props
 }) => {
   return (
@@ -58,7 +59,7 @@ export const Input: React.FC<InputProps> = ({
       fullWidth
       InputProps={{
         startAdornment: icon,
-        ...inputProps,
+        ...inputPropsFromParent,
       }}
       sx={{
         mb: 2,
@@ -100,7 +101,7 @@ export const Input: React.FC<InputProps> = ({
           bgcolor: 'error.lighter',
         },
 
-        ...props.sx,
+        ...sx,
       }}
     />
   )

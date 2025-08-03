@@ -1,6 +1,6 @@
 import { Box, Container, Typography } from '@mui/material'
 import React from 'react'
-import { DividerIcon } from '../icons/brand/divider-icon'
+import { DividerIcon } from '../icons'
 
 /**
  * Hero section component props

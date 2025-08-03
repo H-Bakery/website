@@ -1,10 +1,10 @@
 import '@testing-library/jest-dom'
+import React from 'react'
 
 // Mock Next.js Image component globally
 jest.mock('next/image', () => {
   const MockImage = ({ src, alt, ...props }: any) => {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt={alt} {...props} />
+    return React.createElement('img', { src, alt, ...props })
   }
   MockImage.displayName = 'Image'
   return MockImage
@@ -13,11 +13,7 @@ jest.mock('next/image', () => {
 // Mock Next.js Link component globally
 jest.mock('next/link', () => {
   return function MockLink({ children, href, ...props }: any) {
-    return (
-      <a href={href} {...props}>
-        {children}
-      </a>
-    )
+    return React.createElement('a', { href, ...props }, children)
   }
 })
 
