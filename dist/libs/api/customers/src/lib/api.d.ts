@@ -1,1 +1,1 @@
-export declare function api(): string
+export declare function api(): string;

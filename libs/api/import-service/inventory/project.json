@@ -1,0 +1,27 @@
+{
+  "name": "api-inventory",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/inventory/src",
+  "projectType": "library",
+  "tags": ["scope:api", "type:feature"],
+  "implicitDependencies": ["api-core", "event-bus", "types"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/inventory",
+        "main": "libs/api/inventory/src/index.ts",
+        "tsConfig": "libs/api/inventory/tsconfig.lib.json",
+        "assets": ["libs/api/inventory/*.md"]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/api/inventory/jest.config.ts"
+      }
+    }
+  }
+}

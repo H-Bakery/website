@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../../dist/out-tsc",
+    "declaration": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@bakery/api/core": ["../../../dist/libs/api/core/src/index.d.ts"],
+      "@bakery/api/event-bus": ["../../../dist/libs/api/event-bus/src/index.d.ts"],
+      "@bakery/api/types": ["../../../dist/libs/api/types/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts"]
+}
