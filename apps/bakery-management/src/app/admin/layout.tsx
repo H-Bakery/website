@@ -26,6 +26,7 @@ import {
   Category as ProductsIcon,
   Factory as ProductionIcon,
   Store as ShopIcon,
+  Assessment as ReportsIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -46,6 +47,7 @@ const iconMap: Record<string, React.ReactElement> = {
   products: <ProductsIcon />,
   baking: <BakingListIcon />,
   delivery: <DeliveryIcon />,
+  reports: <ReportsIcon />,
   shop: <ShopIcon />,
 }
 

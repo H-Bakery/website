@@ -1,0 +1,10 @@
+{
+  "name": "reports-e2e",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "reports-e2e/src",
+  "tags": [],
+  "implicitDependencies": ["reports"],
+  "// targets": "to see all targets run: nx show project reports-e2e --web",
+  "targets": {}
+}
