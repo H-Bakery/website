@@ -14,7 +14,7 @@ export interface NewsItem {
   content?: string
 }
 
-const newsDirectory = path.join(process.cwd(), 'content/news')
+const newsDirectory = path.join(process.cwd(), '../../content/news')
 
 export function getAllNews(): NewsItem[] {
   try {

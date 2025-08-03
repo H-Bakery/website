@@ -1,77 +1,17 @@
 'use client'
 import React from 'react'
-import { Box, Container, Typography, Button } from '@mui/material'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import { ArrowBack as BackIcon } from '@mui/icons-material'
-
-// Simple theme for landing page
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#D038BA',
-    },
-  },
-  typography: {
-    fontFamily: '"Playfair Display", "Lora", "Ubuntu", serif',
-    h1: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 700,
-    },
-    h2: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 700,
-    },
-  },
-})
+import { Box, Container, Typography } from '@mui/material'
+import Base from '../../layouts/Base'
+import Hero from '../../components/Hero'
 
 export default function ImprintPage() {
   return (
-    <ThemeProvider theme={theme}>
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-        {/* Header */}
-        <Box
-          component="header"
-          sx={{ bgcolor: 'primary.main', color: 'white', py: 2 }}
-        >
-          <Container maxWidth="lg">
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <Typography
-                variant="h4"
-                component="h1"
-                sx={{ fontWeight: 'bold' }}
-              >
-                Bäckerei Heusser
-              </Typography>
-              <Button
-                variant="outlined"
-                sx={{ color: 'white', borderColor: 'white' }}
-                startIcon={<BackIcon />}
-                href="/"
-              >
-                Zurück
-              </Button>
-            </Box>
-          </Container>
-        </Box>
-
-        {/* Hero Section */}
-        <Box sx={{ bgcolor: 'grey.50', py: 6 }}>
-          <Container maxWidth="lg">
-            <Typography variant="h1" component="h2" align="center">
-              Impressum
-            </Typography>
-          </Container>
-        </Box>
-
-        {/* Imprint Content */}
-        <Container maxWidth="sm" sx={{ py: 6 }}>
-          <Box>
+    <Base>
+      <Hero title="Impressum" />
+      
+      {/* Imprint Content */}
+      <Container maxWidth="sm" sx={{ py: 6 }}>
+        <Box>
             <Typography variant="h5" gutterBottom>
               Angaben gemäß § 5 TMG
             </Typography>
@@ -180,23 +120,8 @@ export default function ImprintPage() {
               Verwertung außerhalb der Grenzen des Urheberrechtes bedürfen der
               schriftlichen Zustimmung des jeweiligen Autors bzw. Erstellers.
             </Typography>
-          </Box>
-        </Container>
-
-        {/* Footer */}
-        <Box
-          component="footer"
-          sx={{ bgcolor: 'grey.900', color: 'white', py: 4 }}
-        >
-          <Container maxWidth="lg">
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="body2" color="grey.400">
-                © 2024 Bäckerei Heusser. Alle Rechte vorbehalten.
-              </Typography>
-            </Box>
-          </Container>
         </Box>
-      </Box>
-    </ThemeProvider>
+      </Container>
+    </Base>
   )
 }

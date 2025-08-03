@@ -8,10 +8,10 @@ import {
   useTheme,
   useMediaQuery,
   Container,
+  Button,
 } from '@mui/material'
 import Info from './Info'
 import { ZEITEN } from './zeiten'
-import Button from '../../button/Index'
 import DynamicMap from './DynamicMap'
 import DirectionsIcon from '@mui/icons-material/Directions'
 

@@ -12,6 +12,41 @@
       "options": {
         "jestConfig": "apps/bakery-landing/jest.config.ts"
       }
+    },
+    "export": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["next:build"],
+      "options": {
+        "cwd": "apps/bakery-landing",
+        "command": "next export"
+      },
+      "outputs": ["{projectRoot}/out"]
+    },
+    "build-static": {
+      "executor": "nx:run-commands",
+      "options": {
+        "commands": [
+          "nx next:build bakery-landing",
+          "nx export bakery-landing"
+        ],
+        "parallel": false
+      },
+      "outputs": ["{projectRoot}/out"]
+    },
+    "build-static-standalone": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/bakery-landing",
+        "command": "npx next build"
+      },
+      "outputs": ["{projectRoot}/out"],
+      "metadata": {
+        "description": "Standalone static build without shared library dependencies",
+        "help": {
+          "command": "nx build-static-standalone bakery-landing",
+          "example": "Build landing page for static deployment"
+        }
+      }
     }
   }
 }

@@ -1,5 +1,5 @@
 'use client'
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 import { Box, Button, Typography } from '@mui/material'
@@ -18,8 +18,13 @@ interface MapProps {
 }
 
 export default function Map({ position, name, address }: MapProps) {
+  const mapRef = useRef<any>(null)
+  const isInitialized = useRef(false)
+
   // Fix Leaflet icons - using bracket notation for _getIconUrl
   useEffect(() => {
+    if (isInitialized.current) return
+    
     // @ts-ignore - TypeScript doesn't like accessing private properties
     delete L.Icon.Default.prototype['_getIconUrl']
 
@@ -28,6 +33,18 @@ export default function Map({ position, name, address }: MapProps) {
       iconRetinaUrl: markerIcon2x.src || markerIcon2x,
       shadowUrl: markerShadow.src || markerShadow,
     })
+    
+    isInitialized.current = true
+  }, [])
+
+  // Cleanup function
+  useEffect(() => {
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove()
+        mapRef.current = null
+      }
+    }
   }, [])
 
   // Create Google Maps direction URL
@@ -36,10 +53,12 @@ export default function Map({ position, name, address }: MapProps) {
   return (
     <Box sx={{ height: '100%', width: '100%', position: 'relative' }}>
       <MapContainer
+        ref={mapRef}
         center={position}
         zoom={15}
         style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={false}
+        key={`map-${position[0]}-${position[1]}`}
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

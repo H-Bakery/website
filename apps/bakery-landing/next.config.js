@@ -11,6 +11,17 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  // Exclude API files from static export
+  webpack: (config) => {
+    config.module.rules.push({
+      test: /\.ts$/,
+      exclude: [
+        /\/apps\/bakery-api\//,
+        /\/libs\/api\//,
+      ],
+    });
+    return config;
+  },
   // Use this to set Nx-specific options
   // See: https://nx.dev/recipes/next/next-config-setup
   nx: {},

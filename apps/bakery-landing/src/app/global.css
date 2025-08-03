@@ -408,3 +408,56 @@ summary svg {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Additional styles from legacy globals.css */
+
+/* Optimize font loading */
+@font-face {
+  font-family: 'Playfair Display';
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Lora';
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  font-display: swap;
+}
+
+/* Optimized transitions for interactive elements only */
+*:focus,
+*:hover,
+*:active {
+  transition: color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+
+/* Disable animations for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Smooth page transitions */
+body {
+  animation: pageLoad 0.6s ease-out;
+}
+
+@keyframes pageLoad {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

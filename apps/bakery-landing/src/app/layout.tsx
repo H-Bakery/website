@@ -1,4 +1,8 @@
 import './global.css'
+import ThemeRegistry from '../components/providers/ThemeRegistry'
+import { Header } from '../components/header'
+import Footer from '../components/footer/Index'
+import { Box } from '@mui/material'
 
 export const metadata = {
   title:
@@ -27,7 +31,7 @@ export const metadata = {
     siteName: 'Bäckerei Heusser',
     images: [
       {
-        url: '/og-image.jpg',
+        url: '/og-image.svg',
         width: 1200,
         height: 630,
         alt: 'Bäckerei Heusser - Frische Backwaren',
@@ -122,7 +126,25 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <ThemeRegistry>
+          <Box
+            sx={{
+              background:
+                'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #D8E1F4',
+              minHeight: '100vh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
+          >
+            <Header />
+            <Box component="main" sx={{ flex: 1, minHeight: 'calc(100vh - 332px)' }}>
+              {children}
+            </Box>
+            <Footer />
+          </Box>
+        </ThemeRegistry>
+      </body>
     </html>
   )
 }

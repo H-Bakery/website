@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -24,9 +24,9 @@ import LocalFloristIcon from '@mui/icons-material/LocalFlorist'
 import Image from 'next/image'
 import { keyframes } from '@mui/system'
 
-import { formatter } from '../../../utils/formatPrice'
-import { CartContext } from '../../../context/CartContext'
-import { Product } from '../../../types/product'
+import { formatCurrency } from '@bakery/shared/utils'
+// import { useCart } from '@bakery/shared/contexts' // Not needed for static export
+import { Product } from '@bakery/shared/types'
 
 // Animation keyframes
 const pulse = keyframes`
@@ -70,7 +70,12 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
     ...product
   } = props
 
-  const { addToCart } = useContext(CartContext)
+  // For static landing page, cart functionality is optional
+  const addToCartHandler = () => {
+    // For static export, we can redirect to shop or show a message
+    console.log('Add to cart clicked - redirect to shop page')
+    router.push('/shop?product=' + product.id)
+  }
   const router = useRouter()
   const [isFavorite, setIsFavorite] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
@@ -82,7 +87,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
 
   const handleAddToCart = (event: React.MouseEvent) => {
     event.stopPropagation()
-    addToCart(product)
+    addToCartHandler()
     setAddedToCart(true)
     setTimeout(() => setAddedToCart(false), 2000)
   }
@@ -146,7 +151,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
             <Image
               width={280}
               height={200}
-              src={product.image}
+              src={product.imageUrl || '/placeholder-product.jpg'}
               alt={`Bild von ${product.name}`}
               style={{
                 width: '100%',
@@ -201,7 +206,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
               sx={styles.categoryChip}
             />
             <Typography variant="h6" component="p" sx={styles.price}>
-              {formatter.format(product.price)}
+              {formatCurrency(product.price)}
             </Typography>
           </Box>
         </CardContent>

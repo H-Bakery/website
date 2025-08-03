@@ -1,4 +1,4 @@
-import React, { useContext } from 'react'
+import React from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Box,
@@ -14,14 +14,17 @@ import {
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import Image from 'next/image'
 
-import { formatter } from '../../../utils/formatPrice'
-import { CartContext } from '../../../context/CartContext'
-import { Product } from '../../../types/product'
+import { formatCurrency } from '@bakery/shared/utils'
+// import { CartContext } from '../../../context/CartContext' // Not needed for static export
+import { Product } from '@bakery/shared/types'
 
 interface Props extends Product {}
 
 const ProductCard: React.FC<Props> = (props) => {
-  const { addToCart } = useContext(CartContext)
+  // Static export - no cart functionality needed
+  const addToCartHandler = () => {
+    console.log('Navigate to shop for full cart functionality')
+  }
   const router = useRouter()
 
   const handleCardClick = () => {
@@ -37,7 +40,7 @@ const ProductCard: React.FC<Props> = (props) => {
 
   const handleAddToCart = (event: React.MouseEvent) => {
     event.stopPropagation()
-    addToCart(props)
+    addToCartHandler()
   }
 
   return (
@@ -46,7 +49,7 @@ const ProductCard: React.FC<Props> = (props) => {
         onClick={handleCardClick}
         onKeyDown={handleKeyPress}
         tabIndex={0}
-        aria-label={`Produkt anzeigen: ${props.name}, Preis: ${formatter.format(
+        aria-label={`Produkt anzeigen: ${props.name}, Preis: ${formatCurrency(
           props.price
         )}`}
       >
@@ -54,7 +57,7 @@ const ProductCard: React.FC<Props> = (props) => {
           <Image
             width={200}
             height={150}
-            src={props.image}
+            src={props.imageUrl || '/placeholder-product.jpg'}
             alt={`Bild von ${props.name}`}
             style={{
               maxWidth: '85%',
@@ -94,9 +97,9 @@ const ProductCard: React.FC<Props> = (props) => {
               variant="button"
               fontWeight="bold"
               fontSize="16px"
-              aria-label={`Preis: ${formatter.format(props.price)}`}
+              aria-label={`Preis: ${formatCurrency(props.price)}`}
             >
-              {formatter.format(props.price)}
+              {formatCurrency(props.price)}
             </Typography>
           </Box>
         </CardContent>

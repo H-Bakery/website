@@ -1,6 +1,5 @@
-import { Box, Container, Typography } from '@mui/material'
+import { Box, Container, Typography, Divider } from '@mui/material'
 import React from 'react'
-import { DividerIcon as Divider } from '@bakery/shared/ui'
 
 interface Props {
   title: string
@@ -32,11 +31,12 @@ const Hero: React.FC<Props> = (props) => {
           textAlign="center"
           sx={{
             fontSize: { xs: '8vw', md: '3rem' },
+            mb: 2,
           }}
         >
           {title}
         </Typography>
-        <Divider />
+        <Divider sx={{ width: '60%', maxWidth: 400 }} />
       </Container>
     </Box>
   )

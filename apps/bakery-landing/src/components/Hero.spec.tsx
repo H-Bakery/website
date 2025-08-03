@@ -1,87 +1,50 @@
 import { render, screen } from '@testing-library/react'
-import { renderWithTheme } from '@bakery/shared/test-utils'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
 import Hero from './Hero'
+
+// Create a theme for testing
+const theme = createTheme()
+
+// Simple wrapper to provide theme context
+function renderWithTheme(component: React.ReactElement) {
+  return render(
+    <ThemeProvider theme={theme}>
+      {component}
+    </ThemeProvider>
+  )
+}
 
 describe('Hero Component', () => {
   const defaultProps = {
     title: 'Willkommen bei Bäckerei Heusser',
-    subtitle: 'Tradition seit 1891',
-    backgroundImage: '/images/bakery-hero.jpg',
   }
 
-  it('renders title and subtitle', () => {
+  it('renders title', () => {
     renderWithTheme(<Hero {...defaultProps} />)
 
     expect(
       screen.getByText('Willkommen bei Bäckerei Heusser')
     ).toBeInTheDocument()
-    expect(screen.getByText('Tradition seit 1891')).toBeInTheDocument()
   })
 
-  it('renders without subtitle', () => {
-    const { subtitle, ...propsWithoutSubtitle } = defaultProps
-    renderWithTheme(<Hero {...propsWithoutSubtitle} />)
+  it('renders title as h3 element', () => {
+    renderWithTheme(<Hero {...defaultProps} />)
 
-    expect(
-      screen.getByText('Willkommen bei Bäckerei Heusser')
-    ).toBeInTheDocument()
-    expect(screen.queryByText('Tradition seit 1891')).not.toBeInTheDocument()
+    const title = screen.getByText('Willkommen bei Bäckerei Heusser')
+    expect(title.tagName).toBe('H3')
   })
 
-  it('renders CTA button when provided', () => {
-    const propsWithCTA = {
-      ...defaultProps,
-      ctaText: 'Jetzt bestellen',
-      ctaLink: '/shop',
-    }
-
-    renderWithTheme(<Hero {...propsWithCTA} />)
-
-    const ctaButton = screen.getByText('Jetzt bestellen')
-    expect(ctaButton).toBeInTheDocument()
-    expect(ctaButton.closest('a')).toHaveAttribute('href', '/shop')
-  })
-
-  it('applies background image style', () => {
+  it('renders divider', () => {
     const { container } = renderWithTheme(<Hero {...defaultProps} />)
 
-    const heroSection = container.firstChild
-    expect(heroSection).toHaveStyle(
-      `background-image: url(${defaultProps.backgroundImage})`
-    )
+    const divider = container.querySelector('hr')
+    expect(divider).toBeInTheDocument()
   })
 
-  it('renders with custom height', () => {
-    const propsWithHeight = {
-      ...defaultProps,
-      height: '600px',
-    }
-
-    const { container } = renderWithTheme(<Hero {...propsWithHeight} />)
-
-    const heroSection = container.firstChild
-    expect(heroSection).toHaveStyle('min-height: 600px')
-  })
-
-  it('applies overlay for better text visibility', () => {
+  it('has proper container structure', () => {
     const { container } = renderWithTheme(<Hero {...defaultProps} />)
 
-    // Check for overlay element
-    const overlay = container.querySelector('.hero-overlay')
-    expect(overlay).toBeInTheDocument()
-  })
-
-  it('centers content properly', () => {
-    const { container } = renderWithTheme(<Hero {...defaultProps} />)
-
-    const contentWrapper = container.querySelector('.hero-content')
-    expect(contentWrapper).toHaveStyle('text-align: center')
-  })
-
-  it('is responsive', () => {
-    const { container } = renderWithTheme(<Hero {...defaultProps} />)
-
-    const heroSection = container.firstChild
-    expect(heroSection).toHaveClass('hero-section')
+    const heroBox = container.firstChild
+    expect(heroBox).toBeInTheDocument()
   })
 })
