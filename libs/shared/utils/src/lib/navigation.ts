@@ -28,7 +28,8 @@ export interface NavigationItem {
   label: string
   href: string
   external?: boolean
-  icon?: React.ReactNode
+  icon?: string
+  description?: string
 }
 
 /**
@@ -46,17 +47,110 @@ export interface BreadcrumbItem {
 }
 
 /**
+ * Landing page navigation items
+ */
+export const LANDING_NAVIGATION: NavigationItem[] = [
+  { label: 'Home', href: '/', external: false },
+  { label: 'About', href: '/about', external: false },
+  { label: 'Contact', href: '/contact', external: false },
+]
+
+/**
+ * Management system navigation items
+ */
+export const MANAGEMENT_NAVIGATION: NavigationItem[] = [
+  {
+    label: 'Dashboard',
+    href: '/admin',
+    icon: 'dashboard',
+    description: 'Übersicht',
+  },
+  {
+    label: 'Bestellungen',
+    href: '/admin/orders',
+    icon: 'orders',
+    description: 'Bestellverwaltung',
+  },
+  {
+    label: 'Produktion',
+    href: '/admin/production',
+    icon: 'production',
+    description: 'Produktionsplanung',
+  },
+  {
+    label: 'Lagerbestand',
+    href: '/admin/inventory',
+    icon: 'inventory',
+    description: 'Lagerverwaltung',
+  },
+  {
+    label: 'Produkte',
+    href: '/admin/products',
+    icon: 'products',
+    description: 'Produktverwaltung',
+  },
+  {
+    label: 'Backliste',
+    href: '/admin/baking-list',
+    icon: 'baking',
+    description: 'Tägliche Backliste',
+  },
+  {
+    label: 'Lieferung',
+    href: '/admin/delivery',
+    icon: 'delivery',
+    description: 'Lieferverwaltung',
+  },
+  {
+    label: 'Berichte',
+    href: 'http://localhost:4203',
+    icon: 'reports',
+    description: 'Tagesberichte',
+    external: true,
+  },
+  {
+    label: 'Shop',
+    href: 'http://localhost:4201',
+    icon: 'shop',
+    description: 'Zum Shop',
+    external: true,
+  },
+]
+
+/**
+ * App routes configuration
+ */
+export const APP_ROUTES = {
+  landing: {
+    url: 'http://localhost:4200',
+    environment: 'development',
+  },
+  shop: {
+    url: 'http://localhost:4201',
+    environment: 'development',
+  },
+  management: {
+    url: 'http://localhost:4202',
+    environment: 'development',
+  },
+  reports: {
+    url: 'http://localhost:4203',
+    environment: 'development',
+  },
+  api: {
+    url: 'http://localhost:3333',
+    environment: 'development',
+  },
+}
+
+/**
  * Get navigation items for specific app
  */
 export function getNavigationForApp(
   app: 'landing' | 'shop' | 'management'
 ): NavigationItem[] {
   const navigationMap = {
-    landing: [
-      { label: 'Home', href: '/', external: false },
-      { label: 'About', href: '/about', external: false },
-      { label: 'Contact', href: '/contact', external: false },
-    ],
+    landing: LANDING_NAVIGATION,
     shop: [
       { label: 'Products', href: '/products', external: false },
       { label: 'Cart', href: '/cart', external: false },

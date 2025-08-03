@@ -39,6 +39,20 @@ export class ApiClient {
   }
 
   /**
+   * Check if user is authenticated (has valid token)
+   */
+  isAuthenticated(): boolean {
+    return !!this.defaultHeaders['Authorization']
+  }
+
+  /**
+   * Clear all tokens (alias for clearAuthToken for consistency)
+   */
+  clearTokens() {
+    this.clearAuthToken()
+  }
+
+  /**
    * Generic request method
    */
   private async request<T>(

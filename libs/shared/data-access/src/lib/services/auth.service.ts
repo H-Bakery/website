@@ -19,16 +19,29 @@ export class AuthService {
    * Login user with credentials
    */
   async login(
-    credentials: LoginCredentials
+    credentials: any
   ): Promise<ApiResponse<LoginResponse>> {
-    return userService.login(credentials)
+    // Transform auth context credentials to service format
+    const loginData: LoginCredentials = {
+      email: credentials.username || credentials.email,
+      password: credentials.password,
+    }
+    return userService.login(loginData)
   }
 
   /**
    * Register a new user
    */
-  async register(userData: RegisterInput): Promise<ApiResponse<LoginResponse>> {
-    return userService.register(userData)
+  async register(userData: any): Promise<ApiResponse<LoginResponse>> {
+    // Transform auth context data to RegisterInput format
+    const registerData: RegisterInput = {
+      email: userData.email,
+      password: userData.password,
+      firstName: userData.name?.split(' ')[0] || userData.username,
+      lastName: userData.name?.split(' ').slice(1).join(' ') || '',
+      phoneNumber: userData.phone,
+    }
+    return userService.register(registerData)
   }
 
   /**

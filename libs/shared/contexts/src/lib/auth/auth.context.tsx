@@ -218,7 +218,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         if (!isRefreshingRef.current) {
           isRefreshingRef.current = true
           try {
-            await authService.refreshToken()
+            // Get refresh token from storage (simplified for now)
+            const refreshToken = localStorage.getItem('refreshToken') || ''
+            await authService.refreshToken(refreshToken)
           } catch (error) {
             console.error('Token refresh failed:', error)
             // If refresh fails, logout user
@@ -243,8 +245,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         // Check if we have stored tokens
         if (apiClient.isAuthenticated()) {
           // Try to get current user
-          const currentUser = await authService.getCurrentUser()
-          setUser(currentUser)
+          const response = await authService.getCurrentUser()
+          if (response.success && response.data) {
+            setUser(response.data)
+          }
           scheduleRefresh()
         }
       } catch (error) {
@@ -273,7 +277,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
     try {
       const response = await authService.login(credentials)
-      setUser(response.user)
+      if (response.success && response.data?.user) {
+        setUser(response.data.user)
+      }
       scheduleRefresh()
     } catch (error: any) {
       const message = error.message || 'Login failed. Please try again.'
@@ -291,7 +297,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
 
     try {
       const response = await authService.register(data)
-      setUser(response.user)
+      if (response.success && response.data?.user) {
+        setUser(response.data.user)
+      }
       scheduleRefresh()
     } catch (error: any) {
       const message = error.message || 'Registration failed. Please try again.'
@@ -326,8 +334,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     isRefreshingRef.current = true
 
     try {
-      const currentUser = await authService.getCurrentUser()
-      setUser(currentUser)
+      const response = await authService.getCurrentUser()
+      if (response.success && response.data) {
+        setUser(response.data)
+      }
       scheduleRefresh()
     } catch (error: any) {
       const message = error.message || 'Failed to refresh authentication.'
@@ -343,7 +353,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setError(null)
 
     try {
-      await authService.changePassword(data)
+      await authService.changePassword(data.currentPassword, data.newPassword)
     } catch (error: any) {
       const message = error.message || 'Failed to change password.'
       setError(message)
@@ -382,8 +392,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setError(null)
 
     try {
-      const updatedUser = await authService.updateProfile(data)
-      setUser(updatedUser)
+      const response = await authService.updateProfile(data)
+      if (response.success && response.data) {
+        setUser(response.data)
+      }
     } catch (error: any) {
       const message = error.message || 'Failed to update profile.'
       setError(message)

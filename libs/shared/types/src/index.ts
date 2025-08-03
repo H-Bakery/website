@@ -18,6 +18,9 @@ export * from './lib/order'
 // Export notification types
 export * from './lib/notification'
 
+// Export report types
+export * from './lib/report'
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,
@@ -33,6 +36,9 @@ export type {
   CreateProductInput,
   UpdateProductInput,
   ProductFilters,
+} from './lib/product'
+
+export {
   ProductCategory,
   ProductType,
   ProductStatus,
@@ -57,6 +63,9 @@ export type {
   UpdateOrderInput,
   OrderFilters,
   OrderSummary,
+} from './lib/order'
+
+export {
   OrderStatus,
   PaymentStatus,
   PaymentMethod,

@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
-import { Product } from '@bakery/shared/types'
+import { Product, ProductStatus } from '@bakery/shared/types'
 
 /**
  * Cart item with quantity
@@ -195,7 +195,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({
       }
 
       // Check if product is active
-      if (item.isActive === false) {
+      if (item.status === ProductStatus.Discontinued || item.status === ProductStatus.OutOfStock) {
         itemErrors.push('Product is no longer available')
       }
 

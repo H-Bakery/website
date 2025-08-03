@@ -145,9 +145,7 @@ const calculateStats = (notifications: Notification[]): NotificationStats => {
     if (!notification.read) stats.unread++
     stats.byCategory[notification.category]++
     stats.byPriority[notification.priority]++
-    notification.channels?.forEach(channel => {
-      stats.byChannel[channel]++
-    })
+    stats.byChannel[notification.channel]++
   })
 
   return stats
@@ -176,7 +174,7 @@ const filterNotifications = (
 
     // Channel filter
     if (filters.channels?.length) {
-      const hasChannel = notification.channels?.some(ch => filters.channels!.includes(ch))
+      const hasChannel = filters.channels!.includes(notification.channel)
       if (!hasChannel) return false
     }
 
@@ -258,11 +256,15 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     try {
       setIsLoading(true)
       const [notifs, prefs] = await Promise.all([
-        notificationService.getHistory({ limit: maxNotifications }),
+        notificationService.getNotifications(),
         notificationService.getPreferences(),
       ])
-      setNotifications(notifs.notifications)
-      setPreferences(prefs)
+      if (notifs.success && notifs.data) {
+        setNotifications(notifs.data)
+      }
+      if (prefs.success && prefs.data) {
+        setPreferences(prefs.data)
+      }
     } catch (error) {
       console.error('Failed to load notifications:', error)
     } finally {
@@ -272,12 +274,13 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // Show browser notification
   const showBrowserNotification = useCallback((notification: Notification) => {
-    if (!preferences?.browserEnabled) return
+    if (!preferences?.channels?.inApp?.enabled) return
     if (typeof window === 'undefined' || !('Notification' in window)) return
     if (Notification.permission !== 'granted') return
 
     // Check preferences
-    const categoryEnabled = preferences.categoryPreferences?.[notification.category] !== false
+    const inAppSettings = preferences.channels.inApp
+    const categoryEnabled = inAppSettings?.categories?.includes(notification.category) !== false
     if (!categoryEnabled) return
 
     // Check priority threshold
@@ -287,7 +290,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       high: 2,
       urgent: 3,
     }
-    const threshold = priorityOrder[preferences.priorityThreshold] || 0
+    const threshold = priorityOrder[inAppSettings?.minPriority] || 0
     const priority = priorityOrder[notification.priority] || 0
     if (priority < threshold) return
 
@@ -314,7 +317,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     })
 
     // Play sound
-    if (preferences.soundEnabled && audioRef.current) {
+    if (preferences.sound?.enabled && audioRef.current) {
       audioRef.current.play().catch(console.error)
     }
   }, [preferences])
@@ -437,7 +440,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       )
 
       // Send to server
-      await notificationService.cancelNotification(id)
+      await notificationService.deleteNotification(id)
     } catch (error) {
       console.error('Failed to mark as read:', error)
       // Revert on error
@@ -464,7 +467,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       await Promise.all(
         notifications
           .filter(n => !n.read)
-          .map(n => notificationService.cancelNotification(n.id))
+          .map(n => notificationService.deleteNotification(n.id))
       )
     } catch (error) {
       console.error('Failed to mark all as read:', error)
@@ -487,7 +490,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       setNotifications(prev => prev.filter(n => n.id !== id))
 
       // Send to server
-      await notificationService.cancelNotification(id)
+      await notificationService.deleteNotification(id)
     } catch (error) {
       console.error('Failed to delete notification:', error)
       // Reload on error
@@ -508,7 +511,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       // Send to server
       // TODO: Implement bulk delete in service
       await Promise.all(
-        notifications.map(n => notificationService.cancelNotification(n.id))
+        notifications.map(n => notificationService.deleteNotification(n.id))
       )
     } catch (error) {
       console.error('Failed to clear all notifications:', error)
@@ -521,7 +524,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const updatePreferences = useCallback(async (prefs: Partial<NotificationPreferences>) => {
     try {
       const updated = await notificationService.updatePreferences(prefs)
-      setPreferences(updated)
+      if (updated.success && updated.data) {
+        setPreferences(updated.data)
+      }
     } catch (error) {
       console.error('Failed to update preferences:', error)
       throw error
@@ -545,11 +550,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           enabled: false,
           start: '22:00',
           end: '08:00',
+          timezone: 'UTC',
         },
       }
       
       const updated = await notificationService.updatePreferences(defaultPrefs)
-      setPreferences(updated)
+      if (updated.success && updated.data) {
+        setPreferences(updated.data)
+      }
     } catch (error) {
       console.error('Failed to reset preferences:', error)
       throw error
