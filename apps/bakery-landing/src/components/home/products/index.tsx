@@ -1,3 +1,4 @@
+'use client'
 import React from 'react'
 import {
   Box,
@@ -17,7 +18,7 @@ import {
 import SearchIcon from '@mui/icons-material/Search'
 import SortIcon from '@mui/icons-material/Sort'
 import EnhancedProductCard from './EnhancedProductCard'
-import { Product } from '@bakery/shared/types'
+import { Product } from '../../../types/product'
 
 interface Props extends BoxProps {
   header?: React.ReactNode

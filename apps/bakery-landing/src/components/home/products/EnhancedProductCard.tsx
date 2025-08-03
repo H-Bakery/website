@@ -1,3 +1,4 @@
+'use client'
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -24,9 +25,8 @@ import LocalFloristIcon from '@mui/icons-material/LocalFlorist'
 import Image from 'next/image'
 import { keyframes } from '@mui/system'
 
-import { formatCurrency } from '@bakery/shared/utils'
-// import { useCart } from '@bakery/shared/contexts' // Not needed for static export
-import { Product } from '@bakery/shared/types'
+import { formatPrice } from '../../../utils/formatPrice'
+import { Product } from '../../../types/product'
 
 // Animation keyframes
 const pulse = keyframes`
@@ -70,13 +70,14 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
     ...product
   } = props
 
-  // For static landing page, cart functionality is optional
-  const addToCartHandler = () => {
-    // For static export, we can redirect to shop or show a message
-    console.log('Add to cart clicked - redirect to shop page')
-    router.push('/shop?product=' + product.id)
-  }
   const router = useRouter()
+
+  // For static landing page, simplified cart functionality
+  const addToCartHandler = () => {
+    // For static export, show interest instead of adding to cart
+    console.log('Interest shown for product:', product.name)
+    // Could show a modal or redirect to contact page
+  }
   const [isFavorite, setIsFavorite] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
   const [addedToCart, setAddedToCart] = useState(false)
@@ -151,7 +152,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
             <Image
               width={280}
               height={200}
-              src={product.imageUrl || '/placeholder-product.jpg'}
+              src={product.image || '/assets/images/products/placeholder.jpg'}
               alt={`Bild von ${product.name}`}
               style={{
                 width: '100%',
@@ -206,14 +207,20 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
               sx={styles.categoryChip}
             />
             <Typography variant="h6" component="p" sx={styles.price}>
-              {formatCurrency(product.price)}
+              {formatPrice(product.price)}
             </Typography>
           </Box>
         </CardContent>
       </CardActionArea>
 
       <CardActions sx={styles.actions}>
-        <Tooltip title={addedToCart ? 'Hinzugefügt!' : 'In den Warenkorb'}>
+        <Tooltip
+          title={
+            addedToCart
+              ? 'Interesse gezeigt!'
+              : 'Interesse an diesem Produkt zeigen'
+          }
+        >
           <Button
             variant="contained"
             color="primary"
@@ -226,7 +233,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
               ...(addedToCart && styles.addedToCartButton),
             }}
           >
-            {addedToCart ? 'Hinzugefügt!' : 'In den Warenkorb'}
+            {addedToCart ? 'Interesse gezeigt!' : 'Interesse zeigen'}
           </Button>
         </Tooltip>
       </CardActions>
