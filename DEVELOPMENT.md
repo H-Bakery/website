@@ -107,6 +107,11 @@ npx nx run-many --target=build --all
 
 # Build specific application
 npx nx build bakery-shop
+
+# Static builds (Landing Page)
+npm run build:landing:static              # Standalone build (recommended)
+nx build-static-standalone bakery-landing # Direct Nx command
+npm run build:landing:nx                  # Nx integrated build
 ```
 
 ### 3. Testing
@@ -186,13 +191,28 @@ npx nx graph --focus=shared-ui
 
 ## Production Deployment
 
-### Landing Page (GitHub Pages)
+### Landing Page (Static Export)
+
+The landing page is configured for static export and can be deployed to any static hosting provider:
 
 ```bash
-npx nx build bakery-landing
-npx nx export bakery-landing
-# Deploy ./dist/apps/bakery-landing/exported to GitHub Pages
+# Build static files (recommended approach)
+npm run build:landing:static
+
+# Output location: apps/bakery-landing/out/
+# Ready for deployment to GitHub Pages, Vercel, CDN, etc.
 ```
+
+**Deployment Options:**
+- **GitHub Pages**: Upload `out/` contents or use GitHub Actions
+- **Vercel**: Connect repository with auto-deployment
+- **CDN (CloudFlare/AWS)**: Upload `out/` directory
+- **Traditional hosting**: Upload `out/` to web server
+
+**Troubleshooting:**
+- If Nx build fails with shared library errors, use standalone build
+- Ensure all environment variables are properly configured
+- Check that all imports resolve correctly in static build
 
 ### Shop & Management (Vercel)
 

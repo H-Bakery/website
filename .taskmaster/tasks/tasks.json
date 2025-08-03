@@ -24,7 +24,9 @@
             "id": 2,
             "title": "Implement Login and Logout Functions with API Integration",
             "description": "Develop the `login` and `logout` functions within the `AuthProvider`. The `login` function will handle API calls to the backend for authentication, and both functions will manage the JWT in `localStorage` and update the context's state.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Inside `AuthProvider`, create an async `login` function that takes credentials, sends a POST request to the backend's login endpoint, and on success, stores the received JWT in `localStorage` and updates the context state. Create a `logout` function that removes the JWT from `localStorage` and resets the context state to its initial values.",
             "status": "done",
             "testStrategy": "Using a temporary UI or a testing tool, call the `login` function with correct credentials and verify that the `token` is set in `localStorage` and `isAuthenticated` becomes true. Call `logout` and verify the token is removed and state is reset."
@@ -33,7 +35,9 @@
             "id": 3,
             "title": "Create and Export `useAuth` Custom Hook",
             "description": "Create a custom hook named `useAuth` to provide a clean and standardized way for components to access the authentication context's state and functions (`user`, `token`, `login`, `logout`).",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Within the `AuthContext.tsx` file, define and export a new function `useAuth`. This function will use React's `useContext` hook to access the `AuthContext` and return its value. This encapsulates the `useContext` logic, making it easier to consume.",
             "status": "done",
             "testStrategy": "Create a test component that imports and calls the `useAuth` hook. Use `console.log` or display the values on the screen to confirm that it correctly retrieves the `user`, `isAuthenticated` state, and `login`/`logout` functions from the context."
@@ -42,7 +46,9 @@
             "id": 4,
             "title": "Implement Protected Route Logic for Admin Area",
             "description": "Develop the route protection mechanism to secure all pages under the `/admin/*` path, redirecting unauthenticated users to the `/login` page.",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "In the `_app.tsx` file, get the current component and its page properties. Check if the current route (`router.pathname`) starts with `/admin`. If it does, use the `useAuth` hook to check the `isAuthenticated` status. If `false`, programmatically redirect the user to `/login` using `router.push('/login')`. Render a loading state while the check is in progress to avoid a flash of unprotected content.",
             "status": "done",
             "testStrategy": "While logged out, attempt to access any `/admin` URL (e.g., `/admin/dashboard`). Verify that the application immediately redirects to `/login`. After logging in, verify that accessing the same `/admin` URL is now successful."
@@ -51,7 +57,10 @@
             "id": 5,
             "title": "Implement Session Persistence on Application Load",
             "description": "Enhance the `AuthProvider` to check for an existing JWT in `localStorage` when the application first loads. This will re-hydrate the authentication state and maintain the user's session across page refreshes.",
-            "dependencies": [1, 2],
+            "dependencies": [
+              1,
+              2
+            ],
             "details": "Inside the `AuthProvider` component, add a `useEffect` hook with an empty dependency array `[]` so it runs only once on mount. Inside this effect, read the JWT from `localStorage`. If a token exists, set the `token` and `isAuthenticated` states accordingly. Optionally, you can also decode the token to retrieve user data and populate the `user` state.",
             "status": "done",
             "testStrategy": "Log in to the application. Navigate to an admin page. Refresh the browser. Verify that you remain on the admin page and are still logged in, without being redirected to the login page."
@@ -65,7 +74,9 @@
         "details": "Modify the `AdminLayout` component to include a persistent sidebar using Material UI's `<Drawer>`. Populate the sidebar with `<ListItem>` elements linking to all admin pages (`/admin/dashboard`, `/admin/orders`, etc.) using Next.js `<Link>`. Ensure the layout is responsive, with the drawer collapsing to a menu icon on smaller screens. The main content area should be prepared to host dashboard widgets. The header should display user information from the `useAuth` hook.",
         "testStrategy": "Verify the sidebar appears on all admin pages and that navigation links work correctly. Test responsiveness on desktop, tablet, and mobile viewports. Confirm the theme toggle and user display in the header function as expected.",
         "priority": "high",
-        "dependencies": [1],
+        "dependencies": [
+          1
+        ],
         "status": "done",
         "subtasks": [
           {
@@ -81,7 +92,9 @@
             "id": 2,
             "title": "Implement Responsive Navigation Implementation",
             "description": "Add mobile-responsive navigation controls and menu toggle functionality",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Implement the mobile navigation controls including hamburger menu icon, drawer toggle functionality, and proper responsive breakpoints. Ensure the sidebar opens/closes correctly on mobile devices and maintains state appropriately. Add proper touch interactions and keyboard navigation support.",
             "status": "done",
             "testStrategy": ""
@@ -90,7 +103,9 @@
             "id": 3,
             "title": "Integrate Dashboard Widget Areas",
             "description": "Prepare main content area layout structure for hosting dashboard widgets",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Modify the AdminLayout component to include a properly structured main content area that can host dashboard widgets. Set up the grid system and container components using Material UI that will accommodate various widget sizes and layouts. Ensure proper spacing and responsive behavior for the widget container area.",
             "status": "done",
             "testStrategy": ""
@@ -99,7 +114,9 @@
             "id": 4,
             "title": "Implement Header User Display Functionality",
             "description": "Add user information display and theme toggle to the admin header",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Implement the header component that displays user information from the useAuth hook including username, role, and avatar. Add the theme toggle functionality for switching between light and dark modes. Include user menu dropdown with logout option and user profile access. Ensure proper styling and alignment within the header layout.",
             "status": "done",
             "testStrategy": ""
@@ -113,7 +130,10 @@
         "details": "Create a new page at `/admin/chat` within the `AdminLayout`. Develop components for `MessageList`, `MessageItem`, and `MessageInput`. Use the existing API service layer to fetch message history from `GET /chat` and send new messages via `POST /chat`. For real-time updates, implement a polling mechanism using `setInterval` or a library like SWR/React Query with a refetch interval. All API requests must include the JWT Bearer token from the `AuthContext`.",
         "testStrategy": "Confirm that message history loads upon entering the chat page. Send a message and verify it appears for all users (test with two logged-in browser sessions). Ensure the UI updates automatically via polling. Verify that only authenticated users can access or use the chat.",
         "priority": "high",
-        "dependencies": [1, 2],
+        "dependencies": [
+          1,
+          2
+        ],
         "status": "done",
         "subtasks": [
           {
@@ -129,7 +149,9 @@
             "id": 2,
             "title": "Create message display components",
             "description": "Build MessageList and MessageItem components for displaying chat messages with proper styling and user information",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create MessageList component to render array of messages. Build MessageItem component to display individual messages with timestamp, sender name, and message content. Use Material UI components for consistent styling with admin theme.",
             "status": "done",
             "testStrategy": ""
@@ -138,7 +160,9 @@
             "id": 3,
             "title": "Implement message input component",
             "description": "Create MessageInput component for composing and sending new messages with form validation",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Build MessageInput component with text input field and send button. Implement form validation to prevent empty messages. Handle message submission with proper error handling and loading states.",
             "status": "done",
             "testStrategy": ""
@@ -147,7 +171,10 @@
             "id": 4,
             "title": "Integrate chat API endpoints",
             "description": "Connect components to existing chat backend API for fetching messages and sending new ones",
-            "dependencies": [2, 3],
+            "dependencies": [
+              2,
+              3
+            ],
             "details": "Update bakeryAPI.ts service to include chat endpoints (GET /chat for history, POST /chat for new messages). Ensure all requests include JWT Bearer token from AuthContext. Handle API errors gracefully with user feedback.",
             "status": "done",
             "testStrategy": ""
@@ -156,7 +183,9 @@
             "id": 5,
             "title": "Implement real-time polling mechanism",
             "description": "Add automatic message updates using polling to simulate real-time chat functionality",
-            "dependencies": [4],
+            "dependencies": [
+              4
+            ],
             "details": "Implement polling mechanism using setInterval to fetch new messages every 3-5 seconds. Ensure polling starts when component mounts and stops when unmounted. Optimize to only update UI when new messages are received.",
             "status": "done",
             "testStrategy": ""
@@ -186,7 +215,9 @@
             "id": 2,
             "title": "Implement SQL aggregation queries for analytics endpoints",
             "description": "Develop SQL queries using aggregate functions (SUM, COUNT, GROUP BY) on orders, products, and related tables to generate meaningful analytics data for dashboard endpoints.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Write SQL queries using Sequelize ORM to aggregate data from the orders, products, and other relevant database tables. Implement time-series data generation with proper date grouping for sales summaries and production overviews. Ensure queries are optimized and handle edge cases like empty data sets.",
             "status": "done",
             "testStrategy": ""
@@ -195,7 +226,9 @@
             "id": 3,
             "title": "Create comprehensive endpoint testing and validation",
             "description": "Test all new dashboard endpoints using API client tools, verify authentication protection, and validate data accuracy against manual calculations.",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "Use Postman or similar API client to test each dashboard endpoint. Verify that unauthenticated requests return 401/403 errors. Test with sample database entries and manually calculate expected results to validate the accuracy of aggregated data returned by the endpoints. Document test cases and expected responses.",
             "status": "done",
             "testStrategy": ""
@@ -209,7 +242,10 @@
         "details": "In the `/pages/admin/dashboard.tsx` component, replace all mock data hooks and objects with API calls to the `/dashboard/*` endpoints. Use a data-fetching library like SWR or React Query to handle loading, caching, and error states gracefully. Connect the fetched data to the existing Material UI chart and stat card components. Implement loading skeletons to improve user experience during data fetching.",
         "testStrategy": "Load the dashboard and verify that all widgets display data fetched from the backend. Cross-reference the data shown with the database to ensure accuracy. Simulate an API failure (e.g., stop the backend) and confirm that the UI displays a user-friendly error message instead of crashing.",
         "priority": "medium",
-        "dependencies": [2, 4],
+        "dependencies": [
+          2,
+          4
+        ],
         "status": "done",
         "subtasks": [
           {
@@ -225,7 +261,9 @@
             "id": 2,
             "title": "Implement data fetching with SWR/React Query",
             "description": "Replace all mock data hooks with real API calls using a data fetching library, including caching, loading states, and error handling",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Install and configure SWR or React Query for the dashboard page. Create custom hooks for each dashboard endpoint (sales summary, production overview, etc.). Implement proper loading states, error boundaries, and data caching strategies. Remove all existing mock data imports and hooks from the dashboard components.",
             "status": "done",
             "testStrategy": ""
@@ -234,7 +272,9 @@
             "id": 3,
             "title": "Connect UI components with loading states and error handling",
             "description": "Bind fetched data to existing Material UI charts and stat cards, implementing loading skeletons and error states for better UX",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "Update all dashboard widgets (charts, stat cards, tables) to consume data from the new API hooks. Implement Material UI skeleton components for loading states. Add error boundaries and fallback UI for failed API requests. Ensure all existing chart components work seamlessly with the new real data structure.",
             "status": "done",
             "testStrategy": ""
@@ -248,7 +288,9 @@
         "details": "Create a new page at `/admin/orders`. Use a Material UI `<DataGrid>` to display a list of all orders with columns for key details like ID, customer, date, and status. Implement server-side filtering and sorting. Create a detail view at `/admin/orders/[id]` to show complete order information and provide controls (e.g., a dropdown) to update the order status via a `PUT` request to `/orders/:id`.",
         "testStrategy": "Verify the order list page correctly fetches and displays orders. Test filtering by status (e.g., 'pending'). Navigate to a detail page, update an order's status, and confirm the change is reflected in the list view and the database.",
         "priority": "medium",
-        "dependencies": [2],
+        "dependencies": [
+          2
+        ],
         "status": "done",
         "subtasks": [
           {
@@ -264,7 +306,9 @@
             "id": 2,
             "title": "Implement Filtering and Sorting",
             "description": "Add server-side filtering and sorting capabilities to the orders DataGrid",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Implement DataGrid filtering controls for order status, date ranges, and customer search. Add server-side sorting functionality. Create search and filter UI components. Ensure proper API parameter handling for filter/sort requests.",
             "status": "done",
             "testStrategy": ""
@@ -273,7 +317,9 @@
             "id": 3,
             "title": "Create Order Detail View",
             "description": "Build detailed order view page showing complete order information",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create `/admin/orders/[id]/page.tsx` for individual order details. Display comprehensive order information including customer details, order items, timestamps, and current status. Implement navigation from DataGrid to detail view.",
             "status": "done",
             "testStrategy": ""
@@ -282,7 +328,9 @@
             "id": 4,
             "title": "Add Status Update Functionality",
             "description": "Implement order status update controls with API integration",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "Add status update dropdown/controls to the order detail view. Implement PUT request to `/orders/:id` endpoint for status updates. Add optimistic UI updates and error handling. Ensure status changes reflect in both detail view and main order list.",
             "status": "done",
             "testStrategy": ""
@@ -296,7 +344,10 @@
         "details": "Backend: Create CRUD endpoints under `/api/staff` in the Node.js/Express application for user management. Ensure these endpoints are protected and only accessible by users with an 'admin' role. Frontend: Develop the UI on the `/admin/staff` page. Use a table to list users and their roles. Implement forms within modals for creating and editing users. API calls from the frontend must be authenticated.",
         "testStrategy": "As an admin, test all CRUD operations on staff members through the UI. Verify changes persist in the database. Log in as a non-admin user and confirm that access to the staff management page is denied or functionality is restricted, as per the defined permissions.",
         "priority": "medium",
-        "dependencies": [1, 2],
+        "dependencies": [
+          1,
+          2
+        ],
         "status": "done",
         "subtasks": [
           {
@@ -312,7 +363,9 @@
             "id": 2,
             "title": "Implement Role-Based Authorization Middleware",
             "description": "Create authentication and authorization middleware to protect staff management endpoints and enforce admin-only access.",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Develop middleware to verify JWT tokens and check user roles. Create role-checking functions that ensure only users with 'admin' role can access staff management endpoints. Implement proper error responses (401 Unauthorized, 403 Forbidden) for invalid or insufficient permissions. Add middleware to all /api/staff routes.",
             "status": "done",
             "testStrategy": ""
@@ -321,7 +374,9 @@
             "id": 3,
             "title": "Create Frontend User Listing Interface",
             "description": "Build the main staff listing page with a table displaying all users and their roles at /admin/staff.",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "Create /admin/staff page component within AdminLayout. Implement a Material UI DataGrid or Table to display user information (name, email, role, status, actions). Add search and filtering capabilities. Include loading states and error handling for API calls. Fetch data from GET /api/staff endpoint with proper authentication headers.",
             "status": "done",
             "testStrategy": ""
@@ -330,7 +385,9 @@
             "id": 4,
             "title": "Develop Modal Forms for CRUD Operations",
             "description": "Create reusable modal components for creating, editing, and deleting staff members with form validation.",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "Build CreateUserModal and EditUserModal components with Material UI forms. Include fields for name, email, password, and role selection. Implement form validation using libraries like Formik or react-hook-form. Create DeleteConfirmationModal for safe deletion. Connect forms to respective API endpoints (POST, PUT, DELETE /api/staff) and handle success/error states.",
             "status": "done",
             "testStrategy": ""
@@ -339,7 +396,9 @@
             "id": 5,
             "title": "Build Role Management UI Components",
             "description": "Create interface components for managing user roles and displaying role-based permissions clearly.",
-            "dependencies": [4],
+            "dependencies": [
+              4
+            ],
             "details": "Develop RoleSelector component with dropdown/chip interface for role assignment. Create PermissionsDisplay component to show what each role can access. Add role-based UI visibility (hide/show buttons based on current user's permissions). Implement role change confirmation dialogs and proper state management for role updates.",
             "status": "done",
             "testStrategy": ""
@@ -348,7 +407,9 @@
             "id": 6,
             "title": "Implement Comprehensive Permission Testing",
             "description": "Create thorough testing suite to verify role-based access control and security implementation across the staff management system.",
-            "dependencies": [5],
+            "dependencies": [
+              5
+            ],
             "details": "Write unit tests for backend middleware and endpoints testing admin-only access. Create integration tests for complete CRUD workflows. Test frontend components with different user roles using Jest and React Testing Library. Verify that non-admin users cannot access staff management features. Include security tests for unauthorized access attempts and proper error handling.",
             "status": "done",
             "testStrategy": ""
@@ -362,7 +423,9 @@
         "details": "Backend: Create CRUD endpoints under `/api/recipes`. The `POST` and `PUT` endpoints will accept raw markdown. Use a library like `marked` to parse markdown to HTML before sending it in `GET` responses. Store the raw markdown in the database. Frontend: Refactor the recipe management components to fetch data from the `/api/recipes` endpoints. Use `dangerouslySetInnerHTML` to render the parsed HTML content from the API.",
         "testStrategy": "Use the UI to create a recipe with markdown formatting (headings, lists, bold). Verify it is saved and renders correctly when viewed. Test the edit and delete functionalities and confirm the changes are reflected in the database.",
         "priority": "low",
-        "dependencies": [2],
+        "dependencies": [
+          2
+        ],
         "status": "done",
         "subtasks": [
           {
@@ -378,7 +441,9 @@
             "id": 2,
             "title": "Integrate Markdown Parsing Service",
             "description": "Set up markdown parsing pipeline with proper sanitization and content processing",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Install and configure `marked` library for markdown-to-HTML conversion. Implement content sanitization to prevent XSS. Create parsing utilities for recipe-specific markdown features like ingredient lists and step numbering. Handle parsing errors gracefully.",
             "status": "done",
             "testStrategy": ""
@@ -387,7 +452,9 @@
             "id": 3,
             "title": "Refactor Frontend Recipe Components",
             "description": "Update existing recipe management components to use backend API instead of mock data",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Refactor RecipeForm and related components in `src/components/bakery/recipes/` to consume `/api/recipes` endpoints. Replace mock data sources with API calls using the existing service layer pattern. Implement proper loading states and error handling.",
             "status": "done",
             "testStrategy": ""
@@ -396,7 +463,10 @@
             "id": 4,
             "title": "Implement Recipe Content Rendering",
             "description": "Build recipe display components that safely render parsed HTML content from markdown",
-            "dependencies": [2, 3],
+            "dependencies": [
+              2,
+              3
+            ],
             "details": "Create recipe viewing components that use `dangerouslySetInnerHTML` to render parsed HTML from the API. Implement proper content styling for markdown elements (headings, lists, bold text). Add recipe display pages and integrate with the admin interface.",
             "status": "done",
             "testStrategy": ""
@@ -410,7 +480,10 @@
         "details": "Backend: Create `/api/workflows` endpoints. Use the `js-yaml` library to parse YAML files that define production steps. Implement endpoints to list workflows and track their execution status (e.g., 'pending', 'in-progress', 'completed') in the database. Frontend: Create a `/admin/production` page. Build a UI to list available workflows, view their steps, and trigger or schedule an execution.",
         "testStrategy": "Upload a sample YAML workflow file. Use the UI to view its parsed steps. Schedule a workflow execution and verify that its status can be tracked and updated through the interface. Test the backend by sending malformed YAML to ensure proper error handling.",
         "priority": "low",
-        "dependencies": [2, 6],
+        "dependencies": [
+          2,
+          6
+        ],
         "status": "done",
         "subtasks": [
           {
@@ -426,7 +499,9 @@
             "id": 2,
             "title": "Create workflow database schema and models",
             "description": "Design and implement database schema for storing workflows, workflow executions, and step progress tracking",
-            "dependencies": [1],
+            "dependencies": [
+              1
+            ],
             "details": "Create Sequelize models for Workflow (id, name, description, steps, created_at), WorkflowExecution (id, workflow_id, status, started_at, completed_at), and WorkflowStep (id, execution_id, step_name, status, started_at, completed_at). Define relationships between models. Create migrations for new tables.",
             "status": "done",
             "testStrategy": ""
@@ -435,7 +510,9 @@
             "id": 3,
             "title": "Build workflow execution tracking system",
             "description": "Implement backend logic for tracking workflow execution state and step progress with status updates",
-            "dependencies": [2],
+            "dependencies": [
+              2
+            ],
             "details": "Create WorkflowExecutionService to manage workflow state transitions (pending -> in-progress -> completed/failed). Implement step-by-step execution tracking with timestamps. Add methods to update execution status, mark steps complete, and handle execution failures. Include logging for audit trail.",
             "status": "done",
             "testStrategy": ""
@@ -444,7 +521,9 @@
             "id": 4,
             "title": "Create workflow API endpoints",
             "description": "Implement RESTful API endpoints under /api/workflows for listing, creating, and managing workflow executions",
-            "dependencies": [3],
+            "dependencies": [
+              3
+            ],
             "details": "Create routes: GET /api/workflows (list all), GET /api/workflows/:id (get specific), POST /api/workflows/execute (start execution), GET /api/workflows/executions (list executions), PUT /api/workflows/executions/:id/steps/:stepId (update step status). Include authentication middleware and proper error handling.",
             "status": "done",
             "testStrategy": ""
@@ -453,7 +532,9 @@
             "id": 5,
             "title": "Build frontend workflow listing and scheduling interface",
             "description": "Create admin interface at /admin/production for displaying available workflows and scheduling executions",
-            "dependencies": [4],
+            "dependencies": [
+              4
+            ],
             "details": "Create ProductionPage component with workflow list display. Implement WorkflowCard components showing workflow name, description, and steps. Add schedule execution functionality with date/time picker. Include workflow details modal for viewing complete step breakdown. Use Material UI components consistent with existing admin design.",
             "status": "done",
             "testStrategy": ""
@@ -462,7 +543,9 @@
             "id": 6,
             "title": "Implement workflow status monitoring UI",
             "description": "Build real-time status monitoring interface for tracking active and completed workflow executions",
-            "dependencies": [5],
+            "dependencies": [
+              5
+            ],
             "details": "Create WorkflowExecutionMonitor component with real-time status updates. Display execution progress with step completion indicators. Implement polling mechanism for live status updates. Add filtering options (active, completed, failed). Include execution history with timestamps and duration tracking. Provide manual step completion controls for admin users.",
             "status": "done",
             "testStrategy": ""
@@ -476,51 +559,62 @@
         "details": "Backend: Define a new database schema for `inventory_items` (e.g., name, quantity, reorder_level). Create full CRUD endpoints at `/api/inventory`. Include an endpoint for stock adjustments (e.g., `POST /api/inventory/:id/adjust`). Frontend: Create an `/admin/inventory` page. Display inventory in a `<DataGrid>`, highlighting items where `quantity` is below `reorder_level`. Implement forms for adding/editing items and quick controls for adjusting stock.",
         "testStrategy": "Use the UI to add, edit, and delete inventory items. Perform stock adjustments and verify the quantity updates correctly. Manually set an item's stock below its reorder level and confirm it is visually highlighted in the UI.",
         "priority": "low",
-        "dependencies": [2],
+        "dependencies": [
+          2
+        ],
         "status": "pending",
         "subtasks": [
           {
             "id": 1,
-            "title": "Design Database Schema for Inventory System",
-            "description": "Create database schema for inventory_items table with fields for name, SKU, quantity, reorder_level, supplier_info, unit_cost, and timestamps",
+            "title": "Design and Implement Inventory Database Schema",
+            "description": "Define and create the necessary database tables for the inventory management system, primarily the `inventory_items` table with all required columns.",
             "dependencies": [],
-            "details": "Define the inventory_items table structure in the backend database models. Include fields: id (primary key), name (string), sku (unique string), quantity (integer), reorder_level (integer), supplier_name (string), supplier_contact (string), unit_cost (decimal), created_at, updated_at. Set up Sequelize model with proper validations and constraints.",
+            "details": "Create a new database migration to define the `inventory_items` table. The schema must include columns for `name`, `description`, `quantity` (integer), and `reorder_level` (integer). Also include standard fields like `id`, `created_at`, and `updated_at`. Execute the migration to apply the new schema to the database.",
             "status": "pending",
             "testStrategy": ""
           },
           {
             "id": 2,
-            "title": "Implement Backend CRUD APIs for Inventory",
-            "description": "Create RESTful API endpoints under /api/inventory for full CRUD operations on inventory items",
-            "dependencies": [1],
-            "details": "Implement GET /api/inventory (list all items), GET /api/inventory/:id (get single item), POST /api/inventory (create new item), PUT /api/inventory/:id (update item), DELETE /api/inventory/:id (delete item). Include proper authentication middleware, request validation, and error handling. Add pagination and filtering options for the list endpoint.",
+            "title": "Implement Backend CRUD API for Inventory Items",
+            "description": "Develop the backend API endpoints for creating, reading, updating, and deleting inventory items.",
+            "dependencies": [
+              "10.1"
+            ],
+            "details": "In the backend application, create a new set of routes under `/api/inventory`. Implement the standard RESTful endpoints: `POST /api/inventory` (Create), `GET /api/inventory` (Read all), `GET /api/inventory/:id` (Read one), `PUT /api/inventory/:id` (Update), and `DELETE /api/inventory/:id` (Delete). Ensure these endpoints are protected by the existing authentication middleware.",
             "status": "pending",
             "testStrategy": ""
           },
           {
             "id": 3,
-            "title": "Build Frontend Data Grid for Inventory Display",
-            "description": "Create /admin/inventory page with DataGrid component to display inventory items with visual indicators for low stock",
-            "dependencies": [2],
-            "details": "Create the inventory management page using Material UI DataGrid component. Display columns for name, SKU, quantity, reorder level, supplier, and actions. Implement row highlighting for items where quantity <= reorder_level using conditional styling. Add search and filter functionality to the grid.",
+            "title": "Implement Backend Endpoint for Stock Adjustments",
+            "description": "Create a dedicated backend endpoint to handle positive or negative adjustments to an inventory item's stock quantity.",
+            "dependencies": [
+              "10.2"
+            ],
+            "details": "Create a new endpoint, `POST /api/inventory/:id/adjust`. This endpoint will accept a JSON body containing an `adjustment` value (e.g., `{ \"adjustment\": -5 }`). The backend logic should fetch the item, apply the adjustment to its current `quantity`, and save the updated record in the database.",
             "status": "pending",
             "testStrategy": ""
           },
           {
             "id": 4,
-            "title": "Implement Stock Adjustment Functionality",
-            "description": "Add backend endpoint and frontend interface for adjusting inventory stock levels with reason tracking",
-            "dependencies": [2, 3],
-            "details": "Backend: Create POST /api/inventory/:id/adjust endpoint that accepts adjustment_type ('add' or 'subtract'), quantity, and reason. Update the item quantity and log the adjustment. Frontend: Add quick adjustment controls in the DataGrid and a detailed adjustment modal form with quantity input and reason dropdown (received, sold, damaged, etc.).",
+            "title": "Develop Frontend UI for Inventory Management",
+            "description": "Build the user interface on the `/admin/inventory` page to display inventory items in a DataGrid and provide forms for adding, editing, and adjusting stock.",
+            "dependencies": [
+              "10.2",
+              "10.3"
+            ],
+            "details": "Create a new page component for the `/admin/inventory` route. Use a `<DataGrid>` component to fetch and display data from the `GET /api/inventory` endpoint. Implement forms (e.g., in modals) for creating and editing items. Add controls within the grid or forms to call the `POST /api/inventory/:id/adjust` endpoint for quick stock changes.",
             "status": "pending",
             "testStrategy": ""
           },
           {
             "id": 5,
-            "title": "Build Reorder Alerting System",
-            "description": "Implement automated reorder alerts and notifications for low stock items",
-            "dependencies": [4],
-            "details": "Backend: Create GET /api/inventory/alerts endpoint that returns items below reorder level. Add background job or scheduled task to check stock levels periodically. Frontend: Create alerts dashboard widget showing low stock count and list. Add visual indicators (badges, colors) throughout the admin interface to highlight reorder alerts. Implement email notification system for critical low stock situations.",
+            "title": "Implement Low Stock Highlighting in UI",
+            "description": "Add a visual indicator to the frontend UI to flag inventory items where the current stock quantity is at or below the defined reorder level.",
+            "dependencies": [
+              "10.4"
+            ],
+            "details": "In the frontend's inventory `<DataGrid>`, add conditional logic to the row rendering. For each item, compare its `quantity` with its `reorder_level`. If `quantity <= reorder_level`, apply a distinct style to that row (e.g., a red background color or an alert icon) to make it visually prominent to the user.",
             "status": "pending",
             "testStrategy": ""
           }
@@ -531,7 +625,9 @@
         "title": "Implement Customer Product Listing and Shopping Experience",
         "description": "Develop the complete customer-facing product browsing experience. This includes displaying products from the product management system, enabling filtering by category, implementing a search feature, and integrating a fully functional shopping cart using the existing `CartContext`.",
         "status": "done",
-        "dependencies": [2],
+        "dependencies": [
+          2
+        ],
         "priority": "medium",
         "details": "On the customer-facing side of the application, implement a comprehensive shopping experience. First, create a product listing page at `/products` that fetches and displays all available items using the existing `getProducts()` function in `bakeryAPI.ts`. Each product card should display an image, name, price, and an 'Add to Cart' button. Implement UI controls for filtering products by category and a search bar for text-based searches; these should trigger API calls with appropriate query parameters. The 'Add to Cart' button's functionality should be wired into the existing `CartContext`, updating the application's state with the selected product and quantity. Finally, build out the `/cart` page to display the contents of the `CartContext`, allowing users to view items, adjust quantities, remove items, and see a running total.",
         "testStrategy": "Navigate to the `/products` page and verify that product data from the product management system is correctly loaded and displayed. Test the category filtering and search functionality to ensure the product list updates accurately. Add multiple different products to the cart and confirm the cart icon/count updates. Navigate to the `/cart` page and verify all added items are present with the correct details and pricing. Test the functionality for updating an item's quantity and removing an item from the cart, ensuring the subtotal and grand total update in real-time. Refresh the page or navigate away and back to the cart to confirm that the cart's state is persisted correctly by the `CartContext`.",
@@ -606,7 +702,9 @@
             "id": 2,
             "title": "Install @nx/next Plugin",
             "description": "Install the Nx plugin for Next.js to enable generating, serving, building, and testing Next.js applications within the monorepo.",
-            "dependencies": ["12.1"],
+            "dependencies": [
+              "12.1"
+            ],
             "details": "Navigate into the newly created workspace directory. Run the following command to add the Next.js plugin as a development dependency: `npm install -D @nx/next` (or use your chosen package manager like yarn or pnpm).",
             "status": "done",
             "testStrategy": "Check the `devDependencies` section of the root `package.json` file to confirm that `@nx/next` has been added with a valid version number. Run `nx list @nx/next` to see the available generators provided by the plugin."
@@ -615,7 +713,9 @@
             "id": 3,
             "title": "Install @nx/react Plugin",
             "description": "Install the Nx plugin for React to support the creation of buildable and publishable React libraries for shared components, hooks, and utilities.",
-            "dependencies": ["12.1"],
+            "dependencies": [
+              "12.1"
+            ],
             "details": "In the workspace root directory, execute the command to install the React plugin: `npm install -D @nx/react`. This plugin is essential for creating shared UI libraries as described in subsequent tasks.",
             "status": "done",
             "testStrategy": "Verify that `@nx/react` is listed in the `devDependencies` of the root `package.json`. You can also run `nx list @nx/react` to ensure the plugin and its generators are recognized by Nx."
@@ -624,7 +724,9 @@
             "id": 4,
             "title": "Install @nx/node and @nx/express Plugins",
             "description": "Install the Nx plugins for Node.js and Express to provide the necessary tooling for developing backend services and APIs.",
-            "dependencies": ["12.1"],
+            "dependencies": [
+              "12.1"
+            ],
             "details": "From the workspace root, run the command to install both the generic Node.js plugin and the Express-specific plugin: `npm install -D @nx/node @nx/express`.",
             "status": "done",
             "testStrategy": "Confirm that both `@nx/node` and `@nx/express` are present in the `devDependencies` within the `package.json` file. Run `nx list @nx/express` to check for available Express application generators."
@@ -633,7 +735,11 @@
             "id": 5,
             "title": "Verify Final Workspace Configuration and Dependencies",
             "description": "Perform a final check to ensure the workspace is correctly initialized and all required plugins are installed, confirming the environment is ready for application and library generation.",
-            "dependencies": ["12.2", "12.3", "12.4"],
+            "dependencies": [
+              "12.2",
+              "12.3",
+              "12.4"
+            ],
             "details": "Review the root `package.json` file to ensure all four plugins (`@nx/next`, `@nx/react`, `@nx/node`, `@nx/express`) are listed under `devDependencies`. Run `nx report` in the terminal to get a summary of the workspace environment and installed plugins, ensuring there are no errors.",
             "status": "done",
             "testStrategy": "The execution of the `nx report` command should complete successfully and list all the installed plugins with their versions. This confirms that the Nx workspace recognizes all the new capabilities."
@@ -647,7 +753,9 @@
         "details": "1. **nx.json Configuration**: Edit the root `nx.json` file. Define `targetDefaults` for common executors like `@nx/js:tsc`, `@nx/eslint:lint`, and `@nx/jest:jest`. Set default options such as `outputs` directories and configurations to ensure consistency across all projects. Also, review and configure `cacheableOperations` to include all relevant tasks. 2. **TypeScript Path Aliases**: Modify the `tsconfig.base.json` file. Under `compilerOptions.paths`, add aliases for shared libraries to simplify imports. For example, add `\"@my-workspace/shared-ui\": [\"libs/shared/ui/src/index.ts\"]`. This avoids relative import paths like `../../..`. 3. **ESLint Module Boundaries**: In the root `.eslintrc.json`, configure the `@nx/enforce-module-boundaries` rule. Define constraints to control dependency flow between library types (e.g., `feature` libs can depend on `ui` and `util` libs, but `ui` libs cannot depend on `feature` libs). 4. **Shared Tooling**: Install and configure Prettier by creating a `.prettierrc` file at the root. Install Husky and lint-staged (`npx husky-init && npm install lint-staged`). Configure a `pre-commit` hook in the `.husky/` directory to run `npx lint-staged`, which will execute Prettier and ESLint on staged files before they are committed.",
         "testStrategy": "1. **Verify nx.json**: Inspect the `nx.json` file to confirm the presence of the `targetDefaults` section. Run a lint or test command on a newly generated library and confirm it uses the default settings without local configuration. 2. **Verify TS Paths**: Create two libraries, `test-util` and `test-feature`. Attempt to import a component from `test-util` into `test-feature` using the new path alias (e.g., `import { MyUtil } from '@my-workspace/test-util'`). The build process (`nx build test-feature`) should complete successfully. 3. **Verify ESLint Rules**: In the `test-util` library, add an import statement that references the `test-feature` library, violating the dependency constraints. Run `nx lint test-util` and confirm that an error is reported regarding the illegal module boundary crossing. 4. **Verify Pre-commit Hook**: Modify a source file with code that violates Prettier's formatting rules. Stage the file (`git add .`) and attempt to commit it (`git commit -m \"test\"`). The commit should be blocked, and the pre-commit hook should automatically reformat the file. Staging the corrected file should allow the commit to succeed.",
         "status": "done",
-        "dependencies": [12],
+        "dependencies": [
+          12
+        ],
         "priority": "high",
         "subtasks": []
       },
@@ -658,7 +766,10 @@
         "details": "Use Nx generators to create three foundational libraries within the `libs/` directory. 1. **Shared UI Library**: Generate a 'buildable' React library named `ui`. Command: `nx g @nx/react:lib ui --buildable --style=css`. The `--buildable` flag is crucial as it configures the library to be compiled and published independently. Create a simple, generic `Button` component within this library and export it from the main `index.ts` file to serve as an initial shared component. 2. **Shared Types Library**: Generate a plain TypeScript library named `types`. Command: `nx g @nx/js:lib types`. This library will not contain any UI or logic, only TypeScript interface and type definitions (e.g., `Product`, `Order`, `User`) to be shared between the frontend and backend projects. 3. **Shared Data-Access Library**: Generate a TypeScript library named `data-access`. Command: `nx g @nx/js:lib data-access`. This library will encapsulate all API communication logic, centralizing how frontend applications interact with backend endpoints. It should depend on the `types` library for request/response models.",
         "testStrategy": "1. **Verify Library Creation**: Check for the existence of `libs/ui`, `libs/types`, and `libs/data-access` directories, each containing a `project.json` file. 2. **Test UI Library**: Run `nx build ui` and verify it completes without errors, producing output in the `dist/` directory. Import the sample `Button` component from `@<workspace-name>/ui` into a frontend application and render it to confirm path aliases and functionality. 3. **Test Types Library**: Define a sample interface (e.g., `interface User`) in the `types` library. Import and use this interface in both a frontend application and the `data-access` library to ensure it is correctly resolved. 4. **Test Data-Access Library**: Create a mock function within the `data-access` library. Import and call this function from a frontend component to verify the library is consumable.",
         "status": "done",
-        "dependencies": [12, 13],
+        "dependencies": [
+          12,
+          13
+        ],
         "priority": "high",
         "subtasks": []
       },
@@ -669,7 +780,11 @@
         "details": "First, create a new Node/Express application within the monorepo using the command `nx g @nx/express:app api`. Next, migrate the source code from the existing, standalone API repository into this new `apps/api/src` directory. Once imported, create separate, buildable libraries for each logical domain: `nx g @nx/js:lib orders --buildable --directory=libs/api`, `nx g @nx/js:lib inventory --buildable --directory=libs/api`, `nx g @nx/js:lib customers --buildable --directory=libs/api`, and `nx g @nx/js:lib delivery --buildable --directory=libs/api`. Systematically refactor the code from `apps/api` by moving routes, services, controllers, and data access logic into their respective feature libraries. The main `apps/api/src/main.ts` should be updated to import and mount the routers from these new libraries, serving as the composition root. Ensure that shared logic, especially types and data-access patterns, leverages the foundational libraries created in Task 14.",
         "testStrategy": "1. Verify the creation of the `apps/api` application and the new libraries under `libs/api/`. 2. Run `nx build api` and confirm that it completes successfully, demonstrating that all library dependencies are correctly resolved. 3. Use an API client like Postman or Insomnia to test at least one key endpoint from each refactored module (e.g., `GET /api/orders`, `GET /api/inventory/:id`, `POST /api/customers`). Confirm they return the expected data and status codes. 4. Run `nx graph` to visualize the dependency graph and ensure the `api` application correctly depends on the `orders`, `inventory`, `customers`, and `delivery` libraries, and that those libraries in turn depend on shared libraries like `types` and `data-access`.",
         "status": "done",
-        "dependencies": [12, 13, 14],
+        "dependencies": [
+          12,
+          13,
+          14
+        ],
         "priority": "high",
         "subtasks": []
       },
@@ -679,8 +794,11 @@
         "description": "Introduce an event bus system to enable asynchronous, decoupled communication between the domain libraries (e.g., orders, inventory) within the modular monolith API, replacing direct synchronous calls.",
         "details": "First, select and install a lightweight, in-process event emitter library like `eventemitter3`. Create a new shared library, `libs/api/event-bus`, to instantiate and export a singleton instance of the event emitter, ensuring all modules use the same bus. Second, define event contracts using TypeScript interfaces within the `libs/types` library (from Task #14). For example, create an `OrderCreatedEvent` interface. Finally, refactor existing module interactions. As an initial use case, modify the `orders` module to publish an `ORDER_CREATED` event when a new order is successfully created. The `inventory` module should then subscribe to this event and execute its logic to decrement stock levels, thus decoupling it from the `orders` module.",
         "testStrategy": "1. **Unit Tests**: Create unit tests for the publishing module (e.g., `orders` service) to verify that `eventBus.emit` is called with the correct event name and payload. Create separate unit tests for the subscribing module (e.g., `inventory` service) to ensure its handler logic executes correctly when a mock event is received. 2. **Integration Test**: Write an end-to-end test that uses an API client to call the endpoint for creating an order. After the call succeeds, assert that the inventory levels for the ordered items have been correctly updated in the database, confirming the event was successfully published and consumed.",
-        "status": "pending",
-        "dependencies": [14, 15],
+        "status": "done",
+        "dependencies": [
+          14,
+          15
+        ],
         "priority": "high",
         "subtasks": [
           {
@@ -689,43 +807,54 @@
             "description": "Set up the foundational event bus module. This involves creating a new shared library, installing the necessary event emitter package, and exporting a singleton instance of the event bus to be used across the entire API.",
             "dependencies": [],
             "details": "1. Generate a new shared library using the workspace tools: `nx g @nrwl/node:lib api/event-bus`.\n2. Install the `eventemitter3` package as a dependency for the new library.\n3. Inside `libs/api/event-bus/src/lib/`, create a file (e.g., `event-bus.service.ts`) that instantiates `EventEmitter3` and exports it as a singleton constant (e.g., `export const eventBus = new EventEmitter3();`).\n4. Ensure the library's `index.ts` exports this singleton instance so other modules can import it.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Create a simple unit test within the `api/event-bus` library to verify that the exported `eventBus` object is a valid instance of `EventEmitter3` and that it is indeed a singleton (i.e., multiple imports reference the same object)."
           },
           {
             "id": 2,
             "title": "Define Event Contracts in the Types Library",
             "description": "Establish strongly-typed contracts for events that will be passed through the bus. This ensures consistency and type safety between publishing and subscribing modules. Start with the `OrderCreatedEvent`.",
-            "dependencies": ["16.1"],
+            "dependencies": [
+              "16.1"
+            ],
             "details": "1. Navigate to the existing `libs/types` library.\n2. Create a new file, `src/lib/events.ts`.\n3. In this file, define a string enum for event names, starting with `OrderEvents { CREATED = 'order.created' }`.\n4. Define a TypeScript interface for the event payload, e.g., `interface OrderCreatedEvent { orderId: string; items: { productId: string; quantity: number }[]; }`.\n5. Export both the enum and the interface from the library's main `index.ts` file.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "This is a type-definition task, so no runtime tests are needed. Code review should ensure the interfaces accurately represent the data required by downstream consumers and that they are correctly exported."
           },
           {
             "id": 3,
             "title": "Refactor Orders Module to Publish 'OrderCreated' Event",
             "description": "Modify the order creation logic to emit an event on the event bus upon successful order creation, instead of directly calling the inventory service.",
-            "dependencies": ["16.1", "16.2"],
+            "dependencies": [
+              "16.1",
+              "16.2"
+            ],
             "details": "1. In the `orders` module's service file (e.g., `orders.service.ts`), import the `eventBus` singleton from `@<workspace>/api/event-bus`.\n2. Import the `OrderEvents` enum and `OrderCreatedEvent` interface from `@<workspace>/types`.\n3. Locate the function responsible for creating an order.\n4. After the order is successfully saved to the database, use the event bus to publish the event: `eventBus.emit(OrderEvents.CREATED, payload);`, where `payload` is an object matching the `OrderCreatedEvent` interface.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "In the unit tests for the `orders` service, mock the `eventBus` and verify that `eventBus.emit` is called exactly once with the correct event name (`OrderEvents.CREATED`) and a payload that matches the expected structure and data after an order is created."
           },
           {
             "id": 4,
             "title": "Refactor Inventory Module to Subscribe to 'OrderCreated' Event",
             "description": "Modify the inventory module to listen for the `OrderCreated` event and trigger its stock deduction logic accordingly. This will be the consumer side of the new event-driven flow.",
-            "dependencies": ["16.1", "16.2"],
+            "dependencies": [
+              "16.1",
+              "16.2"
+            ],
             "details": "1. In the `inventory` module's service file (e.g., `inventory.service.ts`), import the `eventBus` singleton and the event contracts (`OrderEvents`, `OrderCreatedEvent`).\n2. Create a new method to handle the event, e.g., `handleOrderCreated(payload: OrderCreatedEvent)`. This method will contain the existing logic for decrementing stock.\n3. In the service's constructor or an initialization method, set up the listener: `eventBus.on(OrderEvents.CREATED, this.handleOrderCreated.bind(this));`.\n4. Ensure the stock decrement logic now uses the data from the event payload.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Unit test the `inventory` service. Manually call the event handler method (`handleOrderCreated`) with a mock event payload and assert that the stock decrement logic is executed correctly (e.g., by mocking the database call and verifying its parameters)."
           },
           {
             "id": 5,
             "title": "Remove Direct Synchronous Call from Orders to Inventory",
             "description": "Complete the decoupling process by removing the old, direct method call from the `orders` service to the `inventory` service. This final step ensures the modules are only connected via the event bus.",
-            "dependencies": ["16.3", "16.4"],
+            "dependencies": [
+              "16.3",
+              "16.4"
+            ],
             "details": "1. Go back to the `orders` service (`orders.service.ts`).\n2. Remove the import statement for the `inventory` service.\n3. Delete the line of code that makes the direct, synchronous call to the inventory service's stock decrement method.\n4. Remove the `inventory` service from the `orders` module's dependencies/providers if it was injected.\n5. Run end-to-end tests to confirm that creating an order still results in inventory being correctly decremented, proving the event-driven flow is working.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Perform an integration test. Use an API client to create a new order via the `/orders` endpoint. After the request is successful, query the `/inventory` endpoint or check the database directly to verify that the stock levels for the ordered products have been correctly reduced. This confirms the entire event flow is functional."
           }
         ]
@@ -737,7 +866,11 @@
         "details": "First, use the Nx generator to create a new Next.js application: `nx g @nx/next:app bakery-landing --style=css`. Once created, migrate all existing HTML, CSS, and image assets for the public landing page into the `apps/bakery-landing` directory, primarily within the `pages/index.tsx` file. Refactor components to leverage the shared `ui` library (from Task #14) for consistency. Next, configure the application for static deployment by modifying `apps/bakery-landing/next.config.js` to include the `output: 'export'` option. This will generate a static version of the site in the `dist/` directory when built. Finally, create a new deployment script or configure a CI/CD pipeline step that runs `nx export bakery-landing` and then pushes the contents of the generated `out` directory to the `gh-pages` branch of the GitHub repository.",
         "testStrategy": "1. Run `nx build bakery-landing` and verify it completes successfully. 2. Run `nx export bakery-landing` and confirm that a static `out` directory is created in `dist/apps/bakery-landing/`, containing `index.html` and all related assets. 3. Use a local static file server (e.g., `npx serve dist/apps/bakery-landing/out`) to preview the exported site and ensure it renders correctly with all styles and images. 4. Manually trigger the deployment process or push a commit to trigger the CI pipeline. Verify that the `gh-pages` branch is updated and the site is live and accessible at its GitHub Pages URL.",
         "status": "done",
-        "dependencies": [12, 13, 14],
+        "dependencies": [
+          12,
+          13,
+          14
+        ],
         "priority": "high",
         "subtasks": []
       },
@@ -748,7 +881,12 @@
         "details": "First, generate the main host application using the Nx generator: `nx g @nx/next:app bakery-management --style=css`. This app will act as the shell. Next, create the remote micro-frontend applications for each feature area: `nx g @nx/next:app inventory --style=css`, `nx g @nx/next:app orders --style=css`, and `nx g @nx/next:app reports --style=css`. Configure Module Federation by modifying the `next.config.js` file in each application. In `apps/bakery-management/next.config.js`, define the `remotes` property to point to the inventory, orders, and reports applications. In the `next.config.js` of each remote app (e.g., `inventory`), configure the `exposes` property to make its primary page or components available (e.g., `exposes: { './index': './pages/index.tsx' }`). Finally, implement dynamic loading in the host app by using `next/dynamic` to import and render components from the remotes, and ensure all new applications leverage the shared libraries from Task #14 for UI, types, and data access.",
         "testStrategy": "1. Run `nx serve bakery-management`. The application should start without errors. 2. Navigate to the root URL of the management app and verify the shell/host UI loads correctly. 3. Create navigation links in the host app to routes handled by the remotes (e.g., `/inventory`, `/orders`). 4. Click on a link and verify that the corresponding micro-frontend is dynamically loaded and rendered within the host application's layout. 5. Confirm that components imported from the shared `ui` library (Task #14) render correctly in both the host and at least one remote application.",
         "status": "done",
-        "dependencies": [12, 13, 14, 15],
+        "dependencies": [
+          12,
+          13,
+          14,
+          15
+        ],
         "priority": "high",
         "subtasks": []
       },
@@ -759,7 +897,12 @@
         "details": "First, generate the main customer-facing storefront application using the Nx generator: `nx g @nx/next:app bakery-shop --style=css`. This application will serve as the primary interface for customers. Next, create a set of domain-specific, buildable libraries to encapsulate e-commerce functionality. Use the `--directory` flag to organize them under a `shop` scope: 1. `nx g @nx/react:lib catalog --directory=libs/shop --buildable` for product display components. 2. `nx g @nx/react:lib cart --directory=libs/shop --buildable` for cart state management, components, and hooks. 3. `nx g @nx/react:lib checkout --directory=libs/shop --buildable` for the checkout form and process logic. Within the `shop-cart` library, implement a service or set of hooks that utilize the browser's `localStorage` to persist the user's cart contents across sessions. This ensures the cart is not lost when the page is refreshed or closed.",
         "testStrategy": "1. Verify the creation of the new application and libraries by checking for the existence of `apps/bakery-shop` and `libs/shop/catalog`, `libs/shop/cart`, `libs/shop/checkout` directories. 2. Run `nx build` for `bakery-shop` and each of the new libraries to ensure they are configured correctly and build without errors. 3. Create a basic placeholder component in the `shop-catalog` library (e.g., `<ProductList />`) and import it into the main page of the `bakery-shop` application. 4. Run `nx serve bakery-shop` and navigate to the root URL. Verify the application loads and the placeholder component is rendered correctly, confirming successful library integration. 5. Write a unit test for the `localStorage` cart persistence utility to confirm it can correctly save and retrieve cart data.",
         "status": "done",
-        "dependencies": [12, 13, 14, 15],
+        "dependencies": [
+          12,
+          13,
+          14,
+          15
+        ],
         "priority": "medium",
         "subtasks": []
       },
@@ -770,7 +913,13 @@
         "details": "1. **GitHub Actions Workflow Setup**: Create a directory `.github/workflows` at the monorepo root. Inside, create a `ci.yml` file. Configure the workflow to trigger on `push` and `pull_request` events targeting the `main` branch. 2. **Implement Affected Commands**: Define jobs for `lint`, `test`, and `build`. For each job, use Nx affected commands to only run tasks on projects impacted by a change. For example, in a pull request, the test job would run `nx affected --target=test --base=origin/main --head=HEAD`. This significantly speeds up CI checks. 3. **Backend Dockerization**: Create a multi-stage `Dockerfile` in the `apps/api` directory. The first `builder` stage will install all monorepo dependencies and run `nx build api` to leverage the Nx cache. The second `runner` stage will copy only the compiled output from `dist/apps/api` and production `node_modules` to create a lean, production-ready image. 4. **Selective Deployment**: Add a `deploy` job to the workflow that runs only on pushes to `main`. This job will first check if the `api` project was affected by the push. If it was, the job proceeds to build the Docker image, tag it, log in to a container registry (e.g., GitHub Container Registry), and push the image.",
         "testStrategy": "1. **PR Check Simulation**: Make a code change within a single, non-API library (e.g., `libs/ui`). Open a pull request and verify that the GitHub Actions workflow correctly identifies and runs `lint` and `test` jobs only for the affected projects. Confirm that the `deploy` job is not triggered. 2. **API Change Simulation**: Make a code change within the `apps/api` project. Open a pull request and verify the CI runs `lint`, `test`, and `build` for the API. 3. **Deployment Verification**: Merge the API pull request into the `main` branch. Confirm the `deploy` job is triggered, successfully builds, and pushes the `api` Docker image to the container registry. 4. **Image Validation**: Pull the newly pushed Docker image from the registry to a local machine. Run the container, ensuring the correct port is exposed. Use an API client like Postman to send a request to a known endpoint and verify a successful response, confirming the containerized application is functional.",
         "status": "pending",
-        "dependencies": [13, 15, 17, 18, 19],
+        "dependencies": [
+          13,
+          15,
+          17,
+          18,
+          19
+        ],
         "priority": "high",
         "subtasks": []
       },
@@ -781,7 +930,12 @@
         "details": "First, generate the main delivery application using the Nx generator: `nx g @nx/next:app bakery-delivery --style=css`. This application will serve as the primary interface for delivery personnel. Next, create a set of domain-specific, buildable libraries to encapsulate delivery functionality, organized under a `delivery` scope: 1. `nx g @nx/js:lib tracking --directory=libs/delivery --buildable` for WebSocket connection management and real-time location data handling. 2. `nx g @nx/js:lib routing --directory=libs/delivery --buildable` for integrating with mapping services (e.g., Mapbox, Google Maps) and handling route optimization logic. This task focuses on creating the structural foundation; the implementation of WebSocket clients and mapping components will be handled in subsequent tasks.",
         "testStrategy": "1. Verify the creation of the new application and libraries by checking for the existence of `apps/bakery-delivery` and `libs/delivery/tracking`, `libs/delivery/routing` directories. 2. Run `nx build` for `bakery-delivery` and each of the new libraries to ensure they are configured correctly and compile without errors. 3. Run the new application using `nx serve bakery-delivery` and navigate to its root URL in a browser to confirm that the default Next.js page loads successfully.",
         "status": "pending",
-        "dependencies": [12, 13, 14, 15],
+        "dependencies": [
+          12,
+          13,
+          14,
+          15
+        ],
         "priority": "low",
         "subtasks": []
       },
@@ -792,9 +946,54 @@
         "details": "This task involves implementing code-splitting via lazy loading in the primary frontend applications: 'bakery-management', 'bakery-shop', and 'bakery-delivery'. The primary mechanism will be Next.js's built-in dynamic import functionality (`next/dynamic`). Identify large components, components that are conditionally rendered (e.g., in modals or separate tabs), or components that rely on heavy third-party libraries. Convert their static imports into dynamic ones. For example, in 'bakery-shop', the checkout flow component could be loaded only when the user proceeds to checkout. In 'bakery-management', complex data grids or reporting charts within the micro-frontends are prime candidates. Implement a simple loading state (e.g., a spinner) to provide user feedback while the component chunk is being fetched. Example conversion:\n\n// Before:\nimport CheckoutForm from '@/libs/shop/checkout/ui/CheckoutForm';\n\n// After:\nimport dynamic from 'next/dynamic';\nconst CheckoutForm = dynamic(() => import('@/libs/shop/checkout/ui/CheckoutForm'), {\n  loading: () => <p>Loading checkout...</p>,\n});",
         "testStrategy": "Use the browser's developer tools to verify the implementation. First, clear the browser cache and load a page like the main storefront. Using the 'Network' tab (filtered for JS/XHR), confirm that only the essential JavaScript chunks are loaded initially. Next, perform an action that should trigger a lazy-loaded component (e.g., clicking 'Proceed to Checkout'). Observe a new JavaScript chunk being fetched over the network at that moment. The UI should display the specified loading state, which is then replaced by the fully-rendered component. Use a performance analysis tool like Lighthouse to run audits before and after the changes to measure improvements in metrics like 'Time to Interactive' and 'Total Blocking Time'.",
         "status": "pending",
-        "dependencies": [18, 19, 21],
+        "dependencies": [
+          18,
+          19,
+          21
+        ],
         "priority": "medium",
-        "subtasks": []
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Refactor 'bakery-management' for Lazy Loading",
+            "description": "Implement dynamic imports in the 'bakery-management' application to code-split feature modules and improve initial page load performance.",
+            "dependencies": [],
+            "details": "Identify large or conditionally rendered components within the 'bakery-management' admin panel, such as reporting dashboards, complex forms, or data tables. Convert their static imports to dynamic imports using `next/dynamic`. Focus on features that are not required for the initial view.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Refactor 'bakery-shop' for Lazy Loading",
+            "description": "Implement dynamic imports in the 'bakery-shop' customer-facing application to reduce the initial bundle size and speed up the storefront experience.",
+            "dependencies": [],
+            "details": "Analyze the 'bakery-shop' application to find components suitable for lazy loading. Candidates include product quick-view modals, the checkout flow components, and components that rely on heavy third-party libraries. Use `next/dynamic` to defer their loading until they are needed.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Refactor 'bakery-delivery' for Lazy Loading",
+            "description": "Implement dynamic imports in the 'bakery-delivery' application to optimize load times for delivery personnel, especially on mobile devices.",
+            "dependencies": [],
+            "details": "In the 'bakery-delivery' app, target components like the live map view (which may use a large mapping library), order details modals, and route optimization displays. Convert them to use `next/dynamic` to ensure the core interface loads quickly.",
+            "status": "pending",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Verify Performance Gains with Lighthouse",
+            "description": "Conduct a performance analysis before and after the lazy loading implementation to quantify the improvements in load times and other core web vitals.",
+            "dependencies": [
+              "22.1",
+              "22.2",
+              "22.3"
+            ],
+            "details": "Run Lighthouse audits on key pages of all three applications ('bakery-management', 'bakery-shop', 'bakery-delivery') before the changes are merged. After implementing lazy loading, run the audits again under the same conditions. Document the improvements in metrics like First Contentful Paint (FCP), Time to Interactive (TTI), and total bundle size.",
+            "status": "pending",
+            "testStrategy": ""
+          }
+        ]
       },
       {
         "id": 23,
@@ -803,7 +1002,13 @@
         "details": "Integrate OpenAPI documentation into the main backend application (`apps/api`). Install `swagger-jsdoc` and `swagger-ui-express` packages. Configure `swagger-jsdoc` to parse JSDoc comments from the API route files. Set up a new endpoint, `/api-docs`, in the Express application to serve the interactive Swagger UI. Systematically add OpenAPI-compliant JSDoc annotations to all existing API endpoints, including those for staff management (Task 7), recipes (Task 8), and dashboard analytics (Task 4). The documentation for each endpoint should clearly define its path, method, parameters, request body, and possible response schemas, including error responses. Special attention should be given to documenting the JWT-based authentication mechanism (from Task 1) by defining a security scheme.",
         "testStrategy": "After implementing the changes, start the backend API server. Navigate to the `/api-docs` endpoint in a web browser and verify that the Swagger UI loads correctly. Confirm that all major API sections (e.g., staff, recipes, dashboard) and their respective endpoints are listed. Check that the schemas for models like 'User' or 'Order' are defined and referenced correctly. Use the 'Try it out' feature in the UI to execute a GET request against a protected endpoint and verify it returns a 401/403 Unauthorized error. Then, use the 'Authorize' feature to input a valid JWT and re-run the request to confirm it succeeds and returns the expected data. Validate that the documented request/response bodies match the actual API behavior.",
         "status": "pending",
-        "dependencies": [1, 4, 7, 8, 15],
+        "dependencies": [
+          1,
+          4,
+          7,
+          8,
+          15
+        ],
         "priority": "medium",
         "subtasks": []
       },
@@ -814,14 +1019,311 @@
         "details": "Complete the API modularization by creating domain-specific libraries for the remaining routes and migrating them from local imports. First, create buildable libraries for each remaining domain: `nx g @nx/js:lib auth --buildable --directory=libs/api`, `nx g @nx/js:lib cash --buildable --directory=libs/api`, `nx g @nx/js:lib chat --buildable --directory=libs/api`, `nx g @nx/js:lib dashboard --buildable --directory=libs/api`, `nx g @nx/js:lib products --buildable --directory=libs/api`, `nx g @nx/js:lib recipes --buildable --directory=libs/api`, and `nx g @nx/js:lib staff --buildable --directory=libs/api`. For each library, migrate the corresponding route files from the local routes directory to the new library's `src/lib` folder. Update each route file to export the router as the default export and ensure all dependencies (models, middleware, utilities) are properly imported. Create an `index.ts` file in each library to export the router. Update the main application's `main.ts` file to import routes from the new libraries instead of local files: `import authRoutes from '@bakery/api/auth'`, `import cashRoutes from '@bakery/api/cash'`, etc. Ensure all route mounting in main.ts uses the imported library routes. Update the workspace's `tsconfig.base.json` to include path mappings for each new library. Verify that all middleware, database models, and utility functions are accessible from the new library locations. Follow the established patterns from the previously migrated libraries (orders, inventory, customers, production, notifications) to maintain consistency in structure and imports.",
         "testStrategy": "Verify successful migration by running `nx build api` to ensure all dependencies resolve correctly. Test each migrated route endpoint using an API client to confirm functionality is preserved. Run the full API test suite to verify no regressions were introduced. Check that `main.ts` no longer contains any local route imports and only uses library imports. Verify that each new library can be built independently with `nx build auth`, `nx build cash`, etc. Test authentication flows, cash management operations, chat functionality, dashboard analytics, product CRUD operations, recipe management, and staff management through their respective endpoints. Confirm that the application starts successfully and all routes respond correctly. Validate that the modular structure allows for independent testing and building of each domain library.",
         "status": "done",
-        "dependencies": [15],
+        "dependencies": [
+          15
+        ],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 25,
+        "title": "Finalize and Productionize Bakery Landing Page",
+        "description": "Make the `bakery-landing` application production-ready by resolving dependency issues, replacing placeholder content with final assets, and implementing production features like SEO, error handling, and performance optimization.",
+        "details": "This task involves finalizing the static landing page. First, resolve any build failures by correctly integrating the shared UI library and refactoring components to use it, ensuring a consistent design system. Second, replace all placeholder content, including images, logos, and text, with professional, high-quality assets provided by the design team. Create a root-level React Error Boundary in `_app.tsx` to catch rendering errors and display a user-friendly fallback UI. For SEO, use `next/head` to implement essential meta tags (title, description) and Open Graph tags (og:title, og:description, og:image) on the main page. Finally, optimize performance by ensuring all images are served efficiently using the `next/image` component and verifying the static build is clean and minimal.",
+        "testStrategy": "1. Run `nx build bakery-landing` and `nx export bakery-landing`. The commands must complete successfully without any errors, confirming dependency issues are resolved. 2. Serve the exported static site locally using a tool like `npx serve dist/apps/bakery-landing/out`. 3. Visually inspect the entire page to confirm all placeholder images and text have been replaced with final assets. 4. Use browser developer tools to inspect the page's `<head>` element and verify that the `title`, `meta description`, and Open Graph tags are present and correctly populated. 5. To test error handling, temporarily introduce a rendering error in a component and confirm that the application-wide error boundary displays a fallback UI instead of crashing. 6. Run a Lighthouse audit in Chrome DevTools on the locally served page and check for high scores in Performance and SEO.",
+        "status": "done",
+        "dependencies": [
+          17,
+          19
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Resolve Build and Dependency Issues",
+            "description": "Fix any build failures and dependency conflicts, particularly with the shared UI library, to ensure the `bakery-landing` application can be successfully built and exported.",
+            "dependencies": [],
+            "details": "Refactor components to correctly use the shared UI library. Run `nx build bakery-landing` and `nx export bakery-landing` to validate that the build process completes without errors. This step is crucial for unblocking further development and deployment.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Replace Placeholder Content with Final Assets",
+            "description": "Update the landing page by replacing all placeholder text, images, and logos with the final, high-quality assets provided by the design team.",
+            "dependencies": [
+              "25.1"
+            ],
+            "details": "Iterate through all components of the landing page. Replace lorem ipsum text with final copy. Swap out placeholder images and logos with the optimized assets from the design team. Ensure all content is professional and production-ready.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Implement Root-Level Error Boundary",
+            "description": "Create and implement a root-level React Error Boundary in `_app.tsx` to gracefully handle rendering errors and prevent the entire application from crashing.",
+            "dependencies": [
+              "25.1"
+            ],
+            "details": "Create a new class component that implements `getDerivedStateFromError` and `componentDidCatch`. This component will render a user-friendly fallback UI when a JavaScript error occurs in a child component. Wrap the main `<Component {...pageProps} />` in `pages/_app.tsx` with this new Error Boundary.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Add SEO and Open Graph Meta Tags",
+            "description": "Enhance the landing page for search engines and social media sharing by adding relevant SEO and Open Graph meta tags using Next.js's `Head` component.",
+            "dependencies": [
+              "25.2"
+            ],
+            "details": "In the main landing page component, use the `next/head` component to add `<title>`, `<meta name='description'>`, and relevant keywords. Also include Open Graph tags like `og:title`, `og:description`, `og:image`, and `og:url` to control how the page appears when shared on social platforms.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Convert <img> Tags to Optimized next/image",
+            "description": "Improve performance and Core Web Vitals by converting all standard `<img>` tags on the landing page to Next.js's optimized `next/image` component.",
+            "dependencies": [
+              "25.2"
+            ],
+            "details": "Audit the entire `bakery-landing` application for `<img>` tags. Replace each one with the `<Image />` component from `next/image`. Configure the `width`, `height`, and `alt` props correctly. Leverage features like lazy loading and image optimization to reduce initial page load time.",
+            "status": "done",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 26,
+        "title": "Create Service to Ingest and Parse Daily Report JSON Files",
+        "description": "Develop a service within the 'reports' micro-frontend to automatically detect, read, and parse daily JSON report files from the `../content/reports/converted` directory. This service will make structured report data available to the application.",
+        "details": "The service logic should be created within the `apps/reports` micro-frontend. First, define TypeScript interfaces in the shared `libs/types` library for the expected JSON structure, including `Transaction`, `ReportItem`, `DailySummary`, `UserPerformance`, and a main `DailyReport` type. The service will use Node.js's `fs` and `path` modules within a server-side context (e.g., an API route like `/api/reports/ingest`) to access the file system and resolve the relative path to `../content/reports/converted`. For file detection, the API route will scan the directory for new files based on their filename (e.g., `YYYY-MM-DD.json`) and parse them. Implement robust error handling for missing files, directory access issues, and malformed JSON.",
+        "testStrategy": "Create unit tests for the parsing logic, mocking the `fs` module to test with valid and invalid sample JSON data. Verify that the parser returns correctly structured objects or throws appropriate errors. Create a temporary test page within the `reports` app that triggers the ingestion service. Before running the test, place a sample JSON file in a test `content/reports/converted` directory. The test page should successfully fetch and display key data points (e.g., total transactions) from the file. Manually verify that the service correctly resolves the relative path and can access the files when the application is run via `nx serve`.",
+        "status": "done",
+        "dependencies": [
+          18,
+          14
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 27,
+        "title": "Extend Database Schema for Sales Analytics",
+        "description": "Extend the existing database schema with new Sequelize models for sales analytics. This includes creating SalesTransaction, TransactionItem, and DailySalesReport models to store data ingested from daily report JSON files, and integrating them with the existing Product model.",
+        "details": "Within the shared `libs/data-access` library, create three new Sequelize models. 1. **SalesTransaction**: This model will represent a single sales event and should include fields like `transaction_id` (primary key), `transaction_date`, `total_amount`, and `payment_method`. 2. **TransactionItem**: This model will represent an item within a transaction. It must include a foreign key to `SalesTransaction` and a foreign key (`product_id`) that maps to the existing `Product` model. Other fields should include `quantity` and `price_per_item`. 3. **DailySalesReport**: This model will store aggregated daily metrics, such as `report_date` (primary key), `total_sales`, `total_transactions`, and `most_popular_product_id`. Ensure all foreign key relationships are defined with appropriate `onDelete` and `onUpdate` cascade options. Add indexes to foreign keys (`product_id`, `transaction_id`) and date columns to optimize performance for future analytics queries. Follow the existing coding standards and patterns established in the `libs/data-access/src/lib/models/` directory.",
+        "testStrategy": "1. After creating the model files in `libs/data-access/src/lib/models/`, run the database migration script. Verify that it executes successfully and creates three new tables: `SalesTransactions`, `TransactionItems`, and `DailySalesReports`. 2. Using a database inspection tool, connect to the development database and confirm the tables exist with the correct schema. Check that all columns, data types, primary keys, foreign key constraints (e.g., `TransactionItems.product_id` referencing `Products.id`), and indexes are correctly configured. 3. Write a unit test that programmatically creates a `SalesTransaction` instance with several associated `TransactionItem` instances, saves them to the database, and then successfully retrieves them, verifying that the relationships are correctly resolved by Sequelize.",
+        "status": "done",
+        "dependencies": [
+          26,
+          14
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 28,
+        "title": "Implement Sales Data Import and Processing Service",
+        "description": "Create a backend service to process parsed JSON sales reports, validate the data, and populate the sales analytics database models. The service will handle duplicate detection, map product and user data, and support both incremental and bulk imports.",
+        "details": "This service will be implemented as a new library within the API (e.g., `libs/api/import-service`) and exposed via an endpoint like `POST /api/import/sales-report`. The core logic will receive parsed JSON data from the ingestion service (Task #26). The process must be wrapped in a single database transaction per file to ensure atomicity. Key steps include: 1. Duplicate Detection: Before processing, query the `DailySalesReports` model (from Task #27) by date to prevent re-importing the same day's data. 2. Data Mapping: For each transaction, use the `user` field to look up the corresponding staff member in the `Users` table (via the `libs/api/staff` module from Task #24). For each transaction item, validate the `product_id` against the `Products` table (via the `libs/api/products` module). Handle cases where users or products are not found by logging an error and rolling back the transaction. 3. Population: Create records in the `SalesTransaction` and `TransactionItem` tables. 4. Summary: After successfully processing all transactions in a file, create a single `DailySalesReport` record. The service must be designed to handle both single-file incremental updates and a bulk mode for importing a directory of historical files.",
+        "testStrategy": "1. Unit Tests: Create tests for the service logic, mocking the database models from `libs/data-access`. Verify correct handling of duplicate reports (should be skipped). Test the mapping logic by providing valid and invalid `user` and `product_id` values, ensuring errors are thrown correctly. Test the atomicity by creating a scenario where one transaction in a multi-transaction report is invalid; assert that the entire database transaction is rolled back and no data from that file is committed. 2. Integration Tests: Using an API client like Postman, call the `POST /api/import/sales-report` endpoint with a valid sample report. After the call, query the test database directly to confirm that the `SalesTransactions`, `TransactionItems`, and `DailySalesReports` tables have been populated with the correct data and associations. Call the endpoint again with the same data to verify that duplicate records are not created. Test the bulk import feature by pointing it to a directory with multiple valid report files and verify all are processed correctly.",
+        "status": "done",
+        "dependencies": [
+          26,
+          27,
+          24
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Setup Service Structure and API Endpoint",
+            "description": "Create the new library `libs/api/import-service` and expose a `POST /api/import/sales-report` endpoint to receive parsed JSON sales data.",
+            "dependencies": [],
+            "details": "This includes setting up the initial module, controller, and service files. The endpoint should be configured to accept JSON payloads but will have minimal logic initially.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 2,
+            "title": "Implement Duplicate Report Detection",
+            "description": "Before processing any data, query the `DailySalesReports` model by the report's date to check if it has already been imported. If a duplicate is found, the process should be skipped and an appropriate response returned.",
+            "dependencies": [
+              "28.1"
+            ],
+            "details": "The service logic will receive the report date from the parsed JSON. A query will be executed against the database. This logic must be the first step in the processing flow after receiving the request.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 3,
+            "title": "Develop Data Validation and Mapping Logic",
+            "description": "Implement logic to validate each transaction within the sales report. This includes verifying that the `user` and `product_id` for each sale exist in the corresponding database tables.",
+            "dependencies": [
+              "28.1"
+            ],
+            "details": "The service will need to query the user and product tables to confirm existence. If any ID is invalid, the entire import for that file should fail. This logic should be efficient, perhaps by pre-fetching all relevant IDs before iterating through transactions.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 4,
+            "title": "Wrap Import Process in a Database Transaction",
+            "description": "Encapsulate the entire data import process for a single sales report file within a single database transaction to ensure atomicity. If any part of the process fails, all changes must be rolled back.",
+            "dependencies": [
+              "28.1"
+            ],
+            "details": "This involves using the database driver's transaction management features. The transaction should begin before any validation or insertion logic and be committed only after all steps are successful. Implement try/catch blocks to handle errors and trigger a rollback.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 5,
+            "title": "Populate Individual Sales Transaction Tables",
+            "description": "Within the database transaction, iterate through the validated sales data from the JSON report and insert records into the detailed sales transaction tables.",
+            "dependencies": [
+              "28.3",
+              "28.4"
+            ],
+            "details": "This is the core data insertion step. Each sale record from the report will be mapped to the schema of the transaction table(s) and inserted. This operation must occur after validation and within the transaction block.",
+            "status": "done",
+            "testStrategy": ""
+          },
+          {
+            "id": 6,
+            "title": "Aggregate and Populate Daily Summary Report Table",
+            "description": "After all individual transactions for the report are successfully inserted, calculate the summary metrics and create a single entry in the `DailySalesReports` table.",
+            "dependencies": [
+              "28.5"
+            ],
+            "details": "This is the final step within the database transaction. The data for the summary can be aggregated from the processed JSON or by querying the newly inserted transaction records. This entry marks the successful import of the daily report.",
+            "status": "done",
+            "testStrategy": ""
+          }
+        ]
+      },
+      {
+        "id": 29,
+        "title": "Create Sales Analytics Controller and Endpoints",
+        "description": "Implement salesAnalyticsController.js to expose endpoints for detailed sales analysis. This includes endpoints for revenue trends, product performance, cashier efficiency, and payment method breakdowns, with support for advanced filtering and pagination.",
+        "details": "Create a new controller file, `salesAnalyticsController.js`, within the main API application, following the patterns established in Task #4. This controller will use the `data-access` library to query the sales analytics models populated by the import service from Task #28. Implement a new router at `/api/analytics/sales` with the following endpoints: 1. `GET /revenue-trends`: Accepts `startDate`, `endDate`, and `granularity` ('daily', 'weekly', 'monthly') query params to return time-series revenue data. 2. `GET /product-performance`: Accepts `startDate`, `endDate`, `limit`, and `sort` ('top', 'bottom') to provide Renner/Penner (best/worst seller) analysis. 3. `GET /cashier-performance`: Groups sales totals and transaction counts by user for a given date range. 4. `GET /payment-methods`: Summarizes transaction volume and value by payment type. 5. `GET /summary`: Provides a high-level overview for a date range. All list-based endpoints must support pagination via `page` and `limit` parameters. Implement robust input validation for all query parameters and consistent error handling.",
+        "testStrategy": "Use an API client like Postman to test each new endpoint. First, ensure the database is populated with varied sales data via the service from Task #28. For each endpoint, test date range filtering (`startDate`, `endDate`) with valid, invalid, and overlapping ranges. Test the `GET /revenue-trends` endpoint with each `granularity` setting. For `GET /product-performance`, verify that `sort=top` and `sort=bottom` return the correct items. Test pagination on all list endpoints using `page` and `limit` parameters. Send requests with invalid or missing parameters to ensure the API returns 400-level errors with descriptive messages. Confirm all endpoints are protected by authentication middleware and return a 401/403 error for unauthenticated requests.",
+        "status": "done",
+        "dependencies": [
+          28,
+          4
+        ],
+        "priority": "high",
+        "subtasks": []
+      },
+      {
+        "id": 30,
+        "title": "Create Analytics Feature Library for Bakery Management",
+        "description": "Create a new buildable feature library, `libs/bakery-management/feature-analytics`, to house all UI components for the analytics dashboard. This includes charts, data tables, and interactive filters for the bakery management application.",
+        "details": "1. Generate a new buildable React library using the Nx generator: `nx g @nx/react:lib feature-analytics --directory=libs/bakery-management --buildable --style=css`. 2. Install a charting library like `recharts` or `chart.js` and a data grid library like `@mui/x-data-grid`. 3. Develop a set of reusable Material-UI components within the new library, leveraging the shared theme and components from `libs/ui` (Task #14). These should include: a Revenue Trend Chart for time-series data from the endpoint in Task #29, a Product Ranking Table with sorting and pagination, a Date Range Picker, and an Export Button for CSV generation. 4. Define necessary TypeScript interfaces for analytics data structures in `libs/types` to ensure type safety with the API from Task #29. 5. Ensure all new components are properly exported from the library's main `index.ts` file for consumption by the main application.",
+        "testStrategy": "1. Verify the library is created successfully at `libs/bakery-management/feature-analytics`. Run `nx build feature-analytics` to confirm it builds without errors. 2. Create Storybook stories for each new component (Chart, Table, Date Picker) to allow for isolated visual testing and development, using mock data that matches the API structure from Task #29. 3. Write unit tests for any complex logic, such as data transformation for charts or CSV export functionality. 4. As a final integration check, import the Revenue Trend Chart into a page within the `bakery-management` application (Task #18) and connect it to the live API endpoint to ensure it fetches and displays data correctly.",
+        "status": "pending",
+        "dependencies": [
+          18,
+          29,
+          14
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 31,
+        "title": "Implement Sales Analytics Widgets on Dashboard Overview",
+        "description": "Extend the main dashboard overview page by adding several key sales analytics widgets. These widgets will provide at-a-glance insights into daily revenue, transaction volume, and top-selling products, and will link to more detailed analytics pages.",
+        "details": "In the `bakery-management` application, locate and modify the `dashboard-overview.tsx` component. Utilize Material UI's `Grid` component to create a responsive layout for the new widgets. Import and use the reusable components created in the `libs/bakery-management/feature-analytics` library (Task #30). Implement the following summary widgets:\n1.  **Daily Revenue Card**: Fetch data from the `GET /api/analytics/sales/revenue-trends?granularity=daily` endpoint (Task #29) for the current day.\n2.  **Transaction Count Card**: Fetch data from a summary endpoint to display the total number of transactions for the current day.\n3.  **Top Products List**: Use the `GET /api/analytics/sales/product-performance` endpoint to display a list of the top 3-5 selling products.\n4.  **Period Comparison Card**: Fetch revenue data for two periods (e.g., today vs. yesterday, or this week vs. last week) and display the percentage change. \nEach widget should be interactive, navigating to a detailed view (e.g., `/analytics/revenue`, `/analytics/products`) upon being clicked, using the application's routing solution.",
+        "testStrategy": "1. Ensure the API from Task #29 is running and the database is populated with sample sales data. \n2. Launch the `bakery-management` application and navigate to the dashboard overview page. \n3. Verify that all four new analytics widgets (Daily Revenue, Transaction Count, Top Products, Period Comparison) are displayed correctly. \n4. Cross-reference the data shown in each widget with direct API calls to the corresponding endpoints (e.g., `/api/analytics/sales/revenue-trends`) to ensure data accuracy. \n5. Confirm that the layout is responsive and uses Material UI components as expected. \n6. Click on each widget and verify that it navigates the user to the correct, designated detailed analytics route. \n7. Test loading and error states by simulating slow network responses or API errors, ensuring UI feedback like spinners or error messages appears.",
+        "status": "pending",
+        "dependencies": [
+          29,
+          30
+        ],
+        "priority": "medium",
+        "subtasks": []
+      },
+      {
+        "id": 32,
+        "title": "Implement Automated Sales Report Generation",
+        "description": "Implement a backend service for automated sales analytics reporting, capable of generating and exporting PDF and Excel files for various timeframes, with support for scheduling and notification integration.",
+        "details": "Create a new backend module, `libs/api/reporting-service`, to handle the generation of sales reports. This service will use data processed by the Sales Data Import Service (Task 28). Implement endpoints under `/api/reports`. Use a library like `exceljs` for Excel exports and `puppeteer` for generating PDFs from HTML templates to ensure consistent styling. The service should support on-demand generation and scheduled jobs using `node-cron`. For scheduling, create endpoints like `POST /api/reports/schedule` to define report type (daily, weekly, monthly), format (PDF/Excel), and recipients. Upon successful report generation, the service will emit a `ReportGeneratedEvent` on the event bus (from Task 16), including a secure link to the generated file. Generated reports should be stored in a designated secure location, such as a private cloud storage bucket.",
+        "testStrategy": "1. **On-Demand Generation**: Make a POST request to a new endpoint like `/api/reports/generate-now` with parameters for report type and format. Verify that a correctly formatted PDF or Excel file is generated and returned. Manually inspect the file's contents (revenue totals, product rankings) and cross-reference them with the database to ensure data accuracy. 2. **Scheduled Generation**: Create a new schedule via the API for a daily report. Manually trigger the cron job for testing purposes and verify that the report is generated automatically. 3. **Notification Integration**: Use a test utility to listen for events on the event bus. After a report is generated (either on-demand or scheduled), confirm that a `ReportGeneratedEvent` is emitted with the correct payload, including a valid link to the report. 4. **Error Handling**: Test the service's behavior when underlying analytics data is missing or when file generation fails, ensuring it logs appropriate errors and does not crash.",
+        "status": "pending",
+        "dependencies": [
+          28,
+          16
+        ],
+        "priority": "low",
+        "subtasks": []
+      },
+      {
+        "id": 33,
+        "title": "Migrate and Integrate Complete Landing Page into Nx `bakery-landing` App",
+        "description": "Migrate all components, pages, styles, and logic for the public-facing landing page from the legacy /src structure into the new apps/bakery-landing Nx application. This task aims to achieve 1:1 feature parity, including layout, branding, context providers, and all associated pages.",
+        "details": "This task involves a comprehensive migration of the entire landing page and its supporting assets into the `bakery-landing` application. The primary goal is to replicate the existing functionality and appearance with 1:1 parity by moving files to their new, designated locations within the Nx monorepo structure. The migration should follow these steps and mappings:\n\n**1. Infrastructure Migration (Theme, Context, Utilities):**\n- Migrate core providers and configuration files to establish the application's foundation.\n- `ThemeRegistry.tsx` -> `apps/bakery-landing/src/components/providers/ThemeRegistry.tsx`\n- `ThemeContext.tsx` -> `apps/bakery-landing/src/context/ThemeContext.tsx`\n- `CartContext.tsx` -> `apps/bakery-landing/src/context/CartContext.tsx` (ensure integration with `libs/shop/cart`)\n- `NotificationContext.tsx` -> `apps/bakery-landing/src/context/NotificationContext.tsx`\n- `theme.ts` -> `apps/bakery-landing/src/theme/theme.ts`\n- `AppConfig.ts` -> `apps/bakery-landing/src/config/AppConfig.ts`\n- `formatPrice.ts` -> `apps/bakery-landing/src/utils/formatPrice.ts`\n- `createEmotionCache.ts` -> `apps/bakery-landing/src/utils/createEmotionCache.ts`\n- `fonts.ts` -> `apps/bakery-landing/src/config/fonts.ts`\n\n**2. Icon & Brand System Migration:**\n- Transfer all brand, social, and utility icons to ensure consistent branding.\n- `Heusser.tsx`, `Divider.tsx`, `H.tsx` -> `apps/bakery-landing/src/components/icons/brand/`\n- Social icons (Facebook, Instagram, etc.) -> `apps/bakery-landing/src/components/icons/socials/`\n- Utility icons (Message, Phone, User) -> `apps/bakery-landing/src/components/icons/`\n\n**3. Layout & Core Component Migration:**\n- Reconstruct the main application layout by migrating the Header and Footer components.\n- Merge `/src/app/(user)/layout.tsx` and `/src/app/layout.tsx` into `apps/bakery-landing/src/app/layout.tsx`.\n- Migrate Header and all its sub-components to `apps/bakery-landing/src/components/header/`.\n- Migrate Footer and all its sub-components to `apps/bakery-landing/src/components/footer/`.\n\n**4. Page Content Migration & Enhancement:**\n- Migrate and enhance all landing page sections and static pages.\n- Replicate the structure of `/src/app/(user)/page.tsx` in `apps/bakery-landing/src/app/page.tsx`.\n- Enhance existing home page components (`InstagramFeed`, `TrustBadges`, `QuickOrder`, `SeasonalHighlights`) with logic from the old source.\n- Migrate/enhance `about`, `imprint`, and the `news` pages (list and detail views).\n\n**5. Stylesheets:**\n- Merge styles from `/src/app/globals.css` into `apps/bakery-landing/src/app/global.css`, resolving any conflicts.",
+        "testStrategy": "1. **Visual Regression Testing:** Deploy the `bakery-landing` application to a staging environment. Perform a side-by-side comparison with the production version of the old landing page. Verify that layout, typography, spacing, colors, and images are identical across multiple breakpoints (mobile, tablet, desktop).\n2. **Component Functionality:** Manually test all interactive elements. Verify that all navigation links in the Header and Footer direct to the correct pages. Check that social media links work. Ensure any forms (e.g., newsletter signup) are functional.\n3. **Static Export Verification:** Run the `nx export bakery-landing` command. Once complete, navigate to the `dist/apps/bakery-landing/out` directory and serve the static files using a local server (e.g., `npx serve .`). Browse the locally served site to confirm it renders correctly and all assets load without a running Next.js server.\n4. **Context and State:** Add an item to the cart from the main shop application (Task 11) and navigate to the landing page. Verify that the cart icon in the header correctly reflects the cart's state, confirming the `CartContext` is integrated properly.\n5. **Page Accessibility:** Confirm all migrated pages (`/`, `/about`, `/imprint`, `/news`, `/news/[slug]`) are accessible via their new routes and render the correct content.\n6. **Code Review:** Ensure all files specified in the source-to-target mapping have been migrated, and no legacy paths are referenced within the `apps/bakery-landing` codebase.",
+        "status": "in-progress",
+        "dependencies": [
+          17,
+          19,
+          11
+        ],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Migrate Core Infrastructure",
+            "description": "Migrate theme system, context providers (ThemeContext, CartContext, NotificationContext), and utility functions from /src to apps/bakery-landing/src",
+            "details": "",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 33
+          },
+          {
+            "id": 2,
+            "title": "Migrate Icon and Brand System",
+            "description": "Transfer all brand icons (Heusser, Divider, H), social icons (Facebook, Instagram, Whatsapp), and utility icons (Message, Phone, User) from /src/components/icons to apps/bakery-landing/src/components/icons",
+            "details": "",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 33
+          },
+          {
+            "id": 3,
+            "title": "Migrate Layout Components",
+            "description": "Migrate Header component with all sub-components (Hamburger, Item, MobileItem, Modal) and Footer component with all sub-components (Contact, Link, Menu, Openings, data.ts) from /src/components to apps/bakery-landing/src/components",
+            "details": "",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 33
+          },
+          {
+            "id": 4,
+            "title": "Migrate Landing Page Content",
+            "description": "Enhance main page.tsx to match /src/app/(user)/page.tsx structure and upgrade existing home components (InstagramFeed, TrustBadges, QuickOrder, SeasonalHighlights) with full functionality from original source",
+            "details": "",
+            "status": "done",
+            "dependencies": [],
+            "parentTaskId": 33
+          },
+          {
+            "id": 5,
+            "title": "Migrate Additional Pages and Styles",
+            "description": "Enhance About and Imprint pages, create news system with routing, merge global styles from /src/app/globals.css, and configure static export for GitHub Pages deployment",
+            "details": "",
+            "status": "pending",
+            "dependencies": [],
+            "parentTaskId": 33
+          }
+        ]
       }
     ],
     "metadata": {
       "created": "2025-07-18T21:29:08.352Z",
-      "updated": "2025-08-02T22:55:43.291Z",
+      "updated": "2025-08-03T12:37:01.775Z",
       "description": "Tasks for master context"
     }
   }

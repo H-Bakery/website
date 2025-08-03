@@ -11,10 +11,10 @@ npm run serve:all        # Start all applications
 
 **Applications:**
 
-- Shop: http://localhost:4200
-- Management: http://localhost:3001
-- Landing: http://localhost:3000
-- API: http://localhost:3333
+- Landing Page: http://localhost:3000 (Static marketing site)
+- Shop: http://localhost:4200 (E-commerce frontend)
+- Management: http://localhost:4201 (Admin dashboard)
+- API: http://localhost:3333 (Backend services)
 
 ## 📁 Structure
 
@@ -39,6 +39,11 @@ npm run serve:shop
 npm run serve:management
 npm run serve:landing
 
+# Static builds (Landing Page)
+npm run build:landing:static    # Standalone build (recommended)
+npm run build:landing:nx        # Nx integrated build
+nx build-static-standalone bakery-landing  # Direct Nx command
+
 # Testing
 npm run test:unit        # All unit tests
 npm run test:e2e         # All E2E tests
@@ -52,13 +57,28 @@ npm run validate        # Lint + type-check + test
 
 ## 🚢 Deployment
 
-**Automatic:** Push to `main` deploys to production
+### Static Landing Page
 
-**Platforms:**
+The landing page builds to static files for CDN deployment:
 
-- Landing → GitHub Pages
-- Shop/Management → Vercel
-- API → Google Cloud Run
+```bash
+# Build static files (output: apps/bakery-landing/out/)
+npm run build:landing:static
+
+# Deploy to GitHub Pages, Vercel, or any static host
+```
+
+**Deployment Options:**
+- **GitHub Pages**: Upload `out/` folder or use Actions
+- **Vercel**: Connect repository for auto-deployment
+- **CDN/S3**: Upload `out/` directory contents
+
+### Automatic Deployment
+
+**Push to `main` triggers:**
+- Landing → GitHub Pages (static)
+- Shop/Management → Vercel (SSR)
+- API → Google Cloud Run (container)
 
 ## 📚 Documentation
 

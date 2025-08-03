@@ -31,14 +31,32 @@ npm run test:coverage      # Generate coverage report
 npm run lint               # Run ESLint
 ```
 
-### Nx Commands (Migration in Progress)
+### Nx Commands
 
 ```bash
-nx serve bakery-shop       # Start shop application
+# Development
+nx serve bakery-shop       # Start shop application  
 nx serve bakery-management # Start management system
 nx serve bakery-api        # Start backend API
+nx serve bakery-landing    # Start landing page (Next.js dev server)
+npm run dev                # Start all applications
+
+# Building 
+nx build bakery-shop       # Build shop app
+nx next:build bakery-landing  # Build landing page with Nx dependencies
+nx build-static-standalone bakery-landing  # Build landing page standalone (recommended)
 nx affected:build          # Build only affected projects
+
+# Static Export (Landing Page)
+nx build-static-standalone bakery-landing  # Recommended: standalone static build
+npm run build:landing:static               # Same as above
+npm run build:landing:nx                   # Uses Nx dependencies (may fail)
+nx build-static bakery-landing             # Full Nx build + export
+
+# Testing & Quality
 nx affected:test           # Test only affected projects
+nx affected:lint           # Lint affected projects  
+nx format:write            # Format code
 ```
 
 ## Project Structure (Nx Monorepo)
@@ -144,3 +162,52 @@ For detailed information, see:
 - Deployment: @docs/deployment.md
 - Testing: @docs/testing.md
 - Monitoring: @docs/monitoring.md
+
+## Static Landing Page Build & Deployment
+
+### Building for Static Export
+
+The landing page (`apps/bakery-landing/`) is configured for static export to GitHub Pages, Vercel, or any static hosting:
+
+**Recommended Build Commands:**
+```bash
+# Standalone build (always works, recommended)
+npm run build:landing:static
+nx build-static-standalone bakery-landing
+
+# Nx-integrated build (may fail if shared libs have TypeScript issues)  
+npm run build:landing:nx
+nx build-static bakery-landing
+```
+
+**Output Location:** `apps/bakery-landing/out/` (ready for deployment)
+
+### Deployment Options
+
+- **GitHub Pages**: Upload `out/` contents or use GitHub Actions workflow
+- **Vercel**: Auto-deployment via repository integration  
+- **CDN/S3**: Upload `out/` directory to your CDN
+- **Traditional Hosting**: Upload `out/` directory to web server
+
+### Troubleshooting Static Builds
+
+**Problem: Nx build fails with shared library TypeScript errors**
+```bash
+# Solution: Use standalone build that avoids problematic dependencies
+npm run build:landing:static
+```
+
+**Problem: Module resolution errors for @bakery/* imports**
+```bash
+# Solution: Ensure tsconfig extends the base configuration
+# File: apps/bakery-landing/tsconfig.json should have:
+# "extends": "../../tsconfig.base.json"
+```
+
+**Problem: Cannot resolve shared library modules**
+```bash
+# Solution: Build required shared libraries first
+nx build shared-utils
+nx build shared-types
+# Then try the landing page build again
+```
