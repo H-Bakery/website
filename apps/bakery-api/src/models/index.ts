@@ -28,6 +28,12 @@ import {
   NotificationPreferences as NotificationPreferencesModel,
   NotificationTemplate as NotificationTemplateModel
 } from '@bakery/api/notifications';
+import { 
+  initializeSalesAnalyticsModels,
+  SalesTransaction as SalesTransactionModel,
+  TransactionItem as TransactionItemModel,
+  DailySalesReport as DailySalesReportModel
+} from '@bakery/api/sales-analytics';
 
 // Import local models that haven't been migrated yet
 import { default as Cash } from './Cash';
@@ -47,6 +53,9 @@ export const ProductionStep = ProductionStepModel;
 export const Notification = NotificationModel;
 export const NotificationPreferences = NotificationPreferencesModel;
 export const NotificationTemplate = NotificationTemplateModel;
+export const SalesTransaction = SalesTransactionModel;
+export const TransactionItem = TransactionItemModel;
+export const DailySalesReport = DailySalesReportModel;
 
 // Export local models
 export { Cash, Chat, Product, UnsoldProduct };
@@ -64,6 +73,7 @@ export async function initializeModels(sequelize: Sequelize): Promise<void> {
     await initializeCustomerModels(sequelize);
     await initializeProductionModels(sequelize);
     await initializeNotificationModels(sequelize);
+    await initializeSalesAnalyticsModels(sequelize);
 
     // Initialize local models
     Cash.initModel(sequelize);
@@ -148,6 +158,35 @@ function setupAssociations(): void {
 
   NotificationPreferences.belongsTo(Customer, { foreignKey: 'userId', as: 'user' });
 
+  // Sales Analytics associations
+  SalesTransaction.hasMany(TransactionItem, { 
+    foreignKey: 'salesTransactionId', 
+    as: 'transactionItems',
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE'
+  });
+
+  TransactionItem.belongsTo(SalesTransaction, { 
+    foreignKey: 'salesTransactionId', 
+    as: 'salesTransaction',
+    onDelete: 'CASCADE',
+    onUpdate: 'CASCADE'
+  });
+
+  TransactionItem.belongsTo(Product, { 
+    foreignKey: 'productId', 
+    as: 'product',
+    onDelete: 'RESTRICT',
+    onUpdate: 'CASCADE'
+  });
+
+  DailySalesReport.belongsTo(Product, { 
+    foreignKey: 'mostPopularProductId', 
+    as: 'mostPopularProduct',
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE'
+  });
+
   logger.info('Model associations established');
 }
 
@@ -168,6 +207,9 @@ export function getAllModels(): any[] {
     NotificationTemplate,
     ProductionSchedule,
     ProductionBatch,
-    ProductionStep
+    ProductionStep,
+    SalesTransaction,
+    TransactionItem,
+    DailySalesReport
   ];
 }

@@ -12,10 +12,12 @@ import swaggerUi from 'swagger-ui-express';
 // Import from domain libraries
 import { logger, testConnection, sequelize, syncDatabase } from '@bakery/api/core';
 import { orderRoutes } from '@bakery/api/orders';
-import { inventoryRoutes } from '@bakery/api/inventory';
+import { inventoryRoutes, inventoryEventService } from '@bakery/api/inventory';
 import { customerRoutes } from '@bakery/api/customers';
 import { productionRoutes } from '@bakery/api/production';
 import { notificationRoutes } from '@bakery/api/notifications';
+import { importRoutes, importService } from '@bakery/api/import-service';
+import { salesAnalyticsRoutes } from '@bakery/api/sales-analytics';
 
 // Import monitoring
 import { setupMonitoring, recordOrder, updateInventoryMetrics, recordAuthAttempt } from './monitoring';
@@ -220,6 +222,14 @@ async function initializeApp() {
 }
 
 function initializeServices() {
+  // Initialize inventory event service for event-driven communication
+  inventoryEventService.initialize();
+  logger.info('Inventory event service initialized');
+
+  // Initialize import service with sequelize instance
+  importService.initialize(sequelize);
+  logger.info('Import service initialized');
+
   // Initialize notification archival service
   if (process.env.ARCHIVAL_ENABLED !== 'false') {
     const { notificationArchivalService } = require('./services/notification-archival.service');
@@ -242,6 +252,8 @@ function registerRoutes() {
   app.use('/api/customers', customerRoutes);
   app.use('/api/production', productionRoutes);
   app.use('/api/notifications', notificationRoutes);
+  app.use('/api/import', importRoutes);
+  app.use('/api/analytics/sales', salesAnalyticsRoutes);
 
   // Local routes (not yet migrated)
   app.use('/api/cash', cashRoutes);
@@ -304,6 +316,13 @@ function logRoutes() {
   logger.info('    POST /api/notifications - Create notification (admin only)');
   logger.info('    PUT /api/notifications/:id/read - Mark as read (authenticated)');
   logger.info('    DELETE /api/notifications/:id - Delete notification (authenticated)');
+  
+  logger.info('  Sales Analytics:');
+  logger.info('    GET /api/analytics/sales/revenue-trends - Revenue trends with granularity (authenticated)');
+  logger.info('    GET /api/analytics/sales/product-performance - Product performance analysis (authenticated)');
+  logger.info('    GET /api/analytics/sales/cashier-performance - Cashier performance metrics (authenticated)');
+  logger.info('    GET /api/analytics/sales/payment-methods - Payment method breakdown (authenticated)');
+  logger.info('    GET /api/analytics/sales/summary - Dashboard summary overview (authenticated)');
   
   logger.info('  And more... Check /api-docs for full documentation');
 }
