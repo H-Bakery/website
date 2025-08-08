@@ -420,7 +420,6 @@ const QuickOrder: React.FC = () => {
                       startIcon={<WhatsAppIcon />}
                       onClick={handleOrder}
                       fullWidth={isMobile}
-                      pulse
                       sx={{
                         backgroundColor: '#25D366',
                         '&:hover': {

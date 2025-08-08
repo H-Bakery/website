@@ -14,9 +14,9 @@ import {
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import Image from 'next/image'
 
-import { formatCurrency } from '@bakery/shared/utils'
+import { formatCurrency } from '../../../utils/format'
 // import { CartContext } from '../../../context/CartContext' // Not needed for static export
-import { Product } from '@bakery/shared/types'
+import { Product } from '../../../types/product'
 
 interface Props extends Product {}
 
@@ -28,7 +28,8 @@ const ProductCard: React.FC<Props> = (props) => {
   const router = useRouter()
 
   const handleCardClick = () => {
-    router.push(`products/${props.id}`)
+    // For static export, navigate to products page with hash
+    router.push(`/products#${props.id}`)
   }
 
   const handleKeyPress = (event: React.KeyboardEvent) => {
@@ -57,8 +58,10 @@ const ProductCard: React.FC<Props> = (props) => {
           <Image
             width={200}
             height={150}
-            src={props.imageUrl || '/placeholder-product.jpg'}
+            src={props.imageUrl || '/assets/images/products/erdbeertorte.jpg'}
             alt={`Bild von ${props.name}`}
+            loading="lazy"
+            quality={75}
             style={{
               maxWidth: '85%',
               maxHeight: '85%',

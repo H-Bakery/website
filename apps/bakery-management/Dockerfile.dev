@@ -1,0 +1,28 @@
+# Development Dockerfile for Next.js app in Nx monorepo
+FROM node:18-alpine AS development
+
+# Install additional development tools
+RUN apk add --no-cache libc6-compat
+
+WORKDIR /workspace
+
+# Copy package files from root (Nx workspace)
+COPY package*.json ./
+COPY nx.json ./
+COPY tsconfig.base.json ./
+
+# Install all dependencies from root (with legacy peer deps to resolve conflicts)
+RUN npm install --legacy-peer-deps
+
+# Copy workspace configuration and shared libs
+COPY libs/ ./libs/
+COPY apps/bakery-management/ ./apps/bakery-management/
+
+# Expose port for Next.js dev server
+EXPOSE 4202
+
+# Set working directory to the workspace root
+WORKDIR /workspace
+
+# Run the app using Next.js directly with proper tsconfig resolution
+CMD ["sh", "-c", "cd apps/bakery-management && npx next dev --port 4202 --hostname 0.0.0.0 --turbo false"]

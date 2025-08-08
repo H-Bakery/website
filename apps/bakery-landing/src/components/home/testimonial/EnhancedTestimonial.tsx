@@ -9,6 +9,7 @@ import {
   Rating,
   IconButton,
   Fade,
+  Button,
   useTheme,
   useMediaQuery,
 } from '@mui/material'
@@ -16,6 +17,7 @@ import { keyframes } from '@mui/system'
 import FormatQuoteIcon from '@mui/icons-material/FormatQuote'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
+import StarIcon from '@mui/icons-material/Star'
 import { TESTIMONIALS } from '../../../mocks/testimonials'
 
 // Animation keyframes
@@ -407,9 +409,20 @@ const EnhancedTestimonial: React.FC = () => {
           <Typography variant="h6" color="primary.main" gutterBottom>
             Über 500 Bewertungen
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" gutterBottom>
             Durchschnittliche Bewertung: 4.8 von 5 Sternen
           </Typography>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={<StarIcon />}
+            href="https://www.google.com/search?q=b%C3%A4ckerei+heusser+homburg+bewertungen"
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{ mt: 2 }}
+          >
+            Alle Google Bewertungen ansehen
+          </Button>
         </Box>
       </Container>
     </Box>

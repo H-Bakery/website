@@ -1,28 +1,17 @@
 import React from 'react'
-import { SvgIcon, SvgIconProps } from '@mui/material'
 
-const Wappen: React.FC<SvgIconProps> = (props) => {
-  return (
-    <SvgIcon {...props} viewBox="0 0 80 80">
-      {/* Placeholder coat of arms/crest icon */}
-      <circle
-        cx="40"
-        cy="40"
-        r="35"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <circle cx="40" cy="30" r="8" fill="currentColor" />
-      <path
-        d="M25 50 Q40 65 55 50 Q40 35 25 50"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-      />
-      <rect x="35" y="45" width="10" height="15" fill="currentColor" />
-    </SvgIcon>
-  )
-}
+const Wappen: React.FC<{ size?: number }> = ({ size = 40 }) => (
+  <svg width={size} height={size} viewBox="0 0 40 40" fill="currentColor">
+    <path
+      d="M20 5 L35 15 L35 30 L20 35 L5 30 L5 15 Z"
+      strokeWidth="2"
+      stroke="currentColor"
+      fill="none"
+    />
+    <text x="20" y="24" textAnchor="middle" fontSize="14" fontWeight="bold">
+      W
+    </text>
+  </svg>
+)
 
 export default Wappen

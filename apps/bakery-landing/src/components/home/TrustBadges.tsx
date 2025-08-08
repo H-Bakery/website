@@ -72,15 +72,9 @@ const trustBadges: TrustBadge[] = [
   },
   {
     icon: <LocalShippingIcon sx={{ fontSize: 40 }} />,
-    title: 'Täglich frisch',
+    title: 'Immer frisch',
     description: 'Ab 6:00 Uhr',
     highlight: 'Frisch',
-  },
-  {
-    icon: <WorkspacePremiumIcon sx={{ fontSize: 40 }} />,
-    title: 'Ausgezeichnet',
-    description: 'Beste Bäckerei 2023',
-    highlight: 'Award',
   },
 ]
 
@@ -255,7 +249,7 @@ const TrustBadges: React.FC = () => {
               mb: 1,
             }}
           >
-            🌟 Über 10.000 zufriedene Kunden im Jahr
+            🌟 Über 5.000 zufriedene Kunden vertrauen uns
           </Typography>
           <Typography
             variant="body2"

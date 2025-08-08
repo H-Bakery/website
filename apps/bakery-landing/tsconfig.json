@@ -10,11 +10,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
@@ -41,6 +37,7 @@
     "**/*.spec.ts",
     "**/*.test.ts",
     "../bakery-api/**/*",
-    "../../libs/api/**/*"
+    "../../libs/api/**/*",
+    "src/components-archive/**/*"
   ]
 }

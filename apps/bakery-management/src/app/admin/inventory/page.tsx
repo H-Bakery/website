@@ -1,97 +1,233 @@
 'use client'
 import React from 'react'
-import { Box, Container, Typography, Grid, Paper } from '@mui/material'
-import { Inventory2 as InventoryIcon } from '@mui/icons-material'
-import { Header, Footer } from '@bakery/shared/ui'
 import {
-  ProductionMetricsCard,
-  ResourceOptimizationPanel,
-} from '@bakery/management/feature-inventory'
+  Box,
+  Container,
+  Typography,
+  Paper,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+  Chip,
+  IconButton,
+  Button,
+  LinearProgress,
+} from '@mui/material'
+import {
+  Inventory2 as InventoryIcon,
+  Add as AddIcon,
+  Edit as EditIcon,
+  Warning as WarningIcon,
+} from '@mui/icons-material'
+
+// Mock inventory data
+const mockInventory = [
+  {
+    id: '1',
+    name: 'Weizenmehl Type 550',
+    category: 'Mehl',
+    quantity: 250,
+    unit: 'kg',
+    minQuantity: 100,
+    supplier: 'Mühlenbetrieb Schmidt',
+    lastUpdated: '2025-08-04',
+  },
+  {
+    id: '2',
+    name: 'Roggenmehl Type 1150',
+    category: 'Mehl',
+    quantity: 180,
+    unit: 'kg',
+    minQuantity: 150,
+    supplier: 'Mühlenbetrieb Schmidt',
+    lastUpdated: '2025-08-04',
+  },
+  {
+    id: '3',
+    name: 'Frische Hefe',
+    category: 'Triebmittel',
+    quantity: 15,
+    unit: 'kg',
+    minQuantity: 20,
+    supplier: 'Großhandel Weber',
+    lastUpdated: '2025-08-05',
+  },
+  {
+    id: '4',
+    name: 'Salz',
+    category: 'Gewürze',
+    quantity: 45,
+    unit: 'kg',
+    minQuantity: 30,
+    supplier: 'Großhandel Weber',
+    lastUpdated: '2025-08-03',
+  },
+  {
+    id: '5',
+    name: 'Zucker',
+    category: 'Süßungsmittel',
+    quantity: 85,
+    unit: 'kg',
+    minQuantity: 50,
+    supplier: 'Großhandel Weber',
+    lastUpdated: '2025-08-03',
+  },
+]
 
 export default function AdminInventoryPage() {
   return (
     <Box>
-      <Header />
-
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        {/* Page Header */}
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h4" component="h1" gutterBottom>
+      {/* Page Header */}
+      <Box sx={{ mb: 4 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            mb: 2,
+          }}
+        >
+          <Typography variant="h4" component="h1">
             <InventoryIcon sx={{ mr: 2, verticalAlign: 'middle' }} />
             Inventar & Lagerbestand
           </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
-            Übersicht und Verwaltung der Lagerbestände und Rohstoffe
-          </Typography>
+          <Button variant="contained" startIcon={<AddIcon />} color="primary">
+            Neuer Artikel
+          </Button>
         </Box>
+        <Typography variant="subtitle1" color="text.secondary">
+          Übersicht und Verwaltung der Lagerbestände und Rohstoffe
+        </Typography>
+      </Box>
 
-        {/* Inventory Metrics */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={6}>
-            <ProductionMetricsCard />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <ResourceOptimizationPanel />
-          </Grid>
-        </Grid>
-
-        {/* Inventory Status */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="h6" gutterBottom>
-                Kritische Bestände
-              </Typography>
-              <Typography variant="h3" color="error.main">
-                5
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Artikel unter Mindestbestand
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="h6" gutterBottom>
-                Bestellungen ausstehend
-              </Typography>
-              <Typography variant="h3" color="warning.main">
-                12
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Lieferungen erwartet
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography variant="h6" gutterBottom>
-                Lagergesamtwert
-              </Typography>
-              <Typography variant="h3" color="success.main">
-                €8,450
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Aktueller Bestandswert
-              </Typography>
-            </Paper>
-          </Grid>
-        </Grid>
-
-        {/* Inventory Management */}
+      {/* Summary Cards */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gap: 2,
+          mb: 4,
+        }}
+      >
         <Paper sx={{ p: 3 }}>
           <Typography variant="h6" gutterBottom>
-            Lagerbestandstabelle
+            Gesamtartikel
           </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Hier wird eine detaillierte Tabelle mit allen Rohstoffen,
-            Verpackungsmaterialien und Hilfsstoffen angezeigt, einschließlich
-            aktueller Bestände, Mindestmengen und Lieferantendaten.
+          <Typography variant="h3" color="primary">
+            {mockInventory.length}
           </Typography>
         </Paper>
-      </Container>
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Niedrige Bestände
+          </Typography>
+          <Typography variant="h3" color="warning.main">
+            {
+              mockInventory.filter((item) => item.quantity <= item.minQuantity)
+                .length
+            }
+          </Typography>
+        </Paper>
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" gutterBottom>
+            Letzte Aktualisierung
+          </Typography>
+          <Typography variant="h3" color="text.secondary">
+            Heute
+          </Typography>
+        </Paper>
+      </Box>
 
-      <Footer />
+      {/* Inventory Table */}
+      <Paper elevation={2}>
+        <TableContainer>
+          <Table sx={{ minWidth: 650 }}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Artikel</TableCell>
+                <TableCell>Kategorie</TableCell>
+                <TableCell align="right">Bestand</TableCell>
+                <TableCell align="right">Min. Bestand</TableCell>
+                <TableCell>Status</TableCell>
+                <TableCell>Lieferant</TableCell>
+                <TableCell>Aktualisiert</TableCell>
+                <TableCell align="center">Aktionen</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {mockInventory.map((item) => {
+                const isLow = item.quantity <= item.minQuantity
+                const percentage = (item.quantity / item.minQuantity) * 100
+
+                return (
+                  <TableRow
+                    key={item.id}
+                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                  >
+                    <TableCell component="th" scope="row">
+                      {item.name}
+                    </TableCell>
+                    <TableCell>{item.category}</TableCell>
+                    <TableCell align="right">
+                      {item.quantity} {item.unit}
+                    </TableCell>
+                    <TableCell align="right">
+                      {item.minQuantity} {item.unit}
+                    </TableCell>
+                    <TableCell>
+                      <Box
+                        sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+                      >
+                        {isLow && (
+                          <WarningIcon color="warning" fontSize="small" />
+                        )}
+                        <Box sx={{ width: 100 }}>
+                          <LinearProgress
+                            variant="determinate"
+                            value={Math.min(percentage, 100)}
+                            color={isLow ? 'warning' : 'success'}
+                            sx={{ height: 8, borderRadius: 4 }}
+                          />
+                        </Box>
+                      </Box>
+                    </TableCell>
+                    <TableCell>{item.supplier}</TableCell>
+                    <TableCell>{item.lastUpdated}</TableCell>
+                    <TableCell align="center">
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        aria-label="edit item"
+                      >
+                        <EditIcon />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+
+      {/* Low Stock Alert */}
+      {mockInventory.some((item) => item.quantity <= item.minQuantity) && (
+        <Box sx={{ mt: 3, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}>
+          <Typography variant="body2" color="warning.dark">
+            <WarningIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+            Es gibt{' '}
+            {
+              mockInventory.filter((item) => item.quantity <= item.minQuantity)
+                .length
+            }{' '}
+            Artikel mit niedrigem Lagerbestand. Bitte bestellen Sie rechtzeitig
+            nach.
+          </Typography>
+        </Box>
+      )}
     </Box>
   )
 }

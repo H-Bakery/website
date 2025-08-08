@@ -1,0 +1,55 @@
+# Robots.txt for Bäckerei Heusser
+# https://xn--bckerei-heusser-0kb.de
+
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Disallow admin and API paths (if any)
+Disallow: /api/
+Disallow: /admin/
+Disallow: /_next/static/
+Disallow: /*.json$
+
+# Sitemap location
+Sitemap: https://xn--bckerei-heusser-0kb.de/sitemap.xml
+
+# Crawl-delay for respectful crawling
+Crawl-delay: 1
+
+# Specific rules for major search engines
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1
+
+User-agent: Slurp
+Allow: /
+Crawl-delay: 1
+
+# Block bad bots
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: DotBot
+Disallow: /
+
+User-agent: MJ12bot
+Disallow: /
+
+# Allow search engines to see everything except server files
+User-agent: *
+Disallow: /*.php$
+Disallow: /*.cgi$
+Disallow: /*.pl$
+Disallow: /*.py$
+Disallow: /*.asp$
+Disallow: /*.shtml$
+Disallow: /*.sh$
+Disallow: /*.cf$

@@ -83,7 +83,8 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
   const [addedToCart, setAddedToCart] = useState(false)
 
   const handleCardClick = () => {
-    router.push(`/products/${product.id}`)
+    // For static export, navigate to products page with hash
+    router.push(`/products#${product.id}`)
   }
 
   const handleAddToCart = (event: React.MouseEvent) => {
@@ -105,8 +106,8 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* Badges */}
-      <Box sx={styles.badgeContainer}>
+      {/* Badges - Commented out as requested */}
+      {/* <Box sx={styles.badgeContainer}>
         {isFreshToday && (
           <Chip
             icon={<LocalFireDepartmentIcon />}
@@ -131,7 +132,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
             sx={styles.organicBadge}
           />
         )}
-      </Box>
+      </Box> */}
 
       {/* Favorite Button */}
       <IconButton
@@ -152,8 +153,13 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
             <Image
               width={280}
               height={200}
-              src={product.image || '/assets/images/products/placeholder.jpg'}
+              src={
+                product.imageUrl || '/assets/images/products/erdbeertorte.jpg'
+              }
               alt={`Bild von ${product.name}`}
+              loading="lazy"
+              quality={75}
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
               style={{
                 width: '100%',
                 height: '100%',

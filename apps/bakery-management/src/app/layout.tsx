@@ -1,5 +1,4 @@
 import './global.css'
-import { RootProvider } from '@bakery/shared/contexts'
 
 export const metadata = {
   title: 'Bäckerei Heusser - Management System',
@@ -42,7 +41,9 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body>
-        <RootProvider>{children}</RootProvider>
+        <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
+          {children}
+        </div>
       </body>
     </html>
   )

@@ -1,7 +1,7 @@
 'use client'
 import { Box } from '@mui/material'
-import { Header } from '../components/header'
-import Footer from '../components/footer/Index'
+import { Header } from '@bakery/shared/ui'
+import { Footer } from '@bakery/shared/ui'
 
 interface Props {
   children: React.ReactNode

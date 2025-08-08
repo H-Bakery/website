@@ -1,19 +1,8 @@
-'use client'
-import { Button as MuiButton, ButtonProps } from '@mui/material'
 import React from 'react'
+import { Button, ButtonProps } from '@mui/material'
 
-// Extend ButtonProps with the anchor-specific props
-interface CustomButtonProps extends ButtonProps {
-  target?: string
-  rel?: string
+const ButtonComponent: React.FC<ButtonProps> = (props) => {
+  return <Button {...props} />
 }
 
-const Button: React.FC<CustomButtonProps> = ({ children, ...props }) => {
-  return (
-    <MuiButton variant="contained" {...props}>
-      {children}
-    </MuiButton>
-  )
-}
-
-export default Button
+export default ButtonComponent

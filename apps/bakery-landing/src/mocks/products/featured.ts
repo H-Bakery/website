@@ -1,16 +1,27 @@
 import buns from './buns.json'
 import cakes from './cakes.json'
 import breads from './breads.json'
-import { Product } from '../../types/product'
+import {
+  Product,
+  ProductCategory,
+  ProductType,
+  ProductStatus,
+} from '../../types/product'
 
 // Convert mock products to full Product type
-const toFullProduct = (mockProduct: (typeof buns)[0]): Product => ({
-  ...mockProduct,
-  cost: mockProduct.price * 0.6, // Mock cost as 60% of price
+const toFullProduct = (mockProduct: any): Product => ({
+  id: mockProduct.id,
+  name: mockProduct.name,
+  price: mockProduct.price,
   stock: 100,
-  dailyTarget: 50,
-  description: `${mockProduct.name} - ${mockProduct.category}`,
-  isActive: true,
+  description:
+    mockProduct.description || `${mockProduct.name} - ${mockProduct.category}`,
+  type: ProductType.Fresh,
+  status: ProductStatus.Available,
+  category: mockProduct.category as ProductCategory,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+  imageUrl: mockProduct.image,
 })
 
 export const featuredProducts: Product[] = [

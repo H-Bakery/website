@@ -16,9 +16,10 @@ import {
   ShoppingBasket as OrdersIcon,
   Inventory as InventoryIcon,
   LocalShipping as DeliveryIcon,
+  Description as ReportsIcon,
+  Analytics as AnalyticsIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
-import { Header, Footer, MetricCard } from '@bakery/shared/ui'
 
 const QUICK_ACTIONS = [
   {
@@ -26,21 +27,28 @@ const QUICK_ACTIONS = [
     description: 'Neue Bestellungen anzeigen und bearbeiten',
     icon: <OrdersIcon fontSize="large" />,
     href: '/admin/orders',
-    color: 'primary',
+    color: '#4CAF50',
   },
   {
-    title: 'Produktion planen',
-    description: 'Backliste und Produktionsplanung',
+    title: 'Lagerbestand',
+    description: 'Inventar und Bestände verwalten',
     icon: <InventoryIcon fontSize="large" />,
-    href: '/admin/production',
-    color: 'secondary',
+    href: '/admin/inventory',
+    color: '#FF9800',
   },
   {
     title: 'Lieferungen',
     description: 'Lieferstatus und Routen verwalten',
     icon: <DeliveryIcon fontSize="large" />,
     href: '/admin/delivery',
-    color: 'success',
+    color: '#2196F3',
+  },
+  {
+    title: 'Berichte',
+    description: 'Umsatz und Leistungsberichte anzeigen',
+    icon: <ReportsIcon fontSize="large" />,
+    href: '/admin/reports',
+    color: '#9C27B0',
   },
 ]
 
@@ -48,123 +56,184 @@ export default function AdminDashboard() {
   const router = useRouter()
 
   return (
-    <Box>
-      <Header />
-
-      <Container maxWidth="xl" sx={{ py: 4 }}>
-        {/* Dashboard Header */}
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h3" component="h1" gutterBottom>
-            <DashboardIcon sx={{ mr: 2, verticalAlign: 'middle' }} />
-            Admin Dashboard
-          </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
-            Willkommen im Verwaltungsbereich der Bäckerei Heusser
-          </Typography>
-        </Box>
-
-        {/* Metrics Overview */}
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <MetricCard
-              title="Heute Bestellungen"
-              value="12"
-              change="+20%"
-              trend="up"
-              color="primary"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <MetricCard
-              title="Offene Bestellungen"
-              value="5"
-              change="-2"
-              trend="down"
-              color="warning"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <MetricCard
-              title="Umsatz Heute"
-              value="€234,50"
-              change="+15%"
-              trend="up"
-              color="success"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <MetricCard
-              title="Produktionsauslastung"
-              value="85%"
-              change="+5%"
-              trend="up"
-              color="info"
-            />
-          </Grid>
-        </Grid>
-
-        {/* Quick Actions */}
-        <Typography variant="h5" component="h2" gutterBottom sx={{ mb: 3 }}>
-          Schnellzugriff
+    <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Box sx={{ flexGrow: 1 }}>
+        <Typography
+          variant="h3"
+          component="h1"
+          gutterBottom
+          sx={{
+            color: 'primary.main',
+            fontWeight: 'bold',
+            mb: 3,
+          }}
+        >
+          <DashboardIcon sx={{ mr: 2, fontSize: 'inherit' }} />
+          Verwaltungs-Dashboard
         </Typography>
 
         <Grid container spacing={3}>
-          {QUICK_ACTIONS.map((action, index) => (
-            <Grid item xs={12} md={4} key={index}>
-              <Card
-                sx={{
-                  height: '100%',
-                  cursor: 'pointer',
-                  '&:hover': {
-                    boxShadow: 6,
-                    transform: 'translateY(-2px)',
-                  },
-                  transition: 'all 0.3s ease',
-                }}
-                onClick={() => router.push(action.href)}
-              >
-                <CardContent sx={{ textAlign: 'center', py: 4 }}>
+          {/* Quick Actions */}
+          <Grid item xs={12}>
+            <Paper
+              elevation={3}
+              sx={{
+                p: 3,
+                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+              }}
+            >
+              <Typography variant="h5" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Schnellzugriff
+              </Typography>
+              <Grid container spacing={2} sx={{ mt: 1 }}>
+                {QUICK_ACTIONS.map((action, index) => (
+                  <Grid item xs={12} sm={6} md={3} key={index}>
+                    <Card
+                      sx={{
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        transition: 'transform 0.2s ease-in-out',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: 4,
+                        },
+                      }}
+                    >
+                      <CardContent sx={{ flexGrow: 1, textAlign: 'center' }}>
+                        <Box
+                          sx={{
+                            color: action.color,
+                            mb: 2,
+                          }}
+                        >
+                          {action.icon}
+                        </Box>
+                        <Typography
+                          variant="h6"
+                          component="h2"
+                          gutterBottom
+                          sx={{ fontWeight: 'bold' }}
+                        >
+                          {action.title}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {action.description}
+                        </Typography>
+                      </CardContent>
+                      <CardActions sx={{ justifyContent: 'center', pb: 2 }}>
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => router.push(action.href)}
+                          sx={{
+                            backgroundColor: action.color,
+                            '&:hover': {
+                              backgroundColor: action.color,
+                              opacity: 0.8,
+                            },
+                          }}
+                        >
+                          Öffnen
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Paper>
+          </Grid>
+
+          {/* System Status */}
+          <Grid item xs={12} md={6}>
+            <Paper elevation={3} sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                System Status
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    mb: 1,
+                  }}
+                >
                   <Box
                     sx={{
-                      color: `${action.color}.main`,
-                      mb: 2,
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      backgroundColor: '#4CAF50',
+                      mr: 1,
                     }}
-                  >
-                    {action.icon}
-                  </Box>
-                  <Typography variant="h6" component="h3" gutterBottom>
-                    {action.title}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {action.description}
-                  </Typography>
-                </CardContent>
-                <CardActions sx={{ justifyContent: 'center', pb: 3 }}>
-                  <Button variant="outlined" color={action.color as any}>
-                    Öffnen
-                  </Button>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
+                  />
+                  <Typography variant="body2">API Server: Online</Typography>
+                </Box>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    mb: 1,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      backgroundColor: '#4CAF50',
+                      mr: 1,
+                    }}
+                  />
+                  <Typography variant="body2">Database: Connected</Typography>
+                </Box>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    mb: 1,
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 12,
+                      height: 12,
+                      borderRadius: '50%',
+                      backgroundColor: '#4CAF50',
+                      mr: 1,
+                    }}
+                  />
+                  <Typography variant="body2">Cache: Active</Typography>
+                </Box>
+              </Box>
+            </Paper>
+          </Grid>
+
+          {/* Recent Activity */}
+          <Grid item xs={12} md={6}>
+            <Paper elevation={3} sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 'bold' }}>
+                Letzte Aktivitäten
+              </Typography>
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  • Neue Bestellung #1234 erhalten
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  • Lagerbestand für Brot aktualisiert
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  • Lieferung #5678 abgeschlossen
+                </Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>
+                  • Wochenbericht generiert
+                </Typography>
+              </Box>
+            </Paper>
+          </Grid>
         </Grid>
-
-        {/* Recent Activity */}
-        <Box sx={{ mt: 6 }}>
-          <Typography variant="h5" component="h2" gutterBottom sx={{ mb: 3 }}>
-            Letzte Aktivitäten
-          </Typography>
-
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="body1" color="text.secondary">
-              Hier werden die neuesten Bestellungen, Produktionsaktivitäten und
-              andere wichtige Ereignisse angezeigt.
-            </Typography>
-          </Paper>
-        </Box>
-      </Container>
-
-      <Footer />
-    </Box>
+      </Box>
+    </Container>
   )
 }

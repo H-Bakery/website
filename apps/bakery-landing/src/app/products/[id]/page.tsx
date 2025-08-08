@@ -24,6 +24,8 @@ interface ProductPageProps {
   }>
 }
 
+export const dynamicParams = false
+
 export async function generateStaticParams() {
   return PRODUCTS.map((product) => ({
     id: product.id.toString(),
@@ -42,12 +44,43 @@ export async function generateMetadata({
     }
   }
 
+  const baseUrl = 'https://xn--bckerei-heusser-0kb.de'
+
   return {
     title: `${product.name} - Bäckerei Heusser`,
     description:
       product.description ||
-      `${product.name} aus unserer Bäckerei. Frisch gebacken und von höchster Qualität.`,
-    keywords: `${product.name}, ${product.category}, Backwaren, Bäckerei`,
+      `${product.name} aus unserer Bäckerei. Frisch gebacken und von höchster Qualität. Täglich frisch in unserer traditionellen Handwerksbäckerei hergestellt.`,
+    keywords: `${product.name}, ${product.category}, Backwaren, Bäckerei, Homburg, Kirrberg, frisch, handgemacht`,
+    alternates: {
+      canonical: `${baseUrl}/products/${product.id}`,
+    },
+    openGraph: {
+      title: `${product.name} - Bäckerei Heusser`,
+      description:
+        product.description ||
+        `Frische ${product.name} aus unserer traditionellen Handwerksbäckerei`,
+      url: `${baseUrl}/products/${product.id}`,
+      siteName: 'Bäckerei Heusser',
+      images: [
+        {
+          url: product.image || '/og-image.jpg',
+          width: 1200,
+          height: 630,
+          alt: product.name,
+        },
+      ],
+      locale: 'de_DE',
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${product.name} - Bäckerei Heusser`,
+      description:
+        product.description ||
+        `Frische ${product.name} aus unserer traditionellen Handwerksbäckerei`,
+      images: [product.image || '/og-image.jpg'],
+    },
   }
 }
 
@@ -117,6 +150,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 height={250}
                 src={product.image || '/assets/images/products/placeholder.jpg'}
                 alt={product.name}
+                priority
+                quality={85}
+                sizes="(max-width: 768px) 100vw, 50vw"
                 style={{
                   maxWidth: '100%',
                   maxHeight: '100%',

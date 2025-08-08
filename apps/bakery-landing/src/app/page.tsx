@@ -11,7 +11,7 @@ import MapComponent from '../components/home/map'
 import Wochenanfebote from '../components/home/wochenanfebote'
 import EnhancedTestimonial from '../components/home/testimonial/EnhancedTestimonial'
 import News from '../components/home/news'
-import { CallToAction } from '@bakery/shared/ui'
+import { CallToAction } from '../components/CallToAction'
 import TrustBadges from '../components/home/TrustBadges'
 import QuickOrder from '../components/home/QuickOrder'
 import SeasonalHighlights from '../components/home/SeasonalHighlights'
@@ -48,7 +48,7 @@ export default function HomePage() {
 
       <TrustBadges />
 
-      <QuickOrder />
+      {/* <QuickOrder /> */}
 
       <Wochenanfebote />
 
@@ -79,7 +79,7 @@ export default function HomePage() {
         }
       />
 
-      <InstagramFeed />
+      {/* <InstagramFeed /> */}
 
       {/* Bottom CTA for informed visitors */}
       <CallToAction

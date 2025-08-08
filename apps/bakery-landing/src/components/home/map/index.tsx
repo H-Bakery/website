@@ -14,6 +14,7 @@ import Info from './Info'
 import { ZEITEN } from './zeiten'
 import DynamicMap from './DynamicMap'
 import DirectionsIcon from '@mui/icons-material/Directions'
+import { MapErrorBoundary } from './MapErrorBoundary'
 
 const Map: React.FC = () => {
   const theme = useTheme()
@@ -27,11 +28,13 @@ const Map: React.FC = () => {
 
   const map = (
     <Box sx={styles.map}>
-      <DynamicMap
-        position={position}
-        name="Böckerei Heusser"
-        address="Eckstraße 3, 66424 Homburg, Deutschland"
-      />
+      <MapErrorBoundary>
+        <DynamicMap
+          position={position}
+          name="Böckerei Heusser"
+          address="Eckstraße 3, 66424 Homburg, Deutschland"
+        />
+      </MapErrorBoundary>
     </Box>
   )
 

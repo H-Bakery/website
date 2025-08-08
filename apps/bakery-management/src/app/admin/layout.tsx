@@ -27,17 +27,81 @@ import {
   Factory as ProductionIcon,
   Store as ShopIcon,
   Assessment as ReportsIcon,
+  PhotoCamera as SocialMediaIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { MANAGEMENT_NAVIGATION, APP_ROUTES } from '@bakery/shared/utils'
-import { Breadcrumbs } from '@bakery/shared/ui'
 
 const drawerWidth = 280
 
 interface AdminLayoutProps {
   children: React.ReactNode
 }
+
+// Temporarily define navigation items directly in the file
+const MANAGEMENT_NAVIGATION = [
+  {
+    label: 'Dashboard',
+    href: '/admin',
+    icon: 'dashboard',
+    description: 'Übersicht',
+  },
+  {
+    label: 'Bestellungen',
+    href: '/admin/orders',
+    icon: 'orders',
+    description: 'Bestellverwaltung',
+  },
+  {
+    label: 'Produktion',
+    href: '/admin/production',
+    icon: 'production',
+    description: 'Produktionsplanung',
+  },
+  {
+    label: 'Lagerbestand',
+    href: '/admin/inventory',
+    icon: 'inventory',
+    description: 'Lagerverwaltung',
+  },
+  {
+    label: 'Produkte',
+    href: '/admin/products',
+    icon: 'products',
+    description: 'Produktverwaltung',
+  },
+  {
+    label: 'Backliste',
+    href: '/admin/baking-list',
+    icon: 'baking',
+    description: 'Tägliche Backliste',
+  },
+  {
+    label: 'Lieferung',
+    href: '/admin/delivery',
+    icon: 'delivery',
+    description: 'Lieferverwaltung',
+  },
+  {
+    label: 'Berichte',
+    href: '/admin/reports',
+    icon: 'reports',
+    description: 'Tagesberichte',
+  },
+  {
+    label: 'Social Media',
+    href: '/admin/social-media',
+    icon: 'socialmedia',
+    description: 'Content Creator',
+  },
+  {
+    label: 'Shop',
+    href: 'http://localhost:4201',
+    icon: 'shop',
+    description: 'Zum Shop',
+    external: true,
+  },
+]
 
 const iconMap: Record<string, React.ReactElement> = {
   dashboard: <DashboardIcon />,
@@ -48,6 +112,7 @@ const iconMap: Record<string, React.ReactElement> = {
   baking: <BakingListIcon />,
   delivery: <DeliveryIcon />,
   reports: <ReportsIcon />,
+  socialmedia: <SocialMediaIcon />,
   shop: <ShopIcon />,
 }
 
@@ -155,9 +220,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             Management System
           </Typography>
           <Typography variant="body2" color="inherit">
-            {APP_ROUTES.management.environment === 'development'
-              ? 'Development'
-              : 'Production'}
+            Development
           </Typography>
         </Toolbar>
       </AppBar>
@@ -213,14 +276,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       >
         <Toolbar />
 
-        {/* Breadcrumbs */}
+        {/* Simple Breadcrumb */}
         <Box sx={{ mb: 2 }}>
-          <Breadcrumbs
-            pathname={pathname}
-            app="management"
-            showHomeIcon={true}
-            showContainer={false}
-          />
+          <Typography variant="body2" color="text.secondary">
+            {pathname.split('/').filter(Boolean).join(' › ')}
+          </Typography>
         </Box>
 
         {children}
