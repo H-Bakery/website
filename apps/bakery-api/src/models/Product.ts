@@ -1,51 +1,63 @@
-import { 
-  Model, 
-  DataTypes, 
-  Sequelize, 
-  InferAttributes, 
+import {
+  Model,
+  DataTypes,
+  Sequelize,
+  InferAttributes,
   InferCreationAttributes,
   CreationOptional,
-  HasManyGetAssociationsMixin
-} from 'sequelize';
-import { logger } from '@bakery/api/core';
+  HasManyGetAssociationsMixin,
+} from 'sequelize'
+// Temporary local logger until utils library is properly configured
+const logger = {
+  info: (message: string, ...args: any[]) =>
+    console.log(`[INFO] ${message}`, ...args),
+  error: (message: string, ...args: any[]) =>
+    console.error(`[ERROR] ${message}`, ...args),
+  warn: (message: string, ...args: any[]) =>
+    console.warn(`[WARN] ${message}`, ...args),
+  debug: (message: string, ...args: any[]) =>
+    console.log(`[DEBUG] ${message}`, ...args),
+  db: (message: string, ...args: any[]) =>
+    console.log(`[DB] ${message}`, ...args),
+}
 
 export interface ProductAttributes {
-  id: number;
-  name: string;
-  price: number;
-  stock: number;
-  dailyTarget: number;
-  description?: string | null;
-  isActive: boolean;
-  image?: string | null;
-  category?: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  id: number
+  name: string
+  price: number
+  stock: number
+  dailyTarget: number
+  description?: string | null
+  isActive: boolean
+  image?: string | null
+  category?: string | null
+  createdAt: Date
+  updatedAt: Date
 }
 
 export class Product extends Model<
   InferAttributes<Product>,
   InferCreationAttributes<Product>
 > {
-  declare id: CreationOptional<number>;
-  declare name: string;
-  declare price: number;
-  declare stock: CreationOptional<number>;
-  declare dailyTarget: CreationOptional<number>;
-  declare description: CreationOptional<string | null>;
-  declare isActive: CreationOptional<boolean>;
-  declare image: CreationOptional<string | null>;
-  declare category: CreationOptional<string | null>;
-  declare createdAt: CreationOptional<Date>;
-  declare updatedAt: CreationOptional<Date>;
+  declare id: CreationOptional<number>
+  declare name: string
+  declare price: number
+  declare stock: CreationOptional<number>
+  declare dailyTarget: CreationOptional<number>
+  declare description: CreationOptional<string | null>
+  declare isActive: CreationOptional<boolean>
+  declare image: CreationOptional<string | null>
+  declare category: CreationOptional<string | null>
+  declare createdAt: CreationOptional<Date>
+  declare updatedAt: CreationOptional<Date>
 
   // Associations
-  declare getOrderItems: HasManyGetAssociationsMixin<any>;
-  declare getUnsoldProducts: HasManyGetAssociationsMixin<any>;
-  declare getInventory: HasManyGetAssociationsMixin<any>;
-  declare orderItems?: any[];
-  declare unsoldProducts?: any[];
-  declare inventory?: any;
+  declare getOrderItems: HasManyGetAssociationsMixin<any>
+  declare getUnsoldProducts: HasManyGetAssociationsMixin<any>
+  declare getInventory: HasManyGetAssociationsMixin<any>
+  declare orderItems?: any[]
+  declare unsoldProducts?: any[]
+  declare inventory?: any
 
   static initModel(sequelize: Sequelize): typeof Product {
     Product.init(
@@ -129,40 +141,44 @@ export class Product extends Model<
         timestamps: true,
         hooks: {
           beforeCreate: (product: Product) => {
-            logger.info(`Creating product: ${product.name}`);
+            logger.info(`Creating product: ${product.name}`)
           },
           beforeUpdate: (product: Product) => {
-            logger.info(`Updating product: ${product.name}`);
+            logger.info(`Updating product: ${product.name}`)
           },
         },
       }
-    );
+    )
 
-    return Product;
+    return Product
   }
 
   // Instance methods
   isInStock(): boolean {
-    return this.stock > 0;
+    return this.stock > 0
   }
 
   hasLowStock(threshold: number = 10): boolean {
-    return this.stock <= threshold;
+    return this.stock <= threshold
   }
 
   adjustStock(quantity: number): void {
-    const newStock = this.stock + quantity;
+    const newStock = this.stock + quantity
     if (newStock < 0) {
-      throw new Error(`Insufficient stock. Available: ${this.stock}, Requested: ${Math.abs(quantity)}`);
+      throw new Error(
+        `Insufficient stock. Available: ${this.stock}, Requested: ${Math.abs(
+          quantity
+        )}`
+      )
     }
-    this.stock = newStock;
+    this.stock = newStock
   }
 
   toJSON() {
-    const values = { ...this.get() };
-    return values;
+    const values = { ...this.get() }
+    return values
   }
 }
 
 // For backward compatibility
-export default Product;
+export default Product

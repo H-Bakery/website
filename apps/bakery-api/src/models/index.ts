@@ -1,199 +1,255 @@
-import { Sequelize } from 'sequelize';
-import { logger } from '@bakery/api/core';
+import { Sequelize } from 'sequelize'
+// Temporary local logger until utils library is properly configured
+const logger = {
+  info: (message: string, ...args: any[]) =>
+    console.log(`[INFO] ${message}`, ...args),
+  error: (message: string, ...args: any[]) =>
+    console.error(`[ERROR] ${message}`, ...args),
+  warn: (message: string, ...args: any[]) =>
+    console.warn(`[WARN] ${message}`, ...args),
+  debug: (message: string, ...args: any[]) =>
+    console.log(`[DEBUG] ${message}`, ...args),
+  db: (message: string, ...args: any[]) =>
+    console.log(`[DB] ${message}`, ...args),
+}
 
 // Import models from domain libraries
-import { 
-  initializeOrderModels,
-  Order as OrderModel,
-  OrderItem as OrderItemModel 
-} from '@bakery/api/orders';
-import { 
-  initializeInventoryModels,
-  Inventory as InventoryModel 
-} from '@bakery/api/inventory';
-import { 
-  initializeCustomerModels,
-  Customer as CustomerModel 
-} from '@bakery/api/customers';
-import { 
-  initializeProductionModels,
-  Recipe as RecipeModel,
-  ProductionSchedule as ProductionScheduleModel,
-  ProductionBatch as ProductionBatchModel,
-  ProductionStep as ProductionStepModel
-} from '@bakery/api/production';
-import { 
-  initializeNotificationModels,
-  Notification as NotificationModel,
-  NotificationPreferences as NotificationPreferencesModel,
-  NotificationTemplate as NotificationTemplateModel
-} from '@bakery/api/notifications';
-import { 
+// TODO: These libraries need to be created during migration
+// import {
+//   initializeOrderModels,
+//   Order as OrderModel,
+//   OrderItem as OrderItemModel
+// } from '@bakery/api/orders';
+// import {
+//   initializeInventoryModels,
+//   Inventory as InventoryModel
+// } from '@bakery/api/inventory';
+// import {
+//   initializeCustomerModels,
+//   Customer as CustomerModel
+// } from '@bakery/api/customers';
+// import {
+//   initializeProductionModels,
+//   Recipe as RecipeModel,
+//   ProductionSchedule as ProductionScheduleModel,
+//   ProductionBatch as ProductionBatchModel,
+//   ProductionStep as ProductionStepModel
+// } from '@bakery/api/production';
+// import {
+//   initializeNotificationModels,
+//   Notification as NotificationModel,
+//   NotificationPreferences as NotificationPreferencesModel,
+//   NotificationTemplate as NotificationTemplateModel
+// } from '@bakery/api/notifications';
+import {
   initializeSalesAnalyticsModels,
   SalesTransaction as SalesTransactionModel,
   TransactionItem as TransactionItemModel,
-  DailySalesReport as DailySalesReportModel
-} from '@bakery/api/sales-analytics';
+  DailySalesReport as DailySalesReportModel,
+} from '@bakery/api/sales-analytics'
 
 // Import local models that haven't been migrated yet
-import { default as Cash } from './Cash';
-import { default as Chat } from './Chat';
-import { default as Product } from './Product';
-import { default as UnsoldProduct } from './UnsoldProduct';
+import { default as Cash } from './Cash'
+import { default as Chat } from './Chat'
+import { default as Product } from './Product'
+import { default as UnsoldProduct } from './UnsoldProduct'
+import { default as Order } from './Order'
+import { default as OrderItem } from './OrderItem'
+import { default as User } from './User'
+import { default as Inventory } from './Inventory'
+import { default as Recipe } from './Recipe'
+import { default as Notification } from './Notification'
+import { default as StockAdjustment } from './StockAdjustment'
 
 // Re-export all models
-export const Order = OrderModel;
-export const OrderItem = OrderItemModel;
-export const Inventory = InventoryModel;
-export const Customer = CustomerModel;
-export const Recipe = RecipeModel;
-export const ProductionSchedule = ProductionScheduleModel;
-export const ProductionBatch = ProductionBatchModel;
-export const ProductionStep = ProductionStepModel;
-export const Notification = NotificationModel;
-export const NotificationPreferences = NotificationPreferencesModel;
-export const NotificationTemplate = NotificationTemplateModel;
-export const SalesTransaction = SalesTransactionModel;
-export const TransactionItem = TransactionItemModel;
-export const DailySalesReport = DailySalesReportModel;
+export {
+  Order,
+  OrderItem,
+  User,
+  Inventory,
+  Recipe,
+  Notification,
+  StockAdjustment,
+}
+export const Customer = User // Alias for backward compatibility
+
+// TODO: These models still need to be created
+// export const ProductionSchedule = ProductionScheduleModel;
+// export const ProductionBatch = ProductionBatchModel;
+// export const ProductionStep = ProductionStepModel;
+// export const NotificationPreferences = NotificationPreferencesModel;
+// export const NotificationTemplate = NotificationTemplateModel;
+
+// Create stub models for now
+export const ProductionSchedule = {} as any
+export const ProductionBatch = {} as any
+export const ProductionStep = {} as any
+export const NotificationPreferences = {} as any
+export const NotificationTemplate = {} as any
+
+export const SalesTransaction = SalesTransactionModel
+export const TransactionItem = TransactionItemModel
+export const DailySalesReport = DailySalesReportModel
 
 // Export local models
-export { Cash, Chat, Product, UnsoldProduct };
-
-// For backward compatibility
-export const User = CustomerModel;
+export { Cash, Chat, Product, UnsoldProduct }
 
 export async function initializeModels(sequelize: Sequelize): Promise<void> {
-  logger.info('Initializing database models...');
+  logger.info('Initializing database models...')
 
   try {
     // Initialize domain models
-    await initializeOrderModels(sequelize);
-    await initializeInventoryModels(sequelize);
-    await initializeCustomerModels(sequelize);
-    await initializeProductionModels(sequelize);
-    await initializeNotificationModels(sequelize);
-    await initializeSalesAnalyticsModels(sequelize);
+    // TODO: Uncomment these when the libraries are created
+    // await initializeOrderModels(sequelize);
+    // await initializeInventoryModels(sequelize);
+    // await initializeCustomerModels(sequelize);
+    // await initializeProductionModels(sequelize);
+    // await initializeNotificationModels(sequelize);
+    await initializeSalesAnalyticsModels(sequelize)
 
     // Initialize local models
-    Cash.initModel(sequelize);
-    Chat.initModel(sequelize);
-    Product.initModel(sequelize);
-    UnsoldProduct.initModel(sequelize);
+    Cash.initModel(sequelize)
+    Chat.initModel(sequelize)
+    Product.initModel(sequelize)
+    UnsoldProduct.initModel(sequelize)
+    Order.initModel(sequelize)
+    OrderItem.initModel(sequelize)
+    User.initModel(sequelize)
+    Inventory.initModel(sequelize)
+    Recipe.initModel(sequelize)
+    Notification.initModel(sequelize)
+    StockAdjustment.initModel(sequelize)
 
     // Set up associations
-    setupAssociations();
+    setupAssociations()
 
-    logger.info('All models initialized successfully');
+    logger.info('All models initialized successfully')
   } catch (error) {
-    logger.error('Failed to initialize models:', error);
-    throw error;
+    logger.error('Failed to initialize models:', error)
+    throw error
   }
 }
 
 function setupAssociations(): void {
-  logger.info('Setting up model associations...');
+  logger.info('Setting up model associations...')
 
   // Order associations
-  Order.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' });
-  Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'items' });
+  Order.belongsTo(Customer, { foreignKey: 'customerId', as: 'customer' })
+  Order.hasMany(OrderItem, { foreignKey: 'orderId', as: 'items' })
 
   // OrderItem associations
-  OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'order' });
-  OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+  OrderItem.belongsTo(Order, { foreignKey: 'orderId', as: 'order' })
+  OrderItem.belongsTo(Product, { foreignKey: 'productId', as: 'product' })
 
   // Customer associations
-  Customer.hasMany(Order, { foreignKey: 'customerId', as: 'orders' });
-  Customer.hasMany(Cash, { foreignKey: 'userId', as: 'cashEntries' });
-  Customer.hasMany(Chat, { foreignKey: 'userId', as: 'messages' });
-  Customer.hasOne(NotificationPreferences, { 
-    foreignKey: 'userId', 
-    as: 'notificationPreferences' 
-  });
-  Customer.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' });
+  Customer.hasMany(Order, { foreignKey: 'customerId', as: 'orders' })
+  Customer.hasMany(Cash, { foreignKey: 'userId', as: 'cashEntries' })
+  Customer.hasMany(Chat, { foreignKey: 'userId', as: 'messages' })
+  // TODO: Uncomment when NotificationPreferences model is properly implemented
+  // Customer.hasOne(NotificationPreferences, {
+  //   foreignKey: 'userId',
+  //   as: 'notificationPreferences'
+  // });
+  Customer.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' })
 
   // Product associations
-  Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'orderItems' });
-  Product.hasMany(UnsoldProduct, { foreignKey: 'productId', as: 'unsoldProducts' });
-  Product.hasOne(Inventory, { foreignKey: 'productId', as: 'inventory' });
+  Product.hasMany(OrderItem, { foreignKey: 'productId', as: 'orderItems' })
+  Product.hasMany(UnsoldProduct, {
+    foreignKey: 'productId',
+    as: 'unsoldProducts',
+  })
+  Product.hasOne(Inventory, { foreignKey: 'productId', as: 'inventory' })
 
   // Cash associations
-  Cash.belongsTo(Customer, { foreignKey: 'userId', as: 'user' });
+  Cash.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
 
   // Chat associations
-  Chat.belongsTo(Customer, { foreignKey: 'userId', as: 'user' });
+  Chat.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
 
   // UnsoldProduct associations
-  UnsoldProduct.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+  UnsoldProduct.belongsTo(Product, { foreignKey: 'productId', as: 'product' })
 
   // Inventory associations
-  Inventory.belongsTo(Product, { foreignKey: 'productId', as: 'product' });
+  Inventory.belongsTo(Product, { foreignKey: 'productId', as: 'product' })
+  Inventory.hasMany(StockAdjustment, {
+    foreignKey: 'inventoryId',
+    as: 'adjustments',
+  })
+
+  // StockAdjustment associations
+  StockAdjustment.belongsTo(Inventory, {
+    foreignKey: 'inventoryId',
+    as: 'inventory',
+  })
+  StockAdjustment.belongsTo(Customer, { foreignKey: 'performedBy', as: 'user' })
 
   // Production associations
-  ProductionSchedule.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' });
-  ProductionSchedule.hasMany(ProductionBatch, { 
-    foreignKey: 'scheduleId', 
-    as: 'batches' 
-  });
+  // TODO: Uncomment when production models are properly implemented
+  // ProductionSchedule.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' });
+  // ProductionSchedule.hasMany(ProductionBatch, {
+  //   foreignKey: 'scheduleId',
+  //   as: 'batches'
+  // });
 
-  ProductionBatch.belongsTo(ProductionSchedule, { 
-    foreignKey: 'scheduleId', 
-    as: 'schedule' 
-  });
-  ProductionBatch.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' });
-  ProductionBatch.hasMany(ProductionStep, { foreignKey: 'batchId', as: 'steps' });
-  ProductionBatch.belongsTo(Customer, { 
-    foreignKey: 'assignedStaffId', 
-    as: 'assignedStaff' 
-  });
+  // ProductionBatch.belongsTo(ProductionSchedule, {
+  //   foreignKey: 'scheduleId',
+  //   as: 'schedule'
+  // });
+  // ProductionBatch.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' });
+  // ProductionBatch.hasMany(ProductionStep, { foreignKey: 'batchId', as: 'steps' });
+  // ProductionBatch.belongsTo(Customer, {
+  //   foreignKey: 'assignedStaffId',
+  //   as: 'assignedStaff'
+  // });
 
-  ProductionStep.belongsTo(ProductionBatch, { foreignKey: 'batchId', as: 'batch' });
-  ProductionStep.belongsTo(Customer, { 
-    foreignKey: 'completedBy', 
-    as: 'completedByStaff' 
-  });
+  // ProductionStep.belongsTo(ProductionBatch, { foreignKey: 'batchId', as: 'batch' });
+  // ProductionStep.belongsTo(Customer, {
+  //   foreignKey: 'completedBy',
+  //   as: 'completedByStaff'
+  // });
 
   // Notification associations
-  Notification.belongsTo(Customer, { foreignKey: 'userId', as: 'user' });
+  Notification.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
 
-  NotificationPreferences.belongsTo(Customer, { foreignKey: 'userId', as: 'user' });
+  // TODO: Uncomment when NotificationPreferences model is properly implemented
+  // NotificationPreferences.belongsTo(Customer, { foreignKey: 'userId', as: 'user' });
 
   // Sales Analytics associations
-  SalesTransaction.hasMany(TransactionItem, { 
-    foreignKey: 'salesTransactionId', 
+  SalesTransaction.hasMany(TransactionItem, {
+    foreignKey: 'salesTransactionId',
     as: 'transactionItems',
     onDelete: 'CASCADE',
-    onUpdate: 'CASCADE'
-  });
+    onUpdate: 'CASCADE',
+  })
 
-  TransactionItem.belongsTo(SalesTransaction, { 
-    foreignKey: 'salesTransactionId', 
+  TransactionItem.belongsTo(SalesTransaction, {
+    foreignKey: 'salesTransactionId',
     as: 'salesTransaction',
     onDelete: 'CASCADE',
-    onUpdate: 'CASCADE'
-  });
+    onUpdate: 'CASCADE',
+  })
 
-  TransactionItem.belongsTo(Product, { 
-    foreignKey: 'productId', 
+  TransactionItem.belongsTo(Product, {
+    foreignKey: 'productId',
     as: 'product',
     onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE'
-  });
+    onUpdate: 'CASCADE',
+  })
 
-  DailySalesReport.belongsTo(Product, { 
-    foreignKey: 'mostPopularProductId', 
+  DailySalesReport.belongsTo(Product, {
+    foreignKey: 'mostPopularProductId',
     as: 'mostPopularProduct',
     onDelete: 'SET NULL',
-    onUpdate: 'CASCADE'
-  });
+    onUpdate: 'CASCADE',
+  })
 
-  logger.info('Model associations established');
+  logger.info('Model associations established')
 }
 
 // Export function to get all models (for migrations)
 export function getAllModels(): any[] {
   return [
-    Customer,
+    User, // Use User instead of Customer
     Product,
     Order,
     OrderItem,
@@ -202,14 +258,16 @@ export function getAllModels(): any[] {
     UnsoldProduct,
     Recipe,
     Inventory,
+    StockAdjustment,
     Notification,
-    NotificationPreferences,
-    NotificationTemplate,
-    ProductionSchedule,
-    ProductionBatch,
-    ProductionStep,
+    // TODO: Add these when properly implemented
+    // NotificationPreferences,
+    // NotificationTemplate,
+    // ProductionSchedule,
+    // ProductionBatch,
+    // ProductionStep,
     SalesTransaction,
     TransactionItem,
-    DailySalesReport
-  ];
+    DailySalesReport,
+  ]
 }

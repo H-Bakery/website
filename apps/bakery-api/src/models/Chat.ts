@@ -1,38 +1,50 @@
-import { 
-  Model, 
-  DataTypes, 
-  Sequelize, 
-  InferAttributes, 
+import {
+  Model,
+  DataTypes,
+  Sequelize,
+  InferAttributes,
   InferCreationAttributes,
   CreationOptional,
   ForeignKey,
-  BelongsToGetAssociationMixin
-} from 'sequelize';
-import { logger } from '@bakery/api/core';
+  BelongsToGetAssociationMixin,
+} from 'sequelize'
+// Temporary local logger until utils library is properly configured
+const logger = {
+  info: (message: string, ...args: any[]) =>
+    console.log(`[INFO] ${message}`, ...args),
+  error: (message: string, ...args: any[]) =>
+    console.error(`[ERROR] ${message}`, ...args),
+  warn: (message: string, ...args: any[]) =>
+    console.warn(`[WARN] ${message}`, ...args),
+  debug: (message: string, ...args: any[]) =>
+    console.log(`[DEBUG] ${message}`, ...args),
+  db: (message: string, ...args: any[]) =>
+    console.log(`[DB] ${message}`, ...args),
+}
 
 export interface ChatAttributes {
-  id: number;
-  message: string;
-  timestamp: Date;
-  userId: number;
-  createdAt: Date;
-  updatedAt: Date;
+  id: number
+  message: string
+  timestamp: Date
+  userId: number
+  createdAt: Date
+  updatedAt: Date
 }
 
 export class Chat extends Model<
   InferAttributes<Chat>,
   InferCreationAttributes<Chat>
 > {
-  declare id: CreationOptional<number>;
-  declare message: string;
-  declare timestamp: Date;
-  declare userId: ForeignKey<number>;
-  declare createdAt: CreationOptional<Date>;
-  declare updatedAt: CreationOptional<Date>;
+  declare id: CreationOptional<number>
+  declare message: string
+  declare timestamp: Date
+  declare userId: ForeignKey<number>
+  declare createdAt: CreationOptional<Date>
+  declare updatedAt: CreationOptional<Date>
 
   // Associations
-  declare getUser: BelongsToGetAssociationMixin<any>;
-  declare user?: any;
+  declare getUser: BelongsToGetAssociationMixin<any>
+  declare user?: any
 
   static initModel(sequelize: Sequelize): typeof Chat {
     Chat.init(
@@ -74,21 +86,21 @@ export class Chat extends Model<
         timestamps: true,
         hooks: {
           beforeCreate: (chat: Chat) => {
-            logger.info(`Creating chat message from user ${chat.userId}`);
+            logger.info(`Creating chat message from user ${chat.userId}`)
           },
         },
       }
-    );
+    )
 
-    return Chat;
+    return Chat
   }
 
   // Instance methods
   toJSON() {
-    const values = { ...this.get() };
-    return values;
+    const values = { ...this.get() }
+    return values
   }
 }
 
 // For backward compatibility
-export default Chat;
+export default Chat

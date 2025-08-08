@@ -1,36 +1,50 @@
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
-import { PeriodicExportingMetricReader, ConsoleMetricExporter } from '@opentelemetry/sdk-metrics';
-import { Resource } from '@opentelemetry/resources';
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions';
-import { JaegerExporter } from '@opentelemetry/exporter-jaeger';
-import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
-import { logger } from '@bakery/api/core';
+import { NodeSDK } from '@opentelemetry/sdk-node'
+import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node'
+import {
+  PeriodicExportingMetricReader,
+  ConsoleMetricExporter,
+} from '@opentelemetry/sdk-metrics'
+import { Resource } from '@opentelemetry/resources'
+import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
+import { JaegerExporter } from '@opentelemetry/exporter-jaeger'
+import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
+// Temporary local logger until utils library is properly configured
+const logger = {
+  info: (message: string, ...args: any[]) =>
+    console.log(`[INFO] ${message}`, ...args),
+  error: (message: string, ...args: any[]) =>
+    console.error(`[ERROR] ${message}`, ...args),
+  warn: (message: string, ...args: any[]) =>
+    console.warn(`[WARN] ${message}`, ...args),
+  debug: (message: string, ...args: any[]) =>
+    console.log(`[DEBUG] ${message}`, ...args),
+  db: (message: string, ...args: any[]) =>
+    console.log(`[DB] ${message}`, ...args),
+}
 
 // Create resource identifying the service
-const resource = Resource.default().merge(
-  new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'bakery-api',
-    [SemanticResourceAttributes.SERVICE_VERSION]: process.env['APP_VERSION'] || '0.0.0',
-    environment: process.env['NODE_ENV'] || 'development',
-  })
-);
+const resource = new Resource({
+  [SemanticResourceAttributes.SERVICE_NAME]: 'bakery-api',
+  [SemanticResourceAttributes.SERVICE_VERSION]:
+    process.env['APP_VERSION'] || '0.0.0',
+  environment: process.env['NODE_ENV'] || 'development',
+})
 
 // Configure Jaeger exporter (if enabled)
 function createTraceExporter() {
   if (process.env['JAEGER_ENDPOINT']) {
     return new JaegerExporter({
       endpoint: process.env['JAEGER_ENDPOINT'],
-    });
+    })
   }
-  return null;
+  return null
 }
 
 // Initialize OpenTelemetry
 export function initializeTracing() {
   try {
-    const traceExporter = createTraceExporter();
-    
+    const traceExporter = createTraceExporter()
+
     const sdk = new NodeSDK({
       resource,
       instrumentations: [
@@ -44,74 +58,72 @@ export function initializeTracing() {
         exporter: new ConsoleMetricExporter(),
         exportIntervalMillis: 60000, // Export metrics every minute
       }),
-    });
-
-    // Add span processor if Jaeger is configured
-    if (traceExporter) {
-      sdk.configureSdkRegistration();
-      const provider = sdk['_tracerProvider'];
-      if (provider) {
-        provider.addSpanProcessor(new BatchSpanProcessor(traceExporter));
-      }
-    }
+    })
 
     // Initialize the SDK
     sdk.start()
-      .then(() => {
-        logger.info('OpenTelemetry tracing initialized');
-        if (process.env['JAEGER_ENDPOINT']) {
-          logger.info(`Sending traces to Jaeger at ${process.env['JAEGER_ENDPOINT']}`);
-        }
-      })
-      .catch((error) => {
-        logger.error('Error initializing OpenTelemetry', error);
-      });
+    logger.info('OpenTelemetry tracing initialized')
+    if (process.env['JAEGER_ENDPOINT']) {
+      logger.info(
+        `Sending traces to Jaeger at ${process.env['JAEGER_ENDPOINT']}`
+      )
+    }
 
     // Graceful shutdown
     process.on('SIGTERM', () => {
-      sdk.shutdown()
+      sdk
+        .shutdown()
         .then(() => logger.info('OpenTelemetry terminated'))
-        .catch((error) => logger.error('Error terminating OpenTelemetry', error));
-    });
+        .catch((error) =>
+          logger.error('Error terminating OpenTelemetry', error)
+        )
+    })
   } catch (error) {
-    logger.error('Failed to initialize tracing', error);
+    logger.error('Failed to initialize tracing', error)
   }
 }
 
 // Custom span creation utilities
-import { trace, SpanStatusCode, SpanKind } from '@opentelemetry/api';
+import { trace, SpanStatusCode, SpanKind } from '@opentelemetry/api'
 
-const tracer = trace.getTracer('bakery-api');
+const tracer = trace.getTracer('bakery-api')
 
 export function createSpan(name: string, fn: () => Promise<any>) {
   return tracer.startActiveSpan(name, async (span) => {
     try {
-      const result = await fn();
-      span.setStatus({ code: SpanStatusCode.OK });
-      return result;
+      const result = await fn()
+      span.setStatus({ code: SpanStatusCode.OK })
+      return result
     } catch (error) {
       span.setStatus({
         code: SpanStatusCode.ERROR,
         message: error instanceof Error ? error.message : 'Unknown error',
-      });
-      span.recordException(error as Error);
-      throw error;
+      })
+      span.recordException(error as Error)
+      throw error
     } finally {
-      span.end();
+      span.end()
     }
-  });
+  })
 }
 
 export function traceAsync<T>(name: string) {
-  return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
-    const originalMethod = descriptor.value;
+  return function (
+    target: any,
+    propertyKey: string,
+    descriptor: PropertyDescriptor
+  ) {
+    const originalMethod = descriptor.value
 
     descriptor.value = async function (...args: any[]) {
-      return createSpan(`${target.constructor.name}.${propertyKey}`, async () => {
-        return await originalMethod.apply(this, args);
-      });
-    };
+      return createSpan(
+        `${target.constructor.name}.${propertyKey}`,
+        async () => {
+          return await originalMethod.apply(this, args)
+        }
+      )
+    }
 
-    return descriptor;
-  };
+    return descriptor
+  }
 }
