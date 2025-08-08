@@ -1,12 +1,12 @@
 import { Transaction, Op, Sequelize } from 'sequelize';
-import { logger } from '@bakery/api/core';
+import { logger } from '../utils/logger';
 import { SalesTransaction, TransactionItem, DailySalesReport } from '../models';
 import { 
   SalesTransactionAttributes, 
   TransactionItemAttributes, 
   DailySalesReportAttributes 
 } from '../models';
-import { DailyReport, Transaction as ReportTransaction } from '@bakery/shared/types';
+import { DailyReport, Transaction as ReportTransaction } from '../types/report.types';
 
 // Types for analytics responses
 export interface RevenueTrendData {

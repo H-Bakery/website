@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { logger } from '@bakery/api/core';
+import { logger } from '../utils/logger';
 import { 
   salesAnalyticsService, 
   RevenueTrendData, 

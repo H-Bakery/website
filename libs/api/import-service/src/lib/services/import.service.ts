@@ -1,6 +1,6 @@
 import { Sequelize, Transaction } from 'sequelize';
-import { logger } from '@bakery/api/core';
-import type { DailyReport, Transaction as ReportTransaction } from '@bakery/shared/types';
+import { logger } from '../utils/logger';
+import type { DailyReport, Transaction as ReportTransaction } from '../types/report.types';
 import { mappingService } from './mapping.service';
 import { validationService } from './validation.service';
 
@@ -103,7 +103,7 @@ export const importService = {
           }
 
           await TransactionItem.create({
-            salesTransactionId: salesTransaction.id,
+            salesTransactionId: (salesTransaction as any).id,
             productId: productId,
             quantity: item.quantity,
             unitPrice: item.price,
@@ -131,7 +131,7 @@ export const importService = {
       logger.info(`Successfully imported report for ${report.date}: ${transactionCount} transactions, ${itemCount} items`);
 
       return {
-        reportId: dailyReport.id,
+        reportId: (dailyReport as any).id,
         date: report.date,
         transactionsImported: transactionCount,
         itemsImported: itemCount,

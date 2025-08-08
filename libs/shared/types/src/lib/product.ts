@@ -43,6 +43,7 @@ export interface Product extends BaseEntity {
   minStock?: number
   maxStock?: number
   status: ProductStatus
+  image?: string  // Added for backward compatibility
   imageUrl?: string
   ingredients?: string[]
   allergens?: string[]
@@ -51,6 +52,8 @@ export interface Product extends BaseEntity {
   isGlutenFree?: boolean
   weight?: number
   barcode?: string
+  dailyTarget?: number  // Added for dashboard compatibility
+  isActive?: boolean    // Added for dashboard compatibility
 }
 
 // Nutritional information

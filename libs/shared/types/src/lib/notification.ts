@@ -11,6 +11,7 @@ export type NotificationCategory =
   | 'staff'
   | 'system'
   | 'customer'
+  | 'general'
 
 /**
  * Notification priorities
@@ -231,3 +232,63 @@ export interface NotificationEvent {
   notification: Notification
   timestamp: Date
 }
+
+/**
+ * Legacy notification interface for backward compatibility
+ */
+export interface LegacyNotification {
+  id: number;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  category: 'staff' | 'order' | 'system' | 'inventory' | 'general';
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  read: boolean;
+  archived: boolean;
+  archivedAt?: string;
+  deletedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+  userId?: number;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * Archive result for paginated archive queries
+ */
+export interface ArchiveResult {
+  notifications: LegacyNotification[];
+  total: number;
+  hasMore: boolean;
+}
+
+/**
+ * Archive statistics
+ */
+export interface ArchiveStats {
+  total: number;
+  read: number;
+  unread: number;
+  byCategory: Record<string, number>;
+  byPriority: Record<string, number>;
+}
+
+/**
+ * Legacy notification preferences
+ */
+export interface LegacyNotificationPreferences {
+  id?: number;
+  emailEnabled: boolean;
+  browserEnabled: boolean;
+  soundEnabled: boolean;
+  categoryPreferences: Record<string, boolean>;
+  priorityThreshold: 'low' | 'medium' | 'high' | 'urgent';
+  quietHours: {
+    enabled: boolean;
+    start: string; // HH:MM format
+    end: string; // HH:MM format
+  };
+  updatedAt?: string;
+}
+
+export type PriorityThreshold = LegacyNotificationPreferences['priorityThreshold'];

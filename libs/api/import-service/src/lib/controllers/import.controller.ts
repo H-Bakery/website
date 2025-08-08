@@ -1,34 +1,36 @@
 import { Request, Response } from 'express';
 import { importService } from '../services/import.service';
-import { logger } from '@bakery/api/core';
+import { logger } from '../utils/logger';
 import { validateDailyReport } from '../validators/report.validator';
-import type { DailyReport } from '@bakery/shared/types';
+import type { DailyReport } from '../types/report.types';
 
 export const importController = {
   /**
    * Import a single sales report
    * POST /api/import/sales-report
    */
-  async importSalesReport(req: Request, res: Response) {
+  async importSalesReport(req: Request, res: Response): Promise<void> {
     try {
       const report = req.body as DailyReport;
       
       // Validate report structure
       const validation = validateDailyReport(report);
       if (validation.error) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: validation.error.details[0].message,
         });
+        return;
       }
 
       // Check if report already exists
       const exists = await importService.checkDuplicateReport(report.date);
       if (exists) {
-        return res.status(409).json({
+        res.status(409).json({
           success: false,
           error: `Report for date ${report.date} already exists`,
         });
+        return;
       }
 
       // Process the import
@@ -45,10 +47,11 @@ export const importController = {
       if (error instanceof Error) {
         // Check for specific error types
         if (error.message.includes('User not found') || error.message.includes('Product not found')) {
-          return res.status(422).json({
+          res.status(422).json({
             success: false,
             error: error.message,
           });
+          return;
         }
       }
 
@@ -63,15 +66,16 @@ export const importController = {
    * Import multiple sales reports (bulk import)
    * POST /api/import/sales-reports/bulk
    */
-  async importSalesReportsBulk(req: Request, res: Response) {
+  async importSalesReportsBulk(req: Request, res: Response): Promise<void> {
     try {
       const { reports } = req.body as { reports: DailyReport[] };
       
       if (!Array.isArray(reports)) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: 'Reports must be an array',
         });
+        return;
       }
 
       const results = await importService.processBulkReports(reports);
@@ -100,16 +104,17 @@ export const importController = {
    * Check if a report has already been imported
    * GET /api/import/status/:date
    */
-  async checkImportStatus(req: Request, res: Response) {
+  async checkImportStatus(req: Request, res: Response): Promise<void> {
     try {
       const { date } = req.params;
       
       // Validate date format
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: 'Invalid date format. Use YYYY-MM-DD',
         });
+        return;
       }
 
       const exists = await importService.checkDuplicateReport(date);

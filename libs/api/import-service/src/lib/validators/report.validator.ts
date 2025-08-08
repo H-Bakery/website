@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import type { DailyReport } from '@bakery/shared/types';
+import type { DailyReport } from '../types/report.types';
 
 // Define the schema for transaction items
 const transactionItemSchema = Joi.object({

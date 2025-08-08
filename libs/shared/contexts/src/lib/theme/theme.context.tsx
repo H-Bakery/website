@@ -1,3 +1,5 @@
+'use client'
+
 /**
  * @fileoverview Enhanced theme context with system preference detection and transitions
  * @module @bakery/shared/contexts/theme

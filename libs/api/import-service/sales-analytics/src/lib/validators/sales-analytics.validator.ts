@@ -1,7 +1,7 @@
 import { body, query, ValidationChain } from 'express-validator';
 import { Request, Response, NextFunction } from 'express';
 import { validationResult } from 'express-validator';
-import { logger } from '@bakery/api/core';
+import { logger } from '../utils/logger';
 
 /**
  * Handle validation errors middleware

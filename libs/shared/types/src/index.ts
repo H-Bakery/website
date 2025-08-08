@@ -21,6 +21,15 @@ export * from './lib/notification'
 // Export report types
 export * from './lib/report'
 
+// Export analytics types
+export * from './lib/analytics'
+
+// Export cash types
+export * from './lib/cash'
+
+// Export unsold product types
+export * from './lib/unsold-product'
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,
@@ -84,4 +93,9 @@ export type {
   NotificationFilters,
   NotificationStats,
   NotificationEvent,
+  LegacyNotification,
+  LegacyNotificationPreferences,
+  ArchiveResult,
+  ArchiveStats,
+  PriorityThreshold,
 } from './lib/notification'

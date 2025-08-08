@@ -46,6 +46,15 @@ export class ApiClient {
   }
 
   /**
+   * Get authorization header
+   */
+  getAuthHeader(): Record<string, string> {
+    return this.defaultHeaders['Authorization'] 
+      ? { 'Authorization': this.defaultHeaders['Authorization'] }
+      : {}
+  }
+
+  /**
    * Clear all tokens (alias for clearAuthToken for consistency)
    */
   clearTokens() {

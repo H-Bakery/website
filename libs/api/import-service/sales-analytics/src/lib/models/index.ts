@@ -1,5 +1,5 @@
 import { Sequelize } from 'sequelize';
-import { logger } from '@bakery/api/core';
+import { logger } from '../utils/logger';
 import { SalesTransaction } from './sales-transaction.model';
 import { TransactionItem } from './transaction-item.model';
 import { DailySalesReport } from './daily-sales-report.model';

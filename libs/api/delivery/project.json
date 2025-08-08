@@ -1,0 +1,26 @@
+{
+  "name": "delivery",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/delivery/src",
+  "projectType": "library",
+  "tags": ["scope:api", "type:feature"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/delivery",
+        "main": "libs/api/delivery/src/index.ts",
+        "tsConfig": "libs/api/delivery/tsconfig.lib.json",
+        "assets": ["libs/api/delivery/*.md"]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/api/delivery/jest.config.ts"
+      }
+    }
+  }
+}

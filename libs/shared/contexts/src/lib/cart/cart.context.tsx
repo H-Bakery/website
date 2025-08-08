@@ -1,3 +1,5 @@
+'use client'
+
 /**
  * @fileoverview Enhanced cart context with persistence, validation, and optimizations
  * @module @bakery/shared/contexts/cart
@@ -111,7 +113,7 @@ export interface CartProviderProps {
 /**
  * Cart context
  */
-const CartContext = createContext<CartContextType | undefined>(undefined)
+export const CartContext = createContext<CartContextType | undefined>(undefined)
 
 /**
  * Default cart summary

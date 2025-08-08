@@ -1,0 +1,26 @@
+{
+  "name": "utils",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/utils/src",
+  "projectType": "library",
+  "tags": ["scope:api", "type:util"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/utils",
+        "main": "libs/api/utils/src/index.ts",
+        "tsConfig": "libs/api/utils/tsconfig.lib.json",
+        "assets": ["libs/api/utils/*.md"]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/api/utils/jest.config.ts"
+      }
+    }
+  }
+}

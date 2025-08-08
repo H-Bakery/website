@@ -1,0 +1,116 @@
+import React from 'react'
+import { Box, Chip, Typography } from '@mui/material'
+
+import { CartContext, CartItem } from '@bakery/shared/contexts'
+import Button from '../button'
+import Image from 'next/image'
+
+// Price formatter for Euro currency
+const formatter = new Intl.NumberFormat('de-DE', {
+  style: 'currency',
+  currency: 'EUR',
+  minimumFractionDigits: 2,
+})
+
+const Card: React.FC<CartItem> = (props) => {
+  const { id, image, name, category, price, quantity } = props
+
+  const cartContext = React.useContext(CartContext)
+  if (!cartContext) {
+    throw new Error('CartCard must be used within CartProvider')
+  }
+  const { items, removeFromCart, updateQuantity } = cartContext
+
+  React.useEffect(() => {
+    console.log('cont', items)
+  }, [items])
+
+  return (
+    <Box sx={styles.root}>
+      <Box sx={styles.image}>
+        {image && <Image src={image} alt={name} width={100} height={100} />}
+      </Box>
+      <Box sx={styles.content}>
+        <Box sx={styles.tags}>
+          <Typography gutterBottom variant="h6" fontSize={20}>
+            {name}
+          </Typography>
+          <Box sx={styles.counter}>
+            <Button
+              onClick={() => updateQuantity(id, Math.max(0, quantity - 1))}
+              color="inherit"
+              size="small"
+              sx={{ minWidth: 32 }}
+            >
+              -
+            </Button>
+            <Typography fontWeight="bold" mx={2}>
+              {quantity}
+            </Typography>
+            <Button
+              onClick={() => updateQuantity(id, quantity + 1)}
+              color="inherit"
+              size="small"
+              sx={{ minWidth: 32 }}
+            >
+              +
+            </Button>
+          </Box>
+        </Box>
+        <Box sx={styles.tags}>
+          <Chip label={category} />
+          <Box onClick={() => removeFromCart(id)}>remove</Box>
+          <Typography variant="h6" fontSize={20}>
+            {formatter.format(price)}
+          </Typography>
+        </Box>
+      </Box>
+    </Box>
+  )
+}
+
+const styles = {
+  root: {
+    boxShadow: 1,
+    borderRadius: '8px',
+    bgcolor: 'background.paper',
+    p: 2,
+    width: '100%',
+    mb: 2,
+    display: 'flex',
+  },
+  image: {
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 70,
+    width: 70,
+    bgcolor: 'grey.100',
+    borderRadius: '8px',
+    border: '1px solid',
+    borderColor: 'grey.300',
+    mr: 2,
+
+    '& img': {
+      maxWidth: '80%',
+      maxHeight: '80%',
+    },
+  },
+  content: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+  },
+  counter: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+  tags: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+}
+
+export default Card

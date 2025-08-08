@@ -1,3 +1,5 @@
+'use client'
+
 /**
  * @fileoverview Root provider that combines all application contexts
  * @module @bakery/shared/contexts/root

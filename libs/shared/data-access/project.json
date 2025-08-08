@@ -6,13 +6,10 @@
   "tags": ["scope:shared", "type:data-access"],
   "targets": {
     "build": {
-      "executor": "@nx/js:tsc",
+      "executor": "@nx/vite:build",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/libs/shared/data-access",
-        "main": "libs/shared/data-access/src/index.ts",
-        "tsConfig": "libs/shared/data-access/tsconfig.lib.json",
-        "assets": ["libs/shared/data-access/*.md"]
+        "outputPath": "dist/libs/shared/data-access"
       }
     },
     "test": {

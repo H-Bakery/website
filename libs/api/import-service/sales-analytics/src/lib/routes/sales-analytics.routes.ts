@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { SalesAnalyticsController } from '../controllers/sales-analytics.controller';
-import { authenticate } from '@bakery/api/core';
+import { authMiddleware } from '@bakery/api/auth';
 import { 
   dateRangeValidationRules,
   revenueTrendsValidationRules,
@@ -19,7 +19,7 @@ const router = Router();
 // Revenue trends with granularity support
 router.get(
   '/revenue-trends',
-  authenticate,
+  authMiddleware,
   revenueTrendsValidationRules(),
   handleValidationErrors,
   SalesAnalyticsController.getRevenueTrends
@@ -28,7 +28,7 @@ router.get(
 // Product performance analysis (top/bottom performers)
 router.get(
   '/product-performance',
-  authenticate,
+  authMiddleware,
   productPerformanceValidationRules(),
   handleValidationErrors,
   SalesAnalyticsController.getProductPerformance
@@ -37,7 +37,7 @@ router.get(
 // Cashier/user performance analytics
 router.get(
   '/cashier-performance',
-  authenticate,
+  authMiddleware,
   cashierPerformanceValidationRules(),
   handleValidationErrors,
   SalesAnalyticsController.getCashierPerformance
@@ -46,7 +46,7 @@ router.get(
 // Payment method breakdown
 router.get(
   '/payment-methods',
-  authenticate,
+  authMiddleware,
   dateRangeValidationRules(),
   handleValidationErrors,
   SalesAnalyticsController.getPaymentMethods
@@ -55,7 +55,7 @@ router.get(
 // High-level dashboard summary
 router.get(
   '/summary',
-  authenticate,
+  authMiddleware,
   dateRangeValidationRules(),
   handleValidationErrors,
   SalesAnalyticsController.getSummary

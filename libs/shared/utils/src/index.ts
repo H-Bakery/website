@@ -1,3 +1,5 @@
 export * from './lib/logger'
 export * from './lib/format'
 export * from './lib/navigation'
+export * from './lib/contact'
+export * from './lib/cashUtils'

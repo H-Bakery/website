@@ -1,17 +1,25 @@
+'use client'
+
 /**
  * @fileoverview Enhanced notification context with real-time updates, filtering, and preferences
  * @module @bakery/shared/contexts/notification
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { 
-  Notification,
+import type { 
+  Notification as NotificationType,
   NotificationPreferences,
   NotificationChannel,
   NotificationCategory,
   NotificationPriority 
 } from '@bakery/shared/types'
 import { notificationService } from '@bakery/shared/data-access'
+
+// Use a local type alias that handles date serialization
+type Notification = Omit<NotificationType, 'createdAt' | 'expiresAt'> & {
+  createdAt: string | Date
+  expiresAt?: string | Date
+}
 
 /**
  * Notification filters
@@ -537,21 +545,31 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const resetPreferences = useCallback(async () => {
     try {
       // Reset to default preferences
-      const defaultPrefs: NotificationPreferences = {
-        emailEnabled: true,
-        smsEnabled: false,
-        pushEnabled: true,
-        inAppEnabled: true,
-        browserEnabled: true,
-        soundEnabled: true,
-        categoryPreferences: {},
-        priorityThreshold: 'low',
+      const defaultPrefs: Partial<NotificationPreferences> = {
+        userId: 'default',
+        channels: {
+          inApp: { enabled: true, categories: [], minPriority: 'low' },
+          email: { enabled: true, categories: [], minPriority: 'medium' },
+          sms: { enabled: false, categories: [], minPriority: 'high' },
+          push: { enabled: true, categories: [], minPriority: 'medium' }
+        },
         quietHours: {
           enabled: false,
           start: '22:00',
           end: '08:00',
           timezone: 'UTC',
         },
+        sound: {
+          enabled: true,
+          volume: 50
+        },
+        digest: {
+          enabled: false,
+          frequency: 'daily',
+          time: '09:00',
+          categories: []
+        },
+        language: 'de'
       }
       
       const updated = await notificationService.updatePreferences(defaultPrefs)
@@ -567,7 +585,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   // Send test notification
   const sendTest = useCallback(async (channel: NotificationChannel) => {
     try {
-      await notificationService.testNotification(channel, 'current')
+      // TODO: Implement test notification
+      console.log('Test notification would be sent to channel:', channel)
     } catch (error) {
       console.error('Failed to send test notification:', error)
       throw error
@@ -587,7 +606,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         applicationServerKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY,
       })
 
-      await notificationService.subscribeToPush(subscription)
+      // TODO: Implement push subscription
+      console.log('Would subscribe to push notifications:', subscription)
     } catch (error) {
       console.error('Failed to subscribe to push:', error)
       throw error

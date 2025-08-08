@@ -1,0 +1,6 @@
+export { Footer } from './footer'
+export { FooterMenu } from './footer-menu'
+export { FooterContact } from './footer-contact'
+export { FooterOpenings } from './footer-openings'
+export { FooterLink } from './footer-link'
+export { Socials as FooterSocials } from './socials'

@@ -12,3 +12,4 @@ export { validateDailyReport, validateDailyReports } from './lib/validators/repo
 
 // Export types
 export type { ImportResult, BulkImportResult } from './lib/services/import.service';
+export type { DailyReport, Transaction, TransactionItem, DailySummary } from './lib/types/report.types';

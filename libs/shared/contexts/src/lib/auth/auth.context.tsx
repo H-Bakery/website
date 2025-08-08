@@ -1,3 +1,5 @@
+'use client'
+
 /**
  * @fileoverview Enhanced authentication context with JWT refresh, role-based access, and security features
  * @module @bakery/shared/contexts/auth

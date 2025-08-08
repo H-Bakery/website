@@ -13,8 +13,7 @@ export * from './lib/cart/cart.context'
 export * from './lib/auth/auth.context'
 
 // Notification context
-// TODO: Re-enable after fixing dependencies
-// export * from './lib/notification/notification.context'
+export * from './lib/notification/notification.context'
 
 // Root provider
 export * from './lib/root-provider'

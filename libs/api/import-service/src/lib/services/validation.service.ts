@@ -1,6 +1,6 @@
 import { Sequelize } from 'sequelize';
-import type { DailyReport } from '@bakery/shared/types';
-import { logger } from '@bakery/api/core';
+import type { DailyReport } from '../types/report.types';
+import { logger } from '../utils/logger';
 
 export const validationService = {
   /**
@@ -27,7 +27,7 @@ export const validationService = {
     }
     
     // Validate users exist
-    for (const username of users) {
+    for (const username of Array.from(users)) {
       const user = await User.findOne({
         where: { username },
       });
@@ -38,7 +38,7 @@ export const validationService = {
     }
     
     // Validate products exist
-    for (const productId of products) {
+    for (const productId of Array.from(products)) {
       const product = await Product.findByPk(productId);
       
       if (!product) {

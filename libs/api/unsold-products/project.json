@@ -1,0 +1,26 @@
+{
+  "name": "unsold-products",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/unsold-products/src",
+  "projectType": "library",
+  "tags": ["scope:api", "type:feature"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/unsold-products",
+        "main": "libs/api/unsold-products/src/index.ts",
+        "tsConfig": "libs/api/unsold-products/tsconfig.lib.json",
+        "assets": ["libs/api/unsold-products/*.md"]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/api/unsold-products/jest.config.ts"
+      }
+    }
+  }
+}

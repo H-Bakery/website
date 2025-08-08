@@ -1,0 +1,19 @@
+{
+  "name": "recipes",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/recipes/src",
+  "projectType": "library",
+  "tags": ["scope:api", "type:feature"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/recipes",
+        "main": "libs/api/recipes/src/index.ts",
+        "tsConfig": "libs/api/recipes/tsconfig.lib.json",
+        "assets": ["libs/api/recipes/*.md"]
+      }
+    }
+  }
+}

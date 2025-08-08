@@ -1,0 +1,138 @@
+import React from 'react';
+import {
+  DataGrid,
+  GridColDef,
+  GridRenderCellParams,
+  GridToolbar,
+} from '@mui/x-data-grid';
+import { Box, Paper, Typography, Chip } from '@mui/material';
+import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import TrendingDownIcon from '@mui/icons-material/TrendingDown';
+import type { ProductAnalyticsPerformance } from '@bakery/shared/types';
+
+export interface ProductRankingTableProps {
+  products: ProductAnalyticsPerformance[];
+  title?: string;
+  showRank?: boolean;
+  pageSize?: number;
+  height?: number;
+}
+
+export function ProductRankingTable({
+  products,
+  title = 'Produktleistung',
+  showRank = true,
+  pageSize = 10,
+  height = 400,
+}: ProductRankingTableProps) {
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+    }).format(value);
+  };
+
+  const columns: GridColDef[] = [
+    ...(showRank
+      ? [
+          {
+            field: 'rank',
+            headerName: 'Rang',
+            width: 80,
+            renderCell: (params: GridRenderCellParams) => {
+              const rank = params.row.rank || params.api.getRowIndexRelativeToVisibleRows(params.id) + 1;
+              return (
+                <Chip
+                  label={`#${rank}`}
+                  color={rank <= 3 ? 'success' : rank > 10 ? 'error' : 'default'}
+                  size="small"
+                  icon={rank <= 5 ? <TrendingUpIcon /> : rank > 15 ? <TrendingDownIcon /> : undefined}
+                />
+              );
+            },
+          },
+        ]
+      : []),
+    {
+      field: 'productId',
+      headerName: 'Produkt ID',
+      width: 120,
+    },
+    {
+      field: 'productName',
+      headerName: 'Produktname',
+      flex: 1,
+      minWidth: 200,
+    },
+    {
+      field: 'quantitySold',
+      headerName: 'Verkaufte Menge',
+      type: 'number',
+      width: 140,
+      headerAlign: 'right',
+      align: 'right',
+    },
+    {
+      field: 'revenue',
+      headerName: 'Umsatz',
+      type: 'number',
+      width: 120,
+      headerAlign: 'right',
+      align: 'right',
+      valueFormatter: (value) => formatCurrency(value),
+    },
+    {
+      field: 'averagePrice',
+      headerName: 'Ø Preis',
+      type: 'number',
+      width: 100,
+      headerAlign: 'right',
+      align: 'right',
+      valueGetter: (params) => params.row.revenue / params.row.quantitySold,
+      valueFormatter: (value) => formatCurrency(value),
+    },
+  ];
+
+  const rows = products.map((product, index) => ({
+    ...product,
+    id: product.productId,
+    rank: product.rank || index + 1,
+  }));
+
+  return (
+    <Paper elevation={3} sx={{ p: 3, height: height + 100 }}>
+      <Typography variant="h6" component="h2" gutterBottom>
+        {title}
+      </Typography>
+      
+      <Box sx={{ height, width: '100%' }}>
+        <DataGrid
+          rows={rows}
+          columns={columns}
+          pageSizeOptions={[5, 10, 25, 50]}
+          checkboxSelection={false}
+          disableRowSelectionOnClick
+          initialState={{
+            pagination: {
+              paginationModel: { pageSize },
+            },
+            sorting: {
+              sortModel: [{ field: 'revenue', sort: 'desc' }],
+            },
+          }}
+          slots={{
+            toolbar: GridToolbar,
+          }}
+          slotProps={{
+            toolbar: {
+              showQuickFilter: true,
+              quickFilterProps: { debounceMs: 500 },
+            },
+          }}
+        />
+      </Box>
+    </Paper>
+  );
+}
+
+export default ProductRankingTable;

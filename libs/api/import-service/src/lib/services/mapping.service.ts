@@ -1,5 +1,5 @@
 import { Sequelize } from 'sequelize';
-import { logger } from '@bakery/api/core';
+import { logger } from '../utils/logger';
 
 export const mappingService = {
   /**
