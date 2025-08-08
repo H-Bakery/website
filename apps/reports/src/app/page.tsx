@@ -90,10 +90,18 @@ export default function ReportsPage() {
   return (
     <div className={styles.container}>
       <header className={styles.header}>
-        <h1>Tagesberichte</h1>
-        <p className={styles.subtitle}>
-          {reports.length} {reports.length === 1 ? 'Bericht' : 'Berichte'} verfügbar
-        </p>
+        <div>
+          <h1>Tagesberichte</h1>
+          <p className={styles.subtitle}>
+            {reports.length} {reports.length === 1 ? 'Bericht' : 'Berichte'}{' '}
+            verfügbar
+          </p>
+        </div>
+        <nav className={styles.navigation}>
+          <Link href="/analytics" className={styles.navButton}>
+            Analytics Dashboard →
+          </Link>
+        </nav>
       </header>
 
       {reports.length === 0 ? (

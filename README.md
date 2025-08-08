@@ -14,7 +14,7 @@ npm run serve:all        # Start all applications
 - Landing Page: http://localhost:3000 (Static marketing site)
 - Shop: http://localhost:4200 (E-commerce frontend)
 - Management: http://localhost:4201 (Admin dashboard)
-- API: http://localhost:3333 (Backend services)
+- API: http://localhost:5000 (TypeScript backend with domain-driven architecture)
 
 ## 📁 Structure
 
@@ -23,7 +23,7 @@ apps/
 ├── bakery-landing/      # Marketing site (Next.js)
 ├── bakery-shop/         # E-commerce (Next.js + Material UI)
 ├── bakery-management/   # Admin dashboard (Next.js)
-└── bakery-api/          # Backend API (Express)
+└── bakery-api/          # TypeScript Backend API (13 domain libraries)
 
 libs/
 ├── shared/              # Shared code (types, utils, UI, contexts)
@@ -38,6 +38,10 @@ libs/
 npm run serve:shop
 npm run serve:management
 npm run serve:landing
+
+# Backend API (TypeScript)
+npx nx serve bakery-api         # Start TypeScript backend (port 5000)
+npx nx build bakery-api         # Build TypeScript backend
 
 # Static builds (Landing Page)
 npm run build:landing:static    # Standalone build (recommended)
@@ -69,6 +73,7 @@ npm run build:landing:static
 ```
 
 **Deployment Options:**
+
 - **GitHub Pages**: Upload `out/` folder or use Actions
 - **Vercel**: Connect repository for auto-deployment
 - **CDN/S3**: Upload `out/` directory contents
@@ -76,6 +81,7 @@ npm run build:landing:static
 ### Automatic Deployment
 
 **Push to `main` triggers:**
+
 - Landing → GitHub Pages (static)
 - Shop/Management → Vercel (SSR)
 - API → Google Cloud Run (container)

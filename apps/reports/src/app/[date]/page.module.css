@@ -1,0 +1,330 @@
+.container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.loading,
+.error {
+  text-align: center;
+  padding: 3rem;
+  background: #f5f5f5;
+  border-radius: 8px;
+}
+
+.error {
+  background: #fee;
+  color: #c00;
+}
+
+.error p {
+  margin: 0.5rem 0;
+}
+
+.backButton,
+.backLink {
+  padding: 0.5rem 1rem;
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.backButton:hover,
+.backLink:hover {
+  background: #0056b3;
+}
+
+.backLink {
+  margin-bottom: 1rem;
+}
+
+.header {
+  margin-bottom: 2rem;
+}
+
+.header h1 {
+  font-size: 2rem;
+  margin: 0.5rem 0;
+  color: #333;
+}
+
+.subtitle {
+  color: #666;
+  font-size: 1rem;
+}
+
+/* Summary Grid */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+
+.summaryCard {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.summaryCard h3 {
+  font-size: 0.9rem;
+  color: #666;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summaryValue {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #333;
+  margin: 0;
+}
+
+.summarySubtext {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0.25rem 0 0 0;
+}
+
+.vatLine {
+  font-size: 0.9rem;
+  margin: 0.25rem 0;
+}
+
+/* Charts Section */
+.chartsSection {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 3rem;
+}
+
+.chart {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.chart h3 {
+  font-size: 1.1rem;
+  margin: 0 0 1rem 0;
+  color: #333;
+}
+
+.hourlyChart {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.hourBar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.hourLabel {
+  width: 50px;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.hourValue {
+  background: #007bff;
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+  min-width: 30px;
+  text-align: center;
+}
+
+.productList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.productItem {
+  display: grid;
+  grid-template-columns: 30px 100px 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.5rem;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.productItem:last-child {
+  border-bottom: none;
+}
+
+.productRank {
+  font-weight: 600;
+  color: #666;
+}
+
+.productId {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.productQuantity {
+  font-size: 0.9rem;
+}
+
+.productRevenue {
+  font-weight: 600;
+  color: #333;
+}
+
+/* Transactions Table */
+.transactionsSection {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.transactionsSection h2 {
+  font-size: 1.3rem;
+  margin: 0 0 1rem 0;
+  color: #333;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+}
+
+.transactionsTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.transactionsTable th {
+  background: #f5f5f5;
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.transactionRow {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.transactionRow:hover {
+  background: #f8f9fa;
+}
+
+.transactionsTable td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.amount {
+  font-weight: 600;
+  text-align: right;
+}
+
+/* Modal */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background: white;
+  border-radius: 8px;
+  padding: 2rem;
+  max-width: 600px;
+  width: 90%;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.modalContent h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+}
+
+.itemsTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.itemsTable th,
+.itemsTable td {
+  padding: 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.itemsTable th {
+  background: #f5f5f5;
+  font-weight: 600;
+}
+
+.itemsTable tfoot td {
+  font-weight: 600;
+  border-top: 2px solid #e0e0e0;
+  border-bottom: none;
+}
+
+.closeButton {
+  margin-top: 1rem;
+  padding: 0.5rem 1.5rem;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.closeButton:hover {
+  background: #5a6268;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .chartsSection {
+    grid-template-columns: 1fr;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .transactionsTable {
+    font-size: 0.85rem;
+  }
+
+  .productItem {
+    grid-template-columns: 30px 80px 1fr auto;
+    font-size: 0.85rem;
+  }
+}

@@ -1,125 +1,21 @@
 {
-	"meta": {
-		"generatedAt": "2025-08-03T00:47:13.150Z",
-		"tasksAnalyzed": 14,
-		"totalTasks": 33,
-		"analysisCount": 14,
-		"thresholdScore": 5,
-		"projectName": "Taskmaster",
-		"usedResearch": true
-	},
-	"complexityAnalysis": [
-		{
-			"taskId": 10,
-			"taskTitle": "Build Full-Stack Inventory Management System",
-			"complexityScore": 8,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Break down the 'Build Full-Stack Inventory Management System' task into subtasks covering database schema design, backend API implementation for CRUD and stock adjustments, frontend UI development for displaying and managing inventory, and an alerting mechanism for low stock.",
-			"reasoning": "The task is high complexity (8/10) because it spans the full stack (database, backend API with business logic, frontend UI with complex components like a DataGrid). It requires creating a new, self-contained vertical feature. The recommended 5 subtasks align with the existing breakdown, logically separating database design, API implementation, frontend display, core business logic (adjustments), and advanced features (alerting)."
-		},
-		{
-			"taskId": 20,
-			"taskTitle": "Implement CI/CD Pipeline with GitHub Actions and Docker",
-			"complexityScore": 9,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Decompose the 'Implement CI/CD Pipeline' task into sequential subtasks: 1. Set up the basic GitHub Actions workflow file for PR checks. 2. Integrate Nx 'affected' commands for linting, testing, and building. 3. Create a multi-stage Dockerfile for the API. 4. Implement the conditional deployment job for the main branch. 5. Configure secrets and push to a container registry.",
-			"reasoning": "The task is highly complex (9/10) due to the specialized knowledge required for CI/CD, Docker, and Nx 'affected' commands. Integrating these technologies correctly requires careful configuration and debugging. A breakdown into 5 subtasks is recommended to handle workflow setup, Nx optimization, Dockerization, deployment logic, and environment configuration sequentially."
-		},
-		{
-			"taskId": 21,
-			"taskTitle": "Create Bakery Delivery App and Core Delivery Libraries",
-			"complexityScore": 2,
-			"recommendedSubtasks": 0,
-			"expansionPrompt": "This task is atomic and does not require further expansion.",
-			"reasoning": "Complexity is very low (2/10) as the task primarily involves running Nx generators to scaffold a new application and libraries. The core implementation is explicitly out of scope. No further subtask breakdown is necessary as it's an atomic setup task."
-		},
-		{
-			"taskId": 22,
-			"taskTitle": "Implement Lazy Loading for Feature Modules",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Break down the 'Implement Lazy Loading' task by application. Create subtasks for refactoring 'bakery-management', 'bakery-shop', and 'bakery-delivery' to use dynamic imports. Add a final subtask for performance analysis and verification using Lighthouse.",
-			"reasoning": "The task has medium complexity (5/10). While the 'next/dynamic' API is simple, identifying the correct components to lazy-load across three applications to achieve meaningful performance gains requires careful analysis. A breakdown of 4 subtasks is recommended: one for implementation in each of the three applications, and a final one for performance validation."
-		},
-		{
-			"taskId": 23,
-			"taskTitle": "Document Backend API with OpenAPI/Swagger",
-			"complexityScore": 6,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Decompose the 'Document Backend API' task. Create subtasks for: 1. Initial setup of Swagger UI and configuration. 2. Annotating authentication and staff management endpoints. 3. Annotating recipe management endpoints. 4. Annotating dashboard and sales analytics endpoints. 5. Final review and validation of the complete API documentation.",
-			"reasoning": "The complexity is medium (6/10), not because of technical difficulty but due to the meticulous and extensive effort required to annotate every existing API endpoint correctly. A breakdown of 5 subtasks is recommended to tackle the work incrementally: one for initial setup, followed by separate tasks for documenting each major API feature area."
-		},
-		{
-			"taskId": 25,
-			"taskTitle": "Finalize and Productionize Bakery Landing Page",
-			"complexityScore": 6,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Break down the 'Finalize Landing Page' task into production-readiness steps. Create subtasks for: 1. Resolving build and dependency issues. 2. Replacing all placeholder content with final assets. 3. Implementing a root-level Error Boundary. 4. Adding SEO and Open Graph meta tags. 5. Converting all `<img>` tags to optimized `next/image` components.",
-			"reasoning": "This task has medium complexity (6/10) as it involves a diverse set of 'productionizing' activities, from asset integration to SEO and error handling, each requiring careful implementation. A breakdown into 5 subtasks is recommended, addressing dependency resolution, content finalization, error handling, SEO, and performance optimization as separate, verifiable steps."
-		},
-		{
-			"taskId": 26,
-			"taskTitle": "Create Service to Ingest and Parse Daily Report JSON Files",
-			"complexityScore": 4,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Decompose the 'Ingest and Parse JSON Files' task. Create subtasks for: 1. Defining all necessary TypeScript interfaces for the report data. 2. Implementing the service logic to read files from the specified directory. 3. Adding robust JSON parsing with validation and error handling. 4. Creating the API endpoint to trigger the service and return parsed data.",
-			"reasoning": "The task has low-to-medium complexity (4/10). The core logic is straightforward (read, parse), but it requires careful handling of file system paths and robust error checking for I/O and malformed data. A breakdown of 4 subtasks is recommended to separate type definition, file access, data parsing, and API exposure."
-		},
-		{
-			"taskId": 27,
-			"taskTitle": "Extend Database Schema for Sales Analytics",
-			"complexityScore": 5,
-			"recommendedSubtasks": 4,
-			"expansionPrompt": "Break down the 'Extend Database Schema' task by model. Create subtasks to define the Sequelize models for: 1. `SalesTransaction`. 2. `TransactionItem`, including its relationships. 3. `DailySalesReport`. 4. Create and test the database migration script to create the new tables.",
-			"reasoning": "The task has medium complexity (5/10) as it requires careful database schema design, including defining multiple tables with foreign key relationships, constraints, and performance indexes using an ORM. A breakdown of 4 subtasks is recommended: one for each of the three new models, and a final one for creating and verifying the database migration."
-		},
-		{
-			"taskId": 28,
-			"taskTitle": "Implement Sales Data Import and Processing Service",
-			"complexityScore": 8,
-			"recommendedSubtasks": 6,
-			"expansionPrompt": "Decompose the 'Implement Sales Data Import Service' task. Create subtasks for: 1. Setting up the service structure and API endpoint. 2. Implementing duplicate report detection. 3. Developing the data validation and mapping logic. 4. Wrapping the import process in a database transaction. 5. Populating the transaction tables. 6. Aggregating and populating the daily summary report table.",
-			"reasoning": "The task is highly complex (8/10) due to its critical role in data integrity. It requires implementing atomic database transactions, complex data validation against multiple tables, and robust error handling with rollbacks. A detailed breakdown of 6 subtasks is recommended to manage the complexity, covering setup, duplicate detection, validation, transaction management, data population, and summary creation."
-		},
-		{
-			"taskId": 29,
-			"taskTitle": "Create Sales Analytics Controller and Endpoints",
-			"complexityScore": 7,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Break down the 'Create Sales Analytics Controller' task by endpoint. Create subtasks for implementing: 1. The revenue trends endpoint with granularity. 2. The product performance endpoint. 3. The cashier performance endpoint. 4. The payment methods endpoint. 5. A general summary endpoint and shared pagination logic.",
-			"reasoning": "The task is complex (7/10) because it requires writing multiple, non-trivial database aggregation queries and exposing them via a well-structured API with filtering, pagination, and validation. A breakdown of 5 subtasks, one for each major analytical endpoint, is the most logical way to manage development and testing."
-		},
-		{
-			"taskId": 30,
-			"taskTitle": "Create Analytics Feature Library for Bakery Management",
-			"complexityScore": 6,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Decompose the 'Create Analytics Feature Library' task by component. Create subtasks for: 1. Scaffolding the library and installing dependencies. 2. Building the reusable Revenue Trend Chart. 3. Building the Product Ranking Table. 4. Building the Date Range Picker. 5. Creating Storybook stories for all new components.",
-			"reasoning": "The task has medium complexity (6/10), involving the creation of a new feature library and the integration of third-party charting and data grid libraries. A breakdown of 5 subtasks is recommended: one for setup, one for each major component (chart, table, picker), and one for creating Storybook stories to ensure component quality."
-		},
-		{
-			"taskId": 31,
-			"taskTitle": "Implement Sales Analytics Widgets on Dashboard Overview",
-			"complexityScore": 4,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Break down the 'Implement Sales Analytics Widgets' task by widget. Create subtasks for implementing the: 1. Daily Revenue Card. 2. Transaction Count Card. 3. Top Products List. 4. Period Comparison Card. 5. Ensure all widgets are integrated into a responsive grid and link to detail pages.",
-			"reasoning": "This is a low-to-medium complexity (4/10) frontend integration task. The core components and APIs are already built; this task focuses on composing them, fetching data, and managing UI states. A breakdown of 5 subtasks is recommended, with one for each of the four widgets and a final one for layout and interactivity."
-		},
-		{
-			"taskId": 32,
-			"taskTitle": "Implement Automated Sales Report Generation",
-			"complexityScore": 8,
-			"recommendedSubtasks": 6,
-			"expansionPrompt": "Decompose the 'Automated Sales Report Generation' task. Create subtasks for: 1. Setting up the reporting service module. 2. Implementing Excel report generation. 3. Implementing PDF report generation via Puppeteer. 4. Adding scheduling capabilities with node-cron. 5. Integrating with the event bus for notifications. 6. Setting up secure file storage.",
-			"reasoning": "The task is highly complex (8/10) due to the technical challenges of programmatic file generation (especially PDF via Puppeteer), managing scheduled background jobs, and integrating with eventing and secure storage systems. A breakdown of 6 subtasks is recommended to isolate the distinct challenges of Excel generation, PDF generation, scheduling, notifications, and storage."
-		},
-		{
-			"taskId": 33,
-			"taskTitle": "Migrate and Integrate Complete Landing Page into Nx `bakery-landing` App",
-			"complexityScore": 7,
-			"recommendedSubtasks": 5,
-			"expansionPrompt": "Break down the 'Migrate Landing Page' task based on the provided migration plan. Create subtasks for migrating: 1. Core infrastructure (contexts, theme, utils). 2. The complete icon and brand system. 3. The main layout components (Header, Footer). 4. All page content and components. 5. Global stylesheets and resolving conflicts.",
-			"reasoning": "The task is complex (7/10) not due to novel engineering but due to the large scale and high-risk nature of the migration. Ensuring 1:1 visual and functional parity across dozens of components and pages is meticulous work. The recommended 5 subtasks follow the logical grouping provided in the task description (Infrastructure, Icons, Layout, Pages, Styles) to make the large volume of work manageable."
-		}
-	]
+  "meta": {
+    "generatedAt": "2025-08-03T22:40:19.675Z",
+    "tasksAnalyzed": 1,
+    "totalTasks": 35,
+    "analysisCount": 1,
+    "thresholdScore": 5,
+    "projectName": "Taskmaster",
+    "usedResearch": true
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 35,
+      "taskTitle": "Finalize Backend Migration and Decommission Monolithic index.js",
+      "complexityScore": 8,
+      "recommendedSubtasks": 6,
+      "expansionPrompt": "Break down the backend migration and decommissioning process into sequential subtasks. Start with a thorough audit to identify all remaining logic in `index.js` and its related directories. Create separate subtasks for migrating each major domain (e.g., 'workflows', 'delivery') into its own Nx library. Include a dedicated subtask for integrating all new libraries into `main.ts` and running full regression tests *before* the cutover. Finally, create a distinct subtask for the decommissioning itself, which includes deleting the legacy files, cleaning up configurations, and performing final validation.",
+      "reasoning": "Complexity is high (8/10) due to the significant risk associated with the final decommissioning step, which could disable the entire API if any logic is missed. The task involves a meticulous audit of legacy CommonJS code, refactoring multiple domains into a new TypeScript/DDD architecture, and a critical cutover. A 6-subtask breakdown is recommended to manage this risk by separating the audit, migration of individual domains, a dedicated pre-decommissioning integration test phase, and the final irreversible deletion of legacy files, ensuring a methodical and verifiable process."
+    }
+  ]
 }

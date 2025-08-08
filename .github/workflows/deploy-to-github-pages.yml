@@ -37,6 +37,10 @@ jobs:
       - name: Build landing page
         run: npx nx build-static-standalone bakery-landing
 
+      - name: Prepare for GitHub Pages
+        run: |
+          touch apps/bakery-landing/out/.nojekyll
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:

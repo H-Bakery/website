@@ -9,7 +9,15 @@
       "dependsOn": ["build"],
       "options": {
         "buildTarget": "bakery-api:build",
-        "command": "node dist/apps/bakery-api/main.js"
+        "command": "node dist/apps/bakery-api/src/main-standalone.js"
+      }
+    },
+    "serve-simple": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "buildTarget": "bakery-api:build",
+        "command": "node dist/apps/bakery-api/src/main-simple.js"
       }
     },
     "serve-legacy": {
@@ -25,8 +33,8 @@
       "dependsOn": ["^build"],
       "options": {
         "outputPath": "dist/apps/bakery-api",
-        "main": "apps/bakery-api/src/main.ts",
-        "tsConfig": "apps/bakery-api/tsconfig.app.json",
+        "main": "apps/bakery-api/src/main-standalone.ts",
+        "tsConfig": "apps/bakery-api/tsconfig.build.json",
         "assets": [
           "apps/bakery-api/bakery",
           "apps/bakery-api/content",

@@ -1,0 +1,348 @@
+.container {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 2rem;
+}
+
+.headerLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.backLink {
+  color: #007bff;
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+
+.backLink:hover {
+  text-decoration: underline;
+}
+
+.header h1 {
+  font-size: 2.5rem;
+  color: #333;
+  margin: 0;
+}
+
+.dateFilter {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.dateFilter label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.dateInput {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem;
+  font-size: 1.2rem;
+  color: #666;
+}
+
+.error {
+  text-align: center;
+  padding: 3rem;
+  color: #dc3545;
+}
+
+.retryButton {
+  margin-top: 1rem;
+  padding: 0.5rem 1.5rem;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.retryButton:hover {
+  background-color: #0056b3;
+}
+
+/* Summary Cards */
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 3rem;
+}
+
+.summaryCard {
+  background: white;
+  padding: 1.5rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.summaryCard h3 {
+  margin: 0 0 0.5rem 0;
+  color: #666;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.summaryValue {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #333;
+  margin: 0;
+}
+
+.summarySubtext {
+  font-size: 0.85rem;
+  color: #666;
+  margin: 0.5rem 0 0 0;
+}
+
+/* Revenue Chart */
+.chartSection {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 2rem;
+}
+
+.chartSection h2 {
+  margin: 0 0 1.5rem 0;
+  color: #333;
+}
+
+.revenueChart {
+  display: flex;
+  height: 300px;
+  gap: 1rem;
+}
+
+.chartYAxis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 80px;
+  text-align: right;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.chartBars {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  padding-bottom: 20px;
+  position: relative;
+}
+
+.chartBar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.bar {
+  width: 100%;
+  background: linear-gradient(to top, #007bff, #4da6ff);
+  border-radius: 4px 4px 0 0;
+  transition: opacity 0.2s;
+  cursor: pointer;
+}
+
+.bar:hover {
+  opacity: 0.8;
+}
+
+.barLabel {
+  position: absolute;
+  bottom: -20px;
+  font-size: 0.7rem;
+  color: #666;
+  transform: rotate(-45deg);
+  transform-origin: center;
+  white-space: nowrap;
+}
+
+/* Product Performance */
+.performanceGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.performanceSection {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.performanceSection h2 {
+  margin: 0 0 1.5rem 0;
+  color: #333;
+}
+
+.productList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.productItem {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+}
+
+.rank {
+  font-weight: bold;
+  color: #28a745;
+  font-size: 1.2rem;
+  width: 30px;
+}
+
+.rankLow {
+  font-weight: bold;
+  color: #dc3545;
+  font-size: 1.2rem;
+  width: 30px;
+  text-align: center;
+}
+
+.productInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.productName {
+  font-weight: 600;
+  color: #333;
+}
+
+.productId {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.productStats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.revenue {
+  font-weight: 600;
+  color: #333;
+}
+
+/* Payment Methods */
+.paymentSection {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.paymentSection h2 {
+  margin: 0 0 1.5rem 0;
+  color: #333;
+}
+
+.paymentGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.paymentCard {
+  text-align: center;
+}
+
+.paymentCard h3 {
+  margin: 0 0 1rem 0;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.paymentBar {
+  height: 30px;
+  background: #f0f0f0;
+  border-radius: 15px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.paymentFill {
+  height: 100%;
+  background: linear-gradient(to right, #007bff, #4da6ff);
+  border-radius: 15px;
+  transition: width 0.3s ease;
+}
+
+.paymentStats {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.paymentAmount {
+  margin: 0;
+  font-weight: 600;
+  color: #333;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .dateFilter {
+    flex-direction: column;
+  }
+
+  .performanceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .chartBars {
+    gap: 1px;
+  }
+
+  .barLabel {
+    font-size: 0.6rem;
+  }
+}

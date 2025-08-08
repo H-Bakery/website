@@ -1,18 +1,15 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "outDir": "../../dist/out-tsc",
+    "outDir": "../../dist/apps/bakery-api",
     "declaration": true,
-    "baseUrl": ".",
-    "paths": {
-      "@bakery/api/core": ["../../libs/api/core/src/index.ts"],
-      "@bakery/api/orders": ["../../libs/api/orders/src/index.ts"],
-      "@bakery/api/inventory": ["../../libs/api/inventory/src/index.ts"],
-      "@bakery/api/customers": ["../../libs/api/customers/src/index.ts"],
-      "@bakery/api/production": ["../../libs/api/production/src/index.ts"],
-      "@bakery/api/notifications": ["../../libs/api/notifications/src/index.ts"]
-    }
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "module": "commonjs",
+    "target": "es2015",
+    "skipLibCheck": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts"]
+  "include": ["src/main.ts"],
+  "exclude": ["jest.config.ts", "src/**/*.spec.ts", "src/**/*.test.ts", "**/*"],
+  "files": ["src/main.ts"]
 }
