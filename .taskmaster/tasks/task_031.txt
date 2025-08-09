@@ -1,0 +1,22 @@
+# Task ID: 31
+# Title: Implement Sales Analytics Widgets on Dashboard Overview
+# Status: done
+# Dependencies: 29, 30
+# Priority: medium
+# Description: Extend the main dashboard overview page by adding several key sales analytics widgets. These widgets will provide at-a-glance insights into daily revenue, transaction volume, and top-selling products, and will link to more detailed analytics pages.
+# Details:
+In the `bakery-management` application, locate and modify the `dashboard-overview.tsx` component. Utilize Material UI's `Grid` component to create a responsive layout for the new widgets. Import and use the reusable components created in the `libs/bakery-management/feature-analytics` library (Task #30). Implement the following summary widgets:
+1.  **Daily Revenue Card**: Fetch data from the `GET /api/analytics/sales/revenue-trends?granularity=daily` endpoint (Task #29) for the current day.
+2.  **Transaction Count Card**: Fetch data from a summary endpoint to display the total number of transactions for the current day.
+3.  **Top Products List**: Use the `GET /api/analytics/sales/product-performance` endpoint to display a list of the top 3-5 selling products.
+4.  **Period Comparison Card**: Fetch revenue data for two periods (e.g., today vs. yesterday, or this week vs. last week) and display the percentage change. 
+Each widget should be interactive, navigating to a detailed view (e.g., `/analytics/revenue`, `/analytics/products`) upon being clicked, using the application's routing solution.
+
+# Test Strategy:
+1. Ensure the API from Task #29 is running and the database is populated with sample sales data. 
+2. Launch the `bakery-management` application and navigate to the dashboard overview page. 
+3. Verify that all four new analytics widgets (Daily Revenue, Transaction Count, Top Products, Period Comparison) are displayed correctly. 
+4. Cross-reference the data shown in each widget with direct API calls to the corresponding endpoints (e.g., `/api/analytics/sales/revenue-trends`) to ensure data accuracy. 
+5. Confirm that the layout is responsive and uses Material UI components as expected. 
+6. Click on each widget and verify that it navigates the user to the correct, designated detailed analytics route. 
+7. Test loading and error states by simulating slow network responses or API errors, ensuring UI feedback like spinners or error messages appears.

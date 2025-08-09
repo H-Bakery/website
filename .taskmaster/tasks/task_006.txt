@@ -1,0 +1,37 @@
+# Task ID: 6
+# Title: Build Comprehensive Order Management UI
+# Status: done
+# Dependencies: 2
+# Priority: medium
+# Description: Build a comprehensive user interface for managing customer orders (Task 13). The interface will allow staff to view, search, filter, and update the status of orders by connecting to the existing order management backend API.
+# Details:
+Create a new page at `/admin/orders`. Use a Material UI `<DataGrid>` to display a list of all orders with columns for key details like ID, customer, date, and status. Implement server-side filtering and sorting. Create a detail view at `/admin/orders/[id]` to show complete order information and provide controls (e.g., a dropdown) to update the order status via a `PUT` request to `/orders/:id`.
+
+# Test Strategy:
+Verify the order list page correctly fetches and displays orders. Test filtering by status (e.g., 'pending'). Navigate to a detail page, update an order's status, and confirm the change is reflected in the list view and the database.
+
+# Subtasks:
+## 1. Set up DataGrid with Order Data [done]
+### Dependencies: None
+### Description: Create the main order management page with Material UI DataGrid displaying order list with columns for ID, customer, date, and status
+### Details:
+Create `/admin/orders/page.tsx` within AdminLayout. Configure Material UI DataGrid with proper columns for order data. Implement data fetching from the orders API endpoint. Set up proper TypeScript types for order data structure.
+
+## 2. Implement Filtering and Sorting [done]
+### Dependencies: 6.1
+### Description: Add server-side filtering and sorting capabilities to the orders DataGrid
+### Details:
+Implement DataGrid filtering controls for order status, date ranges, and customer search. Add server-side sorting functionality. Create search and filter UI components. Ensure proper API parameter handling for filter/sort requests.
+
+## 3. Create Order Detail View [done]
+### Dependencies: 6.1
+### Description: Build detailed order view page showing complete order information
+### Details:
+Create `/admin/orders/[id]/page.tsx` for individual order details. Display comprehensive order information including customer details, order items, timestamps, and current status. Implement navigation from DataGrid to detail view.
+
+## 4. Add Status Update Functionality [done]
+### Dependencies: 6.3
+### Description: Implement order status update controls with API integration
+### Details:
+Add status update dropdown/controls to the order detail view. Implement PUT request to `/orders/:id` endpoint for status updates. Add optimistic UI updates and error handling. Ensure status changes reflect in both detail view and main order list.
+

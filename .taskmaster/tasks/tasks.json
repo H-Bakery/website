@@ -1522,6 +1522,321 @@
         "dependencies": ["46"],
         "priority": "high",
         "subtasks": []
+      },
+      {
+        "id": 54,
+        "title": "Implement Missing Database Models from Legacy API",
+        "description": "Create TypeScript implementations for database models currently stubbed in src/models/index.ts",
+        "details": "Implement full TypeScript/Sequelize definitions for NotificationPreferences, NotificationTemplate, ProductionBatch, ProductionSchedule, and ProductionStep models. These models are currently stubbed and need complete implementation with proper types, associations, validations, and indexes based on the legacy JavaScript implementations.",
+        "testStrategy": "Create unit tests for each model to verify CRUD operations, associations, validations, and custom methods. Test database migrations to ensure tables are created correctly.",
+        "priority": "high",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create NotificationPreferences Model",
+            "description": "Implement TypeScript model for user notification preferences",
+            "dependencies": [],
+            "details": "Create NotificationPreferences.ts with Sequelize model definition including email/browser/sound preferences, category preferences, priority threshold, and quiet hours configuration. Add proper TypeScript interfaces and associations with User model.",
+            "status": "pending",
+            "testStrategy": "Test CRUD operations, validate preference updates, verify default values"
+          },
+          {
+            "id": 2,
+            "title": "Create NotificationTemplate Model",
+            "description": "Implement TypeScript model for notification templates",
+            "dependencies": [],
+            "details": "Create NotificationTemplate.ts with multi-language support (de/en), template variables, categories, priority/type defaults. Include validation for required languages and variable handling.",
+            "status": "pending",
+            "testStrategy": "Test template creation, variable substitution, language validation"
+          },
+          {
+            "id": 3,
+            "title": "Create ProductionBatch Model",
+            "description": "Implement TypeScript model for production batch tracking",
+            "dependencies": [],
+            "details": "Create ProductionBatch.ts with fields for workflow reference, scheduling (planned/actual times), quantities, status tracking, staff assignment, equipment allocation, and metadata. Include virtual fields for duration and progress calculations.",
+            "status": "pending",
+            "testStrategy": "Test batch lifecycle, status transitions, duration calculations"
+          },
+          {
+            "id": 4,
+            "title": "Create ProductionSchedule Model",
+            "description": "Implement TypeScript model for production scheduling",
+            "dependencies": [],
+            "details": "Create ProductionSchedule.ts for managing production schedules with batch relationships, timeline management, and resource allocation.",
+            "status": "pending",
+            "testStrategy": "Test schedule creation, batch associations, timeline validation"
+          },
+          {
+            "id": 5,
+            "title": "Create ProductionStep Model",
+            "description": "Implement TypeScript model for production workflow steps",
+            "dependencies": [],
+            "details": "Create ProductionStep.ts for individual workflow steps with batch relationships, step sequencing, timing, and completion tracking.",
+            "status": "pending",
+            "testStrategy": "Test step sequencing, status updates, workflow progression"
+          },
+          {
+            "id": 6,
+            "title": "Update Model Associations",
+            "description": "Configure all associations between new models and existing ones",
+            "dependencies": [1, 2, 3, 4, 5],
+            "details": "Update src/models/index.ts to properly initialize all new models and set up their associations with existing models (User, Product, Recipe, etc.).",
+            "status": "pending",
+            "testStrategy": "Test all associations work correctly, verify eager loading"
+          }
+        ]
+      },
+      {
+        "id": 55,
+        "title": "Migrate Production System Services",
+        "description": "Port all production-related services from legacy JavaScript to TypeScript",
+        "details": "Migrate productionService.js, productionPlanningService.js, productionExecutionService.js, and productionAnalyticsService.js to TypeScript. These services handle production scheduling, batch management, workflow execution, and analytics. Ensure all business logic is preserved and properly typed.",
+        "testStrategy": "Create integration tests for production workflows, scheduling operations, batch tracking, and analytics calculations. Verify API endpoints work correctly with the new services.",
+        "priority": "high",
+        "dependencies": [54],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Migrate Core Production Service",
+            "description": "Port productionService.js to TypeScript",
+            "dependencies": [],
+            "details": "Create production.service.ts with core production functionality including batch management, workflow execution, and status tracking. Ensure proper typing for all methods and parameters.",
+            "status": "pending",
+            "testStrategy": "Test service methods, verify business logic preservation"
+          },
+          {
+            "id": 2,
+            "title": "Migrate Production Planning Service",
+            "description": "Port productionPlanningService.js to TypeScript",
+            "dependencies": [],
+            "details": "Create production-planning.service.ts with scheduling algorithms, resource allocation, capacity planning, and timeline optimization. Include proper interfaces for planning parameters.",
+            "status": "pending",
+            "testStrategy": "Test scheduling logic, resource allocation, conflict detection"
+          },
+          {
+            "id": 3,
+            "title": "Migrate Production Execution Service",
+            "description": "Port productionExecutionService.js to TypeScript",
+            "dependencies": [],
+            "details": "Create production-execution.service.ts handling workflow execution, step progression, status updates, and real-time tracking. Implement error handling and recovery mechanisms.",
+            "status": "pending",
+            "testStrategy": "Test workflow execution, step transitions, error recovery"
+          },
+          {
+            "id": 4,
+            "title": "Migrate Production Analytics Service",
+            "description": "Port productionAnalyticsService.js to TypeScript",
+            "dependencies": [],
+            "details": "Create production-analytics.service.ts with comprehensive metrics calculation, performance analysis, efficiency tracking, and report generation. Include data aggregation for different time periods.",
+            "status": "pending",
+            "testStrategy": "Test metric calculations, verify analytics accuracy"
+          },
+          {
+            "id": 5,
+            "title": "Create Production Routes",
+            "description": "Implement production API endpoints",
+            "dependencies": [1, 2, 3, 4],
+            "details": "Create production.routes.ts with endpoints for batch management, scheduling, execution control, and analytics retrieval. Include proper validation and error handling.",
+            "status": "pending",
+            "testStrategy": "Test all endpoints, verify request/response formats"
+          }
+        ]
+      },
+      {
+        "id": 56,
+        "title": "Migrate Email and Notification Services",
+        "description": "Port email and notification services from legacy to TypeScript",
+        "details": "Migrate emailService.js, emailQueueService.js, notificationArchivalService.js, notificationArchiveService.js, and templateService.js. Implement email queue management, template rendering, notification archiving, and delivery mechanisms. Ensure proper error handling and retry logic.",
+        "testStrategy": "Test email sending with different templates, queue processing, notification archiving, and template variable substitution. Verify error handling and retry mechanisms.",
+        "priority": "medium",
+        "dependencies": [54],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Migrate Email Service",
+            "description": "Port emailService.js to TypeScript",
+            "dependencies": [],
+            "details": "Create email.service.ts with email sending functionality, template rendering, and attachment handling. Configure email provider (SMTP/SendGrid/etc.) with proper typing.",
+            "status": "pending",
+            "testStrategy": "Test email sending, template rendering, error handling"
+          },
+          {
+            "id": 2,
+            "title": "Migrate Email Queue Service",
+            "description": "Port emailQueueService.js to TypeScript",
+            "dependencies": [1],
+            "details": "Create email-queue.service.ts with queue management, retry logic, priority handling, and batch processing. Implement rate limiting and error recovery.",
+            "status": "pending",
+            "testStrategy": "Test queue processing, retry mechanisms, priority ordering"
+          },
+          {
+            "id": 3,
+            "title": "Migrate Notification Archival Services",
+            "description": "Port notification archival services to TypeScript",
+            "dependencies": [],
+            "details": "Create notification-archival.service.ts and notification-archive.service.ts for archiving old notifications, retrieval mechanisms, and storage optimization.",
+            "status": "pending",
+            "testStrategy": "Test archival process, retrieval, storage limits"
+          },
+          {
+            "id": 4,
+            "title": "Migrate Template Service",
+            "description": "Port templateService.js to TypeScript",
+            "dependencies": [],
+            "details": "Create template.service.ts for managing notification templates, variable substitution, language selection, and template caching.",
+            "status": "pending",
+            "testStrategy": "Test template management, variable substitution, caching"
+          }
+        ]
+      },
+      {
+        "id": 57,
+        "title": "Implement Analytics and Reporting Services",
+        "description": "Create analytics and reporting functionality based on legacy implementation",
+        "details": "Migrate reportingService.js and implement analytics routes for revenue trends, product performance, customer analytics, and various business reports. Create data aggregation logic, chart data preparation, and export functionality.",
+        "testStrategy": "Test report generation with sample data, verify calculations are correct, test data aggregation for different time periods, and validate export formats.",
+        "priority": "medium",
+        "dependencies": [54],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Migrate Reporting Service",
+            "description": "Port reportingService.js to TypeScript",
+            "dependencies": [],
+            "details": "Create reporting.service.ts with report generation for daily/weekly/monthly reports, data aggregation, formatting, and export functionality (PDF/Excel/JSON).",
+            "status": "pending",
+            "testStrategy": "Test report generation, data accuracy, export formats"
+          },
+          {
+            "id": 2,
+            "title": "Implement Revenue Analytics",
+            "description": "Create revenue trend analysis functionality",
+            "dependencies": [],
+            "details": "Implement revenue tracking, trend analysis, forecasting, and comparison features. Support different granularities (daily/weekly/monthly) and date ranges.",
+            "status": "pending",
+            "testStrategy": "Test calculations, verify trend accuracy, validate forecasts"
+          },
+          {
+            "id": 3,
+            "title": "Implement Product Performance Analytics",
+            "description": "Create product performance tracking",
+            "dependencies": [],
+            "details": "Track product sales, popularity, profitability, and inventory turnover. Generate insights and recommendations based on performance data.",
+            "status": "pending",
+            "testStrategy": "Test metrics, verify calculations, validate insights"
+          },
+          {
+            "id": 4,
+            "title": "Implement Customer Analytics",
+            "description": "Create customer behavior analysis",
+            "dependencies": [],
+            "details": "Analyze customer purchasing patterns, frequency, preferences, and lifetime value. Generate customer segments and personalization recommendations.",
+            "status": "pending",
+            "testStrategy": "Test segmentation, verify pattern detection, validate recommendations"
+          }
+        ]
+      },
+      {
+        "id": 58,
+        "title": "Implement Missing API Routes",
+        "description": "Add all missing routes from legacy API to the current TypeScript implementation",
+        "details": "Implement analytics routes (revenue trends, product performance), report routes (daily/weekly/monthly reports), import routes (daily report import with file upload), notification archival routes, and enhance health check routes with comprehensive system checks (database, filesystem, memory, environment).",
+        "testStrategy": "Test each route with various parameters, verify response formats match OpenAPI specifications, test file upload functionality, and validate error handling.",
+        "priority": "medium",
+        "dependencies": [55, 56, 57],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement Analytics Routes",
+            "description": "Create analytics API endpoints",
+            "dependencies": [],
+            "details": "Create analytics.routes.ts with endpoints for revenue trends, product performance, customer analytics, and custom queries. Include parameter validation and caching.",
+            "status": "pending",
+            "testStrategy": "Test endpoints with various parameters, verify response formats"
+          },
+          {
+            "id": 2,
+            "title": "Implement Report Routes",
+            "description": "Create report generation endpoints",
+            "dependencies": [],
+            "details": "Create report.routes.ts with endpoints for generating, downloading, and scheduling reports. Support multiple formats and delivery methods.",
+            "status": "pending",
+            "testStrategy": "Test report generation, download functionality, scheduling"
+          },
+          {
+            "id": 3,
+            "title": "Implement Import Routes",
+            "description": "Create data import endpoints",
+            "dependencies": [],
+            "details": "Create import.routes.ts with file upload handling, validation, parsing, and import processing for daily reports and bulk data. Include progress tracking.",
+            "status": "pending",
+            "testStrategy": "Test file upload, validation, import processing"
+          },
+          {
+            "id": 4,
+            "title": "Enhance Health Check Routes",
+            "description": "Improve health check endpoints",
+            "dependencies": [],
+            "details": "Enhance existing health check with comprehensive system checks including database connectivity, filesystem access, memory usage, dependency services, and performance metrics.",
+            "status": "pending",
+            "testStrategy": "Test all health checks, verify monitoring integration"
+          }
+        ]
+      },
+      {
+        "id": 59,
+        "title": "Complete Testing and Legacy Archive Removal",
+        "description": "Comprehensive testing of migrated features and safe removal of legacy code",
+        "details": "Perform full integration testing of all migrated features, verify feature parity with legacy implementation, update all documentation, ensure all tests pass, and then safely remove the legacy-archive directory. Create a backup branch before deletion.",
+        "testStrategy": "Run full test suite including unit, integration, and E2E tests. Perform manual testing of critical workflows. Compare functionality with legacy system. Document any behavioral differences.",
+        "priority": "low",
+        "dependencies": [58],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Create Integration Tests",
+            "description": "Write comprehensive integration tests for migrated features",
+            "dependencies": [],
+            "details": "Create integration tests for all migrated services and routes. Test workflows end-to-end, verify data consistency, and validate business logic.",
+            "status": "pending",
+            "testStrategy": "Run full test suite, achieve >80% coverage"
+          },
+          {
+            "id": 2,
+            "title": "Perform Feature Parity Validation",
+            "description": "Compare functionality with legacy implementation",
+            "dependencies": [1],
+            "details": "Systematically compare each migrated feature with its legacy counterpart. Document any differences, verify all functionality is preserved or improved.",
+            "status": "pending",
+            "testStrategy": "Manual testing comparison, automated regression tests"
+          },
+          {
+            "id": 3,
+            "title": "Update Documentation",
+            "description": "Document all migrated features and APIs",
+            "dependencies": [],
+            "details": "Update API documentation, create migration guide, document new TypeScript interfaces, and update README files. Include examples and best practices.",
+            "status": "pending",
+            "testStrategy": "Review documentation completeness, verify examples work"
+          },
+          {
+            "id": 4,
+            "title": "Create Backup and Remove Legacy",
+            "description": "Safely archive and remove legacy code",
+            "dependencies": [1, 2, 3],
+            "details": "Create a backup branch with legacy code, tag the last commit with legacy, verify all tests pass, then remove the legacy-archive directory.",
+            "status": "pending",
+            "testStrategy": "Verify backup exists, ensure no broken imports after removal"
+          }
+        ]
       }
     ],
     "metadata": {

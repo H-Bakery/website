@@ -1,0 +1,11 @@
+# Task ID: 29
+# Title: Create Sales Analytics Controller and Endpoints
+# Status: done
+# Dependencies: 28, 4
+# Priority: high
+# Description: Implement salesAnalyticsController.js to expose endpoints for detailed sales analysis. This includes endpoints for revenue trends, product performance, cashier efficiency, and payment method breakdowns, with support for advanced filtering and pagination.
+# Details:
+Create a new controller file, `salesAnalyticsController.js`, within the main API application, following the patterns established in Task #4. This controller will use the `data-access` library to query the sales analytics models populated by the import service from Task #28. Implement a new router at `/api/analytics/sales` with the following endpoints: 1. `GET /revenue-trends`: Accepts `startDate`, `endDate`, and `granularity` ('daily', 'weekly', 'monthly') query params to return time-series revenue data. 2. `GET /product-performance`: Accepts `startDate`, `endDate`, `limit`, and `sort` ('top', 'bottom') to provide Renner/Penner (best/worst seller) analysis. 3. `GET /cashier-performance`: Groups sales totals and transaction counts by user for a given date range. 4. `GET /payment-methods`: Summarizes transaction volume and value by payment type. 5. `GET /summary`: Provides a high-level overview for a date range. All list-based endpoints must support pagination via `page` and `limit` parameters. Implement robust input validation for all query parameters and consistent error handling.
+
+# Test Strategy:
+Use an API client like Postman to test each new endpoint. First, ensure the database is populated with varied sales data via the service from Task #28. For each endpoint, test date range filtering (`startDate`, `endDate`) with valid, invalid, and overlapping ranges. Test the `GET /revenue-trends` endpoint with each `granularity` setting. For `GET /product-performance`, verify that `sort=top` and `sort=bottom` return the correct items. Test pagination on all list endpoints using `page` and `limit` parameters. Send requests with invalid or missing parameters to ensure the API returns 400-level errors with descriptive messages. Confirm all endpoints are protected by authentication middleware and return a 401/403 error for unauthenticated requests.

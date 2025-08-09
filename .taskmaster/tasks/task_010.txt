@@ -1,0 +1,43 @@
+# Task ID: 10
+# Title: Build Full-Stack Inventory Management System
+# Status: done
+# Dependencies: 2
+# Priority: low
+# Description: Build a full-stack inventory management system (Task 18) from scratch, including a backend API and a frontend interface for tracking stock levels, managing suppliers, and flagging items for reordering.
+# Details:
+Backend: Define a new database schema for `inventory_items` (e.g., name, quantity, reorder_level). Create full CRUD endpoints at `/api/inventory`. Include an endpoint for stock adjustments (e.g., `POST /api/inventory/:id/adjust`). Frontend: Create an `/admin/inventory` page. Display inventory in a `<DataGrid>`, highlighting items where `quantity` is below `reorder_level`. Implement forms for adding/editing items and quick controls for adjusting stock.
+
+# Test Strategy:
+Use the UI to add, edit, and delete inventory items. Perform stock adjustments and verify the quantity updates correctly. Manually set an item's stock below its reorder level and confirm it is visually highlighted in the UI.
+
+# Subtasks:
+## 1. Design and Implement Inventory Database Schema [done]
+### Dependencies: None
+### Description: Define and create the necessary database tables for the inventory management system, primarily the `inventory_items` table with all required columns.
+### Details:
+Create a new database migration to define the `inventory_items` table. The schema must include columns for `name`, `description`, `quantity` (integer), and `reorder_level` (integer). Also include standard fields like `id`, `created_at`, and `updated_at`. Execute the migration to apply the new schema to the database.
+
+## 2. Implement Backend CRUD API for Inventory Items [done]
+### Dependencies: 10.1
+### Description: Develop the backend API endpoints for creating, reading, updating, and deleting inventory items.
+### Details:
+In the backend application, create a new set of routes under `/api/inventory`. Implement the standard RESTful endpoints: `POST /api/inventory` (Create), `GET /api/inventory` (Read all), `GET /api/inventory/:id` (Read one), `PUT /api/inventory/:id` (Update), and `DELETE /api/inventory/:id` (Delete). Ensure these endpoints are protected by the existing authentication middleware.
+
+## 3. Implement Backend Endpoint for Stock Adjustments [done]
+### Dependencies: 10.2
+### Description: Create a dedicated backend endpoint to handle positive or negative adjustments to an inventory item's stock quantity.
+### Details:
+Create a new endpoint, `POST /api/inventory/:id/adjust`. This endpoint will accept a JSON body containing an `adjustment` value (e.g., `{ "adjustment": -5 }`). The backend logic should fetch the item, apply the adjustment to its current `quantity`, and save the updated record in the database.
+
+## 4. Develop Frontend UI for Inventory Management [done]
+### Dependencies: 10.2, 10.3
+### Description: Build the user interface on the `/admin/inventory` page to display inventory items in a DataGrid and provide forms for adding, editing, and adjusting stock.
+### Details:
+Create a new page component for the `/admin/inventory` route. Use a `<DataGrid>` component to fetch and display data from the `GET /api/inventory` endpoint. Implement forms (e.g., in modals) for creating and editing items. Add controls within the grid or forms to call the `POST /api/inventory/:id/adjust` endpoint for quick stock changes.
+
+## 5. Implement Low Stock Highlighting in UI [done]
+### Dependencies: 10.4
+### Description: Add a visual indicator to the frontend UI to flag inventory items where the current stock quantity is at or below the defined reorder level.
+### Details:
+In the frontend's inventory `<DataGrid>`, add conditional logic to the row rendering. For each item, compare its `quantity` with its `reorder_level`. If `quantity <= reorder_level`, apply a distinct style to that row (e.g., a red background color or an alert icon) to make it visually prominent to the user.
+

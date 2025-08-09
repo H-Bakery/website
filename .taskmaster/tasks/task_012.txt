@@ -1,0 +1,43 @@
+# Task ID: 12
+# Title: Foundation: Create Nx Workspace and Install Core Plugins
+# Status: done
+# Dependencies: None
+# Priority: high
+# Description: Establish the monorepo structure using Nx with the 'apps' preset. Install essential plugins for developing Next.js, React, Node.js, and Express applications to provide the foundational tooling for the project.
+# Details:
+Initialize a new Nx workspace using the `create-nx-workspace` command with the 'apps' preset to create a scalable monorepo structure. Once the workspace is created, install the necessary Nx plugins to support the project's technology stack. The command to create the workspace will be: `npx create-nx-workspace@latest <workspace-name> --preset=apps`. After setup, navigate into the project directory and install the following plugins using npm or yarn: `@nx/next` for Next.js frontend applications, `@nx/react` for React libraries and components, `@nx/node` for generic Node.js applications, and `@nx/express` for the Express.js backend API.
+
+# Test Strategy:
+Verify the successful creation of the Nx workspace by checking for the existence of `nx.json`, `project.json`, and the `apps/` and `libs/` directories at the root level. Open the `package.json` file and confirm that `@nx/next`, `@nx/react`, `@nx/node`, and `@nx/express` are listed under `devDependencies`. Run the command `nx report` from the terminal and inspect the output to ensure all installed plugins are listed and correctly configured. As a final check, attempt to generate a boilerplate application using one of the plugins, for example: `nx g @nx/express:app api`.
+
+# Subtasks:
+## 1. Initialize Nx Workspace with 'apps' Preset [done]
+### Dependencies: None
+### Description: Create the foundational monorepo structure by running the `create-nx-workspace` command. This will set up the initial directory layout, including `apps/` and `libs/`, and configure the core Nx tooling.
+### Details:
+Open your terminal in the desired parent directory and execute the command: `npx create-nx-workspace@latest your-workspace-name --preset=apps`. Replace `your-workspace-name` with the actual project name. Follow the prompts, selecting your preferred package manager (e.g., npm).
+
+## 2. Install @nx/next Plugin [done]
+### Dependencies: 12.1
+### Description: Install the Nx plugin for Next.js to enable generating, serving, building, and testing Next.js applications within the monorepo.
+### Details:
+Navigate into the newly created workspace directory. Run the following command to add the Next.js plugin as a development dependency: `npm install -D @nx/next` (or use your chosen package manager like yarn or pnpm).
+
+## 3. Install @nx/react Plugin [done]
+### Dependencies: 12.1
+### Description: Install the Nx plugin for React to support the creation of buildable and publishable React libraries for shared components, hooks, and utilities.
+### Details:
+In the workspace root directory, execute the command to install the React plugin: `npm install -D @nx/react`. This plugin is essential for creating shared UI libraries as described in subsequent tasks.
+
+## 4. Install @nx/node and @nx/express Plugins [done]
+### Dependencies: 12.1
+### Description: Install the Nx plugins for Node.js and Express to provide the necessary tooling for developing backend services and APIs.
+### Details:
+From the workspace root, run the command to install both the generic Node.js plugin and the Express-specific plugin: `npm install -D @nx/node @nx/express`.
+
+## 5. Verify Final Workspace Configuration and Dependencies [done]
+### Dependencies: 12.2, 12.3, 12.4
+### Description: Perform a final check to ensure the workspace is correctly initialized and all required plugins are installed, confirming the environment is ready for application and library generation.
+### Details:
+Review the root `package.json` file to ensure all four plugins (`@nx/next`, `@nx/react`, `@nx/node`, `@nx/express`) are listed under `devDependencies`. Run `nx report` in the terminal to get a summary of the workspace environment and installed plugins, ensuring there are no errors.
+

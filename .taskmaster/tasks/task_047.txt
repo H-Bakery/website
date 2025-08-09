@@ -1,0 +1,11 @@
+# Task ID: 47
+# Title: Test and verify static build process
+# Status: done
+# Dependencies: 46
+# Priority: high
+# Description: Test nx build-static-standalone command, verify all shared library dependencies compile correctly, fix TypeScript or module resolution issues
+# Details:
+
+
+# Test Strategy:
+

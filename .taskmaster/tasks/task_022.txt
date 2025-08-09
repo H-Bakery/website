@@ -1,0 +1,46 @@
+# Task ID: 22
+# Title: Implement Lazy Loading for Feature Modules
+# Status: done
+# Dependencies: 18, 19, 21
+# Priority: medium
+# Description: Refactor the main Next.js applications to use dynamic imports for feature-specific components and pages, improving initial load times by splitting code into smaller chunks that are loaded on demand.
+# Details:
+This task involves implementing code-splitting via lazy loading in the primary frontend applications: 'bakery-management', 'bakery-shop', and 'bakery-delivery'. The primary mechanism will be Next.js's built-in dynamic import functionality (`next/dynamic`). Identify large components, components that are conditionally rendered (e.g., in modals or separate tabs), or components that rely on heavy third-party libraries. Convert their static imports into dynamic ones. For example, in 'bakery-shop', the checkout flow component could be loaded only when the user proceeds to checkout. In 'bakery-management', complex data grids or reporting charts within the micro-frontends are prime candidates. Implement a simple loading state (e.g., a spinner) to provide user feedback while the component chunk is being fetched. Example conversion:
+
+// Before:
+import CheckoutForm from '@/libs/shop/checkout/ui/CheckoutForm';
+
+// After:
+import dynamic from 'next/dynamic';
+const CheckoutForm = dynamic(() => import('@/libs/shop/checkout/ui/CheckoutForm'), {
+  loading: () => <p>Loading checkout...</p>,
+});
+
+# Test Strategy:
+Use the browser's developer tools to verify the implementation. First, clear the browser cache and load a page like the main storefront. Using the 'Network' tab (filtered for JS/XHR), confirm that only the essential JavaScript chunks are loaded initially. Next, perform an action that should trigger a lazy-loaded component (e.g., clicking 'Proceed to Checkout'). Observe a new JavaScript chunk being fetched over the network at that moment. The UI should display the specified loading state, which is then replaced by the fully-rendered component. Use a performance analysis tool like Lighthouse to run audits before and after the changes to measure improvements in metrics like 'Time to Interactive' and 'Total Blocking Time'.
+
+# Subtasks:
+## 1. Refactor 'bakery-management' for Lazy Loading [done]
+### Dependencies: None
+### Description: Implement dynamic imports in the 'bakery-management' application to code-split feature modules and improve initial page load performance.
+### Details:
+Identify large or conditionally rendered components within the 'bakery-management' admin panel, such as reporting dashboards, complex forms, or data tables. Convert their static imports to dynamic imports using `next/dynamic`. Focus on features that are not required for the initial view.
+
+## 2. Refactor 'bakery-shop' for Lazy Loading [done]
+### Dependencies: None
+### Description: Implement dynamic imports in the 'bakery-shop' customer-facing application to reduce the initial bundle size and speed up the storefront experience.
+### Details:
+Analyze the 'bakery-shop' application to find components suitable for lazy loading. Candidates include product quick-view modals, the checkout flow components, and components that rely on heavy third-party libraries. Use `next/dynamic` to defer their loading until they are needed.
+
+## 3. Refactor 'bakery-delivery' for Lazy Loading [done]
+### Dependencies: None
+### Description: Implement dynamic imports in the 'bakery-delivery' application to optimize load times for delivery personnel, especially on mobile devices.
+### Details:
+In the 'bakery-delivery' app, target components like the live map view (which may use a large mapping library), order details modals, and route optimization displays. Convert them to use `next/dynamic` to ensure the core interface loads quickly.
+
+## 4. Verify Performance Gains with Lighthouse [done]
+### Dependencies: 22.1, 22.2, 22.3
+### Description: Conduct a performance analysis before and after the lazy loading implementation to quantify the improvements in load times and other core web vitals.
+### Details:
+Run Lighthouse audits on key pages of all three applications ('bakery-management', 'bakery-shop', 'bakery-delivery') before the changes are merged. After implementing lazy loading, run the audits again under the same conditions. Document the improvements in metrics like First Contentful Paint (FCP), Time to Interactive (TTI), and total bundle size.
+

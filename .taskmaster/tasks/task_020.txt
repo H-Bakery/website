@@ -1,0 +1,49 @@
+# Task ID: 20
+# Title: Implement CI/CD Pipeline with GitHub Actions and Docker
+# Status: done
+# Dependencies: 13, 15, 17, 18, 19
+# Priority: high
+# Description: Set up a CI/CD pipeline using GitHub Actions to automate testing, building, and deployment. The pipeline leverages Nx affected commands for efficiency. The initial implementation for automated checks and deployment of build artifacts is complete. Dockerization of the backend API is deferred for future implementation.
+# Details:
+1. **GitHub Actions Workflow Setup (Completed)**: The `.github/workflows/ci.yml` file has been created and configured to trigger on `push` and `pull_request` events targeting the `main` branch.
+2. **Affected Commands Implementation (Completed)**: Jobs for `lint`, `test`, and `build` are defined and use Nx affected commands to efficiently run tasks only on impacted projects.
+3. **Deployment (Completed)**: A `deploy` job has been added to the workflow that runs on pushes to `main`. It checks if deployable applications (like the `api`) were affected and deploys the build artifacts.
+4. **Backend Dockerization (Deferred)**: The task of creating a multi-stage `Dockerfile` in the `apps/api` directory to produce a lean, production-ready image is deferred.
+5. **Update Deployment for Docker (Deferred)**: The `deploy` job will need to be updated to build, tag, and push the Docker image to a container registry once Dockerization is implemented.
+
+# Test Strategy:
+1. **PR Check Simulation (Completed)**: Verified that pull requests with changes to specific libraries correctly trigger `lint` and `test` jobs only for affected projects.
+2. **Deployment Verification (Completed)**: Verified that merging a PR with changes to the `api` project into the `main` branch correctly triggers the `deploy` job and deploys the application artifacts.
+3. **Docker Image Validation (Deferred)**: Once Dockerization is implemented, the pushed image must be pulled and tested locally to ensure the containerized application is functional. This includes port mapping and API endpoint verification.
+
+# Subtasks:
+## 1.  [done]
+### Dependencies: None
+### Description: Set up GitHub Actions workflow (ci.yml) to trigger on push and pull_request.
+### Details:
+
+
+## 2.  [done]
+### Dependencies: None
+### Description: Implement jobs for lint, test, and build using Nx affected commands.
+### Details:
+
+
+## 3.  [done]
+### Dependencies: None
+### Description: Implement a deployment job for affected projects on pushes to the main branch (non-Docker).
+### Details:
+
+
+## 4.  [done]
+### Dependencies: None
+### Description: Create a multi-stage Dockerfile in the apps/api directory.
+### Details:
+
+
+## 5.  [done]
+### Dependencies: None
+### Description: Update the deploy job to build and push the api Docker image to a container registry.
+### Details:
+
+

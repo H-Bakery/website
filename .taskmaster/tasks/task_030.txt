@@ -1,0 +1,11 @@
+# Task ID: 30
+# Title: Create Analytics Feature Library for Bakery Management
+# Status: done
+# Dependencies: 18, 29, 14
+# Priority: medium
+# Description: Create a new buildable feature library, `libs/bakery-management/feature-analytics`, to house all UI components for the analytics dashboard. This includes charts, data tables, and interactive filters for the bakery management application.
+# Details:
+1. Generate a new buildable React library using the Nx generator: `nx g @nx/react:lib feature-analytics --directory=libs/bakery-management --buildable --style=css`. 2. Install a charting library like `recharts` or `chart.js` and a data grid library like `@mui/x-data-grid`. 3. Develop a set of reusable Material-UI components within the new library, leveraging the shared theme and components from `libs/ui` (Task #14). These should include: a Revenue Trend Chart for time-series data from the endpoint in Task #29, a Product Ranking Table with sorting and pagination, a Date Range Picker, and an Export Button for CSV generation. 4. Define necessary TypeScript interfaces for analytics data structures in `libs/types` to ensure type safety with the API from Task #29. 5. Ensure all new components are properly exported from the library's main `index.ts` file for consumption by the main application.
+
+# Test Strategy:
+1. Verify the library is created successfully at `libs/bakery-management/feature-analytics`. Run `nx build feature-analytics` to confirm it builds without errors. 2. Create Storybook stories for each new component (Chart, Table, Date Picker) to allow for isolated visual testing and development, using mock data that matches the API structure from Task #29. 3. Write unit tests for any complex logic, such as data transformation for charts or CSV export functionality. 4. As a final integration check, import the Revenue Trend Chart into a page within the `bakery-management` application (Task #18) and connect it to the live API endpoint to ensure it fetches and displays data correctly.

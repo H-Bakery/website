@@ -1,0 +1,49 @@
+# Task ID: 28
+# Title: Implement Sales Data Import and Processing Service
+# Status: done
+# Dependencies: 26, 27, 24
+# Priority: high
+# Description: Create a backend service to process parsed JSON sales reports, validate the data, and populate the sales analytics database models. The service will handle duplicate detection, map product and user data, and support both incremental and bulk imports.
+# Details:
+This service will be implemented as a new library within the API (e.g., `libs/api/import-service`) and exposed via an endpoint like `POST /api/import/sales-report`. The core logic will receive parsed JSON data from the ingestion service (Task #26). The process must be wrapped in a single database transaction per file to ensure atomicity. Key steps include: 1. Duplicate Detection: Before processing, query the `DailySalesReports` model (from Task #27) by date to prevent re-importing the same day's data. 2. Data Mapping: For each transaction, use the `user` field to look up the corresponding staff member in the `Users` table (via the `libs/api/staff` module from Task #24). For each transaction item, validate the `product_id` against the `Products` table (via the `libs/api/products` module). Handle cases where users or products are not found by logging an error and rolling back the transaction. 3. Population: Create records in the `SalesTransaction` and `TransactionItem` tables. 4. Summary: After successfully processing all transactions in a file, create a single `DailySalesReport` record. The service must be designed to handle both single-file incremental updates and a bulk mode for importing a directory of historical files.
+
+# Test Strategy:
+1. Unit Tests: Create tests for the service logic, mocking the database models from `libs/data-access`. Verify correct handling of duplicate reports (should be skipped). Test the mapping logic by providing valid and invalid `user` and `product_id` values, ensuring errors are thrown correctly. Test the atomicity by creating a scenario where one transaction in a multi-transaction report is invalid; assert that the entire database transaction is rolled back and no data from that file is committed. 2. Integration Tests: Using an API client like Postman, call the `POST /api/import/sales-report` endpoint with a valid sample report. After the call, query the test database directly to confirm that the `SalesTransactions`, `TransactionItems`, and `DailySalesReports` tables have been populated with the correct data and associations. Call the endpoint again with the same data to verify that duplicate records are not created. Test the bulk import feature by pointing it to a directory with multiple valid report files and verify all are processed correctly.
+
+# Subtasks:
+## 1. Setup Service Structure and API Endpoint [done]
+### Dependencies: None
+### Description: Create the new library `libs/api/import-service` and expose a `POST /api/import/sales-report` endpoint to receive parsed JSON sales data.
+### Details:
+This includes setting up the initial module, controller, and service files. The endpoint should be configured to accept JSON payloads but will have minimal logic initially.
+
+## 2. Implement Duplicate Report Detection [done]
+### Dependencies: 28.1
+### Description: Before processing any data, query the `DailySalesReports` model by the report's date to check if it has already been imported. If a duplicate is found, the process should be skipped and an appropriate response returned.
+### Details:
+The service logic will receive the report date from the parsed JSON. A query will be executed against the database. This logic must be the first step in the processing flow after receiving the request.
+
+## 3. Develop Data Validation and Mapping Logic [done]
+### Dependencies: 28.1
+### Description: Implement logic to validate each transaction within the sales report. This includes verifying that the `user` and `product_id` for each sale exist in the corresponding database tables.
+### Details:
+The service will need to query the user and product tables to confirm existence. If any ID is invalid, the entire import for that file should fail. This logic should be efficient, perhaps by pre-fetching all relevant IDs before iterating through transactions.
+
+## 4. Wrap Import Process in a Database Transaction [done]
+### Dependencies: 28.1
+### Description: Encapsulate the entire data import process for a single sales report file within a single database transaction to ensure atomicity. If any part of the process fails, all changes must be rolled back.
+### Details:
+This involves using the database driver's transaction management features. The transaction should begin before any validation or insertion logic and be committed only after all steps are successful. Implement try/catch blocks to handle errors and trigger a rollback.
+
+## 5. Populate Individual Sales Transaction Tables [done]
+### Dependencies: 28.3, 28.4
+### Description: Within the database transaction, iterate through the validated sales data from the JSON report and insert records into the detailed sales transaction tables.
+### Details:
+This is the core data insertion step. Each sale record from the report will be mapped to the schema of the transaction table(s) and inserted. This operation must occur after validation and within the transaction block.
+
+## 6. Aggregate and Populate Daily Summary Report Table [done]
+### Dependencies: 28.5
+### Description: After all individual transactions for the report are successfully inserted, calculate the summary metrics and create a single entry in the `DailySalesReports` table.
+### Details:
+This is the final step within the database transaction. The data for the summary can be aggregated from the processed JSON or by querying the newly inserted transaction records. This entry marks the successful import of the daily report.
+
