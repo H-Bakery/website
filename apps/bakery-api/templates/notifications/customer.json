@@ -1,0 +1,66 @@
+[
+  {
+    "key": "customer.special_order_reminder",
+    "name": "Special Order Reminder",
+    "category": "customer",
+    "defaultTitle": {
+      "de": "Sonderbestellung für morgen",
+      "en": "Special Order for Tomorrow"
+    },
+    "defaultMessage": {
+      "de": "Erinnerung: Sonderbestellung für {{customerName}} morgen um {{pickupTime}}. {{orderDetails}}",
+      "en": "Reminder: Special order for {{customerName}} tomorrow at {{pickupTime}}. {{orderDetails}}"
+    },
+    "variables": ["customerName", "pickupTime", "orderDetails"],
+    "defaultPriority": "high",
+    "defaultType": "info"
+  },
+  {
+    "key": "customer.birthday",
+    "name": "Birthday Greetings",
+    "category": "customer",
+    "defaultTitle": {
+      "de": "Geburtstagsgrüße",
+      "en": "Birthday Greetings"
+    },
+    "defaultMessage": {
+      "de": "{{customerName}} hat heute Geburtstag! Vergessen Sie nicht, zu gratulieren. Kunde seit {{customerSince}}.",
+      "en": "It's {{customerName}}'s birthday today! Don't forget to congratulate them. Customer since {{customerSince}}."
+    },
+    "variables": ["customerName", "customerSince"],
+    "defaultPriority": "low",
+    "defaultType": "info"
+  },
+  {
+    "key": "customer.loyalty_milestone",
+    "name": "Loyalty Milestone",
+    "category": "customer",
+    "defaultTitle": {
+      "de": "Treue-Meilenstein erreicht",
+      "en": "Loyalty Milestone Reached"
+    },
+    "defaultMessage": {
+      "de": "{{customerName}} hat {{milestone}} erreicht! {{visitCount}} Besuche, €{{totalSpent}} Gesamtumsatz.",
+      "en": "{{customerName}} has reached {{milestone}}! {{visitCount}} visits, €{{totalSpent}} total spent."
+    },
+    "variables": ["customerName", "milestone", "visitCount", "totalSpent"],
+    "defaultPriority": "medium",
+    "defaultType": "success"
+  },
+  {
+    "key": "customer.feedback_request",
+    "name": "Feedback Request",
+    "category": "customer",
+    "defaultTitle": {
+      "de": "Feedback-Anfrage senden",
+      "en": "Send Feedback Request"
+    },
+    "defaultMessage": {
+      "de": "{{customerName}} hat heute eine Bestellung abgeholt. Guter Zeitpunkt für eine Feedback-Anfrage.",
+      "en": "{{customerName}} picked up an order today. Good time to request feedback."
+    },
+    "variables": ["customerName"],
+    "defaultPriority": "low",
+    "defaultType": "info"
+  }
+]

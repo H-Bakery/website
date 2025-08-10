@@ -1,0 +1,37 @@
+# Task ID: 2
+# Title: Enhance Admin Layout and Navigation
+# Status: done
+# Dependencies: 1
+# Priority: high
+# Description: Enhance the existing admin layout (Tasks 3 & 7) by implementing a fully functional, responsive sidebar for navigation and integrating key widgets into the main dashboard area. This creates the primary shell for all administrative interfaces.
+# Details:
+Modify the `AdminLayout` component to include a persistent sidebar using Material UI's `<Drawer>`. Populate the sidebar with `<ListItem>` elements linking to all admin pages (`/admin/dashboard`, `/admin/orders`, etc.) using Next.js `<Link>`. Ensure the layout is responsive, with the drawer collapsing to a menu icon on smaller screens. The main content area should be prepared to host dashboard widgets. The header should display user information from the `useAuth` hook.
+
+# Test Strategy:
+Verify the sidebar appears on all admin pages and that navigation links work correctly. Test responsiveness on desktop, tablet, and mobile viewports. Confirm the theme toggle and user display in the header function as expected.
+
+# Subtasks:
+## 1. Create Responsive Sidebar Component [done]
+### Dependencies: None
+### Description: Implement a Material UI Drawer-based sidebar component with navigation items and responsive behavior
+### Details:
+Create a sidebar component using Material UI's Drawer that includes navigation items for all admin pages (/admin/dashboard, /admin/orders, etc.) using Next.js Link components. Implement responsive behavior where the drawer collapses to a menu icon on smaller screens. Include proper styling and hover states for navigation items.
+
+## 2. Implement Responsive Navigation Implementation [done]
+### Dependencies: 2.1
+### Description: Add mobile-responsive navigation controls and menu toggle functionality
+### Details:
+Implement the mobile navigation controls including hamburger menu icon, drawer toggle functionality, and proper responsive breakpoints. Ensure the sidebar opens/closes correctly on mobile devices and maintains state appropriately. Add proper touch interactions and keyboard navigation support.
+
+## 3. Integrate Dashboard Widget Areas [done]
+### Dependencies: 2.1
+### Description: Prepare main content area layout structure for hosting dashboard widgets
+### Details:
+Modify the AdminLayout component to include a properly structured main content area that can host dashboard widgets. Set up the grid system and container components using Material UI that will accommodate various widget sizes and layouts. Ensure proper spacing and responsive behavior for the widget container area.
+
+## 4. Implement Header User Display Functionality [done]
+### Dependencies: 2.1
+### Description: Add user information display and theme toggle to the admin header
+### Details:
+Implement the header component that displays user information from the useAuth hook including username, role, and avatar. Add the theme toggle functionality for switching between light and dark modes. Include user menu dropdown with logout option and user profile access. Ensure proper styling and alignment within the header layout.
+

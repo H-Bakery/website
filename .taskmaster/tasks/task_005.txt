@@ -1,0 +1,31 @@
+# Task ID: 5
+# Title: Connect Admin Dashboard to Real Analytics Backend
+# Status: done
+# Dependencies: 2, 4
+# Priority: medium
+# Description: Refactor the admin dashboard frontend to consume data from the new analytics backend API, completely removing all mock data sources and providing real-time business insights.
+# Details:
+In the `/pages/admin/dashboard.tsx` component, replace all mock data hooks and objects with API calls to the `/dashboard/*` endpoints. Use a data-fetching library like SWR or React Query to handle loading, caching, and error states gracefully. Connect the fetched data to the existing Material UI chart and stat card components. Implement loading skeletons to improve user experience during data fetching.
+
+# Test Strategy:
+Load the dashboard and verify that all widgets display data fetched from the backend. Cross-reference the data shown with the database to ensure accuracy. Simulate an API failure (e.g., stop the backend) and confirm that the UI displays a user-friendly error message instead of crashing.
+
+# Subtasks:
+## 1. Set up API integration infrastructure [done]
+### Dependencies: None
+### Description: Configure API service layer with authentication headers, error handling, and base configuration for dashboard analytics endpoints
+### Details:
+Create or extend the existing API service in src/services/bakeryAPI.ts to include dashboard-specific endpoints. Set up proper JWT authentication headers from AuthContext, implement error handling with user-friendly messages, and configure base URL and request interceptors. Add TypeScript interfaces for dashboard data responses.
+
+## 2. Implement data fetching with SWR/React Query [done]
+### Dependencies: 5.1
+### Description: Replace all mock data hooks with real API calls using a data fetching library, including caching, loading states, and error handling
+### Details:
+Install and configure SWR or React Query for the dashboard page. Create custom hooks for each dashboard endpoint (sales summary, production overview, etc.). Implement proper loading states, error boundaries, and data caching strategies. Remove all existing mock data imports and hooks from the dashboard components.
+
+## 3. Connect UI components with loading states and error handling [done]
+### Dependencies: 5.2
+### Description: Bind fetched data to existing Material UI charts and stat cards, implementing loading skeletons and error states for better UX
+### Details:
+Update all dashboard widgets (charts, stat cards, tables) to consume data from the new API hooks. Implement Material UI skeleton components for loading states. Add error boundaries and fallback UI for failed API requests. Ensure all existing chart components work seamlessly with the new real data structure.
+

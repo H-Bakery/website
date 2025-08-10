@@ -1,0 +1,37 @@
+# Task ID: 56
+# Title: Migrate Email and Notification Services
+# Status: pending
+# Dependencies: 54
+# Priority: medium
+# Description: Port email and notification services from legacy to TypeScript
+# Details:
+Migrate emailService.js, emailQueueService.js, notificationArchivalService.js, notificationArchiveService.js, and templateService.js. Implement email queue management, template rendering, notification archiving, and delivery mechanisms. Ensure proper error handling and retry logic.
+
+# Test Strategy:
+Test email sending with different templates, queue processing, notification archiving, and template variable substitution. Verify error handling and retry mechanisms.
+
+# Subtasks:
+## 1. Migrate Email Service [pending]
+### Dependencies: None
+### Description: Port emailService.js to TypeScript
+### Details:
+Create email.service.ts with email sending functionality, template rendering, and attachment handling. Configure email provider (SMTP/SendGrid/etc.) with proper typing.
+
+## 2. Migrate Email Queue Service [pending]
+### Dependencies: 56.1
+### Description: Port emailQueueService.js to TypeScript
+### Details:
+Create email-queue.service.ts with queue management, retry logic, priority handling, and batch processing. Implement rate limiting and error recovery.
+
+## 3. Migrate Notification Archival Services [pending]
+### Dependencies: None
+### Description: Port notification archival services to TypeScript
+### Details:
+Create notification-archival.service.ts and notification-archive.service.ts for archiving old notifications, retrieval mechanisms, and storage optimization.
+
+## 4. Migrate Template Service [pending]
+### Dependencies: None
+### Description: Port templateService.js to TypeScript
+### Details:
+Create template.service.ts for managing notification templates, variable substitution, language selection, and template caching.
+

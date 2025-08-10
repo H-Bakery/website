@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offline - Bäckerei Heusser</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 500px;
+            width: 100%;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+        
+        .logo {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto 30px;
+            background: #8B4513;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            color: white;
+        }
+        
+        h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        p {
+            color: #666;
+            font-size: 16px;
+            line-height: 1.6;
+            margin-bottom: 30px;
+        }
+        
+        .status {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 24px;
+            background: #fff3cd;
+            color: #856404;
+            border-radius: 30px;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #ffc107;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .button {
+            display: inline-block;
+            padding: 14px 32px;
+            background: #8B4513;
+            color: white;
+            text-decoration: none;
+            border-radius: 30px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            border: none;
+            font-size: 16px;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(139, 69, 19, 0.3);
+        }
+        
+        .info {
+            margin-top: 40px;
+            padding-top: 30px;
+            border-top: 1px solid #e0e0e0;
+        }
+        
+        .info h2 {
+            font-size: 18px;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            color: #666;
+            font-size: 14px;
+        }
+        
+        .info-value {
+            color: #333;
+            font-weight: 600;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="logo">🥐</div>
+        
+        <h1>Sie sind offline</h1>
+        
+        <div class="status">
+            <span class="status-dot"></span>
+            Keine Internetverbindung
+        </div>
+        
+        <p>
+            Es sieht so aus, als hätten Sie keine Internetverbindung. 
+            Bitte überprüfen Sie Ihre Verbindung und versuchen Sie es erneut.
+        </p>
+        
+        <button class="button" onclick="window.location.reload()">
+            Seite neu laden
+        </button>
+        
+        <div class="info">
+            <h2>Unsere Öffnungszeiten</h2>
+            
+            <div class="info-item">
+                <span class="info-label">Di, Mi, Do, Fr</span>
+                <span class="info-value">06:00 - 15:00 Uhr</span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Samstag</span>
+                <span class="info-value">06:00 - 12:30 Uhr</span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Sonntag & Feiertage</span>
+                <span class="info-value">08:00 - 11:00 Uhr</span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Montag</span>
+                <span class="info-value">Ruhetag</span>
+            </div>
+            
+            <div class="info-item">
+                <span class="info-label">Telefon</span>
+                <span class="info-value">06841 2229</span>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Check for connection periodically
+        setInterval(() => {
+            if (navigator.onLine) {
+                window.location.reload();
+            }
+        }, 5000);
+        
+        // Listen for online event
+        window.addEventListener('online', () => {
+            window.location.reload();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+[
+  {
+    "key": "financial.daily_report",
+    "name": "Daily Cash Report",
+    "category": "financial",
+    "defaultTitle": {
+      "de": "Tagesbericht {{date}}",
+      "en": "Daily Report {{date}}"
+    },
+    "defaultMessage": {
+      "de": "Tagesumsatz: €{{revenue}}. Transaktionen: {{transactionCount}}. Bargeld: €{{cashAmount}}, Karte: €{{cardAmount}}.",
+      "en": "Daily revenue: €{{revenue}}. Transactions: {{transactionCount}}. Cash: €{{cashAmount}}, Card: €{{cardAmount}}."
+    },
+    "variables": ["date", "revenue", "transactionCount", "cashAmount", "cardAmount"],
+    "defaultPriority": "medium",
+    "defaultType": "info"
+  },
+  {
+    "key": "financial.unusual_transaction",
+    "name": "Unusual Transaction",
+    "category": "financial",
+    "defaultTitle": {
+      "de": "Ungewöhnliche Transaktion",
+      "en": "Unusual Transaction"
+    },
+    "defaultMessage": {
+      "de": "Große Transaktion von €{{amount}} um {{time}}. {{description}}. Bitte überprüfen.",
+      "en": "Large transaction of €{{amount}} at {{time}}. {{description}}. Please verify."
+    },
+    "variables": ["amount", "time", "description"],
+    "defaultPriority": "high",
+    "defaultType": "warning"
+  },
+  {
+    "key": "financial.weekly_summary",
+    "name": "Weekly Revenue Summary",
+    "category": "financial",
+    "defaultTitle": {
+      "de": "Wochenumsatz KW{{weekNumber}}",
+      "en": "Weekly Revenue W{{weekNumber}}"
+    },
+    "defaultMessage": {
+      "de": "Wochenumsatz: €{{totalRevenue}} ({{percentChange}}% zum Vorwoche). Beste Tag: {{bestDay}} (€{{bestDayRevenue}}).",
+      "en": "Weekly revenue: €{{totalRevenue}} ({{percentChange}}% vs last week). Best day: {{bestDay}} (€{{bestDayRevenue}})."
+    },
+    "variables": ["weekNumber", "totalRevenue", "percentChange", "bestDay", "bestDayRevenue"],
+    "defaultPriority": "low",
+    "defaultType": "info"
+  },
+  {
+    "key": "financial.payment_reminder",
+    "name": "Payment Reminder",
+    "category": "financial",
+    "defaultTitle": {
+      "de": "Zahlungserinnerung",
+      "en": "Payment Reminder"
+    },
+    "defaultMessage": {
+      "de": "Offene Rechnung für {{customerName}}: €{{amount}}. Fällig seit {{daysPastDue}} Tagen.",
+      "en": "Outstanding invoice for {{customerName}}: €{{amount}}. Past due by {{daysPastDue}} days."
+    },
+    "variables": ["customerName", "amount", "daysPastDue"],
+    "defaultPriority": "high",
+    "defaultType": "warning"
+  }
+]

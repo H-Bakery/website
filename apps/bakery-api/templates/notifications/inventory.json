@@ -1,0 +1,82 @@
+[
+  {
+    "key": "inventory.low_stock",
+    "name": "Low Stock Warning",
+    "category": "inventory",
+    "defaultTitle": {
+      "de": "Niedriger Lagerbestand: {{item}}",
+      "en": "Low Stock: {{item}}"
+    },
+    "defaultMessage": {
+      "de": "{{item}} hat nur noch {{currentStock}} {{unit}} (Minimum: {{minStock}}). Bitte nachbestellen.",
+      "en": "{{item}} has only {{currentStock}} {{unit}} remaining (Minimum: {{minStock}}). Please reorder."
+    },
+    "variables": ["item", "currentStock", "unit", "minStock"],
+    "defaultPriority": "high",
+    "defaultType": "warning"
+  },
+  {
+    "key": "inventory.out_of_stock",
+    "name": "Out of Stock Alert",
+    "category": "inventory",
+    "defaultTitle": {
+      "de": "Ausverkauft: {{item}}",
+      "en": "Out of Stock: {{item}}"
+    },
+    "defaultMessage": {
+      "de": "{{item}} ist vollständig ausverkauft. Sofortige Nachbestellung erforderlich!",
+      "en": "{{item}} is completely out of stock. Immediate reorder required!"
+    },
+    "variables": ["item"],
+    "defaultPriority": "urgent",
+    "defaultType": "error"
+  },
+  {
+    "key": "inventory.expiry_warning",
+    "name": "Expiry Warning",
+    "category": "inventory",
+    "defaultTitle": {
+      "de": "Ablaufdatum naht: {{item}}",
+      "en": "Expiry Approaching: {{item}}"
+    },
+    "defaultMessage": {
+      "de": "{{item}} läuft am {{expiryDate}} ab ({{daysRemaining}} Tage verbleibend). {{quantity}} {{unit}} betroffen.",
+      "en": "{{item}} expires on {{expiryDate}} ({{daysRemaining}} days remaining). {{quantity}} {{unit}} affected."
+    },
+    "variables": ["item", "expiryDate", "daysRemaining", "quantity", "unit"],
+    "defaultPriority": "medium",
+    "defaultType": "warning"
+  },
+  {
+    "key": "inventory.reorder_reminder",
+    "name": "Reorder Reminder",
+    "category": "inventory",
+    "defaultTitle": {
+      "de": "Nachbestellung erforderlich",
+      "en": "Reorder Required"
+    },
+    "defaultMessage": {
+      "de": "Folgende Artikel müssen nachbestellt werden: {{items}}. Aktuelle Bestände sind unter dem Mindestbestand.",
+      "en": "The following items need reordering: {{items}}. Current stock levels are below minimum."
+    },
+    "variables": ["items"],
+    "defaultPriority": "medium",
+    "defaultType": "info"
+  },
+  {
+    "key": "inventory.delivery_received",
+    "name": "Delivery Received",
+    "category": "inventory",
+    "defaultTitle": {
+      "de": "Lieferung eingegangen",
+      "en": "Delivery Received"
+    },
+    "defaultMessage": {
+      "de": "Lieferung von {{supplier}} eingegangen. {{itemCount}} Artikel wurden dem Lagerbestand hinzugefügt.",
+      "en": "Delivery from {{supplier}} received. {{itemCount}} items have been added to inventory."
+    },
+    "variables": ["supplier", "itemCount"],
+    "defaultPriority": "low",
+    "defaultType": "success"
+  }
+]

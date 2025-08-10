@@ -1,0 +1,8 @@
+{
+  "name": "bakery-management-feature-unsold-products",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/bakery-management/feature-unsold-products/src",
+  "projectType": "library",
+  "tags": ["scope:management", "type:feature"],
+  "targets": {}
+}

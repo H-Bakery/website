@@ -1,0 +1,27 @@
+{
+  "name": "reporting-service",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/reporting-service/src",
+  "projectType": "library",
+  "tags": [
+    "scope:api",
+    "type:feature"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/api/reporting-service",
+        "tsConfig": "libs/api/reporting-service/tsconfig.lib.json",
+        "packageJson": "libs/api/reporting-service/package.json",
+        "main": "libs/api/reporting-service/src/index.ts",
+        "assets": [
+          "libs/api/reporting-service/*.md"
+        ]
+      }
+    }
+  }
+}

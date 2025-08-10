@@ -1,0 +1,43 @@
+# Task ID: 1
+# Title: Complete Authentication Context and Route Protection
+# Status: done
+# Dependencies: None
+# Priority: high
+# Description: Complete the partially implemented AuthContext (Task 5) to manage user login state, JWT token handling, and protect all administrative routes from unauthorized access. This is a foundational requirement for all subsequent secure features.
+# Details:
+Create a `AuthContext.tsx` using React's Context API. The provider will manage `user`, `token`, and `isAuthenticated` states. Implement `login` and `logout` functions to interact with the backend API and manage the JWT in `localStorage`. Create a route-wrapping component or logic in `_app.tsx` to check authentication status for any route under `/admin/*` and redirect to `/login` if the user is not authenticated. Expose the context's state and functions through a `useAuth` custom hook.
+
+# Test Strategy:
+Verify that accessing any `/admin` route without logging in redirects to the login page. After logging in, confirm that admin routes are accessible and user data from the context is available. Confirm that logging out revokes access and clears session data.
+
+# Subtasks:
+## 1. Initialize AuthContext and Provider Structure [done]
+### Dependencies: None
+### Description: Create the foundational `AuthContext.tsx` file. This includes defining the context's data structure (type/interface) and setting up the basic `AuthProvider` component with initial state management for `user`, `token`, and `isAuthenticated`.
+### Details:
+Create a new file `AuthContext.tsx`. Use React's `createContext` to initialize the context with a default value. Build the `AuthProvider` component that accepts `children` as props. Inside the provider, use the `useState` hook to manage the `user`, `token`, and `isAuthenticated` states.
+
+## 2. Implement Login and Logout Functions with API Integration [done]
+### Dependencies: 1.1
+### Description: Develop the `login` and `logout` functions within the `AuthProvider`. The `login` function will handle API calls to the backend for authentication, and both functions will manage the JWT in `localStorage` and update the context's state.
+### Details:
+Inside `AuthProvider`, create an async `login` function that takes credentials, sends a POST request to the backend's login endpoint, and on success, stores the received JWT in `localStorage` and updates the context state. Create a `logout` function that removes the JWT from `localStorage` and resets the context state to its initial values.
+
+## 3. Create and Export `useAuth` Custom Hook [done]
+### Dependencies: 1.1
+### Description: Create a custom hook named `useAuth` to provide a clean and standardized way for components to access the authentication context's state and functions (`user`, `token`, `login`, `logout`).
+### Details:
+Within the `AuthContext.tsx` file, define and export a new function `useAuth`. This function will use React's `useContext` hook to access the `AuthContext` and return its value. This encapsulates the `useContext` logic, making it easier to consume.
+
+## 4. Implement Protected Route Logic for Admin Area [done]
+### Dependencies: 1.3
+### Description: Develop the route protection mechanism to secure all pages under the `/admin/*` path, redirecting unauthenticated users to the `/login` page.
+### Details:
+In the `_app.tsx` file, get the current component and its page properties. Check if the current route (`router.pathname`) starts with `/admin`. If it does, use the `useAuth` hook to check the `isAuthenticated` status. If `false`, programmatically redirect the user to `/login` using `router.push('/login')`. Render a loading state while the check is in progress to avoid a flash of unprotected content.
+
+## 5. Implement Session Persistence on Application Load [done]
+### Dependencies: 1.1, 1.2
+### Description: Enhance the `AuthProvider` to check for an existing JWT in `localStorage` when the application first loads. This will re-hydrate the authentication state and maintain the user's session across page refreshes.
+### Details:
+Inside the `AuthProvider` component, add a `useEffect` hook with an empty dependency array `[]` so it runs only once on mount. Inside this effect, read the JWT from `localStorage`. If a token exists, set the `token` and `isAuthenticated` states accordingly. Optionally, you can also decode the token to retrieve user data and populate the `user` state.
+

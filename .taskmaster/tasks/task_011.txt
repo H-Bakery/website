@@ -1,0 +1,43 @@
+# Task ID: 11
+# Title: Implement Customer Product Listing and Shopping Experience
+# Status: done
+# Dependencies: 2
+# Priority: medium
+# Description: Develop the complete customer-facing product browsing experience. This includes displaying products from the product management system, enabling filtering by category, implementing a search feature, and integrating a fully functional shopping cart using the existing `CartContext`.
+# Details:
+On the customer-facing side of the application, implement a comprehensive shopping experience. First, create a product listing page at `/products` that fetches and displays all available items using the existing `getProducts()` function in `bakeryAPI.ts`. Each product card should display an image, name, price, and an 'Add to Cart' button. Implement UI controls for filtering products by category and a search bar for text-based searches; these should trigger API calls with appropriate query parameters. The 'Add to Cart' button's functionality should be wired into the existing `CartContext`, updating the application's state with the selected product and quantity. Finally, build out the `/cart` page to display the contents of the `CartContext`, allowing users to view items, adjust quantities, remove items, and see a running total.
+
+# Test Strategy:
+Navigate to the `/products` page and verify that product data from the product management system is correctly loaded and displayed. Test the category filtering and search functionality to ensure the product list updates accurately. Add multiple different products to the cart and confirm the cart icon/count updates. Navigate to the `/cart` page and verify all added items are present with the correct details and pricing. Test the functionality for updating an item's quantity and removing an item from the cart, ensuring the subtotal and grand total update in real-time. Refresh the page or navigate away and back to the cart to confirm that the cart's state is persisted correctly by the `CartContext`.
+
+# Subtasks:
+## 1. Create Product Listing Page and Display Products [done]
+### Dependencies: None
+### Description: Develop the `/products` page to fetch all available items from the `/api/products` endpoint and render them as a grid of product cards. Each card will display the product's image, name, and price.
+### Details:
+Create a new React component for the `/products` page and set up its route. Use the existing `getProducts()` function from `bakeryAPI.ts` (which calls `GET /api/products`) to fetch the data. Map over the returned product array to render a `ProductCard` component for each item. The `ProductCard` should display the product's image, name, and price. Include a non-functional 'Add to Cart' button as a placeholder for now.
+
+## 2. Implement Product Filtering and Search Functionality [done]
+### Dependencies: None
+### Description: Add UI controls to the `/products` page for filtering the product list by category and searching by name. Connect these controls to re-fetch data from the API with appropriate query parameters.
+### Details:
+On the `/products` page, add a search input field and a dropdown or set of buttons for category selection. Manage the state for the current search term and selected category using `useState`. When these state values change, trigger a new API call to `/api/products` with query parameters (e.g., `/api/products?search=...&category=...`). The product grid should update to display the filtered results.
+
+## 3. Integrate 'Add to Cart' Button with CartContext [done]
+### Dependencies: None
+### Description: Connect the 'Add to Cart' button on each `ProductCard` to the existing `CartContext`, allowing users to add products to their shopping cart.
+### Details:
+In the `ProductCard` component, import the `CartContext` using the `useContext` hook. Implement the `onClick` handler for the 'Add to Cart' button. This handler should call the `addToCart` function (or equivalent) provided by the context, passing the full product object. The cart state should update globally. Use React DevTools to confirm the context is updated.
+
+## 4. Build the Shopping Cart Display Page [done]
+### Dependencies: None
+### Description: Create the `/cart` page to display the items currently in the `CartContext`. The page should list each item's image, name, price, quantity, and a subtotal for that line item.
+### Details:
+Create a new React component for the `/cart` page and set up its route. Use the `useContext` hook to access the `CartContext`. If the cart is empty, display a 'Your cart is empty' message. If it has items, map over the cart items array and render a row or component for each one, displaying the product's image, name, price, and current quantity. Calculate and display the subtotal for each line item (price * quantity).
+
+## 5. Implement Cart Item Management and Total Calculation [done]
+### Dependencies: None
+### Description: On the `/cart` page, add functionality for users to adjust the quantity of items, remove items from the cart, and view the total price for all items.
+### Details:
+In the cart item row component on the `/cart` page, add UI controls (e.g., '+' and '-' buttons, or a number input) to adjust the quantity. Wire these controls to the `updateQuantity` function in the `CartContext`. Add a 'Remove' button that calls the `removeFromCart` function from the context. Below the list of items, calculate and display the total price of all items in the cart by iterating through the context's items array.
+

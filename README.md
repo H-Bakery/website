@@ -1,78 +1,96 @@
-# Bäckerei Heusser Website
+# Bakery Website - Nx Monorepo
 
-> https://bäckerei-heusser.de/
+Modern bakery management system with e-commerce, admin dashboard, and marketing site.
 
-## Development
-
-This is a [Next.js](https://nextjs.org/) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
-
-## Getting Started
-
-First, run the development server:
+## 🚀 Quick Start
 
 ```bash
-npm run dev
+npm install
+npm run serve:all        # Start all applications
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+**Applications:**
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+- Landing Page: http://localhost:3000 (Static marketing site)
+- Shop: http://localhost:4200 (E-commerce frontend)
+- Management: http://localhost:4201 (Admin dashboard)
+- API: http://localhost:5000 (TypeScript backend with domain-driven architecture)
 
-[API routes](https://nextjs.org/docs/api-routes/introduction) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+## 📁 Structure
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/api-routes/introduction) instead of React pages.
+```
+apps/
+├── bakery-landing/      # Marketing site (Next.js)
+├── bakery-shop/         # E-commerce (Next.js + Material UI)
+├── bakery-management/   # Admin dashboard (Next.js)
+└── bakery-api/          # TypeScript Backend API (13 domain libraries)
 
-## Learn More
+libs/
+├── shared/              # Shared code (types, utils, UI, contexts)
+├── bakery-shop/         # Shop features (cart, catalog)
+└── bakery-management/   # Admin features (orders, inventory)
+```
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js/) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/deployment) for more details.
-
-## Testing
-
-This project uses Jest and React Testing Library for testing components, contexts, and utilities.
-
-### Running Tests
+## 🛠️ Development
 
 ```bash
-# Run all tests
-npm run test
+# Serve specific apps
+npm run serve:shop
+npm run serve:management
+npm run serve:landing
 
-# Run tests in watch mode
-npm run test:watch
+# Backend API (TypeScript)
+npx nx serve bakery-api         # Start TypeScript backend (port 5000)
+npx nx build bakery-api         # Build TypeScript backend
 
-# Generate test coverage report
-npm run test:coverage 
+# Static builds (Landing Page)
+npm run build:landing:static    # Standalone build (recommended)
+npm run build:landing:nx        # Nx integrated build
+nx build-static-standalone bakery-landing  # Direct Nx command
 
-# Debug tests
-npm run test:debug
+# Testing
+npm run test:unit        # All unit tests
+npm run test:e2e         # All E2E tests
+npm run test:unit:shop   # App-specific tests
 
-# Update test snapshots
-npm run test:update
+# Code quality
+npm run lint:all
+npm run format
+npm run validate        # Lint + type-check + test
 ```
 
-### Test Structure
+## 🚢 Deployment
 
-Test files are located in `__tests__` directories adjacent to the files they test:
+### Static Landing Page
 
+The landing page builds to static files for CDN deployment:
+
+```bash
+# Build static files (output: apps/bakery-landing/out/)
+npm run build:landing:static
+
+# Deploy to GitHub Pages, Vercel, or any static host
 ```
-src/
-  components/
-    Button/
-      Index.tsx
-      __tests__/
-        Button.test.tsx
-```
 
-For more details about the testing setup and best practices, see:
-- `TESTING.md` for an overview of the testing architecture
-- `docs/testing-guide.md` for detailed guidelines and examples
+**Deployment Options:**
+
+- **GitHub Pages**: Upload `out/` folder or use Actions
+- **Vercel**: Connect repository for auto-deployment
+- **CDN/S3**: Upload `out/` directory contents
+
+### Automatic Deployment
+
+**Push to `main` triggers:**
+
+- Landing → GitHub Pages (static)
+- Shop/Management → Vercel (SSR)
+- API → Google Cloud Run (container)
+
+## 📚 Documentation
+
+- [Architecture](./docs/architecture.md)
+- [Development](./docs/development.md)
+- [CI/CD](./docs/ci-cd.md)
+- [Testing](./docs/testing.md)
+- [Deployment](./docs/deployment.md)
+- [Monitoring](./docs/monitoring.md)

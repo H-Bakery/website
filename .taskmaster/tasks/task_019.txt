@@ -1,0 +1,11 @@
+# Task ID: 19
+# Title: Create Bakery Shop Application and Core E-commerce Libraries
+# Status: done
+# Dependencies: 12, 13, 14, 15
+# Priority: medium
+# Description: Create a new customer-facing 'bakery-shop' Next.js application and establish dedicated, buildable libraries for core e-commerce features including product catalog, shopping cart, and checkout.
+# Details:
+First, generate the main customer-facing storefront application using the Nx generator: `nx g @nx/next:app bakery-shop --style=css`. This application will serve as the primary interface for customers. Next, create a set of domain-specific, buildable libraries to encapsulate e-commerce functionality. Use the `--directory` flag to organize them under a `shop` scope: 1. `nx g @nx/react:lib catalog --directory=libs/shop --buildable` for product display components. 2. `nx g @nx/react:lib cart --directory=libs/shop --buildable` for cart state management, components, and hooks. 3. `nx g @nx/react:lib checkout --directory=libs/shop --buildable` for the checkout form and process logic. Within the `shop-cart` library, implement a service or set of hooks that utilize the browser's `localStorage` to persist the user's cart contents across sessions. This ensures the cart is not lost when the page is refreshed or closed.
+
+# Test Strategy:
+1. Verify the creation of the new application and libraries by checking for the existence of `apps/bakery-shop` and `libs/shop/catalog`, `libs/shop/cart`, `libs/shop/checkout` directories. 2. Run `nx build` for `bakery-shop` and each of the new libraries to ensure they are configured correctly and build without errors. 3. Create a basic placeholder component in the `shop-catalog` library (e.g., `<ProductList />`) and import it into the main page of the `bakery-shop` application. 4. Run `nx serve bakery-shop` and navigate to the root URL. Verify the application loads and the placeholder component is rendered correctly, confirming successful library integration. 5. Write a unit test for the `localStorage` cart persistence utility to confirm it can correctly save and retrieve cart data.

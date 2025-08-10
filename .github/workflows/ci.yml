@@ -1,0 +1,317 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'feature/**'
+      - 'fix/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+  HUSKY: 0
+
+jobs:
+  # Job to detect what changed
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      shop: ${{ steps.filter.outputs.shop }}
+      management: ${{ steps.filter.outputs.management }}
+      landing: ${{ steps.filter.outputs.landing }}
+      libs: ${{ steps.filter.outputs.libs }}
+      api: ${{ steps.filter.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            shop:
+              - 'apps/bakery-shop/**'
+              - 'libs/bakery-shop/**'
+              - 'libs/shared/**'
+            management:
+              - 'apps/bakery-management/**'
+              - 'libs/bakery-management/**'
+              - 'libs/shared/**'
+            landing:
+              - 'apps/bakery-landing/**'
+              - 'libs/shared/**'
+            libs:
+              - 'libs/**'
+            api:
+              - 'apps/bakery-api/**'
+              - 'libs/shared/**'
+
+  # Lint and type check
+  quality:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check code formatting
+        run: npm run format:check
+
+      - name: Run linting
+        run: npm run lint:affected -- --base=origin/main
+
+      - name: Type check
+        run: npm run type-check
+
+  # Unit tests
+  test-unit:
+    needs: changes
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests (shard ${{ matrix.shard }}/3)
+        run: |
+          npx nx affected --target=test \
+            --base=origin/main \
+            --parallel=2 \
+            --ci \
+            --coverage \
+            --shard=${{ matrix.shard }}/3
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage
+          flags: unit-${{ matrix.shard }}
+          fail_ci_if_error: false
+
+  # E2E tests for shop
+  test-e2e-shop:
+    needs: [changes, quality]
+    if: needs.changes.outputs.shop == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build shop application
+        run: nx build bakery-shop --configuration=production
+
+      - name: Run E2E tests
+        run: nx e2e bakery-shop-e2e --configuration=ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-results-shop
+          path: dist/.playwright/apps/bakery-shop-e2e/
+          retention-days: 7
+
+  # E2E tests for management
+  test-e2e-management:
+    needs: [changes, quality]
+    if: needs.changes.outputs.management == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build management application
+        run: nx build bakery-management --configuration=production
+
+      - name: Run E2E tests
+        run: nx e2e bakery-management-e2e --configuration=ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-results-management
+          path: dist/.playwright/apps/bakery-management-e2e/
+          retention-days: 7
+
+  # E2E tests for landing
+  test-e2e-landing:
+    needs: [changes, quality]
+    if: needs.changes.outputs.landing == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Build landing application
+        run: nx build bakery-landing --configuration=production
+
+      - name: Run E2E tests
+        run: nx e2e bakery-landing-e2e --configuration=ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: playwright-results-landing
+          path: dist/.playwright/apps/bakery-landing-e2e/
+          retention-days: 7
+
+  # Build applications
+  build:
+    needs: [quality, test-unit]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        app: [bakery-shop, bakery-management, bakery-landing, bakery-api]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build ${{ matrix.app }}
+        run: nx build ${{ matrix.app }} --configuration=production
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-${{ matrix.app }}
+          path: dist/apps/${{ matrix.app }}/
+          retention-days: 7
+
+  # Bundle size analysis
+  bundle-analysis:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Download shop build
+        uses: actions/download-artifact@v3
+        with:
+          name: build-bakery-shop
+          path: dist/apps/bakery-shop/
+
+      - name: Analyze bundle size
+        uses: treosh/lighthouse-ci-action@v10
+        with:
+          urls: |
+            http://localhost:3000
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+  # Security audit
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run npm audit
+        run: npm audit --production
+
+      - name: Run security scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results
+        uses: github/codeql-action/upload-sarif@v2
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Final status check
+  ci-status:
+    needs: [quality, test-unit, test-e2e-shop, test-e2e-management, test-e2e-landing, build, security]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI Status
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') }}" == "true" ]]; then
+            echo "CI Failed"
+            exit 1
+          else
+            echo "CI Passed"
+          fi

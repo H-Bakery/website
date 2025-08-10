@@ -1,0 +1,11 @@
+# Task ID: 27
+# Title: Extend Database Schema for Sales Analytics
+# Status: done
+# Dependencies: 26, 14
+# Priority: high
+# Description: Extend the existing database schema with new Sequelize models for sales analytics. This includes creating SalesTransaction, TransactionItem, and DailySalesReport models to store data ingested from daily report JSON files, and integrating them with the existing Product model.
+# Details:
+Within the shared `libs/data-access` library, create three new Sequelize models. 1. **SalesTransaction**: This model will represent a single sales event and should include fields like `transaction_id` (primary key), `transaction_date`, `total_amount`, and `payment_method`. 2. **TransactionItem**: This model will represent an item within a transaction. It must include a foreign key to `SalesTransaction` and a foreign key (`product_id`) that maps to the existing `Product` model. Other fields should include `quantity` and `price_per_item`. 3. **DailySalesReport**: This model will store aggregated daily metrics, such as `report_date` (primary key), `total_sales`, `total_transactions`, and `most_popular_product_id`. Ensure all foreign key relationships are defined with appropriate `onDelete` and `onUpdate` cascade options. Add indexes to foreign keys (`product_id`, `transaction_id`) and date columns to optimize performance for future analytics queries. Follow the existing coding standards and patterns established in the `libs/data-access/src/lib/models/` directory.
+
+# Test Strategy:
+1. After creating the model files in `libs/data-access/src/lib/models/`, run the database migration script. Verify that it executes successfully and creates three new tables: `SalesTransactions`, `TransactionItems`, and `DailySalesReports`. 2. Using a database inspection tool, connect to the development database and confirm the tables exist with the correct schema. Check that all columns, data types, primary keys, foreign key constraints (e.g., `TransactionItems.product_id` referencing `Products.id`), and indexes are correctly configured. 3. Write a unit test that programmatically creates a `SalesTransaction` instance with several associated `TransactionItem` instances, saves them to the database, and then successfully retrieves them, verifying that the relationships are correctly resolved by Sequelize.

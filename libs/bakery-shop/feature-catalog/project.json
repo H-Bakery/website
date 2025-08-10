@@ -1,0 +1,16 @@
+{
+  "name": "feature-catalog",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/bakery-shop/feature-catalog/src",
+  "projectType": "library",
+  "tags": ["scope:shop", "type:feature"],
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/bakery-shop/feature-catalog/jest.config.ts"
+      }
+    }
+  }
+}

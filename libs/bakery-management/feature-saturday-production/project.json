@@ -1,0 +1,16 @@
+{
+  "name": "feature-saturday-production",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/bakery-management/feature-saturday-production/src",
+  "projectType": "library",
+  "tags": ["scope:management", "type:feature"],
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/bakery-management/feature-saturday-production/jest.config.ts"
+      }
+    }
+  }
+}

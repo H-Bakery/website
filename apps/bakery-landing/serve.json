@@ -1,0 +1,14 @@
+{
+  "rewrites": [
+    {
+      "source": "/products/:id",
+      "destination": "/products/:id.html"
+    },
+    {
+      "source": "/news/:slug",
+      "destination": "/news/:slug.html"
+    }
+  ],
+  "cleanUrls": true,
+  "trailingSlash": false
+}

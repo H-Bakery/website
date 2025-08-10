@@ -1,0 +1,11 @@
+# Task ID: 41
+# Title: Migrate Unsold Products Tracking
+# Status: done
+# Dependencies: None
+# Priority: low
+# Description: Migrate Unsold Products from src/app/admin/unsold-products to apps/bakery-management/src/app/admin/unsold-products. Create feature-unsold-products library. Copy 5 components: DailyUnsoldTracker, DateNavigator, UnsoldProductsForm, UnsoldProductsHistory, WeeklySummary. Connect to libs/api/unsold-products.
+# Details:
+
+
+# Test Strategy:
+

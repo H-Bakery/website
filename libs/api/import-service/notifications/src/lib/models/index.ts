@@ -1,0 +1,3 @@
+export { Notification, NotificationAttributes, NotificationCreationAttributes } from './notification.model';
+export { NotificationPreferences, NotificationPreferencesAttributes, NotificationPreferencesCreationAttributes } from './notification-preferences.model';
+export { NotificationTemplate, NotificationTemplateAttributes, NotificationTemplateCreationAttributes } from './notification-template.model';

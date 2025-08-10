@@ -1,0 +1,46 @@
+# Croissant Production Workflow
+name: croissant_production
+version: 1.2
+steps:
+  - name: teig_vorbereiten
+    timeout: 45m
+    activities:
+      - mixen
+      - kneten
+      - buttereinschlagen
+    notes: "Kühlen Sie die Butter auf 8°C herunter"
+  - name: erste_gehzeit
+    type: sleep
+    duration: 2h
+    conditions:
+      - temp > 22°C: 1.5h
+      - temp < 18°C: 2.5h
+    location: "Kühlraum"
+  - name: laminieren
+    timeout: 30m
+    activities:
+      - ausrollen
+      - falten
+      - kühlen
+    repeat: 3
+    notes: "Nach jedem Durchgang 20 Minuten kühlen"
+  - name: zweite_gehzeit
+    type: sleep
+    duration: 1h
+    location: "Kühlraum"
+  - name: formen
+    timeout: 30m
+    activities:
+      - ausrollen
+      - schneiden
+      - rollen
+  - name: final_proofing
+    type: sleep
+    duration: 1.5h
+    conditions:
+      - temp > 25°C: 1h
+  - name: backen
+    timeout: 18m
+    params:
+      temp: 190°C
+    notes: "Vorher mit Ei bestreichen"

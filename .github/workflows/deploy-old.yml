@@ -1,0 +1,257 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+
+env:
+  NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+
+jobs:
+  # Determine what to deploy
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      deploy-shop: ${{ steps.changes.outputs.shop }}
+      deploy-management: ${{ steps.changes.outputs.management }}
+      deploy-landing: ${{ steps.changes.outputs.landing }}
+      deploy-api: ${{ steps.changes.outputs.api }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes
+        id: changes
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "shop=true" >> $GITHUB_OUTPUT
+            echo "management=true" >> $GITHUB_OUTPUT
+            echo "landing=true" >> $GITHUB_OUTPUT
+            echo "api=true" >> $GITHUB_OUTPUT
+          else
+            SHOP_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^(apps/bakery-shop|libs/bakery-shop|libs/shared)' | wc -l)
+            MGMT_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^(apps/bakery-management|libs/bakery-management|libs/shared)' | wc -l)
+            LANDING_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^(apps/bakery-landing|libs/shared)' | wc -l)
+            API_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E '^(apps/bakery-api|libs/shared)' | wc -l)
+            
+            echo "shop=$([[ $SHOP_CHANGED -gt 0 ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "management=$([[ $MGMT_CHANGED -gt 0 ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "landing=$([[ $LANDING_CHANGED -gt 0 ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+            echo "api=$([[ $API_CHANGED -gt 0 ]] && echo true || echo false)" >> $GITHUB_OUTPUT
+          fi
+
+  # Deploy Shop to Vercel
+  deploy-shop:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy-shop == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shop
+        run: nx build bakery-shop --configuration=production
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+          NEXT_PUBLIC_STRIPE_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_SHOP_PROJECT_ID }}
+          vercel-args: ${{ github.event.inputs.environment == 'staging' && '--env=preview' || '--prod' }}
+          working-directory: ./dist/apps/bakery-shop
+          alias-domains: |
+            ${{ github.event.inputs.environment == 'staging' && 'staging-shop.yourdomain.com' || '' }}
+
+  # Deploy Management to Vercel
+  deploy-management:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy-management == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build management
+        run: nx build bakery-management --configuration=production
+        env:
+          NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_MANAGEMENT_PROJECT_ID }}
+          vercel-args: ${{ github.event.inputs.environment == 'staging' && '--env=preview' || '--prod' }}
+          working-directory: ./dist/apps/bakery-management
+          alias-domains: |
+            ${{ github.event.inputs.environment == 'staging' && 'staging-manage.yourdomain.com' || '' }}
+
+  # Deploy Landing to GitHub Pages (keeping original settings)
+  deploy-landing:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy-landing == 'true' && github.event.inputs.environment != 'staging'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build landing page
+        run: nx build bakery-landing --configuration=production
+
+      - name: Export static site
+        run: nx export bakery-landing
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist/apps/bakery-landing/exported
+          cname: xn--bckerei-heusser-0kb.de
+
+  # Deploy API to Google Cloud Run
+  deploy-api:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.deploy-api == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.environment || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build API
+        run: nx build bakery-api --configuration=production
+
+      - name: Setup Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            -f apps/bakery-api/Dockerfile \
+            -t gcr.io/${{ vars.GCP_PROJECT_ID }}/bakery-api:${{ github.sha }} \
+            -t gcr.io/${{ vars.GCP_PROJECT_ID }}/bakery-api:latest \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push gcr.io/${{ vars.GCP_PROJECT_ID }}/bakery-api:${{ github.sha }}
+          docker push gcr.io/${{ vars.GCP_PROJECT_ID }}/bakery-api:latest
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy bakery-api \
+            --image gcr.io/${{ vars.GCP_PROJECT_ID }}/bakery-api:${{ github.sha }} \
+            --platform managed \
+            --region ${{ vars.GCP_REGION }} \
+            --allow-unauthenticated \
+            --set-env-vars="NODE_ENV=production,DATABASE_URL=${{ secrets.DATABASE_URL }}" \
+            --service-account=${{ vars.GCP_SERVICE_ACCOUNT }}
+
+  # Run post-deployment tests
+  post-deploy-tests:
+    needs: [deploy-shop, deploy-management, deploy-landing, deploy-api]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run smoke tests
+        run: |
+          if [[ "${{ needs.deploy-shop.result }}" == "success" ]]; then
+            BASE_URL=${{ vars.SHOP_URL }} nx e2e bakery-shop-e2e --grep="@smoke"
+          fi
+          
+          if [[ "${{ needs.deploy-management.result }}" == "success" ]]; then
+            BASE_URL=${{ vars.MANAGEMENT_URL }} nx e2e bakery-management-e2e --grep="@smoke"
+          fi
+          
+          if [[ "${{ needs.deploy-landing.result }}" == "success" ]]; then
+            BASE_URL=${{ vars.LANDING_URL }} nx e2e bakery-landing-e2e --grep="@smoke"
+          fi
+
+      - name: Notify deployment status
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: |
+            Deployment to ${{ github.event.inputs.environment || 'production' }} completed.
+            Shop: ${{ needs.deploy-shop.result }}
+            Management: ${{ needs.deploy-management.result }}
+            Landing: ${{ needs.deploy-landing.result }}
+            API: ${{ needs.deploy-api.result }}
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}

@@ -1,0 +1,8 @@
+{
+  "name": "bakery-management-feature-settings",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/bakery-management/feature-settings/src",
+  "projectType": "library",
+  "tags": ["scope:management", "type:feature"],
+  "targets": {}
+}

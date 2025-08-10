@@ -1,0 +1,68 @@
+# Add labels to PRs based on file changes
+shop:
+  - apps/bakery-shop/**
+  - libs/bakery-shop/**
+
+management:
+  - apps/bakery-management/**
+  - libs/bakery-management/**
+
+landing:
+  - apps/bakery-landing/**
+
+api:
+  - apps/bakery-api/**
+
+shared:
+  - libs/shared/**
+
+ui:
+  - libs/shared/ui/**
+  - '**/*.tsx'
+  - '**/*.css'
+  - '**/*.scss'
+
+backend:
+  - apps/bakery-api/**
+  - '**/*.controller.ts'
+  - '**/*.service.ts'
+  - '**/*.repository.ts'
+
+testing:
+  - '**/*.spec.ts'
+  - '**/*.spec.tsx'
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - 'apps/*-e2e/**'
+
+documentation:
+  - '**/*.md'
+  - docs/**
+  - .github/**
+
+dependencies:
+  - package.json
+  - package-lock.json
+  - yarn.lock
+
+infrastructure:
+  - .github/workflows/**
+  - '**/Dockerfile'
+  - docker-compose.yml
+  - nx.json
+  - workspace.json
+  - .eslintrc.json
+  - jest.config.ts
+  - tsconfig.*.json
+
+feature:
+  - libs/*/feature-*/**
+
+data-access:
+  - libs/*/data-access/**
+  - '**/*.repository.ts'
+  - '**/*.entity.ts'
+
+utils:
+  - libs/shared/utils/**
+  - libs/shared/types/**

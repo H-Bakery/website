@@ -1,0 +1,26 @@
+{
+  "name": "baking-list",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/baking-list/src",
+  "projectType": "library",
+  "tags": ["scope:api", "type:feature"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/baking-list",
+        "main": "libs/api/baking-list/src/index.ts",
+        "tsConfig": "libs/api/baking-list/tsconfig.lib.json",
+        "assets": ["libs/api/baking-list/*.md"]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/api/baking-list/jest.config.ts"
+      }
+    }
+  }
+}

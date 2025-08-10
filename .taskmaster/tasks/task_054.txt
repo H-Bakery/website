@@ -1,0 +1,49 @@
+# Task ID: 54
+# Title: Implement Missing Database Models from Legacy API
+# Status: pending
+# Dependencies: None
+# Priority: high
+# Description: Create TypeScript implementations for database models currently stubbed in src/models/index.ts
+# Details:
+Implement full TypeScript/Sequelize definitions for NotificationPreferences, NotificationTemplate, ProductionBatch, ProductionSchedule, and ProductionStep models. These models are currently stubbed and need complete implementation with proper types, associations, validations, and indexes based on the legacy JavaScript implementations.
+
+# Test Strategy:
+Create unit tests for each model to verify CRUD operations, associations, validations, and custom methods. Test database migrations to ensure tables are created correctly.
+
+# Subtasks:
+## 1. Create NotificationPreferences Model [pending]
+### Dependencies: None
+### Description: Implement TypeScript model for user notification preferences
+### Details:
+Create NotificationPreferences.ts with Sequelize model definition including email/browser/sound preferences, category preferences, priority threshold, and quiet hours configuration. Add proper TypeScript interfaces and associations with User model.
+
+## 2. Create NotificationTemplate Model [pending]
+### Dependencies: None
+### Description: Implement TypeScript model for notification templates
+### Details:
+Create NotificationTemplate.ts with multi-language support (de/en), template variables, categories, priority/type defaults. Include validation for required languages and variable handling.
+
+## 3. Create ProductionBatch Model [pending]
+### Dependencies: None
+### Description: Implement TypeScript model for production batch tracking
+### Details:
+Create ProductionBatch.ts with fields for workflow reference, scheduling (planned/actual times), quantities, status tracking, staff assignment, equipment allocation, and metadata. Include virtual fields for duration and progress calculations.
+
+## 4. Create ProductionSchedule Model [pending]
+### Dependencies: None
+### Description: Implement TypeScript model for production scheduling
+### Details:
+Create ProductionSchedule.ts for managing production schedules with batch relationships, timeline management, and resource allocation.
+
+## 5. Create ProductionStep Model [pending]
+### Dependencies: None
+### Description: Implement TypeScript model for production workflow steps
+### Details:
+Create ProductionStep.ts for individual workflow steps with batch relationships, step sequencing, timing, and completion tracking.
+
+## 6. Update Model Associations [pending]
+### Dependencies: 54.1, 54.2, 54.3, 54.4, 54.5
+### Description: Configure all associations between new models and existing ones
+### Details:
+Update src/models/index.ts to properly initialize all new models and set up their associations with existing models (User, Product, Recipe, etc.).
+

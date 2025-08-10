@@ -1,0 +1,37 @@
+# Task ID: 58
+# Title: Implement Missing API Routes
+# Status: pending
+# Dependencies: 55, 56, 57
+# Priority: medium
+# Description: Add all missing routes from legacy API to the current TypeScript implementation
+# Details:
+Implement analytics routes (revenue trends, product performance), report routes (daily/weekly/monthly reports), import routes (daily report import with file upload), notification archival routes, and enhance health check routes with comprehensive system checks (database, filesystem, memory, environment).
+
+# Test Strategy:
+Test each route with various parameters, verify response formats match OpenAPI specifications, test file upload functionality, and validate error handling.
+
+# Subtasks:
+## 1. Implement Analytics Routes [pending]
+### Dependencies: None
+### Description: Create analytics API endpoints
+### Details:
+Create analytics.routes.ts with endpoints for revenue trends, product performance, customer analytics, and custom queries. Include parameter validation and caching.
+
+## 2. Implement Report Routes [pending]
+### Dependencies: None
+### Description: Create report generation endpoints
+### Details:
+Create report.routes.ts with endpoints for generating, downloading, and scheduling reports. Support multiple formats and delivery methods.
+
+## 3. Implement Import Routes [pending]
+### Dependencies: None
+### Description: Create data import endpoints
+### Details:
+Create import.routes.ts with file upload handling, validation, parsing, and import processing for daily reports and bulk data. Include progress tracking.
+
+## 4. Enhance Health Check Routes [pending]
+### Dependencies: None
+### Description: Improve health check endpoints
+### Details:
+Enhance existing health check with comprehensive system checks including database connectivity, filesystem access, memory usage, dependency services, and performance metrics.
+

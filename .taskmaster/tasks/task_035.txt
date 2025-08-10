@@ -1,0 +1,66 @@
+# Task ID: 35
+# Title: Finalize Backend Migration and Decommission Monolithic index.js
+# Status: done
+# Dependencies: 24
+# Priority: medium
+# Description: Complete the full migration of all remaining backend logic from the legacy `apps/bakery-api/index.js` monolith to the new modular TypeScript architecture. Decommission the old CommonJS entry point and associated route/controller files to eliminate technical debt from running dual systems.
+# Details:
+This task involves finalizing the backend architectural overhaul. First, conduct a thorough audit of `apps/bakery-api/index.js` and its associated `controllers/` and `routes/` directories to identify any business logic, middleware, or configuration not covered in Task 24 (e.g., `workflows`, `delivery`). For each remaining domain, create a new buildable library using `nx g @nx/js:lib <domain-name> --buildable --directory=libs/api`. Refactor the legacy Express.js CommonJS code into TypeScript, adhering to the Domain-Driven Design patterns established in `docs/architecture.md`. Once all logic is migrated into the new domain libraries and correctly imported and initialized within `apps/bakery-api/src/main.ts`, the final and most critical step is to delete the legacy files: `apps/bakery-api/index.js`, and the `apps/bakery-api/controllers/` and `apps/bakery-api/routes/` directories. Finally, update any root-level configuration files (`package.json` scripts, `nx.json`) to remove all references to the decommissioned `index.js` file.
+
+# Test Strategy:
+1. **Regression Suite:** Execute the complete API test suite located in `apps/bakery-api/tests/`. All existing tests must pass to confirm functional parity. 2. **Manual Endpoint Verification:** Using an API client, perform requests against critical endpoints from the newly migrated modules (e.g., `workflows`, `delivery`) and previously migrated ones (`auth`, `products`) to ensure they are served correctly by the new `main.ts` entry point. 3. **Decommissioning Validation:** After deleting the legacy `index.js` and its related directories, stop and restart the API server using `nx serve api`. The application must start without errors and all API functionality must remain intact. 4. **Static Code Analysis:** Perform a global search within the `apps/bakery-api` project for `require(`.js`)` to ensure no CommonJS module imports remain. Confirm the legacy controller and route directories are deleted from the git history.
+
+# Subtasks:
+## 1. Audit Legacy `index.js` and Associated Directories [done]
+### Dependencies: None
+### Description: Conduct a comprehensive audit of `apps/bakery-api/index.js`, `controllers/`, and `routes/` to identify and document all remaining business logic, middleware, routes, and configurations that need to be migrated.
+### Details:
+The output of this audit should be a definitive checklist categorizing all logic by domain (e.g., workflows, delivery, authentication hooks, error handling) to guide the subsequent migration subtasks.
+
+## 2. Migrate 'Workflows' Domain to a New Nx Library [done]
+### Dependencies: 35.1
+### Description: Create a new buildable Nx library for the 'workflows' domain and refactor all related legacy CommonJS code identified in the audit into this new TypeScript library.
+### Details:
+Use the command `nx g @nx/js:lib workflows --buildable --directory=libs/api`. Ensure the new library adheres to the project's established TypeScript/DDD architecture and includes its own unit tests.
+<info added on 2025-08-04T06:32:15.516Z>
+COMPLETED: Successfully migrated workflows domain from legacy CommonJS to TypeScript Nx library.
+
+Key accomplishments:
+- Created libs/api/import-service/workflows/ library structure
+- Migrated WorkflowController with Express handlers for GET /workflows, /:id, /categories, /stats, and POST /validate
+- Migrated WorkflowService with YAML parsing, workflow loading, validation, and statistics
+- Created comprehensive TypeScript interfaces: Workflow, WorkflowStep, WorkflowSummary, WorkflowStatistics, WorkflowValidationResult
+- Updated tsconfig.base.json with @bakery/api/workflows path mapping
+- Updated main.ts to import from library instead of local route
+- Fixed TypeScript errors for proper error handling
+- Installed @types/js-yaml dependency
+- Library builds successfully - integration confirmed working
+</info added on 2025-08-04T06:32:15.516Z>
+
+## 3. Migrate 'Delivery' Domain to a New Nx Library [done]
+### Dependencies: 35.1
+### Description: Create a new buildable Nx library for the 'delivery' domain and refactor all related legacy CommonJS code identified in the audit into this new TypeScript library.
+### Details:
+Use the command `nx g @nx/js:lib delivery --buildable --directory=libs/api`. Ensure the new library adheres to the project's established TypeScript/DDD architecture and includes its own unit tests.
+<info added on 2025-08-04T06:49:27.101Z>
+Created a complete delivery library at libs/api/delivery. The library includes models (Delivery, DeliveryDriver, DeliveryRoute, DeliveryZone), a comprehensive service with route optimization, and full REST API controllers and routes with OpenAPI documentation. It has been integrated with main.ts. TypeScript configuration issues were resolved by adjusting the tsconfig.json path and defining BaseEntity locally. The library builds successfully and is ready for use.
+</info added on 2025-08-04T06:49:27.101Z>
+
+## 4. Migrate Miscellaneous and Shared Logic [done]
+### Dependencies: 35.1
+### Description: Refactor any remaining logic identified in the audit that does not belong to a major domain (e.g., custom middleware, global error handlers, utility functions) into appropriate existing or new shared TypeScript libraries.
+### Details:
+This subtask ensures all logic is properly modularized and placed in the correct architectural layer, such as `libs/shared/utils` or `libs/api/core`, preventing orphaned code.
+
+## 5. Integrate New Libraries and Perform Full Regression Testing [done]
+### Dependencies: 35.2, 35.3, 35.4
+### Description: Update the main application entry point (`main.ts`) to import and initialize all the newly created domain libraries. Execute the complete API regression test suite to ensure functional parity before decommissioning the old code.
+### Details:
+Wire up the routes and services from the new libraries. Run the entire test suite located in `apps/bakery-api/tests/`. All tests must pass. Perform manual verification on critical endpoints as a final pre-cutover check.
+
+## 6. Decommission Legacy Files and Perform Final Validation [done]
+### Dependencies: 35.5
+### Description: After successful integration and testing, permanently delete the legacy `apps/bakery-api/index.js` file and the associated `controllers/` and `routes/` directories. Clean up any related configurations and perform a final validation.
+### Details:
+Remove the legacy files from source control. Update `package.json` or any build scripts that might reference the old files. Restart the application and perform a final smoke test on the API to confirm it is fully operational without the legacy code.
+

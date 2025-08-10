@@ -1,0 +1,19 @@
+{
+  "name": "api-staff",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/staff/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/staff",
+        "main": "libs/api/staff/src/index.ts",
+        "tsConfig": "libs/api/staff/tsconfig.lib.json",
+        "assets": ["libs/api/staff/*.md"]
+      }
+    }
+  },
+  "tags": ["scope:api", "type:domain"]
+}

@@ -1,0 +1,11 @@
+# Task ID: 26
+# Title: Create Service to Ingest and Parse Daily Report JSON Files
+# Status: done
+# Dependencies: 18, 14
+# Priority: high
+# Description: Develop a service within the 'reports' micro-frontend to automatically detect, read, and parse daily JSON report files from the `../content/reports/converted` directory. This service will make structured report data available to the application.
+# Details:
+The service logic should be created within the `apps/reports` micro-frontend. First, define TypeScript interfaces in the shared `libs/types` library for the expected JSON structure, including `Transaction`, `ReportItem`, `DailySummary`, `UserPerformance`, and a main `DailyReport` type. The service will use Node.js's `fs` and `path` modules within a server-side context (e.g., an API route like `/api/reports/ingest`) to access the file system and resolve the relative path to `../content/reports/converted`. For file detection, the API route will scan the directory for new files based on their filename (e.g., `YYYY-MM-DD.json`) and parse them. Implement robust error handling for missing files, directory access issues, and malformed JSON.
+
+# Test Strategy:
+Create unit tests for the parsing logic, mocking the `fs` module to test with valid and invalid sample JSON data. Verify that the parser returns correctly structured objects or throws appropriate errors. Create a temporary test page within the `reports` app that triggers the ingestion service. Before running the test, place a sample JSON file in a test `content/reports/converted` directory. The test page should successfully fetch and display key data points (e.g., total transactions) from the file. Manually verify that the service correctly resolves the relative path and can access the files when the application is run via `nx serve`.

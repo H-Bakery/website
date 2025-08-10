@@ -1,0 +1,221 @@
+# Prometheus Alert Rules for Bakery System
+# Version: 1.0.0
+
+groups:
+  - name: bakery_availability
+    interval: 30s
+    rules:
+      # Service down alerts
+      - alert: ServiceDown
+        expr: up == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "Service {{ $labels.job }} is down"
+          description: "{{ $labels.instance }} of job {{ $labels.job }} has been down for more than 2 minutes."
+          runbook_url: "https://wiki.bakery.com/runbooks/service-down"
+
+      # API endpoint health
+      - alert: APIEndpointDown
+        expr: probe_success{job="blackbox"} == 0
+        for: 3m
+        labels:
+          severity: critical
+          team: backend
+        annotations:
+          summary: "API endpoint {{ $labels.instance }} is down"
+          description: "The endpoint {{ $labels.instance }} has been failing health checks for 3 minutes."
+
+      # High error rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+            /
+            sum(rate(http_requests_total[5m])) by (job)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High error rate on {{ $labels.job }}"
+          description: "Error rate is {{ $value | humanizePercentage }} for {{ $labels.job }}"
+
+  - name: bakery_performance
+    interval: 30s
+    rules:
+      # High response time
+      - alert: HighResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket[5m])) by (job, le)
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High response time on {{ $labels.job }}"
+          description: "95th percentile response time is {{ $value }}s for {{ $labels.job }}"
+
+      # Slow database queries
+      - alert: SlowDatabaseQueries
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(database_query_duration_seconds_bucket[5m])) by (le)
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "Slow database queries detected"
+          description: "95th percentile query time is {{ $value }}s"
+
+  - name: bakery_resources
+    interval: 30s
+    rules:
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by (instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: "CPU usage is {{ $value }}% on {{ $labels.instance }}"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 10m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: "Memory usage is {{ $value }}% on {{ $labels.instance }}"
+
+      # Low disk space
+      - alert: LowDiskSpace
+        expr: |
+          (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) * 100 < 15
+        for: 5m
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Only {{ $value }}% disk space remaining on {{ $labels.instance }}"
+
+      # PM2 process memory
+      - alert: PM2HighMemory
+        expr: pm2_memory_bytes > 800000000  # 800MB
+        for: 5m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "PM2 process {{ $labels.name }} using high memory"
+          description: "Process {{ $labels.name }} is using {{ $value | humanize }}B of memory"
+
+  - name: bakery_business
+    interval: 60s
+    rules:
+      # Low order rate
+      - alert: LowOrderRate
+        expr: |
+          sum(rate(orders_total[1h])) < 0.5
+        for: 30m
+        labels:
+          severity: info
+          team: business
+        annotations:
+          summary: "Low order rate detected"
+          description: "Order rate is {{ $value }} orders/hour, below normal threshold"
+
+      # Failed payments
+      - alert: HighPaymentFailureRate
+        expr: |
+          (
+            sum(rate(payments_failed_total[15m]))
+            /
+            sum(rate(payments_total[15m]))
+          ) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+          team: backend
+        annotations:
+          summary: "High payment failure rate"
+          description: "Payment failure rate is {{ $value | humanizePercentage }}"
+
+      # Inventory alerts
+      - alert: LowInventory
+        expr: inventory_items_total < 10
+        for: 30m
+        labels:
+          severity: info
+          team: operations
+        annotations:
+          summary: "Low inventory for {{ $labels.product }}"
+          description: "Only {{ $value }} items remaining for {{ $labels.product }}"
+
+  - name: bakery_security
+    interval: 30s
+    rules:
+      # Failed login attempts
+      - alert: HighFailedLoginRate
+        expr: |
+          sum(rate(auth_login_failed_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "High rate of failed login attempts"
+          description: "{{ $value }} failed login attempts per second"
+
+      # Suspicious activity
+      - alert: SuspiciousRequestPattern
+        expr: |
+          sum(rate(http_requests_total{status="403"}[5m])) by (ip) > 50
+        for: 5m
+        labels:
+          severity: warning
+          team: security
+        annotations:
+          summary: "Suspicious request pattern from {{ $labels.ip }}"
+          description: "{{ $value }} forbidden requests per second from {{ $labels.ip }}"
+
+  - name: bakery_ssl
+    interval: 86400s  # Once per day
+    rules:
+      # SSL certificate expiry
+      - alert: SSLCertificateExpiringSoon
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < 30 * 24 * 60 * 60
+        for: 1h
+        labels:
+          severity: warning
+          team: devops
+        annotations:
+          summary: "SSL certificate expiring soon for {{ $labels.instance }}"
+          description: "SSL certificate expires in {{ $value | humanizeDuration }}"
+
+      - alert: SSLCertificateExpiryCritical
+        expr: |
+          probe_ssl_earliest_cert_expiry - time() < 7 * 24 * 60 * 60
+        for: 1h
+        labels:
+          severity: critical
+          team: devops
+        annotations:
+          summary: "SSL certificate expiring critically soon for {{ $labels.instance }}"
+          description: "SSL certificate expires in {{ $value | humanizeDuration }}!"

@@ -1,0 +1,11 @@
+# Task ID: 23
+# Title: Document Backend API with OpenAPI/Swagger
+# Status: done
+# Dependencies: 1, 4, 7, 8, 15
+# Priority: medium
+# Description: Create and integrate OpenAPI (Swagger) specifications for the backend API to provide interactive documentation, making it easier for developers to understand and consume the endpoints.
+# Details:
+Integrate OpenAPI documentation into the main backend application (`apps/api`). Install `swagger-jsdoc` and `swagger-ui-express` packages. Configure `swagger-jsdoc` to parse JSDoc comments from the API route files. Set up a new endpoint, `/api-docs`, in the Express application to serve the interactive Swagger UI. Systematically add OpenAPI-compliant JSDoc annotations to all existing API endpoints, including those for staff management (Task 7), recipes (Task 8), and dashboard analytics (Task 4). The documentation for each endpoint should clearly define its path, method, parameters, request body, and possible response schemas, including error responses. Special attention should be given to documenting the JWT-based authentication mechanism (from Task 1) by defining a security scheme.
+
+# Test Strategy:
+After implementing the changes, start the backend API server. Navigate to the `/api-docs` endpoint in a web browser and verify that the Swagger UI loads correctly. Confirm that all major API sections (e.g., staff, recipes, dashboard) and their respective endpoints are listed. Check that the schemas for models like 'User' or 'Order' are defined and referenced correctly. Use the 'Try it out' feature in the UI to execute a GET request against a protected endpoint and verify it returns a 401/403 Unauthorized error. Then, use the 'Authorize' feature to input a valid JWT and re-run the request to confirm it succeeds and returns the expected data. Validate that the documented request/response bodies match the actual API behavior.

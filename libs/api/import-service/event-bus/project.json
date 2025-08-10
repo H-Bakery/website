@@ -1,0 +1,27 @@
+{
+  "name": "event-bus",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/event-bus/src",
+  "projectType": "library",
+  "tags": ["scope:api", "type:util"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/event-bus",
+        "tsConfig": "libs/api/event-bus/tsconfig.lib.json",
+        "packageJson": "libs/api/event-bus/package.json",
+        "main": "libs/api/event-bus/src/index.ts",
+        "assets": ["libs/api/event-bus/*.md"]
+      }
+    },
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/api/event-bus/jest.config.ts"
+      }
+    }
+  }
+}

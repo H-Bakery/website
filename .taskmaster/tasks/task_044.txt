@@ -1,0 +1,11 @@
+# Task ID: 44
+# Title: Migrate Product Management Enhancements
+# Status: done
+# Dependencies: None
+# Priority: low
+# Description: Create product subdirectories (new, [id]) in apps/bakery-management/src/app/admin/products/. Copy src/app/admin/products/new/page.tsx, src/app/admin/products/[id]/page.tsx and ProductEditClient.tsx. Copy ProductFilters and ProductTable components to feature library.
+# Details:
+
+
+# Test Strategy:
+

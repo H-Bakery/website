@@ -1,0 +1,60 @@
+# Task ID: 16
+# Title: Implement Event-Driven Communication Between API Modules
+# Status: done
+# Dependencies: 14, 15
+# Priority: high
+# Description: Introduce an event bus system to enable asynchronous, decoupled communication between the domain libraries (e.g., orders, inventory) within the modular monolith API, replacing direct synchronous calls.
+# Details:
+First, select and install a lightweight, in-process event emitter library like `eventemitter3`. Create a new shared library, `libs/api/event-bus`, to instantiate and export a singleton instance of the event emitter, ensuring all modules use the same bus. Second, define event contracts using TypeScript interfaces within the `libs/types` library (from Task #14). For example, create an `OrderCreatedEvent` interface. Finally, refactor existing module interactions. As an initial use case, modify the `orders` module to publish an `ORDER_CREATED` event when a new order is successfully created. The `inventory` module should then subscribe to this event and execute its logic to decrement stock levels, thus decoupling it from the `orders` module.
+
+# Test Strategy:
+1. **Unit Tests**: Create unit tests for the publishing module (e.g., `orders` service) to verify that `eventBus.emit` is called with the correct event name and payload. Create separate unit tests for the subscribing module (e.g., `inventory` service) to ensure its handler logic executes correctly when a mock event is received. 2. **Integration Test**: Write an end-to-end test that uses an API client to call the endpoint for creating an order. After the call succeeds, assert that the inventory levels for the ordered items have been correctly updated in the database, confirming the event was successfully published and consumed.
+
+# Subtasks:
+## 1. Create and Configure the Shared Event Bus Library [done]
+### Dependencies: None
+### Description: Set up the foundational event bus module. This involves creating a new shared library, installing the necessary event emitter package, and exporting a singleton instance of the event bus to be used across the entire API.
+### Details:
+1. Generate a new shared library using the workspace tools: `nx g @nrwl/node:lib api/event-bus`.
+2. Install the `eventemitter3` package as a dependency for the new library.
+3. Inside `libs/api/event-bus/src/lib/`, create a file (e.g., `event-bus.service.ts`) that instantiates `EventEmitter3` and exports it as a singleton constant (e.g., `export const eventBus = new EventEmitter3();`).
+4. Ensure the library's `index.ts` exports this singleton instance so other modules can import it.
+
+## 2. Define Event Contracts in the Types Library [done]
+### Dependencies: 16.1
+### Description: Establish strongly-typed contracts for events that will be passed through the bus. This ensures consistency and type safety between publishing and subscribing modules. Start with the `OrderCreatedEvent`.
+### Details:
+1. Navigate to the existing `libs/types` library.
+2. Create a new file, `src/lib/events.ts`.
+3. In this file, define a string enum for event names, starting with `OrderEvents { CREATED = 'order.created' }`.
+4. Define a TypeScript interface for the event payload, e.g., `interface OrderCreatedEvent { orderId: string; items: { productId: string; quantity: number }[]; }`.
+5. Export both the enum and the interface from the library's main `index.ts` file.
+
+## 3. Refactor Orders Module to Publish 'OrderCreated' Event [done]
+### Dependencies: 16.1, 16.2
+### Description: Modify the order creation logic to emit an event on the event bus upon successful order creation, instead of directly calling the inventory service.
+### Details:
+1. In the `orders` module's service file (e.g., `orders.service.ts`), import the `eventBus` singleton from `@<workspace>/api/event-bus`.
+2. Import the `OrderEvents` enum and `OrderCreatedEvent` interface from `@<workspace>/types`.
+3. Locate the function responsible for creating an order.
+4. After the order is successfully saved to the database, use the event bus to publish the event: `eventBus.emit(OrderEvents.CREATED, payload);`, where `payload` is an object matching the `OrderCreatedEvent` interface.
+
+## 4. Refactor Inventory Module to Subscribe to 'OrderCreated' Event [done]
+### Dependencies: 16.1, 16.2
+### Description: Modify the inventory module to listen for the `OrderCreated` event and trigger its stock deduction logic accordingly. This will be the consumer side of the new event-driven flow.
+### Details:
+1. In the `inventory` module's service file (e.g., `inventory.service.ts`), import the `eventBus` singleton and the event contracts (`OrderEvents`, `OrderCreatedEvent`).
+2. Create a new method to handle the event, e.g., `handleOrderCreated(payload: OrderCreatedEvent)`. This method will contain the existing logic for decrementing stock.
+3. In the service's constructor or an initialization method, set up the listener: `eventBus.on(OrderEvents.CREATED, this.handleOrderCreated.bind(this));`.
+4. Ensure the stock decrement logic now uses the data from the event payload.
+
+## 5. Remove Direct Synchronous Call from Orders to Inventory [done]
+### Dependencies: 16.3, 16.4
+### Description: Complete the decoupling process by removing the old, direct method call from the `orders` service to the `inventory` service. This final step ensures the modules are only connected via the event bus.
+### Details:
+1. Go back to the `orders` service (`orders.service.ts`).
+2. Remove the import statement for the `inventory` service.
+3. Delete the line of code that makes the direct, synchronous call to the inventory service's stock decrement method.
+4. Remove the `inventory` service from the `orders` module's dependencies/providers if it was injected.
+5. Run end-to-end tests to confirm that creating an order still results in inventory being correctly decremented, proving the event-driven flow is working.
+

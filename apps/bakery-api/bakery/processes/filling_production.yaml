@@ -1,0 +1,40 @@
+# Fillings Production Workflow
+name: filling_production
+version: 1.0
+fillings:
+  - name: nuss_fuellung
+    ingredients:
+      - 2kg Haselnüsse (gemahlen)
+      - 1kg Zucker
+      - 500g Butter
+      - 4 Eier
+      - 200ml Rum (optional)
+    yield: 3.5kg
+    preparation_time: 25m
+
+  - name: schoko_fuellung
+    ingredients:
+      - 1.5kg Schokolade (Zartbitter)
+      - 500g Butter
+      - 500g Zucker
+      - 200g Kakaopulver
+    yield: 2.7kg
+    preparation_time: 20m
+
+  - name: pudding_fuellung
+    ingredients:
+      - 2L Milch
+      - 8 Päckchen Vanillepuddingpulver
+      - 500g Zucker
+      - 4 Eigelb
+    yield: 2.5kg
+    preparation_time: 30m
+
+  - name: marzipan_fuellung
+    ingredients:
+      - 2kg Marzipanrohmasse
+      - 500g Puderzucker
+      - 200g Butter
+      - 100ml Amaretto (optional)
+    yield: 2.7kg
+    preparation_time: 15m

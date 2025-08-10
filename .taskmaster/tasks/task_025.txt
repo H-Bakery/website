@@ -1,0 +1,43 @@
+# Task ID: 25
+# Title: Finalize and Productionize Bakery Landing Page
+# Status: done
+# Dependencies: 17, 19
+# Priority: high
+# Description: Make the `bakery-landing` application production-ready by resolving dependency issues, replacing placeholder content with final assets, and implementing production features like SEO, error handling, and performance optimization.
+# Details:
+This task involves finalizing the static landing page. First, resolve any build failures by correctly integrating the shared UI library and refactoring components to use it, ensuring a consistent design system. Second, replace all placeholder content, including images, logos, and text, with professional, high-quality assets provided by the design team. Create a root-level React Error Boundary in `_app.tsx` to catch rendering errors and display a user-friendly fallback UI. For SEO, use `next/head` to implement essential meta tags (title, description) and Open Graph tags (og:title, og:description, og:image) on the main page. Finally, optimize performance by ensuring all images are served efficiently using the `next/image` component and verifying the static build is clean and minimal.
+
+# Test Strategy:
+1. Run `nx build bakery-landing` and `nx export bakery-landing`. The commands must complete successfully without any errors, confirming dependency issues are resolved. 2. Serve the exported static site locally using a tool like `npx serve dist/apps/bakery-landing/out`. 3. Visually inspect the entire page to confirm all placeholder images and text have been replaced with final assets. 4. Use browser developer tools to inspect the page's `<head>` element and verify that the `title`, `meta description`, and Open Graph tags are present and correctly populated. 5. To test error handling, temporarily introduce a rendering error in a component and confirm that the application-wide error boundary displays a fallback UI instead of crashing. 6. Run a Lighthouse audit in Chrome DevTools on the locally served page and check for high scores in Performance and SEO.
+
+# Subtasks:
+## 1. Resolve Build and Dependency Issues [done]
+### Dependencies: None
+### Description: Fix any build failures and dependency conflicts, particularly with the shared UI library, to ensure the `bakery-landing` application can be successfully built and exported.
+### Details:
+Refactor components to correctly use the shared UI library. Run `nx build bakery-landing` and `nx export bakery-landing` to validate that the build process completes without errors. This step is crucial for unblocking further development and deployment.
+
+## 2. Replace Placeholder Content with Final Assets [done]
+### Dependencies: 25.1
+### Description: Update the landing page by replacing all placeholder text, images, and logos with the final, high-quality assets provided by the design team.
+### Details:
+Iterate through all components of the landing page. Replace lorem ipsum text with final copy. Swap out placeholder images and logos with the optimized assets from the design team. Ensure all content is professional and production-ready.
+
+## 3. Implement Root-Level Error Boundary [done]
+### Dependencies: 25.1
+### Description: Create and implement a root-level React Error Boundary in `_app.tsx` to gracefully handle rendering errors and prevent the entire application from crashing.
+### Details:
+Create a new class component that implements `getDerivedStateFromError` and `componentDidCatch`. This component will render a user-friendly fallback UI when a JavaScript error occurs in a child component. Wrap the main `<Component {...pageProps} />` in `pages/_app.tsx` with this new Error Boundary.
+
+## 4. Add SEO and Open Graph Meta Tags [done]
+### Dependencies: 25.2
+### Description: Enhance the landing page for search engines and social media sharing by adding relevant SEO and Open Graph meta tags using Next.js's `Head` component.
+### Details:
+In the main landing page component, use the `next/head` component to add `<title>`, `<meta name='description'>`, and relevant keywords. Also include Open Graph tags like `og:title`, `og:description`, `og:image`, and `og:url` to control how the page appears when shared on social platforms.
+
+## 5. Convert <img> Tags to Optimized next/image [done]
+### Dependencies: 25.2
+### Description: Improve performance and Core Web Vitals by converting all standard `<img>` tags on the landing page to Next.js's optimized `next/image` component.
+### Details:
+Audit the entire `bakery-landing` application for `<img>` tags. Replace each one with the `<Image />` component from `next/image`. Configure the `width`, `height`, and `alt` props correctly. Leverage features like lazy loading and image optimization to reduce initial page load time.
+

@@ -1,0 +1,184 @@
+groups:
+  - name: bakery-api
+    interval: 30s
+    rules:
+      # High error rate
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{job="bakery-api",status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total{job="bakery-api"}[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: bakery-api
+        annotations:
+          summary: "High error rate detected"
+          description: "Error rate is {{ $value | humanizePercentage }} for the last 5 minutes"
+
+      # Slow response time
+      - alert: SlowResponseTime
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{job="bakery-api"}[5m])) by (le)
+          ) > 1
+        for: 10m
+        labels:
+          severity: warning
+          service: bakery-api
+        annotations:
+          summary: "Slow API response times"
+          description: "95th percentile response time is {{ $value }}s"
+
+      # Service down
+      - alert: ServiceDown
+        expr: up{job="bakery-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          service: bakery-api
+        annotations:
+          summary: "Bakery API is down"
+          description: "Bakery API has been down for more than 1 minute"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: |
+          (
+            process_resident_memory_bytes{job="bakery-api"} / 1024 / 1024 / 1024
+          ) > 1
+        for: 5m
+        labels:
+          severity: warning
+          service: bakery-api
+        annotations:
+          summary: "High memory usage"
+          description: "Memory usage is {{ $value }}GB"
+
+  - name: bakery-business
+    interval: 60s
+    rules:
+      # Low inventory
+      - alert: LowInventory
+        expr: low_inventory_items_total{job="bakery-api"} > 5
+        for: 30m
+        labels:
+          severity: warning
+          service: bakery-api
+          type: business
+        annotations:
+          summary: "Multiple items with low inventory"
+          description: "{{ $value }} items are below their low stock threshold"
+
+      # No orders received
+      - alert: NoOrdersReceived
+        expr: |
+          increase(orders_total{job="bakery-api"}[1h]) == 0
+        for: 2h
+        labels:
+          severity: warning
+          service: bakery-api
+          type: business
+        annotations:
+          summary: "No orders received"
+          description: "No orders have been received in the last 2 hours"
+
+      # High order failure rate
+      - alert: HighOrderFailureRate
+        expr: |
+          (
+            sum(increase(orders_total{job="bakery-api",status="failed"}[1h]))
+            /
+            sum(increase(orders_total{job="bakery-api"}[1h]))
+          ) > 0.1
+        for: 30m
+        labels:
+          severity: warning
+          service: bakery-api
+          type: business
+        annotations:
+          summary: "High order failure rate"
+          description: "{{ $value | humanizePercentage }} of orders are failing"
+
+  - name: bakery-security
+    interval: 30s
+    rules:
+      # High authentication failure rate
+      - alert: HighAuthFailureRate
+        expr: |
+          (
+            sum(rate(authentication_attempts_total{job="bakery-api",result="failure"}[5m]))
+            /
+            sum(rate(authentication_attempts_total{job="bakery-api"}[5m]))
+          ) > 0.3
+        for: 5m
+        labels:
+          severity: critical
+          service: bakery-api
+          type: security
+        annotations:
+          summary: "High authentication failure rate"
+          description: "{{ $value | humanizePercentage }} of authentication attempts are failing - possible brute force attack"
+
+      # Unusual traffic spike
+      - alert: TrafficSpike
+        expr: |
+          (
+            sum(rate(http_requests_total{job="bakery-api"}[5m]))
+            /
+            sum(rate(http_requests_total{job="bakery-api"}[1h] offset 1h))
+          ) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: bakery-api
+          type: security
+        annotations:
+          summary: "Unusual traffic spike detected"
+          description: "Traffic is {{ $value }}x higher than normal"
+
+  - name: bakery-infrastructure
+    interval: 30s
+    rules:
+      # Database connection pool exhausted
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          database_connection_pool_size{job="bakery-api",state="idle"} == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: bakery-api
+          component: database
+        annotations:
+          summary: "Database connection pool exhausted"
+          description: "No idle database connections available"
+
+      # Disk space low
+      - alert: DiskSpaceLow
+        expr: |
+          (
+            node_filesystem_avail_bytes{mountpoint="/"}
+            /
+            node_filesystem_size_bytes{mountpoint="/"}
+          ) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: "Low disk space"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 10m
+        labels:
+          severity: warning
+          service: infrastructure
+        annotations:
+          summary: "High CPU usage"
+          description: "CPU usage is {{ $value }}%"

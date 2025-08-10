@@ -1,0 +1,82 @@
+[
+  {
+    "key": "production.start",
+    "name": "Production Start",
+    "category": "production",
+    "defaultTitle": {
+      "de": "Produktion gestartet",
+      "en": "Production Started"
+    },
+    "defaultMessage": {
+      "de": "Die {{productionType}}-Produktion für {{date}} wurde gestartet. Geplante Artikel: {{itemCount}}",
+      "en": "{{productionType}} production for {{date}} has started. Planned items: {{itemCount}}"
+    },
+    "variables": ["productionType", "date", "itemCount"],
+    "defaultPriority": "low",
+    "defaultType": "info"
+  },
+  {
+    "key": "production.complete",
+    "name": "Production Complete",
+    "category": "production",
+    "defaultTitle": {
+      "de": "Produktion abgeschlossen",
+      "en": "Production Complete"
+    },
+    "defaultMessage": {
+      "de": "{{batchName}} ist fertig. {{quantity}} {{unit}} produziert. Dauer: {{duration}} Minuten.",
+      "en": "{{batchName}} is complete. {{quantity}} {{unit}} produced. Duration: {{duration}} minutes."
+    },
+    "variables": ["batchName", "quantity", "unit", "duration"],
+    "defaultPriority": "low",
+    "defaultType": "success"
+  },
+  {
+    "key": "production.delay",
+    "name": "Production Delay",
+    "category": "production",
+    "defaultTitle": {
+      "de": "Produktionsverzögerung",
+      "en": "Production Delay"
+    },
+    "defaultMessage": {
+      "de": "{{productionArea}} hat eine Verzögerung von {{delayMinutes}} Minuten. Grund: {{reason}}. Geschätzte neue Fertigstellung: {{newTime}}",
+      "en": "{{productionArea}} is delayed by {{delayMinutes}} minutes. Reason: {{reason}}. New estimated completion: {{newTime}}"
+    },
+    "variables": ["productionArea", "delayMinutes", "reason", "newTime"],
+    "defaultPriority": "high",
+    "defaultType": "warning"
+  },
+  {
+    "key": "production.quality_check",
+    "name": "Quality Check Required",
+    "category": "production",
+    "defaultTitle": {
+      "de": "Qualitätskontrolle erforderlich",
+      "en": "Quality Check Required"
+    },
+    "defaultMessage": {
+      "de": "{{productName}} benötigt eine Qualitätskontrolle. Charge: {{batchNumber}}. Bitte überprüfen Sie {{checkPoints}}.",
+      "en": "{{productName}} requires quality check. Batch: {{batchNumber}}. Please verify {{checkPoints}}."
+    },
+    "variables": ["productName", "batchNumber", "checkPoints"],
+    "defaultPriority": "medium",
+    "defaultType": "warning"
+  },
+  {
+    "key": "production.baking_list",
+    "name": "Baking List Generated",
+    "category": "production",
+    "defaultTitle": {
+      "de": "Backliste erstellt",
+      "en": "Baking List Generated"
+    },
+    "defaultMessage": {
+      "de": "Die Backliste für {{date}} wurde erstellt. {{totalItems}} verschiedene Produkte, {{totalQuantity}} Stück insgesamt.",
+      "en": "Baking list for {{date}} has been generated. {{totalItems}} different products, {{totalQuantity}} pieces total."
+    },
+    "variables": ["date", "totalItems", "totalQuantity"],
+    "defaultPriority": "medium",
+    "defaultType": "info"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "name": "api-chat",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/chat/src",
+  "projectType": "library",
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/libs/api/chat",
+        "main": "libs/api/chat/src/index.ts",
+        "tsConfig": "libs/api/chat/tsconfig.lib.json",
+        "assets": ["libs/api/chat/*.md"]
+      }
+    }
+  },
+  "tags": ["scope:api", "type:domain"]
+}

@@ -1,0 +1,6 @@
+id,name,category,image,price
+1,"Test Bread 500g",Brot,"/assets/images/products/test-bread.svg",2.5
+2,"Test Roll",Brötchen,"/assets/images/products/test-roll.svg",0.8
+3,"Test Cake",Kuchen,"/assets/images/products/test-cake.svg",18.0
+4,"Test Pastry",Teilchen,"images/test-pastry.jpg",2.0
+5,"Test Baguette",Baguette,"/assets/images/products/test-baguette.svg",3.4
