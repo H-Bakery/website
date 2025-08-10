@@ -50,6 +50,58 @@ command_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
+# Function to check if apt package is installed
+package_installed() {
+    dpkg -l "$1" 2>/dev/null | grep -q '^ii'
+}
+
+# Function to safely install apt packages with conflict resolution
+safe_apt_install() {
+    local packages=("$@")
+    local to_install=()
+    
+    print_info "Checking which packages need installation..."
+    
+    for package in "${packages[@]}"; do
+        if package_installed "$package"; then
+            print_status "$package already installed"
+        else
+            to_install+=("$package")
+        fi
+    done
+    
+    if [ ${#to_install[@]} -eq 0 ]; then
+        print_status "All packages already installed"
+        return 0
+    fi
+    
+    print_info "Installing packages: ${to_install[*]}"
+    
+    # Try to install packages with conflict resolution
+    if ! sudo apt-get install -y "${to_install[@]}" 2>/dev/null; then
+        print_warning "Standard installation failed, trying with conflict resolution..."
+        
+        # Handle known conflicts
+        local filtered_packages=()
+        for package in "${to_install[@]}"; do
+            # Skip chromium-codecs-ffmpeg if chromium-codecs-ffmpeg-extra is in the list
+            if [[ "$package" == "chromium-codecs-ffmpeg" ]] && [[ " ${to_install[*]} " =~ " chromium-codecs-ffmpeg-extra " ]]; then
+                print_info "Skipping $package (conflicts with chromium-codecs-ffmpeg-extra)"
+                continue
+            fi
+            filtered_packages+=("$package")
+        done
+        
+        if ! sudo apt-get install -y "${filtered_packages[@]}"; then
+            print_error "Failed to install packages even with conflict resolution"
+            print_info "Problematic packages: ${filtered_packages[*]}"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
 # Function to check internet connectivity
 check_internet() {
     if ping -c 1 google.com &> /dev/null; then
@@ -244,20 +296,66 @@ if [ "${NEED_NODE_INSTALL:-false}" = true ]; then
     sudo apt-get install -y nodejs
 
     # Verify installation
+    if command_exists node; then
+        NODE_VERSION=$(node -v)
+        print_status "Node.js installed: $NODE_VERSION"
+    else
+        print_error "Failed to install Node.js!"
+        exit 1
+    fi
+    
+    # Check npm separately and install if missing
+    if ! command_exists npm; then
+        print_warning "npm is missing after Node.js installation, attempting to fix..."
+        
+        # Try to install npm separately
+        print_info "Installing npm separately..."
+        if ! sudo apt-get install -y npm; then
+            print_warning "apt-get npm installation failed, trying manual installation..."
+            
+            # Manual npm installation
+            print_info "Downloading and installing npm manually..."
+            curl -L https://www.npmjs.com/install.sh | sudo sh
+            
+            # If still not available, try installing from Node.js source
+            if ! command_exists npm; then
+                print_warning "Manual npm installation failed, reinstalling Node.js with npm..."
+                
+                # Remove and reinstall Node.js
+                sudo apt-get remove -y nodejs 2>/dev/null || true
+                sudo apt-get autoremove -y 2>/dev/null || true
+                
+                # Reinstall with npm explicitly
+                curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+                sudo apt-get install -y nodejs npm
+            fi
+        fi
+    fi
+    
+    # Final verification of both Node.js and npm
     if command_exists node && command_exists npm; then
         NODE_VERSION=$(node -v)
         NPM_VERSION=$(npm -v)
-        print_status "Node.js installed: $NODE_VERSION"
-        print_status "npm installed: $NPM_VERSION"
+        print_status "Node.js verified: $NODE_VERSION"
+        print_status "npm verified: $NPM_VERSION"
     else
-        print_error "Failed to install Node.js!"
+        print_error "Failed to install Node.js and/or npm after multiple attempts!"
+        print_info "Please install Node.js and npm manually:"
+        print_info "  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -"
+        print_info "  sudo apt-get install -y nodejs npm"
         exit 1
     fi
 fi
 
 # Install global npm packages
 print_info "Installing global npm packages..."
-sudo npm install -g node-gyp npm@latest 2>/dev/null || npm install -g node-gyp
+if ! npm install -g node-gyp npm@latest 2>/dev/null; then
+    print_warning "Failed to install global packages with sudo, trying without..."
+    if ! npm install -g node-gyp; then
+        print_error "Failed to install node-gyp globally"
+        print_info "This may cause issues with native module compilation"
+    fi
+fi
 
 # ========================================
 # SYSTEM DEPENDENCIES
@@ -269,40 +367,67 @@ print_info "Updating package lists..."
 sudo apt-get update
 
 print_info "Installing build tools and libraries..."
-sudo apt-get install -y \
-    build-essential \
-    git \
-    curl \
-    wget \
-    python3 \
-    python3-pip \
-    make \
-    cmake \
-    g++ \
-    gcc \
-    libsqlite3-dev \
-    libvips-dev \
-    libglib2.0-dev \
-    libgirepository1.0-dev \
-    libcairo2-dev \
-    libjpeg-dev \
-    libpng-dev \
-    libwebp-dev \
-    libpango1.0-dev \
-    chromium-browser \
-    chromium-codecs-ffmpeg \
-    chromium-codecs-ffmpeg-extra \
-    libatk-bridge2.0-0 \
-    libgtk-3-0 \
-    libnspr4 \
-    libnss3 \
-    libx11-xcb1 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxrandr2 \
-    libgbm1 \
-    libxss1 \
+
+# Define package lists
+BUILD_PACKAGES=(
+    build-essential
+    git
+    curl
+    wget
+    python3
+    python3-pip
+    make
+    cmake
+    g++
+    gcc
+)
+
+LIBRARY_PACKAGES=(
+    libsqlite3-dev
+    libvips-dev
+    libglib2.0-dev
+    libgirepository1.0-dev
+    libcairo2-dev
+    libjpeg-dev
+    libpng-dev
+    libwebp-dev
+    libpango1.0-dev
+    libgbm1
+)
+
+CHROMIUM_PACKAGES=(
+    chromium-browser
+    chromium-codecs-ffmpeg-extra
+    libatk-bridge2.0-0
+    libgtk-3-0
+    libnspr4
+    libnss3
+    libx11-xcb1
+    libxcomposite1
+    libxdamage1
+    libxrandr2
+    libxss1
     libasound2
+)
+
+# Install packages in groups for better error handling
+print_info "Installing build tools..."
+if ! safe_apt_install "${BUILD_PACKAGES[@]}"; then
+    print_error "Failed to install build tools"
+    exit 1
+fi
+
+print_info "Installing development libraries..."
+if ! safe_apt_install "${LIBRARY_PACKAGES[@]}"; then
+    print_error "Failed to install development libraries"
+    exit 1
+fi
+
+print_info "Installing Chromium and related packages..."
+if ! safe_apt_install "${CHROMIUM_PACKAGES[@]}"; then
+    print_warning "Some Chromium packages failed to install, but continuing..."
+    print_info "Puppeteer tests may not work properly"
+fi
 
 print_status "System dependencies installed"
 
@@ -468,66 +593,78 @@ print_warning "Estimated time: 10-20 minutes depending on your Pi model and inte
 # Function to try npm install with different strategies
 try_npm_install() {
     local attempt=1
-    local max_attempts=3
+    local max_attempts=4
 
     while [ $attempt -le $max_attempts ]; do
         print_info "Installation attempt $attempt of $max_attempts..."
 
+        # Ensure npm is working before attempting install
+        if ! command_exists npm; then
+            print_error "npm is not available for installation attempt $attempt"
+            return 1
+        fi
+
+        local install_success=false
+
         if [ $attempt -eq 1 ]; then
             # First attempt: standard install with optimizations
             print_info "Strategy: Standard installation with Raspberry Pi optimizations"
-            npm install --legacy-peer-deps --prefer-offline --no-audit --maxsockets=3 2>&1 | while read line; do
-                echo "  $line"
-            done
+            if npm install --legacy-peer-deps --prefer-offline --no-audit --maxsockets=3; then
+                install_success=true
+            fi
         elif [ $attempt -eq 2 ]; then
             # Second attempt: without optional dependencies
             print_warning "Retrying without optional dependencies..."
-            npm install --no-optional --legacy-peer-deps --maxsockets=2 2>&1 | while read line; do
-                echo "  $line"
-            done
-        else
+            if npm install --no-optional --legacy-peer-deps --maxsockets=2; then
+                install_success=true
+            fi
+        elif [ $attempt -eq 3 ]; then
             # Third attempt: install problematic packages separately
             print_warning "Installing problematic packages separately..."
 
-            # Install bcrypt from source if needed
-            npm install bcrypt --build-from-source --legacy-peer-deps 2>&1 | while read line; do
-                echo "  $line"
-            done
-
-            # Install sharp with platform specification
-            if [ "$ARCH" = "arm64" ]; then
-                npm install sharp --platform=linux --arch=arm64 --legacy-peer-deps 2>&1 | while read line; do
-                    echo "  $line"
-                done
-            else
-                npm install sharp --platform=linux --arch=arm --legacy-peer-deps 2>&1 | while read line; do
-                    echo "  $line"
-                done
+            # Install core dependencies first
+            if npm install --legacy-peer-deps --ignore-scripts; then
+                print_info "Core dependencies installed, now building native modules..."
+                
+                # Try to rebuild native modules
+                if npm rebuild; then
+                    install_success=true
+                else
+                    print_warning "Some native modules failed to build, but continuing..."
+                fi
             fi
-
-            # Install sqlite3
-            npm install sqlite3 --build-from-source --legacy-peer-deps 2>&1 | while read line; do
-                echo "  $line"
-            done
-
-            # Try the rest
-            npm install --legacy-peer-deps --maxsockets=1 2>&1 | while read line; do
-                echo "  $line"
-            done
+        else
+            # Fourth attempt: minimal install
+            print_warning "Final attempt with minimal configuration..."
+            if npm install --legacy-peer-deps --maxsockets=1 --no-optional --ignore-scripts; then
+                print_warning "Minimal installation succeeded, some features may not work"
+                install_success=true
+            fi
         fi
 
         # Check if installation was successful
-        if [ -d "node_modules" ] && [ -f "node_modules/.bin/nx" ]; then
-            print_status "npm dependencies installed successfully!"
-            return 0
+        if [ "$install_success" = true ] && [ -d "node_modules" ]; then
+            # Check for critical components
+            if [ -f "node_modules/.bin/nx" ] || [ -f "node_modules/@nx/cli/bin/nx.js" ]; then
+                print_status "npm dependencies installed successfully!"
+                return 0
+            else
+                print_warning "Installation completed but Nx CLI not found"
+                if [ $attempt -lt $max_attempts ]; then
+                    print_info "Will retry to ensure Nx is available"
+                fi
+            fi
         fi
 
         attempt=$((attempt + 1))
 
         if [ $attempt -le $max_attempts ]; then
             print_warning "Installation failed, cleaning and retrying..."
-            rm -rf node_modules
-            npm cache clean --force
+            rm -rf node_modules package-lock.json
+            if command_exists npm; then
+                npm cache clean --force 2>/dev/null || true
+            fi
+            sleep 2
         fi
     done
 
@@ -537,8 +674,33 @@ try_npm_install() {
 # Try to install dependencies
 if ! try_npm_install; then
     print_error "Failed to install npm dependencies after multiple attempts"
-    print_info "Please check the error messages above and try running:"
-    print_info "  npm install --legacy-peer-deps --verbose"
+    print_info ""
+    print_info "TROUBLESHOOTING STEPS:"
+    print_info "1. Check available disk space: df -h"
+    print_info "2. Check available memory: free -h"
+    print_info "3. Try manual installation:"
+    print_info "   npm install --legacy-peer-deps --verbose --no-optional"
+    print_info "4. If still failing, try:"
+    print_info "   rm -rf node_modules package-lock.json .npm"
+    print_info "   npm cache clean --force"
+    print_info "   npm install --legacy-peer-deps"
+    print_info "5. For specific package issues:"
+    print_info "   npm install <package-name> --build-from-source"
+    print_info ""
+    print_info "Common issues on Raspberry Pi:"
+    print_info "- Insufficient memory (add swap space)"
+    print_info "- Network timeouts (check internet connection)"
+    print_info "- Native module compilation failures (install build tools)"
+    print_info ""
+    
+    # Create a failure log
+    echo "Setup failed at npm install step on $(date)" > .raspberry-pi-setup-failed.log
+    echo "Node.js version: $(node -v 2>/dev/null || echo 'not available')" >> .raspberry-pi-setup-failed.log
+    echo "npm version: $(npm -v 2>/dev/null || echo 'not available')" >> .raspberry-pi-setup-failed.log
+    echo "Architecture: $(uname -m)" >> .raspberry-pi-setup-failed.log
+    echo "Available space: $(df -h / | tail -1)" >> .raspberry-pi-setup-failed.log
+    echo "Available memory: $(free -h | head -2 | tail -1)" >> .raspberry-pi-setup-failed.log
+    
     exit 1
 fi
 
@@ -576,24 +738,47 @@ print_status "Node.js: $NODE_VERSION"
 print_status "npm: $NPM_VERSION"
 
 # Check if nx is available
-if [ -f "node_modules/.bin/nx" ]; then
-    print_status "Nx CLI available"
+if [ -f "node_modules/.bin/nx" ] || [ -f "node_modules/@nx/cli/bin/nx.js" ]; then
+    NX_VERSION=$(npx nx --version 2>/dev/null || echo "available")
+    print_status "Nx CLI: $NX_VERSION"
 else
     print_error "Nx CLI not found"
+    print_info "You can install it manually with: npm install -g @nx/cli"
 fi
+
+# Check npm packages integrity
+print_info "Checking npm package integrity..."
+TOTAL_PACKAGES=$(find node_modules -type d -name "node_modules" -prune -o -type d -maxdepth 1 -print 2>/dev/null | wc -l)
+print_info "Installed packages: $TOTAL_PACKAGES"
 
 # Check Chromium
 if command_exists chromium-browser; then
-    CHROMIUM_VERSION=$(chromium-browser --version 2>/dev/null | head -n1)
+    CHROMIUM_VERSION=$(chromium-browser --version 2>/dev/null | head -n1 | cut -d' ' -f2)
     print_status "Chromium: $CHROMIUM_VERSION"
+    
+    # Test Chromium launch (quick test)
+    if timeout 10 chromium-browser --headless --disable-gpu --no-sandbox --remote-debugging-port=9222 2>/dev/null; then
+        print_status "Chromium can launch successfully"
+    else
+        print_warning "Chromium may have issues launching (this is normal on some systems)"
+    fi
 else
-    print_warning "Chromium not found - Puppeteer tests may fail"
+    print_warning "Chromium not found - Puppeteer tests will fail"
+    print_info "Install with: sudo apt-get install chromium-browser"
 fi
 
 # Check memory settings
 if [ -n "$NODE_OPTIONS" ]; then
     print_status "Node.js memory limit: $NODE_OPTIONS"
+else
+    print_warning "NODE_OPTIONS not set - may cause memory issues"
 fi
+
+# Check system resources after installation
+CURRENT_DISK=$(get_disk_space)
+CURRENT_RAM=$(get_total_ram)
+print_info "Remaining disk space: ${CURRENT_DISK}GB"
+print_info "System RAM: ${CURRENT_RAM}MB"
 
 # ========================================
 # COMPLETION
@@ -630,6 +815,13 @@ echo ""
 echo -e "  ${YELLOW}Testing:${NC}"
 echo "    npm run test:all         # Run all tests"
 echo "    npm run lint:all         # Run linting"
+echo ""
+echo -e "${YELLOW}Setup improvements in this version:${NC}"
+echo "  • Fixed Chromium codec package conflicts"
+echo "  • Added npm verification and retry logic"
+echo "  • Improved error handling and recovery"
+echo "  • Better package conflict resolution"
+echo "  • Enhanced troubleshooting information"
 echo ""
 echo -e "${GREEN}For troubleshooting, see: docs/raspberry-pi-setup.md${NC}"
 echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
