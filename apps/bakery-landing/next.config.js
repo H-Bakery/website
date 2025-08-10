@@ -68,7 +68,7 @@ const nextConfig = {
     ]
   },
 
-  // Webpack optimizations
+  // Webpack optimizations - simplified for static export
   webpack: (config, { isServer }) => {
     // Exclude API files from static export
     config.module.rules.push({
@@ -76,70 +76,8 @@ const nextConfig = {
       exclude: [/\/apps\/bakery-api\//, /\/libs\/api\//],
     })
 
-    // Optimize chunks
-    if (!isServer) {
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: {
-          chunks: 'all',
-          cacheGroups: {
-            default: false,
-            vendors: false,
-            framework: {
-              name: 'framework',
-              chunks: 'all',
-              test: /(?<!node_modules.*)[\\/]node_modules[\\/](react|react-dom|scheduler|prop-types|use-subscription)[\\/]/,
-              priority: 40,
-              enforce: true,
-            },
-            lib: {
-              test: (module) => {
-                return (
-                  module.size &&
-                  module.size() > 160000 &&
-                  module.identifier &&
-                  /node_modules[/\\]/.test(module.identifier())
-                )
-              },
-              name: (module) => {
-                if (module.identifier) {
-                  const hash = require('crypto').createHash('sha1')
-                  hash.update(module.identifier())
-                  return hash.digest('hex').substring(0, 8)
-                }
-                return 'lib'
-              },
-              priority: 30,
-              minChunks: 1,
-              reuseExistingChunk: true,
-            },
-            commons: {
-              name: 'commons',
-              chunks: 'all',
-              minChunks: 2,
-              priority: 20,
-            },
-            shared: {
-              name: (module, chunks) => {
-                if (chunks && chunks.length > 0) {
-                  return `shared-${require('crypto')
-                    .createHash('sha1')
-                    .update(chunks.reduce((acc, chunk) => acc + chunk.name, ''))
-                    .digest('hex')
-                    .substring(0, 8)}`
-                }
-                return 'shared'
-              },
-              priority: 10,
-              minChunks: 2,
-              reuseExistingChunk: true,
-            },
-          },
-          maxAsyncRequests: 25,
-          maxInitialRequests: 25,
-        },
-      }
-    }
+    // Use Next.js default chunk optimization for static export
+    // The complex splitChunks config was causing Html import issues
 
     return config
   },

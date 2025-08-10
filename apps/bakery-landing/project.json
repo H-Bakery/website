@@ -66,8 +66,8 @@
     "build-static": {
       "executor": "nx:run-commands",
       "options": {
-        "commands": ["nx next:build bakery-landing"],
-        "parallel": false
+        "cwd": "apps/bakery-landing",
+        "command": "NODE_ENV=production npx next build"
       },
       "outputs": ["{projectRoot}/out"],
       "metadata": {
