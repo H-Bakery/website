@@ -81,9 +81,11 @@ const EnhancedCartButton: React.FC = () => {
     if (totalCount > prevCountRef.current) {
       setIsAnimating(true)
       const timer = setTimeout(() => setIsAnimating(false), 1000)
+      prevCountRef.current = totalCount
       return () => clearTimeout(timer)
     }
     prevCountRef.current = totalCount
+    return undefined
   }, [totalCount])
 
   const handleCartClick = () => {

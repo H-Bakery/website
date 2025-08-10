@@ -2,11 +2,11 @@
 
 import React from 'react'
 import { Box, Chip, Container, Grid, Typography } from '@mui/material'
-import Hero from '../../components/Hero'
-import { Product } from '../../types/product'
+import Hero from '../Hero'
+import { Product } from '@bakery/shared/types'
 import { formatter } from '../../utils/formatPrice'
-import Button from '../../components/button/Index'
-import { CartContext } from '../../context/CartContext'
+import Button from '../button'
+import { CartContext } from '@bakery/shared/contexts'
 import Image from 'next/image'
 
 interface ProductDetailProps {
@@ -14,7 +14,8 @@ interface ProductDetailProps {
 }
 
 export default function ProductDetail({ product }: ProductDetailProps) {
-  const { addToCart } = React.useContext(CartContext)
+  const cartContext = React.useContext(CartContext)
+  const addToCart = cartContext?.addToCart
 
   return (
     <Container maxWidth="sm">
@@ -22,7 +23,13 @@ export default function ProductDetail({ product }: ProductDetailProps) {
       <Grid container spacing={2}>
         <Grid item xs={6}>
           <Box sx={styles.image}>
-            <Image src={product?.image} alt={product?.name} />
+            <Image
+              src={product?.image || '/placeholder.png'}
+              alt={product?.name || 'Product'}
+              width={400}
+              height={300}
+              style={{ objectFit: 'contain' }}
+            />
           </Box>
         </Grid>
         <Grid item xs={6}>
@@ -33,7 +40,10 @@ export default function ProductDetail({ product }: ProductDetailProps) {
               {formatter.format(product?.price)}
             </Typography>
           </Box>
-          <Button sx={{ mt: 2 }} onClick={() => addToCart(product)}>
+          <Button
+            sx={{ mt: 2 }}
+            onClick={() => addToCart && addToCart(product)}
+          >
             Zum Warenkorb
           </Button>
         </Grid>

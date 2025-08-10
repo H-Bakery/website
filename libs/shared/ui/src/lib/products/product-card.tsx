@@ -14,14 +14,15 @@ import {
 import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import Image from 'next/image'
 
-import { formatter } from '../../../utils/formatPrice'
-import { CartContext } from '../../../context/CartContext'
-import { Product } from '../../../types/product'
+import { formatter } from '../../utils/formatPrice'
+import { CartContext } from '@bakery/shared/contexts'
+import { Product } from '@bakery/shared/types'
 
 interface Props extends Product {}
 
 const ProductCard: React.FC<Props> = (props) => {
-  const { addToCart } = useContext(CartContext)
+  const cartContext = useContext(CartContext)
+  const addToCart = cartContext?.addToCart
   const router = useRouter()
 
   const handleCardClick = () => {
@@ -37,7 +38,9 @@ const ProductCard: React.FC<Props> = (props) => {
 
   const handleAddToCart = (event: React.MouseEvent) => {
     event.stopPropagation()
-    addToCart(props)
+    if (addToCart) {
+      addToCart(props)
+    }
   }
 
   return (
@@ -54,7 +57,7 @@ const ProductCard: React.FC<Props> = (props) => {
           <Image
             width={200}
             height={150}
-            src={props.image}
+            src={props.image || '/placeholder.png'}
             alt={`Bild von ${props.name}`}
             style={{
               maxWidth: '85%',
