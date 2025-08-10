@@ -2134,7 +2134,7 @@
             "description": "Document all migrated features and APIs",
             "dependencies": [],
             "details": "Update API documentation, create migration guide, document new TypeScript interfaces, and update README files. Include examples and best practices.",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": "Review documentation completeness, verify examples work"
           },
           {
@@ -2147,7 +2147,7 @@
               3
             ],
             "details": "Create a backup branch with legacy code, tag the last commit with legacy, verify all tests pass, then remove the legacy-archive directory.",
-            "status": "pending",
+            "status": "in-progress",
             "testStrategy": "Verify backup exists, ensure no broken imports after removal"
           }
         ]
@@ -2155,7 +2155,7 @@
     ],
     "metadata": {
       "created": "2025-07-18T21:29:08.352Z",
-      "updated": "2025-08-10T21:30:55.284Z",
+      "updated": "2025-08-10T21:31:53.926Z",
       "description": "Tasks for master context"
     }
   }
