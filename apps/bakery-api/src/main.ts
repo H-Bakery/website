@@ -57,6 +57,8 @@ import {
   chatRoutes,
   dashboardRoutes,
   emailRoutes,
+  healthRoutes,
+  importRoutes as localImportRoutes,
   inventoryRoutes,
   notificationRoutes,
   orderRoutes,
@@ -64,6 +66,7 @@ import {
   productRoutes,
   productionRoutes,
   recipeRoutes,
+  reportsRoutes,
   staffRoutes,
   templateRoutes,
   unsoldProductRoutes,
@@ -286,6 +289,8 @@ function registerRoutes() {
   app.use('/api/chat', chatRoutes)
   app.use('/api/dashboard', dashboardRoutes)
   app.use('/api/email', emailRoutes)
+  app.use('/api/health', healthRoutes)
+  app.use('/api/import/v2', localImportRoutes)
   app.use('/api/inventory', inventoryRoutes)
   app.use('/api/notifications', notificationRoutes)
   app.use('/api/orders', orderRoutes)
@@ -293,6 +298,7 @@ function registerRoutes() {
   app.use('/api/products', productRoutes)
   app.use('/api/production', productionRoutes)
   app.use('/api/recipes', recipeRoutes)
+  app.use('/api/reports', reportsRoutes)
   app.use('/api/staff', staffRoutes)
   app.use('/api/templates', templateRoutes)
   app.use('/api/unsold-products', unsoldProductRoutes)

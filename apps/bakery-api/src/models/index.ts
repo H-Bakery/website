@@ -61,6 +61,13 @@ import { default as Recipe } from './Recipe'
 import { default as Notification } from './Notification'
 import { default as StockAdjustment } from './StockAdjustment'
 
+// Import newly created production and notification models
+import { default as NotificationPreferences } from './NotificationPreferences'
+import { default as NotificationTemplate } from './NotificationTemplate'
+import { default as ProductionBatch } from './ProductionBatch'
+import { default as ProductionSchedule } from './ProductionSchedule'
+import { default as ProductionStep } from './ProductionStep'
+
 // Re-export all models
 export {
   Order,
@@ -70,22 +77,13 @@ export {
   Recipe,
   Notification,
   StockAdjustment,
+  NotificationPreferences,
+  NotificationTemplate,
+  ProductionBatch,
+  ProductionSchedule,
+  ProductionStep,
 }
 export const Customer = User // Alias for backward compatibility
-
-// TODO: These models still need to be created
-// export const ProductionSchedule = ProductionScheduleModel;
-// export const ProductionBatch = ProductionBatchModel;
-// export const ProductionStep = ProductionStepModel;
-// export const NotificationPreferences = NotificationPreferencesModel;
-// export const NotificationTemplate = NotificationTemplateModel;
-
-// Create stub models for now
-export const ProductionSchedule = {} as any
-export const ProductionBatch = {} as any
-export const ProductionStep = {} as any
-export const NotificationPreferences = {} as any
-export const NotificationTemplate = {} as any
 
 export const SalesTransaction = SalesTransactionModel
 export const TransactionItem = TransactionItemModel
@@ -119,6 +117,13 @@ export async function initializeModels(sequelize: Sequelize): Promise<void> {
     Recipe.initModel(sequelize)
     Notification.initModel(sequelize)
     StockAdjustment.initModel(sequelize)
+    
+    // Initialize production and notification models
+    NotificationPreferences.initModel(sequelize)
+    NotificationTemplate.initModel(sequelize)
+    ProductionSchedule.initModel(sequelize)
+    ProductionBatch.initModel(sequelize)
+    ProductionStep.initModel(sequelize)
 
     // Set up associations
     setupAssociations()
@@ -145,11 +150,10 @@ function setupAssociations(): void {
   Customer.hasMany(Order, { foreignKey: 'customerId', as: 'orders' })
   Customer.hasMany(Cash, { foreignKey: 'userId', as: 'cashEntries' })
   Customer.hasMany(Chat, { foreignKey: 'userId', as: 'messages' })
-  // TODO: Uncomment when NotificationPreferences model is properly implemented
-  // Customer.hasOne(NotificationPreferences, {
-  //   foreignKey: 'userId',
-  //   as: 'notificationPreferences'
-  // });
+  Customer.hasOne(NotificationPreferences, {
+    foreignKey: 'userId',
+    as: 'notificationPreferences'
+  })
   Customer.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' })
 
   // Product associations
@@ -184,35 +188,31 @@ function setupAssociations(): void {
   StockAdjustment.belongsTo(Customer, { foreignKey: 'performedBy', as: 'user' })
 
   // Production associations
-  // TODO: Uncomment when production models are properly implemented
-  // ProductionSchedule.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' });
-  // ProductionSchedule.hasMany(ProductionBatch, {
-  //   foreignKey: 'scheduleId',
-  //   as: 'batches'
-  // });
+  ProductionSchedule.hasMany(ProductionBatch, {
+    foreignKey: 'scheduleId',
+    as: 'batches'
+  })
 
-  // ProductionBatch.belongsTo(ProductionSchedule, {
-  //   foreignKey: 'scheduleId',
-  //   as: 'schedule'
-  // });
-  // ProductionBatch.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' });
-  // ProductionBatch.hasMany(ProductionStep, { foreignKey: 'batchId', as: 'steps' });
-  // ProductionBatch.belongsTo(Customer, {
-  //   foreignKey: 'assignedStaffId',
-  //   as: 'assignedStaff'
-  // });
+  ProductionBatch.belongsTo(ProductionSchedule, {
+    foreignKey: 'scheduleId',
+    as: 'schedule'
+  })
+  ProductionBatch.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' })
+  ProductionBatch.hasMany(ProductionStep, { foreignKey: 'batchId', as: 'steps' })
+  ProductionBatch.belongsTo(Customer, {
+    foreignKey: 'assignedStaffId',
+    as: 'assignedStaff'
+  })
 
-  // ProductionStep.belongsTo(ProductionBatch, { foreignKey: 'batchId', as: 'batch' });
-  // ProductionStep.belongsTo(Customer, {
-  //   foreignKey: 'completedBy',
-  //   as: 'completedByStaff'
-  // });
+  ProductionStep.belongsTo(ProductionBatch, { foreignKey: 'batchId', as: 'batch' })
+  ProductionStep.belongsTo(Customer, {
+    foreignKey: 'completedBy',
+    as: 'completedByStaff'
+  })
 
   // Notification associations
   Notification.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
-
-  // TODO: Uncomment when NotificationPreferences model is properly implemented
-  // NotificationPreferences.belongsTo(Customer, { foreignKey: 'userId', as: 'user' });
+  NotificationPreferences.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
 
   // Sales Analytics associations
   SalesTransaction.hasMany(TransactionItem, {
@@ -260,12 +260,11 @@ export function getAllModels(): any[] {
     Inventory,
     StockAdjustment,
     Notification,
-    // TODO: Add these when properly implemented
-    // NotificationPreferences,
-    // NotificationTemplate,
-    // ProductionSchedule,
-    // ProductionBatch,
-    // ProductionStep,
+    NotificationPreferences,
+    NotificationTemplate,
+    ProductionSchedule,
+    ProductionBatch,
+    ProductionStep,
     SalesTransaction,
     TransactionItem,
     DailySalesReport,

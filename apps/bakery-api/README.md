@@ -1,5 +1,12 @@
 # Bakery Backend
-This repository contains the backend API for a bakery application. It's built using Node.js, Express, and Sequelize ORM with a SQLite database. The backend provides authentication functionality (register/login), cash management for tracking daily revenue, chat system for communication, and product management with CSV data import. The codebase follows a structured MVC (Model-View-Controller) pattern for better organization and maintainability.
+
+## ✅ Migration Status: Complete (August 10, 2025)
+
+This backend API has been successfully migrated from CommonJS to TypeScript with Nx monorepo architecture. See [MIGRATION_COMPLETE.md](/MIGRATION_COMPLETE.md) for full migration details.
+
+## Overview
+
+This repository contains the backend API for a bakery application. It's built using Node.js, Express, TypeScript, and Sequelize ORM with SQLite/PostgreSQL database support. The backend provides authentication functionality (register/login), cash management for tracking daily revenue, chat system for communication, and product management with CSV data import. The codebase follows Domain-Driven Design principles with modular libraries for better organization and maintainability.
 
 ## Prerequisites
 
