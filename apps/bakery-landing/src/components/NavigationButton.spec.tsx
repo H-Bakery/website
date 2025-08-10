@@ -16,18 +16,17 @@ describe('NavigationButton Component', () => {
   })
 
   const defaultProps = {
-    label: 'Über uns',
     href: '/about',
   }
 
   it('renders button with label', () => {
-    renderWithTheme(<NavigationButton {...defaultProps} />)
+    renderWithTheme(<NavigationButton {...defaultProps}>Über uns</NavigationButton>)
 
     expect(screen.getByText('Über uns')).toBeInTheDocument()
   })
 
   it('navigates to correct route on click', () => {
-    renderWithTheme(<NavigationButton {...defaultProps} />)
+    renderWithTheme(<NavigationButton {...defaultProps}>Über uns</NavigationButton>)
 
     const button = screen.getByRole('button', { name: 'Über uns' })
     fireEvent.click(button)
@@ -41,7 +40,7 @@ describe('NavigationButton Component', () => {
       icon: <span data-testid="test-icon">📍</span>,
     }
 
-    renderWithTheme(<NavigationButton {...propsWithIcon} />)
+    renderWithTheme(<NavigationButton {...propsWithIcon}>Über uns</NavigationButton>)
 
     expect(screen.getByTestId('test-icon')).toBeInTheDocument()
     expect(screen.getByText('Über uns')).toBeInTheDocument()
@@ -53,7 +52,7 @@ describe('NavigationButton Component', () => {
       isActive: true,
     }
 
-    const { container } = renderWithTheme(<NavigationButton {...propsActive} />)
+    const { container } = renderWithTheme(<NavigationButton {...propsActive}>Über uns</NavigationButton>)
 
     const button = container.querySelector('button')
     expect(button).toHaveClass('active')
@@ -66,7 +65,7 @@ describe('NavigationButton Component', () => {
       isExternal: true,
     }
 
-    renderWithTheme(<NavigationButton {...propsExternal} />)
+    renderWithTheme(<NavigationButton {...propsExternal}>Über uns</NavigationButton>)
 
     const link = screen.getByRole('link', { name: 'Über uns' })
     expect(link).toHaveAttribute(
@@ -84,7 +83,7 @@ describe('NavigationButton Component', () => {
     }
 
     const { rerender, container } = renderWithTheme(
-      <NavigationButton {...propsSmall} />
+      <NavigationButton {...propsSmall}>Über uns</NavigationButton>
     )
 
     let button = container.querySelector('button')
@@ -95,7 +94,7 @@ describe('NavigationButton Component', () => {
       size: 'large' as const,
     }
 
-    rerender(<NavigationButton {...propsLarge} />)
+    rerender(<NavigationButton {...propsLarge}>Über uns</NavigationButton>)
 
     button = container.querySelector('button')
     expect(button).toHaveClass('btn-large')
@@ -108,7 +107,7 @@ describe('NavigationButton Component', () => {
     }
 
     const { container } = renderWithTheme(
-      <NavigationButton {...propsOutline} />
+      <NavigationButton {...propsOutline}>Über uns</NavigationButton>
     )
 
     const button = container.querySelector('button')
@@ -121,7 +120,7 @@ describe('NavigationButton Component', () => {
       disabled: true,
     }
 
-    renderWithTheme(<NavigationButton {...propsDisabled} />)
+    renderWithTheme(<NavigationButton {...propsDisabled}>Über uns</NavigationButton>)
 
     const button = screen.getByRole('button', { name: 'Über uns' })
     expect(button).toBeDisabled()
@@ -137,7 +136,7 @@ describe('NavigationButton Component', () => {
     }
 
     const { container } = renderWithTheme(
-      <NavigationButton {...propsWithClass} />
+      <NavigationButton {...propsWithClass}>Über uns</NavigationButton>
     )
 
     const button = container.querySelector('button')
@@ -145,7 +144,7 @@ describe('NavigationButton Component', () => {
   })
 
   it('supports keyboard navigation', () => {
-    renderWithTheme(<NavigationButton {...defaultProps} />)
+    renderWithTheme(<NavigationButton {...defaultProps}>Über uns</NavigationButton>)
 
     const button = screen.getByRole('button', { name: 'Über uns' })
 
