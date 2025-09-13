@@ -1,11 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
-import { PrepTaskLoader } from '../services/prepTaskLoader'
-import {
-  PrepSection,
-  BakingItem,
-  AdditionalProductionItem,
-} from '../types/prepTask'
+import { PrepTaskLoader } from '../services'
+import { PrepSection, BakingItem, AdditionalProductionItem } from '../types'
 
 interface UseDailyPrepReturn {
   // State
@@ -20,23 +16,31 @@ interface UseDailyPrepReturn {
   prepSections: PrepSection[]
   bakingSchedule: { cakes: BakingItem[]; bread: BakingItem[] }
   additionalProduction: AdditionalProductionItem[]
-  
+
   // Actions
   setSelectedDate: (date: Date) => void
   setTabValue: (value: number) => void
   setSaveDialogOpen: (open: boolean) => void
   setEditMode: (mode: boolean) => void
   toggleSectionExpanded: (sectionIndex: number) => void
-  
+
   // Complex actions
   loadPrepTasks: () => Promise<void>
   generatePrepList: () => Promise<void>
   toggleItemCompletion: (sectionIndex: number, itemIndex: number) => void
   toggleSectionCompletion: (sectionIndex: number) => void
-  updateItemQuantity: (sectionIndex: number, itemIndex: number, newQuantity: number) => void
-  updateBakingQuantity: (type: 'cakes' | 'bread', itemIndex: number, newQuantity: number) => void
+  updateItemQuantity: (
+    sectionIndex: number,
+    itemIndex: number,
+    newQuantity: number
+  ) => void
+  updateBakingQuantity: (
+    type: 'cakes' | 'bread',
+    itemIndex: number,
+    newQuantity: number
+  ) => void
   handleAddToProduction: (itemName: string, reason: string) => void
-  
+
   // Computed values
   calculateProgress: () => number
 }
@@ -50,7 +54,9 @@ export const useDailyPrep = (): UseDailyPrepReturn => {
   const [isLoading, setIsLoading] = useState(true)
   const [isFromSpecificFile, setIsFromSpecificFile] = useState(false)
   const [editMode, setEditMode] = useState(false)
-  const [expandedSections, setExpandedSections] = useState<Record<number, boolean>>({})
+  const [expandedSections, setExpandedSections] = useState<
+    Record<number, boolean>
+  >({})
 
   // Data state
   const [prepSections, setPrepSections] = useState<PrepSection[]>([])
@@ -102,7 +108,9 @@ export const useDailyPrep = (): UseDailyPrepReturn => {
   // Helper functions
   const calculateProgress = (): number => {
     if (prepSections.length === 0) return 0
-    const completedSections = prepSections.filter(section => section.completed).length
+    const completedSections = prepSections.filter(
+      (section) => section.completed
+    ).length
     return (completedSections / prepSections.length) * 100
   }
 
@@ -130,7 +138,9 @@ export const useDailyPrep = (): UseDailyPrepReturn => {
     newSections[sectionIndex].completed = newCompleted
 
     if (newCompleted) {
-      newSections[sectionIndex].time_completed = new Date().toLocaleTimeString('de-DE')
+      newSections[sectionIndex].time_completed = new Date().toLocaleTimeString(
+        'de-DE'
+      )
     }
 
     // Mark all items as completed/uncompleted

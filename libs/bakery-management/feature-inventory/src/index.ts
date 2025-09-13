@@ -1,9 +1,13 @@
-export * from './lib/feature-inventory';
-export * from './lib/components/ProductionMetricsCard';
-export * from './lib/components/ResourceOptimizationPanel';
-export * from './lib/components/InventoryDataGrid';
-export * from './lib/components/InventoryForm';
-export * from './lib/components/StockAdjustmentDialog';
-export * from './lib/components/InventoryFilters';
-export * from './lib/components/InventoryManagement';
-export * from './lib/hooks/useInventory';
+export * from './lib/feature-inventory'
+export * from './lib/components/ProductionMetricsCard'
+export * from './lib/components/ResourceOptimizationPanel'
+export * from './lib/components/InventoryDataGrid'
+export * from './lib/components/InventoryForm'
+export * from './lib/components/StockAdjustmentDialog'
+export * from './lib/components/InventoryFilters'
+export * from './lib/components/InventoryManagement'
+export * from './lib/hooks/useInventory'
+export { default as SaturdayProductionDashboard } from './lib/production/components/SaturdayProductionDashboard'
+export { default as ProductionChecklist } from './lib/production/components/ProductionChecklist'
+export { default as FillingPreparation } from './lib/production/components/FillingPreparation'
+export * from './lib/production/utils/productionCalculator'

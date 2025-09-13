@@ -54,8 +54,8 @@ import { de } from 'date-fns/locale'
 import {
   useProductionStatus,
   useProductionBatches,
-} from '../../hooks/useProduction'
-import { useProductionSocket } from '../../hooks/useProductionSocket'
+} from '../hooks/use-production'
+import { useProductionSocket } from '../hooks/use-production-socket'
 import {
   ProductionStatus,
   ProductionBatch,

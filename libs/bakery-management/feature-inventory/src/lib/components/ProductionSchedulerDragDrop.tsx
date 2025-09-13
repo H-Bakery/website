@@ -48,8 +48,8 @@ import {
   useUpdateBatch,
   useCreateBatch,
   useDeleteBatch,
-} from '../../hooks/useProduction'
-import { useProductionSocket } from '../../hooks/useProductionSocket'
+} from '../hooks/use-production'
+import { useProductionSocket } from '../hooks/use-production-socket'
 import { ProductionBatch, ScheduleViewMode } from '../../types/production'
 import DraggableProductionBatch from './DraggableProductionBatch'
 import ProductionTimelineDropZone from './ProductionTimelineDropZone'

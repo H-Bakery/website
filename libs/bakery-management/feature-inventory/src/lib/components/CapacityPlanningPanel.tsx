@@ -57,7 +57,7 @@ import { de } from 'date-fns/locale'
 import {
   useCapacityAnalysis,
   useOptimizeSchedule,
-} from '../../hooks/useProduction'
+} from '../hooks/use-production'
 import {
   CapacityAnalysis,
   StaffCapacity,

@@ -11,7 +11,7 @@ import {
 } from '../../../types/production'
 
 // Mock the hooks
-jest.mock('../../../hooks/useProduction', () => ({
+jest.mock('../../hooks/use-production', () => ({
   useProductionSchedules: jest.fn(),
   useProductionBatches: jest.fn(),
   useUpdateBatch: jest.fn(),
@@ -19,7 +19,7 @@ jest.mock('../../../hooks/useProduction', () => ({
   useDeleteBatch: jest.fn(),
 }))
 
-jest.mock('../../../hooks/useProductionSocket', () => ({
+jest.mock('../hooks/use-production-socket', () => ({
   useProductionSocket: jest.fn(),
 }))
 
@@ -71,8 +71,8 @@ import {
   useUpdateBatch,
   useCreateBatch,
   useDeleteBatch,
-} from '../../../hooks/useProduction'
-import { useProductionSocket } from '../../../hooks/useProductionSocket'
+} from '../../hooks/use-production'
+import { useProductionSocket } from '../hooks/use-production-socket'
 
 const mockSchedule: ProductionSchedule = {
   id: 1,

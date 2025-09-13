@@ -60,7 +60,7 @@ import {
   usePauseBatch,
   useResumeBatch,
   useDeleteBatch,
-} from '../../hooks/useProduction'
+} from '../hooks/use-production'
 import {
   ProductionSchedule,
   ProductionBatch,

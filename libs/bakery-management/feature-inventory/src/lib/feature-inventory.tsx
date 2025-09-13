@@ -2,17 +2,13 @@
 export * from './components/ProductionMetricsCard'
 export * from './components/ResourceOptimizationPanel'
 export * from './components/ProductionStatusPanel'
-export * from './components/DraggableProductionBatch'
-export * from './components/ProductionTimelineDropZone'
 
-// Export hooks
-export * from './hooks/useProductionMetrics'
-export * from './hooks/useProductionWorkflow'
-
-// Export services
-export * from './services/productionService'
-
-// Export production utilities and data
-export * from './production/data/workflow-definitions'
-export * from './production/utils/production-calculations'
-export * from './production/utils/workflow-optimizer'
+// Note: The following exports have been commented out as the files don't exist
+// export * from './components/DraggableProductionBatch'
+// export * from './components/ProductionTimelineDropZone'
+// export * from './hooks/useProductionMetrics'
+// export * from './hooks/useProductionWorkflow'
+// export * from './services/productionService'
+// export * from './production/data/workflow-definitions'
+// export * from './production/utils/production-calculations'
+// export * from './production/utils/workflow-optimizer'
