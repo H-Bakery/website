@@ -136,15 +136,6 @@ bakery-monorepo/
 
 ## External Tools & Imports
 
-### Claude Flow Integration
-
-See @claude-flow.md for:
-
-- SPARC methodology and TDD workflow
-- Batch operations and parallel execution
-- MCP tools for coordination
-- Agent patterns and swarm orchestration
-
 ### Task Master Integration
 
 See @task-master.md for:
@@ -159,11 +150,7 @@ See @task-master.md for:
 For detailed information, see:
 
 - Architecture: @docs/architecture.md
-- Migration Plan: @docs/migration-guide.md
 - Development Guide: @docs/development.md
-- Deployment: @docs/deployment.md
-- Testing: @docs/testing.md
-- Monitoring: @docs/monitoring.md
 
 ## Static Landing Page Build & Deployment
 
@@ -188,8 +175,6 @@ nx build-static bakery-landing
 ### Deployment Options
 
 - **GitHub Pages**: Upload `out/` contents or use GitHub Actions workflow
-- **Vercel**: Auto-deployment via repository integration
-- **CDN/S3**: Upload `out/` directory to your CDN
 - **Traditional Hosting**: Upload `out/` directory to web server
 
 ### Troubleshooting Static Builds

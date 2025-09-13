@@ -107,5 +107,5 @@
       "types": ["libs/api/types/src/index.ts"]
     }
   },
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "src-archive", "**/src-archive/**"]
 }
