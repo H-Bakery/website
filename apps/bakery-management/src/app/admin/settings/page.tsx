@@ -26,17 +26,25 @@ import LanguageIcon from '@mui/icons-material/Language'
 import SecurityIcon from '@mui/icons-material/Security'
 import PaletteIcon from '@mui/icons-material/Palette'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import { useTheme } from '@bakery/shared/contexts'
-import {
-  NotificationPreferences,
-  EmailSettings,
-} from '@bakery/management/feature-settings'
+// Temporarily disabled until providers are set up
+// import {
+//   NotificationPreferences,
+//   EmailSettings,
+// } from '@bakery/management/feature-settings'
 
 export default function SettingsPage() {
-  const { mode, toggleTheme, setMode } = useTheme()
-  const isMobile = useMediaQuery((theme: any) => theme.breakpoints.down('md'))
+  const [mode, setMode] = useState<'light' | 'dark' | 'system'>('light')
+  const isMobile = useMediaQuery('(max-width: 900px)') // Direct media query instead of theme-based
   const [language, setLanguage] = useState('de')
   const [timeFormat, setTimeFormat] = useState('24')
+
+  const toggleTheme = () => {
+    setMode((current) => {
+      if (current === 'light') return 'dark'
+      if (current === 'dark') return 'system'
+      return 'light'
+    })
+  }
 
   const handleLanguageChange = (event: any) => {
     setLanguage(event.target.value)
@@ -128,7 +136,10 @@ export default function SettingsPage() {
               >
                 Benachrichtigungen
               </Typography>
-              <NotificationPreferences />
+              {/* <NotificationPreferences /> */}
+              <Typography variant="body2" color="text.secondary">
+                Benachrichtigungseinstellungen sind vorübergehend deaktiviert
+              </Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -148,7 +159,10 @@ export default function SettingsPage() {
               >
                 E-Mail Einstellungen
               </Typography>
-              <EmailSettings />
+              {/* <EmailSettings /> */}
+              <Typography variant="body2" color="text.secondary">
+                E-Mail-Einstellungen sind vorübergehend deaktiviert
+              </Typography>
             </CardContent>
           </Card>
         </Grid>

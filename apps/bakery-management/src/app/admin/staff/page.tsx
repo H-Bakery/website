@@ -29,8 +29,6 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import PersonAddIcon from '@mui/icons-material/PersonAdd'
 import SearchIcon from '@mui/icons-material/Search'
 import RefreshIcon from '@mui/icons-material/Refresh'
-import { useTheme } from '@bakery/shared/contexts'
-import { useAuth } from '@bakery/shared/contexts'
 import { bakeryAPI } from '@bakery/shared/data-access'
 import {
   CreateUserModal,
@@ -52,8 +50,8 @@ interface StaffMember {
 }
 
 export default function StaffPage() {
-  const { mode } = useTheme()
-  const { user: currentUser } = useAuth()
+  const [mode, setMode] = useState<'light' | 'dark'>('light')
+  const currentUser = { id: '1' } // Temporary mock user until AuthProvider is set up
 
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
   const [loading, setLoading] = useState(true)

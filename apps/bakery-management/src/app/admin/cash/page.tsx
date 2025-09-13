@@ -19,7 +19,7 @@ import {
   MonthlySummary,
   EditCashEntryModal,
   DeleteCashEntryDialog,
-} from '@bakery/bakery-management/feature-cash'
+} from '@bakery/management/feature-cash'
 import { bakeryAPI } from '@bakery/shared/data-access'
 import { CashEntry } from '@bakery/shared/types'
 import { useRouter } from 'next/navigation'

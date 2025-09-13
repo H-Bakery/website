@@ -15,6 +15,7 @@ import {
   useMediaQuery,
   useTheme,
   Divider,
+  Collapse,
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -28,6 +29,14 @@ import {
   Store as ShopIcon,
   Assessment as ReportsIcon,
   PhotoCamera as SocialMediaIcon,
+  Settings as SettingsIcon,
+  People as StaffIcon,
+  Euro as CashIcon,
+  Notifications as NotificationsIcon,
+  Storefront as BakeryIcon,
+  ExpandLess,
+  ExpandMore,
+  RemoveShoppingCart as UnsoldIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -38,7 +47,7 @@ interface AdminLayoutProps {
   children: React.ReactNode
 }
 
-// Temporarily define navigation items directly in the file
+// Navigation items with submenu support
 const MANAGEMENT_NAVIGATION = [
   {
     label: 'Dashboard',
@@ -53,10 +62,48 @@ const MANAGEMENT_NAVIGATION = [
     description: 'Bestellverwaltung',
   },
   {
-    label: 'Produktion',
-    href: '/admin/production',
-    icon: 'production',
-    description: 'Produktionsplanung',
+    label: 'Bäckerei',
+    icon: 'bakery',
+    description: 'Produktionsprozesse',
+    submenu: [
+      {
+        label: 'Produktion',
+        href: '/admin/production',
+        icon: 'production',
+        description: 'Produktionsplanung',
+      },
+      {
+        label: 'Backliste',
+        href: '/admin/baking-list',
+        icon: 'baking',
+        description: 'Tägliche Backliste',
+      },
+      {
+        label: 'Tägliche Vorbereitung',
+        href: '/admin/bakery/daily-prep',
+        description: 'Vorbereitungsliste',
+      },
+      {
+        label: 'Samstag Produktion',
+        href: '/admin/bakery/saturday-production',
+        description: 'Wochenend-Produktion',
+      },
+      {
+        label: 'Interne Bestellungen',
+        href: '/admin/bakery/intern-orders',
+        description: 'Mitarbeiterbestellungen',
+      },
+      {
+        label: 'Rezepte',
+        href: '/admin/bakery/recipes',
+        description: 'Rezeptverwaltung',
+      },
+      {
+        label: 'Prozesse',
+        href: '/admin/bakery/processes',
+        description: 'Arbeitsabläufe',
+      },
+    ],
   },
   {
     label: 'Lagerbestand',
@@ -71,10 +118,10 @@ const MANAGEMENT_NAVIGATION = [
     description: 'Produktverwaltung',
   },
   {
-    label: 'Backliste',
-    href: '/admin/baking-list',
-    icon: 'baking',
-    description: 'Tägliche Backliste',
+    label: 'Unverkaufte Produkte',
+    href: '/admin/unsold-products',
+    icon: 'unsold',
+    description: 'Rückläufer & Reste',
   },
   {
     label: 'Lieferung',
@@ -83,16 +130,40 @@ const MANAGEMENT_NAVIGATION = [
     description: 'Lieferverwaltung',
   },
   {
+    label: 'Kasse',
+    href: '/admin/cash',
+    icon: 'cash',
+    description: 'Kassenverwaltung',
+  },
+  {
+    label: 'Personal',
+    href: '/admin/staff',
+    icon: 'staff',
+    description: 'Mitarbeiterverwaltung',
+  },
+  {
     label: 'Berichte',
     href: '/admin/reports',
     icon: 'reports',
     description: 'Tagesberichte',
   },
   {
+    label: 'Benachrichtigungen',
+    href: '/admin/notifications',
+    icon: 'notifications',
+    description: 'Mitteilungen',
+  },
+  {
     label: 'Social Media',
     href: '/admin/social-media',
     icon: 'socialmedia',
     description: 'Content Creator',
+  },
+  {
+    label: 'Einstellungen',
+    href: '/admin/settings',
+    icon: 'settings',
+    description: 'Systemeinstellungen',
   },
   {
     label: 'Shop',
@@ -114,16 +185,32 @@ const iconMap: Record<string, React.ReactElement> = {
   reports: <ReportsIcon />,
   socialmedia: <SocialMediaIcon />,
   shop: <ShopIcon />,
+  settings: <SettingsIcon />,
+  staff: <StaffIcon />,
+  cash: <CashIcon />,
+  notifications: <NotificationsIcon />,
+  bakery: <BakeryIcon />,
+  unsold: <UnsoldIcon />,
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const [openSubmenus, setOpenSubmenus] = React.useState<
+    Record<string, boolean>
+  >({})
   const pathname = usePathname()
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen)
+  }
+
+  const handleSubmenuToggle = (label: string) => {
+    setOpenSubmenus((prev) => ({
+      ...prev,
+      [label]: !prev[label],
+    }))
   }
 
   const drawer = (
@@ -136,9 +223,78 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       <Divider />
       <List>
         {MANAGEMENT_NAVIGATION.map((item) => {
-          const isActive = pathname === item.href
           const icon = item.icon ? iconMap[item.icon] : <DashboardIcon />
 
+          // Handle items with submenus
+          if (item.submenu) {
+            const isSubmenuOpen = openSubmenus[item.label] || false
+            const hasActiveChild = item.submenu.some(
+              (subItem) => pathname === subItem.href
+            )
+
+            return (
+              <React.Fragment key={item.label}>
+                <ListItem disablePadding>
+                  <ListItemButton
+                    onClick={() => handleSubmenuToggle(item.label)}
+                    sx={{
+                      backgroundColor: hasActiveChild
+                        ? 'action.selected'
+                        : 'transparent',
+                    }}
+                  >
+                    <ListItemIcon>{icon}</ListItemIcon>
+                    <ListItemText
+                      primary={item.label}
+                      secondary={item.description}
+                    />
+                    {isSubmenuOpen ? <ExpandLess /> : <ExpandMore />}
+                  </ListItemButton>
+                </ListItem>
+                <List
+                  component="div"
+                  disablePadding
+                  sx={{ display: isSubmenuOpen ? 'block' : 'none' }}
+                >
+                  {item.submenu.map((subItem) => {
+                    const isActive = pathname === subItem.href
+                    const subIcon = subItem.icon ? iconMap[subItem.icon] : null
+
+                    return (
+                      <ListItem key={subItem.href} disablePadding>
+                        <ListItemButton
+                          component={Link}
+                          href={subItem.href}
+                          selected={isActive}
+                          sx={{
+                            pl: 4,
+                            '&.Mui-selected': {
+                              backgroundColor: 'primary.main',
+                              color: 'white',
+                              '&:hover': {
+                                backgroundColor: 'primary.dark',
+                              },
+                              '& .MuiListItemIcon-root': {
+                                color: 'white',
+                              },
+                            },
+                          }}
+                        >
+                          {subIcon && <ListItemIcon>{subIcon}</ListItemIcon>}
+                          <ListItemText
+                            primary={subItem.label}
+                            secondary={subItem.description}
+                          />
+                        </ListItemButton>
+                      </ListItem>
+                    )
+                  })}
+                </List>
+              </React.Fragment>
+            )
+          }
+
+          // Handle external links
           if (item.external) {
             return (
               <ListItem key={item.href} disablePadding>
@@ -164,6 +320,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             )
           }
 
+          // Handle regular items
+          const isActive = pathname === item.href
           return (
             <ListItem key={item.href} disablePadding>
               <ListItemButton
