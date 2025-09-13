@@ -3,7 +3,12 @@
  * @module @bakery/shared/data-mocks/generators
  */
 
-import { Product, ProductCategory, ProductType } from '@bakery/shared/types'
+import {
+  Product,
+  ProductCategory,
+  ProductType,
+  ProductStatus,
+} from '@bakery/shared/types'
 
 interface ProductGeneratorOptions {
   category?: ProductCategory
@@ -42,10 +47,16 @@ export class ProductGenerator {
       nutritionalInfo:
         options?.nutritionalInfo || this.generateNutritionalInfo(type),
       weight: options?.weight || this.generateWeight(type),
-      unit: options?.unit || (type === 'bread' ? 'g' : 'Stück'),
+      unit: options?.unit || (type === ProductType.Fresh ? 'g' : 'Stück'),
       dailyTarget: options?.dailyTarget || Math.floor(Math.random() * 30) + 10,
-      bakingTime: options?.bakingTime || this.generateBakingTime(type),
-      shelfLife: options?.shelfLife || this.generateShelfLife(type),
+      status:
+        options?.status ||
+        (options?.isActive === false
+          ? ProductStatus.OutOfStock
+          : ProductStatus.Available),
+      createdAt: options?.createdAt || new Date().toISOString(),
+      updatedAt: options?.updatedAt || new Date().toISOString(),
+      // bakingTime and shelfLife are internal properties, not part of Product interface
     }
   }
 
@@ -81,10 +92,10 @@ export class ProductGenerator {
 
     return this.generateProduct({
       name,
-      type: 'seasonal' as ProductType,
+      type: ProductType.Seasonal,
       isActive: false,
       stock: 0,
-      shelfLife: 14,
+      // shelfLife: 14 - not part of Product interface
     })
   }
 
@@ -99,13 +110,13 @@ export class ProductGenerator {
 
     return this.generateProduct({
       name: `Bio ${name}`,
-      category: 'Brot',
-      type: 'bread',
+      category: ProductCategory.Bread,
+      type: ProductType.Fresh,
       allergens: ['Gluten'],
       nutritionalInfo: {
         calories: 180 + Math.random() * 40,
         protein: 8 + Math.random() * 4,
-        carbs: 25 + Math.random() * 10,
+        carbohydrates: 25 + Math.random() * 10,
         fat: 1 + Math.random() * 2,
         fiber: 6 + Math.random() * 4,
         sugar: 1 + Math.random() * 2,
@@ -116,70 +127,91 @@ export class ProductGenerator {
   // Helper methods
   private static randomCategory(): ProductCategory {
     const categories: ProductCategory[] = [
-      'Brot',
-      'Brötchen',
-      'Kuchen',
-      'Torte',
-      'Gebäck',
-      'Snacks',
+      ProductCategory.Bread,
+      ProductCategory.Buns,
+      ProductCategory.Cakes,
+      ProductCategory.SpecialCakes,
+      ProductCategory.Pastries,
+      ProductCategory.Snacks,
     ]
     return categories[Math.floor(Math.random() * categories.length)]
   }
 
   private static categoryToType(category: ProductCategory): ProductType {
-    const mapping: Record<ProductCategory, ProductType> = {
-      Brot: 'bread',
-      Brötchen: 'bun',
-      Kuchen: 'cake',
-      Torte: 'cake',
-      Gebäck: 'pastry',
-      Snacks: 'snack',
-    }
-    return mapping[category] || 'bread'
+    // Map categories to available ProductType values
+    return ProductType.Fresh // Default all bakery items to Fresh
   }
 
   private static generateName(category: ProductCategory): string {
     const names: Record<ProductCategory, string[]> = {
-      Brot: ['Bauernbrot', 'Vollkornbrot', 'Roggenbrot', 'Weizenbrot'],
-      Brötchen: ['Kaiserbrötchen', 'Mohnbrötchen', 'Sesambrötchen'],
-      Kuchen: ['Marmorkuchen', 'Zitronenkuchen', 'Schokoladenkuchen'],
-      Torte: ['Sahnetorte', 'Obsttorte', 'Mousse au Chocolat'],
-      Gebäck: ['Schnecke', 'Plunder', 'Schweineöhrchen'],
-      Snacks: ['Pizzastange', 'Käsestange', 'Wurstbrötchen'],
+      [ProductCategory.Bread]: [
+        'Bauernbrot',
+        'Vollkornbrot',
+        'Roggenbrot',
+        'Weizenbrot',
+      ],
+      [ProductCategory.Buns]: [
+        'Kaiserbrötchen',
+        'Mohnbrötchen',
+        'Sesambrötchen',
+      ],
+      [ProductCategory.Cakes]: [
+        'Marmorkuchen',
+        'Zitronenkuchen',
+        'Schokoladenkuchen',
+      ],
+      [ProductCategory.SpecialCakes]: [
+        'Sahnetorte',
+        'Obsttorte',
+        'Mousse au Chocolat',
+      ],
+      [ProductCategory.Pastries]: ['Schnecke', 'Plunder', 'Schweineöhrchen'],
+      [ProductCategory.Snacks]: ['Pizzastange', 'Käsestange', 'Wurstbrötchen'],
+      [ProductCategory.Beverages]: ['Kaffee', 'Tee', 'Saft'],
     }
 
-    const categoryNames = names[category] || names['Brot']
+    const categoryNames = names[category] || names[ProductCategory.Bread]
     return categoryNames[Math.floor(Math.random() * categoryNames.length)]
   }
 
   private static generateDescription(category: ProductCategory): string {
     const prefix = 'Frisch gebacken, '
     const suffixes: Record<ProductCategory, string[]> = {
-      Brot: [
+      [ProductCategory.Bread]: [
         'mit knuspriger Kruste',
         'saftig und aromatisch',
         'nach traditionellem Rezept',
       ],
-      Brötchen: [
+      [ProductCategory.Buns]: [
         'goldbraun gebacken',
         'luftig und leicht',
         'perfekt zum Frühstück',
       ],
-      Kuchen: ['süß und saftig', 'mit feinen Zutaten', 'wie bei Oma'],
-      Torte: [
+      [ProductCategory.Cakes]: [
+        'süß und saftig',
+        'mit feinen Zutaten',
+        'wie bei Oma',
+      ],
+      [ProductCategory.SpecialCakes]: [
         'cremig und köstlich',
         'kunstvoll verziert',
         'ein Genuss für besondere Anlässe',
       ],
-      Gebäck: ['buttrig und blättrig', 'zart schmelzend', 'handgefertigt'],
-      Snacks: [
+      [ProductCategory.Pastries]: [
+        'buttrig und blättrig',
+        'zart schmelzend',
+        'handgefertigt',
+      ],
+      [ProductCategory.Snacks]: [
         'herzhaft und würzig',
         'ideal für zwischendurch',
         'knusprig gebacken',
       ],
+      [ProductCategory.Beverages]: ['erfrischend', 'köstlich', 'hochwertig'],
     }
 
-    const categorySuffixes = suffixes[category] || suffixes['Brot']
+    const categorySuffixes =
+      suffixes[category] || suffixes[ProductCategory.Bread]
     return (
       prefix +
       categorySuffixes[Math.floor(Math.random() * categorySuffixes.length)]
@@ -188,12 +220,10 @@ export class ProductGenerator {
 
   private static generatePrice(type: ProductType): number {
     const priceRanges: Record<ProductType, [number, number]> = {
-      bread: [2.0, 5.0],
-      bun: [0.4, 2.0],
-      cake: [2.5, 5.0],
-      pastry: [1.5, 3.5],
-      snack: [1.0, 3.0],
-      seasonal: [3.0, 15.0],
+      [ProductType.Fresh]: [2.0, 5.0],
+      [ProductType.Frozen]: [1.5, 4.0],
+      [ProductType.Packaged]: [1.0, 3.0],
+      [ProductType.Seasonal]: [3.0, 15.0],
     }
 
     const [min, max] = priceRanges[type] || [1.0, 5.0]
@@ -220,92 +250,80 @@ export class ProductGenerator {
 
   private static generateIngredients(type: ProductType): string[] {
     const baseIngredients: Record<ProductType, string[]> = {
-      bread: ['Mehl', 'Wasser', 'Salz', 'Hefe'],
-      bun: ['Weizenmehl', 'Wasser', 'Hefe', 'Salz'],
-      cake: ['Mehl', 'Zucker', 'Butter', 'Eier'],
-      pastry: ['Mehl', 'Butter', 'Zucker'],
-      snack: ['Mehl', 'Wasser', 'Salz'],
-      seasonal: ['Mehl', 'Zucker', 'Gewürze'],
+      [ProductType.Fresh]: ['Mehl', 'Wasser', 'Salz', 'Hefe'],
+      [ProductType.Frozen]: ['Mehl', 'Wasser', 'Hefe', 'Salz'],
+      [ProductType.Packaged]: ['Mehl', 'Zucker', 'Butter', 'Eier'],
+      [ProductType.Seasonal]: ['Mehl', 'Zucker', 'Gewürze'],
     }
 
-    return baseIngredients[type] || baseIngredients['bread']
+    return baseIngredients[type] || baseIngredients[ProductType.Fresh]
   }
 
   private static generateNutritionalInfo(
     type: ProductType
   ): Product['nutritionalInfo'] {
     const baseValues: Record<ProductType, Product['nutritionalInfo']> = {
-      bread: {
+      [ProductType.Fresh]: {
         calories: 250,
         protein: 8,
-        carbs: 45,
+        carbohydrates: 45,
         fat: 2,
         fiber: 5,
         sugar: 3,
       },
-      bun: {
-        calories: 150,
-        protein: 5,
-        carbs: 30,
-        fat: 1.5,
-        fiber: 2,
-        sugar: 2,
-      },
-      cake: {
-        calories: 350,
-        protein: 4,
-        carbs: 40,
-        fat: 18,
-        fiber: 1,
-        sugar: 25,
-      },
-      pastry: {
-        calories: 300,
-        protein: 4,
-        carbs: 35,
-        fat: 16,
-        fiber: 1,
-        sugar: 15,
-      },
-      snack: {
+      [ProductType.Frozen]: {
         calories: 200,
         protein: 6,
-        carbs: 30,
-        fat: 6,
-        fiber: 2,
-        sugar: 3,
+        carbohydrates: 35,
+        fat: 4,
+        fiber: 3,
+        sugar: 4,
       },
-      seasonal: {
+      [ProductType.Packaged]: {
+        calories: 300,
+        protein: 5,
+        carbohydrates: 40,
+        fat: 12,
+        fiber: 2,
+        sugar: 15,
+      },
+      [ProductType.Seasonal]: {
         calories: 400,
         protein: 5,
-        carbs: 60,
+        carbohydrates: 60,
         fat: 15,
         fiber: 2,
         sugar: 35,
       },
     }
 
-    const base = baseValues[type] || baseValues['bread']
+    const base = baseValues[type] ||
+      baseValues[ProductType.Fresh] || {
+        calories: 250,
+        protein: 6,
+        carbohydrates: 40,
+        fat: 5,
+        fiber: 3,
+        sugar: 10,
+      }
 
     // Add some variation
     return {
       calories: base.calories + Math.random() * 50 - 25,
       protein: base.protein + Math.random() * 2 - 1,
-      carbs: base.carbs + Math.random() * 10 - 5,
+      carbohydrates: base.carbohydrates + Math.random() * 10 - 5,
       fat: base.fat + Math.random() * 4 - 2,
-      fiber: base.fiber + Math.random() * 2 - 1,
-      sugar: base.sugar + Math.random() * 5 - 2.5,
+      fiber: base.fiber! + Math.random() * 2 - 1,
+      sugar: base.sugar! + Math.random() * 5 - 2.5,
     }
   }
 
   private static generateWeight(type: ProductType): number {
     const weightRanges: Record<ProductType, [number, number]> = {
-      bread: [500, 1000],
-      bun: [50, 100],
-      cake: [100, 200],
-      pastry: [60, 120],
-      snack: [80, 150],
-      seasonal: [100, 1000],
+      [ProductType.Fresh]: [50, 1000],
+      [ProductType.Frozen]: [100, 500],
+      [ProductType.Packaged]: [50, 200],
+      [ProductType.Seasonal]: [100, 1000],
     }
 
     const [min, max] = weightRanges[type] || [50, 200]
@@ -314,26 +332,22 @@ export class ProductGenerator {
 
   private static generateBakingTime(type: ProductType): string {
     const times: Record<ProductType, string[]> = {
-      bread: ['04:00', '05:00', '06:00'],
-      bun: ['03:30', '04:00', '04:30'],
-      cake: ['06:00', '07:00', '08:00'],
-      pastry: ['05:00', '05:30', '06:00'],
-      snack: ['04:30', '05:00', '05:30'],
-      seasonal: ['07:00', '08:00', '09:00'],
+      [ProductType.Fresh]: ['04:00', '05:00', '06:00'],
+      [ProductType.Frozen]: ['03:30', '04:00', '04:30'],
+      [ProductType.Packaged]: ['05:00', '05:30', '06:00'],
+      [ProductType.Seasonal]: ['07:00', '08:00', '09:00'],
     }
 
-    const typeTimes = times[type] || times['bread']
+    const typeTimes = times[type] || times[ProductType.Fresh]
     return typeTimes[Math.floor(Math.random() * typeTimes.length)]
   }
 
   private static generateShelfLife(type: ProductType): number {
     const shelfLifeRanges: Record<ProductType, [number, number]> = {
-      bread: [2, 5],
-      bun: [1, 2],
-      cake: [2, 4],
-      pastry: [1, 3],
-      snack: [1, 2],
-      seasonal: [7, 30],
+      [ProductType.Fresh]: [1, 3],
+      [ProductType.Frozen]: [30, 90],
+      [ProductType.Packaged]: [7, 30],
+      [ProductType.Seasonal]: [7, 30],
     }
 
     const [min, max] = shelfLifeRanges[type] || [1, 3]

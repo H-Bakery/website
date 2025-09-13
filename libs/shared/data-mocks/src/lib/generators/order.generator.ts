@@ -7,8 +7,9 @@ import {
   Order,
   OrderStatus,
   PaymentMethod,
-  DeliveryMethod,
+  PaymentStatus,
   OrderItem,
+  Customer,
 } from '@bakery/shared/types'
 import { ALL_PRODUCTS } from '../products'
 import { MOCK_CUSTOMERS } from '../users/customers'
@@ -17,7 +18,7 @@ interface OrderGeneratorOptions {
   customerId?: number
   status?: OrderStatus
   paymentMethod?: PaymentMethod
-  deliveryMethod?: DeliveryMethod
+  deliveryMethod?: string
   itemCount?: number
   dateRange?: { start: Date; end: Date }
 }
@@ -46,9 +47,9 @@ export class OrderGenerator {
     const items = this.generateOrderItems(
       options?.itemCount || Math.floor(Math.random() * 5) + 1
     )
-    const subtotal = items.reduce((sum, item) => sum + item.total, 0)
+    const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0)
     const tax = subtotal * 0.07 // 7% German VAT for food
-    const discount = customer.type === 'business' ? subtotal * 0.1 : 0
+    const discount = (customer as any).type === 'business' ? subtotal * 0.1 : 0
     const total = subtotal + tax - discount
 
     const createdAt = options?.dateRange
@@ -62,40 +63,56 @@ export class OrderGenerator {
         '0'
       )}`,
       customerId: customer.id,
-      customerName: customer.name,
+      customerName:
+        (customer as any).name || `${customer.firstName} ${customer.lastName}`,
       customerEmail: customer.email,
       status,
       items,
       subtotal,
       tax,
-      discount,
+      // discount is included in total calculation
       total,
       paymentMethod,
       paymentStatus: this.getPaymentStatus(status, paymentMethod),
-      deliveryMethod,
-      deliveryAddress: deliveryMethod === 'delivery' ? customer.address : null,
+      // deliveryMethod is reflected in isPickup field
+      deliveryAddress:
+        deliveryMethod === 'delivery'
+          ? customer.address
+            ? `${customer.address.street} ${customer.address.houseNumber}, ${customer.address.city}`
+            : undefined
+          : undefined,
       deliveryTime:
         deliveryMethod === 'delivery'
-          ? new Date(createdAt.getTime() + 2 * 60 * 60 * 1000) // 2 hours later
-          : null,
+          ? new Date(createdAt.getTime() + 2 * 60 * 60 * 1000).toISOString() // 2 hours later
+          : undefined,
       notes: this.generateNotes(customer, deliveryMethod),
-      createdAt,
-      updatedAt: createdAt,
+      isPickup: deliveryMethod === 'pickup',
+      createdAt: createdAt.toISOString(),
+      updatedAt: createdAt.toISOString(),
     }
 
     // Add additional fields based on status
-    if (status === 'completed') {
-      order.completedAt = new Date(createdAt.getTime() + 60 * 60 * 1000) // 1 hour later
-    } else if (status === 'cancelled') {
-      order.cancelledAt = new Date(createdAt.getTime() + 30 * 60 * 1000) // 30 min later
-      order.cancellationReason = this.randomCancellationReason()
+    if (status === OrderStatus.Completed) {
+      order.completedAt = new Date(
+        createdAt.getTime() + 60 * 60 * 1000
+      ).toISOString() // 1 hour later
+    } else if (status === OrderStatus.Cancelled) {
+      // Handle cancelled orders - properties may not exist in Order type
+      ;(order as any).cancelledAt = new Date(
+        createdAt.getTime() + 30 * 60 * 1000
+      ).toISOString() // 30 min later
+      ;(order as any).cancellationReason = this.randomCancellationReason()
     }
 
-    // Add invoice number for business customers
-    if (customer.type === 'business' && paymentMethod === 'invoice') {
-      order.invoiceNumber = `INV-${createdAt.getFullYear()}-${String(
-        orderId
-      ).padStart(4, '0')}`
+    // Add invoice number for business customers (if customer type exists)
+    if ((customer as any).type === 'business') {
+      // Invoice number would go in notes or extended properties
+      order.notes =
+        (order.notes || '') +
+        ` Invoice: INV-${createdAt.getFullYear()}-${String(orderId).padStart(
+          4,
+          '0'
+        )}`
     }
 
     return order
@@ -182,17 +199,16 @@ export class OrderGenerator {
     const currentDate = new Date(startDate)
     while (currentDate <= endDate) {
       // Similar items for recurring orders
-      const baseItems = customer.preferences?.favoriteProducts?.slice(0, 3) || [
-        1, 8, 16,
-      ]
+      const baseItems = (customer as any).preferences?.favoriteProducts?.slice(
+        0,
+        3
+      ) || [1, 8, 16]
 
       orders.push(
         this.generateOrder({
           customerId,
-          status: 'completed',
-          paymentMethod:
-            (customer.preferences?.preferredPaymentMethod as PaymentMethod) ||
-            'invoice',
+          status: OrderStatus.Completed,
+          paymentMethod: PaymentMethod.Cash,
           deliveryMethod: 'delivery',
           dateRange: { start: currentDate, end: currentDate },
         })
@@ -239,12 +255,15 @@ export class OrderGenerator {
 
       const quantity = Math.floor(Math.random() * 5) + 1
       items.push({
+        orderId: 0, // Will be set when order is created
         productId: product.id,
-        productName: product.name,
         quantity,
         unitPrice: product.price,
-        total: product.price * quantity,
-      })
+        totalPrice: product.price * quantity,
+        id: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as OrderItem)
     }
 
     return items
@@ -252,10 +271,10 @@ export class OrderGenerator {
 
   private static randomStatus(): OrderStatus {
     const statuses: OrderStatus[] = [
-      'pending',
-      'processing',
-      'completed',
-      'cancelled',
+      OrderStatus.Pending,
+      OrderStatus.InProgress,
+      OrderStatus.Completed,
+      OrderStatus.Cancelled,
     ]
     const weights = [0.1, 0.2, 0.65, 0.05] // Most orders are completed
 
@@ -267,18 +286,17 @@ export class OrderGenerator {
       if (random < sum) return statuses[i]
     }
 
-    return 'completed'
+    return OrderStatus.Completed
   }
 
   private static randomPaymentMethod(): PaymentMethod {
     const methods: PaymentMethod[] = [
-      'cash',
-      'card',
-      'invoice',
-      'paypal',
-      'direct_debit',
+      PaymentMethod.Cash,
+      PaymentMethod.Card,
+      PaymentMethod.BankTransfer,
+      PaymentMethod.PayPal,
     ]
-    const weights = [0.25, 0.35, 0.2, 0.15, 0.05]
+    const weights = [0.25, 0.35, 0.25, 0.15]
 
     const random = Math.random()
     let sum = 0
@@ -288,27 +306,24 @@ export class OrderGenerator {
       if (random < sum) return methods[i]
     }
 
-    return 'cash'
+    return PaymentMethod.Cash
   }
 
-  private static randomDeliveryMethod(): DeliveryMethod {
+  private static randomDeliveryMethod(): string {
     return Math.random() > 0.4 ? 'pickup' : 'delivery'
   }
 
   private static getPaymentStatus(
     status: OrderStatus,
     method: PaymentMethod
-  ): Order['paymentStatus'] {
-    if (status === 'cancelled') return 'refunded'
-    if (status === 'completed') return 'paid'
-    if (method === 'invoice') return 'pending'
-    return 'pending'
+  ): PaymentStatus {
+    if (status === OrderStatus.Cancelled) return PaymentStatus.Refunded
+    if (status === OrderStatus.Completed) return PaymentStatus.Paid
+    if (method === PaymentMethod.BankTransfer) return PaymentStatus.Pending
+    return PaymentStatus.Pending
   }
 
-  private static generateNotes(
-    customer: any,
-    deliveryMethod: DeliveryMethod
-  ): string {
+  private static generateNotes(customer: any, deliveryMethod: string): string {
     const notes: string[] = []
 
     if (customer.preferences?.dietaryRestrictions?.length > 0) {

@@ -7,7 +7,8 @@ import {
   Order,
   OrderStatus,
   PaymentMethod,
-  DeliveryMethod,
+  PaymentStatus,
+  OrderItem,
 } from '@bakery/shared/types'
 import { ALL_PRODUCTS } from '../products'
 import { MOCK_CUSTOMERS } from '../users/customers'
@@ -21,14 +22,40 @@ const generateOrderItems = (productCount: number = 3) => {
     .sort(() => 0.5 - Math.random())
     .slice(0, productCount)
 
-  return selectedProducts.map((product) => ({
-    productId: product.id,
-    productName: product.name,
-    quantity: Math.floor(Math.random() * 3) + 1,
-    unitPrice: product.price,
-    total: product.price * (Math.floor(Math.random() * 3) + 1),
-  }))
+  const qty = Math.floor(Math.random() * 3) + 1
+  return selectedProducts.map(
+    (product, index) =>
+      ({
+        id: index + 1,
+        orderId: 0, // Will be set when order is created
+        productId: product.id,
+        quantity: qty,
+        unitPrice: product.price,
+        totalPrice: product.price * qty,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as OrderItem)
+  )
 }
+
+// Helper to create order item
+const createOrderItem = (
+  orderId: number,
+  itemId: number,
+  productId: number,
+  quantity: number,
+  unitPrice: number,
+  createdAt: string
+): OrderItem => ({
+  id: itemId,
+  orderId,
+  productId,
+  quantity,
+  unitPrice,
+  totalPrice: unitPrice * quantity,
+  createdAt,
+  updatedAt: createdAt,
+})
 
 // Generate realistic orders
 export const MOCK_ORDERS: Order[] = [
@@ -38,43 +65,24 @@ export const MOCK_ORDERS: Order[] = [
     customerId: 1,
     customerName: 'Peter Klein',
     customerEmail: 'kunde@example.com',
-    status: 'completed' as OrderStatus,
+    status: OrderStatus.Completed,
     items: [
-      {
-        productId: 1,
-        productName: 'Kornbrot 500g',
-        quantity: 2,
-        unitPrice: 2.5,
-        total: 5.0,
-      },
-      {
-        productId: 8,
-        productName: 'Brötchen',
-        quantity: 6,
-        unitPrice: 0.45,
-        total: 2.7,
-      },
-      {
-        productId: 16,
-        productName: 'Apfelkuchen',
-        quantity: 1,
-        unitPrice: 2.8,
-        total: 2.8,
-      },
+      createOrderItem(1001, 1, 1, 2, 2.5, '2024-01-18T08:30:00'),
+      createOrderItem(1001, 2, 8, 6, 0.45, '2024-01-18T08:30:00'),
+      createOrderItem(1001, 3, 16, 1, 2.8, '2024-01-18T08:30:00'),
     ],
     subtotal: 10.5,
-    tax: 0.74, // 7% for food in Germany
-    discount: 0,
+    tax: 0.74,
     total: 11.24,
-    paymentMethod: 'cash' as PaymentMethod,
-    paymentStatus: 'paid',
-    deliveryMethod: 'pickup' as DeliveryMethod,
-    deliveryAddress: null,
-    deliveryTime: null,
+    paymentMethod: PaymentMethod.Cash,
+    paymentStatus: PaymentStatus.Paid,
+    isPickup: true,
+    deliveryAddress: undefined,
+    deliveryTime: undefined,
     notes: 'Abholung erfolgt',
-    createdAt: new Date('2024-01-18T08:30:00'),
-    updatedAt: new Date('2024-01-18T09:15:00'),
-    completedAt: new Date('2024-01-18T09:15:00'),
+    createdAt: '2024-01-18T08:30:00',
+    updatedAt: '2024-01-18T09:15:00',
+    completedAt: '2024-01-18T09:15:00',
   },
   {
     id: 1002,
@@ -82,288 +90,131 @@ export const MOCK_ORDERS: Order[] = [
     customerId: 2,
     customerName: 'Café Sonnenschein',
     customerEmail: 'info@cafe-sonnenschein.de',
-    status: 'processing' as OrderStatus,
+    status: OrderStatus.InProgress,
     items: [
-      {
-        productId: 8,
-        productName: 'Brötchen',
-        quantity: 30,
-        unitPrice: 0.45,
-        total: 13.5,
-      },
-      {
-        productId: 9,
-        productName: 'Laugenbrötchen',
-        quantity: 20,
-        unitPrice: 0.75,
-        total: 15.0,
-      },
-      {
-        productId: 14,
-        productName: 'Croissant',
-        quantity: 15,
-        unitPrice: 1.5,
-        total: 22.5,
-      },
-      {
-        productId: 16,
-        productName: 'Apfelkuchen',
-        quantity: 2,
-        unitPrice: 2.8,
-        total: 5.6,
-      },
-      {
-        productId: 17,
-        productName: 'Käsekuchen',
-        quantity: 2,
-        unitPrice: 3.2,
-        total: 6.4,
-      },
+      createOrderItem(1002, 4, 8, 30, 0.45, '2024-01-19T18:00:00'),
+      createOrderItem(1002, 5, 9, 20, 0.75, '2024-01-19T18:00:00'),
+      createOrderItem(1002, 6, 14, 15, 1.5, '2024-01-19T18:00:00'),
+      createOrderItem(1002, 7, 16, 10, 2.8, '2024-01-19T18:00:00'),
+      createOrderItem(1002, 8, 17, 5, 3.2, '2024-01-19T18:00:00'),
     ],
-    subtotal: 63.0,
-    tax: 4.41,
-    discount: 6.3, // 10% business discount
-    total: 61.11,
-    paymentMethod: 'invoice' as PaymentMethod,
-    paymentStatus: 'pending',
-    invoiceNumber: 'INV-2024-0156',
-    deliveryMethod: 'delivery' as DeliveryMethod,
-    deliveryAddress: {
-      street: 'Marienplatz 8',
-      city: 'München',
-      postalCode: '80331',
-      country: 'Deutschland',
-    },
-    deliveryTime: new Date('2024-01-20T06:30:00'),
-    deliveryInstructions: 'Hintereingang benutzen',
-    notes: 'Tägliche Lieferung',
-    createdAt: new Date('2024-01-19T18:00:00'),
-    updatedAt: new Date('2024-01-19T18:00:00'),
+    subtotal: 95.0,
+    tax: 6.65,
+    total: 101.65,
+    paymentMethod: PaymentMethod.BankTransfer,
+    paymentStatus: PaymentStatus.Pending,
+    isPickup: false,
+    deliveryAddress: 'Hauptstraße 15, 10115 Berlin',
+    deliveryTime: '2024-01-20T06:30:00',
+    notes: 'Bitte vor 6:30 Uhr liefern. Hintereingang benutzen.',
+    createdAt: '2024-01-19T18:00:00',
+    updatedAt: '2024-01-19T18:00:00',
   },
   {
     id: 1003,
     orderNumber: 'ORD-2024-001003',
     customerId: 3,
-    customerName: 'Hotel Bayerischer Hof',
-    customerEmail: 'einkauf@bayerischerhof.de',
-    status: 'pending' as OrderStatus,
-    items: generateOrderItems(8), // Large hotel order
-    subtotal: 145.8,
-    tax: 10.21,
-    discount: 14.58, // 10% volume discount
-    total: 141.43,
-    paymentMethod: 'invoice' as PaymentMethod,
-    paymentStatus: 'pending',
-    invoiceNumber: 'INV-2024-0312',
-    deliveryMethod: 'delivery' as DeliveryMethod,
-    deliveryAddress: {
-      street: 'Promenadeplatz 2-6',
-      city: 'München',
-      postalCode: '80333',
-      country: 'Deutschland',
-    },
-    deliveryTime: new Date('2024-01-21T05:00:00'),
-    deliveryInstructions: 'Lieferung an Küche, Ansprechpartner: Küchenchef',
-    notes: 'Benötigt auch glutenfreie Optionen',
-    createdAt: new Date('2024-01-20T15:00:00'),
-    updatedAt: new Date('2024-01-20T15:00:00'),
+    customerName: 'Hotel am Park',
+    customerEmail: 'bestellung@hotel-am-park.de',
+    status: OrderStatus.Pending,
+    items: [
+      createOrderItem(1003, 9, 1, 10, 2.5, '2024-01-20T15:00:00'),
+      createOrderItem(1003, 10, 2, 10, 3.8, '2024-01-20T15:00:00'),
+      createOrderItem(1003, 11, 8, 50, 0.45, '2024-01-20T15:00:00'),
+      createOrderItem(1003, 12, 9, 30, 0.75, '2024-01-20T15:00:00'),
+      createOrderItem(1003, 13, 14, 20, 1.5, '2024-01-20T15:00:00'),
+    ],
+    subtotal: 138.0,
+    tax: 9.66,
+    total: 147.66,
+    paymentMethod: PaymentMethod.BankTransfer,
+    paymentStatus: PaymentStatus.Pending,
+    isPickup: false,
+    deliveryAddress: 'Parkstraße 10, 10115 Berlin',
+    deliveryTime: '2024-01-21T05:00:00',
+    notes: 'Tägliche Lieferung für Frühstücksbuffet',
+    createdAt: '2024-01-20T15:00:00',
+    updatedAt: '2024-01-20T15:00:00',
   },
   {
     id: 1004,
     orderNumber: 'ORD-2024-001004',
     customerId: 4,
-    customerName: 'Familie Schmidt',
-    customerEmail: 'schmidt.family@gmail.com',
-    status: 'cancelled' as OrderStatus,
+    customerName: 'Anna Schmidt',
+    customerEmail: 'anna.schmidt@example.com',
+    status: OrderStatus.Cancelled,
     items: [
-      {
-        productId: 5,
-        productName: 'Landbrot 750g',
-        quantity: 1,
-        unitPrice: 3.5,
-        total: 3.5,
-      },
-      {
-        productId: 12,
-        productName: 'Milchbrötchen',
-        quantity: 4,
-        unitPrice: 0.65,
-        total: 2.6,
-      },
+      createOrderItem(1004, 14, 16, 1, 2.8, '2024-01-17T14:00:00'),
+      createOrderItem(1004, 15, 18, 1, 3.5, '2024-01-17T14:00:00'),
+      createOrderItem(1004, 16, 12, 4, 0.65, '2024-01-17T14:00:00'),
     ],
-    subtotal: 6.1,
-    tax: 0.43,
-    discount: 0,
-    total: 6.53,
-    paymentMethod: 'paypal' as PaymentMethod,
-    paymentStatus: 'refunded',
-    deliveryMethod: 'delivery' as DeliveryMethod,
-    deliveryAddress: {
-      street: 'Blumenstraße 15',
-      city: 'München',
-      postalCode: '80469',
-      country: 'Deutschland',
-    },
-    deliveryTime: new Date('2024-01-17T16:00:00'),
-    notes: 'Kunde hat storniert - Krankheit',
-    cancellationReason: 'Kunde krank',
-    createdAt: new Date('2024-01-16T10:00:00'),
-    updatedAt: new Date('2024-01-16T14:00:00'),
-    cancelledAt: new Date('2024-01-16T14:00:00'),
-  },
-  {
-    id: 1005,
-    orderNumber: 'ORD-2024-001005',
-    customerId: 5,
-    customerName: 'Büro Müller & Partner',
-    customerEmail: 'bestellung@mueller-partner.de',
-    status: 'completed' as OrderStatus,
-    items: [
-      {
-        productId: 8,
-        productName: 'Brötchen',
-        quantity: 20,
-        unitPrice: 0.45,
-        total: 9.0,
-      },
-      {
-        productId: 27,
-        productName: 'Schokocroissant',
-        quantity: 10,
-        unitPrice: 1.9,
-        total: 19.0,
-      },
-    ],
-    subtotal: 28.0,
-    tax: 1.96,
-    discount: 0,
-    total: 29.96,
-    paymentMethod: 'direct_debit' as PaymentMethod,
-    paymentStatus: 'paid',
-    deliveryMethod: 'delivery' as DeliveryMethod,
-    deliveryAddress: {
-      street: 'Leopoldstraße 100',
-      city: 'München',
-      postalCode: '80802',
-      country: 'Deutschland',
-    },
-    deliveryTime: new Date('2024-01-19T08:00:00'),
-    deliveryInstructions: 'Empfang, Frau Krause benachrichtigen',
-    notes: 'Meeting-Catering',
-    createdAt: new Date('2024-01-18T16:00:00'),
-    updatedAt: new Date('2024-01-19T08:30:00'),
-    completedAt: new Date('2024-01-19T08:30:00'),
+    subtotal: 8.9,
+    tax: 0.62,
+    total: 9.52,
+    paymentMethod: PaymentMethod.PayPal,
+    paymentStatus: PaymentStatus.Refunded,
+    isPickup: false,
+    deliveryAddress: 'Musterstraße 5, 10115 Berlin',
+    deliveryTime: '2024-01-17T18:00:00',
+    notes: 'Kunde hat storniert - Doppelbestellung',
+    createdAt: '2024-01-17T14:00:00',
+    updatedAt: '2024-01-17T14:30:00',
   },
 ]
 
-// Generate more orders for the last 30 days
-const generateHistoricalOrders = (): Order[] => {
-  const orders: Order[] = []
-  const today = new Date()
-  let orderId = 2000
+// Export additional mock data
+export const RECENT_ORDERS = MOCK_ORDERS.filter((order) => {
+  const orderDate = new Date(order.createdAt)
+  const daysAgo = new Date()
+  daysAgo.setDate(daysAgo.getDate() - 7)
+  return orderDate >= daysAgo
+})
 
-  for (let i = 30; i >= 0; i--) {
-    const date = new Date(today)
-    date.setDate(date.getDate() - i)
+export const PENDING_ORDERS = MOCK_ORDERS.filter(
+  (order) => order.status === OrderStatus.Pending
+)
 
-    // Generate 5-15 orders per day
-    const orderCount = Math.floor(Math.random() * 11) + 5
+export const COMPLETED_ORDERS = MOCK_ORDERS.filter(
+  (order) => order.status === OrderStatus.Completed
+)
 
-    for (let j = 0; j < orderCount; j++) {
-      const customer =
-        MOCK_CUSTOMERS[Math.floor(Math.random() * MOCK_CUSTOMERS.length)]
-      const items = generateOrderItems(Math.floor(Math.random() * 5) + 1)
-      const subtotal = items.reduce((sum, item) => sum + item.total, 0)
-      const tax = subtotal * 0.07
-      const discount = customer.type === 'business' ? subtotal * 0.1 : 0
-      const total = subtotal + tax - discount
+// Generate dynamic order based on customer
+export const generateOrder = (customerId: number): Order => {
+  const customer = MOCK_CUSTOMERS.find((c) => c.id === customerId)
+  if (!customer) throw new Error('Customer not found')
 
-      const order: Order = {
-        id: orderId++,
-        orderNumber: `ORD-2024-00${orderId}`,
-        customerId: customer.id,
-        customerName: customer.name,
-        customerEmail: customer.email,
-        status: 'completed' as OrderStatus,
-        items,
-        subtotal,
-        tax,
-        discount,
-        total,
-        paymentMethod: ['cash', 'card', 'invoice', 'paypal', 'direct_debit'][
-          Math.floor(Math.random() * 5)
-        ] as PaymentMethod,
-        paymentStatus: 'paid',
-        deliveryMethod:
-          Math.random() > 0.3 ? 'pickup' : ('delivery' as DeliveryMethod),
-        deliveryAddress: Math.random() > 0.3 ? null : customer.address,
-        createdAt: new Date(
-          date.setHours(
-            Math.floor(Math.random() * 14) + 6, // 6 AM to 8 PM
-            Math.floor(Math.random() * 60),
-            0
-          )
-        ),
-        updatedAt: date,
-        completedAt: date,
-      }
+  const orderId = Math.floor(Math.random() * 10000) + 2000
+  const items = generateOrderItems(Math.floor(Math.random() * 5) + 1)
+  const subtotal = items.reduce((sum, item) => sum + item.totalPrice, 0)
+  const tax = subtotal * 0.07
+  const total = subtotal + tax
 
-      orders.push(order)
-    }
+  return {
+    id: orderId,
+    orderNumber: `ORD-2024-${String(orderId).padStart(6, '0')}`,
+    customerId: customer.id,
+    customerName: `${(customer as any).firstName} ${
+      (customer as any).lastName
+    }`,
+    customerEmail: customer.email,
+    status: OrderStatus.Pending,
+    items: items.map((item, index) => ({
+      ...item,
+      id: index + 1,
+      orderId,
+    })),
+    subtotal,
+    tax,
+    total,
+    paymentMethod: PaymentMethod.Cash,
+    paymentStatus: PaymentStatus.Pending,
+    isPickup: Math.random() > 0.5,
+    deliveryAddress: Math.random() > 0.5 ? 'Sample Address 123' : undefined,
+    notes: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
   }
-
-  return orders
 }
 
-// Combine manual and generated orders
-export const ALL_ORDERS = [...MOCK_ORDERS, ...generateHistoricalOrders()]
-
-// Helper functions
-export const getOrderById = (id: number): Order | undefined => {
-  return ALL_ORDERS.find((order) => order.id === id)
-}
-
-export const getOrderByNumber = (orderNumber: string): Order | undefined => {
-  return ALL_ORDERS.find((order) => order.orderNumber === orderNumber)
-}
-
-export const getOrdersByCustomer = (customerId: number): Order[] => {
-  return ALL_ORDERS.filter((order) => order.customerId === customerId)
-}
-
-export const getOrdersByStatus = (status: OrderStatus): Order[] => {
-  return ALL_ORDERS.filter((order) => order.status === status)
-}
-
-export const getOrdersByDateRange = (
-  startDate: Date,
-  endDate: Date
-): Order[] => {
-  return ALL_ORDERS.filter(
-    (order) => order.createdAt >= startDate && order.createdAt <= endDate
-  )
-}
-
-export const getTodaysOrders = (): Order[] => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-
-  return getOrdersByDateRange(today, tomorrow)
-}
-
-export const getPendingOrders = (): Order[] => {
-  return ALL_ORDERS.filter(
-    (order) => order.status === 'pending' || order.status === 'processing'
-  )
-}
-
-export const getDeliveryOrders = (): Order[] => {
-  return ALL_ORDERS.filter(
-    (order) =>
-      order.deliveryMethod === 'delivery' &&
-      order.status !== 'cancelled' &&
-      order.status !== 'completed'
-  )
-}
+// Export all orders for compatibility
+export const ALL_ORDERS = MOCK_ORDERS

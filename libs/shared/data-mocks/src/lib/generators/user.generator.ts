@@ -3,7 +3,7 @@
  * @module @bakery/shared/data-mocks/generators
  */
 
-import { User, UserRole, Customer, CustomerType } from '@bakery/shared/types'
+import { User, UserRole, Customer } from '@bakery/shared/types'
 
 interface UserGeneratorOptions {
   role?: UserRole
@@ -12,7 +12,7 @@ interface UserGeneratorOptions {
 }
 
 interface CustomerGeneratorOptions {
-  type?: CustomerType
+  type?: 'individual' | 'business'
   isActive?: boolean
   businessType?: string
 }
@@ -113,44 +113,34 @@ export class UserGenerator {
     const id = this.userIdCounter++
     const firstName = this.randomElement(this.firstNames)
     const lastName = this.randomElement(this.lastNames)
-    const name = `${firstName} ${lastName}`
-    const username = `${firstName.toLowerCase()}.${lastName.toLowerCase()}`
-    const email = `${username}@bakery.com`
+    const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}@bakery.com`
     const role = options?.role || this.randomUserRole()
 
     const user: User = {
       id,
-      username,
       email,
+      firstName,
+      lastName,
       role,
-      name,
       isActive: options?.isActive ?? true,
-      permissions: this.getPermissionsForRole(role),
-      createdAt: this.randomPastDate(365),
-      updatedAt: this.randomPastDate(30),
-      lastLogin: this.randomPastDate(7),
+      createdAt: this.randomPastDate(365).toISOString(),
+      updatedAt: this.randomPastDate(30).toISOString(),
+      lastLogin: this.randomPastDate(7).toISOString(),
       preferences: {
         theme: Math.random() > 0.5 ? 'light' : 'dark',
         language: 'de',
-        notifications: {
-          email: Math.random() > 0.3,
-          push: Math.random() > 0.4,
-          sms: Math.random() > 0.7,
-        },
+        notifications: Math.random() > 0.3,
+        newsletter: Math.random() > 0.5,
       },
     }
 
-    // Add role-specific fields
-    if (role === 'baker' || role === 'cashier' || role === 'delivery') {
-      user.department = options?.department || this.getDepartmentForRole(role)
+    // Add role-specific fields as extended properties
+    // These would be stored in a separate context or database in real app
+    const extendedUser = user as any
 
-      if (role === 'baker') {
-        user.shift = Math.random() > 0.5 ? 'Frühschicht' : 'Spätschicht'
-      } else if (role === 'delivery') {
-        user.vehicleId = `BAK-${String(
-          Math.floor(Math.random() * 10) + 1
-        ).padStart(3, '0')}`
-      }
+    if (role === UserRole.Staff) {
+      extendedUser.department = options?.department || 'Produktion'
+      extendedUser.shift = Math.random() > 0.5 ? 'Frühschicht' : 'Spätschicht'
     }
 
     return user
@@ -176,18 +166,24 @@ export class UserGenerator {
     const team: User[] = []
 
     // Manager
-    team.push(this.generateUser({ role: 'manager' }))
+    team.push(this.generateUser({ role: UserRole.Manager }))
 
-    // Bakers
-    team.push(this.generateUser({ role: 'baker', department: 'Produktion' }))
-    team.push(this.generateUser({ role: 'baker', department: 'Produktion' }))
-
-    // Cashiers
-    team.push(this.generateUser({ role: 'cashier', department: 'Verkauf' }))
-    team.push(this.generateUser({ role: 'cashier', department: 'Verkauf' }))
-
-    // Delivery
-    team.push(this.generateUser({ role: 'delivery', department: 'Lieferung' }))
+    // Staff members
+    team.push(
+      this.generateUser({ role: UserRole.Staff, department: 'Produktion' })
+    )
+    team.push(
+      this.generateUser({ role: UserRole.Staff, department: 'Produktion' })
+    )
+    team.push(
+      this.generateUser({ role: UserRole.Staff, department: 'Verkauf' })
+    )
+    team.push(
+      this.generateUser({ role: UserRole.Staff, department: 'Verkauf' })
+    )
+    team.push(
+      this.generateUser({ role: UserRole.Staff, department: 'Lieferung' })
+    )
 
     return team
   }
@@ -200,70 +196,91 @@ export class UserGenerator {
     const type =
       options?.type || (Math.random() > 0.7 ? 'business' : 'individual')
 
-    let name: string
+    let firstName: string
+    let lastName: string
     let email: string
-    let businessName: string | undefined
 
     if (type === 'business') {
       const businessPrefix = this.randomElement(this.businessNames)
       const businessSuffix = this.randomElement(this.businessTypes)
-      businessName = `${businessPrefix} ${businessSuffix}`
-      name = businessName
+      firstName = businessPrefix
+      lastName = businessSuffix
       email = `info@${businessPrefix.toLowerCase()}-${businessSuffix.toLowerCase()}.de`
     } else {
-      const firstName = this.randomElement(this.firstNames)
-      const lastName = this.randomElement(this.lastNames)
-      name = `${firstName} ${lastName}`
+      firstName = this.randomElement(this.firstNames)
+      lastName = this.randomElement(this.lastNames)
       email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}@example.com`
     }
 
     const customer: Customer = {
       id,
-      customerId: `CUST-${String(id).padStart(3, '0')}`,
-      name,
       email,
-      phone: `+49 ${Math.floor(Math.random() * 900) + 100} ${
-        Math.floor(Math.random() * 9000000) + 1000000
-      }`,
-      address: this.generateAddress(),
-      type,
+      firstName,
+      lastName,
+      role: UserRole.Customer,
       isActive: options?.isActive ?? true,
-      totalOrders: Math.floor(Math.random() * 100) + 1,
-      totalSpent: 0, // Will be calculated
-      averageOrderValue: 0, // Will be calculated
-      lastOrderDate: this.randomPastDate(30),
-      registeredAt: this.randomPastDate(365),
+      createdAt: this.randomPastDate(365).toISOString(),
+      updatedAt: this.randomPastDate(30).toISOString(),
+      lastLogin: this.randomPastDate(7).toISOString(),
       preferences: {
-        newsletter: Math.random() > 0.3,
-        smsNotifications: Math.random() > 0.7,
-        favoriteProducts: this.generateFavoriteProducts(),
-        dietaryRestrictions: this.generateDietaryRestrictions(),
-        preferredPaymentMethod: this.randomPaymentMethod(),
-        preferredDeliveryTime: this.randomDeliveryTime(),
+        theme: 'light' as const,
+        language: 'de',
+        notifications: Math.random() > 0.3,
+        newsletter: Math.random() > 0.5,
       },
-      tags: this.generateCustomerTags(type),
+      loyaltyPoints: Math.floor(Math.random() * 1000),
+      orderHistory: [],
     }
+
+    // Add extended properties that aren't in the Customer type
+    const extendedCustomer = customer as any
+    extendedCustomer.customerId = `CUST-${String(id).padStart(3, '0')}`
+    extendedCustomer.phone = `+49 ${Math.floor(Math.random() * 900) + 100} ${
+      Math.floor(Math.random() * 9000000) + 1000000
+    }`
+    extendedCustomer.address = this.generateAddress()
+    extendedCustomer.type = type
+    extendedCustomer.totalOrders = Math.floor(Math.random() * 100) + 1
+    extendedCustomer.totalSpent = 0
+    extendedCustomer.averageOrderValue = 0
+    extendedCustomer.lastOrderDate = this.randomPastDate(30)
+    extendedCustomer.registeredAt = this.randomPastDate(365)
+    extendedCustomer.favoriteProducts = this.generateFavoriteProducts()
+    extendedCustomer.dietaryRestrictions = this.generateDietaryRestrictions()
+    extendedCustomer.preferredPaymentMethod = this.randomPaymentMethod()
+    extendedCustomer.preferredDeliveryTime = this.randomDeliveryTime()
+    extendedCustomer.tags = this.generateCustomerTags(type)
 
     // Add business-specific fields
     if (type === 'business') {
-      customer.businessName = businessName
-      customer.taxId = `DE${Math.floor(Math.random() * 900000000) + 100000000}`
-      customer.contactPerson = `${this.randomElement(
+      extendedCustomer.businessName = `${firstName} ${lastName}`
+      extendedCustomer.taxId = `DE${
+        Math.floor(Math.random() * 900000000) + 100000000
+      }`
+      extendedCustomer.contactPerson = `${this.randomElement(
         this.firstNames
       )} ${this.randomElement(this.lastNames)}`
-      customer.creditLimit = Math.floor(Math.random() * 10000) + 1000
-      customer.paymentTerms = [14, 30, 45, 60][Math.floor(Math.random() * 4)]
+      extendedCustomer.creditLimit = Math.floor(Math.random() * 10000) + 1000
+      extendedCustomer.paymentTerms = [14, 30, 45, 60][
+        Math.floor(Math.random() * 4)
+      ]
 
       if (options?.businessType) {
-        customer.notes = `${options.businessType} Kunde`
+        extendedCustomer.notes = `${options.businessType} Kunde`
       }
     } else {
-      customer.loyaltyPoints = Math.floor(Math.random() * 500)
+      // Individual customer fields
+      extendedCustomer.loyaltyCardNumber = `LC-${String(
+        Math.floor(Math.random() * 9000000) + 1000000
+      ).padStart(7, '0')}`
+      extendedCustomer.birthDate = this.randomBirthDate()
     }
 
-    // Calculate spent and average
-    customer.totalSpent = customer.totalOrders * (20 + Math.random() * 80)
-    customer.averageOrderValue = customer.totalSpent / customer.totalOrders
+    // Calculate totals based on orders
+    extendedCustomer.totalSpent =
+      extendedCustomer.totalOrders * (20 + Math.random() * 80)
+    extendedCustomer.averageOrderValue =
+      extendedCustomer.totalSpent / extendedCustomer.totalOrders
 
     return customer
   }
@@ -291,14 +308,12 @@ export class UserGenerator {
 
   private static randomUserRole(): UserRole {
     const roles: UserRole[] = [
-      'admin',
-      'manager',
-      'baker',
-      'cashier',
-      'delivery',
-      'customer',
+      UserRole.Admin,
+      UserRole.Manager,
+      UserRole.Staff,
+      UserRole.Customer,
     ]
-    const weights = [0.05, 0.1, 0.3, 0.25, 0.15, 0.15]
+    const weights = [0.05, 0.15, 0.5, 0.3]
 
     const random = Math.random()
     let sum = 0
@@ -308,13 +323,13 @@ export class UserGenerator {
       if (random < sum) return roles[i]
     }
 
-    return 'baker'
+    return UserRole.Staff
   }
 
   private static getPermissionsForRole(role: UserRole): string[] {
-    const permissionMap: Record<UserRole, string[]> = {
-      admin: ['all'],
-      manager: [
+    const permissionMap: Record<string, string[]> = {
+      [UserRole.Admin]: ['all'],
+      [UserRole.Manager]: [
         'products.read',
         'products.write',
         'orders.read',
@@ -325,29 +340,14 @@ export class UserGenerator {
         'cash.read',
         'cash.write',
       ],
-      baker: [
+      [UserRole.Staff]: [
         'products.read',
         'orders.read',
         'inventory.read',
         'production.read',
         'production.write',
       ],
-      cashier: [
-        'products.read',
-        'orders.read',
-        'orders.create',
-        'cash.read',
-        'cash.write',
-        'customer.read',
-      ],
-      delivery: [
-        'orders.read',
-        'orders.update',
-        'delivery.read',
-        'delivery.write',
-        'customer.read',
-      ],
-      customer: [
+      [UserRole.Customer]: [
         'products.read',
         'orders.read.own',
         'orders.create',
@@ -360,13 +360,14 @@ export class UserGenerator {
   }
 
   private static getDepartmentForRole(role: UserRole): string {
-    const departmentMap: Record<string, string> = {
-      baker: 'Produktion',
-      cashier: 'Verkauf',
-      delivery: 'Lieferung',
+    if (role === UserRole.Staff) {
+      return ['Produktion', 'Verkauf', 'Lieferung'][
+        Math.floor(Math.random() * 3)
+      ]
+    } else if (role === UserRole.Manager || role === UserRole.Admin) {
+      return 'Verwaltung'
     }
-
-    return departmentMap[role] || 'Verwaltung'
+    return 'Allgemein'
   }
 
   private static generateAddress() {
@@ -402,7 +403,7 @@ export class UserGenerator {
       favorites.push(Math.floor(Math.random() * 30) + 1)
     }
 
-    return [...new Set(favorites)] // Remove duplicates
+    return Array.from(new Set(favorites)) // Remove duplicates
   }
 
   private static generateDietaryRestrictions(): string[] {
@@ -438,12 +439,24 @@ export class UserGenerator {
     return this.randomElement(methods)
   }
 
+  private static randomBirthDate(): string {
+    const year = new Date().getFullYear() - Math.floor(Math.random() * 50) - 20
+    const month = Math.floor(Math.random() * 12) + 1
+    const day = Math.floor(Math.random() * 28) + 1
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(
+      2,
+      '0'
+    )}`
+  }
+
   private static randomDeliveryTime(): string {
     const times = ['early-morning', 'morning', 'afternoon', 'evening']
     return this.randomElement(times)
   }
 
-  private static generateCustomerTags(type: CustomerType): string[] {
+  private static generateCustomerTags(
+    type: 'individual' | 'business'
+  ): string[] {
     const tags: string[] = []
 
     if (type === 'business') {

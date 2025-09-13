@@ -3,87 +3,86 @@
  * @module @bakery/shared/data-mocks/users
  */
 
-import { User, UserRole } from '@bakery/shared/types'
+import { User, UserRole, Staff } from '@bakery/shared/types'
 import { hashPassword } from '@bakery/shared/utils'
 
+// Extended interface for mock users with additional testing properties
+interface MockUser extends User {
+  username?: string // Keep for backwards compatibility in tests
+  department?: string
+  shift?: string
+  vehicleId?: string
+  customerId?: string
+  loyaltyPoints?: number
+  deactivatedAt?: string
+  deactivationReason?: string
+}
+
+// Helper to create Staff users with permissions
+const createStaffUser = (
+  user: Omit<Staff, 'permissions'>,
+  permissions?: any[]
+): MockUser => {
+  return {
+    ...user,
+    permissions: permissions || [],
+  } as any
+}
+
 // Mock users with different roles
-export const MOCK_USERS: User[] = [
+export const MOCK_USERS: MockUser[] = [
   {
     id: 1,
-    username: 'admin',
+    username: 'admin', // Keep for test compatibility
     email: 'admin@bakery.com',
-    role: 'admin' as UserRole,
-    name: 'Administrator',
+    role: UserRole.Admin,
+    firstName: 'Admin',
+    lastName: 'User',
     isActive: true,
-    permissions: ['all'], // Admin has all permissions
-    createdAt: new Date('2023-01-01'),
-    updatedAt: new Date('2024-01-15'),
-    lastLogin: new Date('2024-01-20'),
+    createdAt: '2023-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-15T00:00:00.000Z',
+    lastLogin: '2024-01-20T00:00:00.000Z',
     preferences: {
       theme: 'dark',
       language: 'de',
-      notifications: {
-        email: true,
-        push: true,
-        sms: false,
-      },
+      notifications: true,
+      newsletter: false,
     },
   },
   {
     id: 2,
     username: 'manager',
     email: 'manager@bakery.com',
-    role: 'manager' as UserRole,
-    name: 'Max Müller',
+    role: UserRole.Manager,
+    firstName: 'Max',
+    lastName: 'Müller',
     isActive: true,
-    permissions: [
-      'products.read',
-      'products.write',
-      'orders.read',
-      'orders.write',
-      'cash.read',
-      'inventory.read',
-      'inventory.write',
-      'reports.read',
-    ],
-    createdAt: new Date('2023-02-15'),
-    updatedAt: new Date('2024-01-18'),
-    lastLogin: new Date('2024-01-19'),
+    createdAt: '2023-02-15T00:00:00.000Z',
+    updatedAt: '2024-01-18T00:00:00.000Z',
+    lastLogin: '2024-01-19T00:00:00.000Z',
     preferences: {
       theme: 'light',
       language: 'de',
-      notifications: {
-        email: true,
-        push: true,
-        sms: true,
-      },
+      notifications: true,
+      newsletter: true,
     },
   },
   {
     id: 3,
     username: 'baker1',
     email: 'thomas.weber@bakery.com',
-    role: 'baker' as UserRole,
-    name: 'Thomas Weber',
+    role: UserRole.Staff,
+    firstName: 'Thomas',
+    lastName: 'Weber',
     isActive: true,
-    permissions: [
-      'products.read',
-      'orders.read',
-      'inventory.read',
-      'production.read',
-      'production.write',
-    ],
-    createdAt: new Date('2023-03-20'),
-    updatedAt: new Date('2024-01-10'),
-    lastLogin: new Date('2024-01-20'),
+    createdAt: '2023-03-20T00:00:00.000Z',
+    updatedAt: '2024-01-10T00:00:00.000Z',
+    lastLogin: '2024-01-20T00:00:00.000Z',
     preferences: {
       theme: 'light',
       language: 'de',
-      notifications: {
-        email: false,
-        push: true,
-        sms: false,
-      },
+      notifications: true,
+      newsletter: false,
     },
     department: 'Produktion',
     shift: 'Frühschicht',
@@ -92,27 +91,18 @@ export const MOCK_USERS: User[] = [
     id: 4,
     username: 'baker2',
     email: 'anna.schmidt@bakery.com',
-    role: 'baker' as UserRole,
-    name: 'Anna Schmidt',
+    role: UserRole.Staff,
+    firstName: 'Anna',
+    lastName: 'Schmidt',
     isActive: true,
-    permissions: [
-      'products.read',
-      'orders.read',
-      'inventory.read',
-      'production.read',
-      'production.write',
-    ],
-    createdAt: new Date('2023-04-10'),
-    updatedAt: new Date('2024-01-12'),
-    lastLogin: new Date('2024-01-19'),
+    createdAt: '2023-04-10T00:00:00.000Z',
+    updatedAt: '2024-01-12T00:00:00.000Z',
+    lastLogin: '2024-01-19T00:00:00.000Z',
     preferences: {
       theme: 'light',
       language: 'de',
-      notifications: {
-        email: true,
-        push: true,
-        sms: false,
-      },
+      notifications: true,
+      newsletter: true,
     },
     department: 'Produktion',
     shift: 'Spätschicht',
@@ -121,28 +111,18 @@ export const MOCK_USERS: User[] = [
     id: 5,
     username: 'cashier1',
     email: 'lisa.becker@bakery.com',
-    role: 'cashier' as UserRole,
-    name: 'Lisa Becker',
+    role: UserRole.Staff,
+    firstName: 'Lisa',
+    lastName: 'Becker',
     isActive: true,
-    permissions: [
-      'products.read',
-      'orders.read',
-      'orders.create',
-      'cash.read',
-      'cash.write',
-      'customer.read',
-    ],
-    createdAt: new Date('2023-05-01'),
-    updatedAt: new Date('2024-01-16'),
-    lastLogin: new Date('2024-01-20'),
+    createdAt: '2023-05-01T00:00:00.000Z',
+    updatedAt: '2024-01-16T00:00:00.000Z',
+    lastLogin: '2024-01-20T00:00:00.000Z',
     preferences: {
       theme: 'light',
       language: 'de',
-      notifications: {
-        email: true,
-        push: false,
-        sms: false,
-      },
+      notifications: true,
+      newsletter: false,
     },
     department: 'Verkauf',
   },
@@ -150,27 +130,18 @@ export const MOCK_USERS: User[] = [
     id: 6,
     username: 'delivery1',
     email: 'markus.wagner@bakery.com',
-    role: 'delivery' as UserRole,
-    name: 'Markus Wagner',
+    role: UserRole.Staff,
+    firstName: 'Markus',
+    lastName: 'Wagner',
     isActive: true,
-    permissions: [
-      'orders.read',
-      'orders.update',
-      'delivery.read',
-      'delivery.write',
-      'customer.read',
-    ],
-    createdAt: new Date('2023-06-15'),
-    updatedAt: new Date('2024-01-14'),
-    lastLogin: new Date('2024-01-19'),
+    createdAt: '2023-06-15T00:00:00.000Z',
+    updatedAt: '2024-01-14T00:00:00.000Z',
+    lastLogin: '2024-01-19T00:00:00.000Z',
     preferences: {
       theme: 'light',
       language: 'de',
-      notifications: {
-        email: false,
-        push: true,
-        sms: true,
-      },
+      notifications: true,
+      newsletter: false,
     },
     department: 'Lieferung',
     vehicleId: 'BAK-001',
@@ -179,27 +150,18 @@ export const MOCK_USERS: User[] = [
     id: 7,
     username: 'customer1',
     email: 'kunde@example.com',
-    role: 'customer' as UserRole,
-    name: 'Peter Klein',
+    role: UserRole.Customer,
+    firstName: 'Peter',
+    lastName: 'Klein',
     isActive: true,
-    permissions: [
-      'products.read',
-      'orders.read.own',
-      'orders.create',
-      'profile.read.own',
-      'profile.write.own',
-    ],
-    createdAt: new Date('2023-07-20'),
-    updatedAt: new Date('2024-01-05'),
-    lastLogin: new Date('2024-01-18'),
+    createdAt: '2023-07-20T00:00:00.000Z',
+    updatedAt: '2024-01-05T00:00:00.000Z',
+    lastLogin: '2024-01-18T00:00:00.000Z',
     preferences: {
       theme: 'light',
       language: 'de',
-      notifications: {
-        email: true,
-        push: false,
-        sms: false,
-      },
+      notifications: true,
+      newsletter: true,
     },
     customerId: 'CUST-001',
     loyaltyPoints: 150,
@@ -208,23 +170,20 @@ export const MOCK_USERS: User[] = [
     id: 8,
     username: 'inactive_user',
     email: 'inactive@bakery.com',
-    role: 'baker' as UserRole,
-    name: 'Hans Meier',
+    role: UserRole.Staff,
+    firstName: 'Hans',
+    lastName: 'Meier',
     isActive: false,
-    permissions: [],
-    createdAt: new Date('2023-01-15'),
-    updatedAt: new Date('2023-12-01'),
-    lastLogin: new Date('2023-11-30'),
+    createdAt: '2023-01-15T00:00:00.000Z',
+    updatedAt: '2023-12-01T00:00:00.000Z',
+    lastLogin: '2023-11-30T00:00:00.000Z',
     preferences: {
       theme: 'light',
       language: 'de',
-      notifications: {
-        email: false,
-        push: false,
-        sms: false,
-      },
+      notifications: false,
+      newsletter: false,
     },
-    deactivatedAt: new Date('2023-12-01'),
+    deactivatedAt: '2023-12-01T00:00:00.000Z',
     deactivationReason: 'Mitarbeiter ausgeschieden',
   },
 ]
@@ -240,30 +199,30 @@ export const MOCK_CREDENTIALS = [
 ]
 
 // Helper functions
-export const getUserById = (id: number): User | undefined => {
+export const getUserById = (id: number): MockUser | undefined => {
   return MOCK_USERS.find((user) => user.id === id)
 }
 
-export const getUserByUsername = (username: string): User | undefined => {
+export const getUserByUsername = (username: string): MockUser | undefined => {
   return MOCK_USERS.find((user) => user.username === username)
 }
 
-export const getUserByEmail = (email: string): User | undefined => {
+export const getUserByEmail = (email: string): MockUser | undefined => {
   return MOCK_USERS.find((user) => user.email === email)
 }
 
-export const getUsersByRole = (role: UserRole): User[] => {
+export const getUsersByRole = (role: UserRole): MockUser[] => {
   return MOCK_USERS.filter((user) => user.role === role)
 }
 
-export const getActiveUsers = (): User[] => {
+export const getActiveUsers = (): MockUser[] => {
   return MOCK_USERS.filter((user) => user.isActive)
 }
 
 export const authenticateUser = async (
   username: string,
   password: string
-): Promise<User | null> => {
+): Promise<MockUser | null> => {
   const credentials = MOCK_CREDENTIALS.find(
     (cred) => cred.username === username
   )
@@ -275,7 +234,7 @@ export const authenticateUser = async (
     const user = getUserByUsername(username)
     if (user && user.isActive) {
       // Update last login
-      user.lastLogin = new Date()
+      user.lastLogin = new Date().toISOString()
       return user
     }
   }
@@ -284,12 +243,11 @@ export const authenticateUser = async (
 }
 
 // Mock JWT token generation
-export const generateMockToken = (user: User): string => {
+export const generateMockToken = (user: MockUser): string => {
   const payload = {
     sub: user.id,
-    username: user.username,
+    email: user.email,
     role: user.role,
-    permissions: user.permissions,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 60 * 60 * 24, // 24 hours
   }
@@ -299,7 +257,7 @@ export const generateMockToken = (user: User): string => {
 }
 
 // Mock refresh token
-export const generateMockRefreshToken = (user: User): string => {
+export const generateMockRefreshToken = (user: MockUser): string => {
   const payload = {
     sub: user.id,
     type: 'refresh',

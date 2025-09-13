@@ -3,19 +3,142 @@
  * @module @bakery/shared/data-mocks/analytics
  */
 
-import {
-  SalesData,
-  ProductionData,
-  InventoryData,
-  StaffPerformance,
-  CustomerAnalytics,
-  FinancialSummary,
-  TimeSeriesData,
-} from '@bakery/shared/types'
+import { Order, OrderStatus } from '@bakery/shared/types'
 import { ALL_PRODUCTS } from '../products'
 import { ALL_ORDERS } from '../orders'
 import { MOCK_USERS } from '../users'
 import { MOCK_CUSTOMERS } from '../users/customers'
+
+// Local type definitions for dashboard analytics
+interface TimeSeriesData {
+  date: string
+  value: number
+  count?: number
+}
+
+interface SalesData {
+  totalRevenue: number
+  totalOrders: number
+  averageOrderValue: number
+  dailySales: TimeSeriesData[]
+  topProducts: Array<{
+    productId: number
+    productName: string
+    quantity: number
+    revenue: number
+  }>
+  growthRate: number
+  conversionRate: number
+  returningCustomerRate: number
+}
+
+interface ProductionData {
+  totalProduced: number
+  totalSold: number
+  totalWaste: number
+  efficiency: number
+  productionRecords: Array<{
+    date: string
+    productId: number
+    productName: string
+    produced: number
+    sold: number
+    waste: number
+    efficiency: number
+  }>
+  wasteReasons: Array<{
+    reason: string
+    percentage: number
+  }>
+}
+
+interface InventoryData {
+  totalItems: number
+  lowStockItems: number
+  excessStockItems: number
+  totalValue: number
+  inventoryItems: Array<{
+    productId: number
+    productName: string
+    currentStock: number
+    minStock: number
+    maxStock: number
+    status: 'low' | 'optimal' | 'excess'
+    daysUntilReorder: number
+    lastRestocked: Date
+  }>
+  turnoverRate: number
+  averageDaysInStock: number
+}
+
+interface StaffPerformance {
+  totalStaff: number
+  averageProductivity: number
+  averageAttendance: number
+  staffMembers: Array<{
+    userId: number
+    name: string
+    role: string
+    productivity: number
+    attendance: number
+    customerRating: number
+    tasksCompleted: number
+    hoursWorked: number
+    overtimeHours: number
+  }>
+  departmentStats: Array<{
+    department: string
+    staffCount: number
+    productivity: number
+  }>
+}
+
+interface CustomerAnalytics {
+  totalCustomers: number
+  activeCustomers: number
+  newCustomers: number
+  churnRate: number
+  lifetimeValue: number
+  customerSegments: Array<{
+    segment: string
+    count: number
+    revenue: number
+    percentage: number
+  }>
+  satisfactionScores: {
+    overall: number
+    product: number
+    service: number
+    delivery: number
+    price: number
+  }
+  topCustomers: Array<{
+    customerId: number
+    name: string
+    totalSpent: number
+    orderCount: number
+  }>
+}
+
+interface FinancialSummary {
+  revenue: number
+  costs: number
+  grossProfit: number
+  grossMargin: number
+  operatingExpenses: number
+  netProfit: number
+  netMargin: number
+  cashFlow: Array<{
+    category: string
+    amount: number
+  }>
+  profitTrend: TimeSeriesData[]
+  expenseBreakdown: Array<{
+    category: string
+    amount: number
+    percentage: number
+  }>
+}
 
 // Generate sales analytics
 export const generateSalesAnalytics = (days: number = 30): SalesData => {
@@ -23,12 +146,14 @@ export const generateSalesAnalytics = (days: number = 30): SalesData => {
   const startDate = new Date()
   startDate.setDate(startDate.getDate() - days)
 
-  const relevantOrders = ALL_ORDERS.filter(
-    (order) =>
-      order.createdAt >= startDate &&
-      order.createdAt <= endDate &&
-      order.status === 'completed'
-  )
+  const relevantOrders = ALL_ORDERS.filter((order) => {
+    const orderDate = new Date(order.createdAt)
+    return (
+      orderDate >= startDate &&
+      orderDate <= endDate &&
+      order.status === OrderStatus.Completed
+    )
+  })
 
   const totalRevenue = relevantOrders.reduce(
     (sum, order) => sum + order.total,
@@ -67,7 +192,7 @@ export const generateSalesAnalytics = (days: number = 30): SalesData => {
       }
       productSales.set(item.productId, {
         quantity: current.quantity + item.quantity,
-        revenue: current.revenue + item.total,
+        revenue: current.revenue + item.totalPrice,
       })
     })
   })
@@ -98,7 +223,7 @@ export const generateSalesAnalytics = (days: number = 30): SalesData => {
 export const generateProductionAnalytics = (
   days: number = 7
 ): ProductionData => {
-  const productionRecords = []
+  const productionRecords: any[] = []
   const endDate = new Date()
 
   for (let i = 0; i < days; i++) {
@@ -153,9 +278,9 @@ export const generateProductionAnalytics = (
 export const generateInventoryStatus = (): InventoryData => {
   const inventoryItems = ALL_PRODUCTS.map((product) => {
     const currentStock = product.stock || 0
-    const minStock = Math.floor((product.dailyTarget || 10) * 0.5)
-    const maxStock = (product.dailyTarget || 10) * 3
-    const status =
+    const minStock = Math.floor(10 * 0.5)
+    const maxStock = 10 * 3
+    const status: 'low' | 'optimal' | 'excess' =
       currentStock < minStock
         ? 'low'
         : currentStock > maxStock
@@ -201,7 +326,7 @@ export const generateInventoryStatus = (): InventoryData => {
 // Generate staff performance data
 export const generateStaffPerformance = (): StaffPerformance => {
   const staffMembers = MOCK_USERS.filter((user) =>
-    ['baker', 'cashier', 'delivery'].includes(user.role)
+    ['staff', 'manager'].includes(user.role.toLowerCase())
   ).map((user) => {
     const productivity = 70 + Math.random() * 30
     const attendance = 85 + Math.random() * 15
@@ -209,7 +334,7 @@ export const generateStaffPerformance = (): StaffPerformance => {
 
     return {
       userId: user.id,
-      name: user.name,
+      name: `${user.firstName} ${user.lastName}`,
       role: user.role,
       productivity,
       attendance,
@@ -241,10 +366,10 @@ export const generateStaffPerformance = (): StaffPerformance => {
 
 // Generate customer analytics
 export const generateCustomerAnalytics = (): CustomerAnalytics => {
-  const activeCustomers = MOCK_CUSTOMERS.filter((c) => c.isActive)
-  const newCustomers = activeCustomers.filter((c) => {
+  const activeCustomers = MOCK_CUSTOMERS.filter((c: any) => c.isActive)
+  const newCustomers = activeCustomers.filter((c: any) => {
     const daysSinceRegistration =
-      (Date.now() - c.registeredAt.getTime()) / (1000 * 60 * 60 * 24)
+      (Date.now() - new Date(c.registeredAt).getTime()) / (1000 * 60 * 60 * 24)
     return daysSinceRegistration <= 30
   })
 
@@ -272,13 +397,14 @@ export const generateCustomerAnalytics = (): CustomerAnalytics => {
     customerSegments,
     satisfactionScores,
     topCustomers: activeCustomers
-      .sort((a, b) => b.totalSpent - a.totalSpent)
+      .sort((a: any, b: any) => (b.totalSpent || 0) - (a.totalSpent || 0))
       .slice(0, 5)
-      .map((c) => ({
+      .map((c: any) => ({
         customerId: c.id,
-        name: c.name,
-        totalSpent: c.totalSpent,
-        orderCount: c.totalOrders,
+        name:
+          (c as any).name || `${(c as any).firstName} ${(c as any).lastName}`,
+        totalSpent: (c as any).totalSpent || 0,
+        orderCount: (c as any).totalOrders || 0,
       })),
   }
 }
