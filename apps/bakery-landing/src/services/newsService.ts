@@ -14,39 +14,76 @@ export interface NewsItem {
   content?: string
 }
 
-const newsDirectory = path.join(process.cwd(), '../../content/news')
+const newsDirectory = path.join(process.cwd(), 'content/news')
 
 export function getAllNews(): NewsItem[] {
   try {
-    const filenames = fs.readdirSync(newsDirectory)
-    const allNews = filenames
-      .filter((filename) => filename.endsWith('.md'))
-      .map((filename) => {
-        const filePath = path.join(newsDirectory, filename)
-        const fileContents = fs.readFileSync(filePath, 'utf8')
-        const { data, content } = matter(fileContents)
+    // Check if directory exists
+    if (!fs.existsSync(newsDirectory)) {
+      console.warn('News directory does not exist:', newsDirectory)
+      return []
+    }
 
-        return {
-          id: data.id,
-          slug: data.slug,
-          name: data.name,
-          published: data.published,
-          category: data.category,
-          image: data.image,
-          shortDescription: data.shortDescription,
-          text: content,
-          content,
-        }
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.published).getTime() - new Date(a.published).getTime()
-      )
+    const filenames = fs.readdirSync(newsDirectory)
+    const markdownFiles = filenames.filter((filename) =>
+      filename.endsWith('.md')
+    )
+
+    if (markdownFiles.length === 0) {
+      console.warn('No markdown files found in news directory')
+      return []
+    }
+
+    const allNews = (
+      markdownFiles
+        .map((filename) => {
+          try {
+            const filePath = path.join(newsDirectory, filename)
+            const fileContents = fs.readFileSync(filePath, 'utf8')
+            const { data, content } = matter(fileContents)
+
+            // Provide default values for required fields
+            return {
+              id: data.id || Date.now(),
+              slug: data.slug || filename.replace('.md', ''),
+              name: data.name || 'Untitled',
+              published: data.published || new Date().toISOString(),
+              category: data.category || 'Allgemein',
+              image: data.image || '/images/default-news.jpg',
+              shortDescription:
+                data.shortDescription || 'Keine Beschreibung verfügbar',
+              text: content || '',
+              content: content || undefined,
+            }
+          } catch (fileError) {
+            console.error(`Error reading file ${filename}:`, fileError)
+            return null
+          }
+        })
+        .filter((item) => item !== null) as NewsItem[]
+    ).sort(
+      (a, b) =>
+        new Date(b.published).getTime() - new Date(a.published).getTime()
+    )
 
     return allNews
   } catch (error) {
     console.error('Error reading news files:', error)
-    return []
+    // Return fallback news items if content directory doesn't work
+    return [
+      {
+        id: 1,
+        slug: 'willkommen',
+        name: 'Willkommen bei Bäckerei Heusser',
+        published: new Date().toISOString(),
+        category: 'Allgemein',
+        image: '/images/bakery-welcome.jpg',
+        shortDescription: 'Entdecken Sie unsere traditionellen Backwaren',
+        text: 'Herzlich willkommen bei der Bäckerei Heusser. Wir freuen uns, Sie mit unseren frischen Backwaren zu verwöhnen.',
+        content:
+          'Herzlich willkommen bei der Bäckerei Heusser. Wir freuen uns, Sie mit unseren frischen Backwaren zu verwöhnen.',
+      },
+    ]
   }
 }
 

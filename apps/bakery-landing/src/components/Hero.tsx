@@ -1,5 +1,6 @@
-import { Box, Container, Typography, Divider } from '@mui/material'
+import { Box, Container, Typography } from '@mui/material'
 import React from 'react'
+import Divider from './icons/brand/Divider'
 
 interface Props {
   title: string
@@ -36,7 +37,7 @@ const Hero: React.FC<Props> = (props) => {
         >
           {title}
         </Typography>
-        <Divider sx={{ width: '60%', maxWidth: 400 }} />
+        <Divider />
       </Container>
     </Box>
   )

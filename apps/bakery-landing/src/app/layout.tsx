@@ -1,7 +1,7 @@
 import './global.css'
 import ThemeRegistry from '../components/providers/ThemeRegistry'
-import { Header } from '@bakery/shared/ui'
-import { Footer } from '@bakery/shared/ui'
+import { Header } from '../components/header'
+import { LocalFooter } from '../components/LocalFooter'
 import { Box } from '@mui/material'
 
 export const metadata = {
@@ -250,7 +250,7 @@ export default function RootLayout({
             >
               {children}
             </Box>
-            <Footer />
+            <LocalFooter />
           </Box>
         </ThemeRegistry>
       </body>

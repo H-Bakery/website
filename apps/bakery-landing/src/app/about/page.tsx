@@ -1,4 +1,3 @@
-'use client'
 import React from 'react'
 import {
   Box,
@@ -8,152 +7,128 @@ import {
   Paper,
   Grid,
   Card,
-  CardContent,
   List,
   ListItem,
   ListItemIcon,
   ListItemText,
+  Breadcrumbs,
+  Link,
 } from '@mui/material'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
 import {
-  ArrowBack as BackIcon,
   CheckCircle as CheckIcon,
   Grain as GrainIcon,
   Nature as NatureIcon,
   People as PeopleIcon,
+  Home as HomeIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material'
+import Hero from '../../components/Hero'
+import { Metadata } from 'next'
 
-// Simple theme for landing page
-const theme = createTheme({
-  palette: {
-    primary: {
-      main: '#D038BA',
-    },
-    secondary: {
-      main: '#2E7D32',
-    },
-  },
-  typography: {
-    fontFamily: '"Playfair Display", "Lora", "Ubuntu", serif',
-    h1: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 700,
-    },
-    h2: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 700,
-    },
-    h3: {
-      fontFamily: '"Playfair Display", serif',
-      fontWeight: 600,
-    },
-  },
-})
+export const metadata: Metadata = {
+  title: 'Über uns - Bäckerei Heusser',
+  description:
+    'Erfahren Sie mehr über unsere Bäckerei-Familie und fast 90 Jahre Tradition und Handwerkskunst seit 1933.',
+  keywords: 'Über uns, Geschichte, Familie, Tradition, Handwerk, Bäckerei',
+}
 
 export default function AboutPage() {
   return (
-    <ThemeProvider theme={theme}>
-      <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
-        {/* Header */}
-        <Box
-          component="header"
-          sx={{ bgcolor: 'primary.main', color: 'white', py: 2 }}
-        >
-          <Container maxWidth="lg">
+    <>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        {/* Breadcrumb Navigation */}
+        <Box sx={{ mb: 4 }}>
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link
+              underline="hover"
+              color="inherit"
+              href="/"
+              sx={{ display: 'flex', alignItems: 'center' }}
+            >
+              <HomeIcon sx={{ mr: 0.5 }} fontSize="small" />
+              Startseite
+            </Link>
             <Box
               sx={{
                 display: 'flex',
-                justifyContent: 'space-between',
                 alignItems: 'center',
+                color: 'text.primary',
               }}
             >
-              <Typography
-                variant="h4"
-                component="h1"
-                sx={{ fontWeight: 'bold' }}
-              >
-                Bäckerei Heusser
-              </Typography>
-              <Button
-                variant="outlined"
-                sx={{ color: 'white', borderColor: 'white' }}
-                startIcon={<BackIcon />}
-                href="/"
-              >
-                Zurück
-              </Button>
-            </Box>
-          </Container>
-        </Box>
-
-        {/* Hero Section */}
-        <Box sx={{ bgcolor: 'grey.50', py: 6 }}>
-          <Container maxWidth="lg">
-            <Typography variant="h1" component="h2" align="center" gutterBottom>
+              <InfoIcon sx={{ mr: 0.5 }} fontSize="small" />
               Über uns
-            </Typography>
-            <Typography variant="h5" color="text.secondary" align="center">
-              Fast 90 Jahre Bäckerhandwerk und Familientradition
-            </Typography>
-          </Container>
+            </Box>
+          </Breadcrumbs>
         </Box>
+      </Container>
+
+      {/* Hero Section */}
+      <Hero title="Über uns" />
+
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        <Typography
+          variant="h5"
+          component="p"
+          color="text.secondary"
+          sx={{ maxWidth: 600, mx: 'auto', textAlign: 'center', mb: 6 }}
+        >
+          Fast 90 Jahre Bäckerhandwerk und Familientradition
+        </Typography>
 
         {/* Main Story */}
-        <Container maxWidth="lg" sx={{ py: 6 }}>
-          <Grid container spacing={8}>
-            <Grid item xs={12} md={6}>
-              <Box
-                sx={{
-                  width: '100%',
-                  height: 300,
-                  bgcolor: 'grey.300',
-                  borderRadius: 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Typography variant="h6" color="text.secondary">
-                  Historisches Bäckerei Foto 1933
-                </Typography>
-              </Box>
-            </Grid>
-            <Grid
-              item
-              xs={12}
-              md={6}
-              sx={{ display: 'flex', alignItems: 'center' }}
+        <Grid container spacing={8} sx={{ mb: 6 }}>
+          <Grid item xs={12} md={6}>
+            <Box
+              sx={{
+                width: '100%',
+                height: 300,
+                bgcolor: 'grey.300',
+                borderRadius: 2,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
             >
-              <Box>
-                <Typography variant="h3" component="h2" gutterBottom>
-                  Familienbetrieb seit 1933
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  Seit nun fast einem Jahrhundert backen wir Backwaren mit
-                  höchster Qualität und Leidenschaft für das wahre Handwerk.
-                  Alles begann 1933, als Bäckermeister Heinrich Heusser unsere
-                  kleine, aber feine Bäckerei in Kirrberg eröffnete.
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  Sein Sohn, Heinrich "Heiner" Heusser, ebenfalls Bäckermeister
-                  mit Leib und Seele, übernahm früh das Familienunternehmen und
-                  führte es gemeinsam mit seiner Frau Hildegard bis 2022 zu
-                  einem festen Bestandteil des Dorflebens.
-                </Typography>
-                <Typography variant="body1">
-                  Seit 2022 setzt Karl-Heinrich Heusser diese wertvolle
-                  Tradition in dritter Generation fort – mit dem gleichen Gespür
-                  für Qualität und dem Versprechen, Tag für Tag frische,
-                  handgefertigte Backwaren anzubieten, die von Herzen kommen und
-                  Herzen erobern.
-                </Typography>
-              </Box>
-            </Grid>
+              <Typography variant="h6" color="text.secondary">
+                Historisches Bäckerei Foto 1933
+              </Typography>
+            </Box>
           </Grid>
-        </Container>
+          <Grid
+            item
+            xs={12}
+            md={6}
+            sx={{ display: 'flex', alignItems: 'center' }}
+          >
+            <Box>
+              <Typography variant="h3" component="h2" gutterBottom>
+                Familienbetrieb seit 1933
+              </Typography>
+              <Typography variant="body1" paragraph>
+                Seit nun fast einem Jahrhundert backen wir Backwaren mit
+                höchster Qualität und Leidenschaft für das wahre Handwerk. Alles
+                begann 1933, als Bäckermeister Heinrich Heusser unsere kleine,
+                aber feine Bäckerei in Kirrberg eröffnete.
+              </Typography>
+              <Typography variant="body1" paragraph>
+                Sein Sohn, Heinrich "Heiner" Heusser, ebenfalls Bäckermeister
+                mit Leib und Seele, übernahm früh das Familienunternehmen und
+                führte es gemeinsam mit seiner Frau Hildegard bis 2022 zu einem
+                festen Bestandteil des Dorflebens.
+              </Typography>
+              <Typography variant="body1">
+                Seit 2022 setzt Karl-Heinrich Heusser diese wertvolle Tradition
+                in dritter Generation fort – mit dem gleichen Gespür für
+                Qualität und dem Versprechen, Tag für Tag frische,
+                handgefertigte Backwaren anzubieten, die von Herzen kommen und
+                Herzen erobern.
+              </Typography>
+            </Box>
+          </Grid>
+        </Grid>
 
         {/* Current Operations */}
-        <Box sx={{ bgcolor: 'grey.50', py: 6 }}>
+        <Box sx={{ bgcolor: 'grey.50', py: 6, mx: -4, mb: 6 }}>
           <Container maxWidth="lg">
             <Grid container spacing={8}>
               <Grid
@@ -203,148 +178,85 @@ export default function AboutPage() {
         </Box>
 
         {/* Vision and Mission */}
-        <Container maxWidth="lg" sx={{ py: 6 }}>
-          <Grid container spacing={4}>
-            <Grid item xs={12} md={6}>
-              <Paper elevation={2} sx={{ p: 4, height: '100%' }}>
-                <Typography
-                  variant="h5"
-                  component="h3"
-                  gutterBottom
-                  align="center"
-                >
-                  Unsere Vision
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  Wir streben danach, die führende handwerkliche Bäckerei der
-                  Region zu sein, die für ihre herausragende Qualität, Tradition
-                  und Innovation bekannt ist.
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  In einer Zeit der industriellen Massenproduktion wollen wir
-                  zeigen, dass traditionelles Bäckerhandwerk nicht nur
-                  überlebensfähig ist, sondern auch eine entscheidende Rolle für
-                  eine nachhaltige und gesunde Ernährungskultur spielt.
-                </Typography>
-                <List>
-                  <ListItem>
-                    <ListItemIcon>
-                      <CheckIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Handwerk bewahren"
-                      secondary="Traditionelle Backtechniken für kommende Generationen erhalten"
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <CheckIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Regionales Bewusstsein fördern"
-                      secondary="Die Bedeutung kurzer Lieferketten und lokaler Produkte betonen"
-                    />
-                  </ListItem>
-                </List>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} md={6}>
-              <Paper elevation={2} sx={{ p: 4, height: '100%' }}>
-                <Typography
-                  variant="h5"
-                  component="h3"
-                  gutterBottom
-                  align="center"
-                >
-                  Unsere Mission
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  Wir verpflichten uns, jeden Tag hochwertige, handwerklich
-                  gefertigte Backwaren herzustellen, die nicht nur den Gaumen
-                  erfreuen, sondern auch eine gesunde Ernährung fördern.
-                </Typography>
-                <Typography variant="body1" paragraph>
-                  Durch die sorgfältige Auswahl regionaler Zutaten und den
-                  Einsatz traditioneller Methoden schaffen wir Produkte mit
-                  authentischem Geschmack und charakteristischer Qualität.
-                </Typography>
-                <Typography variant="body1">
-                  Unser Laden ist mehr als nur eine Bäckerei – er ist ein Ort
-                  der Gemeinschaft, an dem Menschen zusammenkommen und die
-                  einfachen Freuden des Lebens teilen können.
-                </Typography>
-              </Paper>
-            </Grid>
+        <Grid container spacing={4} sx={{ mb: 6 }}>
+          <Grid item xs={12} md={6}>
+            <Paper elevation={2} sx={{ p: 4, height: '100%' }}>
+              <Typography
+                variant="h5"
+                component="h3"
+                gutterBottom
+                align="center"
+              >
+                Unsere Vision
+              </Typography>
+              <Typography variant="body1" paragraph>
+                Wir streben danach, die führende handwerkliche Bäckerei der
+                Region zu sein, die für ihre herausragende Qualität, Tradition
+                und Innovation bekannt ist.
+              </Typography>
+              <Typography variant="body1" paragraph>
+                In einer Zeit der industriellen Massenproduktion wollen wir
+                zeigen, dass traditionelles Bäckerhandwerk nicht nur
+                überlebensfähig ist, sondern auch eine entscheidende Rolle für
+                eine nachhaltige und gesunde Ernährungskultur spielt.
+              </Typography>
+              <List>
+                <ListItem>
+                  <ListItemIcon>
+                    <CheckIcon color="primary" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Handwerk bewahren"
+                    secondary="Traditionelle Backtechniken für kommende Generationen erhalten"
+                  />
+                </ListItem>
+                <ListItem>
+                  <ListItemIcon>
+                    <CheckIcon color="primary" />
+                  </ListItemIcon>
+                  <ListItemText
+                    primary="Regionales Bewusstsein fördern"
+                    secondary="Die Bedeutung kurzer Lieferketten und lokaler Produkte betonen"
+                  />
+                </ListItem>
+              </List>
+            </Paper>
           </Grid>
-        </Container>
+          <Grid item xs={12} md={6}>
+            <Paper elevation={2} sx={{ p: 4, height: '100%' }}>
+              <Typography
+                variant="h5"
+                component="h3"
+                gutterBottom
+                align="center"
+              >
+                Unsere Mission
+              </Typography>
+              <Typography variant="body1" paragraph>
+                Wir verpflichten uns, jeden Tag hochwertige, handwerklich
+                gefertigte Backwaren herzustellen, die nicht nur den Gaumen
+                erfreuen, sondern auch eine gesunde Ernährung fördern.
+              </Typography>
+              <Typography variant="body1" paragraph>
+                Durch die sorgfältige Auswahl regionaler Zutaten und den Einsatz
+                traditioneller Methoden schaffen wir Produkte mit authentischem
+                Geschmack und charakteristischer Qualität.
+              </Typography>
+              <Typography variant="body1">
+                Unser Laden ist mehr als nur eine Bäckerei – er ist ein Ort der
+                Gemeinschaft, an dem Menschen zusammenkommen und die einfachen
+                Freuden des Lebens teilen können.
+              </Typography>
+            </Paper>
+          </Grid>
+        </Grid>
+      </Container>
 
-        {/* Core Values */}
-        <Box sx={{ bgcolor: 'grey.50', py: 6 }}>
-          <Container maxWidth="lg">
-            <Typography variant="h3" component="h2" align="center" gutterBottom>
-              Unsere Werte
-            </Typography>
-            <Typography
-              variant="body1"
-              align="center"
-              color="text.secondary"
-              paragraph
-              sx={{ mb: 5 }}
-            >
-              Diese Grundsätze leiten unser tägliches Handeln
-            </Typography>
-
-            <Grid container spacing={4}>
-              <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
-                  <GrainIcon
-                    sx={{ fontSize: 60, color: 'primary.main', mb: 2 }}
-                  />
-                  <Typography variant="h6" gutterBottom>
-                    Qualität
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Wir verwenden nur die besten Zutaten und traditionelle
-                    Backverfahren für ein unvergleichliches Geschmackserlebnis.
-                  </Typography>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
-                  <NatureIcon
-                    sx={{ fontSize: 60, color: 'primary.main', mb: 2 }}
-                  />
-                  <Typography variant="h6" gutterBottom>
-                    Nachhaltigkeit
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Wir legen Wert auf regionale Herkunft und umweltbewusste
-                    Herstellungsprozesse.
-                  </Typography>
-                </Card>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
-                  <PeopleIcon
-                    sx={{ fontSize: 60, color: 'primary.main', mb: 2 }}
-                  />
-                  <Typography variant="h6" gutterBottom>
-                    Gemeinschaft
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Unsere Bäckerei ist ein Ort der Begegnung, an dem wir
-                    Menschen zusammenbringen und lokale Traditionen pflegen.
-                  </Typography>
-                </Card>
-              </Grid>
-            </Grid>
-          </Container>
-        </Box>
-
-        {/* Team */}
-        <Container maxWidth="lg" sx={{ py: 6 }}>
+      {/* Core Values */}
+      <Box sx={{ bgcolor: 'grey.50', py: 6, mx: -4, mb: 6 }}>
+        <Container maxWidth="lg">
           <Typography variant="h3" component="h2" align="center" gutterBottom>
-            Unser Team
+            Unsere Werte
           </Typography>
           <Typography
             variant="body1"
@@ -353,169 +265,164 @@ export default function AboutPage() {
             paragraph
             sx={{ mb: 5 }}
           >
-            Die Menschen hinter unseren köstlichen Backwaren
+            Diese Grundsätze leiten unser tägliches Handeln
           </Typography>
 
           <Grid container spacing={4}>
-            {[
-              {
-                name: 'Karl Heinrich Heusser',
-                role: 'Geschäftsführer und Diplom Ingenieur',
-                description:
-                  'Leitet den Betrieb mit technischem Know-how und Leidenschaft für die Bäckertradition.',
-              },
-              {
-                name: 'Florian Hein',
-                role: 'Backstubenleiter',
-                description:
-                  'Verantwortlich für unsere hochwertigen Backwaren mit handwerklichem Geschick und Kreativität.',
-              },
-              {
-                name: 'Daniela Fricke',
-                role: 'Bäckereifachverkäuferin',
-                description:
-                  'Sorgt mit ihrer Expertise für eine kompetente Beratung und herzlichen Service am Verkaufstresen.',
-              },
-            ].map((member, index) => (
-              <Grid item xs={12} md={4} key={index}>
-                <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
-                  <Box
-                    sx={{
-                      width: 100,
-                      height: 100,
-                      bgcolor: 'grey.300',
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      mx: 'auto',
-                      mb: 2,
-                    }}
-                  >
-                    <Typography variant="h4" color="text.secondary">
-                      {member.name.charAt(0)}
-                    </Typography>
-                  </Box>
-                  <Typography variant="h6" gutterBottom>
-                    {member.name}
-                  </Typography>
-                  <Typography
-                    variant="subtitle2"
-                    color="primary.main"
-                    gutterBottom
-                  >
-                    {member.role}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {member.description}
-                  </Typography>
-                </Card>
-              </Grid>
-            ))}
+            <Grid item xs={12} md={4}>
+              <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
+                <GrainIcon
+                  sx={{ fontSize: 60, color: 'primary.main', mb: 2 }}
+                />
+                <Typography variant="h6" gutterBottom>
+                  Qualität
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Wir verwenden nur die besten Zutaten und traditionelle
+                  Backverfahren für ein unvergleichliches Geschmackserlebnis.
+                </Typography>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
+                <NatureIcon
+                  sx={{ fontSize: 60, color: 'primary.main', mb: 2 }}
+                />
+                <Typography variant="h6" gutterBottom>
+                  Nachhaltigkeit
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Wir legen Wert auf regionale Herkunft und umweltbewusste
+                  Herstellungsprozesse.
+                </Typography>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
+                <PeopleIcon
+                  sx={{ fontSize: 60, color: 'primary.main', mb: 2 }}
+                />
+                <Typography variant="h6" gutterBottom>
+                  Gemeinschaft
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Unsere Bäckerei ist ein Ort der Begegnung, an dem wir Menschen
+                  zusammenbringen und lokale Traditionen pflegen.
+                </Typography>
+              </Card>
+            </Grid>
           </Grid>
         </Container>
+      </Box>
 
-        {/* CTA Section */}
-        <Box sx={{ bgcolor: 'primary.main', color: 'white', py: 6 }}>
-          <Container maxWidth="lg">
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="h3" component="h2" gutterBottom>
-                Besuchen Sie uns
-              </Typography>
-              <Typography variant="h6" paragraph>
-                Erleben Sie selbst die Qualität und Leidenschaft, die in jedem
-                unserer Backwaren steckt
-              </Typography>
+      {/* Team */}
+      <Typography variant="h3" component="h2" align="center" gutterBottom>
+        Unser Team
+      </Typography>
+      <Typography
+        variant="body1"
+        align="center"
+        color="text.secondary"
+        paragraph
+        sx={{ mb: 5 }}
+      >
+        Die Menschen hinter unseren köstlichen Backwaren
+      </Typography>
+
+      <Grid container spacing={4} sx={{ mb: 6 }}>
+        {[
+          {
+            name: 'Karl Heinrich Heusser',
+            role: 'Geschäftsführer und Diplom Ingenieur',
+            description:
+              'Leitet den Betrieb mit technischem Know-how und Leidenschaft für die Bäckertradition.',
+          },
+          {
+            name: 'Florian Hein',
+            role: 'Backstubenleiter',
+            description:
+              'Verantwortlich für unsere hochwertigen Backwaren mit handwerklichem Geschick und Kreativität.',
+          },
+          {
+            name: 'Daniela Fricke',
+            role: 'Bäckereifachverkäuferin',
+            description:
+              'Sorgt mit ihrer Expertise für eine kompetente Beratung und herzlichen Service am Verkaufstresen.',
+          },
+        ].map((member, index) => (
+          <Grid item xs={12} md={4} key={index}>
+            <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
               <Box
                 sx={{
+                  width: 100,
+                  height: 100,
+                  bgcolor: 'grey.300',
+                  borderRadius: '50%',
                   display: 'flex',
-                  gap: 2,
+                  alignItems: 'center',
                   justifyContent: 'center',
-                  flexWrap: 'wrap',
-                  mt: 4,
+                  mx: 'auto',
+                  mb: 2,
                 }}
               >
-                <Button
-                  variant="outlined"
-                  size="large"
-                  sx={{ color: 'white', borderColor: 'white' }}
-                  href="/#standort"
-                >
-                  Kontakt aufnehmen
-                </Button>
-                <Button
-                  variant="contained"
-                  size="large"
-                  sx={{ bgcolor: 'white', color: 'primary.main' }}
-                  href="https://shop.baeckerei-heusser.de/products"
-                >
-                  Unser Angebot entdecken
-                </Button>
+                <Typography variant="h4" color="text.secondary">
+                  {member.name.charAt(0)}
+                </Typography>
               </Box>
-            </Box>
-          </Container>
-        </Box>
+              <Typography variant="h6" gutterBottom>
+                {member.name}
+              </Typography>
+              <Typography variant="subtitle2" color="primary.main" gutterBottom>
+                {member.role}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {member.description}
+              </Typography>
+            </Card>
+          </Grid>
+        ))}
+      </Grid>
 
-        {/* Footer */}
-        <Box
-          component="footer"
-          sx={{ bgcolor: 'grey.900', color: 'white', py: 4 }}
-        >
-          <Container maxWidth="lg">
-            <Grid container spacing={4}>
-              <Grid item xs={12} md={4}>
-                <Typography variant="h6" gutterBottom>
-                  Bäckerei Heusser
-                </Typography>
-                <Typography variant="body2">
-                  Traditionelle Handwerksbäckerei seit 1933
-                </Typography>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Typography variant="h6" gutterBottom>
-                  Kontakt
-                </Typography>
-                <Typography variant="body2">
-                  Eckstraße 3<br />
-                  66424 Homburg/Kirrberg
-                  <br />
-                  Tel: 06841 2229
-                </Typography>
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <Typography variant="h6" gutterBottom>
-                  Links
-                </Typography>
-                <Typography variant="body2">
-                  <Button color="inherit" href="/imprint" size="small">
-                    Impressum
-                  </Button>
-                  <br />
-                  <Button
-                    color="inherit"
-                    href="https://shop.baeckerei-heusser.de"
-                    size="small"
-                  >
-                    Online Shop
-                  </Button>
-                </Typography>
-              </Grid>
-            </Grid>
+      {/* CTA Section */}
+      <Box sx={{ bgcolor: 'primary.main', color: 'white', py: 6, mx: -4 }}>
+        <Container maxWidth="lg">
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h3" component="h2" gutterBottom>
+              Besuchen Sie uns
+            </Typography>
+            <Typography variant="h6" paragraph>
+              Erleben Sie selbst die Qualität und Leidenschaft, die in jedem
+              unserer Backwaren steckt
+            </Typography>
             <Box
               sx={{
+                display: 'flex',
+                gap: 2,
+                justifyContent: 'center',
+                flexWrap: 'wrap',
                 mt: 4,
-                pt: 4,
-                borderTop: '1px solid #444',
-                textAlign: 'center',
               }}
             >
-              <Typography variant="body2" color="grey.400">
-                © 2024 Bäckerei Heusser. Alle Rechte vorbehalten.
-              </Typography>
+              <Button
+                variant="outlined"
+                size="large"
+                sx={{ color: 'white', borderColor: 'white' }}
+                href="/#standort"
+              >
+                Kontakt aufnehmen
+              </Button>
+              <Button
+                variant="contained"
+                size="large"
+                sx={{ bgcolor: 'white', color: 'primary.main' }}
+                href="/products"
+              >
+                Unser Angebot entdecken
+              </Button>
             </Box>
-          </Container>
-        </Box>
+          </Box>
+        </Container>
       </Box>
-    </ThemeProvider>
+    </>
   )
 }

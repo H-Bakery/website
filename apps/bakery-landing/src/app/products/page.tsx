@@ -2,6 +2,7 @@ import React from 'react'
 import { Box, Container, Typography, Breadcrumbs, Link } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
+import Hero from '../../components/Hero'
 import Products from '../../components/home/products'
 import { PRODUCTS } from '../../mocks/products'
 import { Metadata } from 'next'
@@ -15,59 +16,51 @@ export const metadata: Metadata = {
 
 export default function ProductsPage() {
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      {/* Breadcrumb Navigation */}
-      <Box sx={{ mb: 4 }}>
-        <Breadcrumbs aria-label="breadcrumb">
-          <Link
-            underline="hover"
-            color="inherit"
-            href="/"
-            sx={{ display: 'flex', alignItems: 'center' }}
-          >
-            <HomeIcon sx={{ mr: 0.5 }} fontSize="small" />
-            Startseite
-          </Link>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'center',
-              color: 'text.primary',
-            }}
-          >
-            <ShoppingBasketIcon sx={{ mr: 0.5 }} fontSize="small" />
-            Sortiment
-          </Box>
-        </Breadcrumbs>
-      </Box>
+    <>
+      <Container maxWidth="lg" sx={{ py: 4 }}>
+        {/* Breadcrumb Navigation */}
+        <Box sx={{ mb: 4 }}>
+          <Breadcrumbs aria-label="breadcrumb">
+            <Link
+              underline="hover"
+              color="inherit"
+              href="/"
+              sx={{ display: 'flex', alignItems: 'center' }}
+            >
+              <HomeIcon sx={{ mr: 0.5 }} fontSize="small" />
+              Startseite
+            </Link>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                color: 'text.primary',
+              }}
+            >
+              <ShoppingBasketIcon sx={{ mr: 0.5 }} fontSize="small" />
+              Sortiment
+            </Box>
+          </Breadcrumbs>
+        </Box>
+      </Container>
 
       {/* Hero Section */}
-      <Box sx={{ textAlign: 'center', mb: 6 }}>
-        <Typography
-          variant="h2"
-          component="h1"
-          gutterBottom
-          sx={{
-            fontWeight: 'bold',
-            color: 'primary.main',
-            mb: 2,
-          }}
-        >
-          Unser Sortiment
-        </Typography>
+      <Hero title="Unser Sortiment" />
+
+      <Container maxWidth="lg" sx={{ py: 4 }}>
         <Typography
           variant="h5"
           component="p"
           color="text.secondary"
-          sx={{ maxWidth: 600, mx: 'auto' }}
+          sx={{ maxWidth: 600, mx: 'auto', textAlign: 'center', mb: 6 }}
         >
           Entdecken Sie unsere vielfältige Auswahl an handwerklich hergestellten
           Backwaren. Von traditionellen Broten bis hin zu süßen Leckereien.
         </Typography>
-      </Box>
 
-      {/* Products Display */}
-      <Products items={PRODUCTS} showControls={true} />
-    </Container>
+        {/* Products Display */}
+        <Products items={PRODUCTS} showControls={true} />
+      </Container>
+    </>
   )
 }

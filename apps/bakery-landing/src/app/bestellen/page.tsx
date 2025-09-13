@@ -1,18 +1,28 @@
 'use client'
 import React from 'react'
-import { Box, Container, Typography, Paper, Grid } from '@mui/material'
+import { Box, Container, Typography, Paper, Grid, Button } from '@mui/material'
 import PhoneIcon from '@mui/icons-material/Phone'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
+import Hero from '../../components/Hero'
 
-import { BaseLayout, Hero, Button } from '@bakery/shared/ui'
-import {
-  createWhatsAppLink,
-  createPhoneLink,
-  contactConfig,
-} from '@bakery/shared/utils'
+// Local utility functions to replace shared imports
+const contactConfig = {
+  store: {
+    phone: '+49 6841 2229',
+  },
+  whatsapp: {
+    fallback: {
+      phone: '+49 6841 2229',
+    },
+  },
+}
+
+const createPhoneLink = () => `tel:${contactConfig.store.phone}`
+const createWhatsAppLink = (message: string) =>
+  `https://wa.me/4968412229?text=${encodeURIComponent(message)}`
 
 const BestellenPage: React.FC = () => (
-  <BaseLayout>
+  <>
     <Hero title="Bestellen" />
     <Container maxWidth="md">
       <Box sx={styles.mainContent}>
@@ -136,7 +146,7 @@ const BestellenPage: React.FC = () => (
         </Paper>
       </Box>
     </Container>
-  </BaseLayout>
+  </>
 )
 
 const styles = {
