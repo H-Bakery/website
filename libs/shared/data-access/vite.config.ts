@@ -12,6 +12,7 @@ export default defineConfig({
       entryRoot: 'src',
       tsConfigFilePath: path.join(__dirname, 'tsconfig.lib.json'),
       skipDiagnostics: true,
+      exclude: ['**/src-archive/**'],
     }),
   ],
 
