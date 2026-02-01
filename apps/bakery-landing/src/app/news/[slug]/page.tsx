@@ -82,8 +82,7 @@ export default async function NewsArticlePage({
         />
         <Box mb={6}>
           <Typography color="text.secondary" variant="body2" sx={{ mb: 2 }}>
-            {new Date(news.published).toLocaleDateString('de-DE')} •{' '}
-            {news.category}
+            {news.published} • {news.category}
           </Typography>
           <MarkdownDisplay content={news.content || news.text} />
         </Box>

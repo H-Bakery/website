@@ -38,8 +38,7 @@ const Header = () => {
       <Box sx={styles.header}>
         <Link href="/">
           <Box sx={styles.logo}>
-            {/* Pass the CI color to the Heusser logo component */}
-            <HeusserLogo color={theme.palette.primary.main} />
+            <HeusserLogo color="#5A2E2A" />
           </Box>
         </Link>
         {!isMobile && (
@@ -80,7 +79,7 @@ const Header = () => {
 
 const styles = {
   header: {
-    position: 'fixed',
+    position: 'fixed' as const,
     zIndex: 10001,
     top: 16,
     left: 16,
@@ -89,8 +88,9 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    bgcolor: 'background.paper',
-    boxShadow: 1,
+    bgcolor: 'rgba(255, 255, 255, 0.95)',
+    backdropFilter: 'blur(8px)',
+    boxShadow: '0 2px 12px rgba(90, 46, 42, 0.08)',
     borderRadius: '8px',
     p: 2,
   },
@@ -103,18 +103,20 @@ const styles = {
   },
   menu: {
     display: 'flex',
-    position: 'absolute',
+    position: 'absolute' as const,
     top: 16,
     left: '50%',
     transform: 'translateX(-50%)',
 
     '& .menu-item': {
       mx: 1,
+      fontFamily: '"Merriweather", serif',
+      fontSize: '0.95rem',
     },
   },
   mobileMenu: {
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: 'column' as const,
 
     '& .menu-item': {
       mb: 2,

@@ -72,7 +72,7 @@ export const CallToAction: React.FC<CallToActionProps> = ({
         position: 'relative',
         overflow: 'hidden',
         py: compact ? 3 : 5,
-        bgcolor: position === 'top' ? 'background.default' : 'background.paper',
+        bgcolor: position === 'top' ? 'grey.50' : 'background.paper', // Warm cream
         ...sx,
       }}
     >
@@ -80,7 +80,7 @@ export const CallToAction: React.FC<CallToActionProps> = ({
         <Paper
           elevation={3}
           sx={{
-            p: { xs: 3, md: 4 },
+            p: { xs: 2, sm: 3, md: 4 }, // Smaller padding on mobile
             borderRadius: 2,
             backgroundImage: backgroundImage
               ? `url(${backgroundImage})`
@@ -95,12 +95,14 @@ export const CallToAction: React.FC<CallToActionProps> = ({
         >
           <Grid
             container
-            spacing={3}
+            spacing={{ xs: 2, md: 3 }} // Smaller spacing on mobile
             alignItems="center"
             justifyContent="space-between"
           >
             {/* Text content */}
-            <Grid item xs={12} md={7}>
+            <Grid item xs={12} md={8}>
+              {' '}
+              {/* Wider on mobile */}
               <Box>
                 <Typography
                   variant="overline"
@@ -120,11 +122,12 @@ export const CallToAction: React.FC<CallToActionProps> = ({
                   component="h2"
                   fontWeight="bold"
                   sx={{
-                    mb: 1.5,
+                    mb: { xs: 1, md: 1.5 }, // Smaller margin on mobile
                     color: backgroundImage ? 'white' : 'text.primary',
                     fontSize: compact
-                      ? { xs: '1.5rem', md: '2rem' }
-                      : { xs: '1.75rem', md: '2.5rem' },
+                      ? { xs: '1.3rem', sm: '1.5rem', md: '2rem' } // Better mobile scaling
+                      : { xs: '1.5rem', sm: '1.75rem', md: '2.5rem' },
+                    lineHeight: { xs: 1.2, md: 1.1 }, // Better line height on mobile
                   }}
                 >
                   {title}
@@ -133,11 +136,11 @@ export const CallToAction: React.FC<CallToActionProps> = ({
                 <Typography
                   variant="body1"
                   sx={{
-                    mb: 3,
+                    mb: { xs: 2, md: 3 }, // Smaller margin on mobile
                     color: backgroundImage ? 'grey.100' : 'text.secondary',
-                    maxWidth: '600px',
+                    maxWidth: { xs: 'none', md: '600px' }, // No max width on mobile
                     lineHeight: 1.6,
-                    fontSize: { xs: '1rem', md: '1.1rem' },
+                    fontSize: { xs: '0.9rem', md: '1.1rem' }, // Smaller on mobile
                   }}
                 >
                   {description}
@@ -149,12 +152,13 @@ export const CallToAction: React.FC<CallToActionProps> = ({
             <Grid
               item
               xs={12}
-              md={5}
+              md={4} // Smaller on desktop to match wider text area
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: { xs: 'stretch', md: 'flex-end' },
-                gap: 2,
+                gap: { xs: 1.5, md: 2 }, // Smaller gap on mobile
+                mt: { xs: 1, md: 0 }, // Small margin on mobile
               }}
             >
               <Button
@@ -165,11 +169,14 @@ export const CallToAction: React.FC<CallToActionProps> = ({
                 onClick={() => handleActionClick(primaryAction)}
                 fullWidth={isMobile}
                 sx={{
-                  px: 3,
-                  py: compact ? 1 : 1.5,
-                  minWidth: { md: '200px' },
+                  px: { xs: 2, md: 3 }, // Smaller padding on mobile
+                  py: compact ? { xs: 0.8, md: 1 } : { xs: 1.2, md: 1.5 },
+                  minWidth: { xs: '100%', md: '200px' }, // Full width on mobile
                   fontWeight: 'bold',
-                  fontSize: compact ? 'inherit' : '1.1rem',
+                  fontSize: compact
+                    ? { xs: '0.9rem', md: 'inherit' }
+                    : { xs: '1rem', md: '1.1rem' }, // Smaller on mobile
+                  minHeight: 44, // Ensure good touch target size
                 }}
               >
                 {primaryAction.label}
@@ -184,10 +191,14 @@ export const CallToAction: React.FC<CallToActionProps> = ({
                   onClick={() => handleActionClick(secondaryAction)}
                   fullWidth={isMobile}
                   sx={{
-                    px: 3,
-                    py: compact ? 1 : 1.5,
-                    minWidth: { md: '200px' },
+                    px: { xs: 2, md: 3 }, // Smaller padding on mobile
+                    py: compact ? { xs: 0.8, md: 1 } : { xs: 1.2, md: 1.5 },
+                    minWidth: { xs: '100%', md: '200px' }, // Full width on mobile
                     fontWeight: 'medium',
+                    fontSize: compact
+                      ? { xs: '0.9rem', md: 'inherit' }
+                      : { xs: '1rem', md: '1.1rem' }, // Smaller on mobile
+                    minHeight: 44, // Ensure good touch target size
                     borderColor: backgroundImage ? 'white' : undefined,
                     color: backgroundImage ? 'white' : undefined,
                     '&:hover': {

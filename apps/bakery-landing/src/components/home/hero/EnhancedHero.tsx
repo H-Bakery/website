@@ -1,226 +1,117 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import {
   Box,
   Typography,
   Container,
   Button,
   Chip,
-  Fade,
   useTheme,
   useMediaQuery,
 } from '@mui/material'
-import { keyframes } from '@mui/system'
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
-import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import Baeckerei from '../../icons/brand/Baeckerei'
-import Wappen from '../../icons/brand/Wappen'
+import PhoneIcon from '@mui/icons-material/Phone'
+import PlaceIcon from '@mui/icons-material/Place'
+import { isCurrentlyOpen, getTodayHours } from '../../../utils/openingHours'
 
-// Animation keyframes
-const fadeInUp = keyframes`
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-`
-
-const float = keyframes`
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-`
-
-const pulse = keyframes`
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-  100% {
-    transform: scale(1);
-  }
-`
-
-// Hero images rotation - will use gradient fallback if images don't exist
-const heroImages = [
-  '/assets/images/bakery/fresh-bread-hero.jpg',
-  '/assets/images/bakery/artisan-croissants.jpg',
-  '/assets/images/bakery/traditional-pretzels.jpg',
-  '/assets/images/bakery/homemade-cakes.jpg',
-]
-
-// Enhanced gradient backgrounds for better visual appeal
-const gradientBackgrounds = [
-  'linear-gradient(135deg, #8B4513 0%, #D2691E 25%, #CD853F 50%, #DEB887 75%, #F5DEB3 100%)',
-  'linear-gradient(135deg, #654321 0%, #8B4513 30%, #D2691E 60%, #F5DEB3 100%)',
-  'linear-gradient(135deg, #3E2723 0%, #5D4037 25%, #795548 50%, #A1887F 75%, #D7CCC8 100%)',
-  'linear-gradient(135deg, #4A148C 0%, #7B1FA2 25%, #AB47BC 50%, #CE93D8 75%, #F3E5F5 100%)',
-]
+// Hero image with warm gradient fallback
+const heroImage = '/assets/images/bakery/fresh-bread-hero.jpg'
+const warmGradient =
+  'linear-gradient(135deg, #3B2B28 0%, #5A2E2A 25%, #7A4A3A 50%, #928168 75%, #E6D8C3 100%)'
 
 const EnhancedHero: React.FC = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
-  const [imageLoadErrors, setImageLoadErrors] = useState<{
-    [key: number]: boolean
-  }>({})
+  const [imageLoadError, setImageLoadError] = useState(false)
 
-  // Rotate images/gradients every 5 seconds
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentImageIndex((prev) => (prev + 1) % heroImages.length)
-    }, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  const handleImageError = (index: number) => {
-    setImageLoadErrors((prev) => ({ ...prev, [index]: true }))
-  }
-
-  const scrollToContent = () => {
-    window.scrollTo({
-      top: window.innerHeight,
-      behavior: 'smooth',
-    })
-  }
+  const open = isCurrentlyOpen()
+  const todayHours = getTodayHours()
 
   return (
     <Box sx={styles.hero}>
-      {/* Background Image with Parallax Effect */}
+      {/* Background */}
       <Box sx={styles.backgroundContainer}>
-        {/* Dynamic Gradient Backgrounds */}
-        {gradientBackgrounds.map((gradient, index) => (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            background: warmGradient,
+          }}
+        />
+        {!imageLoadError && (
           <Box
-            key={`gradient-${index}`}
+            component="img"
+            src={heroImage}
+            alt="Bäckerei Heusser - Frische Backwaren"
+            onError={() => setImageLoadError(true)}
             sx={{
               position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
+              inset: 0,
               width: '100%',
               height: '100%',
-              background: gradient,
-              opacity: currentImageIndex === index ? 1 : 0,
-              transition: 'opacity 1.5s ease-in-out',
+              objectFit: 'cover',
+              opacity: 0.85,
             }}
           />
-        ))}
-
-        {/* Hero Images (with error handling) */}
-        {heroImages.map(
-          (image, index) =>
-            !imageLoadErrors[index] && (
-              <Box
-                key={image}
-                component="img"
-                src={image}
-                alt={`Bäckerei Heußer - ${index + 1}`}
-                onError={() => handleImageError(index)}
-                sx={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                  opacity: currentImageIndex === index ? 1 : 0,
-                  transition: 'opacity 1.5s ease-in-out',
-                  transform: 'scale(1.1)',
-                }}
-              />
-            )
         )}
         <Box sx={styles.overlay} />
       </Box>
 
-      {/* Content Container */}
+      {/* Content */}
       <Container maxWidth="lg" sx={styles.contentContainer}>
         <Box sx={styles.content}>
-          {/* Logo Section */}
-          <Fade in={true} timeout={1000}>
-            <Box sx={styles.logoSection}>
-              <Box sx={styles.logoWrapper}>
-                <Wappen />
-                <Baeckerei />
-              </Box>
-            </Box>
-          </Fade>
+          {/* Opening Status Badge */}
+          <Chip
+            label={
+              open ? `Jetzt geöffnet — ${todayHours}` : `Heute geschlossen`
+            }
+            sx={{
+              ...styles.statusBadge,
+              backgroundColor: open
+                ? 'rgba(122, 155, 107, 0.9)'
+                : 'rgba(180, 60, 60, 0.85)',
+            }}
+          />
 
-          {/* Main Headline */}
-          <Fade in={true} timeout={1500}>
-            <Typography variant="h1" component="h1" sx={styles.headline}>
-              Handwerkliche Backkunst
-              <br />
-              <Box component="span" sx={styles.subHeadline}>
-                seit 1933
-              </Box>
-            </Typography>
-          </Fade>
+          {/* Bakery Name */}
+          <Typography variant="h1" component="h1" sx={styles.headline}>
+            Bäckerei Heusser
+          </Typography>
 
           {/* Tagline */}
-          <Fade in={true} timeout={2000}>
-            <Typography variant="h5" sx={styles.tagline}>
-              Tradition trifft Leidenschaft – täglich frisch für Sie gebacken
-            </Typography>
-          </Fade>
+          <Typography variant="h5" sx={styles.tagline}>
+            Täglich frisch aus der Backstube — seit 1933
+          </Typography>
 
-          {/* Feature Badges */}
-          <Fade in={true} timeout={2500}>
-            <Box sx={styles.badges}>
-              <Chip
-                icon={<LocalFireDepartmentIcon />}
-                label="Täglich frisch aus dem Ofen"
-                sx={styles.badge}
-              />
-              <Chip
-                icon={<AccessTimeIcon />}
-                label="Ab 6:00 Uhr geöffnet"
-                sx={styles.badge}
-              />
-            </Box>
-          </Fade>
+          {/* Phone Number */}
+          <Typography
+            component="a"
+            href="tel:068412229"
+            sx={styles.phoneNumber}
+          >
+            <PhoneIcon sx={{ fontSize: '1.2em', mr: 1 }} />
+            06841 2229
+          </Typography>
 
           {/* CTA Buttons */}
-          <Fade in={true} timeout={3000}>
-            <Box sx={styles.ctaContainer}>
-              <Button
-                variant="contained"
-                size="large"
-                href="/products"
-                sx={styles.primaryCta}
-              >
-                Unser Sortiment entdecken
-              </Button>
-              <Button
-                variant="outlined"
-                size="large"
-                href="/bestellen"
-                sx={styles.secondaryCta}
-              >
-                Jetzt vorbestellen
-              </Button>
-            </Box>
-          </Fade>
-        </Box>
-
-        {/* Scroll Indicator */}
-        <Box sx={styles.scrollIndicator} onClick={scrollToContent}>
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            Mehr entdecken
-          </Typography>
-          <ArrowDownwardIcon sx={styles.scrollIcon} />
+          <Box sx={styles.ctaContainer}>
+            <Button
+              variant="contained"
+              size="large"
+              href="tel:068412229"
+              sx={styles.primaryCta}
+            >
+              Jetzt bestellen
+            </Button>
+            <Button
+              variant="outlined"
+              size="large"
+              href="#location-hours"
+              startIcon={<PlaceIcon />}
+              sx={styles.secondaryCta}
+            >
+              So finden Sie uns
+            </Button>
+          </Box>
         </Box>
       </Container>
     </Box>
@@ -229,199 +120,133 @@ const EnhancedHero: React.FC = () => {
 
 const styles = {
   hero: {
-    position: 'relative',
-    height: '100vh',
-    minHeight: '600px',
+    position: 'relative' as const,
+    height: { xs: '85svh', md: '90vh' },
+    minHeight: { xs: '500px', md: '550px' },
+    maxHeight: { xs: '750px', md: 'none' },
     overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
   },
   backgroundContainer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-  },
-  gradientBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    background:
-      'linear-gradient(135deg, #8B4513 0%, #D2691E 25%, #CD853F 50%, #DEB887 75%, #F5DEB3 100%)',
-  },
-  backgroundImage: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    width: '100%',
-    height: '100%',
-    backgroundSize: 'cover',
-    backgroundPosition: 'center',
-    backgroundRepeat: 'no-repeat',
-    transform: 'scale(1.1)',
-    '&::after': {
-      content: '""',
-      position: 'absolute',
-      top: 0,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      background:
-        'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 100%)',
-    },
+    position: 'absolute' as const,
+    inset: 0,
   },
   overlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.4)',
-    backdropFilter: 'blur(1px)',
+    position: 'absolute' as const,
+    inset: 0,
+    background:
+      'linear-gradient(to bottom, rgba(59, 43, 40, 0.55) 0%, rgba(59, 43, 40, 0.7) 100%)',
   },
   contentContainer: {
-    position: 'relative',
+    position: 'relative' as const,
     zIndex: 2,
     height: '100%',
     display: 'flex',
-    flexDirection: 'column',
+    flexDirection: 'column' as const,
     justifyContent: 'center',
   },
   content: {
-    textAlign: 'center',
+    textAlign: 'center' as const,
     color: 'white',
-    py: 4,
+    py: { xs: 3, md: 4 },
+    px: { xs: 2, sm: 2 },
   },
-  logoSection: {
-    mb: 4,
-    animation: `${fadeInUp} 1s ease-out`,
-  },
-  logoWrapper: {
-    display: 'inline-flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 2,
-    filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
-    transform: { xs: 'scale(0.8)', sm: 'scale(0.9)', md: 'scale(1)' },
+  statusBadge: {
+    color: '#FFFFFF',
+    fontSize: { xs: '0.95rem', md: '1.05rem' },
+    fontWeight: 700,
+    fontFamily: '"Merriweather", serif',
+    py: 1,
+    px: 2.5,
+    mb: 3,
+    height: 'auto',
+    borderRadius: '24px',
+    '& .MuiChip-label': {
+      px: 1,
+    },
   },
   headline: {
     mb: 2,
     fontWeight: 900,
-    fontSize: { xs: '2.5rem', sm: '3.5rem', md: '4.5rem' },
-    textShadow: '2px 4px 8px rgba(0,0,0,0.5)',
-    animation: `${fadeInUp} 1.2s ease-out`,
-    lineHeight: 1.1,
-  },
-  subHeadline: {
-    fontSize: '0.7em',
-    fontWeight: 400,
-    color: 'primary.main',
-    display: 'inline-block',
-    position: 'relative',
-    '&::after': {
-      content: '""',
-      position: 'absolute',
-      bottom: -8,
-      left: '50%',
-      transform: 'translateX(-50%)',
-      width: '80%',
-      height: '3px',
-      backgroundColor: 'primary.main',
-    },
+    fontFamily: '"Cinzel", serif',
+    fontSize: { xs: '2.2rem', sm: '3rem', md: '3.8rem', lg: '4.2rem' },
+    textShadow: '2px 4px 8px rgba(0,0,0,0.4)',
+    lineHeight: { xs: 1.2, md: 1.15 },
   },
   tagline: {
-    mb: 4,
-    fontSize: { xs: '1.1rem', sm: '1.3rem', md: '1.5rem' },
+    mb: 3,
+    fontFamily: '"Merriweather", serif',
+    fontSize: { xs: '1.05rem', sm: '1.2rem', md: '1.35rem' },
     fontWeight: 400,
-    maxWidth: '800px',
+    maxWidth: { xs: '100%', md: '700px' },
     mx: 'auto',
-    textShadow: '1px 2px 4px rgba(0,0,0,0.5)',
-    animation: `${fadeInUp} 1.4s ease-out`,
+    textShadow: '1px 2px 4px rgba(0,0,0,0.4)',
+    lineHeight: 1.6,
   },
-  badges: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 2,
+  phoneNumber: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    color: '#FFFFFF',
+    fontSize: { xs: '1.3rem', md: '1.5rem' },
+    fontWeight: 700,
+    fontFamily: '"Merriweather", serif',
+    textDecoration: 'none',
     mb: 4,
-    flexWrap: 'wrap',
-  },
-  badge: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    backdropFilter: 'blur(10px)',
-    color: 'white',
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    fontSize: '0.9rem',
-    py: 0.5,
+    py: 1,
     px: 2,
-    '& .MuiChip-icon': {
-      color: '#F5DEB3', // Warm light color for better contrast on dark overlay
+    borderRadius: '8px',
+    transition: 'background-color 0.2s ease',
+    '&:hover': {
+      backgroundColor: 'rgba(255,255,255,0.15)',
     },
-    animation: `${float} 3s ease-in-out infinite`,
   },
   ctaContainer: {
     display: 'flex',
-    gap: 2,
+    gap: { xs: 1.5, md: 2 },
     justifyContent: 'center',
-    flexWrap: 'wrap',
+    flexWrap: 'wrap' as const,
+    flexDirection: { xs: 'column', sm: 'row' } as any,
+    alignItems: 'center',
+    px: { xs: 2, md: 0 },
   },
   primaryCta: {
-    px: 4,
-    py: 1.5,
-    fontSize: '1.1rem',
-    fontWeight: 600,
-    backgroundColor: 'primary.main',
+    px: { xs: 4, md: 5 },
+    py: { xs: 1.5, md: 1.8 },
+    fontSize: { xs: '1.05rem', md: '1.15rem' },
+    fontWeight: 700,
+    backgroundColor: '#d038ba',
     color: 'white',
-    boxShadow: '0 4px 20px rgba(208, 56, 186, 0.4)',
+    boxShadow: '0 4px 20px rgba(208, 56, 186, 0.35)',
     transition: 'all 0.3s ease',
+    minWidth: { xs: '240px', sm: 'auto' },
+    width: { xs: '100%', sm: 'auto' },
+    maxWidth: { xs: '300px', sm: 'none' },
+    borderRadius: '8px',
     '&:hover': {
-      backgroundColor: 'primary.dark',
+      backgroundColor: '#b830a0',
       transform: 'translateY(-2px)',
-      boxShadow: '0 6px 25px rgba(208, 56, 186, 0.5)',
+      boxShadow: '0 6px 25px rgba(208, 56, 186, 0.45)',
     },
-    animation: `${pulse} 2s ease-in-out infinite`,
   },
   secondaryCta: {
-    px: 4,
-    py: 1.5,
-    fontSize: '1.1rem',
-    fontWeight: 600,
-    borderColor: 'white',
+    px: { xs: 4, md: 5 },
+    py: { xs: 1.5, md: 1.8 },
+    fontSize: { xs: '1.05rem', md: '1.15rem' },
+    fontWeight: 700,
+    borderColor: 'rgba(255,255,255,0.7)',
     color: 'white',
     borderWidth: 2,
+    minWidth: { xs: '240px', sm: 'auto' },
+    width: { xs: '100%', sm: 'auto' },
+    maxWidth: { xs: '300px', sm: 'none' },
+    borderRadius: '8px',
     '&:hover': {
-      borderColor: 'white',
-      backgroundColor: 'rgba(255, 255, 255, 0.1)',
+      borderColor: '#FFFFFF',
+      backgroundColor: 'rgba(255,255,255,0.12)',
       transform: 'translateY(-2px)',
     },
-  },
-  scrollIndicator: {
-    position: 'absolute',
-    bottom: 30,
-    left: '50%',
-    transform: 'translateX(-50%)',
-    textAlign: 'center',
-    color: 'white',
-    cursor: 'pointer',
-    animation: `${float} 2s ease-in-out infinite`,
-    '&:hover': {
-      '& svg': {
-        transform: 'translateY(5px)',
-      },
-    },
-  },
-  scrollIcon: {
-    fontSize: '2rem',
-    transition: 'transform 0.3s ease',
   },
 }
 

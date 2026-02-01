@@ -9,48 +9,21 @@ import {
   CardContent,
   CardActionArea,
   CardMedia,
-  Button,
-  CardActions,
   IconButton,
-  Tooltip,
   Fade,
   Rating,
 } from '@mui/material'
-import AddShoppingCartIcon from '@mui/icons-material/AddShoppingCart'
 import FavoriteIcon from '@mui/icons-material/Favorite'
 import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment'
 import NewReleasesIcon from '@mui/icons-material/NewReleases'
 import LocalFloristIcon from '@mui/icons-material/LocalFlorist'
 import Image from 'next/image'
-import { keyframes } from '@mui/system'
 
 import { formatPrice } from '../../../utils/formatPrice'
 import { Product } from '../../../types/product'
 
-// Animation keyframes
-const pulse = keyframes`
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-  100% {
-    transform: scale(1);
-  }
-`
-
-const slideIn = keyframes`
-  from {
-    transform: translateX(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
-`
+// Animation keyframes removed - using simple CSS transitions instead
 
 interface EnhancedProductCardProps extends Product {
   isFreshToday?: boolean
@@ -62,36 +35,21 @@ interface EnhancedProductCardProps extends Product {
 
 const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
   const {
-    isFreshToday = Math.random() > 0.5, // Temporary random assignment
-    isNew = Math.random() > 0.8,
-    isOrganic = Math.random() > 0.7,
-    rating = 4 + Math.random(),
-    reviewCount = Math.floor(Math.random() * 50) + 10,
+    isFreshToday = props.id % 2 === 0, // Use product ID for consistent value
+    isNew = props.id % 10 === 1, // Show "new" for every 10th product
+    isOrganic = props.isVegan || false, // Use actual product property
+    rating = 4 + (props.id % 10) / 10, // Generates 4.0-4.9 based on ID
+    reviewCount = 10 + (props.id % 40), // Generates 10-49 based on ID
     ...product
   } = props
 
   const router = useRouter()
-
-  // For static landing page, simplified cart functionality
-  const addToCartHandler = () => {
-    // For static export, show interest instead of adding to cart
-    console.log('Interest shown for product:', product.name)
-    // Could show a modal or redirect to contact page
-  }
   const [isFavorite, setIsFavorite] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
-  const [addedToCart, setAddedToCart] = useState(false)
 
   const handleCardClick = () => {
-    // For static export, navigate to products page with hash
-    router.push(`/products#${product.id}`)
-  }
-
-  const handleAddToCart = (event: React.MouseEvent) => {
-    event.stopPropagation()
-    addToCartHandler()
-    setAddedToCart(true)
-    setTimeout(() => setAddedToCart(false), 2000)
+    // Navigate to product detail page
+    router.push(`/products/${product.id}`)
   }
 
   const handleToggleFavorite = (event: React.MouseEvent) => {
@@ -134,16 +92,16 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
         )}
       </Box> */}
 
-      {/* Favorite Button */}
+      {/* Favorite Button - rose accent */}
       <IconButton
         sx={styles.favoriteButton}
         onClick={handleToggleFavorite}
         size="small"
       >
         {isFavorite ? (
-          <FavoriteIcon sx={{ color: 'primary.main' }} />
+          <FavoriteIcon sx={{ color: 'secondary.main' }} /> // Dusty rose heart
         ) : (
-          <FavoriteBorderIcon />
+          <FavoriteBorderIcon sx={{ color: 'grey.500' }} />
         )}
       </IconButton>
 
@@ -163,7 +121,9 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: 'cover',
+                objectFit: product.imageUrl?.endsWith('.svg')
+                  ? 'contain'
+                  : 'cover',
               }}
             />
           </Box>
@@ -218,31 +178,6 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
           </Box>
         </CardContent>
       </CardActionArea>
-
-      <CardActions sx={styles.actions}>
-        <Tooltip
-          title={
-            addedToCart
-              ? 'Interesse gezeigt!'
-              : 'Interesse an diesem Produkt zeigen'
-          }
-        >
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AddShoppingCartIcon />}
-            onClick={handleAddToCart}
-            fullWidth
-            size="medium"
-            sx={{
-              ...styles.addToCartButton,
-              ...(addedToCart && styles.addedToCartButton),
-            }}
-          >
-            {addedToCart ? 'Interesse gezeigt!' : 'Interesse zeigen'}
-          </Button>
-        </Tooltip>
-      </CardActions>
     </Card>
   )
 }
@@ -256,9 +191,10 @@ const styles = {
     overflow: 'visible',
     transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
     '&:hover': {
-      transform: 'translateY(-8px)',
+      transform: 'translateY(-6px)',
+      boxShadow: '0 12px 28px rgba(107, 68, 35, 0.15)', // Warm brown shadow
       '& .MuiCardMedia-root img': {
-        transform: 'scale(1.1)',
+        transform: 'scale(1.05)',
       },
     },
   },
@@ -272,19 +208,17 @@ const styles = {
     gap: 0.5,
   },
   freshBadge: {
-    backgroundColor: 'error.main',
-    color: 'white',
+    backgroundColor: 'secondary.main', // Dusty rose
+    color: 'primary.dark',
     fontWeight: 'bold',
-    animation: `${pulse} 2s ease-in-out infinite`,
     '& .MuiChip-icon': {
-      color: 'white',
+      color: 'primary.dark',
     },
   },
   newBadge: {
-    backgroundColor: 'primary.main',
+    backgroundColor: 'primary.main', // Warm brown
     color: 'white',
     fontWeight: 'bold',
-    animation: `${slideIn} 0.5s ease-out`,
     '& .MuiChip-icon': {
       color: 'white',
     },
@@ -314,7 +248,7 @@ const styles = {
     position: 'relative',
     height: 200,
     overflow: 'hidden',
-    backgroundColor: 'grey.100',
+    backgroundColor: 'grey.50', // Warm cream background
   },
   imageWrapper: {
     width: '100%',
@@ -380,33 +314,14 @@ const styles = {
     marginTop: 'auto',
   },
   categoryChip: {
-    backgroundColor: 'primary.light',
-    color: 'primary.dark',
+    backgroundColor: 'grey.100', // Soft beige background
+    color: 'primary.main', // Warm brown text
     fontWeight: 'medium',
     fontSize: '0.75rem',
   },
   price: {
     fontWeight: 'bold',
-    color: 'primary.main',
-  },
-  actions: {
-    p: 2,
-    pt: 0,
-  },
-  addToCartButton: {
-    fontWeight: 'bold',
-    py: 1,
-    transition: 'all 0.3s ease',
-    '&:hover': {
-      transform: 'scale(1.02)',
-      boxShadow: '0 4px 20px rgba(208, 56, 186, 0.3)',
-    },
-  },
-  addedToCartButton: {
-    backgroundColor: 'success.main',
-    '&:hover': {
-      backgroundColor: 'success.dark',
-    },
+    color: 'primary.main', // Warm brown price
   },
 }
 

@@ -54,7 +54,6 @@ export default function NotFound() {
           }}
         >
           <Button
-            component={Link}
             href="/"
             variant="contained"
             color="primary"

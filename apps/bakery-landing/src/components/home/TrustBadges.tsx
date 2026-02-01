@@ -16,21 +16,14 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping'
 import FamilyRestroomIcon from '@mui/icons-material/FamilyRestroom'
 import LocalFloristIcon from '@mui/icons-material/LocalFlorist'
 import StarIcon from '@mui/icons-material/Star'
+import Cake from '@mui/icons-material/Cake'
+import { getEarliestOpeningLabel } from '../../utils/openingHours'
 
-// Animation keyframes
-const float = keyframes`
-  0%, 100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-5px);
-  }
-`
-
+// Animation keyframes - simplified
 const fadeIn = keyframes`
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(15px);
   }
   to {
     opacity: 1;
@@ -54,8 +47,8 @@ const trustBadges: TrustBadge[] = [
   },
   {
     icon: <VerifiedIcon sx={{ fontSize: 40 }} />,
-    title: 'Meisterbetrieb',
-    description: 'Zertifizierte Qualität',
+    title: 'Erfahrene Bäcker',
+    description: 'Jahrzehntelange Expertise',
     highlight: 'Handwerk',
   },
   {
@@ -73,8 +66,14 @@ const trustBadges: TrustBadge[] = [
   {
     icon: <LocalShippingIcon sx={{ fontSize: 40 }} />,
     title: 'Immer frisch',
-    description: 'Ab 6:00 Uhr',
+    description: getEarliestOpeningLabel(),
     highlight: 'Frisch',
+  },
+  {
+    icon: <Cake sx={{ fontSize: 40 }} />,
+    title: 'Große Auswahl',
+    description: 'Über 50 Sorten',
+    highlight: 'Vielfalt',
   },
 ]
 
@@ -85,12 +84,12 @@ const TrustBadges: React.FC = () => {
     <Box
       sx={{
         py: 6,
-        backgroundColor: 'background.default',
+        backgroundColor: 'grey.50', // Warm cream background
         position: 'relative',
         overflow: 'hidden',
       }}
     >
-      {/* Background Pattern */}
+      {/* Background Pattern - warm accents (hidden on mobile to reduce visual clutter) */}
       <Box
         sx={{
           position: 'absolute',
@@ -99,8 +98,9 @@ const TrustBadges: React.FC = () => {
           width: 200,
           height: 200,
           borderRadius: '50%',
-          backgroundColor: 'primary.main',
-          opacity: 0.05,
+          backgroundColor: 'secondary.main', // Dusty rose
+          opacity: 0.08,
+          display: { xs: 'none', md: 'block' }, // Hide on mobile
         }}
       />
       <Box
@@ -111,8 +111,9 @@ const TrustBadges: React.FC = () => {
           width: 150,
           height: 150,
           borderRadius: '50%',
-          backgroundColor: 'primary.main',
-          opacity: 0.05,
+          backgroundColor: 'primary.light', // Caramel
+          opacity: 0.08,
+          display: { xs: 'none', md: 'block' }, // Hide on mobile
         }}
       />
 
@@ -139,14 +140,16 @@ const TrustBadges: React.FC = () => {
           </Typography>
         </Box>
 
-        <Grid container spacing={3}>
+        <Grid container spacing={{ xs: 2, md: 3 }}>
           {trustBadges.map((badge, index) => (
-            <Grid item xs={6} sm={4} md={2} key={badge.title}>
+            <Grid item xs={12} sm={6} md={4} lg={2} key={badge.title}>
+              {' '}
+              {/* Single column on mobile */}
               <Tooltip title={badge.description} arrow placement="top">
                 <Paper
                   elevation={0}
                   sx={{
-                    p: 2,
+                    p: { xs: 2.5, md: 2 },
                     height: '100%',
                     textAlign: 'center',
                     cursor: 'pointer',
@@ -154,20 +157,28 @@ const TrustBadges: React.FC = () => {
                     border: '2px solid',
                     borderColor: 'transparent',
                     backgroundColor: 'background.paper',
-                    animation: `${fadeIn} 0.6s ease-out ${
-                      index * 0.1
-                    }s both, ${float} 3s ease-in-out ${index * 0.5}s infinite`,
+                    minHeight: { xs: 120, md: 'auto' },
+                    animation: `${fadeIn} 0.6s ease-out ${index * 0.1}s both`,
+                    // Simple hover - no infinite animations
                     '&:hover': {
-                      transform: 'translateY(-8px)',
-                      boxShadow: 4,
-                      borderColor: 'primary.main',
+                      transform: 'translateY(-6px)',
+                      boxShadow: '0 8px 24px rgba(107, 68, 35, 0.15)', // Warm brown shadow
+                      borderColor: 'secondary.main', // Rose border on hover
                       '& .badge-icon': {
-                        color: 'primary.main',
+                        color: 'primary.main', // Brown icon
                         transform: 'scale(1.1)',
                       },
                       '& .highlight-text': {
-                        backgroundColor: 'primary.main',
-                        color: 'white',
+                        backgroundColor: 'secondary.main', // Dusty rose
+                        color: 'primary.dark',
+                      },
+                    },
+                    // Mobile touch styles
+                    '@media (max-width: 600px)': {
+                      '&:active': {
+                        transform: 'translateY(-3px) scale(0.98)',
+                        boxShadow: 2,
+                        borderColor: 'secondary.main',
                       },
                     },
                   }}
@@ -175,9 +186,12 @@ const TrustBadges: React.FC = () => {
                   <Box
                     className="badge-icon"
                     sx={{
-                      color: 'text.secondary',
-                      mb: 1,
+                      color: 'primary.light', // Caramel color for icons
+                      mb: { xs: 1.5, md: 1 },
                       transition: 'all 0.3s ease',
+                      '& svg': {
+                        fontSize: { xs: 36, md: 40 },
+                      },
                     }}
                   >
                     {badge.icon}
@@ -192,8 +206,8 @@ const TrustBadges: React.FC = () => {
                         py: 0.5,
                         mb: 1,
                         borderRadius: '20px',
-                        backgroundColor: 'grey.200',
-                        color: 'text.primary',
+                        backgroundColor: 'grey.100', // Soft beige
+                        color: 'primary.main', // Warm brown text
                         fontSize: '0.875rem',
                         fontWeight: 'bold',
                         transition: 'all 0.3s ease',
@@ -208,6 +222,7 @@ const TrustBadges: React.FC = () => {
                     sx={{
                       fontWeight: 'bold',
                       mb: 0.5,
+                      fontSize: { xs: '0.9rem', md: '0.875rem' }, // Better mobile sizing
                     }}
                   >
                     {badge.title}
@@ -218,7 +233,8 @@ const TrustBadges: React.FC = () => {
                     color="text.secondary"
                     sx={{
                       display: 'block',
-                      lineHeight: 1.2,
+                      lineHeight: 1.3,
+                      fontSize: { xs: '0.8rem', md: '0.75rem' }, // Better mobile sizing
                     }}
                   >
                     {badge.description}
@@ -228,38 +244,6 @@ const TrustBadges: React.FC = () => {
             </Grid>
           ))}
         </Grid>
-
-        {/* Additional Trust Statement */}
-        <Box
-          sx={{
-            mt: 6,
-            p: 3,
-            backgroundColor: theme.palette.background.paper,
-            borderRadius: 2,
-            textAlign: 'center',
-            border: '1px solid',
-            borderColor: theme.palette.divider,
-          }}
-        >
-          <Typography
-            variant="h6"
-            sx={{
-              color: 'text.primary',
-              fontWeight: 'medium',
-              mb: 1,
-            }}
-          >
-            🌟 Über 5.000 zufriedene Kunden vertrauen uns
-          </Typography>
-          <Typography
-            variant="body2"
-            sx={{
-              color: 'text.secondary',
-            }}
-          >
-            Danke für Ihr Vertrauen in unsere Handwerkskunst
-          </Typography>
-        </Box>
       </Container>
     </Box>
   )

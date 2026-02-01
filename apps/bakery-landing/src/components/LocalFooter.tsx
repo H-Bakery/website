@@ -3,14 +3,13 @@
 import React from 'react'
 import { Box, Container, Grid, Typography } from '@mui/material'
 import Link from 'next/link'
+import { getFooterHours } from '../utils/openingHours'
 
 export const LocalFooter: React.FC = () => {
   return (
     <Box
       sx={{
-        bgcolor: 'grey.50',
-        borderTop: 1,
-        borderColor: 'divider',
+        bgcolor: '#928168',
         py: 6,
         mt: 'auto',
       }}
@@ -23,23 +22,41 @@ export const LocalFooter: React.FC = () => {
               component="div"
               gutterBottom
               sx={{
-                fontWeight: 'bold',
-                color: 'primary.main',
-                fontFamily: 'Playfair Display',
+                fontWeight: 700,
+                color: '#FFF3E6',
+                fontFamily: '"Cinzel", serif',
               }}
             >
               Bäckerei Heusser
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                mb: 2,
+                color: 'rgba(255, 243, 230, 0.8)',
+                fontSize: '1rem',
+              }}
+            >
               Wir backen mit Herz, nach Tradition und nur für euch.
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255, 243, 230, 0.7)', fontSize: '1rem' }}
+            >
               Seit 1933
             </Typography>
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Typography variant="h6" gutterBottom color="primary.main">
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                color: '#FFF3E6',
+                fontFamily: '"Cinzel", serif',
+                fontWeight: 700,
+              }}
+            >
               Navigation
             </Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -57,9 +74,11 @@ export const LocalFooter: React.FC = () => {
                   <Typography
                     variant="body2"
                     sx={{
-                      color: 'text.secondary',
+                      color: 'rgba(255, 243, 230, 0.8)',
+                      fontSize: '1rem',
+                      transition: 'color 0.2s ease',
                       '&:hover': {
-                        color: 'primary.main',
+                        color: '#d038ba',
                       },
                     }}
                   >
@@ -71,36 +90,86 @@ export const LocalFooter: React.FC = () => {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Typography variant="h6" gutterBottom color="primary.main">
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                color: '#FFF3E6',
+                fontFamily: '"Cinzel", serif',
+                fontWeight: 700,
+              }}
+            >
               Kontakt
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                mb: 1,
+                color: 'rgba(255, 243, 230, 0.8)',
+                fontSize: '1rem',
+              }}
+            >
               Eckstraße 3
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography
+              variant="body2"
+              sx={{
+                mb: 1,
+                color: 'rgba(255, 243, 230, 0.8)',
+                fontSize: '1rem',
+              }}
+            >
               66424 Homburg/Kirrberg
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            <Typography
+              component="a"
+              href="tel:068412229"
+              variant="body2"
+              sx={{
+                mb: 1,
+                display: 'block',
+                color: '#FFF3E6',
+                fontSize: '1rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+                '&:hover': { color: '#d038ba' },
+              }}
+            >
               Tel: 06841 2229
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              E-Mail: info@baeckerei-heusser.de
+            <Typography
+              variant="body2"
+              sx={{ color: 'rgba(255, 243, 230, 0.8)', fontSize: '1rem' }}
+            >
+              info@baeckerei-heusser.de
             </Typography>
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <Typography variant="h6" gutterBottom color="primary.main">
+            <Typography
+              variant="h6"
+              gutterBottom
+              sx={{
+                color: '#FFF3E6',
+                fontFamily: '"Cinzel", serif',
+                fontWeight: 700,
+              }}
+            >
               Öffnungszeiten
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Mo-Fr: 06:00 - 12:30 Uhr
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Sa: 06:00 - 12:00 Uhr
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              So: Geschlossen
-            </Typography>
+            {getFooterHours().map((item, index) => (
+              <Typography
+                key={index}
+                variant="body2"
+                sx={{
+                  mb: index < getFooterHours().length - 1 ? 1 : 0,
+                  color: 'rgba(255, 243, 230, 0.8)',
+                  fontSize: '1rem',
+                }}
+              >
+                {item.label}: {item.value}
+              </Typography>
+            ))}
           </Grid>
         </Grid>
 
@@ -112,20 +181,24 @@ export const LocalFooter: React.FC = () => {
             pt: 4,
             mt: 4,
             borderTop: 1,
-            borderColor: 'divider',
+            borderColor: 'rgba(255, 243, 230, 0.2)',
           }}
         >
-          <Typography variant="body2" color="text.disabled">
-            © Bäckerei Heusser 2025
+          <Typography
+            variant="body2"
+            sx={{ color: 'rgba(255, 243, 230, 0.5)' }}
+          >
+            &copy; Bäckerei Heusser 2025
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
             <Link href="/imprint" style={{ textDecoration: 'none' }}>
               <Typography
                 variant="body2"
                 sx={{
-                  color: 'text.secondary',
+                  color: 'rgba(255, 243, 230, 0.7)',
+                  transition: 'color 0.2s ease',
                   '&:hover': {
-                    color: 'primary.main',
+                    color: '#d038ba',
                   },
                 }}
               >

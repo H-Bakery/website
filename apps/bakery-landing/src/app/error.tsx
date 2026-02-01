@@ -12,8 +12,28 @@ export default function Error({
   reset: () => void
 }) {
   React.useEffect(() => {
-    // Log the error to an error reporting service
     console.error('Error boundary caught:', error)
+
+    // Auto-recover from stale webpack chunk cache in dev mode.
+    // When the browser serves a cached page.js with outdated module factories,
+    // hydration fails with "Cannot read properties of undefined (reading 'call')".
+    // Fix: re-fetch all chunk scripts with cache:'reload' to bust the HTTP cache,
+    // then reload the page. sessionStorage guard prevents infinite reload loops.
+    if (
+      process.env.NODE_ENV === 'development' &&
+      error?.message?.includes("reading 'call'")
+    ) {
+      const key = '__webpack_cache_reload'
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1')
+        const scripts = document.querySelectorAll(
+          'script[src*="/_next/static/chunks/"]'
+        )
+        Promise.all(
+          [...scripts].map((s) => fetch(s.src, { cache: 'reload' }))
+        ).then(() => window.location.reload())
+      }
+    }
   }, [error])
 
   return (
@@ -27,13 +47,13 @@ export default function Error({
         }}
       >
         <ErrorIcon sx={{ fontSize: 64, color: 'error.main', mb: 2 }} />
-        
+
         <Typography variant="h4" component="h1" gutterBottom>
           Etwas ist schiefgelaufen
         </Typography>
-        
+
         <Typography variant="body1" color="text.secondary" paragraph>
-          Es tut uns leid, aber es ist ein unerwarteter Fehler aufgetreten. 
+          Es tut uns leid, aber es ist ein unerwarteter Fehler aufgetreten.
           Bitte versuchen Sie es später erneut oder kontaktieren Sie uns.
         </Typography>
 
@@ -53,17 +73,17 @@ export default function Error({
           >
             Erneut versuchen
           </Button>
-          
-          <Button
-            variant="outlined"
-            href="/"
-            sx={{ minWidth: 120 }}
-          >
+
+          <Button variant="outlined" href="/" sx={{ minWidth: 120 }}>
             Zur Startseite
           </Button>
         </Box>
 
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 3, display: 'block' }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ mt: 3, display: 'block' }}
+        >
           Bei anhaltenden Problemen kontaktieren Sie uns bitte unter: 06841 2229
         </Typography>
       </Paper>

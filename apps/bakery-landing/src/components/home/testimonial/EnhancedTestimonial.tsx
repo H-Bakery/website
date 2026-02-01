@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React from 'react'
 import {
   Box,
   Container,
@@ -7,81 +7,30 @@ import {
   Paper,
   Avatar,
   Rating,
-  IconButton,
-  Fade,
   Button,
-  useTheme,
-  useMediaQuery,
+  Grid,
 } from '@mui/material'
-import { keyframes } from '@mui/system'
 import FormatQuoteIcon from '@mui/icons-material/FormatQuote'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import StarIcon from '@mui/icons-material/Star'
 import { TESTIMONIALS } from '../../../mocks/testimonials'
-
-// Animation keyframes
-const slideIn = keyframes`
-  from {
-    opacity: 0;
-    transform: translateX(50px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-`
-
-const fadeIn = keyframes`
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-`
-
-const pulse = keyframes`
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-`
 
 interface EnhancedTestimonial {
   name: string
   role?: string
   rating: number
   message: string
-  image?: string
   date?: string
   verified?: boolean
 }
 
-// Define roles as a constant for reusability and maintainability
 const ROLES = ['Stammkunde', 'Lokaler Kunde', 'Geschäftskunde', 'Familienkunde']
 
-// Enhanced testimonials with additional data
 const enhancedTestimonials: EnhancedTestimonial[] = TESTIMONIALS.map(
   (testimonial, index) => ({
     name: testimonial.name,
     rating: testimonial.stars,
     message: testimonial.text,
     role: ROLES[index % ROLES.length],
-    image: (() => {
-      const imagePath = `/assets/images/testimonials/customer-${index + 1}.jpg`
-      try {
-        // Check if the image exists
-        const img = new Image()
-        img.src = imagePath
-        return imagePath
-      } catch {
-        // Fallback to default image
-        return '/assets/images/testimonials/default.jpg'
-      }
-    })(),
     date: new Date(
       Date.now() -
         ((index * 7 * 24 * 60 * 60 * 1000) % (30 * 24 * 60 * 60 * 1000))
@@ -91,337 +40,263 @@ const enhancedTestimonials: EnhancedTestimonial[] = TESTIMONIALS.map(
 )
 
 const EnhancedTestimonial: React.FC = () => {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [isAutoPlaying, setIsAutoPlaying] = useState(true)
-
-  // Auto-rotate testimonials
-  useEffect(() => {
-    if (!isAutoPlaying) return
-
-    const interval = setInterval(() => {
-      setCurrentIndex((prev) => (prev + 1) % enhancedTestimonials.length)
-    }, 5000)
-
-    return () => clearInterval(interval)
-  }, [isAutoPlaying])
-
-  const handlePrevious = () => {
-    setIsAutoPlaying(false)
-    setCurrentIndex((prev) =>
-      prev === 0 ? enhancedTestimonials.length - 1 : prev - 1
-    )
-  }
-
-  const handleNext = () => {
-    setIsAutoPlaying(false)
-    setCurrentIndex((prev) => (prev + 1) % enhancedTestimonials.length)
-  }
-
-  const currentTestimonial = enhancedTestimonials[currentIndex]
+  const displayedTestimonials = enhancedTestimonials.slice(0, 3)
 
   return (
     <Box
       sx={{
-        py: 8,
-        backgroundColor: 'background.paper',
-        position: 'relative',
-        overflow: 'hidden',
+        py: { xs: 6, md: 8 },
+        backgroundColor: '#F5EDE4',
       }}
     >
-      {/* Background Decoration */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: -100,
-          left: -100,
-          width: 300,
-          height: 300,
-          borderRadius: '50%',
-          backgroundColor: 'primary.main',
-          opacity: 0.03,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: -100,
-          right: -100,
-          width: 400,
-          height: 400,
-          borderRadius: '50%',
-          backgroundColor: 'primary.main',
-          opacity: 0.03,
-        }}
-      />
-
-      <Container maxWidth="md">
-        <Box sx={{ textAlign: 'center', mb: 6 }}>
+      <Container maxWidth="lg">
+        <Box
+          sx={{
+            textAlign: 'center',
+            mb: { xs: 4, md: 6 },
+            px: { xs: 2, md: 0 },
+          }}
+        >
           <Typography
             variant="h3"
             component="h2"
             gutterBottom
             sx={{
-              fontWeight: 'bold',
-              fontSize: { xs: '2rem', md: '2.5rem' },
+              fontFamily: '"Cinzel", serif',
+              fontWeight: 700,
+              fontSize: { xs: '1.6rem', sm: '2rem', md: '2.25rem' },
+              color: '#3B2B28',
+              mb: { xs: 1, md: 2 },
             }}
           >
             Was unsere Kunden sagen
           </Typography>
           <Typography
             variant="subtitle1"
-            color="text.secondary"
-            sx={{ maxWidth: 600, mx: 'auto' }}
+            sx={{
+              maxWidth: { xs: 'none', md: 600 },
+              mx: 'auto',
+              fontSize: { xs: '1rem', md: '1.1rem' },
+              color: '#928168',
+              px: { xs: 1, md: 0 },
+            }}
           >
             Echte Bewertungen von echten Menschen aus unserer Nachbarschaft
           </Typography>
         </Box>
 
-        <Box
+        <Grid
+          container
+          spacing={{ xs: 2, md: 4 }}
           sx={{
-            position: 'relative',
-            maxWidth: 800,
+            maxWidth: { xs: 'none', md: 1200 },
             mx: 'auto',
+            px: { xs: 2, md: 0 },
           }}
         >
-          {/* Navigation Buttons */}
-          <IconButton
-            onClick={handlePrevious}
-            sx={{
-              position: 'absolute',
-              left: { xs: -20, md: -60 },
-              top: '50%',
-              transform: 'translateY(-50%)',
-              backgroundColor: 'background.paper',
-              boxShadow: 2,
-              zIndex: 2,
-              '&:hover': {
-                backgroundColor: 'primary.light',
-              },
-            }}
-          >
-            <ArrowBackIcon />
-          </IconButton>
-
-          <IconButton
-            onClick={handleNext}
-            sx={{
-              position: 'absolute',
-              right: { xs: -20, md: -60 },
-              top: '50%',
-              transform: 'translateY(-50%)',
-              backgroundColor: 'background.paper',
-              boxShadow: 2,
-              zIndex: 2,
-              '&:hover': {
-                backgroundColor: 'primary.light',
-              },
-            }}
-          >
-            <ArrowForwardIcon />
-          </IconButton>
-
-          {/* Testimonial Card */}
-          <Fade in={true} key={currentIndex} timeout={600}>
-            <Paper
-              elevation={4}
-              sx={{
-                p: { xs: 3, md: 5 },
-                borderRadius: 3,
-                position: 'relative',
-                overflow: 'visible',
-                animation: `${slideIn} 0.6s ease-out`,
-              }}
-            >
-              {/* Quote Icon */}
-              <Box
+          {displayedTestimonials.map((testimonial, index) => (
+            <Grid item xs={12} sm={6} md={4} key={index}>
+              <Paper
+                elevation={0}
                 sx={{
-                  position: 'absolute',
-                  top: -20,
-                  left: 30,
-                  width: 60,
-                  height: 60,
-                  borderRadius: '50%',
-                  backgroundColor: 'primary.main',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: 3,
-                  animation: `${pulse} 2s ease-in-out infinite`,
-                }}
-              >
-                <FormatQuoteIcon sx={{ color: 'white', fontSize: 30 }} />
-              </Box>
-
-              {/* Rating */}
-              <Box
-                sx={{ display: 'flex', justifyContent: 'center', mb: 3, mt: 4 }}
-              >
-                <Rating
-                  value={currentTestimonial.rating}
-                  readOnly
-                  size="large"
-                  sx={{
-                    '& .MuiRating-iconFilled': {
-                      color: 'primary.main',
-                    },
-                  }}
-                />
-              </Box>
-
-              {/* Message */}
-              <Typography
-                variant="h6"
-                component="blockquote"
-                sx={{
-                  fontStyle: 'italic',
-                  textAlign: 'center',
-                  mb: 4,
-                  fontSize: { xs: '1.1rem', md: '1.3rem' },
-                  lineHeight: 1.8,
-                  color: 'text.primary',
-                  fontWeight: 400,
+                  p: { xs: 2.5, md: 3 },
+                  borderRadius: '12px',
                   position: 'relative',
-                  '&::before': {
-                    content: '"\\201C"',
-                    position: 'absolute',
-                    left: -10,
-                    top: -10,
-                    fontSize: '3rem',
-                    color: 'primary.light',
-                    fontFamily: 'serif',
-                  },
-                  '&::after': {
-                    content: '"\\201D"',
-                    position: 'absolute',
-                    right: -10,
-                    bottom: -30,
-                    fontSize: '3rem',
-                    color: 'primary.light',
-                    fontFamily: 'serif',
-                  },
-                }}
-              >
-                {currentTestimonial.message}
-              </Typography>
-
-              {/* Customer Info */}
-              <Box
-                sx={{
+                  height: '100%',
                   display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 2,
+                  flexDirection: 'column',
+                  border: '1px solid',
+                  borderColor: '#E6D8C3',
+                  backgroundColor: '#FFFFFF',
                 }}
               >
-                <Avatar
+                {/* Quote Icon */}
+                <Box
                   sx={{
-                    width: 60,
-                    height: 60,
-                    backgroundColor: 'primary.main',
-                    fontSize: '1.5rem',
+                    position: 'absolute',
+                    top: -15,
+                    left: 20,
+                    width: 40,
+                    height: 40,
+                    borderRadius: '50%',
+                    backgroundColor: '#928168',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    boxShadow: '0 4px 12px rgba(146, 129, 104, 0.3)',
                   }}
                 >
-                  {currentTestimonial.name.charAt(0)}
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 'bold' }}>
-                    {currentTestimonial.name}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {currentTestimonial.role}
-                  </Typography>
-                  {currentTestimonial.verified && (
+                  <FormatQuoteIcon sx={{ color: '#FFFFFF', fontSize: 20 }} />
+                </Box>
+
+                {/* Rating */}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    mb: 2,
+                    mt: 3,
+                  }}
+                >
+                  <Rating
+                    value={testimonial.rating}
+                    readOnly
+                    size="medium"
+                    sx={{
+                      '& .MuiRating-iconFilled': {
+                        color: '#D4A574',
+                      },
+                    }}
+                  />
+                </Box>
+
+                {/* Message */}
+                <Typography
+                  variant="body1"
+                  component="blockquote"
+                  sx={{
+                    fontStyle: 'italic',
+                    fontFamily: '"Merriweather", serif',
+                    textAlign: 'center',
+                    mb: { xs: 2, md: 3 },
+                    fontSize: { xs: '1rem', md: '1.05rem' },
+                    lineHeight: 1.7,
+                    color: '#3B2B28',
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    wordWrap: 'break-word',
+                    hyphens: 'auto',
+                  }}
+                >
+                  &ldquo;{testimonial.message}&rdquo;
+                </Typography>
+
+                {/* Customer Info */}
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    mt: 'auto',
+                  }}
+                >
+                  <Avatar
+                    sx={{
+                      width: 50,
+                      height: 50,
+                      backgroundColor: '#5A2E2A',
+                      fontFamily: '"Cinzel", serif',
+                      fontSize: '1.2rem',
+                    }}
+                  >
+                    {testimonial.name.charAt(0)}
+                  </Avatar>
+                  <Box>
                     <Typography
-                      variant="caption"
+                      variant="subtitle1"
                       sx={{
-                        color: 'success.main',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 0.5,
+                        fontWeight: 700,
+                        color: '#3B2B28',
+                        fontFamily: '"Merriweather", serif',
                       }}
                     >
-                      ✓ Verifizierter Kunde
+                      {testimonial.name}
                     </Typography>
-                  )}
+                    <Typography variant="body2" sx={{ color: '#928168' }}>
+                      {testimonial.role}
+                    </Typography>
+                    {testimonial.verified && (
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: '#7A9B6B',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 0.5,
+                          fontWeight: 600,
+                        }}
+                      >
+                        Verifiziert
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
-              </Box>
-
-              {/* Date */}
-              <Typography
-                variant="caption"
-                color="text.secondary"
-                sx={{
-                  display: 'block',
-                  textAlign: 'center',
-                  mt: 2,
-                }}
-              >
-                {currentTestimonial.date}
-              </Typography>
-            </Paper>
-          </Fade>
-
-          {/* Dots Indicator */}
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              gap: 1,
-              mt: 4,
-            }}
-          >
-            {enhancedTestimonials.map((_, index) => (
-              <Box
-                key={index}
-                onClick={() => {
-                  setCurrentIndex(index)
-                  setIsAutoPlaying(false)
-                }}
-                sx={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  backgroundColor:
-                    currentIndex === index ? 'primary.main' : 'grey.300',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  '&:hover': {
-                    transform: 'scale(1.5)',
-                  },
-                }}
-              />
-            ))}
-          </Box>
-        </Box>
+              </Paper>
+            </Grid>
+          ))}
+        </Grid>
 
         {/* Trust Statement */}
         <Box
           sx={{
-            mt: 6,
-            p: 3,
-            backgroundColor: 'background.default',
-            borderRadius: 2,
+            mt: { xs: 4, md: 6 },
+            mx: { xs: 2, md: 0 },
+            p: { xs: 2.5, md: 3 },
+            backgroundColor: '#FFFFFF',
+            borderRadius: '12px',
             textAlign: 'center',
+            border: '1px solid',
+            borderColor: '#E6D8C3',
           }}
         >
-          <Typography variant="h6" color="primary.main" gutterBottom>
-            Über 500 Bewertungen
+          <Typography
+            variant="h6"
+            gutterBottom
+            sx={{
+              fontFamily: '"Cinzel", serif',
+              color: '#5A2E2A',
+              fontSize: { xs: '1.1rem', md: '1.25rem' },
+            }}
+          >
+            Echte Kundenbewertungen
           </Typography>
-          <Typography variant="body2" color="text.secondary" gutterBottom>
+          <Typography
+            variant="body2"
+            gutterBottom
+            sx={{
+              color: '#928168',
+              fontSize: { xs: '0.9rem', md: '0.95rem' },
+            }}
+          >
             Durchschnittliche Bewertung: 4.8 von 5 Sternen
           </Typography>
           <Button
             variant="outlined"
-            color="primary"
             startIcon={<StarIcon />}
-            href="https://www.google.com/search?q=b%C3%A4ckerei+heusser+homburg+bewertungen"
+            href="https://share.google/99F0UfUOhLCB8waq1"
             target="_blank"
             rel="noopener noreferrer"
-            sx={{ mt: 2 }}
+            sx={{
+              mt: 2,
+              fontSize: { xs: '0.9rem', md: '0.95rem' },
+              px: { xs: 2, md: 3 },
+              py: { xs: 1, md: 1.5 },
+              minHeight: 48,
+              borderColor: '#5A2E2A',
+              color: '#5A2E2A',
+              fontWeight: 700,
+              borderWidth: 2,
+              borderRadius: '8px',
+              '&:hover': {
+                borderColor: '#3B2B28',
+                backgroundColor: 'rgba(90, 46, 42, 0.05)',
+                borderWidth: 2,
+              },
+            }}
           >
-            Alle Google Bewertungen ansehen
+            <Box
+              component="span"
+              sx={{ display: { xs: 'none', sm: 'inline' } }}
+            >
+              Alle Google Bewertungen ansehen
+            </Box>
+            <Box
+              component="span"
+              sx={{ display: { xs: 'inline', sm: 'none' } }}
+            >
+              Google Bewertungen
+            </Box>
           </Button>
         </Box>
       </Container>

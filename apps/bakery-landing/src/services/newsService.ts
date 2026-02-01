@@ -14,7 +14,28 @@ export interface NewsItem {
   content?: string
 }
 
-const newsDirectory = path.join(process.cwd(), 'content/news')
+// Try multiple possible paths for the news directory
+// This handles both running from workspace root and from app directory
+function getNewsDirectory(): string {
+  const possiblePaths = [
+    path.join(process.cwd(), '../../content/news'), // Running from app directory to workspace root
+    path.join(process.cwd(), 'content/news'), // Running from workspace root
+    path.join(process.cwd(), '../content/news'), // Alternative path
+  ]
+
+  for (const possiblePath of possiblePaths) {
+    if (fs.existsSync(possiblePath)) {
+      console.log('Using news directory:', possiblePath)
+      return possiblePath
+    }
+  }
+
+  // Fallback to first option
+  console.warn('Could not find news directory, using default path')
+  return possiblePaths[0]
+}
+
+const newsDirectory = getNewsDirectory()
 
 export function getAllNews(): NewsItem[] {
   try {
