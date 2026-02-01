@@ -1,17 +1,54 @@
-/* Bakery Landing Page Styles */
+/* Bakery Landing Page Styles - Warm Artisan Theme */
+
+/* Brand Color Variables */
+:root {
+  /* New brand palette */
+  --brand-highlight: #d038ba;
+  --brand-base-macchiato: #928168;
+  --cream: #fff3e6;
+  --beige: #e6d8c3;
+  --dark-brown: #5a2e2a;
+  --text: #3b2b28;
+  --white: #ffffff;
+  --leaf-green: #7a9b6b;
+
+  /* Legacy aliases — point to new brand values */
+  --color-primary: #5a2e2a;
+  --color-primary-light: #928168;
+  --color-primary-dark: #3b2b28;
+  --color-secondary: #d038ba;
+  --color-secondary-light: #e87dd4;
+  --color-secondary-dark: #a82994;
+  --color-background: #fff3e6;
+  --color-surface: #f5ede4;
+  --color-text-primary: #3b2b28;
+  --color-text-secondary: #928168;
+  --color-gold: #d4a574;
+}
+
 html {
   -webkit-text-size-adjust: 100%;
-  font-family: 'Playfair Display', 'Lora', 'Ubuntu', serif;
+  -webkit-tap-highlight-color: transparent; /* Remove tap highlight on iOS */
+  font-family: 'Merriweather', 'Cinzel', Georgia, serif;
   line-height: 1.5;
   tab-size: 4;
   scroll-behavior: smooth;
+  /* Support for iOS viewport units */
+  height: -webkit-fill-available;
 }
 
 body {
   font-family: inherit;
   line-height: inherit;
   margin: 0;
-  background-color: #ffffff;
+  background-color: var(--color-background);
+  /* Support for iOS viewport units */
+  min-height: 100vh;
+  min-height: -webkit-fill-available;
+  /* Improve mobile scrolling */
+  -webkit-overflow-scrolling: touch;
+  /* Prevent zoom on iOS double tap */
+  touch-action: manipulation;
 }
 h1,
 h2,
@@ -413,17 +450,17 @@ summary svg {
 
 /* Optimize font loading */
 @font-face {
-  font-family: 'Playfair Display';
+  font-family: 'Cinzel';
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Lora';
+  font-family: 'Merriweather';
   font-display: swap;
 }
 
 @font-face {
-  font-family: 'Ubuntu';
+  font-family: 'Pacifico';
   font-display: swap;
 }
 
@@ -476,7 +513,7 @@ a:not(.MuiButton-root):not(.MuiIconButton-root)::after {
   left: 0;
   width: 0;
   height: 2px;
-  background-color: #d038ba;
+  background-color: var(--color-secondary);
   transition: width 0.3s ease;
 }
 
@@ -512,7 +549,7 @@ img {
 
 /* Smooth focus transitions */
 *:focus {
-  outline: 2px solid #d038ba;
+  outline: 2px solid var(--color-primary);
   outline-offset: 2px;
   transition: outline-offset 0.2s ease;
 }
@@ -630,32 +667,7 @@ section {
 
 /* Brand color glow effect */
 .brand-glow {
-  animation: brandGlow 3s ease-in-out infinite;
-}
-
-@keyframes brandGlow {
-  0%,
-  100% {
-    box-shadow: 0 0 5px rgba(208, 56, 186, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(208, 56, 186, 0.8);
-  }
-}
-
-/* Pulse animation for important elements */
-.pulse-animation {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
+  box-shadow: 0 0 10px rgba(90, 46, 42, 0.3);
 }
 
 /* Smooth color transitions for theme changes */
@@ -663,7 +675,7 @@ section {
   transition: background-color 0.3s ease, color 0.3s ease !important;
 }
 
-/* Mobile-specific animations */
+/* Mobile-specific optimizations */
 @media (max-width: 600px) {
   /* Reduce motion for better mobile performance */
   * {
@@ -674,31 +686,118 @@ section {
   .MuiCard-root:active {
     transform: scale(0.98);
   }
+
+  /* Disable expensive effects on mobile */
+  .MuiCard-root {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+  }
+
+  /* Improve text rendering on mobile */
+  body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    line-height: 1.6; /* Improved line height for readability */
+  }
+
+  /* Better touch targets */
+  .MuiButton-root {
+    min-height: 44px !important;
+    min-width: 44px !important;
+  }
+
+  /* Reduce backdrop filter blur for performance */
+  .MuiChip-root {
+    backdrop-filter: none !important;
+  }
+
+  /* Optimize container spacing */
+  .MuiContainer-root {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  /* Consistent section spacing on mobile */
+  section {
+    padding-top: 2.5rem !important;
+    padding-bottom: 2.5rem !important;
+  }
+
+  /* Improved body text line-height on mobile */
+  .MuiTypography-body1,
+  .MuiTypography-body2 {
+    line-height: 1.7 !important;
+  }
 }
 
-/* Custom scrollbar styling */
+/* Custom scrollbar styling - warm theme */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: var(--color-surface);
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #d038ba;
+  background: var(--color-secondary);
   border-radius: 10px;
   transition: background 0.3s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #b0309a;
+  background: var(--color-primary-light);
 }
 
 /* Firefox scrollbar */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #d038ba #f1f1f1;
+  scrollbar-color: var(--color-secondary) var(--color-surface);
+}
+
+/* Responsive typography utilities */
+@media (max-width: 480px) {
+  /* Extra small screens - aggressive font size reduction */
+  .MuiTypography-h1 {
+    font-size: 1.75rem !important;
+  }
+  .MuiTypography-h2 {
+    font-size: 1.5rem !important;
+  }
+  .MuiTypography-h3 {
+    font-size: 1.3rem !important;
+  }
+  .MuiTypography-h4 {
+    font-size: 1.2rem !important;
+  }
+  .MuiTypography-h5 {
+    font-size: 1.1rem !important;
+  }
+  .MuiTypography-h6 {
+    font-size: 1rem !important;
+  }
+}
+
+/* Landscape orientation optimizations */
+@media (max-height: 500px) and (orientation: landscape) {
+  /* Reduce hero height in landscape */
+  .hero-section {
+    min-height: 400px !important;
+  }
+
+  /* Reduce margins in landscape */
+  .MuiContainer-root {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+}
+
+/* High-DPI display optimizations */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  /* Sharper borders on retina displays */
+  .MuiPaper-root {
+    border: 0.5px solid rgba(0, 0, 0, 0.12);
+  }
 }

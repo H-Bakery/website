@@ -2,6 +2,7 @@ import './global.css'
 import ThemeRegistry from '../components/providers/ThemeRegistry'
 import { Header } from '../components/header'
 import { LocalFooter } from '../components/LocalFooter'
+import { getSeoOpeningHours } from '../utils/openingHours'
 import { Box } from '@mui/material'
 
 export const metadata = {
@@ -80,19 +81,19 @@ export default function RootLayout({
         <link
           rel="preload"
           as="style"
-          href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Lora:wght@400;500&family=Ubuntu:wght@400;500&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:wght@400;700&family=Pacifico&display=swap"
         />
 
         {/* Load fonts with font-display: swap for better performance */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Lora:wght@400;500;600&family=Ubuntu:wght@300;400;500;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:wght@400;700&family=Pacifico&display=swap"
           rel="stylesheet"
         />
 
         {/* Fallback for browsers without JS */}
         <noscript>
           <link
-            href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Lora:wght@400;500;600&family=Ubuntu:wght@300;400;500;700&display=swap"
+            href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:wght@400;700&family=Pacifico&display=swap"
             rel="stylesheet"
           />
         </noscript>
@@ -137,26 +138,7 @@ export default function RootLayout({
                 latitude: '49.3169',
                 longitude: '7.3364',
               },
-              openingHoursSpecification: [
-                {
-                  '@type': 'OpeningHoursSpecification',
-                  dayOfWeek: [
-                    'Monday',
-                    'Tuesday',
-                    'Wednesday',
-                    'Thursday',
-                    'Friday',
-                  ],
-                  opens: '06:00',
-                  closes: '12:30',
-                },
-                {
-                  '@type': 'OpeningHoursSpecification',
-                  dayOfWeek: 'Saturday',
-                  opens: '06:00',
-                  closes: '12:00',
-                },
-              ],
+              openingHoursSpecification: getSeoOpeningHours(),
               servesCuisine: 'German Bakery',
               priceRange: '€',
               founder: {
@@ -237,7 +219,7 @@ export default function RootLayout({
           <Box
             sx={{
               background:
-                'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #D8E1F4',
+                'radial-gradient(143.25% 143.25% at 50% 100%, #FFFFFF 0%, rgba(255, 255, 255, 0) 100%), #FFF3E6',
               minHeight: '100vh',
               display: 'flex',
               flexDirection: 'column',

@@ -1,3 +1,5 @@
+import { getSeoOpeningHours } from '../../utils/openingHours'
+
 export interface BakerySchema {
   '@context': string
   '@type': 'Bakery'
@@ -138,20 +140,7 @@ export const getBakerySchema = (): BakerySchema => ({
     latitude: '49.3169',
     longitude: '7.3364',
   },
-  openingHoursSpecification: [
-    {
-      '@type': 'OpeningHoursSpecification',
-      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
-      opens: '06:00',
-      closes: '12:30',
-    },
-    {
-      '@type': 'OpeningHoursSpecification',
-      dayOfWeek: 'Saturday',
-      opens: '06:00',
-      closes: '12:00',
-    },
-  ],
+  openingHoursSpecification: getSeoOpeningHours(),
   servesCuisine: 'German Bakery',
   priceRange: '€',
   founder: {
