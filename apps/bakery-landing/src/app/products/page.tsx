@@ -1,20 +1,16 @@
-import React from 'react'
+'use client'
+import React, { useState } from 'react'
 import { Box, Container, Typography, Breadcrumbs, Link } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 import Hero from '../../components/Hero'
 import Products from '../../components/home/products'
+import Filter from '../../components/products/Filter'
 import { PRODUCTS } from '../../mocks/products'
-import { Metadata } from 'next'
-
-export const metadata: Metadata = {
-  title: 'Sortiment - Bäckerei Heusser',
-  description:
-    'Entdecken Sie unser vielfältiges Sortiment an frischen Backwaren, Broten, Brötchen, Kuchen und mehr.',
-  keywords: 'Backwaren, Brot, Brötchen, Kuchen, Sortiment, Bäckerei',
-}
 
 export default function ProductsPage() {
+  const [products, setProducts] = useState(PRODUCTS)
+  const [allProducts] = useState(PRODUCTS)
   return (
     <>
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -58,8 +54,11 @@ export default function ProductsPage() {
           Backwaren. Von traditionellen Broten bis hin zu süßen Leckereien.
         </Typography>
 
+        {/* Filter Section */}
+        <Filter setProducts={setProducts} allProducts={allProducts} />
+
         {/* Products Display */}
-        <Products items={PRODUCTS} showControls={true} />
+        <Products items={products} showControls={true} />
       </Container>
     </>
   )

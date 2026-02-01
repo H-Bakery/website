@@ -79,20 +79,16 @@ export default function AboutPage() {
         <Grid container spacing={8} sx={{ mb: 6 }}>
           <Grid item xs={12} md={6}>
             <Box
+              component="img"
+              src="/assets/images/bakery/1933.png"
+              alt="Historisches Bäckerei Foto von 1933"
               sx={{
                 width: '100%',
                 height: 300,
-                bgcolor: 'grey.300',
+                objectFit: 'cover',
                 borderRadius: 2,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
               }}
-            >
-              <Typography variant="h6" color="text.secondary">
-                Historisches Bäckerei Foto 1933
-              </Typography>
-            </Box>
+            />
           </Grid>
           <Grid
             item
@@ -128,7 +124,7 @@ export default function AboutPage() {
         </Grid>
 
         {/* Current Operations */}
-        <Box sx={{ bgcolor: 'grey.50', py: 6, mx: -4, mb: 6 }}>
+        <Box sx={{ bgcolor: 'grey.100', py: 6, mx: -4, mb: 6 }}>
           <Container maxWidth="lg">
             <Grid container spacing={8}>
               <Grid
@@ -158,20 +154,16 @@ export default function AboutPage() {
               </Grid>
               <Grid item xs={12} md={6}>
                 <Box
+                  component="img"
+                  src="/assets/images/bakery/neu_theke3.jpeg"
+                  alt="Unser gemütlicher Verkaufsraum"
                   sx={{
                     width: '100%',
                     height: 300,
-                    bgcolor: 'grey.300',
+                    objectFit: 'cover',
                     borderRadius: 2,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
                   }}
-                >
-                  <Typography variant="h6" color="text.secondary">
-                    Verkaufsraum Foto
-                  </Typography>
-                </Box>
+                />
               </Grid>
             </Grid>
           </Container>
@@ -254,6 +246,8 @@ export default function AboutPage() {
 
       {/* Core Values */}
       <Box sx={{ bgcolor: 'grey.50', py: 6, mx: -4, mb: 6 }}>
+        {' '}
+        {/* Warm cream */}
         <Container maxWidth="lg">
           <Typography variant="h3" component="h2" align="center" gutterBottom>
             Unsere Werte

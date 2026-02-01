@@ -22,6 +22,10 @@ import {
   Directions as DirectionsIcon,
 } from '@mui/icons-material'
 import Hero from '../../components/Hero'
+import {
+  getContactPageHours,
+  getEarliestOpeningTime,
+} from '../../utils/openingHours'
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
@@ -155,30 +159,14 @@ export default function ContactPage() {
                   Öffnungszeiten
                 </Typography>
                 <List>
-                  <ListItem>
-                    <ListItemIcon>
-                      <ScheduleIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Montag - Freitag"
-                      secondary="06:00 - 12:30 Uhr"
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <ScheduleIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary="Samstag"
-                      secondary="06:00 - 12:00 Uhr"
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <ScheduleIcon color="primary" />
-                    </ListItemIcon>
-                    <ListItemText primary="Sonntag" secondary="Geschlossen" />
-                  </ListItem>
+                  {getContactPageHours().map((item, index) => (
+                    <ListItem key={index}>
+                      <ListItemIcon>
+                        <ScheduleIcon color="primary" />
+                      </ListItemIcon>
+                      <ListItemText primary={item.day} secondary={item.hours} />
+                    </ListItem>
+                  ))}
                 </List>
                 <Box sx={{ mt: 2 }}>
                   <Typography variant="body2" color="text.secondary">
@@ -256,7 +244,7 @@ export default function ContactPage() {
         </Box>
 
         {/* Additional Information */}
-        <Box sx={{ bgcolor: 'grey.50', py: 6, mx: -4, borderRadius: 2 }}>
+        <Box sx={{ bgcolor: 'grey.100', py: 6, mx: -4, borderRadius: 2 }}>
           <Container maxWidth="lg">
             <Typography variant="h4" component="h2" gutterBottom align="center">
               Hinweise für Ihren Besuch
@@ -287,8 +275,9 @@ export default function ContactPage() {
                     Früh aufstehen lohnt sich
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Schon ab 6:00 Uhr morgens haben wir frische Backwaren für
-                    Sie bereit. Kommen Sie früh für die beste Auswahl!
+                    Schon ab {getEarliestOpeningTime()} Uhr morgens haben wir
+                    frische Backwaren für Sie bereit. Kommen Sie früh für die
+                    beste Auswahl!
                   </Typography>
                 </Box>
               </Grid>

@@ -59,7 +59,6 @@ export default function ProductNotFound() {
           }}
         >
           <Button
-            component={Link}
             href="/products"
             variant="contained"
             color="primary"
@@ -75,7 +74,6 @@ export default function ProductNotFound() {
           </Button>
 
           <Button
-            component={Link}
             href="/"
             variant="outlined"
             color="primary"
