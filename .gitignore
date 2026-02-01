@@ -90,3 +90,8 @@ hive-mind-prompt-*.txt
 out
 vite.config.*.timestamp*
 vitest.config.*.timestamp*
+.playwright-mcp
+
+# Temp working copies
+*.tsx.backup
+*.tsx.new

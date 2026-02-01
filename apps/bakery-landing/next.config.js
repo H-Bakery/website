@@ -23,27 +23,37 @@ const nextConfig = {
   compress: true,
   poweredByHeader: false,
 
-  // Configure headers for caching
+  // Security and caching headers
+  // Note: With output: 'export', these only apply during `next dev` / `next start`.
+  // For static hosting, configure caching in your web server (nginx, Apache, etc.).
   async headers() {
+    const isDev = process.env.NODE_ENV !== 'production'
     return [
+      // Static assets: aggressive caching in prod, no-cache in dev
       {
         source: '/:all*(svg|jpg|jpeg|png|gif|ico|webp|avif)',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: isDev
+              ? 'no-store, must-revalidate'
+              : 'public, max-age=31536000, immutable',
           },
         ],
       },
+      // Next.js chunks: aggressive caching in prod (content-hashed), no-cache in dev
       {
         source: '/_next/static/:path*',
         headers: [
           {
             key: 'Cache-Control',
-            value: 'public, max-age=31536000, immutable',
+            value: isDev
+              ? 'no-store, must-revalidate'
+              : 'public, max-age=31536000, immutable',
           },
         ],
       },
+      // Security headers for all routes
       {
         source: '/:path*',
         headers: [

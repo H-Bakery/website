@@ -7,7 +7,7 @@
   "// targets": "to see all targets run: nx show project bakery-landing --web",
   "targets": {
     "serve": {
-      "executor": "@nx/next:dev",
+      "executor": "@nx/next:server",
       "defaultConfiguration": "development",
       "options": {
         "buildTarget": "bakery-landing:build",
@@ -90,6 +90,20 @@
         "help": {
           "command": "nx build-static-standalone bakery-landing",
           "example": "Build landing page for static deployment"
+        }
+      }
+    },
+    "serve-static": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/bakery-landing",
+        "command": "npx http-server out -p 3001 -o"
+      },
+      "metadata": {
+        "description": "Serve the static build output for testing",
+        "help": {
+          "command": "nx serve-static bakery-landing",
+          "example": "Serve static files from out/ directory on port 3001"
         }
       }
     }

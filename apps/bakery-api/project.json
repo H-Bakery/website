@@ -9,7 +9,7 @@
       "dependsOn": ["build"],
       "options": {
         "buildTarget": "bakery-api:build",
-        "command": "node dist/apps/bakery-api/src/main-standalone.js"
+        "command": "node dist/apps/bakery-api/src/main.js"
       }
     },
     "serve-simple": {
@@ -33,7 +33,7 @@
       "dependsOn": ["^build"],
       "options": {
         "outputPath": "dist/apps/bakery-api",
-        "main": "apps/bakery-api/src/main-standalone.ts",
+        "main": "apps/bakery-api/src/main.ts",
         "tsConfig": "apps/bakery-api/tsconfig.build.json",
         "assets": [
           "apps/bakery-api/bakery",
