@@ -1,531 +1,620 @@
-# Bäckerei Heusser - Brand Identity & Corporate Guidelines
+# Bäckerei Heusser — Brand- und Website-Guide
 
-**Version:** 1.0  
-**Last Updated:** January 2025  
-**Purpose:** Comprehensive brand documentation for AI agents, developers, and team members
-
----
-
-## 1. Company Profile & Mission
-
-### Business Overview
-
-**Bäckerei Heusser** is a traditional German artisanal bakery serving the local community with fresh, high-quality baked goods. The bakery combines time-honored baking traditions with modern convenience through innovative digital solutions.
-
-### Core Mission
-
-"Täglich frisch gebacken für unsere Gemeinschaft" (Freshly baked daily for our community)
-
-We are committed to:
-
-- **Artisanal Quality**: Hand-crafted products using traditional German baking methods
-- **Daily Freshness**: All products baked fresh daily with no preservatives
-- **Community Connection**: Serving as a cornerstone of local food culture
-- **Innovation Balance**: Honoring tradition while embracing helpful technology
-
-### Target Audience
-
-- **Primary**: Local families and community members (ages 25-65)
-- **Secondary**: Young professionals seeking quality convenience (ages 25-40)
-- **Tertiary**: Bakery enthusiasts and tourists appreciating authentic German baking
-
-### Unique Value Proposition
-
-"Where traditional German baking craftsmanship meets modern convenience - offering authentic, fresh-baked goods with the ease of online pre-ordering for busy lifestyles."
+**Version:** 2.0
+**Letzte Aktualisierung:** Januar 2025
+**Zweck:** Umfassende Marken-Dokumentation für AI-Agents, Entwickler und Teammitglieder
 
 ---
 
-## 2. Brand Personality & Voice
+## 1. Kurzbeschreibung
 
-### Brand Personality Traits
+Bäckerei Heusser ist eine kleine, lokale Handwerksbäckerei mit warmem, freundlichem Auftreten. Die Marke verbindet Tradition (handwerkliche Backkunst) mit einem modernen, wohnlichen Look — einladend, ehrlich und etwas verspielt.
 
-- **Authentic**: Genuine German baking tradition, no artificial shortcuts
-- **Warm**: Welcoming, family-friendly atmosphere
-- **Reliable**: Consistent quality, dependable service, trustworthy
-- **Skilled**: Master craftsmanship, professional expertise
-- **Community-Oriented**: Local focus, personal relationships
-- **Progressive Traditional**: Honoring the past while embracing helpful innovation
+**Gründung:** 1933 durch Heinrich Heusser
+**Standort:** Eckstraße 3, 66424 Homburg, Saarland
+**Leitspruch:** „Handwerkliche Backkunst seit über 90 Jahren"
+**Tagline:** „Tradition trifft Leidenschaft — täglich frisch für Sie gebacken"
 
-### Communication Voice & Tone
+### Zielgruppen
 
-- **Friendly but Professional**: Approachable yet competent
-- **Warm and Welcoming**: Like talking to a knowledgeable neighbor
-- **Confident without Arrogance**: Proud of quality without boasting
-- **Patient and Helpful**: Understanding customer needs
-- **Locally Rooted**: German cultural awareness and language
+- **Primär**: Lokale Familien und Gemeindemitglieder (25–65 Jahre)
+- **Sekundär**: Junge Berufstätige, die Qualität und Bequemlichkeit suchen (25–40 Jahre)
+- **Tertiär**: Backwarenliebhaber und Touristen, die authentisches deutsches Backhandwerk schätzen
 
-### Communication Style Guidelines
+### Alleinstellungsmerkmal
 
-- Use "Sie" (formal) for new customers, "Du" (informal) for regulars when appropriate
-- Include regional German expressions naturally
-- Emphasize freshness and daily production
-- Mention traditional methods when relevant
-- Always offer helpful information about products
-- Be specific about timing and availability
-
-### Language Preferences
-
-- **Primary**: German (regional Bavarian/Southern German dialect acceptable)
-- **Tone**: Warm, professional, informative
-- **Avoid**: Corporate jargon, artificial enthusiasm, rushed language
-- **Embrace**: Traditional baking terminology, seasonal references, community language
+„Wo traditionelle deutsche Backkunst auf modernen Komfort trifft — authentische, frische Backwaren mit der Einfachheit der Online-Vorbestellung für den aktiven Alltag."
 
 ---
 
-## 3. Visual Identity System
+## 2. Kernwerte & Markenpersönlichkeit
 
-### Color Palette
+### Kernwerte
 
-#### Primary Colors
+- **Warm**: Einladend wie frisch gebackenes Brot.
+- **Ehrlich & Handwerklich**: Authentizität und Qualität stehen im Vordergrund.
+- **Lokaler Stolz**: Verbunden mit der Nachbarschaft.
+- **Großzügig & Sorgfältig**: Liebe zum Detail in Produkt und Service.
 
-- **Brand Magenta**: `#D038BA`
-  - Usage: Primary CTAs, highlights, brand elements
-  - Psychology: Distinctive, memorable, premium quality feeling
-  - WCAG: AA compliant when used with white text
-  - Dark variant: `#A02E94` (enhanced contrast)
-  - Light variant: `#E666D3` (backgrounds, subtle accents)
+### Markenpersönlichkeit
 
-#### Secondary Colors
+- **Authentisch**: Echte deutsche Backtradition, keine künstlichen Abkürzungen
+- **Zuverlässig**: Gleichbleibende Qualität, verlässlicher Service
+- **Fachkundig**: Meisterliches Handwerk, professionelle Expertise
+- **Gemeinschaftsorientiert**: Lokaler Fokus, persönliche Beziehungen
+- **Progressiv-traditionell**: Das Bewährte ehren und hilfreiche Innovation begrüßen
 
-- **Success Green**: `#1ADA67`
-  - Usage: Success messages, positive indicators, fresh/organic themes
-  - Associates with: Freshness, natural ingredients, positive outcomes
+### Ton der Texte
 
-#### Neutral Palette (Grey Scale)
+Freundlich, persönlich, leicht beschwingt. Du-Ansprache möglich — lokal eher „Du".
 
-- **Text Dark**: `#131F37` (primary text, headers)
-- **Text Medium**: `#485776` (secondary text, descriptions)
-- **Text Light**: `#909FBE` (disabled states, placeholders)
-- **Background Light**: `#F6F8FC` (page backgrounds, cards)
-- **Background Paper**: `#FFFFFF` (content areas, modals)
-- **Borders/Dividers**: `#E8EEFB` to `#D8E1F4`
+### Kommunikationsstil
 
-#### Color Usage Philosophy
+- **Freundlich, aber professionell**: Nahbar und dennoch kompetent
+- **Warm und einladend**: Wie ein Gespräch mit einem kenntnisreichen Nachbarn
+- **Selbstbewusst ohne Arroganz**: Stolz auf Qualität, ohne zu prahlen
+- **Geduldig und hilfsbereit**: Kundenbedürfnisse verstehen
+- **Regional verwurzelt**: Deutsches Kulturbewusstsein und Sprache
 
-- **Magenta** represents the premium, artisanal nature of our products
-- **Green** symbolizes freshness and natural ingredients
-- **Neutral greys** provide professional, readable foundation
-- **High contrast** ensures accessibility for all customers
+### Sprachrichtlinien
 
-### Typography System
+- Du-Ansprache für lokale Stammkunden, Sie-Ansprache für neue/formale Kontexte
+- Regionale Ausdrücke natürlich einstreuen
+- Frische und tägliche Produktion betonen
+- Traditionelle Methoden erwähnen, wo relevant
+- Hilfreiche Produktinformationen immer anbieten
+- Konkrete Angaben zu Zeiten und Verfügbarkeit
 
-#### Headline Font: Playfair Display
+### Sprache
 
-- **Usage**: Page titles, section headers, brand messaging
-- **Weights**: 400 (regular), 700 (bold), 900 (heavy)
-- **Character**: Elegant, traditional, premium serif feeling
-- **Why**: Conveys craftsmanship and established tradition
-
-#### Body Font: Lora
-
-- **Usage**: Product descriptions, body content, articles
-- **Weights**: 400 (regular), 500 (medium), 600 (semi-bold)
-- **Character**: Readable, warm, approachable serif
-- **Why**: Balances tradition with modern readability
-
-#### UI Font: Ubuntu
-
-- **Usage**: Interface elements, buttons, navigation, forms
-- **Weights**: 300 (light), 400 (regular), 500 (medium), 700 (bold)
-- **Character**: Clean, modern, friendly sans-serif
-- **Why**: Ensures digital usability while maintaining warmth
-
-#### Typography Hierarchy
-
-```
-H1: Playfair Display, 3.5rem, 700 weight (Main page titles)
-H2: Playfair Display, 2.75rem, 700 weight (Section titles)
-H3: Playfair Display, 2.25rem, 700 weight (Subsections)
-H4: Playfair Display, 1.75rem, 700 weight (Content headers)
-H5: Playfair Display, 1.5rem, 700 weight (Minor headers)
-H6: Playfair Display, 1.25rem, 700 weight (Small headers)
-
-Body1: Lora, 1.05rem, 400 weight, 1.7 line-height (Primary content)
-Body2: Lora, 0.95rem, 400 weight, 1.6 line-height (Secondary content)
-
-Button: Lora, 500 weight, 0.5px letter-spacing (CTAs, actions)
-Caption: Ubuntu, 0.75rem (Small text, labels)
-```
-
-### Logo System
-
-The Bäckerei Heusser logo system consists of modular SVG components that can be used individually or combined:
-
-#### Primary Logo Components
-
-1. **"Bäckerei" Wordmark** (`Baeckerei.tsx`)
-
-   - Full script spelling in decorative serif
-   - Use for primary brand identification
-   - Minimum width: 300px for readability
-
-2. **"Heusser" Script** (`Heusser.tsx`)
-
-   - Family name in elegant script
-   - Can be used standalone for products/signatures
-   - Customizable color (default: `#7B341E` - warm brown)
-
-3. **"H" Monogram** (`H.tsx`)
-
-   - Stylized "H" for compact spaces
-   - Use for favicons, small applications
-   - Strong, geometric design
-
-4. **Wappen (Crest)** (`Wappen.tsx`)
-
-   - Traditional heraldic element
-   - Represents heritage and quality
-   - Use for formal applications, certificates
-
-5. **Decorative Divider** (`Divider.tsx`)
-   - Ornamental line element
-   - Use for section breaks, decorative purposes
-   - Complements traditional aesthetic
-
-#### Logo Usage Guidelines
-
-- **Primary combination**: "Bäckerei" + "Heusser" for main identification
-- **Compact spaces**: "H" monogram only
-- **Traditional contexts**: Include Wappen crest
-- **Digital interfaces**: Simplified versions without fine details
-- **Minimum sizes**: Ensure text remains readable
-- **Color variations**: Adapt to background while maintaining contrast
-
-### Iconography System
-
-#### Brand Icons (`icons/brand/`)
-
-- Decorative elements maintaining traditional German aesthetic
-- Used for visual hierarchy and brand consistency
-
-#### Product Icons (`icons/products/`)
-
-- **Broetchen** (Rolls), **Brot** (Bread), **Kuchen** (Cakes)
-- **Teilchen** (Pastries), **Torten** (Tortes), **Getranke** (Beverages)
-- Consistent illustration style, simple and recognizable
-- Use for navigation, product categories, quick identification
-
-#### Social Media Icons (`icons/socials/`)
-
-- **Instagram**, **Facebook**, **WhatsApp**
-- Styled to match brand aesthetic
-- Use for contact and social engagement
-
-#### UI Icons
-
-- Standard Material Design icons for interface elements
-- Maintain consistency with overall design system
+- **Primär**: Deutsch (regionaler saarländischer Dialekt akzeptabel)
+- **Ton**: Warm, professionell, informativ
+- **Vermeiden**: Konzern-Jargon, künstlichen Enthusiasmus, hastige Sprache
+- **Bevorzugen**: Traditionelle Backbegriffe, saisonale Bezüge, gemeinschaftliche Sprache
 
 ---
 
-## 4. Business Operations Context
+## 3. Farbpalette
 
-### Operating Hours & Schedule
+Primär- und unterstützende Farben auf Grundlage der Vorgaben (Highlight `#d038ba` und „Macchiato" `#928168`) — mit warmen Tönen für ein wohnliches Gesamtbild.
 
+### Hauptfarben
+
+| Variable                 | Hex       | Verwendung                                                            |
+| ------------------------ | --------- | --------------------------------------------------------------------- |
+| `--brand-highlight`      | `#d038ba` | Bäckerei-Highlight — Akzente, Calls-to-Action, Buttons, Links, Badges |
+| `--brand-base-macchiato` | `#928168` | Macchiato — warmes Grau-Braun für Flächen, Hintergründe, Footer       |
+
+### Sekundärfarben / Neutrale
+
+| Variable       | Hex       | Verwendung                                                |
+| -------------- | --------- | --------------------------------------------------------- |
+| `--cream`      | `#FFF3E6` | Sahnige Crème — helle Flächen, Kartenhintergründe         |
+| `--beige`      | `#E6D8C3` | Weicher Beige-Ton — Sektionen, Karten                     |
+| `--dark-brown` | `#5A2E2A` | Kräftiges Braun — Überschriften, Icons                    |
+| `--text`       | `#3B2B28` | Haupttextfarbe — gute Lesbarkeit auf hellen Hintergründen |
+| `--white`      | `#FFFFFF` | Reines Weiß                                               |
+
+### Frische-Nuance (saisonale Akzente)
+
+| Variable       | Hex       | Verwendung                                                 |
+| -------------- | --------- | ---------------------------------------------------------- |
+| `--leaf-green` | `#7A9B6B` | Sanftes Grün für saisonale Aktionen: Ostern, Frühlingsbrot |
+
+### CSS-Variablen
+
+```css
+:root {
+  --brand-highlight: #d038ba;
+  --brand-base-macchiato: #928168;
+  --cream: #fff3e6;
+  --beige: #e6d8c3;
+  --dark-brown: #5a2e2a;
+  --text: #3b2b28;
+  --white: #ffffff;
+  --leaf-green: #7a9b6b;
+}
 ```
-Tuesday - Friday:    06:00 - 15:00 Uhr
-Saturday:           06:00 - 12:30 Uhr
-Sunday & Holidays:  08:00 - 11:00 Uhr
-Monday:             Ruhetag (Closed)
-```
 
-**Cultural Context**: This schedule reflects traditional German bakery operations:
+### Hinweise zur Verwendung
 
-- Early morning opening for fresh-baked goods
-- Monday closure is standard (Ruhetag - rest day)
-- Extended Sunday/holiday hours for community convenience
-- Afternoon closure common for family businesses
-
-### Location & Contact Information
-
-#### Primary Contact
-
-- **Phone**: [Configurable via environment]
-- **WhatsApp**: [Business WhatsApp number]
-- **Email**: `info@baeckerei-heusser.de`
-
-#### Physical Location
-
-- **Country**: Germany
-- **Market**: Local/regional community
-- **Language**: German (with regional dialect comfort)
-
-#### Digital Presence
-
-- **Website**: Primary business platform
-- **Instagram**: `@baeckereiheusser` (visual content, daily specials)
-- **Facebook**: Community engagement, events, announcements
-
-### Services & Offerings
-
-#### Core Products
-
-- **Brot** (Bread): Traditional German breads, artisanal varieties
-- **Brötchen** (Rolls): Fresh daily rolls, multiple varieties
-- **Kuchen** (Cakes): Seasonal cakes, custom orders
-- **Teilchen** (Pastries): Croissants, Danish, German pastries
-- **Torten** (Tortes): Special occasion cakes, custom designs
-- **Getränke** (Beverages): Coffee, traditional drinks
-
-#### Service Model
-
-- **Walk-in Sales**: Traditional counter service
-- **Pre-ordering**: Online system for guaranteed availability
-- **Custom Orders**: Special occasion items with advance notice
-- **Seasonal Specials**: Holiday and seasonal baked goods
-
-#### Innovation Balance
-
-- **Traditional Methods**: Hand-crafted, time-tested recipes
-- **Modern Convenience**: Online ordering, digital payment options
-- **Quality Focus**: No shortcuts that compromise product integrity
-- **Community Connection**: Personal service alongside digital efficiency
+- **`--brand-base-macchiato`** großflächig als ruhige, wohnliche Hintergrundfarbe verwenden (z.B. Sektionen, Footer, große Flächen).
+- **`--brand-highlight`** (`#d038ba`) sparsam einsetzen als Hervorhebung: Buttons, Links, Rabatt-Badges, Social-Icons, Promo-Banner.
+- **Crème- und Beige-Töne** für Karten, Produkt-Hintergründe und Subsektionen — geben Wärme und Lesekomfort.
+- **Dunkelbraun / Textfarbe** für Texte und Überschriften statt reinem Schwarz — wirkt weicher und wohnlicher.
+- **Highlight-Varianten** (für erweiterte Farbskala):
+  - Dunkler: `#A02E94` (erhöhter Kontrast)
+  - Heller: `#E666D3` (Hintergründe, dezente Akzente)
 
 ---
 
-## 5. Digital Presence Guidelines
+## 4. Typografie
 
-### Website Design Principles
+**Ziel:** Handwerkliche Werte + Lesbarkeit für Web.
 
-#### User Experience Philosophy
+### Schriftempfehlungen (Google Fonts)
 
-- **Customer First**: Easy product discovery and ordering
-- **Clarity**: Clear information about availability, pricing, pickup times
-- **Trust**: Professional presentation building confidence
-- **Accessibility**: WCAG AA compliance, multiple device support
-- **Performance**: Fast loading, reliable functionality
+| Einsatz             | Schrift                                       | Charakter                                                         |
+| ------------------- | --------------------------------------------- | ----------------------------------------------------------------- |
+| **Überschriften**   | Cinzel                                        | Serifisch, traditionelle Anmutung, elegante Headlines             |
+| **Fließtext**       | Merriweather (primär) oder Inter (alternativ) | Gute Lesbarkeit, warm wirkend in Kombination mit Serif-Headlines  |
+| **Signatur / Logo** | Pacifico oder Pinyon Script                   | Handgeschrieben, persönlich — für Labels, Etiketten, Social-Posts |
 
-#### Design Aesthetic
+### Größenskala
 
-- **Clean Traditional**: Modern interface respecting traditional values
-- **Warm Welcome**: Inviting colors and imagery
-- **Product Focus**: High-quality product photography and descriptions
-- **Intuitive Navigation**: Logical flow from discovery to order completion
+```
+H1:    40–48px  (Desktop)
+H2:    28–34px
+H3:    22–26px
+H4:    18–22px
+Body:  16px
+Small: 12–14px  (Hilfetexte, Captions)
+```
 
-#### Theme System
+### Typografische Regeln
 
-- **Customer Areas**: Always light mode (warm, welcoming)
-- **Admin Areas**: Light/dark toggle for staff preference
-- **Consistent Elements**: Typography, colors, spacing maintained across themes
+- Großzügige Zeilenhöhe (`line-height: 1.5`) für Wohlfühl-Lesbarkeit
+- Überschriften dürfen mehr Weißraum bekommen, um die warme, ruhige Marke zu unterstützen
+- Fließtext-Zeilenhöhe: 1.5–1.7 für optimale Lesbarkeit
+- Letter-Spacing für Buttons: `0.5px`
 
-#### Component Design Patterns
+### Font-Loading
 
-- **Material UI Foundation**: Professional, accessible components
-- **Custom Theming**: Brand colors and typography integration
-- **Responsive Design**: Mobile-first approach with desktop enhancement
-- **Progressive Enhancement**: Core functionality works without JavaScript
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:wght@400;500;700&family=Pacifico&display=swap"
+  rel="stylesheet"
+/>
+```
 
-### Customer Experience Standards
-
-#### Product Presentation
-
-- **High-Quality Images**: Professional photography showing texture, craftsmanship
-- **Clear Descriptions**: Ingredients, allergens, traditional preparation methods
-- **Availability Information**: Real-time stock, next availability
-- **Pricing Transparency**: Clear pricing with no hidden fees
-
-#### Ordering Process
-
-- **Simple Cart**: Easy addition, modification, review
-- **Clear Pickup Times**: When orders will be ready
-- **Confirmation System**: Order confirmation via multiple channels
-- **Flexibility**: Easy modification or cancellation when possible
-
-#### Communication Style
-
-- **Helpful Information**: Product details, preparation suggestions
-- **Timely Updates**: Order status, any delays or changes
-- **Personal Touch**: Friendly but professional interaction
-- **Problem Resolution**: Clear support options, responsive service
-
-### Admin Interface Standards
-
-#### Professional Presentation
-
-- **Clean Dashboard**: Key metrics and actions prominently displayed
-- **Efficient Workflows**: Streamlined processes for daily operations
-- **Data Clarity**: Clear reporting and analytics presentation
-- **Accessibility**: High contrast options, keyboard navigation support
-
-#### Functional Requirements
-
-- **Order Management**: Complete lifecycle from order to completion
-- **Product Management**: Easy updates to availability, pricing, descriptions
-- **Analytics**: Clear insights into sales, popular items, trends
-- **Communication Tools**: Customer notification, staff coordination
+Strategie: `font-display: swap` — Text sofort mit Systemschrift rendern, bei Laden der Custom Font tauschen.
 
 ---
 
-## 6. Communication Examples & Templates
+## 5. Logo & Markenzeichen
 
-### Customer-Facing Messages
+### Logo-Varianten
 
-#### Welcome Messages
+1. **Primär-Logo (horizontal):** Wortmarke „Bäckerei Heusser" in Serif + kleines Icon links (Weizenähre / Laib Brot / Schneebesen).
+2. **Kompakt (Badge):** Kreis-Version mit Icon in der Mitte und „Heusser" halbkreisförmig — ideal für Social Icons, Stempel, Sticker.
+3. **Signatur:** Handschriftliche Variante (nur für Labels, Produktetiketten oder Social-Posts).
 
-```german
-"Willkommen bei Bäckerei Heusser! Täglich frisch gebacken für Sie."
-(Welcome to Bäckerei Heusser! Freshly baked daily for you.)
+### SVG-Komponenten im Code
 
-"Entdecken Sie unsere handwerklichen Backwaren - von traditionellen Broten bis hin zu köstlichen Torten."
-(Discover our artisanal baked goods - from traditional breads to delicious tortes.)
-```
+| Komponente           | Datei           | Beschreibung                                                    |
+| -------------------- | --------------- | --------------------------------------------------------------- |
+| „Bäckerei" Wortmarke | `Baeckerei.tsx` | Dekorative Serif-Schrift, Mindestbreite 300px                   |
+| „Heusser" Schriftzug | `Heusser.tsx`   | Familienname in elegantem Script, Standardfarbe: `#7B341E`      |
+| „H" Monogramm        | `H.tsx`         | Stilisiertes „H" für kompakte Einsätze (Favicons, Kleinformate) |
+| Wappen (Crest)       | `Wappen.tsx`    | Traditionelles heraldisches Element, für formelle Anwendungen   |
+| Dekorativer Teiler   | `Divider.tsx`   | Ornamentale Linie für Abschnittstrennungen                      |
 
-#### Product Descriptions
+Alle Komponenten liegen unter `src/components/icons/brand/`.
 
-```german
-"Unser traditionelles Sauerteigbrot wird täglich frisch nach alter Familienrezeptur gebacken."
-(Our traditional sourdough bread is baked fresh daily according to an old family recipe.)
+### Logo-Nutzungsregeln
 
-"Knusprige Brötchen, warm aus dem Ofen - perfekt für Ihr Frühstück."
-(Crispy rolls, warm from the oven - perfect for your breakfast.)
-```
-
-#### Order Confirmation
-
-```german
-"Vielen Dank für Ihre Bestellung! Ihre frischen Backwaren sind am [Datum] um [Zeit] zur Abholung bereit."
-(Thank you for your order! Your fresh baked goods will be ready for pickup on [Date] at [Time].)
-```
-
-#### Seasonal Messages
-
-```german
-"Probieren Sie unsere saisonalen Stollen - nach traditioneller Rezeptur mit besten Zutaten."
-(Try our seasonal Stollen - made according to traditional recipe with the finest ingredients.)
-```
-
-### Marketing Tone Examples
-
-#### Quality Emphasis
-
-```german
-"Handwerkliche Qualität seit Generationen - schmecken Sie den Unterschied echter Bäckertradition."
-(Artisanal quality for generations - taste the difference of genuine baking tradition.)
-```
-
-#### Community Connection
-
-```german
-"Teil unserer Gemeinschaft - Ihre Nachbarschaftsbäckerei für alle Lebensmomente."
-(Part of our community - your neighborhood bakery for all of life's moments.)
-```
-
-#### Innovation Balance
-
-```german
-"Tradition trifft Komfort - bestellen Sie online und holen Sie sich Ihre Lieblings-Backwaren garantiert frisch ab."
-(Tradition meets convenience - order online and pick up your favorite baked goods guaranteed fresh.)
-```
-
-### Error Messages & Support
-
-#### Helpful Error Messages
-
-```german
-"Entschuldigung, dieses Produkt ist heute ausverkauft. Möchten Sie es für morgen vorbestellen?"
-(Sorry, this product is sold out today. Would you like to pre-order it for tomorrow?)
-```
-
-#### Support Language
-
-```german
-"Haben Sie Fragen? Rufen Sie uns an oder schreiben Sie uns - wir helfen gerne weiter!"
-(Do you have questions? Call us or write to us - we're happy to help!)
-```
-
-### Staff Communication Standards
-
-#### Professional Internal Communication
-
-- Clear order information transfer
-- Timely customer notification for delays
-- Consistent quality messaging
-- Collaborative problem-solving approach
+- Genug Sicherheitsraum geben (min. 1× Höhe des Logos rundherum)
+- Nicht auf zu kontrastreichen Hintergründen platzieren — helle Crème- oder dunkle Braunflächen nutzen
+- **Invers:** Weißes Logo auf dunklem Braun oder Macchiato möglich
+- **Primärkombination**: „Bäckerei" + „Heusser" für Hauptidentifikation
+- **Kompakte Einsätze**: Nur „H"-Monogramm
+- **Traditionelle Kontexte**: Wappen-Crest einbinden
+- **Digitale Interfaces**: Vereinfachte Versionen ohne feine Details
+- **Mindestgrößen**: Sicherstellen, dass Text lesbar bleibt
+- **Farbvariationen**: An Hintergrund anpassen unter Beibehaltung des Kontrasts
 
 ---
 
-## 7. Brand Usage Guidelines
+## 6. Bildsprache & Iconographie
 
-### Do's ✅
+### Fotostil
 
-- **Maintain Quality Standards**: Every touchpoint reflects artisanal excellence
-- **Use Warm, Professional Language**: Friendly but competent communication
-- **Emphasize Freshness**: Daily production is a key differentiator
-- **Respect Traditional Elements**: Honor German baking heritage
-- **Ensure Accessibility**: All customers can access information and services
-- **Be Specific**: Clear timing, ingredients, preparation methods
-- **Show Craftsmanship**: Highlight the skilled work behind products
+- Warme, natürliche Lichtstimmung (goldene Morgenstunden)
+- Nahaufnahmen von Krusten, Krümeln, Laiben, Hände beim Formen
+- Authentische Bilder: Mitarbeiter:innen, Backstube, Regionalität zeigen
+- Hintergrund-Unschärfe (Bokeh) für Produktfokus
+- Hochwertige Produktfotografie, die Textur und Handwerkskunst zeigt
 
-### Don'ts ❌
+### Icons & Grafiken
 
-- **Rush the Customer Experience**: Allow time for informed decisions
-- **Use Corporate Jargon**: Keep language natural and understandable
-- **Compromise on Quality Messaging**: Never downplay artisanal aspects
-- **Ignore Traditional Context**: Respect cultural and historical elements
-- **Over-complicate Technology**: Keep digital tools simple and helpful
-- **Make Promises We Can't Keep**: Be realistic about timing and availability
-- **Lose Personal Touch**: Maintain human connection despite digital efficiency
+- Line-Icons mit leicht abgerundeten Ecken oder einfache Piktogramme (Mehl, Weizen, Ofen)
+- Farbfüllung bevorzugt in `--dark-brown` oder `--brand-base-macchiato`
+- Konsistenter Illustrationsstil, einfach und wiedererkennbar
 
-### Context-Specific Guidelines
+### Produkt-Icon-Komponenten
+
+Die folgenden Produkt-Icons liegen unter `src/components/icons/products/`:
+
+| Icon     | Datei          | Kategorie  |
+| -------- | -------------- | ---------- |
+| Brot     | `Brot.tsx`     | Brote      |
+| Brötchen | `Brötchen.tsx` | Brötchen   |
+| Kuchen   | `Kuchen.tsx`   | Kuchen     |
+| Teilchen | `Teilchen.tsx` | Feingebäck |
+| Torten   | `Torten.tsx`   | Torten     |
+| Getränke | `Getränke.tsx` | Getränke   |
+
+Zusätzlich verfügbare Produkt-SVGs unter `public/assets/images/products/`:
+Baguette, Brezel, Brot Rund, Croissant, Doppelweck, Hefezopf, Kastenbrot, Kornbrot, Kranzkuchen, Kuchenstück, Mischbrot, Rolle, Schnecke, Schokobrötchen, Tasche, Vollkorn Kastenbrot.
+
+### Social-Media-Icons
+
+- Instagram, Facebook, WhatsApp
+- Gestaltet im Marken-Stil
+- Farbe: `--brand-highlight` auf dunklen Hintergründen
+
+---
+
+## 7. UI-Komponenten (Website)
+
+### Header
+
+- Transparenter Header über Hero-Bereich
+- Bei Scroll: Wechsel zu cremefarbigem Hintergrund mit leichter Schattenkante
+- Logo links, Navigation rechts (Produkte, Über uns, Filialen, Kontakt, Online-Bestellung)
+
+### Hero
+
+- Großes Bild (Nahaufnahme eines Brotes) + kurzer Claim
+- Claim-Beispiel: „Herzlich. Handwerklich. Heusser."
+- CTA-Button (Primär): Hintergrund `--brand-highlight`, Text `--white`
+- Sekundär-CTA: `--dark-brown` auf `--cream`
+
+### Buttons
+
+```css
+.btn-primary {
+  background: var(--brand-highlight);
+  color: var(--white);
+  border-radius: 12px;
+  padding: 12px 20px;
+  font-weight: 700;
+}
+
+.btn-secondary {
+  background: var(--cream);
+  color: var(--dark-brown);
+  border: 2px solid var(--beige);
+  border-radius: 10px;
+  padding: 12px 20px;
+}
+```
+
+### Cards / Produkte
+
+- Karte mit leichtem Schatten, abgerundeten Ecken
+- Bild oben, Produktname, kurze Beschreibung, Preis, Button
+- Hintergrund: `--white` oder `--cream`
+- Texte in `--text`
+
+### Footer
+
+- Hintergrund: `--brand-base-macchiato`
+- Texte: weiß oder cremefarben
+- Social-Icons: `--brand-highlight`
+- Newsletter-Anmeldung: Input auf `--cream`, Button `--brand-highlight`
+
+### Theme-System
+
+- **Kundenbereiche**: Immer heller Modus (warm, einladend)
+- **Admin-Bereiche**: Hell/Dunkel-Umschaltung nach Mitarbeiterpräferenz
+- **Konsistente Elemente**: Typografie, Farben, Abstände über alle Themes beibehalten
+
+---
+
+## 8. Accessibility & Kontrast
+
+- **WCAG AA** einhalten: Mindestkontrast 4,5:1 für normalen Text
+- Dunkle Textfarbe (`--text`) auf `--cream`/`--white` erfüllt die Anforderungen
+- Text auf `--brand-highlight` sollte weiß sein (kontrollierter Kontrast)
+- Wichtigen Text **nicht** direkt auf Bilder ohne halbtransparente Overlay platzieren
+- Keyboard-Navigation unterstützen
+- Mehrere Gerätegrößen berücksichtigen (Mobile-first)
+- Hohe Kontrastoptionen für Admin-Bereich
+
+---
+
+## 9. Content & Microcopy
+
+### Hero-Claims
+
+- „Frisch. Handgemacht. Für die Nachbarschaft."
+- „Herzlich. Handwerklich. Heusser."
+- „Täglich frisch gebacken für unsere Gemeinschaft."
+
+### CTA-Beispiele
+
+- „Jetzt vorbestellen"
+- „Unser Sortiment"
+- „Entdecken Sie unsere Backwaren"
+
+### Über-uns-Kurztext
+
+„Seit 1933 backt die Familie Heusser mit Herz und Hand — täglich frisch aus der Backstube."
+
+### Ton
+
+Freundlich, ehrlich, mit leichtem regionalem Bezug. Kurze Sätze. Emojis sparsam (nur Social Media).
+
+### Willkommen
+
+```
+„Willkommen bei Bäckerei Heusser! Täglich frisch gebacken für Sie."
+
+„Entdecken Sie unsere handwerklichen Backwaren — von traditionellen Broten
+bis hin zu köstlichen Torten."
+```
+
+### Produktbeschreibungen
+
+```
+„Unser traditionelles Sauerteigbrot wird täglich frisch nach alter
+Familienrezeptur gebacken."
+
+„Knusprige Brötchen, warm aus dem Ofen — perfekt für Ihr Frühstück."
+```
+
+### Bestellbestätigung
+
+```
+„Vielen Dank für Ihre Bestellung! Ihre frischen Backwaren sind am [Datum]
+um [Zeit] zur Abholung bereit."
+```
+
+### Saisonale Nachrichten
+
+```
+„Probieren Sie unsere saisonalen Stollen — nach traditioneller Rezeptur
+mit besten Zutaten."
+```
+
+### Marketing-Ton
+
+```
+Qualität:
+„Handwerkliche Qualität seit Generationen — schmecken Sie den Unterschied
+echter Bäckertradition."
+
+Gemeinschaft:
+„Teil unserer Gemeinschaft — Ihre Nachbarschaftsbäckerei für alle Lebensmomente."
+
+Innovation:
+„Tradition trifft Komfort — bestellen Sie online und holen Sie sich Ihre
+Lieblings-Backwaren garantiert frisch ab."
+```
+
+### Fehlermeldungen & Support
+
+```
+„Entschuldigung, dieses Produkt ist heute ausverkauft.
+Möchten Sie es für morgen vorbestellen?"
+
+„Haben Sie Fragen? Rufen Sie uns an oder schreiben Sie uns —
+wir helfen gerne weiter!"
+```
+
+---
+
+## 10. Seitenvorlagen (Page Templates)
+
+### Startseite
+
+1. **Hero** — Großes Foto + Claim + CTA
+2. **Kategorien** — Brote, Gebäck, Kuchen, Snacks
+3. **Wochenangebot / Aktuelle Aktion** — Badge in `--brand-highlight`
+4. **Über Uns** — Foto Backstube + Kurztext
+5. **Filialfinder + Öffnungszeiten**
+6. **Footer** mit Newsletter-Anmeldung
+
+### Produktseite
+
+- Galerie (Carousel)
+- Beschreibung
+- Zutaten
+- Nährwerte
+- CTA: „Vorbestellen" oder „Zum Warenkorb"
+
+---
+
+## 11. Geschäftsbetrieb
+
+### Öffnungszeiten
+
+```
+Montag:              Ruhetag (Geschlossen)
+Dienstag – Freitag:  05:30 – 13:30 Uhr
+Samstag:             05:30 – 12:30 Uhr
+Sonntag & Feiertage: 08:00 – 11:00 Uhr
+```
+
+**Kultureller Kontext**: Dieser Plan entspricht dem traditionellen deutschen Bäckereibetrieb:
+
+- Frühe Öffnung für frische Backwaren
+- Montag als Ruhetag ist Standard
+- Erweiterte Sonn-/Feiertagszeiten für die Gemeinschaft
+- Nachmittagsschluss üblich bei Familienbetrieben
+
+### Kontaktinformationen
+
+- **Telefon**: +49 1234 567890
+- **WhatsApp**: +49 1522 6621236
+- **E-Mail**: info@baeckerei-heusser.de
+- **Bestellungen**: bestellung@baeckerei-heusser.de
+- **Adresse**: Eckstraße 3, 66424 Homburg, Saarland
+
+### Digitale Präsenz
+
+- **Website**: https://baeckerei-heusser.de
+- **Instagram**: [@baeckereiheusser](https://www.instagram.com/baeckereiheusser)
+- **Facebook**: [Bäckerei Heusser](https://www.facebook.com/baeckereiheusser)
+
+### Produkte & Services
+
+#### Kernprodukte
+
+| Kategorie | Deutsch    | Beschreibung                                       |
+| --------- | ---------- | -------------------------------------------------- |
+| Brot      | Brote      | Traditionelle deutsche Brote, handwerkliche Sorten |
+| Brötchen  | Brötchen   | Täglich frische Brötchen, diverse Sorten           |
+| Kuchen    | Kuchen     | Saisonale Kuchen, Sonderbestellungen               |
+| Teilchen  | Feingebäck | Croissants, Plunder, deutsches Feingebäck          |
+| Torten    | Torten     | Festtags-Torten, individuelle Designs              |
+| Getränke  | Getränke   | Kaffee, traditionelle Getränke                     |
+
+#### Servicemodell
+
+- **Ladenverkauf**: Traditioneller Thekenservice
+- **Vorbestellung**: Online-System für garantierte Verfügbarkeit
+- **Sonderbestellungen**: Festtagsartikel mit Vorlaufzeit
+- **Saisonale Spezialitäten**: Feiertags- und saisonale Backwaren
+
+### Zahlungsmethoden
+
+- Bargeld, EC-Karte, Kreditkarte
+- Währung: EUR (Euro)
+- Preissegment: € (erschwinglich)
+
+---
+
+## 12. Technische Hinweise
+
+### CSS-Variablen
+
+Alle Markenwerte als CSS Custom Properties definieren (siehe Abschnitt 3). Dies ermöglicht einfache Pflege und konsistente Anwendung.
+
+### Google Fonts
+
+Prefetch für Performance:
+
+```html
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+```
+
+### Bilder
+
+- WebP-Format für Kompression
+- `loading="lazy"` für große Bilder
+- Open-Graph-Bilder: `/og-image.svg` (1200×630), Fallback `/og-image.jpg`
+
+### Favicons
+
+- 16×16: `/favicon-16x16.png`
+- 32×32: `/favicon-32x32.png`
+- 48×48: `/favicon.ico`
+- Apple Touch: `/apple-touch-icon.png`
+
+### Migrationsstatus
+
+> **Hinweis:** Der Code verwendet derzeit ältere Farbwerte als die hier definierten Markenfarben. Die folgenden Dateien enthalten hardcodierte Werte, die in einem zukünftigen Update angepasst werden müssen:
+>
+> | Datei                                       | Aktuelle Werte                                                         | Zielwerte                                  |
+> | ------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------ |
+> | `src/theme/theme.ts`                        | Primär `#6B4423`, Text `#3D3027`, Background `#FFFBF5`, WarmGrey-Skala | Markenpalette (s. Abschnitt 3)             |
+> | `src/app/global.css`                        | `--color-primary: #6B4423`, `--color-background: #FFFBF5` etc.         | Neue CSS-Variablen                         |
+> | `src/components/home/hero/EnhancedHero.tsx` | Gradient `#4A2C17 → #6B4423 → #8B5A2B → #A67C52 → #D4C4B0`             | Neues Gradient auf Basis der Markenpalette |
+> | `src/components/home/map/Marker.tsx`        | Fill `#6B4423`, Text `#3D3027`                                         | `--dark-brown` / `--text`                  |
+> | `src/app/layout.tsx`                        | Lädt Playfair Display, Lora, Ubuntu                                    | Cinzel, Merriweather, Pacifico             |
+>
+> Diese Migration ist ein separater zukünftiger Task — dieses Dokument definiert den Zielzustand.
+
+---
+
+## 13. Launch-Assets Checkliste
+
+- [ ] Logo in SVG (Primär, Invers, Badge)
+- [ ] Farb- und Typografie-Guide (Kurzfassung)
+- [ ] Produktfotografie (Mindestanzahl 20 Bilder)
+- [ ] Social-Profile (Avatar-Variante des Badges)
+- [ ] Favicon (16/32/48px)
+- [ ] Open-Graph-Bilder
+- [ ] Historisches Foto (1933.png vorhanden)
+
+---
+
+## 14. AI-Agent-Richtlinien
+
+### Markenverständnis
+
+Beim Erstellen von Inhalten oder Treffen von Entscheidungen als AI-Agent für Bäckerei Heusser:
+
+1. **Heritage beachten**: Traditionelle deutsche Bäckerei mit modernem Komfort
+2. **Qualität priorisieren**: Jede Entscheidung soll handwerkliche Standards widerspiegeln
+3. **Gemeinschaft denken**: Lokale Kunden und Nachbarschaftsbeziehungen berücksichtigen
+4. **Innovation balancieren**: Hilfreiche Technik begrüßen, ohne traditionelle Werte zu verlieren
+5. **Passende Sprache**: Deutsch-zuerst, warm aber professionell
+6. **Kontext beachten**: Tageszeit, Saison, lokale Events beeinflussen die Kommunikation
+7. **Konsistenz wahren**: Alle Touchpoints sollen sich kohärent „Bäckerei Heusser" anfühlen
+
+### Content-Prioritäten
+
+1. **Produktqualität** — Handwerk und Frische betonen
+2. **Kundenservice** — Hilfreiche, klare, zeitnahe Kommunikation
+3. **Traditionelle Werte** — Respekt für Backhandwerk und Methoden
+4. **Gemeinschaftsverbindung** — Lokaler Fokus und persönliche Beziehungen
+5. **Barrierefreiheit** — Alle Kunden erreichen
+6. **Saisonale Relevanz** — Verbindung zu lokalem Kalender und Traditionen
+
+### Entscheidungsrahmen
+
+Bei Unsicherheit zur Markenkonformität fragen:
+
+- „Spiegelt das handwerkliche Qualität wider?"
+- „Dient das unserer lokalen Gemeinschaft gut?"
+- „Ist das sowohl traditionell als auch hilfreich?"
+- „Wahrt das unsere warme, professionelle Stimme?"
+- „Würden Kunden sich willkommen und wertgeschätzt fühlen?"
+
+---
+
+## 15. Markennutzungs-Richtlinien
+
+### Do's
+
+- Qualitätsstandards an jedem Touchpoint einhalten
+- Warme, professionelle Sprache verwenden
+- Frische betonen — tägliche Produktion ist ein Alleinstellungsmerkmal
+- Traditionelle Elemente respektieren
+- Barrierefreiheit sicherstellen
+- Konkret sein: klare Zeiten, Zutaten, Zubereitungsmethoden
+- Handwerkskunst hervorheben
+
+### Don'ts
+
+- Kunden hetzen — Zeit für informierte Entscheidungen lassen
+- Konzern-Jargon verwenden — natürliche Sprache beibehalten
+- Qualitätskommunikation abschwächen
+- Traditionellen Kontext ignorieren
+- Technik überkomplizieren — digitale Tools einfach und hilfreich halten
+- Versprechen machen, die nicht gehalten werden können
+- Persönliche Note verlieren trotz digitaler Effizienz
+
+### Kontextspezifische Richtlinien
 
 #### Social Media
 
-- **Instagram**: Focus on visual appeal, behind-the-scenes craftsmanship
-- **Facebook**: Community engagement, event announcements, customer stories
-- **WhatsApp**: Direct customer service, order confirmations
+- **Instagram**: Visueller Fokus, Blick hinter die Kulissen, Handwerk
+- **Facebook**: Community-Engagement, Events, Kundengeschichten
+- **WhatsApp**: Direkter Kundenservice, Bestellbestätigungen
 
-#### Print Materials
+#### Printmaterialien
 
-- Use full logo system with appropriate spacing
-- Maintain typography hierarchy
-- Include essential contact information
-- Reflect digital brand consistency
+- Vollständiges Logosystem mit angemessenem Abstand
+- Typografie-Hierarchie einhalten
+- Wesentliche Kontaktinformationen einbinden
+- Konsistenz mit digitalem Markenauftritt
 
-#### Packaging
+#### Verpackung
 
-- Simple, clean design reflecting quality
-- Include basic brand elements
-- Focus on food safety and freshness information
-- Maintain professional appearance
-
----
-
-## 8. AI Agent Guidelines
-
-### Understanding the Brand
-
-When creating content or making decisions as an AI agent for Bäckerei Heusser:
-
-1. **Remember the Heritage**: This is a traditional German bakery with modern conveniences
-2. **Prioritize Quality**: Every decision should reflect artisanal standards
-3. **Think Community**: Consider local customers and neighborhood relationships
-4. **Balance Innovation**: Embrace helpful technology without losing traditional values
-5. **Use Appropriate Language**: German-first, warm but professional tone
-6. **Consider Context**: Time of day, season, local events affect messaging
-7. **Maintain Consistency**: All touchpoints should feel cohesively "Bäckerei Heusser"
-
-### Content Creation Priorities
-
-1. **Product Quality** - Emphasize craftsmanship and freshness
-2. **Customer Service** - Helpful, clear, timely communication
-3. **Traditional Values** - Respect for baking heritage and methods
-4. **Community Connection** - Local focus and personal relationships
-5. **Accessibility** - Ensure all customers can engage effectively
-6. **Seasonal Relevance** - Connect with local calendar and traditions
-
-### Decision-Making Framework
-
-When unsure about brand alignment, ask:
-
-- "Does this reflect artisanal quality?"
-- "Would this serve our local community well?"
-- "Is this both traditional and helpful?"
-- "Does this maintain our warm, professional voice?"
-- "Would this make customers feel welcomed and valued?"
+- Einfaches, sauberes Design, das Qualität widerspiegelt
+- Grundlegende Markenelemente einbinden
+- Fokus auf Lebensmittelsicherheit und Frische-Informationen
+- Professionelles Erscheinungsbild
 
 ---
 
-**Document Status**: Active  
-**Next Review**: Quarterly or as needed for major brand updates  
-**Maintained By**: Brand team and development leads  
-**Questions**: Contact brand team for clarification or updates
+**Dokumentstatus**: Aktiv
+**Nächste Überprüfung**: Vierteljährlich oder bei größeren Markenaktualisierungen
+**Gepflegt von**: Markenteam und Entwicklungsleitung

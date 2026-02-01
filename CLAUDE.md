@@ -2,19 +2,18 @@
 
 ## Project Overview
 
-This is a full-stack bakery management system built with Next.js, Material UI, and TypeScript. The project is being migrated to an Nx monorepo architecture with a modular monolith backend and micro-frontend architecture.
+This is a full-stack bakery management system built with Next.js, Material UI, and TypeScript in an Nx monorepo architecture.
 
-**Current Architecture:**
+**Architecture:**
 
 - Frontend: Next.js 15 with App Router, Material UI, TypeScript
+- Backend: TypeScript with domain-driven design (Express + Sequelize)
 - Testing: Jest + React Testing Library
 - State Management: React Context (Theme, Cart, Authentication)
 - API Integration: bakeryAPI service with mock data fallback
 
-**Current Architecture (Nx Monorepo):**
+**Deployment Targets:**
 
-- Frontend: Next.js 15 with App Router, Material UI, TypeScript
-- Backend: ✅ TypeScript with domain-driven design (13 libraries)
 - Landing Page → GitHub Pages (static export)
 - Shop System → Vercel (SSR for performance)
 - Management System → Vercel (CSR for interactivity)
@@ -64,37 +63,27 @@ nx format:write            # Format code
 ## Project Structure (Nx Monorepo)
 
 ```
-bakery-monorepo/
+website/
 ├── apps/                              # Applications (deployable units)
-│   ├── bakery-landing/               # Public landing page (GitHub Pages)
+│   ├── bakery-landing/               # Public landing page (GitHub Pages) - port 3000
 │   ├── bakery-shop/                  # Customer e-commerce (Vercel SSR)
 │   ├── bakery-management/            # Internal management (Vercel CSR)
-│   ├── bakery-api/                   # Backend API (Cloud Run)
-│   └── bakery-api-gateway/           # API Gateway
-├── libs/                             # Shared libraries (80% of code)
-│   ├── shared/                       # Cross-app shared code
-│   │   ├── ui/                       # Design system components
-│   │   ├── types/                    # Shared TypeScript types
-│   │   ├── utils/                    # Utility functions
-│   │   └── data-access/              # Shared API services
-│   ├── bakery-management/            # Management-specific libs
-│   │   ├── feature-inventory/        # Inventory management
-│   │   ├── feature-orders/           # Order processing
-│   │   └── feature-reports/          # Business analytics
-│   └── bakery-shop/                  # Shop-specific libs
-│       ├── feature-catalog/          # Product browsing
-│       ├── feature-cart/             # Shopping cart
-│       └── feature-checkout/         # Order checkout
-├── docs/                             # Comprehensive documentation
+│   ├── bakery-delivery/              # Delivery tracking app
+│   ├── bakery-api/                   # Backend API (Cloud Run) - port 5000
+│   └── *-e2e/                        # E2E test apps for each application
+├── libs/                             # Shared libraries
+│   ├── api/                          # API domain libraries
+│   ├── shared/                       # Cross-app shared code (types, utils, UI)
+│   ├── bakery-management/            # Management-specific feature libs
+│   ├── bakery-shop/                  # Shop-specific feature libs
+│   ├── bakery-delivery-routing/      # Delivery routing logic
+│   └── bakery-delivery-tracking/     # Delivery tracking logic
+├── content/                          # Content files (news, markdown)
+├── docs/                             # Documentation
 │   ├── architecture.md               # System design
-│   ├── migration-guide.md            # Step-by-step migration
-│   ├── deployment.md                 # CI/CD configuration
 │   ├── development.md                # Dev workflow
-│   ├── testing.md                    # Testing strategies
-│   └── monitoring.md                 # Success metrics
-└── tools/                            # Workspace tooling
-    ├── generators/                   # Custom Nx generators
-    └── scripts/                      # Build/deploy scripts
+│   └── testing-guide.md              # Testing strategies
+└── monitoring/                       # Monitoring configuration
 ```
 
 ## Key Features
@@ -129,10 +118,13 @@ bakery-monorepo/
 
 ## Important Notes
 
-- API base URL: `http://localhost:5000` (backend)
-- Frontend dev server: `http://localhost:3000`
+- **Landing Page**: `http://localhost:3000` (Next.js dev server)
+- **Backend API**: `http://localhost:5000` (Express/Node.js)
+- **Shop**: `http://localhost:4200`
+- **Management**: `http://localhost:4201`
 - Always check existing patterns before implementing new features
 - Follow existing code conventions and component structure
+- German localization throughout customer-facing apps
 
 ## External Tools & Imports
 
@@ -161,13 +153,14 @@ The landing page (`apps/bakery-landing/`) is configured for static export to Git
 **Recommended Build Commands:**
 
 ```bash
-# Standalone build (always works, recommended)
-npm run build:landing:static
-nx build-static-standalone bakery-landing
+# Clean stale cache first (required if dev server was running)
+rm -rf apps/bakery-landing/.next
 
-# Nx-integrated build (may fail if shared libs have TypeScript issues)
-npm run build:landing:nx
-nx build-static bakery-landing
+# Standalone build (always works, recommended)
+NODE_ENV=production npx nx build-static-standalone bakery-landing
+
+# Or via npm script
+npm run build:landing:static
 ```
 
 **Output Location:** `apps/bakery-landing/out/` (ready for deployment)
@@ -178,6 +171,14 @@ nx build-static bakery-landing
 - **Traditional Hosting**: Upload `out/` directory to web server
 
 ### Troubleshooting Static Builds
+
+**Problem: Build fails with `<Html> should not be imported outside of pages/_document` or `Cannot find module for page`**
+
+```bash
+# Cause: Stale .next cache from dev server. Always clean before building.
+rm -rf apps/bakery-landing/.next
+NODE_ENV=production npx nx build-static-standalone bakery-landing
+```
 
 **Problem: Nx build fails with shared library TypeScript errors**
 
