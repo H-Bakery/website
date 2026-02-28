@@ -95,3 +95,6 @@ vitest.config.*.timestamp*
 # Temp working copies
 *.tsx.backup
 *.tsx.new
+
+# Brand export artifacts
+brand-export*
