@@ -126,16 +126,20 @@ website/
 - Follow existing code conventions and component structure
 - German localization throughout customer-facing apps
 
-## External Tools & Imports
+## Task Management (MissionControl)
 
-### Task Master Integration
+Tasks managed via `mc` CLI. Files in `.mc/tasks/` as markdown with YAML frontmatter.
 
-See @task-master.md for:
+Quick reference:
 
-- Task management workflow
-- PRD parsing and task generation
-- Progress tracking
-- Multi-Claude workflows
+```bash
+mc status              # Dashboard
+mc task board          # Kanban board
+mc task next           # Next actionable task
+mc new task "Title"    # Create task
+mc task move TASK-NNN in-progress  # Change status
+mc mcp                 # Start MCP server (stdio)
+```
 
 ## Documentation References
 
