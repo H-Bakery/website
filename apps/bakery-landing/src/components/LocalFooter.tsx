@@ -4,7 +4,7 @@ import React from 'react'
 import { Box, Container, Grid, Typography } from '@mui/material'
 import Link from 'next/link'
 import { getFooterHours } from '../utils/openingHours'
-import { Wappen } from './icons/brand/Wappen'
+import Wappen from './icons/brand/Wappen'
 
 export const LocalFooter: React.FC = () => {
   return (
