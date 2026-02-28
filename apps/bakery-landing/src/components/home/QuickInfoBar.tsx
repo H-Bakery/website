@@ -1,5 +1,5 @@
 'use client'
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { Box, Container, Typography, Paper, Grid } from '@mui/material'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import PhoneIcon from '@mui/icons-material/Phone'
@@ -9,6 +9,9 @@ import {
   isCurrentlyOpen,
   getTodayHours,
   getNextOpening,
+  opensLaterToday,
+  getTodayOpeningTime,
+  getCompactHoursSummary,
 } from '../../utils/openingHours'
 
 interface InfoCard {
@@ -20,25 +23,50 @@ interface InfoCard {
 }
 
 const QuickInfoBar: React.FC = () => {
-  const open = isCurrentlyOpen()
-  const todayHours = getTodayHours()
-  const nextOpening = getNextOpening()
+  const [hoursCard, setHoursCard] = useState<InfoCard>({
+    icon: <AccessTimeIcon sx={{ fontSize: 32, color: '#5A2E2A' }} />,
+    label: 'Öffnungszeiten',
+    value: 'Öffnungszeiten',
+    subtext: getCompactHoursSummary(),
+  })
+
+  useEffect(() => {
+    const open = isCurrentlyOpen()
+    const todayHours = getTodayHours()
+    const nextOpening = getNextOpening()
+    const opensLater = opensLaterToday()
+    const openingTime = getTodayOpeningTime()
+
+    let value: string
+    let subtext: string | undefined
+    let iconColor: string
+
+    if (open) {
+      value = 'Jetzt geöffnet'
+      subtext = `Heute ${todayHours}`
+      iconColor = '#7A9B6B'
+    } else if (opensLater && openingTime) {
+      value = `Öffnet um ${openingTime} Uhr`
+      subtext = `Heute ${todayHours}`
+      iconColor = '#B48C3C'
+    } else {
+      value = 'Geschlossen'
+      subtext = nextOpening
+        ? `Nächste Öffnung: ${nextOpening.day} ${nextOpening.time} Uhr`
+        : undefined
+      iconColor = '#5A2E2A'
+    }
+
+    setHoursCard({
+      icon: <AccessTimeIcon sx={{ fontSize: 32, color: iconColor }} />,
+      label: 'Öffnungszeiten',
+      value,
+      subtext,
+    })
+  }, [])
 
   const cards: InfoCard[] = [
-    {
-      icon: (
-        <AccessTimeIcon
-          sx={{ fontSize: 32, color: open ? '#7A9B6B' : '#5A2E2A' }}
-        />
-      ),
-      label: 'Öffnungszeiten',
-      value: open ? 'Jetzt geöffnet' : 'Geschlossen',
-      subtext: open
-        ? `Heute ${todayHours}`
-        : nextOpening
-        ? `Nächste Öffnung: ${nextOpening.day} ${nextOpening.time} Uhr`
-        : undefined,
-    },
+    hoursCard,
     {
       icon: <PhoneIcon sx={{ fontSize: 32, color: '#5A2E2A' }} />,
       label: 'Telefon',

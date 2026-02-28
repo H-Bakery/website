@@ -30,7 +30,9 @@ export default function Error({
           'script[src*="/_next/static/chunks/"]'
         )
         Promise.all(
-          [...scripts].map((s) => fetch(s.src, { cache: 'reload' }))
+          Array.from(scripts).map((s) =>
+            fetch((s as HTMLScriptElement).src, { cache: 'reload' })
+          )
         ).then(() => window.location.reload())
       }
     }

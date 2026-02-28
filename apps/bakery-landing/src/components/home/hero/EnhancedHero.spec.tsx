@@ -1,4 +1,4 @@
-import { screen } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import EnhancedHero from './EnhancedHero'
 
@@ -6,6 +6,8 @@ import EnhancedHero from './EnhancedHero'
 jest.mock('../../../utils/openingHours', () => ({
   isCurrentlyOpen: () => true,
   getTodayHours: () => '6:00 - 13:30 Uhr',
+  opensLaterToday: () => false,
+  getTodayOpeningTime: () => '6:00',
 }))
 
 describe('EnhancedHero Component', () => {
@@ -27,10 +29,12 @@ describe('EnhancedHero Component', () => {
     ).toBeInTheDocument()
   })
 
-  it('displays opening status badge', () => {
+  it('displays opening status badge after hydration', async () => {
     renderWithTheme(<EnhancedHero />)
 
-    expect(screen.getByText(/Jetzt geöffnet/)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText(/Jetzt geöffnet/)).toBeInTheDocument()
+    })
   })
 
   it('displays phone number', () => {

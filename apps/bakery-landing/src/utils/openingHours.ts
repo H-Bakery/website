@@ -252,7 +252,61 @@ export function getTodayHours(): string {
 }
 
 /**
- * Get next opening day and time
+ * Check if today is an open day but current time is before opening time.
+ * Returns true if the bakery will open later today.
+ */
+export function opensLaterToday(): boolean {
+  const now = new Date()
+  const days: DayKey[] = [
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+  ]
+  const currentDayName = days[now.getDay()]
+  const dayHours = OPENING_HOURS[currentDayName]
+
+  if (!dayHours.isOpen || !dayHours.opens) {
+    return false
+  }
+
+  const currentTime = now.getHours() * 100 + now.getMinutes()
+  const [openHour, openMin] = dayHours.opens.split(':').map(Number)
+  const openTime = openHour * 100 + openMin
+
+  return currentTime < openTime
+}
+
+/**
+ * Get today's opening time (formatted for display), or null if today is closed.
+ */
+export function getTodayOpeningTime(): string | null {
+  const now = new Date()
+  const days: DayKey[] = [
+    'sunday',
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+  ]
+  const currentDayName = days[now.getDay()]
+  const dayHours = OPENING_HOURS[currentDayName]
+
+  if (!dayHours.isOpen || !dayHours.opens) {
+    return null
+  }
+
+  return formatTime(dayHours.opens)
+}
+
+/**
+ * Get next opening day and time.
+ * Checks if the bakery opens later today before looking at future days.
  */
 export function getNextOpening(): { day: string; time: string } | null {
   const now = new Date()
@@ -265,6 +319,23 @@ export function getNextOpening(): { day: string; time: string } | null {
     'friday',
     'saturday',
   ]
+
+  // Check if the bakery opens later today
+  const currentDayName = days[now.getDay()]
+  const todayHours = OPENING_HOURS[currentDayName]
+
+  if (todayHours.isOpen && todayHours.opens) {
+    const currentTime = now.getHours() * 100 + now.getMinutes()
+    const [openHour, openMin] = todayHours.opens.split(':').map(Number)
+    const openTime = openHour * 100 + openMin
+
+    if (currentTime < openTime) {
+      return {
+        day: 'Heute',
+        time: todayHours.opens,
+      }
+    }
+  }
 
   for (let i = 1; i <= 7; i++) {
     const futureDate = new Date(now.getTime() + i * 24 * 60 * 60 * 1000)

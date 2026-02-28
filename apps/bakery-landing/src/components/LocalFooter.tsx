@@ -4,6 +4,7 @@ import React from 'react'
 import { Box, Container, Grid, Typography } from '@mui/material'
 import Link from 'next/link'
 import { getFooterHours } from '../utils/openingHours'
+import { Wappen } from './icons/brand/Wappen'
 
 export const LocalFooter: React.FC = () => {
   return (
@@ -12,9 +13,28 @@ export const LocalFooter: React.FC = () => {
         bgcolor: '#928168',
         py: 6,
         mt: 'auto',
+        position: 'relative',
+        overflow: 'hidden',
       }}
     >
-      <Container>
+      <Box
+        sx={{
+          position: 'absolute',
+          right: { xs: '-5%', md: '5%' },
+          top: '50%',
+          transform: 'translateY(-50%)',
+          opacity: 0.06,
+          color: '#FFF3E6',
+          pointerEvents: 'none',
+          zIndex: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Wappen size={450} />
+      </Box>
+      <Container sx={{ position: 'relative', zIndex: 1 }}>
         <Grid container spacing={4}>
           <Grid item xs={12} sm={6} md={3}>
             <Typography

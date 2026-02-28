@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   Box,
   Typography,
@@ -11,20 +11,39 @@ import {
 } from '@mui/material'
 import PhoneIcon from '@mui/icons-material/Phone'
 import PlaceIcon from '@mui/icons-material/Place'
-import { isCurrentlyOpen, getTodayHours } from '../../../utils/openingHours'
+import {
+  isCurrentlyOpen,
+  getTodayHours,
+  opensLaterToday,
+  getTodayOpeningTime,
+} from '../../../utils/openingHours'
 
 // Hero image with warm gradient fallback
 const heroImage = '/assets/images/bakery/fresh-bread-hero.jpg'
 const warmGradient =
   'linear-gradient(135deg, #3B2B28 0%, #5A2E2A 25%, #7A4A3A 50%, #928168 75%, #E6D8C3 100%)'
 
+interface OpenStatus {
+  open: boolean
+  todayHours: string
+  opensLater: boolean
+  openingTime: string | null
+}
+
 const EnhancedHero: React.FC = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [imageLoadError, setImageLoadError] = useState(false)
+  const [openStatus, setOpenStatus] = useState<OpenStatus | null>(null)
 
-  const open = isCurrentlyOpen()
-  const todayHours = getTodayHours()
+  useEffect(() => {
+    setOpenStatus({
+      open: isCurrentlyOpen(),
+      todayHours: getTodayHours(),
+      opensLater: opensLaterToday(),
+      openingTime: getTodayOpeningTime(),
+    })
+  }, [])
 
   return (
     <Box sx={styles.hero}>
@@ -60,17 +79,25 @@ const EnhancedHero: React.FC = () => {
       <Container maxWidth="lg" sx={styles.contentContainer}>
         <Box sx={styles.content}>
           {/* Opening Status Badge */}
-          <Chip
-            label={
-              open ? `Jetzt geöffnet — ${todayHours}` : `Heute geschlossen`
-            }
-            sx={{
-              ...styles.statusBadge,
-              backgroundColor: open
-                ? 'rgba(122, 155, 107, 0.9)'
-                : 'rgba(180, 60, 60, 0.85)',
-            }}
-          />
+          {openStatus && (
+            <Chip
+              label={
+                openStatus.open
+                  ? `Jetzt geöffnet — ${openStatus.todayHours}`
+                  : openStatus.opensLater && openStatus.openingTime
+                  ? `Öffnet um ${openStatus.openingTime} Uhr`
+                  : `Heute geschlossen`
+              }
+              sx={{
+                ...styles.statusBadge,
+                backgroundColor: openStatus.open
+                  ? 'rgba(122, 155, 107, 0.9)'
+                  : openStatus.opensLater
+                  ? 'rgba(180, 140, 60, 0.9)'
+                  : 'rgba(180, 60, 60, 0.85)',
+              }}
+            />
+          )}
 
           {/* Bakery Name */}
           <Typography variant="h1" component="h1" sx={styles.headline}>
