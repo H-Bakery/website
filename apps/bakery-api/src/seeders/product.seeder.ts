@@ -53,7 +53,7 @@ export async function runProductSeeder(): Promise<void> {
       // Path to CSV file relative to this file
       const csvFilePath = path.resolve(
         __dirname,
-        '../../../content/products/products.csv'
+        '../../../hq/data/products/products.csv'
       )
 
       // Parse CSV data
