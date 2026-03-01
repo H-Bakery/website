@@ -26,6 +26,7 @@
     "build:landing:standalone": "cd apps/bakery-landing && npx next build",
     "serve:landing": "nx serve-static bakery-landing",
     "serve:api": "nx serve bakery-api",
+    "serve:api:simple": "node apps/bakery-api/simple-server.js",
     "serve:shop": "nx serve bakery-shop",
     "serve:management": "nx serve bakery-management",
     "affected:build": "nx affected:build",

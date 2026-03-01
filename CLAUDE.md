@@ -35,12 +35,14 @@ npm run lint               # Run ESLint
 ### Nx Commands
 
 ```bash
-# Development
-nx serve bakery-shop       # Start shop application
-nx serve bakery-management # Start management system
-nx serve bakery-api        # Start TypeScript backend API (port 5000)
-nx serve bakery-landing    # Start landing page (Next.js dev server)
-npm run dev                # Start all applications
+# Development (working services)
+npm run dev:landing          # Landing page (port 3000) ✓
+npm run serve:shop           # Shop app (port 4200) ✓
+npm run serve:management     # Management app (port 4201) ✓
+npm run serve:api:simple     # Simple API server with mock data (port 5000) ✓
+
+# API (TypeScript build - has compilation errors, see TASK-001)
+npm run serve:api            # Full TS API - currently broken due to migration issues
 
 # Building
 nx build bakery-shop       # Build shop app
@@ -116,12 +118,20 @@ website/
 3. Lint code: `npm run lint`
 4. Build to verify: `npm run build`
 
+## Service Status (as of 2026-03-01)
+
+| Service       | Command                    | Port | Status                                       |
+| ------------- | -------------------------- | ---- | -------------------------------------------- |
+| Landing Page  | `npm run dev:landing`      | 3000 | Working                                      |
+| Shop          | `npm run serve:shop`       | 4200 | Working                                      |
+| Management    | `npm run serve:management` | 4201 | Working                                      |
+| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data)                          |
+| API (full TS) | `npm run serve:api`        | 5000 | Broken (TS compilation errors, see TASK-001) |
+
+The full TypeScript API (`bakery-api`) has systemic compilation errors from an incomplete JS→TS migration. Use `serve:api:simple` for a working API with mock endpoints.
+
 ## Important Notes
 
-- **Landing Page**: `http://localhost:3000` (Next.js dev server)
-- **Backend API**: `http://localhost:5000` (Express/Node.js)
-- **Shop**: `http://localhost:4200`
-- **Management**: `http://localhost:4201`
 - Always check existing patterns before implementing new features
 - Follow existing code conventions and component structure
 - German localization throughout customer-facing apps

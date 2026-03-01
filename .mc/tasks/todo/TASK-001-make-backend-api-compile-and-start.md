@@ -4,7 +4,7 @@ aliases:
   - TASK-001
 title: Make Backend API Compile and Start
 slug: make-backend-api-compile-and-start
-status: backlog
+status: in-progress
 priority: 1
 owner: ''
 projects: []
@@ -16,45 +16,61 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-02-28
-updated: 2026-02-28
+updated: 2026-03-01
 ---
 
-The backend API (apps/bakery-api) has 61+ TypeScript compilation errors preventing it from starting. This task involves creating missing library modules and fixing type errors so that `nx serve bakery-api` runs successfully.
+The backend API (apps/bakery-api) has TypeScript compilation errors preventing `nx serve bakery-api` from starting. A simple mock server (`npm run serve:api:simple`) is available as a workaround.
 
-## Details
+## Progress (2026-03-01)
 
-**Root Cause Analysis:**
+**Fixed:**
 
-1. **Missing @bakery/api/\* modules** - main.ts imports these but they don't exist:
+- Renamed `isArray` custom validators to `validateArray` in 4 model files (Sequelize type conflict with `ModelValidateOptions`)
+- Updated `@opentelemetry/semantic-conventions` usage: `SemanticResourceAttributes` → `ATTR_SERVICE_NAME`/`ATTR_SERVICE_VERSION`
+- Commented out unresolvable `@bakery/api/sales-analytics` import in `models/index.ts`
+- Added `@ts-ignore` for `express-validator` ESM/CJS interop in `validation.middleware.ts`
 
-   - `@bakery/api/dashboard` - not found
-   - `@bakery/api/staff` - not found
-   - `@bakery/api/recipes` - not found
-   - `@bakery/api/chat` - not found
+**Workaround available:** `npm run serve:api:simple` runs a minimal Express server with mock endpoints on port 5000.
 
-2. **Sequelize Model Type Errors** (~20 errors):
+## Remaining Errors
 
-   - `apps/bakery-api/src/models/Production*.ts` have Symbol type mismatches
-   - Model associations have incorrect typing
+### 1. Missing @bakery/api/\* route modules
 
-3. **Middleware Import Issues:**
+These modules are imported in route files but the libraries don't export the expected route handlers:
 
-   - `apps/bakery-api/src/middleware/validation.middleware.ts` has broken express-validator import
+- `@bakery/api/chat` → imported in `src/routes/chat.routes.ts`
+- `@bakery/api/dashboard` → imported in `src/routes/dashboard.routes.ts`
 
-4. **models/index.ts Issues:**
-   - Missing module exports for some models
+### 2. Missing npm packages / type declarations
 
-**Files to Fix:**
+- `csv-parse` → imported in `src/routes/import.routes.ts` (not installed)
+- `xlsx` → imported in `src/routes/import.routes.ts` (not installed)
+- `@types/multer` → `req.file` has no type on Express Request (multiple occurrences in `import.routes.ts`)
 
-- `apps/bakery-api/src/main.ts` - Entry point with broken imports
-- `apps/bakery-api/src/models/*.ts` - Model definitions with type errors
-- `apps/bakery-api/src/middleware/validation.middleware.ts` - Broken import
-- `libs/api/*/src/index.ts` - Missing library exports
-- `tsconfig.base.json` - Path mappings for @bakery/api/\*
+### 3. OpenTelemetry type issues in `src/monitoring/tracing.ts`
 
-**Libraries to Create (if missing):**
+- `Resource` from `@opentelemetry/resources` is only a type, not a value (API changed in v2)
+- `JaegerExporter` from `@opentelemetry/exporter-jaeger` — package deprecated, exporter removed
 
-- `libs/api/dashboard/` - Dashboard analytics routes
-- `libs/api/staff/` - Staff management routes
-- `libs/api/recipes/` - Recipe management routes
-- `libs/api/chat/` - Chat functionality routes
+### 4. express-validator ESM/CJS interop
+
+- `validation.middleware.ts` — `validationResult` named import fails due to module format mismatch
+- Workaround: `@ts-ignore` applied, but proper fix needs either `esModuleInterop` to work with the build config or switching to `require()`
+
+### 5. Build configuration
+
+- `tsconfig.build.json` uses `files: ["src/main.ts"]` with `exclude: ["**/*"]` — TypeScript follows imports from main.ts but path resolution for `@bakery/*` libs fails at build time even though the libs compile successfully as separate Nx targets
+
+## Files to Fix
+
+- `apps/bakery-api/src/routes/chat.routes.ts` - needs `@bakery/api/chat` route export or inline routes
+- `apps/bakery-api/src/routes/dashboard.routes.ts` - needs `@bakery/api/dashboard` route export or inline routes
+- `apps/bakery-api/src/routes/import.routes.ts` - needs `csv-parse`, `xlsx`, `@types/multer` installed
+- `apps/bakery-api/src/monitoring/tracing.ts` - needs OpenTelemetry v2 API migration
+- `apps/bakery-api/src/middleware/validation.middleware.ts` - needs proper CJS/ESM fix
+
+## Approach Options
+
+1. **Quick fix**: Add `skipLibCheck: true` and suppress remaining errors with `@ts-ignore` to get a compiling build
+2. **Proper fix**: Install missing packages, create stub route modules, migrate OpenTelemetry to v2 API
+3. **Hybrid**: Inline the route handlers that currently import from missing libs, install missing packages
