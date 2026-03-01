@@ -3,6 +3,14 @@
  */
 
 /**
+ * Currency formatter instance for CHF
+ */
+export const formatter = new Intl.NumberFormat('de-CH', {
+  style: 'currency',
+  currency: 'CHF',
+})
+
+/**
  * Format a number as currency (CHF)
  */
 export function formatCurrency(amount: number): string {
