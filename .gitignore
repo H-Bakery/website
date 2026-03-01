@@ -58,6 +58,9 @@ node_modules/
 .claude-flow/
 .swarm/
 
+# Database
+*.sqlite
+
 # Nx
 .nx/cache
 .nx/workspace-data
