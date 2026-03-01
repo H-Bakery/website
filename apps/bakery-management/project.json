@@ -12,7 +12,8 @@
       "options": {
         "buildTarget": "bakery-management:build",
         "dev": true,
-        "port": 4201
+        "port": 4201,
+        "hostname": "0.0.0.0"
       },
       "configurations": {
         "development": {

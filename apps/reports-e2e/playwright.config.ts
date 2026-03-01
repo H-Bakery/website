@@ -24,7 +24,7 @@ export default defineConfig({
   },
   /* Run your local dev server before starting the tests */
   webServer: {
-    command: 'npx nx run reports:next:start',
+    command: 'npx nx run bakery-landing:serve',
     url: 'http://localhost:3000',
     reuseExistingServer: true,
     cwd: workspaceRoot,
