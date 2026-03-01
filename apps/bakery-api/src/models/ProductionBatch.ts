@@ -39,7 +39,14 @@ export interface ProductionBatchAttributes {
   name: string
   workflowId: string
   productId: number
-  status: 'planned' | 'ready' | 'in_progress' | 'waiting' | 'completed' | 'failed' | 'cancelled'
+  status:
+    | 'planned'
+    | 'ready'
+    | 'in_progress'
+    | 'waiting'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
   plannedQuantity: number
   actualQuantity?: number
   unit: string
@@ -77,7 +84,14 @@ class ProductionBatch
   public name!: string
   public workflowId!: string
   public productId!: number
-  public status!: 'planned' | 'ready' | 'in_progress' | 'waiting' | 'completed' | 'failed' | 'cancelled'
+  public status!:
+    | 'planned'
+    | 'ready'
+    | 'in_progress'
+    | 'waiting'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
   public plannedQuantity!: number
   public actualQuantity?: number
   public unit!: string
@@ -119,7 +133,9 @@ class ProductionBatch
   public get delayMinutes(): number {
     if (!this.isDelayed) return 0
     const now = new Date()
-    return Math.round((now.getTime() - this.plannedEndTime.getTime()) / (1000 * 60))
+    return Math.round(
+      (now.getTime() - this.plannedEndTime.getTime()) / (1000 * 60)
+    )
   }
 
   static initModel(sequelize: Sequelize): typeof ProductionBatch {
@@ -242,7 +258,7 @@ class ProductionBatch
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('assignedStaffIds must be an array')
               }
@@ -265,7 +281,7 @@ class ProductionBatch
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('requiredEquipment must be an array')
               }

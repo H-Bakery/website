@@ -1,4 +1,5 @@
 import { Request, Response, NextFunction } from 'express'
+// @ts-ignore - express-validator ESM/CJS interop issue
 import { validationResult } from 'express-validator'
 // Temporary local logger until utils library is properly configured
 const logger = {

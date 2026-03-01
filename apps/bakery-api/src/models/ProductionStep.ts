@@ -38,7 +38,14 @@ export interface ProductionStepAttributes {
   stepIndex: number
   stepName: string
   stepType: 'active' | 'sleep' | 'manual' | 'quality_check'
-  status: 'pending' | 'ready' | 'in_progress' | 'waiting' | 'completed' | 'skipped' | 'failed'
+  status:
+    | 'pending'
+    | 'ready'
+    | 'in_progress'
+    | 'waiting'
+    | 'completed'
+    | 'skipped'
+    | 'failed'
   activities: string[]
   conditions: string[]
   parameters: Record<string, any>
@@ -79,7 +86,14 @@ class ProductionStep
   public stepIndex!: number
   public stepName!: string
   public stepType!: 'active' | 'sleep' | 'manual' | 'quality_check'
-  public status!: 'pending' | 'ready' | 'in_progress' | 'waiting' | 'completed' | 'skipped' | 'failed'
+  public status!:
+    | 'pending'
+    | 'ready'
+    | 'in_progress'
+    | 'waiting'
+    | 'completed'
+    | 'skipped'
+    | 'failed'
   public activities!: string[]
   public conditions!: string[]
   public parameters!: Record<string, any>
@@ -109,7 +123,11 @@ class ProductionStep
 
   // Virtual properties for computed values
   public get isOverdue(): boolean {
-    if (!this.plannedEndTime || this.status === 'completed' || this.status === 'skipped') {
+    if (
+      !this.plannedEndTime ||
+      this.status === 'completed' ||
+      this.status === 'skipped'
+    ) {
       return false
     }
     return new Date() > this.plannedEndTime
@@ -117,15 +135,18 @@ class ProductionStep
 
   public get activityProgress(): number {
     if (!this.activities || this.activities.length === 0) return 100
-    if (!this.completedActivities || this.completedActivities.length === 0) return 0
-    return Math.round((this.completedActivities.length / this.activities.length) * 100)
+    if (!this.completedActivities || this.completedActivities.length === 0)
+      return 0
+    return Math.round(
+      (this.completedActivities.length / this.activities.length) * 100
+    )
   }
 
   public calculateProgress(): number {
     if (this.status === 'completed') return 100
     if (this.status === 'pending' || this.status === 'ready') return 0
     if (this.status === 'skipped' || this.status === 'failed') return 0
-    
+
     // Calculate based on completed activities
     return this.activityProgress
   }
@@ -191,7 +212,7 @@ class ProductionStep
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('activities must be an array')
               }
@@ -206,7 +227,7 @@ class ProductionStep
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('conditions must be an array')
               }
@@ -250,7 +271,7 @@ class ProductionStep
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('requiredEquipment must be an array')
               }
@@ -295,7 +316,7 @@ class ProductionStep
           allowNull: true,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (value && !Array.isArray(value)) {
                 throw new Error('completedActivities must be an array')
               }
@@ -381,16 +402,17 @@ class ProductionStep
             if (changed && changed.includes('status')) {
               step.statusChangeTime = new Date()
             }
-            
+
             // Update progress based on completed activities
             if (step.activities && step.activities.length > 0) {
               step.progress = step.calculateProgress()
             }
-            
+
             // Update hasIssues flag
             if (step.issues && Array.isArray(step.issues)) {
               step.hasIssues = step.issues.some(
-                (issue: any) => issue.status === 'open' || issue.status === 'in_progress'
+                (issue: any) =>
+                  issue.status === 'open' || issue.status === 'in_progress'
               )
             }
           },

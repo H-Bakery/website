@@ -41,12 +41,13 @@ const logger = {
 //   NotificationPreferences as NotificationPreferencesModel,
 //   NotificationTemplate as NotificationTemplateModel
 // } from '@bakery/api/notifications';
-import {
-  initializeSalesAnalyticsModels,
-  SalesTransaction as SalesTransactionModel,
-  TransactionItem as TransactionItemModel,
-  DailySalesReport as DailySalesReportModel,
-} from '@bakery/api/sales-analytics'
+// TODO: Re-enable once @bakery/api/sales-analytics module resolution is fixed
+// import {
+//   initializeSalesAnalyticsModels,
+//   SalesTransaction as SalesTransactionModel,
+//   TransactionItem as TransactionItemModel,
+//   DailySalesReport as DailySalesReportModel,
+// } from '@bakery/api/sales-analytics'
 
 // Import local models that haven't been migrated yet
 import { default as Cash } from './Cash'
@@ -85,9 +86,10 @@ export {
 }
 export const Customer = User // Alias for backward compatibility
 
-export const SalesTransaction = SalesTransactionModel
-export const TransactionItem = TransactionItemModel
-export const DailySalesReport = DailySalesReportModel
+// TODO: Re-enable once @bakery/api/sales-analytics module resolution is fixed
+// export const SalesTransaction = SalesTransactionModel
+// export const TransactionItem = TransactionItemModel
+// export const DailySalesReport = DailySalesReportModel
 
 // Export local models
 export { Cash, Chat, Product, UnsoldProduct }
@@ -103,7 +105,7 @@ export async function initializeModels(sequelize: Sequelize): Promise<void> {
     // await initializeCustomerModels(sequelize);
     // await initializeProductionModels(sequelize);
     // await initializeNotificationModels(sequelize);
-    await initializeSalesAnalyticsModels(sequelize)
+    // await initializeSalesAnalyticsModels(sequelize)
 
     // Initialize local models
     Cash.initModel(sequelize)
@@ -117,7 +119,7 @@ export async function initializeModels(sequelize: Sequelize): Promise<void> {
     Recipe.initModel(sequelize)
     Notification.initModel(sequelize)
     StockAdjustment.initModel(sequelize)
-    
+
     // Initialize production and notification models
     NotificationPreferences.initModel(sequelize)
     NotificationTemplate.initModel(sequelize)
@@ -152,7 +154,7 @@ function setupAssociations(): void {
   Customer.hasMany(Chat, { foreignKey: 'userId', as: 'messages' })
   Customer.hasOne(NotificationPreferences, {
     foreignKey: 'userId',
-    as: 'notificationPreferences'
+    as: 'notificationPreferences',
   })
   Customer.hasMany(Notification, { foreignKey: 'userId', as: 'notifications' })
 
@@ -190,51 +192,61 @@ function setupAssociations(): void {
   // Production associations
   ProductionSchedule.hasMany(ProductionBatch, {
     foreignKey: 'scheduleId',
-    as: 'batches'
+    as: 'batches',
   })
 
   ProductionBatch.belongsTo(ProductionSchedule, {
     foreignKey: 'scheduleId',
-    as: 'schedule'
+    as: 'schedule',
   })
   ProductionBatch.belongsTo(Recipe, { foreignKey: 'recipeId', as: 'recipe' })
-  ProductionBatch.hasMany(ProductionStep, { foreignKey: 'batchId', as: 'steps' })
+  ProductionBatch.hasMany(ProductionStep, {
+    foreignKey: 'batchId',
+    as: 'steps',
+  })
   ProductionBatch.belongsTo(Customer, {
     foreignKey: 'assignedStaffId',
-    as: 'assignedStaff'
+    as: 'assignedStaff',
   })
 
-  ProductionStep.belongsTo(ProductionBatch, { foreignKey: 'batchId', as: 'batch' })
+  ProductionStep.belongsTo(ProductionBatch, {
+    foreignKey: 'batchId',
+    as: 'batch',
+  })
   ProductionStep.belongsTo(Customer, {
     foreignKey: 'completedBy',
-    as: 'completedByStaff'
+    as: 'completedByStaff',
   })
 
   // Notification associations
   Notification.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
-  NotificationPreferences.belongsTo(Customer, { foreignKey: 'userId', as: 'user' })
+  NotificationPreferences.belongsTo(Customer, {
+    foreignKey: 'userId',
+    as: 'user',
+  })
 
   // Sales Analytics associations
-  SalesTransaction.hasMany(TransactionItem, {
-    foreignKey: 'salesTransactionId',
-    as: 'transactionItems',
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  })
+  // TODO: Re-enable once @bakery/api/sales-analytics module resolution is fixed
+  // SalesTransaction.hasMany(TransactionItem, {
+  //   foreignKey: 'salesTransactionId',
+  //   as: 'transactionItems',
+  //   onDelete: 'CASCADE',
+  //   onUpdate: 'CASCADE',
+  // })
 
-  TransactionItem.belongsTo(SalesTransaction, {
-    foreignKey: 'salesTransactionId',
-    as: 'salesTransaction',
-    onDelete: 'CASCADE',
-    onUpdate: 'CASCADE',
-  })
+  // TransactionItem.belongsTo(SalesTransaction, {
+  //   foreignKey: 'salesTransactionId',
+  //   as: 'salesTransaction',
+  //   onDelete: 'CASCADE',
+  //   onUpdate: 'CASCADE',
+  // })
 
-  TransactionItem.belongsTo(Product, {
-    foreignKey: 'productId',
-    as: 'product',
-    onDelete: 'RESTRICT',
-    onUpdate: 'CASCADE',
-  })
+  // TransactionItem.belongsTo(Product, {
+  //   foreignKey: 'productId',
+  //   as: 'product',
+  //   onDelete: 'RESTRICT',
+  //   onUpdate: 'CASCADE',
+  // })
 
   DailySalesReport.belongsTo(Product, {
     foreignKey: 'mostPopularProductId',

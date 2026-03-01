@@ -9,7 +9,14 @@ export interface NotificationTemplateAttributes {
   id: number
   key: string
   name: string
-  category: 'production' | 'inventory' | 'order' | 'staff' | 'financial' | 'system' | 'customer'
+  category:
+    | 'production'
+    | 'inventory'
+    | 'order'
+    | 'staff'
+    | 'financial'
+    | 'system'
+    | 'customer'
   defaultTitle: LocalizedTextAttributes
   defaultMessage: LocalizedTextAttributes
   variables: string[]
@@ -34,7 +41,14 @@ class NotificationTemplate
   public id!: number
   public key!: string
   public name!: string
-  public category!: 'production' | 'inventory' | 'order' | 'staff' | 'financial' | 'system' | 'customer'
+  public category!:
+    | 'production'
+    | 'inventory'
+    | 'order'
+    | 'staff'
+    | 'financial'
+    | 'system'
+    | 'customer'
   public defaultTitle!: LocalizedTextAttributes
   public defaultMessage!: LocalizedTextAttributes
   public variables!: string[]
@@ -90,9 +104,14 @@ class NotificationTemplate
                 throw new Error('defaultTitle must be an object')
               }
               if (!value.de || !value.en) {
-                throw new Error('defaultTitle must contain both "de" and "en" translations')
+                throw new Error(
+                  'defaultTitle must contain both "de" and "en" translations'
+                )
               }
-              if (typeof value.de !== 'string' || typeof value.en !== 'string') {
+              if (
+                typeof value.de !== 'string' ||
+                typeof value.en !== 'string'
+              ) {
                 throw new Error('defaultTitle translations must be strings')
               }
             },
@@ -107,9 +126,14 @@ class NotificationTemplate
                 throw new Error('defaultMessage must be an object')
               }
               if (!value.de || !value.en) {
-                throw new Error('defaultMessage must contain both "de" and "en" translations')
+                throw new Error(
+                  'defaultMessage must contain both "de" and "en" translations'
+                )
               }
-              if (typeof value.de !== 'string' || typeof value.en !== 'string') {
+              if (
+                typeof value.de !== 'string' ||
+                typeof value.en !== 'string'
+              ) {
                 throw new Error('defaultMessage translations must be strings')
               }
             },
@@ -120,7 +144,7 @@ class NotificationTemplate
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('variables must be an array')
               }
@@ -185,7 +209,7 @@ class NotificationTemplate
     let message = this.defaultMessage[locale] || this.defaultMessage.en
 
     // Replace variables in format {{variableName}}
-    Object.keys(variables).forEach(key => {
+    Object.keys(variables).forEach((key) => {
       const regex = new RegExp(`{{${key}}}`, 'g')
       title = title.replace(regex, String(variables[key]))
       message = message.replace(regex, String(variables[key]))

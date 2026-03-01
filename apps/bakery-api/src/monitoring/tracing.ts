@@ -5,7 +5,10 @@ import {
   ConsoleMetricExporter,
 } from '@opentelemetry/sdk-metrics'
 import { Resource } from '@opentelemetry/resources'
-import { SemanticResourceAttributes } from '@opentelemetry/semantic-conventions'
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from '@opentelemetry/semantic-conventions'
 import { JaegerExporter } from '@opentelemetry/exporter-jaeger'
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base'
 // Temporary local logger until utils library is properly configured
@@ -24,9 +27,8 @@ const logger = {
 
 // Create resource identifying the service
 const resource = new Resource({
-  [SemanticResourceAttributes.SERVICE_NAME]: 'bakery-api',
-  [SemanticResourceAttributes.SERVICE_VERSION]:
-    process.env['APP_VERSION'] || '0.0.0',
+  [ATTR_SERVICE_NAME]: 'bakery-api',
+  [ATTR_SERVICE_VERSION]: process.env['APP_VERSION'] || '0.0.0',
   environment: process.env['NODE_ENV'] || 'development',
 })
 

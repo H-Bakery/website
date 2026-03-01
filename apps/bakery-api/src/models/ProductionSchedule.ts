@@ -55,7 +55,10 @@ export interface ProductionScheduleCreationAttributes
   extends Omit<ProductionScheduleAttributes, 'id'> {}
 
 class ProductionSchedule
-  extends Model<ProductionScheduleAttributes, ProductionScheduleCreationAttributes>
+  extends Model<
+    ProductionScheduleAttributes,
+    ProductionScheduleCreationAttributes
+  >
   implements ProductionScheduleAttributes
 {
   public id!: number
@@ -83,7 +86,9 @@ class ProductionSchedule
   // Helper methods for schedule management
   public calculateEfficiency(): number {
     if (this.workdayMinutes === 0) return 0
-    return Math.round((this.estimatedProductionTime / this.workdayMinutes) * 100)
+    return Math.round(
+      (this.estimatedProductionTime / this.workdayMinutes) * 100
+    )
   }
 
   public calculateCapacityUtilization(): number {
@@ -96,14 +101,17 @@ class ProductionSchedule
     if (this.status === 'completed') return 100
     if (this.status === 'draft' || this.status === 'planned') return 0
     if (this.status === 'cancelled') return 0
-    
+
     // Could be calculated based on batch completion status
     // This would require joining with ProductionBatch table
     return 0
   }
 
   public getTotalPlannedQuantity(): number {
-    return this.plannedBatches.reduce((total, batch) => total + batch.quantity, 0)
+    return this.plannedBatches.reduce(
+      (total, batch) => total + batch.quantity,
+      0
+    )
   }
 
   public getAvailableWorkers(): number {
@@ -128,7 +136,13 @@ class ProductionSchedule
           defaultValue: 'daily',
         },
         status: {
-          type: DataTypes.ENUM('draft', 'planned', 'active', 'completed', 'cancelled'),
+          type: DataTypes.ENUM(
+            'draft',
+            'planned',
+            'active',
+            'completed',
+            'cancelled'
+          ),
           allowNull: false,
           defaultValue: 'draft',
         },
@@ -141,13 +155,16 @@ class ProductionSchedule
               if (!value || typeof value !== 'object') {
                 throw new Error('staffShifts must be an object')
               }
-              Object.keys(value).forEach(staffId => {
+              Object.keys(value).forEach((staffId) => {
                 const shift = value[staffId]
                 if (!shift.start || !shift.end) {
                   throw new Error('Each shift must have start and end times')
                 }
                 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
-                if (!timeRegex.test(shift.start) || !timeRegex.test(shift.end)) {
+                if (
+                  !timeRegex.test(shift.start) ||
+                  !timeRegex.test(shift.end)
+                ) {
                   throw new Error('Shift times must be in HH:MM format')
                 }
               })
@@ -159,13 +176,15 @@ class ProductionSchedule
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('availableEquipment must be an array')
               }
               value.forEach((item: any) => {
                 if (!item.id || !item.name || !item.type) {
-                  throw new Error('Each equipment item must have id, name, and type')
+                  throw new Error(
+                    'Each equipment item must have id, name, and type'
+                  )
                 }
               })
             },
@@ -176,12 +195,17 @@ class ProductionSchedule
           allowNull: false,
           defaultValue: [],
           validate: {
-            isArray(value: any) {
+            validateArray(value: any) {
               if (!Array.isArray(value)) {
                 throw new Error('plannedBatches must be an array')
               }
               value.forEach((batch: any) => {
-                if (!batch.id || !batch.name || !batch.workflowId || !batch.productId) {
+                if (
+                  !batch.id ||
+                  !batch.name ||
+                  !batch.workflowId ||
+                  !batch.productId
+                ) {
                   throw new Error('Each batch must have required fields')
                 }
                 if (typeof batch.quantity !== 'number' || batch.quantity <= 0) {
@@ -307,27 +331,40 @@ class ProductionSchedule
         hooks: {
           beforeSave: (schedule: ProductionSchedule) => {
             // Calculate workday minutes based on start and end times
-            const [startHour, startMin] = schedule.workdayStartTime.split(':').map(Number)
-            const [endHour, endMin] = schedule.workdayEndTime.split(':').map(Number)
-            schedule.workdayMinutes = (endHour * 60 + endMin) - (startHour * 60 + startMin)
-            
+            const [startHour, startMin] = schedule.workdayStartTime
+              .split(':')
+              .map(Number)
+            const [endHour, endMin] = schedule.workdayEndTime
+              .split(':')
+              .map(Number)
+            schedule.workdayMinutes =
+              endHour * 60 + endMin - (startHour * 60 + startMin)
+
             // Calculate total staff hours
             let totalHours = 0
-            Object.values(schedule.staffShifts).forEach(shift => {
+            Object.values(schedule.staffShifts).forEach((shift) => {
               if (shift.hours) {
                 totalHours += shift.hours
               } else {
-                const [shiftStartHour, shiftStartMin] = shift.start.split(':').map(Number)
-                const [shiftEndHour, shiftEndMin] = shift.end.split(':').map(Number)
-                const shiftMinutes = (shiftEndHour * 60 + shiftEndMin) - (shiftStartHour * 60 + shiftStartMin)
+                const [shiftStartHour, shiftStartMin] = shift.start
+                  .split(':')
+                  .map(Number)
+                const [shiftEndHour, shiftEndMin] = shift.end
+                  .split(':')
+                  .map(Number)
+                const shiftMinutes =
+                  shiftEndHour * 60 +
+                  shiftEndMin -
+                  (shiftStartHour * 60 + shiftStartMin)
                 totalHours += shiftMinutes / 60
               }
             })
             schedule.totalStaffHours = totalHours
-            
+
             // Update efficiency and capacity scores
             schedule.efficiencyScore = schedule.calculateEfficiency()
-            schedule.capacityUtilization = schedule.calculateCapacityUtilization()
+            schedule.capacityUtilization =
+              schedule.calculateCapacityUtilization()
           },
         },
       }
