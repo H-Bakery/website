@@ -1,7 +1,7 @@
 {
   "name": "api-customers",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/api/customers/src",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/import-service/customers/src",
   "projectType": "library",
   "tags": ["scope:api", "type:feature"],
   "targets": {
@@ -9,17 +9,17 @@
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/libs/api/customers",
-        "main": "libs/api/customers/src/index.ts",
-        "tsConfig": "libs/api/customers/tsconfig.lib.json",
-        "assets": ["libs/api/customers/*.md"]
+        "outputPath": "dist/libs/api/import-service/customers",
+        "main": "libs/api/import-service/customers/src/index.ts",
+        "tsConfig": "libs/api/import-service/customers/tsconfig.lib.json",
+        "assets": ["libs/api/import-service/customers/*.md"]
       }
     },
     "test": {
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "libs/api/customers/jest.config.ts"
+        "jestConfig": "libs/api/import-service/customers/jest.config.ts"
       }
     }
   }

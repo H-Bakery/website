@@ -1,6 +1,6 @@
 {
   "name": "api-workflows",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/api/import-service/workflows/src",
   "projectType": "library",
   "tags": ["scope:api", "type:domain"],
@@ -9,7 +9,7 @@
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/libs/api/workflows",
+        "outputPath": "dist/libs/api/import-service/workflows",
         "main": "libs/api/import-service/workflows/src/index.ts",
         "tsConfig": "libs/api/import-service/workflows/tsconfig.lib.json",
         "assets": ["libs/api/import-service/workflows/*.md"]
