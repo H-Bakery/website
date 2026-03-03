@@ -8,7 +8,6 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "buildTarget": "bakery-api:build",
         "command": "node dist/apps/bakery-api/src/main.js"
       }
     },
@@ -16,7 +15,6 @@
       "executor": "nx:run-commands",
       "dependsOn": ["build"],
       "options": {
-        "buildTarget": "bakery-api:build",
         "command": "node dist/apps/bakery-api/src/main-simple.js"
       }
     },

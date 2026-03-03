@@ -12,7 +12,8 @@
       "options": {
         "buildTarget": "bakery-management:build",
         "dev": true,
-        "port": 4201
+        "port": 4201,
+        "hostname": "0.0.0.0"
       },
       "configurations": {
         "development": {
@@ -41,7 +42,7 @@
       }
     },
     "lint": {
-      "executor": "@nx/linter:eslint",
+      "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],
       "options": {
         "lintFilePatterns": ["apps/bakery-management/**/*.{ts,tsx,js,jsx}"]

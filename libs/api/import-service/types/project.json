@@ -1,7 +1,7 @@
 {
   "name": "types",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/api/types/src",
+  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/api/import-service/types/src",
   "projectType": "library",
   "tags": ["scope:api", "type:util"],
   "targets": {
@@ -9,17 +9,17 @@
       "executor": "@nx/js:tsc",
       "outputs": ["{options.outputPath}"],
       "options": {
-        "outputPath": "dist/libs/api/types",
-        "main": "libs/api/types/src/index.ts",
-        "tsConfig": "libs/api/types/tsconfig.lib.json",
-        "assets": ["libs/api/types/*.md"]
+        "outputPath": "dist/libs/api/import-service/types",
+        "main": "libs/api/import-service/types/src/index.ts",
+        "tsConfig": "libs/api/import-service/types/tsconfig.lib.json",
+        "assets": ["libs/api/import-service/types/*.md"]
       }
     },
     "test": {
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "libs/api/types/jest.config.ts"
+        "jestConfig": "libs/api/import-service/types/jest.config.ts"
       }
     }
   }

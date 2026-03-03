@@ -1,6 +1,6 @@
 {
   "name": "bakery-management-feature-delivery",
-  "$schema": "../../../../node_modules/nx/schemas/project-schema.json",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/bakery-management/feature-delivery/src",
   "projectType": "library",
   "tags": ["scope:management", "type:feature"],

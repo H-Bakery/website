@@ -21,7 +21,7 @@
     "serve:backend": "nx serve backend",
     "build:website": "nx build website",
     "build:backend": "nx build backend",
-    "dev:landing": "nx next:dev bakery-landing",
+    "dev:landing": "nx serve bakery-landing",
     "build:landing": "nx build-static bakery-landing",
     "build:landing:standalone": "cd apps/bakery-landing && npx next build",
     "serve:landing": "nx serve-static bakery-landing",
