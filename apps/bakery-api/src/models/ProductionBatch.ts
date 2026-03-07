@@ -115,6 +115,10 @@ class ProductionBatch
   public readonly createdAt!: Date
   public readonly updatedAt!: Date
 
+  // Association properties (populated via include/eager loading)
+  public steps?: any[]
+  public overallProgress?: number
+
   // Virtual properties for computed values
   public get progress(): number {
     if (this.status === 'completed') return 100

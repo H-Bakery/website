@@ -4,7 +4,7 @@ import {
   ProductionBatch,
   ProductionStep,
   User,
-  Product
+  Product,
 } from '../models'
 import { logger } from '../utils/logger'
 
@@ -99,7 +99,9 @@ class ProductionAnalyticsService {
   /**
    * Calculate comprehensive production metrics
    */
-  async calculateProductionMetrics(filters: AnalyticsFilters = {}): Promise<ProductionMetricsResult> {
+  async calculateProductionMetrics(
+    filters: AnalyticsFilters = {}
+  ): Promise<ProductionMetricsResult> {
     try {
       const {
         startDate,
@@ -153,7 +155,9 @@ class ProductionAnalyticsService {
         period: {
           start: start.toISOString(),
           end: end.toISOString(),
-          days: Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+          days: Math.ceil(
+            (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+          ),
         },
         generatedAt: new Date(),
       }
@@ -308,7 +312,7 @@ class ProductionAnalyticsService {
       const baseline = await this.calculateBaselineMetrics(historicalData)
 
       // Generate forecasts
-      const forecast = {
+      const forecast: Record<string, any> = {
         volume: await this.forecastProductionVolume(baseline, forecastPeriod),
         efficiency: await this.forecastEfficiency(baseline, forecastPeriod),
         capacity: await this.forecastCapacityNeeds(baseline, forecastPeriod),
@@ -406,7 +410,9 @@ class ProductionAnalyticsService {
   /**
    * Calculate overview metrics
    */
-  private async calculateOverviewMetrics(batches: ProductionBatch[]): Promise<OverviewMetrics> {
+  private async calculateOverviewMetrics(
+    batches: ProductionBatch[]
+  ): Promise<OverviewMetrics> {
     const total = batches.length
     const completed = batches.filter((b) => b.status === 'completed').length
     const failed = batches.filter((b) => b.status === 'failed').length
@@ -440,7 +446,9 @@ class ProductionAnalyticsService {
   /**
    * Calculate efficiency metrics
    */
-  private async calculateEfficiencyMetrics(batches: ProductionBatch[]): Promise<EfficiencyMetrics> {
+  private async calculateEfficiencyMetrics(
+    batches: ProductionBatch[]
+  ): Promise<EfficiencyMetrics> {
     const completedBatches = batches.filter(
       (b) => b.status === 'completed' && b.actualStartTime && b.actualEndTime
     )
@@ -462,9 +470,11 @@ class ProductionAnalyticsService {
     completedBatches.forEach((batch) => {
       if (batch.plannedStartTime && batch.plannedEndTime) {
         const plannedDuration =
-          new Date(batch.plannedEndTime).getTime() - new Date(batch.plannedStartTime).getTime()
+          new Date(batch.plannedEndTime).getTime() -
+          new Date(batch.plannedStartTime).getTime()
         const actualDuration =
-          new Date(batch.actualEndTime!).getTime() - new Date(batch.actualStartTime!).getTime()
+          new Date(batch.actualEndTime!).getTime() -
+          new Date(batch.actualStartTime!).getTime()
 
         if (plannedDuration > 0 && actualDuration > 0) {
           const efficiency = Math.min(plannedDuration / actualDuration, 2) * 100 // Cap at 200%
@@ -515,7 +525,9 @@ class ProductionAnalyticsService {
   /**
    * Calculate quality metrics
    */
-  private async calculateQualityMetrics(batches: ProductionBatch[]): Promise<QualityMetrics> {
+  private async calculateQualityMetrics(
+    batches: ProductionBatch[]
+  ): Promise<QualityMetrics> {
     const totalSteps = batches.reduce(
       (sum, batch) => sum + (batch.steps?.length || 0),
       0
@@ -523,8 +535,7 @@ class ProductionAnalyticsService {
 
     const stepsWithIssues = batches.reduce(
       (sum, batch) =>
-        sum +
-        (batch.steps?.filter((step: any) => step.hasIssues).length || 0),
+        sum + (batch.steps?.filter((step: any) => step.hasIssues).length || 0),
       0
     )
 
@@ -562,7 +573,9 @@ class ProductionAnalyticsService {
   /**
    * Calculate timing metrics
    */
-  private async calculateTimingMetrics(batches: ProductionBatch[]): Promise<TimingMetrics> {
+  private async calculateTimingMetrics(
+    batches: ProductionBatch[]
+  ): Promise<TimingMetrics> {
     const completedBatches = batches.filter(
       (b) => b.status === 'completed' && b.actualStartTime && b.actualEndTime
     )
@@ -600,8 +613,10 @@ class ProductionAnalyticsService {
       }
     })
 
-    const averageDuration = totalDuration / completedBatches.length / (1000 * 60) // in minutes
-    const averageDelay = delayedCount > 0 ? totalDelay / delayedCount / (1000 * 60) : 0
+    const averageDuration =
+      totalDuration / completedBatches.length / (1000 * 60) // in minutes
+    const averageDelay =
+      delayedCount > 0 ? totalDelay / delayedCount / (1000 * 60) : 0
     const onTimeRate = Math.round(
       ((completedBatches.length - delayedCount) / completedBatches.length) * 100
     )
@@ -619,22 +634,32 @@ class ProductionAnalyticsService {
   // ADDITIONAL HELPER METHODS (STUBS)
   // ============================================================================
 
-  private async calculateThroughputMetrics(batches: ProductionBatch[], groupBy: string): Promise<any> {
+  private async calculateThroughputMetrics(
+    batches: ProductionBatch[],
+    groupBy: string
+  ): Promise<any> {
     // Implementation would calculate throughput by time period
     return {}
   }
 
-  private async calculateTrendMetrics(batches: ProductionBatch[], groupBy: string): Promise<any> {
+  private async calculateTrendMetrics(
+    batches: ProductionBatch[],
+    groupBy: string
+  ): Promise<any> {
     // Implementation would calculate trend data
     return {}
   }
 
-  private async calculateWorkflowMetrics(batches: ProductionBatch[]): Promise<any> {
+  private async calculateWorkflowMetrics(
+    batches: ProductionBatch[]
+  ): Promise<any> {
     // Implementation would analyze workflow performance
     return {}
   }
 
-  private async generatePerformanceRecommendations(batches: ProductionBatch[]): Promise<any[]> {
+  private async generatePerformanceRecommendations(
+    batches: ProductionBatch[]
+  ): Promise<any[]> {
     // Implementation would generate recommendations based on metrics
     return []
   }
@@ -644,17 +669,23 @@ class ProductionAnalyticsService {
     return {}
   }
 
-  private async calculateEfficiencyBreakdown(metrics: ProductionMetricsResult): Promise<any> {
+  private async calculateEfficiencyBreakdown(
+    metrics: ProductionMetricsResult
+  ): Promise<any> {
     // Implementation would break down efficiency by various factors
     return {}
   }
 
-  private async compareToBenchmarks(metrics: ProductionMetricsResult): Promise<any> {
+  private async compareToBenchmarks(
+    metrics: ProductionMetricsResult
+  ): Promise<any> {
     // Implementation would compare metrics to industry benchmarks
     return {}
   }
 
-  private async generateEfficiencyImprovements(metrics: ProductionMetricsResult): Promise<any[]> {
+  private async generateEfficiencyImprovements(
+    metrics: ProductionMetricsResult
+  ): Promise<any[]> {
     // Implementation would suggest efficiency improvements
     return []
   }
@@ -663,9 +694,9 @@ class ProductionAnalyticsService {
     // Simple weighted score calculation
     return Math.round(
       efficiency.overall * 0.5 +
-      efficiency.production * 0.2 +
-      efficiency.time * 0.2 +
-      efficiency.quality * 0.1
+        efficiency.production * 0.2 +
+        efficiency.time * 0.2 +
+        efficiency.quality * 0.1
     )
   }
 
@@ -727,42 +758,64 @@ class ProductionAnalyticsService {
     return {}
   }
 
-  private async forecastProductionVolume(baseline: any, period: number): Promise<any> {
+  private async forecastProductionVolume(
+    baseline: any,
+    period: number
+  ): Promise<any> {
     // Implementation would forecast production volume
     return {}
   }
 
-  private async forecastEfficiency(baseline: any, period: number): Promise<any> {
+  private async forecastEfficiency(
+    baseline: any,
+    period: number
+  ): Promise<any> {
     // Implementation would forecast efficiency
     return {}
   }
 
-  private async forecastCapacityNeeds(baseline: any, period: number): Promise<any> {
+  private async forecastCapacityNeeds(
+    baseline: any,
+    period: number
+  ): Promise<any> {
     // Implementation would forecast capacity needs
     return {}
   }
 
-  private async forecastQualityMetrics(baseline: any, period: number): Promise<any> {
+  private async forecastQualityMetrics(
+    baseline: any,
+    period: number
+  ): Promise<any> {
     // Implementation would forecast quality metrics
     return {}
   }
 
-  private async identifyForecastRisks(baseline: any, period: number): Promise<any[]> {
+  private async identifyForecastRisks(
+    baseline: any,
+    period: number
+  ): Promise<any[]> {
     // Implementation would identify risks
     return []
   }
 
-  private async calculateConfidenceIntervals(forecast: any, level: number): Promise<any> {
+  private async calculateConfidenceIntervals(
+    forecast: any,
+    level: number
+  ): Promise<any> {
     // Implementation would calculate confidence intervals
     return {}
   }
 
-  private async calculateQualityOverview(batches: ProductionBatch[]): Promise<any> {
+  private async calculateQualityOverview(
+    batches: ProductionBatch[]
+  ): Promise<any> {
     // Implementation would calculate quality overview
     return {}
   }
 
-  private async calculateQualityTrends(batches: ProductionBatch[]): Promise<any> {
+  private async calculateQualityTrends(
+    batches: ProductionBatch[]
+  ): Promise<any> {
     // Implementation would calculate quality trends
     return {}
   }
@@ -772,17 +825,23 @@ class ProductionAnalyticsService {
     return {}
   }
 
-  private async identifyQualityImprovements(batches: ProductionBatch[]): Promise<any[]> {
+  private async identifyQualityImprovements(
+    batches: ProductionBatch[]
+  ): Promise<any[]> {
     // Implementation would identify quality improvements
     return []
   }
 
-  private async calculateQualityCompliance(batches: ProductionBatch[]): Promise<any> {
+  private async calculateQualityCompliance(
+    batches: ProductionBatch[]
+  ): Promise<any> {
     // Implementation would calculate compliance metrics
     return {}
   }
 
-  private async calculateQualityCosts(batches: ProductionBatch[]): Promise<any> {
+  private async calculateQualityCosts(
+    batches: ProductionBatch[]
+  ): Promise<any> {
     // Implementation would calculate quality-related costs
     return {}
   }

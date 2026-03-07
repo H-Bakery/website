@@ -1,10 +1,5 @@
 import { Op } from 'sequelize'
-import {
-  ProductionBatch,
-  ProductionStep,
-  User,
-  Product
-} from '../models'
+import { ProductionBatch, ProductionStep, User, Product } from '../models'
 import notificationHelper from '../utils/notificationHelper'
 import { logger } from '../utils/logger'
 import { socketService } from './socket.service'
@@ -81,7 +76,7 @@ export interface QualityResult {
   checks: any[]
   overallScore: number
   notes?: string
-  status: string
+  status: 'completed' | 'failed' | 'pending'
   passed: boolean
 }
 
@@ -139,7 +134,7 @@ class ProductionExecutionService {
       })
 
       // Calculate real-time metrics
-      const status = {
+      const status: Record<string, any> = {
         overview: await this.calculateProductionOverview(batches),
         activeBatches: await this.enrichBatchData(
           batches.filter((b) => b.status === 'in_progress')
@@ -173,7 +168,10 @@ class ProductionExecutionService {
   /**
    * Start real-time monitoring for a production batch
    */
-  async startBatchMonitoring(batchId: number, userId: number): Promise<MonitoringSession> {
+  async startBatchMonitoring(
+    batchId: number,
+    userId: number
+  ): Promise<MonitoringSession> {
     try {
       logger.info(`Starting batch monitoring: ${batchId}`, { userId })
 
@@ -439,7 +437,10 @@ class ProductionExecutionService {
   /**
    * Advance workflow to next step
    */
-  async advanceWorkflow(batchId: number, currentStepIndex: number): Promise<any> {
+  async advanceWorkflow(
+    batchId: number,
+    currentStepIndex: number
+  ): Promise<any> {
     try {
       logger.info(`Advancing workflow for batch: ${batchId}`, {
         currentStep: currentStepIndex,
@@ -591,7 +592,10 @@ class ProductionExecutionService {
   /**
    * Resume paused production batch
    */
-  async resumeBatch(batchId: number, userId: number): Promise<{ status: string }> {
+  async resumeBatch(
+    batchId: number,
+    userId: number
+  ): Promise<{ status: string }> {
     try {
       logger.info(`Resuming batch: ${batchId}`, { userId })
 
@@ -672,7 +676,9 @@ class ProductionExecutionService {
   /**
    * Calculate production overview metrics
    */
-  private async calculateProductionOverview(batches: ProductionBatch[]): Promise<ProductionOverview> {
+  private async calculateProductionOverview(
+    batches: ProductionBatch[]
+  ): Promise<ProductionOverview> {
     const overview: ProductionOverview = {
       totalBatches: batches.length,
       activeBatches: batches.filter((b) => b.status === 'in_progress').length,
@@ -768,7 +774,9 @@ class ProductionExecutionService {
     if (batch.actualStartTime) {
       const actualEnd = batch.actualEndTime || now
       enriched.actualDurationMinutes = Math.round(
-        (new Date(actualEnd).getTime() - new Date(batch.actualStartTime).getTime()) / (1000 * 60)
+        (new Date(actualEnd).getTime() -
+          new Date(batch.actualStartTime).getTime()) /
+          (1000 * 60)
       )
     }
 
@@ -786,7 +794,9 @@ class ProductionExecutionService {
     if (step.actualStartTime) {
       const actualEnd = step.actualEndTime || now
       enriched.actualDurationMinutes = Math.round(
-        (new Date(actualEnd).getTime() - new Date(step.actualStartTime).getTime()) / (1000 * 60)
+        (new Date(actualEnd).getTime() -
+          new Date(step.actualStartTime).getTime()) /
+          (1000 * 60)
       )
     }
 
@@ -814,7 +824,9 @@ class ProductionExecutionService {
   /**
    * Get production alerts
    */
-  private async getProductionAlerts(batches: ProductionBatch[]): Promise<any[]> {
+  private async getProductionAlerts(
+    batches: ProductionBatch[]
+  ): Promise<any[]> {
     const alerts: any[] = []
     const now = new Date()
 
@@ -826,7 +838,8 @@ class ProductionExecutionService {
         !['completed', 'cancelled'].includes(batch.status)
       ) {
         const delayMinutes = Math.round(
-          (now.getTime() - new Date(batch.plannedEndTime).getTime()) / (1000 * 60)
+          (now.getTime() - new Date(batch.plannedEndTime).getTime()) /
+            (1000 * 60)
         )
         alerts.push({
           type: 'delay',
@@ -863,9 +876,11 @@ class ProductionExecutionService {
   /**
    * Generate production timeline
    */
-  private async generateProductionTimeline(batches: ProductionBatch[]): Promise<any[]> {
+  private async generateProductionTimeline(
+    batches: ProductionBatch[]
+  ): Promise<any[]> {
     // Simple timeline generation - can be expanded
-    return batches.map(batch => ({
+    return batches.map((batch) => ({
       batchId: batch.id,
       batchName: batch.name,
       startTime: batch.plannedStartTime,
@@ -901,7 +916,10 @@ class ProductionExecutionService {
   /**
    * Validate progress update
    */
-  private validateProgressUpdate(step: ProductionStep, progressData: ProgressData): void {
+  private validateProgressUpdate(
+    step: ProductionStep,
+    progressData: ProgressData
+  ): void {
     if (progressData.progress !== undefined) {
       if (progressData.progress < 0 || progressData.progress > 100) {
         throw new Error('Progress must be between 0 and 100')
@@ -909,7 +927,15 @@ class ProductionExecutionService {
     }
 
     if (progressData.status) {
-      const validStatuses = ['pending', 'ready', 'in_progress', 'completed', 'failed', 'skipped', 'waiting']
+      const validStatuses = [
+        'pending',
+        'ready',
+        'in_progress',
+        'completed',
+        'failed',
+        'skipped',
+        'waiting',
+      ]
       if (!validStatuses.includes(progressData.status)) {
         throw new Error(`Invalid status: ${progressData.status}`)
       }
@@ -929,9 +955,10 @@ class ProductionExecutionService {
       const completedSteps = batch.steps.filter(
         (s: any) => s.status === 'completed'
       ).length
-      const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
+      const progress =
+        totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
 
-      await batch.update({ overallProgress: progress })
+      await (batch as any).update({ overallProgress: progress })
     }
   }
 
@@ -959,7 +986,10 @@ class ProductionExecutionService {
   /**
    * Handle issue based on severity
    */
-  private async handleIssueBasedOnSeverity(issue: ProductionIssue, batch: ProductionBatch): Promise<any> {
+  private async handleIssueBasedOnSeverity(
+    issue: ProductionIssue,
+    batch: ProductionBatch
+  ): Promise<any> {
     const handling: any = {
       action: 'logged',
       escalated: false,
@@ -1008,7 +1038,7 @@ class ProductionExecutionService {
    */
   private calculateQualityScore(checks: any[]): number {
     if (checks.length === 0) return 0
-    const passedChecks = checks.filter(c => c.passed).length
+    const passedChecks = checks.filter((c) => c.passed).length
     return Math.round((passedChecks / checks.length) * 100)
   }
 

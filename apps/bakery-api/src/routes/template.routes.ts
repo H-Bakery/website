@@ -10,7 +10,7 @@ import {
   createTemplateRoutes,
 } from '@bakery/api/templates'
 import authMiddleware from '../../middleware/authMiddleware'
-import validationMiddleware from '../middleware/validation.middleware'
+import { validationMiddleware } from '../middleware/validation.middleware'
 
 export default function setupTemplateRoutes(dependencies: {
   NotificationTemplate: any

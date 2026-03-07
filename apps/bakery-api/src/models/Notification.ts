@@ -8,6 +8,9 @@ export interface NotificationAttributes {
   message: string
   priority: string
   isRead: boolean
+  category?: string
+  readAt?: Date | null
+  metadata?: Record<string, any>
   createdAt?: Date
   updatedAt?: Date
 }
@@ -26,6 +29,9 @@ class Notification
   public message!: string
   public priority!: string
   public isRead!: boolean
+  public category?: string
+  public readAt?: Date | null
+  public metadata?: Record<string, any>
   public readonly createdAt!: Date
   public readonly updatedAt!: Date
 
@@ -62,6 +68,19 @@ class Notification
           type: DataTypes.BOOLEAN,
           allowNull: false,
           defaultValue: false,
+        },
+        category: {
+          type: DataTypes.STRING,
+          allowNull: true,
+        },
+        readAt: {
+          type: DataTypes.DATE,
+          allowNull: true,
+        },
+        metadata: {
+          type: DataTypes.JSON,
+          allowNull: true,
+          defaultValue: {},
         },
       },
       {

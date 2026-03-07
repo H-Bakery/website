@@ -1,4 +1,8 @@
 import { Sequelize } from 'sequelize'
+
+// Re-export sequelize instance - set during initializeModels
+export let sequelize: Sequelize
+
 // Temporary local logger until utils library is properly configured
 const logger = {
   info: (message: string, ...args: any[]) =>
@@ -94,7 +98,9 @@ export const Customer = User // Alias for backward compatibility
 // Export local models
 export { Cash, Chat, Product, UnsoldProduct }
 
-export async function initializeModels(sequelize: Sequelize): Promise<void> {
+export async function initializeModels(seq: Sequelize): Promise<void> {
+  // Store reference for re-export so services can import { sequelize } from '../models'
+  sequelize = seq
   logger.info('Initializing database models...')
 
   try {
@@ -108,24 +114,24 @@ export async function initializeModels(sequelize: Sequelize): Promise<void> {
     // await initializeSalesAnalyticsModels(sequelize)
 
     // Initialize local models
-    Cash.initModel(sequelize)
-    Chat.initModel(sequelize)
-    Product.initModel(sequelize)
-    UnsoldProduct.initModel(sequelize)
-    Order.initModel(sequelize)
-    OrderItem.initModel(sequelize)
-    User.initModel(sequelize)
-    Inventory.initModel(sequelize)
-    Recipe.initModel(sequelize)
-    Notification.initModel(sequelize)
-    StockAdjustment.initModel(sequelize)
+    Cash.initModel(seq)
+    Chat.initModel(seq)
+    Product.initModel(seq)
+    UnsoldProduct.initModel(seq)
+    Order.initModel(seq)
+    OrderItem.initModel(seq)
+    User.initModel(seq)
+    Inventory.initModel(seq)
+    Recipe.initModel(seq)
+    Notification.initModel(seq)
+    StockAdjustment.initModel(seq)
 
     // Initialize production and notification models
-    NotificationPreferences.initModel(sequelize)
-    NotificationTemplate.initModel(sequelize)
-    ProductionSchedule.initModel(sequelize)
-    ProductionBatch.initModel(sequelize)
-    ProductionStep.initModel(sequelize)
+    NotificationPreferences.initModel(seq)
+    NotificationTemplate.initModel(seq)
+    ProductionSchedule.initModel(seq)
+    ProductionBatch.initModel(seq)
+    ProductionStep.initModel(seq)
 
     // Set up associations
     setupAssociations()
@@ -248,12 +254,13 @@ function setupAssociations(): void {
   //   onUpdate: 'CASCADE',
   // })
 
-  DailySalesReport.belongsTo(Product, {
-    foreignKey: 'mostPopularProductId',
-    as: 'mostPopularProduct',
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE',
-  })
+  // TODO: Re-enable once DailySalesReport model is migrated
+  // DailySalesReport.belongsTo(Product, {
+  //   foreignKey: 'mostPopularProductId',
+  //   as: 'mostPopularProduct',
+  //   onDelete: 'SET NULL',
+  //   onUpdate: 'CASCADE',
+  // })
 
   logger.info('Model associations established')
 }
@@ -277,8 +284,9 @@ export function getAllModels(): any[] {
     ProductionSchedule,
     ProductionBatch,
     ProductionStep,
-    SalesTransaction,
-    TransactionItem,
-    DailySalesReport,
+    // TODO: Re-enable once sales-analytics models are migrated
+    // SalesTransaction,
+    // TransactionItem,
+    // DailySalesReport,
   ]
 }

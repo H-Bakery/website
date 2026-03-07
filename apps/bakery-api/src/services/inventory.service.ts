@@ -37,7 +37,7 @@ class InventoryService {
     } = pagination
     const offset = (page - 1) * limit
 
-    const where: WhereOptions = {}
+    const where: any = {}
 
     if (filters.category) {
       where.category = filters.category

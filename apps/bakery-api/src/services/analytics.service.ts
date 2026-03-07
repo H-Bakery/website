@@ -176,11 +176,17 @@ class AnalyticsService {
   /**
    * Get comprehensive revenue analytics
    */
-  async getRevenueAnalytics(filters: AnalyticsFilters = {}): Promise<RevenueMetrics> {
+  async getRevenueAnalytics(
+    filters: AnalyticsFilters = {}
+  ): Promise<RevenueMetrics> {
     try {
       const { startDate, endDate, groupBy = 'day' } = filters
 
-      logger.info('Calculating revenue analytics', { startDate, endDate, groupBy })
+      logger.info('Calculating revenue analytics', {
+        startDate,
+        endDate,
+        groupBy,
+      })
 
       // Set default date range (last 30 days)
       const end = endDate ? new Date(endDate) : new Date()
@@ -189,11 +195,11 @@ class AnalyticsService {
         : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
 
       // Total revenue and order count
-      const totalMetrics = await Order.findOne({
+      const totalMetrics: any = await Order.findOne({
         attributes: [
-          [sequelize.fn('SUM', sequelize.col('totalPrice')), 'totalRevenue'],
+          [sequelize.fn('SUM', sequelize.col('total')), 'totalRevenue'],
           [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount'],
-          [sequelize.fn('AVG', sequelize.col('totalPrice')), 'avgOrderValue'],
+          [sequelize.fn('AVG', sequelize.col('total')), 'avgOrderValue'],
         ],
         where: {
           createdAt: {
@@ -216,8 +222,10 @@ class AnalyticsService {
       const paymentBreakdown = await this.getPaymentMethodBreakdown(start, end)
 
       // Calculate growth rate
-      const previousPeriodStart = new Date(start.getTime() - (end.getTime() - start.getTime()))
-      const previousRevenue = await Order.sum('totalPrice', {
+      const previousPeriodStart = new Date(
+        start.getTime() - (end.getTime() - start.getTime())
+      )
+      const previousRevenue = await Order.sum('total' as any, {
         where: {
           createdAt: {
             [Op.between]: [previousPeriodStart, start],
@@ -266,7 +274,7 @@ class AnalyticsService {
       ORDER BY DATE(createdAt) ASC
     `,
       {
-        replacements: { 
+        replacements: {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
         },
@@ -308,12 +316,18 @@ class AnalyticsService {
       }
     )
 
-    const totalRevenue = results.reduce((sum: number, row: any) => sum + parseFloat(row.revenue), 0)
+    const totalRevenue = results.reduce(
+      (sum: number, row: any) => sum + parseFloat(row.revenue),
+      0
+    )
 
     return results.map((row: any) => ({
       category: row.category,
       revenue: parseFloat(row.revenue) || 0,
-      percentage: totalRevenue > 0 ? Math.round((parseFloat(row.revenue) / totalRevenue) * 10000) / 100 : 0,
+      percentage:
+        totalRevenue > 0
+          ? Math.round((parseFloat(row.revenue) / totalRevenue) * 10000) / 100
+          : 0,
     }))
   }
 
@@ -342,12 +356,18 @@ class AnalyticsService {
       }
     )
 
-    const totalAmount = results.reduce((sum: number, row: any) => sum + parseFloat(row.amount), 0)
+    const totalAmount = results.reduce(
+      (sum: number, row: any) => sum + parseFloat(row.amount),
+      0
+    )
 
     return results.map((row: any) => ({
       method: row.method || 'Unknown',
       amount: parseFloat(row.amount) || 0,
-      percentage: totalAmount > 0 ? Math.round((parseFloat(row.amount) / totalAmount) * 10000) / 100 : 0,
+      percentage:
+        totalAmount > 0
+          ? Math.round((parseFloat(row.amount) / totalAmount) * 10000) / 100
+          : 0,
     }))
   }
 
@@ -358,11 +378,17 @@ class AnalyticsService {
   /**
    * Get product performance metrics
    */
-  async getProductPerformance(filters: AnalyticsFilters = {}): Promise<ProductPerformanceMetrics> {
+  async getProductPerformance(
+    filters: AnalyticsFilters = {}
+  ): Promise<ProductPerformanceMetrics> {
     try {
       const { startDate, endDate, category, limit = 10 } = filters
 
-      logger.info('Calculating product performance', { startDate, endDate, category })
+      logger.info('Calculating product performance', {
+        startDate,
+        endDate,
+        category,
+      })
 
       const end = endDate ? new Date(endDate) : new Date()
       const start = startDate
@@ -396,7 +422,12 @@ class AnalyticsService {
   /**
    * Get top selling products
    */
-  private async getTopProducts(startDate: Date, endDate: Date, category?: string, limit: number = 10) {
+  private async getTopProducts(
+    startDate: Date,
+    endDate: Date,
+    category?: string,
+    limit: number = 10
+  ) {
     let categoryFilter = ''
     const replacements: any = {
       startDate: startDate.toISOString(),
@@ -503,14 +534,17 @@ class AnalyticsService {
       }
     )
 
-    const previousMap = new Map(previous.map((row: any) => [row.category, parseFloat(row.revenue)]))
+    const previousMap = new Map<string, number>(
+      previous.map((row: any) => [row.category, parseFloat(row.revenue)])
+    )
 
     return current.map((row: any) => {
       const currentRevenue = parseFloat(row.revenue)
       const previousRevenue = previousMap.get(row.category) || 0
-      const growthRate = previousRevenue > 0
-        ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
-        : 0
+      const growthRate =
+        previousRevenue > 0
+          ? ((currentRevenue - previousRevenue) / previousRevenue) * 100
+          : 0
 
       return {
         category: row.category,
@@ -611,31 +645,36 @@ class AnalyticsService {
       }
     )
 
-    const firstHalfMap = new Map(firstHalf.map((row: any) => [row.productId, parseInt(row.quantity)]))
-    
-    return secondHalf.map((row: any) => {
-      const currentQuantity = parseInt(row.quantity)
-      const previousQuantity = firstHalfMap.get(row.productId) || 0
-      
-      let trend: 'up' | 'down' | 'stable' = 'stable'
-      let changePercent = 0
+    const firstHalfMap = new Map<number, number>(
+      firstHalf.map((row: any) => [row.productId, parseInt(row.quantity)])
+    )
 
-      if (previousQuantity > 0) {
-        changePercent = ((currentQuantity - previousQuantity) / previousQuantity) * 100
-        if (changePercent > 10) trend = 'up'
-        else if (changePercent < -10) trend = 'down'
-      } else if (currentQuantity > 0) {
-        trend = 'up'
-        changePercent = 100
-      }
+    return secondHalf
+      .map((row: any) => {
+        const currentQuantity = parseInt(row.quantity)
+        const previousQuantity = firstHalfMap.get(row.productId) || 0
 
-      return {
-        productId: row.productId,
-        productName: row.productName,
-        trend,
-        changePercent: Math.round(changePercent * 100) / 100,
-      }
-    }).filter(item => Math.abs(item.changePercent) > 5) // Only show significant changes
+        let trend: 'up' | 'down' | 'stable' = 'stable'
+        let changePercent = 0
+
+        if (previousQuantity > 0) {
+          changePercent =
+            ((currentQuantity - previousQuantity) / previousQuantity) * 100
+          if (changePercent > 10) trend = 'up'
+          else if (changePercent < -10) trend = 'down'
+        } else if (currentQuantity > 0) {
+          trend = 'up'
+          changePercent = 100
+        }
+
+        return {
+          productId: row.productId,
+          productName: row.productName,
+          trend,
+          changePercent: Math.round(changePercent * 100) / 100,
+        }
+      })
+      .filter((item) => Math.abs(item.changePercent) > 5) // Only show significant changes
   }
 
   // ============================================================================
@@ -645,7 +684,9 @@ class AnalyticsService {
   /**
    * Get customer analytics
    */
-  async getCustomerAnalytics(filters: AnalyticsFilters = {}): Promise<CustomerAnalytics> {
+  async getCustomerAnalytics(
+    filters: AnalyticsFilters = {}
+  ): Promise<CustomerAnalytics> {
     try {
       const { startDate, endDate } = filters
 
@@ -669,7 +710,10 @@ class AnalyticsService {
       const customerRetention = await this.getCustomerRetention(start, end)
 
       // Order frequency distribution
-      const orderFrequency = await this.getOrderFrequencyDistribution(start, end)
+      const orderFrequency = await this.getOrderFrequencyDistribution(
+        start,
+        end
+      )
 
       return {
         totalCustomers: customerCounts.total,
@@ -742,7 +786,11 @@ class AnalyticsService {
   /**
    * Get top customers
    */
-  private async getTopCustomers(startDate: Date, endDate: Date, limit: number = 10) {
+  private async getTopCustomers(
+    startDate: Date,
+    endDate: Date,
+    limit: number = 10
+  ) {
     const results = await sequelize.query(
       `
       SELECT 
@@ -875,7 +923,8 @@ class AnalyticsService {
 
     const previousCount = previousCustomers.length
     const returnedCount = (returnedCustomers[0] as any)?.returned || 0
-    const retentionRate = previousCount > 0 ? (returnedCount / previousCount) * 100 : 0
+    const retentionRate =
+      previousCount > 0 ? (returnedCount / previousCount) * 100 : 0
 
     // Average lifetime value
     const lifetimeValue = await sequelize.query(
@@ -899,7 +948,8 @@ class AnalyticsService {
     return {
       rate: Math.round(retentionRate * 100) / 100,
       churnRate: Math.round((100 - retentionRate) * 100) / 100,
-      averageLifetimeValue: parseFloat((lifetimeValue[0] as any)?.avgLifetimeValue) || 0,
+      averageLifetimeValue:
+        parseFloat((lifetimeValue[0] as any)?.avgLifetimeValue) || 0,
     }
   }
 
@@ -948,12 +998,18 @@ class AnalyticsService {
       }
     )
 
-    const total = results.reduce((sum: number, row: any) => sum + parseInt(row.customerCount), 0)
+    const total = results.reduce(
+      (sum: number, row: any) => sum + parseInt(row.customerCount),
+      0
+    )
 
     return results.map((row: any) => ({
       frequency: row.frequency,
       customerCount: parseInt(row.customerCount) || 0,
-      percentage: total > 0 ? Math.round((parseInt(row.customerCount) / total) * 10000) / 100 : 0,
+      percentage:
+        total > 0
+          ? Math.round((parseInt(row.customerCount) / total) * 10000) / 100
+          : 0,
     }))
   }
 
@@ -964,7 +1020,9 @@ class AnalyticsService {
   /**
    * Get operational metrics
    */
-  async getOperationalMetrics(filters: AnalyticsFilters = {}): Promise<OperationalMetrics> {
+  async getOperationalMetrics(
+    filters: AnalyticsFilters = {}
+  ): Promise<OperationalMetrics> {
     try {
       const { startDate, endDate } = filters
 
@@ -1116,7 +1174,9 @@ class AnalyticsService {
       staffName: row.staffName || 'Unknown',
       ordersProcessed: parseInt(row.ordersProcessed) || 0,
       totalRevenue: parseFloat(row.totalRevenue) || 0,
-      avgProcessingTime: row.avgProcessingTime ? Math.round(row.avgProcessingTime) : 0,
+      avgProcessingTime: row.avgProcessingTime
+        ? Math.round(row.avgProcessingTime)
+        : 0,
     }))
   }
 
@@ -1126,10 +1186,10 @@ class AnalyticsService {
   private async getWasteAnalysis(startDate: Date, endDate: Date) {
     const wasteData = await UnsoldProduct.findAll({
       where: {
-        recordDate: {
+        date: {
           [Op.between]: [startDate, endDate],
         },
-      },
+      } as any,
       include: [
         {
           model: Product,
@@ -1139,7 +1199,10 @@ class AnalyticsService {
       ],
     })
 
-    const totalQuantity = wasteData.reduce((sum, item) => sum + item.quantity, 0)
+    const totalQuantity = wasteData.reduce(
+      (sum, item) => sum + item.quantity,
+      0
+    )
     const totalValue = wasteData.reduce(
       (sum, item) => sum + item.quantity * (item.product?.price || 0),
       0
@@ -1147,7 +1210,7 @@ class AnalyticsService {
 
     // Group by category
     const categoryMap = new Map<string, { quantity: number; value: number }>()
-    
+
     wasteData.forEach((item) => {
       const category = item.product?.category || 'Unknown'
       const existing = categoryMap.get(category) || { quantity: 0, value: 0 }
@@ -1156,11 +1219,13 @@ class AnalyticsService {
       categoryMap.set(category, existing)
     })
 
-    const wasteByCategory = Array.from(categoryMap.entries()).map(([category, data]) => ({
-      category,
-      quantity: data.quantity,
-      value: Math.round(data.value * 100) / 100,
-    }))
+    const wasteByCategory = Array.from(categoryMap.entries()).map(
+      ([category, data]) => ({
+        category,
+        quantity: data.quantity,
+        value: Math.round(data.value * 100) / 100,
+      })
+    )
 
     return {
       totalWaste: totalQuantity,
@@ -1176,7 +1241,9 @@ class AnalyticsService {
   /**
    * Get comprehensive business summary
    */
-  async getBusinessSummary(filters: AnalyticsFilters = {}): Promise<BusinessSummary> {
+  async getBusinessSummary(
+    filters: AnalyticsFilters = {}
+  ): Promise<BusinessSummary> {
     try {
       const { startDate, endDate } = filters
 
@@ -1188,7 +1255,10 @@ class AnalyticsService {
         : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
 
       // Revenue metrics
-      const revenueMetrics = await this.getRevenueAnalytics({ startDate: start, endDate: end })
+      const revenueMetrics = await this.getRevenueAnalytics({
+        startDate: start,
+        endDate: end,
+      })
 
       // Order metrics
       const orderMetrics = await this.getOrderMetrics(start, end)
@@ -1197,10 +1267,15 @@ class AnalyticsService {
       const productMetrics = await this.getProductMetrics(start, end)
 
       // Customer metrics
-      const customerAnalytics = await this.getCustomerAnalytics({ startDate: start, endDate: end })
+      const customerAnalytics = await this.getCustomerAnalytics({
+        startDate: start,
+        endDate: end,
+      })
 
       // Calculate revenue projection (simple linear projection)
-      const dailyAverage = revenueMetrics.totalRevenue / ((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
+      const dailyAverage =
+        revenueMetrics.totalRevenue /
+        ((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24))
       const projection = dailyAverage * 30 // 30-day projection
 
       return {
@@ -1220,7 +1295,9 @@ class AnalyticsService {
         period: {
           start: start.toISOString(),
           end: end.toISOString(),
-          days: Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)),
+          days: Math.ceil(
+            (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+          ),
         },
       }
     } catch (error) {
@@ -1287,11 +1364,11 @@ class AnalyticsService {
       }
     )
 
-    const outOfStock = await Product.count({
+    const outOfStock = (await Product.count({
       where: {
         stockQuantity: 0,
-      },
-    })
+      } as any,
+    })) as number
 
     const soldData = soldResults[0] as any
 

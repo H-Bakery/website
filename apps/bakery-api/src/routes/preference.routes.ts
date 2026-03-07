@@ -10,7 +10,7 @@ import {
   createPreferenceRoutes,
 } from '@bakery/api/preferences'
 import authMiddleware from '../../middleware/authMiddleware'
-import validationMiddleware from '../middleware/validation.middleware'
+import { validationMiddleware } from '../middleware/validation.middleware'
 
 export default function setupPreferenceRoutes(dependencies: {
   NotificationPreferences: any

@@ -121,6 +121,9 @@ class ProductionStep
   public readonly createdAt!: Date
   public readonly updatedAt!: Date
 
+  // Association property (populated via include/eager loading)
+  public batch?: any
+
   // Virtual properties for computed values
   public get isOverdue(): boolean {
     if (

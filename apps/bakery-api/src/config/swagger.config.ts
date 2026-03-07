@@ -1,12 +1,13 @@
-import swaggerJSDoc from 'swagger-jsdoc';
+import swaggerJSDoc from 'swagger-jsdoc'
 
-const options: swaggerJSDoc.Options = {
+const options: any = {
   definition: {
     openapi: '3.0.0',
     info: {
       title: 'Bakery Management System API',
       version: '1.0.0',
-      description: 'Comprehensive API for managing bakery operations including inventory, recipes, orders, staff, and production workflows',
+      description:
+        'Comprehensive API for managing bakery operations including inventory, recipes, orders, staff, and production workflows',
       contact: {
         name: 'Bakery Management System',
         email: 'support@bakery.local',
@@ -28,7 +29,8 @@ const options: swaggerJSDoc.Options = {
           type: 'http',
           scheme: 'bearer',
           bearerFormat: 'JWT',
-          description: 'JWT Bearer token authentication. Use the /api/auth/login endpoint to obtain a token.',
+          description:
+            'JWT Bearer token authentication. Use the /api/auth/login endpoint to obtain a token.',
         },
       },
     },
@@ -79,6 +81,6 @@ const options: swaggerJSDoc.Options = {
     './src/routes/*.ts', // Path to the API docs in TypeScript
     './routes/*.js', // Path to the legacy JS API docs
   ],
-};
+}
 
-export const swaggerSpec = swaggerJSDoc(options);
+export const swaggerSpec = swaggerJSDoc(options)
