@@ -6,11 +6,15 @@ import PhoneIcon from '@mui/icons-material/Phone'
 import EnhancedHero from '../components/home/hero/EnhancedHero'
 import QuickInfoBar from '../components/home/QuickInfoBar'
 import FeaturedProducts from '../components/home/FeaturedProducts'
+import ProductsByCategory from '../components/home/ProductsByCategory'
 import EnhancedTestimonial from '../components/home/testimonial/EnhancedTestimonial'
 import CallToAction from '../components/CallToAction'
 import MapComponent from '../components/home/map'
+import { getProductsByCategory } from '../lib/products'
 
 export default function HomePage() {
+  const categories = getProductsByCategory()
+
   return (
     <>
       <EnhancedHero />
@@ -18,6 +22,8 @@ export default function HomePage() {
       <QuickInfoBar />
 
       <FeaturedProducts />
+
+      <ProductsByCategory categories={categories} />
 
       <EnhancedTestimonial />
 
