@@ -2,6 +2,7 @@
 import React from 'react'
 import { Box, useMediaQuery, useTheme } from '@mui/material'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import { HeusserLogo } from '../icons'
 import Hamburger from './Hamburger'
 import Item from './Item'
@@ -28,6 +29,12 @@ const Header = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [open, setOpen] = React.useState(false)
+  const pathname = usePathname()
+
+  // Close mobile nav when route changes
+  React.useEffect(() => {
+    setOpen(false)
+  }, [pathname])
 
   return (
     <Box
