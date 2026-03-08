@@ -80,3 +80,9 @@ vitest.config.*.timestamp*
 
 # Brand export artifacts
 brand-export*
+
+# Test artifacts
+static/
+tmp/
+tmp-nx-graph.html
+test-results/
