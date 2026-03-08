@@ -1,8 +1,54 @@
 const express = require('express')
 const cors = require('cors')
+const path = require('path')
+const fs = require('fs')
+const matter = require('gray-matter')
 
 const app = express()
 const PORT = process.env.PORT || 5000
+
+// HQ products directory
+const HQ_PRODUCTS_DIR =
+  process.env.HQ_PRODUCTS_DIR ||
+  path.join(__dirname, '..', '..', '..', 'hq', 'products')
+
+/**
+ * Read and parse all product markdown files from HQ.
+ */
+function loadHQProducts() {
+  if (!fs.existsSync(HQ_PRODUCTS_DIR)) {
+    console.warn(`HQ products directory not found: ${HQ_PRODUCTS_DIR}`)
+    return []
+  }
+
+  const files = fs
+    .readdirSync(HQ_PRODUCTS_DIR)
+    .filter((f) => f.endsWith('.md') && !f.startsWith('_'))
+
+  return files
+    .map((file) => {
+      try {
+        const raw = fs.readFileSync(path.join(HQ_PRODUCTS_DIR, file), 'utf-8')
+        const { data } = matter(raw)
+        if (!data.id || !data.name) return null
+        return {
+          id: data.id,
+          numeric_id: data.numeric_id,
+          name: data.name,
+          category: data.category,
+          price: data.price,
+          available: data.available ?? true,
+          seasonal: data.seasonal ?? false,
+          image: data.image || null,
+          short_description: data.short_description || '',
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter(Boolean)
+    .sort((a, b) => (a.numeric_id || 0) - (b.numeric_id || 0))
+}
 
 // Middleware
 app.use(cors())
@@ -30,15 +76,14 @@ app.get('/api/test', (req, res) => {
   })
 })
 
-// Mock products endpoint
+// Products endpoint — reads real product data from HQ markdown files
 app.get('/api/products', (req, res) => {
-  res.json([
-    { id: 1, name: 'Sourdough Bread', price: 4.5, category: 'bread' },
-    { id: 2, name: 'Croissant', price: 2.5, category: 'pastry' },
-    { id: 3, name: 'Chocolate Cake', price: 35.0, category: 'cake' },
-    { id: 4, name: 'Ham & Cheese Sandwich', price: 6.5, category: 'sandwich' },
-    { id: 5, name: 'Cappuccino', price: 3.5, category: 'beverage' },
-  ])
+  const products = loadHQProducts()
+  const { category } = req.query
+  const filtered = category
+    ? products.filter((p) => p.category === category)
+    : products
+  res.json({ success: true, data: filtered, count: filtered.length })
 })
 
 // Start server
