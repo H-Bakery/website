@@ -86,7 +86,7 @@ export async function runNotificationSeeder(): Promise<void> {
     const notificationsToCreate = sampleNotifications.map((notification) => ({
       ...notification,
       userId: adminUser?.id || null,
-      read: false,
+      isRead: false,
       metadata: {},
     }))
 
@@ -95,8 +95,8 @@ export async function runNotificationSeeder(): Promise<void> {
 
     // Mark some as read for variety
     if (created.length > 2) {
-      await created[0].update({ read: true })
-      await created[1].update({ read: true })
+      await created[0].update({ isRead: true })
+      await created[1].update({ isRead: true })
       logger.info('Marked first 2 notifications as read')
     }
   } catch (error) {

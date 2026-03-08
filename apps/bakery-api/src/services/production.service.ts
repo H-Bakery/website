@@ -4,18 +4,28 @@ import {
   ProductionBatch,
   ProductionStep,
   User,
-  Product
+  Product,
 } from '../models'
 import workflowParser, { Workflow } from '../utils/workflowParser'
-import notificationHelper, { NotificationData } from '../utils/notificationHelper'
+import notificationHelper, {
+  NotificationData,
+} from '../utils/notificationHelper'
 import { logger } from '../utils/logger'
+import { QualityResultAttributes } from '../models/ProductionStep'
+
+export interface StaffShift {
+  start: string
+  end: string
+  role?: string
+}
 
 export interface ScheduleData {
   scheduleDate: Date | string
   scheduleType?: 'daily' | 'weekly' | 'special'
-  staffShifts?: Record<string, any>
-  availableEquipment?: any[]
-  plannedBatches?: any[]
+  status?: string
+  staffShifts?: Record<string, StaffShift>
+  availableEquipment?: string[]
+  plannedBatches?: BatchData[]
   workdayStartTime?: string
   workdayEndTime?: string
   notes?: string
@@ -36,8 +46,8 @@ export interface BatchData {
 }
 
 export interface StepCompletionData {
-  qualityResults?: any
-  actualParameters?: any
+  qualityResults?: Record<string, QualityResultAttributes>
+  actualParameters?: Record<string, unknown>
   notes?: string
 }
 
@@ -65,7 +75,10 @@ class ProductionService {
   /**
    * Create a new production schedule with validation and optimization
    */
-  async createSchedule(scheduleData: ScheduleData, userId: number): Promise<ProductionSchedule> {
+  async createSchedule(
+    scheduleData: ScheduleData,
+    userId: number
+  ): Promise<ProductionSchedule> {
     try {
       logger.info('Creating production schedule', {
         date: scheduleData.scheduleDate,
@@ -95,7 +108,7 @@ class ProductionService {
         ...capacityMetrics,
         createdBy: userId,
         status: 'draft',
-      } as any)
+      } as Parameters<typeof ProductionSchedule.create>[0])
 
       // Send notification
       await notificationHelper.sendNotification({
@@ -139,7 +152,7 @@ class ProductionService {
       // Validate status transitions
       if (
         updateData.status &&
-        !this.isValidStatusTransition(schedule.status, updateData.status as any)
+        !this.isValidStatusTransition(schedule.status, updateData.status)
       ) {
         throw new Error(
           `Invalid status transition from ${schedule.status} to ${updateData.status}`
@@ -151,11 +164,13 @@ class ProductionService {
         const capacityMetrics = await this.calculateScheduleCapacity({
           ...schedule.toJSON(),
           ...updateData,
-        })
+        } as ScheduleData)
         Object.assign(updateData, capacityMetrics)
       }
 
-      await schedule.update(updateData)
+      await schedule.update(
+        updateData as unknown as Partial<ProductionSchedule>
+      )
 
       logger.info(`Production schedule updated successfully: ${scheduleId}`)
       return schedule
@@ -184,7 +199,7 @@ class ProductionService {
         includeMetrics = false,
       } = filters
 
-      const whereClause: any = {}
+      const whereClause: Record<string, unknown> = {}
 
       // Date range filter
       if (startDate || endDate) {
@@ -221,16 +236,19 @@ class ProductionService {
       // Add metrics if requested
       if (includeMetrics) {
         for (const schedule of schedules.rows) {
-          (schedule as any).dataValues.metrics = await this.calculateScheduleMetrics(
-            schedule
-          )
+          ;(
+            schedule as ProductionSchedule & {
+              dataValues: Record<string, unknown>
+            }
+          ).dataValues.metrics = await this.calculateScheduleMetrics(schedule)
         }
       }
 
       return {
         schedules: schedules.rows,
         total: schedules.count,
-        hasMore: parseInt(offset.toString()) + schedules.rows.length < schedules.count,
+        hasMore:
+          parseInt(offset.toString()) + schedules.rows.length < schedules.count,
       }
     } catch (error) {
       logger.error('Error fetching production schedules:', error)
@@ -245,7 +263,10 @@ class ProductionService {
   /**
    * Create a production batch with workflow integration
    */
-  async createBatch(batchData: BatchData, userId: number): Promise<{
+  async createBatch(
+    batchData: BatchData,
+    userId: number
+  ): Promise<{
     batch: ProductionBatch
     steps: ProductionStep[]
   }> {
@@ -257,7 +278,9 @@ class ProductionService {
       })
 
       // Validate workflow exists
-      const workflow = await workflowParser.getWorkflowById(batchData.workflowId)
+      const workflow = await workflowParser.getWorkflowById(
+        batchData.workflowId
+      )
       if (!workflow) {
         throw new Error(`Workflow not found: ${batchData.workflowId}`)
       }
@@ -271,7 +294,7 @@ class ProductionService {
         ...timingData,
         createdBy: userId,
         status: 'planned',
-      } as any)
+      } as Parameters<typeof ProductionBatch.create>[0])
 
       // Create production steps from workflow
       const steps = await this.createBatchSteps(batch.id, workflow)
@@ -338,7 +361,7 @@ class ProductionService {
       })
 
       // Start first step
-      const firstStep = batch.steps?.find((step: any) => step.stepIndex === 0)
+      const firstStep = batch.steps?.find((step) => step.stepIndex === 0)
       if (firstStep) {
         await firstStep.update({
           status: 'ready',
@@ -427,7 +450,9 @@ class ProductionService {
   /**
    * Validate schedule data
    */
-  private async validateScheduleData(scheduleData: ScheduleData): Promise<void> {
+  private async validateScheduleData(
+    scheduleData: ScheduleData
+  ): Promise<void> {
     if (!scheduleData.scheduleDate) {
       throw new Error('Schedule date is required')
     }
@@ -453,14 +478,16 @@ class ProductionService {
   /**
    * Calculate schedule capacity metrics
    */
-  private async calculateScheduleCapacity(scheduleData: ScheduleData): Promise<CapacityMetrics> {
+  private async calculateScheduleCapacity(
+    scheduleData: ScheduleData
+  ): Promise<CapacityMetrics> {
     let totalStaffHours = 0
     let estimatedProductionTime = 0
 
     // Calculate total staff hours
     if (scheduleData.staffShifts) {
       totalStaffHours = Object.values(scheduleData.staffShifts).reduce(
-        (total, shift: any) => {
+        (total, shift: StaffShift) => {
           if (shift.start && shift.end) {
             const start = new Date(`1970-01-01T${shift.start}`)
             const end = new Date(`1970-01-01T${shift.end}`)
@@ -565,7 +592,9 @@ class ProductionService {
       progress: 0,
     }))
 
-    return await ProductionStep.bulkCreate(steps as any)
+    return await ProductionStep.bulkCreate(
+      steps as Parameters<typeof ProductionStep.bulkCreate>[0]
+    )
   }
 
   /**
@@ -582,7 +611,9 @@ class ProductionService {
   /**
    * Validate resource availability for batch
    */
-  private async validateResourceAvailability(batch: ProductionBatch): Promise<void> {
+  private async validateResourceAvailability(
+    batch: ProductionBatch
+  ): Promise<void> {
     // Check staff availability
     if (batch.assignedStaffIds && batch.assignedStaffIds.length > 0) {
       // In a real implementation, check staff schedules
@@ -686,7 +717,9 @@ class ProductionService {
   /**
    * Calculate schedule metrics
    */
-  private async calculateScheduleMetrics(schedule: ProductionSchedule): Promise<{
+  private async calculateScheduleMetrics(
+    schedule: ProductionSchedule
+  ): Promise<{
     efficiency: number
     utilization: number
     completionRate: number

@@ -15,7 +15,7 @@
     "noImplicitThis": false,
     "resolveJsonModule": true
   },
-  "files": ["src/main.ts"],
+  "files": ["src/main.ts", "src/types/ambient.d.ts"],
   "include": [],
-  "exclude": ["**/*"]
+  "exclude": ["**/*.spec.ts", "**/*.test.ts"]
 }

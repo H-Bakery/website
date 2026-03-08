@@ -1,10 +1,5 @@
 import { Op } from 'sequelize'
-import {
-  ProductionBatch,
-  ProductionStep,
-  User,
-  Product
-} from '../models'
+import { ProductionBatch, ProductionStep, User, Product } from '../models'
 import notificationHelper from '../utils/notificationHelper'
 import { logger } from '../utils/logger'
 import { socketService } from './socket.service'
@@ -18,7 +13,7 @@ export interface ProgressData {
   progress?: number
   status?: string
   notes?: string
-  actualParameters?: any
+  actualParameters?: Record<string, unknown>
 }
 
 export interface IssueData {
@@ -29,15 +24,29 @@ export interface IssueData {
   impact?: string
 }
 
+export interface QualityCheckItem {
+  name: string
+  value: string | number | boolean
+  score: number
+  passed: boolean
+  notes?: string
+}
+
 export interface QualityCheckData {
-  checks: Array<{
-    name: string
-    value: any
-    passed: boolean
-    notes?: string
-  }>
+  checks: QualityCheckItem[]
   notes?: string
   passingScore?: number
+}
+
+export interface ProductionAlert {
+  type: string
+  severity: string
+  batchId: number
+  stepId?: number
+  batchName: string
+  stepName?: string
+  message: string
+  timestamp: Date
 }
 
 export interface ProductionOverview {
@@ -49,7 +58,16 @@ export interface ProductionOverview {
   totalItems: number
   completedItems: number
   efficiency: number
-  alerts: any[]
+  alerts: ProductionAlert[]
+}
+
+export interface BatchMetrics {
+  batchId: number
+  startTime: Date
+  totalSteps: number
+  completedSteps: number
+  qualityChecks: number
+  issues: number
 }
 
 export interface MonitoringSession {
@@ -57,7 +75,7 @@ export interface MonitoringSession {
   userId: number
   startTime: Date
   status: string
-  metrics: any
+  metrics: BatchMetrics
 }
 
 export interface ProductionIssue {
@@ -73,16 +91,47 @@ export interface ProductionIssue {
   impact: string
 }
 
+export interface IssueHandling {
+  action: string
+  escalated: boolean
+}
+
 export interface QualityResult {
   checkId: string
   stepId: number
   performedBy: number
   performedAt: Date
-  checks: any[]
+  checks: QualityCheckItem[]
   overallScore: number
   notes?: string
-  status: string
+  status: 'completed' | 'failed' | 'pending'
   passed: boolean
+}
+
+interface EnrichedBatch {
+  [key: string]: unknown
+  progress?: number
+  currentStep?: EnrichedStep
+  isDelayed?: boolean
+  delayMinutes?: number
+  actualDurationMinutes?: number
+}
+
+interface EnrichedStep {
+  [key: string]: unknown
+  actualDurationMinutes?: number
+  isOverdue?: boolean
+  delayMinutes?: number
+  activityProgress?: number
+}
+
+interface TimelineEntry {
+  batchId: number
+  batchName: string
+  startTime: Date
+  endTime: Date
+  status: string
+  progress: number
 }
 
 class ProductionExecutionService {
@@ -98,7 +147,7 @@ class ProductionExecutionService {
       const { date, includeCompleted = false } = filters
 
       // Build query conditions
-      const whereClause: any = {}
+      const whereClause: Record<string, unknown> = {}
       if (date) {
         const startOfDay = new Date(`${date}T00:00:00.000Z`)
         const endOfDay = new Date(`${date}T23:59:59.999Z`)
@@ -139,7 +188,7 @@ class ProductionExecutionService {
       })
 
       // Calculate real-time metrics
-      const status = {
+      const status: Record<string, unknown> = {
         overview: await this.calculateProductionOverview(batches),
         activeBatches: await this.enrichBatchData(
           batches.filter((b) => b.status === 'in_progress')
@@ -173,7 +222,10 @@ class ProductionExecutionService {
   /**
    * Start real-time monitoring for a production batch
    */
-  async startBatchMonitoring(batchId: number, userId: number): Promise<MonitoringSession> {
+  async startBatchMonitoring(
+    batchId: number,
+    userId: number
+  ): Promise<MonitoringSession> {
     try {
       logger.info(`Starting batch monitoring: ${batchId}`, { userId })
 
@@ -219,7 +271,7 @@ class ProductionExecutionService {
     stepId: number,
     progressData: ProgressData,
     userId: number
-  ): Promise<any> {
+  ): Promise<EnrichedStep> {
     try {
       logger.info(`Updating step progress: ${stepId}`, {
         progress: progressData.progress,
@@ -238,7 +290,7 @@ class ProductionExecutionService {
       this.validateProgressUpdate(step, progressData)
 
       // Update step
-      const updateData: any = {
+      const updateData: Record<string, unknown> = {
         ...progressData,
         updatedAt: new Date(),
       }
@@ -291,7 +343,7 @@ class ProductionExecutionService {
     batchId: number,
     issueData: IssueData,
     userId: number
-  ): Promise<{ issue: ProductionIssue; handling: any }> {
+  ): Promise<{ issue: ProductionIssue; handling: IssueHandling }> {
     try {
       logger.info(`Reporting production issue for batch: ${batchId}`, {
         type: issueData.type,
@@ -439,7 +491,15 @@ class ProductionExecutionService {
   /**
    * Advance workflow to next step
    */
-  async advanceWorkflow(batchId: number, currentStepIndex: number): Promise<any> {
+  async advanceWorkflow(
+    batchId: number,
+    currentStepIndex: number
+  ): Promise<{
+    status: string
+    reason?: string
+    nextStep?: EnrichedStep
+    batch?: EnrichedBatch
+  }> {
     try {
       logger.info(`Advancing workflow for batch: ${batchId}`, {
         currentStep: currentStepIndex,
@@ -455,7 +515,7 @@ class ProductionExecutionService {
 
       const nextStepIndex = currentStepIndex + 1
       const nextStep = batch.steps?.find(
-        (step: any) => step.stepIndex === nextStepIndex
+        (step) => step.stepIndex === nextStepIndex
       )
 
       if (!nextStep) {
@@ -543,7 +603,7 @@ class ProductionExecutionService {
 
       // Pause active steps
       const activeStep = batch.steps?.find(
-        (step: any) => step.status === 'in_progress'
+        (step) => step.status === 'in_progress'
       )
       if (activeStep) {
         await activeStep.update({
@@ -591,7 +651,10 @@ class ProductionExecutionService {
   /**
    * Resume paused production batch
    */
-  async resumeBatch(batchId: number, userId: number): Promise<{ status: string }> {
+  async resumeBatch(
+    batchId: number,
+    userId: number
+  ): Promise<{ status: string }> {
     try {
       logger.info(`Resuming batch: ${batchId}`, { userId })
 
@@ -621,9 +684,7 @@ class ProductionExecutionService {
       })
 
       // Resume active step
-      const waitingStep = batch.steps?.find(
-        (step: any) => step.status === 'waiting'
-      )
+      const waitingStep = batch.steps?.find((step) => step.status === 'waiting')
       if (waitingStep) {
         await waitingStep.update({
           status: 'in_progress',
@@ -672,7 +733,9 @@ class ProductionExecutionService {
   /**
    * Calculate production overview metrics
    */
-  private async calculateProductionOverview(batches: ProductionBatch[]): Promise<ProductionOverview> {
+  private async calculateProductionOverview(
+    batches: ProductionBatch[]
+  ): Promise<ProductionOverview> {
     const overview: ProductionOverview = {
       totalBatches: batches.length,
       activeBatches: batches.filter((b) => b.status === 'in_progress').length,
@@ -719,7 +782,9 @@ class ProductionExecutionService {
   /**
    * Enrich batch data with calculated fields
    */
-  private async enrichBatchData(batches: ProductionBatch[]): Promise<any[]> {
+  private async enrichBatchData(
+    batches: ProductionBatch[]
+  ): Promise<EnrichedBatch[]> {
     const enriched = []
 
     for (const batch of batches) {
@@ -732,22 +797,24 @@ class ProductionExecutionService {
   /**
    * Enrich single batch with calculated fields
    */
-  private async enrichSingleBatch(batch: ProductionBatch): Promise<any> {
+  private async enrichSingleBatch(
+    batch: ProductionBatch
+  ): Promise<EnrichedBatch> {
     const now = new Date()
-    const enriched = batch.toJSON() as any
+    const enriched = batch.toJSON() as unknown as EnrichedBatch
 
     // Calculate progress
     if (batch.steps) {
       const totalSteps = batch.steps.length
       const completedSteps = batch.steps.filter(
-        (s: any) => s.status === 'completed'
+        (s) => s.status === 'completed'
       ).length
       enriched.progress =
         totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
 
       // Current step info
       const currentStep = batch.steps.find(
-        (s: any) => s.stepIndex === batch.currentStepIndex
+        (s) => s.stepIndex === batch.currentStepIndex
       )
       if (currentStep) {
         enriched.currentStep = await this.enrichStepData(currentStep)
@@ -768,7 +835,9 @@ class ProductionExecutionService {
     if (batch.actualStartTime) {
       const actualEnd = batch.actualEndTime || now
       enriched.actualDurationMinutes = Math.round(
-        (new Date(actualEnd).getTime() - new Date(batch.actualStartTime).getTime()) / (1000 * 60)
+        (new Date(actualEnd).getTime() -
+          new Date(batch.actualStartTime).getTime()) /
+          (1000 * 60)
       )
     }
 
@@ -778,15 +847,17 @@ class ProductionExecutionService {
   /**
    * Enrich step data with calculated fields
    */
-  private async enrichStepData(step: ProductionStep): Promise<any> {
-    const enriched = step.toJSON() as any
+  private async enrichStepData(step: ProductionStep): Promise<EnrichedStep> {
+    const enriched = step.toJSON() as unknown as EnrichedStep
     const now = new Date()
 
     // Calculate timing
     if (step.actualStartTime) {
       const actualEnd = step.actualEndTime || now
       enriched.actualDurationMinutes = Math.round(
-        (new Date(actualEnd).getTime() - new Date(step.actualStartTime).getTime()) / (1000 * 60)
+        (new Date(actualEnd).getTime() -
+          new Date(step.actualStartTime).getTime()) /
+          (1000 * 60)
       )
     }
 
@@ -814,8 +885,10 @@ class ProductionExecutionService {
   /**
    * Get production alerts
    */
-  private async getProductionAlerts(batches: ProductionBatch[]): Promise<any[]> {
-    const alerts: any[] = []
+  private async getProductionAlerts(
+    batches: ProductionBatch[]
+  ): Promise<ProductionAlert[]> {
+    const alerts: ProductionAlert[] = []
     const now = new Date()
 
     for (const batch of batches) {
@@ -826,7 +899,8 @@ class ProductionExecutionService {
         !['completed', 'cancelled'].includes(batch.status)
       ) {
         const delayMinutes = Math.round(
-          (now.getTime() - new Date(batch.plannedEndTime).getTime()) / (1000 * 60)
+          (now.getTime() - new Date(batch.plannedEndTime).getTime()) /
+            (1000 * 60)
         )
         alerts.push({
           type: 'delay',
@@ -841,7 +915,7 @@ class ProductionExecutionService {
       // Quality issues
       if (batch.steps) {
         for (const step of batch.steps) {
-          if ((step as any).hasIssues) {
+          if (step.hasIssues) {
             alerts.push({
               type: 'quality',
               severity: 'high',
@@ -863,9 +937,11 @@ class ProductionExecutionService {
   /**
    * Generate production timeline
    */
-  private async generateProductionTimeline(batches: ProductionBatch[]): Promise<any[]> {
+  private async generateProductionTimeline(
+    batches: ProductionBatch[]
+  ): Promise<TimelineEntry[]> {
     // Simple timeline generation - can be expanded
-    return batches.map(batch => ({
+    return batches.map((batch) => ({
       batchId: batch.id,
       batchName: batch.name,
       startTime: batch.plannedStartTime,
@@ -878,7 +954,9 @@ class ProductionExecutionService {
   /**
    * Initialize batch metrics
    */
-  private async initializeBatchMetrics(batch: ProductionBatch): Promise<any> {
+  private async initializeBatchMetrics(
+    batch: ProductionBatch
+  ): Promise<BatchMetrics> {
     return {
       batchId: batch.id,
       startTime: new Date(),
@@ -901,7 +979,10 @@ class ProductionExecutionService {
   /**
    * Validate progress update
    */
-  private validateProgressUpdate(step: ProductionStep, progressData: ProgressData): void {
+  private validateProgressUpdate(
+    step: ProductionStep,
+    progressData: ProgressData
+  ): void {
     if (progressData.progress !== undefined) {
       if (progressData.progress < 0 || progressData.progress > 100) {
         throw new Error('Progress must be between 0 and 100')
@@ -909,7 +990,15 @@ class ProductionExecutionService {
     }
 
     if (progressData.status) {
-      const validStatuses = ['pending', 'ready', 'in_progress', 'completed', 'failed', 'skipped', 'waiting']
+      const validStatuses = [
+        'pending',
+        'ready',
+        'in_progress',
+        'completed',
+        'failed',
+        'skipped',
+        'waiting',
+      ]
       if (!validStatuses.includes(progressData.status)) {
         throw new Error(`Invalid status: ${progressData.status}`)
       }
@@ -925,13 +1014,12 @@ class ProductionExecutionService {
     })
 
     if (batch && batch.steps) {
-      const totalSteps = batch.steps.length
       const completedSteps = batch.steps.filter(
-        (s: any) => s.status === 'completed'
+        (s) => s.status === 'completed'
       ).length
-      const progress = totalSteps > 0 ? Math.round((completedSteps / totalSteps) * 100) : 0
 
-      await batch.update({ overallProgress: progress })
+      // Update currentStepIndex to reflect actual progress
+      await batch.update({ currentStepIndex: completedSteps })
     }
   }
 
@@ -959,8 +1047,11 @@ class ProductionExecutionService {
   /**
    * Handle issue based on severity
    */
-  private async handleIssueBasedOnSeverity(issue: ProductionIssue, batch: ProductionBatch): Promise<any> {
-    const handling: any = {
+  private async handleIssueBasedOnSeverity(
+    issue: ProductionIssue,
+    batch: ProductionBatch
+  ): Promise<IssueHandling> {
+    const handling: IssueHandling = {
       action: 'logged',
       escalated: false,
     }
@@ -993,7 +1084,9 @@ class ProductionExecutionService {
       message: `Problem in ${batch.name}: ${issue.description}`,
       type: 'error',
       category: 'production',
-      priority: issue.severity as any,
+      priority: (['low', 'medium', 'high'].includes(issue.severity)
+        ? issue.severity
+        : 'high') as 'low' | 'medium' | 'high',
       templateKey: 'production.issue',
       templateVars: {
         batchName: batch.name,
@@ -1006,9 +1099,9 @@ class ProductionExecutionService {
   /**
    * Calculate quality score from checks
    */
-  private calculateQualityScore(checks: any[]): number {
+  private calculateQualityScore(checks: QualityCheckItem[]): number {
     if (checks.length === 0) return 0
-    const passedChecks = checks.filter(c => c.passed).length
+    const passedChecks = checks.filter((c) => c.passed).length
     return Math.round((passedChecks / checks.length) * 100)
   }
 
@@ -1038,7 +1131,9 @@ class ProductionExecutionService {
   /**
    * Complete workflow when all steps are done
    */
-  private async completeWorkflow(batch: ProductionBatch): Promise<any> {
+  private async completeWorkflow(
+    batch: ProductionBatch
+  ): Promise<{ status: string; batch: EnrichedBatch }> {
     await batch.update({
       status: 'completed',
       actualEndTime: new Date(),
@@ -1068,7 +1163,7 @@ class ProductionExecutionService {
     // Check if previous steps are completed
     if (step.stepIndex > 0) {
       const previousStep = batch.steps?.find(
-        (s: any) => s.stepIndex === step.stepIndex - 1
+        (s) => s.stepIndex === step.stepIndex - 1
       )
       if (previousStep && previousStep.status !== 'completed') {
         return {

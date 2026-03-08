@@ -1,5 +1,5 @@
 import { Inventory, Product, StockAdjustment } from '../models'
-import { Op, WhereOptions, Transaction } from 'sequelize'
+import { Op, WhereOptions } from 'sequelize'
 import { sequelize } from '@bakery/api/database'
 
 export interface InventoryFilters {
@@ -24,6 +24,26 @@ export interface PaginationOptions {
   sortOrder?: 'ASC' | 'DESC'
 }
 
+export interface InventoryCreateData {
+  productId: number
+  quantity?: number
+  minimumQuantity?: number
+  reorderPoint?: number
+  category?: string
+  location?: string
+  supplier?: string
+  createdBy?: number
+}
+
+export interface InventoryUpdateData {
+  minimumQuantity?: number
+  reorderPoint?: number
+  category?: string
+  location?: string
+  supplier?: string
+  quantity?: number
+}
+
 class InventoryService {
   async findAll(
     filters: InventoryFilters = {},
@@ -37,7 +57,8 @@ class InventoryService {
     } = pagination
     const offset = (page - 1) * limit
 
-    const where: WhereOptions = {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Sequelize WhereOptions requires symbol keys (Op.or)
+    const where: Record<string | symbol, unknown> = {}
 
     if (filters.category) {
       where.category = filters.category
@@ -117,7 +138,7 @@ class InventoryService {
     return inventory
   }
 
-  async create(data: any) {
+  async create(data: InventoryCreateData) {
     const transaction = await sequelize.transaction()
 
     try {
@@ -165,7 +186,7 @@ class InventoryService {
     }
   }
 
-  async update(id: number, data: any) {
+  async update(id: number, data: InventoryUpdateData) {
     const inventory = await Inventory.findByPk(id)
     if (!inventory) {
       throw new Error('Inventory item not found')

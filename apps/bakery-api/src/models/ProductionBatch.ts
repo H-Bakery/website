@@ -1,4 +1,5 @@
 import { DataTypes, Model, Sequelize } from 'sequelize'
+import type ProductionStep from './ProductionStep'
 
 export interface QualityCheckAttributes {
   name: string
@@ -114,6 +115,10 @@ class ProductionBatch
   public updatedBy?: number
   public readonly createdAt!: Date
   public readonly updatedAt!: Date
+
+  // Association properties (populated via include/eager loading)
+  public steps?: ProductionStep[]
+  public overallProgress?: number
 
   // Virtual properties for computed values
   public get progress(): number {

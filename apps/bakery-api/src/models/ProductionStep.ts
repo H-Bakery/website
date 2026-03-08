@@ -1,4 +1,5 @@
 import { DataTypes, Model, Sequelize } from 'sequelize'
+import type ProductionBatch from './ProductionBatch'
 
 export interface QualityCheckAttributes {
   name: string
@@ -120,6 +121,9 @@ class ProductionStep
   public statusChangeTime?: Date
   public readonly createdAt!: Date
   public readonly updatedAt!: Date
+
+  // Association property (populated via include/eager loading)
+  public batch?: ProductionBatch
 
   // Virtual properties for computed values
   public get isOverdue(): boolean {
