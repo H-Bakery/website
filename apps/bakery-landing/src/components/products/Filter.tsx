@@ -5,9 +5,10 @@ import Broetchen from '../icons/products/Broetchen'
 import Teilchen from '../icons/products/Teilchen'
 import Kuchen from '../icons/products/Kuchen'
 import Torten from '../icons/products/Torten'
-import Getranke from '../icons/products/Getranke'
 import { Product } from '../../types/product'
 import GridViewIcon from '@mui/icons-material/GridView'
+import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
+import LunchDiningIcon from '@mui/icons-material/LunchDining'
 
 interface Props {
   setProducts: (items: Product[]) => void
@@ -17,11 +18,12 @@ interface Props {
 const FILTERS = [
   { label: 'Alle', icon: <GridViewIcon /> },
   { label: 'Brot', icon: <Brot /> },
+  { label: 'Baguette', icon: <BakeryDiningIcon /> },
   { label: 'Brötchen', icon: <Broetchen /> },
   { label: 'Teilchen', icon: <Teilchen /> },
+  { label: 'Snacks', icon: <LunchDiningIcon /> },
   { label: 'Kuchen', icon: <Kuchen /> },
   { label: 'Torten', icon: <Torten /> },
-  { label: 'Getränke', icon: <Getranke /> },
 ]
 
 const Filter: React.FC<Props> = (props) => {
@@ -34,8 +36,8 @@ const Filter: React.FC<Props> = (props) => {
       if (input === 'Alle') {
         setProducts(allProducts)
       } else {
-        const newArray = allProducts.filter((product) =>
-          product.category.includes(input)
+        const newArray = allProducts.filter(
+          (product) => product.category === input
         )
         setProducts(newArray)
       }
@@ -54,7 +56,7 @@ const Filter: React.FC<Props> = (props) => {
     <Box sx={styles.root}>
       <Grid container spacing={2}>
         {FILTERS.map((item) => (
-          <Grid key={item.label} item xs={4} sm={2} md={2}>
+          <Grid key={item.label} item xs={4} sm={2} md={1.5}>
             <Box
               sx={styles.item}
               onClick={() => filter(item.label)}

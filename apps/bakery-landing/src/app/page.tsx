@@ -6,14 +6,38 @@ import PhoneIcon from '@mui/icons-material/Phone'
 import EnhancedHero from '../components/home/hero/EnhancedHero'
 import QuickInfoBar from '../components/home/QuickInfoBar'
 import FeaturedProducts from '../components/home/FeaturedProducts'
-import ProductsByCategory from '../components/home/ProductsByCategory'
 import EnhancedTestimonial from '../components/home/testimonial/EnhancedTestimonial'
 import CallToAction from '../components/CallToAction'
 import MapComponent from '../components/home/map'
-import { getProductsByCategory } from '../lib/products'
+import { loadProducts } from '../lib/products'
+
+const FEATURED_CATEGORIES = [
+  'Brot',
+  'Baguette',
+  'Brötchen',
+  'Teilchen',
+  'Snacks',
+  'Kuchen',
+  'Torten',
+]
 
 export default function HomePage() {
-  const categories = getProductsByCategory()
+  const allProducts = loadProducts()
+
+  // Pick 1 available product per category + 1 extra
+  const featured: typeof allProducts = []
+  for (const cat of FEATURED_CATEGORIES) {
+    const product = allProducts.find(
+      (p) =>
+        p.category === cat && p.available !== false && !featured.includes(p)
+    )
+    if (product) featured.push(product)
+  }
+  // Add 1 extra product not yet picked
+  const extra = allProducts.find(
+    (p) => p.available !== false && !featured.includes(p)
+  )
+  if (extra) featured.push(extra)
 
   return (
     <>
@@ -21,9 +45,7 @@ export default function HomePage() {
 
       <QuickInfoBar />
 
-      <FeaturedProducts />
-
-      <ProductsByCategory categories={categories} />
+      <FeaturedProducts products={featured} />
 
       <EnhancedTestimonial />
 

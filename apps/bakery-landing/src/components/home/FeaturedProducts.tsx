@@ -3,61 +3,18 @@ import React, { useRef, useState, useEffect, useCallback } from 'react'
 import { Box, Container, Typography, IconButton, Button } from '@mui/material'
 import ArrowBackIosNewIcon from '@mui/icons-material/ArrowBackIosNew'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
+import NextLink from 'next/link'
+import { Product } from '../../types/product'
 
-interface FeaturedProduct {
-  name: string
-  tagline: string
-  image: string
+interface FeaturedProductsProps {
+  products: Product[]
 }
 
-const PRODUCTS: FeaturedProduct[] = [
-  {
-    name: 'Bauernbrot',
-    tagline: 'Kräftig & saftig — unser Klassiker',
-    image: '/assets/images/products/Type=Brot Rund.svg',
-  },
-  {
-    name: 'Brötchen',
-    tagline: 'Knusprig & ofenfrisch',
-    image: '/assets/images/products/Type=Brötchen.svg',
-  },
-  {
-    name: 'Croissant',
-    tagline: 'Butterig & blättrig — wie in Frankreich',
-    image: '/assets/images/products/Type=Croissant.svg',
-  },
-  {
-    name: 'Brezel',
-    tagline: 'Frisch gelaugt & goldbraun',
-    image: '/assets/images/products/Type=Brezel.svg',
-  },
-  {
-    name: 'Hefezopf',
-    tagline: 'Locker & süß — perfekt zum Kaffee',
-    image: '/assets/images/products/Type=Hefezopf.svg',
-  },
-  {
-    name: 'Kuchen',
-    tagline: 'Hausgemacht & mit Liebe gebacken',
-    image: '/assets/images/products/Type=Kuchen.svg',
-  },
-  {
-    name: 'Kornbrot',
-    tagline: 'Vollwertig & voller Geschmack',
-    image: '/assets/images/products/Type=Kornbrot.svg',
-  },
-  {
-    name: 'Schnecke',
-    tagline: 'Süß gefüllt & herrlich duftend',
-    image: '/assets/images/products/Type=Schnecke.svg',
-  },
-]
-
-const FeaturedProducts: React.FC = () => {
+const FeaturedProducts: React.FC<FeaturedProductsProps> = ({ products }) => {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeIndex, setActiveIndex] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
-  const totalProducts = PRODUCTS.length
+  const totalProducts = products.length
 
   const scrollToIndex = useCallback(
     (index: number) => {
@@ -154,9 +111,11 @@ const FeaturedProducts: React.FC = () => {
               '&::-webkit-scrollbar': { display: 'none' },
             }}
           >
-            {PRODUCTS.map((product, index) => (
+            {products.map((product) => (
               <Box
-                key={product.name}
+                key={product.id}
+                component={NextLink}
+                href={`/products/${product.id}`}
                 sx={{
                   flex: {
                     xs: '0 0 75%',
@@ -169,6 +128,8 @@ const FeaturedProducts: React.FC = () => {
                   overflow: 'hidden',
                   boxShadow: '0 2px 12px rgba(90, 46, 42, 0.08)',
                   transition: 'box-shadow 0.2s ease, transform 0.2s ease',
+                  textDecoration: 'none',
+                  color: 'inherit',
                   '&:hover': {
                     boxShadow: '0 6px 20px rgba(90, 46, 42, 0.14)',
                     transform: 'translateY(-3px)',
@@ -188,7 +149,7 @@ const FeaturedProducts: React.FC = () => {
                 >
                   <Box
                     component="img"
-                    src={product.image}
+                    src={product.image || product.imageUrl || ''}
                     alt={product.name}
                     sx={{
                       maxWidth: '70%',
@@ -219,7 +180,7 @@ const FeaturedProducts: React.FC = () => {
                       lineHeight: 1.5,
                     }}
                   >
-                    {product.tagline}
+                    {product.description || product.category}
                   </Typography>
                 </Box>
               </Box>
@@ -274,7 +235,7 @@ const FeaturedProducts: React.FC = () => {
             mt: 3,
           }}
         >
-          {PRODUCTS.map((_, index) => (
+          {products.map((_, index) => (
             <Box
               key={index}
               onClick={() => scrollToIndex(index)}

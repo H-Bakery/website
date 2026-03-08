@@ -23,10 +23,8 @@ import LocationOnIcon from '@mui/icons-material/LocationOn'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import GrainIcon from '@mui/icons-material/Grain'
-import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import Image from 'next/image'
-import { PRODUCTS } from '../../../mocks/products'
+import { loadProducts } from '../../../lib/products'
 import { formatPrice } from '../../../utils/formatPrice'
 import {
   getContactPageHours,
@@ -44,7 +42,8 @@ interface ProductPageProps {
 export const dynamicParams = false
 
 export async function generateStaticParams() {
-  return PRODUCTS.map((product) => ({
+  const products = loadProducts()
+  return products.map((product) => ({
     id: product.id.toString(),
   }))
 }
@@ -52,8 +51,9 @@ export async function generateStaticParams() {
 export async function generateMetadata({
   params,
 }: ProductPageProps): Promise<Metadata> {
+  const products = loadProducts()
   const { id } = await params
-  const product = PRODUCTS.find((item) => item.id.toString() === id)
+  const product = products.find((item) => item.id.toString() === id)
 
   if (!product) {
     return {
@@ -81,7 +81,7 @@ export async function generateMetadata({
       siteName: 'Bäckerei Heusser',
       images: [
         {
-          url: product.image || '/og-image.jpg',
+          url: product.image || product.imageUrl || '/og-image.jpg',
           width: 1200,
           height: 630,
           alt: product.name,
@@ -96,23 +96,29 @@ export async function generateMetadata({
       description:
         product.description ||
         `Frische ${product.name} aus unserer traditionellen Handwerksbäckerei`,
-      images: [product.image || '/og-image.jpg'],
+      images: [product.image || product.imageUrl || '/og-image.jpg'],
     },
   }
 }
 
 export default async function ProductPage({ params }: ProductPageProps) {
+  const products = loadProducts()
   const { id } = await params
-  const product = PRODUCTS.find((item) => item.id.toString() === id)
+  const product = products.find((item) => item.id.toString() === id)
 
   if (!product) {
     notFound()
   }
 
+  const imageSrc =
+    product.image ||
+    product.imageUrl ||
+    '/assets/images/products/erdbeertorte.jpg'
+
   // Get related products from same category
-  const relatedProducts = PRODUCTS.filter(
-    (p) => p.category === product.category && p.id !== product.id
-  ).slice(0, 4)
+  const relatedProducts = products
+    .filter((p) => p.category === product.category && p.id !== product.id)
+    .slice(0, 4)
 
   return (
     <>
@@ -208,9 +214,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 <Image
                   width={400}
                   height={400}
-                  src={
-                    product.image || '/assets/images/products/erdbeertorte.jpg'
-                  }
+                  src={imageSrc}
                   alt={product.name}
                   priority
                   quality={95}
@@ -691,6 +695,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                           height={90}
                           src={
                             relatedProduct.image ||
+                            relatedProduct.imageUrl ||
                             '/assets/images/products/erdbeertorte.jpg'
                           }
                           alt={relatedProduct.name}
