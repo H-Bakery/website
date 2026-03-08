@@ -1,4 +1,4 @@
-import { PRODUCTS } from '../../mocks/products'
+import { loadProducts } from '../products'
 
 interface SitemapUrl {
   loc: string
@@ -88,7 +88,7 @@ export function generateSitemapXml(): string {
   ]
 
   // Product pages
-  const productPages: SitemapUrl[] = PRODUCTS.map((product) => ({
+  const productPages: SitemapUrl[] = loadProducts().map((product) => ({
     loc: `${BASE_URL}/products/${product.id}`,
     changefreq: 'weekly' as const,
     priority: 0.7,

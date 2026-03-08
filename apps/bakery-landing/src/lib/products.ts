@@ -1,6 +1,7 @@
 import fs from 'fs'
 import path from 'path'
 import matter from 'gray-matter'
+import { Product } from '../types/product'
 
 export interface HQProduct {
   id: string
@@ -15,7 +16,7 @@ export interface HQProduct {
 }
 
 /** Display label for each category key */
-const CATEGORY_LABELS: Record<string, string> = {
+export const CATEGORY_LABELS: Record<string, string> = {
   brot: 'Brot',
   broetchen: 'Brötchen',
   baguette: 'Baguette',
@@ -136,5 +137,23 @@ export function getProductsByCategory(): ProductsByCategory[] {
     key,
     label: CATEGORY_LABELS[key] || key,
     products: grouped.get(key)!,
+  }))
+}
+
+/**
+ * Load all HQ products and map them to the display Product format.
+ * Runs at build time (server component / static generation).
+ */
+export function loadProducts(): Product[] {
+  return getHQProducts().map((p) => ({
+    id: p.numeric_id,
+    name: p.name,
+    category: CATEGORY_LABELS[p.category] || p.category,
+    price: p.price,
+    image: p.image,
+    imageUrl: p.image,
+    description: p.short_description || undefined,
+    available: p.available,
+    seasonal: p.seasonal,
   }))
 }

@@ -35,13 +35,18 @@ interface EnhancedProductCardProps extends Product {
 
 const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
   const {
-    isFreshToday = props.id % 2 === 0, // Use product ID for consistent value
-    isNew = props.id % 10 === 1, // Show "new" for every 10th product
-    isOrganic = props.isVegan || false, // Use actual product property
-    rating = 4 + (props.id % 10) / 10, // Generates 4.0-4.9 based on ID
-    reviewCount = 10 + (props.id % 40), // Generates 10-49 based on ID
+    isFreshToday = props.id % 2 === 0,
+    isNew = props.id % 10 === 1,
+    isOrganic = props.isVegan || false,
+    rating = 4 + (props.id % 10) / 10,
+    reviewCount = 10 + (props.id % 40),
     ...product
   } = props
+
+  const imageSrc =
+    product.imageUrl ||
+    product.image ||
+    '/assets/images/products/erdbeertorte.jpg'
 
   const router = useRouter()
   const [isFavorite, setIsFavorite] = useState(false)
@@ -111,9 +116,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
             <Image
               width={280}
               height={200}
-              src={
-                product.imageUrl || '/assets/images/products/erdbeertorte.jpg'
-              }
+              src={imageSrc}
               alt={`Bild von ${product.name}`}
               loading="lazy"
               quality={75}
@@ -121,9 +124,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
               style={{
                 width: '100%',
                 height: '100%',
-                objectFit: product.imageUrl?.endsWith('.svg')
-                  ? 'contain'
-                  : 'cover',
+                objectFit: imageSrc.endsWith('.svg') ? 'contain' : 'cover',
               }}
             />
           </Box>
