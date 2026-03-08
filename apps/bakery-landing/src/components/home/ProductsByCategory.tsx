@@ -1,10 +1,15 @@
 'use client'
 import React, { useState } from 'react'
-import { Box, Container, Typography, Chip, Grid } from '@mui/material'
+import { Box, Button, Container, Typography, Chip, Grid } from '@mui/material'
+import ArrowForwardIcon from '@mui/icons-material/ArrowForward'
 import type { ProductsByCategory as CategoryGroup } from '../../lib/products'
 
 interface ProductsByCategoryProps {
   categories: CategoryGroup[]
+  /** When true, show a limited teaser with CTA link to /products */
+  teaser?: boolean
+  /** Max total products to show in teaser mode (default: 8) */
+  maxProducts?: number
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -27,12 +32,32 @@ function formatPrice(price: number): string {
 
 const ProductsByCategory: React.FC<ProductsByCategoryProps> = ({
   categories,
+  teaser = false,
+  maxProducts = 8,
 }) => {
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
 
+  // In teaser mode: pick up to maxProducts across categories (round-robin)
+  const teaserCategories = React.useMemo(() => {
+    if (!teaser) return categories
+    const result: CategoryGroup[] = []
+    let remaining = maxProducts
+    for (const cat of categories) {
+      if (remaining <= 0) break
+      const take = Math.min(2, cat.products.length, remaining)
+      if (take > 0) {
+        result.push({ ...cat, products: cat.products.slice(0, take) })
+        remaining -= take
+      }
+    }
+    return result
+  }, [teaser, categories, maxProducts])
+
+  const displayCategories = teaser ? teaserCategories : categories
+
   const visibleCategories = activeCategory
-    ? categories.filter((c) => c.key === activeCategory)
-    : categories
+    ? displayCategories.filter((c) => c.key === activeCategory)
+    : displayCategories
 
   return (
     <Box
@@ -65,64 +90,78 @@ const ProductsByCategory: React.FC<ProductsByCategoryProps> = ({
             fontSize: { xs: '1rem', md: '1.1rem' },
           }}
         >
-          {categories.reduce((sum, c) => sum + c.products.length, 0)} Produkte
-          in {categories.length} Kategorien
+          {teaser
+            ? 'Eine kleine Auswahl aus unserem Angebot'
+            : `${categories.reduce(
+                (sum, c) => sum + c.products.length,
+                0
+              )} Produkte in ${categories.length} Kategorien`}
         </Typography>
 
-        {/* Category Filter Chips */}
-        <Box
-          sx={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            justifyContent: 'center',
-            gap: 1,
-            mb: { xs: 3, md: 4 },
-          }}
-        >
-          <Chip
-            label="Alle"
-            variant={activeCategory === null ? 'filled' : 'outlined'}
-            onClick={() => setActiveCategory(null)}
+        {/* Category Filter Chips — only on full view */}
+        {!teaser && (
+          <Box
             sx={{
-              fontWeight: 600,
-              backgroundColor:
-                activeCategory === null ? '#5A2E2A' : 'transparent',
-              color: activeCategory === null ? '#fff' : '#5A2E2A',
-              borderColor: '#5A2E2A',
-              '&:hover': {
-                backgroundColor:
-                  activeCategory === null
-                    ? '#3B2B28'
-                    : 'rgba(90, 46, 42, 0.08)',
-              },
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              gap: 1,
+              mb: { xs: 3, md: 4 },
             }}
-          />
-          {categories.map((cat) => (
+          >
             <Chip
-              key={cat.key}
-              label={`${cat.label} (${cat.products.length})`}
-              variant={activeCategory === cat.key ? 'filled' : 'outlined'}
-              onClick={() => setActiveCategory(cat.key)}
+              label="Alle"
+              variant={activeCategory === null ? 'filled' : 'outlined'}
+              onClick={() => setActiveCategory(null)}
               sx={{
                 fontWeight: 600,
                 backgroundColor:
-                  activeCategory === cat.key ? '#5A2E2A' : 'transparent',
-                color: activeCategory === cat.key ? '#fff' : '#5A2E2A',
+                  activeCategory === null ? '#5A2E2A' : 'transparent',
+                color: activeCategory === null ? '#fff' : '#5A2E2A',
                 borderColor: '#5A2E2A',
                 '&:hover': {
                   backgroundColor:
-                    activeCategory === cat.key
+                    activeCategory === null
                       ? '#3B2B28'
                       : 'rgba(90, 46, 42, 0.08)',
                 },
               }}
             />
-          ))}
-        </Box>
+            {displayCategories.map((cat) => (
+              <Chip
+                key={cat.key}
+                label={`${cat.label} (${cat.products.length})`}
+                variant={activeCategory === cat.key ? 'filled' : 'outlined'}
+                onClick={() => setActiveCategory(cat.key)}
+                sx={{
+                  fontWeight: 600,
+                  backgroundColor:
+                    activeCategory === cat.key ? '#5A2E2A' : 'transparent',
+                  color: activeCategory === cat.key ? '#fff' : '#5A2E2A',
+                  borderColor: '#5A2E2A',
+                  '&:hover': {
+                    backgroundColor:
+                      activeCategory === cat.key
+                        ? '#3B2B28'
+                        : 'rgba(90, 46, 42, 0.08)',
+                  },
+                }}
+              />
+            ))}
+          </Box>
+        )}
 
         {/* Category Sections */}
-        {visibleCategories.map((cat) => (
-          <Box key={cat.key} sx={{ mb: { xs: 4, md: 5 } }}>
+        {visibleCategories.map((cat, idx) => (
+          <Box
+            key={cat.key}
+            sx={{
+              mb:
+                teaser && idx === visibleCategories.length - 1
+                  ? 0
+                  : { xs: 4, md: 5 },
+            }}
+          >
             {/* Category Header */}
             <Box
               sx={{
@@ -245,6 +284,32 @@ const ProductsByCategory: React.FC<ProductsByCategoryProps> = ({
             </Grid>
           </Box>
         ))}
+
+        {/* CTA Button — teaser mode only */}
+        {teaser && (
+          <Box sx={{ textAlign: 'center', mt: { xs: 3, md: 4 } }}>
+            <Button
+              href="/products"
+              variant="contained"
+              size="large"
+              endIcon={<ArrowForwardIcon />}
+              sx={{
+                backgroundColor: '#5A2E2A',
+                color: '#fff',
+                fontWeight: 600,
+                px: 4,
+                py: 1.5,
+                borderRadius: '8px',
+                fontSize: { xs: '0.95rem', md: '1.05rem' },
+                '&:hover': {
+                  backgroundColor: '#3B2B28',
+                },
+              }}
+            >
+              Alle Produkte entdecken
+            </Button>
+          </Box>
+        )}
       </Container>
     </Box>
   )

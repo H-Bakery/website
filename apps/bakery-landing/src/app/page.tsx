@@ -23,7 +23,7 @@ export default function HomePage() {
 
       <FeaturedProducts />
 
-      <ProductsByCategory categories={categories} />
+      <ProductsByCategory categories={categories} teaser />
 
       <EnhancedTestimonial />
 

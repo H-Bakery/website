@@ -1,16 +1,14 @@
-'use client'
-import React, { useState } from 'react'
+import React from 'react'
 import { Box, Container, Typography, Breadcrumbs, Link } from '@mui/material'
 import HomeIcon from '@mui/icons-material/Home'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 import Hero from '../../components/Hero'
-import Products from '../../components/home/products'
-import Filter from '../../components/products/Filter'
-import { PRODUCTS } from '../../mocks/products'
+import ProductsByCategory from '../../components/home/ProductsByCategory'
+import { getProductsByCategory } from '../../lib/products'
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState(PRODUCTS)
-  const [allProducts] = useState(PRODUCTS)
+  const categories = getProductsByCategory()
+
   return (
     <>
       <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -53,13 +51,10 @@ export default function ProductsPage() {
           Entdecken Sie unsere vielfältige Auswahl an handwerklich hergestellten
           Backwaren. Von traditionellen Broten bis hin zu süßen Leckereien.
         </Typography>
-
-        {/* Filter Section */}
-        <Filter setProducts={setProducts} allProducts={allProducts} />
-
-        {/* Products Display */}
-        <Products items={products} showControls={true} />
       </Container>
+
+      {/* All products with category filters */}
+      <ProductsByCategory categories={categories} />
     </>
   )
 }
