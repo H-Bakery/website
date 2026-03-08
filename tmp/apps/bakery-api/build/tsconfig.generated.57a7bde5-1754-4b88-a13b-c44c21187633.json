@@ -1,0 +1,104 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@bakery/api/auth": ["dist/libs/api/auth"],
+      "@bakery/api/baking-list": ["dist/libs/api/baking-list"],
+      "@bakery/api/cash": ["dist/libs/api/cash"],
+      "@bakery/api/core": ["libs/api/core/src/index.ts"],
+      "@bakery/api/customers": ["libs/api/customers/src/index.ts"],
+      "@bakery/api/database": ["dist/libs/api/database"],
+      "@bakery/api/delivery": ["libs/api/delivery/src/index.ts"],
+      "@bakery/api/email": ["dist/libs/api/email"],
+      "@bakery/api/event-bus": ["libs/api/event-bus/src/index.ts"],
+      "@bakery/api/import-service": ["dist/libs/api/import-service"],
+      "@bakery/api/inventory": ["libs/api/inventory/src/index.ts"],
+      "@bakery/api/notifications": ["libs/api/notifications/src/index.ts"],
+      "@bakery/api/orders": ["libs/api/orders/src/index.ts"],
+      "@bakery/api/preferences": ["dist/libs/api/preferences"],
+      "@bakery/api/production": ["libs/api/production/src/index.ts"],
+      "@bakery/api/products": ["dist/libs/api/products"],
+      "@bakery/api/recipes": ["dist/libs/api/recipes"],
+      "@bakery/api/sales-analytics": [
+        "dist/libs/api/import-service/sales-analytics"
+      ],
+      "@bakery/api/templates": ["dist/libs/api/templates"],
+      "@bakery/api/types": ["libs/api/types/src/index.ts"],
+      "@bakery/api/unsold-products": ["dist/libs/api/unsold-products"],
+      "@bakery/api/utils": ["dist/libs/api/utils"],
+      "@bakery/api/websocket": ["dist/libs/api/websocket"],
+      "@bakery/api/workflows": ["dist/libs/api/import-service/workflows"],
+      "@bakery/delivery/routing": ["libs/bakery-delivery-routing/src/index.ts"],
+      "@bakery/delivery/tracking": [
+        "libs/bakery-delivery-tracking/src/index.ts"
+      ],
+      "@bakery/management/feature-analytics": [
+        "libs/bakery-management/feature-analytics/src/index.ts"
+      ],
+      "@bakery/management/feature-cash": [
+        "libs/bakery-management/feature-cash/src/index.ts"
+      ],
+      "@bakery/management/feature-chat": [
+        "libs/bakery-management/feature-chat/src/index.ts"
+      ],
+      "@bakery/management/feature-daily-prep": [
+        "libs/bakery-management/feature-daily-prep/src/index.ts"
+      ],
+      "@bakery/management/feature-dashboard": [
+        "libs/bakery-management/feature-dashboard/src/index.ts"
+      ],
+      "@bakery/management/feature-delivery": [
+        "libs/bakery-management/feature-delivery/src/index.ts"
+      ],
+      "@bakery/management/feature-intern-orders": [
+        "libs/bakery-management/feature-intern-orders/src/index.ts"
+      ],
+      "@bakery/management/feature-inventory": [
+        "libs/bakery-management/feature-inventory/src/index.ts"
+      ],
+      "@bakery/management/feature-orders": [
+        "libs/bakery-management/feature-orders/src/index.ts"
+      ],
+      "@bakery/management/feature-processes": [
+        "libs/bakery-management/feature-processes/src/index.ts"
+      ],
+      "@bakery/management/feature-recipes": [
+        "libs/bakery-management/feature-recipes/src/index.ts"
+      ],
+      "@bakery/management/feature-saturday-production": [
+        "libs/bakery-management/feature-saturday-production/src/index.ts"
+      ],
+      "@bakery/management/feature-staff": [
+        "libs/bakery-management/feature-staff/src/index.ts"
+      ],
+      "@bakery/management/feature-settings": [
+        "libs/bakery-management/feature-settings/src/index.ts"
+      ],
+      "@bakery/management/feature-unsold-products": [
+        "libs/bakery-management/feature-unsold-products/src/index.ts"
+      ],
+      "@bakery/shared/contexts": ["libs/shared/contexts/src/index.ts"],
+      "@bakery/shared/data-access": ["libs/shared/data-access/src/index.ts"],
+      "@bakery/shared/data-mocks": ["libs/shared/data-mocks/src/index.ts"],
+      "@bakery/shared/test-utils": ["libs/shared/test-utils/src/index.ts"],
+      "@bakery/shared/types": ["libs/shared/types/src/index.ts"],
+      "@bakery/shared/ui": ["libs/shared/ui/src/index.ts"],
+      "@bakery/shared/utils": ["libs/shared/utils/src/index.ts"],
+      "@bakery/shop/feature-cart": [
+        "libs/bakery-shop/feature-cart/src/index.ts"
+      ],
+      "@bakery/shop/feature-catalog": [
+        "libs/bakery-shop/feature-catalog/src/index.ts"
+      ],
+      "api": ["dist/libs/api/import-service/core"],
+      "contexts": ["libs/shared/contexts/src/index.ts"],
+      "event-bus": ["libs/api/event-bus/src/index.ts"],
+      "libs": ["libs/src/index.ts"],
+      "reporting-service": ["libs/api/reporting-service/src/index.ts"],
+      "shared": ["libs/shared/src/index.ts"],
+      "types": ["libs/api/types/src/index.ts"],
+      "delivery": ["dist/libs/api/delivery"],
+      "shared-types": ["dist/libs/shared/types"]
+    }
+  },
+  "extends": "../../../../apps/bakery-api/tsconfig.build.json"
+}

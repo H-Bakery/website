@@ -27,13 +27,13 @@ const CATEGORY_LABELS: Record<string, string> = {
 
 /** Default fallback image per category */
 const CATEGORY_FALLBACK_IMAGE: Record<string, string> = {
-  brot: '/assets/images/products/Type=Brot Rund.svg',
-  broetchen: '/assets/images/products/Type=Brötchen.svg',
-  baguette: '/assets/images/products/Type=Baguette.svg',
-  teilchen: '/assets/images/products/Type=Croissant.svg',
-  snacks: '/assets/images/products/Type=Brezel.svg',
-  kuchen: '/assets/images/products/Type=Kuchen.svg',
-  torten: '/assets/images/products/Type=Kuchen.svg',
+  brot: '/assets/images/products/brot-rund.svg',
+  broetchen: '/assets/images/products/broetchen.svg',
+  baguette: '/assets/images/products/baguette.svg',
+  teilchen: '/assets/images/products/croissant.svg',
+  snacks: '/assets/images/products/brezel.svg',
+  kuchen: '/assets/images/products/kuchen.svg',
+  torten: '/assets/images/products/kuchen.svg',
 }
 
 /** Display order for categories */

@@ -1,0 +1,516 @@
+# Page snapshot
+
+```yaml
+- link:
+    - /url: /
+    - img
+- link "Sortiment":
+    - /url: /products
+- link "Neuigkeiten":
+    - /url: /news
+- link "Über uns":
+    - /url: /about
+- link "Bestellen":
+    - /url: /bestellen
+- main:
+    - img "Bäckerei Heusser - Frische Backwaren"
+    - text: Heute geschlossen
+    - heading "Bäckerei Heusser" [level=1]
+    - heading "Täglich frisch aus der Backstube — seit 1933" [level=5]
+    - link "06841 2229":
+        - /url: tel:068412229
+    - link "Jetzt bestellen":
+        - /url: tel:068412229
+    - link "So finden Sie uns":
+        - /url: '#location-hours'
+    - paragraph: Öffnungszeiten
+    - heading "Geschlossen" [level=6]
+    - paragraph: 'Nächste Öffnung: Dienstag 06:00 Uhr'
+    - link "Telefon 06841 2229 Anrufen und bestellen":
+        - /url: tel:068412229
+        - paragraph: Telefon
+        - heading "06841 2229" [level=6]
+        - paragraph: Anrufen und bestellen
+    - link "Bestellen Telefonisch oder vor Ort Gerne auch vorbestellen":
+        - /url: tel:068412229
+        - paragraph: Bestellen
+        - heading "Telefonisch oder vor Ort" [level=6]
+        - paragraph: Gerne auch vorbestellen
+    - link "Adresse Eckstraße 3, Homburg Route planen":
+        - /url: https://www.google.com/maps/dir/?api=1&destination=49.301429,7.369494&travelmode=driving
+        - paragraph: Adresse
+        - heading "Eckstraße 3, Homburg" [level=6]
+        - paragraph: Route planen
+    - heading "Frisch aus der Backstube" [level=2]
+    - paragraph: Entdecken Sie unser Sortiment — täglich frisch für Sie gebacken
+    - img "Bauernbrot"
+    - heading "Bauernbrot" [level=6]
+    - paragraph: Kräftig & saftig — unser Klassiker
+    - img "Brötchen"
+    - heading "Brötchen" [level=6]
+    - paragraph: Knusprig & ofenfrisch
+    - img "Croissant"
+    - heading "Croissant" [level=6]
+    - paragraph: Butterig & blättrig — wie in Frankreich
+    - img "Brezel"
+    - heading "Brezel" [level=6]
+    - paragraph: Frisch gelaugt & goldbraun
+    - img "Hefezopf"
+    - heading "Hefezopf" [level=6]
+    - paragraph: Locker & süß — perfekt zum Kaffee
+    - img "Kuchen"
+    - heading "Kuchen" [level=6]
+    - paragraph: Hausgemacht & mit Liebe gebacken
+    - img "Kornbrot"
+    - heading "Kornbrot" [level=6]
+    - paragraph: Vollwertig & voller Geschmack
+    - img "Schnecke"
+    - heading "Schnecke" [level=6]
+    - paragraph: Süß gefüllt & herrlich duftend
+    - button "Vorheriges Produkt"
+    - button "Nächstes Produkt"
+    - button "Produkt 1"
+    - button "Produkt 2"
+    - button "Produkt 3"
+    - button "Produkt 4"
+    - button "Produkt 5"
+    - button "Produkt 6"
+    - button "Produkt 7"
+    - button "Produkt 8"
+    - link "Alle Produkte ansehen":
+        - /url: /products
+    - region "Unser Sortiment":
+        - heading "Unser Sortiment" [level=2]
+        - paragraph: 103 Produkte in 7 Kategorien
+        - button "Alle"
+        - button "Brot (25)"
+        - button "Baguette (5)"
+        - button "Brötchen (15)"
+        - button "Teilchen (16)"
+        - button "Snacks (8)"
+        - button "Kuchen (26)"
+        - button "Torten (8)"
+        - heading "Brot" [level=3]
+        - paragraph: 25 Produkte
+        - img "Kornbrot 500g"
+        - paragraph: Kornbrot 500g
+        - paragraph: 2,50 €
+        - img "Kornbrot 1000g"
+        - paragraph: Kornbrot 1000g
+        - paragraph: 4,40 €
+        - img "Mischbrot 500g"
+        - paragraph: Mischbrot 500g
+        - paragraph: 2,50 €
+        - img "Mischbrot 1000g"
+        - paragraph: Mischbrot 1000g
+        - paragraph: 4,40 €
+        - img "Holzluken 500g"
+        - paragraph: Holzluken 500g
+        - paragraph: 2,90 €
+        - img "Holzluken 750g"
+        - paragraph: Holzluken 750g
+        - paragraph: 4,00 €
+        - img "Bergsteiger 500g"
+        - paragraph: Bergsteiger 500g
+        - paragraph: 2,90 €
+        - img "Bergsteiger 750g"
+        - paragraph: Bergsteiger 750g
+        - paragraph: 4,00 €
+        - img "Sommerkorn 500g"
+        - paragraph: Sommerkorn 500g
+        - paragraph: 2,90 €
+        - img "Sommerkorn 750g"
+        - paragraph: Sommerkorn 750g
+        - paragraph: 4,00 €
+        - img "Biker 500g"
+        - paragraph: Biker 500g
+        - paragraph: 2,90 €
+        - img "Biker 750g"
+        - paragraph: Biker 750g
+        - paragraph: 4,00 €
+        - img "Kerbricher 500g"
+        - paragraph: Kerbricher 500g
+        - paragraph: 2,90 €
+        - img "Kerbricher 750g"
+        - paragraph: Kerbricher 750g
+        - paragraph: 4,00 €
+        - img "Haferflocken 500g"
+        - paragraph: Haferflocken 500g
+        - paragraph: 3,20 €
+        - img "Haferflocken 750g"
+        - paragraph: Haferflocken 750g
+        - paragraph: 4,40 €
+        - img "Voll-Gut 500g"
+        - paragraph: Voll-Gut 500g
+        - paragraph: 3,20 €
+        - img "Voll-Gut 750g"
+        - paragraph: Voll-Gut 750g
+        - paragraph: 4,40 €
+        - img "Schwabenkornt 500g"
+        - paragraph: Schwabenkornt 500g
+        - paragraph: 3,50 €
+        - img "Schwabenkorn 1000g"
+        - paragraph: Schwabenkorn 1000g
+        - paragraph: 6,00 €
+        - img "Feel Happy 500g"
+        - paragraph: Feel Happy 500g
+        - paragraph: 4,20 €
+        - img "Hildegard von Bingen 500g"
+        - paragraph: Hildegard von Bingen 500g
+        - paragraph: 3,50 €
+        - img "Hildegard von Bingen 750g"
+        - paragraph: Hildegard von Bingen 750g
+        - paragraph: 4,60 €
+        - img "König Ludwig 500g"
+        - paragraph: König Ludwig 500g
+        - paragraph: 3,50 €
+        - img "König Ludwig 750g"
+        - paragraph: König Ludwig 750g
+        - paragraph: 4,60 €
+        - heading "Baguette" [level=3]
+        - paragraph: 5 Produkte
+        - img "Kasten Weißbrot"
+        - paragraph: Kasten Weißbrot
+        - paragraph: 3,40 €
+        - img "Baguette klein"
+        - paragraph: Baguette klein
+        - paragraph: 2,20 €
+        - img "Baguette groß"
+        - paragraph: Baguette groß
+        - paragraph: 3,40 €
+        - img "Roggenflit klein"
+        - paragraph: Roggenflit klein
+        - paragraph: 2,60 €
+        - img "Roggenflit groß"
+        - paragraph: Roggenflit groß
+        - paragraph: 4,60 €
+        - heading "Brötchen" [level=3]
+        - paragraph: 15 Produkte
+        - img "Doppelweck"
+        - paragraph: Doppelweck
+        - paragraph: 0,80 €
+        - img "Samstagsweck"
+        - paragraph: Samstagsweck
+        - paragraph: 0,80 €
+        - img "Sternweck"
+        - paragraph: Sternweck
+        - paragraph: 0,60 €
+        - img "Flitweck"
+        - paragraph: Flitweck
+        - paragraph: 0,80 €
+        - img "Elsässer"
+        - paragraph: Elsässer
+        - paragraph: 0,60 €
+        - img "Knusperweck"
+        - paragraph: Knusperweck
+        - paragraph: 0,60 €
+        - img "Roggenweck"
+        - paragraph: Roggenweck
+        - paragraph: 0,70 €
+        - img "Körnerweck"
+        - paragraph: Körnerweck
+        - paragraph: 0,80 €
+        - img "Mohn-Brötchen"
+        - paragraph: Mohn-Brötchen
+        - paragraph: 0,70 €
+        - img "Sesam-Brötchen"
+        - paragraph: Sesam-Brötchen
+        - paragraph: 0,70 €
+        - img "Kümmel-Brötchen"
+        - paragraph: Kümmel-Brötchen
+        - paragraph: 0,70 €
+        - img "Dinkel-Brötchen"
+        - paragraph: Dinkel-Brötchen
+        - paragraph: 0,85 €
+        - img "Mohn-Hörnchen"
+        - paragraph: Mohn-Hörnchen
+        - paragraph: 1,20 €
+        - img "Sesam-Hörnchen"
+        - paragraph: Sesam-Hörnchen
+        - paragraph: 1,20 €
+        - img "Käse-Brötchen"
+        - paragraph: Käse-Brötchen
+        - paragraph: 1,20 €
+        - heading "Teilchen" [level=3]
+        - paragraph: 16 Produkte
+        - img "Gefüllte Schnecken (Schoko, Pudding, Rosinen, Nuss oder Mohn)"
+        - paragraph: Gefüllte Schnecken (Schoko, Pudding, Rosinen, Nuss oder Mohn)
+        - paragraph: 2,00 €
+        - img "Plunder-Hörnchen"
+        - paragraph: Plunder-Hörnchen
+        - paragraph: 2,00 €
+        - img "Taschen Schleifen"
+        - paragraph: Taschen Schleifen
+        - paragraph: 2,00 €
+        - img "Kirsch-Plotzer"
+        - paragraph: Kirsch-Plotzer
+        - paragraph: 2,00 €
+        - img "Puddingstückchen"
+        - paragraph: Puddingstückchen
+        - paragraph: 2,00 €
+        - img "Butterkuchen"
+        - paragraph: Butterkuchen
+        - paragraph: 2,00 €
+        - img "Streusel"
+        - paragraph: Streusel
+        - paragraph: 1,80 €
+        - img "Schoko-Vanille-Hörnchen"
+        - paragraph: Schoko-Vanille-Hörnchen
+        - paragraph: 1,80 €
+        - img "Quarktasche"
+        - paragraph: Quarktasche
+        - paragraph: 1,80 €
+        - img "Einback"
+        - paragraph: Einback
+        - paragraph: 1,20 €
+        - img "Sckokobrötchen"
+        - paragraph: Sckokobrötchen
+        - paragraph: 1,50 €
+        - img "Rosinenbrötchen"
+        - paragraph: Rosinenbrötchen
+        - paragraph: 1,50 €
+        - img "Croissant"
+        - paragraph: Croissant
+        - paragraph: 1,20 €
+        - img "Pain Chocolate"
+        - paragraph: Pain Chocolate
+        - paragraph: 1,50 €
+        - img "Muffin"
+        - paragraph: Muffin
+        - paragraph: 1,60 €
+        - img "Granatsplitter"
+        - paragraph: Granatsplitter
+        - paragraph: 2,20 €
+        - heading "Snacks" [level=3]
+        - paragraph: 8 Produkte
+        - img "Brezel"
+        - paragraph: Brezel
+        - paragraph: 1,00 €
+        - img "Laugenstange"
+        - paragraph: Laugenstange
+        - paragraph: 1,00 €
+        - img "Laugenbrötchen"
+        - paragraph: Laugenbrötchen
+        - paragraph: 1,00 €
+        - img "Laugenecke"
+        - paragraph: Laugenecke
+        - paragraph: 1,89 €
+        - img "Laugencroquette"
+        - paragraph: Laugencroquette
+        - paragraph: 1,89 €
+        - img "Keimkraft-Hörnchen"
+        - paragraph: Keimkraft-Hörnchen
+        - paragraph: 1,89 €
+        - img "Käsestange"
+        - paragraph: Käsestange
+        - paragraph: 2,69 €
+        - img "Käsestange mit Schinken"
+        - paragraph: Käsestange mit Schinken
+        - paragraph: 2,69 €
+        - heading "Kuchen" [level=3]
+        - paragraph: 26 Produkte
+        - img "Rahmkuchen"
+        - paragraph: Rahmkuchen
+        - paragraph: 18,00 €
+        - img "Rahmkuchen (1 Stück)"
+        - paragraph: Rahmkuchen (1 Stück)
+        - paragraph: 1,80 €
+        - img "Käsekuchen"
+        - paragraph: Käsekuchen
+        - paragraph: 18,00 €
+        - img "Käsekuchen (1 Stück)"
+        - paragraph: Käsekuchen (1 Stück)
+        - paragraph: 1,80 €
+        - img "Apfelkuchen"
+        - paragraph: Apfelkuchen
+        - paragraph: 18,00 €
+        - img "Apfelkuchen (1 Stück)"
+        - paragraph: Apfelkuchen (1 Stück)
+        - paragraph: 1,80 €
+        - img "Kirschkuchen"
+        - paragraph: Kirschkuchen
+        - paragraph: 18,00 €
+        - img "Kirschkuchen (1 Stück)"
+        - paragraph: Kirschkuchen (1 Stück)
+        - paragraph: 1,80 €
+        - img "Blechkuchen"
+        - paragraph: Blechkuchen
+        - paragraph: 45,00 €
+        - img "Blechkuchen (1 Stück)"
+        - paragraph: Blechkuchen (1 Stück)
+        - paragraph: 2,20 €
+        - img "Marmorkuchen"
+        - paragraph: Marmorkuchen
+        - paragraph: 18,00 €
+        - img "Marmorkuchen (1 Stück)"
+        - paragraph: Marmorkuchen (1 Stück)
+        - paragraph: 1,20 €
+        - img "Zitronenkuchen"
+        - paragraph: Zitronenkuchen
+        - paragraph: 18,00 €
+        - img "Zitronenkuchen (1 Stück)"
+        - paragraph: Zitronenkuchen (1 Stück)
+        - paragraph: 1,20 €
+        - img "Nusskuchen"
+        - paragraph: Nusskuchen
+        - paragraph: 18,00 €
+        - img "Nusskuchen (1 Stück)"
+        - paragraph: Nusskuchen (1 Stück)
+        - paragraph: 1,20 €
+        - img "Kranzkuchen ungefüllt"
+        - paragraph: Kranzkuchen ungefüllt
+        - paragraph: 18,00 €
+        - img "Kranzkuchen ungefüllt (1/4 Stück)"
+        - paragraph: Kranzkuchen ungefüllt (1/4 Stück)
+        - paragraph: 4,50 €
+        - img "Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding"
+        - paragraph: Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding
+        - paragraph: 20,00 €
+        - img "Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding (1/4 Stück)"
+        - paragraph: Kranzkuchen gefüllt (Nuss, Schoko, Quark oder Pudding (1/4 Stück)
+        - paragraph: 5,00 €
+        - img "Streuselkuchen groß"
+        - paragraph: Streuselkuchen groß
+        - paragraph: 12,00 €
+        - img "Streuselkuchen groß (1/4 Stück)"
+        - paragraph: Streuselkuchen groß (1/4 Stück)
+        - paragraph: 3,00 €
+        - img "Streuselkuchen klein"
+        - paragraph: Streuselkuchen klein
+        - paragraph: 7,00 €
+        - img "Zopf ungefüllt"
+        - paragraph: Zopf ungefüllt
+        - paragraph: 7,00 €
+        - img "Zopf gefüllt (Nuss, Schoko, Quark oder Pudding)"
+        - paragraph: Zopf gefüllt (Nuss, Schoko, Quark oder Pudding)
+        - paragraph: 10,00 €
+        - img "Rosinenbrot"
+        - paragraph: Rosinenbrot
+        - paragraph: 9,00 €
+        - heading "Torten" [level=3]
+        - paragraph: 8 Produkte
+        - img "Obstboden"
+        - paragraph: Obstboden
+        - paragraph: 5,50 €
+        - img "Tortenboden"
+        - paragraph: Tortenboden
+        - paragraph: 5,50 €
+        - img "Sahnerollen"
+        - paragraph: Sahnerollen
+        - paragraph: 20,00 €
+        - img "Sahnerollen (1 Stück)"
+        - paragraph: Sahnerollen (1 Stück)
+        - paragraph: 2,00 €
+        - img "Schwarzwälder-Kirsch-Torte"
+        - paragraph: Schwarzwälder-Kirsch-Torte
+        - paragraph: 45,00 €
+        - img "Sahne-Torte"
+        - paragraph: Sahne-Torte
+        - paragraph: 36,00 €
+        - img "Buttercreme-Torte"
+        - paragraph: Buttercreme-Torte
+        - paragraph: 45,00 €
+        - img "Buttercreme-Rolle"
+        - paragraph: Buttercreme-Rolle
+        - paragraph: 28,00 €
+    - heading "Was unsere Kunden sagen" [level=2]
+    - heading "Echte Bewertungen von echten Menschen aus unserer Nachbarschaft" [level=6]
+    - img "5 Stars"
+    - blockquote: “das ist noch eine 3 Generationen - Bäckerei da wird noch alles, Brot Brötchen, Kuchen, Torten selber gebacken nix vom Band. Echte Handwerkskunst vom Feinsten 👌🏻😍”
+    - text: F
+    - heading "Freyja7" [level=6]
+    - paragraph: Stammkunde
+    - text: Verifiziert
+    - img "3 Stars"
+    - blockquote: “Lieblings Bäckerei! Seit der Kindheit!!! Hier wird noch selbst gebacken und es schmeckt ausgezeichnet! Preis Leistung top👌 Dazu ein außergewöhnlich freundliches Personal!!”
+    - text: S
+    - heading "Sarah K" [level=6]
+    - paragraph: Lokaler Kunde
+    - text: Verifiziert
+    - img "5 Stars"
+    - blockquote: “Super leckere Brötchen. Schön groß, einfach toll”
+    - text: 'N'
+    - heading "Niko H" [level=6]
+    - paragraph: Geschäftskunde
+    - text: Verifiziert
+    - heading "Echte Kundenbewertungen" [level=6]
+    - paragraph: 'Durchschnittliche Bewertung: 4.8 von 5 Sternen'
+    - link "Alle Google Bewertungen ansehen":
+        - /url: https://share.google/99F0UfUOhLCB8waq1
+    - paragraph: Wir freuen uns auf Sie
+    - heading "Frisch bestellen — direkt vom Bäcker" [level=2]
+    - paragraph: Rufen Sie uns an und bestellen Sie frisches Brot, Brötchen und Feingebäck. Gerne nehmen wir auch Vorbestellungen für Feiern und besondere Anlässe entgegen.
+    - button "Jetzt anrufen"
+    - button "Kontakt aufnehmen"
+    - heading "Besuchen Sie uns" [level=2]
+    - heading "Öffnungszeiten" [level=5]
+    - table:
+        - rowgroup:
+            - row "Mo Geschlossen":
+                - cell "Mo"
+                - cell "Geschlossen"
+            - row "Di, Mi, Do, Fr 6:00 - 13:30 Uhr":
+                - cell "Di, Mi, Do, Fr"
+                - cell "6:00 - 13:30 Uhr"
+            - row "Sa 6:00 - 12:30 Uhr":
+                - cell "Sa"
+                - cell "6:00 - 12:30 Uhr"
+            - row "So und Feiertage 8:00 - 11:00 Uhr":
+                - cell "So und Feiertage"
+                - cell "8:00 - 11:00 Uhr"
+    - separator
+    - heading "Adresse" [level=5]
+    - paragraph: Eckstraße 3
+    - paragraph: 66424 Homburg
+    - separator
+    - heading "Kontakt" [level=5]
+    - link "06841 2229":
+        - /url: tel:068412229
+    - paragraph: 01522 6621236
+    - link "Route planen":
+        - /url: https://www.google.com/maps/dir/?api=1&destination=49.301429495245586,7.369493502873482&travelmode=driving
+    - link "Anrufen":
+        - /url: tel:068412229
+    - button "Marker"
+    - button "Zoom in"
+    - button "Zoom out"
+    - link "Leaflet":
+        - /url: https://leafletjs.com
+    - text: ©
+    - link "OpenStreetMap":
+        - /url: https://www.openstreetmap.org/copyright
+    - text: contributors
+- img
+- text: Bäckerei Heusser
+- paragraph: Wir backen mit Herz, nach Tradition und nur für euch.
+- paragraph: Seit 1933
+- heading "Navigation" [level=6]
+- link "Sortiment":
+    - /url: /products
+    - paragraph: Sortiment
+- link "Neuigkeiten":
+    - /url: /news
+    - paragraph: Neuigkeiten
+- link "Über uns":
+    - /url: /about
+    - paragraph: Über uns
+- link "Kontakt":
+    - /url: /contact
+    - paragraph: Kontakt
+- heading "Kontakt" [level=6]
+- paragraph: Eckstraße 3
+- paragraph: 66424 Homburg/Kirrberg
+- 'link "Tel: 06841 2229"':
+    - /url: tel:068412229
+- paragraph: info@baeckerei-heusser.de
+- heading "Öffnungszeiten" [level=6]
+- paragraph: 'Mo: Geschlossen'
+- paragraph: 'Di-Fr: 6:00 - 13:30 Uhr'
+- paragraph: 'Sa: 6:00 - 12:30 Uhr'
+- paragraph: 'So: 8:00 - 11:00 Uhr'
+- paragraph: © Bäckerei Heusser 2025
+- link "Impressum":
+    - /url: /imprint
+    - paragraph: Impressum
+- alert
+```
