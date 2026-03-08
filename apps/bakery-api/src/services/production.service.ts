@@ -11,14 +11,21 @@ import notificationHelper, {
   NotificationData,
 } from '../utils/notificationHelper'
 import { logger } from '../utils/logger'
+import { QualityResultAttributes } from '../models/ProductionStep'
+
+export interface StaffShift {
+  start: string
+  end: string
+  role?: string
+}
 
 export interface ScheduleData {
   scheduleDate: Date | string
   scheduleType?: 'daily' | 'weekly' | 'special'
   status?: string
-  staffShifts?: Record<string, any>
-  availableEquipment?: any[]
-  plannedBatches?: any[]
+  staffShifts?: Record<string, StaffShift>
+  availableEquipment?: string[]
+  plannedBatches?: BatchData[]
   workdayStartTime?: string
   workdayEndTime?: string
   notes?: string
@@ -39,8 +46,8 @@ export interface BatchData {
 }
 
 export interface StepCompletionData {
-  qualityResults?: any
-  actualParameters?: any
+  qualityResults?: Record<string, QualityResultAttributes>
+  actualParameters?: Record<string, unknown>
   notes?: string
 }
 
@@ -101,7 +108,7 @@ class ProductionService {
         ...capacityMetrics,
         createdBy: userId,
         status: 'draft',
-      } as any)
+      } as Parameters<typeof ProductionSchedule.create>[0])
 
       // Send notification
       await notificationHelper.sendNotification({
@@ -145,7 +152,7 @@ class ProductionService {
       // Validate status transitions
       if (
         updateData.status &&
-        !this.isValidStatusTransition(schedule.status, updateData.status as any)
+        !this.isValidStatusTransition(schedule.status, updateData.status)
       ) {
         throw new Error(
           `Invalid status transition from ${schedule.status} to ${updateData.status}`
@@ -157,11 +164,13 @@ class ProductionService {
         const capacityMetrics = await this.calculateScheduleCapacity({
           ...schedule.toJSON(),
           ...updateData,
-        })
+        } as ScheduleData)
         Object.assign(updateData, capacityMetrics)
       }
 
-      await schedule.update(updateData as any)
+      await schedule.update(
+        updateData as unknown as Partial<ProductionSchedule>
+      )
 
       logger.info(`Production schedule updated successfully: ${scheduleId}`)
       return schedule
@@ -190,7 +199,7 @@ class ProductionService {
         includeMetrics = false,
       } = filters
 
-      const whereClause: any = {}
+      const whereClause: Record<string, unknown> = {}
 
       // Date range filter
       if (startDate || endDate) {
@@ -227,8 +236,11 @@ class ProductionService {
       // Add metrics if requested
       if (includeMetrics) {
         for (const schedule of schedules.rows) {
-          ;(schedule as any).dataValues.metrics =
-            await this.calculateScheduleMetrics(schedule)
+          ;(
+            schedule as ProductionSchedule & {
+              dataValues: Record<string, unknown>
+            }
+          ).dataValues.metrics = await this.calculateScheduleMetrics(schedule)
         }
       }
 
@@ -282,7 +294,7 @@ class ProductionService {
         ...timingData,
         createdBy: userId,
         status: 'planned',
-      } as any)
+      } as Parameters<typeof ProductionBatch.create>[0])
 
       // Create production steps from workflow
       const steps = await this.createBatchSteps(batch.id, workflow)
@@ -349,7 +361,7 @@ class ProductionService {
       })
 
       // Start first step
-      const firstStep = batch.steps?.find((step: any) => step.stepIndex === 0)
+      const firstStep = batch.steps?.find((step) => step.stepIndex === 0)
       if (firstStep) {
         await firstStep.update({
           status: 'ready',
@@ -475,7 +487,7 @@ class ProductionService {
     // Calculate total staff hours
     if (scheduleData.staffShifts) {
       totalStaffHours = Object.values(scheduleData.staffShifts).reduce(
-        (total, shift: any) => {
+        (total, shift: StaffShift) => {
           if (shift.start && shift.end) {
             const start = new Date(`1970-01-01T${shift.start}`)
             const end = new Date(`1970-01-01T${shift.end}`)
@@ -580,7 +592,9 @@ class ProductionService {
       progress: 0,
     }))
 
-    return await ProductionStep.bulkCreate(steps as any)
+    return await ProductionStep.bulkCreate(
+      steps as Parameters<typeof ProductionStep.bulkCreate>[0]
+    )
   }
 
   /**

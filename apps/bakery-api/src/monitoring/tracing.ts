@@ -4,7 +4,7 @@ import {
   PeriodicExportingMetricReader,
   ConsoleMetricExporter,
 } from '@opentelemetry/sdk-metrics'
-import { Resource } from '@opentelemetry/resources'
+import { resourceFromAttributes } from '@opentelemetry/resources'
 import {
   ATTR_SERVICE_NAME,
   ATTR_SERVICE_VERSION,
@@ -26,7 +26,7 @@ const logger = {
 }
 
 // Create resource identifying the service
-const resource = new Resource({
+const resource = resourceFromAttributes({
   [ATTR_SERVICE_NAME]: 'bakery-api',
   [ATTR_SERVICE_VERSION]: process.env['APP_VERSION'] || '0.0.0',
   environment: process.env['NODE_ENV'] || 'development',

@@ -110,14 +110,61 @@ declare module 'multer' {
   export = multer
 }
 
+/**
+ * express-validator ambient declaration.
+ * The package is installed but its ESM-only types are not compatible
+ * with the CJS build configuration. This declaration matches the real API.
+ */
 declare module 'express-validator' {
-  import { RequestHandler, Request } from 'express'
-  export function body(field: string, message?: string): any
-  export function param(field: string, message?: string): any
-  export function query(field: string, message?: string): any
+  import { Request, Response, NextFunction } from 'express'
+  export interface ValidationChain {
+    (req: Request, res: Response, next: NextFunction): void
+    isString(): ValidationChain
+    isInt(options?: Record<string, unknown>): ValidationChain
+    isFloat(options?: Record<string, unknown>): ValidationChain
+    isBoolean(): ValidationChain
+    isEmail(): ValidationChain
+    isISO8601(): ValidationChain
+    isIn(values: unknown[]): ValidationChain
+    isArray(options?: Record<string, unknown>): ValidationChain
+    optional(options?: Record<string, unknown>): ValidationChain
+    notEmpty(): ValidationChain
+    trim(): ValidationChain
+    escape(): ValidationChain
+    toInt(): ValidationChain
+    toFloat(): ValidationChain
+    withMessage(message: string): ValidationChain
+    custom(
+      validator: (
+        value: unknown,
+        meta: { req: Request; path: string }
+      ) => unknown
+    ): ValidationChain
+    default(defaultValue: unknown): ValidationChain
+    not(): ValidationChain
+    exists(options?: Record<string, unknown>): ValidationChain
+    bail(): ValidationChain
+    isLength(options: { min?: number; max?: number }): ValidationChain
+    matches(pattern: RegExp): ValidationChain
+    run(req: Request): Promise<unknown>
+  }
+  export interface ValidationError {
+    type: string
+    value?: unknown
+    msg: string
+    path: string
+    location: string
+  }
+  export function body(field: string, message?: string): ValidationChain
+  export function param(field: string, message?: string): ValidationChain
+  export function query(field: string, message?: string): ValidationChain
+  export function header(field: string, message?: string): ValidationChain
+  export function cookie(field: string, message?: string): ValidationChain
+  export function check(field: string, message?: string): ValidationChain
   export function validationResult(req: Request): {
     isEmpty(): boolean
-    array(): any[]
+    array(): ValidationError[]
+    formatWith<T>(formatter: (error: ValidationError) => T): { array(): T[] }
   }
 }
 
@@ -139,48 +186,4 @@ declare module '@bakery/api/dashboard' {
 declare module '@bakery/api/staff' {
   import { Router } from 'express'
   export function createStaffRoutes(deps?: any): Router
-}
-
-declare module '@opentelemetry/sdk-node' {
-  export class NodeSDK {
-    constructor(config: any)
-    start(): void
-    shutdown(): Promise<void>
-  }
-}
-
-declare module '@opentelemetry/auto-instrumentations-node' {
-  export function getNodeAutoInstrumentations(config?: any): any
-}
-
-declare module '@opentelemetry/sdk-metrics' {
-  export class PeriodicExportingMetricReader {
-    constructor(config: any)
-  }
-  export class ConsoleMetricExporter {
-    constructor()
-  }
-}
-
-declare module '@opentelemetry/resources' {
-  export class Resource {
-    constructor(attributes: Record<string, any>)
-  }
-}
-
-declare module '@opentelemetry/semantic-conventions' {
-  export const ATTR_SERVICE_NAME: string
-  export const ATTR_SERVICE_VERSION: string
-}
-
-declare module '@opentelemetry/exporter-jaeger' {
-  export class JaegerExporter {
-    constructor(config: any)
-  }
-}
-
-declare module '@opentelemetry/sdk-trace-base' {
-  export class BatchSpanProcessor {
-    constructor(exporter: any)
-  }
 }

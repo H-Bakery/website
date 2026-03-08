@@ -15,6 +15,10 @@ import {
 } from '../models'
 import { logger } from '../utils/logger'
 
+/** Generic type for raw SQL query result rows – values are dynamic from SQL */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- raw SQL results have dynamic column types
+type QueryRow = Record<string, any>
+
 export interface AnalyticsFilters {
   startDate?: Date | string
   endDate?: Date | string
@@ -195,7 +199,7 @@ class AnalyticsService {
         : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
 
       // Total revenue and order count
-      const totalMetrics: any = await Order.findOne({
+      const totalMetrics = (await Order.findOne({
         attributes: [
           [sequelize.fn('SUM', sequelize.col('total')), 'totalRevenue'],
           [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount'],
@@ -210,7 +214,7 @@ class AnalyticsService {
           },
         },
         raw: true,
-      })
+      })) as QueryRow | null
 
       // Daily revenue breakdown
       const dailyRevenue = await this.getDailyRevenue(start, end)
@@ -225,7 +229,7 @@ class AnalyticsService {
       const previousPeriodStart = new Date(
         start.getTime() - (end.getTime() - start.getTime())
       )
-      const previousRevenue = await Order.sum('total' as any, {
+      const previousRevenue = await Order.sum('total', {
         where: {
           createdAt: {
             [Op.between]: [previousPeriodStart, start],
@@ -282,7 +286,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       date: row.date,
       revenue: parseFloat(row.revenue) || 0,
       orders: parseInt(row.orders) || 0,
@@ -317,11 +321,11 @@ class AnalyticsService {
     )
 
     const totalRevenue = results.reduce(
-      (sum: number, row: any) => sum + parseFloat(row.revenue),
+      (sum: number, row: QueryRow) => sum + parseFloat(row.revenue),
       0
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       category: row.category,
       revenue: parseFloat(row.revenue) || 0,
       percentage:
@@ -357,11 +361,11 @@ class AnalyticsService {
     )
 
     const totalAmount = results.reduce(
-      (sum: number, row: any) => sum + parseFloat(row.amount),
+      (sum: number, row: QueryRow) => sum + parseFloat(row.amount),
       0
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       method: row.method || 'Unknown',
       amount: parseFloat(row.amount) || 0,
       percentage:
@@ -429,7 +433,7 @@ class AnalyticsService {
     limit: number = 10
   ) {
     let categoryFilter = ''
-    const replacements: any = {
+    const replacements: Record<string, unknown> = {
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
       limit,
@@ -467,7 +471,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       id: row.id,
       name: row.name,
       category: row.category,
@@ -535,10 +539,10 @@ class AnalyticsService {
     )
 
     const previousMap = new Map<string, number>(
-      previous.map((row: any) => [row.category, parseFloat(row.revenue)])
+      previous.map((row: QueryRow) => [row.category, parseFloat(row.revenue)])
     )
 
-    return current.map((row: any) => {
+    return current.map((row: QueryRow) => {
       const currentRevenue = parseFloat(row.revenue)
       const previousRevenue = previousMap.get(row.category) || 0
       const growthRate =
@@ -584,7 +588,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       id: row.id,
       name: row.name,
       daysInInventory: Math.round(row.daysInInventory) || 0,
@@ -646,11 +650,11 @@ class AnalyticsService {
     )
 
     const firstHalfMap = new Map<number, number>(
-      firstHalf.map((row: any) => [row.productId, parseInt(row.quantity)])
+      firstHalf.map((row: QueryRow) => [row.productId, parseInt(row.quantity)])
     )
 
     return secondHalf
-      .map((row: any) => {
+      .map((row: QueryRow) => {
         const currentQuantity = parseInt(row.quantity)
         const previousQuantity = firstHalfMap.get(row.productId) || 0
 
@@ -773,8 +777,8 @@ class AnalyticsService {
       }
     )
 
-    const total = (totalResult[0] as any)?.total || 0
-    const newCustomers = (newResult[0] as any)?.new || 0
+    const total = (totalResult[0] as QueryRow)?.total || 0
+    const newCustomers = (newResult[0] as QueryRow)?.new || 0
 
     return {
       total,
@@ -818,7 +822,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any, index: number) => ({
+    return results.map((row: QueryRow, index: number) => ({
       id: index + 1, // Since we don't have customer IDs, use index
       name: row.name,
       orderCount: parseInt(row.orderCount) || 0,
@@ -867,7 +871,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       segment: row.segment,
       count: parseInt(row.count) || 0,
       avgValue: parseFloat(row.avgValue) || 0,
@@ -915,14 +919,14 @@ class AnalyticsService {
         replacements: {
           startDate: startDate.toISOString(),
           endDate: endDate.toISOString(),
-          customers: previousCustomers.map((c: any) => c.customerName),
+          customers: previousCustomers.map((c: QueryRow) => c.customerName),
         },
         type: QueryTypes.SELECT,
       }
     )
 
     const previousCount = previousCustomers.length
-    const returnedCount = (returnedCustomers[0] as any)?.returned || 0
+    const returnedCount = (returnedCustomers[0] as QueryRow)?.returned || 0
     const retentionRate =
       previousCount > 0 ? (returnedCount / previousCount) * 100 : 0
 
@@ -949,7 +953,8 @@ class AnalyticsService {
       rate: Math.round(retentionRate * 100) / 100,
       churnRate: Math.round((100 - retentionRate) * 100) / 100,
       averageLifetimeValue:
-        parseFloat((lifetimeValue[0] as any)?.avgLifetimeValue) || 0,
+        parseFloat(String((lifetimeValue[0] as QueryRow)?.avgLifetimeValue)) ||
+        0,
     }
   }
 
@@ -999,11 +1004,11 @@ class AnalyticsService {
     )
 
     const total = results.reduce(
-      (sum: number, row: any) => sum + parseInt(row.customerCount),
+      (sum: number, row: QueryRow) => sum + parseInt(row.customerCount),
       0
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       frequency: row.frequency,
       customerCount: parseInt(row.customerCount) || 0,
       percentage:
@@ -1083,7 +1088,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       hour: row.hour,
       orderCount: parseInt(row.orderCount) || 0,
       avgOrderValue: parseFloat(row.avgOrderValue) || 0,
@@ -1125,7 +1130,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       day: row.day,
       orderCount: parseInt(row.orderCount) || 0,
       revenue: parseFloat(row.revenue) || 0,
@@ -1169,7 +1174,7 @@ class AnalyticsService {
       }
     )
 
-    return results.map((row: any) => ({
+    return results.map((row: QueryRow) => ({
       staffId: row.staffId,
       staffName: row.staffName || 'Unknown',
       ordersProcessed: parseInt(row.ordersProcessed) || 0,
@@ -1189,7 +1194,7 @@ class AnalyticsService {
         date: {
           [Op.between]: [startDate, endDate],
         },
-      } as any,
+      },
       include: [
         {
           model: Product,
@@ -1330,7 +1335,7 @@ class AnalyticsService {
       }
     )
 
-    const data = results[0] as any
+    const data = results[0] as QueryRow
 
     return {
       total: parseInt(data.total) || 0,
@@ -1364,13 +1369,13 @@ class AnalyticsService {
       }
     )
 
-    const outOfStock = (await Product.count({
+    const outOfStock = await Product.count({
       where: {
-        stockQuantity: 0,
-      } as any,
-    })) as number
+        stock: 0,
+      },
+    })
 
-    const soldData = soldResults[0] as any
+    const soldData = soldResults[0] as QueryRow
 
     return {
       totalSold: parseInt(soldData.totalSold) || 0,

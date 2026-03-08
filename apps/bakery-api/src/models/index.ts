@@ -1,7 +1,17 @@
 import { Sequelize } from 'sequelize'
 
-// Re-export sequelize instance - set during initializeModels
-export let sequelize: Sequelize
+// Sequelize instance - set during initializeModels
+let _sequelize: Sequelize | undefined
+
+export function getSequelize(): Sequelize {
+  if (!_sequelize) {
+    throw new Error('Sequelize not initialized. Call initializeModels() first.')
+  }
+  return _sequelize
+}
+
+// Keep backward-compatible named export for existing imports
+export { _sequelize as sequelize }
 
 // Temporary local logger until utils library is properly configured
 const logger = {
@@ -100,7 +110,7 @@ export { Cash, Chat, Product, UnsoldProduct }
 
 export async function initializeModels(seq: Sequelize): Promise<void> {
   // Store reference for re-export so services can import { sequelize } from '../models'
-  sequelize = seq
+  _sequelize = seq
   logger.info('Initializing database models...')
 
   try {
@@ -266,7 +276,7 @@ function setupAssociations(): void {
 }
 
 // Export function to get all models (for migrations)
-export function getAllModels(): any[] {
+export function getAllModels(): unknown[] {
   return [
     User, // Use User instead of Customer
     Product,

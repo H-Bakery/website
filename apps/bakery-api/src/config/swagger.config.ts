@@ -1,6 +1,22 @@
 import swaggerJSDoc from 'swagger-jsdoc'
 
-const options: any = {
+interface SwaggerOptions {
+  definition: {
+    openapi: string
+    info: {
+      title: string
+      version: string
+      description: string
+      contact?: { name: string; email: string }
+    }
+    servers?: Array<{ url: string; description: string }>
+    components?: Record<string, unknown>
+    tags?: Array<{ name: string; description: string }>
+  }
+  apis: string[]
+}
+
+const options: SwaggerOptions = {
   definition: {
     openapi: '3.0.0',
     info: {
