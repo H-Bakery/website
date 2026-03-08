@@ -121,6 +121,11 @@ declare module 'express-validator' {
   }
 }
 
+declare module '@bakery/api/workflows' {
+  import { Router } from 'express'
+  export const workflowRoutes: Router
+}
+
 declare module '@bakery/api/chat' {
   import { Router } from 'express'
   export const chatRoutes: Router

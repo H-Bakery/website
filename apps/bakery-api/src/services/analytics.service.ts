@@ -265,7 +265,7 @@ class AnalyticsService {
       SELECT 
         DATE(createdAt) as date,
         COUNT(*) as orders,
-        COALESCE(SUM(totalPrice), 0) as revenue
+        COALESCE(SUM(total), 0) as revenue
       FROM Orders 
       WHERE createdAt >= :startDate
         AND createdAt <= :endDate
@@ -340,7 +340,7 @@ class AnalyticsService {
       SELECT 
         paymentMethod as method,
         COUNT(*) as count,
-        SUM(totalPrice) as amount
+        SUM(total) as amount
       FROM Orders 
       WHERE createdAt >= :startDate
         AND createdAt <= :endDate
@@ -796,8 +796,8 @@ class AnalyticsService {
       SELECT 
         customerName as name,
         COUNT(*) as orderCount,
-        SUM(totalPrice) as totalSpent,
-        AVG(totalPrice) as averageOrderValue,
+        SUM(total) as totalSpent,
+        AVG(total) as averageOrderValue,
         MAX(createdAt) as lastOrderDate
       FROM Orders 
       WHERE createdAt >= :startDate
@@ -847,8 +847,8 @@ class AnalyticsService {
         SELECT 
           customerName,
           COUNT(*) as orderCount,
-          AVG(totalPrice) as avgValue,
-          SUM(totalPrice) as totalRevenue
+          AVG(total) as avgValue,
+          SUM(total) as totalRevenue
         FROM Orders
         WHERE createdAt >= :startDate
           AND createdAt <= :endDate
@@ -933,7 +933,7 @@ class AnalyticsService {
       FROM (
         SELECT 
           customerName,
-          SUM(totalPrice) as totalSpent
+          SUM(total) as totalSpent
         FROM Orders
         WHERE status != 'cancelled'
           AND customerName IS NOT NULL
@@ -1066,7 +1066,7 @@ class AnalyticsService {
       SELECT 
         CAST(strftime('%H', createdAt) AS INTEGER) as hour,
         COUNT(*) as orderCount,
-        AVG(totalPrice) as avgOrderValue
+        AVG(total) as avgOrderValue
       FROM Orders 
       WHERE createdAt >= :startDate
         AND createdAt <= :endDate
@@ -1107,8 +1107,8 @@ class AnalyticsService {
           WHEN 6 THEN 'Saturday'
         END as day,
         COUNT(*) as orderCount,
-        SUM(totalPrice) as revenue,
-        AVG(totalPrice) as avgOrderValue
+        SUM(total) as revenue,
+        AVG(total) as avgOrderValue
       FROM Orders 
       WHERE createdAt >= :startDate
         AND createdAt <= :endDate
@@ -1143,7 +1143,7 @@ class AnalyticsService {
         o.staffId,
         u.username as staffName,
         COUNT(o.id) as ordersProcessed,
-        SUM(o.totalPrice) as totalRevenue,
+        SUM(o.total) as totalRevenue,
         AVG(
           CASE 
             WHEN o.completedAt IS NOT NULL 
@@ -1316,7 +1316,7 @@ class AnalyticsService {
         COUNT(*) as total,
         COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
         COUNT(CASE WHEN status = 'cancelled' THEN 1 END) as cancelled,
-        AVG(CASE WHEN status != 'cancelled' THEN totalPrice END) as average
+        AVG(CASE WHEN status != 'cancelled' THEN total END) as average
       FROM Orders
       WHERE createdAt >= :startDate
         AND createdAt <= :endDate
