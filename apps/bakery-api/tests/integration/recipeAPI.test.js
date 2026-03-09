@@ -4,6 +4,12 @@ const fs = require('fs').promises
 const path = require('path')
 const mockFs = require('mock-fs')
 
+// Pre-load Express's bundled iconv-lite encodings before mock-fs intercepts
+// the filesystem. body-parser lazy-loads encoding modules from Express's own
+// iconv-lite copy, which fails when mock-fs replaces the real filesystem.
+const expressIconvLite = require('express/node_modules/iconv-lite')
+expressIconvLite.getCodec('utf-8')
+
 const app = express()
 app.use(express.json())
 
@@ -237,7 +243,7 @@ Traditional sourdough bread.`,
 
       expect(response.status).toBe(400)
       expect(response.body.success).toBe(false)
-      expect(response.body.error).toBe('Title and content are required')
+      expect(response.body.error).toBe('Name and content are required')
     })
 
     it('should handle duplicate recipes', async () => {

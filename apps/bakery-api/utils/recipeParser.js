@@ -177,6 +177,13 @@ const formatRecipeAsMarkdown = (recipeData) => {
   delete frontmatter.category
   delete frontmatter.filePath
 
+  // Remove undefined values (js-yaml cannot serialize them)
+  Object.keys(frontmatter).forEach((key) => {
+    if (frontmatter[key] === undefined) {
+      delete frontmatter[key]
+    }
+  })
+
   // Create markdown string
   const yamlContent = matter.stringify(recipeData.content || '', frontmatter)
 
