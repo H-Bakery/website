@@ -75,9 +75,17 @@ import {
 
 // Validate critical environment variables
 if (!process.env.JWT_SECRET) {
-  logger.error('CRITICAL: JWT_SECRET environment variable is not set!')
-  logger.error('Please set JWT_SECRET in your .env file')
-  process.exit(1)
+  if (process.env.NODE_ENV === 'production') {
+    logger.error('CRITICAL: JWT_SECRET environment variable is not set!')
+    logger.error('Please set JWT_SECRET in your .env file')
+    process.exit(1)
+  } else {
+    const devSecret = 'dev-jwt-secret-do-not-use-in-production-minimum-32-chars'
+    logger.warn(
+      'JWT_SECRET not set — using development default. Do NOT use in production!'
+    )
+    process.env.JWT_SECRET = devSecret
+  }
 }
 
 // Security check for JWT secret strength
