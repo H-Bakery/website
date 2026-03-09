@@ -13,6 +13,10 @@ const inventoryRoutes = require('./routes/inventoryRoutes')
 const cashRoutes = require('./routes/cashRoutes')
 const analyticsRoutes = require('./routes/analyticsRoutes')
 const reportingRoutes = require('./routes/reportingRoutes')
+const orderRoutes = require('./routes/orderRoutes')
+const productionRoutes = require('./routes/productionRoutes')
+const notificationRoutes = require('./routes/notificationRoutes')
+const staffRoutes = require('./routes/staffRoutes')
 const logger = require('./utils/logger')
 
 const app = express()
@@ -80,6 +84,10 @@ app.use('/api/inventory', inventoryRoutes)
 app.use('/api/cash', cashRoutes)
 app.use('/api/analytics', analyticsRoutes)
 app.use('/api/reports', reportingRoutes)
+app.use('/api/orders', orderRoutes)
+app.use('/api/production', productionRoutes)
+app.use('/api/notifications', notificationRoutes)
+app.use('/api/staff', staffRoutes)
 
 // Health check endpoint
 app.get('/health', (_req, res) => {
