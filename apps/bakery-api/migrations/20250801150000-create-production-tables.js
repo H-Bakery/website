@@ -1,4 +1,4 @@
-'use strict';
+'use strict'
 
 module.exports = {
   async up(queryInterface, Sequelize) {
@@ -8,177 +8,183 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       scheduleDate: {
         type: Sequelize.DATEONLY,
         allowNull: false,
-        comment: 'Date for this production schedule'
+        comment: 'Date for this production schedule',
       },
       scheduleType: {
         type: Sequelize.ENUM('daily', 'weekly', 'special'),
         defaultValue: 'daily',
-        allowNull: false
+        allowNull: false,
       },
       workdayStartTime: {
         type: Sequelize.TIME,
         allowNull: false,
         defaultValue: '06:00:00',
-        comment: 'Start of production day'
+        comment: 'Start of production day',
       },
       workdayEndTime: {
         type: Sequelize.TIME,
         allowNull: false,
         defaultValue: '18:00:00',
-        comment: 'End of production day'
+        comment: 'End of production day',
       },
       availableStaffIds: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Staff members available for this schedule'
+        comment: 'Staff members available for this schedule',
       },
       staffShifts: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Staff shift assignments'
+        comment: 'Staff shift assignments',
       },
       totalStaffHours: {
         type: Sequelize.DECIMAL(5, 2),
         allowNull: true,
-        comment: 'Total available staff hours for the day'
+        comment: 'Total available staff hours for the day',
       },
       availableEquipment: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Available equipment/stations for the day'
+        comment: 'Available equipment/stations for the day',
       },
       equipmentSchedule: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Equipment booking schedule'
+        comment: 'Equipment booking schedule',
       },
       plannedBatches: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'List of planned batch IDs for this schedule'
+        comment: 'List of planned batch IDs for this schedule',
       },
       totalPlannedItems: {
         type: Sequelize.INTEGER,
         defaultValue: 0,
-        comment: 'Total number of items planned for production'
+        comment: 'Total number of items planned for production',
       },
       estimatedProductionTime: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'Estimated total production time in minutes'
+        comment: 'Estimated total production time in minutes',
       },
       status: {
-        type: Sequelize.ENUM('draft', 'planned', 'active', 'completed', 'cancelled'),
+        type: Sequelize.ENUM(
+          'draft',
+          'planned',
+          'active',
+          'completed',
+          'cancelled'
+        ),
         defaultValue: 'draft',
-        allowNull: false
+        allowNull: false,
       },
       actualStartTime: {
         type: Sequelize.TIME,
         allowNull: true,
-        comment: 'When production actually started'
+        comment: 'When production actually started',
       },
       actualEndTime: {
         type: Sequelize.TIME,
         allowNull: true,
-        comment: 'When production actually ended'
+        comment: 'When production actually ended',
       },
       completedBatches: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'List of completed batch IDs'
+        comment: 'List of completed batch IDs',
       },
       dailyTargets: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Daily production targets by product category'
+        comment: 'Daily production targets by product category',
       },
       actualProduction: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Actual production numbers by category'
+        comment: 'Actual production numbers by category',
       },
       qualityIssues: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Quality issues encountered during the day'
+        comment: 'Quality issues encountered during the day',
       },
       efficiencyMetrics: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Efficiency metrics'
+        comment: 'Efficiency metrics',
       },
       environmentalConditions: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Temperature, humidity, etc. that affect production'
+        comment: 'Temperature, humidity, etc. that affect production',
       },
       specialRequests: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Special orders or requirements for this date'
+        comment: 'Special orders or requirements for this date',
       },
       holidays: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Holidays or special events affecting production'
+        comment: 'Holidays or special events affecting production',
       },
       planningNotes: {
         type: Sequelize.TEXT,
         allowNull: true,
-        comment: 'Notes from production planning'
+        comment: 'Notes from production planning',
       },
       dailyNotes: {
         type: Sequelize.TEXT,
         allowNull: true,
-        comment: 'Notes from actual production day'
+        comment: 'Notes from actual production day',
       },
       alerts: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Active alerts for this schedule'
+        comment: 'Active alerts for this schedule',
       },
       notificationsSent: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Log of notifications sent'
+        comment: 'Log of notifications sent',
       },
       metadata: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Additional schedule metadata'
+        comment: 'Additional schedule metadata',
       },
       createdBy: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'User who created this schedule'
+        comment: 'User who created this schedule',
       },
       approvedBy: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'User who approved this schedule'
+        comment: 'User who approved this schedule',
       },
       approvedAt: {
         type: Sequelize.DATE,
         allowNull: true,
-        comment: 'When this schedule was approved'
+        comment: 'When this schedule was approved',
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       deletedAt: {
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Create ProductionBatches table
     await queryInterface.createTable('production_batches', {
@@ -186,128 +192,136 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       name: {
         type: Sequelize.STRING,
         allowNull: false,
-        comment: 'Human-readable name for the batch'
+        comment: 'Human-readable name for the batch',
       },
       workflowId: {
         type: Sequelize.STRING,
         allowNull: false,
-        comment: 'Reference to the YAML workflow definition'
+        comment: 'Reference to the YAML workflow definition',
       },
       productId: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'Optional reference to specific product'
+        comment: 'Optional reference to specific product',
       },
       plannedStartTime: {
         type: Sequelize.DATE,
         allowNull: false,
-        comment: 'When this batch should start'
+        comment: 'When this batch should start',
       },
       plannedEndTime: {
         type: Sequelize.DATE,
         allowNull: false,
-        comment: 'Expected completion time'
+        comment: 'Expected completion time',
       },
       actualStartTime: {
         type: Sequelize.DATE,
         allowNull: true,
-        comment: 'When production actually started'
+        comment: 'When production actually started',
       },
       actualEndTime: {
         type: Sequelize.DATE,
         allowNull: true,
-        comment: 'When production actually finished'
+        comment: 'When production actually finished',
       },
       plannedQuantity: {
         type: Sequelize.INTEGER,
         allowNull: false,
         defaultValue: 1,
-        comment: 'Number of units planned to produce'
+        comment: 'Number of units planned to produce',
       },
       actualQuantity: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'Actual number of units produced'
+        comment: 'Actual number of units produced',
       },
       unit: {
         type: Sequelize.STRING,
         allowNull: false,
         defaultValue: 'pieces',
-        comment: 'Unit of measurement'
+        comment: 'Unit of measurement',
       },
       status: {
-        type: Sequelize.ENUM('planned', 'ready', 'in_progress', 'waiting', 'completed', 'failed', 'cancelled'),
+        type: Sequelize.ENUM(
+          'planned',
+          'ready',
+          'in_progress',
+          'waiting',
+          'completed',
+          'failed',
+          'cancelled'
+        ),
         defaultValue: 'planned',
-        allowNull: false
+        allowNull: false,
       },
       currentStepIndex: {
         type: Sequelize.INTEGER,
         defaultValue: 0,
         allowNull: false,
-        comment: 'Current step in the workflow'
+        comment: 'Current step in the workflow',
       },
       priority: {
         type: Sequelize.ENUM('low', 'medium', 'high', 'urgent'),
         defaultValue: 'medium',
-        allowNull: false
+        allowNull: false,
       },
       assignedStaffIds: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Array of staff member IDs assigned to this batch'
+        comment: 'Array of staff member IDs assigned to this batch',
       },
       requiredEquipment: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'List of required equipment/stations'
+        comment: 'List of required equipment/stations',
       },
       allocatedEquipment: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Actually allocated equipment/stations'
+        comment: 'Actually allocated equipment/stations',
       },
       notes: {
         type: Sequelize.TEXT,
         allowNull: true,
-        comment: 'General notes about this batch'
+        comment: 'General notes about this batch',
       },
       qualityNotes: {
         type: Sequelize.TEXT,
         allowNull: true,
-        comment: 'Quality control notes and observations'
+        comment: 'Quality control notes and observations',
       },
       metadata: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Additional metadata'
+        comment: 'Additional metadata',
       },
       createdBy: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'User ID who created this batch'
+        comment: 'User ID who created this batch',
       },
       updatedBy: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'User ID who last updated this batch'
+        comment: 'User ID who last updated this batch',
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       deletedAt: {
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Create ProductionSteps table
     await queryInterface.createTable('production_steps', {
@@ -315,237 +329,261 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       batchId: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        comment: 'Reference to ProductionBatch'
+        comment: 'Reference to ProductionBatch',
       },
       stepIndex: {
         type: Sequelize.INTEGER,
         allowNull: false,
-        comment: 'Order of this step in the workflow'
+        comment: 'Order of this step in the workflow',
       },
       stepName: {
         type: Sequelize.STRING,
         allowNull: false,
-        comment: 'Name of the step from workflow definition'
+        comment: 'Name of the step from workflow definition',
       },
       stepType: {
         type: Sequelize.STRING,
         allowNull: false,
         defaultValue: 'active',
-        comment: 'Type: active, sleep, quality_check, etc.'
+        comment: 'Type: active, sleep, quality_check, etc.',
       },
       plannedStartTime: {
         type: Sequelize.DATE,
         allowNull: true,
-        comment: 'When this step should start'
+        comment: 'When this step should start',
       },
       plannedEndTime: {
         type: Sequelize.DATE,
         allowNull: true,
-        comment: 'When this step should finish'
+        comment: 'When this step should finish',
       },
       actualStartTime: {
         type: Sequelize.DATE,
         allowNull: true,
-        comment: 'When this step actually started'
+        comment: 'When this step actually started',
       },
       actualEndTime: {
         type: Sequelize.DATE,
         allowNull: true,
-        comment: 'When this step actually finished'
+        comment: 'When this step actually finished',
       },
       plannedDurationMinutes: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'Expected duration in minutes'
+        comment: 'Expected duration in minutes',
       },
       status: {
-        type: Sequelize.ENUM('pending', 'ready', 'in_progress', 'waiting', 'completed', 'skipped', 'failed'),
+        type: Sequelize.ENUM(
+          'pending',
+          'ready',
+          'in_progress',
+          'waiting',
+          'completed',
+          'skipped',
+          'failed'
+        ),
         defaultValue: 'pending',
-        allowNull: false
+        allowNull: false,
       },
       progress: {
         type: Sequelize.INTEGER,
         defaultValue: 0,
         allowNull: false,
-        comment: 'Progress percentage within this step'
+        comment: 'Progress percentage within this step',
       },
       activities: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'List of activities from workflow definition'
+        comment: 'List of activities from workflow definition',
       },
       completedActivities: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'List of completed activities'
+        comment: 'List of completed activities',
       },
       conditions: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Conditions from workflow'
+        comment: 'Conditions from workflow',
       },
       parameters: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Step parameters'
+        comment: 'Step parameters',
       },
       actualParameters: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Actual recorded parameters'
+        comment: 'Actual recorded parameters',
       },
       assignedStaffIds: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Staff assigned to this specific step'
+        comment: 'Staff assigned to this specific step',
       },
       requiredEquipment: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'Equipment needed for this step'
+        comment: 'Equipment needed for this step',
       },
       location: {
         type: Sequelize.STRING,
         allowNull: true,
-        comment: 'Where this step takes place'
+        comment: 'Where this step takes place',
       },
       qualityCheckRequired: {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
-        comment: 'Whether this step requires quality inspection'
+        comment: 'Whether this step requires quality inspection',
       },
       qualityCheckCompleted: {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
-        comment: 'Whether quality check was completed'
+        comment: 'Whether quality check was completed',
       },
       qualityResults: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Quality check results and measurements'
+        comment: 'Quality check results and measurements',
       },
       hasIssues: {
         type: Sequelize.BOOLEAN,
         defaultValue: false,
-        comment: 'Whether this step has reported issues'
+        comment: 'Whether this step has reported issues',
       },
       issues: {
         type: Sequelize.JSON,
         defaultValue: [],
-        comment: 'List of issues encountered during this step'
+        comment: 'List of issues encountered during this step',
       },
       notes: {
         type: Sequelize.TEXT,
         allowNull: true,
-        comment: 'Step-specific notes and observations'
+        comment: 'Step-specific notes and observations',
       },
       workflowNotes: {
         type: Sequelize.TEXT,
         allowNull: true,
-        comment: 'Notes from the workflow definition'
+        comment: 'Notes from the workflow definition',
       },
       repeatCount: {
         type: Sequelize.INTEGER,
         defaultValue: 1,
-        comment: 'How many times this step should repeat'
+        comment: 'How many times this step should repeat',
       },
       currentRepeat: {
         type: Sequelize.INTEGER,
         defaultValue: 1,
-        comment: 'Current repetition number'
+        comment: 'Current repetition number',
       },
       metadata: {
         type: Sequelize.JSON,
         defaultValue: {},
-        comment: 'Additional step metadata'
+        comment: 'Additional step metadata',
       },
       completedBy: {
         type: Sequelize.INTEGER,
         allowNull: true,
-        comment: 'User ID who marked this step complete'
+        comment: 'User ID who marked this step complete',
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       deletedAt: {
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Add indexes for ProductionSchedules
     await queryInterface.addIndex('production_schedules', ['scheduleDate'], {
       name: 'idx_schedule_date',
-      unique: true
-    });
+      unique: true,
+    })
     await queryInterface.addIndex('production_schedules', ['status'], {
-      name: 'idx_schedule_status'
-    });
+      name: 'idx_schedule_status',
+    })
     await queryInterface.addIndex('production_schedules', ['scheduleType'], {
-      name: 'idx_schedule_type'
-    });
-    await queryInterface.addIndex('production_schedules', ['scheduleDate', 'status'], {
-      name: 'idx_date_status'
-    });
+      name: 'idx_schedule_type',
+    })
+    await queryInterface.addIndex(
+      'production_schedules',
+      ['scheduleDate', 'status'],
+      {
+        name: 'idx_date_status',
+      }
+    )
     await queryInterface.addIndex('production_schedules', ['createdBy'], {
-      name: 'idx_created_by'
-    });
+      name: 'idx_created_by',
+    })
     await queryInterface.addIndex('production_schedules', ['approvedBy'], {
-      name: 'idx_approved_by'
-    });
+      name: 'idx_approved_by',
+    })
 
     // Add indexes for ProductionBatches
     await queryInterface.addIndex('production_batches', ['plannedStartTime'], {
-      name: 'idx_planned_start_time'
-    });
+      name: 'idx_planned_start_time',
+    })
     await queryInterface.addIndex('production_batches', ['status'], {
-      name: 'idx_status'
-    });
+      name: 'idx_status',
+    })
     await queryInterface.addIndex('production_batches', ['workflowId'], {
-      name: 'idx_workflow_id'
-    });
+      name: 'idx_workflow_id',
+    })
     await queryInterface.addIndex('production_batches', ['productId'], {
-      name: 'idx_product_id'
-    });
-    await queryInterface.addIndex('production_batches', ['plannedStartTime', 'status'], {
-      name: 'idx_schedule_status'
-    });
+      name: 'idx_product_id',
+    })
+    await queryInterface.addIndex(
+      'production_batches',
+      ['plannedStartTime', 'status'],
+      {
+        name: 'idx_batch_start_status',
+      }
+    )
     await queryInterface.addIndex('production_batches', ['createdAt'], {
-      name: 'idx_created_at'
-    });
+      name: 'idx_created_at',
+    })
 
     // Add indexes for ProductionSteps
     await queryInterface.addIndex('production_steps', ['batchId'], {
-      name: 'idx_batch_id'
-    });
-    await queryInterface.addIndex('production_steps', ['batchId', 'stepIndex'], {
-      name: 'idx_batch_step_order',
-      unique: true
-    });
+      name: 'idx_batch_id',
+    })
+    await queryInterface.addIndex(
+      'production_steps',
+      ['batchId', 'stepIndex'],
+      {
+        name: 'idx_batch_step_order',
+        unique: true,
+      }
+    )
     await queryInterface.addIndex('production_steps', ['status'], {
-      name: 'idx_step_status'
-    });
+      name: 'idx_step_status',
+    })
     await queryInterface.addIndex('production_steps', ['plannedStartTime'], {
-      name: 'idx_planned_start'
-    });
+      name: 'idx_planned_start',
+    })
     await queryInterface.addIndex('production_steps', ['actualStartTime'], {
-      name: 'idx_actual_start'
-    });
-    await queryInterface.addIndex('production_steps', ['qualityCheckRequired'], {
-      name: 'idx_quality_check'
-    });
+      name: 'idx_actual_start',
+    })
+    await queryInterface.addIndex(
+      'production_steps',
+      ['qualityCheckRequired'],
+      {
+        name: 'idx_quality_check',
+      }
+    )
     await queryInterface.addIndex('production_steps', ['hasIssues'], {
-      name: 'idx_has_issues'
-    });
+      name: 'idx_has_issues',
+    })
 
     // Add foreign key constraints
     await queryInterface.addConstraint('production_batches', {
@@ -554,11 +592,11 @@ module.exports = {
       name: 'fk_production_batch_product',
       references: {
         table: 'products',
-        field: 'id'
+        field: 'id',
       },
       onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+      onUpdate: 'CASCADE',
+    })
 
     await queryInterface.addConstraint('production_batches', {
       fields: ['createdBy'],
@@ -566,11 +604,11 @@ module.exports = {
       name: 'fk_production_batch_creator',
       references: {
         table: 'Users',
-        field: 'id'
+        field: 'id',
       },
       onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+      onUpdate: 'CASCADE',
+    })
 
     await queryInterface.addConstraint('production_batches', {
       fields: ['updatedBy'],
@@ -578,11 +616,11 @@ module.exports = {
       name: 'fk_production_batch_updater',
       references: {
         table: 'Users',
-        field: 'id'
+        field: 'id',
       },
       onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+      onUpdate: 'CASCADE',
+    })
 
     await queryInterface.addConstraint('production_steps', {
       fields: ['batchId'],
@@ -590,11 +628,11 @@ module.exports = {
       name: 'fk_production_step_batch',
       references: {
         table: 'production_batches',
-        field: 'id'
+        field: 'id',
       },
       onDelete: 'CASCADE',
-      onUpdate: 'CASCADE'
-    });
+      onUpdate: 'CASCADE',
+    })
 
     await queryInterface.addConstraint('production_steps', {
       fields: ['completedBy'],
@@ -602,11 +640,11 @@ module.exports = {
       name: 'fk_production_step_completer',
       references: {
         table: 'Users',
-        field: 'id'
+        field: 'id',
       },
       onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+      onUpdate: 'CASCADE',
+    })
 
     await queryInterface.addConstraint('production_schedules', {
       fields: ['createdBy'],
@@ -614,11 +652,11 @@ module.exports = {
       name: 'fk_production_schedule_creator',
       references: {
         table: 'Users',
-        field: 'id'
+        field: 'id',
       },
       onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+      onUpdate: 'CASCADE',
+    })
 
     await queryInterface.addConstraint('production_schedules', {
       fields: ['approvedBy'],
@@ -626,26 +664,47 @@ module.exports = {
       name: 'fk_production_schedule_approver',
       references: {
         table: 'Users',
-        field: 'id'
+        field: 'id',
       },
       onDelete: 'SET NULL',
-      onUpdate: 'CASCADE'
-    });
+      onUpdate: 'CASCADE',
+    })
   },
 
   async down(queryInterface, Sequelize) {
     // Drop foreign key constraints first
-    await queryInterface.removeConstraint('production_steps', 'fk_production_step_batch');
-    await queryInterface.removeConstraint('production_steps', 'fk_production_step_completer');
-    await queryInterface.removeConstraint('production_batches', 'fk_production_batch_product');
-    await queryInterface.removeConstraint('production_batches', 'fk_production_batch_creator');
-    await queryInterface.removeConstraint('production_batches', 'fk_production_batch_updater');
-    await queryInterface.removeConstraint('production_schedules', 'fk_production_schedule_creator');
-    await queryInterface.removeConstraint('production_schedules', 'fk_production_schedule_approver');
-    
+    await queryInterface.removeConstraint(
+      'production_steps',
+      'fk_production_step_batch'
+    )
+    await queryInterface.removeConstraint(
+      'production_steps',
+      'fk_production_step_completer'
+    )
+    await queryInterface.removeConstraint(
+      'production_batches',
+      'fk_production_batch_product'
+    )
+    await queryInterface.removeConstraint(
+      'production_batches',
+      'fk_production_batch_creator'
+    )
+    await queryInterface.removeConstraint(
+      'production_batches',
+      'fk_production_batch_updater'
+    )
+    await queryInterface.removeConstraint(
+      'production_schedules',
+      'fk_production_schedule_creator'
+    )
+    await queryInterface.removeConstraint(
+      'production_schedules',
+      'fk_production_schedule_approver'
+    )
+
     // Drop tables
-    await queryInterface.dropTable('production_steps');
-    await queryInterface.dropTable('production_batches');
-    await queryInterface.dropTable('production_schedules');
-  }
-};
+    await queryInterface.dropTable('production_steps')
+    await queryInterface.dropTable('production_batches')
+    await queryInterface.dropTable('production_schedules')
+  },
+}
