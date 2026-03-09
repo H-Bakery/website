@@ -40,6 +40,37 @@ export interface StaffData {
   hoursWorked: number
 }
 
+export interface StaffMember {
+  id: number
+  username: string
+  email: string
+  firstName: string
+  lastName: string
+  role: 'admin' | 'staff' | 'user'
+  isActive: boolean
+  lastLogin: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface StaffListResponse {
+  users: StaffMember[]
+  pagination: {
+    totalItems: number
+    totalPages: number
+    currentPage: number
+    itemsPerPage: number
+  }
+}
+
+export interface StaffListParams {
+  page?: number
+  limit?: number
+  search?: string
+  role?: string
+  isActive?: boolean
+}
+
 export interface CustomerData {
   id: string
   name: string
@@ -131,4 +162,10 @@ export interface TemplateResponse {
 }
 
 // Re-export from shared types for convenience
-export type { Product, Order, OrderItem, CashEntry, NotificationPreferences } from '@bakery/shared/types'
+export type {
+  Product,
+  Order,
+  OrderItem,
+  CashEntry,
+  NotificationPreferences,
+} from '@bakery/shared/types'

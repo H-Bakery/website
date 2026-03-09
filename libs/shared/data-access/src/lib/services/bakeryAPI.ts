@@ -17,6 +17,9 @@ import {
   ProductionData,
   FinancialData,
   StaffData,
+  StaffMember,
+  StaffListResponse,
+  StaffListParams,
   CustomerData,
   InventoryItem,
   TimeSeriesData,
@@ -471,6 +474,70 @@ const generateMockData = () => {
 // Initialize mock data
 const mockData = generateMockData()
 
+// Staff management mock data (user-management schema, separate from analytics StaffData)
+let staffManagementData: StaffMember[] = [
+  {
+    id: 1,
+    username: 'mmueller',
+    email: 'max.mueller@baeckerei.de',
+    firstName: 'Max',
+    lastName: 'Müller',
+    role: 'admin',
+    isActive: true,
+    lastLogin: new Date().toISOString(),
+    createdAt: '2024-01-01T00:00:00Z',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    username: 'aschmidt',
+    email: 'anna.schmidt@baeckerei.de',
+    firstName: 'Anna',
+    lastName: 'Schmidt',
+    role: 'staff',
+    isActive: true,
+    lastLogin: new Date().toISOString(),
+    createdAt: '2024-02-15T00:00:00Z',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    username: 'tweber',
+    email: 'thomas.weber@baeckerei.de',
+    firstName: 'Thomas',
+    lastName: 'Weber',
+    role: 'staff',
+    isActive: true,
+    lastLogin: null,
+    createdAt: '2024-03-10T00:00:00Z',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 4,
+    username: 'lbecker',
+    email: 'lisa.becker@baeckerei.de',
+    firstName: 'Lisa',
+    lastName: 'Becker',
+    role: 'staff',
+    isActive: true,
+    lastLogin: new Date().toISOString(),
+    createdAt: '2024-04-01T00:00:00Z',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 5,
+    username: 'jklein',
+    email: 'julia.klein@baeckerei.de',
+    firstName: 'Julia',
+    lastName: 'Klein',
+    role: 'user',
+    isActive: false,
+    lastLogin: null,
+    createdAt: '2024-05-20T00:00:00Z',
+    updatedAt: new Date().toISOString(),
+  },
+]
+
 /**
  * Bakery API Service
  * Provides a mock API implementation for the bakery system
@@ -870,6 +937,91 @@ export const bakeryAPI = {
         ] as NotificationTemplate[],
       })
     },
+  },
+
+  /**
+   * Staff Management Operations (user-management CRUD)
+   */
+  async getStaff(params?: StaffListParams): Promise<StaffListResponse> {
+    const { page = 1, limit = 10, search, role, isActive } = params || {}
+    let filtered = [...staffManagementData]
+
+    if (search) {
+      const s = search.toLowerCase()
+      filtered = filtered.filter(
+        (u) =>
+          u.firstName.toLowerCase().includes(s) ||
+          u.lastName.toLowerCase().includes(s) ||
+          u.email.toLowerCase().includes(s) ||
+          u.username.toLowerCase().includes(s)
+      )
+    }
+
+    if (role) filtered = filtered.filter((u) => u.role === role)
+    if (isActive !== undefined)
+      filtered = filtered.filter((u) => u.isActive === isActive)
+
+    const start = (page - 1) * limit
+
+    return Promise.resolve({
+      users: filtered.slice(start, start + limit),
+      pagination: {
+        totalItems: filtered.length,
+        totalPages: Math.ceil(filtered.length / limit),
+        currentPage: page,
+        itemsPerPage: limit,
+      },
+    })
+  },
+
+  async createStaff(
+    data: Omit<
+      StaffMember,
+      'id' | 'isActive' | 'lastLogin' | 'createdAt' | 'updatedAt'
+    >
+  ): Promise<StaffMember> {
+    const newMember: StaffMember = {
+      id:
+        staffManagementData.length > 0
+          ? Math.max(...staffManagementData.map((s) => s.id)) + 1
+          : 1,
+      username: data.username,
+      email: data.email,
+      firstName: data.firstName,
+      lastName: data.lastName,
+      role: data.role || 'staff',
+      isActive: true,
+      lastLogin: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+    staffManagementData.push(newMember)
+    return Promise.resolve(newMember)
+  },
+
+  async updateStaff(
+    id: number,
+    data: Partial<Omit<StaffMember, 'id' | 'createdAt'>>
+  ): Promise<StaffMember> {
+    const index = staffManagementData.findIndex((s) => s.id === id)
+    if (index === -1) throw new Error('Mitarbeiter nicht gefunden')
+
+    const { ...updateFields } = data
+    staffManagementData[index] = {
+      ...staffManagementData[index],
+      ...updateFields,
+      updatedAt: new Date().toISOString(),
+    }
+    return Promise.resolve(staffManagementData[index])
+  },
+
+  async deleteStaff(id: number): Promise<{ message: string }> {
+    const index = staffManagementData.findIndex((s) => s.id === id)
+    if (index === -1) throw new Error('Mitarbeiter nicht gefunden')
+
+    staffManagementData[index].isActive = false
+    staffManagementData[index].updatedAt = new Date().toISOString()
+    return Promise.resolve({ message: 'Mitarbeiter deaktiviert' })
   },
 
   /**
