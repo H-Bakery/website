@@ -4,7 +4,7 @@ aliases:
   - TASK-034
 title: 'Fix Bakery API: replace mock/simple server with stable TypeScript production API'
 slug: fix-bakery-api-replace-mock-simple-server-with-stable-typescript-production-api
-status: backlog
+status: done
 priority: 1
 owner: ''
 projects: []
@@ -18,7 +18,7 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-03-01
-updated: 2026-03-01
+updated: 2026-03-09
 ---
 
 # Fix Bakery API: replace mock/simple server with stable TypeScript production API

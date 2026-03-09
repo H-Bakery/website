@@ -4,7 +4,7 @@ aliases:
   - TASK-030
 title: Define HQ Products CSV contract for app consumption (schema, required columns, validation)
 slug: define-hq-products-csv-contract-for-app-consumption-schema-required-columns-vali
-status: backlog
+status: done
 priority: 1
 owner: ''
 projects: []
@@ -17,7 +17,7 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-03-01
-updated: 2026-03-01
+updated: 2026-03-09
 ---
 
 # Define HQ Products CSV contract for app consumption (schema, required columns, validation)

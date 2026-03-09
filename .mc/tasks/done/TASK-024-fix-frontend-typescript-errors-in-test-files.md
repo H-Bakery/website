@@ -4,7 +4,7 @@ aliases:
   - TASK-024
 title: Fix Frontend TypeScript Errors in Test Files
 slug: fix-frontend-typescript-errors-in-test-files
-status: backlog
+status: done
 priority: 1
 owner: ''
 projects: []
@@ -15,7 +15,7 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-02-28
-updated: 2026-02-28
+updated: 2026-03-09
 ---
 
 Resolve TypeScript type errors in several frontend test files (UnsoldProductsForm.test.tsx, RecipeForm.test.tsx, ThemeContext.test.tsx) to ensure the test suite compiles successfully.

@@ -4,7 +4,7 @@ aliases:
   - TASK-025
 title: Fix Backend Test Failures
 slug: fix-backend-test-failures
-status: backlog
+status: done
 priority: 1
 owner: ''
 projects: []
@@ -12,10 +12,11 @@ customers: []
 tags:
   - bugs
 sprint: ''
-depends_on: [TASK-001]
+depends_on:
+  - TASK-001
 due_date: ''
 created: 2026-02-28
-updated: 2026-02-28
+updated: 2026-03-09
 ---
 
 Resolve 13 failing tests across the Cash, Auth, and UnsoldProduct controllers to ensure the backend test suite passes successfully.
