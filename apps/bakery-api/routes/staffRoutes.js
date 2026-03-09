@@ -133,9 +133,10 @@ router.put('/:id', authenticate, (req, res) => {
   if (index === -1)
     return res.status(404).json({ error: 'Staff member not found' })
 
+  const { id: _id, createdAt: _ca, ...safeFields } = req.body
   staffMembers[index] = {
     ...staffMembers[index],
-    ...req.body,
+    ...safeFields,
     updatedAt: new Date().toISOString(),
   }
   res.json(staffMembers[index])
