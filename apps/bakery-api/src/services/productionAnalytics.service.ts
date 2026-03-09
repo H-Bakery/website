@@ -73,16 +73,77 @@ export interface TimingMetrics {
   delayedBatches: number
 }
 
+export interface ThroughputMetrics {
+  totalBatches: number
+  totalItems: number
+  avgItemsPerBatch: number
+  avgBatchDuration: number
+  peakHours: string[]
+}
+
+export interface TrendMetrics {
+  direction: 'up' | 'down' | 'stable'
+  percentageChange: number
+  dataPoints: { date: string; value: number }[]
+}
+
+export interface WorkflowAnalysisResult {
+  workflowId: string
+  batchCount: number
+  avgDuration: number
+  successRate: number
+}
+
+export interface ForecastRisk {
+  type: string
+  probability: number
+  impact: string
+  description: string
+}
+
+export interface ConfidenceInterval {
+  lower: number
+  upper: number
+  level: number
+}
+
+export interface BaselineMetrics {
+  avgVolume: number
+  avgEfficiency: number
+  avgQuality: number
+  avgCapacity: number
+}
+
+export interface HistoricalProductionData {
+  batches: ProductionBatch[]
+  schedules: ProductionSchedule[]
+  period: { start: Date; end: Date }
+}
+
+export interface QualityOverview {
+  passRate: number
+  issueCount: number
+  avgScore: number
+  categories: Record<string, number>
+}
+
+export interface StepAnalysisResult {
+  stepName: string
+  avgDuration: number
+  issueRate: number
+  bottleneck: boolean
+}
+
 export interface ProductionMetricsResult {
   overview: OverviewMetrics
   efficiency: EfficiencyMetrics
   quality: QualityMetrics
   timing: TimingMetrics
-  throughput: any
-  trends: any
-  workflowAnalysis: any
-  recommendations: any[]
-  stepAnalysis?: any
+  throughput: ThroughputMetrics
+  trends: TrendMetrics
+  workflowAnalysis: WorkflowAnalysisResult[]
+  recommendations: string[]
+  stepAnalysis?: StepAnalysisResult[]
   period: {
     start: string
     end: string
@@ -125,7 +186,7 @@ class ProductionAnalyticsService {
         : new Date(end.getTime() - 30 * 24 * 60 * 60 * 1000)
 
       // Build base query conditions
-      const whereClause: any = {
+      const whereClause: Record<string, unknown> = {
         plannedStartTime: {
           [Op.between]: [start, end],
         },
@@ -245,7 +306,7 @@ class ProductionAnalyticsService {
       // Get schedules if included
       let schedules: ProductionSchedule[] = []
       if (includeSchedules) {
-        const scheduleWhere: any = {}
+        const scheduleWhere: Record<string, unknown> = {}
         if (startDate) scheduleWhere.scheduleDate = { [Op.gte]: startDate }
         if (endDate) scheduleWhere.scheduleDate = { [Op.lte]: endDate }
 
@@ -255,7 +316,7 @@ class ProductionAnalyticsService {
       }
 
       // Get production batches
-      const batchWhere: any = {}
+      const batchWhere: Record<string, unknown> = {}
       if (startDate || endDate) {
         batchWhere.plannedStartTime = {}
         if (startDate) batchWhere.plannedStartTime[Op.gte] = startDate
@@ -363,7 +424,7 @@ class ProductionAnalyticsService {
       })
 
       // Build query conditions
-      const whereClause: any = {}
+      const whereClause: Record<string, unknown> = {}
       if (startDate || endDate) {
         whereClause.plannedStartTime = {}
         if (startDate) whereClause.plannedStartTime[Op.gte] = startDate
@@ -535,20 +596,23 @@ class ProductionAnalyticsService {
 
     const stepsWithIssues = batches.reduce(
       (sum, batch) =>
-        sum + (batch.steps?.filter((step: any) => step.hasIssues).length || 0),
+        sum +
+        (batch.steps?.filter((step: ProductionStep) => step.hasIssues).length ||
+          0),
       0
     )
 
     const qualityChecksCompleted = batches.reduce(
       (sum, batch) =>
         sum +
-        (batch.steps?.filter((step: any) => step.qualityCheckCompleted)
-          .length || 0),
+        (batch.steps?.filter(
+          (step: ProductionStep) => step.qualityCheckCompleted
+        ).length || 0),
       0
     )
 
     const batchesWithIssues = batches.filter((batch) =>
-      batch.steps?.some((step: any) => step.hasIssues)
+      batch.steps?.some((step: ProductionStep) => step.hasIssues)
     ).length
 
     return {
@@ -748,62 +812,70 @@ class ProductionAnalyticsService {
     return []
   }
 
-  private async getHistoricalProductionData(days: number): Promise<any> {
+  private async getHistoricalProductionData(
+    days: number
+  ): Promise<HistoricalProductionData> {
     // Implementation would fetch historical data
-    return {}
+    return {
+      batches: [],
+      schedules: [],
+      period: { start: new Date(), end: new Date() },
+    }
   }
 
-  private async calculateBaselineMetrics(historicalData: any): Promise<any> {
+  private async calculateBaselineMetrics(
+    historicalData: HistoricalProductionData
+  ): Promise<BaselineMetrics> {
     // Implementation would calculate baseline from historical data
-    return {}
+    return { avgVolume: 0, avgEfficiency: 0, avgQuality: 0, avgCapacity: 0 }
   }
 
   private async forecastProductionVolume(
-    baseline: any,
+    baseline: BaselineMetrics,
     period: number
-  ): Promise<any> {
+  ): Promise<Record<string, number>> {
     // Implementation would forecast production volume
     return {}
   }
 
   private async forecastEfficiency(
-    baseline: any,
+    baseline: BaselineMetrics,
     period: number
-  ): Promise<any> {
+  ): Promise<Record<string, number>> {
     // Implementation would forecast efficiency
     return {}
   }
 
   private async forecastCapacityNeeds(
-    baseline: any,
+    baseline: BaselineMetrics,
     period: number
-  ): Promise<any> {
+  ): Promise<Record<string, number>> {
     // Implementation would forecast capacity needs
     return {}
   }
 
   private async forecastQualityMetrics(
-    baseline: any,
+    baseline: BaselineMetrics,
     period: number
-  ): Promise<any> {
+  ): Promise<Record<string, number>> {
     // Implementation would forecast quality metrics
     return {}
   }
 
   private async identifyForecastRisks(
-    baseline: any,
+    baseline: BaselineMetrics,
     period: number
-  ): Promise<any[]> {
+  ): Promise<ForecastRisk[]> {
     // Implementation would identify risks
     return []
   }
 
   private async calculateConfidenceIntervals(
-    forecast: any,
+    forecast: Record<string, unknown>,
     level: number
-  ): Promise<any> {
+  ): Promise<ConfidenceInterval> {
     // Implementation would calculate confidence intervals
-    return {}
+    return { lower: 0, upper: 0, level }
   }
 
   private async calculateQualityOverview(

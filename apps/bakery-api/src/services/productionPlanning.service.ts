@@ -1,10 +1,5 @@
 import { Op } from 'sequelize'
-import {
-  ProductionSchedule,
-  ProductionBatch,
-  User,
-  Product
-} from '../models'
+import { ProductionSchedule, ProductionBatch, User, Product } from '../models'
 import workflowParser, { Workflow } from '../utils/workflowParser'
 import { logger } from '../utils/logger'
 
@@ -37,6 +32,34 @@ export interface Equipment {
   name: string
   type?: string
   capacity?: number
+}
+
+export interface Worker {
+  id: number
+  startTime: string
+  endTime: string
+  hours: number
+  role: string
+  skills: string[]
+}
+
+export interface StaffCapacity {
+  workers: Worker[]
+  availableWorkers: number
+  totalHours: number
+  averageHours: number
+}
+
+export interface EquipmentCapacity {
+  stations: Equipment[]
+  totalStations: number
+  totalCapacity: number
+}
+
+export interface TimeSlot {
+  start: Date
+  end: Date
+  batchId?: string
 }
 
 export interface PlanningData {
@@ -156,7 +179,9 @@ class ProductionPlanningService {
   /**
    * Calculate optimal production schedule based on demand and capacity
    */
-  async optimizeProductionSchedule(planningData: PlanningData): Promise<OptimizedSchedule> {
+  async optimizeProductionSchedule(
+    planningData: PlanningData
+  ): Promise<OptimizedSchedule> {
     try {
       logger.info('Optimizing production schedule', {
         date: planningData.scheduleDate,
@@ -278,16 +303,18 @@ class ProductionPlanningService {
   /**
    * Analyze production demand and requirements
    */
-  async analyzeDemand(productionDemand: ProductionDemand[]): Promise<DemandAnalysis> {
+  async analyzeDemand(
+    productionDemand: ProductionDemand[]
+  ): Promise<DemandAnalysis> {
     try {
       let totalItems = 0
       let totalEstimatedTime = 0
       const workflowRequirements = new Map()
-      const priorityDistribution: Record<string, number> = { 
-        high: 0, 
-        medium: 0, 
-        low: 0, 
-        urgent: 0 
+      const priorityDistribution: Record<string, number> = {
+        high: 0,
+        medium: 0,
+        low: 0,
+        urgent: 0,
       }
       const equipmentNeeds = new Set<string>()
 
@@ -431,8 +458,14 @@ class ProductionPlanningService {
         },
       }
 
-      const staffSchedule = new Map<number, Array<{ start: Date; end: Date; batchId: string }>>()
-      const equipmentSchedule = new Map<string, Array<{ start: Date; end: Date; batchId: string }>>()
+      const staffSchedule = new Map<
+        number,
+        Array<{ start: Date; end: Date; batchId: string }>
+      >()
+      const equipmentSchedule = new Map<
+        string,
+        Array<{ start: Date; end: Date; batchId: string }>
+      >()
 
       // Initialize schedules
       capacity.staffCapacity.workers.forEach((worker) => {
@@ -521,7 +554,7 @@ class ProductionPlanningService {
    * Calculate staff capacity
    */
   private calculateStaffCapacity(staffShifts: Record<string, StaffShift>) {
-    const workers: any[] = []
+    const workers: Worker[] = []
     let totalHours = 0
 
     for (const [staffId, shift] of Object.entries(staffShifts)) {
@@ -584,8 +617,8 @@ class ProductionPlanningService {
    * Identify capacity bottlenecks
    */
   private identifyCapacityBottlenecks(
-    staffCapacity: any,
-    equipmentCapacity: any
+    staffCapacity: StaffCapacity,
+    equipmentCapacity: EquipmentCapacity
   ) {
     const bottlenecks = []
 
@@ -689,8 +722,15 @@ class ProductionPlanningService {
   /**
    * Sort demand by priority and complexity
    */
-  private sortDemandByPriority(productionDemand: ProductionDemand[]): ProductionDemand[] {
-    const priorityOrder: Record<string, number> = { urgent: 0, high: 1, medium: 2, low: 3 }
+  private sortDemandByPriority(
+    productionDemand: ProductionDemand[]
+  ): ProductionDemand[] {
+    const priorityOrder: Record<string, number> = {
+      urgent: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+    }
 
     return [...productionDemand].sort((a, b) => {
       const priorityDiff =
@@ -705,7 +745,9 @@ class ProductionPlanningService {
   /**
    * Calculate demand complexity
    */
-  private calculateDemandComplexity(productionDemand: ProductionDemand[]): number {
+  private calculateDemandComplexity(
+    productionDemand: ProductionDemand[]
+  ): number {
     let complexity = 0
 
     // Factor in number of different workflows
@@ -765,7 +807,9 @@ class ProductionPlanningService {
   ): OptimizedBatch[] {
     // Sort by start time first
     const sortedBatches = [...batches].sort(
-      (a, b) => new Date(a.plannedStartTime).getTime() - new Date(b.plannedStartTime).getTime()
+      (a, b) =>
+        new Date(a.plannedStartTime).getTime() -
+        new Date(b.plannedStartTime).getTime()
     )
 
     // Group similar workflows together for efficiency
@@ -786,11 +830,11 @@ class ProductionPlanningService {
    */
   private assignOptimalStaff(
     batch: OptimizedBatch,
-    workers: any[],
-    staffSchedule: Map<number, any[]>,
+    workers: Worker[],
+    staffSchedule: Map<number, TimeSlot[]>,
     batchStart: Date,
     batchEnd: Date
-  ): any[] {
+  ): Worker[] {
     const assignedStaff = []
     const requiredStaff = Math.min(batch.complexity || 1, 2) // Max 2 staff per batch
 
@@ -822,11 +866,11 @@ class ProductionPlanningService {
    */
   private assignOptimalEquipment(
     batch: OptimizedBatch,
-    stations: any[],
-    equipmentSchedule: Map<string, any[]>,
+    stations: Equipment[],
+    equipmentSchedule: Map<string, TimeSlot[]>,
     batchStart: Date,
     batchEnd: Date
-  ): any[] {
+  ): Equipment[] {
     const assignedEquipment = []
     const requiredEquipment = batch.requiredEquipment || []
 
@@ -905,13 +949,17 @@ class ProductionPlanningService {
 
     allocation.staffAllocations.forEach((alloc) => {
       const duration =
-        (new Date(alloc.endTime).getTime() - new Date(alloc.startTime).getTime()) / (1000 * 60)
+        (new Date(alloc.endTime).getTime() -
+          new Date(alloc.startTime).getTime()) /
+        (1000 * 60)
       usedStaffMinutes += duration * alloc.assignedStaff.length
     })
 
     allocation.equipmentAllocations.forEach((alloc) => {
       const duration =
-        (new Date(alloc.endTime).getTime() - new Date(alloc.startTime).getTime()) / (1000 * 60)
+        (new Date(alloc.endTime).getTime() -
+          new Date(alloc.startTime).getTime()) /
+        (1000 * 60)
       usedEquipmentMinutes += duration * alloc.assignedEquipment.length
     })
 
@@ -933,7 +981,9 @@ class ProductionPlanningService {
   private async generateRecommendations(
     capacity: CapacityAnalysis,
     demandAnalysis: DemandAnalysis
-  ): Promise<Array<{ type: string; priority: string; message: string; impact: string }>> {
+  ): Promise<
+    Array<{ type: string; priority: string; message: string; impact: string }>
+  > {
     const recommendations = []
 
     // Check capacity vs demand
