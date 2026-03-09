@@ -2,13 +2,14 @@ import React from 'react'
 import { render, screen, fireEvent, within } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import { Recipe, Ingredient } from '@bakery/shared/types'
+import { Recipe } from '@bakery/shared/types'
 import RecipeForm from '../recipe-form'
 
 // Mock initial recipe for edit mode
 const mockRecipeToEdit: Recipe = {
-  id: 'recipe1',
+  id: 1,
   name: 'Existing Pancakes',
+  slug: 'existing-pancakes',
   category: 'Breakfast',
   prepTime: '15 mins',
   description: 'Fluffy pancakes',
@@ -16,8 +17,9 @@ const mockRecipeToEdit: Recipe = {
     { name: 'Flour', quantity: '1 cup' },
     { name: 'Milk', quantity: '1 cup' },
   ],
-  instructions: ['Mix ingredients', 'Cook on griddle'],
-  reviews: [],
+  instructions: 'Mix ingredients\nCook on griddle',
+  createdAt: '2024-01-01T00:00:00Z',
+  updatedAt: '2024-01-01T00:00:00Z',
 }
 
 describe('RecipeForm Component', () => {
@@ -105,7 +107,7 @@ describe('RecipeForm Component', () => {
       // For now, assuming the IconButton wrapping RemoveCircleOutlineIcon gets a generic "remove" label part
       const ingredientRows = screen
         .getAllByText(/ingredient name/i)
-        .map((el) => el.closest('.MuiGrid-container')) // Get all ingredient rows
+        .map((el) => el.closest('.MuiGrid-container') as HTMLElement | null)
       const lastIngredientRow = ingredientRows[ingredientRows.length - 1]
 
       if (!lastIngredientRow)
@@ -197,7 +199,7 @@ describe('RecipeForm Component', () => {
       )
 
       expect(screen.getByLabelText(/instructions/i)).toHaveValue(
-        mockRecipeToEdit.instructions.join('\\n')
+        mockRecipeToEdit.instructions
       )
     })
 

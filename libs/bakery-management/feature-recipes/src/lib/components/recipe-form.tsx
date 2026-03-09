@@ -1,9 +1,9 @@
 import React from 'react'
-import { Recipe } from '@bakery/shared/types'
+import { Recipe, RecipeFormData } from '@bakery/shared/types'
 
 export interface RecipeFormProps {
   recipe?: Recipe
-  onSubmit: (data: any) => void
+  onSubmit: (data: RecipeFormData) => void
   onCancel: () => void
 }
 
