@@ -1,4 +1,3 @@
-'use client'
 import React, { ReactElement } from 'react'
 import { render, RenderOptions } from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
@@ -32,7 +31,7 @@ export function renderWithTheme(
   options?: Omit<RenderOptions, 'wrapper'> & { theme?: any }
 ) {
   const { theme, ...renderOptions } = options || {}
-  
+
   return render(ui, {
     wrapper: ({ children }) => (
       <TestProviders theme={theme}>{children}</TestProviders>

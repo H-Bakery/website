@@ -30,6 +30,9 @@ export * from './lib/cash'
 // Export unsold product types
 export * from './lib/unsold-product'
 
+// Export recipe types
+export * from './lib/recipe'
+
 // Re-export commonly used types for convenience
 export type {
   ApiResponse,
@@ -47,11 +50,7 @@ export type {
   ProductFilters,
 } from './lib/product'
 
-export {
-  ProductCategory,
-  ProductType,
-  ProductStatus,
-} from './lib/product'
+export { ProductCategory, ProductType, ProductStatus } from './lib/product'
 
 export type {
   User,
@@ -74,11 +73,7 @@ export type {
   OrderSummary,
 } from './lib/order'
 
-export {
-  OrderStatus,
-  PaymentStatus,
-  PaymentMethod,
-} from './lib/order'
+export { OrderStatus, PaymentStatus, PaymentMethod } from './lib/order'
 
 export type {
   Notification,
@@ -99,3 +94,11 @@ export type {
   ArchiveStats,
   PriorityThreshold,
 } from './lib/notification'
+
+export type {
+  Recipe,
+  Ingredient,
+  RecipeFormData,
+  CreateRecipeInput,
+  UpdateRecipeInput,
+} from './lib/recipe'
