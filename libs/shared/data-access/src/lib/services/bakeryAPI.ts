@@ -2,22 +2,22 @@
  * @fileoverview Bakery API Service - Mock API implementation for the bakery system
  */
 
-import { 
-  Product, 
-  Order, 
-  OrderItem, 
+import {
+  Product,
+  Order,
+  OrderItem,
   CashEntry,
   ProductCategory,
   ProductType,
   ProductStatus,
-  NotificationCategory
+  NotificationCategory,
 } from '@bakery/shared/types'
-import { 
-  SalesData, 
-  ProductionData, 
-  FinancialData, 
-  StaffData, 
-  CustomerData, 
+import {
+  SalesData,
+  ProductionData,
+  FinancialData,
+  StaffData,
+  CustomerData,
   InventoryItem,
   TimeSeriesData,
   BakingListResponse,
@@ -26,7 +26,7 @@ import {
   PreferencesResponse,
   TemplateResponse,
   SummaryData,
-  TimeRange
+  TimeRange,
 } from './types'
 import { PRODUCTS } from '../mocks/products'
 
@@ -89,10 +89,16 @@ const generateMockData = () => {
       const dailyProductPool = products.filter((product) => {
         if (dayOfWeek === 0 || dayOfWeek === 6) {
           // Weekends - focus on cakes, special products
-          return [ProductCategory.Cakes, ProductCategory.SpecialCakes, ProductCategory.Pastries].includes(product.category)
+          return [
+            ProductCategory.Cakes,
+            ProductCategory.SpecialCakes,
+            ProductCategory.Pastries,
+          ].includes(product.category)
         } else if (dayOfWeek === 1 || dayOfWeek === 4) {
           // Monday & Thursday - bread day
-          return [ProductCategory.Bread, ProductCategory.Buns].includes(product.category)
+          return [ProductCategory.Bread, ProductCategory.Buns].includes(
+            product.category
+          )
         } else {
           // Regular days - mix of everything
           return true
@@ -115,7 +121,10 @@ const generateMockData = () => {
         let baseQuantity = 15
         if (product.category === ProductCategory.Bread) baseQuantity = 30
         if (product.category === ProductCategory.Buns) baseQuantity = 60
-        if (product.category === ProductCategory.Cakes || product.category === ProductCategory.SpecialCakes)
+        if (
+          product.category === ProductCategory.Cakes ||
+          product.category === ProductCategory.SpecialCakes
+        )
           baseQuantity = 8
 
         const planned = Math.floor(Math.random() * baseQuantity) + baseQuantity
@@ -128,7 +137,7 @@ const generateMockData = () => {
           planned: planned,
           actual: actual,
           waste: waste,
-          efficiency: Number(((actual - waste) / planned * 100).toFixed(1)),
+          efficiency: Number((((actual - waste) / planned) * 100).toFixed(1)),
         })
       })
     }
@@ -148,7 +157,8 @@ const generateMockData = () => {
       const period = date.toISOString().substring(0, 7) // YYYY-MM format
 
       const revenue = Math.round((Math.random() * 50000 + 30000) * 100) / 100
-      const costs = Math.round((revenue * (0.6 + Math.random() * 0.2)) * 100) / 100
+      const costs =
+        Math.round(revenue * (0.6 + Math.random() * 0.2) * 100) / 100
       const profit = revenue - costs
 
       finances.push({
@@ -157,7 +167,7 @@ const generateMockData = () => {
         revenue: revenue,
         costs: costs,
         profit: profit,
-        margin: Number((profit / revenue * 100).toFixed(1)),
+        margin: Number(((profit / revenue) * 100).toFixed(1)),
       })
     }
 
@@ -475,14 +485,16 @@ export const bakeryAPI = {
     },
 
     async getById(id: number): Promise<Product | null> {
-      const product = PRODUCTS.find(p => p.id === id)
+      const product = PRODUCTS.find((p) => p.id === id)
       return Promise.resolve(product || null)
     },
 
-    async create(product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>): Promise<Product> {
+    async create(
+      product: Omit<Product, 'id' | 'createdAt' | 'updatedAt'>
+    ): Promise<Product> {
       const newProduct: Product = {
         ...product,
-        id: Math.max(...PRODUCTS.map(p => p.id)) + 1,
+        id: Math.max(...PRODUCTS.map((p) => p.id)) + 1,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }
@@ -490,10 +502,13 @@ export const bakeryAPI = {
       return Promise.resolve(newProduct)
     },
 
-    async update(id: number, updates: Partial<Product>): Promise<Product | null> {
-      const index = PRODUCTS.findIndex(p => p.id === id)
+    async update(
+      id: number,
+      updates: Partial<Product>
+    ): Promise<Product | null> {
+      const index = PRODUCTS.findIndex((p) => p.id === id)
       if (index === -1) return null
-      
+
       PRODUCTS[index] = {
         ...PRODUCTS[index],
         ...updates,
@@ -503,9 +518,9 @@ export const bakeryAPI = {
     },
 
     async delete(id: number): Promise<boolean> {
-      const index = PRODUCTS.findIndex(p => p.id === id)
+      const index = PRODUCTS.findIndex((p) => p.id === id)
       if (index === -1) return false
-      
+
       PRODUCTS.splice(index, 1)
       return Promise.resolve(true)
     },
@@ -519,11 +534,11 @@ export const bakeryAPI = {
       // Generate mock orders
       const orders: Order[] = []
       const customerNames = ['Max Müller', 'Anna Schmidt', 'Peter Weber']
-      
+
       for (let i = 1; i <= 10; i++) {
         const items: OrderItem[] = []
         const itemCount = Math.floor(Math.random() * 4) + 1
-        
+
         for (let j = 0; j < itemCount; j++) {
           const product = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)]
           const quantity = Math.floor(Math.random() * 3) + 1
@@ -538,27 +553,34 @@ export const bakeryAPI = {
             updatedAt: new Date().toISOString(),
           } as OrderItem)
         }
-        
+
         orders.push({
           id: i,
-          customerName: customerNames[Math.floor(Math.random() * customerNames.length)],
+          customerName:
+            customerNames[Math.floor(Math.random() * customerNames.length)],
           items: items,
           total: items.reduce((sum, item) => sum + item.totalPrice, 0),
-          status: ['pending', 'processing', 'completed'][Math.floor(Math.random() * 3)] as Order['status'],
-          createdAt: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+          status: ['pending', 'processing', 'completed'][
+            Math.floor(Math.random() * 3)
+          ] as Order['status'],
+          createdAt: new Date(
+            Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000
+          ).toISOString(),
           updatedAt: new Date().toISOString(),
         } as Order)
       }
-      
+
       return Promise.resolve(orders)
     },
 
     async getById(id: number): Promise<Order | null> {
       const orders = await this.getAll()
-      return orders.find(o => o.id === id) || null
+      return orders.find((o) => o.id === id) || null
     },
 
-    async create(order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>): Promise<Order> {
+    async create(
+      order: Omit<Order, 'id' | 'createdAt' | 'updatedAt'>
+    ): Promise<Order> {
       const newOrder: Order = {
         ...order,
         id: Date.now(),
@@ -571,7 +593,7 @@ export const bakeryAPI = {
     async update(id: number, updates: Partial<Order>): Promise<Order | null> {
       const order = await this.getById(id)
       if (!order) return null
-      
+
       return Promise.resolve({
         ...order,
         ...updates,
@@ -585,24 +607,46 @@ export const bakeryAPI = {
    */
   analytics: {
     async getSalesData(range: TimeRange = 'month'): Promise<SalesData[]> {
-      const days = range === 'today' ? 1 : range === 'week' ? 7 : range === 'month' ? 30 : 365
+      const days =
+        range === 'today'
+          ? 1
+          : range === 'week'
+          ? 7
+          : range === 'month'
+          ? 30
+          : 365
       return Promise.resolve(mockData.sales.slice(0, days))
     },
 
-    async getProductionData(range: TimeRange = 'month'): Promise<ProductionData[]> {
-      const days = range === 'today' ? 1 : range === 'week' ? 7 : range === 'month' ? 30 : 365
+    async getProductionData(
+      range: TimeRange = 'month'
+    ): Promise<ProductionData[]> {
+      const days =
+        range === 'today'
+          ? 1
+          : range === 'week'
+          ? 7
+          : range === 'month'
+          ? 30
+          : 365
       return Promise.resolve(mockData.production.slice(0, days))
     },
 
-    async getFinancialData(range: TimeRange = 'year'): Promise<FinancialData[]> {
+    async getFinancialData(
+      range: TimeRange = 'year'
+    ): Promise<FinancialData[]> {
       const months = range === 'month' ? 1 : range === 'quarter' ? 3 : 12
       return Promise.resolve(mockData.finances.slice(0, months))
     },
 
     async getSummaryData(): Promise<SummaryData> {
-      const currentRevenue = mockData.sales.slice(0, 30).reduce((sum, s) => sum + s.revenue, 0)
-      const previousRevenue = mockData.sales.slice(30, 60).reduce((sum, s) => sum + s.revenue, 0)
-      
+      const currentRevenue = mockData.sales
+        .slice(0, 30)
+        .reduce((sum, s) => sum + s.revenue, 0)
+      const previousRevenue = mockData.sales
+        .slice(30, 60)
+        .reduce((sum, s) => sum + s.revenue, 0)
+
       return Promise.resolve({
         revenue: {
           current: currentRevenue,
@@ -612,12 +656,16 @@ export const bakeryAPI = {
         orders: {
           current: mockData.sales.slice(0, 30).length,
           previous: mockData.sales.slice(30, 60).length,
-          change: ((mockData.sales.slice(0, 30).length - mockData.sales.slice(30, 60).length) / mockData.sales.slice(30, 60).length) * 100,
+          change:
+            ((mockData.sales.slice(0, 30).length -
+              mockData.sales.slice(30, 60).length) /
+              mockData.sales.slice(30, 60).length) *
+            100,
         },
         customers: {
           current: mockData.customers.length,
           previous: mockData.customers.length - 1,
-          change: ((1 / (mockData.customers.length - 1)) * 100),
+          change: (1 / (mockData.customers.length - 1)) * 100,
         },
         averageOrderValue: {
           current: currentRevenue / mockData.sales.slice(0, 30).length,
@@ -637,14 +685,17 @@ export const bakeryAPI = {
     },
 
     async getById(id: string): Promise<InventoryItem | null> {
-      const item = mockData.inventory.find(i => i.id === id)
+      const item = mockData.inventory.find((i) => i.id === id)
       return Promise.resolve(item || null)
     },
 
-    async update(id: string, updates: Partial<InventoryItem>): Promise<InventoryItem | null> {
-      const index = mockData.inventory.findIndex(i => i.id === id)
+    async update(
+      id: string,
+      updates: Partial<InventoryItem>
+    ): Promise<InventoryItem | null> {
+      const index = mockData.inventory.findIndex((i) => i.id === id)
       if (index === -1) return null
-      
+
       mockData.inventory[index] = {
         ...mockData.inventory[index],
         ...updates,
@@ -662,7 +713,7 @@ export const bakeryAPI = {
     },
 
     async getById(id: string): Promise<StaffData | null> {
-      const staff = mockData.staff.find(s => s.id === id)
+      const staff = mockData.staff.find((s) => s.id === id)
       return Promise.resolve(staff || null)
     },
   },
@@ -676,7 +727,7 @@ export const bakeryAPI = {
     },
 
     async getById(id: string): Promise<CustomerData | null> {
-      const customer = mockData.customers.find(c => c.id === id)
+      const customer = mockData.customers.find((c) => c.id === id)
       return Promise.resolve(customer || null)
     },
   },
@@ -686,19 +737,21 @@ export const bakeryAPI = {
    */
   bakingList: {
     async getForDate(date: string): Promise<BakingListResponse> {
-      const items = PRODUCTS
-        .filter(p => p.status === ProductStatus.Available)
-        .map(product => ({
-          product,
-          quantity: Math.floor(Math.random() * 20) + 5,
-          status: ['pending', 'in_progress', 'completed'][Math.floor(Math.random() * 3)] as 'pending' | 'in_progress' | 'completed',
-        }))
-      
+      const items = PRODUCTS.filter(
+        (p) => p.status === ProductStatus.Available
+      ).map((product) => ({
+        product,
+        quantity: Math.floor(Math.random() * 20) + 5,
+        status: ['pending', 'in_progress', 'completed'][
+          Math.floor(Math.random() * 3)
+        ] as 'pending' | 'in_progress' | 'completed',
+      }))
+
       return Promise.resolve({
         date,
         items,
         totalItems: items.length,
-        completedItems: items.filter(i => i.status === 'completed').length,
+        completedItems: items.filter((i) => i.status === 'completed').length,
       })
     },
   },
@@ -750,7 +803,10 @@ export const bakeryAPI = {
       })
     },
 
-    async updatePreferences(userId: string, preferences: Partial<NotificationPreferences>): Promise<PreferencesResponse> {
+    async updatePreferences(
+      userId: string,
+      preferences: Partial<NotificationPreferences>
+    ): Promise<PreferencesResponse> {
       return Promise.resolve({
         success: true,
         data: {
@@ -814,6 +870,59 @@ export const bakeryAPI = {
         ] as NotificationTemplate[],
       })
     },
+  },
+
+  /**
+   * Cash Management Operations
+   */
+  async getCashHistory(): Promise<CashEntry[]> {
+    const today = new Date()
+    const entries: CashEntry[] = []
+    for (let i = 0; i < 30; i++) {
+      const date = new Date(today)
+      date.setDate(date.getDate() - i)
+      entries.push({
+        id: i + 1,
+        UserId: 1,
+        amount: Math.round((Math.random() * 800 + 200) * 100) / 100,
+        date: date.toISOString().split('T')[0],
+        createdAt: date.toISOString(),
+        updatedAt: date.toISOString(),
+      })
+    }
+    return Promise.resolve(entries)
+  },
+
+  async addCashEntry(amount: number): Promise<CashEntry> {
+    const now = new Date()
+    return Promise.resolve({
+      id: Date.now(),
+      UserId: 1,
+      amount,
+      date: now.toISOString().split('T')[0],
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    })
+  },
+
+  async updateCashEntry(
+    id: number,
+    amount: number,
+    date: string
+  ): Promise<CashEntry> {
+    const now = new Date()
+    return Promise.resolve({
+      id,
+      UserId: 1,
+      amount,
+      date,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    })
+  },
+
+  async deleteCashEntry(id: number): Promise<boolean> {
+    return Promise.resolve(true)
   },
 }
 
