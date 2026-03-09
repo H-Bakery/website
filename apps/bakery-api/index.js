@@ -11,6 +11,8 @@ const recipeRoutes = require('./routes/recipeRoutes')
 const workflowRoutes = require('./routes/workflowRoutes')
 const inventoryRoutes = require('./routes/inventoryRoutes')
 const cashRoutes = require('./routes/cashRoutes')
+const analyticsRoutes = require('./routes/analyticsRoutes')
+const reportingRoutes = require('./routes/reportingRoutes')
 const logger = require('./utils/logger')
 
 const app = express()
@@ -76,6 +78,18 @@ app.use('/api/recipes', recipeRoutes)
 app.use('/api/workflows', workflowRoutes)
 app.use('/api/inventory', inventoryRoutes)
 app.use('/api/cash', cashRoutes)
+app.use('/api/analytics', analyticsRoutes)
+app.use('/api/reports', reportingRoutes)
+
+// Health check endpoint
+app.get('/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development',
+  })
+})
 
 // 404 handler
 app.use((req, res) => {
@@ -87,5 +101,23 @@ app.use((err, req, res, next) => {
   logger.error('Unhandled error:', err)
   res.status(500).json({ error: 'Internal server error' })
 })
+
+// Start server when run directly
+const PORT = process.env.PORT || 5000
+
+if (require.main === module) {
+  const { syncDatabase } = require('./models')
+
+  syncDatabase()
+    .then(() => {
+      app.listen(PORT, () => {
+        logger.info(`Server running on http://localhost:${PORT}`)
+      })
+    })
+    .catch((err) => {
+      logger.error('Failed to initialize database:', err)
+      process.exit(1)
+    })
+}
 
 module.exports = app
