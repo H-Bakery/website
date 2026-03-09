@@ -25,22 +25,14 @@ const inventoryCreationRules = () => [
     .withMessage('Unit is required')
     .isIn(validUnits)
     .withMessage(`Invalid unit. Must be one of: ${validUnits.join(', ')}`),
-  body('minStockLevel')
+  body('lowStockThreshold')
     .optional()
     .isFloat({ min: 0 })
-    .withMessage('Minimum stock level must be a positive number'),
-  body('maxStockLevel')
+    .withMessage('Low stock threshold must be a positive number'),
+  body('reorderLevel')
     .optional()
     .isFloat({ min: 0 })
-    .withMessage('Maximum stock level must be a positive number')
-    .custom((value, { req }) => {
-      if (req.body.minStockLevel && value <= req.body.minStockLevel) {
-        throw new Error(
-          'Maximum stock level must be greater than minimum stock level'
-        )
-      }
-      return true
-    }),
+    .withMessage('Reorder level must be a positive number'),
   body('category').optional().trim(),
   body('supplier').optional().trim(),
   body('costPerUnit')

@@ -50,19 +50,21 @@ const getRecipeBySlug = async (req, res) => {
 
 const createRecipe = async (req, res) => {
   try {
-    const { title, content } = req.body
-    if (!title || !content) {
+    const name = req.body.name || req.body.title
+    const { content } = req.body
+    if (!name || !content) {
       return res.status(400).json({
         success: false,
-        error: 'Title and content are required',
+        error: 'Name and content are required',
       })
     }
 
     const now = new Date().toISOString()
     const recipeData = {
       ...req.body,
-      created_at: now,
-      updated_at: now,
+      name,
+      createdAt: now,
+      updatedAt: now,
     }
 
     const recipe = await recipeParser.createRecipe(recipeData)
@@ -95,10 +97,10 @@ const updateRecipe = async (req, res) => {
     const updateData = {
       ...existing,
       ...req.body,
-      updated_at: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
-    if (existing.created_at) {
-      updateData.created_at = existing.created_at
+    if (existing.createdAt) {
+      updateData.createdAt = existing.createdAt
     }
 
     const updated = await recipeParser.updateRecipe(req.params.slug, updateData)

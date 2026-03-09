@@ -103,10 +103,11 @@ router.get('/', authenticate, async (req, res) => {
       items = items.filter((i) => i.quantity <= i.lowStockThreshold)
     }
 
-    // Pagination
+    // Pagination (default max 100 items per page)
+    const MAX_PAGE_SIZE = 200
     const total = items.length
     const pageNum = parseInt(page) || 1
-    const limitNum = parseInt(limit) || total || 100
+    const limitNum = Math.min(parseInt(limit) || 100, MAX_PAGE_SIZE)
     const pages = Math.ceil(total / limitNum)
     const offset = (pageNum - 1) * limitNum
     const paginatedItems = items.slice(offset, offset + limitNum)

@@ -14,6 +14,7 @@ const {
 jest.mock('../../utils/logger', () => ({
   info: jest.fn(),
   error: jest.fn(),
+  warn: jest.fn(),
   db: jest.fn(),
   debug: jest.fn(),
   request: jest.fn(),
@@ -44,7 +45,7 @@ describe('Auth API Integration Tests', () => {
     it('should register a new user successfully', async () => {
       const userData = {
         username: 'testuser',
-        password: 'testpassword123',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
@@ -61,7 +62,7 @@ describe('Auth API Integration Tests', () => {
 
       // Verify password was hashed
       const isPasswordValid = await bcrypt.compare(
-        'testpassword123',
+        'SecurePass123!',
         user.password
       )
       expect(isPasswordValid).toBe(true)
@@ -71,12 +72,12 @@ describe('Auth API Integration Tests', () => {
       // Create a user first
       await User.create({
         username: 'existinguser',
-        password: await bcrypt.hash('password123', 10),
+        password: await bcrypt.hash('SecurePass123!', 10),
       })
 
       const userData = {
         username: 'existinguser',
-        password: 'newpassword123',
+        password: 'NewSecure123!',
       }
 
       const response = await request(app)
@@ -89,20 +90,20 @@ describe('Auth API Integration Tests', () => {
       })
     })
 
-    it('should return 400 for missing username', async () => {
+    it('should return 422 for missing username', async () => {
       const userData = {
-        password: 'testpassword123',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
         .post('/auth/register')
         .send(userData)
-        .expect(400)
+        .expect(422)
 
-      expect(response.body).toEqual({ error: 'All fields are required' })
+      expect(response.body.errors).toHaveProperty('username')
     })
 
-    it('should return 400 for missing password', async () => {
+    it('should return 422 for missing password', async () => {
       const userData = {
         username: 'testuser',
       }
@@ -110,18 +111,19 @@ describe('Auth API Integration Tests', () => {
       const response = await request(app)
         .post('/auth/register')
         .send(userData)
-        .expect(400)
+        .expect(422)
 
-      expect(response.body).toEqual({ error: 'All fields are required' })
+      expect(response.body.errors).toHaveProperty('password')
     })
 
     it('should handle empty request body', async () => {
       const response = await request(app)
         .post('/auth/register')
         .send({})
-        .expect(400)
+        .expect(422)
 
-      expect(response.body).toEqual({ error: 'All fields are required' })
+      expect(response.body.errors).toHaveProperty('username')
+      expect(response.body.errors).toHaveProperty('password')
     })
 
     it('should handle malformed JSON', async () => {
@@ -135,21 +137,21 @@ describe('Auth API Integration Tests', () => {
     it('should reject very long username', async () => {
       const userData = {
         username: 'a'.repeat(1000), // Very long username
-        password: 'testpassword123',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
         .post('/auth/register')
         .send(userData)
-        .expect(500)
+        .expect(422)
 
-      expect(response.body).toEqual({ error: 'Server error' })
+      expect(response.body.errors).toHaveProperty('username')
     })
 
     it('should handle special characters in username', async () => {
       const userData = {
         username: 'user@test.com',
-        password: 'testpassword123',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
@@ -162,8 +164,8 @@ describe('Auth API Integration Tests', () => {
 
     it('should handle unicode characters in username', async () => {
       const userData = {
-        username: '用戶名',
-        password: 'testpassword123',
+        username: '用戶名Test',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
@@ -180,14 +182,14 @@ describe('Auth API Integration Tests', () => {
       // Create a test user for login tests
       await User.create({
         username: 'loginuser',
-        password: await bcrypt.hash('correctpassword', 10),
+        password: await bcrypt.hash('CorrectPass123!', 10),
       })
     })
 
     it('should login successfully with valid credentials', async () => {
       const loginData = {
         username: 'loginuser',
-        password: 'correctpassword',
+        password: 'CorrectPass123!',
       }
 
       const response = await request(app)
@@ -206,7 +208,7 @@ describe('Auth API Integration Tests', () => {
     it('should return 400 for invalid username', async () => {
       const loginData = {
         username: 'nonexistentuser',
-        password: 'correctpassword',
+        password: 'CorrectPass123!',
       }
 
       const response = await request(app)
@@ -220,7 +222,7 @@ describe('Auth API Integration Tests', () => {
     it('should return 400 for invalid password', async () => {
       const loginData = {
         username: 'loginuser',
-        password: 'wrongpassword',
+        password: 'WrongPass123!',
       }
 
       const response = await request(app)
@@ -231,20 +233,20 @@ describe('Auth API Integration Tests', () => {
       expect(response.body).toEqual({ error: 'Invalid credentials' })
     })
 
-    it('should return 400 for missing username', async () => {
+    it('should return 422 for missing username', async () => {
       const loginData = {
-        password: 'correctpassword',
+        password: 'CorrectPass123!',
       }
 
       const response = await request(app)
         .post('/auth/login')
         .send(loginData)
-        .expect(400)
+        .expect(422)
 
-      expect(response.body).toEqual({ error: 'Invalid credentials' })
+      expect(response.body.errors).toHaveProperty('username')
     })
 
-    it('should return 500 for missing password', async () => {
+    it('should return 422 for missing password', async () => {
       const loginData = {
         username: 'loginuser',
       }
@@ -252,24 +254,25 @@ describe('Auth API Integration Tests', () => {
       const response = await request(app)
         .post('/auth/login')
         .send(loginData)
-        .expect(500)
+        .expect(422)
 
-      expect(response.body).toEqual({ error: 'Server error' })
+      expect(response.body.errors).toHaveProperty('password')
     })
 
     it('should handle empty request body', async () => {
       const response = await request(app)
         .post('/auth/login')
         .send({})
-        .expect(400)
+        .expect(422)
 
-      expect(response.body).toEqual({ error: 'Invalid credentials' })
+      expect(response.body.errors).toHaveProperty('username')
+      expect(response.body.errors).toHaveProperty('password')
     })
 
     it('should handle case-sensitive username', async () => {
       const loginData = {
         username: 'LOGINUSER', // Different case
-        password: 'correctpassword',
+        password: 'CorrectPass123!',
       }
 
       const response = await request(app)
@@ -280,10 +283,10 @@ describe('Auth API Integration Tests', () => {
       expect(response.body).toEqual({ error: 'Invalid credentials' })
     })
 
-    it('should return different tokens for different logins', async () => {
+    it('should return valid tokens for multiple logins', async () => {
       const loginData = {
         username: 'loginuser',
-        password: 'correctpassword',
+        password: 'CorrectPass123!',
       }
 
       // First login
@@ -298,26 +301,29 @@ describe('Auth API Integration Tests', () => {
         .send(loginData)
         .expect(200)
 
-      expect(response1.body.token).not.toBe(response2.body.token)
+      // Both should be valid JWT tokens
+      const decoded1 = jwt.verify(response1.body.token, process.env.JWT_SECRET)
+      const decoded2 = jwt.verify(response2.body.token, process.env.JWT_SECRET)
+      expect(decoded1.id).toBe(decoded2.id)
     })
 
     it('should handle multiple users correctly', async () => {
       // Create another user
       await User.create({
         username: 'anotheruser',
-        password: await bcrypt.hash('password123', 10),
+        password: await bcrypt.hash('AnotherPass123!', 10),
       })
 
       // Login as first user
       const response1 = await request(app)
         .post('/auth/login')
-        .send({ username: 'loginuser', password: 'correctpassword' })
+        .send({ username: 'loginuser', password: 'CorrectPass123!' })
         .expect(200)
 
       // Login as second user
       const response2 = await request(app)
         .post('/auth/login')
-        .send({ username: 'anotheruser', password: 'password123' })
+        .send({ username: 'anotheruser', password: 'AnotherPass123!' })
         .expect(200)
 
       expect(response1.body.token).not.toBe(response2.body.token)
@@ -333,7 +339,7 @@ describe('Auth API Integration Tests', () => {
     it('should handle application/json content type', async () => {
       const userData = {
         username: 'jsonuser',
-        password: 'password123',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
@@ -351,8 +357,8 @@ describe('Auth API Integration Tests', () => {
         .set('Content-Type', 'text/plain')
         .send('username=testuser&password=password123')
 
-      // Body may not parse correctly, resulting in 400 (missing fields) or 500 (parse error)
-      expect([400, 500]).toContain(response.status)
+      // Body may not parse correctly, resulting in 400/422 (missing fields) or 500 (parse error)
+      expect([400, 422, 500]).toContain(response.status)
     })
   })
 
@@ -365,8 +371,8 @@ describe('Auth API Integration Tests', () => {
           request(app)
             .post('/auth/register')
             .send({
-              username: `user${i}`,
-              password: 'password123',
+              username: `rapiduser${i}`,
+              password: 'SecurePass123!',
             })
         )
       }
@@ -385,7 +391,7 @@ describe('Auth API Integration Tests', () => {
     it('should not expose sensitive information in error responses', async () => {
       const response = await request(app)
         .post('/auth/login')
-        .send({ username: 'nonexistent', password: 'wrong' })
+        .send({ username: 'nonexistent', password: 'WrongPass123!' })
         .expect(400)
 
       expect(response.body.error).toBe('Invalid credentials')
@@ -397,7 +403,7 @@ describe('Auth API Integration Tests', () => {
     it('should handle SQL injection attempts', async () => {
       const maliciousData = {
         username: "admin'; DROP TABLE users; --",
-        password: 'password123',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
@@ -415,7 +421,7 @@ describe('Auth API Integration Tests', () => {
     it('should handle XSS attempts in username', async () => {
       const xssData = {
         username: "<script>alert('xss')</script>",
-        password: 'password123',
+        password: 'SecurePass123!',
       }
 
       const response = await request(app)
@@ -435,7 +441,7 @@ describe('Auth API Integration Tests', () => {
     it('should handle reasonably large passwords', async () => {
       const userData = {
         username: 'longpassuser',
-        password: 'a'.repeat(200), // 200 character password
+        password: 'Aa1!' + 'a'.repeat(196), // 200 chars, meets requirements
       }
 
       const response = await request(app)
@@ -449,7 +455,7 @@ describe('Auth API Integration Tests', () => {
     it('should handle extremely large payloads gracefully', async () => {
       const userData = {
         username: 'largeuser',
-        password: 'a'.repeat(10000), // Very large password
+        password: 'Aa1!' + 'a'.repeat(9996), // Very large password
       }
 
       const response = await request(app).post('/auth/register').send(userData)

@@ -44,8 +44,8 @@ describe('Inventory Validator', () => {
         name: 'Flour',
         quantity: 100,
         unit: 'kg',
-        minStockLevel: 20,
-        maxStockLevel: 200,
+        lowStockThreshold: 20,
+        reorderLevel: 10,
         category: 'ingredients',
         supplier: 'Local Mill',
         costPerUnit: 2.5,
@@ -91,18 +91,17 @@ describe('Inventory Validator', () => {
       )
     })
 
-    it('should reject invalid stock levels', async () => {
+    it('should reject negative stock thresholds', async () => {
       const response = await request(app).post('/test').send({
         name: 'Flour',
         quantity: 100,
         unit: 'kg',
-        minStockLevel: 100,
-        maxStockLevel: 50, // max less than min
+        lowStockThreshold: -5,
       })
 
       expect(response.status).toBe(422)
-      expect(response.body.errors.maxStockLevel).toContain(
-        'Maximum stock level must be greater than minimum stock level'
+      expect(response.body.errors.lowStockThreshold).toContain(
+        'Low stock threshold must be a positive number'
       )
     })
 

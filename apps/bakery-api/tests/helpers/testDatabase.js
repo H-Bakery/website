@@ -1,29 +1,43 @@
-const { Sequelize } = require("sequelize");
-const ProductModel = require("../../models/product");
-const logger = require("../../utils/logger");
+const { Sequelize, DataTypes } = require('sequelize')
+const logger = require('../../utils/logger')
 
 // Create a separate test database connection
-const testSequelize = new Sequelize("sqlite::memory:", {
+const testSequelize = new Sequelize('sqlite::memory:', {
   logging: false, // Disable SQL logging during tests
-});
+})
 
-// Initialize models with test database
+// Define Product model for test database (mirrors models/index.js definition)
+const Product = testSequelize.define(
+  'Product',
+  {
+    id: { type: DataTypes.INTEGER, autoIncrement: true, primaryKey: true },
+    name: { type: DataTypes.STRING, allowNull: false },
+    category: { type: DataTypes.STRING, allowNull: true },
+    price: { type: DataTypes.FLOAT, allowNull: false },
+    stock: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
+    dailyTarget: { type: DataTypes.INTEGER, allowNull: true, defaultValue: 0 },
+    description: { type: DataTypes.STRING(1000), allowNull: true },
+    isActive: { type: DataTypes.BOOLEAN, allowNull: true, defaultValue: true },
+    image: { type: DataTypes.STRING, allowNull: true },
+  },
+  { tableName: 'Products', timestamps: true }
+)
+
 const models = {
-  Product: ProductModel(testSequelize, Sequelize.DataTypes),
-  // Add other models here as needed for tests
-};
+  Product,
+}
 
 /**
  * Initialize the test database
  */
 async function initTestDb() {
   try {
-    await testSequelize.authenticate();
-    await testSequelize.sync({ force: true });
-    return true;
+    await testSequelize.authenticate()
+    await testSequelize.sync({ force: true })
+    return true
   } catch (error) {
-    logger.error("Test database initialization error:", error);
-    return false;
+    logger.error('Test database initialization error:', error)
+    return false
   }
 }
 
@@ -32,11 +46,11 @@ async function initTestDb() {
  */
 async function closeTestDb() {
   try {
-    await testSequelize.close();
-    return true;
+    await testSequelize.close()
+    return true
   } catch (error) {
-    logger.error("Test database close error:", error);
-    return false;
+    logger.error('Test database close error:', error)
+    return false
   }
 }
 
@@ -46,12 +60,12 @@ async function closeTestDb() {
 async function seedTestData(data = {}) {
   try {
     if (data.products && data.products.length > 0) {
-      await models.Product.bulkCreate(data.products);
+      await models.Product.bulkCreate(data.products)
     }
-    return true;
+    return true
   } catch (error) {
-    logger.error("Test data seeding error:", error);
-    return false;
+    logger.error('Test data seeding error:', error)
+    return false
   }
 }
 
@@ -60,11 +74,11 @@ async function seedTestData(data = {}) {
  */
 async function clearTestData() {
   try {
-    await models.Product.destroy({ where: {}, truncate: true });
-    return true;
+    await models.Product.destroy({ where: {}, truncate: true })
+    return true
   } catch (error) {
-    logger.error("Test data clearing error:", error);
-    return false;
+    logger.error('Test data clearing error:', error)
+    return false
   }
 }
 
@@ -75,4 +89,4 @@ module.exports = {
   closeTestDb,
   seedTestData,
   clearTestData,
-};
+}

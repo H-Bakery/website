@@ -49,7 +49,6 @@ describe('Auth Validator', () => {
 
       expect(response.status).toBe(422)
       expect(response.body.errors).toHaveProperty('password')
-      expect(response.body.errors).toHaveProperty('email')
     })
 
     it('should reject invalid username', async () => {

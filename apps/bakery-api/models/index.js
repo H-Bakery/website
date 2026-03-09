@@ -72,7 +72,7 @@ const Product = sequelize.define(
     },
     price: {
       type: DataTypes.FLOAT,
-      allowNull: true,
+      allowNull: false,
     },
     stock: {
       type: DataTypes.INTEGER,
@@ -101,6 +101,7 @@ const Product = sequelize.define(
   {
     tableName: 'Products',
     timestamps: true,
+    indexes: [{ fields: ['category'] }, { fields: ['name'] }],
   }
 )
 
@@ -431,6 +432,7 @@ const Inventory = sequelize.define(
   {
     tableName: 'Inventories',
     timestamps: true,
+    indexes: [{ fields: ['category'] }, { fields: ['name'] }],
   }
 )
 
@@ -595,6 +597,9 @@ Cash.belongsTo(User, { foreignKey: 'UserId' })
 Product.hasMany(UnsoldProduct, { foreignKey: 'ProductId' })
 UnsoldProduct.belongsTo(Product, { foreignKey: 'ProductId' })
 
+Product.hasMany(OrderItem, { foreignKey: 'ProductId' })
+OrderItem.belongsTo(Product, { foreignKey: 'ProductId' })
+
 User.hasMany(UnsoldProduct, { foreignKey: 'UserId' })
 UnsoldProduct.belongsTo(User, { foreignKey: 'UserId' })
 
@@ -603,6 +608,15 @@ Order.belongsTo(User, { foreignKey: 'UserId' })
 
 Order.hasMany(OrderItem, { foreignKey: 'OrderId' })
 OrderItem.belongsTo(Order, { foreignKey: 'OrderId' })
+
+User.hasOne(NotificationPreferences, { foreignKey: 'userId' })
+NotificationPreferences.belongsTo(User, { foreignKey: 'userId' })
+
+User.hasMany(Notification, { foreignKey: 'userId' })
+Notification.belongsTo(User, { foreignKey: 'userId' })
+
+User.hasMany(Chat, { foreignKey: 'UserId' })
+Chat.belongsTo(User, { foreignKey: 'UserId' })
 
 // Sync database helper
 async function syncDatabase() {

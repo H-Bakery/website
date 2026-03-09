@@ -4,6 +4,13 @@ const { User } = require('../models')
 const logger = require('../utils/logger')
 
 const SALT_ROUNDS = 10
+const JWT_EXPIRY = '24h'
+
+// Validate JWT_SECRET is configured
+if (!process.env.JWT_SECRET) {
+  logger.error('FATAL: JWT_SECRET environment variable is not set')
+  throw new Error('JWT_SECRET environment variable must be set')
+}
 
 const register = async (req, res) => {
   try {
@@ -47,7 +54,7 @@ const login = async (req, res) => {
   try {
     const { username, password } = req.body
 
-    if (!username) {
+    if (!username || !password) {
       return res.status(400).json({ error: 'Invalid credentials' })
     }
 
@@ -61,10 +68,9 @@ const login = async (req, res) => {
       return res.status(400).json({ error: 'Invalid credentials' })
     }
 
-    const token = jwt.sign(
-      { id: user.id, iat: Math.floor(Date.now() / 1000), r: Math.random() },
-      process.env.JWT_SECRET
-    )
+    const token = jwt.sign({ id: user.id }, process.env.JWT_SECRET, {
+      expiresIn: JWT_EXPIRY,
+    })
 
     return res.json({
       token,

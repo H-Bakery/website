@@ -4,8 +4,9 @@ const { authenticate } = require('../middleware/authMiddleware')
 const {
   addCashEntry,
   getCashEntries,
+  updateCashEntry,
+  deleteCashEntry,
 } = require('../controllers/cashController')
-const logger = require('../utils/logger')
 
 // Validate amount middleware
 const validateAmount = (req, res, next) => {
@@ -17,5 +18,7 @@ const validateAmount = (req, res, next) => {
 
 router.post('/', authenticate, validateAmount, addCashEntry)
 router.get('/', authenticate, getCashEntries)
+router.put('/:id', authenticate, updateCashEntry)
+router.delete('/:id', authenticate, deleteCashEntry)
 
 module.exports = router

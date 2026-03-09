@@ -16,8 +16,7 @@ const userRegistrationRules = () => [
       'Password must be at least 8 characters with uppercase, number and symbol'
     ),
   body('email')
-    .notEmpty()
-    .withMessage('Email is required')
+    .optional()
     .isEmail()
     .withMessage('Must be a valid email address')
     .normalizeEmail(),

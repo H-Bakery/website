@@ -243,7 +243,7 @@ Traditional sourdough bread.`,
 
       expect(response.status).toBe(400)
       expect(response.body.success).toBe(false)
-      expect(response.body.error).toBe('Title and content are required')
+      expect(response.body.error).toBe('Name and content are required')
     })
 
     it('should handle duplicate recipes', async () => {

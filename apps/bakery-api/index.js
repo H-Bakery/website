@@ -7,6 +7,10 @@ const {
   publicLimiter,
 } = require('./middleware/rateLimitMiddleware')
 const authRoutes = require('./routes/authRoutes')
+const recipeRoutes = require('./routes/recipeRoutes')
+const workflowRoutes = require('./routes/workflowRoutes')
+const inventoryRoutes = require('./routes/inventoryRoutes')
+const cashRoutes = require('./routes/cashRoutes')
 const logger = require('./utils/logger')
 
 const app = express()
@@ -68,14 +72,10 @@ app.use('/products', publicLimiter)
 
 // Routes
 app.use('/api/auth', authRoutes)
-
-app.get('/api/recipes', (req, res) => {
-  res.json({ success: true, data: [] })
-})
-
-app.get('/products', (req, res) => {
-  res.json({ success: true, data: [] })
-})
+app.use('/api/recipes', recipeRoutes)
+app.use('/api/workflows', workflowRoutes)
+app.use('/api/inventory', inventoryRoutes)
+app.use('/api/cash', cashRoutes)
 
 // 404 handler
 app.use((req, res) => {
