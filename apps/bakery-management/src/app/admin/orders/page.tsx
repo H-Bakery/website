@@ -80,13 +80,19 @@ export default function AdminOrdersPage() {
     <Box>
       <Box
         sx={{
-          mb: 3,
+          mb: { xs: 2, md: 3 },
           display: 'flex',
+          flexDirection: { xs: 'column', sm: 'row' },
           justifyContent: 'space-between',
-          alignItems: 'center',
+          alignItems: { xs: 'stretch', sm: 'center' },
+          gap: { xs: 1.5, sm: 0 },
         }}
       >
-        <Typography variant="h4" component="h1">
+        <Typography
+          variant="h4"
+          component="h1"
+          sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+        >
           Bestellungen
         </Typography>
         <Button
@@ -100,16 +106,25 @@ export default function AdminOrdersPage() {
 
       <Paper elevation={2}>
         <TableContainer>
-          <Table sx={{ minWidth: 650 }}>
+          <Table size="small">
             <TableHead>
               <TableRow>
-                <TableCell>Bestell-Nr.</TableCell>
+                <TableCell>Nr.</TableCell>
                 <TableCell>Kunde</TableCell>
-                <TableCell>Datum</TableCell>
-                <TableCell>Artikel</TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                  Datum
+                </TableCell>
+                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                  Artikel
+                </TableCell>
                 <TableCell align="right">Gesamt</TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell align="center">Aktionen</TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                >
+                  Aktionen
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -121,10 +136,26 @@ export default function AdminOrdersPage() {
                   <TableCell component="th" scope="row">
                     #{order.id}
                   </TableCell>
-                  <TableCell>{order.customer}</TableCell>
-                  <TableCell>{order.date}</TableCell>
-                  <TableCell>{order.items}</TableCell>
-                  <TableCell align="right">€{order.total.toFixed(2)}</TableCell>
+                  <TableCell>
+                    <Typography
+                      variant="body2"
+                      noWrap
+                      sx={{ maxWidth: { xs: 100, sm: 200 } }}
+                    >
+                      {order.customer}
+                    </Typography>
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                    {order.date}
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                    {order.items}
+                  </TableCell>
+                  <TableCell align="right">
+                    <Typography variant="body2" noWrap>
+                      {order.total.toFixed(2)} €
+                    </Typography>
+                  </TableCell>
                   <TableCell>
                     <Chip
                       label={statusLabels[order.status]}
@@ -132,7 +163,10 @@ export default function AdminOrdersPage() {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell
+                    align="center"
+                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                  >
                     <IconButton
                       size="small"
                       color="primary"
@@ -155,7 +189,7 @@ export default function AdminOrdersPage() {
         </TableContainer>
       </Paper>
 
-      <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+      <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
         <Typography variant="body2" color="text.secondary">
           Zeige {mockOrders.length} von {mockOrders.length} Bestellungen
         </Typography>
