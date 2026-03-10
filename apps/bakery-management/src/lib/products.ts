@@ -24,16 +24,6 @@ export const CATEGORY_LABELS: Record<string, string> = {
   torten: 'Torten',
 }
 
-const CATEGORY_FALLBACK_IMAGE: Record<string, string> = {
-  brot: '/assets/images/products/brot-rund.svg',
-  broetchen: '/assets/images/products/broetchen.svg',
-  baguette: '/assets/images/products/baguette.svg',
-  teilchen: '/assets/images/products/croissant.svg',
-  snacks: '/assets/images/products/brezel.svg',
-  kuchen: '/assets/images/products/kuchen.svg',
-  torten: '/assets/images/products/kuchen.svg',
-}
-
 function findMonorepoRoot(): string {
   let dir = process.cwd()
   for (let i = 0; i < 5; i++) {
@@ -71,8 +61,6 @@ export function getHQProducts(): HQProduct[] {
         let image: string | null = null
         if (data.image && data.image !== 'images/' && data.image.length > 10) {
           image = data.image
-        } else {
-          image = CATEGORY_FALLBACK_IMAGE[data.category] || null
         }
 
         return {
