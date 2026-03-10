@@ -107,7 +107,7 @@ export default function AdminInventoryPage() {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: 2,
           mb: 4,
         }}
@@ -144,17 +144,35 @@ export default function AdminInventoryPage() {
       {/* Inventory Table */}
       <Paper elevation={2}>
         <TableContainer>
-          <Table sx={{ minWidth: 650 }}>
+          <Table>
             <TableHead>
               <TableRow>
                 <TableCell>Artikel</TableCell>
-                <TableCell>Kategorie</TableCell>
+                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                  Kategorie
+                </TableCell>
                 <TableCell align="right">Bestand</TableCell>
-                <TableCell align="right">Min. Bestand</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>Lieferant</TableCell>
-                <TableCell>Aktualisiert</TableCell>
-                <TableCell align="center">Aktionen</TableCell>
+                <TableCell
+                  align="right"
+                  sx={{ display: { xs: 'none', md: 'table-cell' } }}
+                >
+                  Min. Bestand
+                </TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                  Status
+                </TableCell>
+                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                  Lieferant
+                </TableCell>
+                <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                  Aktualisiert
+                </TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                >
+                  Aktionen
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -170,14 +188,23 @@ export default function AdminInventoryPage() {
                     <TableCell component="th" scope="row">
                       {item.name}
                     </TableCell>
-                    <TableCell>{item.category}</TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                    >
+                      {item.category}
+                    </TableCell>
                     <TableCell align="right">
                       {item.quantity} {item.unit}
                     </TableCell>
-                    <TableCell align="right">
+                    <TableCell
+                      align="right"
+                      sx={{ display: { xs: 'none', md: 'table-cell' } }}
+                    >
                       {item.minQuantity} {item.unit}
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', md: 'table-cell' } }}
+                    >
                       <Box
                         sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
                       >
@@ -194,9 +221,20 @@ export default function AdminInventoryPage() {
                         </Box>
                       </Box>
                     </TableCell>
-                    <TableCell>{item.supplier}</TableCell>
-                    <TableCell>{item.lastUpdated}</TableCell>
-                    <TableCell align="center">
+                    <TableCell
+                      sx={{ display: { xs: 'none', lg: 'table-cell' } }}
+                    >
+                      {item.supplier}
+                    </TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', lg: 'table-cell' } }}
+                    >
+                      {item.lastUpdated}
+                    </TableCell>
+                    <TableCell
+                      align="center"
+                      sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                    >
                       <IconButton
                         size="small"
                         color="primary"

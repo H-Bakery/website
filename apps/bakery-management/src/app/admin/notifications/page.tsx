@@ -372,17 +372,27 @@ const NotificationsPage: React.FC = () => {
       <Paper sx={{ width: '100%' }}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 2, pt: 2 }}>
           <Stack
-            direction="row"
+            direction={{ xs: 'column', md: 'row' }}
             justifyContent="space-between"
-            alignItems="center"
+            alignItems={{ xs: 'stretch', md: 'center' }}
+            spacing={1}
             sx={{ mb: 2 }}
           >
-            <Tabs value={tabValue} onChange={handleTabChange}>
+            <Tabs
+              value={tabValue}
+              onChange={handleTabChange}
+              variant="scrollable"
+              scrollButtons="auto"
+            >
               <Tab label="Alle" />
               <Tab label={`Ungelesen (${unreadCount})`} />
             </Tabs>
-            <Stack direction="row" spacing={2}>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              sx={{ flexWrap: 'wrap', gap: 1 }}
+            >
+              <FormControl size="small" sx={{ minWidth: 100 }}>
                 <InputLabel>Kategorie</InputLabel>
                 <Select
                   value={categoryFilter}
@@ -397,7 +407,7 @@ const NotificationsPage: React.FC = () => {
                   <MenuItem value="customer">Kunde</MenuItem>
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ minWidth: 120 }}>
+              <FormControl size="small" sx={{ minWidth: 100 }}>
                 <InputLabel>Priorität</InputLabel>
                 <Select
                   value={priorityFilter}
@@ -414,10 +424,11 @@ const NotificationsPage: React.FC = () => {
               {unreadCount > 0 && (
                 <Button
                   variant="outlined"
+                  size="small"
                   startIcon={<MarkAllReadIcon />}
                   onClick={handleMarkAllRead}
                 >
-                  Alle als gelesen markieren
+                  Alle gelesen
                 </Button>
               )}
             </Stack>

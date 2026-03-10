@@ -149,8 +149,8 @@ const styles = {
   hero: {
     position: 'relative' as const,
     height: { xs: '85svh', md: '90vh' },
-    minHeight: { xs: '500px', md: '550px' },
-    maxHeight: { xs: '750px', md: 'none' },
+    minHeight: { xs: '400px', md: '550px' },
+    maxHeight: { xs: '700px', md: 'none' },
     overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',

@@ -232,7 +232,10 @@ export default function StaffPage() {
               setSearchTerm(e.target.value)
               setPage(0)
             }}
-            sx={{ minWidth: 300 }}
+            sx={{
+              minWidth: { xs: 200, sm: 300 },
+              flex: { xs: '1 1 100%', sm: '0 1 auto' },
+            }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -242,7 +245,7 @@ export default function StaffPage() {
             }}
           />
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 150 } }}>
             <Select
               value={roleFilter}
               onChange={(e) => {
@@ -258,7 +261,7 @@ export default function StaffPage() {
             </Select>
           </FormControl>
 
-          <FormControl size="small" sx={{ minWidth: 150 }}>
+          <FormControl size="small" sx={{ minWidth: { xs: 120, sm: 150 } }}>
             <Select
               value={statusFilter}
               onChange={(e) => {
@@ -294,14 +297,20 @@ export default function StaffPage() {
           </Box>
         ) : (
           <>
-            <Table sx={{ minWidth: 650 }} aria-label="Mitarbeitertabelle">
+            <Table aria-label="Mitarbeitertabelle">
               <TableHead>
                 <TableRow>
                   <TableCell>Name</TableCell>
-                  <TableCell>E-Mail</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                    E-Mail
+                  </TableCell>
                   <TableCell>Rolle</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Letzte Anmeldung</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                    Status
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
+                    Letzte Anmeldung
+                  </TableCell>
                   <TableCell align="right">Aktionen</TableCell>
                 </TableRow>
               </TableHead>
@@ -352,7 +361,11 @@ export default function StaffPage() {
                         </Box>
                       </Box>
                     </TableCell>
-                    <TableCell>{staff.email}</TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', md: 'table-cell' } }}
+                    >
+                      {staff.email}
+                    </TableCell>
                     <TableCell>
                       <Chip
                         label={getRoleLabel(staff.role)}
@@ -361,7 +374,9 @@ export default function StaffPage() {
                         variant={mode === 'dark' ? 'outlined' : 'filled'}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                    >
                       <Chip
                         label={staff.isActive ? 'Aktiv' : 'Inaktiv'}
                         color={staff.isActive ? 'success' : 'default'}
@@ -369,7 +384,9 @@ export default function StaffPage() {
                         variant="outlined"
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', lg: 'table-cell' } }}
+                    >
                       {staff.lastLogin ? (
                         new Date(staff.lastLogin).toLocaleString('de-DE', {
                           day: '2-digit',

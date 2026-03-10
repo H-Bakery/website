@@ -134,7 +134,7 @@ const ChatPage: React.FC = () => {
 
       <Card
         sx={{
-          height: '600px',
+          height: { xs: '400px', sm: '500px', md: '600px' },
           display: 'flex',
           flexDirection: 'column',
           mt: 2,
@@ -168,7 +168,7 @@ const ChatPage: React.FC = () => {
                 flex: 1,
                 overflow: 'auto',
                 p: 2,
-                maxHeight: '400px',
+                maxHeight: { xs: '250px', sm: '320px', md: '400px' },
               }}
             >
               {messages.length === 0 ? (

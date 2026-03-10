@@ -53,7 +53,7 @@ export default function ProductTable({
 
   return (
     <TableContainer component={Paper} sx={{ mt: 2 }}>
-      <Table sx={{ minWidth: 650 }} aria-label="simple product table">
+      <Table aria-label="simple product table">
         <TableHead>
           <TableRow>
             {headCells.map((headCell) => (

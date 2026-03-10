@@ -20,7 +20,10 @@ const MobileItem: React.FC<Props> = (props) => {
         sx={styles}
         className={`menu-item ${isActive && 'active'} ${cta && 'cta'}`}
       >
-        <Typography variant="button" fontSize="8vw">
+        <Typography
+          variant="button"
+          sx={{ fontSize: { xs: '1.1rem', sm: '1.3rem' } }}
+        >
           {label}
         </Typography>
       </Box>

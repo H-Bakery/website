@@ -328,6 +328,8 @@ const CashManagement: React.FC = () => {
             value={tabValue}
             onChange={handleTabChange}
             aria-label="cash management tabs"
+            variant="scrollable"
+            scrollButtons="auto"
           >
             <Tab
               label="Kassenstand eingeben"
