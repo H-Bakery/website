@@ -95,20 +95,33 @@ export default function AdminDashboardPage() {
   return (
     <Box>
       {/* Page Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          <DashboardIcon sx={{ mr: 2, verticalAlign: 'middle' }} />
-          Admin Dashboard
+      <Box sx={{ mb: { xs: 2, md: 4 } }}>
+        <Typography
+          variant="h4"
+          component="h1"
+          gutterBottom
+          sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+        >
+          <DashboardIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+          Dashboard
         </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
+        <Typography
+          variant="subtitle1"
+          color="text.secondary"
+          sx={{ display: { xs: 'none', sm: 'block' } }}
+        >
           Willkommen im Verwaltungsbereich Ihrer Bäckerei
         </Typography>
       </Box>
 
       {/* Statistics Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 3 }}>
+      <Grid
+        container
+        spacing={{ xs: 1.5, md: 3 }}
+        sx={{ mb: { xs: 2, md: 4 } }}
+      >
+        <Grid item xs={6} sm={6} md={3}>
+          <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
                 display: 'flex',
@@ -119,15 +132,29 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Heutige Bestellungen
+                  Bestellungen
                 </Typography>
-                <Typography variant="h4">
+                <Typography
+                  variant="h4"
+                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                >
                   {dashboardStats.todayOrders}
                 </Typography>
               </Box>
-              <OrdersIcon sx={{ color: 'primary.main', fontSize: 40 }} />
+              <OrdersIcon
+                sx={{
+                  color: 'primary.main',
+                  fontSize: { xs: 28, md: 40 },
+                }}
+              />
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box
+              sx={{
+                display: { xs: 'none', sm: 'flex' },
+                alignItems: 'center',
+                gap: 1,
+              }}
+            >
               <TrendingUpIcon sx={{ color: 'success.main', fontSize: 20 }} />
               <Typography variant="body2" color="success.main">
                 +12% gegenüber gestern
@@ -136,8 +163,8 @@ export default function AdminDashboardPage() {
           </Paper>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 3 }}>
+        <Grid item xs={6} sm={6} md={3}>
+          <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
                 display: 'flex',
@@ -148,15 +175,29 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Heutiger Umsatz
+                  Umsatz
                 </Typography>
-                <Typography variant="h4">
-                  {dashboardStats.todayRevenue.toFixed(2)}€
+                <Typography
+                  variant="h4"
+                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                >
+                  {dashboardStats.todayRevenue.toFixed(0)}€
                 </Typography>
               </Box>
-              <EuroIcon sx={{ color: 'success.main', fontSize: 40 }} />
+              <EuroIcon
+                sx={{
+                  color: 'success.main',
+                  fontSize: { xs: 28, md: 40 },
+                }}
+              />
             </Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box
+              sx={{
+                display: { xs: 'none', sm: 'flex' },
+                alignItems: 'center',
+                gap: 1,
+              }}
+            >
               <TrendingUpIcon sx={{ color: 'success.main', fontSize: 20 }} />
               <Typography variant="body2" color="success.main">
                 +8% gegenüber gestern
@@ -165,8 +206,8 @@ export default function AdminDashboardPage() {
           </Paper>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 3 }}>
+        <Grid item xs={6} sm={6} md={3}>
+          <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
                 display: 'flex',
@@ -177,22 +218,34 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Aktive Lieferungen
+                  Lieferungen
                 </Typography>
-                <Typography variant="h4">
+                <Typography
+                  variant="h4"
+                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                >
                   {dashboardStats.activeDeliveries}
                 </Typography>
               </Box>
-              <DeliveryIcon sx={{ color: 'info.main', fontSize: 40 }} />
+              <DeliveryIcon
+                sx={{
+                  color: 'info.main',
+                  fontSize: { xs: 28, md: 40 },
+                }}
+              />
             </Box>
-            <Typography variant="body2" color="text.secondary">
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            >
               3 unterwegs, 5 in Vorbereitung
             </Typography>
           </Paper>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 3 }}>
+        <Grid item xs={6} sm={6} md={3}>
+          <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
                 display: 'flex',
@@ -203,13 +256,22 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Niedrige Lagerbestände
+                  Niedrig im Lager
                 </Typography>
-                <Typography variant="h4" color="warning.main">
+                <Typography
+                  variant="h4"
+                  color="warning.main"
+                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                >
                   {dashboardStats.lowStockItems}
                 </Typography>
               </Box>
-              <InventoryIcon sx={{ color: 'warning.main', fontSize: 40 }} />
+              <InventoryIcon
+                sx={{
+                  color: 'warning.main',
+                  fontSize: { xs: 28, md: 40 },
+                }}
+              />
             </Box>
             <Button
               size="small"
@@ -223,12 +285,23 @@ export default function AdminDashboardPage() {
       </Grid>
 
       {/* Quick Links */}
-      <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
+      <Typography
+        variant="h5"
+        gutterBottom
+        sx={{
+          mb: { xs: 1.5, md: 3 },
+          fontSize: { xs: '1.25rem', md: '1.5rem' },
+        }}
+      >
         Schnellzugriff
       </Typography>
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid
+        container
+        spacing={{ xs: 1.5, md: 3 }}
+        sx={{ mb: { xs: 2, md: 4 } }}
+      >
         {quickLinks.map((link) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={link.href}>
+          <Grid item xs={6} sm={6} md={4} lg={3} key={link.href}>
             <Card
               sx={{
                 height: '100%',
@@ -244,19 +317,30 @@ export default function AdminDashboardPage() {
               }}
               onClick={() => router.push(link.href)}
             >
-              <CardContent sx={{ flexGrow: 1, textAlign: 'center' }}>
+              <CardContent
+                sx={{ flexGrow: 1, textAlign: 'center', p: { xs: 1.5, md: 2 } }}
+              >
                 <Box
                   sx={{
                     color: link.color,
-                    mb: 2,
+                    mb: { xs: 1, md: 2 },
                   }}
                 >
                   {link.icon}
                 </Box>
-                <Typography variant="h6" component="h2" gutterBottom>
+                <Typography
+                  variant="h6"
+                  component="h2"
+                  gutterBottom
+                  sx={{ fontSize: { xs: '0.95rem', md: '1.25rem' } }}
+                >
                   {link.title}
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ display: { xs: 'none', sm: 'block' } }}
+                >
                   {link.description}
                 </Typography>
               </CardContent>
