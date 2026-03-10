@@ -1,18 +1,22 @@
-// @ts-nocheck
 import React from 'react'
-import { PRODUCTS } from '../../../../../../../src/mocks/products'
+import { getManagementProducts } from '../../../../lib/products'
 import ProductEditClient from './ProductEditClient'
 
-// Generate static paths for all products during build
 export async function generateStaticParams() {
-  return PRODUCTS.map((product) => ({
-    id: product.id.toString(),
+  const products = getManagementProducts()
+  return products.map((product) => ({
+    id: product.id,
   }))
 }
 
-// Server component that passes product ID to client component
-export default function ProductEditPage({ params }) {
+export default function ProductEditPage({
+  params,
+}: {
+  params: { id: string }
+}) {
   const productId = params.id
+  const products = getManagementProducts()
+  const product = products.find((p) => p.id === productId)
 
-  return <ProductEditClient productId={productId} />
+  return <ProductEditClient productId={productId} initialProduct={product} />
 }
