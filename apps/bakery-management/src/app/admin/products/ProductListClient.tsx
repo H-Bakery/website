@@ -25,6 +25,7 @@ import {
   Delete as DeleteIcon,
   Euro as EuroIcon,
 } from '@mui/icons-material'
+import { useRouter } from 'next/navigation'
 import type { ManagementProduct } from '../../../lib/products'
 
 const categoryColors: Record<
@@ -47,6 +48,7 @@ interface ProductListClientProps {
 export default function ProductListClient({
   products,
 }: ProductListClientProps) {
+  const router = useRouter()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const activeProducts = products.filter((p) => p.status === 'active').length
@@ -302,6 +304,9 @@ export default function ProductListClient({
                       size="small"
                       color="primary"
                       aria-label="edit product"
+                      onClick={() =>
+                        router.push(`/admin/products/${product.id}`)
+                      }
                     >
                       <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
                     </IconButton>

@@ -9,12 +9,12 @@ export async function generateStaticParams() {
   }))
 }
 
-export default function ProductEditPage({
+export default async function ProductEditPage({
   params,
 }: {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }) {
-  const productId = params.id
+  const { id: productId } = await params
   const products = getManagementProducts()
   const product = products.find((p) => p.id === productId)
 
