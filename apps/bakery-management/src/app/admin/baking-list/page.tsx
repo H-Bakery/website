@@ -139,7 +139,7 @@ export default function AdminBakingListPage() {
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
           gap: 2,
           mb: 4,
         }}
@@ -185,19 +185,33 @@ export default function AdminBakingListPage() {
       {/* Baking List Table */}
       <Paper elevation={2}>
         <TableContainer>
-          <Table sx={{ minWidth: 650 }}>
+          <Table>
             <TableHead>
               <TableRow>
                 <TableCell padding="checkbox">
                   <Checkbox />
                 </TableCell>
-                <TableCell>Startzeit</TableCell>
+                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                  Startzeit
+                </TableCell>
                 <TableCell>Produkt</TableCell>
-                <TableCell>Kategorie</TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                  Kategorie
+                </TableCell>
                 <TableCell align="center">Menge</TableCell>
-                <TableCell align="center">Fertig</TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                >
+                  Fertig
+                </TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell align="center">Aktionen</TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                >
+                  Aktionen
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -212,7 +226,7 @@ export default function AdminBakingListPage() {
                   <TableCell padding="checkbox">
                     <Checkbox checked={item.status === 'completed'} />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <ScheduleIcon fontSize="small" color="action" />
                       {item.startTime}
@@ -223,7 +237,7 @@ export default function AdminBakingListPage() {
                       {item.product}
                     </Typography>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                     <Chip
                       label={item.category}
                       size="small"
@@ -239,7 +253,10 @@ export default function AdminBakingListPage() {
                       {item.quantity}
                     </Typography>
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell
+                    align="center"
+                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                  >
                     <Typography
                       variant="body1"
                       color={
@@ -273,7 +290,10 @@ export default function AdminBakingListPage() {
                       }
                     />
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell
+                    align="center"
+                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                  >
                     <IconButton
                       size="small"
                       color="primary"

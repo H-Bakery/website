@@ -126,7 +126,7 @@ export const Products: React.FC<Props> = (props) => {
               }}
             />
 
-            <FormControl size="small" sx={{ minWidth: 200 }}>
+            <FormControl size="small" sx={{ minWidth: { xs: 150, sm: 200 } }}>
               <InputLabel id="sort-select-label">Sortieren nach</InputLabel>
               <Select
                 labelId="sort-select-label"
@@ -197,4 +197,3 @@ export const Products: React.FC<Props> = (props) => {
     </Box>
   )
 }
-

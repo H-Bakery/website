@@ -93,19 +93,25 @@ const CartPage: React.FC = () => {
     <div>
       <Hero title="Warenkorb" />
       <Container maxWidth="lg" sx={{ py: 4 }}>
-        <Grid container spacing={4}>
+        <Grid container spacing={{ xs: 2, md: 4 }}>
           {/* Cart Items */}
           <Grid item xs={12} md={8}>
             <Paper elevation={1} sx={{ p: 3 }}>
               <Box
                 sx={{
                   display: 'flex',
+                  flexDirection: { xs: 'column', sm: 'row' },
                   justifyContent: 'space-between',
-                  alignItems: 'center',
+                  alignItems: { xs: 'flex-start', sm: 'center' },
+                  gap: 1,
                   mb: 3,
                 }}
               >
-                <Typography variant="h5" component="h2">
+                <Typography
+                  variant="h5"
+                  component="h2"
+                  sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' } }}
+                >
                   Ihre Bestellung ({totalCount}{' '}
                   {totalCount === 1 ? 'Artikel' : 'Artikel'})
                 </Typography>
@@ -246,7 +252,14 @@ const CartPage: React.FC = () => {
 
           {/* Order Summary */}
           <Grid item xs={12} md={4}>
-            <Paper elevation={2} sx={{ p: 3, position: 'sticky', top: 20 }}>
+            <Paper
+              elevation={2}
+              sx={{
+                p: { xs: 2, md: 3 },
+                position: 'sticky',
+                top: { xs: 80, md: 20 },
+              }}
+            >
               <Typography variant="h5" component="h3" gutterBottom>
                 Bestellübersicht
               </Typography>

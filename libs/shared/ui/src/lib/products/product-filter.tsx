@@ -54,7 +54,7 @@ const Filter: React.FC<Props> = (props) => {
     <Box sx={styles.root}>
       <Grid container spacing={2}>
         {FILTERS.map((item) => (
-          <Grid key={item.label} item xs={4} sm={2} md={2}>
+          <Grid key={item.label} item xs={6} sm={3} md={2}>
             <Box
               sx={styles.item}
               onClick={() => filter(item.label)}
@@ -79,7 +79,7 @@ const styles = {
   item: {
     borderRadius: '8px',
     boxShadow: 1,
-    p: 2,
+    p: { xs: 1.5, sm: 2 },
     display: 'flex',
     flexDirection: 'column',
     justifyContent: 'center',

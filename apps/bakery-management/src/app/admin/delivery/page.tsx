@@ -236,16 +236,27 @@ export default function AdminDeliveryPage() {
       {/* Delivery List */}
       <Paper elevation={2}>
         <TableContainer>
-          <Table sx={{ minWidth: 650 }}>
+          <Table>
             <TableHead>
               <TableRow>
                 <TableCell>Bestellung</TableCell>
                 <TableCell>Kunde</TableCell>
-                <TableCell>Adresse</TableCell>
+                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                  Adresse
+                </TableCell>
                 <TableCell>Status</TableCell>
-                <TableCell>Fahrer</TableCell>
-                <TableCell>Zeit</TableCell>
-                <TableCell align="center">Aktionen</TableCell>
+                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                  Fahrer
+                </TableCell>
+                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                  Zeit
+                </TableCell>
+                <TableCell
+                  align="center"
+                  sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                >
+                  Aktionen
+                </TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -273,7 +284,9 @@ export default function AdminDeliveryPage() {
                       </Typography>
                     </Box>
                   </TableCell>
-                  <TableCell>{delivery.address}</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                    {delivery.address}
+                  </TableCell>
                   <TableCell>
                     <Chip
                       label={
@@ -293,8 +306,10 @@ export default function AdminDeliveryPage() {
                       size="small"
                     />
                   </TableCell>
-                  <TableCell>{delivery.driver}</TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                    {delivery.driver}
+                  </TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     <Box
                       sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
                     >
@@ -302,7 +317,10 @@ export default function AdminDeliveryPage() {
                       {delivery.estimatedTime}
                     </Box>
                   </TableCell>
-                  <TableCell align="center">
+                  <TableCell
+                    align="center"
+                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                  >
                     <IconButton
                       size="small"
                       color="primary"

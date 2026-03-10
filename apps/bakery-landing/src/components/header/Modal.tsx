@@ -21,7 +21,7 @@ const Modal: React.FC<Props> = (props) => {
         bgcolor: 'rgba(255,255,255,0.66)',
         backdropFilter: 'blur(8px)',
         p: 2,
-        pt: 13,
+        pt: { xs: 10, md: 13 },
         '& .MuiBackdrop-root': {
           bgcolor: 'transparent',
         },

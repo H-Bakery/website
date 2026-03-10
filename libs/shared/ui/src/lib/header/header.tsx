@@ -3,6 +3,7 @@
 import React from 'react'
 import { Box, useMediaQuery, useTheme } from '@mui/material'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import HeusserLogo from '../icons/brand/heusser-logo'
 import WappenIcon from '../icons/brand/wappen-icon'
 import { HamburgerMenu } from './hamburger-menu'
@@ -30,6 +31,12 @@ export const Header = () => {
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [open, setOpen] = React.useState(false)
+  const pathname = usePathname()
+
+  // Close mobile nav on route change
+  React.useEffect(() => {
+    setOpen(false)
+  }, [pathname])
 
   return (
     <Box
@@ -90,18 +97,18 @@ const styles = {
   header: {
     position: 'fixed',
     zIndex: 10001,
-    top: 16,
-    left: 16,
+    top: { xs: 8, sm: 16 },
+    left: { xs: 8, sm: 16 },
     height: 'auto',
-    minHeight: 70,
-    width: 'calc(100% - 32px)',
+    minHeight: { xs: 56, sm: 70 },
+    width: { xs: 'calc(100% - 16px)', sm: 'calc(100% - 32px)' },
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     bgcolor: 'background.paper',
     boxShadow: 1,
     borderRadius: '8px',
-    p: 2,
+    p: { xs: 1, sm: 2 },
   },
   logo: {
     cursor: 'pointer',

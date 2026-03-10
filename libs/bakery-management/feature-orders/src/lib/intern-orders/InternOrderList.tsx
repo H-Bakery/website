@@ -103,15 +103,43 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
       elevation={1}
       sx={{ borderRadius: '8px' }}
     >
-      <Table sx={{ minWidth: 650 }} aria-label="intern orders table">
+      <Table aria-label="intern orders table">
         <TableHead sx={{ bgcolor: 'action.hover' }}>
           <TableRow>
             <TableCell sx={{ fontWeight: 'bold' }}>Order Name</TableCell>
             <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Assigned To</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Created At</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Items/Qty</TableCell>
-            <TableCell sx={{ fontWeight: 'bold' }}>Bill</TableCell>
+            <TableCell
+              sx={{
+                fontWeight: 'bold',
+                display: { xs: 'none', sm: 'table-cell' },
+              }}
+            >
+              Assigned To
+            </TableCell>
+            <TableCell
+              sx={{
+                fontWeight: 'bold',
+                display: { xs: 'none', md: 'table-cell' },
+              }}
+            >
+              Created At
+            </TableCell>
+            <TableCell
+              sx={{
+                fontWeight: 'bold',
+                display: { xs: 'none', sm: 'table-cell' },
+              }}
+            >
+              Items/Qty
+            </TableCell>
+            <TableCell
+              sx={{
+                fontWeight: 'bold',
+                display: { xs: 'none', md: 'table-cell' },
+              }}
+            >
+              Bill
+            </TableCell>
             <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>
               Actions
             </TableCell>
@@ -139,18 +167,25 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
                 </Typography>
               </TableCell>
               <TableCell>{getStatusChip(order.status)}</TableCell>
-              <TableCell>{order.assignedTo || 'N/A'}</TableCell>
-              <TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                {order.assignedTo || 'N/A'}
+              </TableCell>
+              <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                 {new Date(order.createdAt).toLocaleDateString()}
               </TableCell>
-              <TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                 {order.items && order.items.length > 0
                   ? `${order.items.length} item(s)`
                   : order.quantity
                   ? `${order.quantity} (general)`
                   : 'N/A'}
               </TableCell>
-              <TableCell sx={{ textAlign: 'center' }}>
+              <TableCell
+                sx={{
+                  textAlign: 'center',
+                  display: { xs: 'none', md: 'table-cell' },
+                }}
+              >
                 {order.billImageUrl ? (
                   <Tooltip title="View Bill">
                     <IconButton

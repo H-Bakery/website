@@ -435,14 +435,19 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           flexGrow: 1,
           p: { xs: 1.5, sm: 2, md: 3 },
           width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
-          overflow: 'hidden',
+          overflowX: 'hidden',
         }}
       >
         <Toolbar />
 
         {/* Simple Breadcrumb */}
         <Box sx={{ mb: 2 }}>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            noWrap
+            sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
+          >
             {pathname.split('/').filter(Boolean).join(' › ')}
           </Typography>
         </Box>

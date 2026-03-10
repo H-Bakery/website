@@ -88,10 +88,10 @@ const styles = {
   header: {
     position: 'fixed' as const,
     zIndex: 10001,
-    top: 16,
-    left: 16,
-    height: 70,
-    width: 'calc(100% - 32px)',
+    top: { xs: 8, sm: 16 },
+    left: { xs: 8, sm: 16 },
+    height: { xs: 56, sm: 70 },
+    width: { xs: 'calc(100% - 16px)', sm: 'calc(100% - 32px)' },
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -99,7 +99,7 @@ const styles = {
     backdropFilter: 'blur(8px)',
     boxShadow: '0 2px 12px rgba(90, 46, 42, 0.08)',
     borderRadius: '8px',
-    p: 2,
+    p: { xs: 1, sm: 2 },
   },
   logo: {
     cursor: 'pointer',

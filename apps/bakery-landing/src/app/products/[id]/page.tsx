@@ -168,8 +168,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
       </Box>
 
       {/* Main Product Section */}
-      <Container maxWidth="lg" sx={{ py: 8 }}>
-        <Grid container spacing={8}>
+      <Container maxWidth="lg" sx={{ py: { xs: 4, md: 8 } }}>
+        <Grid container spacing={{ xs: 3, md: 8 }}>
           {/* Product Image Section */}
           <Grid item xs={12} md={6}>
             <Box
@@ -203,11 +203,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
               <Box
                 sx={{
-                  p: 6,
+                  p: { xs: 3, md: 6 },
                   display: 'flex',
                   justifyContent: 'center',
                   alignItems: 'center',
-                  height: { xs: 350, md: 450 },
+                  height: { xs: 250, md: 450 },
                   bgcolor: 'grey.50',
                 }}
               >
