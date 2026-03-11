@@ -157,7 +157,7 @@ export function loadProducts(): Product[] {
     price: p.price,
     image: p.image,
     imageUrl: p.image,
-    description: p.short_description || undefined,
+    description: p.description || p.short_description || undefined,
     available: p.available,
     seasonal: p.seasonal,
   }))
