@@ -29,7 +29,7 @@ function loadHQProducts() {
     .map((file) => {
       try {
         const raw = fs.readFileSync(path.join(HQ_PRODUCTS_DIR, file), 'utf-8')
-        const { data } = matter(raw)
+        const { data, content } = matter(raw)
         if (!data.id || !data.name) return null
         return {
           id: data.id,
@@ -41,6 +41,10 @@ function loadHQProducts() {
           seasonal: data.seasonal ?? false,
           image: data.image || null,
           short_description: data.short_description || '',
+          description:
+            content.replace(/^#[^\n]*\n+/, '').trim() ||
+            data.short_description ||
+            '',
         }
       } catch {
         return null
