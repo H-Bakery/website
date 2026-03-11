@@ -13,6 +13,7 @@ export interface HQProduct {
   seasonal: boolean
   image: string | null
   short_description: string
+  description: string
 }
 
 /** Display label for each category key */
@@ -83,7 +84,7 @@ export function getHQProducts(): HQProduct[] {
     .map((file) => {
       try {
         const raw = fs.readFileSync(path.join(dir, file), 'utf-8')
-        const { data } = matter(raw)
+        const { data, content } = matter(raw)
         if (!data.id || !data.name) return null
 
         // Resolve image: use explicit image if it's a real path, otherwise fallback
@@ -93,6 +94,12 @@ export function getHQProducts(): HQProduct[] {
         } else {
           image = CATEGORY_FALLBACK_IMAGE[data.category] || null
         }
+
+        // Extract body text (after frontmatter, strip the h1 heading)
+        const bodyText = content
+          .trim()
+          .replace(/^#[^\n]*\n/, '')
+          .trim()
 
         return {
           id: data.id,
@@ -104,6 +111,7 @@ export function getHQProducts(): HQProduct[] {
           seasonal: data.seasonal ?? false,
           image,
           short_description: data.short_description || '',
+          description: bodyText || data.short_description || '',
         } as HQProduct
       } catch {
         return null
@@ -152,7 +160,7 @@ export function loadProducts(): Product[] {
     price: p.price,
     image: p.image,
     imageUrl: p.image,
-    description: p.short_description || undefined,
+    description: p.description || p.short_description || undefined,
     available: p.available,
     seasonal: p.seasonal,
   }))
