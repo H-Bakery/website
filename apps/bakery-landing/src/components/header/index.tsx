@@ -1,6 +1,6 @@
 'use client'
 import React from 'react'
-import { Box, useMediaQuery, useTheme } from '@mui/material'
+import { Box } from '@mui/material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { HeusserLogo } from '../icons'
@@ -26,8 +26,6 @@ const ctaItems: MenuItem[] = [
 ]
 
 const Header = () => {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [open, setOpen] = React.useState(false)
   const pathname = usePathname()
 
@@ -48,38 +46,34 @@ const Header = () => {
             <HeusserLogo color="#5A2E2A" />
           </Box>
         </Link>
-        {!isMobile && (
-          <Box
-            sx={{
-              display: 'flex',
-            }}
-          >
-            <Box sx={styles.menu}>
-              {items.map((item) => (
-                <Item key={item.label} {...item} />
-              ))}
-            </Box>
-            <Box sx={styles.ctas}>
-              {ctaItems.map((item) => (
-                <Item key={item.label} {...item} />
-              ))}
-            </Box>
-          </Box>
-        )}
-        {isMobile && <Hamburger setOpen={setOpen} open={open} />}
-      </Box>
-      {isMobile && (
-        <Modal setOpen={setOpen} open={open}>
-          <Box sx={styles.mobileMenu}>
+        {/* Desktop navigation */}
+        <Box sx={{ display: { xs: 'none', md: 'flex' } }}>
+          <Box sx={styles.menu}>
             {items.map((item) => (
-              <MobileItem key={item.label} {...item} />
-            ))}
-            {ctaItems.map((item) => (
-              <MobileItem key={item.label} {...item} />
+              <Item key={item.label} {...item} />
             ))}
           </Box>
-        </Modal>
-      )}
+          <Box sx={styles.ctas}>
+            {ctaItems.map((item) => (
+              <Item key={item.label} {...item} />
+            ))}
+          </Box>
+        </Box>
+        {/* Mobile hamburger */}
+        <Box sx={{ display: { xs: 'flex', md: 'none' } }}>
+          <Hamburger setOpen={setOpen} open={open} />
+        </Box>
+      </Box>
+      <Modal setOpen={setOpen} open={open}>
+        <Box sx={{ ...styles.mobileMenu, display: { xs: 'flex', md: 'none' } }}>
+          {items.map((item) => (
+            <MobileItem key={item.label} {...item} />
+          ))}
+          {ctaItems.map((item) => (
+            <MobileItem key={item.label} {...item} />
+          ))}
+        </Box>
+      </Modal>
     </Box>
   )
 }
