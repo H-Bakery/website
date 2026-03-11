@@ -42,7 +42,7 @@ function loadHQProducts() {
           image: data.image || null,
           short_description: data.short_description || '',
           description:
-            content.replace(/^#[^\n]*\n+/, '').trim() ||
+            content.replace(/^\s*#[^\n]*\n+/, '').trim() ||
             data.short_description ||
             '',
         }
