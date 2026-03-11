@@ -98,7 +98,7 @@ export function getHQProducts(): HQProduct[] {
         // Extract body text (after frontmatter, strip the h1 heading)
         const bodyText = content
           .trim()
-          .replace(/^#[^\n]*\n/, '')
+          .replace(/^#{1,6}[^\n]*\n+/, '')
           .trim()
 
         return {
