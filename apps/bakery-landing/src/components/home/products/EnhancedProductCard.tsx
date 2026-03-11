@@ -1,6 +1,6 @@
 'use client'
 import React, { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   Box,
   Chip,
@@ -48,14 +48,8 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
     product.image ||
     '/assets/images/products/erdbeertorte.jpg'
 
-  const router = useRouter()
   const [isFavorite, setIsFavorite] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
-
-  const handleCardClick = () => {
-    // Navigate to product detail page
-    router.push(`/products/${product.id}`)
-  }
 
   const handleToggleFavorite = (event: React.MouseEvent) => {
     event.stopPropagation()
@@ -110,7 +104,11 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
         )}
       </IconButton>
 
-      <CardActionArea onClick={handleCardClick} sx={styles.actionArea}>
+      <CardActionArea
+        component={Link}
+        href={`/products/${product.id}`}
+        sx={styles.actionArea}
+      >
         <CardMedia component="div" sx={styles.imageContainer}>
           <Box sx={styles.imageWrapper}>
             <Image
