@@ -24,18 +24,9 @@ import {
   TrendingUp as TrendingUpIcon,
   People as PeopleIcon,
   Euro as EuroIcon,
+  Category as CategoryIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
-
-// Mock data for dashboard statistics
-const dashboardStats = {
-  todayOrders: 23,
-  todayRevenue: 1847.5,
-  activeDeliveries: 8,
-  lowStockItems: 3,
-  productionEfficiency: 87,
-  customerCount: 156,
-}
 
 const quickLinks = [
   {
@@ -92,6 +83,49 @@ const quickLinks = [
 export default function AdminDashboardPage() {
   const router = useRouter()
 
+  const [stats, setStats] = React.useState({
+    todayOrders: 0,
+    todayRevenue: 0,
+    activeDeliveries: 0,
+    lowStockItems: 0,
+    productionEfficiency: 0,
+    customerCount: 0,
+    productsCount: 0,
+  })
+  const [loading, setLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+    Promise.all([
+      fetch(`${API}/api/orders`).then((r) => r.json()),
+      fetch(`${API}/api/products`).then((r) => r.json()),
+      fetch(`${API}/api/inventory`).then((r) => r.json()),
+    ])
+      .then(([orders, products, inventory]) => {
+        const ordersData = orders?.data || []
+        const productsData = products?.data || products || []
+        const inventoryData = inventory?.data || []
+
+        setStats({
+          todayOrders: ordersData.length,
+          todayRevenue: ordersData.reduce(
+            (sum: number, o: any) => sum + (o.total || 0),
+            0
+          ),
+          activeDeliveries: ordersData.filter(
+            (o: any) => o.status === 'delivery'
+          ).length,
+          lowStockItems: inventoryData.filter((i: any) => i.stock <= i.minStock)
+            .length,
+          productionEfficiency: 87,
+          customerCount: ordersData.length,
+          productsCount: Array.isArray(productsData) ? productsData.length : 0,
+        })
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
   return (
     <Box>
       {/* Page Header */}
@@ -113,6 +147,8 @@ export default function AdminDashboardPage() {
           Willkommen im Verwaltungsbereich Ihrer Bäckerei
         </Typography>
       </Box>
+
+      {loading && <LinearProgress sx={{ mb: 2 }} />}
 
       {/* Statistics Cards */}
       <Grid
@@ -138,7 +174,7 @@ export default function AdminDashboardPage() {
                   variant="h4"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {dashboardStats.todayOrders}
+                  {stats.todayOrders}
                 </Typography>
               </Box>
               <OrdersIcon
@@ -181,7 +217,7 @@ export default function AdminDashboardPage() {
                   variant="h4"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {dashboardStats.todayRevenue.toFixed(0)}€
+                  {stats.todayRevenue.toFixed(0)}€
                 </Typography>
               </Box>
               <EuroIcon
@@ -224,7 +260,7 @@ export default function AdminDashboardPage() {
                   variant="h4"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {dashboardStats.activeDeliveries}
+                  {stats.activeDeliveries}
                 </Typography>
               </Box>
               <DeliveryIcon
@@ -239,7 +275,7 @@ export default function AdminDashboardPage() {
               color="text.secondary"
               sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              3 unterwegs, 5 in Vorbereitung
+              Aktive Lieferungen
             </Typography>
           </Paper>
         </Grid>
@@ -263,7 +299,7 @@ export default function AdminDashboardPage() {
                   color="warning.main"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {dashboardStats.lowStockItems}
+                  {stats.lowStockItems}
                 </Typography>
               </Box>
               <InventoryIcon
@@ -279,6 +315,40 @@ export default function AdminDashboardPage() {
               onClick={() => router.push('/admin/inventory')}
             >
               Inventar prüfen
+            </Button>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={6} sm={6} md={3}>
+          <Paper sx={{ p: { xs: 2, md: 3 } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 2,
+              }}
+            >
+              <Box>
+                <Typography color="text.secondary" variant="body2">
+                  Produkte
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                >
+                  {stats.productsCount}
+                </Typography>
+              </Box>
+              <CategoryIcon
+                sx={{
+                  color: '#E91E63',
+                  fontSize: { xs: 28, md: 40 },
+                }}
+              />
+            </Box>
+            <Button size="small" onClick={() => router.push('/admin/products')}>
+              Produkte verwalten
             </Button>
           </Paper>
         </Grid>
@@ -362,12 +432,12 @@ export default function AdminDashboardPage() {
               >
                 <Typography variant="body2">Produktionseffizienz</Typography>
                 <Typography variant="body2" fontWeight="bold">
-                  {dashboardStats.productionEfficiency}%
+                  {stats.productionEfficiency}%
                 </Typography>
               </Box>
               <LinearProgress
                 variant="determinate"
-                value={dashboardStats.productionEfficiency}
+                value={stats.productionEfficiency}
                 sx={{ height: 10, borderRadius: 5 }}
                 color="success"
               />
@@ -398,9 +468,7 @@ export default function AdminDashboardPage() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <PeopleIcon sx={{ color: 'primary.main', fontSize: 48 }} />
                 <Box>
-                  <Typography variant="h4">
-                    {dashboardStats.customerCount}
-                  </Typography>
+                  <Typography variant="h4">{stats.customerCount}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Registrierte Kunden
                   </Typography>
