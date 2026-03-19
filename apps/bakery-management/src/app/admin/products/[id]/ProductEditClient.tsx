@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Container,
@@ -14,9 +14,18 @@ import {
   Chip,
   Avatar,
   IconButton,
+  Snackbar,
+  CircularProgress,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import SaveIcon from '@mui/icons-material/Save'
 import type { ManagementProduct } from '../../../../lib/products'
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
 const statusLabels: Record<string, string> = {
   active: 'Verfügbar',
@@ -30,6 +39,16 @@ const statusColors: Record<string, 'success' | 'warning' | 'error'> = {
   unavailable: 'error',
 }
 
+const CATEGORY_OPTIONS = [
+  { value: 'brot', label: 'Brot' },
+  { value: 'broetchen', label: 'Brötchen' },
+  { value: 'baguette', label: 'Baguette' },
+  { value: 'teilchen', label: 'Teilchen' },
+  { value: 'snacks', label: 'Snacks' },
+  { value: 'kuchen', label: 'Kuchen' },
+  { value: 'torten', label: 'Torten' },
+]
+
 export default function ProductEditClient({
   productId,
   initialProduct,
@@ -38,6 +57,18 @@ export default function ProductEditClient({
   initialProduct?: ManagementProduct
 }) {
   const router = useRouter()
+  const [name, setName] = useState(initialProduct?.name ?? '')
+  const [category, setCategory] = useState(initialProduct?.categoryKey ?? '')
+  const [price, setPrice] = useState(initialProduct?.price?.toString() ?? '0')
+  const [description, setDescription] = useState(
+    initialProduct?.description ?? ''
+  )
+  const [status, setStatus] = useState(initialProduct?.status ?? 'active')
+  const [saving, setSaving] = useState(false)
+  const [feedback, setFeedback] = useState<{
+    message: string
+    severity: 'success' | 'error'
+  } | null>(null)
 
   if (!initialProduct) {
     return (
@@ -56,6 +87,42 @@ export default function ProductEditClient({
     )
   }
 
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const res = await fetch(`${API_BASE}/api/hq-products/${productId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name,
+          category,
+          price: parseFloat(price),
+          short_description: description,
+          description,
+          available: status !== 'unavailable',
+          seasonal: status === 'seasonal',
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || 'Speichern fehlgeschlagen')
+      }
+
+      setFeedback({
+        message: 'Produkt erfolgreich gespeichert',
+        severity: 'success',
+      })
+    } catch (err: any) {
+      setFeedback({
+        message: err.message || 'Fehler beim Speichern',
+        severity: 'error',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Container maxWidth="md" sx={{ mt: 2, mb: 4 }}>
       <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 } }}>
@@ -64,11 +131,11 @@ export default function ProductEditClient({
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h5" component="h1" sx={{ ml: 1 }}>
-            {initialProduct.name}
+            Produkt bearbeiten
           </Typography>
           <Chip
-            label={statusLabels[initialProduct.status] || initialProduct.status}
-            color={statusColors[initialProduct.status] || 'default'}
+            label={statusLabels[status] || status}
+            color={statusColors[status] || 'default'}
             size="small"
             sx={{ ml: 2 }}
           />
@@ -87,7 +154,7 @@ export default function ProductEditClient({
                 <Box
                   component="img"
                   src={initialProduct.image}
-                  alt={initialProduct.name}
+                  alt={name}
                   sx={{
                     width: '100%',
                     maxWidth: '180px',
@@ -104,7 +171,7 @@ export default function ProductEditClient({
                   sx={{ width: 180, height: 180, mb: 2, fontSize: '4rem' }}
                   variant="rounded"
                 >
-                  {initialProduct.name.charAt(0)}
+                  {name.charAt(0)}
                 </Avatar>
               )}
             </Box>
@@ -115,61 +182,121 @@ export default function ProductEditClient({
               <Grid item xs={12}>
                 <TextField
                   label="Produktname"
-                  value={initialProduct.name}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   fullWidth
                   variant="outlined"
                   size="small"
-                  InputProps={{ readOnly: true }}
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField
-                  label="Kategorie"
-                  value={initialProduct.category}
-                  fullWidth
-                  variant="outlined"
-                  size="small"
-                  InputProps={{ readOnly: true }}
-                />
+                <FormControl fullWidth size="small">
+                  <InputLabel>Kategorie</InputLabel>
+                  <Select
+                    value={category}
+                    label="Kategorie"
+                    onChange={(e) => setCategory(e.target.value)}
+                  >
+                    {CATEGORY_OPTIONS.map((opt) => (
+                      <MenuItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <TextField
-                  label="Preis"
-                  value={`${initialProduct.price.toFixed(2)} €`}
+                  label="Preis (EUR)"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
                   fullWidth
                   variant="outlined"
                   size="small"
-                  InputProps={{ readOnly: true }}
+                  type="number"
+                  inputProps={{ step: '0.01', min: '0' }}
                 />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    value={status}
+                    label="Status"
+                    onChange={(e) =>
+                      setStatus(
+                        e.target.value as 'active' | 'seasonal' | 'unavailable'
+                      )
+                    }
+                  >
+                    <MenuItem value="active">Verfügbar</MenuItem>
+                    <MenuItem value="seasonal">Saisonal</MenuItem>
+                    <MenuItem value="unavailable">Nicht verfügbar</MenuItem>
+                  </Select>
+                </FormControl>
               </Grid>
               <Grid item xs={12}>
                 <TextField
                   label="Beschreibung"
-                  value={initialProduct.description || 'Keine Beschreibung'}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
                   fullWidth
                   multiline
                   rows={3}
                   variant="outlined"
                   size="small"
-                  InputProps={{ readOnly: true }}
                 />
               </Grid>
             </Grid>
           </Grid>
 
           <Grid item xs={12}>
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: 2,
+                mt: 2,
+              }}
+            >
               <Button
                 variant="outlined"
                 onClick={() => router.push('/admin/products')}
                 startIcon={<ArrowBackIcon />}
               >
-                Zurück zur Produktliste
+                Zurück
+              </Button>
+              <Button
+                variant="contained"
+                onClick={handleSave}
+                startIcon={
+                  saving ? <CircularProgress size={18} /> : <SaveIcon />
+                }
+                disabled={saving}
+              >
+                {saving ? 'Speichern...' : 'Speichern'}
               </Button>
             </Box>
           </Grid>
         </Grid>
       </Paper>
+
+      <Snackbar
+        open={feedback !== null}
+        autoHideDuration={4000}
+        onClose={() => setFeedback(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {feedback ? (
+          <Alert
+            severity={feedback.severity}
+            onClose={() => setFeedback(null)}
+            variant="filled"
+          >
+            {feedback.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Container>
   )
 }
