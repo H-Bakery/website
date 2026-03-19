@@ -186,11 +186,14 @@ export default function AdminProductionPage() {
               {productionOrders.map((order) => (
                 <ListItem key={order.id} divider>
                   <ListItemText
+                    primaryTypographyProps={{ component: 'span' }}
+                    secondaryTypographyProps={{ component: 'span' }}
                     primary={
                       <Box
+                        component="span"
                         sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
                       >
-                        <Typography variant="subtitle1">
+                        <Typography variant="subtitle1" component="span">
                           {order.product}
                         </Typography>
                         <Chip
@@ -213,8 +216,13 @@ export default function AdminProductionPage() {
                       </Box>
                     }
                     secondary={
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
+                      <Box component="span" sx={{ display: 'block' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          component="span"
+                          sx={{ display: 'block' }}
+                        >
                           {order.startTime} - {order.estimatedEnd} |{' '}
                           {order.completed}/{order.quantity} Stück
                         </Typography>
@@ -250,10 +258,17 @@ export default function AdminProductionPage() {
               {resourceStatus.map((resource) => (
                 <ListItem key={resource.resource} dense>
                   <ListItemText
+                    primaryTypographyProps={{ component: 'span' }}
+                    secondaryTypographyProps={{ component: 'span' }}
                     primary={resource.resource}
                     secondary={
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
+                      <Box component="span" sx={{ display: 'block' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          component="span"
+                          sx={{ display: 'block' }}
+                        >
                           {resource.level} {resource.unit}
                         </Typography>
                         <LinearProgress

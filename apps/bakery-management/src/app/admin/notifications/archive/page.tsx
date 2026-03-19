@@ -395,6 +395,8 @@ const NotificationArchivePage: React.FC = () => {
               >
                 <ListItemIcon>{getIcon(notification.type)}</ListItemIcon>
                 <ListItemText
+                  primaryTypographyProps={{ component: 'span' }}
+                  secondaryTypographyProps={{ component: 'span' }}
                   primary={
                     <Stack direction="row" spacing={1} alignItems="center">
                       <Typography variant="subtitle1" component="span">
