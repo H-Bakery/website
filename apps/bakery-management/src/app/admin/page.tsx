@@ -2,13 +2,11 @@
 import React from 'react'
 import {
   Box,
-  Container,
   Typography,
   Grid,
   Paper,
   Card,
   CardContent,
-  CardActions,
   Button,
   LinearProgress,
 } from '@mui/material'
@@ -21,21 +19,12 @@ import {
   ListAlt as BakingListIcon,
   Store as ProductsIcon,
   Assessment as ReportsIcon,
-  TrendingUp as TrendingUpIcon,
   People as PeopleIcon,
-  Euro as EuroIcon,
+  Category as CategoryIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
-
-// Mock data for dashboard statistics
-const dashboardStats = {
-  todayOrders: 23,
-  todayRevenue: 1847.5,
-  activeDeliveries: 8,
-  lowStockItems: 3,
-  productionEfficiency: 87,
-  customerCount: 156,
-}
 
 const quickLinks = [
   {
@@ -92,6 +81,52 @@ const quickLinks = [
 export default function AdminDashboardPage() {
   const router = useRouter()
 
+  const [stats, setStats] = React.useState({
+    todayOrders: 0,
+    productionEfficiency: 87,
+    customerCount: 0,
+    productsTotal: 0,
+    productsAvailable: 0,
+    productsUnavailable: 0,
+  })
+  const [loading, setLoading] = React.useState(true)
+
+  React.useEffect(() => {
+    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+    Promise.all([
+      fetch(`${API}/api/orders`)
+        .then((r) => r.json())
+        .catch(() => ({ data: [] })),
+      fetch(`${API}/api/products`)
+        .then((r) => r.json())
+        .catch(() => ({ data: [] })),
+    ])
+      .then(([orders, products]) => {
+        const ordersData = orders?.data || []
+        const productsData: any[] = Array.isArray(products?.data)
+          ? products.data
+          : []
+
+        const available = productsData.filter(
+          (p) => p.available === true
+        ).length
+        const unavailable = productsData.filter(
+          (p) => p.available === false
+        ).length
+
+        setStats({
+          todayOrders: ordersData.length,
+          productionEfficiency: 87,
+          customerCount: ordersData.length,
+          productsTotal: productsData.length,
+          productsAvailable: available,
+          productsUnavailable: unavailable,
+        })
+        setLoading(false)
+      })
+      .catch(() => setLoading(false))
+  }, [])
+
   return (
     <Box>
       {/* Page Header */}
@@ -114,6 +149,8 @@ export default function AdminDashboardPage() {
         </Typography>
       </Box>
 
+      {loading && <LinearProgress sx={{ mb: 2 }} />}
+
       {/* Statistics Cards */}
       <Grid
         container
@@ -132,34 +169,25 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Bestellungen
+                  Produkte gesamt
                 </Typography>
                 <Typography
                   variant="h4"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {dashboardStats.todayOrders}
+                  {stats.productsTotal}
                 </Typography>
               </Box>
-              <OrdersIcon
+              <CategoryIcon
                 sx={{
-                  color: 'primary.main',
+                  color: '#E91E63',
                   fontSize: { xs: 28, md: 40 },
                 }}
               />
             </Box>
-            <Box
-              sx={{
-                display: { xs: 'none', sm: 'flex' },
-                alignItems: 'center',
-                gap: 1,
-              }}
-            >
-              <TrendingUpIcon sx={{ color: 'success.main', fontSize: 20 }} />
-              <Typography variant="body2" color="success.main">
-                +12% gegenüber gestern
-              </Typography>
-            </Box>
+            <Button size="small" onClick={() => router.push('/admin/products')}>
+              Produkte verwalten
+            </Button>
           </Paper>
         </Grid>
 
@@ -175,61 +203,19 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Umsatz
+                  Verfügbar
                 </Typography>
                 <Typography
                   variant="h4"
+                  color="success.main"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {dashboardStats.todayRevenue.toFixed(0)}€
+                  {stats.productsAvailable}
                 </Typography>
               </Box>
-              <EuroIcon
+              <CheckCircleIcon
                 sx={{
                   color: 'success.main',
-                  fontSize: { xs: 28, md: 40 },
-                }}
-              />
-            </Box>
-            <Box
-              sx={{
-                display: { xs: 'none', sm: 'flex' },
-                alignItems: 'center',
-                gap: 1,
-              }}
-            >
-              <TrendingUpIcon sx={{ color: 'success.main', fontSize: 20 }} />
-              <Typography variant="body2" color="success.main">
-                +8% gegenüber gestern
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={6} sm={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 } }}>
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                mb: 2,
-              }}
-            >
-              <Box>
-                <Typography color="text.secondary" variant="body2">
-                  Lieferungen
-                </Typography>
-                <Typography
-                  variant="h4"
-                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
-                >
-                  {dashboardStats.activeDeliveries}
-                </Typography>
-              </Box>
-              <DeliveryIcon
-                sx={{
-                  color: 'info.main',
                   fontSize: { xs: 28, md: 40 },
                 }}
               />
@@ -239,7 +225,7 @@ export default function AdminDashboardPage() {
               color="text.secondary"
               sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              3 unterwegs, 5 in Vorbereitung
+              Im Sortiment aktiv
             </Typography>
           </Paper>
         </Grid>
@@ -256,30 +242,68 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Niedrig im Lager
+                  Nicht verfügbar
                 </Typography>
                 <Typography
                   variant="h4"
-                  color="warning.main"
+                  color="error.main"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {dashboardStats.lowStockItems}
+                  {stats.productsUnavailable}
                 </Typography>
               </Box>
-              <InventoryIcon
+              <CancelIcon
                 sx={{
-                  color: 'warning.main',
+                  color: 'error.main',
                   fontSize: { xs: 28, md: 40 },
                 }}
               />
             </Box>
-            <Button
-              size="small"
-              color="warning"
-              onClick={() => router.push('/admin/inventory')}
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              Inventar prüfen
-            </Button>
+              Derzeit deaktiviert
+            </Typography>
+          </Paper>
+        </Grid>
+
+        <Grid item xs={6} sm={6} md={3}>
+          <Paper sx={{ p: { xs: 2, md: 3 } }}>
+            <Box
+              sx={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                mb: 2,
+              }}
+            >
+              <Box>
+                <Typography color="text.secondary" variant="body2">
+                  Bestellungen
+                </Typography>
+                <Typography
+                  variant="h4"
+                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                >
+                  {stats.todayOrders}
+                </Typography>
+              </Box>
+              <OrdersIcon
+                sx={{
+                  color: 'primary.main',
+                  fontSize: { xs: 28, md: 40 },
+                }}
+              />
+            </Box>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            >
+              Aktuelle Bestellungen
+            </Typography>
           </Paper>
         </Grid>
       </Grid>
@@ -362,12 +386,12 @@ export default function AdminDashboardPage() {
               >
                 <Typography variant="body2">Produktionseffizienz</Typography>
                 <Typography variant="body2" fontWeight="bold">
-                  {dashboardStats.productionEfficiency}%
+                  {stats.productionEfficiency}%
                 </Typography>
               </Box>
               <LinearProgress
                 variant="determinate"
-                value={dashboardStats.productionEfficiency}
+                value={stats.productionEfficiency}
                 sx={{ height: 10, borderRadius: 5 }}
                 color="success"
               />
@@ -398,9 +422,7 @@ export default function AdminDashboardPage() {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <PeopleIcon sx={{ color: 'primary.main', fontSize: 48 }} />
                 <Box>
-                  <Typography variant="h4">
-                    {dashboardStats.customerCount}
-                  </Typography>
+                  <Typography variant="h4">{stats.customerCount}</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Registrierte Kunden
                   </Typography>
