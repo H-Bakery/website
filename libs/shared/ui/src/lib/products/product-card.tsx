@@ -200,4 +200,5 @@ const styles = {
   },
 }
 
+export { ProductCard }
 export default ProductCard

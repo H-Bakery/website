@@ -49,7 +49,7 @@ export const searchProducts = (query: string): Product[] => {
   return ALL_PRODUCTS.filter(
     (product) =>
       product.name.toLowerCase().includes(lowercaseQuery) ||
-      product.description.toLowerCase().includes(lowercaseQuery) ||
+      (product.description || '').toLowerCase().includes(lowercaseQuery) ||
       product.category.toLowerCase().includes(lowercaseQuery)
   )
 }

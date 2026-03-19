@@ -1,5 +1,5 @@
 'use client'
-import React, { useContext } from 'react'
+import React from 'react'
 import {
   Box,
   Container,
@@ -25,20 +25,16 @@ import {
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
-import { CartContext } from '@bakery/shared/contexts'
+import { useCart } from '@bakery/shared/contexts'
 import { formatter } from '@bakery/shared/utils'
 import { Header, Footer } from '@bakery/shared/ui'
 import { Hero } from '@bakery/shared/ui'
 
 const CartPage: React.FC = () => {
-  const {
-    items,
-    totalPrice,
-    totalCount,
-    updateQuantity,
-    removeFromCart,
-    clearCart,
-  } = useContext(CartContext)
+  const { items, summary, updateQuantity, removeFromCart, clearCart } =
+    useCart()
+  const totalPrice = summary.total
+  const totalCount = summary.totalCount
   const router = useRouter()
 
   const handleQuantityChange = (id: number, newQuantity: number) => {
@@ -149,7 +145,7 @@ const CartPage: React.FC = () => {
                             }}
                           >
                             <Image
-                              src={item.image}
+                              src={item.image || '/placeholder.png'}
                               alt={item.name}
                               width={60}
                               height={60}

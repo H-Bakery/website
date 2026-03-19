@@ -16,7 +16,7 @@ const Index = () => {
     const fetchProducts = async () => {
       try {
         setLoading(true)
-        const fetchedProducts = await bakeryAPI.getProducts()
+        const fetchedProducts = await bakeryAPI.products.getAll()
         setProducts(fetchedProducts)
         setAllProducts(fetchedProducts)
       } catch (err) {
