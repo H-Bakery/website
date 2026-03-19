@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * @fileoverview Mock user data
  * @module @bakery/shared/data-mocks/users

@@ -16,7 +16,7 @@ import Image from 'next/image'
 import HomeIcon from '@mui/icons-material/Home'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 
-import { mockProducts } from '@bakery/shared/data-access'
+import { ALL_PRODUCTS as mockProducts } from '@bakery/shared/data-mocks'
 import { formatter } from '@bakery/shared/utils'
 import { Button, Hero } from '@bakery/shared/ui'
 
