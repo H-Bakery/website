@@ -90,6 +90,329 @@ app.get('/api/products', (req, res) => {
   res.json({ success: true, data: filtered, count: filtered.length })
 })
 
+// --- Orders endpoints (mock) ---
+let orders = [
+  {
+    id: '1',
+    customerName: 'Max Mustermann',
+    items: [
+      { productId: 'roggenbrot', name: 'Roggenbrot', quantity: 2, price: 4.5 },
+      { productId: 'croissant', name: 'Croissant', quantity: 3, price: 1.8 },
+    ],
+    total: 14.4,
+    status: 'pending',
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: '2',
+    customerName: 'Anna Schmidt',
+    items: [
+      {
+        productId: 'vollkornbrot',
+        name: 'Vollkornbrot',
+        quantity: 1,
+        price: 3.9,
+      },
+    ],
+    total: 3.9,
+    status: 'completed',
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+    updatedAt: new Date().toISOString(),
+  },
+]
+
+app.get('/api/orders', (req, res) => {
+  const { status } = req.query
+  const filtered = status ? orders.filter((o) => o.status === status) : orders
+  res.json({ success: true, data: filtered, count: filtered.length })
+})
+
+app.get('/api/orders/:id', (req, res) => {
+  const order = orders.find((o) => o.id === req.params.id)
+  if (!order)
+    return res.status(404).json({ success: false, error: 'Order not found' })
+  res.json({ success: true, data: order })
+})
+
+app.post('/api/orders', (req, res) => {
+  const newOrder = {
+    id: String(orders.length + 1),
+    ...req.body,
+    status: 'pending',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+  orders.push(newOrder)
+  res.status(201).json({ success: true, data: newOrder })
+})
+
+app.put('/api/orders/:id', (req, res) => {
+  const index = orders.findIndex((o) => o.id === req.params.id)
+  if (index === -1)
+    return res.status(404).json({ success: false, error: 'Order not found' })
+  orders[index] = {
+    ...orders[index],
+    ...req.body,
+    id: orders[index].id,
+    updatedAt: new Date().toISOString(),
+  }
+  res.json({ success: true, data: orders[index] })
+})
+
+app.delete('/api/orders/:id', (req, res) => {
+  const index = orders.findIndex((o) => o.id === req.params.id)
+  if (index === -1)
+    return res.status(404).json({ success: false, error: 'Order not found' })
+  orders.splice(index, 1)
+  res.json({ success: true, message: 'Order deleted' })
+})
+
+// --- Cash endpoints (mock) ---
+let cashEntries = [
+  {
+    id: '1',
+    type: 'income',
+    amount: 245.5,
+    description: 'Tageseinnahmen Montag',
+    category: 'sales',
+    date: new Date().toISOString().split('T')[0],
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: '2',
+    type: 'expense',
+    amount: 89.0,
+    description: 'Mehl-Lieferung',
+    category: 'supplies',
+    date: new Date().toISOString().split('T')[0],
+    createdAt: new Date().toISOString(),
+  },
+]
+
+app.get('/api/cash', (req, res) => {
+  const { type, date } = req.query
+  let filtered = [...cashEntries]
+  if (type) filtered = filtered.filter((e) => e.type === type)
+  if (date) filtered = filtered.filter((e) => e.date === date)
+  const balance = filtered.reduce(
+    (sum, e) => sum + (e.type === 'income' ? e.amount : -e.amount),
+    0
+  )
+  res.json({ success: true, data: filtered, balance, count: filtered.length })
+})
+
+app.post('/api/cash', (req, res) => {
+  const entry = {
+    id: String(cashEntries.length + 1),
+    ...req.body,
+    createdAt: new Date().toISOString(),
+  }
+  cashEntries.push(entry)
+  res.status(201).json({ success: true, data: entry })
+})
+
+app.delete('/api/cash/:id', (req, res) => {
+  const index = cashEntries.findIndex((e) => e.id === req.params.id)
+  if (index === -1)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Cash entry not found' })
+  cashEntries.splice(index, 1)
+  res.json({ success: true, message: 'Cash entry deleted' })
+})
+
+// --- Notifications endpoints (mock) ---
+let notifications = [
+  {
+    id: '1',
+    type: 'info',
+    category: 'system',
+    priority: 'medium',
+    title: 'System Update',
+    message: 'Das System wurde erfolgreich aktualisiert.',
+    read: false,
+    channel: 'inApp',
+    createdAt: new Date(Date.now() - 7200000).toISOString(),
+  },
+  {
+    id: '2',
+    type: 'warning',
+    category: 'inventory',
+    priority: 'high',
+    title: 'Niedriger Bestand',
+    message: 'Roggenmehl Bestand unter Mindestmenge.',
+    read: false,
+    channel: 'inApp',
+    createdAt: new Date(Date.now() - 3600000).toISOString(),
+  },
+  {
+    id: '3',
+    type: 'success',
+    category: 'order',
+    priority: 'low',
+    title: 'Neue Bestellung',
+    message: 'Bestellung #42 wurde aufgegeben.',
+    read: true,
+    channel: 'inApp',
+    createdAt: new Date(Date.now() - 86400000).toISOString(),
+  },
+]
+
+app.get('/api/notifications', (req, res) => {
+  res.json({ success: true, data: notifications, count: notifications.length })
+})
+
+app.post('/api/notifications', (req, res) => {
+  const notification = {
+    id: String(notifications.length + 1),
+    ...req.body,
+    read: false,
+    channel: 'inApp',
+    createdAt: new Date().toISOString(),
+  }
+  notifications.push(notification)
+  res.status(201).json({ success: true, data: notification })
+})
+
+app.put('/api/notifications/:id/read', (req, res) => {
+  const notification = notifications.find((n) => n.id === req.params.id)
+  if (!notification)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Notification not found' })
+  notification.read = true
+  res.json({ success: true, data: notification })
+})
+
+app.delete('/api/notifications/:id', (req, res) => {
+  const index = notifications.findIndex((n) => n.id === req.params.id)
+  if (index === -1)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Notification not found' })
+  notifications.splice(index, 1)
+  res.json({ success: true, message: 'Notification deleted' })
+})
+
+app.post('/api/notifications/:id/archive', (req, res) => {
+  const notification = notifications.find((n) => n.id === req.params.id)
+  if (!notification)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Notification not found' })
+  const index = notifications.indexOf(notification)
+  notifications.splice(index, 1)
+  res.json({ success: true, message: 'Notification archived' })
+})
+
+// --- Notification preferences (mock) ---
+let notificationPreferences = {
+  userId: 'default',
+  channels: {
+    inApp: { enabled: true, categories: [], minPriority: 'low' },
+    email: { enabled: false, categories: [], minPriority: 'medium' },
+    sms: { enabled: false, categories: [], minPriority: 'high' },
+    push: { enabled: false, categories: [], minPriority: 'medium' },
+  },
+  quietHours: {
+    enabled: false,
+    start: '22:00',
+    end: '08:00',
+    timezone: 'Europe/Berlin',
+  },
+  sound: { enabled: true, volume: 50 },
+  digest: {
+    enabled: false,
+    frequency: 'daily',
+    time: '09:00',
+    categories: [],
+  },
+  language: 'de',
+}
+
+app.get('/api/preferences', (req, res) => {
+  res.json({ success: true, data: notificationPreferences })
+})
+
+app.put('/api/preferences', (req, res) => {
+  notificationPreferences = { ...notificationPreferences, ...req.body }
+  res.json({ success: true, data: notificationPreferences })
+})
+
+// --- HQ Product edit endpoint (writes back to markdown files) ---
+app.get('/api/hq-products/:id', (req, res) => {
+  const products = loadHQProducts()
+  const product = products.find((p) => p.id === req.params.id)
+  if (!product)
+    return res.status(404).json({ success: false, error: 'Product not found' })
+  res.json({ success: true, data: product })
+})
+
+app.put('/api/hq-products/:id', (req, res) => {
+  if (!fs.existsSync(HQ_PRODUCTS_DIR)) {
+    return res
+      .status(500)
+      .json({ success: false, error: 'HQ products directory not found' })
+  }
+
+  const files = fs
+    .readdirSync(HQ_PRODUCTS_DIR)
+    .filter((f) => f.endsWith('.md') && !f.startsWith('_'))
+
+  let targetFile = null
+  let originalData = null
+  let originalContent = null
+
+  for (const file of files) {
+    try {
+      const raw = fs.readFileSync(path.join(HQ_PRODUCTS_DIR, file), 'utf-8')
+      const parsed = matter(raw)
+      if (parsed.data.id === req.params.id) {
+        targetFile = file
+        originalData = parsed.data
+        originalContent = parsed.content
+        break
+      }
+    } catch {
+      continue
+    }
+  }
+
+  if (!targetFile) {
+    return res.status(404).json({ success: false, error: 'Product not found' })
+  }
+
+  const {
+    name,
+    category,
+    price,
+    short_description,
+    description,
+    available,
+    seasonal,
+  } = req.body
+
+  const updatedData = { ...originalData }
+  if (name !== undefined) updatedData.name = name
+  if (category !== undefined) updatedData.category = category
+  if (price !== undefined) updatedData.price = parseFloat(price)
+  if (short_description !== undefined)
+    updatedData.short_description = short_description
+  if (available !== undefined) updatedData.available = available
+  if (seasonal !== undefined) updatedData.seasonal = seasonal
+
+  let updatedContent = originalContent
+  if (description !== undefined) {
+    updatedContent = `\n# ${updatedData.name}\n\n${description}\n`
+  }
+
+  const output = matter.stringify(updatedContent, updatedData)
+  fs.writeFileSync(path.join(HQ_PRODUCTS_DIR, targetFile), output, 'utf-8')
+
+  res.json({ success: true, data: { ...updatedData, description } })
+})
+
 // --- Staff management endpoints (mock, no auth for simple server) ---
 let staffMembers = [
   {

@@ -40,7 +40,7 @@ import {
   Settings as SettingsIcon,
 } from '@mui/icons-material'
 import { useNotifications } from '@bakery/shared/contexts'
-import { Notification, NotificationFilters } from '@bakery/shared/types'
+import { Notification } from '@bakery/shared/types'
 import { formatDistanceToNow } from 'date-fns'
 import { de } from 'date-fns/locale'
 import { bakeryAPI } from '@bakery/shared/data-access'
@@ -73,11 +73,10 @@ const NotificationsPage: React.FC = () => {
     notifications,
     unreadCount,
     stats,
-    loading,
+    isLoading,
     markAsRead,
     markAllAsRead,
     deleteNotification,
-    getFilteredNotifications,
   } = useNotifications()
 
   const [tabValue, setTabValue] = useState(0)
@@ -165,14 +164,13 @@ const NotificationsPage: React.FC = () => {
     }
   }
 
-  // Apply filters
-  const filters: NotificationFilters = {
-    read: tabValue === 1 ? false : undefined,
-    categories: categoryFilter !== 'all' ? [categoryFilter as any] : undefined,
-    priorities: priorityFilter !== 'all' ? [priorityFilter as any] : undefined,
-  }
-
-  const filteredNotifications = getFilteredNotifications(filters)
+  // Apply filters locally
+  const filteredNotifications = notifications.filter((n: Notification) => {
+    if (tabValue === 1 && n.read) return false
+    if (categoryFilter !== 'all' && n.category !== categoryFilter) return false
+    if (priorityFilter !== 'all' && n.priority !== priorityFilter) return false
+    return true
+  })
 
   const NotificationListItem: React.FC<{ notification: Notification }> = ({
     notification,
@@ -261,7 +259,7 @@ const NotificationsPage: React.FC = () => {
     </ListItem>
   )
 
-  if (loading) {
+  if (isLoading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
         <CircularProgress />
