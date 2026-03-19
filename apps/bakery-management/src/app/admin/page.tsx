@@ -2,13 +2,11 @@
 import React from 'react'
 import {
   Box,
-  Container,
   Typography,
   Grid,
   Paper,
   Card,
   CardContent,
-  CardActions,
   Button,
   LinearProgress,
 } from '@mui/material'
@@ -21,10 +19,10 @@ import {
   ListAlt as BakingListIcon,
   Store as ProductsIcon,
   Assessment as ReportsIcon,
-  TrendingUp as TrendingUpIcon,
   People as PeopleIcon,
-  Euro as EuroIcon,
   Category as CategoryIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 
@@ -85,41 +83,44 @@ export default function AdminDashboardPage() {
 
   const [stats, setStats] = React.useState({
     todayOrders: 0,
-    todayRevenue: 0,
-    activeDeliveries: 0,
-    lowStockItems: 0,
-    productionEfficiency: 0,
+    productionEfficiency: 87,
     customerCount: 0,
-    productsCount: 0,
+    productsTotal: 0,
+    productsAvailable: 0,
+    productsUnavailable: 0,
   })
   const [loading, setLoading] = React.useState(true)
 
   React.useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
     Promise.all([
-      fetch(`${API}/api/orders`).then((r) => r.json()),
-      fetch(`${API}/api/products`).then((r) => r.json()),
-      fetch(`${API}/api/inventory`).then((r) => r.json()),
+      fetch(`${API}/api/orders`)
+        .then((r) => r.json())
+        .catch(() => ({ data: [] })),
+      fetch(`${API}/api/products`)
+        .then((r) => r.json())
+        .catch(() => ({ data: [] })),
     ])
-      .then(([orders, products, inventory]) => {
+      .then(([orders, products]) => {
         const ordersData = orders?.data || []
-        const productsData = products?.data || products || []
-        const inventoryData = inventory?.data || []
+        const productsData: any[] = Array.isArray(products?.data)
+          ? products.data
+          : []
+
+        const available = productsData.filter(
+          (p) => p.available === true
+        ).length
+        const unavailable = productsData.filter(
+          (p) => p.available === false
+        ).length
 
         setStats({
           todayOrders: ordersData.length,
-          todayRevenue: ordersData.reduce(
-            (sum: number, o: any) => sum + (o.total || 0),
-            0
-          ),
-          activeDeliveries: ordersData.filter(
-            (o: any) => o.status === 'delivery'
-          ).length,
-          lowStockItems: inventoryData.filter((i: any) => i.stock <= i.minStock)
-            .length,
           productionEfficiency: 87,
           customerCount: ordersData.length,
-          productsCount: Array.isArray(productsData) ? productsData.length : 0,
+          productsTotal: productsData.length,
+          productsAvailable: available,
+          productsUnavailable: unavailable,
         })
         setLoading(false)
       })
@@ -168,34 +169,25 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Bestellungen
+                  Produkte gesamt
                 </Typography>
                 <Typography
                   variant="h4"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {stats.todayOrders}
+                  {stats.productsTotal}
                 </Typography>
               </Box>
-              <OrdersIcon
+              <CategoryIcon
                 sx={{
-                  color: 'primary.main',
+                  color: '#E91E63',
                   fontSize: { xs: 28, md: 40 },
                 }}
               />
             </Box>
-            <Box
-              sx={{
-                display: { xs: 'none', sm: 'flex' },
-                alignItems: 'center',
-                gap: 1,
-              }}
-            >
-              <TrendingUpIcon sx={{ color: 'success.main', fontSize: 20 }} />
-              <Typography variant="body2" color="success.main">
-                +12% gegenüber gestern
-              </Typography>
-            </Box>
+            <Button size="small" onClick={() => router.push('/admin/products')}>
+              Produkte verwalten
+            </Button>
           </Paper>
         </Grid>
 
@@ -211,61 +203,19 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Umsatz
+                  Verfügbar
                 </Typography>
                 <Typography
                   variant="h4"
+                  color="success.main"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {stats.todayRevenue.toFixed(0)}€
+                  {stats.productsAvailable}
                 </Typography>
               </Box>
-              <EuroIcon
+              <CheckCircleIcon
                 sx={{
                   color: 'success.main',
-                  fontSize: { xs: 28, md: 40 },
-                }}
-              />
-            </Box>
-            <Box
-              sx={{
-                display: { xs: 'none', sm: 'flex' },
-                alignItems: 'center',
-                gap: 1,
-              }}
-            >
-              <TrendingUpIcon sx={{ color: 'success.main', fontSize: 20 }} />
-              <Typography variant="body2" color="success.main">
-                +8% gegenüber gestern
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={6} sm={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 } }}>
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                mb: 2,
-              }}
-            >
-              <Box>
-                <Typography color="text.secondary" variant="body2">
-                  Lieferungen
-                </Typography>
-                <Typography
-                  variant="h4"
-                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
-                >
-                  {stats.activeDeliveries}
-                </Typography>
-              </Box>
-              <DeliveryIcon
-                sx={{
-                  color: 'info.main',
                   fontSize: { xs: 28, md: 40 },
                 }}
               />
@@ -275,7 +225,7 @@ export default function AdminDashboardPage() {
               color="text.secondary"
               sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              Aktive Lieferungen
+              Im Sortiment aktiv
             </Typography>
           </Paper>
         </Grid>
@@ -292,30 +242,30 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Niedrig im Lager
+                  Nicht verfügbar
                 </Typography>
                 <Typography
                   variant="h4"
-                  color="warning.main"
+                  color="error.main"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {stats.lowStockItems}
+                  {stats.productsUnavailable}
                 </Typography>
               </Box>
-              <InventoryIcon
+              <CancelIcon
                 sx={{
-                  color: 'warning.main',
+                  color: 'error.main',
                   fontSize: { xs: 28, md: 40 },
                 }}
               />
             </Box>
-            <Button
-              size="small"
-              color="warning"
-              onClick={() => router.push('/admin/inventory')}
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              Inventar prüfen
-            </Button>
+              Derzeit deaktiviert
+            </Typography>
           </Paper>
         </Grid>
 
@@ -331,25 +281,29 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Produkte
+                  Bestellungen
                 </Typography>
                 <Typography
                   variant="h4"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {stats.productsCount}
+                  {stats.todayOrders}
                 </Typography>
               </Box>
-              <CategoryIcon
+              <OrdersIcon
                 sx={{
-                  color: '#E91E63',
+                  color: 'primary.main',
                   fontSize: { xs: 28, md: 40 },
                 }}
               />
             </Box>
-            <Button size="small" onClick={() => router.push('/admin/products')}>
-              Produkte verwalten
-            </Button>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            >
+              Aktuelle Bestellungen
+            </Typography>
           </Paper>
         </Grid>
       </Grid>
