@@ -258,10 +258,17 @@ export default function AdminProductionPage() {
               {resourceStatus.map((resource) => (
                 <ListItem key={resource.resource} dense>
                   <ListItemText
+                    primaryTypographyProps={{ component: 'span' }}
+                    secondaryTypographyProps={{ component: 'span' }}
                     primary={resource.resource}
                     secondary={
-                      <Box>
-                        <Typography variant="body2" color="text.secondary">
+                      <Box component="span" sx={{ display: 'block' }}>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          component="span"
+                          sx={{ display: 'block' }}
+                        >
                           {resource.level} {resource.unit}
                         </Typography>
                         <LinearProgress
