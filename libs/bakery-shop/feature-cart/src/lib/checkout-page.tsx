@@ -80,12 +80,12 @@ const BestellenPage: React.FC = () => (
               <Typography paragraph>
                 Senden Sie uns eine WhatsApp-Nachricht mit Ihrer Bestellung.
                 Bitte geben Sie folgende Informationen an:
-                <ul style={{ paddingLeft: '1.5rem', marginTop: '0.5rem' }}>
-                  <li>Vollständige Bestellung mit Mengen</li>
-                  <li>Gewünschter Abholtermin</li>
-                  <li>Ihr Name</li>
-                </ul>
               </Typography>
+              <Box component="ul" sx={{ pl: 3, mt: -1, mb: 1 }}>
+                <li>Vollständige Bestellung mit Mengen</li>
+                <li>Gewünschter Abholtermin</li>
+                <li>Ihr Name</li>
+              </Box>
               <Typography variant="body2" color="text.secondary" paragraph>
                 Unsere WhatsApp-Nummer:
               </Typography>
