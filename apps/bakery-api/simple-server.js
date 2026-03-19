@@ -559,6 +559,229 @@ app.delete('/api/staff/:id', (req, res) => {
   res.json({ message: 'Staff member deactivated successfully' })
 })
 
+// --- Production endpoints (mock) ---
+let productionPlans = [
+  {
+    id: '1',
+    date: '2026-03-20',
+    product: 'Kornbrot',
+    quantity: 50,
+    status: 'planned',
+  },
+  {
+    id: '2',
+    date: '2026-03-20',
+    product: 'Brötchen',
+    quantity: 200,
+    status: 'planned',
+  },
+  {
+    id: '3',
+    date: '2026-03-20',
+    product: 'Croissant',
+    quantity: 80,
+    status: 'planned',
+  },
+  {
+    id: '4',
+    date: '2026-03-19',
+    product: 'Roggenbrot',
+    quantity: 40,
+    status: 'completed',
+  },
+  {
+    id: '5',
+    date: '2026-03-19',
+    product: 'Vollkornbrot',
+    quantity: 30,
+    status: 'completed',
+  },
+]
+
+app.get('/api/production', (req, res) => {
+  const { date, status } = req.query
+  let filtered = [...productionPlans]
+  if (date) filtered = filtered.filter((p) => p.date === date)
+  if (status) filtered = filtered.filter((p) => p.status === status)
+  res.json({ success: true, data: filtered, count: filtered.length })
+})
+
+app.get('/api/production/:id', (req, res) => {
+  const plan = productionPlans.find((p) => p.id === req.params.id)
+  if (!plan)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Production plan not found' })
+  res.json({ success: true, data: plan })
+})
+
+app.post('/api/production', (req, res) => {
+  const plan = {
+    id: String(productionPlans.length + 1),
+    ...req.body,
+    status: req.body.status || 'planned',
+  }
+  productionPlans.push(plan)
+  res.status(201).json({ success: true, data: plan })
+})
+
+app.put('/api/production/:id', (req, res) => {
+  const index = productionPlans.findIndex((p) => p.id === req.params.id)
+  if (index === -1)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Production plan not found' })
+  productionPlans[index] = {
+    ...productionPlans[index],
+    ...req.body,
+    id: productionPlans[index].id,
+  }
+  res.json({ success: true, data: productionPlans[index] })
+})
+
+app.delete('/api/production/:id', (req, res) => {
+  const index = productionPlans.findIndex((p) => p.id === req.params.id)
+  if (index === -1)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Production plan not found' })
+  productionPlans.splice(index, 1)
+  res.json({ success: true, message: 'Production plan deleted' })
+})
+
+// --- Inventory endpoints (mock) ---
+let inventoryItems = [
+  {
+    id: '1',
+    name: 'Mehl Type 550',
+    category: 'Mehl',
+    unit: 'kg',
+    stock: 120,
+    minStock: 50,
+    supplier: 'Mühle Schneider',
+    lastRestocked: '2026-03-15',
+  },
+  {
+    id: '2',
+    name: 'Roggenmehl',
+    category: 'Mehl',
+    unit: 'kg',
+    stock: 80,
+    minStock: 30,
+    supplier: 'Mühle Schneider',
+    lastRestocked: '2026-03-14',
+  },
+  {
+    id: '3',
+    name: 'Hefe',
+    category: 'Backmittel',
+    unit: 'kg',
+    stock: 5,
+    minStock: 2,
+    supplier: 'BäckerZutaten GmbH',
+    lastRestocked: '2026-03-18',
+  },
+  {
+    id: '4',
+    name: 'Butter',
+    category: 'Milchprodukte',
+    unit: 'kg',
+    stock: 25,
+    minStock: 10,
+    supplier: 'Molkerei Weber',
+    lastRestocked: '2026-03-17',
+  },
+  {
+    id: '5',
+    name: 'Zucker',
+    category: 'Backmittel',
+    unit: 'kg',
+    stock: 45,
+    minStock: 20,
+    supplier: 'Südzucker AG',
+    lastRestocked: '2026-03-12',
+  },
+  {
+    id: '6',
+    name: 'Salz',
+    category: 'Gewürze',
+    unit: 'kg',
+    stock: 15,
+    minStock: 5,
+    supplier: 'BäckerZutaten GmbH',
+    lastRestocked: '2026-03-10',
+  },
+]
+
+app.get('/api/inventory', (req, res) => {
+  const { category, lowStock } = req.query
+  let filtered = [...inventoryItems]
+  if (category) filtered = filtered.filter((i) => i.category === category)
+  if (lowStock === 'true')
+    filtered = filtered.filter((i) => i.stock <= i.minStock)
+  res.json({ success: true, data: filtered, count: filtered.length })
+})
+
+app.get('/api/inventory/low-stock', (req, res) => {
+  const lowStock = inventoryItems.filter((i) => i.stock <= i.minStock)
+  res.json({ success: true, data: lowStock, count: lowStock.length })
+})
+
+app.get('/api/inventory/:id', (req, res) => {
+  const item = inventoryItems.find((i) => i.id === req.params.id)
+  if (!item)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Inventory item not found' })
+  res.json({ success: true, data: item })
+})
+
+app.post('/api/inventory', (req, res) => {
+  const item = {
+    id: String(inventoryItems.length + 1),
+    ...req.body,
+    lastRestocked: new Date().toISOString().split('T')[0],
+  }
+  inventoryItems.push(item)
+  res.status(201).json({ success: true, data: item })
+})
+
+app.put('/api/inventory/:id', (req, res) => {
+  const index = inventoryItems.findIndex((i) => i.id === req.params.id)
+  if (index === -1)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Inventory item not found' })
+  inventoryItems[index] = {
+    ...inventoryItems[index],
+    ...req.body,
+    id: inventoryItems[index].id,
+  }
+  res.json({ success: true, data: inventoryItems[index] })
+})
+
+app.post('/api/inventory/:id/adjust', (req, res) => {
+  const index = inventoryItems.findIndex((i) => i.id === req.params.id)
+  if (index === -1)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Inventory item not found' })
+  const { adjustment, reason } = req.body
+  inventoryItems[index].stock += adjustment || 0
+  inventoryItems[index].lastRestocked = new Date().toISOString().split('T')[0]
+  res.json({ success: true, data: inventoryItems[index] })
+})
+
+app.delete('/api/inventory/:id', (req, res) => {
+  const index = inventoryItems.findIndex((i) => i.id === req.params.id)
+  if (index === -1)
+    return res
+      .status(404)
+      .json({ success: false, error: 'Inventory item not found' })
+  inventoryItems.splice(index, 1)
+  res.json({ success: true, message: 'Inventory item deleted' })
+})
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Bakery API server running on port ${PORT}`)
