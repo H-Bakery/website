@@ -331,11 +331,11 @@ let notificationPreferences = {
   language: 'de',
 }
 
-app.get('/api/preferences', (req, res) => {
+app.get('/api/notifications/preferences', (req, res) => {
   res.json({ success: true, data: notificationPreferences })
 })
 
-app.put('/api/preferences', (req, res) => {
+app.put('/api/notifications/preferences', (req, res) => {
   notificationPreferences = { ...notificationPreferences, ...req.body }
   res.json({ success: true, data: notificationPreferences })
 })
