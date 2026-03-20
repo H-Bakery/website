@@ -27,13 +27,22 @@ interface ChatMessage {
   }
 }
 
+const TOKEN_KEY = 'bakery-auth-token'
+
 const ChatPage: React.FC = () => {
-  const { user, token } = useAuth()
+  const { user } = useAuth()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState<boolean>(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Get token from localStorage (managed by auth context internally)
+  const getToken = () =>
+    typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null
+
+  // Map auth user to chat user format
+  const chatUser = user ? { id: String(user.id), username: user.email } : null
 
   // Scroll to bottom when new messages arrive
   const scrollToBottom = () => {
@@ -46,6 +55,7 @@ const ChatPage: React.FC = () => {
 
   // Fetch messages from API
   const fetchMessages = async () => {
+    const token = getToken()
     if (!token) return
 
     try {
@@ -72,6 +82,7 @@ const ChatPage: React.FC = () => {
 
   // Send new message
   const sendMessage = async (messageText: string) => {
+    const token = getToken()
     if (!token || !messageText.trim()) return
 
     setSending(true)
@@ -108,7 +119,7 @@ const ChatPage: React.FC = () => {
 
     return () => clearInterval(interval)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [token])
+  }, [user])
 
   if (loading) {
     return (
@@ -185,7 +196,7 @@ const ChatPage: React.FC = () => {
                 </Box>
               ) : (
                 <>
-                  <ChatMessageList messages={messages} currentUser={user} />
+                  <ChatMessageList messages={messages} currentUser={chatUser} />
                   <div ref={messagesEndRef} />
                 </>
               )}
