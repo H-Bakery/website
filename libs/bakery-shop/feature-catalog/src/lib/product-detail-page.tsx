@@ -1,6 +1,5 @@
-// @ts-nocheck
-import React from 'react'
-import { notFound } from 'next/navigation'
+'use client'
+import React, { useEffect, useState } from 'react'
 import {
   Box,
   Chip,
@@ -11,28 +10,87 @@ import {
   Divider,
   Breadcrumbs,
   Link,
+  CircularProgress,
+  Alert,
 } from '@mui/material'
 import Image from 'next/image'
 import HomeIcon from '@mui/icons-material/Home'
 import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 
-import { ALL_PRODUCTS as mockProducts } from '@bakery/shared/data-mocks'
 import { formatter } from '@bakery/shared/utils'
-import { Button, Hero } from '@bakery/shared/ui'
+import { Button } from '@bakery/shared/ui'
 
-export default function ProductPage({ params }) {
-  const { pid } = params
+interface HQProduct {
+  id: string
+  numeric_id: number
+  name: string
+  category: string
+  price: number
+  available: boolean
+  image: string | null
+  short_description: string
+  description?: string
+}
 
-  const product = mockProducts.find((item) => Number(pid) === Number(item.id))
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
+
+export default function ProductDetailPage({ pid }: { pid: string }) {
+  const [product, setProduct] = useState<HQProduct | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`${API}/api/products`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`)
+        return r.json()
+      })
+      .then((data) => {
+        const products: HQProduct[] = data.data || data || []
+        const found = products.find(
+          (p) => String(p.numeric_id) === String(pid) || p.id === String(pid)
+        )
+        setProduct(found || null)
+        setLoading(false)
+      })
+      .catch((err) => {
+        console.error('Error fetching product:', err)
+        setError('Produkt konnte nicht geladen werden.')
+        setLoading(false)
+      })
+  }, [pid])
+
+  if (loading) {
+    return (
+      <Container sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <CircularProgress />
+      </Container>
+    )
+  }
+
+  if (error) {
+    return (
+      <Container>
+        <Alert severity="error" sx={{ my: 4 }}>
+          {error}
+        </Alert>
+      </Container>
+    )
+  }
 
   if (!product) {
-    notFound()
+    return (
+      <Container>
+        <Alert severity="warning" sx={{ my: 4 }}>
+          Produkt nicht gefunden.
+        </Alert>
+      </Container>
+    )
   }
 
   return (
     <div>
       <Container>
-        {/* Breadcrumb Navigation */}
         <Box sx={{ my: 2 }}>
           <Breadcrumbs aria-label="breadcrumb">
             <Link
@@ -57,34 +115,30 @@ export default function ProductPage({ params }) {
           </Breadcrumbs>
         </Box>
 
-        {/* Product Detail */}
-        <Paper
-          elevation={2}
-          sx={{
-            p: 3,
-            mb: 4,
-            borderRadius: 2,
-          }}
-        >
+        <Paper elevation={2} sx={{ p: 3, mb: 4, borderRadius: 2 }}>
           <Grid container spacing={3}>
-            {/* Product Image */}
             <Grid item xs={12} md={6}>
               <Box
                 sx={styles.imageContainer}
                 component="figure"
                 aria-label={`Bild von ${product.name}`}
               >
-                <Image
-                  width={200}
-                  height={150}
-                  src={product.image}
-                  alt={product.name}
-                  style={styles.productImage}
-                />
+                {product.image &&
+                product.image.startsWith('/assets/') &&
+                product.image.length > 10 ? (
+                  <Image
+                    width={400}
+                    height={300}
+                    src={product.image}
+                    alt={product.name}
+                    style={styles.productImage}
+                  />
+                ) : (
+                  <Typography variant="h1">🥖</Typography>
+                )}
               </Box>
             </Grid>
 
-            {/* Product Information */}
             <Grid item xs={12} md={6}>
               <Box component="article">
                 <Box sx={styles.categoryContainer}>
@@ -123,9 +177,8 @@ export default function ProductPage({ params }) {
 
                 <Typography variant="body1" paragraph>
                   {product.description ||
-                    `${product.name} ist ein hochwertiges Backprodukt aus unserer Bäckerei.
-                   Hergestellt aus sorgfältig ausgewählten Zutaten und mit handwerklichem
-                   Können gebacken.`}
+                    product.short_description ||
+                    `${product.name} ist ein hochwertiges Backprodukt aus unserer Bäckerei.`}
                 </Typography>
 
                 <Box sx={styles.productFeatures}>
@@ -140,23 +193,19 @@ export default function ProductPage({ params }) {
                   </Typography>
                 </Box>
 
-                {/* Add to Cart Button - Commented out but improved */}
-                {/*
                 <Button
                   sx={{ mt: 3 }}
                   size="large"
                   fullWidth
-                  onClick={() => add(product.id)}
                   aria-label={`${product.name} zum Warenkorb hinzufügen`}
                 >
-                  Zum Warenkorb
+                  In den Warenkorb
                 </Button>
-                */}
 
                 <Divider sx={{ my: 2 }} />
 
                 <Typography variant="body2" color="text.secondary">
-                  Artikelnummer: {product.id}
+                  Artikelnummer: {product.numeric_id}
                 </Typography>
               </Box>
             </Grid>
@@ -183,7 +232,7 @@ const styles = {
   productImage: {
     maxWidth: '90%',
     maxHeight: '90%',
-    objectFit: 'contain',
+    objectFit: 'contain' as const,
   },
   categoryContainer: {
     marginBottom: 2,
@@ -196,10 +245,4 @@ const styles = {
     borderLeft: '4px solid',
     borderColor: 'primary.main',
   },
-}
-
-export async function generateStaticParams() {
-  return mockProducts.map((product) => ({
-    pid: product.id.toString(),
-  }))
 }

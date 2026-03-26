@@ -54,18 +54,26 @@ const ProductCard: React.FC<Props> = (props) => {
         )}`}
       >
         <CardMedia component="div" sx={styles.imageContainer}>
-          <Image
-            width={200}
-            height={150}
-            src={props.image || '/placeholder.png'}
-            alt={`Bild von ${props.name}`}
-            style={{
-              maxWidth: '85%',
-              maxHeight: '85%',
-              objectFit: 'contain' as const,
-              transition: 'transform 0.3s ease',
-            }}
-          />
+          {props.image &&
+          props.image.startsWith('/assets/') &&
+          props.image.length > 10 ? (
+            <Image
+              width={200}
+              height={150}
+              src={props.image}
+              alt={`Bild von ${props.name}`}
+              style={{
+                maxWidth: '85%',
+                maxHeight: '85%',
+                objectFit: 'contain' as const,
+                transition: 'transform 0.3s ease',
+              }}
+            />
+          ) : (
+            <Typography variant="h2" component="span" aria-hidden>
+              🥖
+            </Typography>
+          )}
         </CardMedia>
 
         <CardContent sx={styles.content}>

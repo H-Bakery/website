@@ -1,19 +1,19 @@
 'use client'
-import React from 'react'
-import { Box } from '@mui/material'
+import React, { use } from 'react'
 import { Header, Footer } from '@bakery/shared/ui'
 import { ProductDetailPage } from '@bakery/shop/feature-catalog'
 
 interface ProductPageProps {
-  params: { pid: string }
+  params: Promise<{ pid: string }>
 }
 
 export default function ProductPage({ params }: ProductPageProps) {
+  const { pid } = use(params)
   return (
-    <Box>
+    <div>
       <Header />
-      <ProductDetailPage params={params} />
+      <ProductDetailPage pid={pid} />
       <Footer />
-    </Box>
+    </div>
   )
 }
