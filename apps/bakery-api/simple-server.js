@@ -782,6 +782,31 @@ app.delete('/api/inventory/:id', (req, res) => {
   res.json({ success: true, message: 'Inventory item deleted' })
 })
 
+// --- Baking list endpoint (derived from HQ products) ---
+app.get('/api/baking-list', (req, res) => {
+  try {
+    const products = loadHQProducts()
+    const today = new Date().toISOString().split('T')[0]
+    const bakingList = products
+      .filter((p) => p.available !== false)
+      .map((p) => ({
+        id: p.numeric_id || p.id,
+        productId: p.id,
+        name: p.name,
+        category: p.category,
+        quantity: Math.floor(Math.random() * 30) + 10,
+        unit: 'Stück',
+        status: 'planned',
+        date: today,
+      }))
+      .slice(0, 20)
+
+    res.json({ success: true, data: bakingList })
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message })
+  }
+})
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Bakery API server running on port ${PORT}`)
