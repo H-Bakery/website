@@ -19,6 +19,14 @@ import ShoppingBasketIcon from '@mui/icons-material/ShoppingBasket'
 
 import { formatter } from '@bakery/shared/utils'
 import { Button } from '@bakery/shared/ui'
+import { useCart } from '@bakery/shared/contexts'
+import {
+  Product,
+  ProductType,
+  ProductStatus,
+  ProductCategory,
+} from '@bakery/shared/types'
+import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 
 interface HQProduct {
   id: string
@@ -38,6 +46,8 @@ export default function ProductDetailPage({ pid }: { pid: string }) {
   const [product, setProduct] = useState<HQProduct | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [added, setAdded] = useState(false)
+  const { addToCart } = useCart()
 
   useEffect(() => {
     fetch(`${API}/api/products`)
@@ -59,6 +69,26 @@ export default function ProductDetailPage({ pid }: { pid: string }) {
         setLoading(false)
       })
   }, [pid])
+
+  const handleAddToCart = () => {
+    if (!product) return
+    const cartProduct = {
+      id: product.numeric_id,
+      name: product.name,
+      description: product.description || product.short_description,
+      category: product.category as unknown as ProductCategory,
+      type: ProductType.Fresh,
+      price: product.price,
+      stock: 99,
+      status: ProductStatus.Available,
+      image: product.image || undefined,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    } as Product
+    addToCart(cartProduct)
+    setAdded(true)
+    setTimeout(() => setAdded(false), 2000)
+  }
 
   if (loading) {
     return (
@@ -197,9 +227,18 @@ export default function ProductDetailPage({ pid }: { pid: string }) {
                   sx={{ mt: 3 }}
                   size="large"
                   fullWidth
+                  onClick={handleAddToCart}
+                  color={added ? 'success' : undefined}
                   aria-label={`${product.name} zum Warenkorb hinzufügen`}
                 >
-                  In den Warenkorb
+                  {added ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CheckCircleOutlineIcon fontSize="small" />
+                      Hinzugefügt!
+                    </Box>
+                  ) : (
+                    'In den Warenkorb'
+                  )}
                 </Button>
 
                 <Divider sx={{ my: 2 }} />
