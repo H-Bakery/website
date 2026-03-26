@@ -48,7 +48,7 @@ export default function ProductDetailPage({ pid }: { pid: string }) {
       .then((data) => {
         const products: HQProduct[] = data.data || data || []
         const found = products.find(
-          (p) => String(p.numeric_id) === pid || p.id === pid
+          (p) => String(p.numeric_id) === String(pid) || p.id === String(pid)
         )
         setProduct(found || null)
         setLoading(false)
@@ -123,7 +123,9 @@ export default function ProductDetailPage({ pid }: { pid: string }) {
                 component="figure"
                 aria-label={`Bild von ${product.name}`}
               >
-                {product.image ? (
+                {product.image &&
+                product.image.startsWith('/assets/') &&
+                product.image.length > 10 ? (
                   <Image
                     width={400}
                     height={300}
