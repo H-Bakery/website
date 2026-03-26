@@ -1,3 +1,5 @@
+'use client'
+import React, { use } from 'react'
 import { Header, Footer } from '@bakery/shared/ui'
 import { ProductDetailPage } from '@bakery/shop/feature-catalog'
 
@@ -5,8 +7,8 @@ interface ProductPageProps {
   params: Promise<{ pid: string }>
 }
 
-export default async function ProductPage({ params }: ProductPageProps) {
-  const { pid } = await params
+export default function ProductPage({ params }: ProductPageProps) {
+  const { pid } = use(params)
   return (
     <div>
       <Header />
