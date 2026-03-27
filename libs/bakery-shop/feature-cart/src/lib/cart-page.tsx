@@ -144,13 +144,17 @@ const CartPage: React.FC = () => {
                               borderRadius: 1,
                             }}
                           >
-                            <Image
-                              src={item.image || '/placeholder.png'}
-                              alt={item.name}
-                              width={60}
-                              height={60}
-                              style={{ objectFit: 'contain' }}
-                            />
+                            {item.image && item.image.startsWith('/assets/') ? (
+                              <Image
+                                src={item.image}
+                                alt={item.name}
+                                width={60}
+                                height={60}
+                                style={{ objectFit: 'contain' }}
+                              />
+                            ) : (
+                              <Typography variant="h4">🥖</Typography>
+                            )}
                           </CardMedia>
                         </Grid>
 
