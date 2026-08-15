@@ -107,9 +107,7 @@ const ProductionChecklist: React.FC<ProductionChecklistProps> = ({
         </Typography>
         <Divider sx={{ mb: 2 }} />
 
-        {Object.entries(productionPlan.fillings).some(
-          ([_, amount]) => amount > 0
-        ) ? (
+        {Object.values(productionPlan.fillings).some((amount) => amount > 0) ? (
           <Grid container spacing={2}>
             {Object.entries(productionPlan.fillings).map(
               ([filling, amount]) => {

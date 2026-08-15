@@ -1,1 +1,1 @@
-export { default as socketService } from './socketService'
+export { socketService } from './socketService'

@@ -9,6 +9,12 @@ import {
   CardContent,
   Button,
   LinearProgress,
+  Chip,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  Alert,
 } from '@mui/material'
 import {
   Dashboard as DashboardIcon,
@@ -19,12 +25,17 @@ import {
   ListAlt as BakingListIcon,
   Store as ProductsIcon,
   Assessment as ReportsIcon,
-  People as PeopleIcon,
+  Insights as AnalyticsIcon,
   Category as CategoryIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
+  Circle as CircleIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
+import { apiClient } from '@bakery/shared/data-access'
+import { useNotifications } from '@bakery/shared/contexts'
 
 const quickLinks = [
   {
@@ -71,61 +82,139 @@ const quickLinks = [
   },
   {
     title: 'Berichte',
-    description: 'Analysen und Berichte anzeigen',
+    description: 'Berichte und Zeitpläne',
     icon: <ReportsIcon fontSize="large" />,
     href: '/admin/reports',
     color: '#795548',
   },
+  {
+    title: 'Analysen',
+    description: 'Umsatz- und Produktanalysen',
+    icon: <AnalyticsIcon fontSize="large" />,
+    href: '/admin/analytics',
+    color: '#607D8B',
+  },
 ]
+
+interface ProductSummary {
+  available?: boolean
+}
+
+interface OrderSummary {
+  status?: string
+}
+
+interface ProductionSummary {
+  status?: string
+}
+
+interface DashboardStats {
+  ordersTotal: number
+  ordersOpen: number
+  productsTotal: number
+  productsAvailable: number
+  productsUnavailable: number
+  productionTotal: number
+  productionCompleted: number
+}
+
+type ApiStatus = 'checking' | 'online' | 'offline'
+
+const EMPTY_STATS: DashboardStats = {
+  ordersTotal: 0,
+  ordersOpen: 0,
+  productsTotal: 0,
+  productsAvailable: 0,
+  productsUnavailable: 0,
+  productionTotal: 0,
+  productionCompleted: 0,
+}
+
+const OPEN_ORDER_STATES = new Set(['pending', 'confirmed', 'processing'])
+
+const notificationColor: Record<string, string> = {
+  success: 'success.main',
+  warning: 'warning.main',
+  error: 'error.main',
+  info: 'info.main',
+}
+
+function formatRelativeTime(value: Date | string): string {
+  const date = new Date(value)
+  const diffMs = Date.now() - date.getTime()
+  const minutes = Math.round(diffMs / 60000)
+  if (Number.isNaN(minutes)) return ''
+  if (minutes < 1) return 'gerade eben'
+  if (minutes < 60) return `vor ${minutes} Min.`
+  const hours = Math.round(minutes / 60)
+  if (hours < 24) return `vor ${hours} Std.`
+  return date.toLocaleDateString('de-DE')
+}
 
 export default function AdminDashboardPage() {
   const router = useRouter()
+  const { notifications, isLoading: notificationsLoading } = useNotifications()
 
-  const [stats, setStats] = React.useState({
-    todayOrders: 0,
-    productionEfficiency: 87,
-    customerCount: 0,
-    productsTotal: 0,
-    productsAvailable: 0,
-    productsUnavailable: 0,
-  })
+  const [stats, setStats] = React.useState<DashboardStats>(EMPTY_STATS)
   const [loading, setLoading] = React.useState(true)
+  const [apiStatus, setApiStatus] = React.useState<ApiStatus>('checking')
+  const [lastCheck, setLastCheck] = React.useState<Date | null>(null)
+
+  const loadDashboard = React.useCallback(async () => {
+    setLoading(true)
+    setApiStatus('checking')
+
+    const safe = <T,>(request: Promise<T>) => request.catch(() => null)
+    const [orders, products, production] = await Promise.all([
+      safe(apiClient.get<OrderSummary[]>('/api/orders')),
+      safe(apiClient.get<ProductSummary[]>('/api/products')),
+      safe(apiClient.get<ProductionSummary[]>('/api/production')),
+    ])
+
+    // If none of the requests came back, the API is unreachable.
+    const anySuccess = [orders, products, production].some((r) => r?.success)
+    setApiStatus(anySuccess ? 'online' : 'offline')
+    setLastCheck(new Date())
+
+    const ordersData = Array.isArray(orders?.data) ? orders.data : []
+    const productsData = Array.isArray(products?.data) ? products.data : []
+    const productionData = Array.isArray(production?.data)
+      ? production.data
+      : []
+
+    setStats({
+      ordersTotal: ordersData.length,
+      ordersOpen: ordersData.filter((o) =>
+        OPEN_ORDER_STATES.has(o.status ?? '')
+      ).length,
+      productsTotal: productsData.length,
+      productsAvailable: productsData.filter((p) => p.available === true)
+        .length,
+      productsUnavailable: productsData.filter((p) => p.available === false)
+        .length,
+      productionTotal: productionData.length,
+      productionCompleted: productionData.filter(
+        (p) => p.status === 'completed'
+      ).length,
+    })
+    setLoading(false)
+  }, [])
 
   React.useEffect(() => {
-    const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
-    Promise.all([
-      fetch(`${API}/api/orders`)
-        .then((r) => r.json())
-        .catch(() => ({ data: [] })),
-      fetch(`${API}/api/products`)
-        .then((r) => r.json())
-        .catch(() => ({ data: [] })),
-    ])
-      .then(([orders, products]) => {
-        const ordersData = orders?.data || []
-        const productsData: any[] = Array.isArray(products?.data)
-          ? products.data
-          : []
+    loadDashboard()
+  }, [loadDashboard])
 
-        const available = productsData.filter(
-          (p) => p.available === true
-        ).length
-        const unavailable = productsData.filter(
-          (p) => p.available === false
-        ).length
+  const productionProgress =
+    stats.productionTotal > 0
+      ? Math.round((stats.productionCompleted / stats.productionTotal) * 100)
+      : 0
 
-        setStats({
-          todayOrders: ordersData.length,
-          productionEfficiency: 87,
-          customerCount: ordersData.length,
-          productsTotal: productsData.length,
-          productsAvailable: available,
-          productsUnavailable: unavailable,
-        })
-        setLoading(false)
-      })
-      .catch(() => setLoading(false))
-  }, [])
+  const recentNotifications = [...notifications]
+    .sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .slice(0, 5)
 
   return (
     <Box>
@@ -281,13 +370,13 @@ export default function AdminDashboardPage() {
             >
               <Box>
                 <Typography color="text.secondary" variant="body2">
-                  Bestellungen
+                  Offene Bestellungen
                 </Typography>
                 <Typography
                   variant="h4"
                   sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
                 >
-                  {stats.todayOrders}
+                  {stats.ordersOpen}
                 </Typography>
               </Box>
               <OrdersIcon
@@ -297,13 +386,9 @@ export default function AdminDashboardPage() {
                 }}
               />
             </Box>
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              sx={{ display: { xs: 'none', sm: 'block' } }}
-            >
-              Aktuelle Bestellungen
-            </Typography>
+            <Button size="small" onClick={() => router.push('/admin/orders')}>
+              {stats.ordersTotal} Bestellungen gesamt
+            </Button>
           </Paper>
         </Grid>
       </Grid>
@@ -373,76 +458,175 @@ export default function AdminDashboardPage() {
         ))}
       </Grid>
 
-      {/* Production Overview */}
+      {/* Production overview & recent activity */}
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
               Produktionsübersicht
             </Typography>
-            <Box sx={{ mb: 3 }}>
-              <Box
-                sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}
-              >
-                <Typography variant="body2">Produktionseffizienz</Typography>
-                <Typography variant="body2" fontWeight="bold">
-                  {stats.productionEfficiency}%
-                </Typography>
-              </Box>
-              <LinearProgress
-                variant="determinate"
-                value={stats.productionEfficiency}
-                sx={{ height: 10, borderRadius: 5 }}
-                color="success"
-              />
-            </Box>
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Aktive Linien
-                </Typography>
-                <Typography variant="h6">3 von 4</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Heutige Produktion
-                </Typography>
-                <Typography variant="h6">1,250 Einheiten</Typography>
-              </Grid>
-            </Grid>
+            {stats.productionTotal === 0 && !loading ? (
+              <Typography variant="body2" color="text.secondary">
+                Keine Produktionsaufträge vorhanden.
+              </Typography>
+            ) : (
+              <>
+                <Box sx={{ mb: 3 }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      mb: 1,
+                    }}
+                  >
+                    <Typography variant="body2">
+                      Abgeschlossene Aufträge
+                    </Typography>
+                    <Typography variant="body2" fontWeight="bold">
+                      {productionProgress}%
+                    </Typography>
+                  </Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={productionProgress}
+                    sx={{ height: 10, borderRadius: 5 }}
+                    color="success"
+                    aria-label="Produktionsfortschritt"
+                  />
+                </Box>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Aufträge gesamt
+                    </Typography>
+                    <Typography variant="h6">
+                      {stats.productionTotal}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2" color="text.secondary">
+                      Abgeschlossen
+                    </Typography>
+                    <Typography variant="h6">
+                      {stats.productionCompleted}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </>
+            )}
+            <Button
+              size="small"
+              sx={{ mt: 2 }}
+              onClick={() => router.push('/admin/production')}
+            >
+              Zur Produktion
+            </Button>
           </Paper>
         </Grid>
 
         <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: 3, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
-              Kundenübersicht
+              Letzte Aktivitäten
             </Typography>
-            <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <PeopleIcon sx={{ color: 'primary.main', fontSize: 48 }} />
-                <Box>
-                  <Typography variant="h4">{stats.customerCount}</Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Registrierte Kunden
+            {notificationsLoading && recentNotifications.length === 0 ? (
+              <LinearProgress sx={{ my: 2 }} />
+            ) : recentNotifications.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                Keine aktuellen Benachrichtigungen.
+              </Typography>
+            ) : (
+              <List dense disablePadding>
+                {recentNotifications.map((n) => (
+                  <ListItem key={n.id} disableGutters>
+                    <ListItemIcon sx={{ minWidth: 28 }}>
+                      <CircleIcon
+                        sx={{
+                          fontSize: 12,
+                          color: notificationColor[n.type] ?? 'text.disabled',
+                        }}
+                      />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={n.title}
+                      secondary={`${n.message} · ${formatRelativeTime(
+                        n.createdAt
+                      )}`}
+                      primaryTypographyProps={{
+                        fontWeight: n.read ? 'normal' : 'bold',
+                      }}
+                    />
+                  </ListItem>
+                ))}
+              </List>
+            )}
+            <Button
+              size="small"
+              sx={{ mt: 2 }}
+              component={Link}
+              href="/admin/notifications"
+            >
+              Alle Benachrichtigungen
+            </Button>
+          </Paper>
+        </Grid>
+
+        {/* System status – real reachability check of the API */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 1,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Typography variant="h6">Systemstatus</Typography>
+                <Chip
+                  size="small"
+                  label={
+                    apiStatus === 'checking'
+                      ? 'API wird geprüft …'
+                      : apiStatus === 'online'
+                      ? 'API erreichbar'
+                      : 'API nicht erreichbar'
+                  }
+                  color={
+                    apiStatus === 'online'
+                      ? 'success'
+                      : apiStatus === 'offline'
+                      ? 'error'
+                      : 'default'
+                  }
+                />
+                {lastCheck && (
+                  <Typography variant="caption" color="text.secondary">
+                    Zuletzt geprüft:{' '}
+                    {lastCheck.toLocaleTimeString('de-DE', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
                   </Typography>
-                </Box>
+                )}
               </Box>
+              <Button
+                size="small"
+                startIcon={<RefreshIcon />}
+                onClick={loadDashboard}
+                disabled={loading}
+              >
+                Aktualisieren
+              </Button>
             </Box>
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Neue diese Woche
-                </Typography>
-                <Typography variant="h6">12</Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Aktive heute
-                </Typography>
-                <Typography variant="h6">48</Typography>
-              </Grid>
-            </Grid>
+            {apiStatus === 'offline' && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                Die API antwortet nicht. Die angezeigten Zahlen sind
+                möglicherweise unvollständig.
+              </Alert>
+            )}
           </Paper>
         </Grid>
       </Grid>

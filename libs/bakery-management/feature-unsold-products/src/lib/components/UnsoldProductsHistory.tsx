@@ -60,15 +60,17 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
 
   // Get unique categories for filter
   const categories = useMemo(() => {
-    const cats = new Set(unsoldProducts.map(entry => entry.Product?.category || ''))
+    const cats = new Set(
+      unsoldProducts.map((entry) => entry.Product?.category || '')
+    )
     return Array.from(cats).filter(Boolean).sort()
   }, [unsoldProducts])
 
   // Sorting logic
   const sortedEntries = useMemo(() => {
     const sorted = [...unsoldProducts].sort((a, b) => {
-      let aValue: any
-      let bValue: any
+      let aValue: number | string | Date
+      let bValue: number | string | Date
 
       switch (sortBy) {
         case 'date':
@@ -103,18 +105,24 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
   const filteredEntries = useMemo(() => {
     return sortedEntries.filter((entry) => {
       // Search filter
-      const matchesSearch = searchTerm === '' || 
-        (entry.Product?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (entry.Product?.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch =
+        searchTerm === '' ||
+        (entry.Product?.name || '')
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
+        (entry.Product?.category || '')
+          .toLowerCase()
+          .includes(searchTerm.toLowerCase()) ||
         entry.quantity.toString().includes(searchTerm)
 
       // Date range filter
-      const matchesDateRange = 
+      const matchesDateRange =
         (!dateFilter.startDate || entry.date >= dateFilter.startDate) &&
         (!dateFilter.endDate || entry.date <= dateFilter.endDate)
 
       // Category filter
-      const matchesCategory = categoryFilter === '' || entry.Product?.category === categoryFilter
+      const matchesCategory =
+        categoryFilter === '' || entry.Product?.category === categoryFilter
 
       return matchesSearch && matchesDateRange && matchesCategory
     })
@@ -127,25 +135,37 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
   }
 
   const exportToCSV = () => {
-    const headers = ['Datum', 'Produkt', 'Kategorie', 'Anzahl unverkauft', 'Erfasst von', 'Erfasst am']
+    const headers = [
+      'Datum',
+      'Produkt',
+      'Kategorie',
+      'Anzahl unverkauft',
+      'Erfasst von',
+      'Erfasst am',
+    ]
     const csvRows = [
       headers.join(','),
-      ...filteredEntries.map(entry => [
-        entry.date,
-        `"${entry.Product?.name || ''}"`,
-        entry.Product?.category || '',
-        entry.quantity,
-        entry.User?.username || '',
-        new Date(entry.createdAt).toLocaleString('de-DE')
-      ].join(','))
+      ...filteredEntries.map((entry) =>
+        [
+          entry.date,
+          `"${entry.Product?.name || ''}"`,
+          entry.Product?.category || '',
+          entry.quantity,
+          entry.User?.username || '',
+          new Date(entry.createdAt).toLocaleString('de-DE'),
+        ].join(',')
+      ),
     ]
-    
+
     const csvContent = csvRows.join('\n')
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const link = document.createElement('a')
     const url = URL.createObjectURL(blob)
     link.setAttribute('href', url)
-    link.setAttribute('download', `unverkaufte-produkte-${new Date().toISOString().split('T')[0]}.csv`)
+    link.setAttribute(
+      'download',
+      `unverkaufte-produkte-${new Date().toISOString().split('T')[0]}.csv`
+    )
     link.style.visibility = 'hidden'
     document.body.appendChild(link)
     link.click()
@@ -162,7 +182,7 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
       weekday: 'short',
       day: '2-digit',
       month: '2-digit',
-      year: 'numeric'
+      year: 'numeric',
     })
   }
 
@@ -173,7 +193,7 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
       month: '2-digit',
       year: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     })
   }
 
@@ -209,10 +229,10 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
                   <Typography variant="body2" fontWeight={600}>
                     {item.Product?.name || ''}
                   </Typography>
-                  <Chip 
-                    label={item.Product?.category || ''} 
-                    size="small" 
-                    color="secondary" 
+                  <Chip
+                    label={item.Product?.category || ''}
+                    size="small"
+                    color="secondary"
                     variant="outlined"
                   />
                 </Paper>
@@ -237,7 +257,10 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
         <Grid item xs={12} sm={4}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="h6" color="warning.main">
-              {Math.round(calculateTotalWaste() / Math.max(filteredEntries.length, 1) * 10) / 10}
+              {Math.round(
+                (calculateTotalWaste() / Math.max(filteredEntries.length, 1)) *
+                  10
+              ) / 10}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Durchschnitt pro Eintrag
@@ -247,7 +270,7 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
         <Grid item xs={12} sm={4}>
           <Paper sx={{ p: 2, textAlign: 'center' }}>
             <Typography variant="h6" color="info.main">
-              {new Set(filteredEntries.map(e => e.Product?.name || '')).size}
+              {new Set(filteredEntries.map((e) => e.Product?.name || '')).size}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Verschiedene Produkte
@@ -299,7 +322,12 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
               label="Von Datum"
               type="date"
               value={dateFilter.startDate}
-              onChange={(e) => setDateFilter(prev => ({ ...prev, startDate: e.target.value }))}
+              onChange={(e) =>
+                setDateFilter((prev) => ({
+                  ...prev,
+                  startDate: e.target.value,
+                }))
+              }
               InputLabelProps={{ shrink: true }}
               fullWidth
             />
@@ -310,7 +338,9 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
               label="Bis Datum"
               type="date"
               value={dateFilter.endDate}
-              onChange={(e) => setDateFilter(prev => ({ ...prev, endDate: e.target.value }))}
+              onChange={(e) =>
+                setDateFilter((prev) => ({ ...prev, endDate: e.target.value }))
+              }
               InputLabelProps={{ shrink: true }}
               fullWidth
             />
@@ -384,7 +414,8 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
               </TableRow>
             ) : (
               filteredEntries.map((entry) => {
-                const id = typeof entry.id === 'string' ? entry.id : entry.id.toString()
+                const id =
+                  typeof entry.id === 'string' ? entry.id : entry.id.toString()
                 return (
                   <TableRow key={id} hover>
                     <TableCell>
@@ -398,15 +429,22 @@ export const UnsoldProductsHistory: React.FC<UnsoldProductsHistoryProps> = ({
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Chip 
-                        label={entry.Product?.category || ''} 
-                        size="small" 
-                        color="secondary" 
+                      <Chip
+                        label={entry.Product?.category || ''}
+                        size="small"
+                        color="secondary"
                         variant="outlined"
                       />
                     </TableCell>
                     <TableCell align="right">
-                      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 1 }}>
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'flex-end',
+                          gap: 1,
+                        }}
+                      >
                         <Inventory fontSize="small" color="action" />
                         <Typography variant="body1" fontWeight={600}>
                           {entry.quantity}

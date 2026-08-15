@@ -1,312 +1,569 @@
 'use client'
-import React from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   Box,
-  Container,
-  Typography,
-  Grid,
-  Paper,
-  LinearProgress,
+  Button,
   Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  Grid,
+  IconButton,
+  LinearProgress,
   List,
   ListItem,
   ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
+  Paper,
+  Snackbar,
+  TextField,
+  Tooltip,
+  Typography,
 } from '@mui/material'
 import {
   Factory as ProductionIcon,
-  Schedule as ScheduleIcon,
-  TrendingUp as TrendingUpIcon,
   Warning as WarningIcon,
   CheckCircle as CheckIcon,
   PlayArrow as PlayIcon,
-  Pause as PauseIcon,
+  Add as AddIcon,
+  Delete as DeleteIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material'
+import { apiClient } from '@bakery/shared/data-access'
 
-// Mock production data
-const productionMetrics = {
-  efficiency: 87,
-  dailyOutput: 1250,
-  targetOutput: 1400,
-  activeLines: 3,
-  totalLines: 4,
+export type ProductionStatus = 'planned' | 'in-progress' | 'completed'
+
+export interface ProductionPlan {
+  id: string
+  date: string
+  product: string
+  quantity: number
+  status: ProductionStatus | string
 }
 
-const productionOrders = [
-  {
-    id: '1',
-    product: 'Vollkornbrot',
-    quantity: 120,
-    completed: 80,
-    status: 'in-progress',
-    startTime: '04:00',
-    estimatedEnd: '08:00',
-  },
-  {
-    id: '2',
-    product: 'Baguette',
-    quantity: 200,
-    completed: 200,
-    status: 'completed',
-    startTime: '05:00',
-    estimatedEnd: '07:30',
-  },
-  {
-    id: '3',
-    product: 'Croissant',
-    quantity: 150,
-    completed: 0,
-    status: 'pending',
-    startTime: '08:00',
-    estimatedEnd: '11:00',
-  },
-  {
-    id: '4',
-    product: 'Brezel',
-    quantity: 300,
-    completed: 120,
-    status: 'in-progress',
-    startTime: '06:00',
-    estimatedEnd: '09:30',
-  },
-]
+interface LowStockItem {
+  id: string
+  name: string
+  stock: number
+  minStock: number
+  unit: string
+}
 
-const resourceStatus = [
-  { resource: 'Mehl', level: 85, unit: 'kg', status: 'good' },
-  { resource: 'Hefe', level: 15, unit: 'kg', status: 'low' },
-  { resource: 'Salz', level: 92, unit: 'kg', status: 'good' },
-  { resource: 'Butter', level: 45, unit: 'kg', status: 'medium' },
-]
+const STATUS_LABELS: Record<string, string> = {
+  planned: 'Geplant',
+  'in-progress': 'In Produktion',
+  completed: 'Abgeschlossen',
+}
+
+const STATUS_COLORS: Record<string, 'default' | 'primary' | 'success'> = {
+  planned: 'default',
+  'in-progress': 'primary',
+  completed: 'success',
+}
+
+const formatDate = (value: string) => {
+  const d = new Date(value)
+  return Number.isNaN(d.getTime())
+    ? value
+    : d.toLocaleDateString('de-DE', {
+        weekday: 'short',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+      })
+}
+
+const todayIso = () => new Date().toISOString().split('T')[0]
 
 export default function AdminProductionPage() {
+  const [plans, setPlans] = useState<ProductionPlan[]>([])
+  const [lowStock, setLowStock] = useState<LowStockItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [snackbar, setSnackbar] = useState<{
+    message: string
+    severity: 'success' | 'error'
+  } | null>(null)
+
+  const [addOpen, setAddOpen] = useState(false)
+  const [newProduct, setNewProduct] = useState('')
+  const [newQuantity, setNewQuantity] = useState('')
+  const [newDate, setNewDate] = useState(todayIso())
+  const [saving, setSaving] = useState(false)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const [plansRes, lowRes] = await Promise.all([
+        apiClient.get<ProductionPlan[]>('/api/production'),
+        apiClient
+          .get<LowStockItem[]>('/api/inventory/low-stock')
+          .catch(() => ({ data: [] as LowStockItem[] })),
+      ])
+      setPlans(Array.isArray(plansRes.data) ? plansRes.data : [])
+      setLowStock(Array.isArray(lowRes.data) ? lowRes.data : [])
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Produktionsplan konnte nicht geladen werden'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const metrics = useMemo(() => {
+    const total = plans.reduce((s, p) => s + (Number(p.quantity) || 0), 0)
+    const completedUnits = plans
+      .filter((p) => p.status === 'completed')
+      .reduce((s, p) => s + (Number(p.quantity) || 0), 0)
+    return {
+      total,
+      completedUnits,
+      inProgress: plans.filter((p) => p.status === 'in-progress').length,
+      planned: plans.filter((p) => p.status === 'planned').length,
+      completed: plans.filter((p) => p.status === 'completed').length,
+      progress: total > 0 ? Math.round((completedUnits / total) * 100) : 0,
+    }
+  }, [plans])
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, ProductionPlan[]>()
+    for (const p of plans) {
+      const list = map.get(p.date) ?? []
+      list.push(p)
+      map.set(p.date, list)
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => (a < b ? 1 : -1))
+  }, [plans])
+
+  const updateStatus = async (
+    plan: ProductionPlan,
+    status: ProductionStatus
+  ) => {
+    setBusyId(plan.id)
+    try {
+      const res = await apiClient.put<ProductionPlan>(
+        `/api/production/${plan.id}`,
+        { status }
+      )
+      const updated = res.data ?? { ...plan, status }
+      setPlans((prev) => prev.map((p) => (p.id === plan.id ? updated : p)))
+      setSnackbar({
+        message: `${plan.product}: ${STATUS_LABELS[status]}`,
+        severity: 'success',
+      })
+    } catch (err) {
+      setSnackbar({
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Status konnte nicht geändert werden',
+        severity: 'error',
+      })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const removePlan = async (plan: ProductionPlan) => {
+    if (!window.confirm(`Auftrag „${plan.product}“ wirklich löschen?`)) return
+    setBusyId(plan.id)
+    try {
+      await apiClient.delete(`/api/production/${plan.id}`)
+      setPlans((prev) => prev.filter((p) => p.id !== plan.id))
+      setSnackbar({ message: 'Auftrag gelöscht', severity: 'success' })
+    } catch (err) {
+      setSnackbar({
+        message: err instanceof Error ? err.message : 'Löschen fehlgeschlagen',
+        severity: 'error',
+      })
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const addPlan = async () => {
+    const qty = Number(newQuantity)
+    if (!newProduct.trim() || !qty || qty <= 0 || !newDate) return
+    setSaving(true)
+    try {
+      const res = await apiClient.post<ProductionPlan>('/api/production', {
+        product: newProduct.trim(),
+        quantity: qty,
+        date: newDate,
+        status: 'planned',
+      })
+      if (res.data) setPlans((prev) => [...prev, res.data as ProductionPlan])
+      setAddOpen(false)
+      setNewProduct('')
+      setNewQuantity('')
+      setSnackbar({ message: 'Auftrag angelegt', severity: 'success' })
+    } catch (err) {
+      setSnackbar({
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Auftrag konnte nicht angelegt werden',
+        severity: 'error',
+      })
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <Box>
       {/* Page Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          <ProductionIcon sx={{ mr: 2, verticalAlign: 'middle' }} />
-          Produktionsplanung
-        </Typography>
+      <Box sx={{ mb: { xs: 2, md: 4 } }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: 1.5,
+            mb: 1,
+          }}
+        >
+          <Typography
+            variant="h4"
+            component="h1"
+            sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+          >
+            <ProductionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+            Produktionsplanung
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+            <Tooltip title="Aktualisieren">
+              <span>
+                <IconButton
+                  aria-label="Produktionsplan aktualisieren"
+                  onClick={load}
+                  disabled={loading}
+                >
+                  <RefreshIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setAddOpen(true)}
+            >
+              Neuer Auftrag
+            </Button>
+          </Box>
+        </Box>
         <Typography variant="subtitle1" color="text.secondary">
-          Übersicht und Steuerung der Produktionsprozesse
+          Übersicht und Steuerung der Produktionsaufträge
         </Typography>
       </Box>
 
+      {error && (
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={load}>
+              Erneut versuchen
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      )}
+
       {/* Production Metrics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
+      <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: { xs: 2, md: 4 } }}>
         <Grid item xs={12} md={6} lg={4}>
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: { xs: 2, md: 3 }, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
-              Produktionseffizienz
+              Fortschritt
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h3" component="div" sx={{ flexGrow: 1 }}>
-                {productionMetrics.efficiency}%
-              </Typography>
-              <TrendingUpIcon color="success" />
-            </Box>
+            <Typography variant="h3" component="div" sx={{ mb: 1 }}>
+              {loading ? '–' : `${metrics.progress}%`}
+            </Typography>
             <LinearProgress
               variant="determinate"
-              value={productionMetrics.efficiency}
+              value={metrics.progress}
               sx={{ height: 10, borderRadius: 5 }}
               color="success"
+              aria-label="Produktionsfortschritt"
             />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Durchschnitt der letzten 7 Tage: 85%
+              {metrics.completedUnits} von {metrics.total} Stück produziert
             </Typography>
           </Paper>
         </Grid>
 
         <Grid item xs={12} md={6} lg={4}>
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: { xs: 2, md: 3 }, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
-              Produktionsstatus
+              Aufträge
             </Typography>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="h4">
-                {productionMetrics.activeLines}/{productionMetrics.totalLines}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Aktive Produktionslinien
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              {[...Array(productionMetrics.totalLines)].map((_, index) => (
-                <Chip
-                  key={index}
-                  label={`Linie ${index + 1}`}
-                  color={
-                    index < productionMetrics.activeLines
-                      ? 'success'
-                      : 'default'
-                  }
-                  size="small"
-                />
-              ))}
+            <Typography variant="h3" component="div" sx={{ mb: 1 }}>
+              {loading ? '–' : plans.length}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              <Chip
+                label={`${metrics.planned} geplant`}
+                size="small"
+                color="default"
+              />
+              <Chip
+                label={`${metrics.inProgress} in Produktion`}
+                size="small"
+                color="primary"
+              />
+              <Chip
+                label={`${metrics.completed} fertig`}
+                size="small"
+                color="success"
+              />
             </Box>
           </Paper>
         </Grid>
 
         <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ p: { xs: 2, md: 3 }, height: '100%' }}>
             <Typography variant="h6" gutterBottom>
-              Tagesproduktion
+              Rohstoffe
             </Typography>
-            <Box sx={{ mb: 1 }}>
-              <Typography variant="h4">
-                {productionMetrics.dailyOutput} /{' '}
-                {productionMetrics.targetOutput}
+            {lowStock.length === 0 ? (
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <CheckIcon color="success" />
+                <Typography variant="body2">
+                  Alle Bestände über Mindestmenge
+                </Typography>
+              </Box>
+            ) : (
+              <>
+                <Box
+                  sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}
+                >
+                  <WarningIcon color="warning" />
+                  <Typography variant="body2" fontWeight={600}>
+                    {lowStock.length} Rohstoff
+                    {lowStock.length === 1 ? '' : 'e'} unter Mindestbestand
+                  </Typography>
+                </Box>
+                <List dense disablePadding>
+                  {lowStock.map((item) => (
+                    <ListItem key={item.id} disableGutters>
+                      <ListItemText
+                        primary={item.name}
+                        secondary={`${item.stock} / min. ${item.minStock} ${item.unit}`}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+
+      {/* Production Orders */}
+      <Paper sx={{ p: { xs: 2, md: 3 } }}>
+        <Typography variant="h6" gutterBottom>
+          Produktionsaufträge
+        </Typography>
+        {loading ? (
+          <Box
+            sx={{ display: 'flex', justifyContent: 'center', p: 4 }}
+            role="status"
+            aria-label="Produktionsplan wird geladen"
+          >
+            <CircularProgress />
+          </Box>
+        ) : plans.length === 0 ? (
+          <Typography color="text.secondary" sx={{ py: 2 }}>
+            Keine Produktionsaufträge vorhanden.
+          </Typography>
+        ) : (
+          grouped.map(([date, dayPlans]) => (
+            <Box key={date} sx={{ mb: 2 }}>
+              <Typography
+                variant="subtitle2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+              >
+                {formatDate(date)}
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Produzierte Einheiten
-              </Typography>
+              <List disablePadding>
+                {dayPlans.map((plan) => {
+                  const busy = busyId === plan.id
+                  return (
+                    <ListItem
+                      key={plan.id}
+                      divider
+                      secondaryAction={
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          {plan.status === 'planned' && (
+                            <Tooltip title="Produktion starten">
+                              <span>
+                                <IconButton
+                                  edge="end"
+                                  aria-label={`${plan.product} starten`}
+                                  disabled={busy}
+                                  onClick={() =>
+                                    updateStatus(plan, 'in-progress')
+                                  }
+                                >
+                                  <PlayIcon />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
+                          {plan.status === 'in-progress' && (
+                            <Tooltip title="Als fertig markieren">
+                              <span>
+                                <IconButton
+                                  edge="end"
+                                  color="success"
+                                  aria-label={`${plan.product} abschließen`}
+                                  disabled={busy}
+                                  onClick={() =>
+                                    updateStatus(plan, 'completed')
+                                  }
+                                >
+                                  <CheckIcon />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          )}
+                          <Tooltip title="Löschen">
+                            <span>
+                              <IconButton
+                                edge="end"
+                                aria-label={`${plan.product} löschen`}
+                                disabled={busy}
+                                onClick={() => removePlan(plan)}
+                              >
+                                <DeleteIcon />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        </Box>
+                      }
+                    >
+                      <ListItemText
+                        primaryTypographyProps={{ component: 'div' }}
+                        secondaryTypographyProps={{ component: 'div' }}
+                        primary={
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 1,
+                              flexWrap: 'wrap',
+                              pr: 8,
+                            }}
+                          >
+                            <Typography variant="subtitle1" component="span">
+                              {plan.product}
+                            </Typography>
+                            <Chip
+                              label={STATUS_LABELS[plan.status] ?? plan.status}
+                              color={STATUS_COLORS[plan.status] ?? 'default'}
+                              size="small"
+                            />
+                          </Box>
+                        }
+                        secondary={`${plan.quantity} Stück`}
+                      />
+                    </ListItem>
+                  )
+                })}
+              </List>
             </Box>
-            <LinearProgress
-              variant="determinate"
-              value={
-                (productionMetrics.dailyOutput /
-                  productionMetrics.targetOutput) *
-                100
-              }
-              sx={{ height: 10, borderRadius: 5 }}
+          ))
+        )}
+      </Paper>
+
+      {/* Add plan dialog */}
+      <Dialog
+        open={addOpen}
+        onClose={() => !saving && setAddOpen(false)}
+        fullWidth
+        maxWidth="xs"
+        aria-labelledby="add-production-title"
+      >
+        <DialogTitle id="add-production-title">
+          Neuer Produktionsauftrag
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'grid', gap: 2, mt: 1 }}>
+            <TextField
+              label="Produkt"
+              value={newProduct}
+              onChange={(e) => setNewProduct(e.target.value)}
+              required
+              autoFocus
+              size="small"
             />
-          </Paper>
-        </Grid>
-      </Grid>
+            <TextField
+              label="Menge (Stück)"
+              type="number"
+              value={newQuantity}
+              onChange={(e) => setNewQuantity(e.target.value)}
+              required
+              size="small"
+              inputProps={{ min: 1 }}
+            />
+            <TextField
+              label="Datum"
+              type="date"
+              value={newDate}
+              onChange={(e) => setNewDate(e.target.value)}
+              required
+              size="small"
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAddOpen(false)} disabled={saving}>
+            Abbrechen
+          </Button>
+          <Button
+            variant="contained"
+            onClick={addPlan}
+            disabled={
+              saving || !newProduct.trim() || !(Number(newQuantity) > 0)
+            }
+          >
+            {saving ? 'Speichern…' : 'Anlegen'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* Production Orders and Resources */}
-      <Grid container spacing={3}>
-        <Grid item xs={12} lg={8}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Aktuelle Produktionsaufträge
-            </Typography>
-            <List>
-              {productionOrders.map((order) => (
-                <ListItem key={order.id} divider>
-                  <ListItemText
-                    primaryTypographyProps={{ component: 'span' }}
-                    secondaryTypographyProps={{ component: 'span' }}
-                    primary={
-                      <Box
-                        component="span"
-                        sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
-                      >
-                        <Typography variant="subtitle1" component="span">
-                          {order.product}
-                        </Typography>
-                        <Chip
-                          label={
-                            order.status === 'completed'
-                              ? 'Abgeschlossen'
-                              : order.status === 'in-progress'
-                              ? 'In Produktion'
-                              : 'Wartend'
-                          }
-                          color={
-                            order.status === 'completed'
-                              ? 'success'
-                              : order.status === 'in-progress'
-                              ? 'primary'
-                              : 'default'
-                          }
-                          size="small"
-                        />
-                      </Box>
-                    }
-                    secondary={
-                      <Box component="span" sx={{ display: 'block' }}>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          component="span"
-                          sx={{ display: 'block' }}
-                        >
-                          {order.startTime} - {order.estimatedEnd} |{' '}
-                          {order.completed}/{order.quantity} Stück
-                        </Typography>
-                        <LinearProgress
-                          variant="determinate"
-                          value={(order.completed / order.quantity) * 100}
-                          sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                        />
-                      </Box>
-                    }
-                  />
-                  <ListItemSecondaryAction>
-                    <IconButton edge="end" aria-label="control">
-                      {order.status === 'in-progress' ? (
-                        <PauseIcon />
-                      ) : (
-                        <PlayIcon />
-                      )}
-                    </IconButton>
-                  </ListItemSecondaryAction>
-                </ListItem>
-              ))}
-            </List>
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" gutterBottom>
-              Ressourcenübersicht
-            </Typography>
-            <List>
-              {resourceStatus.map((resource) => (
-                <ListItem key={resource.resource} dense>
-                  <ListItemText
-                    primaryTypographyProps={{ component: 'span' }}
-                    secondaryTypographyProps={{ component: 'span' }}
-                    primary={resource.resource}
-                    secondary={
-                      <Box component="span" sx={{ display: 'block' }}>
-                        <Typography
-                          variant="body2"
-                          color="text.secondary"
-                          component="span"
-                          sx={{ display: 'block' }}
-                        >
-                          {resource.level} {resource.unit}
-                        </Typography>
-                        <LinearProgress
-                          variant="determinate"
-                          value={resource.level}
-                          color={
-                            resource.status === 'good'
-                              ? 'success'
-                              : resource.status === 'medium'
-                              ? 'warning'
-                              : 'error'
-                          }
-                          sx={{ mt: 0.5, height: 6, borderRadius: 3 }}
-                        />
-                      </Box>
-                    }
-                  />
-                  {resource.status === 'low' && (
-                    <ListItemSecondaryAction>
-                      <WarningIcon color="warning" />
-                    </ListItemSecondaryAction>
-                  )}
-                </ListItem>
-              ))}
-            </List>
-            <Box
-              sx={{ mt: 2, p: 2, bgcolor: 'warning.light', borderRadius: 1 }}
-            >
-              <Typography variant="body2" color="warning.dark">
-                <WarningIcon
-                  sx={{ verticalAlign: 'middle', mr: 1, fontSize: 'small' }}
-                />
-                Niedriger Hefebestand - Nachbestellung empfohlen
-              </Typography>
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
+      <Snackbar
+        open={snackbar !== null}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {snackbar ? (
+          <Alert
+            severity={snackbar.severity}
+            variant="filled"
+            onClose={() => setSnackbar(null)}
+          >
+            {snackbar.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Box>
   )
 }

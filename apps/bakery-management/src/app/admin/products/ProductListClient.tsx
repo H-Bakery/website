@@ -22,8 +22,6 @@ import {
   Inventory as ProductsIcon,
   Add as AddIcon,
   Edit as EditIcon,
-  Delete as DeleteIcon,
-  Euro as EuroIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import type { ManagementProduct } from '../../../lib/products'
@@ -95,6 +93,7 @@ export default function ProductListClient({
           variant="contained"
           startIcon={<AddIcon />}
           size={isMobile ? 'medium' : 'large'}
+          onClick={() => router.push('/admin/products/new')}
         >
           Neues Produkt
         </Button>
@@ -208,121 +207,131 @@ export default function ProductListClient({
             Produktliste ({products.length})
           </Typography>
         </Box>
-        <TableContainer>
-          <Table size={isMobile ? 'small' : 'medium'}>
-            <TableHead>
-              <TableRow>
-                <TableCell>Produkt</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                  Kategorie
-                </TableCell>
-                <TableCell align="right">Preis</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                  Status
-                </TableCell>
-                <TableCell align="center">Aktionen</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {products.map((product) => (
-                <TableRow
-                  key={product.id}
-                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                >
-                  <TableCell>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: { xs: 1, md: 2 },
-                      }}
-                    >
-                      <Avatar
-                        src={product.image || undefined}
-                        alt={product.name}
-                        variant="rounded"
+        {products.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="text.secondary" gutterBottom>
+              Keine Produkte gefunden.
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Die Produktdaten werden aus dem HQ-Produktverzeichnis gelesen
+              (Umgebungsvariable HQ_PRODUCTS_DIR). Ist das Verzeichnis nicht
+              vorhanden, bleibt die Liste leer.
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table size={isMobile ? 'small' : 'medium'}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Produkt</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
+                    Kategorie
+                  </TableCell>
+                  <TableCell align="right">Preis</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                    Status
+                  </TableCell>
+                  <TableCell align="center">Aktionen</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {products.map((product) => (
+                  <TableRow
+                    key={product.id}
+                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                  >
+                    <TableCell>
+                      <Box
                         sx={{
-                          width: { xs: 32, md: 40 },
-                          height: { xs: 32, md: 40 },
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: { xs: 1, md: 2 },
                         }}
                       >
-                        {product.name.charAt(0)}
-                      </Avatar>
-                      <Box sx={{ minWidth: 0 }}>
-                        <Typography
-                          variant="body2"
-                          fontWeight={500}
-                          noWrap
-                          sx={{ maxWidth: { xs: 120, sm: 200, md: 300 } }}
+                        <Avatar
+                          src={product.image || undefined}
+                          alt={product.name}
+                          variant="rounded"
+                          sx={{
+                            width: { xs: 32, md: 40 },
+                            height: { xs: 32, md: 40 },
+                          }}
                         >
-                          {product.name}
-                        </Typography>
-                        {/* Show category as subtitle on mobile since column is hidden */}
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          sx={{ display: { xs: 'block', md: 'none' } }}
-                        >
-                          {product.category}
-                        </Typography>
+                          {product.name.charAt(0)}
+                        </Avatar>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={500}
+                            noWrap
+                            sx={{ maxWidth: { xs: 120, sm: 200, md: 300 } }}
+                          >
+                            {product.name}
+                          </Typography>
+                          {/* Show category as subtitle on mobile since column is hidden */}
+                          <Typography
+                            variant="caption"
+                            color="text.secondary"
+                            sx={{ display: { xs: 'block', md: 'none' } }}
+                          >
+                            {product.category}
+                          </Typography>
+                        </Box>
                       </Box>
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                    <Chip
-                      label={product.category}
-                      size="small"
-                      color={categoryColors[product.categoryKey] || 'default'}
-                    />
-                  </TableCell>
-                  <TableCell align="right">
-                    <Typography variant="body2" fontWeight={500} noWrap>
-                      {product.price.toFixed(2)} €
-                    </Typography>
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                    <Chip
-                      label={
-                        product.status === 'active'
-                          ? 'Verfügbar'
-                          : product.status === 'seasonal'
-                          ? 'Saisonal'
-                          : 'Nicht verfügbar'
-                      }
-                      color={
-                        product.status === 'active'
-                          ? 'success'
-                          : product.status === 'seasonal'
-                          ? 'warning'
-                          : 'error'
-                      }
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      aria-label="edit product"
-                      onClick={() =>
-                        router.push(`/admin/products/${product.id}`)
-                      }
+                    </TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', md: 'table-cell' } }}
                     >
-                      <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      color="error"
-                      aria-label="delete product"
+                      <Chip
+                        label={product.category}
+                        size="small"
+                        color={categoryColors[product.categoryKey] || 'default'}
+                      />
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={500} noWrap>
+                        {product.price.toFixed(2)} €
+                      </Typography>
+                    </TableCell>
+                    <TableCell
+                      sx={{ display: { xs: 'none', sm: 'table-cell' } }}
                     >
-                      <DeleteIcon fontSize={isMobile ? 'small' : 'medium'} />
-                    </IconButton>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+                      <Chip
+                        label={
+                          product.status === 'active'
+                            ? 'Verfügbar'
+                            : product.status === 'seasonal'
+                            ? 'Saisonal'
+                            : 'Nicht verfügbar'
+                        }
+                        color={
+                          product.status === 'active'
+                            ? 'success'
+                            : product.status === 'seasonal'
+                            ? 'warning'
+                            : 'error'
+                        }
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                      <IconButton
+                        size="small"
+                        color="primary"
+                        aria-label={`${product.name} bearbeiten`}
+                        onClick={() =>
+                          router.push(`/admin/products/${product.id}`)
+                        }
+                      >
+                        <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Paper>
     </Box>
   )

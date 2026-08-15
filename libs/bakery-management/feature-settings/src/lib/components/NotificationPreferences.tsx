@@ -30,10 +30,14 @@ import CategoryIcon from '@mui/icons-material/Category'
 import PriorityHighIcon from '@mui/icons-material/PriorityHigh'
 import NightsStayIcon from '@mui/icons-material/NightsStay'
 import { useNotifications } from '@bakery/shared/contexts'
-import { NotificationPreferences as PrefsType, PriorityThreshold } from '../types/notificationPreferences'
+import {
+  NotificationPreferences as PrefsType,
+  PriorityThreshold,
+} from '../types/notificationPreferences'
 
 export default function NotificationPreferences() {
-  const { preferences, updatePreferences, resetPreferences } = useNotifications()
+  const { preferences, updatePreferences, resetPreferences } =
+    useNotifications()
   const [localPrefs, setLocalPrefs] = useState<PrefsType | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -48,13 +52,24 @@ export default function NotificationPreferences() {
         browserEnabled: preferences.channels?.inApp?.enabled || false,
         soundEnabled: preferences.sound?.enabled || false,
         categoryPreferences: {
-          staff: preferences.channels?.inApp?.categories?.includes('staff' as any) || false,
-          order: preferences.channels?.inApp?.categories?.includes('order' as any) || false,
-          system: preferences.channels?.inApp?.categories?.includes('system' as any) || false,
-          inventory: preferences.channels?.inApp?.categories?.includes('inventory' as any) || false,
+          staff:
+            preferences.channels?.inApp?.categories?.includes('staff' as any) ||
+            false,
+          order:
+            preferences.channels?.inApp?.categories?.includes('order' as any) ||
+            false,
+          system:
+            preferences.channels?.inApp?.categories?.includes(
+              'system' as any
+            ) || false,
+          inventory:
+            preferences.channels?.inApp?.categories?.includes(
+              'inventory' as any
+            ) || false,
           general: true,
         },
-        priorityThreshold: (preferences.channels?.inApp?.minPriority || 'medium') as PriorityThreshold,
+        priorityThreshold: (preferences.channels?.inApp?.minPriority ||
+          'medium') as PriorityThreshold,
         quietHours: {
           enabled: preferences.quietHours?.enabled || false,
           start: preferences.quietHours?.start || '22:00',
@@ -97,11 +112,11 @@ export default function NotificationPreferences() {
 
   const handleSave = async () => {
     if (!localPrefs) return
-    
+
     setLoading(true)
     setError(null)
     setSuccess(false)
-    
+
     try {
       // Map local preferences back to shared context format
       const categories = Object.entries(localPrefs.categoryPreferences)
@@ -135,12 +150,14 @@ export default function NotificationPreferences() {
           enabled: localPrefs.soundEnabled,
           volume: 100,
         },
-        quietHours: localPrefs.quietHours.enabled ? {
-          enabled: true,
-          start: localPrefs.quietHours.start,
-          end: localPrefs.quietHours.end,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        } : undefined,
+        quietHours: localPrefs.quietHours.enabled
+          ? {
+              enabled: true,
+              start: localPrefs.quietHours.start,
+              end: localPrefs.quietHours.end,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+            }
+          : undefined,
       })
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
@@ -154,7 +171,7 @@ export default function NotificationPreferences() {
   const handleReset = async () => {
     setLoading(true)
     setError(null)
-    
+
     try {
       await resetPreferences()
       setSuccess(true)
@@ -174,7 +191,10 @@ export default function NotificationPreferences() {
     )
   }
 
-  const priorityColors: Record<PriorityThreshold, 'default' | 'warning' | 'error' | 'success'> = {
+  const priorityColors: Record<
+    PriorityThreshold,
+    'default' | 'warning' | 'error' | 'success'
+  > = {
     low: 'success',
     medium: 'default',
     high: 'warning',
@@ -196,7 +216,7 @@ export default function NotificationPreferences() {
           {error}
         </Alert>
       )}
-      
+
       {success && (
         <Alert severity="success" sx={{ mb: 2 }}>
           Einstellungen erfolgreich gespeichert
@@ -209,9 +229,9 @@ export default function NotificationPreferences() {
           <ListItemIcon>
             <NotificationsIcon />
           </ListItemIcon>
-          <ListItemText 
-            primary="Browser-Benachrichtigungen" 
-            secondary="Push-Benachrichtigungen im Browser anzeigen" 
+          <ListItemText
+            primary="Browser-Benachrichtigungen"
+            secondary="Push-Benachrichtigungen im Browser anzeigen"
           />
           <Switch
             edge="end"
@@ -227,9 +247,9 @@ export default function NotificationPreferences() {
           <ListItemIcon>
             <EmailIcon />
           </ListItemIcon>
-          <ListItemText 
-            primary="E-Mail-Benachrichtigungen" 
-            secondary="Wichtige Benachrichtigungen per E-Mail erhalten" 
+          <ListItemText
+            primary="E-Mail-Benachrichtigungen"
+            secondary="Wichtige Benachrichtigungen per E-Mail erhalten"
           />
           <Switch
             edge="end"
@@ -245,9 +265,9 @@ export default function NotificationPreferences() {
           <ListItemIcon>
             <VolumeUpIcon />
           </ListItemIcon>
-          <ListItemText 
-            primary="Benachrichtigungston" 
-            secondary="Ton bei neuen Benachrichtigungen abspielen" 
+          <ListItemText
+            primary="Benachrichtigungston"
+            secondary="Ton bei neuen Benachrichtigungen abspielen"
           />
           <Switch
             edge="end"
@@ -263,14 +283,16 @@ export default function NotificationPreferences() {
           <ListItemIcon>
             <PriorityHighIcon />
           </ListItemIcon>
-          <ListItemText 
-            primary="Prioritätsschwelle" 
-            secondary="Nur Benachrichtigungen mit dieser oder höherer Priorität anzeigen" 
+          <ListItemText
+            primary="Prioritätsschwelle"
+            secondary="Nur Benachrichtigungen mit dieser oder höherer Priorität anzeigen"
           />
           <FormControl size="small" sx={{ minWidth: 120 }}>
             <Select
               value={localPrefs.priorityThreshold}
-              onChange={(e) => handleChange('priorityThreshold', e.target.value)}
+              onChange={(e) =>
+                handleChange('priorityThreshold', e.target.value)
+              }
             >
               <MenuItem value="low">
                 <Chip label="Niedrig" size="small" color="success" />
@@ -295,15 +317,16 @@ export default function NotificationPreferences() {
           <ListItemIcon>
             <CategoryIcon />
           </ListItemIcon>
-          <ListItemText 
-            primary="Kategorien" 
+          <ListItemText
+            primary="Kategorien"
+            secondaryTypographyProps={{ component: 'div' }}
             secondary={
               <Box>
                 <Typography variant="caption" display="block">
                   Wählen Sie, welche Kategorien Sie erhalten möchten
                 </Typography>
-                <Button 
-                  size="small" 
+                <Button
+                  size="small"
                   onClick={() => setExpandCategories(!expandCategories)}
                   sx={{ mt: 1 }}
                 >
@@ -313,23 +336,27 @@ export default function NotificationPreferences() {
             }
           />
         </ListItem>
-        
+
         <Collapse in={expandCategories}>
           <Box sx={{ pl: 9, pr: 3, pb: 2 }}>
             <FormGroup>
-              {Object.entries(localPrefs.categoryPreferences).map(([category, enabled]) => (
-                <FormControlLabel
-                  key={category}
-                  control={
-                    <Checkbox
-                      checked={enabled}
-                      onChange={(e) => handleCategoryChange(category, e.target.checked)}
-                      size="small"
-                    />
-                  }
-                  label={categoryLabels[category] || category}
-                />
-              ))}
+              {Object.entries(localPrefs.categoryPreferences).map(
+                ([category, enabled]) => (
+                  <FormControlLabel
+                    key={category}
+                    control={
+                      <Checkbox
+                        checked={enabled}
+                        onChange={(e) =>
+                          handleCategoryChange(category, e.target.checked)
+                        }
+                        size="small"
+                      />
+                    }
+                    label={categoryLabels[category] || category}
+                  />
+                )
+              )}
             </FormGroup>
           </Box>
         </Collapse>
@@ -341,17 +368,19 @@ export default function NotificationPreferences() {
           <ListItemIcon>
             <NightsStayIcon />
           </ListItemIcon>
-          <ListItemText 
-            primary="Ruhezeiten" 
-            secondary="Keine Benachrichtigungen während dieser Zeiten" 
+          <ListItemText
+            primary="Ruhezeiten"
+            secondary="Keine Benachrichtigungen während dieser Zeiten"
           />
           <Switch
             edge="end"
             checked={localPrefs.quietHours.enabled}
-            onChange={(e) => handleQuietHoursChange('enabled', e.target.checked)}
+            onChange={(e) =>
+              handleQuietHoursChange('enabled', e.target.checked)
+            }
           />
         </ListItem>
-        
+
         {localPrefs.quietHours.enabled && (
           <Box sx={{ pl: 9, pr: 3, pb: 2 }}>
             <Stack direction="row" spacing={2} alignItems="center">
@@ -360,7 +389,9 @@ export default function NotificationPreferences() {
                 type="time"
                 size="small"
                 value={localPrefs.quietHours.start}
-                onChange={(e) => handleQuietHoursChange('start', e.target.value)}
+                onChange={(e) =>
+                  handleQuietHoursChange('start', e.target.value)
+                }
                 InputLabelProps={{ shrink: true }}
               />
               <Typography>bis</Typography>
@@ -378,15 +409,11 @@ export default function NotificationPreferences() {
       </List>
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-        <Button 
-          variant="outlined" 
-          onClick={handleReset}
-          disabled={loading}
-        >
+        <Button variant="outlined" onClick={handleReset} disabled={loading}>
           Zurücksetzen
         </Button>
-        <Button 
-          variant="contained" 
+        <Button
+          variant="contained"
           color="primary"
           onClick={handleSave}
           disabled={loading}

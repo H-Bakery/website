@@ -13,7 +13,7 @@ import {
   Button,
 } from '@mui/material'
 import { Refresh } from '@mui/icons-material'
-import { PrepSection } from '../../../../types/prepTask'
+import { PrepSection } from '../../types/prepTask'
 
 interface ProgressOverviewProps {
   prepSections: PrepSection[]
@@ -32,7 +32,9 @@ const ProgressOverview: React.FC<ProgressOverviewProps> = ({
 }) => {
   const calculateProgress = (): number => {
     if (prepSections.length === 0) return 0
-    const completedSections = prepSections.filter(section => section.completed).length
+    const completedSections = prepSections.filter(
+      (section) => section.completed
+    ).length
     return (completedSections / prepSections.length) * 100
   }
 
@@ -87,9 +89,7 @@ const ProgressOverview: React.FC<ProgressOverviewProps> = ({
             />
           </Grid>
           <Grid item xs={12} md={4}>
-            <Alert severity="info">
-              Vorbereitung läuft - noch 45 Minuten
-            </Alert>
+            <Alert severity="info">Vorbereitung läuft - noch 45 Minuten</Alert>
           </Grid>
           <Grid item xs={12} md={4}>
             <Button

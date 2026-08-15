@@ -11,9 +11,7 @@ import {
   ListItemText,
   Card,
   CardContent,
-  TextField,
   IconButton,
-  Slider,
   Chip,
   Table,
   TableBody,
@@ -53,8 +51,8 @@ const FillingPreparation: React.FC<FillingPreparationProps> = ({
 
   // Extract fillings that are needed
   const neededFillings = Object.entries(productionPlan.fillings)
-    .filter(([_, amount]) => amount > 0)
-    .map(([filling, _]) => filling)
+    .filter(([, amount]) => amount > 0)
+    .map(([filling]) => filling)
 
   const getIngredientsForFilling = (
     fillingId: string,

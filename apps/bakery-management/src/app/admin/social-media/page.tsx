@@ -14,9 +14,6 @@ import {
   InputLabel,
   Chip,
   Alert,
-  Card,
-  CardContent,
-  Divider,
   FormControlLabel,
   Switch,
   Snackbar,
@@ -178,8 +175,8 @@ const createBakeryImage = (
   content: any,
   templateType: TemplateType,
   templateContent: ReturnType<typeof getTemplateContentByType>,
-  width: number = 1080,
-  height: number = 1080
+  width = 1080,
+  height = 1080
 ): string => {
   const canvas = document.createElement('canvas')
   canvas.width = width

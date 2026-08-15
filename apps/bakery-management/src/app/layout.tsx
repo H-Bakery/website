@@ -1,4 +1,5 @@
 import './global.css'
+import { AppRouterCacheProvider } from '@mui/material-nextjs/v14-appRouter'
 import Providers from './Providers'
 
 export const metadata = {
@@ -26,27 +27,12 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Lora:wght@400;500;600&family=Ubuntu:wght@300;400;500;700&display=swap"
           rel="stylesheet"
         />
-        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-        <link
-          rel="icon"
-          type="image/png"
-          sizes="32x32"
-          href="/favicon-32x32.png"
-        />
-        <link
-          rel="icon"
-          type="image/png"
-          sizes="16x16"
-          href="/favicon-16x16.png"
-        />
         <link rel="icon" href="/favicon.ico" />
       </head>
       <body>
-        <Providers>
-          <div style={{ minHeight: '100vh', backgroundColor: '#f5f5f5' }}>
-            {children}
-          </div>
-        </Providers>
+        <AppRouterCacheProvider>
+          <Providers>{children}</Providers>
+        </AppRouterCacheProvider>
       </body>
     </html>
   )

@@ -1,57 +1,64 @@
 import { InternOrder } from '../types/internOrder'
 
+const daysAgo = (days: number) =>
+  new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+
+/**
+ * Beispieldaten für interne Bestellungen (Einkäufe/Besorgungen des Teams).
+ * Wird verwendet, solange kein Backend-Endpunkt existiert.
+ */
 export const mockInternOrders: InternOrder[] = [
   {
     id: 'order-001',
-    orderName: 'Weekly Market Stock Replenish',
+    orderName: 'Wochenmarkt-Nachschub',
     description:
-      'Restock vegetables, fruits, and packaging for the weekend market stall.',
+      'Obst, Gemüse und Verpackungsmaterial für den Marktstand am Wochenende nachbestellen.',
     status: 'pending',
-    assignedTo: 'John Doe',
-    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
-    updatedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+    assignedTo: 'Jonas Becker',
+    createdAt: daysAgo(3),
+    updatedAt: daysAgo(3),
     createdBy: 'Admin',
     items: [
-      { itemName: 'Carrots', itemQuantity: 10, unit: 'kg' },
-      { itemName: 'Apples', itemQuantity: 20, unit: 'kg' },
-      { itemName: 'Paper Bags (Large)', itemQuantity: 100, unit: 'pcs' },
+      { itemName: 'Karotten', itemQuantity: 10, unit: 'kg' },
+      { itemName: 'Äpfel', itemQuantity: 20, unit: 'kg' },
+      { itemName: 'Papiertüten (groß)', itemQuantity: 100, unit: 'Stk' },
     ],
   },
   {
     id: 'order-002',
-    orderName: 'Urgent Flour Delivery',
-    description: 'Need 50kg of Type 550 flour for special cake production.',
+    orderName: 'Dringende Mehllieferung',
+    description:
+      '50 kg Weizenmehl Type 550 für die Sonderproduktion von Torten benötigt.',
     status: 'in-progress',
-    assignedTo: 'Jane Smith',
-    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
+    assignedTo: 'Julia Schmidt',
+    createdAt: daysAgo(1),
     updatedAt: new Date().toISOString(),
-    createdBy: 'Chef Baker',
-    quantity: 50, // Example of using general quantity
-    billImageUrl: '/assets/images/stock/flour_bill_example.jpg', // Example path, ensure a placeholder image exists or is fine with a broken link for mock
+    createdBy: 'Backstube',
+    quantity: 50,
   },
   {
     id: 'order-003',
-    orderName: 'Cleaning Supplies for Bakery',
+    orderName: 'Reinigungsmittel für die Backstube',
     description:
-      'Order standard cleaning supplies - detergent, sponges, paper towels.',
+      'Standard-Reinigungsmittel bestellen: Spülmittel, Schwämme, Papiertücher.',
     status: 'done',
-    assignedTo: 'Mike Lee',
-    createdAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days ago
-    updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(), // 2 days ago
+    assignedTo: 'Michael Lehmann',
+    createdAt: daysAgo(7),
+    updatedAt: daysAgo(2),
     createdBy: 'Admin',
     items: [
-      { itemName: 'Detergent', itemQuantity: 5, unit: 'bottles' },
-      { itemName: 'Sponges', itemQuantity: 10, unit: 'packs' },
+      { itemName: 'Spülmittel', itemQuantity: 5, unit: 'Flaschen' },
+      { itemName: 'Schwämme', itemQuantity: 10, unit: 'Packungen' },
     ],
-    billImageUrl: '/assets/images/stock/cleaning_bill_example.png', // Example path
   },
   {
     id: 'order-004',
-    orderName: 'Packaging for Online Orders',
-    description: 'Boxes and bubble wrap for shipping online customer orders.',
+    orderName: 'Verpackung für Online-Bestellungen',
+    description:
+      'Kartons und Luftpolsterfolie für den Versand von Online-Kundenbestellungen.',
     status: 'pending',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
-    createdBy: 'Sales Team',
+    createdBy: 'Verkauf',
   },
 ]

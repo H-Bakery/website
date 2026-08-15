@@ -1,9 +1,8 @@
 'use client'
-import React, { useState } from 'react'
+import React from 'react'
 import {
   Box,
   Typography,
-  Paper,
   List,
   ListItem,
   ListItemText,
@@ -11,68 +10,39 @@ import {
   Switch,
   Divider,
   FormControl,
-  InputLabel,
   Select,
   MenuItem,
   Card,
   CardContent,
   Grid,
   Button,
-  useMediaQuery,
+  Tooltip,
 } from '@mui/material'
 import DarkModeIcon from '@mui/icons-material/DarkMode'
-import NotificationsIcon from '@mui/icons-material/Notifications'
 import LanguageIcon from '@mui/icons-material/Language'
 import SecurityIcon from '@mui/icons-material/Security'
-import PaletteIcon from '@mui/icons-material/Palette'
-import AccessTimeIcon from '@mui/icons-material/AccessTime'
-// Temporarily disabled until providers are set up
-// import {
-//   NotificationPreferences,
-//   EmailSettings,
-// } from '@bakery/management/feature-settings'
+import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto'
+import { useTheme, ThemeMode } from '@bakery/shared/contexts'
+import { NotificationPreferences } from '@bakery/management/feature-settings'
 
 export default function SettingsPage() {
-  const [mode, setMode] = useState<'light' | 'dark' | 'system'>('light')
-  const isMobile = useMediaQuery('(max-width: 900px)') // Direct media query instead of theme-based
-  const [language, setLanguage] = useState('de')
-  const [timeFormat, setTimeFormat] = useState('24')
+  const { mode, setMode, colorScheme } = useTheme()
 
-  const toggleTheme = () => {
-    setMode((current) => {
-      if (current === 'light') return 'dark'
-      if (current === 'dark') return 'system'
-      return 'light'
-    })
-  }
-
-  const handleLanguageChange = (event: any) => {
-    setLanguage(event.target.value)
-  }
-
-  const handleTimeFormatChange = (event: any) => {
-    setTimeFormat(event.target.value)
-  }
+  const handleModeChange = (next: ThemeMode) => setMode(next)
 
   return (
     <Box>
-      <Typography variant="h5" component="h2" sx={{ mb: 3 }}>
-        Systemeinstellungen
+      <Typography variant="h4" component="h1" sx={{ mb: 3 }}>
+        Einstellungen
       </Typography>
 
       <Grid container spacing={3}>
         <Grid item xs={12} md={6}>
-          <Card
-            elevation={mode === 'dark' ? 2 : 1}
-            sx={{
-              height: '100%',
-              bgcolor: mode === 'dark' ? 'background.paper' : 'white',
-            }}
-          >
+          <Card sx={{ height: '100%' }}>
             <CardContent>
               <Typography
                 variant="h6"
-                component="h3"
+                component="h2"
                 sx={{ mb: 2, fontWeight: 'bold' }}
               >
                 Darstellung
@@ -81,104 +51,53 @@ export default function SettingsPage() {
                 <ListItem>
                   <ListItemIcon>
                     <DarkModeIcon
-                      color={mode === 'dark' ? 'primary' : 'inherit'}
+                      color={colorScheme === 'dark' ? 'primary' : 'inherit'}
                     />
                   </ListItemIcon>
                   <ListItemText
+                    id="setting-dark-mode"
                     primary="Dunkles Design"
                     secondary="Reduziert Augenmüdigkeit bei schlechten Lichtverhältnissen"
                   />
                   <Switch
                     edge="end"
                     checked={mode === 'dark'}
-                    onChange={toggleTheme}
-                    inputProps={{
-                      'aria-labelledby': 'switch-dark-mode',
-                    }}
+                    onChange={(e) =>
+                      handleModeChange(e.target.checked ? 'dark' : 'light')
+                    }
+                    inputProps={{ 'aria-labelledby': 'setting-dark-mode' }}
                   />
                 </ListItem>
                 <Divider variant="inset" component="li" />
                 <ListItem>
                   <ListItemIcon>
-                    <PaletteIcon />
+                    <BrightnessAutoIcon />
                   </ListItemIcon>
                   <ListItemText
-                    primary="Farbschemata"
-                    secondary="Wählen Sie das Farbschema für Ihre Oberfläche"
+                    id="setting-system-mode"
+                    primary="Systemeinstellung folgen"
+                    secondary="Hell/Dunkel automatisch vom Betriebssystem übernehmen"
                   />
-                  <Box sx={{ minWidth: 120 }}>
-                    <FormControl size="small" fullWidth>
-                      <Select value="default" disabled>
-                        <MenuItem value="default">Standard</MenuItem>
-                        <MenuItem value="bakery">Bäckerei</MenuItem>
-                        <MenuItem value="pastry">Konditorei</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
+                  <Switch
+                    edge="end"
+                    checked={mode === 'system'}
+                    onChange={(e) =>
+                      handleModeChange(e.target.checked ? 'system' : 'light')
+                    }
+                    inputProps={{ 'aria-labelledby': 'setting-system-mode' }}
+                  />
                 </ListItem>
               </List>
             </CardContent>
           </Card>
         </Grid>
 
-        <Grid item xs={12}>
-          <Card
-            elevation={mode === 'dark' ? 2 : 1}
-            sx={{
-              bgcolor: mode === 'dark' ? 'background.paper' : 'white',
-            }}
-          >
-            <CardContent>
-              <Typography
-                variant="h6"
-                component="h3"
-                sx={{ mb: 2, fontWeight: 'bold' }}
-              >
-                Benachrichtigungen
-              </Typography>
-              {/* <NotificationPreferences /> */}
-              <Typography variant="body2" color="text.secondary">
-                Benachrichtigungseinstellungen sind vorübergehend deaktiviert
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12}>
-          <Card
-            elevation={mode === 'dark' ? 2 : 1}
-            sx={{
-              bgcolor: mode === 'dark' ? 'background.paper' : 'white',
-            }}
-          >
-            <CardContent>
-              <Typography
-                variant="h6"
-                component="h3"
-                sx={{ mb: 2, fontWeight: 'bold' }}
-              >
-                E-Mail Einstellungen
-              </Typography>
-              {/* <EmailSettings /> */}
-              <Typography variant="body2" color="text.secondary">
-                E-Mail-Einstellungen sind vorübergehend deaktiviert
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
         <Grid item xs={12} md={6}>
-          <Card
-            elevation={mode === 'dark' ? 2 : 1}
-            sx={{
-              height: '100%',
-              bgcolor: mode === 'dark' ? 'background.paper' : 'white',
-            }}
-          >
+          <Card sx={{ height: '100%' }}>
             <CardContent>
               <Typography
                 variant="h6"
-                component="h3"
+                component="h2"
                 sx={{ mb: 2, fontWeight: 'bold' }}
               >
                 Lokalisierung
@@ -190,34 +109,16 @@ export default function SettingsPage() {
                   </ListItemIcon>
                   <ListItemText
                     primary="Sprache"
-                    secondary="Wählen Sie Ihre bevorzugte Sprache"
-                  />
-                  <Box sx={{ minWidth: 120 }}>
-                    <FormControl size="small" fullWidth>
-                      <Select value={language} onChange={handleLanguageChange}>
-                        <MenuItem value="de">Deutsch</MenuItem>
-                        <MenuItem value="en">English</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                </ListItem>
-                <Divider variant="inset" component="li" />
-                <ListItem>
-                  <ListItemIcon>
-                    <AccessTimeIcon />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Zeitformat"
-                    secondary="Wählen Sie Ihr bevorzugtes Zeitformat"
+                    secondary="Die Verwaltung ist derzeit nur auf Deutsch verfügbar"
                   />
                   <Box sx={{ minWidth: 120 }}>
                     <FormControl size="small" fullWidth>
                       <Select
-                        value={timeFormat}
-                        onChange={handleTimeFormatChange}
+                        value="de"
+                        disabled
+                        inputProps={{ 'aria-label': 'Sprache' }}
                       >
-                        <MenuItem value="24">24-Stunden (14:30)</MenuItem>
-                        <MenuItem value="12">12-Stunden (2:30 PM)</MenuItem>
+                        <MenuItem value="de">Deutsch</MenuItem>
                       </Select>
                     </FormControl>
                   </Box>
@@ -227,18 +128,45 @@ export default function SettingsPage() {
           </Card>
         </Grid>
 
-        <Grid item xs={12} md={6}>
-          <Card
-            elevation={mode === 'dark' ? 2 : 1}
-            sx={{
-              height: '100%',
-              bgcolor: mode === 'dark' ? 'background.paper' : 'white',
-            }}
-          >
+        <Grid item xs={12}>
+          <Card>
             <CardContent>
               <Typography
                 variant="h6"
-                component="h3"
+                component="h2"
+                sx={{ mb: 2, fontWeight: 'bold' }}
+              >
+                Benachrichtigungen
+              </Typography>
+              <NotificationPreferences />
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography
+                variant="h6"
+                component="h2"
+                sx={{ mb: 2, fontWeight: 'bold' }}
+              >
+                E-Mail-Versand
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Die Konfiguration des E-Mail-Versands (SMTP) ist noch nicht an
+                die API angebunden.
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+
+        <Grid item xs={12} md={6}>
+          <Card sx={{ height: '100%' }}>
+            <CardContent>
+              <Typography
+                variant="h6"
+                component="h2"
                 sx={{ mb: 2, fontWeight: 'bold' }}
               >
                 Sicherheit
@@ -250,11 +178,15 @@ export default function SettingsPage() {
                   </ListItemIcon>
                   <ListItemText
                     primary="Passwort ändern"
-                    secondary="Ändern Sie Ihr Passwort regelmäßig für mehr Sicherheit"
+                    secondary="Verfügbar, sobald die Benutzeranmeldung aktiviert ist"
                   />
-                  <Button variant="outlined" size="small">
-                    Ändern
-                  </Button>
+                  <Tooltip title="Benutzeranmeldung ist noch nicht aktiviert">
+                    <span>
+                      <Button variant="outlined" size="small" disabled>
+                        Ändern
+                      </Button>
+                    </span>
+                  </Tooltip>
                 </ListItem>
               </List>
             </CardContent>

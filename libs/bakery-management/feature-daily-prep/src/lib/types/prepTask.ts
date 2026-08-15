@@ -7,6 +7,7 @@ export interface PrepIngredient {
 export interface PrepTaskItem {
   name: string
   quantity: number
+  unit?: string
   tray_number?: number
   tray_numbers?: number[]
   trays_of?: number
@@ -39,7 +40,7 @@ export interface AdditionalProductionItem {
   name: string
   quantity: number
   reason: 'low_stock' | 'empty_stock' | 'special_request' | 'quality_issue'
-  urgency: 'low' | 'medium' | 'high'
+  urgency: 'low' | 'medium' | 'high' | 'critical'
   category: 'bread' | 'pastry' | 'cake' | 'other'
   notes?: string
   requested_by?: string

@@ -12,10 +12,7 @@ import {
   Toolbar,
   Typography,
   IconButton,
-  useMediaQuery,
-  useTheme,
   Divider,
-  Collapse,
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -34,145 +31,21 @@ import {
   Euro as CashIcon,
   Notifications as NotificationsIcon,
   Storefront as BakeryIcon,
+  Insights as AnalyticsIcon,
+  Forum as ChatIcon,
   ExpandLess,
   ExpandMore,
   RemoveShoppingCart as UnsoldIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { MANAGEMENT_NAVIGATION, isNavItemActive } from './navigation'
 
 const drawerWidth = 280
 
 interface AdminLayoutProps {
   children: React.ReactNode
 }
-
-// Navigation items with submenu support
-const MANAGEMENT_NAVIGATION = [
-  {
-    label: 'Dashboard',
-    href: '/admin',
-    icon: 'dashboard',
-    description: 'Übersicht',
-  },
-  {
-    label: 'Bestellungen',
-    href: '/admin/orders',
-    icon: 'orders',
-    description: 'Bestellverwaltung',
-  },
-  {
-    label: 'Bäckerei',
-    icon: 'bakery',
-    description: 'Produktionsprozesse',
-    submenu: [
-      {
-        label: 'Produktion',
-        href: '/admin/production',
-        icon: 'production',
-        description: 'Produktionsplanung',
-      },
-      {
-        label: 'Backliste',
-        href: '/admin/baking-list',
-        icon: 'baking',
-        description: 'Tägliche Backliste',
-      },
-      {
-        label: 'Tägliche Vorbereitung',
-        href: '/admin/bakery/daily-prep',
-        description: 'Vorbereitungsliste',
-      },
-      {
-        label: 'Samstag Produktion',
-        href: '/admin/bakery/saturday-production',
-        description: 'Wochenend-Produktion',
-      },
-      {
-        label: 'Interne Bestellungen',
-        href: '/admin/bakery/intern-orders',
-        description: 'Mitarbeiterbestellungen',
-      },
-      {
-        label: 'Rezepte',
-        href: '/admin/bakery/recipes',
-        description: 'Rezeptverwaltung',
-      },
-      {
-        label: 'Prozesse',
-        href: '/admin/bakery/processes',
-        description: 'Arbeitsabläufe',
-      },
-    ],
-  },
-  {
-    label: 'Lagerbestand',
-    href: '/admin/inventory',
-    icon: 'inventory',
-    description: 'Lagerverwaltung',
-  },
-  {
-    label: 'Produkte',
-    href: '/admin/products',
-    icon: 'products',
-    description: 'Produktverwaltung',
-  },
-  {
-    label: 'Unverkaufte Produkte',
-    href: '/admin/unsold-products',
-    icon: 'unsold',
-    description: 'Rückläufer & Reste',
-  },
-  {
-    label: 'Lieferung',
-    href: '/admin/delivery',
-    icon: 'delivery',
-    description: 'Lieferverwaltung',
-  },
-  {
-    label: 'Kasse',
-    href: '/admin/cash',
-    icon: 'cash',
-    description: 'Kassenverwaltung',
-  },
-  {
-    label: 'Personal',
-    href: '/admin/staff',
-    icon: 'staff',
-    description: 'Mitarbeiterverwaltung',
-  },
-  {
-    label: 'Berichte',
-    href: '/admin/reports',
-    icon: 'reports',
-    description: 'Tagesberichte',
-  },
-  {
-    label: 'Benachrichtigungen',
-    href: '/admin/notifications',
-    icon: 'notifications',
-    description: 'Mitteilungen',
-  },
-  {
-    label: 'Social Media',
-    href: '/admin/social-media',
-    icon: 'socialmedia',
-    description: 'Content Creator',
-  },
-  {
-    label: 'Einstellungen',
-    href: '/admin/settings',
-    icon: 'settings',
-    description: 'Systemeinstellungen',
-  },
-  {
-    label: 'Shop',
-    href: 'http://localhost:4201',
-    icon: 'shop',
-    description: 'Zum Shop',
-    external: true,
-  },
-]
 
 const iconMap: Record<string, React.ReactElement> = {
   dashboard: <DashboardIcon />,
@@ -191,16 +64,37 @@ const iconMap: Record<string, React.ReactElement> = {
   notifications: <NotificationsIcon />,
   bakery: <BakeryIcon />,
   unsold: <UnsoldIcon />,
+  analytics: <AnalyticsIcon />,
+  chat: <ChatIcon />,
+}
+
+/** Human readable breadcrumb segments for the current path. */
+function getBreadcrumb(pathname: string): string[] {
+  const segments = pathname.split('/').filter(Boolean)
+  const flat = MANAGEMENT_NAVIGATION.flatMap((item) => [
+    item,
+    ...(item.submenu ?? []),
+  ])
+  return segments.map((segment, index) => {
+    const href = '/' + segments.slice(0, index + 1).join('/')
+    const match = flat.find((item) => item.href === href)
+    if (match) return match.label
+    return segment
+  })
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
-  const theme = useTheme()
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  const pathname = usePathname()
   const [openSubmenus, setOpenSubmenus] = React.useState<
     Record<string, boolean>
-  >({})
-  const pathname = usePathname()
+  >(() =>
+    Object.fromEntries(
+      MANAGEMENT_NAVIGATION.filter((item) =>
+        item.submenu?.some((sub) => isNavItemActive(pathname, sub.href))
+      ).map((item) => [item.label, true])
+    )
+  )
 
   // Close mobile drawer on route change
   React.useEffect(() => {
@@ -233,8 +127,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           // Handle items with submenus
           if (item.submenu) {
             const isSubmenuOpen = openSubmenus[item.label] || false
-            const hasActiveChild = item.submenu.some(
-              (subItem) => pathname === subItem.href
+            const hasActiveChild = item.submenu.some((subItem) =>
+              isNavItemActive(pathname, subItem.href)
             )
 
             return (
@@ -242,6 +136,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 <ListItem disablePadding>
                   <ListItemButton
                     onClick={() => handleSubmenuToggle(item.label)}
+                    aria-expanded={isSubmenuOpen}
                     sx={{
                       backgroundColor: hasActiveChild
                         ? 'action.selected'
@@ -262,7 +157,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                   sx={{ display: isSubmenuOpen ? 'block' : 'none' }}
                 >
                   {item.submenu.map((subItem) => {
-                    const isActive = pathname === subItem.href
+                    if (!subItem.href) return null
+                    const isActive = isNavItemActive(pathname, subItem.href)
                     const subIcon = subItem.icon ? iconMap[subItem.icon] : null
 
                     return (
@@ -326,7 +222,8 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           }
 
           // Handle regular items
-          const isActive = pathname === item.href
+          if (!item.href) return null
+          const isActive = isNavItemActive(pathname, item.href)
           return (
             <ListItem key={item.href} disablePadding>
               <ListItemButton
@@ -372,7 +269,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
         <Toolbar>
           <IconButton
             color="inherit"
-            aria-label="open drawer"
+            aria-label="Navigation öffnen"
             edge="start"
             onClick={handleDrawerToggle}
             sx={{ mr: 2, display: { md: 'none' } }}
@@ -382,9 +279,11 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Management System
           </Typography>
-          <Typography variant="body2" color="inherit">
-            Development
-          </Typography>
+          {process.env.NODE_ENV !== 'production' && (
+            <Typography variant="body2" color="inherit">
+              Entwicklung
+            </Typography>
+          )}
         </Toolbar>
       </AppBar>
 
@@ -446,9 +345,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             variant="body2"
             color="text.secondary"
             noWrap
+            aria-label="Pfad"
             sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
           >
-            {pathname.split('/').filter(Boolean).join(' › ')}
+            {getBreadcrumb(pathname).join(' › ')}
           </Typography>
         </Box>
 

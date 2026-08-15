@@ -1,5 +1,5 @@
 import { DOUGH_PIECES, DoughPiece } from '../data/doughPieces'
-import { FILLINGS, formatFillingName, getFillingById } from '../data/fillings'
+import { FILLINGS, formatFillingName } from '../data/fillings'
 
 export interface ProductOrder {
   [productName: string]: number
@@ -180,8 +180,8 @@ export class HefezopfCalculator {
 
   getProductsWithFilling(fillingId: string): string[] {
     return Object.entries(this.recipes)
-      .filter(([_, recipe]) => recipe.filling === fillingId)
-      .map(([productName, _]) => productName)
+      .filter(([, recipe]) => recipe.filling === fillingId)
+      .map(([productName]) => productName)
   }
 }
 

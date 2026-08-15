@@ -1,78 +1,84 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import React from 'react'
+import { screen, fireEvent } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import ProductsPage from './page'
+import ProductListClient from './ProductListClient'
+import type { ManagementProduct } from '../../../lib/products'
 
-// Mock feature components
-jest.mock('@bakery/management/feature-inventory', () => ({
-  ProductsList: () => <div data-testid="products-list">Products List</div>,
-  ProductCategories: () => (
-    <div data-testid="product-categories">Product Categories</div>
-  ),
-  ProductImport: ({ onImport }: { onImport: (file: File) => void }) => (
-    <div data-testid="product-import">
-      <input
-        type="file"
-        data-testid="file-input"
-        onChange={(e) => e.target.files?.[0] && onImport(e.target.files[0])}
-      />
-    </div>
-  ),
-  PriceManager: () => <div data-testid="price-manager">Price Manager</div>,
+const mockPush = jest.fn()
+jest.mock('next/navigation', () => ({
+  useRouter: () => ({ push: mockPush, back: jest.fn(), refresh: jest.fn() }),
+  usePathname: () => '/admin/products',
 }))
 
-describe('ProductsPage', () => {
-  it('renders the page title', () => {
-    renderWithTheme(<ProductsPage />)
+const products: ManagementProduct[] = [
+  {
+    id: 'roggenbrot',
+    name: 'Roggenbrot',
+    category: 'Brot',
+    categoryKey: 'brot',
+    price: 4.5,
+    status: 'active',
+    image: null,
+    description: 'Kräftig',
+  },
+  {
+    id: 'stollen',
+    name: 'Christstollen',
+    category: 'Kuchen',
+    categoryKey: 'kuchen',
+    price: 12,
+    status: 'seasonal',
+    image: '/img/stollen.svg',
+    description: '',
+  },
+  {
+    id: 'altbrot',
+    name: 'Altbrot',
+    category: 'Brot',
+    categoryKey: 'brot',
+    price: 1,
+    status: 'unavailable',
+    image: null,
+    description: '',
+  },
+]
 
-    expect(screen.getByText('Produktverwaltung')).toBeInTheDocument()
+describe('ProductListClient (admin/products)', () => {
+  beforeEach(() => mockPush.mockClear())
+
+  it('renders heading, statistics and product rows', () => {
+    renderWithTheme(<ProductListClient products={products} />)
+    expect(
+      screen.getByRole('heading', { name: /Produktverwaltung/ })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Produktliste (3)')).toBeInTheDocument()
+    expect(screen.getByText('Roggenbrot')).toBeInTheDocument()
+    expect(screen.getByText('Christstollen')).toBeInTheDocument()
+    expect(screen.getByText('4.50 €')).toBeInTheDocument()
+    expect(
+      screen.getByText('Verfügbar', { selector: '.MuiChip-label' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Saisonal', { selector: '.MuiChip-label' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Nicht verfügbar', { selector: '.MuiChip-label' })
+    ).toBeInTheDocument()
   })
 
-  it('renders all product management components', () => {
-    renderWithTheme(<ProductsPage />)
+  it('navigates to edit page and to new-product page', () => {
+    renderWithTheme(<ProductListClient products={products} />)
+    fireEvent.click(screen.getByLabelText('Roggenbrot bearbeiten'))
+    expect(mockPush).toHaveBeenCalledWith('/admin/products/roggenbrot')
 
-    expect(screen.getByTestId('product-categories')).toBeInTheDocument()
-    expect(screen.getByTestId('products-list')).toBeInTheDocument()
-    expect(screen.getByTestId('product-import')).toBeInTheDocument()
-    expect(screen.getByTestId('price-manager')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Neues Produkt/ }))
+    expect(mockPush).toHaveBeenCalledWith('/admin/products/new')
   })
 
-  it('handles CSV import', async () => {
-    renderWithTheme(<ProductsPage />)
-
-    const fileInput = screen.getByTestId('file-input')
-    const file = new File(['test'], 'products.csv', { type: 'text/csv' })
-
-    fireEvent.change(fileInput, { target: { files: [file] } })
-
-    // Import handler would process the file
-    await waitFor(() => {
-      expect(fileInput).toBeInTheDocument()
-    })
-  })
-
-  it('displays product categories', () => {
-    renderWithTheme(<ProductsPage />)
-
-    const categories = screen.getByTestId('product-categories')
-    expect(categories).toBeInTheDocument()
-  })
-
-  it('includes price management section', () => {
-    renderWithTheme(<ProductsPage />)
-
-    const priceManager = screen.getByTestId('price-manager')
-    expect(priceManager).toBeInTheDocument()
-  })
-
-  it('has correct page structure', () => {
-    const { container } = renderWithTheme(<ProductsPage />)
-
-    const mainContent =
-      container.querySelector('[role="main"]') || container.firstChild
-    expect(mainContent).toBeInTheDocument()
-
-    // Check all sections are present
-    expect(screen.getByTestId('product-categories')).toBeInTheDocument()
-    expect(screen.getByTestId('products-list')).toBeInTheDocument()
+  it('shows an empty state when no products are available', () => {
+    renderWithTheme(<ProductListClient products={[]} />)
+    expect(screen.getByText('Keine Produkte gefunden.')).toBeInTheDocument()
+    expect(screen.getByText('Produktliste (0)')).toBeInTheDocument()
+    expect(screen.queryByRole('table')).toBeNull()
   })
 })

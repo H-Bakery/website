@@ -16,7 +16,7 @@ import {
   Alert,
 } from '@mui/material'
 import { LocalDining, BakeryDining } from '@mui/icons-material'
-import { BakingItem } from '../../../../types/prepTask'
+import { BakingItem } from '../../types/prepTask'
 
 interface BakingScheduleViewProps {
   bakingSchedule: {
@@ -24,7 +24,11 @@ interface BakingScheduleViewProps {
     bread: BakingItem[]
   }
   editMode: boolean
-  onUpdateBakingQuantity: (type: 'cakes' | 'bread', itemIndex: number, newQuantity: number) => void
+  onUpdateBakingQuantity: (
+    type: 'cakes' | 'bread',
+    itemIndex: number,
+    newQuantity: number
+  ) => void
 }
 
 const BakingScheduleView: React.FC<BakingScheduleViewProps> = ({
@@ -36,9 +40,7 @@ const BakingScheduleView: React.FC<BakingScheduleViewProps> = ({
     <Box>
       {editMode && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          <Typography variant="subtitle2">
-            Bearbeitungsmodus aktiv
-          </Typography>
+          <Typography variant="subtitle2">Bearbeitungsmodus aktiv</Typography>
           <Typography variant="body2">
             Sie können die Mengen direkt bearbeiten. Klicken Sie auf
             "Bearbeitung beenden" um die Änderungen zu speichern.
@@ -102,7 +104,9 @@ const BakingCategoryCard: React.FC<BakingCategoryCardProps> = ({
   isDecimal = false,
 }) => {
   const handleQuantityChange = (index: number, value: string) => {
-    const newQuantity = isDecimal ? parseFloat(value) || 0 : parseInt(value) || 0
+    const newQuantity = isDecimal
+      ? parseFloat(value) || 0
+      : parseInt(value) || 0
     onUpdateQuantity(index, newQuantity)
   }
 
@@ -150,19 +154,18 @@ const BakingCategoryCard: React.FC<BakingCategoryCardProps> = ({
                     <TextField
                       size="small"
                       value={item.quantity}
-                      onChange={(e) => handleQuantityChange(index, e.target.value)}
+                      onChange={(e) =>
+                        handleQuantityChange(index, e.target.value)
+                      }
                       sx={{ width: 80 }}
                       type="number"
-                      inputProps={{ 
-                        min: 0, 
+                      inputProps={{
+                        min: 0,
                         max: maxQuantity,
-                        step: isDecimal ? "0.1" : "1"
+                        step: isDecimal ? '0.1' : '1',
                       }}
                     />
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                    >
+                    <Typography variant="body2" color="text.secondary">
                       {item.unit || quantityUnit}
                     </Typography>
                   </Box>

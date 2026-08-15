@@ -23,9 +23,8 @@ import {
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SaveIcon from '@mui/icons-material/Save'
+import { apiClient } from '@bakery/shared/data-access'
 import type { ManagementProduct } from '../../../../lib/products'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'
 
 const statusLabels: Record<string, string> = {
   active: 'Verfügbar',
@@ -88,34 +87,45 @@ export default function ProductEditClient({
   }
 
   const handleSave = async () => {
+    const parsedPrice = parseFloat(price)
+    if (!name.trim()) {
+      setFeedback({
+        message: 'Bitte einen Produktnamen angeben',
+        severity: 'error',
+      })
+      return
+    }
+    if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
+      setFeedback({
+        message: 'Bitte einen gültigen Preis angeben',
+        severity: 'error',
+      })
+      return
+    }
     setSaving(true)
     try {
-      const res = await fetch(`${API_BASE}/api/hq-products/${productId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          category,
-          price: parseFloat(price),
-          short_description: description,
-          description,
-          available: status !== 'unavailable',
-          seasonal: status === 'seasonal',
-        }),
+      const res = await apiClient.put(`/api/hq-products/${productId}`, {
+        name: name.trim(),
+        category,
+        price: parsedPrice,
+        short_description: description,
+        description,
+        available: status !== 'unavailable',
+        seasonal: status === 'seasonal',
       })
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || 'Speichern fehlgeschlagen')
+      if (!res.success) {
+        throw new Error(res.error || res.message || 'Speichern fehlgeschlagen')
       }
 
       setFeedback({
         message: 'Produkt erfolgreich gespeichert',
         severity: 'success',
       })
-    } catch (err: any) {
+      router.refresh()
+    } catch (err) {
       setFeedback({
-        message: err.message || 'Fehler beim Speichern',
+        message: err instanceof Error ? err.message : 'Fehler beim Speichern',
         severity: 'error',
       })
     } finally {
@@ -127,7 +137,10 @@ export default function ProductEditClient({
     <Container maxWidth="md" sx={{ mt: 2, mb: 4 }}>
       <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 } }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-          <IconButton onClick={() => router.back()} aria-label="back">
+          <IconButton
+            onClick={() => router.push('/admin/products')}
+            aria-label="Zurück zur Produktliste"
+          >
             <ArrowBackIcon />
           </IconButton>
           <Typography variant="h5" component="h1" sx={{ ml: 1 }}>
@@ -182,6 +195,7 @@ export default function ProductEditClient({
               <Grid item xs={12}>
                 <TextField
                   label="Produktname"
+                  required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   fullWidth
@@ -191,8 +205,9 @@ export default function ProductEditClient({
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>Kategorie</InputLabel>
+                  <InputLabel id="product-category-label">Kategorie</InputLabel>
                   <Select
+                    labelId="product-category-label"
                     value={category}
                     label="Kategorie"
                     onChange={(e) => setCategory(e.target.value)}
@@ -219,8 +234,9 @@ export default function ProductEditClient({
               </Grid>
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>Status</InputLabel>
+                  <InputLabel id="product-status-label">Status</InputLabel>
                   <Select
+                    labelId="product-status-label"
                     value={status}
                     label="Status"
                     onChange={(e) =>

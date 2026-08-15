@@ -16,12 +16,11 @@ import {
   ListItem,
   ListItemText,
   ListItemSecondaryAction,
-  Divider,
   Tooltip,
 } from '@mui/material'
 import AddCircleOutlineIcon from '@mui/icons-material/AddCircleOutline'
 import DeleteIcon from '@mui/icons-material/Delete'
-import CloudUploadIcon from '@mui/icons-material/CloudUpload' // For file input
+import CloudUploadIcon from '@mui/icons-material/CloudUpload'
 
 // Define a type for the item within the form state
 interface FormItem {
@@ -36,12 +35,15 @@ interface InternOrderFormProps {
     formData: Omit<InternOrder, 'id' | 'createdAt' | 'updatedAt'>
   ) => void
   onCancel: () => void
+  /** Disables the action buttons while a submission is in flight */
+  isSubmitting?: boolean
 }
 
 const InternOrderForm: React.FC<InternOrderFormProps> = ({
   order,
   onSubmit,
   onCancel,
+  isSubmitting = false,
 }) => {
   const [orderName, setOrderName] = useState('')
   const [description, setDescription] = useState('')
@@ -80,7 +82,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
   }, [order])
 
   const handleAddItem = () => {
-    if (newItemName && newItemQuantity > 0) {
+    if (newItemName && Number(newItemQuantity) > 0) {
       setItems([
         ...items,
         {
@@ -106,6 +108,13 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
       setBillImageUrlPreview(URL.createObjectURL(file)) // Show preview
     }
   }
+
+  // Revoke object URLs created for previews to avoid memory leaks
+  useEffect(() => {
+    if (!billImage || !billImageUrlPreview) return
+    const url = billImageUrlPreview
+    return () => URL.revokeObjectURL(url)
+  }, [billImage, billImageUrlPreview])
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
@@ -134,13 +143,13 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
         gutterBottom
         sx={{ fontWeight: 'bold', mb: 3 }}
       >
-        {order ? 'Edit Intern Order' : 'Create New Intern Order'}
+        {order ? 'Interne Bestellung bearbeiten' : 'Neue interne Bestellung'}
       </Typography>
       <form onSubmit={handleSubmit}>
         <Grid container spacing={3}>
           <Grid item xs={12} sm={6}>
             <TextField
-              label="Order Name"
+              label="Bezeichnung"
               value={orderName}
               onChange={(e) => setOrderName(e.target.value)}
               fullWidth
@@ -160,16 +169,16 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
                 label="Status"
                 required
               >
-                <MenuItem value="pending">Pending</MenuItem>
-                <MenuItem value="in-progress">In Progress</MenuItem>
-                <MenuItem value="done">Done</MenuItem>
-                <MenuItem value="cancelled">Cancelled</MenuItem>
+                <MenuItem value="pending">Offen</MenuItem>
+                <MenuItem value="in-progress">In Bearbeitung</MenuItem>
+                <MenuItem value="done">Erledigt</MenuItem>
+                <MenuItem value="cancelled">Storniert</MenuItem>
               </Select>
             </FormControl>
           </Grid>
           <Grid item xs={12}>
             <TextField
-              label="Description"
+              label="Beschreibung"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               fullWidth
@@ -181,7 +190,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
-              label="Assigned To (Optional)"
+              label="Zuständig (optional)"
               value={assignedTo}
               onChange={(e) => setAssignedTo(e.target.value)}
               fullWidth
@@ -190,7 +199,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
           </Grid>
           <Grid item xs={12} sm={6}>
             <TextField
-              label="General Quantity (Optional, if no specific items)"
+              label="Gesamtmenge (optional, falls keine Einzelposten)"
               type="number"
               value={quantity}
               onChange={(e) =>
@@ -209,7 +218,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
               gutterBottom
               sx={{ mt: 2, fontWeight: 500 }}
             >
-              Items (Optional)
+              Einzelposten (optional)
             </Typography>
             <List dense>
               {items.map((item, index) => (
@@ -225,13 +234,15 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
                 >
                   <ListItemText
                     primary={item.itemName}
-                    secondary={`Qty: ${item.itemQuantity} ${item.unit || ''}`}
+                    secondary={`Menge: ${item.itemQuantity} ${
+                      item.unit || ''
+                    }`.trim()}
                   />
                   <ListItemSecondaryAction>
-                    <Tooltip title="Remove Item">
+                    <Tooltip title="Posten entfernen">
                       <IconButton
                         edge="end"
-                        aria-label="delete"
+                        aria-label="Posten entfernen"
                         onClick={() => handleRemoveItem(index)}
                         color="error"
                       >
@@ -246,6 +257,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
               sx={{
                 display: 'flex',
                 alignItems: 'center',
+                flexWrap: 'wrap',
                 gap: 1,
                 mt: items.length > 0 ? 1 : 0,
                 p: 1,
@@ -255,14 +267,14 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
               }}
             >
               <TextField
-                label="Item Name"
+                label="Artikel"
                 value={newItemName}
                 onChange={(e) => setNewItemName(e.target.value)}
                 size="small"
-                sx={{ flexGrow: 1 }}
+                sx={{ flexGrow: 1, minWidth: 140 }}
               />
               <TextField
-                label="Qty"
+                label="Menge"
                 type="number"
                 value={newItemQuantity}
                 onChange={(e) =>
@@ -275,17 +287,18 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
                 inputProps={{ min: 1 }}
               />
               <TextField
-                label="Unit"
+                label="Einheit"
                 value={newItemUnit}
                 onChange={(e) => setNewItemUnit(e.target.value)}
                 size="small"
                 sx={{ width: '100px' }}
               />
-              <Tooltip title="Add Item">
+              <Tooltip title="Posten hinzufügen">
                 <span>
                   <IconButton
                     onClick={handleAddItem}
                     color="primary"
+                    aria-label="Posten hinzufügen"
                     disabled={
                       !newItemName ||
                       !newItemQuantity ||
@@ -306,7 +319,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
               gutterBottom
               sx={{ mt: 2, fontWeight: 500 }}
             >
-              Bill Image (Optional)
+              Rechnungsbeleg (optional)
             </Typography>
             <Button
               variant="outlined"
@@ -315,7 +328,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
               fullWidth
               sx={{ py: 1.5 }}
             >
-              Upload Bill Image
+              Beleg hochladen
               <input
                 type="file"
                 hidden
@@ -325,26 +338,11 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
             </Button>
             {billImageUrlPreview && (
               <Box sx={{ mt: 2, textAlign: 'center' }}>
-                <Typography variant="caption">Image Preview:</Typography>
+                <Typography variant="caption">Vorschau:</Typography>
+                {/* eslint-disable-next-line @next/next/no-img-element -- local blob/preview URL */}
                 <img
                   src={billImageUrlPreview}
-                  alt="Bill preview"
-                  style={{
-                    maxHeight: '150px',
-                    maxWidth: '100%',
-                    marginTop: '8px',
-                    borderRadius: '4px',
-                    border: '1px solid #ddd',
-                  }}
-                />
-              </Box>
-            )}
-            {!billImage && order?.billImageUrl && !billImageUrlPreview && (
-              <Box sx={{ mt: 2, textAlign: 'center' }}>
-                <Typography variant="caption">Current Bill Image:</Typography>
-                <img
-                  src={order.billImageUrl}
-                  alt="Current bill"
+                  alt="Vorschau des Rechnungsbelegs"
                   style={{
                     maxHeight: '150px',
                     maxWidth: '100%',
@@ -359,11 +357,21 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
 
           <Grid item xs={12} sx={{ mt: 3 }}>
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2 }}>
-              <Button variant="outlined" color="secondary" onClick={onCancel}>
-                Cancel
+              <Button
+                variant="outlined"
+                color="secondary"
+                onClick={onCancel}
+                disabled={isSubmitting}
+              >
+                Abbrechen
               </Button>
-              <Button type="submit" variant="contained" color="primary">
-                {order ? 'Save Changes' : 'Create Order'}
+              <Button
+                type="submit"
+                variant="contained"
+                color="primary"
+                disabled={isSubmitting}
+              >
+                {order ? 'Änderungen speichern' : 'Bestellung anlegen'}
               </Button>
             </Box>
           </Grid>

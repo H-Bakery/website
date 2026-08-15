@@ -1,7 +1,7 @@
 'use client'
 import React from 'react'
 import { Box } from '@mui/material'
-import { PrepSection } from '../../../../types/prepTask'
+import { PrepSection, AdditionalProductionItem } from '../../types/prepTask'
 import EnhancedPrepTaskCard from './EnhancedPrepTaskCard'
 
 interface PrepSectionsViewProps {
@@ -11,8 +11,15 @@ interface PrepSectionsViewProps {
   onToggleSectionCompletion: (sectionIndex: number) => void
   onToggleItemCompletion: (sectionIndex: number, itemIndex: number) => void
   onToggleSectionExpanded: (sectionIndex: number) => void
-  onUpdateItemQuantity: (sectionIndex: number, itemIndex: number, newQuantity: number) => void
-  onAddToProduction: (itemName: string, reason: string) => void
+  onUpdateItemQuantity: (
+    sectionIndex: number,
+    itemIndex: number,
+    newQuantity: number
+  ) => void
+  onAddToProduction: (
+    itemName: string,
+    reason: AdditionalProductionItem['reason']
+  ) => void
 }
 
 const PrepSectionsView: React.FC<PrepSectionsViewProps> = ({

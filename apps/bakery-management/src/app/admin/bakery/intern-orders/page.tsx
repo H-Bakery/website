@@ -10,16 +10,21 @@ import {
   Button,
   Typography,
   Box,
-  Paper,
   CircularProgress,
   Alert,
+  Snackbar,
+  LinearProgress,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
+
+type InternOrderInput = Omit<InternOrder, 'id' | 'createdAt' | 'updatedAt'>
 
 export default function InternOrdersPage() {
   const [orders, setOrders] = useState<InternOrder[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [successMessage, setSuccessMessage] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingOrder, setEditingOrder] = useState<InternOrder | null>(null)
 
@@ -31,7 +36,9 @@ export default function InternOrdersPage() {
       setOrders(fetchedOrders)
     } catch (err) {
       console.error('Failed to fetch intern orders:', err)
-      setError('Failed to load intern orders. Please try again later.')
+      setError(
+        'Interne Bestellungen konnten nicht geladen werden. Bitte versuchen Sie es später erneut.'
+      )
     } finally {
       setIsLoading(false)
     }
@@ -56,61 +63,47 @@ export default function InternOrdersPage() {
     setEditingOrder(null)
   }
 
-  const handleSubmitForm = async (
-    formData: Omit<InternOrder, 'id' | 'createdAt' | 'updatedAt'>
-  ) => {
+  const handleSubmitForm = async (formData: InternOrderInput) => {
     try {
-      setIsLoading(true) // Show loading indicator during submission
+      setIsSaving(true)
+      setError(null)
       if (editingOrder) {
         await internOrderService.updateInternOrder(editingOrder.id, formData)
+        setSuccessMessage('Bestellung aktualisiert')
       } else {
         await internOrderService.addInternOrder(formData)
+        setSuccessMessage('Bestellung angelegt')
       }
       setShowForm(false)
       setEditingOrder(null)
-      await fetchOrders() // Refresh the list
+      await fetchOrders()
     } catch (err) {
       console.error('Failed to save intern order:', err)
+      // Keep the form open so the user does not lose their input
       setError(
-        'Failed to save intern order. Please check the details and try again.'
+        'Bestellung konnte nicht gespeichert werden. Bitte prüfen Sie die Angaben und versuchen Sie es erneut.'
       )
-      // Keep form open if there was an error and isLoading was set to true
-      // If you want to hide loading on error, setIsLoading(false) here.
     } finally {
-      // Ensure loading is false if not handled by another fetchOrders call or error persistence
-      if (!error) setIsLoading(false)
+      setIsSaving(false)
     }
   }
 
   const handleMarkAsDone = async (orderId: string) => {
     try {
-      setIsLoading(true)
+      setIsSaving(true)
+      setError(null)
       await internOrderService.updateInternOrder(orderId, { status: 'done' })
-      await fetchOrders() // Refresh the list
+      setSuccessMessage('Bestellung als erledigt markiert')
+      await fetchOrders()
     } catch (err) {
       console.error('Failed to mark order as done:', err)
-      setError('Failed to update order status.')
+      setError('Status konnte nicht aktualisiert werden.')
     } finally {
-      setIsLoading(false)
+      setIsSaving(false)
     }
   }
 
-  // Optional: Implement Delete Handler if needed in the future
-  // const handleDeleteOrder = async (orderId: string) => {
-  //   try {
-  //     setIsLoading(true);
-  //     await internOrderService.deleteInternOrder(orderId);
-  //     await fetchOrders(); // Refresh the list
-  //   } catch (err) {
-  //     console.error('Failed to delete order:', err);
-  //     setError('Failed to delete order.');
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
-
-  if (isLoading && orders.length === 0) {
-    // Show loader only on initial load or full processing
+  if (isLoading && orders.length === 0 && !error) {
     return (
       <Container
         maxWidth="lg"
@@ -122,7 +115,7 @@ export default function InternOrdersPage() {
           minHeight: '60vh',
         }}
       >
-        <CircularProgress />
+        <CircularProgress aria-label="Lade interne Bestellungen" />
       </Container>
     )
   }
@@ -135,17 +128,26 @@ export default function InternOrdersPage() {
         </Alert>
       )}
 
+      <Snackbar
+        open={Boolean(successMessage)}
+        autoHideDuration={3000}
+        onClose={() => setSuccessMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="success" onClose={() => setSuccessMessage(null)}>
+          {successMessage}
+        </Alert>
+      </Snackbar>
+
       {showForm ? (
         <InternOrderForm
           order={editingOrder}
           onSubmit={handleSubmitForm}
           onCancel={handleCancelForm}
+          isSubmitting={isSaving}
         />
       ) : (
-        <Paper
-          elevation={0}
-          sx={{ p: { xs: 1, md: 2 }, backgroundColor: 'transparent' }}
-        >
+        <Box>
           <Box
             sx={{
               display: 'flex',
@@ -156,36 +158,37 @@ export default function InternOrdersPage() {
               gap: 1,
             }}
           >
-            <Typography
-              variant="h4"
-              component="h1"
-              sx={{ fontWeight: 'medium' }}
-            >
-              Intern Orders
-            </Typography>
+            <Box>
+              <Typography
+                variant="h4"
+                component="h1"
+                sx={{ fontWeight: 'medium' }}
+              >
+                Interne Bestellungen
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Besorgungen und Einkäufe des Teams verwalten
+              </Typography>
+            </Box>
             <Button
               variant="contained"
               color="primary"
               startIcon={<AddIcon />}
               onClick={handleShowAddForm}
-              disabled={isLoading}
+              disabled={isSaving}
             >
-              New Intern Order
+              Neue Bestellung
             </Button>
           </Box>
-          {isLoading && (
-            <CircularProgress
-              size={24}
-              sx={{ position: 'absolute', top: '90px', right: '40px' }}
-            />
+          {(isLoading || isSaving) && (
+            <LinearProgress sx={{ mb: 1 }} aria-label="Wird verarbeitet" />
           )}
           <InternOrderList
             orders={orders}
             onEditOrder={handleShowEditForm}
             onMarkAsDone={handleMarkAsDone}
-            // Pass other handlers like onDeleteOrder if implemented
           />
-        </Paper>
+        </Box>
       )}
     </Container>
   )

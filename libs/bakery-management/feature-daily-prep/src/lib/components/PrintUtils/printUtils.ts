@@ -1,4 +1,8 @@
-import { PrepSection, BakingItem, AdditionalProductionItem } from '../../../../types/prepTask'
+import {
+  PrepSection,
+  BakingItem,
+  AdditionalProductionItem,
+} from '../../types/prepTask'
 
 export class PrintUtils {
   static printProductionPlan(

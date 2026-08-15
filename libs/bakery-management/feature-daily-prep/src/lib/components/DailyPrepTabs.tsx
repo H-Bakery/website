@@ -1,14 +1,8 @@
 'use client'
 import React from 'react'
-import {
-  Box,
-  Tabs,
-  Tab,
-  Chip,
-  Button,
-} from '@mui/material'
+import { Box, Tabs, Tab, Chip, Button } from '@mui/material'
 import { Assignment, BakeryDining, Add, Print } from '@mui/icons-material'
-import { AdditionalProductionItem } from '../../../types/prepTask'
+import { AdditionalProductionItem } from '../types/prepTask'
 
 interface DailyPrepTabsProps {
   tabValue: number
@@ -36,15 +30,12 @@ const DailyPrepTabs: React.FC<DailyPrepTabsProps> = ({
         mb: 3,
       }}
     >
-      <Tabs
-        value={tabValue}
-        onChange={(_, newValue) => onTabChange(newValue)}
-      >
+      <Tabs value={tabValue} onChange={(_, newValue) => onTabChange(newValue)}>
         <Tab label="Vorbereitungsaufgaben" icon={<Assignment />} />
         <Tab label="Standard Backplan" icon={<BakeryDining />} />
         <Tab label="Zusätzliche Produktion" icon={<Add />} />
       </Tabs>
-      
+
       <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
         {additionalProduction.length > 0 && tabValue === 2 && (
           <Chip

@@ -1,5 +1,5 @@
 'use client'
-import React from 'react'
+import React, { useState } from 'react'
 import {
   Container,
   Box,
@@ -12,8 +12,14 @@ import {
   Button,
   Fab,
   Badge,
+  Snackbar,
+  Alert,
+  List,
+  ListItem,
+  ListItemText,
+  Chip,
 } from '@mui/material'
-import { CheckCircleOutline } from '@mui/icons-material'
+import { CheckCircleOutline, Inventory2Outlined } from '@mui/icons-material'
 
 // Components
 import {
@@ -28,6 +34,17 @@ import {
 
 // Hooks
 import { useDailyPrep } from '@bakery/management/feature-daily-prep'
+
+const STORAGE_PREFIX = 'bakery-daily-prep-'
+
+const STOCK_LABELS: Record<
+  string,
+  { label: string; color: 'warning' | 'error' }
+> = {
+  low: { label: 'Niedrig', color: 'warning' },
+  critical: { label: 'Kritisch', color: 'error' },
+  empty: { label: 'Leer', color: 'error' },
+}
 
 /**
  * Main Daily Prep Page Component
@@ -63,21 +80,50 @@ const DailyPrepPage: React.FC = () => {
     toggleSectionExpanded,
 
     // Complex actions
-    loadPrepTasks,
     generatePrepList,
     toggleItemCompletion,
     toggleSectionCompletion,
     updateItemQuantity,
     updateBakingQuantity,
     handleAddToProduction,
-
-    // Computed values
-    calculateProgress,
   } = useDailyPrep()
+
+  const [snackbar, setSnackbar] = useState<{
+    message: string
+    severity: 'success' | 'error'
+  } | null>(null)
+  const [stockDialogOpen, setStockDialogOpen] = useState(false)
+
+  const dateKey = selectedDate.toISOString().split('T')[0]
 
   // Event handlers
   const handleSave = () => {
-    console.log('Saving prep checklist')
+    // Es gibt noch keinen Backend-Endpunkt zum Speichern der Checkliste;
+    // der Stand wird lokal im Browser abgelegt.
+    try {
+      localStorage.setItem(
+        `${STORAGE_PREFIX}${dateKey}`,
+        JSON.stringify({
+          date: dateKey,
+          savedAt: new Date().toISOString(),
+          prepSections,
+          bakingSchedule,
+          additionalProduction,
+        })
+      )
+      setSnackbar({
+        message: `Vorbereitungsliste für ${selectedDate.toLocaleDateString(
+          'de-DE'
+        )} lokal gespeichert`,
+        severity: 'success',
+      })
+    } catch (error) {
+      console.error('Failed to save prep checklist:', error)
+      setSnackbar({
+        message: 'Speichern fehlgeschlagen',
+        severity: 'error',
+      })
+    }
     setSaveDialogOpen(false)
   }
 
@@ -210,15 +256,89 @@ const DailyPrepPage: React.FC = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Low stock overview dialog */}
+      <Dialog
+        open={stockDialogOpen}
+        onClose={() => setStockDialogOpen(false)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>Artikel mit niedrigem Bestand</DialogTitle>
+        <DialogContent dividers>
+          {lowStockItems.length === 0 ? (
+            <Typography color="text.secondary">
+              Alle Bestände sind ausreichend.
+            </Typography>
+          ) : (
+            <List dense disablePadding>
+              {lowStockItems.map((item, index) => {
+                const status = STOCK_LABELS[item.stock_status ?? ''] ?? {
+                  label: item.stock_status,
+                  color: 'warning' as const,
+                }
+                return (
+                  <ListItem
+                    key={`${item.name}-${index}`}
+                    disableGutters
+                    secondaryAction={
+                      <Chip
+                        size="small"
+                        label={status.label}
+                        color={status.color}
+                      />
+                    }
+                  >
+                    <ListItemText
+                      primary={item.name}
+                      secondary={
+                        item.current_stock !== undefined
+                          ? `Bestand: ${item.current_stock}${
+                              item.min_stock_level !== undefined
+                                ? ` / Minimum: ${item.min_stock_level}`
+                                : ''
+                            }`
+                          : undefined
+                      }
+                    />
+                  </ListItem>
+                )
+              })}
+            </List>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setStockDialogOpen(false)}>Schließen</Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={Boolean(snackbar)}
+        autoHideDuration={4000}
+        onClose={() => setSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity={snackbar?.severity ?? 'success'}
+          onClose={() => setSnackbar(null)}
+        >
+          {snackbar?.message}
+        </Alert>
+      </Snackbar>
+
       {/* Floating Action Button for Quick Stock Overview */}
       <Fab
         color="primary"
         sx={{ position: 'fixed', bottom: 24, right: 24 }}
-        onClick={() => console.log('Quick action - stock overview')}
+        onClick={() => setStockDialogOpen(true)}
+        aria-label={`${lowStockItems.length} Artikel mit niedrigem Bestand anzeigen`}
         title={`${lowStockItems.length} Artikel mit niedrigem Bestand`}
       >
         <Badge badgeContent={lowStockItems.length} color="error">
-          <CheckCircleOutline />
+          {lowStockItems.length > 0 ? (
+            <Inventory2Outlined />
+          ) : (
+            <CheckCircleOutline />
+          )}
         </Badge>
       </Fab>
     </Container>

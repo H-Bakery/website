@@ -39,7 +39,10 @@ interface UseDailyPrepReturn {
     itemIndex: number,
     newQuantity: number
   ) => void
-  handleAddToProduction: (itemName: string, reason: string) => void
+  handleAddToProduction: (
+    itemName: string,
+    reason: AdditionalProductionItem['reason']
+  ) => void
 
   // Computed values
   calculateProgress: () => number
@@ -182,11 +185,14 @@ export const useDailyPrep = (): UseDailyPrepReturn => {
     }))
   }
 
-  const handleAddToProduction = (itemName: string, reason: string) => {
+  const handleAddToProduction = (
+    itemName: string,
+    reason: AdditionalProductionItem['reason']
+  ) => {
     const newItem: AdditionalProductionItem = {
       name: itemName,
       quantity: 0, // No specific quantity needed
-      reason: reason as any,
+      reason,
       urgency: reason === 'empty_stock' ? 'high' : 'medium',
       category: 'pastry',
       notes: `Hinzugefügt aufgrund von ${

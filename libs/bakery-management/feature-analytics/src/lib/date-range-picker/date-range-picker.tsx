@@ -1,16 +1,16 @@
-import React from 'react';
-import { Box, TextField, Button, ButtonGroup, Paper } from '@mui/material';
-import { DateRange } from '@bakery/shared/types';
+import React from 'react'
+import { Box, TextField, Button, ButtonGroup, Paper } from '@mui/material'
+import { DateRange } from '@bakery/shared/types'
 
 export interface DateRangePickerProps {
-  value: DateRange;
-  onChange: (range: DateRange) => void;
-  minDate?: string;
-  maxDate?: string;
+  value: DateRange
+  onChange: (range: DateRange) => void
+  minDate?: string
+  maxDate?: string
   presets?: Array<{
-    label: string;
-    getValue: () => DateRange;
-  }>;
+    label: string
+    getValue: () => DateRange
+  }>
 }
 
 export function DateRangePicker({
@@ -20,19 +20,21 @@ export function DateRangePicker({
   maxDate = new Date().toISOString().split('T')[0],
   presets = defaultPresets,
 }: DateRangePickerProps) {
-  const handleStartDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStartDateChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     onChange({
       ...value,
       startDate: event.target.value,
-    });
-  };
+    })
+  }
 
   const handleEndDateChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     onChange({
       ...value,
       endDate: event.target.value,
-    });
-  };
+    })
+  }
 
   return (
     <Paper elevation={1} sx={{ p: 2 }}>
@@ -51,7 +53,7 @@ export function DateRangePicker({
           }}
           size="small"
         />
-        
+
         <TextField
           label="Bis"
           type="date"
@@ -79,74 +81,74 @@ export function DateRangePicker({
         </ButtonGroup>
       </Box>
     </Paper>
-  );
+  )
 }
 
 const defaultPresets = [
   {
     label: 'Heute',
     getValue: (): DateRange => {
-      const today = new Date().toISOString().split('T')[0];
-      return { startDate: today, endDate: today };
+      const today = new Date().toISOString().split('T')[0]
+      return { startDate: today, endDate: today }
     },
   },
   {
     label: 'Gestern',
     getValue: (): DateRange => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const date = yesterday.toISOString().split('T')[0];
-      return { startDate: date, endDate: date };
+      const yesterday = new Date()
+      yesterday.setDate(yesterday.getDate() - 1)
+      const date = yesterday.toISOString().split('T')[0]
+      return { startDate: date, endDate: date }
     },
   },
   {
     label: 'Letzte 7 Tage',
     getValue: (): DateRange => {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 7);
+      const end = new Date()
+      const start = new Date()
+      start.setDate(start.getDate() - 7)
       return {
         startDate: start.toISOString().split('T')[0],
         endDate: end.toISOString().split('T')[0],
-      };
+      }
     },
   },
   {
     label: 'Letzte 30 Tage',
     getValue: (): DateRange => {
-      const end = new Date();
-      const start = new Date();
-      start.setDate(start.getDate() - 30);
+      const end = new Date()
+      const start = new Date()
+      start.setDate(start.getDate() - 30)
       return {
         startDate: start.toISOString().split('T')[0],
         endDate: end.toISOString().split('T')[0],
-      };
+      }
     },
   },
   {
     label: 'Dieser Monat',
     getValue: (): DateRange => {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth(), 1);
-      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth(), 1)
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0)
       return {
         startDate: start.toISOString().split('T')[0],
         endDate: end.toISOString().split('T')[0],
-      };
+      }
     },
   },
   {
     label: 'Letzter Monat',
     getValue: (): DateRange => {
-      const now = new Date();
-      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const end = new Date(now.getFullYear(), now.getMonth(), 0)
       return {
         startDate: start.toISOString().split('T')[0],
         endDate: end.toISOString().split('T')[0],
-      };
+      }
     },
   },
-];
+]
 
-export default DateRangePicker;
+export default DateRangePicker

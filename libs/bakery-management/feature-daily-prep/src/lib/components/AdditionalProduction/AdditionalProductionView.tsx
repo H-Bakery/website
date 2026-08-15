@@ -16,7 +16,7 @@ import {
   IconButton,
 } from '@mui/material'
 import { Assignment, Add, Delete, Print } from '@mui/icons-material'
-import { AdditionalProductionItem } from '../../../../types/prepTask'
+import { AdditionalProductionItem } from '../../types/prepTask'
 
 interface AdditionalProductionViewProps {
   additionalProduction: AdditionalProductionItem[]
@@ -42,7 +42,9 @@ const AdditionalProductionView: React.FC<AdditionalProductionViewProps> = ({
     }
   }
 
-  const getUrgencyColor = (urgency?: string) => {
+  const getUrgencyColor = (
+    urgency?: string
+  ): 'error' | 'warning' | 'default' => {
     switch (urgency) {
       case 'high':
       case 'critical':
@@ -98,9 +100,10 @@ const AdditionalProductionView: React.FC<AdditionalProductionViewProps> = ({
                     borderColor: 'divider',
                     borderRadius: 1,
                     mb: 1,
-                    bgcolor: item.urgency === 'high' || item.urgency === 'critical' 
-                      ? 'error.light' 
-                      : 'background.paper',
+                    bgcolor:
+                      item.urgency === 'high' || item.urgency === 'critical'
+                        ? 'error.light'
+                        : 'background.paper',
                   }}
                 >
                   <ListItemText
@@ -118,11 +121,13 @@ const AdditionalProductionView: React.FC<AdditionalProductionViewProps> = ({
                         <Chip
                           size="small"
                           label={getUrgencyLabel(item?.urgency)}
-                          color={getUrgencyColor(item?.urgency) as any}
+                          color={getUrgencyColor(item?.urgency)}
                         />
                       </Box>
                     }
-                    secondary={`Grund: ${getReasonText(item?.reason)} | Angefordert von: ${
+                    secondary={`Grund: ${getReasonText(
+                      item?.reason
+                    )} | Angefordert von: ${
                       item?.requested_by || 'System'
                     } um ${item?.requested_at || 'Unbekannt'}`}
                   />
@@ -144,15 +149,19 @@ const AdditionalProductionView: React.FC<AdditionalProductionViewProps> = ({
               </Typography>
               <Typography variant="body2">
                 • Diese Artikel sind zusätzlich zur normalen Produktion
-                herzustellen • Priorisieren Sie Artikel mit hoher
-                Dringlichkeit (rot markiert) • Lagern Sie fertige Artikel
-                entsprechend der Standard-Lagerrichtlinien
+                herzustellen • Priorisieren Sie Artikel mit hoher Dringlichkeit
+                (rot markiert) • Lagern Sie fertige Artikel entsprechend der
+                Standard-Lagerrichtlinien
               </Typography>
             </Alert>
 
             <Card
               variant="outlined"
-              sx={{ mt: 2, bgcolor: 'primary.light', color: 'primary.contrastText' }}
+              sx={{
+                mt: 2,
+                bgcolor: 'primary.light',
+                color: 'primary.contrastText',
+              }}
             >
               <CardHeader
                 title="🖨️ Zusammenfassung für Backplan"
@@ -178,7 +187,7 @@ const AdditionalProductionView: React.FC<AdditionalProductionViewProps> = ({
                       <Chip
                         key={index}
                         label={item?.name || 'Unbekannt'}
-                        color={getUrgencyColor(item?.urgency) as any}
+                        color={getUrgencyColor(item?.urgency)}
                         size="small"
                         variant="filled"
                       />

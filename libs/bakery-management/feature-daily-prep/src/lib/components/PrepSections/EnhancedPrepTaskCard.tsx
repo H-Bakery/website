@@ -27,7 +27,11 @@ import {
   Add,
   ExpandMore,
 } from '@mui/icons-material'
-import { PrepSection, PrepTaskItem } from '../../../../types/prepTask'
+import {
+  PrepSection,
+  PrepTaskItem,
+  AdditionalProductionItem,
+} from '../../types/prepTask'
 
 interface EnhancedPrepTaskCardProps {
   section: PrepSection
@@ -37,8 +41,15 @@ interface EnhancedPrepTaskCardProps {
   onToggleSectionCompletion: (sectionIndex: number) => void
   onToggleItemCompletion: (sectionIndex: number, itemIndex: number) => void
   onToggleSectionExpanded: (sectionIndex: number) => void
-  onUpdateItemQuantity: (sectionIndex: number, itemIndex: number, newQuantity: number) => void
-  onAddToProduction: (itemName: string, reason: string) => void
+  onUpdateItemQuantity: (
+    sectionIndex: number,
+    itemIndex: number,
+    newQuantity: number
+  ) => void
+  onAddToProduction: (
+    itemName: string,
+    reason: AdditionalProductionItem['reason']
+  ) => void
 }
 
 const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
@@ -61,12 +72,16 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
 
   const formatTrayInfo = (item: PrepTaskItem): string => {
     if (item.tray_numbers && item.trays_of) {
-      return `${item.tray_numbers.length} Bleche à ${item.trays_of} (Blech ${item.tray_numbers.join(', ')})`
+      return `${item.tray_numbers.length} Bleche à ${
+        item.trays_of
+      } (Blech ${item.tray_numbers.join(', ')})`
     }
     return `Blech ${item.tray_number}`
   }
 
-  const getStockStatusLabel = (status?: PrepTaskItem['stock_status']): string => {
+  const getStockStatusLabel = (
+    status?: PrepTaskItem['stock_status']
+  ): string => {
     switch (status) {
       case 'critical':
         return 'Kritisch'
@@ -173,7 +188,7 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
           </Box>
         }
       />
-      
+
       {isExpanded && (
         <CardContent>
           {section.instructions && (
@@ -190,7 +205,10 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
           )}
 
           {section.ingredients && (
-            <Card variant="outlined" sx={{ mb: 2, bgcolor: 'background.default' }}>
+            <Card
+              variant="outlined"
+              sx={{ mb: 2, bgcolor: 'background.default' }}
+            >
               <CardHeader
                 title="Zutaten"
                 avatar={<Kitchen color="primary" />}
@@ -222,7 +240,9 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
                 <ListItem
                   key={itemIndex}
                   sx={{
-                    bgcolor: item.completed ? 'success.light' : 'background.paper',
+                    bgcolor: item.completed
+                      ? 'success.light'
+                      : 'background.paper',
                     borderRadius: 1,
                     mb: 1,
                     border: 1,
@@ -235,7 +255,9 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
                   <ListItemIcon>
                     <Checkbox
                       checked={item.completed || false}
-                      onChange={() => onToggleItemCompletion(sectionIndex, itemIndex)}
+                      onChange={() =>
+                        onToggleItemCompletion(sectionIndex, itemIndex)
+                      }
                       color="success"
                       sx={{
                         '&.Mui-checked': {
@@ -260,28 +282,31 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
                           variant="body1"
                           fontWeight={item.completed ? 400 : 600}
                           sx={{
-                            textDecoration: item.completed ? 'line-through' : 'none',
+                            textDecoration: item.completed
+                              ? 'line-through'
+                              : 'none',
                             opacity: item.completed ? 0.7 : 1,
                             flexGrow: 1,
                           }}
                         >
                           {item.name}
                         </Typography>
-                        {item.stock_status && item.stock_status !== 'sufficient' && (
-                          <Chip
-                            size="small"
-                            label={getStockStatusLabel(item.stock_status)}
-                            color={
-                              item.stock_status === 'critical' ||
-                              item.stock_status === 'empty'
-                                ? 'error'
-                                : item.stock_status === 'low'
-                                ? 'warning'
-                                : 'default'
-                            }
-                            variant="filled"
-                          />
-                        )}
+                        {item.stock_status &&
+                          item.stock_status !== 'sufficient' && (
+                            <Chip
+                              size="small"
+                              label={getStockStatusLabel(item.stock_status)}
+                              color={
+                                item.stock_status === 'critical' ||
+                                item.stock_status === 'empty'
+                                  ? 'error'
+                                  : item.stock_status === 'low'
+                                  ? 'warning'
+                                  : 'default'
+                              }
+                              variant="filled"
+                            />
+                          )}
                       </Box>
                     }
                     secondary={
@@ -308,7 +333,8 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
                               variant="caption"
                               color="text.secondary"
                             >
-                              Bestand: {item.current_stock} {item.unit || 'Stück'}
+                              Bestand: {item.current_stock}{' '}
+                              {item.unit || 'Stück'}
                             </Typography>
                             {item.min_stock_level && (
                               <Typography

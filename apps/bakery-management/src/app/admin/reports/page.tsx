@@ -1,9 +1,8 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
-  Box,
-  Container,
   Typography,
+  Box,
   Paper,
   Tabs,
   Tab,
@@ -16,19 +15,16 @@ import {
   IconButton,
   Button,
   Chip,
-  Grid,
-  Card,
-  CardContent,
-  Stack,
+  CircularProgress,
   Alert,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
-  MenuItem,
-  FormControlLabel,
-  Checkbox,
+  Stack,
+  Card,
+  CardContent,
+  Grid,
 } from '@mui/material'
 import {
   Description as DescriptionIcon,
@@ -39,73 +35,44 @@ import {
   Refresh as RefreshIcon,
   Add as AddIcon,
   Edit as EditIcon,
-  PictureAsPdf as PdfIcon,
-  TableChart as ExcelIcon,
-  Email as EmailIcon,
 } from '@mui/icons-material'
+import { reportingService, ReportSchedule } from '@bakery/shared/data-access'
+import dynamic from 'next/dynamic'
 
-// Mock data for reports
-const mockReports = [
+// Lazy load the ScheduleDialog component
+const ScheduleDialog = dynamic(
+  () =>
+    import('./schedule-dialog').then((mod) => ({
+      default: mod.ScheduleDialog,
+    })),
   {
-    id: '1',
-    filename: 'umsatzbericht-2025-01-15.pdf',
-    type: 'Umsatzbericht',
-    format: 'PDF',
-    size: 106728,
-    createdAt: '2025-01-15T10:00:00Z',
-  },
-  {
-    id: '2',
-    filename: 'lagerbestand-2025-01-15.xlsx',
-    type: 'Lagerbestand',
-    format: 'EXCEL',
-    size: 6811,
-    createdAt: '2025-01-15T10:05:00Z',
-  },
-  {
-    id: '3',
-    filename: 'produktionsbericht-2025-01-14.pdf',
-    type: 'Produktion',
-    format: 'PDF',
-    size: 89234,
-    createdAt: '2025-01-14T18:00:00Z',
-  },
-]
+    loading: () => null, // Dialog doesn't need a loading state
+  }
+)
 
-const mockSchedules = [
-  {
-    id: '1',
-    reportType: 'Umsatzbericht',
-    format: 'PDF',
-    frequency: 'DAILY',
-    recipients: ['manager@bakery.de'],
-    active: true,
-    nextRun: '2025-01-16T06:00:00Z',
-  },
-  {
-    id: '2',
-    reportType: 'Lagerbestand',
-    format: 'EXCEL',
-    frequency: 'WEEKLY',
-    recipients: ['lager@bakery.de', 'manager@bakery.de'],
-    active: true,
-    nextRun: '2025-01-20T06:00:00Z',
-  },
-  {
-    id: '3',
-    reportType: 'Monatsbericht',
-    format: 'PDF',
-    frequency: 'MONTHLY',
-    recipients: ['geschaeftsfuehrung@bakery.de'],
-    active: false,
-    nextRun: null,
-  },
-]
+interface GeneratedReport {
+  id: string
+  filename: string
+  format: string
+  size: number
+  createdAt: string
+  downloadUrl: string
+}
 
-const storageStats = {
-  totalFiles: 23,
-  totalSize: 4523987,
-  activeSchedules: 2,
+interface StorageStats {
+  totalFiles: number
+  totalSize: number
+}
+
+const REPORT_TYPE_LABELS: Record<string, string> = {
+  SALES: 'Verkaufsbericht',
+  INVENTORY: 'Inventarbericht',
+  PRODUCTION: 'Produktionsbericht',
+  DELIVERY: 'Lieferbericht',
+  DAILY: 'Tagesbericht',
+  WEEKLY: 'Wochenbericht',
+  MONTHLY: 'Monatsbericht',
+  CUSTOM_RANGE: 'Zeitraumbericht',
 }
 
 interface TabPanelProps {
@@ -130,15 +97,96 @@ function TabPanel(props: TabPanelProps) {
   )
 }
 
-export default function AdminReportsPage() {
+export default function ReportsPage() {
   const [tabValue, setTabValue] = useState(0)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [reports] = useState<GeneratedReport[]>([])
+  const [schedules, setSchedules] = useState<ReportSchedule[]>([])
+  const [storageStats, setStorageStats] = useState<StorageStats | null>(null)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
-  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
   const [selectedSchedule, setSelectedSchedule] = useState<string | null>(null)
-  const [editingSchedule, setEditingSchedule] = useState<any>(null)
+  const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false)
+  const [editingSchedule, setEditingSchedule] = useState<ReportSchedule | null>(
+    null
+  )
+
+  useEffect(() => {
+    if (tabValue === 0) {
+      fetchStorageStats()
+    } else if (tabValue === 1) {
+      fetchSchedules()
+    }
+  }, [tabValue])
+
+  // Generated reports: the API does not expose a listing endpoint yet
+  // (reportingService only offers generate/download). Until then the archive
+  // stays empty instead of showing invented files.
+
+  const fetchSchedules = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await reportingService.getSchedules()
+      if (response.success && response.schedules) {
+        setSchedules(response.schedules)
+      }
+    } catch (err) {
+      setError('Fehler beim Laden der Zeitpläne')
+      console.error('Error fetching schedules:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const fetchStorageStats = async () => {
+    try {
+      const response = await reportingService.getStorageStats()
+      if (response.success && response.stats) {
+        setStorageStats(response.stats)
+      }
+    } catch {
+      // Speicher-Statistiken sind optional (Endpunkt fehlt z. B. beim Mock-API)
+      setStorageStats(null)
+    }
+  }
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setTabValue(newValue)
+  }
+
+  const handleDownload = (downloadUrl: string) => {
+    reportingService.downloadReport(downloadUrl)
+  }
+
+  const handleDeleteSchedule = async () => {
+    if (!selectedSchedule) return
+
+    setLoading(true)
+    try {
+      await reportingService.deleteSchedule(selectedSchedule)
+      setSchedules(schedules.filter((s) => s.id !== selectedSchedule))
+      setDeleteDialogOpen(false)
+      setSelectedSchedule(null)
+    } catch (err) {
+      console.error('Error deleting schedule:', err)
+      setError('Fehler beim Löschen des Zeitplans')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCleanupStorage = async () => {
+    setLoading(true)
+    try {
+      await reportingService.cleanupStorage()
+      fetchStorageStats()
+    } catch (err) {
+      console.error('Error cleaning up storage:', err)
+      setError('Fehler beim Bereinigen des Speichers')
+    } finally {
+      setLoading(false)
+    }
   }
 
   const formatFileSize = (bytes: number) => {
@@ -156,9 +204,11 @@ export default function AdminReportsPage() {
   const getFormatIcon = (format: string) => {
     switch (format) {
       case 'PDF':
-        return <PdfIcon sx={{ color: 'error.main' }} />
+        return <DescriptionIcon sx={{ color: 'error.main' }} />
       case 'EXCEL':
-        return <ExcelIcon sx={{ color: 'success.main' }} />
+        return <DescriptionIcon sx={{ color: 'success.main' }} />
+      case 'CSV':
+        return <DescriptionIcon sx={{ color: 'info.main' }} />
       default:
         return <DescriptionIcon />
     }
@@ -182,85 +232,96 @@ export default function AdminReportsPage() {
       {/* Header */}
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
-          <DescriptionIcon sx={{ mr: 2, verticalAlign: 'middle' }} />
+          <DescriptionIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
           Berichte
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Verwalten Sie generierte Berichte und Zeitpläne
+          Generierte Berichte und automatische Zeitpläne verwalten
         </Typography>
       </Box>
 
       {/* Storage Stats */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <StorageIcon color="primary" />
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Gespeicherte Berichte
-                  </Typography>
-                  <Typography variant="h6">
-                    {storageStats.totalFiles}
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
+      {storageStats && (
+        <Grid container spacing={3} sx={{ mb: 4 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <StorageIcon color="primary" />
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Gespeicherte Berichte
+                    </Typography>
+                    <Typography variant="h6">
+                      {storageStats.totalFiles}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <StorageIcon color="warning" />
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Speicherplatz
+                    </Typography>
+                    <Typography variant="h6">
+                      {formatFileSize(storageStats.totalSize)}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Stack direction="row" alignItems="center" spacing={2}>
+                  <ScheduleIcon color="info" />
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      Aktive Zeitpläne
+                    </Typography>
+                    <Typography variant="h6">
+                      {schedules.filter((s) => s.active).length}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Button
+                  variant="outlined"
+                  color="warning"
+                  fullWidth
+                  onClick={handleCleanupStorage}
+                  disabled={loading}
+                  startIcon={<DeleteIcon />}
+                >
+                  Speicher bereinigen
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
         </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <StorageIcon color="warning" />
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Speicherplatz
-                  </Typography>
-                  <Typography variant="h6">
-                    {formatFileSize(storageStats.totalSize)}
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Stack direction="row" alignItems="center" spacing={2}>
-                <ScheduleIcon color="info" />
-                <Box>
-                  <Typography variant="body2" color="text.secondary">
-                    Aktive Zeitpläne
-                  </Typography>
-                  <Typography variant="h6">
-                    {storageStats.activeSchedules}
-                  </Typography>
-                </Box>
-              </Stack>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent>
-              <Button
-                variant="outlined"
-                color="warning"
-                fullWidth
-                startIcon={<DeleteIcon />}
-              >
-                Speicher bereinigen
-              </Button>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      )}
+
+      {/* Error Alert */}
+      {error && (
+        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
+          {error}
+        </Alert>
+      )}
 
       {/* Tabs */}
-      <Paper elevation={2}>
+      <Paper elevation={3}>
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs value={tabValue} onChange={handleTabChange}>
             <Tab label="Generierte Berichte" />
@@ -272,44 +333,67 @@ export default function AdminReportsPage() {
         <TabPanel value={tabValue} index={0}>
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
             <Typography variant="h6">Generierte Berichte</Typography>
-            <IconButton>
+            <IconButton
+              onClick={fetchStorageStats}
+              disabled={loading}
+              aria-label="Aktualisieren"
+            >
               <RefreshIcon />
             </IconButton>
           </Box>
 
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Format</TableCell>
-                  <TableCell>Typ</TableCell>
-                  <TableCell>Dateiname</TableCell>
-                  <TableCell>Größe</TableCell>
-                  <TableCell>Erstellt am</TableCell>
-                  <TableCell align="right">Aktionen</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {mockReports.map((report) => (
-                  <TableRow key={report.id}>
-                    <TableCell>{getFormatIcon(report.format)}</TableCell>
-                    <TableCell>{report.type}</TableCell>
-                    <TableCell>{report.filename}</TableCell>
-                    <TableCell>{formatFileSize(report.size)}</TableCell>
-                    <TableCell>{formatDate(report.createdAt)}</TableCell>
-                    <TableCell align="right">
-                      <IconButton color="primary">
-                        <DownloadIcon />
-                      </IconButton>
-                      <IconButton color="error">
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Das Berichtsarchiv ist noch nicht an die API angebunden. Berichte
+            werden über die Zeitpläne per E-Mail versendet.
+          </Alert>
+
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Format</TableCell>
+                    <TableCell>Dateiname</TableCell>
+                    <TableCell>Größe</TableCell>
+                    <TableCell>Erstellt am</TableCell>
+                    <TableCell align="right">Aktionen</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {reports.map((report) => (
+                    <TableRow key={report.id}>
+                      <TableCell>{getFormatIcon(report.format)}</TableCell>
+                      <TableCell>{report.filename}</TableCell>
+                      <TableCell>{formatFileSize(report.size)}</TableCell>
+                      <TableCell>{formatDate(report.createdAt)}</TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          color="primary"
+                          aria-label="Herunterladen"
+                          onClick={() => handleDownload(report.downloadUrl)}
+                        >
+                          <DownloadIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {reports.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={5} align="center" sx={{ py: 4 }}>
+                        <Typography color="text.secondary">
+                          Keine Berichte vorhanden
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </TabPanel>
 
         {/* Schedules Tab */}
@@ -328,76 +412,99 @@ export default function AdminReportsPage() {
             </Button>
           </Box>
 
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Typ</TableCell>
-                  <TableCell>Format</TableCell>
-                  <TableCell>Frequenz</TableCell>
-                  <TableCell>Empfänger</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Nächste Ausführung</TableCell>
-                  <TableCell align="right">Aktionen</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {mockSchedules.map((schedule) => (
-                  <TableRow key={schedule.id}>
-                    <TableCell>{schedule.reportType}</TableCell>
-                    <TableCell>
-                      <Chip
-                        label={schedule.format}
-                        size="small"
-                        color={schedule.format === 'PDF' ? 'error' : 'success'}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {getFrequencyLabel(schedule.frequency)}
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={0.5}>
-                        <EmailIcon fontSize="small" color="action" />
-                        <Typography variant="body2">
-                          {schedule.recipients.length}
-                        </Typography>
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={schedule.active ? 'Aktiv' : 'Inaktiv'}
-                        color={schedule.active ? 'success' : 'default'}
-                        size="small"
-                      />
-                    </TableCell>
-                    <TableCell>
-                      {schedule.nextRun ? formatDate(schedule.nextRun) : '-'}
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        color="primary"
-                        onClick={() => {
-                          setEditingSchedule(schedule)
-                          setScheduleDialogOpen(true)
-                        }}
-                      >
-                        <EditIcon />
-                      </IconButton>
-                      <IconButton
-                        color="error"
-                        onClick={() => {
-                          setSelectedSchedule(schedule.id)
-                          setDeleteDialogOpen(true)
-                        }}
-                      >
-                        <DeleteIcon />
-                      </IconButton>
-                    </TableCell>
+          {loading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress />
+            </Box>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Typ</TableCell>
+                    <TableCell>Format</TableCell>
+                    <TableCell>Frequenz</TableCell>
+                    <TableCell>Empfänger</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Nächste Ausführung</TableCell>
+                    <TableCell align="right">Aktionen</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {schedules.map((schedule, index) => (
+                    <TableRow key={schedule.id ?? index}>
+                      <TableCell>
+                        {REPORT_TYPE_LABELS[schedule.reportType] ??
+                          schedule.reportType}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={schedule.format}
+                          size="small"
+                          color={
+                            schedule.format === 'PDF'
+                              ? 'error'
+                              : schedule.format === 'EXCEL'
+                              ? 'success'
+                              : 'info'
+                          }
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {getFrequencyLabel(schedule.frequency)}
+                      </TableCell>
+                      <TableCell>
+                        {schedule.recipients.length > 0
+                          ? schedule.recipients.join(', ')
+                          : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={schedule.active ? 'Aktiv' : 'Inaktiv'}
+                          color={schedule.active ? 'success' : 'default'}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {schedule.nextRun ? formatDate(schedule.nextRun) : '-'}
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          color="primary"
+                          aria-label="Bearbeiten"
+                          onClick={() => {
+                            setEditingSchedule(schedule)
+                            setScheduleDialogOpen(true)
+                          }}
+                        >
+                          <EditIcon />
+                        </IconButton>
+                        <IconButton
+                          color="error"
+                          aria-label="Löschen"
+                          onClick={() => {
+                            setSelectedSchedule(schedule.id ?? null)
+                            setDeleteDialogOpen(true)
+                          }}
+                        >
+                          <DeleteIcon />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {schedules.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center" sx={{ py: 4 }}>
+                        <Typography color="text.secondary">
+                          Keine Zeitpläne konfiguriert
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
         </TabPanel>
       </Paper>
 
@@ -416,9 +523,10 @@ export default function AdminReportsPage() {
         <DialogActions>
           <Button onClick={() => setDeleteDialogOpen(false)}>Abbrechen</Button>
           <Button
-            onClick={() => setDeleteDialogOpen(false)}
+            onClick={handleDeleteSchedule}
             color="error"
             variant="contained"
+            disabled={loading}
           >
             Löschen
           </Button>
@@ -426,80 +534,19 @@ export default function AdminReportsPage() {
       </Dialog>
 
       {/* Schedule Dialog */}
-      <Dialog
+      <ScheduleDialog
         open={scheduleDialogOpen}
-        onClose={() => setScheduleDialogOpen(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>
-          {editingSchedule ? 'Zeitplan bearbeiten' : 'Neuer Zeitplan'}
-        </DialogTitle>
-        <DialogContent>
-          <Stack spacing={3} sx={{ mt: 2 }}>
-            <TextField
-              select
-              label="Berichtstyp"
-              fullWidth
-              defaultValue={editingSchedule?.reportType || ''}
-            >
-              <MenuItem value="Umsatzbericht">Umsatzbericht</MenuItem>
-              <MenuItem value="Lagerbestand">Lagerbestand</MenuItem>
-              <MenuItem value="Produktion">Produktionsbericht</MenuItem>
-              <MenuItem value="Monatsbericht">Monatsbericht</MenuItem>
-            </TextField>
-
-            <TextField
-              select
-              label="Format"
-              fullWidth
-              defaultValue={editingSchedule?.format || 'PDF'}
-            >
-              <MenuItem value="PDF">PDF</MenuItem>
-              <MenuItem value="EXCEL">Excel</MenuItem>
-              <MenuItem value="CSV">CSV</MenuItem>
-            </TextField>
-
-            <TextField
-              select
-              label="Frequenz"
-              fullWidth
-              defaultValue={editingSchedule?.frequency || 'DAILY'}
-            >
-              <MenuItem value="DAILY">Täglich</MenuItem>
-              <MenuItem value="WEEKLY">Wöchentlich</MenuItem>
-              <MenuItem value="MONTHLY">Monatlich</MenuItem>
-            </TextField>
-
-            <TextField
-              label="E-Mail-Empfänger"
-              fullWidth
-              multiline
-              rows={2}
-              helperText="Mehrere E-Mail-Adressen durch Komma getrennt"
-              defaultValue={editingSchedule?.recipients?.join(', ') || ''}
-            />
-
-            <FormControlLabel
-              control={
-                <Checkbox defaultChecked={editingSchedule?.active || false} />
-              }
-              label="Zeitplan aktivieren"
-            />
-          </Stack>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setScheduleDialogOpen(false)}>
-            Abbrechen
-          </Button>
-          <Button
-            onClick={() => setScheduleDialogOpen(false)}
-            variant="contained"
-          >
-            Speichern
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onClose={() => {
+          setScheduleDialogOpen(false)
+          setEditingSchedule(null)
+        }}
+        onSave={() => {
+          setScheduleDialogOpen(false)
+          setEditingSchedule(null)
+          fetchSchedules()
+        }}
+        schedule={editingSchedule}
+      />
     </Box>
   )
 }

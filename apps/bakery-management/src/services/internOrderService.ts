@@ -1,7 +1,7 @@
 import { InternOrder } from '../types/internOrder'
 import { mockInternOrders } from '../mocks/internOrders'
 
-// Simulate a database or API store for intern orders
+// In-memory store (mock) – ersetzt später den Backend-Endpunkt
 let internOrdersStore: InternOrder[] = [...mockInternOrders]
 
 export const internOrderService = {
@@ -60,22 +60,3 @@ export const internOrderService = {
     return internOrdersStore.length < initialLength
   },
 }
-
-// Example usage (optional, for testing service)
-/*
-(async () => {
-  console.log('All Orders:', await internOrderService.getAllInternOrders());
-  const newOrder = await internOrderService.addInternOrder({
-    orderName: 'Test Order',
-    description: 'This is a test.',
-    status: 'pending',
-  });
-  console.log('Added Order:', newOrder);
-  if (newOrder) {
-    const updated = await internOrderService.updateInternOrder(newOrder.id, { status: 'done', assignedTo: 'Test User' });
-    console.log('Updated Order:', updated);
-    // await internOrderService.deleteInternOrder(newOrder.id);
-    // console.log('Deleted order, current orders:', await internOrderService.getAllInternOrders());
-  }
-})();
-*/
