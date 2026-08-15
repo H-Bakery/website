@@ -96,10 +96,19 @@ const nextConfig = {
   nx: {},
 }
 
+// The standalone static build (CI / GitHub Pages) does not need the Nx
+// project graph: the landing app has no workspace-lib imports at build time.
+// withNx() builds the project graph and hangs/fails on cold CI runners
+// ("Could not create project graph"), so it is skipped when
+// NX_STANDALONE_BUILD=1 is set.
+const standalone = process.env.NX_STANDALONE_BUILD === '1'
 const plugins = [
   // Add more Next.js plugins to this list if needed.
-  withNx,
+  ...(standalone ? [] : [withNx]),
   withBundleAnalyzer,
 ]
 
-module.exports = composePlugins(...plugins)(nextConfig)
+const { nx: _nx, ...plainConfig } = nextConfig
+module.exports = composePlugins(...plugins)(
+  standalone ? plainConfig : nextConfig
+)

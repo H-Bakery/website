@@ -35,6 +35,9 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       - name: Build landing page
+        env:
+          NX_DAEMON: 'false'
+          NX_STANDALONE_BUILD: '1'
         run: NODE_ENV=production npx nx build-static-standalone bakery-landing
 
       - name: Prepare for GitHub Pages
