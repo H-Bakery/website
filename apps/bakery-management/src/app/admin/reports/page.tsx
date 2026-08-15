@@ -145,8 +145,9 @@ export default function ReportsPage() {
       if (response.success && response.stats) {
         setStorageStats(response.stats)
       }
-    } catch (err) {
-      console.error('Error fetching storage stats:', err)
+    } catch {
+      // Speicher-Statistiken sind optional (Endpunkt fehlt z. B. beim Mock-API)
+      setStorageStats(null)
     }
   }
 

@@ -1,11 +1,6 @@
 import React from 'react'
-import {
-  DataGrid,
-  GridColDef,
-  GridRenderCellParams,
-  GridToolbar,
-} from '@mui/x-data-grid'
-import { Box, Paper, Typography, Chip } from '@mui/material'
+import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
+import { Box, Paper, Typography, Chip, Skeleton } from '@mui/material'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import type { ProductAnalyticsPerformance } from '@bakery/shared/types'
@@ -25,6 +20,13 @@ export function ProductRankingTable({
   pageSize = 10,
   height = 400,
 }: ProductRankingTableProps) {
+  // Das DataGrid kann seine Höhe erst im Browser messen – auf dem Server
+  // wird ein gleich großer Platzhalter gerendert (vermeidet Hydration-Warnungen).
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('de-DE', {
       style: 'currency',
@@ -117,30 +119,32 @@ export function ProductRankingTable({
       </Typography>
 
       <Box sx={{ height, width: '100%' }}>
-        <DataGrid
-          rows={rows}
-          columns={columns}
-          pageSizeOptions={[5, 10, 25, 50]}
-          checkboxSelection={false}
-          disableRowSelectionOnClick
-          initialState={{
-            pagination: {
-              paginationModel: { pageSize },
-            },
-            sorting: {
-              sortModel: [{ field: 'revenue', sort: 'desc' }],
-            },
-          }}
-          slots={{
-            toolbar: GridToolbar,
-          }}
-          slotProps={{
-            toolbar: {
-              showQuickFilter: true,
-              quickFilterProps: { debounceMs: 500 },
-            },
-          }}
-        />
+        {!mounted ? (
+          <Skeleton variant="rectangular" height={height} />
+        ) : (
+          <DataGrid
+            rows={rows}
+            columns={columns}
+            pageSizeOptions={[5, 10, 20, 25, 50]}
+            checkboxSelection={false}
+            disableRowSelectionOnClick
+            initialState={{
+              pagination: {
+                paginationModel: { pageSize },
+              },
+              sorting: {
+                sortModel: [{ field: 'revenue', sort: 'desc' }],
+              },
+            }}
+            showToolbar
+            slotProps={{
+              toolbar: {
+                showQuickFilter: true,
+                quickFilterProps: { debounceMs: 500 },
+              },
+            }}
+          />
+        )}
       </Box>
     </Paper>
   )

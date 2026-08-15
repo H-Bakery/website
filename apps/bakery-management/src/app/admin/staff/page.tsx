@@ -181,7 +181,7 @@ export default function StaffPage() {
         }}
       >
         <Box>
-          <Typography variant="h5" component="h2">
+          <Typography variant="h5" component="h1">
             Mitarbeiterverwaltung
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
@@ -191,15 +191,22 @@ export default function StaffPage() {
 
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Tooltip title="Aktualisieren">
-            <IconButton onClick={fetchStaffMembers} disabled={loading}>
-              <RefreshIcon />
-            </IconButton>
+            <span>
+              <IconButton
+                onClick={fetchStaffMembers}
+                disabled={loading}
+                aria-label="Aktualisieren"
+              >
+                <RefreshIcon />
+              </IconButton>
+            </span>
           </Tooltip>
 
           <Tooltip title="Neuen Mitarbeiter hinzufügen">
             <IconButton
               color="primary"
               onClick={() => setCreateModalOpen(true)}
+              aria-label="Neuen Mitarbeiter hinzufügen"
               sx={{
                 bgcolor: 'action.hover',
                 '&:hover': { bgcolor: 'action.selected' },
@@ -398,6 +405,7 @@ export default function StaffPage() {
                       <Tooltip title="Bearbeiten">
                         <IconButton
                           size="small"
+                          aria-label="Bearbeiten"
                           onClick={() => handleEdit(staff)}
                         >
                           <EditIcon fontSize="small" />
@@ -407,6 +415,7 @@ export default function StaffPage() {
                         <IconButton
                           size="small"
                           color="error"
+                          aria-label="Löschen"
                           onClick={() => handleDelete(staff)}
                         >
                           <DeleteIcon fontSize="small" />
