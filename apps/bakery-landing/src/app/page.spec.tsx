@@ -4,6 +4,7 @@ import LandingPage from './page'
 
 // Mock the openingHours utils
 jest.mock('../utils/openingHours', () => ({
+  ...jest.requireActual('../utils/openingHours'),
   isCurrentlyOpen: () => true,
   getTodayHours: () => '6:00 - 13:30 Uhr',
   getNextOpening: () => ({ day: 'Dienstag', time: '06:00' }),

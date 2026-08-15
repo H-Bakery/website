@@ -448,21 +448,7 @@ summary svg {
 
 /* Additional styles from legacy globals.css */
 
-/* Optimize font loading */
-@font-face {
-  font-family: 'Cinzel';
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Merriweather';
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Pacifico';
-  font-display: swap;
-}
+/* Webfonts: siehe fonts.css (lokal gehostet) */
 
 /* Optimized transitions for interactive elements only */
 *:focus,

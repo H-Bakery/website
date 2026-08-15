@@ -7,15 +7,15 @@ import WhatsappIcon from '../icons/socials/whatsapp-icon'
 const SOCIALS = [
   {
     link: 'https://www.facebook.com/profile.php?id=100068876322773',
-    icon: <FacebookIcon />
+    icon: <FacebookIcon />,
   },
   {
     link: 'https://www.instagram.com/backereiheusser',
-    icon: <InstagramIcon />
+    icon: <InstagramIcon />,
   },
   {
-    link: 'https://wa.me/015226621236',
-    icon: <WhatsappIcon />
+    link: 'https://wa.me/491706133279',
+    icon: <WhatsappIcon />,
   },
 ]
 
@@ -37,15 +37,15 @@ const styles = {
 
     '& a': {
       color: 'text.secondary',
-      
+
       '&:hover': {
-        color: 'primary.main'
-      }
+        color: 'primary.main',
+      },
     },
 
     '& svg': {
       minHeight: 24,
-      mr: 2
-    }
-  }
+      mr: 2,
+    },
+  },
 }

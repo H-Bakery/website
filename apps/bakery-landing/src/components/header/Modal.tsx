@@ -13,8 +13,7 @@ const Modal: React.FC<Props> = (props) => {
     <MuiModal
       open={open}
       onClose={() => setOpen(false)}
-      aria-labelledby="mobile-menu"
-      aria-describedby="mobile-hamburger-menu"
+      aria-label="Mobiles Menü"
       sx={{
         position: 'fixed',
         zIndex: '1000',

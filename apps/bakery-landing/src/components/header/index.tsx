@@ -41,7 +41,7 @@ const Header = () => {
       }}
     >
       <Box sx={styles.header}>
-        <Link href="/">
+        <Link href="/" aria-label="Bäckerei Heusser – Startseite">
           <Box sx={styles.logo}>
             <HeusserLogo color="#5A2E2A" />
           </Box>
@@ -65,7 +65,10 @@ const Header = () => {
         </Box>
       </Box>
       <Modal setOpen={setOpen} open={open}>
-        <Box sx={{ ...styles.mobileMenu, display: { xs: 'flex', md: 'none' } }}>
+        <Box
+          id="mobile-menu"
+          sx={{ ...styles.mobileMenu, display: { xs: 'flex', md: 'none' } }}
+        >
           {items.map((item) => (
             <MobileItem key={item.label} {...item} />
           ))}

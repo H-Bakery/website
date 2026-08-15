@@ -82,7 +82,7 @@
       "executor": "nx:run-commands",
       "options": {
         "cwd": "apps/bakery-landing",
-        "command": "npx next build"
+        "command": "node scripts/generate-sitemap.js && npx next build"
       },
       "outputs": ["{projectRoot}/out"],
       "metadata": {

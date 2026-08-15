@@ -9,11 +9,9 @@ import {
 } from '@mui/material'
 import Card, { DailyOffer } from './Card'
 
-import { ANGEBOTE } from './offers'
+import { ANGEBOTE, BROTPLAN_GUELTIG_AB } from './offers'
 
-const Wochenangebote = () => {
-  // Properly typed data with explicit type annotations
-
+const Brotplan = () => {
   return (
     <Box
       sx={{
@@ -39,7 +37,7 @@ const Wochenangebote = () => {
               mb: 1,
             }}
           >
-            Unsere Wochenangebote
+            Unser Brotplan
           </Typography>
           <Divider
             sx={{
@@ -55,9 +53,9 @@ const Wochenangebote = () => {
             color="text.secondary"
             sx={{ maxWidth: '800px' }}
           >
-            Entdecken Sie unsere täglichen Spezialitäten - von knusprigen Broten
-            über herzhafte Mittagsgerichte bis hin zu süßen Leckereien. Jeder
-            Tag bringt neue Geschmackserlebnisse!
+            Jeden Tag eine gute Auswahl an frisch gebackenen Brotspezialitäten –
+            mit besten Zutaten und viel Handwerksqualität aus unserer Backstube.
+            Gültig ab dem {BROTPLAN_GUELTIG_AB}.
           </Typography>
         </Box>
 
@@ -71,8 +69,8 @@ const Wochenangebote = () => {
 
         <Box sx={{ mt: 4, textAlign: 'center' }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Die Angebote können nach Verfügbarkeit variieren. Bitte fragen Sie
-            bei Interesse nach.
+            Natürlich. Regional. Handgemacht. – Die Auswahl kann nach
+            Verfügbarkeit variieren. Bitte fragen Sie bei Interesse nach.
           </Typography>
           <Button variant="outlined" color="primary" href="/products">
             Unser komplettes Sortiment entdecken
@@ -83,4 +81,4 @@ const Wochenangebote = () => {
   )
 }
 
-export default Wochenangebote
+export default Brotplan

@@ -20,6 +20,7 @@ import DynamicMap from './DynamicMap'
 import DirectionsIcon from '@mui/icons-material/Directions'
 import PhoneIcon from '@mui/icons-material/Phone'
 import { MapErrorBoundary } from './MapErrorBoundary'
+import { MapConsent } from './MapConsent'
 
 const Map: React.FC = () => {
   const theme = useTheme()
@@ -38,13 +39,15 @@ const Map: React.FC = () => {
         boxShadow: '0 2px 12px rgba(90, 46, 42, 0.08)',
       }}
     >
-      <MapErrorBoundary>
-        <DynamicMap
-          position={position}
-          name="Bäckerei Heusser"
-          address="Eckstraße 3, 66424 Homburg, Deutschland"
-        />
-      </MapErrorBoundary>
+      <MapConsent>
+        <MapErrorBoundary>
+          <DynamicMap
+            position={position}
+            name="Bäckerei Heusser"
+            address="Eckstraße 3, 66424 Homburg, Deutschland"
+          />
+        </MapErrorBoundary>
+      </MapConsent>
     </Box>
   )
 
@@ -203,7 +206,7 @@ const Map: React.FC = () => {
                 mb: 2,
               }}
             >
-              01522 6621236
+              0170 6133279
             </Typography>
 
             {/* Action Buttons */}

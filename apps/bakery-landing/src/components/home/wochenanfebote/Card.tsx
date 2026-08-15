@@ -18,6 +18,12 @@ export interface DailyOffer {
   specialOffers: SpecialOffer[]
 }
 
+const TYPE_LABELS: Record<SpecialOffer['type'], string> = {
+  bread: 'Brot',
+  meal: 'Mittagstisch',
+  pastry: 'Gebäck',
+}
+
 const Card: React.FC<DailyOffer> = (props) => {
   const { name, date, specialOffers } = props
 
@@ -84,7 +90,7 @@ const Card: React.FC<DailyOffer> = (props) => {
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
               <Chip
                 icon={getIcon(offer.type)}
-                label={offer.type.charAt(0).toUpperCase() + offer.type.slice(1)}
+                label={TYPE_LABELS[offer.type]}
                 size="small"
                 color={getColor(offer.type) as any}
                 sx={{ mr: 1 }}

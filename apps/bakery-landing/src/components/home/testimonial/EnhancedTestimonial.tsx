@@ -23,19 +23,14 @@ interface EnhancedTestimonial {
   verified?: boolean
 }
 
-const ROLES = ['Stammkunde', 'Lokaler Kunde', 'Geschäftskunde', 'Familienkunde']
-
+// Echte Rezensionen aus unserem Google-Unternehmensprofil (siehe src/mocks/testimonials).
+// Keine erfundenen Rollen/Daten/„Verifiziert“-Badges (§ 5b Abs. 3 UWG).
 const enhancedTestimonials: EnhancedTestimonial[] = TESTIMONIALS.map(
-  (testimonial, index) => ({
+  (testimonial) => ({
     name: testimonial.name,
     rating: testimonial.stars,
     message: testimonial.text,
-    role: ROLES[index % ROLES.length],
-    date: new Date(
-      Date.now() -
-        ((index * 7 * 24 * 60 * 60 * 1000) % (30 * 24 * 60 * 60 * 1000))
-    ).toLocaleDateString('de-DE'),
-    verified: true,
+    role: 'Google-Rezension',
   })
 )
 
@@ -259,7 +254,8 @@ const EnhancedTestimonial: React.FC = () => {
               fontSize: { xs: '0.9rem', md: '0.95rem' },
             }}
           >
-            Durchschnittliche Bewertung: 4.8 von 5 Sternen
+            Auszug aus unseren Google-Rezensionen – die aktuelle Gesamtbewertung
+            finden Sie direkt bei Google.
           </Typography>
           <Button
             variant="outlined"

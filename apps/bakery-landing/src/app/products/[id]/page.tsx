@@ -32,6 +32,7 @@ import {
   getCompactHoursSummary,
 } from '../../../utils/openingHours'
 import { Metadata } from 'next'
+import { SITE_URL } from '../../../config/legal'
 
 interface ProductPageProps {
   params: Promise<{
@@ -61,7 +62,14 @@ export async function generateMetadata({
     }
   }
 
-  const baseUrl = 'https://xn--bckerei-heusser-0kb.de'
+  const baseUrl = SITE_URL
+  // Social previews (og:image / twitter:image) don't support SVG – fall back
+  // to the generic OG image for vector product illustrations.
+  const productImage = product.image || product.imageUrl
+  const socialImage =
+    productImage && !productImage.toLowerCase().endsWith('.svg')
+      ? productImage
+      : `${SITE_URL}/og-image.jpg`
 
   return {
     title: `${product.name} - Bäckerei Heusser`,
@@ -81,7 +89,7 @@ export async function generateMetadata({
       siteName: 'Bäckerei Heusser',
       images: [
         {
-          url: product.image || product.imageUrl || '/og-image.jpg',
+          url: socialImage,
           width: 1200,
           height: 630,
           alt: product.name,
@@ -96,7 +104,7 @@ export async function generateMetadata({
       description:
         product.description ||
         `Frische ${product.name} aus unserer traditionellen Handwerksbäckerei`,
-      images: [product.image || product.imageUrl || '/og-image.jpg'],
+      images: [socialImage],
     },
   }
 }

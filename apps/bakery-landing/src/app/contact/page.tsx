@@ -20,8 +20,13 @@ import {
   LocationOn as LocationIcon,
   Schedule as ScheduleIcon,
   Directions as DirectionsIcon,
+  WhatsApp as WhatsAppIcon,
 } from '@mui/icons-material'
 import Hero from '../../components/Hero'
+import { MapConsent } from '../../components/home/map/MapConsent'
+import { MapErrorBoundary } from '../../components/home/map/MapErrorBoundary'
+import DynamicMap from '../../components/home/map/DynamicMap'
+import { LEGAL } from '../../config/legal'
 import {
   getContactPageHours,
   getEarliestOpeningTime,
@@ -29,11 +34,14 @@ import {
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/contact' },
   title: 'Kontakt - Bäckerei Heusser',
   description:
     'Kontaktieren Sie die Bäckerei Heusser. Adresse, Öffnungszeiten, Telefon und alle Informationen für Ihren Besuch.',
   keywords: 'Kontakt, Adresse, Öffnungszeiten, Telefon, Bäckerei, Standort',
 }
+
+const MAP_POSITION: [number, number] = [49.301429495245586, 7.369493502873482]
 
 export default function ContactPage() {
   return (
@@ -115,11 +123,28 @@ export default function ContactPage() {
                       primary="Telefon"
                       secondary={
                         <Link
-                          href="tel:068412229"
+                          href={LEGAL.phoneHref}
                           color="inherit"
                           underline="hover"
                         >
-                          06841 2229
+                          {LEGAL.phone}
+                        </Link>
+                      }
+                    />
+                  </ListItem>
+                  <ListItem>
+                    <ListItemIcon>
+                      <WhatsAppIcon color="primary" />
+                    </ListItemIcon>
+                    <ListItemText
+                      primary="Mobil / WhatsApp"
+                      secondary={
+                        <Link
+                          href={LEGAL.mobileHref}
+                          color="inherit"
+                          underline="hover"
+                        >
+                          {LEGAL.mobile}
                         </Link>
                       }
                     />
@@ -132,11 +157,11 @@ export default function ContactPage() {
                       primary="E-Mail"
                       secondary={
                         <Link
-                          href="mailto:info@baeckerei-heusser.de"
+                          href={`mailto:${LEGAL.email}`}
                           color="inherit"
                           underline="hover"
                         >
-                          info@baeckerei-heusser.de
+                          {LEGAL.email}
                         </Link>
                       }
                     />
@@ -195,30 +220,24 @@ export default function ContactPage() {
             von Homburg.
           </Typography>
 
-          {/* Placeholder for map - replace with actual map component */}
           <Box
             sx={{
               width: '100%',
               height: 400,
-              bgcolor: 'grey.200',
               borderRadius: 2,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              overflow: 'hidden',
               mb: 3,
             }}
           >
-            <Box sx={{ textAlign: 'center' }}>
-              <LocationIcon
-                sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }}
-              />
-              <Typography variant="h6" color="text.secondary">
-                Standort Karte
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Eckstraße 3, 66424 Homburg/Kirrberg
-              </Typography>
-            </Box>
+            <MapConsent>
+              <MapErrorBoundary>
+                <DynamicMap
+                  position={MAP_POSITION}
+                  name="Bäckerei Heusser"
+                  address="Eckstraße 3, 66424 Homburg"
+                />
+              </MapErrorBoundary>
+            </MapConsent>
           </Box>
 
           <Box sx={{ textAlign: 'center' }}>
@@ -244,14 +263,21 @@ export default function ContactPage() {
         </Box>
 
         {/* Additional Information */}
-        <Box sx={{ bgcolor: 'grey.100', py: 6, mx: -4, borderRadius: 2 }}>
+        <Box
+          sx={{
+            bgcolor: 'grey.100',
+            py: 6,
+            mx: { xs: -2, sm: -3 },
+            borderRadius: 2,
+          }}
+        >
           <Container maxWidth="lg">
             <Typography variant="h4" component="h2" gutterBottom align="center">
               Hinweise für Ihren Besuch
             </Typography>
 
             <Grid container spacing={4} sx={{ mt: 2 }}>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <Box sx={{ textAlign: 'center' }}>
                   <PhoneIcon
                     sx={{ fontSize: 40, color: 'primary.main', mb: 2 }}
@@ -260,13 +286,26 @@ export default function ContactPage() {
                     Vorbestellungen
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Gerne nehmen wir Ihre Bestellungen telefonisch entgegen. So
-                    können wir Ihre Wunschprodukte für Sie reservieren.
+                    Gerne nehmen wir Ihre Bestellungen telefonisch oder per
+                    WhatsApp entgegen. So können wir Ihre Wunschprodukte für Sie
+                    reservieren.
                   </Typography>
+                  <Link
+                    href="/bestellen"
+                    underline="hover"
+                    sx={{
+                      display: 'inline-block',
+                      mt: 1.5,
+                      fontWeight: 600,
+                      color: 'primary.main',
+                    }}
+                  >
+                    Zur Bestellseite
+                  </Link>
                 </Box>
               </Grid>
 
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <Box sx={{ textAlign: 'center' }}>
                   <ScheduleIcon
                     sx={{ fontSize: 40, color: 'primary.main', mb: 2 }}
@@ -278,21 +317,6 @@ export default function ContactPage() {
                     Schon ab {getEarliestOpeningTime()} Uhr morgens haben wir
                     frische Backwaren für Sie bereit. Kommen Sie früh für die
                     beste Auswahl!
-                  </Typography>
-                </Box>
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <Box sx={{ textAlign: 'center' }}>
-                  <LocationIcon
-                    sx={{ fontSize: 40, color: 'primary.main', mb: 2 }}
-                  />
-                  <Typography variant="h6" gutterBottom>
-                    Parkmöglichkeiten
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Direkt vor unserem Geschäft stehen Ihnen kostenlose
-                    Parkplätze zur Verfügung.
                   </Typography>
                 </Box>
               </Grid>

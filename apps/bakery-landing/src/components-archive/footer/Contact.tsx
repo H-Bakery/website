@@ -27,7 +27,7 @@ const Contact: React.FC = () => {
           06841 2229
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          01522 6621236
+          0170 6133279
         </Typography>
       </Box>
     </Box>

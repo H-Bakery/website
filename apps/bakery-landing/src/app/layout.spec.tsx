@@ -4,7 +4,7 @@ import RootLayout, { metadata } from './layout'
 describe('Landing RootLayout', () => {
   it('includes correct metadata', () => {
     expect(metadata.title).toBe(
-      'Bäckerei Heusser - Traditionelle Handwerksbäckerei in Karlsruhe-Beiertheim'
+      'Bäckerei Heusser - Traditionelle Handwerksbäckerei in Homburg-Kirrberg'
     )
     expect(metadata.description).toBe(
       'Frische Backwaren aus traditioneller Handwerkskunst seit 1933. Brot, Brötchen, Kuchen und mehr täglich frisch gebacken in Kirrberg/Homburg.'
@@ -18,7 +18,10 @@ describe('Landing RootLayout', () => {
     // The layout includes structured data in a script tag
     // We verify the metadata contains the necessary fields for schema.org
     expect(metadata.metadataBase).toBeDefined()
-    expect(metadata.alternates).toBeDefined()
+    // Canonical URLs are set per page (see page.tsx files), not globally,
+    // so every page can't claim the homepage as canonical.
+    expect(metadata).not.toHaveProperty('alternates')
+    expect(metadata.openGraph).not.toHaveProperty('url')
   })
 
   it('has proper SEO configuration', () => {

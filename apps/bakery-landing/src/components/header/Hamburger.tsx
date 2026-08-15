@@ -11,9 +11,17 @@ const Hamburger: React.FC<Props> = (props) => {
 
   return (
     <Box
+      component="button"
+      type="button"
+      aria-label={open ? 'Menü schließen' : 'Menü öffnen'}
+      aria-expanded={open}
+      aria-controls="mobile-menu"
       onClick={() => setOpen(!open)}
       className={open ? 'open' : ''}
       sx={{
+        p: 0,
+        border: 0,
+        bgcolor: 'transparent',
         width: 36,
         height: 28,
         position: 'relative',
@@ -77,10 +85,10 @@ const Hamburger: React.FC<Props> = (props) => {
         },
       }}
     >
-      <span></span>
-      <span></span>
-      <span></span>
-      <span></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
     </Box>
   )
 }

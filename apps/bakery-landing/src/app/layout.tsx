@@ -1,38 +1,37 @@
 import './global.css'
+import './fonts.css'
 import ThemeRegistry from '../components/providers/ThemeRegistry'
 import { Header } from '../components/header'
 import { LocalFooter } from '../components/LocalFooter'
 import { getSeoOpeningHours } from '../utils/openingHours'
 import { Box } from '@mui/material'
+import { SITE_URL, LEGAL } from '../config/legal'
 
 export const metadata = {
   title:
-    'Bäckerei Heusser - Traditionelle Handwerksbäckerei in Karlsruhe-Beiertheim',
+    'Bäckerei Heusser - Traditionelle Handwerksbäckerei in Homburg-Kirrberg',
   description:
     'Frische Backwaren aus traditioneller Handwerkskunst seit 1933. Brot, Brötchen, Kuchen und mehr täglich frisch gebacken in Kirrberg/Homburg.',
   keywords:
-    'Bäckerei, Karlsruhe, Beiertheim, Homburg, Kirrberg, Brot, Brötchen, Kuchen, Handwerk, traditionell, frisch',
+    'Bäckerei, Homburg, Kirrberg, Saarland, Brot, Brötchen, Kuchen, Handwerk, traditionell, frisch',
   authors: [{ name: 'Bäckerei Heusser' }],
   creator: 'Bäckerei Heusser',
   publisher: 'Bäckerei Heusser',
+  manifest: '/manifest.json',
   formatDetection: {
     email: false,
     address: false,
     telephone: false,
   },
-  metadataBase: new URL('https://baeckerei-heusser.de'),
-  alternates: {
-    canonical: '/',
-  },
+  metadataBase: new URL(SITE_URL),
   openGraph: {
     title: 'Bäckerei Heusser - Traditionelle Handwerksbäckerei',
     description:
       'Frische Backwaren aus traditioneller Handwerkskunst seit 1933',
-    url: 'https://baeckerei-heusser.de',
     siteName: 'Bäckerei Heusser',
     images: [
       {
-        url: '/og-image.svg',
+        url: '/og-image.jpg',
         width: 1200,
         height: 630,
         alt: 'Bäckerei Heusser - Frische Backwaren',
@@ -69,34 +68,21 @@ export default function RootLayout({
   return (
     <html lang="de">
       <head>
-        {/* Preconnect to font sources */}
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-
-        {/* Preload critical fonts */}
+        {/* Lokal gehostete Webfonts (kein Google-Fonts-Abruf) */}
         <link
           rel="preload"
-          as="style"
-          href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:wght@400;700&family=Pacifico&display=swap"
+          as="font"
+          type="font/woff2"
+          href="/fonts/merriweather-latin.woff2"
+          crossOrigin="anonymous"
         />
-
-        {/* Load fonts with font-display: swap for better performance */}
         <link
-          href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:wght@400;700&family=Pacifico&display=swap"
-          rel="stylesheet"
+          rel="preload"
+          as="font"
+          type="font/woff2"
+          href="/fonts/cinzel-latin.woff2"
+          crossOrigin="anonymous"
         />
-
-        {/* Fallback for browsers without JS */}
-        <noscript>
-          <link
-            href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700;900&family=Merriweather:wght@400;700&family=Pacifico&display=swap"
-            rel="stylesheet"
-          />
-        </noscript>
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         <link
           rel="icon"
@@ -122,9 +108,9 @@ export default function RootLayout({
               name: 'Bäckerei Heusser',
               description:
                 'Traditionelle Handwerksbäckerei seit 1933 in Homburg/Kirrberg. Frische Backwaren, Brot, Brötchen, Kuchen und Torten täglich frisch gebacken.',
-              url: 'https://xn--bckerei-heusser-0kb.de',
+              url: SITE_URL,
               telephone: '+49 6841 2229',
-              email: 'info@baeckerei-heusser.de',
+              email: LEGAL.email,
               address: {
                 '@type': 'PostalAddress',
                 streetAddress: 'Eckstraße 3',
@@ -135,8 +121,8 @@ export default function RootLayout({
               },
               geo: {
                 '@type': 'GeoCoordinates',
-                latitude: '49.3169',
-                longitude: '7.3364',
+                latitude: '49.3014',
+                longitude: '7.3695',
               },
               openingHoursSpecification: getSeoOpeningHours(),
               servesCuisine: 'German Bakery',
@@ -147,22 +133,19 @@ export default function RootLayout({
               },
               foundingDate: '1933',
               image: [
-                'https://xn--bckerei-heusser-0kb.de/og-image.jpg',
-                'https://xn--bckerei-heusser-0kb.de/assets/images/bakery/fresh-bread-hero.jpg',
+                `${SITE_URL}/og-image.jpg`,
+                `${SITE_URL}/assets/images/bakery/fresh-bread-hero.jpg`,
               ],
-              sameAs: [
-                'https://www.facebook.com/baeckereiheusser',
-                'https://www.instagram.com/baeckereiheusser',
-              ],
-              menu: 'https://xn--bckerei-heusser-0kb.de/products',
+              sameAs: [LEGAL.social.facebook, LEGAL.social.instagram],
+              menu: `${SITE_URL}/products`,
               paymentAccepted: ['Cash', 'Credit Card', 'Debit Card'],
               currenciesAccepted: 'EUR',
               areaServed: {
                 '@type': 'GeoCircle',
                 geoMidpoint: {
                   '@type': 'GeoCoordinates',
-                  latitude: '49.3169',
-                  longitude: '7.3364',
+                  latitude: '49.3014',
+                  longitude: '7.3695',
                 },
                 geoRadius: '20000',
               },
@@ -178,8 +161,8 @@ export default function RootLayout({
               '@context': 'https://schema.org',
               '@type': 'Organization',
               name: 'Bäckerei Heusser',
-              url: 'https://xn--bckerei-heusser-0kb.de',
-              logo: 'https://xn--bckerei-heusser-0kb.de/logo.svg',
+              url: SITE_URL,
+              logo: `${SITE_URL}/android-chrome-512x512.png`,
               contactPoint: {
                 '@type': 'ContactPoint',
                 telephone: '+49-6841-2229',
@@ -187,10 +170,7 @@ export default function RootLayout({
                 areaServed: 'DE',
                 availableLanguage: 'German',
               },
-              sameAs: [
-                'https://www.facebook.com/baeckereiheusser',
-                'https://www.instagram.com/baeckereiheusser',
-              ],
+              sameAs: [LEGAL.social.facebook, LEGAL.social.instagram],
             }),
           }}
         />
@@ -203,11 +183,10 @@ export default function RootLayout({
               '@context': 'https://schema.org',
               '@type': 'WebSite',
               name: 'Bäckerei Heusser',
-              url: 'https://xn--bckerei-heusser-0kb.de',
+              url: SITE_URL,
               potentialAction: {
                 '@type': 'SearchAction',
-                target:
-                  'https://xn--bckerei-heusser-0kb.de/products?search={search_term_string}',
+                target: `${SITE_URL}/products?search={search_term_string}`,
                 'query-input': 'required name=search_term_string',
               },
             }),

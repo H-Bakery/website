@@ -3,33 +3,35 @@
  * This centralizes all contact information for easy updates
  */
 
+import { LEGAL } from './legal'
+
 export const contactConfig = {
   whatsapp: {
     // WhatsApp number in international format without + or spaces
-    number: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '4915226621236',
+    number: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || '491706133279',
     // Fallback contact methods if WhatsApp is not available
     fallback: {
-      phone: process.env.NEXT_PUBLIC_PHONE_NUMBER || '+49 1522 6621236',
-      email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || 'bestellung@baeckerei-heusser.de',
+      phone: process.env.NEXT_PUBLIC_PHONE_NUMBER || '+49 170 6133279',
+      email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || LEGAL.email,
     },
     // Default message template
     defaultMessage: 'Hallo! Ich möchte gerne bestellen.',
   },
   // Store contact information
   store: {
-    phone: process.env.NEXT_PUBLIC_STORE_PHONE || '+49 1234 567890',
-    email: process.env.NEXT_PUBLIC_STORE_EMAIL || 'info@baeckerei-heusser.de',
+    phone: process.env.NEXT_PUBLIC_STORE_PHONE || '+49 6841 2229',
+    email: process.env.NEXT_PUBLIC_STORE_EMAIL || LEGAL.email,
     address: {
-      street: 'Hauptstraße 123',
-      city: 'München',
-      postalCode: '80331',
+      street: 'Eckstraße 3',
+      city: 'Homburg/Kirrberg',
+      postalCode: '66424',
       country: 'Deutschland',
     },
   },
   // Social media links
   social: {
-    instagram: 'https://www.instagram.com/baeckereiheusser',
-    facebook: 'https://www.facebook.com/baeckereiheusser',
+    instagram: LEGAL.social.instagram,
+    facebook: LEGAL.social.facebook,
   },
 }
 
