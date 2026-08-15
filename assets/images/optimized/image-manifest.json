@@ -1,0 +1,905 @@
+{
+  "generated": "2025-08-06T22:27:58.309Z",
+  "images": [
+    {
+      "original": "public/assets/images/testimonials/customer-3.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkAAAABXRUJQVlA4IDQAAAAQAwCdASoUABwAPzmOuFcvKaSjqA1R4CcJZQDMHBeDSUAA/uTXMqaXibw9LJeJHtSUQAAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/testimonials/customer-3-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/testimonials/customer-3-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 265,
+          "path": "public/assets/images/optimized/testimonials/customer-3-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/testimonials/customer-2.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAABQAwCdASoUABwAPyWAs1O/tqSit/qoA/AkiWcAAEEGwFUeAAD+jOpJmAXhfgWLVUT9mx0u5fxdXtgA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/testimonials/customer-2-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/testimonials/customer-2-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 265,
+          "path": "public/assets/images/optimized/testimonials/customer-2-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/testimonials/customer-1.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkwAAABXRUJQVlA4IEAAAAAwAwCdASoUABwAPyWEtFO/t6Uit/qoA/AkiWcAygAFeq6oAP5wr1ss0ZnlIvHkkr28s9wkgDAZ2o1xECoCwAAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/testimonials/customer-1-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/testimonials/customer-1-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 265,
+          "path": "public/assets/images/optimized/testimonials/customer-1-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/zwetschgen.jpg",
+      "placeholder": "data:image/webp;base64,UklGRjgAAABXRUJQVlA4ICwAAADQAgCdASoUAAwAPzmIulQvKSWxMAgCICcJaQAAijeAAP7NP+neK7pH7IxwAA==",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/zwetschgen-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/zwetschgen-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/zwetschgen-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/zwetschgen-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/zwetschgen-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/zwetschgen-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/zwetschgen-large.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/zwetschgen-large.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1920,
+          "path": "public/assets/images/optimized/products/zwetschgen-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/zitronencupcake.jpg",
+      "placeholder": "data:image/webp;base64,UklGRj4AAABXRUJQVlA4IDIAAADwAgCdASoUAA8APzmEuVO+qKWisAgD0CcJYwCdAC5JAAD+3pIdIrk/Hc0mUeQFLUAAAA==",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/zitronencupcake-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/zitronencupcake-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/zitronencupcake-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/zitronencupcake-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/zitronencupcake-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/zitronencupcake-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/zitronencupcake-large.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/zitronencupcake-large.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1536,
+          "path": "public/assets/images/optimized/products/zitronencupcake-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/stollen.jpg",
+      "placeholder": "data:image/webp;base64,UklGRjoAAABXRUJQVlA4IC4AAADQAgCdASoUAA8APzmGuVOvKSWkMAgB4CcJQBOgBaSAAP7peEgwVZD93cvtHwAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/stollen-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/stollen-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/stollen-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/stollen-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/stollen-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/stollen-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1024,
+          "path": "public/assets/images/optimized/products/stollen-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/rhabarber.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAAAwAwCdASoUABsAPzmQwle/qbepqAqr8CcJZwAAPcJBYloAAP5Clompj3q7EcabDAFivS76NcvrMAAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/rhabarber-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/rhabarber-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/rhabarber-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/rhabarber-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/rhabarber-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/rhabarber-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1152,
+          "path": "public/assets/images/optimized/products/rhabarber-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/osterzopf.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkIAAABXRUJQVlA4IDYAAAAQAwCdASoUABsAPzmQv1c+qaakqAqr0CcJZwDH5B1s5xQA/kJ6tdEFOVVVl9dNGkZpqqgiAAA=",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/osterzopf-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/osterzopf-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/osterzopf-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/osterzopf-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/osterzopf-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/osterzopf-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1152,
+          "path": "public/assets/images/optimized/products/osterzopf-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/lebkuchen.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkIAAABXRUJQVlA4IDYAAADwAgCdASoUAA8APzmKulQ/qaWjMAgD8CcJZwDA3DDWAAD+2HPK44IXHTa14vNV4VRNyQ2GsAA=",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/lebkuchen-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/lebkuchen-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/lebkuchen-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/lebkuchen-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/lebkuchen-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/lebkuchen-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/lebkuchen-large.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/lebkuchen-large.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1536,
+          "path": "public/assets/images/optimized/products/lebkuchen-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/kuerbisbrot.jpg",
+      "placeholder": "data:image/webp;base64,UklGRjYAAABXRUJQVlA4ICoAAADwAgCdASoUAA0APzmEuVO0qKWisAgCkCcJZwDE2C0kAAD+0jt8FmSigAA=",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-large.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-large.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1920,
+          "path": "public/assets/images/optimized/products/kuerbisbrot-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/products/erdbeertorte.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkIAAABXRUJQVlA4IDYAAADQAgCdASoUAA8APzmEuVO/qKWisAgD8CcJZwAAfj4AAP7HfcM6IPMHu4MsePF5qvCqJueKgAA=",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/erdbeertorte-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/products/erdbeertorte-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/erdbeertorte-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/products/erdbeertorte-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/erdbeertorte-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/products/erdbeertorte-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/erdbeertorte-large.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/products/erdbeertorte-large.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1536,
+          "path": "public/assets/images/optimized/products/erdbeertorte-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/instagram/post6.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkQAAABXRUJQVlA4IDgAAAAQAwCdASoUAB0APzmKu1U/qa0jKA1T8CcJZQDMWBYx7aAA/oPbE+bAR94V/krumeN8htFG3jQAAA==",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post6-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post6-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/instagram/post6-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/instagram/post6-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 700,
+          "path": "public/assets/images/optimized/instagram/post6-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/instagram/post5.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAABQAwCdASoUAB0APyl0s1O8LKSit/qoA4AlCWcAwNwuJrTFAAD+s4ueXbGmX5XKnY1Tz5rvGYjyqdAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post5-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post5-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/instagram/post5-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/instagram/post5-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 700,
+          "path": "public/assets/images/optimized/instagram/post5-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/instagram/post4.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAADwAgCdASoUABQAPzmUwFmvKaajqAgB4CcJYwAAP8jUAAD+2ov48/QfRu+9soBiMRM6RseAeIOSYAAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post4-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post4-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 320,
+          "path": "public/assets/images/optimized/instagram/post4-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/instagram/post3.jpg",
+      "placeholder": "data:image/webp;base64,UklGRk4AAABXRUJQVlA4IEIAAAAQAwCdASoUABQAPzmSv1m+qaa/qAgD8CcJZQC7ABdwFQAA/tg/pibtIcJe1WQ/GkZmb9S5TGP0jvVW2AR2evgAAAA=",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post3-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post3-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 320,
+          "path": "public/assets/images/optimized/instagram/post3-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/instagram/post2.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAAAQAwCdASoUABQAPzmQvFg0qbQjqAqqkCcJZQC7ABWdm4AA/r81qP6whsnbAdERMA/tciLcNhGXyAAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post2-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post2-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 320,
+          "path": "public/assets/images/optimized/instagram/post2-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/instagram/post1.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkQAAABXRUJQVlA4IDgAAADwAgCdASoUABQAPzmSulg+qiYjqAqr0CcJZQAAOvMvgAD+ukb+IeDf5JhQhLju2wYTRY9/DAAAAA==",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post1-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/instagram/post1-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 320,
+          "path": "public/assets/images/optimized/instagram/post1-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/bakery/traditional-pretzels.jpg",
+      "placeholder": "data:image/webp;base64,UklGRk4AAABXRUJQVlA4IEIAAABQAwCdASoUABsAPzmAuVU/viYjMBgMA/AnCWUAyNQXQhcMAAD+ogmGoEjrSIe09T81xz3UyzLDfu8qBPXqb5KAAAA=",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/traditional-pretzels-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/traditional-pretzels-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/traditional-pretzels-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/traditional-pretzels-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/traditional-pretzels-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/traditional-pretzels-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1152,
+          "path": "public/assets/images/optimized/bakery/traditional-pretzels-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/bakery/homemade-cakes.jpg",
+      "placeholder": "data:image/webp;base64,UklGRj4AAABXRUJQVlA4IDIAAADwAgCdASoUAA8APzmEuVO+qKWisAgD0CcJYwCdAC5JAAD+3pIdIrk/Hc0mUeQFLUAAAA==",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-large.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-large.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1536,
+          "path": "public/assets/images/optimized/bakery/homemade-cakes-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/bakery/fresh-bread-hero.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkYAAABXRUJQVlA4IDoAAAAQAwCdASoUABsAPzmQv1c+qaakqAqr0CcJZQC/7Bd0SfAA4/eSL7BTftwTfRBJfLSH6orugyIImAAA",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/fresh-bread-hero-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/fresh-bread-hero-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/fresh-bread-hero-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/fresh-bread-hero-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/fresh-bread-hero-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/fresh-bread-hero-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1152,
+          "path": "public/assets/images/optimized/bakery/fresh-bread-hero-original.webp"
+        }
+      ]
+    },
+    {
+      "original": "public/assets/images/bakery/artisan-croissants.jpg",
+      "placeholder": "data:image/webp;base64,UklGRkQAAABXRUJQVlA4IDgAAABQAwCdASoUAA8APzmGulQ/qSWjMAgD8CcJQBOmUACMVB6oAAD+vxcrjqEYBrkMVXv3508/LqgAAA==",
+      "sources": [
+        {
+          "format": "webp",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-thumbnail.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "thumbnail",
+          "width": 150,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-thumbnail.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-small.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "small",
+          "width": 400,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-small.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-medium.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "medium",
+          "width": 800,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-medium.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-large.webp"
+        },
+        {
+          "format": "jpg",
+          "size": "large",
+          "width": 1200,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-large.jpg"
+        },
+        {
+          "format": "webp",
+          "size": "original",
+          "width": 1536,
+          "path": "public/assets/images/optimized/bakery/artisan-croissants-original.webp"
+        }
+      ]
+    }
+  ]
+}

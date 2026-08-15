@@ -1,0 +1,40 @@
+{
+  "name": "Bäckerei Heusser - Traditionelle Handwerksbäckerei",
+  "short_name": "Bäckerei Heusser",
+  "description": "Traditionelle Handwerksbäckerei in Homburg-Kirrberg seit 1933. Frische Backwaren täglich aus eigener Herstellung.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FFF3E6",
+  "theme_color": "#8B4513",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "de-DE",
+  "dir": "ltr",
+  "categories": ["food", "shopping", "lifestyle"],
+  "icons": [
+    {
+      "src": "/favicon-16x16.png",
+      "sizes": "16x16",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/favicon-32x32.png",
+      "sizes": "32x32",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
