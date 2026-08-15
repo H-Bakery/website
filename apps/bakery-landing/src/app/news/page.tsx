@@ -8,6 +8,7 @@ import { getAllNews } from '../../services/newsService'
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/news' },
   title: 'Neuigkeiten - Bäckerei Heusser',
   description:
     'Aktuelle Neuigkeiten und Angebote aus der Bäckerei Heusser. Erfahren Sie mehr über unsere neuesten Produkte und Aktionen.',

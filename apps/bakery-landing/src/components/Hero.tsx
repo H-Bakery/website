@@ -29,6 +29,7 @@ const Hero: React.FC<Props> = (props) => {
       >
         <Typography
           variant="h3"
+          component="h1"
           textAlign="center"
           sx={{
             fontSize: { xs: '8vw', md: '3rem' },

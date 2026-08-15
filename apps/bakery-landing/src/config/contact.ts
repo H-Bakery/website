@@ -30,8 +30,8 @@ export const contactConfig = {
   },
   // Social media links
   social: {
-    instagram: 'https://www.instagram.com/baeckereiheusser',
-    facebook: 'https://www.facebook.com/baeckereiheusser',
+    instagram: LEGAL.social.instagram,
+    facebook: LEGAL.social.facebook,
   },
 }
 

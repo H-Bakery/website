@@ -1,55 +1,22 @@
 ---
 id: 4
 slug: aushilfe-gesucht
-name: Verstärkung für unser Team gesucht!
-published: 15.11.2024
+name: Aushilfe gesucht!
+published: 15.06.2022
 category: Internes
-image: https://images.pexels.com/photos/8902060/pexels-photo-8902060.jpeg?auto=compress&cs=tinysrgb&w=1260&h=750&dpr=1
-shortDescription: Werden Sie Teil unserer Backstube und unseres freundlichen Teams!
+image: /assets/images/news/aushilfe-gesucht.jpg
+shortDescription: Wir suchen eine Aushilfe im Backbetrieb, möglichst ...
 ---
 
-# Verstärkung für unser Team gesucht!
+# Aushilfe gesucht!
 
-Wir suchen eine engagierte Aushilfe für unsere Backstube, die Freude am traditionellen Bäckerhandwerk hat und unser Team dauerhaft verstärken möchte.
+Wir suchen eine Aushilfe im Backbetrieb, möglichst dauerhaft bei einer 5-Tage-Woche.
 
-## Was wir Ihnen bieten
+## Arbeitszeiten der 5-Tage Woche (35 Stunden Höchstwert)
 
-Bei uns erwartet Sie:
+- **Mo, Di, Do, Fr:** 3:00 - 8:00 Uhr (ca.)
+- **Sa:** 0:00 - 5:00 Uhr (ca.)
+- **Mittwoch und Sonn- und Feiertage:** frei
+- Abweichende Feiertagsregelung
 
-- Ein freundliches und familiäres Arbeitsumfeld
-- Die Möglichkeit, traditionelles Bäckerhandwerk zu erlernen
-- Ein eingespieltes Team, das sich auf Verstärkung freut
-- Geregelte Arbeitszeiten mit verlässlichen freien Tagen
-
-## Ihre Arbeitszeiten
-
-Wir bieten Ihnen eine 5-Tage-Woche mit maximal 35 Stunden:
-
-**Montag, Dienstag, Donnerstag und Freitag:**
-
-- Ca. 3:00 - 8:00 Uhr
-
-**Samstag:**
-
-- Ca. 0:00 - 5:00 Uhr
-
-**Ihre freien Tage:**
-
-- Mittwochs immer frei
-- Sonn- und Feiertage frei
-- Besondere Regelung an Feiertagen nach Absprache
-
-## Das bringen Sie mit
-
-- Zuverlässigkeit und Pünktlichkeit
-- Freude an der Arbeit im Team
-- Interesse am Bäckerhandwerk
-- Keine Vorkenntnisse erforderlich - wir arbeiten Sie gerne ein!
-
-## Haben wir Ihr Interesse geweckt?
-
-Dann freuen wir uns auf Ihre Bewerbung! Kommen Sie gerne persönlich in unserer Bäckerei vorbei oder kontaktieren Sie uns telefonisch. Wir nehmen uns Zeit für ein persönliches Gespräch.
-
-Ihre Bäckerei Heußer
-Eckstraße 3, 66424 Homburg
-Tel: 06841 2229
+**Vergütung:** 60€/Schicht VB

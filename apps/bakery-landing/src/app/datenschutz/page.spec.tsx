@@ -6,7 +6,7 @@ describe('DatenschutzPage', () => {
   it('renders the page title', () => {
     renderWithTheme(<DatenschutzPage />)
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Datenschutzerklärung' })
+      screen.getByRole('heading', { level: 1, name: 'Datenschutzerklärung' })
     ).toBeInTheDocument()
   })
 

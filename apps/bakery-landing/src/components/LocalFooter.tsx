@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { getFooterHours } from '../utils/openingHours'
 import Wappen from './icons/brand/Wappen'
 import { LEGAL } from '../config/legal'
+import Socials from './Socials'
 
 export const LocalFooter: React.FC = () => {
   return (
@@ -144,7 +145,7 @@ export const LocalFooter: React.FC = () => {
             </Typography>
             <Typography
               component="a"
-              href="tel:068412229"
+              href={LEGAL.phoneHref}
               variant="body2"
               sx={{
                 mb: 1,
@@ -156,14 +157,47 @@ export const LocalFooter: React.FC = () => {
                 '&:hover': { color: '#d038ba' },
               }}
             >
-              Tel: 06841 2229
+              Tel: {LEGAL.phone}
             </Typography>
             <Typography
+              component="a"
+              href={LEGAL.mobileHref}
               variant="body2"
-              sx={{ color: 'rgba(255, 243, 230, 0.8)', fontSize: '1rem' }}
+              sx={{
+                mb: 1,
+                display: 'block',
+                color: '#FFF3E6',
+                fontSize: '1rem',
+                fontWeight: 700,
+                textDecoration: 'none',
+                '&:hover': { color: '#d038ba' },
+              }}
+            >
+              Mobil / WhatsApp: {LEGAL.mobile}
+            </Typography>
+            <Typography
+              component="a"
+              href={`mailto:${LEGAL.email}`}
+              variant="body2"
+              sx={{
+                mb: 2,
+                display: 'block',
+                color: 'rgba(255, 243, 230, 0.8)',
+                fontSize: '1rem',
+                textDecoration: 'none',
+                '&:hover': { color: '#d038ba' },
+              }}
             >
               {LEGAL.email}
             </Typography>
+            <Box
+              sx={{
+                '&& a': { color: 'rgba(255, 243, 230, 0.8)' },
+                '&& a:hover': { color: '#d038ba' },
+              }}
+            >
+              <Socials />
+            </Box>
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>

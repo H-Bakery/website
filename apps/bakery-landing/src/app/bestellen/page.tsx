@@ -4,20 +4,8 @@ import { Box, Container, Typography, Paper, Grid, Button } from '@mui/material'
 import PhoneIcon from '@mui/icons-material/Phone'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import Hero from '../../components/Hero'
+import { LEGAL } from '../../config/legal'
 
-// Local utility functions to replace shared imports
-const contactConfig = {
-  store: {
-    phone: '+49 6841 2229',
-  },
-  whatsapp: {
-    fallback: {
-      phone: '0170 6133279',
-    },
-  },
-}
-
-const createPhoneLink = () => `tel:${contactConfig.store.phone}`
 const createWhatsAppLink = (message: string) =>
   `https://wa.me/491706133279?text=${encodeURIComponent(message)}`
 
@@ -65,11 +53,11 @@ const BestellenPage: React.FC = () => (
                 Unsere Telefonnummer:
               </Typography>
               <Typography variant="h6" gutterBottom fontWeight="bold">
-                {contactConfig.store.phone}
+                {LEGAL.phone}
               </Typography>
               <Button
                 startIcon={<PhoneIcon />}
-                href={createPhoneLink()}
+                href={LEGAL.phoneHref}
                 fullWidth
               >
                 Jetzt anrufen
@@ -86,20 +74,23 @@ const BestellenPage: React.FC = () => (
               <Typography variant="h6" gutterBottom>
                 Per WhatsApp bestellen
               </Typography>
-              <Typography paragraph>
+              <Typography>
                 Senden Sie uns eine WhatsApp-Nachricht mit Ihrer Bestellung.
                 Bitte geben Sie folgende Informationen an:
-                <ul style={{ paddingLeft: '1.5rem', marginTop: '0.5rem' }}>
-                  <li>Vollständige Bestellung mit Mengen</li>
-                  <li>Gewünschter Abholtermin</li>
-                  <li>Ihr Name</li>
-                </ul>
               </Typography>
+              <Box
+                component="ul"
+                sx={{ pl: '1.5rem', mt: 0.5, mb: 2, typography: 'body1' }}
+              >
+                <li>Vollständige Bestellung mit Mengen</li>
+                <li>Gewünschter Abholtermin</li>
+                <li>Ihr Name</li>
+              </Box>
               <Typography variant="body2" color="text.secondary" paragraph>
                 Unsere WhatsApp-Nummer:
               </Typography>
               <Typography variant="h6" gutterBottom fontWeight="bold">
-                {contactConfig.whatsapp.fallback.phone}
+                {LEGAL.mobile}
               </Typography>
               <Button
                 startIcon={<WhatsAppIcon />}

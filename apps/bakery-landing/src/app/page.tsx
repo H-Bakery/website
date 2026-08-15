@@ -11,6 +11,17 @@ import EnhancedTestimonial from '../components/home/testimonial/EnhancedTestimon
 import CallToAction from '../components/CallToAction'
 import MapComponent from '../components/home/map'
 import { loadProducts } from '../lib/products'
+import { Metadata } from 'next'
+import { SITE_URL } from '../config/legal'
+
+export const metadata: Metadata = {
+  alternates: {
+    canonical: '/',
+  },
+  openGraph: {
+    url: SITE_URL,
+  },
+}
 
 const FEATURED_CATEGORIES = [
   'Brot',

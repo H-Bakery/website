@@ -47,9 +47,10 @@ export const LEGAL = {
     city: 'Saarbrücken',
     url: 'https://www.datenschutz.saarland.de',
   },
+  /** Offizielle Social-Media-Profile (einzige Quelle, siehe Socials.tsx) */
   social: {
-    instagram: 'https://www.instagram.com/baeckereiheusser',
-    facebook: 'https://www.facebook.com/baeckereiheusser',
+    instagram: 'https://www.instagram.com/backereiheusser',
+    facebook: 'https://www.facebook.com/profile.php?id=100068876322773',
   },
 } as const
 

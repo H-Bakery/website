@@ -7,11 +7,7 @@ const theme = createTheme()
 
 // Simple wrapper to provide theme context
 function renderWithTheme(component: React.ReactElement) {
-  return render(
-    <ThemeProvider theme={theme}>
-      {component}
-    </ThemeProvider>
-  )
+  return render(<ThemeProvider theme={theme}>{component}</ThemeProvider>)
 }
 
 describe('Hero Component', () => {
@@ -27,17 +23,18 @@ describe('Hero Component', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders title as h3 element', () => {
+  it('renders title as h1 element (page heading)', () => {
     renderWithTheme(<Hero {...defaultProps} />)
 
-    const title = screen.getByText('Willkommen bei Bäckerei Heusser')
-    expect(title.tagName).toBe('H3')
+    const title = screen.getByRole('heading', { level: 1 })
+    expect(title).toHaveTextContent('Willkommen bei Bäckerei Heusser')
   })
 
   it('renders divider', () => {
     const { container } = renderWithTheme(<Hero {...defaultProps} />)
 
-    const divider = container.querySelector('hr')
+    // Divider is a brand SVG ornament, not an <hr>
+    const divider = container.querySelector('svg')
     expect(divider).toBeInTheDocument()
   })
 

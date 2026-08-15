@@ -7,7 +7,7 @@ describe('ImprintPage', () => {
   it('renders the page title', () => {
     renderWithTheme(<ImprintPage />)
     expect(
-      screen.getByRole('heading', { level: 3, name: 'Impressum' })
+      screen.getByRole('heading', { level: 1, name: 'Impressum' })
     ).toBeInTheDocument()
   })
 

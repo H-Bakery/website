@@ -4,7 +4,7 @@ slug: verkaufspartner-gesucht
 name: Verkaufspartner gesucht!
 published: 25.07.2022
 category: Internes
-image: https://images.pexels.com/photos/2079438/pexels-photo-2079438.jpeg
+image: /assets/images/news/verkaufspartner-gesucht.jpg
 shortDescription: Wir suchen in der Vorstadt Homburg, Bereich ...
 ---
 

@@ -63,6 +63,8 @@ const EnhancedHero: React.FC = () => {
             src={heroImage}
             alt="Bäckerei Heusser - Frische Backwaren"
             onError={() => setImageLoadError(true)}
+            fetchPriority="high"
+            decoding="async"
             sx={{
               position: 'absolute',
               inset: 0,

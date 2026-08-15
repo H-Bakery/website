@@ -1,5 +1,5 @@
 import { getSeoOpeningHours } from '../../utils/openingHours'
-import { LEGAL } from '../../config/legal'
+import { LEGAL, SITE_URL } from '../../config/legal'
 
 export interface BakerySchema {
   '@context': string
@@ -125,7 +125,7 @@ export const getBakerySchema = (): BakerySchema => ({
   name: 'Bäckerei Heusser',
   description:
     'Traditionelle Handwerksbäckerei seit 1933 in Homburg/Kirrberg. Frische Backwaren, Brot, Brötchen, Kuchen und Torten täglich frisch gebacken.',
-  url: 'https://xn--bckerei-heusser-0kb.de',
+  url: SITE_URL,
   telephone: '+49 6841 2229',
   email: LEGAL.email,
   address: {
@@ -150,20 +150,17 @@ export const getBakerySchema = (): BakerySchema => ({
   },
   foundingDate: '1933',
   image: [
-    'https://xn--bckerei-heusser-0kb.de/og-image.jpg',
-    'https://xn--bckerei-heusser-0kb.de/assets/images/bakery/fresh-bread-hero.jpg',
-    'https://xn--bckerei-heusser-0kb.de/assets/images/bakery/artisan-croissants.jpg',
+    `${SITE_URL}/og-image.jpg`,
+    `${SITE_URL}/assets/images/bakery/neu_theke3.jpeg`,
+    `${SITE_URL}/assets/images/bakery/fresh-bread-hero.jpg`,
   ],
-  sameAs: [
-    'https://www.facebook.com/baeckereiheusser',
-    'https://www.instagram.com/baeckereiheusser',
-  ],
-  menu: 'https://xn--bckerei-heusser-0kb.de/products',
+  sameAs: [LEGAL.social.facebook, LEGAL.social.instagram],
+  menu: `${SITE_URL}/products`,
   hasMenu: {
     '@type': 'Menu',
     name: 'Bäckerei Heusser Sortiment',
     description: 'Unser komplettes Sortiment an frischen Backwaren',
-    url: 'https://xn--bckerei-heusser-0kb.de/products',
+    url: `${SITE_URL}/products`,
   },
 })
 
@@ -182,9 +179,7 @@ export const getProductSchema = (product: {
   description:
     product.description ||
     `${product.name} - Frisch gebacken in unserer traditionellen Handwerksbäckerei`,
-  image:
-    product.image ||
-    'https://xn--bckerei-heusser-0kb.de/assets/images/products/placeholder.jpg',
+  image: product.image || `${SITE_URL}/og-image.jpg`,
   brand: {
     '@type': 'Brand',
     name: 'Bäckerei Heusser',
@@ -207,7 +202,7 @@ export const getProductSchema = (product: {
 export const getBreadcrumbSchema = (
   items: Array<{ name: string; url?: string }>
 ): BreadcrumbSchema => {
-  const baseUrl = 'https://xn--bckerei-heusser-0kb.de'
+  const baseUrl = SITE_URL
 
   return {
     '@context': 'https://schema.org',
@@ -242,8 +237,8 @@ export const getOrganizationSchema = () => ({
   '@context': 'https://schema.org',
   '@type': 'Organization',
   name: 'Bäckerei Heusser',
-  url: 'https://xn--bckerei-heusser-0kb.de',
-  logo: 'https://xn--bckerei-heusser-0kb.de/logo.svg',
+  url: SITE_URL,
+  logo: `${SITE_URL}/android-chrome-512x512.png`,
   contactPoint: {
     '@type': 'ContactPoint',
     telephone: '+49-6841-2229',
@@ -251,10 +246,7 @@ export const getOrganizationSchema = () => ({
     areaServed: 'DE',
     availableLanguage: 'German',
   },
-  sameAs: [
-    'https://www.facebook.com/baeckereiheusser',
-    'https://www.instagram.com/baeckereiheusser',
-  ],
+  sameAs: [LEGAL.social.facebook, LEGAL.social.instagram],
   address: {
     '@type': 'PostalAddress',
     streetAddress: 'Eckstraße 3',

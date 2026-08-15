@@ -24,14 +24,10 @@ export const metadata = {
     telephone: false,
   },
   metadataBase: new URL(SITE_URL),
-  alternates: {
-    canonical: '/',
-  },
   openGraph: {
     title: 'Bäckerei Heusser - Traditionelle Handwerksbäckerei',
     description:
       'Frische Backwaren aus traditioneller Handwerkskunst seit 1933',
-    url: SITE_URL,
     siteName: 'Bäckerei Heusser',
     images: [
       {
@@ -140,10 +136,7 @@ export default function RootLayout({
                 `${SITE_URL}/og-image.jpg`,
                 `${SITE_URL}/assets/images/bakery/fresh-bread-hero.jpg`,
               ],
-              sameAs: [
-                'https://www.facebook.com/baeckereiheusser',
-                'https://www.instagram.com/baeckereiheusser',
-              ],
+              sameAs: [LEGAL.social.facebook, LEGAL.social.instagram],
               menu: `${SITE_URL}/products`,
               paymentAccepted: ['Cash', 'Credit Card', 'Debit Card'],
               currenciesAccepted: 'EUR',
@@ -169,7 +162,7 @@ export default function RootLayout({
               '@type': 'Organization',
               name: 'Bäckerei Heusser',
               url: SITE_URL,
-              logo: `${SITE_URL}/logo.svg`,
+              logo: `${SITE_URL}/android-chrome-512x512.png`,
               contactPoint: {
                 '@type': 'ContactPoint',
                 telephone: '+49-6841-2229',
@@ -177,10 +170,7 @@ export default function RootLayout({
                 areaServed: 'DE',
                 availableLanguage: 'German',
               },
-              sameAs: [
-                'https://www.facebook.com/baeckereiheusser',
-                'https://www.instagram.com/baeckereiheusser',
-              ],
+              sameAs: [LEGAL.social.facebook, LEGAL.social.instagram],
             }),
           }}
         />

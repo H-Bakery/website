@@ -18,7 +18,10 @@ describe('Landing RootLayout', () => {
     // The layout includes structured data in a script tag
     // We verify the metadata contains the necessary fields for schema.org
     expect(metadata.metadataBase).toBeDefined()
-    expect(metadata.alternates).toBeDefined()
+    // Canonical URLs are set per page (see page.tsx files), not globally,
+    // so every page can't claim the homepage as canonical.
+    expect(metadata).not.toHaveProperty('alternates')
+    expect(metadata.openGraph).not.toHaveProperty('url')
   })
 
   it('has proper SEO configuration', () => {

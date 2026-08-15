@@ -15,6 +15,15 @@ import {
   Link,
 } from '@mui/material'
 import {
+  Timeline,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineConnector,
+  TimelineContent,
+  TimelineDot,
+  TimelineOppositeContent,
+} from '@mui/lab'
+import {
   CheckCircle as CheckIcon,
   Grain as GrainIcon,
   Nature as NatureIcon,
@@ -26,11 +35,51 @@ import Hero from '../../components/Hero'
 import { Metadata } from 'next'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/about' },
   title: 'Über uns - Bäckerei Heusser',
   description:
-    'Erfahren Sie mehr über unsere Bäckerei-Familie und fast 90 Jahre Tradition und Handwerkskunst seit 1933.',
+    'Erfahren Sie mehr über unsere Bäckerei-Familie und über 90 Jahre Tradition und Handwerkskunst seit 1933.',
   keywords: 'Über uns, Geschichte, Familie, Tradition, Handwerk, Bäckerei',
 }
+
+const historyTimeline = [
+  {
+    year: '1933',
+    title: 'Gründung der Bäckerei',
+    description:
+      'Heinrich Heusser gründet die Bäckerei in Kirrberg und setzt von Anfang an auf traditionelle Rezepte und hochwertige Zutaten.',
+  },
+  {
+    year: '1968',
+    title: 'Übernahme durch die zweite Generation',
+    description:
+      'Heinrich "Heiner" Heusser übernimmt mit seiner Frau Hildegard den Familienbetrieb und baut das Sortiment kontinuierlich aus.',
+  },
+  {
+    year: '1985',
+    title: 'Ausbau der Backstube',
+    description:
+      'Die Backstube wird modernisiert und erweitert, um der steigenden Nachfrage gerecht zu werden, ohne dabei Kompromisse bei der Qualität einzugehen.',
+  },
+  {
+    year: '2000',
+    title: 'Renovierung des Verkaufsraums',
+    description:
+      'Der Verkaufsraum wird renoviert und neu gestaltet, um den Kunden ein noch angenehmeres Einkaufserlebnis zu bieten.',
+  },
+  {
+    year: '2022',
+    title: 'Übergang zur dritten Generation',
+    description:
+      'Karl-Heinrich Heusser übernimmt die Bäckerei in dritter Generation und führt die Familientradition mit neuen Ideen und bewährter Qualität fort.',
+  },
+  {
+    year: 'Heute',
+    title: 'Tradition bewahren, Zukunft gestalten',
+    description:
+      'Wir setzen weiterhin auf traditionelles Handwerk und regionale Zutaten, während wir behutsam neue Wege gehen, um unsere Backkunst zukunftsfähig zu halten.',
+  },
+]
 
 export default function AboutPage() {
   return (
@@ -72,7 +121,7 @@ export default function AboutPage() {
           color="text.secondary"
           sx={{ maxWidth: 600, mx: 'auto', textAlign: 'center', mb: 6 }}
         >
-          Fast 90 Jahre Bäckerhandwerk und Familientradition
+          Über 90 Jahre Bäckerhandwerk und Familientradition
         </Typography>
 
         {/* Main Story */}
@@ -80,8 +129,10 @@ export default function AboutPage() {
           <Grid item xs={12} md={6}>
             <Box
               component="img"
-              src="/assets/images/bakery/1933.png"
+              src="/assets/images/bakery/1933.jpg"
               alt="Historisches Bäckerei Foto von 1933"
+              loading="lazy"
+              decoding="async"
               sx={{
                 width: '100%',
                 height: 300,
@@ -101,10 +152,10 @@ export default function AboutPage() {
                 Familienbetrieb seit 1933
               </Typography>
               <Typography variant="body1" paragraph>
-                Seit nun fast einem Jahrhundert backen wir Backwaren mit
-                höchster Qualität und Leidenschaft für das wahre Handwerk. Alles
-                begann 1933, als Bäckermeister Heinrich Heusser unsere kleine,
-                aber feine Bäckerei in Kirrberg eröffnete.
+                Seit nun über neun Jahrzehnten backen wir Backwaren mit höchster
+                Qualität und Leidenschaft für das wahre Handwerk. Alles begann
+                1933, als Bäckermeister Heinrich Heusser unsere kleine, aber
+                feine Bäckerei in Kirrberg eröffnete.
               </Typography>
               <Typography variant="body1" paragraph>
                 Sein Sohn, Heinrich "Heiner" Heusser, ebenfalls Bäckermeister
@@ -124,7 +175,14 @@ export default function AboutPage() {
         </Grid>
 
         {/* Current Operations */}
-        <Box sx={{ bgcolor: 'grey.100', py: 6, mx: -4, mb: 6 }}>
+        <Box
+          sx={{
+            bgcolor: 'grey.100',
+            py: 6,
+            mx: { xs: -2, sm: -3 },
+            mb: 6,
+          }}
+        >
           <Container maxWidth="lg">
             <Grid container spacing={8}>
               <Grid
@@ -157,6 +215,8 @@ export default function AboutPage() {
                   component="img"
                   src="/assets/images/bakery/neu_theke3.jpeg"
                   alt="Unser gemütlicher Verkaufsraum"
+                  loading="lazy"
+                  decoding="async"
                   sx={{
                     width: '100%',
                     height: 300,
@@ -245,7 +305,7 @@ export default function AboutPage() {
       </Container>
 
       {/* Core Values */}
-      <Box sx={{ bgcolor: 'grey.50', py: 6, mx: -4, mb: 6 }}>
+      <Box sx={{ bgcolor: 'grey.50', py: 6, mb: 6 }}>
         {' '}
         {/* Warm cream */}
         <Container maxWidth="lg">
@@ -309,76 +369,129 @@ export default function AboutPage() {
         </Container>
       </Box>
 
-      {/* Team */}
-      <Typography variant="h3" component="h2" align="center" gutterBottom>
-        Unser Team
-      </Typography>
-      <Typography
-        variant="body1"
-        align="center"
-        color="text.secondary"
-        paragraph
-        sx={{ mb: 5 }}
-      >
-        Die Menschen hinter unseren köstlichen Backwaren
-      </Typography>
+      {/* History Timeline */}
+      <Container maxWidth="md" sx={{ mb: 6 }}>
+        <Typography variant="h3" component="h2" align="center" gutterBottom>
+          Unsere Geschichte
+        </Typography>
+        <Typography
+          variant="body1"
+          align="center"
+          color="text.secondary"
+          paragraph
+          sx={{ mb: 5 }}
+        >
+          Über 90 Jahre Bäckerhandwerk und Familientradition in Kirrberg.
+        </Typography>
 
-      <Grid container spacing={4} sx={{ mb: 6 }}>
-        {[
-          {
-            name: 'Karl Heinrich Heusser',
-            role: 'Geschäftsführer und Diplom Ingenieur',
-            description:
-              'Leitet den Betrieb mit technischem Know-how und Leidenschaft für die Bäckertradition.',
-          },
-          {
-            name: 'Florian Hein',
-            role: 'Backstubenleiter',
-            description:
-              'Verantwortlich für unsere hochwertigen Backwaren mit handwerklichem Geschick und Kreativität.',
-          },
-          {
-            name: 'Daniela Fricke',
-            role: 'Bäckereifachverkäuferin',
-            description:
-              'Sorgt mit ihrer Expertise für eine kompetente Beratung und herzlichen Service am Verkaufstresen.',
-          },
-        ].map((member, index) => (
-          <Grid item xs={12} md={4} key={index}>
-            <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
-              <Box
-                sx={{
-                  width: 100,
-                  height: 100,
-                  bgcolor: 'grey.300',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  mx: 'auto',
-                  mb: 2,
-                }}
-              >
-                <Typography variant="h4" color="text.secondary">
-                  {member.name.charAt(0)}
+        <Timeline position="alternate" sx={{ p: 0 }}>
+          {historyTimeline.map((event, index) => (
+            <TimelineItem key={event.year}>
+              <TimelineOppositeContent sx={{ m: 'auto 0', p: 2 }}>
+                <Typography variant="h6" color="primary.main" fontWeight="bold">
+                  {event.year}
                 </Typography>
-              </Box>
-              <Typography variant="h6" gutterBottom>
-                {member.name}
-              </Typography>
-              <Typography variant="subtitle2" color="primary.main" gutterBottom>
-                {member.role}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                {member.description}
-              </Typography>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+              </TimelineOppositeContent>
+              <TimelineSeparator>
+                <TimelineDot
+                  color="primary"
+                  variant={
+                    index === historyTimeline.length - 1 ? 'filled' : 'outlined'
+                  }
+                />
+                {index < historyTimeline.length - 1 && <TimelineConnector />}
+              </TimelineSeparator>
+              <TimelineContent sx={{ py: 2 }}>
+                <Paper elevation={2} sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography variant="h6" component="h3" gutterBottom>
+                    {event.title}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {event.description}
+                  </Typography>
+                </Paper>
+              </TimelineContent>
+            </TimelineItem>
+          ))}
+        </Timeline>
+      </Container>
+
+      {/* Team */}
+      <Container maxWidth="lg">
+        <Typography variant="h3" component="h2" align="center" gutterBottom>
+          Unser Team
+        </Typography>
+        <Typography
+          variant="body1"
+          align="center"
+          color="text.secondary"
+          paragraph
+          sx={{ mb: 5 }}
+        >
+          Die Menschen hinter unseren köstlichen Backwaren
+        </Typography>
+
+        <Grid container spacing={4} sx={{ mb: 6 }}>
+          {[
+            {
+              name: 'Karl Heinrich Heusser',
+              role: 'Geschäftsführer und Diplom Ingenieur',
+              description:
+                'Leitet den Betrieb mit technischem Know-how und Leidenschaft für die Bäckertradition.',
+            },
+            {
+              name: 'Florian Hein',
+              role: 'Backstubenleiter',
+              description:
+                'Verantwortlich für unsere hochwertigen Backwaren mit handwerklichem Geschick und Kreativität.',
+            },
+            {
+              name: 'Daniela Fricke',
+              role: 'Bäckereifachverkäuferin',
+              description:
+                'Sorgt mit ihrer Expertise für eine kompetente Beratung und herzlichen Service am Verkaufstresen.',
+            },
+          ].map((member, index) => (
+            <Grid item xs={12} md={4} key={index}>
+              <Card sx={{ height: '100%', textAlign: 'center', p: 3 }}>
+                <Box
+                  sx={{
+                    width: 100,
+                    height: 100,
+                    bgcolor: 'grey.300',
+                    borderRadius: '50%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    mx: 'auto',
+                    mb: 2,
+                  }}
+                >
+                  <Typography variant="h4" color="text.secondary">
+                    {member.name.charAt(0)}
+                  </Typography>
+                </Box>
+                <Typography variant="h6" gutterBottom>
+                  {member.name}
+                </Typography>
+                <Typography
+                  variant="subtitle2"
+                  color="primary.main"
+                  gutterBottom
+                >
+                  {member.role}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {member.description}
+                </Typography>
+              </Card>
+            </Grid>
+          ))}
+        </Grid>
+      </Container>
 
       {/* CTA Section */}
-      <Box sx={{ bgcolor: 'primary.main', color: 'white', py: 6, mx: -4 }}>
+      <Box sx={{ bgcolor: 'primary.main', color: 'white', py: 6 }}>
         <Container maxWidth="lg">
           <Box sx={{ textAlign: 'center' }}>
             <Typography variant="h3" component="h2" gutterBottom>
@@ -401,7 +514,7 @@ export default function AboutPage() {
                 variant="outlined"
                 size="large"
                 sx={{ color: 'white', borderColor: 'white' }}
-                href="/#standort"
+                href="/contact"
               >
                 Kontakt aufnehmen
               </Button>

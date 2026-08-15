@@ -6,6 +6,7 @@ import { LegalPage, LegalSection, P } from '../../components/legal/LegalPage'
 import { LEGAL } from '../../config/legal'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/imprint' },
   title: 'Impressum - Bäckerei Heusser',
   description:
     'Impressum und Anbieterkennzeichnung der Bäckerei Heusser in Homburg-Kirrberg.',

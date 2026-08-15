@@ -10,10 +10,11 @@ export interface NewsType {
   text: string
   shortDescription: string
   slug: string
+  published?: string
 }
 
 const Card: React.FC<NewsType> = (props) => {
-  const { id, name, category, image, shortDescription, slug } = props
+  const { id, name, category, image, shortDescription, slug, published } = props
 
   return (
     <Link href={`/news/${slug}`} style={{ textDecoration: 'none' }}>
@@ -31,6 +32,11 @@ const Card: React.FC<NewsType> = (props) => {
         </Typography>
         <Box sx={styles.footer}>
           <Chip size="small" label={category} />
+          {published && (
+            <Typography variant="caption" color="text.secondary">
+              {published}
+            </Typography>
+          )}
         </Box>
       </Box>
     </Link>

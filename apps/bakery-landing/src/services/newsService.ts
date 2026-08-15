@@ -37,6 +37,19 @@ function getNewsDirectory(): string {
 
 const newsDirectory = getNewsDirectory()
 
+/**
+ * Parse a published date. Content files use the German format 'DD.MM.YYYY';
+ * ISO strings are accepted as a fallback.
+ */
+export function parsePublishedDate(published: string): Date {
+  const match = /^(\d{1,2})\.(\d{1,2})\.(\d{4})$/.exec(published.trim())
+  if (match) {
+    const [, day, month, year] = match
+    return new Date(Number(year), Number(month) - 1, Number(day))
+  }
+  return new Date(published)
+}
+
 export function getAllNews(): NewsItem[] {
   try {
     // Check if directory exists
@@ -84,7 +97,8 @@ export function getAllNews(): NewsItem[] {
         .filter((item) => item !== null) as NewsItem[]
     ).sort(
       (a, b) =>
-        new Date(b.published).getTime() - new Date(a.published).getTime()
+        parsePublishedDate(b.published).getTime() -
+        parsePublishedDate(a.published).getTime()
     )
 
     return allNews

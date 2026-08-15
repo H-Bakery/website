@@ -9,12 +9,9 @@ import {
   CardContent,
   CardActionArea,
   CardMedia,
-  IconButton,
   Fade,
   Rating,
 } from '@mui/material'
-import FavoriteIcon from '@mui/icons-material/Favorite'
-import FavoriteBorderIcon from '@mui/icons-material/FavoriteBorder'
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment'
 import NewReleasesIcon from '@mui/icons-material/NewReleases'
 import LocalFloristIcon from '@mui/icons-material/LocalFlorist'
@@ -48,13 +45,7 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
     product.image ||
     '/assets/images/products/erdbeertorte.jpg'
 
-  const [isFavorite, setIsFavorite] = useState(false)
   const [isHovered, setIsHovered] = useState(false)
-
-  const handleToggleFavorite = (event: React.MouseEvent) => {
-    event.stopPropagation()
-    setIsFavorite(!isFavorite)
-  }
 
   return (
     <Card
@@ -90,19 +81,6 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
           />
         )}
       </Box> */}
-
-      {/* Favorite Button - rose accent */}
-      <IconButton
-        sx={styles.favoriteButton}
-        onClick={handleToggleFavorite}
-        size="small"
-      >
-        {isFavorite ? (
-          <FavoriteIcon sx={{ color: 'secondary.main' }} /> // Dusty rose heart
-        ) : (
-          <FavoriteBorderIcon sx={{ color: 'grey.500' }} />
-        )}
-      </IconButton>
 
       <CardActionArea
         component={Link}
@@ -228,16 +206,6 @@ const styles = {
     fontWeight: 'bold',
     '& .MuiChip-icon': {
       color: 'white',
-    },
-  },
-  favoriteButton: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    zIndex: 2,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    '&:hover': {
-      backgroundColor: 'rgba(255, 255, 255, 1)',
     },
   },
   actionArea: {

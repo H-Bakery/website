@@ -10,6 +10,7 @@ import {
 } from '../../config/legal'
 
 export const metadata: Metadata = {
+  alternates: { canonical: '/datenschutz' },
   title: 'Datenschutzerklärung - Bäckerei Heusser',
   description:
     'Datenschutzerklärung der Bäckerei Heusser: Informationen zur Verarbeitung personenbezogener Daten auf dieser Website gemäß DSGVO.',
