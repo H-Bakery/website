@@ -4,7 +4,7 @@
   "description": "Traditionelle Handwerksbäckerei in Homburg-Kirrberg seit 1933. Frische Backwaren täglich aus eigener Herstellung.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#FFF3E6",
   "theme_color": "#8B4513",
   "orientation": "portrait-primary",
   "scope": "/",
@@ -36,69 +36,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "screenshots": [
-    {
-      "src": "/screenshots/homepage.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "label": "Startseite der Bäckerei Heusser"
-    },
-    {
-      "src": "/screenshots/products.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "label": "Unser Sortiment"
-    },
-    {
-      "src": "/screenshots/mobile.png",
-      "sizes": "375x812",
-      "type": "image/png",
-      "label": "Mobile Ansicht"
-    }
-  ],
-  "shortcuts": [
-    {
-      "name": "Sortiment",
-      "short_name": "Produkte",
-      "description": "Unser komplettes Sortiment ansehen",
-      "url": "/products",
-      "icons": [
-        {
-          "src": "/icons/products-96x96.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Bestellen",
-      "short_name": "Bestellen",
-      "description": "Jetzt vorbestellen",
-      "url": "/bestellen",
-      "icons": [
-        {
-          "src": "/icons/order-96x96.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    },
-    {
-      "name": "Kontakt",
-      "short_name": "Kontakt",
-      "description": "Kontaktinformationen und Öffnungszeiten",
-      "url": "/#standort",
-      "icons": [
-        {
-          "src": "/icons/contact-96x96.png",
-          "sizes": "96x96",
-          "type": "image/png"
-        }
-      ]
-    }
-  ],
-  "prefer_related_applications": false,
-  "related_applications": [],
-  "features": ["offline", "push-notifications", "background-sync"]
+  ]
 }

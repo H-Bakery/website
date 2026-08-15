@@ -10,6 +10,7 @@ import {
   useMediaQuery,
 } from '@mui/material'
 import PhoneIcon from '@mui/icons-material/Phone'
+import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import PlaceIcon from '@mui/icons-material/Place'
 import {
   isCurrentlyOpen,
@@ -109,15 +110,27 @@ const EnhancedHero: React.FC = () => {
             Täglich frisch aus der Backstube — seit 1933
           </Typography>
 
-          {/* Phone Number */}
-          <Typography
-            component="a"
-            href="tel:068412229"
-            sx={styles.phoneNumber}
-          >
-            <PhoneIcon sx={{ fontSize: '1.2em', mr: 1 }} />
-            06841 2229
-          </Typography>
+          {/* Phone Numbers */}
+          <Box sx={styles.phoneRow}>
+            <Typography
+              component="a"
+              href="tel:068412229"
+              sx={styles.phoneNumber}
+            >
+              <PhoneIcon sx={{ fontSize: '1.2em', mr: 1 }} />
+              06841 2229
+            </Typography>
+            <Typography
+              component="a"
+              href="https://wa.me/491706133279"
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={styles.phoneNumber}
+            >
+              <WhatsAppIcon sx={{ fontSize: '1.2em', mr: 1 }} />
+              0170 6133279
+            </Typography>
+          </Box>
 
           {/* CTA Buttons */}
           <Box sx={styles.ctaContainer}>
@@ -212,6 +225,14 @@ const styles = {
     textShadow: '1px 2px 4px rgba(0,0,0,0.4)',
     lineHeight: 1.6,
   },
+  phoneRow: {
+    display: 'flex',
+    flexDirection: { xs: 'column', sm: 'row' } as any,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: { xs: 0.5, sm: 2 },
+    mb: 4,
+  },
   phoneNumber: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -220,7 +241,6 @@ const styles = {
     fontWeight: 700,
     fontFamily: '"Merriweather", serif',
     textDecoration: 'none',
-    mb: 4,
     py: 1,
     px: 2,
     borderRadius: '8px',

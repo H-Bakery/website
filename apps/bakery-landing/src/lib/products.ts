@@ -152,8 +152,52 @@ export function getProductsByCategory(): ProductsByCategory[] {
  * Load all HQ products and map them to the display Product format.
  * Runs at build time (server component / static generation).
  */
+/**
+ * Fallback: gebündelte Produktliste (src/mocks/products), falls das externe
+ * HQ-Produktverzeichnis nicht verfügbar ist (z. B. im CI-Build für GitHub Pages).
+ */
+function loadFallbackProducts(): Product[] {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { PRODUCTS } = require('../mocks/products') as {
+    PRODUCTS: Array<{
+      id: number
+      name: string
+      category: string
+      image?: string
+      price: number
+      description?: string
+    }>
+  }
+  return PRODUCTS.map((p) => {
+    const categoryKey =
+      Object.keys(CATEGORY_LABELS).find(
+        (k) => CATEGORY_LABELS[k] === p.category
+      ) || ''
+    const image =
+      p.image && p.image.length > 10
+        ? p.image
+        : CATEGORY_FALLBACK_IMAGE[categoryKey] || null
+    return {
+      id: p.id,
+      name: p.name,
+      category: p.category,
+      price: p.price,
+      image,
+      imageUrl: image,
+      description: p.description,
+      available: true,
+      seasonal: false,
+    }
+  })
+}
+
 export function loadProducts(): Product[] {
-  return getHQProducts().map((p) => ({
+  const hq = getHQProducts()
+  if (hq.length === 0) {
+    console.warn('Using bundled fallback products (src/mocks/products).')
+    return loadFallbackProducts()
+  }
+  return hq.map((p) => ({
     id: p.numeric_id,
     name: p.name,
     category: CATEGORY_LABELS[p.category] || p.category,

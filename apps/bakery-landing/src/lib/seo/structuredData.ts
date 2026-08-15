@@ -1,4 +1,5 @@
 import { getSeoOpeningHours } from '../../utils/openingHours'
+import { LEGAL } from '../../config/legal'
 
 export interface BakerySchema {
   '@context': string
@@ -126,7 +127,7 @@ export const getBakerySchema = (): BakerySchema => ({
     'Traditionelle Handwerksbäckerei seit 1933 in Homburg/Kirrberg. Frische Backwaren, Brot, Brötchen, Kuchen und Torten täglich frisch gebacken.',
   url: 'https://xn--bckerei-heusser-0kb.de',
   telephone: '+49 6841 2229',
-  email: 'info@baeckerei-heusser.de',
+  email: LEGAL.email,
   address: {
     '@type': 'PostalAddress',
     streetAddress: 'Eckstraße 3',

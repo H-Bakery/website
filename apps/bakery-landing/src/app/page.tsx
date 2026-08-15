@@ -6,6 +6,7 @@ import PhoneIcon from '@mui/icons-material/Phone'
 import EnhancedHero from '../components/home/hero/EnhancedHero'
 import QuickInfoBar from '../components/home/QuickInfoBar'
 import FeaturedProducts from '../components/home/FeaturedProducts'
+import Brotplan from '../components/home/wochenanfebote'
 import EnhancedTestimonial from '../components/home/testimonial/EnhancedTestimonial'
 import CallToAction from '../components/CallToAction'
 import MapComponent from '../components/home/map'
@@ -46,6 +47,10 @@ export default function HomePage() {
       <QuickInfoBar />
 
       <FeaturedProducts products={featured} />
+
+      <Box id="brotplan">
+        <Brotplan />
+      </Box>
 
       <EnhancedTestimonial />
 

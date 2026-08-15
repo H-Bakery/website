@@ -5,6 +5,7 @@ import { Box, Container, Grid, Typography } from '@mui/material'
 import Link from 'next/link'
 import { getFooterHours } from '../utils/openingHours'
 import Wappen from './icons/brand/Wappen'
+import { LEGAL } from '../config/legal'
 
 export const LocalFooter: React.FC = () => {
   return (
@@ -161,7 +162,7 @@ export const LocalFooter: React.FC = () => {
               variant="body2"
               sx={{ color: 'rgba(255, 243, 230, 0.8)', fontSize: '1rem' }}
             >
-              info@baeckerei-heusser.de
+              {LEGAL.email}
             </Typography>
           </Grid>
 
@@ -208,23 +209,32 @@ export const LocalFooter: React.FC = () => {
             variant="body2"
             sx={{ color: 'rgba(255, 243, 230, 0.5)' }}
           >
-            &copy; Bäckerei Heusser 2025
+            &copy; {new Date().getFullYear()} Bäckerei Heusser
           </Typography>
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <Link href="/imprint" style={{ textDecoration: 'none' }}>
-              <Typography
-                variant="body2"
-                sx={{
-                  color: 'rgba(255, 243, 230, 0.7)',
-                  transition: 'color 0.2s ease',
-                  '&:hover': {
-                    color: '#d038ba',
-                  },
-                }}
+            {[
+              { label: 'Impressum', path: '/imprint' },
+              { label: 'Datenschutz', path: '/datenschutz' },
+            ].map((item) => (
+              <Link
+                key={item.path}
+                href={item.path}
+                style={{ textDecoration: 'none' }}
               >
-                Impressum
-              </Typography>
-            </Link>
+                <Typography
+                  variant="body2"
+                  sx={{
+                    color: 'rgba(255, 243, 230, 0.7)',
+                    transition: 'color 0.2s ease',
+                    '&:hover': {
+                      color: '#d038ba',
+                    },
+                  }}
+                >
+                  {item.label}
+                </Typography>
+              </Link>
+            ))}
           </Box>
         </Box>
       </Container>

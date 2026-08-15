@@ -57,6 +57,18 @@ export function generateSitemapXml(): string {
       priority: 0.3,
       lastmod: currentDate,
     },
+    {
+      loc: `${BASE_URL}/datenschutz`,
+      changefreq: 'yearly',
+      priority: 0.3,
+      lastmod: currentDate,
+    },
+    {
+      loc: `${BASE_URL}/contact`,
+      changefreq: 'monthly',
+      priority: 0.6,
+      lastmod: currentDate,
+    },
   ]
 
   // News pages

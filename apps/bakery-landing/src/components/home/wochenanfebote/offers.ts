@@ -1,141 +1,88 @@
 import { DailyOffer } from './Card'
 
+/** Gültig ab dem 11.08.2026 */
+export const BROTPLAN_GUELTIG_AB = '11.08.2026'
+
+const bread = (name: string, description: string) => ({
+  type: 'bread' as const,
+  name,
+  description,
+})
+
 export const ANGEBOTE: DailyOffer[] = [
   {
     name: 'Dienstag',
-    date: 'Täglich frisch',
+    date: 'Di.',
     specialOffers: [
-      {
-        type: 'bread' as const,
-        name: 'Mischbrot',
-        description: 'Klassisches Mischbrot aus Roggen und Weizen',
-      },
-      {
-        type: 'bread' as const,
-        name: 'Haferbrot',
-        description: 'Saftiges Brot mit knusprigen Haferflocken',
-      },
+      bread(
+        'Holzluken',
+        'Unser rustikales Roggenmischbrot mit herzhaftem Geschmack und langer Frischhaltung.'
+      ),
+      bread(
+        'Erlebnishof Brot',
+        'Saftiges Vollkornbrot mit Sonnenblumenkernen und Leinsaat – für alle, die bewusst genießen.'
+      ),
     ],
   },
   {
     name: 'Mittwoch',
-    date: 'Täglich frisch',
+    date: 'Mi.',
     specialOffers: [
-      {
-        type: 'bread' as const,
-        name: 'Vollgut',
-        description: 'Vollkornbrot mit besonders vielen Ballaststoffen',
-      },
-      {
-        type: 'bread' as const,
-        name: 'Walnuss',
-        description: 'Mit gerösteten Walnussstücken',
-      },
-      {
-        type: 'bread' as const,
-        name: 'Buttermilchbrot',
-        description: 'Besonders saftig durch Buttermilch',
-      },
-      {
-        type: 'pastry' as const,
-        name: 'Schnittentag',
-        description:
-          'Verschiedene Schnitten wie Sahneschnitten zum Sonderpreis',
-      },
-      {
-        type: 'meal' as const,
-        name: 'Schnitzelsandwich',
-        description: 'Ab 11 Uhr, knuspriges Schnitzel im Brötchen',
-      },
+      bread(
+        'Roggenmischbrot',
+        'Der klassische Brotgenuss – aromatisch, locker und täglich frisch gebacken.'
+      ),
+      bread(
+        'Bäckers Spezial',
+        'Jede Woche eine wechselnde Brotspezialität aus unserer Backstube.'
+      ),
     ],
   },
   {
     name: 'Donnerstag',
-    date: 'Täglich frisch',
+    date: 'Do.',
     specialOffers: [
-      {
-        type: 'bread' as const,
-        name: 'Dinkelmalz',
-        description: 'Dinkelmalzbrot mit besonderem Aroma',
-      },
-      {
-        type: 'bread' as const,
-        name: 'Dinkelvollkorn',
-        description: 'Herzhaftes Vollkornbrot aus 100% Dinkelmehl',
-      },
-      {
-        type: 'meal' as const,
-        name: 'Pizza & Flammkuchen',
-        description: 'Ab 11 Uhr, selbstgemacht aus unserem Steinbackofen',
-      },
+      bread(
+        'Heiners Kruste',
+        'Kräftiges Roggen-Dinkel-Malzbrot mit feiner Malznote und vollmundigem Geschmack.'
+      ),
+      bread(
+        'Haferbrot',
+        'Mildes Mischbrot mit wertvollen Haferflocken – besonders saftig und lange frisch.'
+      ),
     ],
   },
   {
     name: 'Freitag',
-    date: 'Täglich frisch',
+    date: 'Fr.',
     specialOffers: [
-      {
-        type: 'bread' as const,
-        name: 'Hildegard',
-        description: 'Nach Hildegard von Bingen Rezeptur',
-      },
-      {
-        type: 'bread' as const,
-        name: 'Urkorn',
-        description: 'Mit alten Getreidesorten gebacken',
-      },
-      {
-        type: 'meal' as const,
-        name: 'Mittagstisch',
-        description: 'Ab 11 Uhr, wechselnde Mittagsgerichte der Woche',
-      },
+      bread(
+        'Hildegard von Bingen',
+        'Urgetreidebrot mit ausgewählten Zutaten nach Hildegards traditioneller Ernährungslehre.'
+      ),
+      bread(
+        'Roggenmischbrot',
+        'Unser beliebter Brotklassiker – herzhaft, aromatisch und täglich frisch.'
+      ),
     ],
   },
   {
     name: 'Samstag',
-    date: 'Kuchentag',
+    date: 'Sa.',
     specialOffers: [
-      {
-        type: 'bread' as const,
-        name: 'Mischbrot',
-        description: 'Klassisches Mischbrot aus Roggen und Weizen',
-      },
-      {
-        type: 'bread' as const,
-        name: 'Vitalbrot',
-        description: 'Mit vielen gesunden Körnern und Saaten',
-      },
-      {
-        type: 'bread' as const,
-        name: 'Kerrbricher "Knorze"',
-        description: 'Unsere regionale Spezialität mit knuspriger Kruste',
-      },
-      {
-        type: 'pastry' as const,
-        name: 'Hefezöpfe',
-        description: 'Traditionell geflochten, gefüllt oder ungefüllt',
-      },
-      {
-        type: 'pastry' as const,
-        name: 'Kuchen des Tages',
-        description: 'Verschiedene hausgemachte Kuchenspezialitäten',
-      },
-    ],
-  },
-  {
-    name: 'Sonntag',
-    date: '8:00 - 11:00 Uhr',
-    specialOffers: [
-      {
-        type: 'bread' as const,
-        name: 'Frische Brötchen',
-        description: 'Klassisch, Mehrkorn, Laugen und Dinkel',
-      },
-      {
-        type: 'pastry' as const,
-        name: 'Kaffeestückchen',
-        description: 'Verschiedene Gebäcke zum Sonntagskaffee',
-      },
+      bread('Weizenmischbrot', 'Mildes Mischbrot – ideal für jeden Tag.'),
+      bread(
+        'Roggenmischbrot',
+        'Kräftig im Geschmack und besonders aromatisch.'
+      ),
+      bread(
+        'Holzluken',
+        'Rustikales Roggenmischbrot mit langer Frischhaltung.'
+      ),
+      bread(
+        'Kerbricher 4-Saat',
+        'Saftiges Mehrkornbrot mit vier wertvollen Saaten – kernig und aromatisch.'
+      ),
     ],
   },
 ]

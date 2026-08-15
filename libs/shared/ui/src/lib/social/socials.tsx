@@ -15,7 +15,7 @@ const SOCIALS = [
     icon: <Instagram />,
   },
   {
-    link: 'https://wa.me/015226621236',
+    link: 'https://wa.me/491706133279',
     icon: <Whatsapp />,
   },
 ]

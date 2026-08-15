@@ -22,6 +22,7 @@ import {
   Directions as DirectionsIcon,
 } from '@mui/icons-material'
 import Hero from '../../components/Hero'
+import { LEGAL } from '../../config/legal'
 import {
   getContactPageHours,
   getEarliestOpeningTime,
@@ -132,11 +133,11 @@ export default function ContactPage() {
                       primary="E-Mail"
                       secondary={
                         <Link
-                          href="mailto:info@baeckerei-heusser.de"
+                          href={`mailto:${LEGAL.email}`}
                           color="inherit"
                           underline="hover"
                         >
-                          info@baeckerei-heusser.de
+                          {LEGAL.email}
                         </Link>
                       }
                     />

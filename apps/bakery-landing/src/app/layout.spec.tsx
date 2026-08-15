@@ -4,7 +4,7 @@ import RootLayout, { metadata } from './layout'
 describe('Landing RootLayout', () => {
   it('includes correct metadata', () => {
     expect(metadata.title).toBe(
-      'Bäckerei Heusser - Traditionelle Handwerksbäckerei in Karlsruhe-Beiertheim'
+      'Bäckerei Heusser - Traditionelle Handwerksbäckerei in Homburg-Kirrberg'
     )
     expect(metadata.description).toBe(
       'Frische Backwaren aus traditioneller Handwerkskunst seit 1933. Brot, Brötchen, Kuchen und mehr täglich frisch gebacken in Kirrberg/Homburg.'

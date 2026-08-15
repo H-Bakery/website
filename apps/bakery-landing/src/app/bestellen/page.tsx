@@ -12,14 +12,14 @@ const contactConfig = {
   },
   whatsapp: {
     fallback: {
-      phone: '+49 6841 2229',
+      phone: '0170 6133279',
     },
   },
 }
 
 const createPhoneLink = () => `tel:${contactConfig.store.phone}`
 const createWhatsAppLink = (message: string) =>
-  `https://wa.me/4968412229?text=${encodeURIComponent(message)}`
+  `https://wa.me/491706133279?text=${encodeURIComponent(message)}`
 
 const BestellenPage: React.FC = () => (
   <>
@@ -128,8 +128,8 @@ const BestellenPage: React.FC = () => (
             Wichtige Hinweise
           </Typography>
           <Typography paragraph>
-            • Bestellungen für den nächsten Tag bitten wir bis spätestens 18:00
-            Uhr am Vortag aufzugeben.
+            • Bestellungen nehmen wir telefonisch oder per WhatsApp täglich von
+            05:30 bis 14:00 Uhr entgegen.
           </Typography>
           <Typography paragraph>
             • Spezielle Kuchen, Torten oder große Mengen benötigen mehr

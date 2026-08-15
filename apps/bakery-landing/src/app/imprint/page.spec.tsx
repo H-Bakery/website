@@ -1,79 +1,60 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import ImprintPage from './page'
-
-// Mock shared UI components
-jest.mock('@bakery/shared/ui', () => ({
-  MarkdownDisplay: ({ content }: { content: string }) => (
-    <div data-testid="markdown-display">{content}</div>
-  ),
-}))
+import { LEGAL } from '../../config/legal'
 
 describe('ImprintPage', () => {
   it('renders the page title', () => {
     renderWithTheme(<ImprintPage />)
-
-    expect(screen.getByText('Impressum')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 3, name: 'Impressum' })
+    ).toBeInTheDocument()
   })
 
-  it('displays company information', () => {
+  it('displays provider information according to § 5 DDG', () => {
     renderWithTheme(<ImprintPage />)
-
-    expect(screen.getByText(/Heusser AG/)).toBeInTheDocument()
-    expect(screen.getByText(/Bäckerei/)).toBeInTheDocument()
-  })
-
-  it('includes address information', () => {
-    renderWithTheme(<ImprintPage />)
-
-    expect(screen.getByText(/Hinwil/)).toBeInTheDocument()
-    expect(screen.getByText(/Schweiz/)).toBeInTheDocument()
+    expect(screen.getByText(/Angaben gemäß § 5 DDG/)).toBeInTheDocument()
+    expect(screen.getByText(/Inhaber: Karl-Heinz Heußer/)).toBeInTheDocument()
+    expect(screen.getByText(/Eckstraße 3/)).toBeInTheDocument()
+    expect(
+      screen.getAllByText(/66424 Homburg\/Kirrberg/).length
+    ).toBeGreaterThan(0)
   })
 
   it('shows contact details', () => {
     renderWithTheme(<ImprintPage />)
-
-    expect(screen.getByText(/Telefon/)).toBeInTheDocument()
-    expect(screen.getByText(/E-Mail/)).toBeInTheDocument()
+    expect(screen.getByText(LEGAL.phone)).toBeInTheDocument()
+    expect(screen.getByText(LEGAL.mobile)).toBeInTheDocument()
+    expect(screen.getByText(LEGAL.email)).toBeInTheDocument()
   })
 
-  it('includes legal information', () => {
+  it('includes the VAT id', () => {
     renderWithTheme(<ImprintPage />)
-
-    expect(screen.getByText(/Handelsregister/)).toBeInTheDocument()
-    expect(screen.getByText(/USt-IdNr/)).toBeInTheDocument()
+    expect(screen.getByText(/USt-IdNr: DE356803905/)).toBeInTheDocument()
   })
 
-  it('displays responsible person', () => {
+  it('includes craft chamber and profession', () => {
     renderWithTheme(<ImprintPage />)
-
-    expect(screen.getByText(/Verantwortlich/)).toBeInTheDocument()
-    expect(screen.getByText(/Geschäftsführer/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Handwerkskammer des Saarlandes/)
+    ).toBeInTheDocument()
+    expect(screen.getByText(/Bäckermeister/)).toBeInTheDocument()
   })
 
-  it('includes data protection notice', () => {
+  it('displays the editorially responsible person (§ 18 Abs. 2 MStV)', () => {
     renderWithTheme(<ImprintPage />)
-
-    expect(screen.getByText(/Datenschutz/)).toBeInTheDocument()
+    expect(screen.getByText(/§ 18 Abs. 2 MStV/)).toBeInTheDocument()
+    expect(screen.getByText(/Sebastian Heußer/)).toBeInTheDocument()
   })
 
-  it('has correct page structure', () => {
-    const { container } = renderWithTheme(<ImprintPage />)
-
-    // Check for main content area
-    const mainContent = container.querySelector('main')
-    expect(mainContent).toBeInTheDocument()
-
-    // Check for headings
-    const headings = container.querySelectorAll('h1, h2')
-    expect(headings.length).toBeGreaterThan(0)
+  it('does not link the discontinued EU ODR platform', () => {
+    renderWithTheme(<ImprintPage />)
+    expect(screen.queryByText(/ec\.europa\.eu\/consumers\/odr/)).toBeNull()
   })
 
-  it('uses proper semantic markup', () => {
-    const { container } = renderWithTheme(<ImprintPage />)
-
-    // Check for address element for contact info
-    const markdownDisplay = screen.getByTestId('markdown-display')
-    expect(markdownDisplay).toBeInTheDocument()
+  it('links to the privacy policy', () => {
+    renderWithTheme(<ImprintPage />)
+    const link = screen.getByRole('link', { name: 'Datenschutzerklärung' })
+    expect(link).toHaveAttribute('href', '/datenschutz')
   })
 })

@@ -8,8 +8,6 @@ Allow: /
 # Disallow admin and API paths (if any)
 Disallow: /api/
 Disallow: /admin/
-Disallow: /_next/static/
-Disallow: /*.json$
 
 # Sitemap location
 Sitemap: https://xn--bckerei-heusser-0kb.de/sitemap.xml
