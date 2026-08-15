@@ -1,27 +1,36 @@
-import React from 'react';
-import { Button, Menu, MenuItem, ListItemIcon, ListItemText, CircularProgress, Alert, Snackbar } from '@mui/material';
-import DownloadIcon from '@mui/icons-material/Download';
-import DescriptionIcon from '@mui/icons-material/Description';
-import GridOnIcon from '@mui/icons-material/GridOn';
-import ImageIcon from '@mui/icons-material/Image';
-import { useExportReports, ExportParams } from '../hooks/use-export-reports';
+import React from 'react'
+import {
+  Button,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  CircularProgress,
+  Alert,
+  Snackbar,
+} from '@mui/material'
+import DownloadIcon from '@mui/icons-material/Download'
+import DescriptionIcon from '@mui/icons-material/Description'
+import GridOnIcon from '@mui/icons-material/GridOn'
+import ImageIcon from '@mui/icons-material/Image'
+import { useExportReports, ExportParams } from '../hooks/use-export-reports'
 
 interface AnalyticsParams {
-  startDate: string;
-  endDate: string;
-  granularity?: 'daily' | 'weekly' | 'monthly';
+  startDate: string
+  endDate: string
+  granularity?: 'daily' | 'weekly' | 'monthly'
 }
 
-export type ExportFormat = 'csv' | 'pdf' | 'excel' | 'png';
+export type ExportFormat = 'csv' | 'pdf' | 'excel' | 'png'
 
 export interface ExportButtonProps {
-  onExport?: (format: ExportFormat) => void;
-  formats?: ExportFormat[];
-  disabled?: boolean;
-  buttonText?: string;
-  size?: 'small' | 'medium' | 'large';
-  analyticsParams?: AnalyticsParams;
-  includeCharts?: boolean;
+  onExport?: (format: ExportFormat) => void
+  formats?: ExportFormat[]
+  disabled?: boolean
+  buttonText?: string
+  size?: 'small' | 'medium' | 'large'
+  analyticsParams?: AnalyticsParams
+  includeCharts?: boolean
 }
 
 const formatIcons: Record<ExportFormat, React.ReactElement> = {
@@ -29,14 +38,14 @@ const formatIcons: Record<ExportFormat, React.ReactElement> = {
   pdf: <DescriptionIcon />,
   excel: <GridOnIcon />,
   png: <ImageIcon />,
-};
+}
 
 const formatLabels: Record<ExportFormat, string> = {
   csv: 'CSV exportieren',
   pdf: 'PDF exportieren',
   excel: 'Excel exportieren',
   png: 'Als Bild exportieren',
-};
+}
 
 export function ExportButton({
   onExport,
@@ -47,27 +56,27 @@ export function ExportButton({
   analyticsParams,
   includeCharts = true,
 }: ExportButtonProps) {
-  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
-  const [showSuccess, setShowSuccess] = React.useState(false);
-  const open = Boolean(anchorEl);
-  
-  const { exportReport, isExporting, error, clearError } = useExportReports();
+  const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null)
+  const [showSuccess, setShowSuccess] = React.useState(false)
+  const open = Boolean(anchorEl)
+
+  const { exportReport, isExporting, error, clearError } = useExportReports()
 
   const handleClick = (event: React.MouseEvent<HTMLButtonElement>) => {
-    setAnchorEl(event.currentTarget);
-  };
+    setAnchorEl(event.currentTarget)
+  }
 
   const handleClose = () => {
-    setAnchorEl(null);
-  };
+    setAnchorEl(null)
+  }
 
   const handleExport = async (format: ExportFormat) => {
-    handleClose();
-    
+    handleClose()
+
     // For PNG export or custom export handler, use the provided callback
     if (format === 'png' || !analyticsParams) {
-      onExport?.(format);
-      return;
+      onExport?.(format)
+      return
     }
 
     try {
@@ -75,21 +84,23 @@ export function ExportButton({
         ...analyticsParams,
         format: format as 'pdf' | 'excel' | 'csv',
         includeCharts,
-      };
+      }
 
-      await exportReport(exportParams);
-      setShowSuccess(true);
+      await exportReport(exportParams)
+      setShowSuccess(true)
     } catch (error) {
       // Error is handled by the hook
-      console.error('Export failed:', error);
+      console.error('Export failed:', error)
     }
-  };
+  }
 
   return (
     <>
       <Button
         variant="outlined"
-        startIcon={isExporting ? <CircularProgress size={16} /> : <DownloadIcon />}
+        startIcon={
+          isExporting ? <CircularProgress size={16} /> : <DownloadIcon />
+        }
         onClick={handleClick}
         disabled={disabled || isExporting}
         size={size}
@@ -141,7 +152,7 @@ export function ExportButton({
         </Alert>
       </Snackbar>
     </>
-  );
+  )
 }
 
-export default ExportButton;
+export default ExportButton

@@ -77,13 +77,14 @@ global.ResizeObserver = jest.fn().mockImplementation(() => ({
 Element.prototype.scrollIntoView = jest.fn()
 
 // Mock WebSocket for production scheduling tests
-global.WebSocket = jest.fn().mockImplementation(() => ({
+const WebSocketMock = jest.fn().mockImplementation(() => ({
   close: jest.fn(),
   send: jest.fn(),
   addEventListener: jest.fn(),
   removeEventListener: jest.fn(),
   readyState: 1, // OPEN
-}))
+})) as unknown as typeof WebSocket
+global.WebSocket = WebSocketMock
 
 // Suppress console warnings in tests
 const originalWarn = console.warn

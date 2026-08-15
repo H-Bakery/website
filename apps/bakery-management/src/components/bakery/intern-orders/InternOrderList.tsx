@@ -1,5 +1,5 @@
 import React from 'react'
-import { InternOrder } from '../../../types' // Assuming src/types/index.ts exports InternOrder
+import { InternOrder } from '../../../types'
 import {
   Table,
   TableBody,
@@ -8,7 +8,6 @@ import {
   TableHead,
   TableRow,
   Paper,
-  Button,
   Chip,
   Typography,
   Box,
@@ -21,7 +20,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty'
 import PlayCircleOutlineIcon from '@mui/icons-material/PlayCircleOutline'
 import CancelIcon from '@mui/icons-material/Cancel'
-import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined' // For bill image
+import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined'
 
 interface InternOrderListProps {
   orders: InternOrder[]
@@ -37,7 +36,7 @@ const getStatusChip = (status: InternOrder['status']) => {
       return (
         <Chip
           icon={<HourglassEmptyIcon />}
-          label="Pending"
+          label="Offen"
           color="warning"
           size="small"
           variant="outlined"
@@ -47,7 +46,7 @@ const getStatusChip = (status: InternOrder['status']) => {
       return (
         <Chip
           icon={<PlayCircleOutlineIcon />}
-          label="In Progress"
+          label="In Bearbeitung"
           color="info"
           size="small"
           variant="outlined"
@@ -57,7 +56,7 @@ const getStatusChip = (status: InternOrder['status']) => {
       return (
         <Chip
           icon={<CheckCircleOutlineIcon />}
-          label="Done"
+          label="Erledigt"
           color="success"
           size="small"
           variant="outlined"
@@ -67,7 +66,7 @@ const getStatusChip = (status: InternOrder['status']) => {
       return (
         <Chip
           icon={<CancelIcon />}
-          label="Cancelled"
+          label="Storniert"
           color="error"
           size="small"
           variant="outlined"
@@ -88,10 +87,10 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
     return (
       <Paper elevation={1} sx={{ p: 3, textAlign: 'center' }}>
         <Typography variant="h6" gutterBottom>
-          No intern orders found.
+          Keine internen Bestellungen vorhanden.
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Create a new order to get started.
+          Legen Sie eine neue Bestellung an, um zu beginnen.
         </Typography>
       </Paper>
     )
@@ -103,10 +102,10 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
       elevation={1}
       sx={{ borderRadius: '8px' }}
     >
-      <Table aria-label="intern orders table">
+      <Table aria-label="Interne Bestellungen">
         <TableHead sx={{ bgcolor: 'action.hover' }}>
           <TableRow>
-            <TableCell sx={{ fontWeight: 'bold' }}>Order Name</TableCell>
+            <TableCell sx={{ fontWeight: 'bold' }}>Bezeichnung</TableCell>
             <TableCell sx={{ fontWeight: 'bold' }}>Status</TableCell>
             <TableCell
               sx={{
@@ -114,7 +113,7 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
                 display: { xs: 'none', sm: 'table-cell' },
               }}
             >
-              Assigned To
+              Zuständig
             </TableCell>
             <TableCell
               sx={{
@@ -122,7 +121,7 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
                 display: { xs: 'none', md: 'table-cell' },
               }}
             >
-              Created At
+              Erstellt am
             </TableCell>
             <TableCell
               sx={{
@@ -130,7 +129,7 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
                 display: { xs: 'none', sm: 'table-cell' },
               }}
             >
-              Items/Qty
+              Posten/Menge
             </TableCell>
             <TableCell
               sx={{
@@ -138,10 +137,10 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
                 display: { xs: 'none', md: 'table-cell' },
               }}
             >
-              Bill
+              Beleg
             </TableCell>
             <TableCell sx={{ fontWeight: 'bold', textAlign: 'center' }}>
-              Actions
+              Aktionen
             </TableCell>
           </TableRow>
         </TableHead>
@@ -168,17 +167,17 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
               </TableCell>
               <TableCell>{getStatusChip(order.status)}</TableCell>
               <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                {order.assignedTo || 'N/A'}
+                {order.assignedTo || '–'}
               </TableCell>
               <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                {new Date(order.createdAt).toLocaleDateString()}
+                {new Date(order.createdAt).toLocaleDateString('de-DE')}
               </TableCell>
               <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                 {order.items && order.items.length > 0
-                  ? `${order.items.length} item(s)`
+                  ? `${order.items.length} Posten`
                   : order.quantity
-                  ? `${order.quantity} (general)`
-                  : 'N/A'}
+                  ? `${order.quantity} (gesamt)`
+                  : '–'}
               </TableCell>
               <TableCell
                 sx={{
@@ -187,17 +186,21 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
                 }}
               >
                 {order.billImageUrl ? (
-                  <Tooltip title="View Bill">
+                  <Tooltip title="Beleg anzeigen">
                     <IconButton
                       size="small"
-                      onClick={() => window.open(order.billImageUrl, '_blank')}
+                      component="a"
+                      href={order.billImageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label="Beleg anzeigen"
                     >
                       <ImageOutlinedIcon />
                     </IconButton>
                   </Tooltip>
                 ) : (
                   <Typography variant="caption" color="text.disabled">
-                    No Bill
+                    Kein Beleg
                   </Typography>
                 )}
               </TableCell>
@@ -206,31 +209,34 @@ const InternOrderList: React.FC<InternOrderListProps> = ({
                   sx={{ display: 'flex', justifyContent: 'center', gap: 0.5 }}
                 >
                   {onViewOrder && (
-                    <Tooltip title="View Details">
+                    <Tooltip title="Details anzeigen">
                       <IconButton
                         size="small"
                         onClick={() => onViewOrder(order)}
                         color="primary"
+                        aria-label="Details anzeigen"
                       >
                         <VisibilityIcon />
                       </IconButton>
                     </Tooltip>
                   )}
-                  <Tooltip title="Edit Order">
+                  <Tooltip title="Bearbeiten">
                     <IconButton
                       size="small"
                       onClick={() => onEditOrder(order)}
                       color="secondary"
+                      aria-label="Bearbeiten"
                     >
                       <EditIcon />
                     </IconButton>
                   </Tooltip>
                   {order.status !== 'done' && order.status !== 'cancelled' && (
-                    <Tooltip title="Mark as Done">
+                    <Tooltip title="Als erledigt markieren">
                       <IconButton
                         size="small"
                         onClick={() => onMarkAsDone(order.id)}
                         color="success"
+                        aria-label="Als erledigt markieren"
                       >
                         <CheckCircleOutlineIcon />
                       </IconButton>

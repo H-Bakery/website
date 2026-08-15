@@ -4,6 +4,13 @@
 const { composePlugins, withNx } = require('@nx/next')
 
 /**
+ * Server-side base URL of the bakery API. The management app proxies all
+ * `/api/*` requests to this host (see `rewrites` below), so the browser only
+ * ever talks to the same origin. Configure via `API_URL` (see .env.example).
+ */
+const API_URL = process.env.API_URL || 'http://localhost:5000'
+
+/**
  * @type {import('@nx/next/plugins/with-nx').WithNxOptions}
  **/
 const nextConfig = {
@@ -14,14 +21,14 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:5000/api/:path*',
+        destination: `${API_URL}/api/:path*`,
       },
     ]
   },
 }
 
 const plugins = [
-  // Add more Next.js plugins to this list if needed.
+  // Add more Next.js plugins if needed.
   withNx,
 ]
 

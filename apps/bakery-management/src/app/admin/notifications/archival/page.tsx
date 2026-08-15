@@ -1,17 +1,10 @@
-'use client'
-import React from 'react'
-import { Container, Typography, Alert } from '@mui/material'
+import { redirect } from 'next/navigation'
 
-export default function NotificationsArchivalPage() {
-  return (
-    <Container maxWidth="lg" sx={{ mt: 4 }}>
-      <Typography variant="h4" gutterBottom>
-        Archivierung
-      </Typography>
-      <Alert severity="info">
-        Automatische Archivierung wird in einer zukünftigen Version verfügbar
-        sein.
-      </Alert>
-    </Container>
-  )
+/**
+ * Legacy route: the planned "Archivierung verwalten" settings page never got
+ * an implementation. Redirect to the notification archive so old links keep
+ * working.
+ */
+export default function NotificationsArchivalRedirect() {
+  redirect('/admin/notifications/archive')
 }

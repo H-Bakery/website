@@ -21,13 +21,18 @@ import {
   IconButton,
 } from '@mui/material'
 import { Close as CloseIcon, Add as AddIcon } from '@mui/icons-material'
-import { reportingService } from '@bakery/shared/data-access'
+import {
+  reportingService,
+  ReportFormat,
+  ReportSchedule,
+  ReportType,
+} from '@bakery/shared/data-access'
 
 interface ScheduleDialogProps {
   open: boolean
   onClose: () => void
   onSave: () => void
-  schedule?: any
+  schedule?: ReportSchedule | null
 }
 
 export function ScheduleDialog({
@@ -58,8 +63,8 @@ export function ScheduleDialog({
         frequency: schedule.frequency || 'DAILY',
         recipients: schedule.recipients || [],
         active: schedule.active !== false,
-        time: schedule.time || '08:00',
-        dayOfWeek: schedule.dayOfWeek || 1,
+        time: schedule.timeOfDay || '08:00',
+        dayOfWeek: schedule.dayOfWeek ?? 1,
         dayOfMonth: schedule.dayOfMonth || 1,
       })
     } else {
@@ -82,15 +87,20 @@ export function ScheduleDialog({
     setError(null)
 
     try {
-      const scheduleData = {
-        ...formData,
-        config: {
-          reportType: formData.reportType,
-          includeCharts: formData.format === 'PDF',
-        },
+      const scheduleData: ReportSchedule = {
+        reportType: formData.reportType as ReportType,
+        format: formData.format as ReportFormat,
+        frequency: formData.frequency as ReportSchedule['frequency'],
+        recipients: formData.recipients,
+        active: formData.active,
+        timeOfDay: formData.time,
+        dayOfWeek:
+          formData.frequency === 'WEEKLY' ? formData.dayOfWeek : undefined,
+        dayOfMonth:
+          formData.frequency === 'MONTHLY' ? formData.dayOfMonth : undefined,
       }
 
-      if (schedule) {
+      if (schedule?.id) {
         await reportingService.updateSchedule(schedule.id, scheduleData)
       } else {
         await reportingService.createSchedule(scheduleData)
@@ -136,7 +146,7 @@ export function ScheduleDialog({
       <DialogTitle>
         {schedule ? 'Zeitplan bearbeiten' : 'Neuer Report-Zeitplan'}
         <IconButton
-          aria-label="close"
+          aria-label="Schließen"
           onClick={onClose}
           sx={{
             position: 'absolute',
@@ -268,7 +278,7 @@ export function ScheduleDialog({
                 placeholder="E-Mail-Adresse eingeben"
                 value={emailInput}
                 onChange={(e) => setEmailInput(e.target.value)}
-                onKeyPress={handleKeyPress}
+                onKeyDown={handleKeyPress}
               />
               <IconButton
                 color="primary"

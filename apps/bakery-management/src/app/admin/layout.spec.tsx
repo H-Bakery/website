@@ -1,105 +1,127 @@
-import { render, screen, fireEvent } from '@testing-library/react'
-import { renderWithTheme } from '@bakery/shared/test-utils'
+import { render, screen, fireEvent, within } from '@testing-library/react'
 import AdminLayout from './layout'
 
-// Mock next/navigation
-const mockPush = jest.fn()
-const mockPathname = jest.fn()
-
+let mockPathname = '/admin/orders'
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: mockPush,
-    pathname: '/',
-  }),
-  usePathname: () => mockPathname(),
+  usePathname: () => mockPathname,
 }))
 
-// Mock feature components
-jest.mock('@bakery/management/feature-dashboard', () => ({
-  AdminNavigation: ({ children }: { children: React.ReactNode }) => (
-    <nav data-testid="admin-navigation">{children}</nav>
-  ),
-  AdminSidebar: ({ open, onClose }: { open: boolean; onClose: () => void }) => (
-    <div data-testid="admin-sidebar" data-open={open}>
-      <button onClick={onClose}>Close</button>
-    </div>
-  ),
-}))
+/**
+ * jsdom evaluates responsive `display` rules at the smallest breakpoint, so
+ * the permanent drawer itself is `display: none`. Check the submenu list's own
+ * computed display instead of `toBeVisible()`.
+ */
+function isSubmenuShown(item: HTMLElement) {
+  const list = item.closest('.MuiList-root') as HTMLElement
+  return window.getComputedStyle(list).display !== 'none'
+}
 
-// Mock Material UI components that might cause issues
-jest.mock('@mui/material', () => ({
-  ...jest.requireActual('@mui/material'),
-  useMediaQuery: () => false,
-  useTheme: () => ({
-    breakpoints: {
-      up: () => false,
-      down: () => false,
-    },
-  }),
-}))
+/** The nav is rendered twice (mobile + desktop drawer); use the desktop one. */
+function getDesktopNav() {
+  const drawers = document.querySelectorAll('.MuiDrawer-paper')
+  return within(drawers[drawers.length - 1] as HTMLElement)
+}
+
+function renderLayout(pathname = '/admin/orders') {
+  mockPathname = pathname
+  return render(
+    <AdminLayout>
+      <div data-testid="test-child">Admin Content</div>
+    </AdminLayout>
+  )
+}
 
 describe('AdminLayout', () => {
-  beforeEach(() => {
-    jest.clearAllMocks()
-    mockPathname.mockReturnValue('/admin/orders')
-  })
-
-  it('renders children with admin navigation', () => {
-    renderWithTheme(
-      <AdminLayout>
-        <div data-testid="test-child">Admin Content</div>
-      </AdminLayout>
-    )
-
-    expect(screen.getByTestId('admin-navigation')).toBeInTheDocument()
+  it('renders children and the app bar', () => {
+    renderLayout()
     expect(screen.getByTestId('test-child')).toBeInTheDocument()
+    expect(screen.getByText('Management System')).toBeInTheDocument()
   })
 
-  it('includes admin sidebar', () => {
-    renderWithTheme(
-      <AdminLayout>
-        <div>Content</div>
-      </AdminLayout>
-    )
-
-    expect(screen.getByTestId('admin-sidebar')).toBeInTheDocument()
+  it('renders the main navigation items', () => {
+    renderLayout()
+    const nav = getDesktopNav()
+    ;[
+      'Dashboard',
+      'Bestellungen',
+      'Bäckerei',
+      'Produkte',
+      'Kasse',
+      'Personal',
+      'Berichte',
+      'Analysen',
+      'Team-Chat',
+      'Einstellungen',
+    ].forEach((label) => {
+      expect(nav.getByText(label)).toBeInTheDocument()
+    })
   })
 
-  it('handles mobile menu toggle', () => {
-    const { container } = renderWithTheme(
-      <AdminLayout>
-        <div>Content</div>
-      </AdminLayout>
-    )
-
-    // Check initial state
-    const sidebar = screen.getByTestId('admin-sidebar')
-    expect(sidebar).toHaveAttribute('data-open', 'false')
-
-    // Note: Full mobile menu interaction would require the actual implementation
-    // This test is ready for when the AdminNavigation component has a menu button
+  it('links to the shop app in a new tab', () => {
+    renderLayout()
+    const link = getDesktopNav().getByText('Shop').closest('a')
+    expect(link).toHaveAttribute('href', 'http://localhost:4200')
+    expect(link).toHaveAttribute('target', '_blank')
+    expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'))
   })
 
-  it('applies correct layout structure', () => {
-    const { container } = renderWithTheme(
-      <AdminLayout>
-        <div>Content</div>
-      </AdminLayout>
+  it('highlights the active item, including nested routes', () => {
+    renderLayout('/admin/products/new')
+    const nav = getDesktopNav()
+    expect(nav.getByText('Produkte').closest('a')).toHaveClass('Mui-selected')
+    expect(nav.getByText('Bestellungen').closest('a')).not.toHaveClass(
+      'Mui-selected'
     )
-
-    const mainContent = container.querySelector('main')
-    expect(mainContent).toBeInTheDocument()
   })
 
-  it('renders with authentication context', () => {
-    renderWithTheme(
-      <AdminLayout>
-        <div>Protected Content</div>
-      </AdminLayout>
+  it('does not highlight the dashboard on sub pages', () => {
+    renderLayout('/admin/orders')
+    const nav = getDesktopNav()
+    expect(nav.getByText('Dashboard').closest('a')).not.toHaveClass(
+      'Mui-selected'
     )
+    expect(nav.getByText('Bestellungen').closest('a')).toHaveClass(
+      'Mui-selected'
+    )
+  })
 
-    // The layout should render even without authentication
-    // Auth guards would be implemented separately
-    expect(screen.getByText('Protected Content')).toBeInTheDocument()
+  it('toggles the Bäckerei submenu', () => {
+    renderLayout('/admin/orders')
+    const nav = getDesktopNav()
+    const toggle = nav
+      .getByText('Bäckerei')
+      .closest('[role="button"]') as HTMLElement
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(false)
+
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(true)
+
+    fireEvent.click(toggle)
+    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(false)
+  })
+
+  it('opens the submenu automatically when a child route is active', () => {
+    renderLayout('/admin/bakery/recipes')
+    const nav = getDesktopNav()
+    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(true)
+    expect(nav.getByText('Rezepte').closest('a')).toHaveClass('Mui-selected')
+  })
+
+  it('opens the mobile drawer via the menu button', () => {
+    renderLayout()
+    const modal = document.querySelector('.MuiDrawer-modal') as HTMLElement
+    expect(modal).toHaveAttribute('aria-hidden', 'true')
+
+    fireEvent.click(screen.getByLabelText('Navigation öffnen'))
+    expect(modal).not.toHaveAttribute('aria-hidden')
+  })
+
+  it('renders a readable breadcrumb', () => {
+    renderLayout('/admin/products/new')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Produkte › new'
+    )
   })
 })

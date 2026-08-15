@@ -1,4 +1,4 @@
-import React from 'react';
+import React from 'react'
 import {
   LineChart,
   Line,
@@ -10,17 +10,23 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-} from 'recharts';
-import { Box, Paper, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
-import type { RevenueData, Granularity } from '@bakery/shared/types';
+} from 'recharts'
+import {
+  Box,
+  Paper,
+  Typography,
+  ToggleButton,
+  ToggleButtonGroup,
+} from '@mui/material'
+import type { RevenueData, Granularity } from '@bakery/shared/types'
 
 export interface RevenueTrendChartProps {
-  data: RevenueData[];
-  granularity?: Granularity;
-  chartType?: 'line' | 'bar';
-  height?: number;
-  title?: string;
-  showTransactions?: boolean;
+  data: RevenueData[]
+  granularity?: Granularity
+  chartType?: 'line' | 'bar'
+  height?: number
+  title?: string
+  showTransactions?: boolean
 }
 
 export function RevenueTrendChart({
@@ -31,40 +37,76 @@ export function RevenueTrendChart({
   title = 'Umsatzentwicklung',
   showTransactions = false,
 }: RevenueTrendChartProps) {
-  const [currentChartType, setChartType] = React.useState(chartType);
+  const [currentChartType, setChartType] = React.useState(chartType)
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
+    const date = new Date(dateString)
     switch (granularity) {
       case 'daily':
-        return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+        return date.toLocaleDateString('de-DE', {
+          day: '2-digit',
+          month: '2-digit',
+        })
       case 'weekly':
-        return `KW ${Math.ceil(date.getDate() / 7)}`;
+        return `KW ${Math.ceil(date.getDate() / 7)}`
       case 'monthly':
-        return date.toLocaleDateString('de-DE', { month: 'short', year: 'numeric' });
+        return date.toLocaleDateString('de-DE', {
+          month: 'short',
+          year: 'numeric',
+        })
       default:
-        return dateString;
+        return dateString
     }
-  };
+  }
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('de-DE', {
       style: 'currency',
       currency: 'EUR',
-    }).format(value);
-  };
+    }).format(value)
+  }
 
   const chartData = data.map((item) => ({
     ...item,
     date: formatDate(item.date),
-  }));
+  }))
 
-  const Chart = currentChartType === 'line' ? LineChart : BarChart;
-  const DataComponent = currentChartType === 'line' ? Line : Bar;
+  const Chart = currentChartType === 'line' ? LineChart : BarChart
+
+  const renderSeries = (
+    yAxisId: string,
+    dataKey: string,
+    name: string,
+    color: string
+  ) =>
+    currentChartType === 'line' ? (
+      <Line
+        key={dataKey}
+        yAxisId={yAxisId}
+        dataKey={dataKey}
+        name={name}
+        stroke={color}
+        fill={color}
+        strokeWidth={2}
+      />
+    ) : (
+      <Bar
+        key={dataKey}
+        yAxisId={yAxisId}
+        dataKey={dataKey}
+        name={name}
+        fill={color}
+      />
+    )
 
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+      <Box
+        display="flex"
+        justifyContent="space-between"
+        alignItems="center"
+        mb={2}
+      >
         <Typography variant="h6" component="h2">
           {title}
         </Typography>
@@ -78,7 +120,7 @@ export function RevenueTrendChart({
           <ToggleButton value="bar">Balken</ToggleButton>
         </ToggleButtonGroup>
       </Box>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <Chart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
@@ -88,35 +130,26 @@ export function RevenueTrendChart({
             <YAxis yAxisId="transactions" orientation="right" />
           )}
           <Tooltip
-            formatter={(value: any, name: string) => {
-              if (name === 'revenue') return formatCurrency(value);
-              return value;
+            formatter={(value: number | string, name: string) => {
+              if (name === 'Umsatz' || name === 'revenue')
+                return formatCurrency(Number(value))
+              return value
             }}
             labelFormatter={(label) => `Datum: ${label}`}
           />
           <Legend />
-          <DataComponent
-            yAxisId="revenue"
-            dataKey="revenue"
-            name="Umsatz"
-            stroke="#007bff"
-            fill="#007bff"
-            strokeWidth={currentChartType === 'line' ? 2 : undefined}
-          />
-          {showTransactions && (
-            <DataComponent
-              yAxisId="transactions"
-              dataKey="transactionCount"
-              name="Transaktionen"
-              stroke="#28a745"
-              fill="#28a745"
-              strokeWidth={currentChartType === 'line' ? 2 : undefined}
-            />
-          )}
+          {renderSeries('revenue', 'revenue', 'Umsatz', '#007bff')}
+          {showTransactions &&
+            renderSeries(
+              'transactions',
+              'transactionCount',
+              'Transaktionen',
+              '#28a745'
+            )}
         </Chart>
       </ResponsiveContainer>
     </Paper>
-  );
+  )
 }
 
-export default RevenueTrendChart;
+export default RevenueTrendChart

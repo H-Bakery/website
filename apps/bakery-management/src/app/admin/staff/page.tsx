@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import {
   Box,
   Typography,
@@ -50,9 +50,6 @@ interface StaffMember {
 }
 
 export default function StaffPage() {
-  const [mode, setMode] = useState<'light' | 'dark'>('light')
-  const currentUser = { id: '1' } // Temporary mock user until AuthProvider is set up
-
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -73,12 +70,18 @@ export default function StaffPage() {
   const [deleteModalOpen, setDeleteModalOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<StaffMember | null>(null)
 
-  const fetchStaffMembers = async () => {
+  const fetchStaffMembers = useCallback(async () => {
     setLoading(true)
     setError('')
 
     try {
-      const params: any = {
+      const params: {
+        page: number
+        limit: number
+        search?: string
+        role?: string
+        isActive?: boolean
+      } = {
         page: page + 1,
         limit: rowsPerPage,
       }
@@ -90,16 +93,18 @@ export default function StaffPage() {
       const response = await bakeryAPI.getStaff(params)
       setStaffMembers(response.users)
       setTotalItems(response.pagination.totalItems)
-    } catch (error: any) {
-      setError(error.message || 'Fehler beim Laden der Mitarbeiter')
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'Fehler beim Laden der Mitarbeiter'
+      )
     } finally {
       setLoading(false)
     }
-  }
+  }, [page, rowsPerPage, searchTerm, roleFilter, statusFilter])
 
   useEffect(() => {
     fetchStaffMembers()
-  }, [page, rowsPerPage, searchTerm, roleFilter, statusFilter])
+  }, [fetchStaffMembers])
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage)
@@ -152,7 +157,7 @@ export default function StaffPage() {
     }
   }
 
-  const getRoleColor = (role: string) => {
+  const getRoleColor = (role: string): 'error' | 'primary' | 'default' => {
     switch (role) {
       case 'admin':
         return 'error'
@@ -196,16 +201,8 @@ export default function StaffPage() {
               color="primary"
               onClick={() => setCreateModalOpen(true)}
               sx={{
-                bgcolor:
-                  mode === 'dark'
-                    ? 'rgba(208, 56, 186, 0.1)'
-                    : 'rgba(208, 56, 186, 0.05)',
-                '&:hover': {
-                  bgcolor:
-                    mode === 'dark'
-                      ? 'rgba(208, 56, 186, 0.2)'
-                      : 'rgba(208, 56, 186, 0.1)',
-                },
+                bgcolor: 'action.hover',
+                '&:hover': { bgcolor: 'action.selected' },
               }}
             >
               <PersonAddIcon />
@@ -215,14 +212,7 @@ export default function StaffPage() {
       </Box>
 
       {/* Filters */}
-      <Paper
-        elevation={mode === 'dark' ? 2 : 1}
-        sx={{
-          p: 2,
-          mb: 2,
-          bgcolor: mode === 'dark' ? 'background.paper' : 'white',
-        }}
-      >
+      <Paper sx={{ p: 2, mb: 2 }}>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
           <TextField
             size="small"
@@ -284,13 +274,7 @@ export default function StaffPage() {
         </Alert>
       )}
 
-      <TableContainer
-        component={Paper}
-        elevation={mode === 'dark' ? 2 : 1}
-        sx={{
-          bgcolor: mode === 'dark' ? 'background.paper' : 'white',
-        }}
-      >
+      <TableContainer component={Paper}>
         {loading && staffMembers.length === 0 ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
             <CircularProgress />
@@ -315,6 +299,15 @@ export default function StaffPage() {
                 </TableRow>
               </TableHead>
               <TableBody>
+                {staffMembers.length === 0 && !loading && (
+                  <TableRow>
+                    <TableCell colSpan={6} align="center" sx={{ py: 4 }}>
+                      <Typography color="text.secondary">
+                        Keine Mitarbeiter gefunden
+                      </Typography>
+                    </TableCell>
+                  </TableRow>
+                )}
                 {staffMembers.map((staff) => (
                   <TableRow
                     key={staff.id}
@@ -369,9 +362,9 @@ export default function StaffPage() {
                     <TableCell>
                       <Chip
                         label={getRoleLabel(staff.role)}
-                        color={getRoleColor(staff.role) as any}
+                        color={getRoleColor(staff.role)}
                         size="small"
-                        variant={mode === 'dark' ? 'outlined' : 'filled'}
+                        variant="filled"
                       />
                     </TableCell>
                     <TableCell
@@ -406,10 +399,6 @@ export default function StaffPage() {
                         <IconButton
                           size="small"
                           onClick={() => handleEdit(staff)}
-                          disabled={
-                            currentUser?.id === String(staff.id) &&
-                            staff.role === 'admin'
-                          }
                         >
                           <EditIcon fontSize="small" />
                         </IconButton>
@@ -419,7 +408,6 @@ export default function StaffPage() {
                           size="small"
                           color="error"
                           onClick={() => handleDelete(staff)}
-                          disabled={currentUser?.id === String(staff.id)}
                         >
                           <DeleteIcon fontSize="small" />
                         </IconButton>

@@ -47,9 +47,14 @@ interface DailyUnsoldTrackerProps {
   onSave: () => void
 }
 
-export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selectedDate, onSave }) => {
+export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({
+  selectedDate,
+  onSave,
+}) => {
   const [products, setProducts] = useState<Product[]>([])
-  const [unsoldEntries, setUnsoldEntries] = useState<Map<number, UnsoldEntry>>(new Map())
+  const [unsoldEntries, setUnsoldEntries] = useState<Map<number, UnsoldEntry>>(
+    new Map()
+  )
   const [existingEntries, setExistingEntries] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -68,19 +73,30 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
     }, {} as Record<string, Product[]>)
 
     // Sort categories logically
-    const categoryOrder = ['Brot', 'Brötchen', 'Gebäck', 'Kuchen', 'Torten', 'Sonstiges']
+    const categoryOrder = [
+      'Brot',
+      'Brötchen',
+      'Gebäck',
+      'Kuchen',
+      'Torten',
+      'Sonstiges',
+    ]
     const sortedCategories: Record<string, Product[]> = {}
-    
-    categoryOrder.forEach(cat => {
+
+    categoryOrder.forEach((cat) => {
       if (grouped[cat]) {
-        sortedCategories[cat] = grouped[cat].sort((a, b) => a.name.localeCompare(b.name))
+        sortedCategories[cat] = grouped[cat].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
       }
     })
-    
+
     // Add any remaining categories
-    Object.keys(grouped).forEach(cat => {
+    Object.keys(grouped).forEach((cat) => {
       if (!categoryOrder.includes(cat)) {
-        sortedCategories[cat] = grouped[cat].sort((a, b) => a.name.localeCompare(b.name))
+        sortedCategories[cat] = grouped[cat].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
       }
     })
 
@@ -88,8 +104,8 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
   }, [products])
 
   const categories = Object.keys(productsByCategory)
-  const filteredCategories = categoryFilter 
-    ? categories.filter(cat => cat === categoryFilter)
+  const filteredCategories = categoryFilter
+    ? categories.filter((cat) => cat === categoryFilter)
     : categories
 
   useEffect(() => {
@@ -100,31 +116,35 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
     try {
       setLoading(true)
       setError(null)
-      
+
       // Load products and existing entries in parallel
       const [productsData, existingData] = await Promise.all([
-        bakeryAPI.getProducts(),
-        bakeryAPI.getUnsoldProducts()
+        bakeryAPI.products.getAll(),
+        bakeryAPI.unsoldProducts.getAll(),
       ])
-      
+
       setProducts(productsData)
-      
+
       // Filter existing entries for the selected date and create a set of product IDs
-      const entriesForDate = existingData.filter(entry => entry.date === selectedDate)
-      const existingProductIds = new Set(entriesForDate.map(entry => entry.productId || (entry as any).ProductId))
+      const entriesForDate = existingData.filter(
+        (entry) => entry.date === selectedDate
+      )
+      const existingProductIds = new Set(
+        entriesForDate.map((entry) => entry.productId)
+      )
       setExistingEntries(existingProductIds)
-      
+
       // Initialize unsold entries map with existing data
       const entriesMap = new Map<number, UnsoldEntry>()
-      entriesForDate.forEach(entry => {
-        const productId = entry.productId || (entry as any).ProductId
+      entriesForDate.forEach((entry) => {
+        const productId = entry.productId
         entriesMap.set(productId, {
           productId,
           quantity: entry.quantity,
-          hasEntry: true
+          hasEntry: true,
         })
       })
-      
+
       setUnsoldEntries(entriesMap)
     } catch (error) {
       console.error('Error loading data:', error)
@@ -135,7 +155,7 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
   }
 
   const updateQuantity = (productId: number, quantity: number) => {
-    setUnsoldEntries(prev => {
+    setUnsoldEntries((prev) => {
       const newMap = new Map(prev)
       if (quantity <= 0 && !existingEntries.has(productId)) {
         newMap.delete(productId)
@@ -143,7 +163,7 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
         newMap.set(productId, {
           productId,
           quantity: Math.max(0, quantity),
-          hasEntry: existingEntries.has(productId)
+          hasEntry: existingEntries.has(productId),
         })
       }
       return newMap
@@ -168,22 +188,27 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
   }
 
   const getTotalUnsoldCount = () => {
-    return Array.from(unsoldEntries.values()).reduce((sum, entry) => sum + entry.quantity, 0)
+    return Array.from(unsoldEntries.values()).reduce(
+      (sum, entry) => sum + entry.quantity,
+      0
+    )
   }
 
   const getProductsWithDataCount = () => {
-    return Array.from(unsoldEntries.values()).filter(entry => entry.quantity > 0).length
+    return Array.from(unsoldEntries.values()).filter(
+      (entry) => entry.quantity > 0
+    ).length
   }
 
   const handleSave = async () => {
     try {
       setSaving(true)
       setError(null)
-      
-      const entriesToSave = Array.from(unsoldEntries.values()).filter(entry => 
-        entry.quantity > 0 && !entry.hasEntry
+
+      const entriesToSave = Array.from(unsoldEntries.values()).filter(
+        (entry) => entry.quantity > 0 && !entry.hasEntry
       )
-      
+
       if (entriesToSave.length === 0) {
         setError('Keine neuen Einträge zum Speichern')
         return
@@ -191,18 +216,21 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
 
       // Save all entries
       await Promise.all(
-        entriesToSave.map(entry =>
-          bakeryAPI.addUnsoldProduct(entry.productId, entry.quantity)
+        entriesToSave.map((entry) =>
+          bakeryAPI.unsoldProducts.create({
+            productId: entry.productId,
+            quantity: entry.quantity,
+            date: selectedDate,
+          })
         )
       )
-      
+
       setSuccess(`${entriesToSave.length} Einträge erfolgreich gespeichert`)
       setTimeout(() => setSuccess(null), 5000)
-      
+
       // Reload data to reflect changes
       await loadData()
       onSave()
-      
     } catch (error) {
       console.error('Error saving entries:', error)
       setError('Fehler beim Speichern der Einträge')
@@ -213,8 +241,8 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
   }
 
   const isToday = selectedDate === new Date().toISOString().split('T')[0]
-  const hasUnsavedChanges = Array.from(unsoldEntries.values()).some(entry => 
-    entry.quantity > 0 && !entry.hasEntry
+  const hasUnsavedChanges = Array.from(unsoldEntries.values()).some(
+    (entry) => entry.quantity > 0 && !entry.hasEntry
   )
 
   if (loading) {
@@ -222,7 +250,7 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
       <Box sx={{ p: 3 }}>
         <Skeleton variant="rectangular" height={200} sx={{ mb: 2 }} />
         <Grid container spacing={2}>
-          {[1, 2, 3, 4, 5, 6].map(i => (
+          {[1, 2, 3, 4, 5, 6].map((i) => (
             <Grid item xs={12} sm={6} md={4} lg={3} key={i}>
               <Skeleton variant="rectangular" height={120} />
             </Grid>
@@ -235,18 +263,28 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
   return (
     <Box sx={{ p: 3 }}>
       {/* Header Section */}
-      <Paper elevation={2} sx={{ p: 3, mb: 3, bgcolor: 'primary.main', color: 'white' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+      <Paper
+        elevation={2}
+        sx={{ p: 3, mb: 3, bgcolor: 'primary.main', color: 'white' }}
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            mb: 2,
+          }}
+        >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <CalendarToday />
             <Typography variant="h5" fontWeight={600}>
               Unverkaufte Produkte erfassen
             </Typography>
             {isToday && (
-              <Chip 
-                label="Heute" 
-                color="secondary" 
-                size="small" 
+              <Chip
+                label="Heute"
+                color="secondary"
+                size="small"
                 sx={{ fontWeight: 600 }}
               />
             )}
@@ -256,11 +294,11 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
               weekday: 'long',
               day: '2-digit',
               month: 'long',
-              year: 'numeric'
+              year: 'numeric',
             })}
           </Typography>
         </Box>
-        
+
         <Grid container spacing={3}>
           <Grid item xs={12} sm={4}>
             <Box sx={{ textAlign: 'center' }}>
@@ -301,9 +339,13 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
           {error}
         </Alert>
       )}
-      
+
       {success && (
-        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccess(null)}>
+        <Alert
+          severity="success"
+          sx={{ mb: 3 }}
+          onClose={() => setSuccess(null)}
+        >
           {success}
         </Alert>
       )}
@@ -316,7 +358,7 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
           color={categoryFilter === '' ? 'primary' : 'default'}
           variant={categoryFilter === '' ? 'filled' : 'outlined'}
         />
-        {categories.map(category => (
+        {categories.map((category) => (
           <Chip
             key={category}
             label={category}
@@ -328,21 +370,25 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
       </Box>
 
       {/* Products Grid by Category */}
-      {filteredCategories.map(category => (
+      {filteredCategories.map((category) => (
         <Box key={category} sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom sx={{ 
-            color: 'primary.main', 
-            fontWeight: 600,
-            borderBottom: 1,
-            borderColor: 'divider',
-            pb: 1,
-            mb: 2
-          }}>
+          <Typography
+            variant="h6"
+            gutterBottom
+            sx={{
+              color: 'primary.main',
+              fontWeight: 600,
+              borderBottom: 1,
+              borderColor: 'divider',
+              pb: 1,
+              mb: 2,
+            }}
+          >
             {category}
           </Typography>
-          
+
           <Grid container spacing={2}>
-            {productsByCategory[category].map(product => {
+            {productsByCategory[category].map((product) => {
               const entry = unsoldEntries.get(product.id)
               const quantity = entry?.quantity || 0
               const hasExistingEntry = existingEntries.has(product.id)
@@ -350,14 +396,16 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
 
               return (
                 <Grid item xs={12} sm={6} md={4} lg={3} key={product.id}>
-                  <Card 
+                  <Card
                     elevation={hasUnsavedData ? 4 : 1}
-                    sx={{ 
+                    sx={{
                       height: '100%',
                       position: 'relative',
                       border: hasUnsavedData ? 2 : 0,
-                      borderColor: hasUnsavedData ? 'warning.main' : 'transparent',
-                      transition: 'all 0.2s'
+                      borderColor: hasUnsavedData
+                        ? 'warning.main'
+                        : 'transparent',
+                      transition: 'all 0.2s',
                     }}
                   >
                     {hasExistingEntry && (
@@ -370,27 +418,37 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
                           position: 'absolute',
                           top: 8,
                           right: 8,
-                          zIndex: 1
+                          zIndex: 1,
                         }}
                       />
                     )}
-                    
+
                     <CardContent sx={{ pb: 1 }}>
-                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                      <Typography
+                        variant="subtitle1"
+                        fontWeight={600}
+                        gutterBottom
+                      >
                         {product.name}
                       </Typography>
-                      
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
+
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                        gutterBottom
+                      >
                         €{product.price.toFixed(2)}
                       </Typography>
-                      
-                      <Box sx={{ 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        gap: 1,
-                        mt: 2
-                      }}>
+
+                      <Box
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 1,
+                          mt: 2,
+                        }}
+                      >
                         <IconButton
                           onClick={() => decrementQuantity(product.id)}
                           disabled={quantity <= 0}
@@ -399,24 +457,26 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
                         >
                           <Remove />
                         </IconButton>
-                        
+
                         <TextField
                           value={quantity}
-                          onChange={(e) => handleDirectInput(product.id, e.target.value)}
+                          onChange={(e) =>
+                            handleDirectInput(product.id, e.target.value)
+                          }
                           inputProps={{
                             style: { textAlign: 'center' },
                             min: 0,
-                            inputMode: 'numeric'
+                            inputMode: 'numeric',
                           }}
-                          sx={{ 
+                          sx={{
                             width: 80,
                             '& .MuiOutlinedInput-root': {
-                              height: 40
-                            }
+                              height: 40,
+                            },
                           }}
                           size="small"
                         />
-                        
+
                         <IconButton
                           onClick={() => incrementQuantity(product.id)}
                           color="primary"
@@ -445,7 +505,7 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
             p: 2,
             bgcolor: 'warning.main',
             color: 'white',
-            borderRadius: 3
+            borderRadius: 3,
           }}
         >
           <Button
@@ -458,34 +518,38 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({ selected
               bgcolor: 'white',
               color: 'warning.main',
               '&:hover': {
-                bgcolor: 'grey.100'
-              }
+                bgcolor: 'grey.100',
+              },
             }}
           >
-            {saving ? 'Speichere...' : `${getProductsWithDataCount()} Einträge speichern`}
+            {saving
+              ? 'Speichere...'
+              : `${getProductsWithDataCount()} Einträge speichern`}
           </Button>
         </Paper>
       )}
 
       {/* Confirmation Dialog */}
-      <Dialog open={showConfirmDialog} onClose={() => setShowConfirmDialog(false)}>
+      <Dialog
+        open={showConfirmDialog}
+        onClose={() => setShowConfirmDialog(false)}
+      >
         <DialogTitle>Einträge speichern bestätigen</DialogTitle>
         <DialogContent>
           <Typography gutterBottom>
-            Sie sind dabei, {getProductsWithDataCount()} neue Einträge mit insgesamt{' '}
-            {getTotalUnsoldCount()} unverkauften Produkten zu speichern.
+            Sie sind dabei, {getProductsWithDataCount()} neue Einträge mit
+            insgesamt {getTotalUnsoldCount()} unverkauften Produkten zu
+            speichern.
           </Typography>
           <Typography variant="body2" color="text.secondary">
             Datum: {new Date(selectedDate).toLocaleDateString('de-DE')}
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setShowConfirmDialog(false)}>
-            Abbrechen
-          </Button>
-          <Button 
-            onClick={handleSave} 
-            variant="contained" 
+          <Button onClick={() => setShowConfirmDialog(false)}>Abbrechen</Button>
+          <Button
+            onClick={handleSave}
+            variant="contained"
             disabled={saving}
             startIcon={<Save />}
           >

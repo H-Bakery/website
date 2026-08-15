@@ -47,7 +47,9 @@ function TabPanel(props: TabPanelProps) {
 
 export const UnsoldProductsManagement: React.FC = () => {
   const [tabValue, setTabValue] = useState(0)
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0])
+  const [selectedDate, setSelectedDate] = useState(
+    new Date().toISOString().split('T')[0]
+  )
   const [unsoldProducts, setUnsoldProducts] = useState<UnsoldProduct[]>([])
   const [summary, setSummary] = useState<UnsoldProductSummary[]>([])
   const [loading, setLoading] = useState(false)
@@ -56,7 +58,8 @@ export const UnsoldProductsManagement: React.FC = () => {
   const router = useRouter()
 
   useEffect(() => {
-    if (tabValue === 2) { // Only load when History tab is active
+    if (tabValue === 2) {
+      // Only load when History tab is active
       fetchUnsoldProducts()
       fetchUnsoldProductsSummary()
     }
@@ -66,12 +69,14 @@ export const UnsoldProductsManagement: React.FC = () => {
     try {
       setLoading(true)
       setErrorMessage(null)
-      const data = await bakeryAPI.getUnsoldProducts()
+      const data = await bakeryAPI.unsoldProducts.getAll()
       setUnsoldProducts(data)
     } catch (error) {
       console.error('Error fetching unsold products:', error)
       if (error instanceof Error && error.message.includes('Authentication')) {
-        setErrorMessage('Authentifizierung fehlgeschlagen. Bitte melden Sie sich erneut an.')
+        setErrorMessage(
+          'Authentifizierung fehlgeschlagen. Bitte melden Sie sich erneut an.'
+        )
         setTimeout(() => {
           router.push('/login')
         }, 2000)
@@ -85,7 +90,7 @@ export const UnsoldProductsManagement: React.FC = () => {
 
   const fetchUnsoldProductsSummary = async () => {
     try {
-      const data = await bakeryAPI.getUnsoldProductsSummary()
+      const data = await bakeryAPI.unsoldProducts.getSummary()
       setSummary(data)
     } catch (error) {
       console.error('Error fetching unsold products summary:', error)
@@ -95,7 +100,7 @@ export const UnsoldProductsManagement: React.FC = () => {
   const handleDataRefresh = () => {
     setSuccessMessage('Daten erfolgreich aktualisiert')
     setTimeout(() => setSuccessMessage(null), 3000)
-    
+
     // If we're on the history tab, refresh that data too
     if (tabValue === 2) {
       fetchUnsoldProducts()
@@ -115,7 +120,12 @@ export const UnsoldProductsManagement: React.FC = () => {
     <Container maxWidth="xl" sx={{ py: 2 }}>
       {/* Header */}
       <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 600 }}>
+        <Typography
+          variant="h4"
+          component="h1"
+          gutterBottom
+          sx={{ fontWeight: 600 }}
+        >
           Unverkaufte Produkte
         </Typography>
         <Typography variant="body1" color="text.secondary">
@@ -126,21 +136,21 @@ export const UnsoldProductsManagement: React.FC = () => {
       {/* Messages */}
       {successMessage && (
         <Fade in={!!successMessage}>
-          <Alert 
-            severity="success" 
-            sx={{ mb: 3 }} 
+          <Alert
+            severity="success"
+            sx={{ mb: 3 }}
             onClose={() => setSuccessMessage(null)}
           >
             {successMessage}
           </Alert>
         </Fade>
       )}
-      
+
       {errorMessage && (
         <Fade in={!!errorMessage}>
-          <Alert 
-            severity="error" 
-            sx={{ mb: 3 }} 
+          <Alert
+            severity="error"
+            sx={{ mb: 3 }}
             onClose={() => setErrorMessage(null)}
           >
             {errorMessage}
@@ -150,50 +160,50 @@ export const UnsoldProductsManagement: React.FC = () => {
 
       {/* Navigation Tabs */}
       <Paper elevation={1} sx={{ mb: 3 }}>
-        <Tabs 
-          value={tabValue} 
-          onChange={handleTabChange} 
+        <Tabs
+          value={tabValue}
+          onChange={handleTabChange}
           aria-label="unsold products tabs"
-          sx={{ 
-            borderBottom: 1, 
+          sx={{
+            borderBottom: 1,
             borderColor: 'divider',
             '& .MuiTab-root': {
               minHeight: 64,
               fontSize: '1rem',
-              fontWeight: 500
-            }
+              fontWeight: 500,
+            },
           }}
         >
-          <Tab 
-            icon={<CalendarToday />} 
+          <Tab
+            icon={<CalendarToday />}
             iconPosition="start"
-            label="Tägliche Erfassung" 
-            id="unsold-tab-0" 
-            aria-controls="unsold-tabpanel-0" 
+            label="Tägliche Erfassung"
+            id="unsold-tab-0"
+            aria-controls="unsold-tabpanel-0"
           />
-          <Tab 
-            icon={<Assessment />} 
+          <Tab
+            icon={<Assessment />}
             iconPosition="start"
-            label="Wochenanalyse" 
-            id="unsold-tab-1" 
-            aria-controls="unsold-tabpanel-1" 
+            label="Wochenanalyse"
+            id="unsold-tab-1"
+            aria-controls="unsold-tabpanel-1"
           />
-          <Tab 
-            icon={<History />} 
+          <Tab
+            icon={<History />}
             iconPosition="start"
-            label="Verlauf & Historie" 
-            id="unsold-tab-2" 
-            aria-controls="unsold-tabpanel-2" 
+            label="Verlauf & Historie"
+            id="unsold-tab-2"
+            aria-controls="unsold-tabpanel-2"
           />
         </Tabs>
 
         {/* Daily Tracking Tab */}
         <TabPanel value={tabValue} index={0}>
-          <DateNavigator 
+          <DateNavigator
             selectedDate={selectedDate}
             onDateChange={handleDateChange}
           />
-          <DailyUnsoldTracker 
+          <DailyUnsoldTracker
             selectedDate={selectedDate}
             onSave={handleDataRefresh}
           />
@@ -201,7 +211,7 @@ export const UnsoldProductsManagement: React.FC = () => {
 
         {/* Weekly Analysis Tab */}
         <TabPanel value={tabValue} index={1}>
-          <DateNavigator 
+          <DateNavigator
             selectedDate={selectedDate}
             onDateChange={handleDateChange}
           />
@@ -210,7 +220,7 @@ export const UnsoldProductsManagement: React.FC = () => {
 
         {/* History Tab */}
         <TabPanel value={tabValue} index={2}>
-          <UnsoldProductsHistory 
+          <UnsoldProductsHistory
             unsoldProducts={unsoldProducts}
             summary={summary}
             loading={loading}

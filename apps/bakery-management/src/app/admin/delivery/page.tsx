@@ -1,363 +1,434 @@
 'use client'
-import React from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  Alert,
   Box,
-  Container,
-  Typography,
+  Button,
+  Chip,
+  CircularProgress,
   Grid,
+  IconButton,
+  LinearProgress,
   Paper,
+  Snackbar,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  Chip,
-  IconButton,
-  Button,
-  LinearProgress,
+  Tooltip,
+  Typography,
 } from '@mui/material'
 import {
   LocalShipping as DeliveryIcon,
-  Map as MapIcon,
-  DirectionsCar as CarIcon,
-  Schedule as ScheduleIcon,
-  Phone as PhoneIcon,
-  Navigation as NavigationIcon,
+  Refresh as RefreshIcon,
+  TaskAlt as DeliveredIcon,
+  Inventory as ReadyIcon,
 } from '@mui/icons-material'
+import { apiClient } from '@bakery/shared/data-access'
 
-// Mock delivery data
-const mockDeliveries = [
-  {
-    id: '1',
-    orderId: '#1234',
-    customer: 'Hans Müller',
-    address: 'Hauptstraße 15, 80331 München',
-    phone: '+49 89 12345678',
-    status: 'in-transit',
-    driver: 'Max Schmidt',
-    estimatedTime: '10:30',
-    items: 3,
-  },
-  {
-    id: '2',
-    orderId: '#1235',
-    customer: 'Maria Weber',
-    address: 'Marienplatz 8, 80331 München',
-    phone: '+49 89 23456789',
-    status: 'in-transit',
-    driver: 'Max Schmidt',
-    estimatedTime: '10:45',
-    items: 2,
-  },
-  {
-    id: '3',
-    orderId: '#1236',
-    customer: 'Peter Fischer',
-    address: 'Sendlinger Str. 42, 80331 München',
-    phone: '+49 89 34567890',
-    status: 'pending',
-    driver: 'Anna Klein',
-    estimatedTime: '11:00',
-    items: 5,
-  },
-  {
-    id: '4',
-    orderId: '#1237',
-    customer: 'Lisa Bauer',
-    address: 'Leopoldstraße 100, 80802 München',
-    phone: '+49 89 45678901',
-    status: 'pending',
-    driver: 'Anna Klein',
-    estimatedTime: '11:30',
-    items: 1,
-  },
-  {
-    id: '5',
-    orderId: '#1238',
-    customer: 'Thomas Meyer',
-    address: 'Dachauer Str. 25, 80335 München',
-    phone: '+49 89 56789012',
-    status: 'delivered',
-    driver: 'Max Schmidt',
-    estimatedTime: '09:30',
-    items: 4,
-  },
-]
+interface OrderItem {
+  productId: string
+  name: string
+  quantity: number
+  price: number
+}
 
-const drivers = [
-  {
-    name: 'Max Schmidt',
-    status: 'active',
-    deliveries: 3,
-    vehicle: 'VW Caddy (M-AB 1234)',
-  },
-  {
-    name: 'Anna Klein',
-    status: 'active',
-    deliveries: 2,
-    vehicle: 'Ford Transit (M-CD 5678)',
-  },
-  {
-    name: 'Thomas Wagner',
-    status: 'break',
-    deliveries: 0,
-    vehicle: 'Mercedes Sprinter (M-EF 9012)',
-  },
-]
+export interface DeliveryOrder {
+  id: string
+  customerName: string
+  items: OrderItem[]
+  total: number
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+type DeliveryStage = 'preparing' | 'ready' | 'delivered' | 'other'
+
+const stageOf = (status: string): DeliveryStage => {
+  switch (status) {
+    case 'pending':
+    case 'processing':
+      return 'preparing'
+    case 'ready':
+      return 'ready'
+    case 'delivered':
+    case 'completed':
+      return 'delivered'
+    default:
+      return 'other'
+  }
+}
+
+const STAGE_LABELS: Record<DeliveryStage, string> = {
+  preparing: 'In Vorbereitung',
+  ready: 'Bereit zur Auslieferung',
+  delivered: 'Zugestellt',
+  other: 'Storniert',
+}
+
+const STAGE_COLORS: Record<
+  DeliveryStage,
+  'default' | 'primary' | 'success' | 'warning' | 'error'
+> = {
+  preparing: 'warning',
+  ready: 'primary',
+  delivered: 'success',
+  other: 'error',
+}
+
+const formatDate = (iso: string) => {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime())
+    ? iso
+    : d.toLocaleString('de-DE', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+}
 
 export default function AdminDeliveryPage() {
-  const activeDeliveries = mockDeliveries.filter(
-    (d) => d.status === 'in-transit'
-  ).length
-  const pendingDeliveries = mockDeliveries.filter(
-    (d) => d.status === 'pending'
-  ).length
-  const completedDeliveries = mockDeliveries.filter(
-    (d) => d.status === 'delivered'
-  ).length
+  const [orders, setOrders] = useState<DeliveryOrder[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [snackbar, setSnackbar] = useState<{
+    message: string
+    severity: 'success' | 'error'
+  } | null>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiClient.get<DeliveryOrder[]>('/api/orders')
+      setOrders(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Lieferungen konnten nicht geladen werden'
+      )
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  const deliveries = useMemo(
+    () => orders.filter((o) => stageOf(o.status) !== 'other'),
+    [orders]
+  )
+  const counts = useMemo(
+    () => ({
+      preparing: deliveries.filter((o) => stageOf(o.status) === 'preparing')
+        .length,
+      ready: deliveries.filter((o) => stageOf(o.status) === 'ready').length,
+      delivered: deliveries.filter((o) => stageOf(o.status) === 'delivered')
+        .length,
+    }),
+    [deliveries]
+  )
+  const progress =
+    deliveries.length > 0
+      ? Math.round((counts.delivered / deliveries.length) * 100)
+      : 0
+
+  const setStatus = async (order: DeliveryOrder, status: string) => {
+    setBusyId(order.id)
+    try {
+      const res = await apiClient.put<DeliveryOrder>(
+        `/api/orders/${order.id}`,
+        { status }
+      )
+      const updated = res.data ?? { ...order, status }
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? updated : o)))
+      setSnackbar({
+        message: `Bestellung #${order.id}: ${STAGE_LABELS[stageOf(status)]}`,
+        severity: 'success',
+      })
+    } catch (err) {
+      setSnackbar({
+        message:
+          err instanceof Error
+            ? err.message
+            : 'Status konnte nicht geändert werden',
+        severity: 'error',
+      })
+    } finally {
+      setBusyId(null)
+    }
+  }
 
   return (
     <Box>
       {/* Page Header */}
-      <Box sx={{ mb: 4 }}>
+      <Box sx={{ mb: { xs: 2, md: 4 } }}>
         <Box
           sx={{
             display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
             justifyContent: 'space-between',
-            alignItems: 'center',
-            mb: 2,
+            alignItems: { xs: 'stretch', sm: 'center' },
+            gap: 1.5,
+            mb: 1,
           }}
         >
-          <Typography variant="h4" component="h1">
-            <DeliveryIcon sx={{ mr: 2, verticalAlign: 'middle' }} />
+          <Typography
+            variant="h4"
+            component="h1"
+            sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
+          >
+            <DeliveryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
             Lieferungen
           </Typography>
-          <Button variant="contained" startIcon={<MapIcon />} color="primary">
-            Karte anzeigen
-          </Button>
+          <Tooltip title="Aktualisieren">
+            <span>
+              <IconButton
+                aria-label="Lieferungen aktualisieren"
+                onClick={load}
+                disabled={loading}
+              >
+                <RefreshIcon />
+              </IconButton>
+            </span>
+          </Tooltip>
         </Box>
         <Typography variant="subtitle1" color="text.secondary">
-          Lieferstatus und Routen verwalten
+          Lieferstatus der Bestellungen verwalten
         </Typography>
       </Box>
 
+      {error && (
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          action={
+            <Button color="inherit" size="small" onClick={load}>
+              Erneut versuchen
+            </Button>
+          }
+        >
+          {error}
+        </Alert>
+      )}
+
       {/* Delivery Overview */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, textAlign: 'center' }}>
+      <Grid container spacing={{ xs: 2, md: 3 }} sx={{ mb: { xs: 2, md: 4 } }}>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
             <Typography variant="h6" gutterBottom>
-              Aktive Lieferungen
-            </Typography>
-            <Typography variant="h3" color="primary">
-              {activeDeliveries}
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Unterwegs
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, textAlign: 'center' }}>
-            <Typography variant="h6" gutterBottom>
-              Wartende Bestellungen
+              In Vorbereitung
             </Typography>
             <Typography variant="h3" color="warning.main">
-              {pendingDeliveries}
+              {loading ? '–' : counts.preparing}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Bereit für Lieferung
+              Werden noch gepackt
             </Typography>
           </Paper>
         </Grid>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, textAlign: 'center' }}>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
             <Typography variant="h6" gutterBottom>
-              Heute abgeschlossen
+              Bereit
             </Typography>
-            <Typography variant="h3" color="success.main">
-              {completedDeliveries}
+            <Typography variant="h3" color="primary">
+              {loading ? '–' : counts.ready}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Erfolgreich zugestellt
+              Bereit für Auslieferung
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={4}>
+          <Paper sx={{ p: { xs: 2, md: 3 }, textAlign: 'center' }}>
+            <Typography variant="h6" gutterBottom>
+              Zugestellt
+            </Typography>
+            <Typography variant="h3" color="success.main">
+              {loading ? '–' : counts.delivered}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Erfolgreich abgeschlossen
             </Typography>
           </Paper>
         </Grid>
       </Grid>
 
-      {/* Active Drivers */}
-      <Paper sx={{ p: 3, mb: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Aktive Fahrer
-        </Typography>
-        <Grid container spacing={2}>
-          {drivers.map((driver) => (
-            <Grid item xs={12} md={4} key={driver.name}>
-              <Box
-                sx={{
-                  p: 2,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 1,
-                }}
-              >
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    mb: 1,
-                  }}
-                >
-                  <Typography variant="subtitle1" fontWeight={500}>
-                    {driver.name}
-                  </Typography>
-                  <Chip
-                    label={driver.status === 'active' ? 'Aktiv' : 'Pause'}
-                    color={driver.status === 'active' ? 'success' : 'default'}
-                    size="small"
-                  />
-                </Box>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  <CarIcon
-                    sx={{ fontSize: 16, verticalAlign: 'middle', mr: 0.5 }}
-                  />
-                  {driver.vehicle}
-                </Typography>
-                <Typography variant="body2">
-                  {driver.deliveries} Lieferungen zugewiesen
-                </Typography>
-              </Box>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
-
       {/* Delivery List */}
       <Paper elevation={2}>
-        <TableContainer>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Bestellung</TableCell>
-                <TableCell>Kunde</TableCell>
-                <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                  Adresse
-                </TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                  Fahrer
-                </TableCell>
-                <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                  Zeit
-                </TableCell>
-                <TableCell
-                  align="center"
-                  sx={{ display: { xs: 'none', sm: 'table-cell' } }}
-                >
-                  Aktionen
-                </TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {mockDeliveries.map((delivery) => (
-                <TableRow
-                  key={delivery.id}
-                  sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                >
-                  <TableCell>
-                    <Typography variant="body2" fontWeight={500}>
-                      {delivery.orderId}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {delivery.items} Artikel
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    <Typography variant="body2">{delivery.customer}</Typography>
-                    <Box
-                      sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-                    >
-                      <PhoneIcon sx={{ fontSize: 14 }} />
-                      <Typography variant="caption" color="text.secondary">
-                        {delivery.phone}
-                      </Typography>
-                    </Box>
-                  </TableCell>
+        {loading ? (
+          <Box
+            sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
+            role="status"
+            aria-label="Lieferungen werden geladen"
+          >
+            <CircularProgress />
+          </Box>
+        ) : deliveries.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography color="text.secondary">
+              Keine Lieferungen vorhanden.
+            </Typography>
+          </Box>
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Bestellung</TableCell>
+                  <TableCell>Kunde</TableCell>
                   <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                    {delivery.address}
+                    Bestellt
                   </TableCell>
-                  <TableCell>
-                    <Chip
-                      label={
-                        delivery.status === 'delivered'
-                          ? 'Zugestellt'
-                          : delivery.status === 'in-transit'
-                          ? 'Unterwegs'
-                          : 'Wartend'
-                      }
-                      color={
-                        delivery.status === 'delivered'
-                          ? 'success'
-                          : delivery.status === 'in-transit'
-                          ? 'primary'
-                          : 'default'
-                      }
-                      size="small"
-                    />
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                    {delivery.driver}
-                  </TableCell>
-                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
-                    <Box
-                      sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}
-                    >
-                      <ScheduleIcon fontSize="small" color="action" />
-                      {delivery.estimatedTime}
-                    </Box>
-                  </TableCell>
-                  <TableCell
-                    align="center"
-                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
-                  >
-                    <IconButton
-                      size="small"
-                      color="primary"
-                      aria-label="navigate"
-                    >
-                      <NavigationIcon />
-                    </IconButton>
-                  </TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell align="center">Aktionen</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+              </TableHead>
+              <TableBody>
+                {deliveries.map((order) => {
+                  const stage = stageOf(order.status)
+                  const busy = busyId === order.id
+                  const itemCount = (order.items ?? []).reduce(
+                    (s, i) => s + i.quantity,
+                    0
+                  )
+                  return (
+                    <TableRow
+                      key={order.id}
+                      hover
+                      sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                    >
+                      <TableCell>
+                        <Typography variant="body2" fontWeight={500}>
+                          #{order.id}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {itemCount} Artikel
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {order.customerName}
+                        </Typography>
+                      </TableCell>
+                      <TableCell
+                        sx={{ display: { xs: 'none', md: 'table-cell' } }}
+                      >
+                        {formatDate(order.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={STAGE_LABELS[stage]}
+                          color={STAGE_COLORS[stage]}
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                        {stage === 'preparing' && (
+                          <Tooltip title="Als bereit markieren">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="primary"
+                                aria-label={`Bestellung ${order.id} als bereit markieren`}
+                                disabled={busy}
+                                onClick={() => setStatus(order, 'ready')}
+                              >
+                                <ReadyIcon />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+                        {stage === 'ready' && (
+                          <Tooltip title="Als zugestellt markieren">
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="success"
+                                aria-label={`Bestellung ${order.id} als zugestellt markieren`}
+                                disabled={busy}
+                                onClick={() => setStatus(order, 'delivered')}
+                              >
+                                <DeliveredIcon />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
+                        )}
+                        {stage === 'delivered' && (
+                          <Typography variant="caption" color="text.secondary">
+                            –
+                          </Typography>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
       </Paper>
 
-      {/* Route Optimization Info */}
-      <Box sx={{ mt: 3, p: 3, bgcolor: 'info.light', borderRadius: 1 }}>
-        <Typography variant="h6" gutterBottom color="info.dark">
-          Routenoptimierung
-        </Typography>
-        <Typography variant="body2" color="info.dark">
-          Die heutige Route wurde optimiert. Geschätzte Einsparung: 12 km und 25
-          Minuten gegenüber der Standardroute.
-        </Typography>
-        <LinearProgress
-          variant="determinate"
-          value={65}
-          sx={{ mt: 2, height: 8, borderRadius: 4 }}
-        />
-        <Typography
-          variant="caption"
-          color="info.dark"
-          sx={{ mt: 1, display: 'block' }}
+      {!loading && deliveries.length > 0 && (
+        <Box
+          sx={{
+            mt: 3,
+            p: { xs: 2, md: 3 },
+            bgcolor: 'grey.100',
+            borderRadius: 1,
+          }}
         >
-          65% der heutigen Lieferungen abgeschlossen
-        </Typography>
-      </Box>
+          <Typography variant="subtitle1" gutterBottom>
+            Tagesfortschritt
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={progress}
+            sx={{ height: 8, borderRadius: 4 }}
+            aria-label="Anteil zugestellter Lieferungen"
+          />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ mt: 1, display: 'block' }}
+          >
+            {progress}% der Lieferungen zugestellt ({counts.delivered} von{' '}
+            {deliveries.length})
+          </Typography>
+        </Box>
+      )}
+
+      <Alert severity="info" sx={{ mt: 3 }}>
+        Fahrerzuordnung, Lieferadressen und Routenplanung sind noch nicht an das
+        Backend angebunden. Hier lässt sich derzeit nur der Lieferstatus der
+        Bestellungen pflegen.
+      </Alert>
+
+      <Snackbar
+        open={snackbar !== null}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        {snackbar ? (
+          <Alert
+            severity={snackbar.severity}
+            variant="filled"
+            onClose={() => setSnackbar(null)}
+          >
+            {snackbar.message}
+          </Alert>
+        ) : undefined}
+      </Snackbar>
     </Box>
   )
 }

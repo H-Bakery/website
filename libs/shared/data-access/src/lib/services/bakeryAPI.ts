@@ -11,6 +11,9 @@ import {
   ProductType,
   ProductStatus,
   NotificationCategory,
+  UnsoldProduct,
+  UnsoldProductSummary,
+  CreateUnsoldProductInput,
 } from '@bakery/shared/types'
 import {
   SalesData,
@@ -538,6 +541,76 @@ let staffManagementData: StaffMember[] = [
   },
 ]
 
+// Unsold products mock data (in-memory, mirrors /api/unsold-products)
+const generateUnsoldProducts = (): UnsoldProduct[] => {
+  const entries: UnsoldProduct[] = []
+  const today = new Date()
+  let id = 1
+  for (let i = 0; i < 14; i++) {
+    const date = new Date(today)
+    date.setDate(date.getDate() - i)
+    const dateStr = date.toISOString().split('T')[0]
+    const count = Math.floor(Math.random() * 4) + 1
+    for (let j = 0; j < count; j++) {
+      const product = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)]
+      entries.push({
+        id: id++,
+        productId: product.id,
+        quantity: Math.floor(Math.random() * 6) + 1,
+        date: dateStr,
+        createdAt: date.toISOString(),
+        updatedAt: date.toISOString(),
+        Product: {
+          id: product.id,
+          name: product.name,
+          category: String(product.category),
+          price: product.price,
+        },
+      })
+    }
+  }
+  return entries
+}
+
+const unsoldProductsData: UnsoldProduct[] = generateUnsoldProducts()
+
+const toUnsoldSummary = (entries: UnsoldProduct[]): UnsoldProductSummary[] => {
+  const byProduct = new Map<number, UnsoldProductSummary>()
+  const daysByProduct = new Map<number, Set<string>>()
+  entries.forEach((entry) => {
+    const product =
+      entry.Product ?? PRODUCTS.find((p) => p.id === entry.productId)
+    if (!product) return
+    const existing = byProduct.get(entry.productId)
+    if (existing) {
+      existing.totalUnsold += entry.quantity
+    } else {
+      byProduct.set(entry.productId, {
+        productId: entry.productId,
+        totalUnsold: entry.quantity,
+        Product: {
+          id: product.id,
+          name: product.name,
+          category: String(product.category),
+          price: product.price,
+        },
+      })
+    }
+    if (!daysByProduct.has(entry.productId)) {
+      daysByProduct.set(entry.productId, new Set())
+    }
+    daysByProduct.get(entry.productId)?.add(entry.date)
+  })
+  return Array.from(byProduct.values())
+    .map((summary) => ({
+      ...summary,
+      averageDaily:
+        summary.totalUnsold /
+        Math.max(1, daysByProduct.get(summary.productId)?.size ?? 1),
+    }))
+    .sort((a, b) => b.totalUnsold - a.totalUnsold)
+}
+
 /**
  * Bakery API Service
  * Provides a mock API implementation for the bakery system
@@ -1025,6 +1098,96 @@ export const bakeryAPI = {
   },
 
   /**
+   * Unsold Product Operations (mirrors /api/unsold-products)
+   */
+  unsoldProducts: {
+    async getAll(filters?: {
+      dateFrom?: string
+      dateTo?: string
+      productId?: number
+    }): Promise<UnsoldProduct[]> {
+      let result = [...unsoldProductsData]
+      if (filters?.dateFrom) {
+        const from = filters.dateFrom
+        result = result.filter((e) => e.date >= from)
+      }
+      if (filters?.dateTo) {
+        const to = filters.dateTo
+        result = result.filter((e) => e.date <= to)
+      }
+      if (filters?.productId !== undefined) {
+        result = result.filter((e) => e.productId === filters.productId)
+      }
+      return Promise.resolve(
+        result.sort((a, b) => b.date.localeCompare(a.date))
+      )
+    },
+
+    async create(input: CreateUnsoldProductInput): Promise<UnsoldProduct> {
+      const product = PRODUCTS.find((p) => p.id === input.productId)
+      const now = new Date()
+      const entry: UnsoldProduct = {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        productId: input.productId,
+        quantity: input.quantity,
+        date: input.date ?? now.toISOString().split('T')[0],
+        reason: input.reason,
+        notes: input.notes,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        Product: product
+          ? {
+              id: product.id,
+              name: product.name,
+              category: String(product.category),
+              price: product.price,
+            }
+          : undefined,
+      }
+      unsoldProductsData.push(entry)
+      return Promise.resolve(entry)
+    },
+
+    async delete(id: string | number): Promise<boolean> {
+      const index = unsoldProductsData.findIndex((e) => e.id === id)
+      if (index === -1) return false
+      unsoldProductsData.splice(index, 1)
+      return Promise.resolve(true)
+    },
+
+    async getSummary(filters?: {
+      dateFrom?: string
+      dateTo?: string
+    }): Promise<UnsoldProductSummary[]> {
+      const entries = await bakeryAPI.unsoldProducts.getAll(filters)
+      return toUnsoldSummary(entries)
+    },
+  },
+
+  /**
+   * Flat convenience aliases (backward compatibility with older callers)
+   */
+  async getProducts(): Promise<Product[]> {
+    return bakeryAPI.products.getAll()
+  },
+
+  async getUnsoldProducts(): Promise<UnsoldProduct[]> {
+    return bakeryAPI.unsoldProducts.getAll()
+  },
+
+  async addUnsoldProduct(
+    productId: number,
+    quantity: number,
+    date?: string
+  ): Promise<UnsoldProduct> {
+    return bakeryAPI.unsoldProducts.create({ productId, quantity, date })
+  },
+
+  async getUnsoldProductsSummary(): Promise<UnsoldProductSummary[]> {
+    return bakeryAPI.unsoldProducts.getSummary()
+  },
+
+  /**
    * Cash Management Operations
    */
   async getCashHistory(): Promise<CashEntry[]> {
@@ -1075,6 +1238,32 @@ export const bakeryAPI = {
 
   async deleteCashEntry(id: number): Promise<boolean> {
     return Promise.resolve(true)
+  },
+
+  /**
+   * E-Mail settings (no mail backend is wired yet – reports honestly)
+   */
+  async getEmailConfig(): Promise<{
+    configured: boolean
+    connected: boolean
+    provider: string
+    from: string
+  }> {
+    return Promise.resolve({
+      configured: false,
+      connected: false,
+      provider: 'smtp',
+      from: '',
+    })
+  },
+
+  async sendTestEmail(
+    to: string
+  ): Promise<{ success: boolean; error?: string; messageId?: string }> {
+    return Promise.resolve({
+      success: false,
+      error: `E-Mail-Versand ist nicht konfiguriert (Empfänger: ${to})`,
+    })
   },
 }
 

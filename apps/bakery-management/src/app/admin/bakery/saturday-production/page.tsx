@@ -6,10 +6,8 @@ import {
   Typography,
   Tab,
   Tabs,
-  Button,
   Grid,
   Paper,
-  Divider,
   useMediaQuery,
   useTheme,
   IconButton,
@@ -24,10 +22,15 @@ import BakeryDiningIcon from '@mui/icons-material/BakeryDining'
 import SaturdayProductionDashboard from '../../../../features/production/components/SaturdayProductionDashboard'
 import ProductionChecklist from '../../../../features/production/components/ProductionChecklist'
 import FillingPreparation from '../../../../features/production/components/FillingPreparation'
-import { HefezopfCalculator } from '../../../../features/production/utils/productionCalculator'
+import {
+  HefezopfCalculator,
+  ProductionPlan,
+  ProductOrder,
+} from '../../../../features/production/utils/productionCalculator'
 
-// Mock initial order data - will work offline
-const MOCK_ORDERS = {
+// Standard-Bestellmengen als Ausgangspunkt (werden pro Samstag lokal
+// überschrieben, sobald ein Plan gespeichert wurde)
+const DEFAULT_ORDERS: ProductOrder = {
   'Hefezopf Plain': 12,
   'Hefekranz Nuss': 6,
   'Hefekranz Schoko': 8,
@@ -51,8 +54,11 @@ export default function SaturdayProductionPage() {
   const [saturdays, setSaturdays] = useState<
     { date: Date; display: string; dateStr: string }[]
   >([])
-  const [orders, setOrders] = useState(MOCK_ORDERS)
-  const [productionPlan, setProductionPlan] = useState<any>(null)
+  const [orders, setOrders] = useState<ProductOrder>(DEFAULT_ORDERS)
+  const [productionPlan, setProductionPlan] = useState<ProductionPlan | null>(
+    null
+  )
+  const [hasSavedPlan, setHasSavedPlan] = useState(false)
 
   // Generate upcoming Saturdays
   useEffect(() => {
@@ -110,11 +116,15 @@ export default function SaturdayProductionPage() {
         const { orders: savedOrders } = JSON.parse(savedPlan)
         if (savedOrders) {
           setOrders(savedOrders)
+          setHasSavedPlan(true)
+          return
         }
       } catch (error) {
         console.error('Failed to load saved plan:', error)
       }
     }
+    setOrders(DEFAULT_ORDERS)
+    setHasSavedPlan(false)
   }, [selectedDateIndex, saturdays])
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
@@ -180,6 +190,11 @@ export default function SaturdayProductionPage() {
               </Typography>
               <Typography variant="h6" fontWeight="bold" noWrap>
                 {currentDateDisplay}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {hasSavedPlan
+                  ? 'Gespeicherter Plan (lokal)'
+                  : 'Standardmengen – bitte an die Bestellungen anpassen'}
               </Typography>
             </Box>
           </Grid>

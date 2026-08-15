@@ -5,7 +5,6 @@ import {
   Typography,
   Paper,
   Grid,
-  Divider,
   Table,
   TableBody,
   TableRow,
@@ -20,6 +19,8 @@ import {
   Chip,
   useMediaQuery,
   useTheme,
+  Snackbar,
+  Alert,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import RemoveIcon from '@mui/icons-material/Remove'
@@ -45,6 +46,10 @@ const SaturdayProductionDashboard: React.FC<
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const calculator = new HefezopfCalculator()
   const productionPlan = calculator.calculateProductionNeeds(orders)
+  const [saveMessage, setSaveMessage] = useState<{
+    text: string
+    severity: 'success' | 'error'
+  } | null>(null)
 
   const handleQuantityChange = (product: string, newValue: string) => {
     const quantity = parseInt(newValue, 10) || 0
@@ -66,17 +71,27 @@ const SaturdayProductionDashboard: React.FC<
   }
 
   const handleSavePlan = () => {
-    // Save to localStorage
-    localStorage.setItem(
-      `bakery-plan-${date}`,
-      JSON.stringify({
-        orders,
-        plan: productionPlan,
-        date,
+    // Persist locally in the browser (no backend endpoint yet)
+    try {
+      localStorage.setItem(
+        `bakery-plan-${date}`,
+        JSON.stringify({
+          orders,
+          plan: { ...productionPlan, calculator: undefined },
+          date,
+        })
+      )
+      setSaveMessage({
+        text: 'Produktionsplan lokal gespeichert',
+        severity: 'success',
       })
-    )
-
-    alert('Produktionsplan gespeichert!')
+    } catch (error) {
+      console.error('Failed to save production plan:', error)
+      setSaveMessage({
+        text: 'Produktionsplan konnte nicht gespeichert werden',
+        severity: 'error',
+      })
+    }
   }
 
   const handlePrint = () => {
@@ -85,6 +100,20 @@ const SaturdayProductionDashboard: React.FC<
 
   return (
     <Box className="production-dashboard">
+      <Snackbar
+        open={Boolean(saveMessage)}
+        autoHideDuration={3000}
+        onClose={() => setSaveMessage(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity={saveMessage?.severity ?? 'success'}
+          onClose={() => setSaveMessage(null)}
+        >
+          {saveMessage?.text}
+        </Alert>
+      </Snackbar>
+
       {/* Action buttons */}
       <Box
         sx={{
@@ -314,8 +343,8 @@ const SaturdayProductionDashboard: React.FC<
           )}
         </AccordionSummary>
         <AccordionDetails>
-          {Object.entries(productionPlan.fillings).some(
-            ([_, amount]) => amount > 0
+          {Object.values(productionPlan.fillings).some(
+            (amount) => amount > 0
           ) ? (
             <Grid container spacing={2}>
               {Object.entries(productionPlan.fillings).map(

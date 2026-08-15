@@ -48,7 +48,9 @@ interface ProductWasteSummary {
   price: number
 }
 
-export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) => {
+export const WeeklySummary: React.FC<WeeklySummaryProps> = ({
+  selectedDate,
+}) => {
   const [weekData, setWeekData] = useState<DaySummary[]>([])
   const [productWaste, setProductWaste] = useState<ProductWasteSummary[]>([])
   const [loading, setLoading] = useState(true)
@@ -59,8 +61,10 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
     const selectedDate = new Date(date)
     const currentDay = selectedDate.getDay()
     const monday = new Date(selectedDate)
-    monday.setDate(selectedDate.getDate() - (currentDay === 0 ? 6 : currentDay - 1))
-    
+    monday.setDate(
+      selectedDate.getDate() - (currentDay === 0 ? 6 : currentDay - 1)
+    )
+
     const week = []
     for (let i = 0; i < 7; i++) {
       const day = new Date(monday)
@@ -78,43 +82,58 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
     try {
       setLoading(true)
       setError(null)
-      
+
       const [unsoldData, products] = await Promise.all([
-        bakeryAPI.getUnsoldProducts(),
-        bakeryAPI.getProducts()
+        bakeryAPI.unsoldProducts.getAll(),
+        bakeryAPI.products.getAll(),
       ])
-      
+
       const weekDates = getWeekRange(selectedDate)
-      
+
       // Create daily summaries
-      const dailySummaries: DaySummary[] = weekDates.map(date => {
-        const dayEntries = unsoldData.filter((entry: UnsoldProduct) => entry.date === date)
+      const dailySummaries: DaySummary[] = weekDates.map((date) => {
+        const dayEntries = unsoldData.filter(
+          (entry: UnsoldProduct) => entry.date === date
+        )
         return {
           date,
-          totalUnsold: dayEntries.reduce((sum: number, entry: UnsoldProduct) => sum + entry.quantity, 0),
+          totalUnsold: dayEntries.reduce(
+            (sum: number, entry: UnsoldProduct) => sum + entry.quantity,
+            0
+          ),
           productsCount: dayEntries.length,
-          hasData: dayEntries.length > 0
+          hasData: dayEntries.length > 0,
         }
       })
-      
+
       // Create product waste summary for the week
-      const weekEntries = unsoldData.filter((entry: UnsoldProduct) => weekDates.includes(entry.date))
-      const productWasteMap = new Map<number, { total: number, entries: number }>()
-      
+      const weekEntries = unsoldData.filter((entry: UnsoldProduct) =>
+        weekDates.includes(entry.date)
+      )
+      const productWasteMap = new Map<
+        number,
+        { total: number; entries: number }
+      >()
+
       weekEntries.forEach((entry: UnsoldProduct) => {
-        const productId = entry.productId || (entry as any).ProductId
-        const existing = productWasteMap.get(productId) || { total: 0, entries: 0 }
+        const productId = entry.productId
+        const existing = productWasteMap.get(productId) || {
+          total: 0,
+          entries: 0,
+        }
         productWasteMap.set(productId, {
           total: existing.total + entry.quantity,
-          entries: existing.entries + 1
+          entries: existing.entries + 1,
         })
       })
-      
-      const productWasteSummary: ProductWasteSummary[] = Array.from(productWasteMap.entries())
+
+      const productWasteSummary: ProductWasteSummary[] = Array.from(
+        productWasteMap.entries()
+      )
         .map(([productId, data]) => {
           const product = products.find((p: Product) => p.id === productId)
           if (!product) return null
-          
+
           return {
             productId,
             productName: product.name,
@@ -122,17 +141,16 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
             totalWaste: data.total,
             averagePerDay: data.total / 7,
             wasteValue: data.total * product.price,
-            price: product.price
+            price: product.price,
           }
         })
         .filter(Boolean) as ProductWasteSummary[]
-      
+
       // Sort by total waste descending
       productWasteSummary.sort((a, b) => b.totalWaste - a.totalWaste)
-      
+
       setWeekData(dailySummaries)
       setProductWaste(productWasteSummary)
-      
     } catch (error) {
       console.error('Error loading weekly data:', error)
       setError('Fehler beim Laden der Wochendaten')
@@ -146,7 +164,7 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
     return date.toLocaleDateString('de-DE', {
       weekday: 'short',
       day: '2-digit',
-      month: '2-digit'
+      month: '2-digit',
     })
   }
 
@@ -159,13 +177,14 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
   }
 
   const getDaysWithData = () => {
-    return weekData.filter(day => day.hasData).length
+    return weekData.filter((day) => day.hasData).length
   }
 
   const getWorstDay = () => {
-    return weekData.reduce((worst, day) => 
-      day.totalUnsold > worst.totalUnsold ? day : worst
-    , weekData[0] || { totalUnsold: 0, date: '' })
+    return weekData.reduce(
+      (worst, day) => (day.totalUnsold > worst.totalUnsold ? day : worst),
+      weekData[0] || { totalUnsold: 0, date: '' }
+    )
   }
 
   if (loading) {
@@ -191,17 +210,23 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h5" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <Typography
+        variant="h5"
+        gutterBottom
+        sx={{ display: 'flex', alignItems: 'center', gap: 1 }}
+      >
         <CalendarMonth color="primary" />
         Wochensummary
       </Typography>
-      
+
       {/* Week Overview Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}
+              >
                 <TrendingDown color="warning" />
                 <Typography variant="h6">Gesamt Verlust</Typography>
               </Box>
@@ -214,11 +239,13 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}
+              >
                 <Assessment color="error" />
                 <Typography variant="h6">Wert</Typography>
               </Box>
@@ -231,11 +258,13 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}
+              >
                 <CalendarMonth color="info" />
                 <Typography variant="h6">Erfasst</Typography>
               </Box>
@@ -248,11 +277,13 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
             </CardContent>
           </Card>
         </Grid>
-        
+
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+              <Box
+                sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}
+              >
                 <Warning color="warning" />
                 <Typography variant="h6">Schlimmster Tag</Typography>
               </Box>
@@ -276,19 +307,23 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
           <Grid container spacing={1}>
             {weekData.map((day, index) => (
               <Grid item xs key={day.date}>
-                <Card 
+                <Card
                   variant={day.hasData ? 'outlined' : 'elevation'}
-                  sx={{ 
+                  sx={{
                     textAlign: 'center',
                     bgcolor: day.hasData ? 'background.paper' : 'grey.50',
-                    borderColor: day.totalUnsold > 0 ? 'warning.main' : 'divider'
+                    borderColor:
+                      day.totalUnsold > 0 ? 'warning.main' : 'divider',
                   }}
                 >
                   <CardContent sx={{ py: 1, px: 1 }}>
                     <Typography variant="caption" color="text.secondary">
                       {formatDate(day.date)}
                     </Typography>
-                    <Typography variant="h6" color={day.hasData ? 'text.primary' : 'text.secondary'}>
+                    <Typography
+                      variant="h6"
+                      color={day.hasData ? 'text.primary' : 'text.secondary'}
+                    >
                       {day.totalUnsold}
                     </Typography>
                     <Typography variant="caption" color="text.secondary">
@@ -330,7 +365,11 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
                         </Typography>
                       </TableCell>
                       <TableCell>
-                        <Chip label={product.category} size="small" variant="outlined" />
+                        <Chip
+                          label={product.category}
+                          size="small"
+                          variant="outlined"
+                        />
                       </TableCell>
                       <TableCell align="right">
                         <Typography variant="body2" fontWeight={600}>
@@ -343,7 +382,11 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
                         </Typography>
                       </TableCell>
                       <TableCell align="right">
-                        <Typography variant="body2" color="error.main" fontWeight={600}>
+                        <Typography
+                          variant="body2"
+                          color="error.main"
+                          fontWeight={600}
+                        >
                           €{product.wasteValue.toFixed(2)}
                         </Typography>
                       </TableCell>
@@ -351,7 +394,9 @@ export const WeeklySummary: React.FC<WeeklySummaryProps> = ({ selectedDate }) =>
                         <Box sx={{ width: 60 }}>
                           <LinearProgress
                             variant="determinate"
-                            value={(product.totalWaste / getTotalWeekWaste()) * 100}
+                            value={
+                              (product.totalWaste / getTotalWeekWaste()) * 100
+                            }
                             color="warning"
                           />
                         </Box>

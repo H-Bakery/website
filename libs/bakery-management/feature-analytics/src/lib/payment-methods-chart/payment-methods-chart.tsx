@@ -1,17 +1,31 @@
-import React from 'react';
-import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
-import { Paper, Typography, Box } from '@mui/material';
-import type { PaymentMethodData } from '@bakery/shared/types';
+import React from 'react'
+import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+  Legend,
+  Tooltip,
+} from 'recharts'
+import { Paper, Typography, Box } from '@mui/material'
+import type { PaymentMethodData } from '@bakery/shared/types'
 
 export interface PaymentMethodsChartProps {
-  data: PaymentMethodData[];
-  title?: string;
-  height?: number;
-  showLegend?: boolean;
-  showValues?: boolean;
+  data: PaymentMethodData[]
+  title?: string
+  height?: number
+  showLegend?: boolean
+  showValues?: boolean
 }
 
-const COLORS = ['#007bff', '#28a745', '#ffc107', '#dc3545', '#6c757d', '#17a2b8'];
+const COLORS = [
+  '#007bff',
+  '#28a745',
+  '#ffc107',
+  '#dc3545',
+  '#6c757d',
+  '#17a2b8',
+]
 
 export function PaymentMethodsChart({
   data,
@@ -24,15 +38,15 @@ export function PaymentMethodsChart({
     return new Intl.NumberFormat('de-DE', {
       style: 'currency',
       currency: 'EUR',
-    }).format(value);
-  };
+    }).format(value)
+  }
 
-  const totalAmount = data.reduce((sum, item) => sum + item.amount, 0);
-  
+  const totalAmount = data.reduce((sum, item) => sum + item.amount, 0)
+
   const chartData = data.map((item) => ({
     ...item,
     percentage: ((item.amount / totalAmount) * 100).toFixed(1),
-  }));
+  }))
 
   const renderCustomLabel = ({
     cx,
@@ -43,10 +57,10 @@ export function PaymentMethodsChart({
     percentage,
     index,
   }: any) => {
-    const RADIAN = Math.PI / 180;
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
+    const RADIAN = Math.PI / 180
+    const radius = innerRadius + (outerRadius - innerRadius) * 0.5
+    const x = cx + radius * Math.cos(-midAngle * RADIAN)
+    const y = cy + radius * Math.sin(-midAngle * RADIAN)
 
     return (
       <text
@@ -59,18 +73,16 @@ export function PaymentMethodsChart({
       >
         {`${percentage}%`}
       </text>
-    );
-  };
+    )
+  }
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
-      const data = payload[0];
+      const data = payload[0]
       return (
         <Paper sx={{ p: 1.5 }} elevation={3}>
           <Typography variant="subtitle2">{data.name}</Typography>
-          <Typography variant="body2">
-            Anzahl: {data.payload.count}
-          </Typography>
+          <Typography variant="body2">Anzahl: {data.payload.count}</Typography>
           <Typography variant="body2">
             Betrag: {formatCurrency(data.value)}
           </Typography>
@@ -78,13 +90,13 @@ export function PaymentMethodsChart({
             Anteil: {data.payload.percentage}%
           </Typography>
         </Paper>
-      );
+      )
     }
-    return null;
-  };
+    return null
+  }
 
   const renderLegend = (props: any) => {
-    const { payload } = props;
+    const { payload } = props
     return (
       <Box>
         {payload.map((entry: any, index: number) => (
@@ -108,21 +120,22 @@ export function PaymentMethodsChart({
             </Box>
             {showValues && (
               <Typography variant="body2" color="text.secondary">
-                {formatCurrency(entry.payload.amount)} ({entry.payload.percentage}%)
+                {formatCurrency(entry.payload.amount)} (
+                {entry.payload.percentage}%)
               </Typography>
             )}
           </Box>
         ))}
       </Box>
-    );
-  };
+    )
+  }
 
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
       <Typography variant="h6" component="h2" gutterBottom>
         {title}
       </Typography>
-      
+
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie
@@ -136,7 +149,10 @@ export function PaymentMethodsChart({
             dataKey="amount"
           >
             {chartData.map((entry, index) => (
-              <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+              <Cell
+                key={`cell-${index}`}
+                fill={COLORS[index % COLORS.length]}
+              />
             ))}
           </Pie>
           <Tooltip content={<CustomTooltip />} />
@@ -151,7 +167,7 @@ export function PaymentMethodsChart({
         </PieChart>
       </ResponsiveContainer>
     </Paper>
-  );
+  )
 }
 
-export default PaymentMethodsChart;
+export default PaymentMethodsChart

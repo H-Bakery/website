@@ -1,7 +1,6 @@
 'use client'
 import React, { useState, useEffect } from 'react'
 import {
-  Container,
   Paper,
   Typography,
   Box,
@@ -22,8 +21,7 @@ import {
 } from '@bakery/management/feature-cash'
 import { bakeryAPI } from '@bakery/shared/data-access'
 import { CashEntry } from '@bakery/shared/types'
-import { useRouter } from 'next/navigation'
-import { cashCalculations, errorUtils } from '@bakery/shared/utils'
+import { cashCalculations } from '@bakery/shared/utils'
 
 interface TabPanelProps {
   children?: React.ReactNode
@@ -47,6 +45,22 @@ function TabPanel(props: TabPanelProps) {
   )
 }
 
+/** Map API errors to a German user-facing message. */
+function describeError(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    if (
+      error.message.includes('Authentication') ||
+      error.message.includes('user session is invalid')
+    ) {
+      return 'Authentifizierung fehlgeschlagen. Bitte melden Sie sich erneut an.'
+    }
+    if (error.message.includes('not found')) {
+      return 'Der Kassenstand wurde nicht gefunden.'
+    }
+  }
+  return fallback
+}
+
 const CashManagement: React.FC = () => {
   const [tabValue, setTabValue] = useState(0)
   const [cashEntries, setCashEntries] = useState<CashEntry[]>([])
@@ -56,7 +70,6 @@ const CashManagement: React.FC = () => {
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<CashEntry | null>(null)
-  const router = useRouter()
 
   useEffect(() => {
     fetchCashHistory()
@@ -71,17 +84,7 @@ const CashManagement: React.FC = () => {
       setCashEntries(data)
     } catch (error) {
       console.error('Error fetching cash history:', error)
-      if (error instanceof Error && error.message.includes('Authentication')) {
-        setErrorMessage(
-          'Authentifizierung fehlgeschlagen. Bitte melden Sie sich erneut an.'
-        )
-        // Redirect to login after a short delay
-        setTimeout(() => {
-          router.push('/login')
-        }, 2000)
-      } else {
-        setErrorMessage('Fehler beim Laden der Kassendaten')
-      }
+      setErrorMessage(describeError(error, 'Fehler beim Laden der Kassendaten'))
     } finally {
       setLoading(false)
     }
@@ -101,20 +104,9 @@ const CashManagement: React.FC = () => {
       setTimeout(() => setSuccessMessage(null), 5000)
     } catch (error) {
       console.error('Error saving cash entry:', error)
-      if (
-        error instanceof Error &&
-        (error.message.includes('Authentication') ||
-          error.message.includes('user session is invalid'))
-      ) {
-        setErrorMessage(
-          'Authentifizierung fehlgeschlagen. Bitte melden Sie sich erneut an.'
-        )
-        setTimeout(() => {
-          router.push('/login')
-        }, 2000)
-      } else {
-        setErrorMessage('Fehler beim Speichern des Kassenstands')
-      }
+      setErrorMessage(
+        describeError(error, 'Fehler beim Speichern des Kassenstands')
+      )
       setSuccessMessage(null)
     }
   }
@@ -151,26 +143,12 @@ const CashManagement: React.FC = () => {
       setTimeout(() => setSuccessMessage(null), 5000)
     } catch (error) {
       console.error('Error updating cash entry:', error)
-      if (
-        error instanceof Error &&
-        (error.message.includes('Authentication') ||
-          error.message.includes('user session is invalid'))
-      ) {
-        setErrorMessage(
-          'Authentifizierung fehlgeschlagen. Bitte melden Sie sich erneut an.'
-        )
-        setTimeout(() => {
-          router.push('/login')
-        }, 2000)
-      } else if (
-        error instanceof Error &&
-        error.message.includes('not found')
-      ) {
-        setErrorMessage('Der Kassenstand wurde nicht gefunden.')
+      setErrorMessage(
+        describeError(error, 'Fehler beim Aktualisieren des Kassenstands')
+      )
+      if (error instanceof Error && error.message.includes('not found')) {
         // Refresh data to sync with server
         await fetchCashHistory()
-      } else {
-        setErrorMessage('Fehler beim Aktualisieren des Kassenstands')
       }
       throw error // Re-throw to let the modal handle it
     }
@@ -190,26 +168,12 @@ const CashManagement: React.FC = () => {
       setTimeout(() => setSuccessMessage(null), 5000)
     } catch (error) {
       console.error('Error deleting cash entry:', error)
-      if (
-        error instanceof Error &&
-        (error.message.includes('Authentication') ||
-          error.message.includes('user session is invalid'))
-      ) {
-        setErrorMessage(
-          'Authentifizierung fehlgeschlagen. Bitte melden Sie sich erneut an.'
-        )
-        setTimeout(() => {
-          router.push('/login')
-        }, 2000)
-      } else if (
-        error instanceof Error &&
-        error.message.includes('not found')
-      ) {
-        setErrorMessage('Der Kassenstand wurde nicht gefunden.')
+      setErrorMessage(
+        describeError(error, 'Fehler beim Löschen des Kassenstands')
+      )
+      if (error instanceof Error && error.message.includes('not found')) {
         // Refresh data to sync with server
         await fetchCashHistory()
-      } else {
-        setErrorMessage('Fehler beim Löschen des Kassenstands')
       }
       throw error // Re-throw to let the dialog handle it
     }
@@ -225,6 +189,12 @@ const CashManagement: React.FC = () => {
     setSelectedEntry(null)
   }
 
+  const formatCurrency = (amount: number) =>
+    new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+    }).format(amount)
+
   const calculateTodaysTotal = () => {
     const todaysEntries = cashCalculations.filterToday(cashEntries)
     return cashCalculations.calculateTotal(todaysEntries)
@@ -236,7 +206,7 @@ const CashManagement: React.FC = () => {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Box>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" component="h1" gutterBottom>
           Kassenverwaltung
@@ -256,7 +226,7 @@ const CashManagement: React.FC = () => {
                 <Typography variant="h6">Heute</Typography>
               </Box>
               <Typography variant="h4" color="primary">
-                €{calculateTodaysTotal().toFixed(2)}
+                {formatCurrency(calculateTodaysTotal())}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Heutiger Kassenstand
@@ -273,7 +243,7 @@ const CashManagement: React.FC = () => {
                 <Typography variant="h6">Dieser Monat</Typography>
               </Box>
               <Typography variant="h4" color="success.main">
-                €{calculateMonthlyTotal().toFixed(2)}
+                {formatCurrency(calculateMonthlyTotal())}
               </Typography>
               <Typography variant="body2" color="text.secondary">
                 Monatssumme
@@ -327,7 +297,7 @@ const CashManagement: React.FC = () => {
           <Tabs
             value={tabValue}
             onChange={handleTabChange}
-            aria-label="cash management tabs"
+            aria-label="Kassenverwaltung Tabs"
             variant="scrollable"
             scrollButtons="auto"
           >
@@ -383,7 +353,7 @@ const CashManagement: React.FC = () => {
         onClose={handleCloseDeleteDialog}
         onDelete={(id) => handleDeleteEntry(id)}
       />
-    </Container>
+    </Box>
   )
 }
 

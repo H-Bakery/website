@@ -19,7 +19,9 @@ interface UnsoldProductsFormProps {
   onSubmit: (productId: number, quantity: number) => Promise<void>
 }
 
-export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit }) => {
+export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({
+  onSubmit,
+}) => {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [quantity, setQuantity] = useState('')
   const [products, setProducts] = useState<Product[]>([])
@@ -31,7 +33,7 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
   useEffect(() => {
     const loadProducts = async () => {
       try {
-        const productsData = await bakeryAPI.getProducts()
+        const productsData = await bakeryAPI.products.getAll()
         setProducts(productsData)
       } catch (error) {
         console.error('Error loading products:', error)
@@ -61,17 +63,17 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
     }
 
     const numericQuantity = parseInt(quantity)
-    
+
     if (isNaN(numericQuantity) || numericQuantity < 0) {
       setError('Bitte geben Sie eine gültige Anzahl (0 oder größer) ein')
       return false
     }
-    
+
     if (numericQuantity > 999) {
       setError('Die Anzahl darf nicht größer als 999 sein')
       return false
     }
-    
+
     return true
   }
 
@@ -82,22 +84,22 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
-    
+
     if (!validateForm()) {
       return
     }
-    
+
     const numericQuantity = parseInt(quantity)
-    
+
     // Show confirmation for unusual quantities
     if (checkForUnusualQuantity(numericQuantity) && !showConfirmation) {
       setShowConfirmation(true)
       return
     }
-    
+
     setIsSubmitting(true)
     setError(null)
-    
+
     try {
       await onSubmit(selectedProduct!.id, numericQuantity)
       setSelectedProduct(null)
@@ -132,10 +134,10 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
       <Typography variant="h6" gutterBottom>
         Unverkaufte Produkte erfassen
       </Typography>
-      
+
       <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-        Erfassen Sie hier die Produkte, die am Ende des Tages nicht verkauft wurden.
-        Aktuell: {getCurrentDateTime()}
+        Erfassen Sie hier die Produkte, die am Ende des Tages nicht verkauft
+        wurden. Aktuell: {getCurrentDateTime()}
       </Typography>
 
       <Paper elevation={2} sx={{ p: 3, maxWidth: 600 }}>
@@ -162,7 +164,9 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
                   ...params.InputProps,
                   endAdornment: (
                     <>
-                      {isLoadingProducts ? <CircularProgress color="inherit" size={20} /> : null}
+                      {isLoadingProducts ? (
+                        <CircularProgress color="inherit" size={20} />
+                      ) : null}
                       {params.InputProps.endAdornment}
                     </>
                   ),
@@ -199,29 +203,29 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
             disabled={isSubmitting}
             sx={{ mb: 2 }}
           />
-          
+
           {error && (
             <FormHelperText error sx={{ mb: 2, fontSize: '1rem' }}>
               {error}
             </FormHelperText>
           )}
-          
+
           {showConfirmation && (
-            <Alert 
-              severity="warning" 
+            <Alert
+              severity="warning"
               sx={{ mb: 2 }}
               action={
                 <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button 
-                    color="inherit" 
-                    size="small" 
+                  <Button
+                    color="inherit"
+                    size="small"
                     onClick={() => setShowConfirmation(false)}
                   >
                     Abbrechen
                   </Button>
-                  <Button 
-                    color="inherit" 
-                    size="small" 
+                  <Button
+                    color="inherit"
+                    size="small"
                     variant="outlined"
                     onClick={handleConfirmSubmit}
                   >
@@ -231,12 +235,12 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
               }
             >
               <Typography variant="body2">
-                Die eingegebene Anzahl ({quantity} Stück) ist ungewöhnlich hoch. 
+                Die eingegebene Anzahl ({quantity} Stück) ist ungewöhnlich hoch.
                 Möchten Sie fortfahren?
               </Typography>
             </Alert>
           )}
-          
+
           <Button
             type="submit"
             fullWidth
@@ -244,7 +248,7 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
             size="large"
             startIcon={<Save />}
             disabled={isSubmitting || !selectedProduct || !quantity || !!error}
-            sx={{ 
+            sx={{
               py: 1.5,
               fontSize: '1.1rem',
             }}
@@ -252,9 +256,14 @@ export const UnsoldProductsForm: React.FC<UnsoldProductsFormProps> = ({ onSubmit
             {isSubmitting ? 'Speichere...' : 'Unverkaufte Produkte speichern'}
           </Button>
         </form>
-        
-        <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-          Tipp: Geben Sie 0 ein, wenn von einem Produkt nichts übrig geblieben ist
+
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ mt: 2, display: 'block' }}
+        >
+          Tipp: Geben Sie 0 ein, wenn von einem Produkt nichts übrig geblieben
+          ist
         </Typography>
       </Paper>
     </Box>

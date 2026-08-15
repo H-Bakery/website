@@ -1,5 +1,5 @@
 'use client'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box,
   Typography,
@@ -27,84 +27,105 @@ interface ChatMessage {
   }
 }
 
+interface ChatUser {
+  id: string
+  username: string
+}
+
 const TOKEN_KEY = 'bakery-auth-token'
+const CHAT_ENDPOINT = '/api/chat'
+const POLL_INTERVAL_MS = 5000
+
+/**
+ * `useAuth` throws when no AuthProvider is mounted (this page used to crash
+ * with a 500 because of that). Degrade gracefully to a read-only chat instead.
+ * The hook order stays stable because `useAuth` is always called exactly once.
+ */
+const useOptionalAuthUser = (): ChatUser | null => {
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- called unconditionally; try/catch only guards the missing-provider throw
+    const { user } = useAuth()
+    return user ? { id: String(user.id), username: user.email } : null
+  } catch {
+    return null
+  }
+}
+
+const getToken = () =>
+  typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null
+
+const authHeaders = (): HeadersInit => {
+  const token = getToken()
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+}
 
 const ChatPage: React.FC = () => {
-  const { user } = useAuth()
+  const chatUser = useOptionalAuthUser()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState<boolean>(true)
   const [error, setError] = useState<string | null>(null)
   const [sending, setSending] = useState<boolean>(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Get token from localStorage (managed by auth context internally)
-  const getToken = () =>
-    typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null
-
-  // Map auth user to chat user format
-  const chatUser = user ? { id: String(user.id), username: user.email } : null
-
   // Scroll to bottom when new messages arrive
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }
-
   useEffect(() => {
-    scrollToBottom()
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   // Fetch messages from API
-  const fetchMessages = async () => {
-    const token = getToken()
-    if (!token) return
-
+  const fetchMessages = useCallback(async () => {
     try {
-      const response = await fetch('http://localhost:5000/chat', {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-      })
+      const response = await fetch(CHAT_ENDPOINT, { headers: authHeaders() })
 
       if (!response.ok) {
-        throw new Error('Failed to fetch messages')
+        throw new Error(
+          response.status === 401 || response.status === 403
+            ? 'Bitte melden Sie sich an, um den Team-Chat zu nutzen.'
+            : 'Chat-Nachrichten konnten nicht geladen werden.'
+        )
       }
 
       const data = await response.json()
-      setMessages(data)
+      setMessages(Array.isArray(data) ? data : data?.data ?? [])
       setError(null)
-    } catch (error: any) {
-      setError(error.message || 'Failed to load messages')
+    } catch (err) {
+      setError(
+        err instanceof Error && err.message.startsWith('Bitte')
+          ? err.message
+          : 'Der Chat-Server ist derzeit nicht erreichbar.'
+      )
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   // Send new message
   const sendMessage = async (messageText: string) => {
-    const token = getToken()
-    if (!token || !messageText.trim()) return
+    if (!messageText.trim()) return
 
     setSending(true)
     try {
-      const response = await fetch('http://localhost:5000/chat', {
+      const response = await fetch(CHAT_ENDPOINT, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
+        headers: authHeaders(),
         body: JSON.stringify({ message: messageText }),
       })
 
       if (!response.ok) {
-        throw new Error('Failed to send message')
+        throw new Error('Nachricht konnte nicht gesendet werden.')
       }
 
-      // Refresh messages after sending
       await fetchMessages()
       setError(null)
-    } catch (error: any) {
-      setError(error.message || 'Failed to send message')
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : 'Nachricht konnte nicht gesendet werden.'
+      )
     } finally {
       setSending(false)
     }
@@ -113,13 +134,9 @@ const ChatPage: React.FC = () => {
   // Initial load and polling setup
   useEffect(() => {
     fetchMessages()
-
-    // Set up polling for real-time updates
-    const interval = setInterval(fetchMessages, 3000) // Poll every 3 seconds
-
+    const interval = setInterval(fetchMessages, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [fetchMessages])
 
   if (loading) {
     return (
@@ -129,15 +146,17 @@ const ChatPage: React.FC = () => {
         alignItems="center"
         minHeight="400px"
       >
-        <CircularProgress />
+        <CircularProgress aria-label="Lade Chat" />
       </Box>
     )
   }
 
+  const canSend = Boolean(chatUser || getToken())
+
   return (
     <Box>
       <Typography variant="h4" component="h1" gutterBottom>
-        Team Chat
+        Team-Chat
       </Typography>
       <Typography variant="body2" color="text.secondary" gutterBottom>
         Interne Kommunikation für das Bäckerei-Team
@@ -152,14 +171,21 @@ const ChatPage: React.FC = () => {
         }}
       >
         <CardHeader
-          title="Chat Messages"
-          subheader={`${messages.length} Nachrichten`}
+          title="Nachrichten"
+          subheader={`${messages.length} ${
+            messages.length === 1 ? 'Nachricht' : 'Nachrichten'
+          }`}
         />
         <Divider />
 
         {error && (
           <Alert severity="error" sx={{ m: 2 }}>
             {error}
+          </Alert>
+        )}
+        {!error && !canSend && (
+          <Alert severity="info" sx={{ m: 2 }}>
+            Sie sind nicht angemeldet – Nachrichten können nur gelesen werden.
           </Alert>
         )}
 
@@ -189,9 +215,10 @@ const ChatPage: React.FC = () => {
                   alignItems="center"
                   height="100%"
                 >
-                  <Typography color="text.secondary">
-                    Noch keine Nachrichten. Seien Sie der Erste, der eine
-                    Nachricht sendet!
+                  <Typography color="text.secondary" align="center">
+                    {error
+                      ? 'Keine Nachrichten verfügbar.'
+                      : 'Noch keine Nachrichten. Seien Sie der Erste, der eine Nachricht sendet!'}
                   </Typography>
                 </Box>
               ) : (
@@ -209,7 +236,7 @@ const ChatPage: React.FC = () => {
               <ChatMessageInput
                 onSendMessage={sendMessage}
                 sending={sending}
-                disabled={!user || sending}
+                disabled={!canSend || sending}
               />
             </Box>
           </Paper>
