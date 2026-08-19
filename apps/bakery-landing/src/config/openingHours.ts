@@ -25,27 +25,27 @@ export const OPENING_HOURS: OpeningHoursWeek = {
   },
   tuesday: {
     isOpen: true,
-    opens: '06:00',
+    opens: '05:30',
     closes: '13:30',
   },
   wednesday: {
     isOpen: true,
-    opens: '06:00',
+    opens: '05:30',
     closes: '13:30',
   },
   thursday: {
     isOpen: true,
-    opens: '06:00',
+    opens: '05:30',
     closes: '13:30',
   },
   friday: {
     isOpen: true,
-    opens: '06:00',
+    opens: '05:30',
     closes: '13:30',
   },
   saturday: {
     isOpen: true,
-    opens: '06:00',
+    opens: '05:30',
     closes: '12:30',
   },
   sunday: {

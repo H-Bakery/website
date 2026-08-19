@@ -22,7 +22,7 @@ const DAY_ORDER: DayKey[] = [
 ]
 
 /**
- * Strip leading zero from time string for display: '06:00' → '6:00'
+ * Strip leading zero from time string for display: '05:30' → '5:30'
  */
 function formatTime(time: string): string {
   return time.replace(/^0/, '')
@@ -67,7 +67,7 @@ function groupDaysBySchedule(): DayGroup[] {
 }
 
 /**
- * Format a group's hours for display: '6:00 - 13:30 Uhr'
+ * Format a group's hours for display: '5:30 - 13:30 Uhr'
  */
 function formatGroupHours(group: DayGroup): string {
   if (!group.isOpen || !group.opens || !group.closes) {
@@ -153,7 +153,7 @@ export function getSeoOpeningHours() {
 }
 
 /**
- * Get opening time for hero badge — returns display-formatted earliest time, e.g. '6:00'
+ * Get opening time for hero badge — returns display-formatted earliest time, e.g. '5:30'
  */
 export function getEarliestOpeningTime(): string {
   const openDays = Object.values(OPENING_HOURS).filter(
@@ -161,13 +161,13 @@ export function getEarliestOpeningTime(): string {
   )
   const earliest = openDays.reduce((min, day) => {
     return day.opens! < min ? day.opens! : min
-  }, openDays[0]?.opens ?? '06:00')
+  }, openDays[0]?.opens ?? '05:30')
 
   return formatTime(earliest)
 }
 
 /**
- * Get a label like 'Ab 6:00 Uhr' for trust badges / marketing text
+ * Get a label like 'Ab 5:30 Uhr' for trust badges / marketing text
  */
 export function getEarliestOpeningLabel(): string {
   return `Ab ${getEarliestOpeningTime()} Uhr`
@@ -175,7 +175,7 @@ export function getEarliestOpeningLabel(): string {
 
 /**
  * Get a compact one-line summary of hours
- * e.g. 'Di-Fr 6:00-13:30, Sa 6:00-12:30, So 8:00-11:00 Uhr'
+ * e.g. 'Di-Fr 5:30-13:30, Sa 5:30-12:30, So 8:00-11:00 Uhr'
  */
 export function getCompactHoursSummary(): string {
   const groups = groupDaysBySchedule().filter((g) => g.isOpen)
