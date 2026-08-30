@@ -222,7 +222,12 @@ jobs:
 
   # Build applications
   build:
-    needs: [quality, test-unit]
+    # Bewusst nicht an test-unit gehaengt: ob eine App ueberhaupt baut, ist von
+    # fehlschlagenden Tests unabhaengig. Solange build hinter test-unit haengt,
+    # verdeckt jeder rote Test den Build-Status komplett (er wird uebersprungen) -
+    # genau so blieb der kaputte Projektgraph unbemerkt. ci-status aggregiert
+    # weiterhin beides, das Gesamturteil des PR aendert sich also nicht.
+    needs: [quality]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
