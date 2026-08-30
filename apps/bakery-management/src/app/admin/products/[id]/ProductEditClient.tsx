@@ -59,9 +59,13 @@ export default function ProductEditClient({
   const [name, setName] = useState(initialProduct?.name ?? '')
   const [category, setCategory] = useState(initialProduct?.categoryKey ?? '')
   const [price, setPrice] = useState(initialProduct?.price?.toString() ?? '0')
+  const [shortDescription, setShortDescription] = useState(
+    initialProduct?.shortDescription ?? ''
+  )
   const [description, setDescription] = useState(
     initialProduct?.description ?? ''
   )
+  const [image, setImage] = useState(initialProduct?.rawImage ?? '')
   const [status, setStatus] = useState(initialProduct?.status ?? 'active')
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{
@@ -108,8 +112,9 @@ export default function ProductEditClient({
         name: name.trim(),
         category,
         price: parsedPrice,
-        short_description: description,
+        short_description: shortDescription.trim(),
         description,
+        image: image.trim(),
         available: status !== 'unavailable',
         seasonal: status === 'seasonal',
       })
@@ -132,6 +137,11 @@ export default function ProductEditClient({
       setSaving(false)
     }
   }
+
+  // An `image:` of "images/" is a placeholder in some HQ files; fall back to
+  // whatever the loader resolved (category default) when the field is unusable.
+  const previewImage =
+    image.trim().length > 10 ? image.trim() : initialProduct.image
 
   return (
     <Container maxWidth="md" sx={{ mt: 2, mb: 4 }}>
@@ -163,10 +173,10 @@ export default function ProductEditClient({
                 alignItems: 'center',
               }}
             >
-              {initialProduct.image ? (
+              {previewImage ? (
                 <Box
                   component="img"
-                  src={initialProduct.image}
+                  src={previewImage}
                   alt={name}
                   sx={{
                     width: '100%',
@@ -251,6 +261,28 @@ export default function ProductEditClient({
                   </Select>
                 </FormControl>
               </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  label="Bildpfad"
+                  value={image}
+                  onChange={(e) => setImage(e.target.value)}
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  placeholder="/assets/images/products/beispiel.svg"
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  label="Kurzbeschreibung"
+                  value={shortDescription}
+                  onChange={(e) => setShortDescription(e.target.value)}
+                  fullWidth
+                  variant="outlined"
+                  size="small"
+                  helperText="Ein Satz — erscheint in Produktlisten und auf der Website."
+                />
+              </Grid>
               <Grid item xs={12}>
                 <TextField
                   label="Beschreibung"
@@ -258,9 +290,10 @@ export default function ProductEditClient({
                   onChange={(e) => setDescription(e.target.value)}
                   fullWidth
                   multiline
-                  rows={3}
+                  rows={6}
                   variant="outlined"
                   size="small"
+                  helperText="Ausführlicher Text aus der Produktdatei."
                 />
               </Grid>
             </Grid>
