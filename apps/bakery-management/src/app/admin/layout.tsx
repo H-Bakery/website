@@ -171,12 +171,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                             pl: 4,
                             '&.Mui-selected': {
                               backgroundColor: 'primary.main',
-                              color: 'white',
+                              color: 'primary.contrastText',
                               '&:hover': {
                                 backgroundColor: 'primary.dark',
                               },
                               '& .MuiListItemIcon-root': {
-                                color: 'white',
+                                color: 'primary.contrastText',
+                              },
+                              '& .MuiListItemText-secondary': {
+                                color: 'inherit',
+                                opacity: 0.75,
                               },
                             },
                           }}
@@ -233,12 +237,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
                 sx={{
                   '&.Mui-selected': {
                     backgroundColor: 'primary.main',
-                    color: 'white',
+                    color: 'primary.contrastText',
                     '&:hover': {
                       backgroundColor: 'primary.dark',
                     },
                     '& .MuiListItemIcon-root': {
-                      color: 'white',
+                      color: 'primary.contrastText',
+                    },
+                    '& .MuiListItemText-secondary': {
+                      color: 'inherit',
+                      opacity: 0.75,
                     },
                   },
                 }}

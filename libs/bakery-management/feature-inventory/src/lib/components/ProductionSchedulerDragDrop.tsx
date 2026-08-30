@@ -668,7 +668,7 @@ export const ProductionSchedulerDragDrop: React.FC<
                     (status) => (
                       <Grid item xs={12} sm={6} md={3} key={status}>
                         <Paper
-                          sx={{ p: 2, bgcolor: 'grey.50', minHeight: 400 }}
+                          sx={{ p: 2, bgcolor: 'action.hover', minHeight: 400 }}
                         >
                           <Typography variant="subtitle2" gutterBottom>
                             {status.replace('_', ' ').toUpperCase()}

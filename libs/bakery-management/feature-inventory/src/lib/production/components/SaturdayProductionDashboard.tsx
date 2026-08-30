@@ -120,7 +120,7 @@ const SaturdayProductionDashboard: React.FC<
               p: 2,
               textAlign: 'center',
               bgcolor: 'primary.main',
-              color: 'white',
+              color: 'primary.contrastText',
             }}
           >
             <Typography variant="h4">{productionPlan.doughBatches}</Typography>
@@ -133,7 +133,7 @@ const SaturdayProductionDashboard: React.FC<
               p: 2,
               textAlign: 'center',
               bgcolor: 'secondary.main',
-              color: 'white',
+              color: 'secondary.contrastText',
             }}
           >
             <Typography variant="h4">

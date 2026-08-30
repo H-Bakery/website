@@ -301,7 +301,12 @@ const BakingList = () => {
 
                 {order.notes && (
                   <Box
-                    sx={{ mt: 1, p: 1, bgcolor: '#f5f5f5', borderRadius: 1 }}
+                    sx={{
+                      mt: 1,
+                      p: 1,
+                      bgcolor: 'action.hover',
+                      borderRadius: 1,
+                    }}
                   >
                     <Typography variant="body2">
                       <strong>Notes:</strong> {order.notes}

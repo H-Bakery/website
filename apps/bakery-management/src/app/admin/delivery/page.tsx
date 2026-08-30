@@ -383,7 +383,7 @@ export default function AdminDeliveryPage() {
           sx={{
             mt: 3,
             p: { xs: 2, md: 3 },
-            bgcolor: 'grey.100',
+            bgcolor: 'action.hover',
             borderRadius: 1,
           }}
         >

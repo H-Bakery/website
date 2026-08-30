@@ -21,7 +21,10 @@ interface DateNavigatorProps {
   onDateChange: (date: string) => void
 }
 
-export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDateChange }) => {
+export const DateNavigator: React.FC<DateNavigatorProps> = ({
+  selectedDate,
+  onDateChange,
+}) => {
   const currentDate = new Date(selectedDate)
   const today = new Date()
   const todayString = today.toISOString().split('T')[0]
@@ -32,7 +35,7 @@ export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDa
       weekday: 'long',
       day: '2-digit',
       month: 'long',
-      year: 'numeric'
+      year: 'numeric',
     })
   }
 
@@ -52,7 +55,9 @@ export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDa
     onDateChange(todayString)
   }
 
-  const handleDateInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleDateInputChange = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     const newDate = event.target.value
     if (newDate) {
       onDateChange(newDate)
@@ -68,8 +73,10 @@ export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDa
   const getDateChipLabel = () => {
     if (isToday) return 'Heute'
     if (currentDate > today) return 'Zukunft'
-    
-    const daysDiff = Math.floor((today.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24))
+
+    const daysDiff = Math.floor(
+      (today.getTime() - currentDate.getTime()) / (1000 * 60 * 60 * 24)
+    )
     if (daysDiff === 1) return 'Gestern'
     if (daysDiff <= 7) return `Vor ${daysDiff} Tagen`
     return 'Vergangen'
@@ -77,13 +84,15 @@ export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDa
 
   return (
     <Paper elevation={1} sx={{ p: 2, mb: 3 }}>
-      <Box sx={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: 2
-      }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: 2,
+        }}
+      >
         {/* Date Navigation */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Tooltip title="Vorheriger Tag">
@@ -91,8 +100,15 @@ export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDa
               <ChevronLeft />
             </IconButton>
           </Tooltip>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 300 }}>
+
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 2,
+              minWidth: 300,
+            }}
+          >
             <CalendarMonth color="primary" />
             <Box>
               <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
@@ -116,7 +132,7 @@ export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDa
               </Box>
             </Box>
           </Box>
-          
+
           <Tooltip title="Nächster Tag">
             <IconButton onClick={goToNextDay} color="primary">
               <ChevronRight />
@@ -128,22 +144,22 @@ export const DateNavigator: React.FC<DateNavigatorProps> = ({ selectedDate, onDa
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           {!isToday && (
             <Tooltip title="Zu heute springen">
-              <IconButton 
-                onClick={goToToday} 
+              <IconButton
+                onClick={goToToday}
                 color="primary"
-                sx={{ 
+                sx={{
                   bgcolor: 'primary.main',
-                  color: 'white',
+                  color: 'primary.contrastText',
                   '&:hover': {
-                    bgcolor: 'primary.dark'
-                  }
+                    bgcolor: 'primary.dark',
+                  },
                 }}
               >
                 <Today />
               </IconButton>
             </Tooltip>
           )}
-          
+
           {/* Date Picker */}
           <TextField
             type="date"
