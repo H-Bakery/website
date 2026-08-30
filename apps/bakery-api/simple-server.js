@@ -807,6 +807,758 @@ app.get('/api/baking-list', (req, res) => {
   }
 })
 
+// --- Verkaufspartner: Besuche am Backschrank (TASK-037) ---
+// Erfasst wird ein *Besuch*, keine Lieferung: was lag noch da (countedQty) und
+// was wurde neu eingeräumt (deliveredQty). Jede abgeleitete Zahl kommt aus
+// partner-stats.core - derselben Datei, die auch die echte API benutzt.
+const partnerStats = require('./src/services/partner-stats.core')
+
+// Der Mock-Server hat keine Datenbank. Erfassungen sollen einen Neustart
+// trotzdem überleben, deshalb ein schlichter JSON-Store neben dem Server.
+const PARTNER_STORE = path.join(__dirname, 'data', 'partner-store.json')
+
+/** Auslieferungszustand: CAP-Markt als erster Partner, sonst nichts. */
+function seedPartnerStore() {
+  return {
+    partners: [
+      {
+        id: 1,
+        name: 'CAP-Markt Homburg-Kirrberg',
+        slug: 'cap-markt-homburg-kirrberg',
+        // Straße und PLZ bewusst leer - trägt das Team mit den echten Daten nach.
+        street: '',
+        zip: '',
+        city: 'Homburg',
+        contactName: null,
+        phone: null,
+        email: null,
+        deliveryDays: [2, 3, 4, 5, 6],
+        settlementModel: 'commission',
+        active: true,
+        notes:
+          'Backschrank mit Brot, Brötchen und Kaffeestückchen. Belieferung Dienstag bis Samstag morgens, Nachlieferungen nach Bedarf.',
+      },
+    ],
+    templates: [],
+    visits: [],
+  }
+}
+
+function savePartnerStore(store) {
+  try {
+    fs.mkdirSync(path.dirname(PARTNER_STORE), { recursive: true })
+    fs.writeFileSync(PARTNER_STORE, JSON.stringify(store, null, 2), 'utf-8')
+    return true
+  } catch (err) {
+    console.warn(
+      `Partner-Store konnte nicht geschrieben werden: ${err.message}`
+    )
+    return false
+  }
+}
+
+/**
+ * Liest den Store. Fehlt die Datei, wird der Seed angelegt; ist sie kaputt,
+ * arbeitet der Server mit dem Seed weiter, statt beim Request abzustürzen.
+ */
+function loadPartnerStore() {
+  const seed = seedPartnerStore()
+  try {
+    if (fs.existsSync(PARTNER_STORE)) {
+      const parsed = JSON.parse(fs.readFileSync(PARTNER_STORE, 'utf-8'))
+      return {
+        partners:
+          Array.isArray(parsed.partners) && parsed.partners.length
+            ? parsed.partners
+            : seed.partners,
+        templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+        visits: Array.isArray(parsed.visits) ? parsed.visits : [],
+      }
+    }
+    savePartnerStore(seed)
+  } catch (err) {
+    console.warn(`Partner-Store konnte nicht gelesen werden: ${err.message}`)
+  }
+  return seed
+}
+
+/** Fehlerantwort mit deutschem Text - ApiClient wirft `new Error(data.message)`. */
+function partnerError(res, status, error, message) {
+  return res.status(status).json({ error, message })
+}
+
+/** IDs kommen aus einem max+1-Zähler über den jeweiligen Store-Abschnitt. */
+function nextPartnerId(rows) {
+  return rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1
+}
+
+function wholeNumber(value, fallback = 0) {
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.trunc(n) : fallback
+}
+
+function isBusinessDate(value) {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+}
+
+/** Preis-Snapshot: `null`/`''`/Unsinn fällt auf den HQ-Preis zurück. */
+function snapshotPrice(value, fallback) {
+  if (value === null || value === undefined || value === '') return fallback
+  const n = Number(value)
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : fallback
+}
+
+/** Umlaut-sicherer Slug - gleiche Konvention wie bei den HQ-Produkten. */
+function partnerSlug(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+}
+
+/**
+ * Partner aus dem Store holen. Antwortet selbst mit 404 und gibt dann
+ * `null` zurück - der Aufrufer bricht mit `if (!partner) return` ab.
+ *
+ * Status und Text sind absichtlich identisch zu `loadPartner()` in
+ * src/routes/partner.routes.ts: das Frontend soll später ohne Anpassung von
+ * diesem Mock auf die echte API umschalten können.
+ */
+function requirePartner(req, res, store) {
+  const id = Number(req.params.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    partnerError(
+      res,
+      404,
+      'PARTNER_NOT_FOUND',
+      'Verkaufspartner nicht gefunden - die Kennung muss eine Zahl sein.'
+    )
+    return null
+  }
+  const partner = store.partners.find((p) => p.id === id)
+  if (!partner) {
+    partnerError(
+      res,
+      404,
+      'PARTNER_NOT_FOUND',
+      `Verkaufspartner mit der Kennung ${id} wurde nicht gefunden.`
+    )
+    return null
+  }
+  return partner
+}
+
+/** `from`/`to` aus der Query, beide optional und inklusiv. */
+function parseRange(req) {
+  const { from, to } = req.query
+  if ((from && !isBusinessDate(from)) || (to && !isBusinessDate(to))) {
+    return { error: true }
+  }
+  return { from: from || null, to: to || null }
+}
+
+function invalidRange(res) {
+  return partnerError(
+    res,
+    400,
+    'Invalid range',
+    'Ungültiger Zeitraum. Datumsangaben werden im Format JJJJ-MM-TT erwartet.'
+  )
+}
+
+/** HQ-Katalog als Nachschlagewerk für die Namens- und Preis-Snapshots. */
+function buildHQIndex() {
+  const bySlug = new Map()
+  const byNumericId = new Map()
+  for (const product of loadHQProducts()) {
+    bySlug.set(product.id, product)
+    const numericId = Number(product.numeric_id)
+    if (Number.isFinite(numericId)) byNumericId.set(numericId, product)
+  }
+  return { bySlug, byNumericId }
+}
+
+function findHQProduct(index, item) {
+  return (
+    index.bySlug.get(item.productSlug) ||
+    index.byNumericId.get(Number(item.productId)) ||
+    null
+  )
+}
+
+/**
+ * Positionen eines Besuchs normalisieren. `productName` und `unitPrice` werden
+ * als Snapshot festgeschrieben - fehlen sie im Request, kommen sie aus HQ.
+ * Genau das hält alte Reports korrekt, wenn sich später ein Preis ändert.
+ */
+function normalizeVisitItems(items, index) {
+  return (
+    (Array.isArray(items) ? items : [])
+      .map((item) => {
+        const hq = findHQProduct(index, item)
+        const counted =
+          item.countedQty === null ||
+          item.countedQty === undefined ||
+          item.countedQty === ''
+            ? null
+            : Math.max(0, wholeNumber(item.countedQty, 0))
+        return {
+          productId: wholeNumber(
+            item.productId,
+            hq ? wholeNumber(hq.numeric_id, 0) : 0
+          ),
+          productSlug: item.productSlug || (hq ? hq.id : ''),
+          productName:
+            item.productName ||
+            (hq ? hq.name : item.productSlug || 'Unbekannt'),
+          unitPrice: snapshotPrice(
+            item.unitPrice,
+            hq ? Number(hq.price) || 0 : 0
+          ),
+          countedQty: counted,
+          deliveredQty: Math.max(0, wholeNumber(item.deliveredQty, 0)),
+        }
+      })
+      // Zeilen ohne jede Information (nicht gezählt, nichts geliefert) fliegen
+      // raus - sonst steht im Report der halbe Katalog mit lauter Nullen.
+      .filter(
+        (item) =>
+          item.productSlug &&
+          (item.countedQty !== null || item.deliveredQty > 0)
+      )
+      .map((item, i) => ({ id: i + 1, ...item }))
+  )
+}
+
+function partnerVisits(store, partnerId) {
+  return partnerStats.sortVisits(
+    store.visits.filter((v) => v.partnerId === partnerId)
+  )
+}
+
+/**
+ * Für jeden Liefertag existiert eine Vorlage - fehlende werden leer angelegt,
+ * damit die Pflegeseite für Di-Sa je eine Karte bekommt.
+ */
+function ensurePartnerTemplates(store, partner) {
+  const deliveryDays = Array.isArray(partner.deliveryDays)
+    ? partner.deliveryDays
+    : []
+  let created = false
+  for (const weekday of deliveryDays) {
+    const exists = store.templates.some(
+      (t) => t.partnerId === partner.id && t.weekday === weekday
+    )
+    if (exists) continue
+    store.templates.push({
+      id: nextPartnerId(store.templates),
+      partnerId: partner.id,
+      weekday,
+      items: [],
+      active: true,
+    })
+    created = true
+  }
+  if (created) savePartnerStore(store)
+  return store.templates
+    .filter((t) => t.partnerId === partner.id)
+    .sort((a, b) => a.weekday - b.weekday)
+}
+
+app.get('/api/partners', (req, res) => {
+  const store = loadPartnerStore()
+  const { active } = req.query
+  const list =
+    active === undefined
+      ? store.partners
+      : store.partners.filter((p) => Boolean(p.active) === (active === 'true'))
+  res.json(list)
+})
+
+app.post('/api/partners', (req, res) => {
+  const store = loadPartnerStore()
+  const body = req.body || {}
+  if (!body.name || !String(body.name).trim()) {
+    return partnerError(
+      res,
+      400,
+      'Name is required',
+      'Der Name des Partners ist erforderlich.'
+    )
+  }
+  const slug = partnerSlug(body.slug || body.name)
+  if (store.partners.some((p) => p.slug === slug)) {
+    return partnerError(
+      res,
+      409,
+      'Slug already exists',
+      'Ein Partner mit diesem Kürzel existiert bereits.'
+    )
+  }
+  const partner = {
+    id: nextPartnerId(store.partners),
+    name: String(body.name).trim(),
+    slug,
+    street: body.street || '',
+    zip: body.zip || '',
+    city: body.city || '',
+    contactName: body.contactName || null,
+    phone: body.phone || null,
+    email: body.email || null,
+    deliveryDays: Array.isArray(body.deliveryDays)
+      ? body.deliveryDays
+          .map((d) => wholeNumber(d, 0))
+          .filter((d) => d >= 1 && d <= 7)
+      : [2, 3, 4, 5, 6],
+    settlementModel:
+      body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission',
+    active: body.active === undefined ? true : Boolean(body.active),
+    notes: body.notes || null,
+  }
+  store.partners.push(partner)
+  savePartnerStore(store)
+  res.status(201).json(partner)
+})
+
+app.get('/api/partners/:id', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  res.json(partner)
+})
+
+app.put('/api/partners/:id', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const body = req.body || {}
+
+  if (body.slug !== undefined) {
+    const slug = partnerSlug(body.slug)
+    if (store.partners.some((p) => p.slug === slug && p.id !== partner.id)) {
+      return partnerError(
+        res,
+        409,
+        'Slug already exists',
+        'Ein Partner mit diesem Kürzel existiert bereits.'
+      )
+    }
+    partner.slug = slug
+  }
+  for (const field of [
+    'name',
+    'street',
+    'zip',
+    'city',
+    'contactName',
+    'phone',
+    'email',
+    'notes',
+  ]) {
+    if (body[field] !== undefined) partner[field] = body[field]
+  }
+  if (Array.isArray(body.deliveryDays)) {
+    partner.deliveryDays = body.deliveryDays
+      .map((d) => wholeNumber(d, 0))
+      .filter((d) => d >= 1 && d <= 7)
+  }
+  if (body.settlementModel !== undefined) {
+    partner.settlementModel =
+      body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission'
+  }
+  if (body.active !== undefined) partner.active = Boolean(body.active)
+
+  savePartnerStore(store)
+  res.json(partner)
+})
+
+app.get('/api/partners/:id/templates', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  res.json(ensurePartnerTemplates(store, partner))
+})
+
+app.put('/api/partners/:id/templates/:weekday', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+
+  const weekday = Number(req.params.weekday)
+  if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
+    return partnerError(
+      res,
+      400,
+      'Invalid weekday',
+      'Ungültiger Wochentag. Erlaubt sind 1 (Montag) bis 7 (Sonntag).'
+    )
+  }
+  const body = req.body || {}
+  if (body.items !== undefined && !Array.isArray(body.items)) {
+    return partnerError(
+      res,
+      400,
+      'Invalid items',
+      'Die Vorlage braucht eine Liste von Positionen.'
+    )
+  }
+
+  const index = buildHQIndex()
+  const items = (body.items || [])
+    .map((item) => {
+      const hq = findHQProduct(index, item)
+      return {
+        productId: wholeNumber(
+          item.productId,
+          hq ? wholeNumber(hq.numeric_id, 0) : 0
+        ),
+        productSlug: item.productSlug || (hq ? hq.id : ''),
+        quantity: Math.max(0, wholeNumber(item.quantity, 0)),
+      }
+    })
+    .filter((item) => item.productSlug && item.quantity > 0)
+
+  let template = store.templates.find(
+    (t) => t.partnerId === partner.id && t.weekday === weekday
+  )
+  if (!template) {
+    template = {
+      id: nextPartnerId(store.templates),
+      partnerId: partner.id,
+      weekday,
+      items,
+      active: true,
+    }
+    store.templates.push(template)
+  } else {
+    template.items = items
+    if (body.active !== undefined) template.active = Boolean(body.active)
+  }
+  savePartnerStore(store)
+  res.json(template)
+})
+
+app.get('/api/partners/:id/visits', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const range = parseRange(req)
+  if (range.error) return invalidRange(res)
+
+  const visits = partnerVisits(store, partner.id).filter(
+    (v) =>
+      (!range.from || v.businessDate >= range.from) &&
+      (!range.to || v.businessDate <= range.to)
+  )
+  res.json(visits)
+})
+
+// Muss vor keiner anderen `/visits`-Route stehen, ist aber der Klarheit halber
+// direkt hinter der Liste: Tagesdetail inklusive Timeline für die Detailseite.
+app.get('/api/partners/:id/visits/today', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const { date } = req.query
+  if (date && !isBusinessDate(date)) {
+    return partnerError(
+      res,
+      400,
+      'Invalid date',
+      'Ungültiges Datum. Erwartet wird das Format JJJJ-MM-TT.'
+    )
+  }
+  const businessDate = date || partnerStats.businessDateOf(new Date())
+  const dayVisits = partnerVisits(store, partner.id).filter(
+    (v) => v.businessDate === businessDate
+  )
+  const detail = partnerStats.computeDayDetail(dayVisits)
+  res.json({
+    ...detail,
+    businessDate: detail.businessDate || businessDate,
+    visits: dayVisits,
+  })
+})
+
+app.post('/api/partners/:id/visits', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const body = req.body || {}
+
+  if (!partnerStats.VISIT_TYPES.includes(body.visitType)) {
+    return partnerError(
+      res,
+      400,
+      'Invalid visit type',
+      `Unbekannter Besuchstyp. Erlaubt sind: ${partnerStats.VISIT_TYPES.join(
+        ', '
+      )}.`
+    )
+  }
+  if (body.items !== undefined && !Array.isArray(body.items)) {
+    return partnerError(
+      res,
+      400,
+      'Invalid items',
+      'Der Besuch braucht eine Liste von Positionen.'
+    )
+  }
+  if (body.businessDate !== undefined && !isBusinessDate(body.businessDate)) {
+    return partnerError(
+      res,
+      400,
+      'Invalid business date',
+      'Ungültiger Geschäftstag. Erwartet wird das Format JJJJ-MM-TT.'
+    )
+  }
+  const visitAt = body.visitAt ? new Date(body.visitAt) : new Date()
+  if (Number.isNaN(visitAt.getTime())) {
+    return partnerError(
+      res,
+      400,
+      'Invalid visitAt',
+      'Der Zeitpunkt des Besuchs ist ungültig.'
+    )
+  }
+
+  const businessDate = body.businessDate || partnerStats.businessDateOf(visitAt)
+  const dayVisits = store.visits.filter(
+    (v) => v.partnerId === partner.id && v.businessDate === businessDate
+  )
+  if (
+    body.visitType === 'initial' &&
+    dayVisits.some((v) => v.visitType === 'initial')
+  ) {
+    return partnerError(
+      res,
+      409,
+      'Initial visit already exists',
+      'Für diesen Geschäftstag ist bereits eine Erstbestückung erfasst.'
+    )
+  }
+
+  const now = new Date().toISOString()
+  const visit = {
+    id: nextPartnerId(store.visits),
+    partnerId: partner.id,
+    businessDate,
+    visitAt: visitAt.toISOString(),
+    visitType: body.visitType,
+    // Laufende Nummer innerhalb des Geschäftstags, automatisch vergeben.
+    sequence:
+      dayVisits.reduce(
+        (max, v) => Math.max(max, wholeNumber(v.sequence, 0)),
+        0
+      ) + 1,
+    staffId: body.staffId == null ? null : wholeNumber(body.staffId, null),
+    staffName: body.staffName || null,
+    note: body.note || null,
+    items: normalizeVisitItems(body.items, buildHQIndex()),
+    createdAt: now,
+    updatedAt: now,
+  }
+  store.visits.push(visit)
+  savePartnerStore(store)
+  res.status(201).json(visit)
+})
+
+app.patch('/api/partners/:id/visits/:visitId', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const visitId = Number(req.params.visitId)
+  if (!Number.isInteger(visitId) || visitId <= 0) {
+    return partnerError(
+      res,
+      404,
+      'VISIT_NOT_FOUND',
+      'Besuch nicht gefunden - die Kennung muss eine Zahl sein.'
+    )
+  }
+  const visit = store.visits.find(
+    (v) => v.id === visitId && v.partnerId === partner.id
+  )
+  if (!visit) {
+    return partnerError(
+      res,
+      404,
+      'VISIT_NOT_FOUND',
+      `Besuch mit der Kennung ${visitId} wurde für diesen Verkaufspartner nicht gefunden.`
+    )
+  }
+
+  const body = req.body || {}
+  if (
+    body.visitType !== undefined &&
+    !partnerStats.VISIT_TYPES.includes(body.visitType)
+  ) {
+    return partnerError(
+      res,
+      400,
+      'Invalid visit type',
+      `Unbekannter Besuchstyp. Erlaubt sind: ${partnerStats.VISIT_TYPES.join(
+        ', '
+      )}.`
+    )
+  }
+  if (body.items !== undefined && !Array.isArray(body.items)) {
+    return partnerError(
+      res,
+      400,
+      'Invalid items',
+      'Der Besuch braucht eine Liste von Positionen.'
+    )
+  }
+  if (body.businessDate !== undefined && !isBusinessDate(body.businessDate)) {
+    return partnerError(
+      res,
+      400,
+      'Invalid business date',
+      'Ungültiger Geschäftstag. Erwartet wird das Format JJJJ-MM-TT.'
+    )
+  }
+  let visitAt = visit.visitAt
+  if (body.visitAt !== undefined) {
+    const parsed = new Date(body.visitAt)
+    if (Number.isNaN(parsed.getTime())) {
+      return partnerError(
+        res,
+        400,
+        'Invalid visitAt',
+        'Der Zeitpunkt des Besuchs ist ungültig.'
+      )
+    }
+    visitAt = parsed.toISOString()
+  }
+
+  // Geschäftstag folgt der korrigierten Uhrzeit, sofern nicht ausdrücklich gesetzt.
+  const businessDate =
+    body.businessDate ||
+    (body.visitAt !== undefined
+      ? partnerStats.businessDateOf(visitAt)
+      : visit.businessDate)
+  const visitType = body.visitType || visit.visitType
+  const others = store.visits.filter(
+    (v) =>
+      v.partnerId === partner.id &&
+      v.businessDate === businessDate &&
+      v.id !== visit.id
+  )
+  if (
+    visitType === 'initial' &&
+    others.some((v) => v.visitType === 'initial')
+  ) {
+    return partnerError(
+      res,
+      409,
+      'Initial visit already exists',
+      'Für diesen Geschäftstag ist bereits eine Erstbestückung erfasst.'
+    )
+  }
+
+  if (businessDate !== visit.businessDate) {
+    visit.sequence =
+      others.reduce((max, v) => Math.max(max, wholeNumber(v.sequence, 0)), 0) +
+      1
+  }
+  visit.businessDate = businessDate
+  visit.visitAt = visitAt
+  visit.visitType = visitType
+  if (body.staffId !== undefined) {
+    visit.staffId =
+      body.staffId == null ? null : wholeNumber(body.staffId, null)
+  }
+  if (body.staffName !== undefined) visit.staffName = body.staffName || null
+  if (body.note !== undefined) visit.note = body.note || null
+  if (body.items !== undefined) {
+    visit.items = normalizeVisitItems(body.items, buildHQIndex())
+  }
+  visit.updatedAt = new Date().toISOString()
+
+  savePartnerStore(store)
+  res.json(visit)
+})
+
+app.delete('/api/partners/:id/visits/:visitId', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const visitId = Number(req.params.visitId)
+  if (!Number.isInteger(visitId) || visitId <= 0) {
+    return partnerError(
+      res,
+      404,
+      'VISIT_NOT_FOUND',
+      'Besuch nicht gefunden - die Kennung muss eine Zahl sein.'
+    )
+  }
+  const index = store.visits.findIndex(
+    (v) => v.id === visitId && v.partnerId === partner.id
+  )
+  if (index === -1) {
+    return partnerError(
+      res,
+      404,
+      'VISIT_NOT_FOUND',
+      `Besuch mit der Kennung ${visitId} wurde für diesen Verkaufspartner nicht gefunden.`
+    )
+  }
+  store.visits.splice(index, 1)
+  savePartnerStore(store)
+  res.json({ id: visitId, deleted: true, message: 'Besuch gelöscht.' })
+})
+
+app.get('/api/partners/:id/stats', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const range = parseRange(req)
+  if (range.error) return invalidRange(res)
+  res.json(
+    partnerStats.computeStats(partnerVisits(store, partner.id), {
+      from: range.from,
+      to: range.to,
+    })
+  )
+})
+
+app.get('/api/partners/:id/report', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const range = parseRange(req)
+  if (range.error) return invalidRange(res)
+  const stats = partnerStats.computeStats(partnerVisits(store, partner.id), {
+    from: range.from,
+    to: range.to,
+  })
+  res.json({ partner, generatedAt: new Date().toISOString(), stats })
+})
+
+app.get('/api/partners/:id/report.csv', (req, res) => {
+  const store = loadPartnerStore()
+  const partner = requirePartner(req, res, store)
+  if (!partner) return
+  const range = parseRange(req)
+  if (range.error) return invalidRange(res)
+  const stats = partnerStats.computeStats(partnerVisits(store, partner.id), {
+    from: range.from,
+    to: range.to,
+  })
+  const filename = `partner-report-${partner.slug}-${
+    range.from || 'gesamt'
+  }-bis-${range.to || 'gesamt'}.csv`
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+  // BOM voran, damit Excel die Umlaute als UTF-8 erkennt.
+  res.send('\uFEFF' + partnerStats.statsToCsv(stats, partner))
+})
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Bakery API server running on port ${PORT}`)

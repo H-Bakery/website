@@ -83,6 +83,12 @@ import { default as ProductionBatch } from './ProductionBatch'
 import { default as ProductionSchedule } from './ProductionSchedule'
 import { default as ProductionStep } from './ProductionStep'
 
+// Import sales partner models (TASK-037)
+import { default as Partner } from './Partner'
+import { default as PartnerDeliveryTemplate } from './PartnerDeliveryTemplate'
+import { default as PartnerVisit } from './PartnerVisit'
+import { default as PartnerVisitItem } from './PartnerVisitItem'
+
 // Re-export all models
 export {
   Order,
@@ -97,6 +103,10 @@ export {
   ProductionBatch,
   ProductionSchedule,
   ProductionStep,
+  Partner,
+  PartnerDeliveryTemplate,
+  PartnerVisit,
+  PartnerVisitItem,
 }
 export const Customer = User // Alias for backward compatibility
 
@@ -142,6 +152,12 @@ export async function initializeModels(seq: Sequelize): Promise<void> {
     ProductionSchedule.initModel(seq)
     ProductionBatch.initModel(seq)
     ProductionStep.initModel(seq)
+
+    // Initialize sales partner models
+    Partner.initModel(seq)
+    PartnerDeliveryTemplate.initModel(seq)
+    PartnerVisit.initModel(seq)
+    PartnerVisitItem.initModel(seq)
 
     // Set up associations
     setupAssociations()
@@ -241,6 +257,31 @@ function setupAssociations(): void {
     as: 'user',
   })
 
+  // Sales partner associations (Verkaufspartner, z.B. CAP-Markt)
+  Partner.hasMany(PartnerDeliveryTemplate, {
+    foreignKey: 'partnerId',
+    as: 'templates',
+  })
+  Partner.hasMany(PartnerVisit, { foreignKey: 'partnerId', as: 'visits' })
+
+  PartnerDeliveryTemplate.belongsTo(Partner, {
+    foreignKey: 'partnerId',
+    as: 'partner',
+  })
+
+  PartnerVisit.belongsTo(Partner, { foreignKey: 'partnerId', as: 'partner' })
+  PartnerVisit.hasMany(PartnerVisitItem, {
+    foreignKey: 'visitId',
+    as: 'items',
+    onDelete: 'CASCADE',
+  })
+  PartnerVisit.belongsTo(Customer, { foreignKey: 'staffId', as: 'staff' })
+
+  PartnerVisitItem.belongsTo(PartnerVisit, {
+    foreignKey: 'visitId',
+    as: 'visit',
+  })
+
   // Sales Analytics associations
   // TODO: Re-enable once @bakery/api/sales-analytics module resolution is fixed
   // SalesTransaction.hasMany(TransactionItem, {
@@ -294,6 +335,10 @@ export function getAllModels(): unknown[] {
     ProductionSchedule,
     ProductionBatch,
     ProductionStep,
+    Partner,
+    PartnerDeliveryTemplate,
+    PartnerVisit,
+    PartnerVisitItem,
     // TODO: Re-enable once sales-analytics models are migrated
     // SalesTransaction,
     // TransactionItem,
