@@ -81,20 +81,26 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
     }
   }, [order])
 
-  const handleAddItem = () => {
-    if (newItemName && Number(newItemQuantity) > 0) {
-      setItems([
-        ...items,
-        {
+  /**
+   * The item row that has been typed into the input fields but not yet added
+   * with the "+" button, or null if it is incomplete.
+   */
+  const pendingItem = (): FormItem | null =>
+    newItemName && Number(newItemQuantity) > 0
+      ? {
           itemName: newItemName,
           itemQuantity: Number(newItemQuantity),
           unit: newItemUnit,
-        },
-      ])
-      setNewItemName('')
-      setNewItemQuantity('')
-      setNewItemUnit('')
-    }
+        }
+      : null
+
+  const handleAddItem = () => {
+    const item = pendingItem()
+    if (!item) return
+    setItems([...items, item])
+    setNewItemName('')
+    setNewItemQuantity('')
+    setNewItemUnit('')
   }
 
   const handleRemoveItem = (index: number) => {
@@ -118,6 +124,10 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
 
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault()
+    // Fold in a row that was typed but never added with "+", which would
+    // otherwise be discarded silently.
+    const pending = pendingItem()
+    const allItems = pending ? [...items, pending] : items
     const formData: Omit<InternOrder, 'id' | 'createdAt' | 'updatedAt'> = {
       orderName,
       description,
@@ -128,7 +138,7 @@ const InternOrderForm: React.FC<InternOrderFormProps> = ({
       billImageUrl: billImage
         ? billImageUrlPreview || undefined
         : order?.billImageUrl || undefined,
-      items: items.length > 0 ? items : undefined,
+      items: allItems.length > 0 ? allItems : undefined,
       quantity: quantity ? Number(quantity) : undefined,
       // createdBy will be handled by the service/backend
     }

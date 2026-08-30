@@ -79,6 +79,12 @@ function getBreadcrumb(pathname: string): string[] {
     const href = '/' + segments.slice(0, index + 1).join('/')
     const match = flat.find((item) => item.href === href)
     if (match) return match.label
+    // Submenu parents ("Bäckerei") carry no href of their own, so match them by
+    // the path their children share — otherwise the raw segment leaks through.
+    const parent = MANAGEMENT_NAVIGATION.find((item) =>
+      item.submenu?.some((sub) => sub.href?.startsWith(`${href}/`))
+    )
+    if (parent) return parent.label
     return segment
   })
 }
