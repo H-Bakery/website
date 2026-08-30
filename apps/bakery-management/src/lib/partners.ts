@@ -41,7 +41,7 @@ export function groupCatalogue(
     if (!groups.has(product.category)) groups.set(product.category, [])
     groups.get(product.category)?.push(product)
   }
-  return [...groups.entries()]
+  return Array.from(groups.entries())
     .sort((a, b) => categoryRank(a[0]) - categoryRank(b[0]))
     .map(([category, products]) => ({
       category,
