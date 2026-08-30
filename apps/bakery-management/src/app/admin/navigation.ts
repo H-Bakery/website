@@ -110,6 +110,12 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Lieferverwaltung',
   },
   {
+    label: 'Verkaufspartner',
+    href: '/admin/partners',
+    icon: 'partners',
+    description: 'Backschrank & Lieferpartner',
+  },
+  {
     label: 'Kasse',
     href: '/admin/cash',
     icon: 'cash',
