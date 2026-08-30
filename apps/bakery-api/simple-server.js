@@ -341,19 +341,48 @@ app.put('/api/notifications/preferences', (req, res) => {
 })
 
 // --- HQ Product edit endpoint (writes back to markdown files) ---
+// --- HQ product file serialisation ------------------------------------------
+const { serializeProductFile } = require('./src/services/product-file.core')
+
+/** Body text without its leading `# Heading` line. */
+function stripHeading(body) {
+  return String(body)
+    .trim()
+    .replace(/^#{1,6}[^\n]*\n+/, '')
+    .trim()
+}
+
+/** "Käse-Brötchen 500g" -> "kaese-broetchen-500g" */
+function slugify(name) {
+  return String(name)
+    .toLowerCase()
+    .replace(/ä/g, 'ae')
+    .replace(/ö/g, 'oe')
+    .replace(/ü/g, 'ue')
+    .replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '')
+}
+
 app.get('/api/hq-products/:id', (req, res) => {
   const products = loadHQProducts()
   const product = products.find((p) => p.id === req.params.id)
   if (!product)
-    return res.status(404).json({ success: false, error: 'Product not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Product not found',
+      message: 'Product not found',
+    })
   res.json({ success: true, data: product })
 })
 
 app.put('/api/hq-products/:id', (req, res) => {
   if (!fs.existsSync(HQ_PRODUCTS_DIR)) {
-    return res
-      .status(500)
-      .json({ success: false, error: 'HQ products directory not found' })
+    return res.status(500).json({
+      success: false,
+      error: 'HQ products directory not found',
+      message: 'HQ products directory not found',
+    })
   }
 
   const files = fs
@@ -380,7 +409,11 @@ app.put('/api/hq-products/:id', (req, res) => {
   }
 
   if (!targetFile) {
-    return res.status(404).json({ success: false, error: 'Product not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Product not found',
+      message: 'Product not found',
+    })
   }
 
   const {
@@ -389,6 +422,7 @@ app.put('/api/hq-products/:id', (req, res) => {
     price,
     short_description,
     description,
+    image,
     available,
     seasonal,
   } = req.body
@@ -399,18 +433,119 @@ app.put('/api/hq-products/:id', (req, res) => {
   if (price !== undefined) updatedData.price = parseFloat(price)
   if (short_description !== undefined)
     updatedData.short_description = short_description
+  if (image !== undefined) updatedData.image = image
   if (available !== undefined) updatedData.available = available
   if (seasonal !== undefined) updatedData.seasonal = seasonal
 
-  let updatedContent = originalContent
+  let updatedBody = originalContent.trim()
   if (description !== undefined) {
-    updatedContent = `\n# ${updatedData.name}\n\n${description}\n`
+    // `description` is the full body the editor loaded, minus the heading.
+    updatedBody = `# ${updatedData.name}\n\n${String(description).trim()}`
+  } else if (name !== undefined) {
+    // Name changed but the body was not sent: retitle in place, keep the rest.
+    updatedBody = updatedBody.replace(/^#{1,6}[^\n]*/, `# ${updatedData.name}`)
   }
 
-  const output = matter.stringify(updatedContent, updatedData)
-  fs.writeFileSync(path.join(HQ_PRODUCTS_DIR, targetFile), output, 'utf-8')
+  fs.writeFileSync(
+    path.join(HQ_PRODUCTS_DIR, targetFile),
+    serializeProductFile(updatedData, updatedBody),
+    'utf-8'
+  )
 
-  res.json({ success: true, data: { ...updatedData, description } })
+  res.json({
+    success: true,
+    data: { ...updatedData, description: stripHeading(updatedBody) },
+  })
+})
+
+app.post('/api/hq-products', (req, res) => {
+  if (!fs.existsSync(HQ_PRODUCTS_DIR)) {
+    return res.status(500).json({
+      success: false,
+      error: 'HQ products directory not found',
+      message: 'HQ products directory not found',
+    })
+  }
+
+  const {
+    name,
+    category,
+    price,
+    short_description,
+    description,
+    image,
+    available,
+    seasonal,
+  } = req.body
+
+  if (!name || !String(name).trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Produktname ist erforderlich',
+      message: 'Produktname ist erforderlich',
+    })
+  }
+  if (!category || !String(category).trim()) {
+    return res.status(400).json({
+      success: false,
+      error: 'Kategorie ist erforderlich',
+      message: 'Kategorie ist erforderlich',
+    })
+  }
+  const parsedPrice = parseFloat(price)
+  if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
+    return res.status(400).json({
+      success: false,
+      error: 'Preis ist ungültig',
+      message: 'Preis ist ungültig',
+    })
+  }
+
+  const existing = loadHQProducts()
+  const id = slugify(name)
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      error: 'Aus dem Namen lässt sich keine ID ableiten',
+      message: 'Aus dem Namen lässt sich keine ID ableiten',
+    })
+  }
+  if (existing.some((p) => p.id === id)) {
+    return res.status(409).json({
+      success: false,
+      error: `Ein Produkt mit der ID "${id}" existiert bereits`,
+      message: `Ein Produkt mit der ID "${id}" existiert bereits`,
+    })
+  }
+
+  const numericId =
+    existing.reduce((max, p) => Math.max(max, p.numeric_id || 0), 0) + 1
+
+  const data = {
+    id,
+    numeric_id: numericId,
+    name: String(name).trim(),
+    category: String(category).trim(),
+    price: parsedPrice,
+    available: available !== false,
+    seasonal: seasonal === true,
+    image: image ? String(image).trim() : '',
+    short_description: short_description
+      ? String(short_description).trim()
+      : '',
+  }
+  const body = `# ${data.name}\n\n${String(description || '').trim()}`
+  const fileName = `${numericId}-${id}.md`
+
+  fs.writeFileSync(
+    path.join(HQ_PRODUCTS_DIR, fileName),
+    serializeProductFile(data, body),
+    'utf-8'
+  )
+
+  res
+    .status(201)
+    .json({ success: true, data: { ...data, description: stripHeading(body) } })
 })
 
 // --- Staff management endpoints (mock, no auth for simple server) ---

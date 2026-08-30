@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect } from 'react'
 import {
   Dialog,
   DialogTitle,
@@ -15,24 +15,28 @@ import {
   Box,
   Alert,
   Autocomplete,
-} from '@mui/material';
-import { useForm, Controller } from 'react-hook-form';
-import { CreateInventoryDto, UpdateInventoryDto, InventoryItem } from '@bakery/shared/data-access';
+} from '@mui/material'
+import { useForm, Controller } from 'react-hook-form'
+import {
+  CreateInventoryDto,
+  UpdateInventoryDto,
+  InventoryItem,
+} from '@bakery/shared/data-access'
 
 interface InventoryFormProps {
-  open: boolean;
-  onClose: () => void;
-  onSubmit: (data: CreateInventoryDto | UpdateInventoryDto) => void;
-  item?: InventoryItem | null;
-  mode: 'create' | 'edit';
-  products?: Array<{ id: number; name: string }>;
-  categories?: string[];
-  suppliers?: string[];
-  loading?: boolean;
-  error?: string | null;
+  open: boolean
+  onClose: () => void
+  onSubmit: (data: CreateInventoryDto | UpdateInventoryDto) => void
+  item?: InventoryItem | null
+  mode: 'create' | 'edit'
+  products?: Array<{ id: number; name: string }>
+  categories?: string[]
+  suppliers?: string[]
+  loading?: boolean
+  error?: string | null
 }
 
-const units = ['Stück', 'kg', 'g', 'l', 'ml', 'Packung', 'Karton', 'Palette'];
+const units = ['Stück', 'kg', 'g', 'l', 'ml', 'Packung', 'Karton', 'Palette']
 
 export const InventoryForm: React.FC<InventoryFormProps> = ({
   open,
@@ -65,7 +69,7 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
       supplierContact: item?.supplierContact || '',
       notes: item?.notes || '',
     },
-  });
+  })
 
   useEffect(() => {
     if (open && item) {
@@ -80,34 +84,36 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
         supplier: item.supplier || '',
         supplierContact: item.supplierContact || '',
         notes: item.notes || '',
-      });
+      })
     }
-  }, [open, item, reset]);
+  }, [open, item, reset])
 
   const handleClose = () => {
-    reset();
-    onClose();
-  };
+    reset()
+    onClose()
+  }
 
   const onFormSubmit = (data: CreateInventoryDto | UpdateInventoryDto) => {
     // Remove undefined values
     const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
       if (value !== undefined && value !== '') {
-        acc[key as keyof typeof data] = value;
+        acc[key as keyof typeof data] = value
       }
-      return acc;
-    }, {} as any);
+      return acc
+    }, {} as any)
 
-    onSubmit(cleanData);
-  };
+    onSubmit(cleanData)
+  }
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
       <form onSubmit={handleSubmit(onFormSubmit)}>
         <DialogTitle>
-          {mode === 'create' ? 'Neuen Lagerbestand anlegen' : 'Lagerbestand bearbeiten'}
+          {mode === 'create'
+            ? 'Neuen Lagerbestand anlegen'
+            : 'Lagerbestand bearbeiten'}
         </DialogTitle>
-        
+
         <DialogContent>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -145,13 +151,11 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
 
             {mode === 'edit' && item && (
               <Grid item xs={12}>
-                <Box sx={{ p: 2, bgcolor: 'grey.100', borderRadius: 1 }}>
+                <Box sx={{ p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                   <Typography variant="subtitle2" color="text.secondary">
                     Produkt
                   </Typography>
-                  <Typography variant="body1">
-                    {item.product?.name}
-                  </Typography>
+                  <Typography variant="body1">{item.product?.name}</Typography>
                 </Box>
               </Grid>
             )}
@@ -161,9 +165,12 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
                 <Controller
                   name="quantity"
                   control={control}
-                  rules={{ 
+                  rules={{
                     required: 'Anfangsbestand ist erforderlich',
-                    min: { value: 0, message: 'Bestand muss mindestens 0 sein' }
+                    min: {
+                      value: 0,
+                      message: 'Bestand muss mindestens 0 sein',
+                    },
                   }}
                   render={({ field }) => (
                     <TextField
@@ -202,9 +209,12 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
               <Controller
                 name="minimumQuantity"
                 control={control}
-                rules={{ 
+                rules={{
                   required: 'Mindestbestand ist erforderlich',
-                  min: { value: 0, message: 'Mindestbestand muss mindestens 0 sein' }
+                  min: {
+                    value: 0,
+                    message: 'Mindestbestand muss mindestens 0 sein',
+                  },
                 }}
                 render={({ field }) => (
                   <TextField
@@ -223,8 +233,11 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
               <Controller
                 name="reorderPoint"
                 control={control}
-                rules={{ 
-                  min: { value: 0, message: 'Bestellpunkt muss mindestens 0 sein' }
+                rules={{
+                  min: {
+                    value: 0,
+                    message: 'Bestellpunkt muss mindestens 0 sein',
+                  },
                 }}
                 render={({ field }) => (
                   <TextField
@@ -233,7 +246,10 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
                     type="number"
                     fullWidth
                     error={!!errors.reorderPoint}
-                    helperText={errors.reorderPoint?.message || 'Bestand, bei dem nachbestellt werden soll'}
+                    helperText={
+                      errors.reorderPoint?.message ||
+                      'Bestand, bei dem nachbestellt werden soll'
+                    }
                   />
                 )}
               />
@@ -243,8 +259,11 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
               <Controller
                 name="maximumQuantity"
                 control={control}
-                rules={{ 
-                  min: { value: 0, message: 'Maximalbestand muss mindestens 0 sein' }
+                rules={{
+                  min: {
+                    value: 0,
+                    message: 'Maximalbestand muss mindestens 0 sein',
+                  },
                 }}
                 render={({ field }) => (
                   <TextField
@@ -282,11 +301,7 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
                 name="location"
                 control={control}
                 render={({ field }) => (
-                  <TextField
-                    {...field}
-                    label="Lagerort"
-                    fullWidth
-                  />
+                  <TextField {...field} label="Lagerort" fullWidth />
                 )}
               />
             </Grid>
@@ -344,9 +359,9 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
 
         <DialogActions>
           <Button onClick={handleClose}>Abbrechen</Button>
-          <Button 
-            type="submit" 
-            variant="contained" 
+          <Button
+            type="submit"
+            variant="contained"
             disabled={loading || !isDirty}
           >
             {loading ? 'Speichern...' : 'Speichern'}
@@ -354,5 +369,5 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
         </DialogActions>
       </form>
     </Dialog>
-  );
-};
+  )
+}

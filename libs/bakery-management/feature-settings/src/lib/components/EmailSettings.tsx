@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react'
 import {
   Paper,
   Typography,
@@ -15,39 +15,39 @@ import {
   IconButton,
   InputAdornment,
   Chip,
-} from '@mui/material';
+} from '@mui/material'
 import {
   Send as SendIcon,
   Visibility,
   VisibilityOff,
   CheckCircle,
   Error,
-} from '@mui/icons-material';
-import { bakeryAPI } from '@bakery/shared/data-access';
+} from '@mui/icons-material'
+import { bakeryAPI } from '@bakery/shared/data-access'
 
 interface EmailConfig {
-  configured: boolean;
-  connected: boolean;
-  provider: string;
-  from: string;
+  configured: boolean
+  connected: boolean
+  provider: string
+  from: string
 }
 
 interface EmailTestResult {
-  success: boolean;
-  error?: string;
-  messageId?: string;
+  success: boolean
+  error?: string
+  messageId?: string
 }
 
 export const EmailSettings: React.FC = () => {
-  const [config, setConfig] = useState<EmailConfig | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [testEmail, setTestEmail] = useState('');
-  const [sending, setSending] = useState(false);
-  const [testResult, setTestResult] = useState<EmailTestResult | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
+  const [config, setConfig] = useState<EmailConfig | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [testEmail, setTestEmail] = useState('')
+  const [sending, setSending] = useState(false)
+  const [testResult, setTestResult] = useState<EmailTestResult | null>(null)
+  const [showPassword, setShowPassword] = useState(false)
 
   // Form state for configuration (future enhancement)
-  const [provider, setProvider] = useState('smtp');
+  const [provider, setProvider] = useState('smtp')
   const [smtpConfig, setSmtpConfig] = useState({
     host: '',
     port: '587',
@@ -56,48 +56,48 @@ export const EmailSettings: React.FC = () => {
     password: '',
     from: '',
     fromName: '',
-  });
+  })
 
   useEffect(() => {
-    loadEmailConfig();
-  }, []);
+    loadEmailConfig()
+  }, [])
 
   const loadEmailConfig = async () => {
     try {
-      const response = await bakeryAPI.getEmailConfig();
-      setConfig(response);
+      const response = await bakeryAPI.getEmailConfig()
+      setConfig(response)
     } catch (error) {
-      console.error('Failed to load email configuration:', error);
+      console.error('Failed to load email configuration:', error)
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   const sendTestEmail = async () => {
-    if (!testEmail) return;
+    if (!testEmail) return
 
-    setSending(true);
-    setTestResult(null);
+    setSending(true)
+    setTestResult(null)
 
     try {
-      const response = await bakeryAPI.sendTestEmail(testEmail);
-      setTestResult(response);
+      const response = await bakeryAPI.sendTestEmail(testEmail)
+      setTestResult(response)
     } catch (error: any) {
       setTestResult({
         success: false,
         error: error.message || 'Failed to send test email',
-      });
+      })
     } finally {
-      setSending(false);
+      setSending(false)
     }
-  };
+  }
 
   if (loading) {
     return (
       <Box display="flex" justifyContent="center" p={3}>
         <CircularProgress />
       </Box>
-    );
+    )
   }
 
   return (
@@ -136,10 +136,7 @@ export const EmailSettings: React.FC = () => {
             />
           )}
           {config?.from && (
-            <Chip
-              label={`From: ${config.from}`}
-              variant="outlined"
-            />
+            <Chip label={`From: ${config.from}`} variant="outlined" />
           )}
         </Box>
       </Box>
@@ -190,18 +187,31 @@ export const EmailSettings: React.FC = () => {
           Configuration Instructions
         </Typography>
         <Alert severity="info" sx={{ mb: 2 }}>
-          Email configuration is managed through environment variables. To enable email notifications:
+          Email configuration is managed through environment variables. To
+          enable email notifications:
         </Alert>
-        
+
         <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
           1. Copy the following to your .env file:
         </Typography>
-        <Paper sx={{ p: 2, bgcolor: 'grey.100', fontFamily: 'monospace', fontSize: '0.875rem' }}>
-          # Email Configuration<br />
-          EMAIL_PROVIDER=gmail<br />
-          EMAIL_USER=your-email@gmail.com<br />
-          EMAIL_PASSWORD=your-app-password<br />
-          EMAIL_FROM=noreply@bakery.com<br />
+        <Paper
+          sx={{
+            p: 2,
+            bgcolor: 'action.hover',
+            fontFamily: 'monospace',
+            fontSize: '0.875rem',
+          }}
+        >
+          # Email Configuration
+          <br />
+          EMAIL_PROVIDER=gmail
+          <br />
+          EMAIL_USER=your-email@gmail.com
+          <br />
+          EMAIL_PASSWORD=your-app-password
+          <br />
+          EMAIL_FROM=noreply@bakery.com
+          <br />
           EMAIL_FROM_NAME=Bakery Notifications
         </Paper>
 
@@ -210,7 +220,16 @@ export const EmailSettings: React.FC = () => {
         </Typography>
         <Typography variant="body2" component="ul" sx={{ mt: 1 }}>
           <li>Enable 2-factor authentication on your Google account</li>
-          <li>Generate an app-specific password at: <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">https://myaccount.google.com/apppasswords</a></li>
+          <li>
+            Generate an app-specific password at:{' '}
+            <a
+              href="https://myaccount.google.com/apppasswords"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              https://myaccount.google.com/apppasswords
+            </a>
+          </li>
           <li>Use the generated password in EMAIL_PASSWORD</li>
         </Typography>
 
@@ -218,7 +237,8 @@ export const EmailSettings: React.FC = () => {
           3. Other providers:
         </Typography>
         <Typography variant="body2" sx={{ mt: 1 }}>
-          For SendGrid, AWS SES, or custom SMTP, see the .env.example file for configuration options.
+          For SendGrid, AWS SES, or custom SMTP, see the .env.example file for
+          configuration options.
         </Typography>
 
         <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
@@ -226,7 +246,7 @@ export const EmailSettings: React.FC = () => {
         </Typography>
       </Box>
     </Paper>
-  );
-};
+  )
+}
 
-export default EmailSettings;
+export default EmailSettings

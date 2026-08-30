@@ -19,7 +19,9 @@ const products: ManagementProduct[] = [
     price: 4.5,
     status: 'active',
     image: null,
-    description: 'Kräftig',
+    rawImage: '',
+    shortDescription: 'Kräftig',
+    description: 'Kräftiges Roggenbrot aus eigenem Sauerteig.',
   },
   {
     id: 'stollen',
@@ -29,6 +31,8 @@ const products: ManagementProduct[] = [
     price: 12,
     status: 'seasonal',
     image: '/img/stollen.svg',
+    rawImage: '/img/stollen.svg',
+    shortDescription: '',
     description: '',
   },
   {
@@ -39,6 +43,8 @@ const products: ManagementProduct[] = [
     price: 1,
     status: 'unavailable',
     image: null,
+    rawImage: '',
+    shortDescription: '',
     description: '',
   },
 ]

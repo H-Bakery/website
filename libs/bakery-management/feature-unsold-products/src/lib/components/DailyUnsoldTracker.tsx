@@ -265,7 +265,12 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({
       {/* Header Section */}
       <Paper
         elevation={2}
-        sx={{ p: 3, mb: 3, bgcolor: 'primary.main', color: 'white' }}
+        sx={{
+          p: 3,
+          mb: 3,
+          bgcolor: 'primary.main',
+          color: 'primary.contrastText',
+        }}
       >
         <Box
           sx={{
@@ -504,7 +509,7 @@ export const DailyUnsoldTracker: React.FC<DailyUnsoldTrackerProps> = ({
             right: 24,
             p: 2,
             bgcolor: 'warning.main',
-            color: 'white',
+            color: 'warning.contrastText',
             borderRadius: 3,
           }}
         >
