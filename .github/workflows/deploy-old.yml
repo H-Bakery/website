@@ -71,7 +71,7 @@ jobs:
         run: npm ci
 
       - name: Build shop
-        run: nx build bakery-shop --configuration=production
+        run: npx nx build bakery-shop --configuration=production
         env:
           NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
           NEXT_PUBLIC_STRIPE_KEY: ${{ secrets.STRIPE_PUBLIC_KEY }}
@@ -106,7 +106,7 @@ jobs:
         run: npm ci
 
       - name: Build management
-        run: nx build bakery-management --configuration=production
+        run: npx nx build bakery-management --configuration=production
         env:
           NEXT_PUBLIC_API_URL: ${{ vars.API_URL }}
 
@@ -143,10 +143,10 @@ jobs:
         run: npm ci
 
       - name: Build landing page
-        run: nx build bakery-landing --configuration=production
+        run: npx nx build bakery-landing --configuration=production
 
       - name: Export static site
-        run: nx export bakery-landing
+        run: npx nx export bakery-landing
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
@@ -174,7 +174,7 @@ jobs:
         run: npm ci
 
       - name: Build API
-        run: nx build bakery-api --configuration=production
+        run: npx nx build bakery-api --configuration=production
 
       - name: Setup Google Cloud
         uses: google-github-actions/auth@v2
