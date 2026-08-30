@@ -50,7 +50,7 @@ export const createWhatsAppLink = (message?: string): string => {
 export const createPhoneLink = (phoneNumber?: string): string => {
   const number = phoneNumber || contactConfig.store.phone
   // Remove spaces and special characters for tel: link
-  const cleanNumber = number.replace(/[\s\-\(\)]/g, '')
+  const cleanNumber = number.replace(/[\s\-()]/g, '')
   return `tel:${cleanNumber}`
 }
 

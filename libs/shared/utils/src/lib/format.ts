@@ -84,7 +84,7 @@ export function formatPhoneNumber(phone: string): string {
 /**
  * Format a percentage
  */
-export function formatPercentage(value: number, decimals: number = 1): string {
+export function formatPercentage(value: number, decimals = 1): string {
   return `${(value * 100).toFixed(decimals)}%`
 }
 
@@ -115,10 +115,7 @@ export function truncateText(text: string, maxLength: number): string {
 /**
  * Format quantity with proper units
  */
-export function formatQuantity(
-  quantity: number,
-  unit: string = 'Stück'
-): string {
+export function formatQuantity(quantity: number, unit = 'Stück'): string {
   if (quantity === 1) {
     return `${quantity} ${unit}`
   }
