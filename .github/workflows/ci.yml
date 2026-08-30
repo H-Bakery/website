@@ -84,6 +84,7 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         shard: [1, 2, 3]
     steps:
@@ -138,10 +139,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build shop application
-        run: nx build bakery-shop --configuration=production
+        run: npx nx build bakery-shop --configuration=production
 
       - name: Run E2E tests
-        run: nx e2e bakery-shop-e2e --configuration=ci
+        run: npx nx e2e bakery-shop-e2e --configuration=ci
 
       - name: Upload test results
         if: always()
@@ -172,10 +173,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build management application
-        run: nx build bakery-management --configuration=production
+        run: npx nx build bakery-management --configuration=production
 
       - name: Run E2E tests
-        run: nx e2e bakery-management-e2e --configuration=ci
+        run: npx nx e2e bakery-management-e2e --configuration=ci
 
       - name: Upload test results
         if: always()
@@ -206,10 +207,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build landing application
-        run: nx build bakery-landing --configuration=production
+        run: npx nx build bakery-landing --configuration=production
 
       - name: Run E2E tests
-        run: nx e2e bakery-landing-e2e --configuration=ci
+        run: npx nx e2e bakery-landing-e2e --configuration=ci
 
       - name: Upload test results
         if: always()
@@ -224,6 +225,7 @@ jobs:
     needs: [quality, test-unit]
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         app: [bakery-shop, bakery-management, bakery-landing, bakery-api]
     steps:
@@ -239,7 +241,7 @@ jobs:
         run: npm ci
 
       - name: Build ${{ matrix.app }}
-        run: nx build ${{ matrix.app }} --configuration=production
+        run: npx nx build ${{ matrix.app }} --configuration=production
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4

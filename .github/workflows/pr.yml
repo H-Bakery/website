@@ -64,6 +64,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         shard: [1, 2, 3]
     steps:
@@ -115,7 +116,7 @@ jobs:
         run: npm ci
 
       - name: Build affected projects
-        run: nx affected:build --base=origin/${{ github.base_ref }} --configuration=production
+        run: npx nx affected:build --base=origin/${{ github.base_ref }} --configuration=production
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -167,7 +168,7 @@ jobs:
 
       - name: Run E2E tests
         if: steps.check.outputs.affected == 'true'
-        run: nx e2e bakery-${{ matrix.app }}-e2e --configuration=ci
+        run: npx nx e2e bakery-${{ matrix.app }}-e2e --configuration=ci
 
       - name: Upload test results
         if: always() && steps.check.outputs.affected == 'true'
