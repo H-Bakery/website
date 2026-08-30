@@ -54,7 +54,7 @@
     "lint:affected": "nx affected:lint",
     "format": "nx format:write",
     "format:check": "nx format:check",
-    "type-check": "nx run-many --target=type-check --all --parallel=3",
+    "type-check": "tsc --noEmit -p apps/bakery-landing/tsconfig.json && tsc --noEmit -p apps/bakery-shop/tsconfig.json && tsc --noEmit -p apps/bakery-management/tsconfig.json",
     "validate": "npm run lint:all && npm run type-check && npm run test:unit",
     "validate:ci": "npm run lint:all && npm run type-check && npm run test:unit:ci && npm run test:e2e:ci",
     "affected:validate": "nx affected --target=lint && nx affected --target=type-check && nx affected --target=test",

@@ -1,2 +1,9 @@
 node_modules
 src/testing/templates
+
+# Von Werkzeugen erzeugt - landet sonst in jedem format:check-Lauf.
+.nx
+dist
+coverage
+.next
+out
