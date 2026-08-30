@@ -130,6 +130,38 @@ website/
 
 The full TypeScript API (`bakery-api`) has systemic compilation errors from an incomplete JS→TS migration. Use `serve:api:simple` for a working API with mock endpoints.
 
+## Verkaufspartner (Backschrank CAP-Markt)
+
+Erfasst wird ein **Besuch** am Backschrank, nicht eine Lieferung. Jeder Besuch hält fest, was
+noch dalag (`countedQty`) und was neu eingeräumt wurde (`deliveredQty`); Verkaufszahlen werden
+daraus **berechnet** und nie eingegeben.
+
+Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
+
+- **Alle Formeln stehen genau einmal**, in `apps/bakery-api/src/services/partner-stats.core.js` -
+  dependency-freies CommonJS. Es benutzen sie die echte API (`partner-stats.service.ts`, nur ein
+  typisierter Wrapper), der Mock-Server (`simple-server.js`) und die Tests. Keine zweite
+  Implementierung anlegen; die beiden Server würden sonst auseinanderlaufen.
+  Weil `@nx/js:tsc` ohne `allowJs` läuft, steht die Datei in `project.json` unter `assets` -
+  sonst fehlt sie in `dist/` und `require('./partner-stats.core')` greift ins Leere.
+- **Ein Geschäftstag ohne `pickup`-Besuch ist offen.** Verkauf und Umsatz sind dann vorläufig
+  (`stats.isProvisional`, `openDates`). Ohne diese Kennzeichnung liest sich ein unvollständiger
+  Tag im Report als 100 % Abverkauf. Detail-Seite und Report markieren das; nicht wegoptimieren.
+- **`countedQty: null` heißt "nicht gezählt", `0` heißt "Schrank war leer".** Der Unterschied
+  ändert die Verkaufszahlen. Die Erfassungsmaske hält ihn auseinander, ein Test sichert das ab.
+
+Die Tagesformel aus der Aufgabe (`Σ Geliefert − Rest bei der Abholung`) stimmt nur, wenn der
+letzte Besuch eine Abholung ohne Lieferung ist. Der Core rechnet stattdessen je Produkt einen
+Bestands-Automaten (`sold += Bestand − gezählt; Bestand = gezählt + geliefert`) - das ergibt auf
+abgeschlossenen Tagen dasselbe und bleibt auf offenen Tagen richtig.
+
+Preise und Produktnamen werden **als Snapshot** auf `PartnerVisitItem` gespeichert, damit eine
+spätere HQ-Preisänderung alte Abrechnungen nicht rückwirkend verändert.
+
+Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Achtung -
+`apps/bakery-api/jest.config.js` hat `testMatch: ["**/tests/**/*.test.js"]`, führt also **nur**
+plain-JS-Tests unter `tests/` aus. Die TypeScript-Specs unter `src/**/__tests__/` laufen nie mit.
+
 ## Important Notes
 
 - Always check existing patterns before implementing new features
