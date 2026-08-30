@@ -120,7 +120,10 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
             }}
           >
             {section.completed ? (
-              <CheckCircle color="inherit" sx={{ color: 'white' }} />
+              <CheckCircle
+                color="inherit"
+                sx={{ color: 'success.contrastText' }}
+              />
             ) : (
               <RadioButtonUnchecked />
             )}

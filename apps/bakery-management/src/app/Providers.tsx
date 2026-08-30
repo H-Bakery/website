@@ -37,7 +37,9 @@ function MuiThemeBridge({ children }: { children: React.ReactNode }) {
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <ThemeProvider storageKey="bakery-management-theme">
+    // Dark is the default for the admin UI; a stored preference (or the
+    // "Systemeinstellung folgen" toggle) still wins over it.
+    <ThemeProvider defaultMode="dark" storageKey="bakery-management-theme">
       <MuiThemeBridge>
         {/* Auth: no session check on mount – the mock API has no auth endpoints */}
         <AuthProvider checkAuthOnMount={false}>

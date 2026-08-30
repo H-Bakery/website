@@ -124,4 +124,11 @@ describe('AdminLayout', () => {
       'Dashboard › Produkte › new'
     )
   })
+
+  it('names submenu parents in the breadcrumb instead of the raw segment', () => {
+    renderLayout('/admin/bakery/intern-orders')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Bäckerei › Interne Bestellungen'
+    )
+  })
 })

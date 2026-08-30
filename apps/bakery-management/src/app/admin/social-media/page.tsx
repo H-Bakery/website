@@ -538,15 +538,12 @@ export default function SocialMediaPage() {
                 sx={{
                   fontWeight: 600,
                   fontFamily: "'Playfair Display', serif",
-                  color: BRAND_COLORS.textDark,
+                  color: 'text.primary',
                 }}
               >
                 Social Media Content Creator
               </Typography>
-              <Typography
-                variant="subtitle1"
-                sx={{ color: BRAND_COLORS.textMedium }}
-              >
+              <Typography variant="subtitle1" sx={{ color: 'text.secondary' }}>
                 Erstellen Sie professionelle Inhalte mit authentischem
                 Bäckerei-Branding
               </Typography>
@@ -591,14 +588,14 @@ export default function SocialMediaPage() {
                 borderRadius: 2,
                 bgcolor: 'background.paper',
                 border: '1px solid',
-                borderColor: BRAND_COLORS.border,
+                borderColor: 'divider',
               }}
             >
               <Typography
                 variant="h6"
                 gutterBottom
                 sx={{
-                  color: BRAND_COLORS.textDark,
+                  color: 'text.primary',
                   fontWeight: 500,
                   fontFamily: "'Lora', serif",
                 }}
@@ -720,7 +717,7 @@ export default function SocialMediaPage() {
                         backgroundColor: BRAND_COLORS.primaryDark,
                       },
                       '&:disabled': {
-                        backgroundColor: BRAND_COLORS.textLight,
+                        backgroundColor: 'action.disabledBackground',
                       },
                     }}
                   >
@@ -764,7 +761,7 @@ export default function SocialMediaPage() {
                       backgroundColor: '#15C55C', // Darker green on hover
                     },
                     '&:disabled': {
-                      backgroundColor: BRAND_COLORS.textLight,
+                      backgroundColor: 'action.disabledBackground',
                     },
                   }}
                 >
@@ -785,14 +782,14 @@ export default function SocialMediaPage() {
                 borderRadius: 2,
                 bgcolor: 'background.paper',
                 border: '1px solid',
-                borderColor: BRAND_COLORS.border,
+                borderColor: 'divider',
               }}
             >
               <Typography
                 variant="h6"
                 gutterBottom
                 sx={{
-                  color: BRAND_COLORS.textDark,
+                  color: 'text.primary',
                   fontWeight: 500,
                   fontFamily: "'Lora', serif",
                 }}
@@ -1024,7 +1021,7 @@ export default function SocialMediaPage() {
                 sx={{
                   mt: 2,
                   bgcolor: BRAND_COLORS.primaryLight + '10',
-                  color: BRAND_COLORS.textDark,
+                  color: 'text.primary',
                   '& .MuiAlert-icon': {
                     color: BRAND_COLORS.primary,
                   },

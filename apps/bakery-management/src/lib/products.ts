@@ -11,7 +11,11 @@ export interface HQProduct {
   available: boolean
   seasonal: boolean
   image: string | null
+  /** Raw `image:` value from the file, before any category fallback is applied. */
+  rawImage: string
   short_description: string
+  /** Markdown body of the file, with the leading `# Heading` stripped. */
+  description: string
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {
@@ -65,8 +69,14 @@ export function getHQProducts(): HQProduct[] {
     .map((file) => {
       try {
         const raw = fs.readFileSync(path.join(dir, file), 'utf-8')
-        const { data } = matter(raw)
+        const { data, content } = matter(raw)
         if (!data.id || !data.name) return null
+
+        // Body text without the leading `# Produktname` heading.
+        const bodyText = content
+          .trim()
+          .replace(/^#{1,6}[^\n]*\n+/, '')
+          .trim()
 
         let image: string | null = null
         if (data.image && data.image !== 'images/' && data.image.length > 10) {
@@ -84,7 +94,9 @@ export function getHQProducts(): HQProduct[] {
           available: data.available ?? true,
           seasonal: data.seasonal ?? false,
           image,
+          rawImage: typeof data.image === 'string' ? data.image : '',
           short_description: data.short_description || '',
+          description: bodyText,
         } as HQProduct
       } catch {
         return null
@@ -102,6 +114,10 @@ export interface ManagementProduct {
   price: number
   status: 'active' | 'seasonal' | 'unavailable'
   image: string | null
+  rawImage: string
+  /** One-liner for list/teaser views (frontmatter `short_description`). */
+  shortDescription: string
+  /** Full body text of the product file. */
   description: string
 }
 
@@ -114,6 +130,8 @@ export function getManagementProducts(): ManagementProduct[] {
     price: p.price,
     status: !p.available ? 'unavailable' : p.seasonal ? 'seasonal' : 'active',
     image: p.image,
-    description: p.short_description,
+    rawImage: p.rawImage,
+    shortDescription: p.short_description,
+    description: p.description,
   }))
 }

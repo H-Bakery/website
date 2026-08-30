@@ -161,6 +161,32 @@ describe('InternOrdersPage', () => {
     expect(screen.getByText('Bestellung angelegt')).toBeInTheDocument()
   })
 
+  it('keeps an item line that was typed but never added with "+"', async () => {
+    const user = userEvent.setup()
+    render(<InternOrdersPage />)
+    await screen.findByText('Mehl nachbestellen')
+
+    await user.click(screen.getByRole('button', { name: 'Neue Bestellung' }))
+    await user.type(screen.getByLabelText(/Bezeichnung/), 'Hefe')
+    await user.type(screen.getByLabelText(/Beschreibung/), 'Für Samstag')
+
+    // Typed into the item fields, but "Posten hinzufügen" is never clicked.
+    await user.type(screen.getByLabelText('Artikel'), 'Frischhefe')
+    await user.type(screen.getByLabelText('Menge'), '4')
+    await user.type(screen.getByLabelText('Einheit'), 'Würfel')
+
+    await user.click(screen.getByRole('button', { name: 'Bestellung anlegen' }))
+
+    await waitFor(() =>
+      expect(mockedService.addInternOrder).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderName: 'Hefe',
+          items: [{ itemName: 'Frischhefe', itemQuantity: 4, unit: 'Würfel' }],
+        })
+      )
+    )
+  })
+
   it('opens the edit form pre-filled and cancels back to the list', async () => {
     const user = userEvent.setup()
     render(<InternOrdersPage />)

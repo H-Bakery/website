@@ -164,7 +164,9 @@ export const ProductionTimelineDropZone: React.FC<
             left: '50%',
             transform: 'translate(-50%, -50%)',
             bgcolor: dropPreview.conflicts ? 'error.main' : 'primary.main',
-            color: 'white',
+            color: dropPreview.conflicts
+              ? 'error.contrastText'
+              : 'primary.contrastText',
             px: 2,
             py: 1,
             borderRadius: 1,

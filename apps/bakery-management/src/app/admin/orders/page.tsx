@@ -320,7 +320,7 @@ export default function AdminOrdersPage() {
       </Paper>
 
       {!loading && !error && (
-        <Box sx={{ mt: 2, p: 1.5, bgcolor: 'grey.100', borderRadius: 1 }}>
+        <Box sx={{ mt: 2, p: 1.5, bgcolor: 'action.hover', borderRadius: 1 }}>
           <Typography variant="body2" color="text.secondary">
             Zeige {filtered.length} von {orders.length} Bestellungen
           </Typography>

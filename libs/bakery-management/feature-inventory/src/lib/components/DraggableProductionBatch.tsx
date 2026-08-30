@@ -229,7 +229,7 @@ export const DraggableProductionBatch: React.FC<
                   sx={{
                     width: '100%',
                     height: 4,
-                    bgcolor: 'grey.300',
+                    bgcolor: 'action.selected',
                     borderRadius: 2,
                     overflow: 'hidden',
                   }}
