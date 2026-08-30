@@ -118,6 +118,21 @@ describe('AdminLayout', () => {
     expect(modal).not.toHaveAttribute('aria-hidden')
   })
 
+  it('names the partner sub-pages in the breadcrumb and drops the id', () => {
+    renderLayout('/admin/partners/1/visit/new')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard \u203a Verkaufspartner \u203a Besuch erfassen'
+    )
+  })
+
+  it('does not leave a bare id in the partner breadcrumb', () => {
+    renderLayout('/admin/partners/1')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard \u203a Verkaufspartner'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toMatch(/\b1\b/)
+  })
+
   it('renders a readable breadcrumb', () => {
     renderLayout('/admin/products/new')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(

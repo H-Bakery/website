@@ -62,6 +62,7 @@ import {
   inventoryRoutes,
   notificationRoutes,
   orderRoutes,
+  partnerRoutes,
   preferenceRoutes,
   productRoutes,
   productionRoutes,
@@ -302,6 +303,7 @@ function registerRoutes() {
   app.use('/api/inventory', inventoryRoutes)
   app.use('/api/notifications', notificationRoutes)
   app.use('/api/orders', orderRoutes)
+  app.use('/api/partners', partnerRoutes)
   app.use('/api/preferences', preferenceRoutes)
   app.use('/api/products', productRoutes)
   app.use('/api/production', productionRoutes)

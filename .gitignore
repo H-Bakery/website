@@ -86,3 +86,6 @@ static/
 tmp/
 tmp-nx-graph.html
 test-results/
+
+# Local store of the mock API server (apps/bakery-api/simple-server.js)
+apps/bakery-api/data/

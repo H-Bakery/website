@@ -31,6 +31,7 @@ import {
   Euro as CashIcon,
   Notifications as NotificationsIcon,
   Storefront as BakeryIcon,
+  Handshake as PartnersIcon,
   Insights as AnalyticsIcon,
   Forum as ChatIcon,
   ExpandLess,
@@ -63,9 +64,24 @@ const iconMap: Record<string, React.ReactElement> = {
   cash: <CashIcon />,
   notifications: <NotificationsIcon />,
   bakery: <BakeryIcon />,
+  partners: <PartnersIcon />,
   unsold: <UnsoldIcon />,
   analytics: <AnalyticsIcon />,
   chat: <ChatIcon />,
+}
+
+/**
+ * Labels für Pfade mit dynamischem Segment, die so nicht in
+ * MANAGEMENT_NAVIGATION stehen. Der Pfad wird vorher normalisiert, numerische
+ * Segmente werden zu `[id]`. `null` blendet das Segment aus - eine nackte ID
+ * sagt im Pfad niemandem etwas.
+ */
+const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
+  '/admin/partners/[id]': null,
+  '/admin/partners/[id]/visit': null,
+  '/admin/partners/[id]/visit/new': 'Besuch erfassen',
+  '/admin/partners/[id]/templates': 'Standard-Bestückung',
+  '/admin/partners/[id]/report': 'Report',
 }
 
 /** Human readable breadcrumb segments for the current path. */
@@ -75,18 +91,24 @@ function getBreadcrumb(pathname: string): string[] {
     item,
     ...(item.submenu ?? []),
   ])
-  return segments.map((segment, index) => {
-    const href = '/' + segments.slice(0, index + 1).join('/')
-    const match = flat.find((item) => item.href === href)
-    if (match) return match.label
-    // Submenu parents ("Bäckerei") carry no href of their own, so match them by
-    // the path their children share — otherwise the raw segment leaks through.
-    const parent = MANAGEMENT_NAVIGATION.find((item) =>
-      item.submenu?.some((sub) => sub.href?.startsWith(`${href}/`))
-    )
-    if (parent) return parent.label
-    return segment
-  })
+  return segments
+    .map((segment, index) => {
+      const href = '/' + segments.slice(0, index + 1).join('/')
+      const match = flat.find((item) => item.href === href)
+      if (match) return match.label
+      // Submenu parents ("Bäckerei") carry no href of their own, so match them by
+      // the path their children share — otherwise the raw segment leaks through.
+      const parent = MANAGEMENT_NAVIGATION.find((item) =>
+        item.submenu?.some((sub) => sub.href?.startsWith(`${href}/`))
+      )
+      if (parent) return parent.label
+      const pattern = href.replace(/\/\d+(?=\/|$)/g, '/[id]')
+      if (pattern in DYNAMIC_BREADCRUMB_LABELS) {
+        return DYNAMIC_BREADCRUMB_LABELS[pattern]
+      }
+      return segment
+    })
+    .filter((label): label is string => label !== null)
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {

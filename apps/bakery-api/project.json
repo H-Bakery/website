@@ -36,7 +36,12 @@
         "assets": [
           "apps/bakery-api/bakery",
           "apps/bakery-api/content",
-          "apps/bakery-api/templates"
+          "apps/bakery-api/templates",
+          {
+            "input": "apps/bakery-api/src/services",
+            "glob": "*.core.js",
+            "output": "src/services"
+          }
         ]
       }
     },

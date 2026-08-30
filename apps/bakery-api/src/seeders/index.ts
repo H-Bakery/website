@@ -15,6 +15,7 @@ import { runUserSeeder } from './user.seeder'
 import { runProductSeeder } from './product.seeder'
 import { runNotificationSeeder } from './notification.seeder'
 import { runTemplateSeeder } from './template.seeder'
+import { runPartnerSeeder } from './partner.seeder'
 
 export async function runSeeders(): Promise<void> {
   logger.info('Running database seeders...')
@@ -25,6 +26,7 @@ export async function runSeeders(): Promise<void> {
     await runProductSeeder()
     await runNotificationSeeder()
     await runTemplateSeeder()
+    await runPartnerSeeder()
 
     logger.info('All seeders completed successfully')
   } catch (error) {
