@@ -64,7 +64,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -99,7 +99,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -136,7 +136,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -167,7 +167,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -218,7 +218,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -232,11 +232,11 @@ jobs:
           if [[ "${{ needs.deploy-shop.result }}" == "success" ]]; then
             BASE_URL=${{ vars.SHOP_URL }} nx e2e bakery-shop-e2e --grep="@smoke"
           fi
-          
+
           if [[ "${{ needs.deploy-management.result }}" == "success" ]]; then
             BASE_URL=${{ vars.MANAGEMENT_URL }} nx e2e bakery-management-e2e --grep="@smoke"
           fi
-          
+
           if [[ "${{ needs.deploy-landing.result }}" == "success" ]]; then
             BASE_URL=${{ vars.LANDING_URL }} nx e2e bakery-landing-e2e --grep="@smoke"
           fi
