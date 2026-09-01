@@ -3,6 +3,7 @@ const cors = require('cors')
 const path = require('path')
 const fs = require('fs')
 const matter = require('gray-matter')
+const crypto = require('crypto')
 
 const app = express()
 const PORT = process.env.PORT || 5000
@@ -41,6 +42,11 @@ function loadHQProducts() {
           seasonal: data.seasonal ?? false,
           image: data.image || null,
           short_description: data.short_description || '',
+          // Pflichtangaben nach LMIV. Bewusst nur durchgereicht, nie ergaenzt:
+          // fehlende Angaben muessen im Shop als fehlend sichtbar bleiben.
+          allergens: Array.isArray(data.allergens) ? data.allergens : null,
+          allergens_source: data.allergens_source || null,
+          allergen_recipe: data.allergen_recipe || null,
           description:
             content.replace(/^\s*#[^\n]*\n+/, '').trim() ||
             data.short_description ||
@@ -91,9 +97,43 @@ app.get('/api/products', (req, res) => {
 })
 
 // --- Orders endpoints (mock) ---
+
+// shop-orders.core - Pruefung und Summe fuer POST /api/orders.
+const shopOrders = require('./src/services/shop-orders.core')
+
+/**
+ * Bestell-ID fuer die URL: zufaellig und nicht erratbar.
+ *
+ * Vorher war die ID fortlaufend ('1', '2', '3'), und /api/orders/:id ist
+ * unauthentifiziert. Damit konnte jeder durch Hochzaehlen von
+ * /bestellung/1 Name, Telefonnummer und Abholzeit fremder Kundinnen und
+ * Kunden lesen (IDOR, Art. 32 DSGVO). Die fortlaufende Nummer bleibt als
+ * `orderNumber` erhalten - die steht auf dem Bon, gehoert aber nicht in die URL.
+ */
+const ORDER_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+
+function createOrderId() {
+  // Crockford-Base32: ohne I, L, O und U, damit am Telefon nichts verwechselt
+  // wird. 12 Zeichen = 60 Bit - nicht durchprobierbar, aber vorlesbar.
+  const bytes = crypto.randomBytes(12)
+  let code = ''
+  for (let i = 0; i < 12; i += 1) {
+    code += ORDER_CODE_ALPHABET[bytes[i] % ORDER_CODE_ALPHABET.length]
+  }
+  return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`
+}
+
+let orderCounter = 0
+
+function nextOrderNumber() {
+  orderCounter += 1
+  return orderCounter
+}
+
 let orders = [
   {
-    id: '1',
+    id: createOrderId(),
+    orderNumber: nextOrderNumber(),
     customerName: 'Max Mustermann',
     items: [
       { productId: 'roggenbrot', name: 'Roggenbrot', quantity: 2, price: 4.5 },
@@ -105,7 +145,8 @@ let orders = [
     updatedAt: new Date().toISOString(),
   },
   {
-    id: '2',
+    id: createOrderId(),
+    orderNumber: nextOrderNumber(),
     customerName: 'Anna Schmidt',
     items: [
       {
@@ -131,14 +172,42 @@ app.get('/api/orders', (req, res) => {
 app.get('/api/orders/:id', (req, res) => {
   const order = orders.find((o) => o.id === req.params.id)
   if (!order)
-    return res.status(404).json({ success: false, error: 'Order not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Order not found',
+      message: 'Bestellung nicht gefunden.',
+    })
   res.json({ success: true, data: order })
 })
 
+/**
+ * Prueft den Body und rechnet die Summe - siehe shop-orders.core.js. Vorher
+ * wurde `req.body` ungeprueft uebernommen: ein leerer Body ergab eine
+ * Bestellung ohne Namen und Artikel, ein mitgeschickter Preis wurde geglaubt.
+ * Preis und Name kommen jetzt aus hq, der Warenkorb liefert nur ID und Menge.
+ */
 app.post('/api/orders', (req, res) => {
+  const products = loadHQProducts()
+  const lookupProduct = (productId) =>
+    products.find(
+      (p) => p.id === productId || String(p.numeric_id) === productId
+    ) || null
+
+  const result = shopOrders.validateShopOrder(req.body, { lookupProduct })
+  if (!result.ok) {
+    // `message` muss dabei sein: der Shop zeigt genau diesen Text an.
+    return res.status(400).json({
+      success: false,
+      error: 'invalid_order',
+      field: result.field,
+      message: result.message,
+    })
+  }
+
   const newOrder = {
-    id: String(orders.length + 1),
-    ...req.body,
+    ...result.order,
+    id: createOrderId(),
+    orderNumber: nextOrderNumber(),
     status: 'pending',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -150,7 +219,11 @@ app.post('/api/orders', (req, res) => {
 app.put('/api/orders/:id', (req, res) => {
   const index = orders.findIndex((o) => o.id === req.params.id)
   if (index === -1)
-    return res.status(404).json({ success: false, error: 'Order not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Order not found',
+      message: 'Bestellung nicht gefunden.',
+    })
   orders[index] = {
     ...orders[index],
     ...req.body,
@@ -163,7 +236,11 @@ app.put('/api/orders/:id', (req, res) => {
 app.delete('/api/orders/:id', (req, res) => {
   const index = orders.findIndex((o) => o.id === req.params.id)
   if (index === -1)
-    return res.status(404).json({ success: false, error: 'Order not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Order not found',
+      message: 'Bestellung nicht gefunden.',
+    })
   orders.splice(index, 1)
   res.json({ success: true, message: 'Order deleted' })
 })

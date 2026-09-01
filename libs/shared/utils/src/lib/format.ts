@@ -3,20 +3,20 @@
  */
 
 /**
- * Currency formatter instance for CHF
+ * Currency formatter instance for EUR (German formatting, e.g. "2,50 €")
  */
-export const formatter = new Intl.NumberFormat('de-CH', {
+export const formatter = new Intl.NumberFormat('de-DE', {
   style: 'currency',
-  currency: 'CHF',
+  currency: 'EUR',
 })
 
 /**
- * Format a number as currency (CHF)
+ * Format a number as currency (EUR, de-DE — e.g. "2,50 €")
  */
 export function formatCurrency(amount: number): string {
-  return new Intl.NumberFormat('de-CH', {
+  return new Intl.NumberFormat('de-DE', {
     style: 'currency',
-    currency: 'CHF',
+    currency: 'EUR',
   }).format(amount)
 }
 
@@ -25,7 +25,7 @@ export function formatCurrency(amount: number): string {
  */
 export function formatDateGerman(date: Date | string): string {
   const dateObj = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('de-CH', {
+  return new Intl.DateTimeFormat('de-DE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -37,7 +37,7 @@ export function formatDateGerman(date: Date | string): string {
  */
 export function formatDateTimeGerman(date: Date | string): string {
   const dateObj = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('de-CH', {
+  return new Intl.DateTimeFormat('de-DE', {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
@@ -47,34 +47,28 @@ export function formatDateTimeGerman(date: Date | string): string {
 }
 
 /**
- * Format a phone number in Swiss format
+ * Format a phone number in German format
+ *
+ * German numbers are conventionally written as "<Vorwahl> <Rufnummer>", e.g.
+ * "06841 123456" or in international form "+49 6841 123456".
  */
 export function formatPhoneNumber(phone: string): string {
   // Remove all non-numeric characters
   const cleaned = phone.replace(/\D/g, '')
 
-  // Swiss mobile number
-  if (cleaned.startsWith('41') && cleaned.length === 11) {
-    return `+${cleaned.slice(0, 2)} ${cleaned.slice(2, 4)} ${cleaned.slice(
-      4,
-      7
-    )} ${cleaned.slice(7, 9)} ${cleaned.slice(9)}`
+  // International German number: +49 <area code without leading 0> <number>
+  if (
+    cleaned.startsWith('49') &&
+    cleaned.length >= 11 &&
+    cleaned.length <= 14
+  ) {
+    const national = cleaned.slice(2)
+    return `+49 ${national.slice(0, 4)} ${national.slice(4)}`
   }
 
-  // Swiss landline
-  if (cleaned.startsWith('41') && cleaned.length === 10) {
-    return `+${cleaned.slice(0, 2)} ${cleaned.slice(2, 4)} ${cleaned.slice(
-      4,
-      7
-    )} ${cleaned.slice(7)}`
-  }
-
-  // Local Swiss number
-  if (cleaned.length === 10 && cleaned.startsWith('0')) {
-    return `${cleaned.slice(0, 3)} ${cleaned.slice(3, 6)} ${cleaned.slice(
-      6,
-      8
-    )} ${cleaned.slice(8)}`
+  // National German number with leading 0: <area code> <number>
+  if (cleaned.startsWith('0') && cleaned.length >= 10 && cleaned.length <= 13) {
+    return `${cleaned.slice(0, 5)} ${cleaned.slice(5)}`
   }
 
   // Return as-is if format is not recognized

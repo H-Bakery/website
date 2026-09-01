@@ -1,308 +1,80 @@
-/* Global CSS with smooth animations and transitions */
+/* Bäckerei Heusser – Shop: globale Basis.
+   Bewusst minimal. Alles Gestalterische kommt aus dem MUI-Theme
+   (src/theme/theme.ts); die Marketing-Animationen leben in der Landingpage. */
 
-/* Smooth scrolling for the entire page */
-html {
-  scroll-behavior: smooth;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-/* Optimize font loading */
-@font-face {
-  font-family: 'Playfair Display';
-  font-display: swap;
+html,
+body {
+  height: 100%;
 }
 
-@font-face {
-  font-family: 'Lora';
-  font-display: swap;
+body {
+  margin: 0;
+  min-height: 100%;
+  /* palette.background.default (Creme) – deckt den Moment vor dem Theme-Mount ab */
+  background-color: #fff3e6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-@font-face {
-  font-family: 'Ubuntu';
-  font-display: swap;
+img,
+svg,
+video {
+  max-width: 100%;
 }
 
-/* Optimized transitions for interactive elements only */
-*:focus,
-*:hover,
-*:active {
-  transition: color 0.2s ease, background-color 0.2s ease,
-    border-color 0.2s ease, transform 0.2s ease;
+/* Sichtbarer Fokus-Ring in der Markenfarbe – nur bei Tastaturbedienung. */
+:focus-visible {
+  outline: 2px solid #d038ba;
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
-/* Disable animations for users who prefer reduced motion */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
   }
 }
 
-/* Smooth page transitions */
-body {
-  animation: pageLoad 0.6s ease-out;
+/*
+ * Sprunglink zum Inhalt.
+ *
+ * Liegt ausserhalb des sichtbaren Bereichs, bis er den Tastaturfokus bekommt —
+ * dann springt er sichtbar nach oben links. `top` statt `display` zu animieren
+ * haelt ihn die ganze Zeit fokussierbar.
+ */
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 16px;
+  z-index: 2000;
+  padding: 12px 20px;
+  border-radius: 8px;
+  background-color: #5a2e2a;
+  color: #fff3e6;
+  font-weight: 700;
+  text-decoration: none;
+  transition: top 120ms ease-in;
 }
 
-@keyframes pageLoad {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Link hover effects */
-a {
-  position: relative;
-  transition: color 0.3s ease;
-}
-
-a:not(.MuiButton-root):not(.MuiIconButton-root)::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 0;
-  height: 2px;
-  background-color: #d038ba;
-  transition: width 0.3s ease;
-}
-
-a:not(.MuiButton-root):not(.MuiIconButton-root):hover::after {
-  width: 100%;
-}
-
-/* Image loading animation */
-img {
-  animation: fadeIn 0.5s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    filter: blur(5px);
-  }
-  to {
-    opacity: 1;
-    filter: blur(0);
-  }
-}
-
-/* Card hover effects */
-.MuiCard-root {
-  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease !important;
-}
-
-/* Button press effect */
-.MuiButton-root:active {
-  transform: scale(0.98);
-}
-
-/* Smooth focus transitions */
-*:focus {
-  outline: 2px solid #d038ba;
+.skip-link:focus-visible {
+  top: 16px;
+  outline: 3px solid #d038ba;
   outline-offset: 2px;
-  transition: outline-offset 0.2s ease;
 }
 
-*:focus:not(:focus-visible) {
-  outline: none;
-}
-
-/* Loading skeleton animation */
-.MuiSkeleton-root {
-  animation: shimmer 2s infinite;
-  background: linear-gradient(
-    90deg,
-    rgba(0, 0, 0, 0.06) 25%,
-    rgba(0, 0, 0, 0.02) 50%,
-    rgba(0, 0, 0, 0.06) 75%
-  );
-  background-size: 200% 100%;
-  will-change: background-position;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
-}
-
-/* Smooth accordion transitions */
-.MuiAccordion-root {
-  transition: all 0.3s ease !important;
-}
-
-.MuiAccordionSummary-root {
-  transition: background-color 0.3s ease !important;
-}
-
-/* Smooth dialog animations */
-.MuiDialog-root .MuiDialog-container {
-  transition: opacity 0.3s ease !important;
-}
-
-.MuiDialog-paper {
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Smooth tab transitions */
-.MuiTabs-indicator {
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-
-.MuiTab-root {
-  transition: color 0.3s ease, opacity 0.3s ease !important;
-}
-
-/* Smooth chip animations */
-.MuiChip-root {
-  animation: chipAppear 0.3s ease-out;
-  transition: all 0.2s ease !important;
-}
-
-@keyframes chipAppear {
-  from {
-    opacity: 0;
-    transform: scale(0.8);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
-
-/* Smooth tooltip transitions */
-.MuiTooltip-popper {
-  transition: opacity 0.3s ease !important;
-}
-
-/* Section fade-in on scroll */
-section {
-  animation: sectionFadeIn 0.8s ease-out;
-}
-
-@keyframes sectionFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* Smooth form field transitions */
-.MuiTextField-root .MuiOutlinedInput-root {
-  transition: all 0.3s ease !important;
-}
-
-.MuiTextField-root .MuiOutlinedInput-root:hover {
-  transform: translateY(-1px);
-}
-
-/* Brand color glow effect */
-.brand-glow {
-  animation: brandGlow 3s ease-in-out infinite;
-}
-
-@keyframes brandGlow {
-  0%,
-  100% {
-    box-shadow: 0 0 5px rgba(208, 56, 186, 0.5);
-  }
-  50% {
-    box-shadow: 0 0 20px rgba(208, 56, 186, 0.8);
-  }
-}
-
-/* Pulse animation for important elements */
-.pulse-animation {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.7;
-  }
-}
-
-/* Smooth color transitions for theme changes */
-.MuiPaper-root {
-  transition: background-color 0.3s ease, color 0.3s ease !important;
-}
-
-/* Mobile-specific animations */
-@media (max-width: 600px) {
-  /* Reduce motion for better mobile performance */
-  * {
-    animation-duration: 0.3s !important;
-  }
-
-  /* Simpler transitions on mobile */
-  .MuiCard-root:active {
-    transform: scale(0.98);
-  }
-}
-
-/* Accessibility - respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+  .skip-link {
+    transition: none;
   }
-}
-
-/* Custom scrollbar styling */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #d038ba;
-  border-radius: 10px;
-  transition: background 0.3s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #b0309a;
-}
-
-/* Firefox scrollbar */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #d038ba #f1f1f1;
 }

@@ -17,6 +17,12 @@ export * from './lib/services/analytics.service'
 export * from './lib/services/reporting.service'
 export * from './lib/services/inventory.service'
 
+// Export the real shop data layer (apps/bakery-shop) — live API, not mocks
+export * from './lib/services/shop-products'
+export * from './lib/services/shop-orders'
+// Grundpreis je kg fuer Ware nach Gewicht (Pflichtangabe nach § 4 PAngV).
+export * from './lib/services/unit-price'
+
 // Re-export service instances for convenience
 export { productService } from './lib/services/product.service'
 export { orderService } from './lib/services/order.service'
