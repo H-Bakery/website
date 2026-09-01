@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 
 import type { ShopProduct } from '@bakery/shared/data-access'
 
@@ -295,6 +295,28 @@ describe('emptyHint', () => {
     ).toContain('gibt es 1 Treffer.')
   })
 
+  it('nennt nachsichtige Treffer als ähnliche, nicht als genaue', () => {
+    // „croisant“ trifft nur über die Tippfehlernachsicht – das muss dastehen.
+    expect(
+      emptyHint({
+        query: 'croisant',
+        category: 'brot',
+        hitsElsewhere: 1,
+        approximate: true,
+      })
+    ).toBe(
+      'Unter „Brot“ finden wir zu „croisant“ nichts. In anderen Kategorien gibt es 1 ähnlichen Treffer.'
+    )
+    expect(
+      emptyHint({
+        query: 'croisant',
+        category: 'brot',
+        hitsElsewhere: 3,
+        approximate: true,
+      })
+    ).toContain('3 ähnliche Treffer.')
+  })
+
   it('bleibt beim allgemeinen Satz, wenn es nirgends etwas gibt', () => {
     expect(
       emptyHint({ query: 'zzz', category: 'brot', hitsElsewhere: 0 })
@@ -396,6 +418,33 @@ describe('CatalogPage', () => {
 
     expect(screen.getByTestId('catalog-search-input')).toHaveValue('')
     expect(screen.queryByTestId('catalog-empty')).toBeNull()
+  })
+
+  it('löscht beim Nachziehen der URL kein eben getipptes Leerzeichen', async () => {
+    const { rerender } = render(<CatalogPage />)
+    await screen.findByTestId('product-grid')
+
+    jest.useFakeTimers()
+    try {
+      const input = screen.getByTestId('catalog-search-input')
+      fireEvent.change(input, { target: { value: 'brot ' } })
+      act(() => {
+        jest.advanceTimersByTime(400)
+      })
+
+      // Die URL bekommt den getrimmten Begriff …
+      expect(mockReplace).toHaveBeenCalledWith('/products?q=brot', {
+        scroll: false,
+      })
+
+      // … und wenn sie nachgezogen ist, bleibt das Feld, wie es getippt wurde.
+      // Vorher sprang der Wert hier auf „brot“ zurück – samt Cursor.
+      mockParams = new URLSearchParams('q=brot')
+      rerender(<CatalogPage />)
+      expect(screen.getByTestId('catalog-search-input')).toHaveValue('brot ')
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('schreibt die Sortierung in die URL', async () => {

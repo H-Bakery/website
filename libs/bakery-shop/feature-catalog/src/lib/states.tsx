@@ -201,7 +201,12 @@ export function EmptyState({
       <Typography variant="h5" component="p" sx={{ color: 'text.primary' }}>
         {headline}
       </Typography>
-      <Typography variant="body2" sx={{ color: 'grey.500', maxWidth: 420 }}>
+      <Typography
+        variant="body2"
+        // Der Hinweis zitiert den Suchbegriff; ein langes Wort ohne Leerzeichen
+        // darf die Seite am Telefon nicht breiter machen als den Bildschirm.
+        sx={{ color: 'grey.500', maxWidth: 420, overflowWrap: 'anywhere' }}
+      >
         {hint}
       </Typography>
       {action}

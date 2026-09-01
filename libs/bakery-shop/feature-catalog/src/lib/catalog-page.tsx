@@ -366,12 +366,22 @@ export function emptyHint(input: {
   category: CategoryFilter
   /** Treffer derselben Suche außerhalb der gewählten Kategorie. */
   hitsElsewhere: number
+  /**
+   * `true`, wenn diese Treffer erst die Tippfehlernachsicht gebracht hat.
+   * Dann heißen sie „ähnliche Treffer“ – nicht Treffer für das getippte Wort.
+   */
+  approximate?: boolean
 }): string {
-  const { query, category, hitsElsewhere } = input
+  const { query, category, hitsElsewhere, approximate } = input
 
   if (query && hitsElsewhere > 0 && category !== 'all') {
-    const treffer =
-      hitsElsewhere === 1 ? '1 Treffer' : `${hitsElsewhere} Treffer`
+    const treffer = approximate
+      ? hitsElsewhere === 1
+        ? '1 ähnlichen Treffer'
+        : `${hitsElsewhere} ähnliche Treffer`
+      : hitsElsewhere === 1
+      ? '1 Treffer'
+      : `${hitsElsewhere} Treffer`
     return `Unter „${shopCategoryLabel(
       category
     )}“ finden wir zu „${query}“ nichts. In anderen Kategorien gibt es ${treffer}.`
@@ -464,11 +474,16 @@ function CatalogContent() {
   }, [urlQuery])
 
   // Tippen schreibt verzögert in die URL – ohne die History vollzuschreiben.
+  // Verglichen und gemerkt wird der *getrimmte* Begriff: die URL trägt nie ein
+  // Leerzeichen am Ende, das Eingabefeld beim Tippen sehr wohl. Vorher stand
+  // der ungetrimmte Wert im Ref, der Effekt darüber sah „brot“ ≠ „brot “ und
+  // löschte das eben getippte Leerzeichen samt Cursor wieder aus dem Feld.
   React.useEffect(() => {
-    if (queryInput === urlQuery) return
+    const wanted = queryInput.trim()
+    if (wanted === urlQuery.trim()) return
     const timer = setTimeout(() => {
-      syncedQueryRef.current = queryInput
-      writeParams({ q: queryInput.trim() || null }, 'replace')
+      syncedQueryRef.current = wanted
+      writeParams({ q: wanted || null }, 'replace')
     }, URL_SYNC_MS)
     return () => clearTimeout(timer)
   }, [queryInput, urlQuery, writeParams])
@@ -781,6 +796,7 @@ function CatalogContent() {
                 color: 'text.secondary',
                 fontSize: { xs: '0.8125rem', md: '0.875rem' },
                 mb: { xs: 0.75, md: 2 },
+                overflowWrap: 'anywhere',
               }}
             >
               Zu „{trimmedQuery}“ gibt es keinen genauen Treffer. Das kommt am
@@ -802,6 +818,7 @@ function CatalogContent() {
                 query: hasQuery ? trimmedQuery : null,
                 category,
                 hitsElsewhere,
+                approximate: found.approximate,
               })}
               action={
                 <Box
