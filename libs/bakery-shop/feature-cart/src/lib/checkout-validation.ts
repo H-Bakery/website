@@ -13,6 +13,7 @@ import {
   formatOpeningWindow,
   openingWindowFor,
   parseIsoDate,
+  timeToMinutes,
   toIsoDate,
   weekdayNameFor,
 } from './pickup'
@@ -299,10 +300,28 @@ export function validatePickupTime(
   }
   if (!slots.includes(pickupTime)) {
     const window = openingWindowFor(pickupDate)
+    // Innerhalb der Öffnungszeit, aber nicht mehr im Angebot: der Slot ist
+    // vorbei oder liegt in der Vorlaufzeit. „Nicht geöffnet" wäre hier falsch —
+    // und mit der Öffnungszeit dahinter sogar ein Widerspruch.
+    if (window && isInsideWindow(pickupTime, window)) {
+      return 'Diese Uhrzeit ist nicht mehr möglich. Bitte wählen Sie eine spätere Abholzeit.'
+    }
     const hours = window ? ` Geöffnet: ${formatOpeningWindow(window)}.` : ''
     return `Zu dieser Uhrzeit haben wir nicht geöffnet.${hours}`
   }
   return null
+}
+
+/** Ob `time` (`HH:mm`) in das Öffnungsfenster fällt. */
+function isInsideWindow(
+  time: string,
+  window: { opens: string; closes: string }
+): boolean {
+  const minutes = timeToMinutes(time)
+  const opens = timeToMinutes(window.opens)
+  const closes = timeToMinutes(window.closes)
+  if (minutes === null || opens === null || closes === null) return false
+  return minutes >= opens && minutes < closes
 }
 
 export function validateNotes(value: string): string | null {

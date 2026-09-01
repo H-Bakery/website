@@ -86,12 +86,33 @@ const SUBMIT_TIMEOUT_MS = 15000
 const SUBMIT_TIMEOUT_ERROR =
   'Die Verbindung ist zu langsam — wir haben keine Bestätigung bekommen. Bitte prüfen Sie Ihre Verbindung und schicken Sie die Bestellung noch einmal ab.'
 
-/** "Now", captured once on mount — never during render, or hydration breaks. */
+/** "Now", read on mount and again on submit — never during render, or hydration breaks. */
 interface ClientNow {
   iso: string
   minutes: number
   /** Derselbe Zeitpunkt als `Date`, für die Vorbestellfrist. */
   stamp: Date
+}
+
+/** Liest die Uhr. Nur aus Effects und Event-Handlern aufrufen, nie im Render. */
+function readClientNow(): ClientNow {
+  const stamp = new Date()
+  return {
+    iso: toIsoDate(stamp),
+    minutes: stamp.getHours() * 60 + stamp.getMinutes(),
+    stamp,
+  }
+}
+
+/**
+ * Die Slots, die an `pickupDate` wirklich buchbar sind — heute erst ab
+ * `now + PICKUP_LEAD_MINUTES`. Anzeige und Prüfung rechnen beide hiermit.
+ */
+function slotsFor(pickupDate: string, now: ClientNow | null): string[] {
+  if (!pickupDate) return []
+  const earliest =
+    now && pickupDate === now.iso ? now.minutes + PICKUP_LEAD_MINUTES : 0
+  return pickupTimeSlots(pickupDate, earliest)
 }
 
 /* -------------------------------------------------------------------------- */
@@ -151,15 +172,10 @@ export const CheckoutPage: React.FC = () => {
   const [isRestored, setIsRestored] = React.useState(false)
 
   React.useEffect(() => {
-    const stamp = new Date()
-    const iso = toIsoDate(stamp)
-    setNow({
-      iso,
-      minutes: stamp.getHours() * 60 + stamp.getMinutes(),
-      stamp,
-    })
+    const mounted = readClientNow()
+    setNow(mounted)
 
-    const stored = readStoredForm(iso)
+    const stored = readStoredForm(mounted.iso)
     if (stored) setValues(stored)
     setIsRestored(true)
   }, [])
@@ -195,14 +211,10 @@ export const CheckoutPage: React.FC = () => {
   const minPickupDate = minPickupIsoDate(todayIso, leadTime)
 
   /** Slots really available on the chosen day; same-day keeps a Vorlaufzeit. */
-  const slotsForDate = React.useMemo(() => {
-    if (!values.pickupDate) return []
-    const earliest =
-      now && values.pickupDate === now.iso
-        ? now.minutes + PICKUP_LEAD_MINUTES
-        : 0
-    return pickupTimeSlots(values.pickupDate, earliest)
-  }, [values.pickupDate, now])
+  const slotsForDate = React.useMemo(
+    () => slotsFor(values.pickupDate, now),
+    [values.pickupDate, now]
+  )
 
   /**
    * Die Auswahl zeigt genau das, was die Prüfung anschließend auch annimmt.
@@ -275,7 +287,19 @@ export const CheckoutPage: React.FC = () => {
     event.preventDefault()
     setSubmitError(null)
 
-    const found = validateCheckout(values, todayIso, slotsForDate, leadTime)
+    // Die Uhr beim Absenden neu lesen, nicht die vom Öffnen der Seite nehmen:
+    // wer die Kasse eine Stunde offen liegen lässt, könnte sonst einen Slot
+    // buchen, der inzwischen vorbei ist. Slots und Frist werden mit derselben
+    // frischen Zeit gerechnet, gegen die auch geprüft wird — und `setNow`
+    // zieht die Auswahl im Formular gleich mit nach.
+    const fresh = readClientNow()
+    setNow(fresh)
+    const found = validateCheckout(
+      values,
+      fresh.iso,
+      slotsFor(values.pickupDate, fresh),
+      leadTimeLimitFor(items, fresh.stamp)
+    )
     setErrors(found)
 
     const firstBad = firstInvalidField(found)

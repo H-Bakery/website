@@ -131,6 +131,15 @@ describe('validatePickupTime', () => {
       'keine Abholung mehr anbieten'
     )
   })
+
+  it('names a passed slot as passed, not as outside the opening hours', () => {
+    // 08:00 liegt in der Öffnungszeit, ist aber nicht mehr im Angebot — die
+    // Kasse wurde um 07:00 geöffnet und erst um 09:30 abgeschickt.
+    const later = ['10:30', '11:00', '11:30']
+    const message = validatePickupTime('08:00', TUESDAY, later, true)
+    expect(message).toContain('nicht mehr möglich')
+    expect(message).not.toContain('nicht geöffnet')
+  })
 })
 
 describe('validateCheckout', () => {

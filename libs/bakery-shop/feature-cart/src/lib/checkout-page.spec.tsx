@@ -250,6 +250,35 @@ describe('CheckoutPage', () => {
     expect(mockPush).toHaveBeenCalledWith('/bestellung/8QMZ-QXS5-HM0W')
   })
 
+  it('prüft die Abholzeit beim Absenden gegen die aktuelle Uhr, nicht die vom Öffnen', () => {
+    jest.useFakeTimers()
+    try {
+      // Ein Dienstag, 07:00 Uhr: die Kasse bietet für heute ab 08:00 an.
+      jest.setSystemTime(new Date(`${TUESDAY}T07:00:00`))
+      render(<CheckoutPage />)
+      type('customer-name', 'Erika Mustermann')
+      type('customer-phone', '06841 123456')
+      type('pickup-date', TUESDAY)
+      expect(optionsOf(screen.getByTestId('pickup-time'))).toContain('08:00')
+      type('pickup-time', '08:00')
+
+      // Die Seite bleibt liegen; erst um 09:30 wird abgeschickt.
+      jest.setSystemTime(new Date(`${TUESDAY}T09:30:00`))
+      fireEvent.click(screen.getByTestId('submit-order'))
+
+      expect(mockSubmitOrder).not.toHaveBeenCalled()
+      expect(screen.getByTestId('checkout-page').textContent).toContain(
+        'nicht mehr möglich'
+      )
+      // Und die Auswahl zeigt jetzt nur noch, was wirklich geht.
+      expect(optionsOf(screen.getByTestId('pickup-time'))).not.toContain(
+        '08:00'
+      )
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   /* ------------------------------------------------------------------ */
   /* Zeitlimit für den POST                                              */
   /* ------------------------------------------------------------------ */
