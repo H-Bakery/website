@@ -43,6 +43,8 @@ import {
   type ShopProduct,
 } from '@bakery/shared/data-access'
 
+import { isPortion } from '@bakery/shop/feature-cart'
+
 import { ShopPrice } from './product-card'
 import { GRID_GAP } from './storefront-rhythm'
 
@@ -136,10 +138,22 @@ function resolveBundle(
   const used = new Set<string>()
 
   for (const line of spec.lines) {
+    const preferred = line.prefer
+      ? available.find(
+          (entry) => entry.id === line.prefer && !used.has(entry.id)
+        )
+      : undefined
+    // Ersatz nur in derselben Darreichung: für ein Stück Kuchen wieder ein
+    // Stück, nie der ganze Kuchen. Sonst stünde die „Kaffeetafel“ mit
+    // 4 × Rahmkuchen für 72 € da – genau der Fall, den `prefer` verhindern soll.
+    const wantsPortion = line.prefer ? isPortion({ id: line.prefer }) : null
     const product =
-      (line.prefer && available.find((entry) => entry.id === line.prefer)) ||
+      preferred ??
       available.find(
-        (entry) => entry.category === line.category && !used.has(entry.id)
+        (entry) =>
+          entry.category === line.category &&
+          !used.has(entry.id) &&
+          (wantsPortion === null || isPortion(entry) === wantsPortion)
       )
     if (!product) return null
     used.add(product.id)
@@ -311,6 +325,13 @@ export function BundleOffers({ products }: BundleOffersProps) {
               variant={isAdded ? 'outlined' : 'contained'}
               color={isAdded ? 'success' : 'primary'}
               onClick={() => handleAdd(bundle)}
+              // Drei Knöpfe mit demselben Text: der Screenreader braucht den
+              // Namen der Tüte, sonst sind sie nicht zu unterscheiden.
+              aria-label={
+                isAdded
+                  ? `${bundle.spec.title} liegt im Warenkorb`
+                  : `${bundle.spec.title} in den Warenkorb legen`
+              }
               startIcon={
                 isAdded ? <CheckIcon /> : <ShoppingBasketOutlinedIcon />
               }

@@ -149,6 +149,47 @@ describe('BundleOffers', () => {
     expect(card?.textContent).toContain('x-marmorkuchen-1-stueck')
   })
 
+  it('ersetzt ein Stück Kuchen nie durch einen ganzen Kuchen', () => {
+    // Der kuratierte Käsekuchen (Stück) ist weg. Der Reihenfolge nach käme
+    // nun der ganze Rahmkuchen für 18 € – 4 × 18 € wäre keine Kaffeetafel.
+    const catalog = [
+      product('rahmkuchen', 'kuchen', 18),
+      product('apfelkuchen-1-stueck', 'kuchen', 1.5),
+      ...CATALOG.filter((item) => item.id !== 'kaesekuchen-1-stueck'),
+    ]
+    render(<BundleOffers products={catalog} />)
+
+    const card = screen.getByText('Kaffeetafel').closest('div')
+    expect(card?.textContent).not.toContain('rahmkuchen')
+    expect(card?.textContent).toContain('apfelkuchen-1-stueck')
+    // 4 × 1,50 € + 4 × 1,20 € = 10,80 €.
+    expect(card?.textContent).toContain('10,80')
+  })
+
+  it('lässt die Kaffeetafel weg, wenn nur ganze Kuchen übrig sind', () => {
+    const catalog = [
+      product('rahmkuchen', 'kuchen', 18),
+      ...CATALOG.filter((item) => item.category !== 'kuchen'),
+    ]
+    render(<BundleOffers products={catalog} />)
+
+    expect(screen.queryByText('Kaffeetafel')).toBeNull()
+    expect(screen.getAllByTestId('bundle-card')).toHaveLength(2)
+  })
+
+  it('gibt jedem Knopf den Namen seiner Tüte', () => {
+    render(<BundleOffers products={CATALOG} />)
+
+    const labels = screen
+      .getAllByTestId('bundle-add')
+      .map((button) => button.getAttribute('aria-label'))
+    expect(labels).toEqual([
+      'Frühstückstüte in den Warenkorb legen',
+      'Kaffeetafel in den Warenkorb legen',
+      'Brotkorb in den Warenkorb legen',
+    ])
+  })
+
   it('greift nie zu einem nicht verfügbaren Produkt', () => {
     const catalog = [
       product('ausverkauft', 'broetchen', 0.4, { available: false }),
