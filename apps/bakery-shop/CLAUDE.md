@@ -28,8 +28,19 @@ npm run test:e2e:shop                 # Playwright (starts both servers itself)
 Also run when you touch the shop's libs: `npx nx test feature-catalog`, `npx nx test feature-cart`,
 `npx nx test shared-data-access` (note the Nx name is `shared-data-access`, not `data-access`).
 
-`bakery-shop` has **no `lint` target**, so `nx lint bakery-shop` fails. Use `npm run lint:all` or
-`npx eslint src`.
+`bakery-shop` and its feature libs have **no `lint` target** and no own `.eslintrc.json`. The root
+config carries `ignorePatterns: ["**/*"]` (Nx convention — each project un-ignores itself), so
+`npx eslint apps/bakery-shop/src` answers _all files ignored_ and `npm run lint:all` never sees
+these files. Lint them explicitly:
+
+```bash
+npx eslint --no-ignore $(git ls-files 'apps/bakery-shop/src/**/*.ts*' 'libs/bakery-shop/**/*.ts*')
+```
+
+That run reports one known error: `@nx/enforce-module-boundaries` flags a **circular dependency
+`feature-cart` ↔ `feature-catalog`** (`ShopPrice` lives in catalog; `pickup.ts`/`lead-time.ts` in
+cart, and each imports the other). Harmless at runtime and invisible to CI, but real — untangling
+it means moving `ShopPrice`, or the pickup/lead-time helpers, into a lib both can import.
 
 ## Architecture
 
@@ -80,7 +91,19 @@ correct note. Format every price with `formatEuro`.
 list, so a shop order shows up there. Order of operations in the submit handler is deliberate:
 **await the API call, then `clearCart()`, then redirect.** Clearing earlier loses the customer's
 basket when the request fails. Pickup slots come from `feature-cart/src/lib/pickup.ts` (Monday is
-Ruhetag and is rejected; same-day pickup needs 60 min lead time).
+Ruhetag and is rejected; same-day pickup needs 60 min lead time). The checkout **re-reads the clock
+on submit** (`readClientNow()`) and validates against _those_ slots — a page left open for an hour
+must not be able to book a slot that has meanwhile passed; a passed slot inside the opening window
+is reported as „nicht mehr möglich“, not as „nicht geöffnet“.
+
+The mock server does not trust the body. `POST /api/orders` runs it through
+`apps/bakery-api/src/services/shop-orders.core.js` (dependency-free CommonJS, same convention as
+`partner-stats.core.js`, tests in `apps/bakery-api/tests/unit/shopOrders.test.js`): only the known
+fields are kept, every `productId` (slug or numeric id) is resolved against `hq` and **price and
+name are taken from there**, `total` is recomputed, unknown or unavailable products and past dates
+(today in Europe/Berlin — the server runs in UTC) are rejected, and the answer is `400` with a
+German `message`, which `submitOrder()` surfaces in `checkout-error`. Opening hours and the Ruhetag
+are deliberately _not_ checked server-side: that would be a third copy of the hours table.
 
 ### data-testid contract
 
@@ -252,8 +275,14 @@ Merriweather body, then diverges toward store density. It is **light-only**, lik
 
 ## Known state
 
-- `nx build bakery-shop` passes. `nx test bakery-shop` passes (41 tests); feature-cart 41,
-  feature-catalog 8, shared-data-access 50.
+- `nx build bakery-shop` passes. `nx test bakery-shop` passes (73 tests); feature-cart 117,
+  feature-catalog 83, shared-data-access 61, shared-utils 43; the order validation of the mock
+  server has 41 more in `apps/bakery-api/tests/unit/shopOrders.test.js` (run with
+  `npx jest -c apps/bakery-api/jest.config.js --rootDir apps/bakery-api tests/unit/shopOrders.test.js`).
+- The allergen frontmatter (`allergens`, `allergens_source`, `allergen_recipe`) that the shop
+  renders lives in **`hq/products/*.md`** — a different repo. It is produced by
+  `tools/allergens/derive-allergens.mjs --write` and must be committed in `hq` separately; without
+  it every product shows `NO_DECLARATION_NOTE`.
 - **43 of the 103 `hq` products have the junk frontmatter value `image: "images/"`**, so ~40% of
   cards render the warm placeholder instead of a picture. `ProductImage` deliberately never requests
   an unusable path. The real fix is content-side in `hq/products/*.md`, not here.
