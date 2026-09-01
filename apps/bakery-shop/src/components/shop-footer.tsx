@@ -135,8 +135,11 @@ export function ShopFooter() {
             color: 'grey.300',
           }}
         >
-          © {new Date().getFullYear()} Bäckerei Heusser · Alle Preise inkl.
-          MwSt. · Abholung im Laden
+          {/* Server (UTC) und Browser (Berlin) liegen in der Silvesternacht
+              eine Stunde auseinander – das Jahr darf dann nicht die Hydration
+              der ganzen Seite brechen. */}
+          © <span suppressHydrationWarning>{new Date().getFullYear()}</span>{' '}
+          Bäckerei Heusser · Alle Preise inkl. MwSt. · Abholung im Laden
         </Typography>
       </Container>
     </Box>

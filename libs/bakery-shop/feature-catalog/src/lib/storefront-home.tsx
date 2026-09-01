@@ -140,7 +140,7 @@ const CATEGORY_PHOTOS: Partial<
   },
   teilchen: {
     name: 'artisan-croissants',
-    alt: 'Teilchen und Plundergebäck in der Auslage, dahinter die Brotregale',
+    alt: 'Teilchen und Plundergebäck in der Theke, dahinter die Brotregale',
   },
   // Das Motiv zeigt eine Sahnetorte – es gehört zu „Torten“, nicht zu
   // „Kuchen“. Ein Bild unter die falsche Kategorie zu hängen, weil die
