@@ -176,20 +176,26 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`, gleiche `*.core.js`-Glob
   unter `assets`). Das Frontend hat in `@bakery/delivery/routing` eine zweite, TypeScript-Fassung
   derselben Geometrie — die CommonJS/ESM-Grenze lässt sich nicht ohne Build-Umbau überbrücken. Wer
-  Haversine, Umwegfaktor oder Standzeit ändert, muss **beide** Dateien anfassen.
+  Haversine, Umwegfaktor oder Standzeit ändert, muss **beide** Dateien anfassen;
+  `libs/bakery-delivery-routing/src/lib/core-consistency.spec.ts` rechnet beide gegeneinander und
+  fällt sonst um.
 - **Adresssuche (Nominatim) und Routing (OSRM) sind optional.** Fällt ein Dienst aus, rechnet
   `delivery-geo.core.js` mit Schätzformeln weiter und setzt `isEstimate: true`; die Oberfläche
   schreibt „(geschätzt)" dahinter. Nicht wegoptimieren — sonst liest sich eine Luftlinien-Schätzung
-  wie eine gemessene Strecke. Samstags früh muss die Liste auch ohne fremde Server da sein.
-- **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*`, der Store als JSON in
-  `apps/bakery-api/data/delivery-store.json` (gitignored). Ein Server, der vor diesen Routen
-  gestartet wurde, antwortet mit 404 — neu starten.
+  wie eine gemessene Strecke. Samstags früh muss die Liste auch ohne fremde Server da sein: das
+  Lesen einer Tour wartet höchstens 2,5 s auf Nominatim, Fehlversuche werden 5 min lang nicht
+  wiederholt.
+- **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*`. Der Store lebt im
+  Speicher des Servers und wird nach jeder Änderung atomar nach
+  `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored). Ein Server, der vor diesen
+  Routen gestartet wurde, antwortet mit 404 — neu starten.
 - **`Number(null)` ist `0`.** Ein Stopp ohne gefundene Adresse galt dadurch als Punkt (0, 0) und zog
-  die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen, nie mit
-  `Number.isFinite(Number(x))`.
+  die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
+  `delivery-tours.core.js`, Frontend: `@bakery/delivery/routing`), nie mit
+  `Number.isFinite(Number(x))` oder `!== null`. Das gilt auch für das Depot und die Fahrerposition.
 
-Tests: `npx nx test delivery-routing` (25), `npx nx test delivery-tracking` (7) und
-`apps/bakery-api/tests/unit/deliveryTours.test.js` (32) für die Rechenlogik des Servers.
+Tests: `npx nx test delivery-routing` (32), `npx nx test delivery-tracking` (7) und
+`apps/bakery-api/tests/unit/deliveryTours.test.js` (46) für die Rechenlogik des Servers.
 
 ## Important Notes
 

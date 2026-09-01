@@ -30,10 +30,11 @@ npm run test:e2e:delivery              # Playwright, startet beide Server selbst
 
 npx nx build bakery-delivery
 npx nx lint bakery-delivery
-npx nx test delivery-routing           # 25 Tests
+npx nx test delivery-routing           # 32 Tests, darunter der Abgleich mit dem Server-Core
 npx nx test delivery-tracking          # 7 Tests
 npx jest --config apps/bakery-api/jest.config.js --rootDir apps/bakery-api \
-  --testPathPattern deliveryTours      # 32 Tests der Server-Rechenlogik
+  --testPathPattern deliveryTours      # 46 Tests der Server-Rechenlogik
+npx tsc --noEmit -p apps/bakery-delivery/tsconfig.json   # laeuft auch in `npm run type-check`
 ```
 
 **Der Port steht jetzt in `project.json` (4300).** Ohne ihn fiel `@nx/next:server` auf 4200 zurück —
@@ -56,7 +57,9 @@ Das Frontend hat in `@bakery/delivery/routing` eine **zweite, TypeScript-Fassung
 (Haversine, Umwegfaktor 1.35, Standzeit 180 s). Die Grenze CommonJS ↔ ESM lässt sich nicht ohne
 Build-Umbau überbrücken. Wer eine der Konstanten ändert, muss beide Dateien anfassen — sonst
 widersprechen sich Server- und Bildschirmzahlen, genau wie früher, als die Gesamtstrecke euklidisch
-und die Einzelstrecken per Haversine gerechnet wurden.
+und die Einzelstrecken per Haversine gerechnet wurden. `src/lib/core-consistency.spec.ts` in der
+Routing-Lib lädt den Server-Core zur Laufzeit und vergleicht Konstanten, Etappen, Reihenfolge,
+Ankunftszeiten und `hasCoordinates()` — der Test fällt um, wenn nur eine Seite geändert wurde.
 
 Die Reihenfolge und die Kilometer kommen vom **Server**, nicht vom Handy: eine Optimierung, ein
 Ergebnis, für Fahrer und Backstube identisch, und das Handy braucht dafür kein Netz.
@@ -83,14 +86,39 @@ Adresse wird also genau einmal gesucht. `addressCandidates()` probiert absteigen
 volle Adresse → Hausnummernbereich „36-38" auf „36" verkürzt → ohne Hausnummer. Ohne diesen zweiten
 Versuch findet Nominatim die hiesigen Adressen teilweise nicht.
 
+**Das Lesen einer Tour hängt nicht an Nominatim.** `GET /tours` und `GET /tours/:id` suchen
+fehlende Koordinaten zwar nach, warten darauf aber höchstens `HYDRATE_BUDGET_MS` (2,5 s); dauert es
+länger, geht die Antwort ohne die Koordinaten raus, die Suche läuft im Hintergrund weiter und der
+nächste Aufruf sieht das Ergebnis. Fehlversuche merkt sich `lookupAddress()` fünf Minuten lang
+(`geocodeMisses`), sonst liefe bei Netzausfall für jeden nicht gefundenen Stopp bei jedem Lesen ein
+Timeout. Ausdrückliche Aktionen — Stopp anlegen, Adresse ändern, Route berechnen, Depot ändern —
+suchen mit `force` trotzdem. Gleichzeitige Anfragen nach derselben Adresse teilen sich eine Suche
+(`geocodeInFlight`).
+
 ## Datenhaltung
 
 Kein Datenbankzugriff — der Mock-Server ist die einzige laufende API (siehe Root-`CLAUDE.md`).
-Der Store liegt als JSON neben dem Server: **`apps/bakery-api/data/delivery-store.json`**
-(gitignored, überlebt Neustarts). Aufbau: `depot`, `drivers`, `tours[].stops[]`, `geocache`.
+Der Store lebt **im Speicher des Servers** (`getDeliveryStore()`, einmal geladen) und wird nach
+jeder Änderung als JSON neben den Server geschrieben: **`apps/bakery-api/data/delivery-store.json`**
+(gitignored, überlebt Neustarts). Geschrieben wird atomar — erst `.tmp`, dann `rename` —, damit ein
+Absturz mitten im Schreiben nicht eine halbe Datei hinterlässt, die beim nächsten Start den Seed
+zurückbrächte. Aufbau: `depot`, `drivers`, `tours[].stops[]`, `geocache`.
 Fehlt die Datei, legt `seedDeliveryStore()` sie an: die Backstube in der Eckstraße 3, zwei Fahrer mit
 Platzhalternamen und die nächste Samstagstour mit dem CAP-Markt als einzigem Stopp. Namen und
 Telefonnummern sind bewusst leer — die trägt das Team mit den echten Daten nach.
+
+Alle Handler laufen durch `deliveryRoute()`: Express 4 fängt abgelehnte Promises nicht, ein Fehler
+in einem `async`-Handler ließe den Request sonst hängen, bis das Handy aufgibt. So wird daraus eine
+500 mit deutschem Text.
+
+Das Depot braucht immer Koordinaten. `PUT /depot` sucht eine geänderte Adresse sofort und antwortet
+mit **422**, wenn sie nicht gefunden wird — die alte Adresse bleibt dann stehen. Wer die Suche
+umgehen will, gibt `lat`/`lon` direkt mit.
+
+Der Tourstatus folgt den Stopps (`syncTourStatus()` im Core): der erste abgehakte Stopp startet eine
+geplante Tour, der letzte schließt sie ab, ein zurückgesetzter oder nachträglich angelegter Stopp
+macht eine abgeschlossene Tour wieder zur laufenden, das Löschen des letzten offenen Stopps schließt
+sie. `PATCH /tours/:id` mit `status` setzt den Status trotzdem von Hand.
 
 Endpunkte, alle unter `/api/deliveries`:
 
@@ -114,7 +142,19 @@ Partner-Endpunkte), nicht `{success, data}` wie die älteren Order-Routen.
 - **`Number(null)` ist `0`.** Ein Stopp ohne gefundene Adresse (`lat: null`) galt damit als Punkt
   (0, 0) — im Atlantik vor Afrika — und zog Reihenfolge und Kilometer der ganzen Tour dorthin.
   Deshalb `isNumber()` / `hasCoordinates()` in `delivery-tours.core.js`, nie `Number.isFinite(Number(x))`.
-  Zwei Tests sichern das ab.
+  Dieselbe Falle saß noch zweimal im Code: `POST /tours/:id/position` nahm `lat: null` als Position
+  auf dem Nullmeridian, und ein Depot ohne Koordinaten wäre der Startpunkt (0, 0) jeder Route
+  gewesen. Beides prüft jetzt `isNumber()`; `estimateTour`, `estimateArrivals`,
+  `orderStopsNearestNeighbour` und `routeTour` geben ohne Depot-Koordinaten `null` bzw. die
+  unveränderte Reihenfolge zurück. Im Frontend heißt die Prüfung ebenfalls `hasCoordinates()`
+  (`@bakery/delivery/routing`) — `stop.lat !== null` hätte `undefined` durchgelassen, und Leaflet
+  wirft bei `[undefined, undefined]` die ganze Karte weg.
+- **Jeder Request las den Store neu und schrieb seine Kopie zurück.** Ein Handler, der auf Nominatim
+  oder OSRM wartete, überschrieb danach alles, was inzwischen abgehakt oder angelegt worden war — so
+  verlor die E2E-Suite, die zwei Browser parallel fährt, ihren frisch angelegten Stopp. Der Store ist
+  jetzt ein einziges Objekt im Speicher; nur `loadDeliveryStore()` liest die Datei, und zwar einmal.
+- **Eine abgeschlossene Tour blieb abgeschlossen**, auch wenn der Fahrer einen Stopp zurücksetzte
+  oder die Backstube einen nachschob. `syncTourStatus()` zieht den Status in beide Richtungen nach.
 - **`{zahl && <JSX/>}` rendert bei `0` eine nackte `0`.** Genau das stand früher unter den
   Koordinaten. Optionale _Zahlen_ immer mit `!= null` prüfen, nicht auf Truthiness. Ein e2e-Test
   setzt die Genauigkeit auf 0 und prüft, dass keine alleinstehende `0` im Text steht.
@@ -132,8 +172,11 @@ Partner-Endpunkte), nicht `{success, data}` wie die älteren Order-Routen.
 - **`fitBounds` bei jeder Änderung** riss dem Fahrer die Karte aus der Hand. Es passt jetzt nur neu
   ein, wenn sich die _Menge_ der Stopps ändert (Fingerprint aus den IDs), nicht beim Abhaken.
 - **Ankunftszeiten einer geplanten Tour** dürfen nicht ab „jetzt" gerechnet werden, sonst steht an
-  der Samstagstour die Uhrzeit von heute Nachmittag. Grundlage ist `startedAt`, sonst
-  `date + plannedStart` (Default 06:30).
+  der Samstagstour die Uhrzeit von heute Nachmittag. Grundlage ist `date + plannedStart` (Default
+  06:30). **Bei einer laufenden Tour** darf umgekehrt nicht ab Depot und `startedAt` gerechnet
+  werden — dann stünde am sechsten Stopp um neun Uhr noch „Ankunft ca. 06:41". `arrivalBaseline()`
+  im Core rechnet ab dem zuletzt erledigten Stopp oder der jüngeren gemeldeten Fahrerposition, nie
+  früher als jetzt.
 
 ## Der Build war kaputt, und warum
 
@@ -186,9 +229,15 @@ außerhalb des MUI-Stacks. Die Oberfläche ist mobile-first mit 44-px-Trefferfl�
 
 Das Handy verliert im Auto das Netz. Ein Abhaken wird deshalb **erst lokal angezeigt** und bei einem
 Netzfehler in eine `localStorage`-Warteschlange gelegt (`bakery-delivery-queue`), die beim
-`online`-Event automatisch nachläuft. Pro Stopp bleibt nur der letzte Stand stehen. Eine Änderung,
-die der Server **fachlich** ablehnt (4xx), fliegt aus der Schlange — sonst blockierte sie alle
-folgenden für immer; Netzfehler (5xx, kein Netz) lassen den Eintrag stehen.
+`online`-Event und sonst alle 30 s automatisch nachläuft — der Browser meldet „online", sobald
+Funk da ist, ob der Server antwortet, weiß er nicht. Pro Stopp bleibt nur der letzte Stand stehen.
+Eine Änderung, die der Server **fachlich** ablehnt (4xx), fliegt aus der Schlange — sonst blockierte
+sie alle folgenden für immer; Netzfehler (5xx, kein Netz, Timeout) lassen den Eintrag stehen.
+
+Jede Anfrage bricht nach 15 s ab (`AbortSignal.timeout`, wo der Browser es kann). Ohne das hing
+`fetch` im Funkloch minutenlang — und solange es hing, waren alle Knöpfe gesperrt und die
+Warteschlange kam nicht zum Zug. Der Hinweis „… warten noch auf den Server" bleibt sichtbar, solange
+etwas in der Schlange liegt, auch wenn das Handy „online" meldet.
 
 ### Navigation
 
@@ -215,6 +264,13 @@ WebSocket-Client ohne Server — die App benutzt ihn nicht, Positionen gehen per
 anlegen, Route berechnen, abhaken. Die Konfiguration startet **beide** Server selbst (API auf 5000,
 App auf 4300) und setzt Locale `de-DE` sowie eine Position in Homburg. Der zweite Test legt sich seine
 eigene Tour per API an und löscht sie im `finally` wieder, damit er den Store nicht vollmüllt.
+
+Andere Ports: `API_PORT` und `DELIVERY_PORT` (dazu `HQ_PRODUCTS_DIR`, wenn `hq/` nicht neben dem
+Repo liegt). Die Konfiguration reicht die API-Adresse als `NEXT_PUBLIC_API_URL` an die App durch und
+die Tests leiten ihre eigene aus `API_PORT` ab — sonst redet die App mit Port 5000, während der Test
+seine Tour woanders anlegt. Laufende Server auf diesen Ports werden wiederverwendet. Die beiden
+Playwright-Projekte (Desktop, Pixel 5) laufen **parallel** gegen denselben Store — genau so kam die
+verlorene Änderung ans Licht (siehe Fallen).
 
 ## Nächste sinnvolle Schritte
 
