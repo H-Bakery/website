@@ -281,6 +281,10 @@ jobs:
           path: |
             dist/apps/${{ matrix.app }}/
             apps/${{ matrix.app }}/out/
+          # The Next.js build lives in a hidden `.next/` directory, which
+          # upload-artifact@v4 drops by default - the artifact would hold only
+          # next.config.js, package.json and public/.
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
 
@@ -305,6 +309,16 @@ jobs:
         with:
           name: build-bakery-shop
           path: dist/apps/bakery-shop/
+
+      # Lighthouse needs a running server; nothing else in this job starts one.
+      - name: Serve shop build
+        run: |
+          NODE_ENV=production npx next start dist/apps/bakery-shop -p 3000 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000 && break
+            sleep 1
+          done
+          curl -sf -o /dev/null http://localhost:3000
 
       - name: Analyze bundle size
         uses: treosh/lighthouse-ci-action@v10
