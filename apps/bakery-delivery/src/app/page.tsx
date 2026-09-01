@@ -1,296 +1,713 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
-import styles from './page.module.css'
 import {
-  DeliveryTracker,
-  getCurrentLocation,
-  watchLocation,
-  clearLocationWatch,
-  Location,
-  DeliveryStatus,
-  formatDistance,
-} from '@bakery/delivery/tracking'
-import {
-  MockMapProvider,
-  Route,
-  RouteWaypoint,
-  calculateETA,
+  buildMultiStopNavigationUrl,
+  calculateHaversineDistance,
   formatDuration,
   formatRouteDistance,
 } from '@bakery/delivery/routing'
+import {
+  clearLocationWatch,
+  getCurrentLocation,
+  Location,
+  watchLocation,
+} from '@bakery/delivery/tracking'
+import {
+  ApiError,
+  deliveryApi,
+  flushQueue,
+  pendingUpdates,
+  queueStopUpdate,
+  type Driver,
+  type QueuedUpdate,
+  type Stop,
+  type Tour,
+} from '../lib/delivery-api'
+import {
+  formatDate,
+  formatTime,
+  nextSaturdayIso,
+  todayIso,
+  TOUR_STATUS_LABEL,
+} from '../lib/format'
+import { AddStopForm, type NewStopInput } from '../components/AddStopForm'
+import { StopCard } from '../components/StopCard'
+import styles from './page.module.css'
 
-// Dynamically import Map component to avoid SSR issues with Leaflet
 const Map = dynamic(() => import('../components/Map').then((mod) => mod.Map), {
   ssr: false,
-  loading: () => <div className={styles.mapLoading}>Karte wird geladen...</div>,
+  loading: () => <div className={styles.mapLoading}>Karte wird geladen …</div>,
 })
 
-export default function DeliveryDashboard() {
-  const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
-  const [deliveryStatus, setDeliveryStatus] = useState<DeliveryStatus | null>(
-    null
-  )
-  const [route, setRoute] = useState<Route | null>(null)
-  const [watchId, setWatchId] = useState<number | null>(null)
-  const [isTracking, setIsTracking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+const DRIVER_KEY = 'bakery-delivery-driver'
+/** Position alle 30 s melden - haeufiger belastet nur den Akku. */
+const POSITION_INTERVAL_MS = 30_000
 
-  // Initialize map provider
-  const mapProvider = new MockMapProvider()
+export default function DeliveryDashboard() {
+  const [drivers, setDrivers] = useState<Driver[]>([])
+  const [driverId, setDriverId] = useState<number | null>(null)
+  const [date, setDate] = useState(() => nextSaturdayIso())
+  const [tours, setTours] = useState<Tour[]>([])
+  const [tourId, setTourId] = useState<number | null>(null)
+
+  const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
+  const [isTracking, setIsTracking] = useState(false)
+  const [pending, setPending] = useState<QueuedUpdate[]>([])
+  const [isOnline, setIsOnline] = useState(true)
+
+  const [loading, setLoading] = useState(true)
+  const [busy, setBusy] = useState(false)
+  const [planning, setPlanning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hint, setHint] = useState<string | null>(null)
+
+  const watchIdRef = useRef<number | null>(null)
+  const lastReportRef = useRef(0)
+
+  const tour = useMemo(
+    () => tours.find((t) => t.id === tourId) ?? null,
+    [tours, tourId]
+  )
+
+  // --- Laden ---
+
+  const loadTours = useCallback(
+    async (targetDate: string, targetDriver: number | null) => {
+      setError(null)
+      try {
+        const list = await deliveryApi.tours({
+          date: targetDate,
+          driverId: targetDriver ?? undefined,
+        })
+        setTours(list)
+        setTourId((current) =>
+          list.some((t) => t.id === current) ? current : list[0]?.id ?? null
+        )
+      } catch (err) {
+        setTours([])
+        setError(describe(err, 'Touren konnten nicht geladen werden.'))
+      } finally {
+        setLoading(false)
+      }
+    },
+    []
+  )
 
   useEffect(() => {
-    // Get initial location
+    let cancelled = false
+    deliveryApi
+      .drivers()
+      .then((list) => {
+        if (cancelled) return
+        setDrivers(list)
+        const stored = readStoredDriver()
+        const known = list.find((d) => d.id === stored)
+        setDriverId(known ? known.id : list[0]?.id ?? null)
+      })
+      .catch((err) => {
+        if (!cancelled)
+          setError(describe(err, 'Fahrer konnten nicht geladen werden.'))
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    setLoading(true)
+    loadTours(date, driverId)
+  }, [date, driverId, loadTours])
+
+  // --- Standort ---
+
+  useEffect(() => {
     getCurrentLocation()
       .then(setCurrentLocation)
-      .catch((err) =>
-        setError(`Standort konnte nicht ermittelt werden: ${err.message}`)
+      .catch(() =>
+        setHint(
+          'Standort nicht verfügbar. Die Tour funktioniert trotzdem, nur ohne Entfernungen.'
+        )
       )
 
-    // Cleanup on unmount
     return () => {
-      if (watchId !== null) {
-        clearLocationWatch(watchId)
+      if (watchIdRef.current !== null) {
+        clearLocationWatch(watchIdRef.current)
+        watchIdRef.current = null
       }
     }
-  }, [watchId])
+  }, [])
 
   const startTracking = () => {
-    setIsTracking(true)
-    setError(null)
-
-    const id = watchLocation(
-      (location) => {
-        setCurrentLocation(location)
-        // Here you would send location updates to the server
-        console.log('Location update:', location)
-      },
-      (error) => {
-        setError(`Tracking-Fehler: ${error.message}`)
-        setIsTracking(false)
-      }
-    )
-
-    setWatchId(id)
+    setHint(null)
+    try {
+      watchIdRef.current = watchLocation(
+        (location) => {
+          setCurrentLocation(location)
+          reportPosition(location)
+        },
+        (err) => {
+          setHint(`Standort-Verfolgung gestoppt: ${err.message}`)
+          setIsTracking(false)
+        }
+      )
+      setIsTracking(true)
+    } catch {
+      setHint('Dieses Gerät liefert keinen Standort.')
+    }
   }
 
   const stopTracking = () => {
-    if (watchId !== null) {
-      clearLocationWatch(watchId)
-      setWatchId(null)
+    if (watchIdRef.current !== null) {
+      clearLocationWatch(watchIdRef.current)
+      watchIdRef.current = null
     }
     setIsTracking(false)
   }
 
-  const loadSampleRoute = async () => {
-    if (!currentLocation) {
-      setError('Aktueller Standort nicht verfügbar')
-      return
+  /** Meldet die Position an die Backstube - gedrosselt und ohne Fehleranzeige. */
+  const reportPosition = (location: Location) => {
+    if (!tourId) return
+    const now = Date.now()
+    if (now - lastReportRef.current < POSITION_INTERVAL_MS) return
+    lastReportRef.current = now
+
+    deliveryApi
+      .reportPosition(tourId, {
+        lat: location.latitude,
+        lon: location.longitude,
+        accuracy: location.accuracy,
+        speed: location.speed,
+      })
+      .catch(() => undefined)
+  }
+
+  // --- Funkloecher ---
+
+  useEffect(() => {
+    setPending(pendingUpdates())
+    setIsOnline(typeof navigator === 'undefined' ? true : navigator.onLine)
+
+    const flush = async () => {
+      setIsOnline(true)
+      const { tour: updated, remaining, rejected } = await flushQueue()
+      setPending(remaining)
+      if (updated) {
+        setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      }
+      if (rejected.length > 0) {
+        setHint(
+          `${rejected.length} Änderung(en) hat der Server abgelehnt und wurden verworfen.`
+        )
+      }
     }
 
+    const goOffline = () => setIsOnline(false)
+    window.addEventListener('online', flush)
+    window.addEventListener('offline', goOffline)
+    if (navigator.onLine) flush()
+
+    return () => {
+      window.removeEventListener('online', flush)
+      window.removeEventListener('offline', goOffline)
+    }
+  }, [])
+
+  // --- Aktionen ---
+
+  const changeStopStatus = async (stopId: number, status: Stop['status']) => {
+    if (!tour) return
+    setBusy(true)
+    setError(null)
+
+    // Erst lokal umschalten: der Fahrer soll nicht auf das Netz warten.
+    const optimistic = applyStopStatus(tour, stopId, status)
+    setTours((list) => list.map((t) => (t.id === tour.id ? optimistic : t)))
+
     try {
-      // Create sample delivery waypoints
-      const waypoints: RouteWaypoint[] = [
-        {
-          location: await mapProvider.geocodeAddress(
-            'Bahnhofstrasse 1, 8001 Zürich'
-          ),
-          address: 'Bahnhofstrasse 1, 8001 Zürich',
-          type: 'delivery',
-          orderId: 'ORDER-001',
-          notes: 'Kunde: Müller, 2x Brot, 3x Gipfeli',
-        },
-        {
-          location: await mapProvider.geocodeAddress(
-            'Paradeplatz 2, 8001 Zürich'
-          ),
-          address: 'Paradeplatz 2, 8001 Zürich',
-          type: 'delivery',
-          orderId: 'ORDER-002',
-          notes: 'Kunde: Schmidt, 1x Torte',
-        },
-        {
-          location: await mapProvider.geocodeAddress(
-            'Bellevueplatz 5, 8001 Zürich'
-          ),
-          address: 'Bellevueplatz 5, 8001 Zürich',
-          type: 'delivery',
-          orderId: 'ORDER-003',
-          notes: 'Kunde: Weber, 5x Brötchen',
-        },
-      ]
-
-      const calculatedRoute = await mapProvider.calculateRoute({
-        origin: currentLocation,
-        destinations: waypoints,
-        vehicleType: 'car',
-        optimizeFor: 'time',
-      })
-
-      setRoute(calculatedRoute)
-
-      // Set mock delivery status
-      setDeliveryStatus({
-        id: 'delivery-001',
-        orderId: waypoints[0].orderId!,
-        driverId: 'driver-001',
-        status: 'en-route',
-        currentLocation: currentLocation,
-        estimatedArrival: calculateETA(currentLocation, waypoints[0].location),
-      })
+      const updated = await deliveryApi.updateStop(tour.id, stopId, { status })
+      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      setPending(pendingUpdates())
     } catch (err) {
-      setError(`Route konnte nicht berechnet werden: ${err}`)
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        setError(err.message)
+        await loadTours(date, driverId)
+      } else {
+        // Kein Netz: gemerkt, geht spaeter automatisch raus.
+        setPending(queueStopUpdate(tour.id, stopId, { status }))
+        setIsOnline(false)
+      }
+    } finally {
+      setBusy(false)
     }
   }
 
+  const runOptimize = async () => {
+    if (!tour) return
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await deliveryApi.optimize(tour.id)
+      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      setHint(
+        updated.isEstimate
+          ? 'Reihenfolge sortiert. Kilometer sind geschätzt – der Routendienst war nicht erreichbar.'
+          : null
+      )
+    } catch (err) {
+      setError(describe(err, 'Route konnte nicht berechnet werden.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const addStop = async (input: NewStopInput) => {
+    if (!tour) return
+    setBusy(true)
+    try {
+      const updated = await deliveryApi.addStop(tour.id, input)
+      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const removeStop = async (stopId: number) => {
+    if (!tour) return
+    setBusy(true)
+    setError(null)
+    try {
+      const updated = await deliveryApi.removeStop(tour.id, stopId)
+      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+    } catch (err) {
+      setError(describe(err, 'Stopp konnte nicht entfernt werden.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const createTour = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      const created = await deliveryApi.createTour({
+        date,
+        driverId,
+        name: 'Samstagstour',
+      })
+      setTours((list) => [...list, created])
+      setTourId(created.id)
+      setPlanning(true)
+    } catch (err) {
+      setError(describe(err, 'Tour konnte nicht angelegt werden.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const chooseDriver = (value: number | null) => {
+    setDriverId(value)
+    try {
+      if (value === null) window.localStorage.removeItem(DRIVER_KEY)
+      else window.localStorage.setItem(DRIVER_KEY, String(value))
+    } catch {
+      // Privater Modus - dann eben ohne Merken.
+    }
+  }
+
+  // --- Abgeleitetes ---
+
+  const nextStop =
+    tour?.stops.find((stop) => stop.id === tour.nextStopId) ?? null
+
+  const distanceTo = (stop: Stop): number | null => {
+    if (!currentLocation || stop.lat === null || stop.lon === null) return null
+    return calculateHaversineDistance(
+      {
+        latitude: currentLocation.latitude,
+        longitude: currentLocation.longitude,
+      },
+      { latitude: stop.lat, longitude: stop.lon }
+    )
+  }
+
+  const navigateAllUrl = useMemo(() => {
+    const open = (tour?.stops ?? []).filter(
+      (stop) => stop.status === 'open' && stop.lat !== null && stop.lon !== null
+    )
+    if (open.length === 0) return null
+    return buildMultiStopNavigationUrl(
+      open.map((stop) => ({
+        latitude: stop.lat as number,
+        longitude: stop.lon as number,
+        address: stop.address,
+      })),
+      currentLocation
+        ? {
+            latitude: currentLocation.latitude,
+            longitude: currentLocation.longitude,
+          }
+        : undefined
+    )
+  }, [tour, currentLocation])
+
   return (
     <main className={styles.main}>
-      <div className={styles.header}>
-        <h1>Lieferungen Dashboard</h1>
-        <p className={styles.subtitle}>Bäckerei Heusser - Fahrer App</p>
-      </div>
+      <header className={styles.header}>
+        <h1>Liefertour</h1>
+        <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
+      </header>
 
-      {/* Map View */}
-      <div className={styles.card}>
-        <h2>Karte</h2>
-        <div className={styles.mapContainer}>
-          <Map
-            currentLocation={currentLocation || undefined}
-            route={route || undefined}
-            height="400px"
-          />
-        </div>
-      </div>
-
-      {/* Location Status */}
-      <div className={styles.card}>
-        <h2>Aktueller Standort</h2>
-        {currentLocation ? (
-          <div>
-            <p>
-              Breite: {currentLocation.latitude.toFixed(6)}
-              <br />
-              Länge: {currentLocation.longitude.toFixed(6)}
-            </p>
-            {currentLocation.accuracy && (
-              <p>Genauigkeit: ±{Math.round(currentLocation.accuracy)}m</p>
-            )}
-            {currentLocation.speed && (
-              <p>
-                Geschwindigkeit: {Math.round(currentLocation.speed * 3.6)} km/h
-              </p>
-            )}
-          </div>
-        ) : (
-          <p>Standort wird ermittelt...</p>
-        )}
-
-        <div className={styles.buttonGroup}>
-          {!isTracking ? (
-            <button onClick={startTracking} className={styles.button}>
-              Tracking starten
-            </button>
-          ) : (
-            <button onClick={stopTracking} className={styles.buttonSecondary}>
-              Tracking stoppen
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Delivery Status */}
-      {deliveryStatus && (
-        <div className={styles.card}>
-          <h2>Aktuelle Lieferung</h2>
-          <p>
-            Auftrag: {deliveryStatus.orderId}
-            <br />
-            Status:{' '}
-            {deliveryStatus.status === 'en-route'
-              ? 'Unterwegs'
-              : deliveryStatus.status}
-            <br />
-            {deliveryStatus.estimatedArrival && (
-              <>
-                Geschätzte Ankunft:{' '}
-                {deliveryStatus.estimatedArrival.toLocaleTimeString('de-CH')}
-              </>
-            )}
-          </p>
+      {!isOnline && (
+        <div className={styles.offline} role="status">
+          Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet
+          {pending.length > 0 ? ` (${pending.length} offen)` : ''}.
         </div>
       )}
 
-      {/* Route Information */}
-      <div className={styles.card}>
-        <h2>Route</h2>
-        {route ? (
-          <div>
-            <p>
-              Distanz: {formatRouteDistance(route.distance)}
-              <br />
-              Geschätzte Dauer: {formatDuration(route.duration)}
-            </p>
-
-            <h3>Lieferpunkte:</h3>
-            <ol className={styles.waypointList}>
-              {route.waypoints.map((waypoint, index) => (
-                <li key={index} className={styles.waypoint}>
-                  <strong>{waypoint.address}</strong>
-                  {waypoint.orderId && <span> (#{waypoint.orderId})</span>}
-                  {waypoint.notes && (
-                    <p className={styles.notes}>{waypoint.notes}</p>
-                  )}
-                  {currentLocation && index > 0 && (
-                    <p className={styles.distance}>
-                      Entfernung:{' '}
-                      {formatDistance(
-                        calculateHaversineDistance(
-                          currentLocation,
-                          waypoint.location
-                        )
-                      )}
-                    </p>
-                  )}
-                </li>
+      <section className={styles.card}>
+        <div className={styles.selectRow}>
+          <div className={styles.field}>
+            <label htmlFor="driver-select">Fahrer</label>
+            <select
+              id="driver-select"
+              value={driverId ?? ''}
+              onChange={(event) =>
+                chooseDriver(
+                  event.target.value ? Number(event.target.value) : null
+                )
+              }
+            >
+              <option value="">Alle</option>
+              {drivers.map((driver) => (
+                <option key={driver.id} value={driver.id}>
+                  {driver.name}
+                </option>
               ))}
-            </ol>
+            </select>
           </div>
-        ) : (
-          <div>
-            <p>Keine Route geladen</p>
-            <button onClick={loadSampleRoute} className={styles.button}>
-              Beispielroute laden
-            </button>
+
+          <div className={styles.field}>
+            <label htmlFor="tour-date">Tag</label>
+            <input
+              id="tour-date"
+              type="date"
+              value={date}
+              onChange={(event) => setDate(event.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className={styles.buttonGroup}>
+          <button
+            type="button"
+            className={styles.buttonGhost}
+            onClick={() => setDate(todayIso())}
+          >
+            Heute
+          </button>
+          <button
+            type="button"
+            className={styles.buttonGhost}
+            onClick={() => setDate(nextSaturdayIso())}
+          >
+            Nächster Samstag
+          </button>
+        </div>
+
+        {tours.length > 1 && (
+          <div className={styles.field}>
+            <label htmlFor="tour-select">Tour</label>
+            <select
+              id="tour-select"
+              value={tourId ?? ''}
+              onChange={(event) => setTourId(Number(event.target.value))}
+            >
+              {tours.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name} – {entry.driver?.name ?? 'ohne Fahrer'}
+                </option>
+              ))}
+            </select>
           </div>
         )}
-      </div>
+      </section>
 
-      {/* Error Display */}
+      {loading && <p className={styles.placeholder}>Tour wird geladen …</p>}
+
+      {!loading && !tour && (
+        <section className={styles.card}>
+          <h2>Keine Tour für {formatDate(date)}</h2>
+          <p className={styles.placeholder}>
+            Für diesen Tag ist noch nichts geplant.
+          </p>
+          <button
+            type="button"
+            className={styles.button}
+            onClick={createTour}
+            disabled={busy}
+          >
+            Tour anlegen
+          </button>
+        </section>
+      )}
+
+      {tour && (
+        <>
+          <section className={styles.card}>
+            <div className={styles.tourHead}>
+              <div>
+                <h2>{tour.name}</h2>
+                <p className={styles.subtitle}>
+                  {formatDate(tour.date)} · {tour.driver?.name ?? 'ohne Fahrer'}
+                </p>
+              </div>
+              <span
+                className={`${styles.badge} ${styles[`badge_${tour.status}`]}`}
+              >
+                {TOUR_STATUS_LABEL[tour.status]}
+              </span>
+            </div>
+
+            <div
+              className={styles.progressBar}
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={tour.progress.total}
+              aria-valuenow={tour.progress.done + tour.progress.failed}
+            >
+              <span
+                className={styles.progressFill}
+                style={{
+                  width: `${
+                    tour.progress.total === 0
+                      ? 0
+                      : ((tour.progress.done + tour.progress.failed) /
+                          tour.progress.total) *
+                        100
+                  }%`,
+                }}
+              />
+            </div>
+            <p className={styles.progressLabel}>
+              {tour.progress.done} von {tour.progress.total} geliefert
+              {tour.progress.failed > 0 &&
+                `, ${tour.progress.failed} nicht angetroffen`}
+            </p>
+
+            <dl className={styles.stopFacts}>
+              <div>
+                <dt>Strecke</dt>
+                <dd>
+                  {tour.distance === null
+                    ? '–'
+                    : formatRouteDistance(tour.distance)}
+                  {tour.isEstimate && tour.distance !== null && ' (geschätzt)'}
+                </dd>
+              </div>
+              <div>
+                <dt>Dauer</dt>
+                <dd>
+                  {tour.duration === null ? '–' : formatDuration(tour.duration)}
+                </dd>
+              </div>
+              <div>
+                <dt>{tour.startedAt ? 'Start' : 'Abfahrt geplant'}</dt>
+                <dd>
+                  {tour.startedAt
+                    ? formatTime(tour.startedAt)
+                    : tour.plannedStart}
+                </dd>
+              </div>
+            </dl>
+
+            <div className={styles.buttonGroup}>
+              <button
+                type="button"
+                className={styles.button}
+                onClick={runOptimize}
+                disabled={busy || tour.stops.length === 0}
+              >
+                Route berechnen
+              </button>
+              {navigateAllUrl && (
+                <a
+                  className={styles.buttonLink}
+                  href={navigateAllUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Ganze Tour navigieren
+                </a>
+              )}
+              <button
+                type="button"
+                className={styles.buttonGhost}
+                onClick={() => setPlanning((value) => !value)}
+              >
+                {planning ? 'Planung schließen' : 'Tour planen'}
+              </button>
+            </div>
+          </section>
+
+          {nextStop && (
+            <section className={`${styles.card} ${styles.nextCard}`}>
+              <h2>Nächster Stopp</h2>
+              <ul className={styles.stopList}>
+                <StopCard
+                  stop={nextStop}
+                  position={tour.stops.indexOf(nextStop) + 1}
+                  isNext
+                  distance={distanceTo(nextStop)}
+                  busy={busy}
+                  onStatusChange={changeStopStatus}
+                />
+              </ul>
+            </section>
+          )}
+
+          <section className={styles.card}>
+            <h2>Karte</h2>
+            <div className={styles.mapContainer}>
+              <Map
+                currentLocation={currentLocation ?? undefined}
+                depot={tour.depot}
+                stops={tour.stops}
+                geometry={tour.geometry}
+                activeStopId={tour.nextStopId}
+              />
+            </div>
+
+            <div className={styles.buttonGroup}>
+              {!isTracking ? (
+                <button
+                  type="button"
+                  className={styles.buttonGhost}
+                  onClick={startTracking}
+                >
+                  Standort verfolgen
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.buttonGhost}
+                  onClick={stopTracking}
+                >
+                  Verfolgung stoppen
+                </button>
+              )}
+            </div>
+
+            {currentLocation && (
+              <p className={styles.coords}>
+                {currentLocation.latitude.toFixed(5)},{' '}
+                {currentLocation.longitude.toFixed(5)}
+                {/* `!= null`, nicht Truthiness: sonst rendert React bei 0 eine nackte 0. */}
+                {currentLocation.accuracy != null &&
+                  ` · ±${Math.round(currentLocation.accuracy)} m`}
+                {currentLocation.speed != null &&
+                  ` · ${Math.round(currentLocation.speed * 3.6)} km/h`}
+              </p>
+            )}
+          </section>
+
+          <section className={styles.card}>
+            <h2>Alle Stopps ({tour.stops.length})</h2>
+            {tour.stops.length === 0 ? (
+              <p className={styles.placeholder}>
+                Noch keine Stopps. Über „Tour planen“ hinzufügen.
+              </p>
+            ) : (
+              <ul className={styles.stopList}>
+                {tour.stops.map((stop, index) => (
+                  <StopCard
+                    key={stop.id}
+                    stop={stop}
+                    position={index + 1}
+                    isNext={stop.id === tour.nextStopId}
+                    distance={distanceTo(stop)}
+                    busy={busy}
+                    onStatusChange={changeStopStatus}
+                    onRemove={planning ? removeStop : undefined}
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {planning && (
+            <section className={styles.card}>
+              <h2>Stopp hinzufügen</h2>
+              <p className={styles.placeholder}>
+                Die Adresse wird gesucht und gespeichert, sobald der Stopp
+                angelegt ist.
+              </p>
+              <AddStopForm busy={busy} onSubmit={addStop} />
+            </section>
+          )}
+        </>
+      )}
+
       {error && (
-        <div className={styles.error}>
+        <div className={styles.error} role="alert">
           <p>{error}</p>
+        </div>
+      )}
+      {hint && !error && (
+        <div className={styles.hint} role="status">
+          <p>{hint}</p>
         </div>
       )}
     </main>
   )
 }
 
-// Helper function (duplicate from routing lib for now)
-function calculateHaversineDistance(
-  location1: Location,
-  location2: Location
-): number {
-  const R = 6371e3
-  const φ1 = (location1.latitude * Math.PI) / 180
-  const φ2 = (location2.latitude * Math.PI) / 180
-  const Δφ = ((location2.latitude - location1.latitude) * Math.PI) / 180
-  const Δλ = ((location2.longitude - location1.longitude) * Math.PI) / 180
+/** Lokale Vorschau eines Statuswechsels, damit die Liste sofort reagiert. */
+function applyStopStatus(
+  tour: Tour,
+  stopId: number,
+  status: Stop['status']
+): Tour {
+  const stops = tour.stops.map((stop) =>
+    stop.id === stopId
+      ? {
+          ...stop,
+          status,
+          completedAt: status === 'open' ? null : new Date().toISOString(),
+        }
+      : stop
+  )
+  const done = stops.filter((s) => s.status === 'done').length
+  const failed = stops.filter((s) => s.status === 'failed').length
 
-  const a =
-    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+  return {
+    ...tour,
+    stops,
+    progress: {
+      total: stops.length,
+      done,
+      failed,
+      open: stops.length - done - failed,
+      isComplete: stops.length > 0 && done + failed === stops.length,
+    },
+    nextStopId: stops.find((s) => s.status === 'open')?.id ?? null,
+  }
+}
 
-  return R * c
+function readStoredDriver(): number | null {
+  try {
+    const raw = window.localStorage.getItem(DRIVER_KEY)
+    return raw ? Number(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function describe(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.message
+  if (error instanceof TypeError) {
+    return 'Keine Verbindung zur Bäckerei-API. Läuft der Server auf Port 5000?'
+  }
+  return error instanceof Error ? error.message : fallback
 }

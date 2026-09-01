@@ -1,208 +1,218 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { Location } from '@bakery/delivery/tracking'
-import { Route, RouteWaypoint } from '@bakery/delivery/routing'
+import type { Location } from '@bakery/delivery/tracking'
+import type { Depot, Stop } from '../lib/delivery-api'
 
-// Fix for default markers in Leaflet
-delete (L.Icon.Default.prototype as any)._getIconUrl
+// Leaflet sucht seine Marker-Bilder relativ zum Bundle. Die drei PNGs unter
+// `public/leaflet/` liegen genau deswegen im Repo.
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
+  ._getIconUrl
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: '/leaflet/marker-icon-2x.png',
   iconUrl: '/leaflet/marker-icon.png',
   shadowUrl: '/leaflet/marker-shadow.png',
 })
 
+/** Homburg-Kirrberg - das Liefergebiet, nicht Zuerich. */
+const HOMBURG: [number, number] = [49.3117, 7.3542]
+
+const STATUS_COLOR: Record<Stop['status'], string> = {
+  open: '#8b4513',
+  done: '#2e7d32',
+  failed: '#c62828',
+}
+
 interface MapProps {
   currentLocation?: Location
-  route?: Route
-  center?: [number, number]
-  zoom?: number
+  depot?: Depot
+  stops?: Stop[]
+  /** Strassenverlauf vom Router. Fehlt er, werden die Stopps gerade verbunden. */
+  geometry?: Array<[number, number]> | null
+  activeStopId?: number | null
   height?: string
 }
 
 export function Map({
   currentLocation,
-  route,
-  center = [47.3769, 8.5417], // Default to Zurich
-  zoom = 13,
-  height = '400px',
+  depot,
+  stops = [],
+  geometry,
+  activeStopId,
+  height = '360px',
 }: MapProps) {
+  // Eigene ID pro Instanz. Vorher stand hier ein fester String, sodass eine
+  // zweite Karte auf derselben Seite die erste uebernommen haette.
+  const mapId = `delivery-map-${useId().replace(/[:]/g, '')}`
+
   const mapRef = useRef<L.Map | null>(null)
-  const markersRef = useRef<L.Marker[]>([])
-  const routeLineRef = useRef<L.Polyline | null>(null)
-  const currentLocationMarkerRef = useRef<L.Marker | null>(null)
+  const layerRef = useRef<L.LayerGroup | null>(null)
+  const positionRef = useRef<L.Marker | null>(null)
+  const hasFittedRef = useRef<string | null>(null)
 
-  // Initialize map
+  // Die Karte wird genau einmal aufgebaut. Frueher hingen `center`/`zoom` als
+  // Array-Literale in den Dependencies - bei jedem Render neu erzeugt, also
+  // wurde die Karte bei jedem Render zerstoert und neu gebaut.
   useEffect(() => {
-    if (mapRef.current) return // Map already initialized
+    if (mapRef.current) return
 
-    // Create map instance
-    mapRef.current = L.map('delivery-map').setView(center, zoom)
-
-    // Add tile layer
+    const map = L.map(mapId, { zoomControl: true }).setView(HOMBURG, 13)
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+      attribution: '© OpenStreetMap',
       maxZoom: 19,
-    }).addTo(mapRef.current)
+    }).addTo(map)
+
+    mapRef.current = map
+    layerRef.current = L.layerGroup().addTo(map)
 
     return () => {
-      if (mapRef.current) {
-        mapRef.current.remove()
-        mapRef.current = null
-      }
+      map.remove()
+      mapRef.current = null
+      layerRef.current = null
+      positionRef.current = null
+      hasFittedRef.current = null
     }
-  }, [center, zoom])
+  }, [mapId])
 
-  // Update current location marker
+  // Stopps, Depot und Streckenverlauf
   useEffect(() => {
-    if (!mapRef.current || !currentLocation) return
+    const map = mapRef.current
+    const layer = layerRef.current
+    if (!map || !layer) return
 
-    // Remove existing current location marker
-    if (currentLocationMarkerRef.current) {
-      currentLocationMarkerRef.current.remove()
+    layer.clearLayers()
+    const bounds: Array<[number, number]> = []
+
+    if (depot && Number.isFinite(depot.lat) && Number.isFinite(depot.lon)) {
+      const depotPoint: [number, number] = [depot.lat, depot.lon]
+      bounds.push(depotPoint)
+      L.marker(depotPoint, { icon: badgeIcon('B', '#37474f') })
+        .bindPopup(
+          `<strong>${escapeHtml(depot.name)}</strong><br/>Start der Tour`
+        )
+        .addTo(layer)
     }
 
-    // Create custom icon for current location
-    const currentLocationIcon = L.divIcon({
-      className: 'current-location-marker',
-      html: `
-        <div style="
-          width: 20px;
-          height: 20px;
-          background-color: #4285F4;
-          border: 3px solid white;
-          border-radius: 50%;
-          box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-        "></div>
-      `,
-      iconSize: [20, 20],
-      iconAnchor: [10, 10],
+    const located = stops.filter(
+      (stop) => stop.lat !== null && stop.lon !== null
+    ) as Array<Stop & { lat: number; lon: number }>
+
+    located.forEach((stop, index) => {
+      const point: [number, number] = [stop.lat, stop.lon]
+      bounds.push(point)
+
+      L.marker(point, {
+        icon: badgeIcon(
+          String(index + 1),
+          STATUS_COLOR[stop.status],
+          stop.id === activeStopId
+        ),
+        zIndexOffset: stop.id === activeStopId ? 1000 : 0,
+      })
+        .bindPopup(
+          `<strong>${index + 1}. ${escapeHtml(stop.customer)}</strong><br/>` +
+            `${escapeHtml(stop.address)}` +
+            (stop.timeWindow
+              ? `<br/>Zeitfenster: ${escapeHtml(stop.timeWindow)}`
+              : '')
+        )
+        .addTo(layer)
     })
 
-    // Add current location marker
-    currentLocationMarkerRef.current = L.marker(
-      [currentLocation.latitude, currentLocation.longitude],
-      { icon: currentLocationIcon }
-    )
-      .addTo(mapRef.current)
-      .bindPopup('Aktuelle Position')
+    // Echter Strassenverlauf, wenn der Router einen geliefert hat - sonst die
+    // Luftlinie, damit die Reihenfolge trotzdem sichtbar ist.
+    if (geometry && geometry.length > 1) {
+      L.polyline(geometry, {
+        color: '#1565c0',
+        weight: 5,
+        opacity: 0.75,
+      }).addTo(layer)
+      geometry.forEach((point) => bounds.push(point))
+    } else if (bounds.length > 1) {
+      L.polyline(bounds, {
+        color: '#1565c0',
+        weight: 3,
+        opacity: 0.5,
+        dashArray: '6 8',
+      }).addTo(layer)
+    }
 
-    // Pan to current location
-    mapRef.current.setView([
+    // Einpassen, wenn sich die *Menge* der Stopps aendert - nicht bei jedem
+    // Abhaken, sonst springt die Karte dem Fahrer aus der Hand.
+    const fingerprint = located
+      .map((stop) => stop.id)
+      .join(',')
+      .concat(geometry ? `|${geometry.length}` : '')
+    if (bounds.length > 0 && fingerprint !== hasFittedRef.current) {
+      map.fitBounds(L.latLngBounds(bounds), { padding: [40, 40], maxZoom: 16 })
+      hasFittedRef.current = fingerprint
+    }
+  }, [depot, stops, geometry, activeStopId])
+
+  // Eigene Position
+  useEffect(() => {
+    const map = mapRef.current
+    if (!map || !currentLocation) return
+
+    const point: [number, number] = [
       currentLocation.latitude,
       currentLocation.longitude,
-    ])
-  }, [currentLocation])
-
-  // Update route display
-  useEffect(() => {
-    if (!mapRef.current || !route) return
-
-    // Clear existing markers
-    markersRef.current.forEach((marker) => marker.remove())
-    markersRef.current = []
-
-    // Clear existing route line
-    if (routeLineRef.current) {
-      routeLineRef.current.remove()
+    ]
+    if (positionRef.current) {
+      positionRef.current.setLatLng(point)
+      return
     }
 
-    // Add waypoint markers
-    route.waypoints.forEach((waypoint, index) => {
-      const icon = getWaypointIcon(waypoint.type)
-
-      const marker = L.marker(
-        [waypoint.location.latitude, waypoint.location.longitude],
-        { icon }
-      ).addTo(mapRef.current!).bindPopup(`
-          <div>
-            <strong>${getWaypointLabel(waypoint.type)} ${
-        index + 1
-      }</strong><br/>
-            ${waypoint.address}<br/>
-            ${waypoint.orderId ? `Bestellung: ${waypoint.orderId}<br/>` : ''}
-            ${waypoint.notes ? `Hinweise: ${waypoint.notes}` : ''}
-          </div>
-        `)
-
-      markersRef.current.push(marker)
+    positionRef.current = L.marker(point, {
+      icon: L.divIcon({
+        className: 'current-location-marker',
+        html: '<div class="pulse-dot"></div>',
+        iconSize: [22, 22],
+        iconAnchor: [11, 11],
+      }),
+      zIndexOffset: 2000,
     })
-
-    // Draw route line
-    const routeCoordinates = route.waypoints.map(
-      (wp) => [wp.location.latitude, wp.location.longitude] as [number, number]
-    )
-
-    routeLineRef.current = L.polyline(routeCoordinates, {
-      color: '#2196F3',
-      weight: 4,
-      opacity: 0.8,
-    }).addTo(mapRef.current)
-
-    // Fit map to show all markers
-    const bounds = L.latLngBounds(routeCoordinates)
-    mapRef.current.fitBounds(bounds, { padding: [50, 50] })
-  }, [route])
+      .bindPopup('Aktuelle Position')
+      .addTo(map)
+  }, [currentLocation])
 
   return (
-    <div>
-      <div
-        id="delivery-map"
-        style={{
-          height,
-          width: '100%',
-          borderRadius: '8px',
-          overflow: 'hidden',
-        }}
-      />
-    </div>
+    <div
+      id={mapId}
+      role="application"
+      aria-label="Karte der Liefertour"
+      style={{ height, width: '100%' }}
+    />
   )
 }
 
-function getWaypointIcon(type: RouteWaypoint['type']): L.Icon {
-  const colors = {
-    pickup: '#4CAF50',
-    delivery: '#FF5722',
-    waypoint: '#FFC107',
-  }
-
-  const labels = {
-    pickup: 'A',
-    delivery: 'L',
-    waypoint: 'Z',
-  }
-
+function badgeIcon(
+  label: string,
+  color: string,
+  highlighted = false
+): L.DivIcon {
+  const size = highlighted ? 42 : 34
   return L.divIcon({
-    className: `waypoint-marker waypoint-${type}`,
-    html: `
-      <div style="
-        width: 40px;
-        height: 40px;
-        background-color: ${colors[type]};
-        border: 3px solid white;
-        border-radius: 50%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        font-weight: bold;
-        font-size: 18px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
-      ">${labels[type]}</div>
-    `,
-    iconSize: [40, 40],
-    iconAnchor: [20, 40],
-    popupAnchor: [0, -40],
+    className: 'waypoint-marker',
+    html: `<div style="
+      width:${size}px;height:${size}px;background:${color};
+      border:3px solid ${highlighted ? '#ffd54f' : '#fff'};border-radius:50%;
+      display:flex;align-items:center;justify-content:center;
+      color:#fff;font-weight:700;font-size:${highlighted ? 17 : 14}px;
+      box-shadow:0 2px 6px rgba(0,0,0,.35);">${escapeHtml(label)}</div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size / 2],
+    popupAnchor: [0, -size / 2],
   })
 }
 
-function getWaypointLabel(type: RouteWaypoint['type']): string {
-  const labels = {
-    pickup: 'Abholung',
-    delivery: 'Lieferung',
-    waypoint: 'Zwischenstopp',
-  }
-  return labels[type]
+/** Kundennamen und Hinweise landen in Popup-HTML - also maskieren. */
+function escapeHtml(value: string): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
 }

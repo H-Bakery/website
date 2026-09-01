@@ -2,67 +2,42 @@ import { defineConfig, devices } from '@playwright/test'
 import { nxE2EPreset } from '@nx/playwright/preset'
 import { workspaceRoot } from '@nx/devkit'
 
-// For CI, you may want to set BASE_URL to the deployed application.
-const baseURL = process.env['BASE_URL'] || 'http://localhost:3000'
+// 4300 ist der Port der App (siehe apps/bakery-delivery/project.json). 3000
+// gehoert der Landing Page, 4200 dem Shop.
+const PORT = process.env['DELIVERY_PORT'] || '4300'
+const API_PORT = process.env['API_PORT'] || '5000'
+const baseURL = process.env['BASE_URL'] || `http://localhost:${PORT}`
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// require('dotenv').config();
-
-/**
- * See https://playwright.dev/docs/test-configuration.
- */
 export default defineConfig({
   ...nxE2EPreset(__filename, { testDir: './src' }),
-  /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,
-    /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+    locale: 'de-DE',
+    permissions: ['geolocation'],
+    // Homburg Mitte - die App laeuft im Saarpfalz-Kreis.
+    geolocation: { latitude: 49.3226, longitude: 7.3389 },
   },
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'npx nx run bakery-delivery:next:start',
-    url: 'http://localhost:3000',
-    reuseExistingServer: true,
-    cwd: workspaceRoot,
-  },
+  webServer: [
+    // Die Tour-Daten kommen aus der API. Ohne sie zeigt die App nur ihre
+    // Fehlermeldung - genau das prueft der erste Test.
+    {
+      command: `node apps/bakery-api/simple-server.js`,
+      url: `http://localhost:${API_PORT}/health`,
+      reuseExistingServer: true,
+      cwd: workspaceRoot,
+      env: { PORT: API_PORT },
+    },
+    {
+      command: `npx nx run bakery-delivery:serve --port=${PORT}`,
+      url: baseURL,
+      reuseExistingServer: true,
+      cwd: workspaceRoot,
+      timeout: 120_000,
+    },
+  ],
   projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    // Uncomment for mobile browsers support
-    /* {
-      name: 'Mobile Chrome',
-      use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    }, */
-
-    // Uncomment for branded browsers
-    /* {
-      name: 'Microsoft Edge',
-      use: { ...devices['Desktop Edge'], channel: 'msedge' },
-    },
-    {
-      name: 'Google Chrome',
-      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
-    } */
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'Mobile Chrome', use: { ...devices['Pixel 5'] } },
   ],
 })

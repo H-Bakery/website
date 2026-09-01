@@ -1,161 +1,485 @@
+/* Fahrer-App: einhändig bedienbar, große Trefferflächen, hoher Kontrast.
+   Mobile first - der Breakpoint bei 768px ist der Ausnahmefall (Backstube). */
+
 .main {
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 1rem;
+  gap: 0.75rem;
+  padding: 0.75rem 0.75rem calc(1.5rem + env(safe-area-inset-bottom));
   min-height: 100vh;
-  background-color: #f5f5f5;
+  background-color: #f4f2ef;
 }
 
 .header {
-  text-align: center;
-  margin-bottom: 2rem;
   width: 100%;
-  max-width: 600px;
+  max-width: 720px;
+  text-align: left;
+  padding: 0.25rem 0.25rem 0;
 }
 
 .header h1 {
   margin: 0;
-  font-size: 2rem;
-  color: #333;
+  font-size: 1.6rem;
+  color: #2b2118;
 }
 
 .subtitle {
-  margin: 0.5rem 0 0 0;
-  color: #666;
-  font-size: 1rem;
+  margin: 0.15rem 0 0;
+  color: #6d6257;
+  font-size: 0.9rem;
 }
 
 .card {
-  background: white;
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin-bottom: 1rem;
+  background: #fff;
+  border-radius: 12px;
+  padding: 1rem;
   width: 100%;
-  max-width: 600px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  max-width: 720px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
 .card h2 {
-  margin: 0 0 1rem 0;
-  font-size: 1.25rem;
-  color: #333;
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  color: #2b2118;
 }
 
-.card h3 {
-  margin: 1rem 0 0.5rem 0;
-  font-size: 1rem;
-  color: #555;
+.nextCard {
+  border: 2px solid #8b4513;
 }
+
+/* Im "Nächster Stopp"-Block steckt sonst eine Karte in der Karte: der doppelte
+   Rahmen frisst rund 50 px Breite, und die Knöpfe brechen zweizeilig um. */
+.nextCard .stop {
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+/* --- Kopf der Tour --- */
+
+.tourHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.tourHead h2 {
+  margin: 0;
+}
+
+.progressBar {
+  height: 10px;
+  border-radius: 999px;
+  background: #e8e2db;
+  overflow: hidden;
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  background: #2e7d32;
+  transition: width 0.25s ease;
+}
+
+.progressLabel {
+  margin: 0.4rem 0 0.75rem;
+  font-size: 0.9rem;
+  color: #5c5347;
+}
+
+/* --- Bedienelemente --- */
 
 .buttonGroup {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 1rem;
+  margin-top: 0.75rem;
 }
 
-.button {
-  background-color: #8b4513;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 4px;
+.button,
+.buttonGhost,
+.buttonSuccess,
+.buttonWarn,
+.buttonLink,
+.buttonLinkGhost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.6rem 1rem;
+  border: 2px solid transparent;
+  border-radius: 8px;
   font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  text-decoration: none;
+  transition: background-color 0.15s, opacity 0.15s;
 }
 
-.button:hover {
+.button,
+.buttonLink {
+  background-color: #8b4513;
+  color: #fff;
+}
+
+.button:hover,
+.buttonLink:hover {
   background-color: #6b3410;
 }
 
-.buttonSecondary {
-  background-color: #666;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 4px;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background-color 0.2s;
+.buttonSuccess {
+  background-color: #2e7d32;
+  color: #fff;
 }
 
-.buttonSecondary:hover {
-  background-color: #555;
+.buttonSuccess:hover {
+  background-color: #256428;
 }
 
-.waypointList {
-  margin: 0;
-  padding-left: 1.5rem;
+.buttonWarn {
+  background-color: #b23c17;
+  color: #fff;
 }
 
-.waypoint {
-  margin-bottom: 1rem;
-  padding-bottom: 1rem;
-  border-bottom: 1px solid #eee;
+.buttonWarn:hover {
+  background-color: #8f3012;
 }
 
-.waypoint:last-child {
-  border-bottom: none;
-  margin-bottom: 0;
-  padding-bottom: 0;
+.buttonGhost,
+.buttonLinkGhost {
+  background-color: #fff;
+  color: #4a4038;
+  border-color: #cfc6bc;
 }
 
-.notes {
-  margin: 0.25rem 0;
-  font-size: 0.9rem;
-  color: #666;
+.buttonGhost:hover,
+.buttonLinkGhost:hover {
+  background-color: #f1ece6;
 }
 
-.distance {
-  margin: 0.25rem 0;
-  font-size: 0.9rem;
-  color: #888;
+.button:disabled,
+.buttonGhost:disabled,
+.buttonSuccess:disabled,
+.buttonWarn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
-.error {
-  background-color: #fee;
-  border: 1px solid #fcc;
-  border-radius: 4px;
-  padding: 1rem;
-  margin-top: 1rem;
-  width: 100%;
-  max-width: 600px;
+/* --- Formulare --- */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
 }
 
-.error p {
-  margin: 0;
-  color: #c00;
+.formRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
-.mapContainer {
-  margin-top: 1rem;
+.selectRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.field,
+.fieldNarrow {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.fieldNarrow {
+  flex: 0 1 8.5rem;
+}
+
+.field > label,
+.fieldNarrow > label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6d6257;
+}
+
+.field input,
+.field select,
+.fieldNarrow input {
+  min-height: 44px;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid #cfc6bc;
   border-radius: 8px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  font-size: 1rem;
+  font-family: inherit;
+  background: #fff;
+  color: #2b2118;
 }
 
-.mapLoading {
-  height: 400px;
-  background-color: #f0f0f0;
+.field input:focus,
+.field select:focus,
+.fieldNarrow input:focus {
+  outline: 2px solid #8b4513;
+  outline-offset: 1px;
+}
+
+.formError {
+  margin: 0;
+  color: #b3261e;
+  font-size: 0.9rem;
+}
+
+/* --- Stopps --- */
+
+.stopList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.stop {
+  border: 1px solid #e2dbd3;
+  border-left: 5px solid #8b4513;
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: #fff;
+}
+
+.stop_done {
+  border-left-color: #2e7d32;
+  background: #f6faf6;
+}
+
+.stop_failed {
+  border-left-color: #c62828;
+  background: #fdf7f6;
+}
+
+.stopNext {
+  box-shadow: 0 0 0 2px rgba(139, 69, 19, 0.25);
+}
+
+.stopHead {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+}
+
+.stopNumber {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: #8b4513;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #666;
-  font-size: 1rem;
 }
 
-/* Mobile-first responsive design */
+.stopTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.stopTitle h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: #2b2118;
+}
+
+.stopAddress {
+  margin: 0.15rem 0 0;
+  color: #5c5347;
+  font-size: 0.92rem;
+}
+
+.badge {
+  flex: 0 0 auto;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: #ede7e0;
+  color: #4a4038;
+  white-space: nowrap;
+}
+
+.badge_done {
+  background: #dcedde;
+  color: #1b5e20;
+}
+
+.badge_failed {
+  background: #f8dcd8;
+  color: #a02012;
+}
+
+.badge_active {
+  background: #e3eefb;
+  color: #14508f;
+}
+
+.stopFacts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin: 0.6rem 0 0;
+}
+
+.stopFacts div {
+  display: flex;
+  flex-direction: column;
+}
+
+.stopFacts dt {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #857a6d;
+}
+
+.stopFacts dd {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #2b2118;
+}
+
+.stopItems {
+  margin: 0.6rem 0 0;
+  padding: 0.5rem 0.6rem;
+  background: #f6f2ed;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  color: #2b2118;
+}
+
+.stopNotes {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+  color: #5c5347;
+  font-style: italic;
+}
+
+.stopFailure {
+  margin: 0.4rem 0 0;
+  font-size: 0.9rem;
+  color: #a02012;
+}
+
+.stopWarning {
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #fdf3e2;
+  color: #8a5a00;
+  font-size: 0.88rem;
+}
+
+/* Raster statt Flex-Umbruch: die Knoepfe stehen dadurch immer in sauberen
+   Reihen, egal ob ein Stopp eine Telefonnummer hat oder nicht. */
+.stopActions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.stopActions > * {
+  font-size: 0.95rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+/* --- Karte und Zustände --- */
+
+.mapContainer {
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid #e2dbd3;
+}
+
+.mapLoading {
+  height: 360px;
+  background: #ece7e1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6d6257;
+}
+
+.coords {
+  margin: 0.6rem 0 0;
+  font-size: 0.85rem;
+  color: #6d6257;
+  font-variant-numeric: tabular-nums;
+}
+
+.placeholder {
+  margin: 0;
+  color: #6d6257;
+  font-size: 0.95rem;
+}
+
+.error,
+.hint,
+.offline {
+  width: 100%;
+  max-width: 720px;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
+
+.error {
+  background: #fdecea;
+  border: 1px solid #f5c2bd;
+  color: #a02012;
+}
+
+.error p,
+.hint p {
+  margin: 0;
+}
+
+.hint {
+  background: #fdf3e2;
+  border: 1px solid #f0dcb4;
+  color: #8a5a00;
+}
+
+.offline {
+  background: #2b2118;
+  color: #fff;
+  font-weight: 600;
+}
+
 @media (min-width: 768px) {
   .main {
-    padding: 2rem;
+    padding: 1.5rem;
+    gap: 1rem;
   }
 
   .header h1 {
-    font-size: 2.5rem;
+    font-size: 2rem;
   }
 
   .card {
-    padding: 2rem;
+    padding: 1.25rem 1.5rem;
   }
 }

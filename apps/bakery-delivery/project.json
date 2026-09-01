@@ -24,16 +24,19 @@
       "defaultConfiguration": "development",
       "options": {
         "buildTarget": "bakery-delivery:build",
-        "dev": true
+        "dev": true,
+        "port": 4300
       },
       "configurations": {
         "development": {
           "buildTarget": "bakery-delivery:build:development",
-          "dev": true
+          "dev": true,
+          "port": 4300
         },
         "production": {
           "buildTarget": "bakery-delivery:build:production",
-          "dev": false
+          "dev": false,
+          "port": 4300
         }
       }
     },
