@@ -17,9 +17,7 @@
     "serve:all": "nx run-many --target=serve --all",
     "build:all": "nx run-many --target=build --all",
     "test:all": "nx run-many --target=test --all",
-    "serve:website": "nx serve website",
     "serve:backend": "nx serve backend",
-    "build:website": "nx build website",
     "build:backend": "nx build backend",
     "dev:landing": "nx serve bakery-landing",
     "build:landing": "nx build-static bakery-landing",
@@ -236,5 +234,7 @@
       "prettier --write"
     ]
   },
-  "nx": {}
+  "nx": {
+    "includedScripts": []
+  }
 }

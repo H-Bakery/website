@@ -10,7 +10,7 @@
     "start": "echo 'Please use nx serve bakery-api to run the application'",
     "dev": "node simple-server.js",
     "dev:full": "nodemon --watch src --exec ts-node src/main.ts",
-    "start:prod": "node dist/src/main-standalone.js",
+    "start:prod": "node dist/apps/bakery-api/src/main.js",
     "test": "jest --config jest.config.js",
     "test:coverage": "jest --config jest.config.js --coverage",
     "test:watch": "jest --config jest.config.js --watch",
