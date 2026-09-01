@@ -77,6 +77,30 @@ export const ROAD_DETOUR_FACTOR = 1.35
 export const STOP_SERVICE_TIME = 180
 
 /**
+ * Hat der Wert brauchbare Koordinaten (`lat`/`lon`)?
+ *
+ * Dieselbe Pruefung wie `hasCoordinates()` in `delivery-tours.core.js`:
+ * `null`, `undefined`, Leerstring und NaN sind "keine Koordinaten" - ein
+ * `stop.lat !== null` haette `undefined` durchgelassen, und Leaflet wirft bei
+ * `[undefined, undefined]` die ganze Karte weg.
+ */
+export function hasCoordinates<T extends { lat?: unknown; lon?: unknown }>(
+  value: T | null | undefined
+): value is T & { lat: number; lon: number } {
+  if (!value) return false
+  return isFiniteNumber(value.lat) && isFiniteNumber(value.lon)
+}
+
+function isFiniteNumber(value: unknown): boolean {
+  if (typeof value === 'number') return Number.isFinite(value)
+  return (
+    typeof value === 'string' &&
+    value.trim() !== '' &&
+    Number.isFinite(Number(value))
+  )
+}
+
+/**
  * Entfernung zweier Punkte in Metern (Haversine).
  *
  * Exportiert, damit die App sie nicht noch einmal abschreibt - genau das war

@@ -4,6 +4,7 @@ import {
   buildNavigationUrl,
   buildPhoneLink,
   formatRouteDistance,
+  hasCoordinates,
 } from '@bakery/delivery/routing'
 import type { Stop } from '../lib/delivery-api'
 import { formatItems, formatTime, STOP_STATUS_LABEL } from '../lib/format'
@@ -30,14 +31,14 @@ export function StopCard({
   onRemove,
 }: StopCardProps) {
   const phoneLink = buildPhoneLink(stop.phone)
-  const navigationUrl =
-    stop.lat !== null && stop.lon !== null
-      ? buildNavigationUrl({
-          latitude: stop.lat,
-          longitude: stop.lon,
-          address: stop.address,
-        })
-      : null
+  const located = hasCoordinates(stop)
+  const navigationUrl = located
+    ? buildNavigationUrl({
+        latitude: stop.lat,
+        longitude: stop.lon,
+        address: stop.address,
+      })
+    : null
 
   const items = formatItems(stop.items)
 
@@ -93,7 +94,7 @@ export function StopCard({
       {stop.status === 'failed' && stop.failureReason && (
         <p className={styles.stopFailure}>Grund: {stop.failureReason}</p>
       )}
-      {stop.lat === null && (
+      {!located && (
         <p className={styles.stopWarning}>
           Adresse nicht gefunden – dieser Stopp fehlt auf der Karte und in der
           Reihenfolge.

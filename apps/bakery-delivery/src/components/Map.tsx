@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
+import { hasCoordinates } from '@bakery/delivery/routing'
 import type { Location } from '@bakery/delivery/tracking'
 import type { Depot, Stop } from '../lib/delivery-api'
 
@@ -85,7 +86,7 @@ export function Map({
     layer.clearLayers()
     const bounds: Array<[number, number]> = []
 
-    if (depot && Number.isFinite(depot.lat) && Number.isFinite(depot.lon)) {
+    if (hasCoordinates(depot)) {
       const depotPoint: [number, number] = [depot.lat, depot.lon]
       bounds.push(depotPoint)
       L.marker(depotPoint, { icon: badgeIcon('B', '#37474f') })
@@ -95,9 +96,9 @@ export function Map({
         .addTo(layer)
     }
 
-    const located = stops.filter(
-      (stop) => stop.lat !== null && stop.lon !== null
-    ) as Array<Stop & { lat: number; lon: number }>
+    // `hasCoordinates` statt `!== null`: bei `undefined` wuerfe Leaflet mit
+    // "Invalid LatLng" die ganze Karte weg.
+    const located = stops.filter(hasCoordinates)
 
     located.forEach((stop, index) => {
       const point: [number, number] = [stop.lat, stop.lon]

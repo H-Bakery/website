@@ -14,8 +14,8 @@ export interface Depot {
   zip: string
   city: string
   phone: string | null
-  lat: number
-  lon: number
+  lat: number | null
+  lon: number | null
 }
 
 export interface Driver {
@@ -108,14 +108,39 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Nach so vielen Millisekunden gilt eine Anfrage als gescheitert. Im Funkloch
+ * haengt `fetch` sonst minutenlang - und solange es haengt, sind alle Knoepfe
+ * gesperrt und die Warteschlange kommt nicht zum Zug.
+ */
+const REQUEST_TIMEOUT_MS = 15_000
+
+function timeoutSignal(): AbortSignal | undefined {
+  if (
+    typeof AbortSignal === 'undefined' ||
+    typeof AbortSignal.timeout !== 'function'
+  ) {
+    return undefined
+  }
+  return AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: { 'Content-Type': 'application/json', ...init?.headers },
+    signal: init?.signal ?? timeoutSignal(),
   })
 
   const text = await response.text()
-  const body = text ? JSON.parse(text) : null
+  let body: { message?: string; error?: string } | null = null
+  try {
+    body = text ? JSON.parse(text) : null
+  } catch {
+    // Kein JSON - etwa die HTML-Fehlerseite eines Proxys. Dann zaehlt nur
+    // der Statuscode.
+    body = null
+  }
 
   if (!response.ok) {
     // Die API liefert `message` auf Deutsch und `error` technisch. Der Fahrer
@@ -265,10 +290,13 @@ export async function flushQueue(): Promise<{
   tour: Tour | null
   remaining: QueuedUpdate[]
   rejected: QueuedUpdate[]
+  /** true, wenn der Server nicht erreichbar war und Eintraege liegen blieben. */
+  offline: boolean
 }> {
   let queue = readQueue()
   let tour: Tour | null = null
   const rejected: QueuedUpdate[] = []
+  let offline = false
 
   for (const entry of [...queue]) {
     try {
@@ -290,9 +318,10 @@ export async function flushQueue(): Promise<{
         writeQueue(queue)
         continue
       }
+      offline = true
       break // Netzproblem: der Rest wartet auf den naechsten Versuch.
     }
   }
 
-  return { tour, remaining: queue, rejected }
+  return { tour, remaining: queue, rejected, offline }
 }

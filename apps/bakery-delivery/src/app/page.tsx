@@ -7,6 +7,7 @@ import {
   calculateHaversineDistance,
   formatDuration,
   formatRouteDistance,
+  hasCoordinates,
 } from '@bakery/delivery/routing'
 import {
   clearLocationWatch,
@@ -15,6 +16,7 @@ import {
   watchLocation,
 } from '@bakery/delivery/tracking'
 import {
+  API_BASE_URL,
   ApiError,
   deliveryApi,
   flushQueue,
@@ -44,6 +46,12 @@ const Map = dynamic(() => import('../components/Map').then((mod) => mod.Map), {
 const DRIVER_KEY = 'bakery-delivery-driver'
 /** Position alle 30 s melden - haeufiger belastet nur den Akku. */
 const POSITION_INTERVAL_MS = 30_000
+/**
+ * Warteschlange alle 30 s erneut versuchen, solange etwas wartet. Der Browser
+ * meldet `online`, sobald Funk da ist - ob der Server antwortet, weiss er
+ * nicht. Ohne diesen Takt bliebe ein Abhaken bis zum Neuladen liegen.
+ */
+const RETRY_INTERVAL_MS = 30_000
 
 export default function DeliveryDashboard() {
   const [drivers, setDrivers] = useState<Driver[]>([])
@@ -65,6 +73,10 @@ export default function DeliveryDashboard() {
 
   const watchIdRef = useRef<number | null>(null)
   const lastReportRef = useRef(0)
+  // Die Standort-Verfolgung haelt ihren Callback lange fest; ueber die Ref
+  // meldet sie an die Tour, die *jetzt* gewaehlt ist, nicht an die von damals.
+  const tourIdRef = useRef<number | null>(null)
+  tourIdRef.current = tourId
 
   const tour = useMemo(
     () => tours.find((t) => t.id === tourId) ?? null,
@@ -168,13 +180,14 @@ export default function DeliveryDashboard() {
 
   /** Meldet die Position an die Backstube - gedrosselt und ohne Fehleranzeige. */
   const reportPosition = (location: Location) => {
-    if (!tourId) return
+    const targetTour = tourIdRef.current
+    if (!targetTour) return
     const now = Date.now()
     if (now - lastReportRef.current < POSITION_INTERVAL_MS) return
     lastReportRef.current = now
 
     deliveryApi
-      .reportPosition(tourId, {
+      .reportPosition(targetTour, {
         lat: location.latitude,
         lon: location.longitude,
         accuracy: location.accuracy,
@@ -190,9 +203,15 @@ export default function DeliveryDashboard() {
     setIsOnline(typeof navigator === 'undefined' ? true : navigator.onLine)
 
     const flush = async () => {
-      setIsOnline(true)
-      const { tour: updated, remaining, rejected } = await flushQueue()
+      if (pendingUpdates().length === 0) {
+        setIsOnline(true)
+        return
+      }
+      const { tour: updated, remaining, rejected, offline } = await flushQueue()
       setPending(remaining)
+      // Erst wenn der Server wirklich geantwortet hat, ist "online" wahr -
+      // sonst verschwand der Hinweis, waehrend die Aenderungen noch lagen.
+      setIsOnline(!offline)
       if (updated) {
         setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
       }
@@ -207,10 +226,14 @@ export default function DeliveryDashboard() {
     window.addEventListener('online', flush)
     window.addEventListener('offline', goOffline)
     if (navigator.onLine) flush()
+    const retry = window.setInterval(() => {
+      if (navigator.onLine && pendingUpdates().length > 0) flush()
+    }, RETRY_INTERVAL_MS)
 
     return () => {
       window.removeEventListener('online', flush)
       window.removeEventListener('offline', goOffline)
+      window.clearInterval(retry)
     }
   }, [])
 
@@ -322,7 +345,7 @@ export default function DeliveryDashboard() {
     tour?.stops.find((stop) => stop.id === tour.nextStopId) ?? null
 
   const distanceTo = (stop: Stop): number | null => {
-    if (!currentLocation || stop.lat === null || stop.lon === null) return null
+    if (!currentLocation || !hasCoordinates(stop)) return null
     return calculateHaversineDistance(
       {
         latitude: currentLocation.latitude,
@@ -334,7 +357,7 @@ export default function DeliveryDashboard() {
 
   const navigateAllUrl = useMemo(() => {
     const open = (tour?.stops ?? []).filter(
-      (stop) => stop.status === 'open' && stop.lat !== null && stop.lon !== null
+      (stop) => stop.status === 'open' && hasCoordinates(stop)
     )
     if (open.length === 0) return null
     return buildMultiStopNavigationUrl(
@@ -359,10 +382,13 @@ export default function DeliveryDashboard() {
         <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
       </header>
 
-      {!isOnline && (
+      {(!isOnline || pending.length > 0) && (
         <div className={styles.offline} role="status">
-          Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet
-          {pending.length > 0 ? ` (${pending.length} offen)` : ''}.
+          {isOnline
+            ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
+            : `Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet${
+                pending.length > 0 ? ` (${pending.length} offen)` : ''
+              }.`}
         </div>
       )}
 
@@ -706,8 +732,14 @@ function readStoredDriver(): number | null {
 
 function describe(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message
+  if (
+    error instanceof Error &&
+    (error.name === 'AbortError' || error.name === 'TimeoutError')
+  ) {
+    return 'Die Bäckerei-API antwortet nicht. Bitte gleich noch einmal versuchen.'
+  }
   if (error instanceof TypeError) {
-    return 'Keine Verbindung zur Bäckerei-API. Läuft der Server auf Port 5000?'
+    return `Keine Verbindung zur Bäckerei-API (${API_BASE_URL}). Läuft der Server?`
   }
   return error instanceof Error ? error.message : fallback
 }
