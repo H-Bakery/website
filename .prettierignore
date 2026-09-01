@@ -7,3 +7,7 @@ dist
 coverage
 .next
 out
+
+# Von Next generiert ("This file should not be edited") und bei jedem Build neu
+# geschrieben - sonst faellt format:check nach jedem Build ueber die Datei.
+next-env.d.ts

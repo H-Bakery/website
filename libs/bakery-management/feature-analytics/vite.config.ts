@@ -5,15 +5,17 @@ import dts from 'vite-plugin-dts'
 import * as path from 'path'
 
 export default defineConfig({
+  // Ohne root loest Nx' outputPath ('../../../dist/...') gegen den
+  // Workspace-Root auf, und der Lib-Build landet ausserhalb des Repos.
+  root: __dirname,
   cacheDir: '../../../node_modules/.vite/bakery-management-feature-analytics',
 
   plugins: [
     react(),
     nxViteTsPaths(),
     dts({
-      entryRoot: 'src',
-      tsConfigFilePath: path.join(__dirname, 'tsconfig.lib.json'),
-      skipDiagnostics: true,
+      entryRoot: path.join(__dirname, 'src'),
+      tsconfigPath: path.join(__dirname, 'tsconfig.lib.json'),
     }),
   ],
 

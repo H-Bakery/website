@@ -3,6 +3,9 @@ export default {
   preset: '../../jest.preset.js',
   setupFilesAfterEnv: ['<rootDir>/src/test-setup.ts'],
   testEnvironment: 'jsdom',
+  // tests/ enthaelt Playwright-Specs (frontend-health.test.ts). Jest zieht sie
+  // sonst mit ein und bricht mit "Playwright Test did not expect test.use()" ab.
+  testPathIgnorePatterns: ['<rootDir>/tests/'],
   transform: {
     '^(?!.*\\.(js|jsx|ts|tsx|css|json)$)': '@nx/react/plugins/jest',
     '^.+\\.[tj]sx?$': ['babel-jest', { presets: ['@nx/react/babel'] }],
