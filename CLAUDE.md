@@ -125,6 +125,7 @@ website/
 | Landing Page  | `npm run dev:landing`      | 3000 | Working                                      |
 | Shop          | `npm run serve:shop`       | 4200 | Working                                      |
 | Management    | `npm run serve:management` | 4201 | Working                                      |
+| Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                    |
 | API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data)                          |
 | API (full TS) | `npm run serve:api`        | 5000 | Broken (TS compilation errors, see TASK-001) |
 
@@ -161,6 +162,40 @@ spätere HQ-Preisänderung alte Abrechnungen nicht rückwirkend verändert.
 Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Achtung -
 `apps/bakery-api/jest.config.js` hat `testMatch: ["**/tests/**/*.test.js"]`, führt also **nur**
 plain-JS-Tests unter `tests/` aus. Die TypeScript-Specs unter `src/**/__tests__/` laufen nie mit.
+
+## Liefertouren (Samstagsauslieferung)
+
+Die Fahrer-App `bakery-delivery` (Port 4300) fährt die Samstagstour mit ein bis zwei Fahrern. Eine
+**Tour** gehört einem Tag und einem Fahrer und besteht aus **Stopps** in gefahrener Reihenfolge; der
+Fahrer hakt `done` / `failed` ab. Das ist etwas anderes als der Backschrank-**Besuch** oben: dort
+wird der Restbestand gezählt und der Verkauf berechnet, hier wird nur zugestellt.
+
+Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von außen wissen muss:
+
+- **Alle Server-Formeln stehen genau einmal**, in `apps/bakery-api/src/services/delivery-tours.core.js`
+  (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`, gleiche `*.core.js`-Glob
+  unter `assets`). Das Frontend hat in `@bakery/delivery/routing` eine zweite, TypeScript-Fassung
+  derselben Geometrie — die CommonJS/ESM-Grenze lässt sich nicht ohne Build-Umbau überbrücken. Wer
+  Haversine, Umwegfaktor oder Standzeit ändert, muss **beide** Dateien anfassen;
+  `libs/bakery-delivery-routing/src/lib/core-consistency.spec.ts` rechnet beide gegeneinander und
+  fällt sonst um.
+- **Adresssuche (Nominatim) und Routing (OSRM) sind optional.** Fällt ein Dienst aus, rechnet
+  `delivery-geo.core.js` mit Schätzformeln weiter und setzt `isEstimate: true`; die Oberfläche
+  schreibt „(geschätzt)" dahinter. Nicht wegoptimieren — sonst liest sich eine Luftlinien-Schätzung
+  wie eine gemessene Strecke. Samstags früh muss die Liste auch ohne fremde Server da sein: das
+  Lesen einer Tour wartet höchstens 2,5 s auf Nominatim, Fehlversuche werden 5 min lang nicht
+  wiederholt.
+- **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*`. Der Store lebt im
+  Speicher des Servers und wird nach jeder Änderung atomar nach
+  `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored). Ein Server, der vor diesen
+  Routen gestartet wurde, antwortet mit 404 — neu starten.
+- **`Number(null)` ist `0`.** Ein Stopp ohne gefundene Adresse galt dadurch als Punkt (0, 0) und zog
+  die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
+  `delivery-tours.core.js`, Frontend: `@bakery/delivery/routing`), nie mit
+  `Number.isFinite(Number(x))` oder `!== null`. Das gilt auch für das Depot und die Fahrerposition.
+
+Tests: `npx nx test delivery-routing` (32), `npx nx test delivery-tracking` (7) und
+`apps/bakery-api/tests/unit/deliveryTours.test.js` (46) für die Rechenlogik des Servers.
 
 ## Important Notes
 

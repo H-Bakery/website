@@ -1771,6 +1771,887 @@ app.get('/api/partners/:id/report.csv', (req, res) => {
   res.send('\uFEFF' + partnerStats.statsToCsv(stats, partner))
 })
 
+// --- Liefertouren: Samstagsauslieferung mit ein bis zwei Fahrern ---
+//
+// Eine *Tour* gehoert einem Tag und einem Fahrer und besteht aus *Stopps* in
+// gefahrener Reihenfolge. Der Fahrer hakt unterwegs ab; die Backstube sieht am
+// selben Datensatz, wie weit die Tour ist.
+//
+// Rechnen tut `delivery-tours.core.js`, Adresssuche und Strassenrouting
+// `delivery-geo.core.js`. Beide Dienste sind optional: faellt das Netz aus,
+// bleiben Reihenfolge und Kilometer Schaetzwerte, aber die Tour funktioniert.
+const tours = require('./src/services/delivery-tours.core')
+const geo = require('./src/services/delivery-geo.core')
+
+const DELIVERY_STORE = path.join(__dirname, 'data', 'delivery-store.json')
+
+/** Auslieferungszustand: Backstube, zwei Fahrer, die naechste Samstagstour. */
+function seedDeliveryStore() {
+  const saturday = tours.nextWeekday(new Date(), 6)
+  return {
+    depot: {
+      name: 'Bäckerei Heusser',
+      street: 'Eckstraße 3',
+      zip: '66424',
+      city: 'Homburg-Kirrberg',
+      phone: '+49 6841 2229',
+      lat: 49.3015165,
+      lon: 7.3695327,
+    },
+    // Namen und Nummern bewusst leer - traegt das Team mit den echten Daten nach.
+    drivers: [
+      { id: 1, name: 'Fahrer 1', phone: null, vehicle: 'car', active: true },
+      { id: 2, name: 'Fahrer 2', phone: null, vehicle: 'car', active: true },
+    ],
+    tours: [
+      {
+        id: 1,
+        date: saturday,
+        driverId: 1,
+        name: 'Samstagstour',
+        status: 'planned',
+        vehicleType: 'car',
+        plannedStart: '06:30',
+        startedAt: null,
+        finishedAt: null,
+        distance: null,
+        duration: null,
+        isEstimate: true,
+        geometry: null,
+        routedAt: null,
+        lastPosition: null,
+        stops: [
+          {
+            id: 1,
+            customer: 'CAP-Markt Homburg-Kirrberg',
+            street: 'Ortsstraße 36-38',
+            zip: '66424',
+            city: 'Homburg',
+            phone: null,
+            timeWindow: '07:00-08:00',
+            notes: 'Backschrank bestücken, Reste zählen.',
+            items: [],
+            status: 'open',
+            completedAt: null,
+            failureReason: null,
+            lat: null,
+            lon: null,
+            geocodeSource: null,
+          },
+        ],
+      },
+    ],
+    geocache: {},
+  }
+}
+
+function saveDeliveryStore(store) {
+  try {
+    fs.mkdirSync(path.dirname(DELIVERY_STORE), { recursive: true })
+    // Erst in eine Nachbardatei, dann umbenennen. Stirbt der Prozess mitten im
+    // Schreiben, bleibt die alte Datei heil - sonst braechte eine halbe
+    // JSON-Datei beim naechsten Start den Seed zurueck, und die Tour waere weg.
+    const tmp = `${DELIVERY_STORE}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(store, null, 2), 'utf-8')
+    fs.renameSync(tmp, DELIVERY_STORE)
+    return true
+  } catch (err) {
+    console.warn(`Liefer-Store konnte nicht geschrieben werden: ${err.message}`)
+    return false
+  }
+}
+
+/**
+ * Liest den Store. Fehlt die Datei, wird der Seed angelegt; ist sie kaputt,
+ * arbeitet der Server mit dem Seed weiter, statt beim Request abzustuerzen.
+ */
+function loadDeliveryStore() {
+  const seed = seedDeliveryStore()
+  try {
+    if (fs.existsSync(DELIVERY_STORE)) {
+      const parsed = JSON.parse(fs.readFileSync(DELIVERY_STORE, 'utf-8'))
+      return {
+        depot: parsed.depot && parsed.depot.street ? parsed.depot : seed.depot,
+        drivers:
+          Array.isArray(parsed.drivers) && parsed.drivers.length
+            ? parsed.drivers
+            : seed.drivers,
+        tours: Array.isArray(parsed.tours)
+          ? parsed.tours
+              .filter((t) => t && Number.isFinite(Number(t.id)))
+              .map((t) => ({
+                ...t,
+                stops: Array.isArray(t.stops) ? t.stops : [],
+              }))
+          : [],
+        geocache:
+          parsed.geocache && typeof parsed.geocache === 'object'
+            ? parsed.geocache
+            : {},
+      }
+    }
+    saveDeliveryStore(seed)
+  } catch (err) {
+    console.warn(`Liefer-Store konnte nicht gelesen werden: ${err.message}`)
+  }
+  return seed
+}
+
+/**
+ * Der Store lebt im Speicher und wird nach jeder Aenderung geschrieben.
+ *
+ * Frueher las jeder Request die Datei neu und schrieb seine eigene Kopie
+ * zurueck. Ein Handler, der derweil auf Nominatim oder OSRM wartete, schrieb
+ * danach seinen alten Stand ueber alles, was in der Zwischenzeit abgehakt oder
+ * angelegt worden war - genau so verlor die E2E-Suite ihren frisch angelegten
+ * Stopp. Mit einem einzigen Objekt gibt es nichts mehr zu ueberschreiben.
+ */
+let deliveryStore = null
+function getDeliveryStore() {
+  if (!deliveryStore) deliveryStore = loadDeliveryStore()
+  return deliveryStore
+}
+
+/** Fehlerantwort mit deutschem Text - ApiClient wirft `new Error(data.message)`. */
+function deliveryError(res, status, error, message) {
+  return res.status(status).json({ error, message })
+}
+
+/**
+ * Express 4 faengt abgelehnte Promises nicht: ein Fehler in einem
+ * `async`-Handler liesse den Request einfach haengen, bis das Handy aufgibt.
+ * Hier wird daraus eine 500 mit deutschem Text.
+ */
+function deliveryRoute(handler) {
+  return (req, res) => {
+    Promise.resolve()
+      .then(() => handler(req, res))
+      .catch((err) => {
+        console.error(
+          `Liefer-Endpunkt ${req.method} ${req.originalUrl}: ${
+            (err && err.stack) || err
+          }`
+        )
+        if (!res.headersSent) {
+          deliveryError(
+            res,
+            500,
+            'Internal error',
+            'Interner Fehler im Liefer-Server.'
+          )
+        }
+      })
+  }
+}
+
+function nextDeliveryId(rows) {
+  return rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0) + 1
+}
+
+function findTour(req, res, store) {
+  const id = Number(req.params.id)
+  const tour = store.tours.find((t) => t.id === id)
+  if (!tour) {
+    deliveryError(res, 404, 'Tour not found', 'Diese Tour existiert nicht.')
+    return null
+  }
+  return tour
+}
+
+function findStop(req, res, tour) {
+  const stopId = Number(req.params.stopId)
+  const stop = tour.stops.find((s) => s.id === stopId)
+  if (!stop) {
+    deliveryError(res, 404, 'Stop not found', 'Dieser Stopp existiert nicht.')
+    return null
+  }
+  return stop
+}
+
+/**
+ * Fehlversuche der Adresssuche werden fuer eine Weile gemerkt. Ohne das fragte
+ * jedes Lesen der Tourliste fuer jeden nicht gefundenen Stopp erneut bei
+ * Nominatim an - bei Netzausfall mit Timeout, also sekundenlang pro Stopp und
+ * Aufruf. Eine ausdrueckliche Aktion (Stopp anlegen, Route berechnen)
+ * probiert es mit `force` trotzdem.
+ */
+const GEOCODE_RETRY_MS = 5 * 60 * 1000
+const geocodeMisses = new Map() // Adress-Schluessel -> Zeitpunkt des Fehlversuchs
+const geocodeInFlight = new Map() // Adress-Schluessel -> laufende Suche
+
+/**
+ * Sucht eine Adresse: erst im Cache des Stores, dann bei Nominatim. Treffer
+ * landen dauerhaft im Store, eine Adresse wird also genau einmal gesucht.
+ * Rueckgabe `{ hit, source }` oder `null`.
+ */
+async function lookupAddress(store, address, force) {
+  const key = tours.normalizeAddress(address)
+  const cached = store.geocache[key]
+  if (cached && tours.hasCoordinates(cached)) {
+    return { hit: cached, source: 'cache' }
+  }
+
+  const missedAt = geocodeMisses.get(key)
+  if (!force && missedAt && Date.now() - missedAt < GEOCODE_RETRY_MS) {
+    return null
+  }
+
+  // Gleichzeitige Anfragen nach derselben Adresse teilen sich eine Suche.
+  if (!geocodeInFlight.has(key)) {
+    const search = geo
+      .geocodeAddress(address)
+      .then((hit) => {
+        if (hit) {
+          store.geocache[key] = { ...hit, at: new Date().toISOString() }
+          geocodeMisses.delete(key)
+        } else {
+          geocodeMisses.set(key, Date.now())
+        }
+        return hit
+      })
+      .finally(() => geocodeInFlight.delete(key))
+    geocodeInFlight.set(key, search)
+  }
+
+  const hit = await geocodeInFlight.get(key)
+  return hit ? { hit, source: 'nominatim' } : null
+}
+
+/**
+ * Sucht die Koordinaten eines Stopps (oder des Depots) nach.
+ *
+ * Schlaegt die Suche fehl, bleibt `lat/lon` auf `null`: der Stopp steht dann
+ * ohne Kartenpunkt in der Liste, statt an einer falschen Stelle zu liegen.
+ */
+async function ensureStopCoordinates(store, stop, options) {
+  if (tours.hasCoordinates(stop)) return stop
+
+  const address = tours.formatAddress(stop)
+  if (!address) return stop
+
+  const found = await lookupAddress(store, address, options && options.force)
+  if (found) {
+    stop.lat = found.hit.lat
+    stop.lon = found.hit.lon
+    stop.geocodeSource = found.source
+  }
+  return stop
+}
+
+/** Haengt die berechneten Felder an eine Tour - nie im Store gespeichert. */
+function decorateTour(store, tour) {
+  const progress = tours.tourProgress(tour)
+  const next = tours.nextOpenStop(tour)
+  // Geplante Tour: ab Depot und geplanter Abfahrt. Laufende Tour: ab dem
+  // zuletzt erledigten Stopp bzw. der juengeren Fahrerposition - siehe
+  // `arrivalBaseline` im Core.
+  const baseline = tours.arrivalBaseline(store.depot, tour)
+  const arrivals = tours.estimateArrivals(
+    baseline.origin,
+    tour.stops.filter((s) => s.status === 'open'),
+    baseline.startedAt,
+    tour.vehicleType
+  )
+
+  return {
+    ...tour,
+    depot: store.depot,
+    driver: store.drivers.find((d) => d.id === tour.driverId) || null,
+    progress,
+    nextStopId: next ? next.id : null,
+    stops: tour.stops.map((stop) => ({
+      ...stop,
+      address: tours.formatAddress(stop),
+      estimatedArrival: arrivals[stop.id] || null,
+    })),
+  }
+}
+
+/**
+ * Rechnet die Tour neu: optional die Reihenfolge, immer Strecke und Dauer.
+ * OSRM liefert echte Strassenwerte; ohne Netz kommen die Schaetzformeln zum
+ * Zug und `isEstimate` bleibt true, damit die Oberflaeche das kennzeichnen kann.
+ */
+async function recalculateTour(store, tour, { optimize } = {}) {
+  const open = tour.stops.filter((s) => s.status === 'open')
+  const routable = open.length > 0 ? open : tour.stops
+
+  const routed = await geo.routeTour(store.depot, routable, {
+    optimize,
+    vehicleType: tour.vehicleType,
+  })
+
+  if (routed) {
+    if (optimize && routed.order.length > 0) {
+      applyStopOrder(tour, routed.order)
+    }
+    tour.distance = routed.distance
+    tour.duration = routed.duration
+    tour.geometry = routed.geometry
+    tour.isEstimate = false
+  } else {
+    if (optimize) {
+      const ordered = tours.orderStopsNearestNeighbour(store.depot, routable)
+      applyStopOrder(
+        tour,
+        ordered.map((s) => s.id)
+      )
+    }
+    const estimate = tours.estimateTour(
+      store.depot,
+      tour.stops.filter((s) => s.status === 'open'),
+      tour.vehicleType
+    )
+    tour.distance = estimate.distance
+    tour.duration = estimate.duration
+    tour.geometry = null
+    tour.isEstimate = true
+  }
+
+  tour.routedAt = new Date().toISOString()
+  return tour
+}
+
+/** Sortiert `tour.stops` nach einer ID-Liste; nicht genannte Stopps bleiben hinten. */
+function applyStopOrder(tour, order) {
+  const rank = new Map(order.map((id, index) => [Number(id), index]))
+  tour.stops.sort((a, b) => {
+    const ra = rank.has(a.id) ? rank.get(a.id) : Number.MAX_SAFE_INTEGER
+    const rb = rank.has(b.id) ? rank.get(b.id) : Number.MAX_SAFE_INTEGER
+    return ra - rb
+  })
+}
+
+app.get(
+  '/api/deliveries/depot',
+  deliveryRoute((req, res) => {
+    res.json(getDeliveryStore().depot)
+  })
+)
+
+app.put(
+  '/api/deliveries/depot',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const body = req.body || {}
+    const depot = {
+      ...store.depot,
+      name: String(body.name || store.depot.name).trim(),
+      street: String(body.street || store.depot.street).trim(),
+      zip: String(body.zip === undefined ? store.depot.zip : body.zip).trim(),
+      city: String(body.city || store.depot.city).trim(),
+      phone: tours.normalizePhone(
+        body.phone === undefined ? store.depot.phone : body.phone
+      ),
+    }
+
+    // Koordinaten duerfen direkt gesetzt werden, wenn die Adresssuche daneben
+    // liegt. Sonst: Adresse geaendert? Koordinaten neu suchen, sonst startet die
+    // Tour am alten Ort. Ohne Koordinaten gibt es kein Depot - `Number(null)`
+    // waere 0, und jede Tour begaenne im Atlantik.
+    if (body.lat !== undefined || body.lon !== undefined) {
+      if (!tours.isNumber(body.lat) || !tours.isNumber(body.lon)) {
+        return deliveryError(
+          res,
+          400,
+          'Invalid coordinates',
+          'Koordinaten der Backstube müssen Zahlen sein.'
+        )
+      }
+      depot.lat = Number(body.lat)
+      depot.lon = Number(body.lon)
+    } else if (
+      tours.formatAddress(depot) !== tours.formatAddress(store.depot)
+    ) {
+      depot.lat = null
+      depot.lon = null
+      await ensureStopCoordinates(store, depot, { force: true })
+      if (!tours.hasCoordinates(depot)) {
+        return deliveryError(
+          res,
+          422,
+          'Address not found',
+          'Die neue Adresse der Backstube wurde nicht gefunden; die alte bleibt bestehen. Koordinaten können auch direkt als lat/lon angegeben werden.'
+        )
+      }
+    }
+
+    store.depot = depot
+    saveDeliveryStore(store)
+    res.json(depot)
+  })
+)
+
+app.get(
+  '/api/deliveries/drivers',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const { active } = req.query
+    const list =
+      active === undefined
+        ? store.drivers
+        : store.drivers.filter((d) => Boolean(d.active) === (active === 'true'))
+    res.json(list)
+  })
+)
+
+app.post(
+  '/api/deliveries/drivers',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const body = req.body || {}
+    const name = String(body.name || '').trim()
+    if (!name) {
+      return deliveryError(
+        res,
+        400,
+        'Name is required',
+        'Der Name des Fahrers ist erforderlich.'
+      )
+    }
+
+    const driver = {
+      id: nextDeliveryId(store.drivers),
+      name,
+      phone: tours.normalizePhone(body.phone),
+      vehicle: ['bike', 'car', 'van'].includes(body.vehicle)
+        ? body.vehicle
+        : 'car',
+      active: body.active === undefined ? true : Boolean(body.active),
+    }
+    store.drivers.push(driver)
+    saveDeliveryStore(store)
+    res.status(201).json(driver)
+  })
+)
+
+app.put(
+  '/api/deliveries/drivers/:id',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const driver = store.drivers.find((d) => d.id === Number(req.params.id))
+    if (!driver) {
+      return deliveryError(
+        res,
+        404,
+        'Driver not found',
+        'Dieser Fahrer existiert nicht.'
+      )
+    }
+
+    const body = req.body || {}
+    if (body.name !== undefined) {
+      const name = String(body.name).trim()
+      if (!name) {
+        return deliveryError(
+          res,
+          400,
+          'Name is required',
+          'Der Name des Fahrers ist erforderlich.'
+        )
+      }
+      driver.name = name
+    }
+    if (body.phone !== undefined)
+      driver.phone = tours.normalizePhone(body.phone)
+    if (['bike', 'car', 'van'].includes(body.vehicle))
+      driver.vehicle = body.vehicle
+    if (body.active !== undefined) driver.active = Boolean(body.active)
+
+    saveDeliveryStore(store)
+    res.json(driver)
+  })
+)
+
+/**
+ * Sucht fehlende Koordinaten aller Stopps nach. Laeuft beim Lesen, damit ein
+ * Stopp nie ohne Kartenpunkt in der Liste haengen bleibt - der Treffer landet
+ * im Cache, die Suche kostet also nur beim allerersten Mal Zeit.
+ */
+async function hydrateTours(store, list) {
+  let changed = false
+  for (const tour of list) {
+    for (const stop of tour.stops) {
+      if (tours.hasCoordinates(stop)) continue
+      const before = stop.lat
+      await ensureStopCoordinates(store, stop)
+      if (stop.lat !== before) changed = true
+    }
+  }
+  if (changed) saveDeliveryStore(store)
+  return changed
+}
+
+/**
+ * Wartet hoechstens so lange auf die Adresssuche. Dauert sie laenger -
+ * Nominatim langsam, Netz weg -, geht die Antwort ohne die fehlenden
+ * Koordinaten raus, die Suche laeuft im Hintergrund weiter und der naechste
+ * Aufruf sieht das Ergebnis. Samstags frueh muss die Liste da sein, auch wenn
+ * ein fremder Server gerade nicht antwortet - und ein neuer Stopp darf nicht
+ * 24 s auf drei Nominatim-Timeouts warten, sonst gibt das Handy vorher auf
+ * und die Backstube legt ihn ein zweites Mal an.
+ */
+const HYDRATE_BUDGET_MS = 2500
+
+function withBudget(work) {
+  let timer = null
+  const budget = new Promise((resolve) => {
+    timer = setTimeout(resolve, HYDRATE_BUDGET_MS)
+  })
+  const guarded = work
+    .catch((err) => console.warn(`Adresssuche fehlgeschlagen: ${err.message}`))
+    .finally(() => clearTimeout(timer))
+  return Promise.race([guarded, budget])
+}
+
+function hydrateWithBudget(store, list) {
+  return withBudget(hydrateTours(store, list))
+}
+
+/**
+ * Adresssuche fuer einen einzelnen Stopp mit Zeitbudget. Kommt der Treffer
+ * erst nach der Antwort, wird er nachtraeglich gespeichert.
+ */
+function locateWithBudget(store, stop, options) {
+  return withBudget(
+    ensureStopCoordinates(store, stop, options).then(() => {
+      if (tours.hasCoordinates(stop)) saveDeliveryStore(store)
+    })
+  )
+}
+
+app.get(
+  '/api/deliveries/tours',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const { date, driverId, status } = req.query
+    let list = store.tours
+
+    if (date !== undefined) {
+      if (!tours.isBusinessDate(date)) {
+        return deliveryError(
+          res,
+          400,
+          'Invalid date',
+          'Das Datum muss im Format JJJJ-MM-TT angegeben werden.'
+        )
+      }
+      list = list.filter((t) => t.date === date)
+    }
+    if (driverId !== undefined) {
+      list = list.filter((t) => t.driverId === Number(driverId))
+    }
+    if (status !== undefined) {
+      list = list.filter((t) => t.status === status)
+    }
+
+    const sorted = [...list].sort(
+      (a, b) => a.date.localeCompare(b.date) || a.id - b.id
+    )
+    await hydrateWithBudget(store, sorted)
+
+    res.json(sorted.map((tour) => decorateTour(store, tour)))
+  })
+)
+
+app.post(
+  '/api/deliveries/tours',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const body = req.body || {}
+
+    const date = body.date || tours.nextWeekday(new Date(), 6)
+    if (!tours.isBusinessDate(date)) {
+      return deliveryError(
+        res,
+        400,
+        'Invalid date',
+        'Das Datum muss im Format JJJJ-MM-TT angegeben werden.'
+      )
+    }
+
+    const driverId = tours.wholeNumber(body.driverId, 0)
+    if (driverId && !store.drivers.some((d) => d.id === driverId)) {
+      return deliveryError(
+        res,
+        400,
+        'Driver not found',
+        'Dieser Fahrer existiert nicht.'
+      )
+    }
+
+    const tour = {
+      id: nextDeliveryId(store.tours),
+      date,
+      driverId: driverId || null,
+      name: String(body.name || 'Tour').trim() || 'Tour',
+      status: 'planned',
+      plannedStart: /^\d{2}:\d{2}$/.test(body.plannedStart)
+        ? body.plannedStart
+        : '06:30',
+      vehicleType: ['bike', 'car', 'van'].includes(body.vehicleType)
+        ? body.vehicleType
+        : 'car',
+      startedAt: null,
+      finishedAt: null,
+      distance: null,
+      duration: null,
+      isEstimate: true,
+      geometry: null,
+      routedAt: null,
+      lastPosition: null,
+      stops: [],
+    }
+
+    store.tours.push(tour)
+    saveDeliveryStore(store)
+    res.status(201).json(decorateTour(store, tour))
+  })
+)
+
+app.get(
+  '/api/deliveries/tours/:id',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+    await hydrateWithBudget(store, [tour])
+    res.json(decorateTour(store, tour))
+  })
+)
+
+app.patch(
+  '/api/deliveries/tours/:id',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+
+    const body = req.body || {}
+    if (body.status !== undefined) {
+      if (!tours.TOUR_STATUS.includes(body.status)) {
+        return deliveryError(
+          res,
+          400,
+          'Invalid status',
+          'Status muss "planned", "active" oder "done" sein.'
+        )
+      }
+      if (body.status === 'active' && !tour.startedAt) {
+        tour.startedAt = new Date().toISOString()
+      }
+      if (body.status === 'done' && !tour.finishedAt) {
+        tour.finishedAt = new Date().toISOString()
+      }
+      if (body.status === 'planned') {
+        tour.startedAt = null
+        tour.finishedAt = null
+      }
+      tour.status = body.status
+    }
+    if (body.driverId !== undefined) {
+      const driverId = tours.wholeNumber(body.driverId, 0)
+      if (driverId && !store.drivers.some((d) => d.id === driverId)) {
+        return deliveryError(
+          res,
+          400,
+          'Driver not found',
+          'Dieser Fahrer existiert nicht.'
+        )
+      }
+      tour.driverId = driverId || null
+    }
+    if (body.name !== undefined)
+      tour.name = String(body.name).trim() || tour.name
+    if (/^\d{2}:\d{2}$/.test(body.plannedStart))
+      tour.plannedStart = body.plannedStart
+    if (['bike', 'car', 'van'].includes(body.vehicleType)) {
+      tour.vehicleType = body.vehicleType
+    }
+    if (Array.isArray(body.stopOrder)) {
+      applyStopOrder(tour, body.stopOrder.map(Number))
+    }
+
+    saveDeliveryStore(store)
+    res.json(decorateTour(store, tour))
+  })
+)
+
+app.delete(
+  '/api/deliveries/tours/:id',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+    store.tours = store.tours.filter((t) => t.id !== tour.id)
+    saveDeliveryStore(store)
+    res.json({ success: true, message: 'Tour gelöscht.' })
+  })
+)
+
+app.post(
+  '/api/deliveries/tours/:id/stops',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+
+    const result = tours.normalizeStopInput(req.body, null)
+    if (result.error)
+      return deliveryError(res, 400, result.error, result.message)
+
+    const stop = {
+      id: nextDeliveryId(tour.stops),
+      lat: null,
+      lon: null,
+      geocodeSource: null,
+      completedAt: null,
+      failureReason: null,
+      ...result.stop,
+    }
+
+    await locateWithBudget(store, stop, { force: true })
+    tour.stops.push(stop)
+    // Ein nachgeschobener Stopp macht eine abgeschlossene Tour wieder auf.
+    tours.syncTourStatus(tour)
+    saveDeliveryStore(store)
+    res.status(201).json(decorateTour(store, tour))
+  })
+)
+
+app.patch(
+  '/api/deliveries/tours/:id/stops/:stopId',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+    const stop = findStop(req, res, tour)
+    if (!stop) return
+
+    const result = tours.normalizeStopInput(req.body, stop)
+    if (result.error)
+      return deliveryError(res, 400, result.error, result.message)
+
+    const addressChanged =
+      tours.formatAddress(result.stop) !== tours.formatAddress(stop)
+    Object.assign(stop, result.stop)
+
+    if (addressChanged && result.stop.geocodeSource !== 'manual') {
+      stop.lat = null
+      stop.lon = null
+      stop.geocodeSource = null
+    }
+    await locateWithBudget(store, stop, { force: addressChanged })
+
+    // Erster abgehakter Stopp startet die Tour, der letzte schliesst sie ab, ein
+    // zurueckgesetzter macht sie wieder auf - der Fahrer soll dafuer keinen
+    // zweiten Knopf druecken muessen.
+    tours.syncTourStatus(tour)
+
+    saveDeliveryStore(store)
+    res.json(decorateTour(store, tour))
+  })
+)
+
+app.delete(
+  '/api/deliveries/tours/:id/stops/:stopId',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+    const stop = findStop(req, res, tour)
+    if (!stop) return
+
+    tour.stops = tour.stops.filter((s) => s.id !== stop.id)
+    // War das der letzte offene Stopp, ist die Tour jetzt fertig.
+    tours.syncTourStatus(tour)
+    saveDeliveryStore(store)
+    res.json(decorateTour(store, tour))
+  })
+)
+
+app.post(
+  '/api/deliveries/tours/:id/optimize',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+
+    // Fehlende Koordinaten noch einmal probieren - aber ohne `force`: eine
+    // Adresse, die vor zwei Minuten nicht gefunden wurde, kostet sonst bei
+    // jedem "Route berechnen" drei Nominatim-Timeouts.
+    await withBudget(hydrateTours(store, [tour]))
+
+    await recalculateTour(store, tour, {
+      optimize: req.body?.optimize !== false,
+    })
+    saveDeliveryStore(store)
+    res.json(decorateTour(store, tour))
+  })
+)
+
+app.post(
+  '/api/deliveries/tours/:id/position',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const tour = findTour(req, res, store)
+    if (!tour) return
+
+    const body = req.body || {}
+    // `isNumber`, nicht `Number.isFinite(Number(x))`: `null` waere sonst eine
+    // gueltige Position auf dem Nullmeridian.
+    if (!tours.isNumber(body.lat) || !tours.isNumber(body.lon)) {
+      return deliveryError(
+        res,
+        400,
+        'Invalid position',
+        'Position benötigt gültige Koordinaten.'
+      )
+    }
+
+    tour.lastPosition = {
+      lat: Number(body.lat),
+      lon: Number(body.lon),
+      accuracy: tours.isNumber(body.accuracy) ? Number(body.accuracy) : null,
+      speed: tours.isNumber(body.speed) ? Number(body.speed) : null,
+      at: new Date().toISOString(),
+    }
+    saveDeliveryStore(store)
+    res.json(tour.lastPosition)
+  })
+)
+
+/** Adresssuche fuer die Erfassungsmaske - ohne einen Stopp anzulegen. */
+app.post(
+  '/api/deliveries/geocode',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const address =
+      tours.formatAddress(req.body || {}) || String(req.body?.address || '')
+    if (!address.trim()) {
+      return deliveryError(
+        res,
+        400,
+        'Address is required',
+        'Es fehlt eine Adresse.'
+      )
+    }
+
+    const found = await lookupAddress(store, address, true)
+    if (!found) {
+      return deliveryError(
+        res,
+        404,
+        'Address not found',
+        'Zu dieser Adresse wurde kein Ort gefunden.'
+      )
+    }
+
+    if (found.source !== 'cache') saveDeliveryStore(store)
+    res.json(found.hit)
+  })
+)
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Bakery API server running on port ${PORT}`)
