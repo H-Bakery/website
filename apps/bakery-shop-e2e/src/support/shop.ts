@@ -145,11 +145,17 @@ export async function clearCartStorage(page: Page): Promise<void> {
 }
 
 /**
- * Pre-fills the cart through localStorage.
+ * Pre-fills the cart through localStorage — once, on the first page load of
+ * this context.
  *
  * Used by the checkout suite so each test starts from a known basket without
  * walking the catalog first; the *real* add-to-cart path is covered end to end
  * in `shop-journey.spec.ts`.
+ *
+ * The guard matters: an init script runs on *every* new document. Without it,
+ * a full page load after the order (the dev server does that under load) would
+ * quietly put the two lines back into storage, and the suite could never tell
+ * "the shop cleared the basket" from "the test re-seeded it".
  */
 export async function seedCart(
   page: Page,
@@ -168,7 +174,9 @@ export async function seedCart(
   await page.addInitScript(
     ([key, value]: [string, string]) => {
       try {
+        if (window.sessionStorage.getItem('e2e-cart-seeded')) return
         window.localStorage.setItem(key, value)
+        window.sessionStorage.setItem('e2e-cart-seeded', '1')
       } catch {
         /* ignore */
       }
