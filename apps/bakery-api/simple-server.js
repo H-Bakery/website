@@ -3,6 +3,7 @@ const cors = require('cors')
 const path = require('path')
 const fs = require('fs')
 const matter = require('gray-matter')
+const crypto = require('crypto')
 
 const app = express()
 const PORT = process.env.PORT || 5000
@@ -41,6 +42,11 @@ function loadHQProducts() {
           seasonal: data.seasonal ?? false,
           image: data.image || null,
           short_description: data.short_description || '',
+          // Pflichtangaben nach LMIV. Bewusst nur durchgereicht, nie ergaenzt:
+          // fehlende Angaben muessen im Shop als fehlend sichtbar bleiben.
+          allergens: Array.isArray(data.allergens) ? data.allergens : null,
+          allergens_source: data.allergens_source || null,
+          allergen_recipe: data.allergen_recipe || null,
           description:
             content.replace(/^\s*#[^\n]*\n+/, '').trim() ||
             data.short_description ||
@@ -91,9 +97,40 @@ app.get('/api/products', (req, res) => {
 })
 
 // --- Orders endpoints (mock) ---
+
+/**
+ * Bestell-ID fuer die URL: zufaellig und nicht erratbar.
+ *
+ * Vorher war die ID fortlaufend ('1', '2', '3'), und /api/orders/:id ist
+ * unauthentifiziert. Damit konnte jeder durch Hochzaehlen von
+ * /bestellung/1 Name, Telefonnummer und Abholzeit fremder Kundinnen und
+ * Kunden lesen (IDOR, Art. 32 DSGVO). Die fortlaufende Nummer bleibt als
+ * `orderNumber` erhalten - die steht auf dem Bon, gehoert aber nicht in die URL.
+ */
+const ORDER_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+
+function createOrderId() {
+  // Crockford-Base32: ohne I, L, O und U, damit am Telefon nichts verwechselt
+  // wird. 12 Zeichen = 60 Bit - nicht durchprobierbar, aber vorlesbar.
+  const bytes = crypto.randomBytes(12)
+  let code = ''
+  for (let i = 0; i < 12; i += 1) {
+    code += ORDER_CODE_ALPHABET[bytes[i] % ORDER_CODE_ALPHABET.length]
+  }
+  return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`
+}
+
+let orderCounter = 0
+
+function nextOrderNumber() {
+  orderCounter += 1
+  return orderCounter
+}
+
 let orders = [
   {
-    id: '1',
+    id: createOrderId(),
+    orderNumber: nextOrderNumber(),
     customerName: 'Max Mustermann',
     items: [
       { productId: 'roggenbrot', name: 'Roggenbrot', quantity: 2, price: 4.5 },
@@ -105,7 +142,8 @@ let orders = [
     updatedAt: new Date().toISOString(),
   },
   {
-    id: '2',
+    id: createOrderId(),
+    orderNumber: nextOrderNumber(),
     customerName: 'Anna Schmidt',
     items: [
       {
@@ -137,8 +175,10 @@ app.get('/api/orders/:id', (req, res) => {
 
 app.post('/api/orders', (req, res) => {
   const newOrder = {
-    id: String(orders.length + 1),
     ...req.body,
+    // Nach dem Spread, damit ein mitgeschickter Wert die ID nicht ueberschreibt.
+    id: createOrderId(),
+    orderNumber: nextOrderNumber(),
     status: 'pending',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

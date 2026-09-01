@@ -1,234 +1,90 @@
 import React from 'react'
-import { screen } from '@testing-library/react'
-import { renderWithTheme } from '@bakery/shared/test-utils'
-import RootLayout from './layout'
+import { render, screen } from '@testing-library/react'
+import RootLayout, { metadata } from './layout'
 
-// Mock the shared providers
-jest.mock('@bakery/shared/contexts', () => ({
-  RootProvider: jest.fn(({ children }) => (
-    <div data-testid="root-provider">
-      <div data-testid="theme-provider">Theme Provider Active</div>
-      <div data-testid="cart-provider">Cart Provider Active</div>
-      <div data-testid="auth-provider">Auth Provider Active</div>
-      <div data-testid="notification-provider">
-        Notification Provider Active
-      </div>
-      {children}
-    </div>
+jest.mock('../theme/ThemeRegistry', () => ({
+  __esModule: true,
+  default: jest.fn(({ children }: { children: React.ReactNode }) => (
+    <div data-testid="theme-registry">{children}</div>
   )),
 }))
 
-// Mock Next.js metadata
-jest.mock('next/font/google', () => ({
-  Inter: jest.fn(() => ({
-    className: 'inter-font',
-  })),
+jest.mock('@bakery/shared/contexts', () => ({
+  RootProvider: jest.fn(({ children }: { children: React.ReactNode }) => (
+    <div data-testid="root-provider">{children}</div>
+  )),
 }))
 
-describe('RootLayout (Shop App)', () => {
-  const mockChildren = (
-    <main data-testid="page-content">
-      <h1>Shop Page Content</h1>
-      <p>This is the page content</p>
-    </main>
-  )
+jest.mock('../components/shop-header', () => ({
+  ShopHeader: jest.fn(() => <div data-testid="shop-header" />),
+}))
 
+jest.mock('../components/shop-footer', () => ({
+  ShopFooter: jest.fn(() => <div data-testid="shop-footer" />),
+}))
+
+const pageContent = (
+  <section data-testid="page-content">
+    <h1>Shop-Inhalt</h1>
+  </section>
+)
+
+describe('RootLayout (Shop)', () => {
   beforeEach(() => {
     jest.clearAllMocks()
   })
 
-  describe('Layout Structure', () => {
-    it('renders the root HTML structure', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
+  describe('Struktur', () => {
+    it('rendert Kopfzeile, Seiteninhalt und Fußzeile', () => {
+      render(<RootLayout>{pageContent}</RootLayout>)
 
-      // Check that children are rendered
+      expect(screen.getByTestId('shop-header')).toBeInTheDocument()
       expect(screen.getByTestId('page-content')).toBeInTheDocument()
-      expect(screen.getByText('Shop Page Content')).toBeInTheDocument()
+      expect(screen.getByTestId('shop-footer')).toBeInTheDocument()
     })
 
-    it('wraps content in RootProvider for context management', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
+    it('legt den Seiteninhalt in ein <main>', () => {
+      const { container } = render(<RootLayout>{pageContent}</RootLayout>)
 
-      // Check that RootProvider is applied
-      expect(screen.getByTestId('root-provider')).toBeInTheDocument()
-
-      // Verify all context providers are active
-      expect(screen.getByTestId('theme-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('cart-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('auth-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('notification-provider')).toBeInTheDocument()
+      const main = container.querySelector('main')
+      expect(main).toContainElement(screen.getByTestId('page-content'))
+      expect(main).not.toContainElement(screen.getByTestId('shop-header'))
     })
 
-    it('renders children inside the provider structure', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
+    it('legt das MUI-Theme um alle Kontexte', () => {
+      render(<RootLayout>{pageContent}</RootLayout>)
 
-      const rootProvider = screen.getByTestId('root-provider')
-      const pageContent = screen.getByTestId('page-content')
-
-      expect(rootProvider).toContainElement(pageContent)
-      expect(pageContent).toHaveTextContent('Shop Page Content')
-      expect(pageContent).toHaveTextContent('This is the page content')
+      const registry = screen.getByTestId('theme-registry')
+      expect(registry).toContainElement(screen.getByTestId('root-provider'))
     })
   })
 
-  describe('Provider Integration', () => {
-    it('integrates RootProvider correctly', () => {
-      const { RootProvider } = require('@bakery/shared/contexts')
+  describe('Warenkorb-Konfiguration', () => {
+    it('schaltet den Mehrwertsteuer-Aufschlag ab (Bruttopreise)', () => {
+      const { RootProvider } = jest.requireMock('@bakery/shared/contexts')
+      render(<RootLayout>{pageContent}</RootLayout>)
 
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
-
-      expect(RootProvider).toHaveBeenCalledWith(
-        expect.objectContaining({
-          children: mockChildren,
-        }),
-        expect.any(Object)
-      )
-    })
-
-    it('provides all necessary contexts for shop functionality', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
-
-      // Verify all essential providers are available
-      expect(screen.getByTestId('theme-provider')).toHaveTextContent(
-        'Theme Provider Active'
-      )
-      expect(screen.getByTestId('cart-provider')).toHaveTextContent(
-        'Cart Provider Active'
-      )
-      expect(screen.getByTestId('auth-provider')).toHaveTextContent(
-        'Auth Provider Active'
-      )
-      expect(screen.getByTestId('notification-provider')).toHaveTextContent(
-        'Notification Provider Active'
+      expect(RootProvider).toHaveBeenCalled()
+      expect(RootProvider.mock.calls[0][0]).toEqual(
+        expect.objectContaining({ cart: { taxRate: 0 } })
       )
     })
   })
 
-  describe('Accessibility', () => {
-    it('provides proper document structure', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
-
-      // Content should be accessible
-      expect(screen.getByTestId('page-content')).toBeInTheDocument()
-      expect(screen.getByRole('main')).toBeInTheDocument()
+  describe('Metadaten', () => {
+    it('nennt den Online-Shop und die Vorbestellung', () => {
+      expect(metadata.title).toMatchObject({
+        default: expect.stringContaining('Online-Shop'),
+      })
+      expect(metadata.description).toContain('vorbestellen')
     })
 
-    it('maintains semantic HTML structure', () => {
-      renderWithTheme(
-        <RootLayout>
-          <header data-testid="header">Header</header>
-          <main data-testid="main">Main Content</main>
-          <footer data-testid="footer">Footer</footer>
-        </RootLayout>
-      )
+    it('verortet die Bäckerei in Homburg, nicht in Karlsruhe', () => {
+      const haystack = JSON.stringify(metadata)
 
-      expect(screen.getByTestId('header')).toBeInTheDocument()
-      expect(screen.getByTestId('main')).toBeInTheDocument()
-      expect(screen.getByTestId('footer')).toBeInTheDocument()
-    })
-  })
-
-  describe('Shop-Specific Features', () => {
-    it('enables cart functionality through provider', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
-
-      // Cart provider should be active for shop functionality
-      expect(screen.getByTestId('cart-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('cart-provider')).toHaveTextContent(
-        'Cart Provider Active'
-      )
-    })
-
-    it('enables theme management for consistent styling', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
-
-      // Theme provider should be active for Material UI theming
-      expect(screen.getByTestId('theme-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('theme-provider')).toHaveTextContent(
-        'Theme Provider Active'
-      )
-    })
-
-    it('enables authentication for potential user features', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
-
-      // Auth provider should be available for login/user features
-      expect(screen.getByTestId('auth-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('auth-provider')).toHaveTextContent(
-        'Auth Provider Active'
-      )
-    })
-
-    it('enables notifications for user feedback', () => {
-      renderWithTheme(<RootLayout>{mockChildren}</RootLayout>)
-
-      // Notification provider should be active for user feedback
-      expect(screen.getByTestId('notification-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('notification-provider')).toHaveTextContent(
-        'Notification Provider Active'
-      )
-    })
-  })
-
-  describe('Multiple Children Support', () => {
-    it('handles multiple child components', () => {
-      const multipleChildren = (
-        <>
-          <header data-testid="child-header">Shop Header</header>
-          <main data-testid="child-main">Shop Main</main>
-          <footer data-testid="child-footer">Shop Footer</footer>
-        </>
-      )
-
-      renderWithTheme(<RootLayout>{multipleChildren}</RootLayout>)
-
-      expect(screen.getByTestId('child-header')).toBeInTheDocument()
-      expect(screen.getByTestId('child-main')).toBeInTheDocument()
-      expect(screen.getByTestId('child-footer')).toBeInTheDocument()
-    })
-
-    it('handles complex nested components', () => {
-      const complexChildren = (
-        <div data-testid="page-wrapper">
-          <nav data-testid="navigation">
-            <ul>
-              <li>
-                <a href="/products">Products</a>
-              </li>
-              <li>
-                <a href="/cart">Cart</a>
-              </li>
-            </ul>
-          </nav>
-          <main data-testid="content">
-            <section data-testid="hero">Hero Section</section>
-            <section data-testid="products">Products Section</section>
-          </main>
-        </div>
-      )
-
-      renderWithTheme(<RootLayout>{complexChildren}</RootLayout>)
-
-      expect(screen.getByTestId('page-wrapper')).toBeInTheDocument()
-      expect(screen.getByTestId('navigation')).toBeInTheDocument()
-      expect(screen.getByTestId('content')).toBeInTheDocument()
-      expect(screen.getByTestId('hero')).toBeInTheDocument()
-      expect(screen.getByTestId('products')).toBeInTheDocument()
-    })
-  })
-
-  describe('Error Boundaries', () => {
-    it('continues to render even if children have errors', () => {
-      // This test ensures the layout is robust
-      renderWithTheme(
-        <RootLayout>
-          <div data-testid="safe-content">Safe content</div>
-        </RootLayout>
-      )
-
-      // Provider structure should still be intact
-      expect(screen.getByTestId('root-provider')).toBeInTheDocument()
-      expect(screen.getByTestId('safe-content')).toBeInTheDocument()
+      expect(haystack).toContain('Homburg')
+      expect(haystack).not.toContain('Karlsruhe')
+      expect(haystack).not.toContain('Beiertheim')
     })
   })
 })

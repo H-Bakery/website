@@ -9,6 +9,10 @@ export default {
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   moduleNameMapper: {
+    // ESM-only Pakete, die jest nicht transformiert. Sie hängen über das
+    // Barrel `@bakery/shared/ui` (markdown-display) an fast jedem Import.
+    '^react-markdown$': '<rootDir>/__mocks__/markdownMock.js',
+    '^remark-gfm$': '<rootDir>/__mocks__/markdownMock.js',
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
       '<rootDir>/__mocks__/fileMock.js',

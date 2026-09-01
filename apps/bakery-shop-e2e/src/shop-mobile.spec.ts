@@ -1,229 +1,160 @@
-import { test, expect, devices } from '@playwright/test'
+/**
+ * @fileoverview Der Shop am Telefon (Pixel 5, 393 px).
+ *
+ * Läuft im Playwright-Projekt `mobile` — ein echtes Mobilgerät-Profil mit
+ * Touch, nicht bloß ein schmales Desktop-Fenster.
+ */
 
-test.use({
-  ...devices['iPhone 12'],
+import { expect, test, type Page } from '@playwright/test'
+
+import {
+  expectCartCount,
+  clearCartStorage,
+  fetchProducts,
+  productCards,
+  type ApiProduct,
+} from './support/shop'
+
+let products: ApiProduct[]
+
+test.beforeAll(async () => {
+  products = await fetchProducts()
 })
 
-test.describe('Shop Mobile Experience', () => {
-  test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page }) => {
+  await clearCartStorage(page)
+})
+
+/** Breite der Seite gegen die Breite des Fensters — kein Querscrollen. */
+async function horizontalOverflow(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const root = document.documentElement
+    return root.scrollWidth - root.clientWidth
+  })
+}
+
+test.describe('Shop am Telefon', () => {
+  test('läuft im Mobilprofil mit Touch', async ({ page, isMobile }) => {
+    expect(isMobile).toBe(true)
     await page.goto('/')
+    expect(page.viewportSize()?.width).toBeLessThanOrEqual(400)
+    expect(await page.evaluate(() => 'ontouchstart' in window)).toBe(true)
   })
 
-  test('should have mobile-optimized navigation', async ({ page }) => {
-    // Mobile menu should be visible
-    await expect(
-      page.locator('[data-testid="mobile-menu-button"]')
-    ).toBeVisible()
-
-    // Desktop navigation should be hidden
-    await expect(
-      page.locator('[data-testid="desktop-navigation"]')
-    ).toBeHidden()
-
-    // Open mobile menu
-    await page.click('[data-testid="mobile-menu-button"]')
-    await expect(page.locator('[data-testid="mobile-menu"]')).toBeVisible()
-
-    // Check mobile menu items
-    await expect(
-      page.locator('[data-testid="mobile-menu"] >> text=Products')
-    ).toBeVisible()
-    await expect(
-      page.locator('[data-testid="mobile-menu"] >> text=Cart')
-    ).toBeVisible()
-    await expect(
-      page.locator('[data-testid="mobile-menu"] >> text=Account')
-    ).toBeVisible()
-
-    // Navigate to products via mobile menu
-    await page.click('[data-testid="mobile-menu"] >> text=Products')
-    await expect(page).toHaveURL('/products')
-    await expect(page.locator('[data-testid="mobile-menu"]')).toBeHidden()
-  })
-
-  test('should have touch-friendly product cards', async ({ page }) => {
+  test('Kopfzeile: Marke, Suche und Warenkorb sind erreichbar', async ({
+    page,
+  }) => {
     await page.goto('/products')
 
-    // Product cards should be properly sized for mobile
-    const productCard = page.locator('[data-testid="product-card"]').first()
-    const cardBox = await productCard.boundingBox()
+    const header = page.getByTestId('shop-header')
+    await expect(header).toBeVisible()
+    await expect(page.getByTestId('shop-search')).toBeVisible()
+    await expect(page.getByTestId('shop-search-input')).toBeVisible()
+    await expect(page.getByTestId('cart-link')).toBeVisible()
+    await expectCartCount(page, 0)
 
-    // Card should take most of the viewport width
-    expect(cardBox?.width).toBeGreaterThan(300)
+    // Kein Element der Kopfzeile ragt aus dem Fenster.
+    const viewport = page.viewportSize()?.width ?? 0
+    const box = await header.boundingBox()
+    expect(box).not.toBeNull()
+    expect((box?.x ?? 0) + (box?.width ?? 0)).toBeLessThanOrEqual(viewport + 1)
 
-    // Add to cart button should be large enough for touch
-    const addToCartButton = productCard.locator('[data-testid="add-to-cart"]')
-    const buttonBox = await addToCartButton.boundingBox()
-
-    // Button should be at least 44x44 pixels (iOS touch target guidelines)
-    expect(buttonBox?.height).toBeGreaterThanOrEqual(44)
-    expect(buttonBox?.width).toBeGreaterThanOrEqual(44)
-  })
-
-  test('should have mobile-optimized cart', async ({ page }) => {
-    // Add a product first
-    await page.goto('/products')
-    await page
-      .locator('[data-testid="product-card"]')
-      .first()
-      .locator('[data-testid="add-to-cart"]')
-      .click()
-
-    // Navigate to cart
-    await page.click('[data-testid="cart-button"]')
-
-    // Cart items should be stacked vertically on mobile
-    const cartItems = page.locator('[data-testid="cart-item"]')
-    await expect(cartItems).toHaveCount(1)
-
-    // Quantity controls should be touch-friendly
-    const incrementButton = cartItems
-      .first()
-      .locator('[data-testid="quantity-increment"]')
-    const decrementButton = cartItems
-      .first()
-      .locator('[data-testid="quantity-decrement"]')
-
-    const incrementBox = await incrementButton.boundingBox()
-    const decrementBox = await decrementButton.boundingBox()
-
-    // Touch targets should be at least 44x44 pixels
-    expect(incrementBox?.height).toBeGreaterThanOrEqual(44)
-    expect(incrementBox?.width).toBeGreaterThanOrEqual(44)
-    expect(decrementBox?.height).toBeGreaterThanOrEqual(44)
-    expect(decrementBox?.width).toBeGreaterThanOrEqual(44)
-  })
-
-  test('should have mobile-friendly checkout form', async ({ page }) => {
-    // Add a product and go to checkout
-    await page.goto('/products')
-    await page
-      .locator('[data-testid="product-card"]')
-      .first()
-      .locator('[data-testid="add-to-cart"]')
-      .click()
-    await page.click('[data-testid="cart-button"]')
-    await page.click('[data-testid="checkout-button"]')
-
-    // Form inputs should be properly sized for mobile
-    const nameInput = page.locator('[data-testid="customer-name"]')
-    const emailInput = page.locator('[data-testid="customer-email"]')
-    const phoneInput = page.locator('[data-testid="customer-phone"]')
-
-    // Check that inputs are visible and have appropriate attributes
-    await expect(nameInput).toBeVisible()
-    await expect(emailInput).toBeVisible()
-    await expect(phoneInput).toBeVisible()
-
-    // Phone input should have tel type for mobile keyboard
-    await expect(phoneInput).toHaveAttribute('type', 'tel')
-
-    // Email input should have email type for mobile keyboard
-    await expect(emailInput).toHaveAttribute('type', 'email')
-
-    // Form should be scrollable
-    const form = page.locator('form')
-    const formBox = await form.boundingBox()
-    const viewportSize = page.viewportSize()
-
-    // Form might be taller than viewport on mobile
-    expect(formBox?.height).toBeDefined()
-  })
-
-  test('should have sticky mobile cart button', async ({ page }) => {
-    await page.goto('/products')
-
-    // Cart button should be visible
-    const cartButton = page.locator('[data-testid="cart-button"]')
-    await expect(cartButton).toBeVisible()
-
-    // Scroll down
-    await page.evaluate(() => window.scrollBy(0, 500))
-
-    // Cart button should still be visible (sticky/fixed)
-    await expect(cartButton).toBeVisible()
-
-    // Add product to cart
-    await page
-      .locator('[data-testid="product-card"]')
-      .first()
-      .locator('[data-testid="add-to-cart"]')
-      .click()
-
-    // Badge should update and be visible
+    // Die Suche der Kopfzeile führt in den gefilterten Katalog.
+    await page.getByTestId('shop-search-input').fill('Kornbrot')
+    await page.getByTestId('shop-search-input').press('Enter')
+    await expect(page).toHaveURL(/\/products\?q=Kornbrot/)
     await expect(
-      page.locator('[data-testid="cart-button-badge"]')
-    ).toContainText('1')
+      productCards(page).first().getByTestId('product-card-name')
+    ).toContainText('Kornbrot')
   })
 
-  test('should handle swipe gestures for product images', async ({ page }) => {
-    // Navigate to product detail
+  test('Kategorieleiste scrollt seitlich statt zu stapeln', async ({
+    page,
+  }) => {
+    await page.goto('/')
+
+    const nav = page.getByTestId('shop-category-nav')
+    await expect(nav).toBeVisible()
+
+    const metrics = await nav.evaluate((element) => ({
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      clientHeight: element.clientHeight,
+      overflowX: getComputedStyle(element).overflowX,
+    }))
+
+    // Acht Links passen nicht in 393 px: sie müssen scrollen …
+    expect(metrics.overflowX).toBe('auto')
+    expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth)
+    // … und dabei eine einzige Zeile bleiben, nicht acht übereinander.
+    expect(metrics.clientHeight).toBeLessThan(64)
+
+    const scrolled = await nav.evaluate((element) => {
+      element.scrollLeft = 200
+      return element.scrollLeft
+    })
+    expect(scrolled).toBeGreaterThan(0)
+  })
+
+  test('Produktraster zeigt zwei Spalten', async ({ page }) => {
     await page.goto('/products')
-    await page.locator('[data-testid="product-card"]').first().click()
+    await expect(page.getByTestId('product-grid')).toBeVisible()
 
-    // Product image gallery should be visible
-    const imageGallery = page.locator('[data-testid="product-image-gallery"]')
-    await expect(imageGallery).toBeVisible()
+    const columns = await page
+      .getByTestId('product-grid')
+      .evaluate((element) =>
+        getComputedStyle(element).gridTemplateColumns.trim().split(/\s+/)
+      )
+    expect(columns).toHaveLength(2)
 
-    // Simulate swipe (if multiple images)
-    const images = page.locator('[data-testid="product-image"]')
-    const imageCount = await images.count()
+    // Beide Spalten sind gleich breit und passen nebeneinander ins Fenster.
+    const [left, right] = columns.map((value) => Number.parseFloat(value))
+    expect(left).toBeCloseTo(right, 0)
+    expect(left * 2).toBeLessThan(page.viewportSize()?.width ?? 0)
+  })
 
-    if (imageCount > 1) {
-      // Swipe to next image
-      await imageGallery.swipe('left')
-
-      // Check that next image is visible
-      await expect(images.nth(1)).toBeVisible()
+  test.describe('kein waagerechtes Überlaufen', () => {
+    for (const path of [
+      '/',
+      '/products',
+      '/products?category=torten',
+      '/cart',
+      '/kasse',
+    ]) {
+      test(`auf ${path}`, async ({ page }) => {
+        await page.goto(path)
+        await expect(page.getByTestId('shop-header')).toBeVisible()
+        expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0)
+      })
     }
+
+    test('auf der Produktdetailseite', async ({ page }) => {
+      await page.goto(`/products/${products[0].id}`)
+      await expect(page.getByTestId('product-detail')).toBeVisible()
+      expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0)
+    })
   })
 
-  test('should have mobile-optimized search', async ({ page }) => {
+  test('In den Warenkorb legen funktioniert per Touch', async ({ page }) => {
     await page.goto('/products')
 
-    // Search should be accessible on mobile
-    const searchButton = page.locator('[data-testid="mobile-search-button"]')
-    await expect(searchButton).toBeVisible()
+    const card = productCards(page).nth(1)
+    const button = card.getByTestId('add-to-cart')
+    // Mittig ins Bild scrollen, damit die klebende Kopfzeile nicht im Weg ist.
+    await button.evaluate((element) =>
+      element.scrollIntoView({ block: 'center' })
+    )
+    await button.tap()
 
-    // Click search button to open search overlay
-    await searchButton.click()
+    await expectCartCount(page, 1)
+    await expect(button).toContainText('Hinzugefügt')
 
-    const searchOverlay = page.locator('[data-testid="search-overlay"]')
-    await expect(searchOverlay).toBeVisible()
-
-    const searchInput = searchOverlay.locator('[data-testid="search-input"]')
-    await expect(searchInput).toBeVisible()
-    await expect(searchInput).toBeFocused()
-
-    // Type search query
-    await searchInput.fill('Brot')
-    await searchInput.press('Enter')
-
-    // Search overlay should close and results should be shown
-    await expect(searchOverlay).toBeHidden()
-    await expect(page.locator('[data-testid="product-card"]')).toHaveCount(5) // Bread products
-  })
-
-  test('should have bottom navigation on mobile', async ({ page }) => {
-    // Bottom navigation should be visible
-    const bottomNav = page.locator('[data-testid="mobile-bottom-nav"]')
-    await expect(bottomNav).toBeVisible()
-
-    // Check navigation items
-    await expect(bottomNav.locator('[data-testid="nav-home"]')).toBeVisible()
+    await page.getByTestId('cart-link').tap()
+    await expect(page.getByTestId('cart-page')).toBeVisible()
+    await expect(page.getByTestId('cart-item')).toHaveCount(1)
     await expect(
-      bottomNav.locator('[data-testid="nav-products"]')
-    ).toBeVisible()
-    await expect(bottomNav.locator('[data-testid="nav-cart"]')).toBeVisible()
-    await expect(bottomNav.locator('[data-testid="nav-account"]')).toBeVisible()
-
-    // Navigate using bottom nav
-    await bottomNav.locator('[data-testid="nav-products"]').click()
-    await expect(page).toHaveURL('/products')
-
-    // Active state should be visible
-    await expect(
-      bottomNav.locator('[data-testid="nav-products"]')
-    ).toHaveAttribute('data-active', 'true')
+      page.getByTestId('cart-item').first().getByTestId('cart-item-quantity')
+    ).toHaveText('1')
+    expect(await horizontalOverflow(page)).toBeLessThanOrEqual(0)
   })
 })

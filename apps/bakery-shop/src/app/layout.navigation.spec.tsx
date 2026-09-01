@@ -1,237 +1,123 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
-import { ThemeProvider, createTheme } from '@mui/material/styles'
-import useMediaQuery from '@mui/material/useMediaQuery'
-import { AppNavigation, Breadcrumbs } from '@bakery/shared/ui'
+import { render, screen, fireEvent, act } from '@testing-library/react'
+import { ThemeProvider } from '@mui/material/styles'
+import { CartProvider, useCart } from '@bakery/shared/contexts'
+import { toCartProduct } from '@bakery/shared/data-access'
+import type { ShopProduct } from '@bakery/shared/data-access'
+import { shopTheme } from '../theme/theme'
+import { ShopHeader } from '../components/shop-header'
+import { ShopFooter } from '../components/shop-footer'
 
-// Mock Next.js router
-jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: jest.fn(),
-    pathname: '/products',
-    asPath: '/products',
-  }),
-  usePathname: () => '/products',
-}))
+/**
+ * Integrationstest der Ladenchrome: Kopf- und Fußzeile zusammen, mit dem
+ * echten Warenkorb-Kontext. Geprüft wird, dass der Zähler im Header
+ * tatsächlich am Warenkorb hängt und dass die Landmarks stimmen.
+ */
 
-// Mock Material UI useMediaQuery
-jest.mock('@mui/material/useMediaQuery')
-const mockUseMediaQuery = useMediaQuery as jest.MockedFunction<
-  typeof useMediaQuery
->
-
-// Test theme
-const theme = createTheme()
-
-// Render helper with theme
-function renderWithTheme(ui: React.ReactElement) {
-  return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>)
+const BROT: ShopProduct = {
+  id: 'kornbrot-500g',
+  numericId: 1,
+  name: 'Kornbrot 500g',
+  category: 'brot',
+  price: 2.5,
+  available: true,
+  seasonal: false,
+  image: '/assets/images/products/kornbrot.svg',
+  shortDescription: 'Kräftiges Kornbrot',
+  description: 'Kräftiges Kornbrot aus eigener Herstellung.',
 }
 
-describe('Shop App Navigation Integration', () => {
+function AddToCartProbe() {
+  const { addToCart, clearCart } = useCart()
+  return (
+    <>
+      <button type="button" onClick={() => addToCart(toCartProduct(BROT), 2)}>
+        Testartikel hinzufügen
+      </button>
+      <button type="button" onClick={() => clearCart()}>
+        Testwarenkorb leeren
+      </button>
+    </>
+  )
+}
+
+function renderChrome() {
+  return render(
+    <ThemeProvider theme={shopTheme}>
+      <CartProvider enablePersistence={false} taxRate={0}>
+        <ShopHeader />
+        <main>
+          <AddToCartProbe />
+        </main>
+        <ShopFooter />
+      </CartProvider>
+    </ThemeProvider>
+  )
+}
+
+describe('Shop-Chrome', () => {
   beforeEach(() => {
-    jest.clearAllMocks()
-    mockUseMediaQuery.mockReturnValue(false) // Default to desktop
+    window.history.replaceState({}, '', '/')
   })
 
-  describe('AppNavigation in Shop Context', () => {
-    it('should render shop navigation with correct branding', () => {
-      renderWithTheme(<AppNavigation app="shop" />)
+  it('rendert Kopfzeile, Inhalt und Fußzeile', () => {
+    renderChrome()
 
-      expect(screen.getByText('Online Shop')).toBeInTheDocument()
-      expect(screen.getByTestId('StoreIcon')).toBeInTheDocument()
-    })
-
-    it('should render shop-specific navigation items', () => {
-      renderWithTheme(<AppNavigation app="shop" />)
-
-      expect(screen.getByRole('link', { name: 'Products' })).toHaveAttribute(
-        'href',
-        '/products'
-      )
-      expect(screen.getByRole('link', { name: 'Cart' })).toHaveAttribute(
-        'href',
-        '/cart'
-      )
-      expect(screen.getByRole('link', { name: 'Account' })).toHaveAttribute(
-        'href',
-        '/account'
-      )
-    })
-
-    it('should use secondary color scheme for shop app', () => {
-      renderWithTheme(<AppNavigation app="shop" />)
-
-      const appBar = screen.getByRole('banner')
-      expect(appBar).toHaveClass('MuiAppBar-colorSecondary')
-    })
-
-    it('should work with mobile responsive behavior', () => {
-      mockUseMediaQuery.mockReturnValue(true) // Mobile view
-      renderWithTheme(<AppNavigation app="shop" />)
-
-      // Should show mobile menu button
-      expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument()
-
-      // Navigation links should not be directly visible
-      const navButtons = screen
-        .queryAllByRole('link')
-        .filter((button) => !button.closest('[role="menu"]'))
-      expect(navButtons).toHaveLength(0)
-    })
-
-    it('should handle mobile menu interactions', async () => {
-      mockUseMediaQuery.mockReturnValue(true) // Mobile view
-      renderWithTheme(<AppNavigation app="shop" />)
-
-      const menuButton = screen.getByRole('button', { name: /menu/i })
-      fireEvent.click(menuButton)
-
-      await waitFor(() => {
-        expect(screen.getByRole('menu')).toBeInTheDocument()
-      })
-
-      // Check navigation items in mobile menu
-      const menu = screen.getByRole('menu')
-      expect(menu).toContainElement(
-        screen.getByRole('menuitem', { name: 'Products' })
-      )
-      expect(menu).toContainElement(
-        screen.getByRole('menuitem', { name: 'Cart' })
-      )
-      expect(menu).toContainElement(
-        screen.getByRole('menuitem', { name: 'Account' })
-      )
-    })
+    expect(screen.getByTestId('shop-header')).toBeInTheDocument()
+    expect(screen.getByRole('main')).toBeInTheDocument()
+    expect(screen.getByTestId('shop-footer')).toBeInTheDocument()
   })
 
-  describe('Breadcrumbs in Shop Context', () => {
-    it('should render breadcrumbs for shop product page', () => {
-      renderWithTheme(<Breadcrumbs pathname="/products/bread" app="shop" />)
+  it('stellt Such- und Kategorie-Landmarks bereit', () => {
+    renderChrome()
 
-      expect(screen.getByRole('navigation')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
-        'href',
-        '/'
-      )
-      expect(screen.getByRole('link', { name: 'Products' })).toHaveAttribute(
-        'href',
-        '/products'
-      )
-      expect(screen.getByText('Bread')).toBeInTheDocument()
-    })
-
-    it('should not render breadcrumbs for simple paths', () => {
-      const { container } = renderWithTheme(
-        <Breadcrumbs pathname="/" app="shop" />
-      )
-
-      expect(container.firstChild).toBeNull()
-    })
-
-    it('should show home icon in breadcrumbs', () => {
-      renderWithTheme(<Breadcrumbs pathname="/products" app="shop" />)
-
-      expect(screen.getByTestId('HomeIcon')).toBeInTheDocument()
-    })
-
-    it('should work with container styling', () => {
-      renderWithTheme(
-        <Breadcrumbs pathname="/products" app="shop" showContainer={true} />
-      )
-
-      const navigation = screen.getByRole('navigation')
-      expect(navigation).toBeInTheDocument()
-    })
+    expect(screen.getByRole('search')).toBeInTheDocument()
+    expect(
+      screen.getByRole('navigation', { name: 'Produktkategorien' })
+    ).toBeInTheDocument()
   })
 
-  describe('Navigation Components Integration', () => {
-    it('should work together in a complete shop layout', () => {
-      const ShopLayout = () => (
-        <div>
-          <AppNavigation app="shop">
-            <button>Cart (2)</button>
-          </AppNavigation>
-          <Breadcrumbs
-            pathname="/products/bread"
-            app="shop"
-            showContainer={true}
-          />
-          <main>
-            <h1>Product Page</h1>
-          </main>
-        </div>
+  it('zählt hinzugefügte Artikel im Warenkorb-Badge mit', () => {
+    renderChrome()
+
+    expect(screen.getByTestId('cart-badge')).not.toHaveTextContent('2')
+
+    act(() => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Testartikel hinzufügen' })
       )
-
-      renderWithTheme(<ShopLayout />)
-
-      // Navigation should be present
-      expect(screen.getByText('Online Shop')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'Products' })).toBeInTheDocument()
-
-      // Custom content should be rendered
-      expect(
-        screen.getByRole('button', { name: 'Cart (2)' })
-      ).toBeInTheDocument()
-
-      // Breadcrumbs should be present
-      expect(screen.getByRole('link', { name: 'Products' })).toHaveAttribute(
-        'href',
-        '/products'
-      )
-      expect(screen.getByText('Bread')).toBeInTheDocument()
-
-      // Main content should be present
-      expect(
-        screen.getByRole('heading', { name: 'Product Page' })
-      ).toBeInTheDocument()
     })
 
-    it('should maintain consistent theme across navigation components', () => {
-      const ShopLayout = () => (
-        <div>
-          <AppNavigation app="shop" />
-          <Breadcrumbs pathname="/products" app="shop" />
-        </div>
+    expect(screen.getByTestId('cart-badge')).toHaveTextContent('2')
+    expect(screen.getByTestId('cart-link')).toHaveAttribute(
+      'aria-label',
+      'Warenkorb, 2 Artikel'
+    )
+
+    act(() => {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Testwarenkorb leeren' })
       )
-
-      renderWithTheme(<ShopLayout />)
-
-      // Both components should be rendered without theme conflicts
-      expect(screen.getByRole('banner')).toBeInTheDocument() // AppBar
-      expect(screen.getByRole('navigation')).toBeInTheDocument() // Breadcrumbs
     })
+
+    expect(screen.getByTestId('cart-link')).toHaveAttribute(
+      'aria-label',
+      'Warenkorb, 0 Artikel'
+    )
   })
 
-  describe('Accessibility Integration', () => {
-    it('should provide proper navigation landmarks', () => {
-      const ShopLayout = () => (
-        <div>
-          <AppNavigation app="shop" />
-          <Breadcrumbs pathname="/products" app="shop" />
-        </div>
-      )
+  it('bietet im Shop keinen WhatsApp-Bestellweg an', () => {
+    renderChrome()
 
-      renderWithTheme(<ShopLayout />)
+    expect(screen.queryByText(/WhatsApp/i)).not.toBeInTheDocument()
+    expect(document.querySelector('a[href*="wa.me"]')).not.toBeInTheDocument()
+  })
 
-      // Should have banner for main navigation
-      expect(screen.getByRole('banner')).toBeInTheDocument()
+  it('macht die Suche per Tastatur bedienbar', () => {
+    renderChrome()
 
-      // Should have navigation for breadcrumbs
-      expect(screen.getByRole('navigation')).toBeInTheDocument()
-
-      // Breadcrumbs should have proper aria-label
-      expect(screen.getByLabelText('breadcrumb')).toBeInTheDocument()
-    })
-
-    it('should handle keyboard navigation properly', () => {
-      renderWithTheme(<AppNavigation app="shop" />)
-
-      const productsLink = screen.getByRole('link', { name: 'Products' })
-
-      // Should be focusable
-      productsLink.focus()
-      expect(document.activeElement).toBe(productsLink)
-    })
+    const input = screen.getByTestId('shop-search-input')
+    act(() => input.focus())
+    expect(document.activeElement).toBe(input)
   })
 })
