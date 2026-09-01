@@ -308,7 +308,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-bakery-shop
-          path: dist/apps/bakery-shop/
+          # The build job uploads two paths, so upload-artifact roots the
+          # archive at the workspace root: it already contains
+          # dist/apps/bakery-shop/... - unpack it in place.
+          path: .
 
       # Lighthouse needs a running server; nothing else in this job starts one.
       - name: Serve shop build
