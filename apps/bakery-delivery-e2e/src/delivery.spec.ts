@@ -8,7 +8,10 @@ import { expect, test } from '@playwright/test'
  * raeumen sie wieder weg, damit sie den Liefer-Store nicht vollmuellen.
  */
 
-const API = process.env['API_URL'] || 'http://localhost:5000'
+// Muss zu `playwright.config.ts` passen: API_URL, sonst API_PORT, sonst 5000.
+const API =
+  process.env['API_URL'] ||
+  `http://localhost:${process.env['API_PORT'] || '5000'}`
 
 test.describe('Liefertour', () => {
   test('zeigt Kopf und Bedienelemente der Tour', async ({ page }) => {

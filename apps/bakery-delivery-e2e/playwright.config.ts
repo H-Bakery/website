@@ -7,6 +7,10 @@ import { workspaceRoot } from '@nx/devkit'
 const PORT = process.env['DELIVERY_PORT'] || '4300'
 const API_PORT = process.env['API_PORT'] || '5000'
 const baseURL = process.env['BASE_URL'] || `http://localhost:${PORT}`
+// Dieselbe Adresse fuer die App (eingebacken als NEXT_PUBLIC_API_URL) und fuer
+// die direkten API-Aufrufe der Tests - sonst redet die App mit Port 5000,
+// waehrend der Test seine Tour auf API_PORT anlegt.
+const apiURL = process.env['API_URL'] || `http://localhost:${API_PORT}`
 
 export default defineConfig({
   ...nxE2EPreset(__filename, { testDir: './src' }),
@@ -34,6 +38,7 @@ export default defineConfig({
       reuseExistingServer: true,
       cwd: workspaceRoot,
       timeout: 120_000,
+      env: { NEXT_PUBLIC_API_URL: apiURL },
     },
   ],
   projects: [
