@@ -11,13 +11,6 @@
         "command": "node dist/apps/bakery-api/src/main.js"
       }
     },
-    "serve-simple": {
-      "executor": "nx:run-commands",
-      "dependsOn": ["build"],
-      "options": {
-        "command": "node dist/apps/bakery-api/src/main-simple.js"
-      }
-    },
     "serve-legacy": {
       "executor": "nx:run-commands",
       "options": {

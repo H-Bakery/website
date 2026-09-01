@@ -26,34 +26,14 @@
       }
     },
     "build": {
-      "executor": "@nx/next:build",
-      "outputs": ["{projectRoot}/.next"],
-      "defaultConfiguration": "production",
+      "executor": "nx:run-commands",
+      "outputs": ["{projectRoot}/out"],
       "options": {
-        "outputPath": "dist/apps/bakery-landing"
+        "cwd": "apps/bakery-landing",
+        "command": "node scripts/generate-sitemap.js && NX_STANDALONE_BUILD=1 npx next build"
       },
-      "configurations": {
-        "development": {
-          "optimization": false,
-          "outputHashing": "none",
-          "sourceMap": true,
-          "extractCss": true
-        },
-        "production": {
-          "fileReplacements": [
-            {
-              "replace": "apps/bakery-landing/src/environments/environment.ts",
-              "with": "apps/bakery-landing/src/environments/environment.prod.ts"
-            }
-          ],
-          "optimization": true,
-          "outputHashing": "all",
-          "sourceMap": false,
-          "extractCss": true,
-          "namedChunks": false,
-          "extractLicenses": true,
-          "vendorChunk": false
-        }
+      "metadata": {
+        "description": "Static export to apps/bakery-landing/out. Uses the standalone path: withNx() builds a nested Nx project graph inside `next build`, which fails on CI, and the landing app imports no workspace libs at build time, so it needs nothing withNx provides."
       }
     },
     "test": {

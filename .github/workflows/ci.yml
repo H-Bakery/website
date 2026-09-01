@@ -139,6 +139,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build shop application
+        env:
+          # Same pair as in the build job below, for the same two reasons.
+          NX_ISOLATE_PLUGINS: 'false'
+          NODE_ENV: production
         run: npx nx build bakery-shop --configuration=production
 
       - name: Run E2E tests
@@ -173,6 +177,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build management application
+        env:
+          # Same pair as in the build job below, for the same two reasons.
+          NX_ISOLATE_PLUGINS: 'false'
+          NODE_ENV: production
         run: npx nx build bakery-management --configuration=production
 
       - name: Run E2E tests
@@ -207,6 +215,10 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       - name: Build landing application
+        env:
+          # Same pair as in the build job below, for the same two reasons.
+          NX_ISOLATE_PLUGINS: 'false'
+          NODE_ENV: production
         run: npx nx build bakery-landing --configuration=production
 
       - name: Run E2E tests
@@ -222,7 +234,12 @@ jobs:
 
   # Build applications
   build:
-    needs: [quality, test-unit]
+    # Bewusst nicht an test-unit gehaengt: ob eine App ueberhaupt baut, ist von
+    # fehlschlagenden Tests unabhaengig. Solange build hinter test-unit haengt,
+    # verdeckt jeder rote Test den Build-Status komplett (er wird uebersprungen) -
+    # genau so blieb der kaputte Projektgraph unbemerkt. ci-status aggregiert
+    # weiterhin beides, das Gesamturteil des PR aendert sich also nicht.
+    needs: [quality]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -241,13 +258,34 @@ jobs:
         run: npm ci
 
       - name: Build ${{ matrix.app }}
+        env:
+          # withNx() creates a *nested* Nx project graph from inside `next build`.
+          # With plugins isolated in worker processes that crashes the IPC layer
+          # ("Could not create project graph"), which is what kept every Next app
+          # build red. Running the graph plugins in-process avoids it.
+          NX_ISOLATE_PLUGINS: 'false'
+          # In-process plugins have a side effect on a cold graph cache (every CI
+          # run): @nx/vite/plugin calls Vite's resolveConfig(), which sets
+          # process.env.NODE_ENV=development in the Nx process when it is unset.
+          # `next build` inherits that, compiles against development React and
+          # dies in prerender with "Cannot read properties of null (reading
+          # 'useState')". Pin the production value so the leak cannot reach it.
+          NODE_ENV: production
         run: npx nx build ${{ matrix.app }} --configuration=production
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.app }}
-          path: dist/apps/${{ matrix.app }}/
+          # bakery-landing is a static export and lands in the project dir, not dist/.
+          path: |
+            dist/apps/${{ matrix.app }}/
+            apps/${{ matrix.app }}/out/
+          # The Next.js build lives in a hidden `.next/` directory, which
+          # upload-artifact@v4 drops by default - the artifact would hold only
+          # next.config.js, package.json and public/.
+          include-hidden-files: true
+          if-no-files-found: error
           retention-days: 7
 
   # Bundle size analysis
@@ -270,10 +308,23 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: build-bakery-shop
-          path: dist/apps/bakery-shop/
+          # The build job uploads two paths, so upload-artifact roots the
+          # archive at the workspace root: it already contains
+          # dist/apps/bakery-shop/... - unpack it in place.
+          path: .
+
+      # Lighthouse needs a running server; nothing else in this job starts one.
+      - name: Serve shop build
+        run: |
+          NODE_ENV=production npx next start dist/apps/bakery-shop -p 3000 &
+          for i in $(seq 1 60); do
+            curl -sf -o /dev/null http://localhost:3000 && break
+            sleep 1
+          done
+          curl -sf -o /dev/null http://localhost:3000
 
       - name: Analyze bundle size
-        uses: treosh/lighthouse-ci-action@v10
+        uses: treosh/lighthouse-ci-action@v12
         with:
           urls: |
             http://localhost:3000

@@ -24,6 +24,12 @@ export default defineConfig({
   },
   /* Configure projects for major browsers */
   projects: [
+    // Logs in once and writes .auth/user.json (src/auth.setup.ts); the
+    // `authenticated` project below depends on it.
+    {
+      name: 'setup',
+      testMatch: /.*\.setup\.ts/,
+    },
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
