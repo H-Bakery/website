@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-import { API_BASE, fetchProducts } from './support/shop'
+import { API_BASE, fetchProducts, nextOpenDate } from './support/shop'
 
 /**
  * Die drei Zusagen, die nicht still kaputtgehen dürfen.
@@ -104,7 +104,8 @@ test.describe('Bestellungen sind nicht aufzählbar', () => {
       data: {
         customerName: 'E2E Prüfung',
         phone: '06841 000000',
-        pickupDate: '2026-09-02',
+        // Gerechnet, nie fest: der Server lehnt ein vergangenes Datum ab.
+        pickupDate: nextOpenDate(),
         pickupTime: '08:00',
         items: [
           {

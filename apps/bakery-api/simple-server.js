@@ -98,6 +98,9 @@ app.get('/api/products', (req, res) => {
 
 // --- Orders endpoints (mock) ---
 
+// shop-orders.core - Pruefung und Summe fuer POST /api/orders.
+const shopOrders = require('./src/services/shop-orders.core')
+
 /**
  * Bestell-ID fuer die URL: zufaellig und nicht erratbar.
  *
@@ -169,14 +172,40 @@ app.get('/api/orders', (req, res) => {
 app.get('/api/orders/:id', (req, res) => {
   const order = orders.find((o) => o.id === req.params.id)
   if (!order)
-    return res.status(404).json({ success: false, error: 'Order not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Order not found',
+      message: 'Bestellung nicht gefunden.',
+    })
   res.json({ success: true, data: order })
 })
 
+/**
+ * Prueft den Body und rechnet die Summe - siehe shop-orders.core.js. Vorher
+ * wurde `req.body` ungeprueft uebernommen: ein leerer Body ergab eine
+ * Bestellung ohne Namen und Artikel, ein mitgeschickter Preis wurde geglaubt.
+ * Preis und Name kommen jetzt aus hq, der Warenkorb liefert nur ID und Menge.
+ */
 app.post('/api/orders', (req, res) => {
+  const products = loadHQProducts()
+  const lookupProduct = (productId) =>
+    products.find(
+      (p) => p.id === productId || String(p.numeric_id) === productId
+    ) || null
+
+  const result = shopOrders.validateShopOrder(req.body, { lookupProduct })
+  if (!result.ok) {
+    // `message` muss dabei sein: der Shop zeigt genau diesen Text an.
+    return res.status(400).json({
+      success: false,
+      error: 'invalid_order',
+      field: result.field,
+      message: result.message,
+    })
+  }
+
   const newOrder = {
-    ...req.body,
-    // Nach dem Spread, damit ein mitgeschickter Wert die ID nicht ueberschreibt.
+    ...result.order,
     id: createOrderId(),
     orderNumber: nextOrderNumber(),
     status: 'pending',
@@ -190,7 +219,11 @@ app.post('/api/orders', (req, res) => {
 app.put('/api/orders/:id', (req, res) => {
   const index = orders.findIndex((o) => o.id === req.params.id)
   if (index === -1)
-    return res.status(404).json({ success: false, error: 'Order not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Order not found',
+      message: 'Bestellung nicht gefunden.',
+    })
   orders[index] = {
     ...orders[index],
     ...req.body,
@@ -203,7 +236,11 @@ app.put('/api/orders/:id', (req, res) => {
 app.delete('/api/orders/:id', (req, res) => {
   const index = orders.findIndex((o) => o.id === req.params.id)
   if (index === -1)
-    return res.status(404).json({ success: false, error: 'Order not found' })
+    return res.status(404).json({
+      success: false,
+      error: 'Order not found',
+      message: 'Bestellung nicht gefunden.',
+    })
   orders.splice(index, 1)
   res.json({ success: true, message: 'Order deleted' })
 })
