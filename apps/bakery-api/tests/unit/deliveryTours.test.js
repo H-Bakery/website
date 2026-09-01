@@ -38,6 +38,17 @@ describe('hasCoordinates', () => {
     expect(core.hasCoordinates({ lat: '49.3', lon: '7.36' })).toBe(true)
     expect(core.hasCoordinates({ lat: 0, lon: 0 })).toBe(true)
   })
+
+  // `Number(true)` ist 1, `Number([])` und `Number(' ')` sind 0 - aus einem
+  // JSON-Body waeren das alles "gueltige" Koordinaten gewesen.
+  test('laesst sich von Booleans, Arrays und Leerraum nicht taeuschen', () => {
+    expect(core.isNumber(true)).toBe(false)
+    expect(core.isNumber([])).toBe(false)
+    expect(core.isNumber([49.3])).toBe(false)
+    expect(core.isNumber(' ')).toBe(false)
+    expect(core.isNumber({})).toBe(false)
+    expect(core.isNumber(NaN)).toBe(false)
+  })
 })
 
 describe('formatAddress / normalizeAddress', () => {
@@ -93,6 +104,20 @@ describe('orderStopsNearestNeighbour', () => {
       .map((s) => s.id)
     expect(a).toEqual(b)
   })
+
+  // Dieselbe Falle wie bei den Stopps, eine Ebene hoeher: ein Depot ohne
+  // Koordinaten darf nicht als (0, 0) den Startpunkt in den Atlantik legen.
+  test('laesst die Reihenfolge stehen, wenn das Depot keine Koordinaten hat', () => {
+    const ohneDepot = { lat: null, lon: null }
+    const order = core
+      .orderStopsNearestNeighbour(ohneDepot, [
+        KAISERSTRASSE,
+        TALSTRASSE,
+        CAP_MARKT,
+      ])
+      .map((s) => s.id)
+    expect(order).toEqual([KAISERSTRASSE.id, TALSTRASSE.id, CAP_MARKT.id])
+  })
 })
 
 describe('estimateTour', () => {
@@ -115,6 +140,17 @@ describe('estimateTour', () => {
 
   test('gibt fuer eine leere Tour null Kilometer zurueck', () => {
     expect(core.estimateTour(DEPOT, [], 'car').distance).toBe(0)
+  })
+
+  test('kennt ohne Depot-Koordinaten keine Strecke, statt ab (0, 0) zu rechnen', () => {
+    const estimate = core.estimateTour(
+      { lat: null, lon: null },
+      [CAP_MARKT],
+      'car'
+    )
+    expect(estimate.distance).toBeNull()
+    expect(estimate.duration).toBeNull()
+    expect(estimate.isEstimate).toBe(true)
   })
 })
 
@@ -140,6 +176,95 @@ describe('estimateArrivals', () => {
       'car'
     )
     expect(arrivals[9]).toBeUndefined()
+  })
+
+  test('sagt ohne Depot-Koordinaten gar nichts vorher', () => {
+    const arrivals = core.estimateArrivals(
+      { lat: null, lon: null },
+      [CAP_MARKT],
+      '2026-09-05T05:00:00.000Z',
+      'car'
+    )
+    expect(arrivals).toEqual({})
+  })
+})
+
+describe('arrivalBaseline', () => {
+  const NOW = Date.parse('2026-09-05T07:00:00.000Z')
+
+  test('rechnet eine geplante Tour ab Datum und geplanter Abfahrt', () => {
+    const baseline = core.arrivalBaseline(
+      DEPOT,
+      { date: '2026-09-05', plannedStart: '06:30', startedAt: null, stops: [] },
+      NOW
+    )
+    expect(baseline.origin).toBe(DEPOT)
+    expect(baseline.startedAt).toBe('2026-09-05T06:30:00')
+  })
+
+  test('nimmt 06:30 als Abfahrt, wenn keine geplant ist', () => {
+    const baseline = core.arrivalBaseline(
+      DEPOT,
+      { date: '2026-09-05', startedAt: null, stops: [] },
+      NOW
+    )
+    expect(baseline.startedAt).toBe('2026-09-05T06:30:00')
+  })
+
+  test('rechnet eine laufende Tour ab dem zuletzt erledigten Stopp', () => {
+    const tour = {
+      date: '2026-09-05',
+      startedAt: '2026-09-05T04:30:00.000Z',
+      lastPosition: null,
+      stops: [
+        {
+          ...CAP_MARKT,
+          status: 'done',
+          completedAt: '2026-09-05T05:00:00.000Z',
+        },
+        {
+          ...TALSTRASSE,
+          status: 'failed',
+          completedAt: '2026-09-05T06:40:00.000Z',
+        },
+        { ...KAISERSTRASSE, status: 'open' },
+      ],
+    }
+    const baseline = core.arrivalBaseline(DEPOT, tour, NOW)
+    expect(baseline.origin.id).toBe(TALSTRASSE.id)
+    // Der letzte Stopp war um 06:40, jetzt ist 07:00 - eine Ankunft in der
+    // Vergangenheit gibt es nicht.
+    expect(baseline.startedAt).toBe('2026-09-05T07:00:00.000Z')
+  })
+
+  test('zieht eine juengere Fahrerposition dem letzten Stopp vor', () => {
+    const tour = {
+      date: '2026-09-05',
+      startedAt: '2026-09-05T04:30:00.000Z',
+      lastPosition: { lat: 49.31, lon: 7.35, at: '2026-09-05T06:50:00.000Z' },
+      stops: [
+        {
+          ...CAP_MARKT,
+          status: 'done',
+          completedAt: '2026-09-05T06:40:00.000Z',
+        },
+        { ...KAISERSTRASSE, status: 'open' },
+      ],
+    }
+    const baseline = core.arrivalBaseline(DEPOT, tour, NOW)
+    expect(baseline.origin).toBe(tour.lastPosition)
+  })
+
+  test('faellt ohne erledigte Stopps auf Depot und Startzeit zurueck', () => {
+    const tour = {
+      date: '2026-09-05',
+      startedAt: '2026-09-05T07:15:00.000Z',
+      lastPosition: null,
+      stops: [{ ...CAP_MARKT, status: 'open' }],
+    }
+    const baseline = core.arrivalBaseline(DEPOT, tour, NOW)
+    expect(baseline.origin).toBe(DEPOT)
+    expect(baseline.startedAt).toBe('2026-09-05T07:15:00.000Z')
   })
 })
 
@@ -174,6 +299,62 @@ describe('tourProgress / nextOpenStop', () => {
   test('nennt den ersten offenen Stopp in Tourreihenfolge', () => {
     expect(core.nextOpenStop(tour).id).toBe(3)
     expect(core.nextOpenStop({ stops: [{ status: 'done' }] })).toBeNull()
+  })
+})
+
+describe('syncTourStatus', () => {
+  const NOW = '2026-09-05T05:00:00.000Z'
+
+  test('startet eine geplante Tour mit dem ersten abgehakten Stopp', () => {
+    const tour = {
+      status: 'planned',
+      startedAt: null,
+      finishedAt: null,
+      stops: [{ status: 'done' }, { status: 'open' }],
+    }
+    core.syncTourStatus(tour, NOW)
+    expect(tour.status).toBe('active')
+    expect(tour.startedAt).toBe(NOW)
+    expect(tour.finishedAt).toBeNull()
+  })
+
+  test('schliesst die Tour ab, wenn kein Stopp mehr offen ist', () => {
+    const tour = {
+      status: 'active',
+      startedAt: '2026-09-05T04:30:00.000Z',
+      finishedAt: null,
+      stops: [{ status: 'done' }, { status: 'failed' }],
+    }
+    core.syncTourStatus(tour, NOW)
+    expect(tour.status).toBe('done')
+    expect(tour.finishedAt).toBe(NOW)
+  })
+
+  // Vorher blieb eine Tour "abgeschlossen", obwohl der Fahrer einen Stopp
+  // zurueckgesetzt oder die Backstube einen nachgeschoben hatte.
+  test('oeffnet eine abgeschlossene Tour wieder, wenn ein Stopp offen wird', () => {
+    const tour = {
+      status: 'done',
+      startedAt: '2026-09-05T04:30:00.000Z',
+      finishedAt: '2026-09-05T04:50:00.000Z',
+      stops: [{ status: 'done' }, { status: 'open' }],
+    }
+    core.syncTourStatus(tour, NOW)
+    expect(tour.status).toBe('active')
+    expect(tour.finishedAt).toBeNull()
+    expect(tour.startedAt).toBe('2026-09-05T04:30:00.000Z')
+  })
+
+  test('laesst eine Tour ohne Stopps in Ruhe', () => {
+    const tour = {
+      status: 'planned',
+      startedAt: null,
+      finishedAt: null,
+      stops: [],
+    }
+    core.syncTourStatus(tour, NOW)
+    expect(tour.status).toBe('planned')
+    expect(tour.startedAt).toBeNull()
   })
 })
 
@@ -314,5 +495,11 @@ describe('Datumshilfen', () => {
     expect(core.isBusinessDate('2026-09-05')).toBe(true)
     expect(core.isBusinessDate('05.09.2026')).toBe(false)
     expect(core.isBusinessDate(undefined)).toBe(false)
+  })
+
+  test('lehnt Tage ab, die es nicht gibt', () => {
+    expect(core.isBusinessDate('2026-13-45')).toBe(false)
+    expect(core.isBusinessDate('2026-02-30')).toBe(false)
+    expect(core.isBusinessDate('2028-02-29')).toBe(true)
   })
 })

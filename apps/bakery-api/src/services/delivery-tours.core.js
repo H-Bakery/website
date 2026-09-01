@@ -70,10 +70,12 @@ function formatAddress(stop) {
  * `null`, `undefined` und Leerstring vorher aussortiert.
  */
 function isNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value)
+  // Nur Zahlen und nicht-leere Zahl-Strings. `Number(true)`, `Number([])` und
+  // `Number(' ')` waeren sonst alle gueltige Koordinaten.
   return (
-    value !== null &&
-    value !== undefined &&
-    value !== '' &&
+    typeof value === 'string' &&
+    value.trim() !== '' &&
     Number.isFinite(Number(value))
   )
 }
@@ -91,8 +93,10 @@ function point(stop) {
  *
  * Stopps ohne Koordinaten koennen nicht sortiert werden - sie behalten ihre
  * Eingabereihenfolge und haengen hinten an, statt die Tour zu verfaelschen.
+ * Ohne Startpunkt (Depot nicht gefunden) bleibt die Reihenfolge, wie sie ist.
  */
 function orderStopsNearestNeighbour(origin, stops) {
+  if (!hasCoordinates(origin)) return [...stops]
   const locatable = stops.filter(hasCoordinates)
   const unlocatable = stops.filter((s) => !hasCoordinates(s))
   if (locatable.length <= 1) return [...locatable, ...unlocatable]
@@ -129,8 +133,12 @@ function estimateLeg(from, to, vehicleType) {
 /**
  * Summiert die Tour ab dem Depot. Rueckgabe ist immer eine Schaetzung -
  * echte Strassenwerte liefert der Router in `delivery-geo.core.js`.
+ * Ohne Depot-Koordinaten gibt es keine Strecke (`null`), keine Null.
  */
 function estimateTour(depot, stops, vehicleType) {
+  if (!hasCoordinates(depot)) {
+    return { distance: null, duration: null, isEstimate: true, legs: 0 }
+  }
   const locatable = stops.filter(hasCoordinates)
   let distance = 0
   let duration = 0
@@ -151,10 +159,11 @@ function estimateTour(depot, stops, vehicleType) {
  * Bereits erledigte Stopps bekommen keine Prognose mehr.
  */
 function estimateArrivals(depot, stops, startedAt, vehicleType) {
+  const arrivals = {}
+  if (!hasCoordinates(depot)) return arrivals
   let cursor = new Date(startedAt).getTime()
   if (!Number.isFinite(cursor)) cursor = Date.now()
   let previous = point(depot)
-  const arrivals = {}
 
   for (const stop of stops) {
     if (!hasCoordinates(stop)) continue
@@ -166,6 +175,47 @@ function estimateArrivals(depot, stops, startedAt, vehicleType) {
   }
 
   return arrivals
+}
+
+/**
+ * Ausgangspunkt und -zeit der Ankunftsprognose.
+ *
+ * Geplante Tour: Depot ab Datum + geplanter Abfahrt (Default 06:30) - sonst
+ * stuenden an der Samstagstour die Uhrzeiten von heute Nachmittag.
+ *
+ * Laufende Tour: ab dem zuletzt erledigten Stopp (Ort und Zeit) oder der
+ * juengeren gemeldeten Fahrerposition, nie frueher als jetzt. Wuerde weiter ab
+ * Depot und `startedAt` gerechnet, laege die Ankunft am sechsten Stopp um
+ * neun Uhr noch bei 06:41.
+ */
+function arrivalBaseline(depot, tour, now) {
+  const plannedStart = `${tour.date}T${tour.plannedStart || '06:30'}:00`
+  if (!tour.startedAt) return { origin: depot, startedAt: plannedStart }
+
+  let origin = depot
+  let at = Date.parse(tour.startedAt)
+  if (!Number.isFinite(at)) at = 0
+
+  for (const stop of tour.stops || []) {
+    if (stop.status === 'open' || !hasCoordinates(stop)) continue
+    const completed = Date.parse(stop.completedAt)
+    if (Number.isFinite(completed) && completed >= at) {
+      at = completed
+      origin = stop
+    }
+  }
+
+  const position = tour.lastPosition
+  if (hasCoordinates(position)) {
+    const reported = Date.parse(position.at)
+    if (Number.isFinite(reported) && reported > at) {
+      at = reported
+      origin = position
+    }
+  }
+
+  const current = now === undefined ? Date.now() : now
+  return { origin, startedAt: new Date(Math.max(at, current)).toISOString() }
 }
 
 /** Zaehlt den Stand einer Tour. */
@@ -188,13 +238,55 @@ function nextOpenStop(tour) {
   return stops.find((s) => s.status === 'open') || null
 }
 
+/**
+ * Zieht den Tourstatus nach den Stopps nach - der Fahrer soll dafuer keinen
+ * zweiten Knopf druecken muessen:
+ *   - der erste abgehakte Stopp startet eine geplante Tour,
+ *   - der letzte schliesst sie ab,
+ *   - ein wieder geoeffneter oder nachtraeglich angelegter Stopp macht eine
+ *     abgeschlossene Tour wieder zur laufenden.
+ * Eine Tour ohne Stopps bleibt, wie sie ist.
+ */
+function syncTourStatus(tour, nowIso) {
+  const now = nowIso || new Date().toISOString()
+  const progress = tourProgress(tour)
+  if (progress.total === 0) return tour
+
+  if (tour.status === 'planned' && progress.done + progress.failed > 0) {
+    tour.status = 'active'
+    tour.startedAt = tour.startedAt || now
+  }
+  if (progress.isComplete) {
+    if (tour.status !== 'done') {
+      tour.status = 'done'
+      tour.startedAt = tour.startedAt || now
+      tour.finishedAt = now
+    }
+  } else if (tour.status === 'done') {
+    tour.status = 'active'
+    tour.finishedAt = null
+    tour.startedAt = tour.startedAt || now
+  }
+  return tour
+}
+
 function wholeNumber(value, fallback) {
   const n = Number(value)
   return Number.isFinite(n) ? Math.trunc(n) : fallback
 }
 
 function isBusinessDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false
+  }
+  // "2026-13-45" passt zum Muster, ist aber kein Tag.
+  const [y, m, d] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d))
+  return (
+    date.getUTCFullYear() === y &&
+    date.getUTCMonth() === m - 1 &&
+    date.getUTCDate() === d
+  )
 }
 
 /** Nächstes Datum eines Wochentags (0 = Sonntag ... 6 = Samstag) als YYYY-MM-DD. */
@@ -342,8 +434,10 @@ module.exports = {
   estimateLeg,
   estimateTour,
   estimateArrivals,
+  arrivalBaseline,
   tourProgress,
   nextOpenStop,
+  syncTourStatus,
   normalizeStopInput,
   normalizePhone,
   wholeNumber,

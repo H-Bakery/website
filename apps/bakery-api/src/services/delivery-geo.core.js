@@ -128,6 +128,9 @@ function addressCandidates(address) {
  */
 async function routeTour(depot, stops, options) {
   const opts = options || {}
+  // Ohne Depot-Koordinaten gibt es keinen Startpunkt - `Number(null)` waere 0
+  // und die Route beginne im Atlantik.
+  if (!core.hasCoordinates(depot)) return null
   const locatable = stops.filter(core.hasCoordinates)
   if (locatable.length === 0) return null
 
