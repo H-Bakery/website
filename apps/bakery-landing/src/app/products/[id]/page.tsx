@@ -719,7 +719,16 @@ export default async function ProductPage({ params }: ProductPageProps) {
                           // am Ende des Namens ("Mischbrot 1000g") und fiel bei
                           // 150px Kartenbreite sonst der Ellipse zum Opfer.
                           lineHeight: 1.3,
-                          minHeight: '2.6em',
+                          // Höhe in Zeilen reservieren, nicht in em: global.css
+                          // erzwingt unter 600px line-height 1.7 (!important),
+                          // mit 2.6em stünden Preis und Button in einer Reihe
+                          // sonst auf verschiedener Höhe.
+                          minHeight: '2lh',
+                          // Einzelne Wörter wie „Puddingstückchen" passen nicht
+                          // in die Spalte - umbrechen statt abschneiden. Kein
+                          // hyphens: auto - Chrome trennt „Pud-/dingstück-…"
+                          // und braucht damit mehr Zeilen, nicht weniger.
+                          overflowWrap: 'anywhere',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           display: '-webkit-box',
