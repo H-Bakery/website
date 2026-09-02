@@ -2,15 +2,8 @@ export default {
   displayName: 'data-mocks',
   preset: '../../../jest.preset.js',
   transform: {
-    '^.+\\.[tj]sx?$': [
-      '@swc/jest',
-      {
-        jsc: {
-          parser: { syntax: 'typescript', tsx: true },
-          transform: { react: { runtime: 'automatic' } },
-        },
-      },
-    ],
+    '^(?!.*\\.(js|jsx|ts|tsx|css|json)$)': '@nx/react/plugins/jest',
+    '^.+\\.[tj]sx?$': ['babel-jest', { presets: ['@nx/react/babel'] }],
   },
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   coverageDirectory: '../../../coverage/libs/shared/data-mocks',
