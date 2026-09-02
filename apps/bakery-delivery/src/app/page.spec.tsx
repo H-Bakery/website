@@ -109,6 +109,37 @@ describe('DeliveryDashboard ohne erreichbare API', () => {
     expect(screen.queryByRole('button', { name: 'Tour anlegen' })).toBeNull()
   })
 
+  it('holt mit "Erneut laden" auch die Fahrerliste nach', async () => {
+    // Im Funkloch scheitern Fahrer und Touren zusammen. Kaeme nur die Tour
+    // zurueck, bliebe die Fahrerauswahl bis zum Neuladen der Seite leer.
+    api.drivers
+      .mockRejectedValueOnce(networkError())
+      .mockResolvedValue([driver])
+    api.tours.mockRejectedValueOnce(networkError()).mockResolvedValue([tour])
+
+    render(<DeliveryDashboard />)
+    expect(
+      await screen.findByRole('button', { name: 'Erneut laden' })
+    ).toBeTruthy()
+    expect(screen.queryByRole('option', { name: 'Fahrer 1' })).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }))
+
+    expect(
+      await screen.findByRole('heading', { name: 'Samstagstour' })
+    ).toBeTruthy()
+    expect(screen.getByRole('option', { name: 'Fahrer 1' })).toBeTruthy()
+    expect((screen.getByLabelText('Fahrer') as HTMLSelectElement).value).toBe(
+      '1'
+    )
+    // Der Fahrerwechsel loest das Laden aus - nicht noch einmal der Knopf.
+    expect(api.tours).toHaveBeenCalledTimes(2)
+    expect(api.tours).toHaveBeenLastCalledWith(
+      expect.objectContaining({ driverId: 1 })
+    )
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
+
   it('zeigt "Tour anlegen" nur, wenn die API wirklich keine Tour kennt', async () => {
     api.tours.mockResolvedValue([])
 

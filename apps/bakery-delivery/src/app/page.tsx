@@ -115,25 +115,30 @@ export default function DeliveryDashboard() {
     []
   )
 
-  useEffect(() => {
-    let cancelled = false
-    deliveryApi
-      .drivers()
-      .then((list) => {
-        if (cancelled) return
-        setDrivers(list)
-        const stored = readStoredDriver()
-        const known = list.find((d) => d.id === stored)
-        setDriverId(known ? known.id : list[0]?.id ?? null)
-      })
-      .catch((err) => {
-        if (!cancelled)
-          setError(describeError(err, 'Fahrer konnten nicht geladen werden.'))
-      })
-    return () => {
-      cancelled = true
+  /**
+   * Holt die Fahrerliste und waehlt den gemerkten, sonst den ersten Fahrer.
+   * Liefert die gewaehlte id - oder `undefined`, wenn die API nicht antwortet.
+   */
+  const loadDrivers = useCallback(async (): Promise<
+    number | null | undefined
+  > => {
+    try {
+      const list = await deliveryApi.drivers()
+      setDrivers(list)
+      const stored = readStoredDriver()
+      const known = list.find((d) => d.id === stored)
+      const chosen = known ? known.id : list[0]?.id ?? null
+      setDriverId(chosen)
+      return chosen
+    } catch (err) {
+      setError(describeError(err, 'Fahrer konnten nicht geladen werden.'))
+      return undefined
     }
   }, [])
+
+  useEffect(() => {
+    loadDrivers()
+  }, [loadDrivers])
 
   useEffect(() => {
     setLoading(true)
@@ -322,8 +327,15 @@ export default function DeliveryDashboard() {
     }
   }
 
-  const reloadTours = () => {
+  const reloadTours = async () => {
     setLoading(true)
+    if (drivers.length === 0) {
+      // Ohne API fehlten beim ersten Versuch meist auch die Fahrer - die
+      // Auswahl kommt mit demselben Knopf zurueck. Wechselt dadurch der
+      // Fahrer, laedt der Effekt oben die Touren bereits selbst.
+      const chosen = await loadDrivers()
+      if (chosen !== undefined && chosen !== driverId) return
+    }
     loadTours(date, driverId)
   }
 
