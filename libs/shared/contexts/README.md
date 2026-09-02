@@ -139,7 +139,7 @@ const {
 
 **Features:**
 
-- Automatic persistence to localStorage
+- Automatic persistence to localStorage (written synchronously on every change)
 - Real-time price calculations
 - Tax and discount support
 - Stock validation
@@ -154,7 +154,6 @@ const {
   taxRate={0.19}              // 19% VAT
   maxItems={100}              // Max different products
   maxQuantityPerItem={99}     // Max quantity per item
-  autoSaveDelay={1000}        // Debounce save
   validateItem={(item) => []} // Custom validation
 >
 ```

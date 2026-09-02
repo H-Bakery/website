@@ -463,7 +463,8 @@ test.describe('Warenkorb', () => {
     await page.getByTestId('detail-add-to-cart').click()
     await expectCartCount(page, 2)
 
-    // Der CartProvider schreibt entprellt; erst warten, dann neu laden.
+    // Der CartProvider schreibt synchron in localStorage; das Polling ist nur
+    // eine Absicherung, bevor neu geladen wird.
     await expect
       .poll(async () => (await storedCartItems(page)).length)
       .toBeGreaterThan(0)
