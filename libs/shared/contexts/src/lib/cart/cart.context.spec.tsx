@@ -20,6 +20,13 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 })
 
+/** The `[key, value]` of the most recent `localStorage.setItem` call. */
+function lastSetItemCall(): [string, string] {
+  const calls = localStorageMock.setItem.mock.calls
+  expect(calls.length).toBeGreaterThan(0)
+  return calls[calls.length - 1] as [string, string]
+}
+
 // Mock product data
 const mockProduct: Product = {
   id: 1,
@@ -254,12 +261,10 @@ describe('CartContext', () => {
     expect(result.current.getQuantity(mockProduct2.id)).toBe(0)
   })
 
-  it('should persist cart to localStorage', async () => {
+  it('should persist cart to localStorage', () => {
     const { result } = renderHook(() => useCart(), {
       wrapper: ({ children }) => (
-        <CartProvider enablePersistence autoSaveDelay={0}>
-          {children}
-        </CartProvider>
+        <CartProvider enablePersistence>{children}</CartProvider>
       ),
     })
 
@@ -267,15 +272,63 @@ describe('CartContext', () => {
       result.current.addToCart(mockProduct)
     })
 
-    // Wait for save
-    await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 100))
-    })
-
+    // No debounce: the write has happened once the state update is committed,
+    // without any awaited delay — a reload right after the click keeps the item.
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
       'bakery-cart',
       expect.stringContaining('"items"')
     )
+    const [, payload] = lastSetItemCall()
+    expect(JSON.parse(payload).items).toEqual([{ ...mockProduct, quantity: 1 }])
+  })
+
+  it('should write the cleared cart synchronously after clearCart', () => {
+    const { result } = renderHook(() => useCart(), {
+      wrapper: ({ children }) => (
+        <CartProvider enablePersistence>{children}</CartProvider>
+      ),
+    })
+
+    act(() => {
+      result.current.addToCart(mockProduct)
+    })
+    act(() => {
+      result.current.clearCart()
+    })
+
+    // The checkout calls clearCart() and navigates right away; a reload on the
+    // confirmation page must not bring the ordered basket back.
+    const [key, payload] = lastSetItemCall()
+    expect(key).toBe('bakery-cart')
+    expect(JSON.parse(payload)).toMatchObject({
+      items: [],
+      discountCode: null,
+      discountAmount: 0,
+    })
+  })
+
+  it('should never overwrite a stored cart with the initial empty state', () => {
+    const savedCart = {
+      items: [{ ...mockProduct, quantity: 2 }],
+      savedAt: new Date().toISOString(),
+    }
+    localStorageMock.getItem.mockReturnValue(JSON.stringify(savedCart))
+
+    renderHook(() => useCart(), {
+      wrapper: ({ children }) => (
+        <CartProvider enablePersistence>{children}</CartProvider>
+      ),
+    })
+
+    // Every write during mount carries the stored line; the `isLoading` gate
+    // is what keeps the empty initial state from clobbering it.
+    const payloads = localStorageMock.setItem.mock.calls.map(([, value]) =>
+      JSON.parse(value as string)
+    )
+    expect(payloads.length).toBeGreaterThan(0)
+    for (const payload of payloads) {
+      expect(payload.items).toEqual(savedCart.items)
+    }
   })
 
   it('should load cart from localStorage', () => {
