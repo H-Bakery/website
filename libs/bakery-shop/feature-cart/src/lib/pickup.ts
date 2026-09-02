@@ -262,6 +262,21 @@ export const OPENING_HOURS_ROWS: ReadonlyArray<OpeningHoursRow> = (() => {
   return rows
 })()
 
+/**
+ * Die Öffnungszeiten als ein Satz für Fließtext, z. B. unter „Wann passt es
+ * Ihnen?" in der Kasse — aus {@link OPENING_HOURS_ROWS} abgeleitet, damit
+ * nirgends eine zweite Tabelle steht, die bei der nächsten Änderung
+ * stillschweigend abweicht.
+ */
+export function openingHoursSentence(): string {
+  const parts = OPENING_HOURS_ROWS.map((row) =>
+    row.time === 'Ruhetag'
+      ? `${row.days} ist Ruhetag`
+      : `${row.days} ${row.time}`
+  )
+  return `${parts.join(' · ')}.`
+}
+
 /* -------------------------------------------------------------------------- */
 /* Abhol-Status für die Anzeige                                                */
 /* -------------------------------------------------------------------------- */
