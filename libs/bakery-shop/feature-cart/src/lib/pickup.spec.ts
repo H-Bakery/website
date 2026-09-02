@@ -1,6 +1,7 @@
 import {
   ALL_PICKUP_SLOTS,
   OPENING_HOURS_ROWS,
+  openingHoursSentence,
   pickupStatusAt,
   formatGermanDate,
   formatOpeningWindow,
@@ -159,6 +160,25 @@ describe('OPENING_HOURS_ROWS', () => {
       if (row.time === 'Ruhetag') continue
       const [opens] = row.time.split(' – ')
       expect(ALL_PICKUP_SLOTS).toContain(opens)
+    }
+  })
+})
+
+describe('openingHoursSentence', () => {
+  it('baut den Fließtext-Satz aus den Tabellenzeilen', () => {
+    // Der Satz in der Kasse ist abgeleitet, nicht abgeschrieben: ändert sich
+    // WEEKDAY_HOURS, ändert sich hier automatisch der Erwartungswert mit.
+    expect(openingHoursSentence()).toBe(
+      'Di – Fr 05:30 – 13:30 Uhr · Samstag 05:30 – 12:30 Uhr · ' +
+        'Sonntag 08:00 – 11:00 Uhr · Montag ist Ruhetag.'
+    )
+  })
+
+  it('nennt jede Zeile der Tabelle genau einmal', () => {
+    const sentence = openingHoursSentence()
+    for (const row of OPENING_HOURS_ROWS) {
+      expect(sentence.split(row.days).length - 1).toBe(1)
+      if (row.time !== 'Ruhetag') expect(sentence).toContain(row.time)
     }
   })
 })

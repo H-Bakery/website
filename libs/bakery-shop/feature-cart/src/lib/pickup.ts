@@ -269,11 +269,12 @@ export const OPENING_HOURS_ROWS: ReadonlyArray<OpeningHoursRow> = (() => {
  * stillschweigend abweicht.
  */
 export function openingHoursSentence(): string {
-  return OPENING_HOURS_ROWS.map((row) =>
+  const parts = OPENING_HOURS_ROWS.map((row) =>
     row.time === 'Ruhetag'
       ? `${row.days} ist Ruhetag`
       : `${row.days} ${row.time}`
-  ).join(' · ')
+  )
+  return `${parts.join(' · ')}.`
 }
 
 /* -------------------------------------------------------------------------- */
