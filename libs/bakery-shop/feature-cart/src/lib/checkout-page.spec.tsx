@@ -8,6 +8,7 @@ import React from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 
 import type { CartItem } from '@bakery/shared/contexts'
+import type { ShopProduct } from '@bakery/shared/data-access'
 
 import { CheckoutPage } from './checkout-page'
 import { CHECKOUT_FORM_STORAGE_KEY } from './checkout-validation'
@@ -16,6 +17,8 @@ import { OPENING_HOURS_ROWS, openingWindowFor, toIsoDate } from './pickup'
 const mockPush = jest.fn()
 const mockSubmitOrder = jest.fn()
 const mockClearCart = jest.fn()
+const mockRefreshItems = jest.fn()
+const mockFetchShopProducts = jest.fn()
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
@@ -41,6 +44,7 @@ jest.mock('@bakery/shared/contexts', () => ({
       },
       isLoading: false,
       clearCart: mockClearCart,
+      refreshItems: (...args: unknown[]) => mockRefreshItems(...args),
     }
   },
 }))
@@ -48,6 +52,7 @@ jest.mock('@bakery/shared/contexts', () => ({
 jest.mock('@bakery/shared/data-access', () => ({
   ...jest.requireActual('@bakery/shared/data-access'),
   submitOrder: (...args: unknown[]) => mockSubmitOrder(...args),
+  fetchShopProducts: () => mockFetchShopProducts(),
 }))
 
 /** Eine Warenkorbzeile, so wie `toCartProduct()` sie wirklich anlegt. */
@@ -66,6 +71,23 @@ function line(overrides: Partial<CartItem> = {}): CartItem {
     quantity: 2,
     ...overrides,
   } as CartItem
+}
+
+/** Das Kornbrot, wie `GET /api/products` es heute liefert. */
+function shopProduct(overrides: Partial<ShopProduct> = {}): ShopProduct {
+  return {
+    id: 'kornbrot-500g',
+    numericId: 1,
+    name: 'Kornbrot 500g',
+    category: 'brot',
+    price: 2.5,
+    available: true,
+    seasonal: false,
+    image: null,
+    shortDescription: '',
+    description: '',
+    ...overrides,
+  }
 }
 
 const wholeTorte = () =>
@@ -117,8 +139,73 @@ describe('CheckoutPage', () => {
     mockPush.mockClear()
     mockClearCart.mockClear()
     mockSubmitOrder.mockReset()
+    mockRefreshItems.mockReset().mockReturnValue(false)
+    mockFetchShopProducts.mockReset().mockResolvedValue([])
     window.sessionStorage.clear()
     mockItems = [line()]
+  })
+
+  /* ------------------------------------------------------------------ */
+  /* Preise: Momentaufnahme aus dem localStorage gegen hq                */
+  /* ------------------------------------------------------------------ */
+
+  it('gleicht die Warenkorb-Preise beim Öffnen mit der API ab und sagt eine Änderung an', async () => {
+    // Im Korb liegt das Brot noch zu 2,50 €; hq kennt inzwischen 2,90 €.
+    mockFetchShopProducts.mockResolvedValue([shopProduct({ price: 2.9 })])
+    mockRefreshItems.mockReturnValue(true)
+    render(<CheckoutPage />)
+
+    await waitFor(() => expect(mockRefreshItems).toHaveBeenCalledTimes(1))
+    // Der Abgleich bekommt Warenkorb-Produkte, wie `toCartProduct()` sie baut.
+    expect(mockRefreshItems.mock.calls[0][0]).toEqual([
+      expect.objectContaining({ id: 1, slug: 'kornbrot-500g', price: 2.9 }),
+    ])
+    expect(screen.getByTestId('checkout-prices-updated').textContent).toContain(
+      'Preis geändert'
+    )
+  })
+
+  it('schweigt über die Preise, solange sie noch stimmen', async () => {
+    mockFetchShopProducts.mockResolvedValue([shopProduct()])
+    render(<CheckoutPage />)
+
+    await waitFor(() => expect(mockRefreshItems).toHaveBeenCalled())
+    expect(screen.queryByTestId('checkout-prices-updated')).toBeNull()
+  })
+
+  it('behält die Momentaufnahme, wenn die Produkte nicht zu laden sind', async () => {
+    mockFetchShopProducts.mockRejectedValue(new Error('offline'))
+    render(<CheckoutPage />)
+
+    await waitFor(() => expect(mockFetchShopProducts).toHaveBeenCalled())
+    expect(mockRefreshItems).not.toHaveBeenCalled()
+    expect(screen.getByTestId('checkout-total').textContent).toMatch(
+      /^5,00\s€$/
+    )
+  })
+
+  it('meldet der Bestätigung, wenn der Server einen anderen Betrag gebucht hat', async () => {
+    // Angezeigt: 5,00 € (2 × 2,50). Gebucht mit den hq-Preisen: 2 × 2,90.
+    mockSubmitOrder.mockResolvedValue({ id: 'X1', total: 5.8 })
+    render(<CheckoutPage />)
+    fillValidForm()
+
+    fireEvent.click(screen.getByTestId('submit-order'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalled())
+    expect(mockClearCart).toHaveBeenCalled()
+    expect(mockPush).toHaveBeenCalledWith('/bestellung/X1?preis=aktualisiert')
+  })
+
+  it('hängt nichts an, wenn der gebuchte Betrag dem angezeigten entspricht', async () => {
+    mockSubmitOrder.mockResolvedValue({ id: 'X2', total: 5 })
+    render(<CheckoutPage />)
+    fillValidForm()
+
+    fireEvent.click(screen.getByTestId('submit-order'))
+
+    await waitFor(() => expect(mockPush).toHaveBeenCalled())
+    expect(mockPush).toHaveBeenCalledWith('/bestellung/X2')
   })
 
   /* ------------------------------------------------------------------ */

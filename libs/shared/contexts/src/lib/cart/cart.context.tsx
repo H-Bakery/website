@@ -77,6 +77,12 @@ export interface CartContextType {
   updateQuantity: (id: number, quantity: number) => void
   /** Update item notes */
   updateNotes: (id: number, notes: string) => void
+  /**
+   * Replaces the stored product snapshots (price, name, availability, …) with
+   * fresh ones; quantity and notes stay. Items without a match are left alone.
+   * @returns whether at least one price differed from its snapshot
+   */
+  refreshItems: (products: Product[]) => boolean
   /** Clear all items from cart */
   clearCart: () => void
   /** Check if product is in cart */
@@ -132,6 +138,11 @@ const DEFAULT_SUMMARY: CartSummary = {
   tax: 0,
   total: 0,
   totalWeight: 0,
+}
+
+/** Prices are cents — float noise below half a cent is not a change. */
+function sameCents(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.005
 }
 
 /**
@@ -391,6 +402,40 @@ export const CartProvider: React.FC<CartProviderProps> = ({
     )
   }, [])
 
+  // Refresh product snapshots. The persisted cart carries price and name from
+  // the moment the item was added, and nothing else ever reconciles them — a
+  // price change in hq would otherwise surface only after the order is booked.
+  const refreshItems = useCallback(
+    (products: Product[]): boolean => {
+      const fresh = new Map(products.map((product) => [product.id, product]))
+      if (fresh.size === 0) return false
+
+      const priceChanged = items.some((item) => {
+        const product = fresh.get(item.id)
+        return product !== undefined && !sameCents(product.price, item.price)
+      })
+
+      // Functional update: a quantity changed while the products were loading
+      // must survive, so the merge always runs on the latest items.
+      setItems((prevItems) => {
+        if (!prevItems.some((item) => fresh.has(item.id))) return prevItems
+        return prevItems.map((item) => {
+          const product = fresh.get(item.id)
+          if (!product) return item
+          return {
+            ...product,
+            quantity: item.quantity,
+            notes: item.notes,
+            selectedOptions: item.selectedOptions,
+          }
+        })
+      })
+
+      return priceChanged
+    },
+    [items]
+  )
+
   // Clear cart handler
   const clearCart = useCallback(() => {
     setItems([])
@@ -493,6 +538,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({
       removeFromCart,
       updateQuantity,
       updateNotes,
+      refreshItems,
       clearCart,
       isInCart,
       getQuantity,
@@ -511,6 +557,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({
       removeFromCart,
       updateQuantity,
       updateNotes,
+      refreshItems,
       clearCart,
       isInCart,
       getQuantity,

@@ -306,3 +306,97 @@ describe('CartContext', () => {
     expect(result.current.items[1].quantity).toBe(3)
   })
 })
+
+describe('CartContext.refreshItems', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    localStorageMock.getItem.mockReturnValue(null)
+  })
+
+  it('übernimmt Preis und Name aus den frischen Produkten — Menge und Notiz bleiben', () => {
+    const { result } = renderHook(() => useCart(), { wrapper: CartProvider })
+    act(() => {
+      result.current.addToCart(mockProduct, 3, 'ungeschnitten')
+    })
+
+    let changed = false
+    act(() => {
+      changed = result.current.refreshItems([
+        { ...mockProduct, price: 9.99, name: 'Bauernbrot groß' },
+      ])
+    })
+
+    expect(changed).toBe(true)
+    expect(result.current.items).toHaveLength(1)
+    expect(result.current.items[0]).toMatchObject({
+      id: 1,
+      price: 9.99,
+      name: 'Bauernbrot groß',
+      quantity: 3,
+      notes: 'ungeschnitten',
+    })
+    expect(result.current.summary.subtotal).toBeCloseTo(29.97)
+  })
+
+  it('meldet keine Änderung, wenn nur der Name anders ist', () => {
+    const { result } = renderHook(() => useCart(), { wrapper: CartProvider })
+    act(() => {
+      result.current.addToCart(mockProduct)
+    })
+
+    let changed = true
+    act(() => {
+      changed = result.current.refreshItems([
+        { ...mockProduct, name: 'Bauernbrot groß' },
+      ])
+    })
+
+    expect(changed).toBe(false)
+    expect(result.current.items[0].name).toBe('Bauernbrot groß')
+    expect(result.current.items[0].price).toBe(3.5)
+  })
+
+  it('lässt Artikel ohne passendes Produkt unangetastet', () => {
+    const { result } = renderHook(() => useCart(), { wrapper: CartProvider })
+    act(() => {
+      result.current.addToCart(mockProduct)
+      result.current.addToCart(mockProduct2, 2)
+    })
+
+    let changed = false
+    act(() => {
+      changed = result.current.refreshItems([{ ...mockProduct2, price: 1 }])
+    })
+
+    expect(changed).toBe(true)
+    expect(result.current.items[0]).toEqual({ ...mockProduct, quantity: 1 })
+    expect(result.current.items[1]).toMatchObject({
+      id: 2,
+      price: 1,
+      quantity: 2,
+    })
+  })
+
+  it('wertet Rundungsrauschen und eine leere Liste nicht als Preisänderung', () => {
+    const { result } = renderHook(() => useCart(), { wrapper: CartProvider })
+    act(() => {
+      result.current.addToCart(mockProduct)
+    })
+
+    let changed = true
+    act(() => {
+      changed = result.current.refreshItems([
+        { ...mockProduct, price: 3.5 + 1e-9 },
+      ])
+    })
+    expect(changed).toBe(false)
+
+    // Ohne Produkte gibt es nichts abzugleichen — die Liste bleibt dieselbe.
+    const before = result.current.items
+    act(() => {
+      changed = result.current.refreshItems([])
+    })
+    expect(changed).toBe(false)
+    expect(result.current.items).toBe(before)
+  })
+})
