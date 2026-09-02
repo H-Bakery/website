@@ -286,7 +286,7 @@ Merriweather body, then diverges toward store density. It is **light-only**, lik
 ## Known state
 
 - `nx build bakery-shop` passes. `nx test bakery-shop` passes (73 tests); feature-cart 117,
-  feature-catalog 93, shared-data-access 68, shared-utils 43; the order validation of the mock
+  feature-catalog 95, shared-data-access 74, shared-utils 43; the order validation of the mock
   server has 41 more in `apps/bakery-api/tests/unit/shopOrders.test.js` (run with
   `npx jest -c apps/bakery-api/jest.config.js --rootDir apps/bakery-api tests/unit/shopOrders.test.js`).
 - The allergen frontmatter (`allergens`, `allergens_source`, `allergen_recipe`) that the shop
