@@ -85,6 +85,14 @@ with `taxRate: 0`, and `grossTotal()` in `feature-cart/src/lib/order-totals.ts` 
 top of prices that already include it. Never display a separate added-tax line — "inkl. MwSt." is the
 correct note. Format every price with `formatEuro`.
 
+The word after „pro" comes from `productUnit({ name, category })` in
+`libs/shared/data-access/.../product-unit.ts` — card, detail page and cart (`toCartProduct` sets
+`unit`) all ask that one function. In this bakery **„Stück" means a slice**: „Apfelkuchen (1 Stück)"
+is 1,80 €, the whole „Apfelkuchen" 18 €. So whole items say „pro Kuchen" / „pro Torte" / „pro Rolle",
+and the rules apply only inside `kuchen`/`torten` — a „Butterkuchen" from the Teilchen stays „pro
+Stück", as do Zopf, Rosinenbrot, Obstboden and Tortenboden. Do not hardcode „pro Stück" in a
+component again.
+
 ### Ordering
 
 `CheckoutPage` POSTs through `submitOrder()` to `/api/orders`; the management admin reads the same
@@ -278,7 +286,7 @@ Merriweather body, then diverges toward store density. It is **light-only**, lik
 ## Known state
 
 - `nx build bakery-shop` passes. `nx test bakery-shop` passes (73 tests); feature-cart 117,
-  feature-catalog 83, shared-data-access 61, shared-utils 43; the order validation of the mock
+  feature-catalog 95, shared-data-access 74, shared-utils 43; the order validation of the mock
   server has 41 more in `apps/bakery-api/tests/unit/shopOrders.test.js` (run with
   `npx jest -c apps/bakery-api/jest.config.js --rootDir apps/bakery-api tests/unit/shopOrders.test.js`).
 - The allergen frontmatter (`allergens`, `allergens_source`, `allergen_recipe`) that the shop

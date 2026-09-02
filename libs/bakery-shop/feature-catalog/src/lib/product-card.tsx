@@ -41,6 +41,7 @@ import RemoveIcon from '@mui/icons-material/Remove'
 import { useCart } from '@bakery/shared/contexts'
 import {
   formatEuro,
+  productUnit,
   shopCategoryLabel,
   toCartProduct,
   unitPriceLabel,
@@ -299,8 +300,9 @@ export function ShopProductCard({
   /**
    * § 4 PAngV: Wer nach Gewicht anbietet, nennt den Grundpreis neben dem
    * Endpreis – und die Karte ist der Ort, an dem 500 g und 1000 g nebeneinander
-   * liegen. Trägt der Name kein Gewicht, gibt es keinen Grundpreis; dann bleibt
-   * es bei „pro Stück", und nichts wird erfunden.
+   * liegen. Trägt der Name kein Gewicht, gibt es keinen Grundpreis; dann steht
+   * die Verkaufseinheit („pro Stück", „pro Kuchen", siehe `productUnit`), und
+   * nichts wird erfunden.
    */
   const grundpreis = unitPriceLabel({
     name: product.name,
@@ -468,7 +470,7 @@ export function ShopProductCard({
             // `ml: auto` hält den Zusatz auch dann rechts, wenn er umbricht.
             sx={{ color: 'grey.500', whiteSpace: 'nowrap', ml: 'auto' }}
           >
-            {grundpreis ?? 'pro Stück'}
+            {grundpreis ?? `pro ${productUnit(product)}`}
           </Typography>
         </Box>
 
