@@ -52,8 +52,7 @@ nx affected:build          # Build only affected projects
 
 # Static Export (Landing Page)
 nx build-static-standalone bakery-landing  # Recommended: standalone static build
-npm run build:landing:static               # Same as above
-npm run build:landing:nx                   # Uses Nx dependencies (may fail)
+npm run build:landing:standalone           # plain `next build` in apps/bakery-landing (no sitemap)
 nx build-static bakery-landing             # Full Nx build + export
 
 # Testing & Quality
@@ -240,8 +239,8 @@ rm -rf apps/bakery-landing/.next
 # Standalone build (always works, recommended)
 NODE_ENV=production npx nx build-static-standalone bakery-landing
 
-# Or via npm script
-npm run build:landing:static
+# Or via npm script (builds `dist`, not the static export)
+npm run build:landing:standalone
 ```
 
 **Output Location:** `apps/bakery-landing/out/` (ready for deployment)
@@ -265,7 +264,7 @@ NODE_ENV=production npx nx build-static-standalone bakery-landing
 
 ```bash
 # Solution: Use standalone build that avoids problematic dependencies
-npm run build:landing:static
+NODE_ENV=production npx nx build-static-standalone bakery-landing
 ```
 
 **Problem: Module resolution errors for @bakery/\* imports**

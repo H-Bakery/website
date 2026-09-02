@@ -1,9 +1,10 @@
+# Manueller Voll-Deploy (Vercel, Cloud Run, GitHub Pages). Läuft NICHT mehr bei
+# jedem Push: die Vercel-/Cloud-Run-Jobs brauchen Secrets, die im Repo nicht
+# hinterlegt sind, und die Landing-Page deployt deploy-to-github-pages.yml.
+# Seit dem 15.08.2026 war jeder Push-Lauf rot.
 name: Deploy
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       environment:
@@ -142,17 +143,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build landing page
-        run: npx nx build bakery-landing --configuration=production
-
-      - name: Export static site
-        run: npx nx export bakery-landing
+      # Derselbe Standalone-Export wie in deploy-to-github-pages.yml; das
+      # frühere `nx export`-Target gibt es nicht mehr.
+      - name: Build and export landing page
+        run: npx nx build-static-standalone bakery-landing
+        env:
+          NODE_ENV: production
+          NX_ISOLATE_PLUGINS: 'false'
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./dist/apps/bakery-landing/exported
+          publish_dir: ./apps/bakery-landing/out
           cname: xn--bckerei-heusser-0kb.de
 
   # Deploy API to Google Cloud Run
@@ -241,8 +244,10 @@ jobs:
             BASE_URL=${{ vars.LANDING_URL }} nx e2e bakery-landing-e2e --grep="@smoke"
           fi
 
+      # Ohne SLACK_WEBHOOK-Secret bricht die Action ab ("Specify
+      # secrets.SLACK_WEBHOOK_URL") - dann lieber still überspringen.
       - name: Notify deployment status
-        if: always()
+        if: always() && env.SLACK_WEBHOOK_URL != ''
         uses: 8398a7/action-slack@v3
         with:
           status: ${{ job.status }}
@@ -252,6 +257,5 @@ jobs:
             Management: ${{ needs.deploy-management.result }}
             Landing: ${{ needs.deploy-landing.result }}
             API: ${{ needs.deploy-api.result }}
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
