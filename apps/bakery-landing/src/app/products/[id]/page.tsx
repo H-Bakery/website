@@ -191,24 +191,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               }}
             >
-              {/* Quality Badge - Deterministic based on product ID */}
-              {product.id % 3 === 0 && (
-                <Chip
-                  icon={<VerifiedIcon />}
-                  label="Premium Qualität"
-                  size="small"
-                  sx={{
-                    position: 'absolute',
-                    top: 16,
-                    left: 16,
-                    zIndex: 1,
-                    bgcolor: 'primary.main',
-                    color: 'white',
-                    fontWeight: '600',
-                  }}
-                />
-              )}
-
               <Box
                 sx={{
                   p: { xs: 3, md: 6 },
@@ -475,7 +457,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                           fontWeight="600"
                           color="text.primary"
                         >
-                          90 Jahre Erfahrung
+                          Über 90 Jahre Erfahrung
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           Seit 1933 in Familienbesitz
@@ -715,9 +697,25 @@ export default async function ProductPage({ params }: ProductPageProps) {
                         fontWeight="600"
                         sx={{
                           mb: 1,
+                          // Zwei Zeilen statt nowrap: Die Gewichtsangabe steht
+                          // am Ende des Namens ("Mischbrot 1000g") und fiel bei
+                          // 150px Kartenbreite sonst der Ellipse zum Opfer.
+                          lineHeight: 1.3,
+                          // Höhe in Zeilen reservieren, nicht in em: global.css
+                          // erzwingt unter 600px line-height 1.7 (!important),
+                          // mit 2.6em stünden Preis und Button in einer Reihe
+                          // sonst auf verschiedener Höhe.
+                          minHeight: '2lh',
+                          // Einzelne Wörter wie „Puddingstückchen" passen nicht
+                          // in die Spalte - umbrechen statt abschneiden. Kein
+                          // hyphens: auto - Chrome trennt „Pud-/dingstück-…"
+                          // und braucht damit mehr Zeilen, nicht weniger.
+                          overflowWrap: 'anywhere',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
                         }}
                       >
                         {relatedProduct.name}

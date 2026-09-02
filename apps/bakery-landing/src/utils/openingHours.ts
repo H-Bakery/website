@@ -304,7 +304,7 @@ export function getTodayOpeningTime(): string | null {
 }
 
 /**
- * Get next opening day and time.
+ * Get next opening day and time (time formatted for display, e.g. '5:30').
  * Checks if the bakery opens later today before looking at future days.
  */
 export function getNextOpening(): { day: string; time: string } | null {
@@ -331,7 +331,7 @@ export function getNextOpening(): { day: string; time: string } | null {
     if (currentTime < openTime) {
       return {
         day: 'Heute',
-        time: todayHours.opens,
+        time: formatTime(todayHours.opens),
       }
     }
   }
@@ -344,7 +344,7 @@ export function getNextOpening(): { day: string; time: string } | null {
     if (dayHours.isOpen && dayHours.opens) {
       return {
         day: DAY_NAMES.de[dayName],
-        time: dayHours.opens,
+        time: formatTime(dayHours.opens),
       }
     }
   }
