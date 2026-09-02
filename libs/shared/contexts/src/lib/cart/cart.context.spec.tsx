@@ -25,7 +25,7 @@ const mockProduct: Product = {
   id: 1,
   name: 'Bauernbrot',
   description: 'Traditional German bread',
-  price: 3.50,
+  price: 3.5,
   category: 'Brot',
   image: '/images/bread.jpg',
   type: 'bread',
@@ -37,7 +37,7 @@ const mockProduct2: Product = {
   id: 2,
   name: 'Croissant',
   description: 'French pastry',
-  price: 2.50,
+  price: 2.5,
   category: 'Gebäck',
   image: '/images/croissant.jpg',
   type: 'pastry',
@@ -77,7 +77,7 @@ describe('CartContext', () => {
       quantity: 1,
     })
     expect(result.current.summary.totalCount).toBe(1)
-    expect(result.current.summary.subtotal).toBe(3.50)
+    expect(result.current.summary.subtotal).toBe(3.5)
   })
 
   it('should increase quantity when adding existing product', () => {
@@ -93,7 +93,7 @@ describe('CartContext', () => {
     expect(result.current.items).toHaveLength(1)
     expect(result.current.items[0].quantity).toBe(2)
     expect(result.current.summary.totalCount).toBe(2)
-    expect(result.current.summary.subtotal).toBe(7.00)
+    expect(result.current.summary.subtotal).toBe(7.0)
   })
 
   it('should remove item from cart', () => {
@@ -131,7 +131,7 @@ describe('CartContext', () => {
 
     expect(result.current.items[0].quantity).toBe(5)
     expect(result.current.summary.totalCount).toBe(5)
-    expect(result.current.summary.subtotal).toBe(17.50)
+    expect(result.current.summary.subtotal).toBe(17.5)
   })
 
   it('should remove item when quantity is set to 0', () => {
@@ -182,7 +182,7 @@ describe('CartContext', () => {
     })
 
     const { summary } = result.current
-    expect(summary.subtotal).toBe(7.00)
+    expect(summary.subtotal).toBe(7.0)
     expect(summary.tax).toBe(1.33) // 7 * 0.19
     expect(summary.total).toBe(8.33) // 7 + 1.33
   })
@@ -250,7 +250,7 @@ describe('CartContext', () => {
 
     // Wait for save
     await act(async () => {
-      await new Promise(resolve => setTimeout(resolve, 100))
+      await new Promise((resolve) => setTimeout(resolve, 100))
     })
 
     expect(localStorageMock.setItem).toHaveBeenCalledWith(
