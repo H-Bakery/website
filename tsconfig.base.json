@@ -108,11 +108,7 @@
       ],
       "api": ["libs/api/src/index.ts"],
       "contexts": ["libs/shared/contexts/src/index.ts"],
-      "event-bus": ["libs/api/event-bus/src/index.ts"],
-      "libs": ["libs/src/index.ts"],
-      "reporting-service": ["libs/api/reporting-service/src/index.ts"],
-      "shared": ["libs/shared/src/index.ts"],
-      "types": ["libs/api/types/src/index.ts"]
+      "reporting-service": ["libs/api/reporting-service/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "src-archive", "**/src-archive/**"]
