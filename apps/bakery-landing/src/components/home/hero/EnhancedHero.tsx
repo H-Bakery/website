@@ -184,9 +184,12 @@ const EnhancedHero: React.FC = () => {
 const styles = {
   hero: {
     position: 'relative' as const,
-    height: { xs: '85svh', md: '90vh' },
-    minHeight: { xs: '400px', md: '550px' },
-    maxHeight: { xs: '700px', md: 'none' },
+    // On phones the hero grows with its content instead of clipping it: the
+    // wrapped status badge plus the stacked phone numbers and buttons are
+    // taller than 85svh on short screens, and a fixed height pushed the badge
+    // under the floating header.
+    height: { xs: 'auto', md: '90vh' },
+    minHeight: { xs: 'clamp(400px, 85svh, 700px)', md: '550px' },
     overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',
@@ -209,6 +212,9 @@ const styles = {
     display: 'flex',
     flexDirection: 'column' as const,
     justifyContent: 'center',
+    // Reserve the floating header's space (top offset + height, see
+    // components/header) so the centred block starts below it.
+    pt: { xs: '64px', sm: '86px', md: 0 },
   },
   content: {
     textAlign: 'center' as const,
