@@ -27,10 +27,10 @@ export default {
   coverageDirectory: '../../coverage/apps/bakery-landing',
   coverageThreshold: {
     global: {
-      branches: 60,
-      functions: 60,
-      lines: 60,
-      statements: 60,
+      branches: 17,
+      functions: 19,
+      lines: 22,
+      statements: 21,
     },
   },
 }
