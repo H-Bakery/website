@@ -14,6 +14,7 @@ import {
   FormControl,
   IconButton,
   InputLabel,
+  Link,
   List,
   ListItem,
   ListItemText,
@@ -45,13 +46,30 @@ export interface OrderItem {
 
 export interface Order {
   id: string
+  /** Kurze, fortlaufende Nummer aus dem Shop; ältere Mock-Bestellungen haben keine. */
+  orderNumber?: number
   customerName: string
   items: OrderItem[]
   total: number
   status: string
   createdAt: string
   updatedAt: string
+  /** Abholung, Kontakt und Anmerkung kommen mit jeder Shop-Bestellung. */
+  pickupDate?: string
+  pickupTime?: string
+  phone?: string
+  email?: string
+  notes?: string
 }
+
+/** Die TypeScript-API nennt die Kontaktfelder customerPhone/customerEmail. */
+type RawOrder = Order & { customerPhone?: string; customerEmail?: string }
+
+const normalizeOrder = (o: RawOrder): Order => ({
+  ...o,
+  phone: o.phone ?? o.customerPhone,
+  email: o.email ?? o.customerEmail,
+})
 
 type ChipColor =
   | 'default'
@@ -88,6 +106,28 @@ const formatDate = (iso: string) => {
   })
 }
 
+/** „Sa., 05.09.2026, 09:30 Uhr" – oder „–", wenn keine Abholung hinterlegt ist. */
+const formatPickup = (order: Pick<Order, 'pickupDate' | 'pickupTime'>) => {
+  if (!order.pickupDate) return '–'
+  const d = new Date(`${order.pickupDate}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return order.pickupDate
+  const date = d.toLocaleDateString('de-DE', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+  return order.pickupTime ? `${date}, ${order.pickupTime} Uhr` : date
+}
+
+/** Nächste Abholung zuerst; Bestellungen ohne Abholtermin nach Bestelldatum. */
+const pickupSortKey = (order: Order) =>
+  order.pickupDate
+    ? `${order.pickupDate}T${order.pickupTime ?? '00:00'}`
+    : order.createdAt
+
+const telHref = (phone: string) => `tel:${phone.replace(/\s/g, '')}`
+
 const formatPrice = (value: number) =>
   `${Number(value ?? 0)
     .toFixed(2)
@@ -109,8 +149,8 @@ export default function AdminOrdersPage() {
     setLoading(true)
     setError(null)
     try {
-      const res = await apiClient.get<Order[]>('/api/orders')
-      setOrders(Array.isArray(res.data) ? res.data : [])
+      const res = await apiClient.get<RawOrder[]>('/api/orders')
+      setOrders(Array.isArray(res.data) ? res.data.map(normalizeOrder) : [])
     } catch (err) {
       setError(
         err instanceof Error
@@ -128,9 +168,12 @@ export default function AdminOrdersPage() {
 
   const filtered = useMemo(
     () =>
-      statusFilter === 'all'
+      (statusFilter === 'all'
         ? orders
-        : orders.filter((o) => o.status === statusFilter),
+        : orders.filter((o) => o.status === statusFilter)
+      )
+        .slice()
+        .sort((a, b) => pickupSortKey(a).localeCompare(pickupSortKey(b))),
     [orders, statusFilter]
   )
 
@@ -245,11 +288,11 @@ export default function AdminOrdersPage() {
                 <TableRow>
                   <TableCell>Nr.</TableCell>
                   <TableCell>Kunde</TableCell>
-                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
-                    Datum
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
+                    Abholung
                   </TableCell>
                   <TableCell
-                    sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                    sx={{ display: { xs: 'none', md: 'table-cell' } }}
                     align="right"
                   >
                     Artikel
@@ -267,7 +310,7 @@ export default function AdminOrdersPage() {
                     sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
                   >
                     <TableCell component="th" scope="row">
-                      #{order.id}
+                      #{order.orderNumber ?? order.id}
                     </TableCell>
                     <TableCell>
                       <Typography
@@ -279,12 +322,14 @@ export default function AdminOrdersPage() {
                       </Typography>
                     </TableCell>
                     <TableCell
-                      sx={{ display: { xs: 'none', md: 'table-cell' } }}
+                      sx={{ display: { xs: 'none', sm: 'table-cell' } }}
                     >
-                      {formatDate(order.createdAt)}
+                      <Typography variant="body2" noWrap>
+                        {formatPickup(order)}
+                      </Typography>
                     </TableCell>
                     <TableCell
-                      sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+                      sx={{ display: { xs: 'none', md: 'table-cell' } }}
                       align="right"
                     >
                       {order.items?.reduce((s, i) => s + i.quantity, 0) ?? 0}
@@ -337,13 +382,59 @@ export default function AdminOrdersPage() {
         {selected && (
           <>
             <DialogTitle id="order-detail-title">
-              Bestellung #{selected.id}
+              Bestellung #{selected.orderNumber ?? selected.id}
+              {selected.orderNumber !== undefined && (
+                <Typography
+                  component="span"
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block' }}
+                >
+                  Bestellcode {selected.id}
+                </Typography>
+              )}
             </DialogTitle>
             <DialogContent dividers>
               <Typography variant="subtitle2" color="text.secondary">
                 Kunde
               </Typography>
               <Typography gutterBottom>{selected.customerName}</Typography>
+              <Typography variant="subtitle2" color="text.secondary">
+                Abholung
+              </Typography>
+              <Typography gutterBottom>{formatPickup(selected)}</Typography>
+              {selected.phone && (
+                <>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Telefon
+                  </Typography>
+                  <Typography gutterBottom>
+                    <Link href={telHref(selected.phone)}>{selected.phone}</Link>
+                  </Typography>
+                </>
+              )}
+              {selected.email && (
+                <>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    E-Mail
+                  </Typography>
+                  <Typography gutterBottom>
+                    <Link href={`mailto:${selected.email}`}>
+                      {selected.email}
+                    </Link>
+                  </Typography>
+                </>
+              )}
+              {selected.notes?.trim() && (
+                <>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Anmerkung
+                  </Typography>
+                  <Typography gutterBottom sx={{ whiteSpace: 'pre-wrap' }}>
+                    {selected.notes.trim()}
+                  </Typography>
+                </>
+              )}
               <Typography variant="subtitle2" color="text.secondary">
                 Bestellt am
               </Typography>
