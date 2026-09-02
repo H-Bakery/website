@@ -934,7 +934,8 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                           },
                           {
                             id: 'open',
-                            value: 'Schraffiert: Tag ohne Abholung (vorläufig)',
+                            value:
+                              'Schraffiert: Abholung fehlt oder unvollständig (vorläufig)',
                             type: 'square',
                             color: theme.palette.text.secondary,
                           },
@@ -950,7 +951,7 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                           <Cell
                             key={`delivered-${day.fullLabel}`}
                             fill={
-                              day.isOpen
+                              day.isOpen || day.isIncomplete
                                 ? `url(#${PATTERN_DELIVERED})`
                                 : deliveredColor
                             }
@@ -967,7 +968,9 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                           <Cell
                             key={`sold-${day.fullLabel}`}
                             fill={
-                              day.isOpen ? `url(#${PATTERN_SOLD})` : soldColor
+                              day.isOpen || day.isIncomplete
+                                ? `url(#${PATTERN_SOLD})`
+                                : soldColor
                             }
                           />
                         ))}
