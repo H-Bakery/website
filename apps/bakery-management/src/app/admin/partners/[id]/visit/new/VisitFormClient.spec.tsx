@@ -526,7 +526,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(screen.getByText(/erwartet 0/)).toBeInTheDocument()
     expect(
       screen.getByText(
-        /Im Schrank erwartet: Bauernbrot 6, Apfeltasche 0 - diese Produkte stehen in jeder Kategorie oben\./
+        /Im Schrank erwartet: Bauernbrot \(6\), Apfeltasche \(0\) - diese Produkte stehen in jeder Kategorie oben\./
       )
     ).toBeInTheDocument()
 

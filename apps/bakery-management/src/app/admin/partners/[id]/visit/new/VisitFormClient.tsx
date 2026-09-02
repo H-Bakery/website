@@ -734,7 +734,11 @@ export default function VisitFormClient({
     [allProducts, rows]
   )
 
-  /** "Mischbrot 500g 6, Kornbrot 500g 0" - was laut Tagesverlauf im Schrank liegt. */
+  /**
+   * "Mischbrot 500g (6), Kornbrot 500g (0)" - was laut Tagesverlauf im Schrank
+   * liegt. Die Menge steht in Klammern, weil fast jedes Brot mit einer
+   * Gewichtsangabe endet und "Mischbrot 500g 6" sonst zusammenläuft.
+   */
   const expectedSummary = useMemo(() => {
     if (expectedStock.size === 0) return ''
     const names = new Map(
@@ -746,7 +750,7 @@ export default function VisitFormClient({
         ([slugA, a], [slugB, b]) =>
           b - a || nameOf(slugA).localeCompare(nameOf(slugB), 'de')
       )
-      .map(([slug, qty]) => `${nameOf(slug)} ${qty}`)
+      .map(([slug, qty]) => `${nameOf(slug)} (${qty})`)
       .join(', ')
   }, [expectedStock, allProducts])
 
