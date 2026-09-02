@@ -8,6 +8,17 @@ export interface NavigationTarget {
   latitude: number
   longitude: number
   address?: string
+  /**
+   * Die Koordinaten sind nur die Strassenmitte - die Adresssuche hat die
+   * Hausnummer nicht gefunden. Dann bekommt die Navi-App die Adresse.
+   */
+  streetOnly?: boolean
+}
+
+/** Ziel fuer die Navi-App: Koordinaten, bei Strassen-Treffern die Adresse. */
+function destinationOf(target: NavigationTarget): string {
+  if (target.streetOnly && target.address) return target.address.trim()
+  return `${target.latitude},${target.longitude}`
 }
 
 /** Erkennt iOS/macOS, damit dort Apple Maps statt Google Maps geoeffnet wird. */
@@ -22,12 +33,18 @@ export function prefersAppleMaps(userAgent?: string): boolean {
  *
  * Es werden Koordinaten uebergeben und die Adresse nur als Beschriftung
  * mitgegeben: die Adresse haben wir bereits geokodiert, ein zweiter
- * Adress-Treffer in der Navi-App koennte woanders landen.
+ * Adress-Treffer in der Navi-App koennte woanders landen. Ausnahme
+ * `streetOnly`: dann sind die Koordinaten nur die Strassenmitte, und die
+ * Navi-App bekommt die Adresse (siehe `buildAddressNavigationUrl`).
  */
 export function buildNavigationUrl(
   target: NavigationTarget,
   userAgent?: string
 ): string {
+  if (target.streetOnly && target.address) {
+    return buildAddressNavigationUrl(target.address, userAgent)
+  }
+
   const coords = `${target.latitude},${target.longitude}`
 
   if (prefersAppleMaps(userAgent)) {
@@ -62,6 +79,8 @@ export function buildAddressNavigationUrl(
 /**
  * Link ueber mehrere Stopps. Google Maps nimmt bis zu neun Zwischenziele; mehr
  * werden abgeschnitten, damit der Link nicht stillschweigend kaputtgeht.
+ * Strassen-Treffer (`streetOnly`) gehen als Adresse mit, alle anderen als
+ * Koordinaten - Google versteht beides gemischt.
  *
  * Apple Maps kennt keine Zwischenziele in URLs - dort faellt der Link auf das
  * naechste Ziel zurueck.
@@ -77,18 +96,17 @@ export function buildMultiStopNavigationUrl(
   if (prefersAppleMaps(userAgent))
     return buildNavigationUrl(stops[0], userAgent)
 
-  const coords = (t: NavigationTarget) => `${t.latitude},${t.longitude}`
   const destination = stops[stops.length - 1]
   const waypoints = stops.slice(0, -1).slice(0, MAX_GOOGLE_WAYPOINTS)
 
   const params = new URLSearchParams({
     api: '1',
-    destination: coords(destination),
+    destination: destinationOf(destination),
     travelmode: 'driving',
   })
-  if (origin) params.set('origin', coords(origin))
+  if (origin) params.set('origin', destinationOf(origin))
   if (waypoints.length > 0) {
-    params.set('waypoints', waypoints.map(coords).join('|'))
+    params.set('waypoints', waypoints.map(destinationOf).join('|'))
   }
 
   return `https://www.google.com/maps/dir/?${params.toString()}`

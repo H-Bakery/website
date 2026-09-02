@@ -75,14 +75,23 @@ async function fetchJson(url, headers) {
  * Hausnummer traegt, sonst `'street'`. Nominatim antwortet auf "Talstraße 5"
  * ohne Fehler mit der Strassenmitte, wenn es die Nummer nicht kennt - ohne
  * diese Kennzeichnung liest sich das wie ein Haus, und der Fahrer wird
- * dorthin navigiert.
+ * dorthin navigiert. Ein Strassen-Treffer gilt deshalb erst, wenn kein
+ * genauerer Kandidat mehr trifft.
  */
 async function geocodeAddress(address) {
   const query = String(address || '').trim()
   if (!query) return null
 
   const streetOnly = stripHouseNumber(query)
+  // Ein Strassen-Treffer wird aufgehoben, aber nicht sofort genommen: fuer
+  // "Kaiserstraße 60-62" antwortet Nominatim mit der Strasse, fuer
+  // "Kaiserstraße 60" mit dem Haus - der genauere Kandidat kommt erst danach.
+  let streetHit = null
   for (const candidate of addressCandidates(query)) {
+    // Der Kandidat ohne Hausnummer findet hoechstens die Strasse - die haben
+    // wir dann schon, die Anfrage kann man sich sparen.
+    if (streetHit && candidate === streetOnly) break
+
     const url = `${NOMINATIM_URL}?${new URLSearchParams({
       q: candidate,
       format: 'jsonv2',
@@ -105,10 +114,17 @@ async function geocodeAddress(address) {
     const precision =
       candidate !== streetOnly && houseNumber ? 'house' : 'street'
 
-    return { lat, lon, displayName: hit.display_name || candidate, precision }
+    const found = {
+      lat,
+      lon,
+      displayName: hit.display_name || candidate,
+      precision,
+    }
+    if (precision === 'house') return found
+    if (!streetHit) streetHit = found
   }
 
-  return null
+  return streetHit
 }
 
 /** Abgeschwaechte Varianten einer Adresse, von genau nach grob. */

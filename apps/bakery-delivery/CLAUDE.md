@@ -89,7 +89,9 @@ Versuch findet Nominatim die hiesigen Adressen teilweise nicht.
 **Nominatim antwortet auf „Talstraße 5" ohne Fehler mit der Straßenmitte**, wenn es die Hausnummer
 nicht kennt. Deshalb fragt `geocodeAddress()` mit `addressdetails=1` und gibt `precision` zurück:
 `'house'`, wenn der Treffer eine Hausnummer trägt, sonst `'street'` — der Kandidat ohne Hausnummer
-zählt immer als `'street'`, auch wenn Nominatim dafür irgendein Haus liefert. Der Wert wandert über
+zählt immer als `'street'`, auch wenn Nominatim dafür irgendein Haus liefert. Ein Straßen-Treffer
+wird erst genommen, wenn kein genauerer Kandidat mehr trifft: „Kaiserstraße 60-62" kennt Nominatim
+nur als Straße, „Kaiserstraße 60" als Haus. Der Wert wandert über
 den `geocache` als `geocodePrecision` auf den Stopp; die Oberfläche sagt bei `'street'` dazu, dass
 nur die Straße gefunden wurde. Cache-Einträge von vor dieser Unterscheidung haben kein `precision`,
 der Stopp bekommt dann `null` (unbekannt) — nicht `'house'`. Wer sie nachprüfen will, löscht den
@@ -259,9 +261,11 @@ kennt keine Zwischenziele in URLs und fällt auf das nächste Ziel zurück.
 **Die Ausnahme:** hat die Suche nur die Straße gefunden (`geocodePrecision: 'street'`) oder gar
 nichts (`lat: null`), gibt es keine Hausnummern-Koordinate, die ein zweiter Treffer verfälschen
 könnte — die Straßenmitte wäre in jedem Fall das falschere Ziel. `StopCard` übergibt dann den
-eingegebenen Adresstext (`buildAddressNavigationUrl()`) und sagt in der Karte, was gefunden wurde.
-Ein Stopp ohne Koordinaten hatte früher gar keinen Navigationsknopf. „Ganze Tour navigieren"
-bleibt bei Koordinaten und lässt Stopps ohne Koordinaten aus, wie bisher.
+eingegebenen Adresstext (`buildAddressNavigationUrl()`, bei Koordinaten über `streetOnly` auf dem
+`NavigationTarget`) und sagt in der Karte, was gefunden wurde. Ein Stopp ohne Koordinaten hatte
+früher gar keinen Navigationsknopf. „Ganze Tour navigieren" gibt Straßen-Treffer ebenfalls als
+Adresse mit (Google versteht Adressen und Koordinaten gemischt) und lässt Stopps ohne Koordinaten
+aus, wie bisher.
 
 ### Was echt ist und was nicht
 

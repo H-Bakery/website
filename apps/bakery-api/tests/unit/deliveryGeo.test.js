@@ -106,6 +106,38 @@ describe('geocodeAddress', () => {
     expect(found.precision).toBe('street')
   })
 
+  // "Kaiserstraße 60-62" kennt Nominatim nur als Strasse, "Kaiserstraße 60"
+  // als Haus. Frueher gewann der erste Treffer - die Strassenmitte.
+  test('sucht nach einem Strassen-Treffer noch den genaueren Kandidaten', async () => {
+    const calls = respondWith(
+      [hit(49.3214, 7.3341, { road: 'Kaiserstraße' })],
+      [hit(49.3212, 7.3337, { house_number: '60', road: 'Kaiserstraße' })]
+    )
+
+    const found = await geocode('Kaiserstraße 60-62, 66424 Homburg')
+
+    expect(calls).toHaveLength(2)
+    expect(found.precision).toBe('house')
+    expect(found.lat).toBe(49.3212)
+  })
+
+  test('behaelt den Strassen-Treffer, wenn kein genauerer Kandidat trifft', async () => {
+    const calls = respondWith(
+      [hit(49.3214, 7.3341, { road: 'Kaiserstraße' })],
+      []
+    )
+
+    const found = await geocode('Kaiserstraße 60-62, 66424 Homburg')
+
+    // Der Kandidat ohne Hausnummer wird nicht mehr gefragt: mehr als die
+    // Strasse kann er nicht finden, und die liegt schon vor.
+    expect(calls.map((url) => new URL(url).searchParams.get('q'))).toEqual([
+      'Kaiserstraße 60-62, 66424 Homburg',
+      'Kaiserstraße 60, 66424 Homburg',
+    ])
+    expect(found).toMatchObject({ lat: 49.3214, precision: 'street' })
+  })
+
   test('die verkuerzte Hausnummer "36" zaehlt noch als Haus', async () => {
     respondWith(
       [],

@@ -37,16 +37,16 @@ export function StopCard({
   // bei einer gar nicht gefundenen Adresse - bekommt die Navi-App den
   // eingegebenen Text statt der Koordinaten.
   const streetOnly = located && stop.geocodePrecision === 'street'
-  const navigationUrl =
-    located && !streetOnly
-      ? buildNavigationUrl({
-          latitude: stop.lat,
-          longitude: stop.lon,
-          address: stop.address,
-        })
-      : stop.address
-      ? buildAddressNavigationUrl(stop.address)
-      : null
+  const navigationUrl = located
+    ? buildNavigationUrl({
+        latitude: stop.lat,
+        longitude: stop.lon,
+        address: stop.address,
+        streetOnly,
+      })
+    : stop.address
+    ? buildAddressNavigationUrl(stop.address)
+    : null
 
   const items = formatItems(stop.items)
 
