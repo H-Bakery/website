@@ -1,6 +1,9 @@
+// memfs statt mock-fs, siehe tests/helpers/mockFs.js
+jest.mock('fs', () => require('memfs').fs)
+
 const fs = require('fs').promises
 const path = require('path')
-const mockFs = require('mock-fs')
+const mockFs = require('../helpers/mockFs')
 
 // Mock logger to prevent actual logging during tests
 jest.mock('../../utils/logger', () => ({

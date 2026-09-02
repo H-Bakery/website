@@ -1,4 +1,5 @@
-import { render, screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import NavigationButton from './NavigationButton'
 
@@ -20,13 +21,17 @@ describe('NavigationButton Component', () => {
   }
 
   it('renders button with label', () => {
-    renderWithTheme(<NavigationButton {...defaultProps}>Über uns</NavigationButton>)
+    renderWithTheme(
+      <NavigationButton {...defaultProps}>Über uns</NavigationButton>
+    )
 
     expect(screen.getByText('Über uns')).toBeInTheDocument()
   })
 
   it('navigates to correct route on click', () => {
-    renderWithTheme(<NavigationButton {...defaultProps}>Über uns</NavigationButton>)
+    renderWithTheme(
+      <NavigationButton {...defaultProps}>Über uns</NavigationButton>
+    )
 
     const button = screen.getByRole('button', { name: 'Über uns' })
     fireEvent.click(button)
@@ -40,7 +45,9 @@ describe('NavigationButton Component', () => {
       icon: <span data-testid="test-icon">📍</span>,
     }
 
-    renderWithTheme(<NavigationButton {...propsWithIcon}>Über uns</NavigationButton>)
+    renderWithTheme(
+      <NavigationButton {...propsWithIcon}>Über uns</NavigationButton>
+    )
 
     expect(screen.getByTestId('test-icon')).toBeInTheDocument()
     expect(screen.getByText('Über uns')).toBeInTheDocument()
@@ -52,7 +59,9 @@ describe('NavigationButton Component', () => {
       isActive: true,
     }
 
-    const { container } = renderWithTheme(<NavigationButton {...propsActive}>Über uns</NavigationButton>)
+    const { container } = renderWithTheme(
+      <NavigationButton {...propsActive}>Über uns</NavigationButton>
+    )
 
     const button = container.querySelector('button')
     expect(button).toHaveClass('active')
@@ -65,7 +74,9 @@ describe('NavigationButton Component', () => {
       isExternal: true,
     }
 
-    renderWithTheme(<NavigationButton {...propsExternal}>Über uns</NavigationButton>)
+    renderWithTheme(
+      <NavigationButton {...propsExternal}>Über uns</NavigationButton>
+    )
 
     const link = screen.getByRole('link', { name: 'Über uns' })
     expect(link).toHaveAttribute(
@@ -87,7 +98,7 @@ describe('NavigationButton Component', () => {
     )
 
     let button = container.querySelector('button')
-    expect(button).toHaveClass('btn-small')
+    expect(button).toHaveClass('MuiButton-sizeSmall')
 
     const propsLarge = {
       ...defaultProps,
@@ -97,13 +108,13 @@ describe('NavigationButton Component', () => {
     rerender(<NavigationButton {...propsLarge}>Über uns</NavigationButton>)
 
     button = container.querySelector('button')
-    expect(button).toHaveClass('btn-large')
+    expect(button).toHaveClass('MuiButton-sizeLarge')
   })
 
   it('renders with different variants', () => {
     const propsOutline = {
       ...defaultProps,
-      variant: 'outline' as const,
+      variant: 'outlined' as const,
     }
 
     const { container } = renderWithTheme(
@@ -111,7 +122,7 @@ describe('NavigationButton Component', () => {
     )
 
     const button = container.querySelector('button')
-    expect(button).toHaveClass('btn-outline')
+    expect(button).toHaveClass('MuiButton-outlined')
   })
 
   it('handles disabled state', () => {
@@ -120,7 +131,9 @@ describe('NavigationButton Component', () => {
       disabled: true,
     }
 
-    renderWithTheme(<NavigationButton {...propsDisabled}>Über uns</NavigationButton>)
+    renderWithTheme(
+      <NavigationButton {...propsDisabled}>Über uns</NavigationButton>
+    )
 
     const button = screen.getByRole('button', { name: 'Über uns' })
     expect(button).toBeDisabled()
@@ -143,17 +156,23 @@ describe('NavigationButton Component', () => {
     expect(button).toHaveClass('custom-nav-btn')
   })
 
-  it('supports keyboard navigation', () => {
-    renderWithTheme(<NavigationButton {...defaultProps}>Über uns</NavigationButton>)
+  it('supports keyboard navigation', async () => {
+    // Enter/Leertaste lösen bei einem nativen <button> den Klick im Browser aus;
+    // fireEvent.keyDown simuliert das nicht, user-event schon.
+    const user = userEvent.setup()
+    renderWithTheme(
+      <NavigationButton {...defaultProps}>Über uns</NavigationButton>
+    )
 
     const button = screen.getByRole('button', { name: 'Über uns' })
+    button.focus()
 
-    fireEvent.keyDown(button, { key: 'Enter' })
+    await user.keyboard('{Enter}')
     expect(mockPush).toHaveBeenCalledWith('/about')
 
     mockPush.mockClear()
 
-    fireEvent.keyDown(button, { key: ' ' })
+    await user.keyboard(' ')
     expect(mockPush).toHaveBeenCalledWith('/about')
   })
 })

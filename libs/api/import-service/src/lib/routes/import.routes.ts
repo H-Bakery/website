@@ -1,11 +1,15 @@
-import { Router } from 'express';
-import { importController } from '../controllers/import.controller';
+import { Router } from 'express'
+import { authMiddleware } from '@bakery/api/auth'
+import { importController } from '../controllers/import.controller'
 
-const router = Router();
+const router = Router()
 
-// Note: Authentication middleware should be added in the main app
-// when these routes are mounted. For example:
-// app.use('/api/import', authenticate, requireAdmin, importRoutes);
+// Der Import schreibt Umsatzdaten; ohne Token geht hier nichts. main.ts hängt
+// den Router ohne eigene Middleware ein, deshalb prüft der Router selbst - mit
+// derselben Middleware wie sales-analytics.routes.ts und main.ts (@bakery/api/auth,
+// die auch die Tokens ausstellt). @bakery/api/core hat einen eigenen Default-Secret
+// und eine andere Fehlerform; ein Login-Token würde dort ohne JWT_SECRET abgelehnt.
+router.use(authMiddleware)
 
 /**
  * Import a single sales report
@@ -13,7 +17,7 @@ const router = Router();
  * @body {DailyReport} report - The daily sales report to import
  * @returns {ImportResult} Import result with counts
  */
-router.post('/sales-report', importController.importSalesReport);
+router.post('/sales-report', importController.importSalesReport)
 
 /**
  * Import multiple sales reports (bulk)
@@ -21,7 +25,7 @@ router.post('/sales-report', importController.importSalesReport);
  * @body {reports: DailyReport[]} - Array of reports to import
  * @returns {BulkImportResult} Bulk import results
  */
-router.post('/sales-reports/bulk', importController.importSalesReportsBulk);
+router.post('/sales-reports/bulk', importController.importSalesReportsBulk)
 
 /**
  * Check if a report has been imported
@@ -29,6 +33,6 @@ router.post('/sales-reports/bulk', importController.importSalesReportsBulk);
  * @param {string} date - Date in YYYY-MM-DD format
  * @returns {object} Import status for the date
  */
-router.get('/status/:date', importController.checkImportStatus);
+router.get('/status/:date', importController.checkImportStatus)
 
-export const importRoutes = router;
+export const importRoutes = router

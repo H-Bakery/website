@@ -212,7 +212,7 @@ describe('AppNavigation', () => {
     it('should show mobile menu button on mobile', () => {
       renderWithTheme(<AppNavigation app="landing" />)
 
-      const menuButton = screen.getByRole('button', { name: /menu/i })
+      const menuButton = screen.getByRole('button', { name: /menü/i })
       expect(menuButton).toBeInTheDocument()
       expect(screen.getByTestId('MenuIcon')).toBeInTheDocument()
     })
@@ -220,7 +220,7 @@ describe('AppNavigation', () => {
     it('should open mobile menu when menu button is clicked', async () => {
       renderWithTheme(<AppNavigation app="landing" />)
 
-      const menuButton = screen.getByRole('button', { name: /menu/i })
+      const menuButton = screen.getByRole('button', { name: /menü/i })
       fireEvent.click(menuButton)
 
       await waitFor(() => {
@@ -244,7 +244,7 @@ describe('AppNavigation', () => {
       renderWithTheme(<AppNavigation app="landing" />)
 
       // Open menu
-      const menuButton = screen.getByRole('button', { name: /menu/i })
+      const menuButton = screen.getByRole('button', { name: /menü/i })
       fireEvent.click(menuButton)
 
       await waitFor(() => {
@@ -264,7 +264,7 @@ describe('AppNavigation', () => {
       renderWithTheme(<AppNavigation app="landing" showMobileMenu={false} />)
 
       expect(
-        screen.queryByRole('button', { name: /menu/i })
+        screen.queryByRole('button', { name: /menü/i })
       ).not.toBeInTheDocument()
     })
   })
@@ -294,7 +294,7 @@ describe('AppNavigation', () => {
       renderWithTheme(<AppNavigation app="landing" variant="minimal" />)
 
       expect(
-        screen.queryByRole('button', { name: /menu/i })
+        screen.queryByRole('button', { name: /menü/i })
       ).not.toBeInTheDocument()
     })
 
@@ -303,7 +303,7 @@ describe('AppNavigation', () => {
       renderWithTheme(<AppNavigation app="landing" variant="mobile-friendly" />)
 
       expect(screen.getByText('Bäckerei Heusser')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /menü/i })).toBeInTheDocument()
     })
 
     it('should render normally on desktop even with mobile-friendly variant', () => {
@@ -356,7 +356,7 @@ describe('AppNavigation', () => {
       mockUseMediaQuery.mockReturnValue(true) // Mobile view
       renderWithTheme(<AppNavigation app="landing" />)
 
-      const menuButton = screen.getByRole('button', { name: /menu/i })
+      const menuButton = screen.getByRole('button', { name: /menü/i })
       fireEvent.click(menuButton)
 
       await waitFor(() => {

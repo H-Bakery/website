@@ -5,7 +5,14 @@
  * @module @bakery/shared/contexts/cart
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react'
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+} from 'react'
 import { Product, ProductStatus } from '@bakery/shared/types'
 
 /**
@@ -151,11 +158,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({
     if (items.length === 0) return DEFAULT_SUMMARY
 
     const totalCount = items.reduce((sum, item) => sum + item.quantity, 0)
-    const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
+    const subtotal = items.reduce(
+      (sum, item) => sum + item.price * item.quantity,
+      0
+    )
     const tax = subtotal * taxRate
     const total = subtotal - discountAmount + tax
     const totalWeight = items.reduce(
-      (sum, item) => sum + ((item.weight || 0) * item.quantity),
+      (sum, item) => sum + (item.weight || 0) * item.quantity,
       0
     )
 
@@ -176,7 +186,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({
 
     // Check total items limit
     if (items.length > maxItems) {
-      globalErrors.push(`Cart cannot contain more than ${maxItems} different items`)
+      globalErrors.push(
+        `Cart cannot contain more than ${maxItems} different items`
+      )
     }
 
     // Validate each item
@@ -197,7 +209,10 @@ export const CartProvider: React.FC<CartProviderProps> = ({
       }
 
       // Check if product is active
-      if (item.status === ProductStatus.Discontinued || item.status === ProductStatus.OutOfStock) {
+      if (
+        item.status === ProductStatus.Discontinued ||
+        item.status === ProductStatus.OutOfStock
+      ) {
         itemErrors.push('Product is no longer available')
       }
 
@@ -211,7 +226,8 @@ export const CartProvider: React.FC<CartProviderProps> = ({
       }
     }
 
-    const isValid = Object.keys(errors).length === 0 && globalErrors.length === 0
+    const isValid =
+      Object.keys(errors).length === 0 && globalErrors.length === 0
 
     return { isValid, errors, globalErrors }
   }, [items, maxItems, maxQuantityPerItem, validateItem])
@@ -223,7 +239,9 @@ export const CartProvider: React.FC<CartProviderProps> = ({
     const globalErrors: string[] = []
 
     if (items.length > maxItems) {
-      globalErrors.push(`Cart cannot contain more than ${maxItems} different items`)
+      globalErrors.push(
+        `Cart cannot contain more than ${maxItems} different items`
+      )
     }
 
     for (const item of items) {
@@ -300,66 +318,83 @@ export const CartProvider: React.FC<CartProviderProps> = ({
         clearTimeout(timeout)
       }
     }
-  }, [items, discountCode, discountAmount, storageKey, enablePersistence, autoSaveDelay, isLoading])
+  }, [
+    items,
+    discountCode,
+    discountAmount,
+    storageKey,
+    enablePersistence,
+    autoSaveDelay,
+    isLoading,
+  ])
 
   // Add to cart handler
-  const addToCart = useCallback((
-    product: Product,
-    quantity: number = 1,
-    notes?: string
-  ) => {
-    setItems(prevItems => {
-      const existingItem = prevItems.find(item => item.id === product.id)
+  const addToCart = useCallback(
+    (product: Product, quantity: number = 1, notes?: string) => {
+      setItems((prevItems) => {
+        const existingItem = prevItems.find((item) => item.id === product.id)
 
-      if (existingItem) {
-        // Update quantity if item exists
-        const newQuantity = Math.min(
-          existingItem.quantity + quantity,
-          maxQuantityPerItem
-        )
-        return prevItems.map(item =>
-          item.id === product.id
-            ? { ...item, quantity: newQuantity, notes: notes || item.notes }
-            : item
-        )
-      } else {
-        // Add new item
-        if (prevItems.length >= maxItems) {
-          console.warn(`Cannot add more than ${maxItems} different items to cart`)
-          return prevItems
+        if (existingItem) {
+          // Update quantity if item exists
+          const newQuantity = Math.min(
+            existingItem.quantity + quantity,
+            maxQuantityPerItem
+          )
+          return prevItems.map((item) =>
+            item.id === product.id
+              ? { ...item, quantity: newQuantity, notes: notes || item.notes }
+              : item
+          )
+        } else {
+          // Add new item
+          if (prevItems.length >= maxItems) {
+            console.warn(
+              `Cannot add more than ${maxItems} different items to cart`
+            )
+            return prevItems
+          }
+          return [
+            ...prevItems,
+            {
+              ...product,
+              quantity: Math.min(quantity, maxQuantityPerItem),
+              notes,
+            },
+          ]
         }
-        return [...prevItems, { ...product, quantity, notes }]
-      }
-    })
-  }, [maxItems, maxQuantityPerItem])
+      })
+    },
+    [maxItems, maxQuantityPerItem]
+  )
 
   // Remove from cart handler
   const removeFromCart = useCallback((id: number) => {
-    setItems(prevItems => prevItems.filter(item => item.id !== id))
+    setItems((prevItems) => prevItems.filter((item) => item.id !== id))
   }, [])
 
   // Update quantity handler
-  const updateQuantity = useCallback((id: number, quantity: number) => {
-    if (quantity <= 0) {
-      removeFromCart(id)
-      return
-    }
+  const updateQuantity = useCallback(
+    (id: number, quantity: number) => {
+      if (quantity <= 0) {
+        removeFromCart(id)
+        return
+      }
 
-    setItems(prevItems =>
-      prevItems.map(item =>
-        item.id === id
-          ? { ...item, quantity: Math.min(quantity, maxQuantityPerItem) }
-          : item
+      setItems((prevItems) =>
+        prevItems.map((item) =>
+          item.id === id
+            ? { ...item, quantity: Math.min(quantity, maxQuantityPerItem) }
+            : item
+        )
       )
-    )
-  }, [maxQuantityPerItem, removeFromCart])
+    },
+    [maxQuantityPerItem, removeFromCart]
+  )
 
   // Update notes handler
   const updateNotes = useCallback((id: number, notes: string) => {
-    setItems(prevItems =>
-      prevItems.map(item =>
-        item.id === id ? { ...item, notes } : item
-      )
+    setItems((prevItems) =>
+      prevItems.map((item) => (item.id === id ? { ...item, notes } : item))
     )
   }, [])
 
@@ -371,39 +406,48 @@ export const CartProvider: React.FC<CartProviderProps> = ({
   }, [])
 
   // Check if in cart
-  const isInCart = useCallback((productId: number): boolean => {
-    return items.some(item => item.id === productId)
-  }, [items])
+  const isInCart = useCallback(
+    (productId: number): boolean => {
+      return items.some((item) => item.id === productId)
+    },
+    [items]
+  )
 
   // Get quantity in cart
-  const getQuantity = useCallback((productId: number): number => {
-    const item = items.find(item => item.id === productId)
-    return item?.quantity || 0
-  }, [items])
+  const getQuantity = useCallback(
+    (productId: number): number => {
+      const item = items.find((item) => item.id === productId)
+      return item?.quantity || 0
+    },
+    [items]
+  )
 
   // Apply discount code
-  const applyDiscount = useCallback(async (code: string): Promise<boolean> => {
-    try {
-      // TODO: Validate discount code with API
-      // For now, simulate some discount codes
-      const discounts: Record<string, number> = {
-        'SAVE10': 0.1,
-        'SAVE20': 0.2,
-        'WELCOME': 0.15,
-      }
+  const applyDiscount = useCallback(
+    async (code: string): Promise<boolean> => {
+      try {
+        // TODO: Validate discount code with API
+        // For now, simulate some discount codes
+        const discounts: Record<string, number> = {
+          SAVE10: 0.1,
+          SAVE20: 0.2,
+          WELCOME: 0.15,
+        }
 
-      const discountRate = discounts[code.toUpperCase()]
-      if (discountRate) {
-        setDiscountCode(code)
-        setDiscountAmount(summary.subtotal * discountRate)
-        return true
+        const discountRate = discounts[code.toUpperCase()]
+        if (discountRate) {
+          setDiscountCode(code)
+          setDiscountAmount(summary.subtotal * discountRate)
+          return true
+        }
+        return false
+      } catch (error) {
+        console.error('Failed to apply discount:', error)
+        return false
       }
-      return false
-    } catch (error) {
-      console.error('Failed to apply discount:', error)
-      return false
-    }
-  }, [summary.subtotal])
+    },
+    [summary.subtotal]
+  )
 
   // Remove discount
   const removeDiscount = useCallback(() => {
@@ -413,30 +457,37 @@ export const CartProvider: React.FC<CartProviderProps> = ({
 
   // Export cart as JSON
   const exportCart = useCallback((): string => {
-    return JSON.stringify({
-      items,
-      discountCode,
-      exportedAt: new Date().toISOString(),
-    }, null, 2)
+    return JSON.stringify(
+      {
+        items,
+        discountCode,
+        exportedAt: new Date().toISOString(),
+      },
+      null,
+      2
+    )
   }, [items, discountCode])
 
   // Import cart from JSON
-  const importCart = useCallback((data: string): boolean => {
-    try {
-      const parsed = JSON.parse(data)
-      if (Array.isArray(parsed.items)) {
-        setItems(parsed.items)
-        if (parsed.discountCode) {
-          applyDiscount(parsed.discountCode)
+  const importCart = useCallback(
+    (data: string): boolean => {
+      try {
+        const parsed = JSON.parse(data)
+        if (Array.isArray(parsed.items)) {
+          setItems(parsed.items)
+          if (parsed.discountCode) {
+            applyDiscount(parsed.discountCode)
+          }
+          return true
         }
-        return true
+        return false
+      } catch (error) {
+        console.error('Failed to import cart:', error)
+        return false
       }
-      return false
-    } catch (error) {
-      console.error('Failed to import cart:', error)
-      return false
-    }
-  }, [applyDiscount])
+    },
+    [applyDiscount]
+  )
 
   // Context value
   const value = useMemo<CartContextType>(

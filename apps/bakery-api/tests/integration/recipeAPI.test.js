@@ -1,14 +1,11 @@
+// memfs statt mock-fs, siehe tests/helpers/mockFs.js
+jest.mock('fs', () => require('memfs').fs)
+
 const request = require('supertest')
 const express = require('express')
 const fs = require('fs').promises
 const path = require('path')
-const mockFs = require('mock-fs')
-
-// Pre-load Express's bundled iconv-lite encodings before mock-fs intercepts
-// the filesystem. body-parser lazy-loads encoding modules from Express's own
-// iconv-lite copy, which fails when mock-fs replaces the real filesystem.
-const expressIconvLite = require('express/node_modules/iconv-lite')
-expressIconvLite.getCodec('utf-8')
+const mockFs = require('../helpers/mockFs')
 
 const app = express()
 app.use(express.json())
@@ -368,7 +365,7 @@ Traditional sourdough bread.`,
 
   describe('Error handling', () => {
     it('should handle file system errors gracefully', async () => {
-      // Restore real file system to cause errors
+      // Leeres Dateisystem: das Rezeptverzeichnis fehlt, readdir wirft ENOENT
       mockFs.restore()
 
       const response = await request(app).get('/api/recipes').expect(500)
