@@ -40,6 +40,7 @@ import {
   PICKUP_LEAD_MINUTES,
   formatGermanDate,
   formatOpeningWindow,
+  openingHoursSentence,
   openingWindowFor,
   pickupTimeSlots,
   toIsoDate,
@@ -523,9 +524,9 @@ export const CheckoutPage: React.FC = () => {
                     variant="body2"
                     color="text.secondary"
                     sx={{ mt: 0.5, mb: 2 }}
+                    data-testid="checkout-opening-hours"
                   >
-                    Di–Fr 05:30–13:30 Uhr, Sa 05:30–12:30 Uhr, So 08:00–11:00
-                    Uhr. Montag ist Ruhetag.
+                    {openingHoursSentence()}
                   </Typography>
 
                   {leadTime && (

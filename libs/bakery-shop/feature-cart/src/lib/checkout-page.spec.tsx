@@ -11,7 +11,7 @@ import type { CartItem } from '@bakery/shared/contexts'
 
 import { CheckoutPage } from './checkout-page'
 import { CHECKOUT_FORM_STORAGE_KEY } from './checkout-validation'
-import { openingWindowFor, toIsoDate } from './pickup'
+import { OPENING_HOURS_ROWS, openingWindowFor, toIsoDate } from './pickup'
 
 const mockPush = jest.fn()
 const mockSubmitOrder = jest.fn()
@@ -329,6 +329,20 @@ describe('CheckoutPage', () => {
     // Nur positive Aussagen. Ein „frei von" wäre für 51 Gebäcke ohne geprüfte
     // Angabe schlicht nicht belegt.
     expect(note).not.toMatch(/frei von|glutenfrei|laktosefrei|ohne Allergene/i)
+  })
+
+  it('leitet die Öffnungszeiten aus OPENING_HOURS_ROWS ab statt aus einem Literal', () => {
+    render(<CheckoutPage />)
+
+    // Vorher stand hier ein zweiter, handgeschriebener Öffnungszeiten-Satz.
+    // Er stimmte zufällig — und wäre bei der nächsten Änderung an
+    // WEEKDAY_HOURS stillschweigend falsch geworden.
+    const text = screen.getByTestId('checkout-opening-hours').textContent ?? ''
+    for (const row of OPENING_HOURS_ROWS) {
+      expect(text).toContain(row.days)
+      expect(text).toContain(row.time)
+    }
+    expect(text).not.toMatch(/Di–Fr|Sa 05:30/)
   })
 
   it('behält jede testid des Playwright-Vertrags', () => {
