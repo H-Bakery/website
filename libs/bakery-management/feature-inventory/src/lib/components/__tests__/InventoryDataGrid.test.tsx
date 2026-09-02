@@ -1,7 +1,7 @@
-import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { InventoryDataGrid } from '../InventoryDataGrid';
-import { InventoryItem } from '@bakery/shared/data-access';
+import React from 'react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { InventoryDataGrid } from '../InventoryDataGrid'
+import { InventoryItem } from '@bakery/shared/data-access'
 
 // Mock MUI DataGrid to simplify testing
 jest.mock('@mui/x-data-grid', () => ({
@@ -20,7 +20,9 @@ jest.mock('@mui/x-data-grid', () => ({
             <tr key={row.id}>
               {columns.map((col: any) => (
                 <td key={col.field}>
-                  {col.renderCell 
+                  {col.getActions
+                    ? col.getActions({ row, id: row.id })
+                    : col.renderCell
                     ? col.renderCell({ row, value: row[col.field] })
                     : row[col.field]}
                 </td>
@@ -35,7 +37,7 @@ jest.mock('@mui/x-data-grid', () => ({
   GridActionsCellItem: ({ icon, onClick }: any) => (
     <button onClick={onClick}>{icon}</button>
   ),
-}));
+}))
 
 describe('InventoryDataGrid', () => {
   const mockItems: InventoryItem[] = [
@@ -52,7 +54,7 @@ describe('InventoryDataGrid', () => {
       product: {
         id: 1,
         name: 'Mehl',
-        price: 0.50,
+        price: 0.5,
         category: 'Backzutaten',
       },
     },
@@ -65,10 +67,10 @@ describe('InventoryDataGrid', () => {
       product: {
         id: 2,
         name: 'Hefe',
-        price: 1.20,
+        price: 1.2,
       },
     },
-  ];
+  ]
 
   const mockHandlers = {
     onEdit: jest.fn(),
@@ -76,100 +78,72 @@ describe('InventoryDataGrid', () => {
     onAdjustStock: jest.fn(),
     onSelectionChange: jest.fn(),
     onExport: jest.fn(),
-  };
+  }
 
   beforeEach(() => {
-    jest.clearAllMocks();
-  });
+    jest.clearAllMocks()
+  })
 
   it('should render inventory items', () => {
     render(
-      <InventoryDataGrid
-        items={mockItems}
-        loading={false}
-        {...mockHandlers}
-      />
-    );
+      <InventoryDataGrid items={mockItems} loading={false} {...mockHandlers} />
+    )
 
-    expect(screen.getByTestId('data-grid')).toBeInTheDocument();
-    expect(screen.getByText('Mehl')).toBeInTheDocument();
-    expect(screen.getByText('Hefe')).toBeInTheDocument();
-  });
+    expect(screen.getByTestId('data-grid')).toBeInTheDocument()
+    expect(screen.getByText('Mehl')).toBeInTheDocument()
+    expect(screen.getByText('Hefe')).toBeInTheDocument()
+  })
 
   it('should show export button when onExport is provided', () => {
     render(
-      <InventoryDataGrid
-        items={mockItems}
-        loading={false}
-        {...mockHandlers}
-      />
-    );
+      <InventoryDataGrid items={mockItems} loading={false} {...mockHandlers} />
+    )
 
-    const exportButton = screen.getByRole('button', { name: /exportieren/i });
-    expect(exportButton).toBeInTheDocument();
-    
-    fireEvent.click(exportButton);
-    expect(mockHandlers.onExport).toHaveBeenCalled();
-  });
+    const exportButton = screen.getByRole('button', { name: /exportieren/i })
+    expect(exportButton).toBeInTheDocument()
+
+    fireEvent.click(exportButton)
+    expect(mockHandlers.onExport).toHaveBeenCalled()
+  })
 
   it('should handle row actions', () => {
     const { container } = render(
-      <InventoryDataGrid
-        items={mockItems}
-        loading={false}
-        {...mockHandlers}
-      />
-    );
+      <InventoryDataGrid items={mockItems} loading={false} {...mockHandlers} />
+    )
 
     // Find action buttons (simplified for test)
-    const buttons = container.querySelectorAll('button');
-    
+    const buttons = container.querySelectorAll('button')
+
     // Click action buttons
     buttons.forEach((button) => {
-      fireEvent.click(button);
-    });
+      fireEvent.click(button)
+    })
 
     // Verify handlers were called
-    expect(mockHandlers.onAdjustStock).toHaveBeenCalled();
-    expect(mockHandlers.onEdit).toHaveBeenCalled();
-    expect(mockHandlers.onDelete).toHaveBeenCalled();
-  });
+    expect(mockHandlers.onAdjustStock).toHaveBeenCalled()
+    expect(mockHandlers.onEdit).toHaveBeenCalled()
+    expect(mockHandlers.onDelete).toHaveBeenCalled()
+  })
 
   it('should show loading state', () => {
-    render(
-      <InventoryDataGrid
-        items={[]}
-        loading={true}
-        {...mockHandlers}
-      />
-    );
+    render(<InventoryDataGrid items={[]} loading={true} {...mockHandlers} />)
 
-    expect(screen.getByTestId('data-grid')).toBeInTheDocument();
-  });
+    expect(screen.getByTestId('data-grid')).toBeInTheDocument()
+  })
 
   it('should handle empty state', () => {
-    render(
-      <InventoryDataGrid
-        items={[]}
-        loading={false}
-        {...mockHandlers}
-      />
-    );
+    render(<InventoryDataGrid items={[]} loading={false} {...mockHandlers} />)
 
-    expect(screen.getByTestId('data-grid')).toBeInTheDocument();
-  });
+    expect(screen.getByTestId('data-grid')).toBeInTheDocument()
+  })
 
   it('should apply correct row classes for stock status', () => {
     // This would test the getRowClassName function
     // In a real test, we'd need to mock the DataGrid more thoroughly
     const component = render(
-      <InventoryDataGrid
-        items={mockItems}
-        loading={false}
-        {...mockHandlers}
-      />
-    );
+      <InventoryDataGrid items={mockItems} loading={false} {...mockHandlers} />
+    )
 
-    expect(component).toBeTruthy();
-  });
-});
+    expect(component).toBeTruthy()
+  })
+})

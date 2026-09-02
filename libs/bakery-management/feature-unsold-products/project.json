@@ -4,5 +4,13 @@
   "sourceRoot": "libs/bakery-management/feature-unsold-products/src",
   "projectType": "library",
   "tags": ["scope:management", "type:feature"],
-  "targets": {}
+  "targets": {
+    "test": {
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "options": {
+        "jestConfig": "libs/bakery-management/feature-unsold-products/jest.config.ts"
+      }
+    }
+  }
 }

@@ -206,6 +206,7 @@ const EnhancedCartButton: React.FC = () => {
             <IconButton
               size="small"
               onClick={() => setShowPreview(false)}
+              aria-label="Vorschau schließen"
               sx={{ color: 'white' }}
             >
               <CloseIcon />

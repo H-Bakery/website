@@ -1,14 +1,15 @@
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { ThemeProvider } from '@mui/material/styles'
-import { lightTheme } from '../../../../theme'
+import { ThemeProvider, createTheme } from '@mui/material/styles'
 import EditCashEntryModal from '../EditCashEntryModal'
 import { CashEntry } from '../../../../services/types'
 
 // Mock implementation for the onUpdate prop
 const mockOnUpdate = jest.fn()
 const mockOnClose = jest.fn()
+
+const lightTheme = createTheme({ palette: { mode: 'light' } })
 
 // Wrapper component to provide theme
 const TestWrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -21,7 +22,7 @@ const mockCashEntry: CashEntry = {
   amount: 425.75,
   date: '2024-01-15',
   createdAt: '2024-01-15T20:30:00.000Z',
-  updatedAt: '2024-01-15T20:30:00.000Z'
+  updatedAt: '2024-01-15T20:30:00.000Z',
 }
 
 describe('EditCashEntryModal', () => {
@@ -75,14 +76,16 @@ describe('EditCashEntryModal', () => {
     )
 
     const amountInput = screen.getByLabelText('Betrag')
-    const submitButton = screen.getByRole('button', { name: /änderungen speichern/i })
+    const submitButton = screen.getByRole('button', {
+      name: /änderungen speichern/i,
+    })
 
     // Test with valid amount - should call onUpdate
     fireEvent.change(amountInput, { target: { value: '100.50' } })
     fireEvent.click(submitButton)
 
     await waitFor(() => {
-      expect(mockOnUpdate).toHaveBeenCalledWith(1, 100.50, '2024-01-15')
+      expect(mockOnUpdate).toHaveBeenCalledWith(1, 100.5, '2024-01-15')
     })
 
     expect(mockOnClose).toHaveBeenCalled()
@@ -101,15 +104,17 @@ describe('EditCashEntryModal', () => {
     )
 
     const dateInput = screen.getByLabelText('Datum')
-    const submitButton = screen.getByRole('button', { name: /änderungen speichern/i })
+    const submitButton = screen.getByRole('button', {
+      name: /änderungen speichern/i,
+    })
 
     // Test with empty date
     fireEvent.change(dateInput, { target: { value: '' } })
-    
+
     // Change amount to enable submit button
     const amountInput = screen.getByLabelText('Betrag')
     fireEvent.change(amountInput, { target: { value: '100' } })
-    
+
     fireEvent.click(submitButton)
 
     await waitFor(() => {
@@ -159,7 +164,9 @@ describe('EditCashEntryModal', () => {
 
     const amountInput = screen.getByLabelText('Betrag')
     const dateInput = screen.getByLabelText('Datum')
-    const submitButton = screen.getByRole('button', { name: /änderungen speichern/i })
+    const submitButton = screen.getByRole('button', {
+      name: /änderungen speichern/i,
+    })
 
     // Make changes
     fireEvent.change(amountInput, { target: { value: '500.00' } })
@@ -167,7 +174,7 @@ describe('EditCashEntryModal', () => {
     fireEvent.click(submitButton)
 
     await waitFor(() => {
-      expect(mockOnUpdate).toHaveBeenCalledWith(1, 500.00, '2024-01-14')
+      expect(mockOnUpdate).toHaveBeenCalledWith(1, 500.0, '2024-01-14')
     })
 
     expect(mockOnClose).toHaveBeenCalled()
@@ -185,7 +192,9 @@ describe('EditCashEntryModal', () => {
       </TestWrapper>
     )
 
-    const submitButton = screen.getByRole('button', { name: /änderungen speichern/i })
+    const submitButton = screen.getByRole('button', {
+      name: /änderungen speichern/i,
+    })
     expect(submitButton).toBeDisabled()
   })
 
@@ -202,7 +211,9 @@ describe('EditCashEntryModal', () => {
     )
 
     const amountInput = screen.getByLabelText('Betrag')
-    const submitButton = screen.getByRole('button', { name: /änderungen speichern/i })
+    const submitButton = screen.getByRole('button', {
+      name: /änderungen speichern/i,
+    })
 
     fireEvent.change(amountInput, { target: { value: '500.00' } })
     expect(submitButton).not.toBeDisabled()

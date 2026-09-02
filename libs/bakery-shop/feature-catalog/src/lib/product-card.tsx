@@ -44,6 +44,7 @@ import {
   productUnit,
   shopCategoryLabel,
   toCartProduct,
+  unitPriceLabel,
   type ShopProduct,
 } from '@bakery/shared/data-access'
 
@@ -210,11 +211,20 @@ const cardTeaserSx = {
   minHeight: TEASER_BLOCK_MIN_HEIGHT,
 } as const
 
+/**
+ * Endpreis links, Grundpreis bzw. „pro Stück" rechts. Die Zeile darf
+ * umbrechen: auf 320 px breiten Geräten passen „2,90 €" und „5,80 € / kg"
+ * nicht nebeneinander, und ein abgeschnittener Grundpreis wäre keiner. Der
+ * Spaltenabstand ist knapp bemessen, damit bei 360 px auch „18,00 € pro Stück"
+ * noch auf einer Zeile bleibt.
+ */
 const priceRowSx = {
   display: 'flex',
+  flexWrap: 'wrap',
   alignItems: 'baseline',
   justifyContent: 'space-between',
-  gap: 1,
+  columnGap: 0.5,
+  rowGap: 0.25,
   borderTop: '1px solid',
   borderColor: 'divider',
   pt: 1.5,
@@ -286,6 +296,18 @@ export function ShopProductCard({
     setDraft(digits)
     if (digits !== '') commitQuantity(Number(digits))
   }
+
+  /**
+   * § 4 PAngV: Wer nach Gewicht anbietet, nennt den Grundpreis neben dem
+   * Endpreis – und die Karte ist der Ort, an dem 500 g und 1000 g nebeneinander
+   * liegen. Trägt der Name kein Gewicht, gibt es keinen Grundpreis; dann steht
+   * die Verkaufseinheit („pro Stück", „pro Kuchen", siehe `productUnit`), und
+   * nichts wird erfunden.
+   */
+  const grundpreis = unitPriceLabel({
+    name: product.name,
+    price: product.price,
+  })
 
   return (
     <Card
@@ -443,10 +465,12 @@ export function ShopProductCard({
             testId="product-card-price"
           />
           <Typography
+            data-testid="product-card-unit-price"
             variant="caption"
-            sx={{ color: 'grey.500', whiteSpace: 'nowrap' }}
+            // `ml: auto` hält den Zusatz auch dann rechts, wenn er umbricht.
+            sx={{ color: 'grey.500', whiteSpace: 'nowrap', ml: 'auto' }}
           >
-            pro {productUnit(product)}
+            {grundpreis ?? `pro ${productUnit(product)}`}
           </Typography>
         </Box>
 

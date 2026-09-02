@@ -60,14 +60,14 @@ describe('Button Component', () => {
 
   describe('Variants', () => {
     it('renders primary variant correctly', () => {
-      renderWithTheme(<Button variant="primary">Primary</Button>)
+      renderWithTheme(<Button color="primary">Primary</Button>)
 
       const button = screen.getByRole('button', { name: /primary/i })
       expect(button).toHaveClass('MuiButton-containedPrimary')
     })
 
     it('renders secondary variant correctly', () => {
-      renderWithTheme(<Button variant="secondary">Secondary</Button>)
+      renderWithTheme(<Button color="secondary">Secondary</Button>)
 
       const button = screen.getByRole('button', { name: /secondary/i })
       expect(button).toHaveClass('MuiButton-containedSecondary')
@@ -291,9 +291,13 @@ describe('Button Component', () => {
       const input = screen.getByDisplayValue('test')
       const button = screen.getByRole('button', { name: /reset form/i })
 
+      fireEvent.change(input, { target: { value: 'changed' } })
+      expect(input).toHaveValue('changed')
+
       fireEvent.click(button)
 
-      expect(input).toHaveValue('')
+      // Reset stellt den defaultValue wieder her
+      expect(input).toHaveValue('test')
     })
   })
 

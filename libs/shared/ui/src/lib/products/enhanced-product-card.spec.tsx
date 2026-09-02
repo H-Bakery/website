@@ -5,8 +5,14 @@
 
 import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import '@testing-library/jest-dom'
-import { Product } from '@bakery/shared/types'
+import {
+  Product,
+  ProductCategory,
+  ProductStatus,
+  ProductType,
+} from '@bakery/shared/types'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 
 // Mock Next.js router
@@ -58,26 +64,28 @@ jest.mock('@bakery/shared/utils', () => ({
 }))
 
 // Import the component after mocks
-import EnhancedProductCard from './enhanced-product-card'
+import { EnhancedProductCard } from './enhanced-product-card'
 
 const mockProduct: Product = {
   id: 1,
   name: 'Test Croissant',
   description: 'Delicious buttery croissant made fresh daily',
   price: 2.5,
-  category: 'Broetchen',
+  category: ProductCategory.Buns,
+  type: ProductType.Fresh,
+  stock: 10,
+  status: ProductStatus.Available,
   image: '/images/croissant.jpg',
-  available: true,
   ingredients: ['flour', 'butter', 'yeast'],
   allergens: ['gluten'],
   nutritionalInfo: {
     calories: 231,
     fat: 12,
-    carbs: 26,
+    carbohydrates: 26,
     protein: 5,
   },
-  createdAt: new Date('2024-01-01'),
-  updatedAt: new Date('2024-01-01'),
+  createdAt: '2024-01-01T00:00:00.000Z',
+  updatedAt: '2024-01-01T00:00:00.000Z',
 }
 
 const EnhancedProductCardWrapper = (props: any) => {
@@ -102,8 +110,8 @@ describe('EnhancedProductCard Component', () => {
       expect(
         screen.getByText('Delicious buttery croissant made fresh daily')
       ).toBeInTheDocument()
-      expect(screen.getByText('€2,50')).toBeInTheDocument()
-      expect(screen.getByText('Broetchen')).toBeInTheDocument()
+      expect(screen.getByText(/2,50\s€/)).toBeInTheDocument()
+      expect(screen.getByText('Brötchen')).toBeInTheDocument()
     })
 
     it('renders product image with correct attributes', () => {
@@ -132,7 +140,7 @@ describe('EnhancedProductCard Component', () => {
     it('navigates to product detail on card click', () => {
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const card = screen.getByRole('button')
+      const card = screen.getByRole('button', { name: /test croissant/i })
       fireEvent.click(card)
 
       expect(mockPush).toHaveBeenCalledWith('/products/1')
@@ -177,7 +185,7 @@ describe('EnhancedProductCard Component', () => {
     it('toggles favorite status', () => {
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const favoriteButton = screen.getByRole('button', { name: /favorite/i })
+      const favoriteButton = screen.getByRole('button', { name: /favoriten/i })
 
       // Initially not favorited
       expect(
@@ -251,7 +259,7 @@ describe('EnhancedProductCard Component', () => {
     it('shows quick view overlay on hover', () => {
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const card = screen.getByRole('button')
+      const card = screen.getByRole('button', { name: /test croissant/i })
       fireEvent.mouseEnter(card)
 
       expect(screen.getByText('Schnellansicht')).toBeInTheDocument()
@@ -260,7 +268,7 @@ describe('EnhancedProductCard Component', () => {
     it('hides quick view overlay when not hovering', () => {
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const card = screen.getByRole('button')
+      const card = screen.getByRole('button', { name: /test croissant/i })
       fireEvent.mouseEnter(card)
       fireEvent.mouseLeave(card)
 
@@ -273,25 +281,29 @@ describe('EnhancedProductCard Component', () => {
     it('has proper ARIA labels for screen readers', () => {
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const image = screen.getByRole('img')
+      const image = screen.getByRole('img', { name: /bild von/i })
       expect(image).toHaveAttribute('alt', 'Bild von Test Croissant')
     })
 
     it('supports keyboard navigation', () => {
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const card = screen.getByRole('button')
+      const card = screen.getByRole('button', { name: /test croissant/i })
 
       // Card should be focusable
       card.focus()
       expect(card).toHaveFocus()
     })
 
-    it('handles keyboard activation', () => {
+    it('handles keyboard activation', async () => {
+      // Enter löst bei einem nativen <button> den Klick im Browser aus;
+      // fireEvent.keyDown simuliert das nicht, user-event schon.
+      const user = userEvent.setup()
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const card = screen.getByRole('button')
-      fireEvent.keyDown(card, { key: 'Enter' })
+      const card = screen.getByRole('button', { name: /test croissant/i })
+      card.focus()
+      await user.keyboard('{Enter}')
 
       expect(mockPush).toHaveBeenCalledWith('/products/1')
     })
@@ -346,7 +358,7 @@ describe('EnhancedProductCard Component', () => {
       const expensiveProduct = { ...mockProduct, price: 125.99 }
       renderWithTheme(<EnhancedProductCardWrapper {...expensiveProduct} />)
 
-      expect(screen.getByText('€125,99')).toBeInTheDocument()
+      expect(screen.getByText(/125,99\s€/)).toBeInTheDocument()
     })
   })
 
@@ -354,7 +366,7 @@ describe('EnhancedProductCard Component', () => {
     it('applies hover animations', () => {
       renderWithTheme(<EnhancedProductCardWrapper {...mockProduct} />)
 
-      const card = screen.getByRole('button')
+      const card = screen.getByRole('button', { name: /test croissant/i })
 
       // Test hover state
       fireEvent.mouseEnter(card)
@@ -392,8 +404,8 @@ describe('EnhancedProductCard Component', () => {
       const productWithoutImage = { ...mockProduct, image: '' }
       renderWithTheme(<EnhancedProductCardWrapper {...productWithoutImage} />)
 
-      const image = screen.getByRole('img')
-      expect(image).toHaveAttribute('src', '')
+      expect(screen.queryByRole('img', { name: /bild von/i })).toBeNull()
+      expect(screen.getByText('Test Croissant')).toBeInTheDocument()
     })
 
     it('handles invalid price', () => {
@@ -402,7 +414,7 @@ describe('EnhancedProductCard Component', () => {
         <EnhancedProductCardWrapper {...productWithInvalidPrice} />
       )
 
-      expect(screen.getByText('€0,00')).toBeInTheDocument()
+      expect(screen.getByText(/0,00\s€/)).toBeInTheDocument()
     })
 
     it('handles missing category', () => {
@@ -411,7 +423,9 @@ describe('EnhancedProductCard Component', () => {
         <EnhancedProductCardWrapper {...productWithoutCategory} />
       )
 
-      expect(screen.getByText('')).toBeInTheDocument()
+      // Karte rendert ohne Kategorie weiter
+      expect(screen.getByText('Test Croissant')).toBeInTheDocument()
+      expect(screen.getByText(/2,50\s€/)).toBeInTheDocument()
     })
   })
 

@@ -38,6 +38,14 @@ interface InventoryFormProps {
 
 const units = ['Stück', 'kg', 'g', 'l', 'ml', 'Packung', 'Karton', 'Palette']
 
+const NUMERIC_FIELDS = new Set([
+  'productId',
+  'quantity',
+  'minimumQuantity',
+  'maximumQuantity',
+  'reorderPoint',
+])
+
 export const InventoryForm: React.FC<InventoryFormProps> = ({
   open,
   onClose,
@@ -94,10 +102,13 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
   }
 
   const onFormSubmit = (data: CreateInventoryDto | UpdateInventoryDto) => {
-    // Remove undefined values
+    // Remove undefined values. Zahlenfelder kommen aus den TextFields als
+    // Strings zurück (react-hook-form konvertiert bei Controller nicht selbst).
     const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
       if (value !== undefined && value !== '') {
-        acc[key as keyof typeof data] = value
+        acc[key as keyof typeof data] = NUMERIC_FIELDS.has(key)
+          ? Number(value)
+          : value
       }
       return acc
     }, {} as any)
@@ -130,8 +141,14 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
                   rules={{ required: 'Produkt ist erforderlich' }}
                   render={({ field }) => (
                     <FormControl fullWidth error={!!errors.productId}>
-                      <InputLabel>Produkt</InputLabel>
-                      <Select {...field} label="Produkt">
+                      <InputLabel id="inventory-form-product-label">
+                        Produkt
+                      </InputLabel>
+                      <Select
+                        {...field}
+                        labelId="inventory-form-product-label"
+                        label="Produkt"
+                      >
                         {products.map((product) => (
                           <MenuItem key={product.id} value={product.id}>
                             {product.name}
@@ -192,8 +209,14 @@ export const InventoryForm: React.FC<InventoryFormProps> = ({
                 control={control}
                 render={({ field }) => (
                   <FormControl fullWidth>
-                    <InputLabel>Einheit</InputLabel>
-                    <Select {...field} label="Einheit">
+                    <InputLabel id="inventory-form-unit-label">
+                      Einheit
+                    </InputLabel>
+                    <Select
+                      {...field}
+                      labelId="inventory-form-unit-label"
+                      label="Einheit"
+                    >
                       {units.map((unit) => (
                         <MenuItem key={unit} value={unit}>
                           {unit}

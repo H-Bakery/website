@@ -127,8 +127,8 @@ The Playwright suite in `apps/bakery-shop-e2e` drives these; renaming one breaks
 `cart-total`, `cart-checkout`; `checkout-page`, `customer-name`, `customer-phone`, `customer-email`,
 `pickup-date`, `pickup-time`, `order-notes`, `submit-order`, `checkout-error`; `order-confirmation`,
 `order-number`. Neu: `product-allergens`, `product-allergen-list`,
-`product-allergens-unknown`, `product-unit-price`, `product-lead-time`, `related-products`,
-`related-product-grid`, `catalog-approximate`.
+`product-allergens-unknown`, `product-unit-price`, `product-card-unit-price`, `product-lead-time`,
+`related-products`, `related-product-grid`, `catalog-approximate`.
 
 Der „Passt dazu"-Bereich benutzt bewusst **nicht** `product-grid`: die e2e-Hilfe scopet
 `product-card` darin, eine dritte Instanz bräche den Strict Mode.
@@ -220,7 +220,9 @@ unbedenklich.
 `unitPriceLabel({name, price})` in `libs/shared/data-access/.../unit-price.ts`. 25 Artikel tragen
 ihr Gewicht im Namen; ohne Grundpreis sind 2,50 €/500 g und 4,40 €/1000 g nicht vergleichbar — der
 Zweck der Norm. Unter 250 g Nennfüllmenge wird auf 100 g bezogen. Kein Gewicht im Namen ⇒ `null`
-⇒ es wird nichts angezeigt und nichts erfunden.
+⇒ es wird nichts angezeigt und nichts erfunden. Der Grundpreis steht überall, wo der Endpreis
+steht: Produktkarte (`product-card-unit-price`, an der Stelle von „pro Stück"), Detailseite,
+Warenkorbzeile und Tüten.
 
 ### Vorbestellfrist
 
