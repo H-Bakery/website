@@ -7,7 +7,7 @@ jest.mock('../utils/openingHours', () => ({
   ...jest.requireActual('../utils/openingHours'),
   isCurrentlyOpen: () => true,
   getTodayHours: () => '6:00 - 13:30 Uhr',
-  getNextOpening: () => ({ day: 'Dienstag', time: '06:00' }),
+  getNextOpening: () => ({ day: 'Dienstag', time: '6:00' }),
   getEarliestOpeningTime: () => '6:00',
   getFooterHours: () => [
     { label: 'Mo', value: 'Geschlossen' },
