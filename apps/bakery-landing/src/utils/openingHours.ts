@@ -78,19 +78,18 @@ function formatGroupHours(group: DayGroup): string {
 
 /**
  * Format hours for the map component (zeiten.ts format)
- * Uses abbreviated day names, lists each day in a group, Sunday → 'So und Feiertage'
+ * Uses abbreviated day names and lists each day in a group: 'Di, Mi, Do, Fr'
+ *
+ * Deliberately no holiday claim here: the config has no holiday entry and
+ * holidays are not simply "like Sunday" (e.g. Mariä Himmelfahrt 2025 was
+ * closed). The contact page carries the "an Feiertagen abweichend" note.
  */
 export function getMapDisplayHours() {
   return groupDaysBySchedule().map((group) => {
     const labels = group.days.map((d) => DAY_NAMES.deAbbrev[d])
-    // Special-case: if group contains Sunday, show "So und Feiertage"
-    const label =
-      group.days.includes('sunday') && group.days.length === 1
-        ? 'So und Feiertage'
-        : labels.join(', ')
 
     return {
-      label,
+      label: labels.join(', '),
       value: formatGroupHours(group),
     }
   })
