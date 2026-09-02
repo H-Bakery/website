@@ -19,6 +19,7 @@ import {
   getTodayOpeningTime,
   getNextOpening,
 } from '../../../utils/openingHours'
+import { HEADER_SPACE } from '../../header'
 
 // Hero image with warm gradient fallback
 const heroImage = '/assets/images/bakery/fresh-bread-hero.jpg'
@@ -184,6 +185,9 @@ const EnhancedHero: React.FC = () => {
 const styles = {
   hero: {
     position: 'relative' as const,
+    // Vollflächig: schiebt sich unter den fixierten Header, dessen Platz der
+    // Header-Wrapper reserviert
+    mt: { xs: `-${HEADER_SPACE.xs}px`, sm: `-${HEADER_SPACE.sm}px` },
     // On phones the hero grows with its content instead of clipping it: the
     // wrapped status badge plus the stacked phone numbers and buttons are
     // taller than 85svh on short screens, and a fixed height pushed the badge
