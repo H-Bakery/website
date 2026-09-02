@@ -715,9 +715,16 @@ export default async function ProductPage({ params }: ProductPageProps) {
                         fontWeight="600"
                         sx={{
                           mb: 1,
+                          // Zwei Zeilen statt nowrap: Die Gewichtsangabe steht
+                          // am Ende des Namens ("Mischbrot 1000g") und fiel bei
+                          // 150px Kartenbreite sonst der Ellipse zum Opfer.
+                          lineHeight: 1.3,
+                          minHeight: '2.6em',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
-                          whiteSpace: 'nowrap',
+                          display: '-webkit-box',
+                          WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical',
                         }}
                       >
                         {relatedProduct.name}
