@@ -84,17 +84,17 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
       >
         <CardMedia component="div" sx={styles.imageContainer}>
           <Box sx={styles.imageWrapper}>
+            {/* `fill` statt width/height: das Bild füllt den 200px-Rahmen des
+                Wrappers, und next/image warnt im Dev-Modus nicht mehr, dass
+                nur eine Seite per CSS verändert wurde. `quality` wirkt mit
+                `images.unoptimized` nicht. */}
             <Image
-              width={280}
-              height={200}
+              fill
               src={imageSrc}
               alt={`Bild von ${product.name}`}
               loading="lazy"
-              quality={75}
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
               style={{
-                width: '100%',
-                height: '100%',
                 objectFit: imageSrc.endsWith('.svg') ? 'contain' : 'cover',
               }}
             />
@@ -203,6 +203,7 @@ const styles = {
     backgroundColor: 'grey.50', // Warm cream background
   },
   imageWrapper: {
+    position: 'relative', // Bezugsrahmen für das `fill`-Bild
     width: '100%',
     height: '100%',
     '& img': {
