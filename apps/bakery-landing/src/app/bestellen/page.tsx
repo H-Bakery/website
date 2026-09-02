@@ -5,6 +5,7 @@ import PhoneIcon from '@mui/icons-material/Phone'
 import WhatsAppIcon from '@mui/icons-material/WhatsApp'
 import Hero from '../../components/Hero'
 import { LEGAL } from '../../config/legal'
+import { getCompactHoursSummary } from '../../utils/openingHours'
 
 const createWhatsAppLink = (message: string) =>
   `https://wa.me/491706133279?text=${encodeURIComponent(message)}`
@@ -119,8 +120,8 @@ const BestellenPage: React.FC = () => (
             Wichtige Hinweise
           </Typography>
           <Typography paragraph>
-            • Bestellungen nehmen wir telefonisch oder per WhatsApp täglich von
-            05:30 bis 14:00 Uhr entgegen.
+            • Bestellungen nehmen wir telefonisch oder per WhatsApp während
+            unserer Öffnungszeiten entgegen: {getCompactHoursSummary()}.
           </Typography>
           <Typography paragraph>
             • Spezielle Kuchen, Torten oder große Mengen benötigen mehr

@@ -2,6 +2,7 @@ import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import BestellenPage from './page'
 import { LEGAL } from '../../config/legal'
+import { getCompactHoursSummary } from '../../utils/openingHours'
 
 describe('Bestellen Page', () => {
   it('renders a valid tel: link without whitespace', () => {
@@ -24,5 +25,17 @@ describe('Bestellen Page', () => {
 
     const list = screen.getByRole('list')
     expect(list.closest('p')).toBeNull()
+  })
+
+  it('nennt als Bestellzeiten die Öffnungszeiten aus der Konfiguration', () => {
+    renderWithTheme(<BestellenPage />)
+
+    const note = screen.getByText(/Bestellungen nehmen wir/)
+    expect(note).toHaveTextContent(
+      `während unserer Öffnungszeiten entgegen: ${getCompactHoursSummary()}.`
+    )
+    // Die alte Hardcodierung versprach Bestellannahme an Tagen und zu Zeiten,
+    // an denen die Bäckerei laut Footer geschlossen ist.
+    expect(note).not.toHaveTextContent(/täglich|14:00/)
   })
 })

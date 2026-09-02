@@ -12,7 +12,9 @@ const Hero: React.FC<Props> = (props) => {
   return (
     <Box
       sx={{
-        pt: { xs: '120px', md: '160px' },
+        // Den Platz des fixierten Headers reserviert der Header selbst
+        // (HEADER_SPACE); hier nur noch der Abstand zum Titel
+        pt: { xs: 6, md: 7 },
         pb: 3,
       }}
     >

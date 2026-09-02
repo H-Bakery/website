@@ -17,7 +17,9 @@ import {
   getTodayHours,
   opensLaterToday,
   getTodayOpeningTime,
+  getNextOpening,
 } from '../../../utils/openingHours'
+import { HEADER_SPACE } from '../../header'
 
 // Hero image with warm gradient fallback
 const heroImage = '/assets/images/bakery/fresh-bread-hero.jpg'
@@ -29,6 +31,29 @@ interface OpenStatus {
   todayHours: string
   opensLater: boolean
   openingTime: string | null
+  /** true on a Ruhetag (no hours today at all), false after closing time */
+  closedAllDay: boolean
+  nextOpening: { day: string; time: string } | null
+}
+
+/**
+ * Badge text for the four states: open, opens later today, closed for the
+ * rest of the day, Ruhetag. 'Heute geschlossen' alone reads as a Ruhetag, so
+ * after closing time the badge says 'Jetzt geschlossen' and names the next
+ * opening instead.
+ */
+function getStatusLabel(status: OpenStatus): string {
+  if (status.open) {
+    return `Jetzt geöffnet — ${status.todayHours}`
+  }
+  if (status.opensLater && status.openingTime) {
+    return `Öffnet um ${status.openingTime} Uhr`
+  }
+  const prefix = status.closedAllDay ? 'Heute Ruhetag' : 'Jetzt geschlossen'
+  if (!status.nextOpening) {
+    return prefix
+  }
+  return `${prefix} — öffnet ${status.nextOpening.day} ${status.nextOpening.time} Uhr`
 }
 
 const EnhancedHero: React.FC = () => {
@@ -38,11 +63,14 @@ const EnhancedHero: React.FC = () => {
   const [openStatus, setOpenStatus] = useState<OpenStatus | null>(null)
 
   useEffect(() => {
+    const openingTime = getTodayOpeningTime()
     setOpenStatus({
       open: isCurrentlyOpen(),
       todayHours: getTodayHours(),
       opensLater: opensLaterToday(),
-      openingTime: getTodayOpeningTime(),
+      openingTime,
+      closedAllDay: openingTime === null,
+      nextOpening: getNextOpening(),
     })
   }, [])
 
@@ -84,13 +112,7 @@ const EnhancedHero: React.FC = () => {
           {/* Opening Status Badge */}
           {openStatus && (
             <Chip
-              label={
-                openStatus.open
-                  ? `Jetzt geöffnet — ${openStatus.todayHours}`
-                  : openStatus.opensLater && openStatus.openingTime
-                  ? `Öffnet um ${openStatus.openingTime} Uhr`
-                  : `Heute geschlossen`
-              }
+              label={getStatusLabel(openStatus)}
               sx={{
                 ...styles.statusBadge,
                 backgroundColor: openStatus.open
@@ -163,9 +185,15 @@ const EnhancedHero: React.FC = () => {
 const styles = {
   hero: {
     position: 'relative' as const,
-    height: { xs: '85svh', md: '90vh' },
-    minHeight: { xs: '400px', md: '550px' },
-    maxHeight: { xs: '700px', md: 'none' },
+    // Vollflächig: schiebt sich unter den fixierten Header, dessen Platz der
+    // Header-Wrapper reserviert
+    mt: { xs: `-${HEADER_SPACE.xs}px`, sm: `-${HEADER_SPACE.sm}px` },
+    // On phones the hero grows with its content instead of clipping it: the
+    // wrapped status badge plus the stacked phone numbers and buttons are
+    // taller than 85svh on short screens, and a fixed height pushed the badge
+    // under the floating header.
+    height: { xs: 'auto', md: '90vh' },
+    minHeight: { xs: 'clamp(400px, 85svh, 700px)', md: '550px' },
     overflow: 'hidden',
     display: 'flex',
     alignItems: 'center',
@@ -188,6 +216,9 @@ const styles = {
     display: 'flex',
     flexDirection: 'column' as const,
     justifyContent: 'center',
+    // Reserve the floating header's space (top offset + height, see
+    // components/header) so the centred block starts below it.
+    pt: { xs: '64px', sm: '86px', md: 0 },
   },
   content: {
     textAlign: 'center' as const,
@@ -207,6 +238,10 @@ const styles = {
     borderRadius: '24px',
     '& .MuiChip-label': {
       px: 1,
+      // The closed states name the next opening day; let that wrap on phones
+      // instead of being cut off with an ellipsis.
+      whiteSpace: 'normal',
+      textAlign: 'center',
     },
   },
   headline: {
