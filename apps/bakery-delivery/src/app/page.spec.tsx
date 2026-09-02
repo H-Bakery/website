@@ -1,5 +1,5 @@
 import React from 'react'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import DeliveryDashboard from './page'
 import {
   deliveryApi,
@@ -23,6 +23,7 @@ jest.mock('../lib/delivery-api', () => ({
     drivers: jest.fn(),
     tours: jest.fn(),
     createTour: jest.fn(),
+    updateStop: jest.fn(),
     reportPosition: jest.fn(),
   },
 }))
@@ -222,6 +223,30 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
     )
   })
 
+  it('nennt bei einer Kopie von einem anderen Tag auch das Datum', async () => {
+    // Freitagabend geladen, Samstagfrueh im Funkloch geoeffnet: "von 18:02 Uhr"
+    // laese sich wie heute frueh.
+    window.localStorage.setItem(
+      'bakery-delivery-tours',
+      JSON.stringify({
+        date,
+        driverId: 1,
+        at: '2026-08-28T16:02:00.000Z',
+        tours: [tour],
+      })
+    )
+    api.drivers.mockRejectedValue(networkError())
+    api.tours.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      await screen.findByText(
+        /Gespeicherter Stand vom 28\.08\.2026, \d{2}:\d{2} Uhr/
+      )
+    ).toBeTruthy()
+  })
+
   it('bietet bei einer leeren Kopie ohne API kein "Tour anlegen" an', async () => {
     // "Zuletzt war nichts geplant" ist ohne Server nicht pruefbar - seit dem
     // letzten Blick kann die Backstube die Tour angelegt haben.
@@ -241,6 +266,62 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
     expect(screen.getByRole('button', { name: 'Erneut laden' })).toBeTruthy()
   })
 
+  it('lässt ein Abhaken, das noch unterwegs ist, nicht vom Nachladen überschreiben', async () => {
+    // Im Funkloch haengt der PATCH bis zu 15 s. Kommt in der Zeit das Netz
+    // zurueck, darf das Nachladen der Kopie den Server-Stand ("Offen") nicht
+    // ueber den angetippten Stopp legen - sonst sieht der Fahrer sein
+    // Abhaken verschwinden und spaeter wiederkommen.
+    const stop = {
+      id: 1,
+      customer: 'Kunde A',
+      street: 'Talstraße 5',
+      zip: '66424',
+      city: 'Homburg',
+      address: 'Talstraße 5, 66424 Homburg',
+      phone: null,
+      timeWindow: null,
+      notes: null,
+      items: [],
+      status: 'open' as const,
+      completedAt: null,
+      failureReason: null,
+      lat: 49.3226,
+      lon: 7.3389,
+      geocodeSource: null,
+      estimatedArrival: null,
+    }
+    const withStop: Tour = {
+      ...tour,
+      stops: [stop],
+      progress: { total: 1, done: 0, failed: 0, open: 1, isComplete: false },
+      nextStopId: 1,
+    }
+    rememberTours(date, 1, [withStop])
+    api.drivers.mockRejectedValue(networkError())
+    let serverUp = false
+    api.tours.mockImplementation(() =>
+      serverUp ? Promise.resolve([withStop]) : Promise.reject(networkError())
+    )
+    // Der PATCH kommt nie zurueck - so lange haengt fetch im Funkloch.
+    api.updateStop.mockImplementation(() => new Promise(() => undefined))
+
+    render(<DeliveryDashboard />)
+    await screen.findByText(/Gespeicherter Stand von/)
+    fireEvent.click(screen.getAllByRole('button', { name: 'Geliefert' })[0])
+    expect(await screen.findByText(/1 von 1 geliefert/)).toBeTruthy()
+
+    serverUp = true
+    const loadsBefore = api.tours.mock.calls.length
+    // Nichts nachgeladen, solange der PATCH unterwegs ist.
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(screen.getByText(/1 von 1 geliefert/)).toBeTruthy()
+    expect(api.tours.mock.calls.length).toBe(loadsBefore)
+    expect(screen.getByText(/Gespeicherter Stand von/)).toBeTruthy()
+  })
+
   it('ersetzt die Kopie, sobald der Server wieder antwortet', async () => {
     rememberTours(date, 1, [tour])
     api.drivers.mockRejectedValue(networkError())
@@ -257,7 +338,9 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
 
     // Funk ist wieder da: der Browser meldet `online`.
     serverUp = true
-    window.dispatchEvent(new Event('online'))
+    act(() => {
+      window.dispatchEvent(new Event('online'))
+    })
 
     expect(
       await screen.findByRole('heading', { name: 'Samstagstour (Server)' })

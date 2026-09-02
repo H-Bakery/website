@@ -248,12 +248,19 @@ und ersetzt sie, sobald der Server antwortet; scheitert der Aufruf, bleibt sie s
 schwarze Balken sagt „Gespeicherter Stand von HH:MM Uhr". Es ist bewusst **eine** Tourliste, nicht
 eine pro Tag — mit Streckenverlauf ist eine Tour schnell einige Dutzend Kilobyte groß. Die
 Fahrerliste muss mit, sonst bliebe die Auswahl nach dem Neuladen auf „Alle" stehen und die Kopie
-passte nicht zur Auswahl. Der Tag wird absichtlich nicht gemerkt (nach dem Neuladen steht wieder
-der nächste Samstag). Bei einem Ladefehler ohne Kopie zeigt die Seite nur noch die Fehlermeldung,
-**nicht** mehr „noch nichts geplant / Tour anlegen" — sonst legte der Fahrer beim nächsten Netz eine
-zweite Tour an. Was fehlt: ein Service Worker. Ein kaltes Neuladen ganz ohne Netz zeigt weiterhin
-die Fehlerseite des Browsers; die Kopie hilft, sobald die App-Seite selbst da ist (Tab war noch
-offen, Dev-Server oder Hosting erreichbar, nur die API nicht).
+passte nicht zur Auswahl — und `loadDrivers()` wendet die gemerkte Liste **vor** dem `fetch` an,
+sonst stünde die Kopie erst nach dem 15-s-Timeout von `GET /drivers` da. Der Tag wird absichtlich
+nicht gemerkt (nach dem Neuladen steht wieder der nächste Samstag). Eine **leere** Kopie zählt wie
+keine: „zuletzt war nichts geplant" ist ohne Server genauso wenig prüfbar wie gar keine Antwort,
+also erscheint dann die Karte „Tour konnte nicht geladen werden / Erneut laden", **nicht** „noch
+nichts geplant / Tour anlegen" — sonst legte der Fahrer beim nächsten Netz eine zweite Tour an.
+Das Nachladen der Kopie (`online`-Event, 30-s-Takt) wartet, solange ein Abhaken unterwegs ist
+(`busyRef`) oder die Warteschlange voll ist: die Änderung steht noch in keiner von beiden, und der
+Server-Stand ließe den Stopp bis zum Nachsenden wieder als „Offen" erscheinen. Umgekehrt ersetzt ein
+erfolgreicher `PATCH` (direkt oder aus der Warteschlange) die Kopie sofort, statt den Balken bis zum
+nächsten Takt stehen zu lassen. Was fehlt: ein Service Worker. Ein kaltes Neuladen ganz ohne Netz
+zeigt weiterhin die Fehlerseite des Browsers; die Kopie hilft, sobald die App-Seite selbst da ist
+(Tab war noch offen, Dev-Server oder Hosting erreichbar, nur die API nicht).
 
 ### Navigation
 

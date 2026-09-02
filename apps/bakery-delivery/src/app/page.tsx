@@ -90,6 +90,11 @@ export default function DeliveryDashboard() {
   // Beim Start laufen zwei Ladevorgaenge kurz hintereinander (erst ohne, dann
   // mit gemerktem Fahrer). Nur der juengste darf den Bildschirm setzen.
   const loadSeqRef = useRef(0)
+  // Solange ein Abhaken unterwegs ist, darf kein Nachladen der Offline-Kopie
+  // die Liste ersetzen: die Aenderung steht noch nicht in der Warteschlange,
+  // und der Server-Stand liesse den Stopp bis zum Nachsenden wieder "Offen".
+  const busyRef = useRef(false)
+  busyRef.current = busy
 
   const tour = useMemo(
     () => tours.find((t) => t.id === tourId) ?? null,
@@ -201,7 +206,11 @@ export default function DeliveryDashboard() {
   useEffect(() => {
     if (copiedAt === null) return
     const reload = () => {
-      if (navigator.onLine && pendingUpdates().length === 0) {
+      if (
+        navigator.onLine &&
+        !busyRef.current &&
+        pendingUpdates().length === 0
+      ) {
         loadTours(date, driverId)
       }
     }
@@ -343,6 +352,8 @@ export default function DeliveryDashboard() {
       const updated = await deliveryApi.updateStop(tour.id, stopId, { status })
       setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
       setPending(pendingUpdates())
+      // Der Server hat geantwortet - eine Offline-Kopie gleich ersetzen.
+      if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
         setError(err.message)
@@ -491,9 +502,9 @@ export default function DeliveryDashboard() {
       ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
       : null,
     copiedAt
-      ? `Gespeicherter Stand von ${formatTime(
+      ? `Gespeicherter Stand ${describeCopyTime(
           copiedAt
-        )} Uhr – wird aktualisiert, sobald der Server antwortet.`
+        )} – wird aktualisiert, sobald der Server antwortet.`
       : null,
   ]
     .filter(Boolean)
@@ -866,6 +877,24 @@ function withPendingUpdates(tours: Tour[], queue: QueuedUpdate[]): Tour[] {
       t.id === entry.tourId ? applyStopStatus(t, entry.stopId, status) : t
     )
   }, tours)
+}
+
+/**
+ * „von 07:12 Uhr" - oder mit Datum, wenn die Kopie nicht von heute ist. Sonst
+ * laese sich Freitagabend am Samstagfrueh wie „heute frueh".
+ */
+function describeCopyTime(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return 'von –'
+  if (at.toDateString() === new Date().toDateString()) {
+    return `von ${formatTime(iso)} Uhr`
+  }
+  const day = at.toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+  return `vom ${day}, ${formatTime(iso)} Uhr`
 }
 
 function readStoredDriver(): number | null {
