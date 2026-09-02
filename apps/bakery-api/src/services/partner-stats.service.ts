@@ -68,6 +68,8 @@ export interface ProductStat {
   soldQty: number
   returnedQty: number
   discrepancyQty: number
+  /** Bei der Abholung nicht gezählt - weder verkauft noch Retoure. */
+  uncountedQty: number
   revenue: number
   returnValue: number
   sellThroughRate: number | null
@@ -78,12 +80,15 @@ export interface DayStat {
   weekday: number | null
   /** Kein `pickup`-Besuch erfasst - Verkauf und Umsatz sind vorläufig. */
   isOpen: boolean
+  /** Die Abholung hat jedes Produkt mit Bestand gezählt. */
+  isComplete: boolean
   visitCount: number
   refillCount: number
   deliveredQty: number
   soldQty: number
   returnedQty: number
   discrepancyQty: number
+  uncountedQty: number
   revenue: number
   returnValue: number
   sellThroughRate: number | null
@@ -104,12 +109,15 @@ export interface WeekdayStat {
 export interface StatsTotals {
   dayCount: number
   openDayCount: number
+  /** Abgeschlossene Tage, deren Abholung nicht jedes Produkt gezählt hat. */
+  incompleteDayCount: number
   visitCount: number
   refillCount: number
   deliveredQty: number
   soldQty: number
   returnedQty: number
   discrepancyQty: number
+  uncountedQty: number
   revenue: number
   returnValue: number
   sellThroughRate: number | null
@@ -119,9 +127,10 @@ export interface StatsTotals {
 export interface PartnerStats {
   range: { from: string | null; to: string | null }
   totals: StatsTotals
-  /** Mindestens ein Tag ohne Abholung - Zahlen sind vorläufig. */
+  /** Mindestens ein Tag ohne Abholung oder mit unvollständiger Abholung - Zahlen sind vorläufig. */
   isProvisional: boolean
   openDates: string[]
+  incompleteDates: string[]
   byProduct: ProductStat[]
   byDay: DayStat[]
   byWeekday: WeekdayStat[]
@@ -153,9 +162,20 @@ export interface TimelineEntry {
   items: TimelineItem[]
 }
 
+export interface UncountedProduct {
+  productId: number
+  productSlug: string
+  productName: string
+  /** Erwarteter Bestand, der bei der Abholung nicht gezählt wurde. */
+  stockQty: number
+}
+
 export interface DayDetail {
   businessDate: string | null
   isOpen: boolean
+  isComplete: boolean
+  uncountedQty: number
+  uncountedProducts: UncountedProduct[]
   timeline: TimelineEntry[]
   totals: StatsTotals
   byProduct: ProductStat[]

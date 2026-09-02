@@ -106,6 +106,8 @@ export interface ProductStat {
   soldQty: number
   returnedQty: number
   discrepancyQty: number
+  /** Bei der Abholung nicht gezählt - weder verkauft noch Retoure. */
+  uncountedQty?: number
   revenue: number
   returnValue: number
   sellThroughRate: number | null
@@ -116,12 +118,15 @@ export interface DayStat {
   weekday: number | null
   /** Kein `pickup`-Besuch erfasst - Verkauf und Umsatz sind vorläufig. */
   isOpen: boolean
+  /** `false`: die Abholung hat nicht jedes Produkt mit Bestand gezählt. */
+  isComplete?: boolean
   visitCount: number
   refillCount: number
   deliveredQty: number
   soldQty: number
   returnedQty: number
   discrepancyQty: number
+  uncountedQty?: number
   revenue: number
   returnValue: number
   sellThroughRate: number | null
@@ -144,19 +149,24 @@ export interface PartnerStats {
   totals: {
     dayCount: number
     openDayCount: number
+    incompleteDayCount?: number
     visitCount: number
     refillCount: number
     deliveredQty: number
     soldQty: number
     returnedQty: number
     discrepancyQty: number
+    uncountedQty?: number
     revenue: number
     returnValue: number
     sellThroughRate: number | null
     returnRate: number | null
   }
+  /** Ein Tag ohne Abholung oder mit unvollständiger Abholung - Zahlen sind vorläufig. */
   isProvisional: boolean
   openDates: string[]
+  /** Abgeschlossene Tage, deren Abholung nicht jedes Produkt mit Bestand gezählt hat. */
+  incompleteDates?: string[]
   byProduct: ProductStat[]
   byDay: DayStat[]
   byWeekday: WeekdayStat[]
@@ -188,9 +198,21 @@ export interface TimelineEntry {
   items: TimelineItem[]
 }
 
+export interface UncountedProduct {
+  productId: number
+  productSlug: string
+  productName: string
+  /** Erwarteter Bestand, der bei der Abholung nicht gezählt wurde. */
+  stockQty: number
+}
+
 export interface DayDetail {
   businessDate: string | null
   isOpen: boolean
+  /** `false`: die Abholung hat nicht jedes Produkt mit Bestand gezählt. */
+  isComplete?: boolean
+  uncountedQty?: number
+  uncountedProducts?: UncountedProduct[]
   timeline: TimelineEntry[]
   totals: PartnerStats['totals']
   byProduct: ProductStat[]

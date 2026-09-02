@@ -215,7 +215,9 @@ export default function PartnerOverviewClient() {
               Array.isArray(partner.deliveryDays) &&
               partner.deliveryDays.includes(todayWeekday)
             const isOpen = today ? today.isOpen !== false : true
-            const isProvisional = visitCount > 0 && isOpen
+            // Abholung gebucht, aber nicht jedes Produkt mit Bestand gezählt
+            const isComplete = today ? today.isComplete !== false : true
+            const isProvisional = visitCount > 0 && (isOpen || !isComplete)
 
             return (
               <Grid item xs={12} lg={6} key={partner.id}>
@@ -321,6 +323,12 @@ export default function PartnerOverviewClient() {
                           color="warning"
                           label="Abholung fehlt"
                         />
+                      ) : !isComplete ? (
+                        <Chip
+                          size="small"
+                          color="warning"
+                          label="Abholung unvollständig"
+                        />
                       ) : (
                         <Chip
                           size="small"
@@ -365,6 +373,12 @@ export default function PartnerOverviewClient() {
                             ? `${visitCount} Besuch${
                                 visitCount === 1 ? '' : 'e'
                               } erfasst - die Abholung fehlt noch, die Zahlen sind vorläufig.`
+                            : !isComplete
+                            ? `${visitCount} Besuch${
+                                visitCount === 1 ? '' : 'e'
+                              } erfasst, Abholung gebucht - aber ${
+                                today?.uncountedQty ?? 0
+                              } Stück wurden dabei nicht gezählt, die Zahlen sind vorläufig.`
                             : `${visitCount} Besuch${
                                 visitCount === 1 ? '' : 'e'
                               } erfasst, Abholung gebucht - der Geschäftstag ist abgeschlossen.`}
@@ -413,8 +427,9 @@ export default function PartnerOverviewClient() {
                             color="warning.main"
                             sx={{ display: 'block', mt: 1.5 }}
                           >
-                            Vorläufige Zahlen: ohne erfasste Abholung gilt alles
-                            Gelieferte als verkauft.
+                            {isOpen
+                              ? 'Vorläufige Zahlen: ohne erfasste Abholung gilt alles Gelieferte als verkauft.'
+                              : 'Vorläufige Zahlen: bei der Abholung wurde nicht jedes Produkt gezählt.'}
                           </Typography>
                         )}
                       </>

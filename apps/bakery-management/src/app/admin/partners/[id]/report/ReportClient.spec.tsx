@@ -242,6 +242,24 @@ const STATS_COMPLETE: PartnerStats = {
   })),
 }
 
+/** Jeder Tag abgeschlossen, aber am 01.09. wurde ein Produkt nicht gezählt. */
+const STATS_INCOMPLETE: PartnerStats = {
+  ...STATS_COMPLETE,
+  isProvisional: true,
+  incompleteDates: ['2026-09-01'],
+  totals: {
+    ...STATS_COMPLETE.totals,
+    uncountedQty: 6,
+    incompleteDayCount: 1,
+  },
+  byDay: STATS_COMPLETE.byDay.map((day, index) =>
+    index === 0 ? { ...day, isComplete: false, uncountedQty: 6 } : day
+  ),
+  byProduct: STATS_COMPLETE.byProduct.map((product, index) =>
+    index === 0 ? { ...product, uncountedQty: 6 } : product
+  ),
+}
+
 function row(name: RegExp) {
   return within(screen.getByRole('row', { name }))
 }
@@ -322,6 +340,22 @@ describe('ReportClient', () => {
     expect(
       within(screen.getByRole('row', { name: /Gesamt/ })).getByText('90,80 €')
     ).toBeInTheDocument()
+  })
+
+  it('marks a period provisional when a pickup left products uncounted', async () => {
+    mockFetchStats.mockResolvedValue(STATS_INCOMPLETE)
+    await renderReport()
+
+    expect(screen.getByText('Vorläufige Zahlen')).toBeInTheDocument()
+    expect(screen.queryByText(/noch offen/)).toBeNull()
+    expect(screen.getByText(/An einem Geschäftstag/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /6 Stück sind weder als verkauft noch als Retoure erfasst/
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByText('01.09.2026')).toBeInTheDocument()
+    expect(row(/Bauernbrot/).getByText('6 Stück ungezählt')).toBeInTheDocument()
   })
 
   it('reloads the report for a different range when a quick filter is used', async () => {

@@ -138,6 +138,8 @@ interface DayDatum {
   label: string
   fullLabel: string
   isOpen: boolean
+  /** Abholung erfasst, aber nicht jedes Produkt mit Bestand gezählt. */
+  isIncomplete: boolean
   delivered: number
   sold: number
   returned: number
@@ -171,14 +173,21 @@ function DayTooltip({ active, datum }: { active?: boolean; datum?: DayDatum }) {
       <Typography variant="subtitle2" sx={{ mb: 0.5 }}>
         {datum.fullLabel}
       </Typography>
-      {datum.isOpen && (
+      {datum.isOpen ? (
         <Chip
           size="small"
           color="warning"
           label="offen - vorläufig"
           sx={{ mb: 1 }}
         />
-      )}
+      ) : datum.isIncomplete ? (
+        <Chip
+          size="small"
+          color="warning"
+          label="Abholung unvollständig - vorläufig"
+          sx={{ mb: 1 }}
+        />
+      ) : null}
       {rows.map(([label, value]) => (
         <Box
           key={label}
@@ -328,6 +337,7 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
         label: axisLabel(day.businessDate, day.weekday),
         fullLabel: formatDate(day.businessDate),
         isOpen: day.isOpen,
+        isIncomplete: !day.isOpen && day.isComplete === false,
         delivered: day.deliveredQty,
         sold: day.soldQty,
         returned: day.returnedQty,
@@ -579,13 +589,38 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
           {stats.isProvisional && (
             <Alert severity="warning" sx={{ mb: { xs: 2, md: 3 } }}>
               <AlertTitle>Vorläufige Zahlen</AlertTitle>
-              {stats.openDates.length === 1
-                ? 'Ein Geschäftstag in diesem Zeitraum ist noch offen'
-                : `${stats.openDates.length} Geschäftstage in diesem Zeitraum sind noch offen`}{' '}
-              - dort wurde noch keine Abholung erfasst. Verkauf, Retoure und
-              Umsatz sind an diesen Tagen deshalb vorläufig und können sich noch
-              ändern:{' '}
-              <strong>{stats.openDates.map(formatDate).join(', ')}</strong>
+              {stats.openDates.length > 0 && (
+                <Box component="span" sx={{ display: 'block' }}>
+                  {stats.openDates.length === 1
+                    ? 'Ein Geschäftstag in diesem Zeitraum ist noch offen'
+                    : `${stats.openDates.length} Geschäftstage in diesem Zeitraum sind noch offen`}{' '}
+                  - dort wurde noch keine Abholung erfasst. Verkauf, Retoure und
+                  Umsatz sind an diesen Tagen deshalb vorläufig und können sich
+                  noch ändern:{' '}
+                  <strong>{stats.openDates.map(formatDate).join(', ')}</strong>
+                </Box>
+              )}
+              {(stats.incompleteDates ?? []).length > 0 && (
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'block',
+                    mt: stats.openDates.length > 0 ? 1 : 0,
+                  }}
+                >
+                  {(stats.incompleteDates ?? []).length === 1
+                    ? 'An einem Geschäftstag'
+                    : `An ${
+                        (stats.incompleteDates ?? []).length
+                      } Geschäftstagen`}{' '}
+                  wurde bei der Abholung nicht jedes Produkt gezählt;{' '}
+                  {stats.totals.uncountedQty ?? 0} Stück sind weder als verkauft
+                  noch als Retoure erfasst:{' '}
+                  <strong>
+                    {(stats.incompleteDates ?? []).map(formatDate).join(', ')}
+                  </strong>
+                </Box>
+              )}
             </Alert>
           )}
 
@@ -695,7 +730,19 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     <TableBody>
                       {stats.byProduct.map((product) => (
                         <TableRow key={product.productSlug} hover>
-                          <TableCell>{product.productName}</TableCell>
+                          <TableCell>
+                            {product.productName}
+                            {(product.uncountedQty ?? 0) > 0 && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="warning.main"
+                                sx={{ display: 'block' }}
+                              >
+                                {product.uncountedQty} Stück ungezählt
+                              </Typography>
+                            )}
+                          </TableCell>
                           <TableCell
                             align="right"
                             className="report-col-md"
@@ -887,7 +934,8 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                           },
                           {
                             id: 'open',
-                            value: 'Schraffiert: Tag ohne Abholung (vorläufig)',
+                            value:
+                              'Schraffiert: Abholung fehlt oder unvollständig (vorläufig)',
                             type: 'square',
                             color: theme.palette.text.secondary,
                           },
@@ -903,7 +951,7 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                           <Cell
                             key={`delivered-${day.fullLabel}`}
                             fill={
-                              day.isOpen
+                              day.isOpen || day.isIncomplete
                                 ? `url(#${PATTERN_DELIVERED})`
                                 : deliveredColor
                             }
@@ -920,7 +968,9 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                           <Cell
                             key={`sold-${day.fullLabel}`}
                             fill={
-                              day.isOpen ? `url(#${PATTERN_SOLD})` : soldColor
+                              day.isOpen || day.isIncomplete
+                                ? `url(#${PATTERN_SOLD})`
+                                : soldColor
                             }
                           />
                         ))}

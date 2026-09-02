@@ -389,6 +389,10 @@ export default function PartnerDetailClient({
   const timeline = day?.timeline ?? []
   const totals: Totals | null = day?.totals ?? null
   const isOpen = day?.isOpen !== false
+  // Abholung erfasst, aber nicht jedes Produkt mit Bestand gezählt
+  const isComplete = day?.isComplete !== false
+  const uncountedProducts = day?.uncountedProducts ?? []
+  const provisional = isOpen || !isComplete
   const hasVisits = timeline.length > 0
 
   const address = useMemo(() => {
@@ -640,6 +644,22 @@ export default function PartnerDetailClient({
                 dahin zählt alles, was noch im Schrank liegt, rechnerisch als
                 verkauft.
               </Alert>
+            ) : !isComplete ? (
+              <Alert severity="warning" sx={{ mb: 3 }}>
+                <AlertTitle>
+                  Abholung unvollständig – {day?.uncountedQty ?? 0} Stück nicht
+                  gezählt
+                </AlertTitle>
+                Bei der Abholung am {formatDate(selectedDate)} wurde nicht jedes
+                Produkt mit Bestand gezählt. Diese Stücke sind weder als
+                verkauft noch als Retoure erfasst; Verkauf und Umsatz bleiben
+                vorläufig:{' '}
+                <strong>
+                  {uncountedProducts
+                    .map((p) => `${p.productName}: ${p.stockQty} erwartet`)
+                    .join(', ')}
+                </strong>
+              </Alert>
             ) : (
               <Alert severity="success" sx={{ mb: 3 }}>
                 <AlertTitle>Tag abgeschlossen</AlertTitle>
@@ -662,7 +682,7 @@ export default function PartnerDetailClient({
                   label="Verkauft"
                   value={String(totals?.soldQty ?? 0)}
                   hint="Stück"
-                  provisional={isOpen}
+                  provisional={provisional}
                 />
               </Grid>
               <Grid item xs={6} md={4} lg={2.4}>
@@ -672,6 +692,8 @@ export default function PartnerDetailClient({
                   hint={
                     isOpen
                       ? 'erst mit der Abholung'
+                      : !isComplete
+                      ? 'unvollständig gezählt'
                       : formatCurrency(totals?.returnValue ?? 0)
                   }
                 />
@@ -681,7 +703,7 @@ export default function PartnerDetailClient({
                   label="Umsatz"
                   value={formatCurrency(totals?.revenue ?? 0)}
                   hint="zu HQ-Preisen"
-                  provisional={isOpen}
+                  provisional={provisional}
                   color="success.main"
                 />
               </Grid>
@@ -690,7 +712,7 @@ export default function PartnerDetailClient({
                   label="Abverkaufsquote"
                   value={formatPercent(totals?.sellThroughRate)}
                   hint="verkauft / geliefert"
-                  provisional={isOpen}
+                  provisional={provisional}
                 />
               </Grid>
             </Grid>
