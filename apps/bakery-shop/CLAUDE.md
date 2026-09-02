@@ -113,6 +113,22 @@ name are taken from there**, `total` is recomputed, unknown or unavailable produ
 German `message`, which `submitOrder()` surfaces in `checkout-error`. Opening hours and the Ruhetag
 are deliberately _not_ checked server-side: that would be a third copy of the hours table.
 
+**Der Warenkorb ist eine Momentaufnahme, der Server bepreist neu.** `CartProvider` legt jede
+Zeile mit Preis und Name im `localStorage` ab und lässt sie dort, bis die Kundschaft den Korb
+leert - eine spätere Preisänderung in `hq` stand dann an der Kasse nicht, wohl aber auf der
+Bestätigung, ohne ein Wort dazu. Zwei Dinge fangen das ab; keines davon wegoptimieren:
+
+- `useFreshCartPrices()` (`feature-cart/src/lib/use-fresh-cart-prices.ts`) holt beim Öffnen von
+  `/cart` und `/kasse` **einmal** `GET /api/products` und schreibt die Zeilen über
+  `CartContext.refreshItems()` nach (Preis, Name, Verfügbarkeit - Menge und Notiz bleiben). Hat sich
+  ein Preis geändert, zeigen beide Seiten `cart-prices-updated` / `checkout-prices-updated`.
+  Ohne API bleibt es bei der Momentaufnahme.
+- Die Kasse vergleicht die vom Server zurückgegebene `total` mit dem Betrag, der auf der Seite
+  stand (`confirmationPath()` in `confirmation-link.ts`). Weicht er ab - Preisänderung zwischen
+  Öffnen und Absenden, oder die API war beim Abgleich nicht da -, hängt sie `?preis=aktualisiert`
+  an den Bestätigungslink, und `OrderConfirmation` sagt es über dem Gesamtbetrag
+  (`order-price-updated`). Die Bestätigung zeigt immer den **gebuchten** Betrag.
+
 ### data-testid contract
 
 The Playwright suite in `apps/bakery-shop-e2e` drives these; renaming one breaks tests:
@@ -128,7 +144,8 @@ The Playwright suite in `apps/bakery-shop-e2e` drives these; renaming one breaks
 `pickup-date`, `pickup-time`, `order-notes`, `submit-order`, `checkout-error`; `order-confirmation`,
 `order-number`. Neu: `product-allergens`, `product-allergen-list`,
 `product-allergens-unknown`, `product-unit-price`, `product-card-unit-price`, `product-lead-time`,
-`related-products`, `related-product-grid`, `catalog-approximate`.
+`related-products`, `related-product-grid`, `catalog-approximate`, `cart-prices-updated`,
+`checkout-prices-updated`, `order-price-updated`.
 
 Der „Passt dazu"-Bereich benutzt bewusst **nicht** `product-grid`: die e2e-Hilfe scopet
 `product-card` darin, eine dritte Instanz bräche den Strict Mode.
@@ -285,7 +302,7 @@ Merriweather body, then diverges toward store density. It is **light-only**, lik
 
 ## Known state
 
-- `nx build bakery-shop` passes. `nx test bakery-shop` passes (73 tests); feature-cart 117,
+- `nx build bakery-shop` passes. `nx test bakery-shop` passes (73 tests); feature-cart 130,
   feature-catalog 95, shared-data-access 74, shared-utils 43; the order validation of the mock
   server has 41 more in `apps/bakery-api/tests/unit/shopOrders.test.js` (run with
   `npx jest -c apps/bakery-api/jest.config.js --rootDir apps/bakery-api tests/unit/shopOrders.test.js`).

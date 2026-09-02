@@ -9,6 +9,7 @@
 
 import React from 'react'
 import NextLink from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import {
   Alert,
   Box,
@@ -26,6 +27,7 @@ import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined'
 import { fetchShopOrder, formatEuro } from '@bakery/shared/data-access'
 import type { ShopOrder, ShopOrderItem } from '@bakery/shared/data-access'
 
+import { PRICE_UPDATED_PARAM, PRICE_UPDATED_VALUE } from './confirmation-link'
 import { formatGermanDate } from './pickup'
 
 export interface OrderConfirmationProps {
@@ -56,6 +58,24 @@ const DetailRow: React.FC<{ label: string; children: React.ReactNode }> = ({
     </Typography>
   </Box>
 )
+
+/**
+ * Die Kasse hängt `?preis=aktualisiert` an, wenn der Server einen anderen
+ * Betrag gebucht hat als den, der an der Kasse stand — etwa weil sich ein
+ * hq-Preis geändert hat, während der Warenkorb im `localStorage` lag. Liest
+ * die URL in einer eigenen Suspense-Grenze, damit das Prerendering der Route
+ * nicht daran hängt.
+ */
+const PriceUpdatedNotice: React.FC = () => {
+  const searchParams = useSearchParams()
+  if (searchParams.get(PRICE_UPDATED_PARAM) !== PRICE_UPDATED_VALUE) return null
+  return (
+    <Alert data-testid="order-price-updated" severity="info" sx={{ mb: 2 }}>
+      Ein Preis hat sich geändert, seit Sie den Warenkorb gefüllt haben. Hier
+      steht der gebuchte Betrag – bezahlt wird erst bei der Abholung.
+    </Alert>
+  )
+}
 
 function orderItemsOf(order: ShopOrder | null): ShopOrderItem[] {
   return order && Array.isArray(order.items) ? order.items : []
@@ -269,6 +289,9 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
                   </Stack>
 
                   <Divider sx={{ my: 2 }} />
+                  <React.Suspense fallback={null}>
+                    <PriceUpdatedNotice />
+                  </React.Suspense>
                   <Box
                     sx={{
                       display: 'flex',

@@ -34,7 +34,12 @@ import { buildOrderItems, submitOrder } from '@bakery/shared/data-access'
 import { BRAND_FACTS, CROSS_CONTAMINATION_NOTE } from '@bakery/shared/utils'
 import { ShopPrice } from '@bakery/shop/feature-catalog'
 
+import { confirmationPath } from './confirmation-link'
 import { grossTotal } from './order-totals'
+import {
+  PRICES_UPDATED_NOTICE,
+  useFreshCartPrices,
+} from './use-fresh-cart-prices'
 import {
   ALL_PICKUP_SLOTS,
   PICKUP_LEAD_MINUTES,
@@ -160,6 +165,8 @@ function clearStoredForm(): void {
 export const CheckoutPage: React.FC = () => {
   const { items, summary, isLoading, clearCart } = useCart()
   const router = useRouter()
+  /** Die Momentaufnahme aus dem `localStorage` gegen die hq-Preise abgleichen. */
+  const pricesUpdated = useFreshCartPrices()
 
   const [values, setValues] =
     React.useState<CheckoutFormValues>(EMPTY_CHECKOUT_FORM)
@@ -357,7 +364,12 @@ export const CheckoutPage: React.FC = () => {
       // länger herumliegen.
       clearStoredForm()
       clearCart()
-      router.push(`/bestellung/${encodeURIComponent(orderId)}`)
+      // Der Server rechnet mit den hq-Preisen. Weicht seine Summe von der ab,
+      // die hier stand, sagt die Bestätigung es dazu — statt still eine
+      // andere Zahl zu zeigen.
+      router.push(
+        confirmationPath(orderId, { displayed: total, booked: order.total })
+      )
     } catch (error) {
       setSubmitError(
         error instanceof Error && error.message
@@ -706,6 +718,16 @@ export const CheckoutPage: React.FC = () => {
                     Ändern
                   </Button>
                 </Box>
+
+                {pricesUpdated && (
+                  <Alert
+                    data-testid="checkout-prices-updated"
+                    severity="info"
+                    sx={{ mt: 1.5 }}
+                  >
+                    {PRICES_UPDATED_NOTICE}
+                  </Alert>
+                )}
 
                 <Stack
                   component="ul"

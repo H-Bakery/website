@@ -18,3 +18,8 @@ import type { CartSummary } from '@bakery/shared/contexts'
 export function grossTotal(summary: CartSummary): number {
   return Math.max(0, summary.subtotal - summary.discount)
 }
+
+/** Beträge sind Cent — Gleitkomma-Rauschen unter einem halben Cent ist keine Abweichung. */
+export function sameCents(a: number, b: number): boolean {
+  return Math.abs(a - b) < 0.005
+}

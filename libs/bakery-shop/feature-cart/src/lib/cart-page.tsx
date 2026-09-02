@@ -38,6 +38,10 @@ import { ProductThumb } from './product-thumb'
 import { grossTotal } from './order-totals'
 import { formatGermanDate } from './pickup'
 import { leadTimeLimitFor, type LeadTimeLimit } from './checkout-validation'
+import {
+  PRICES_UPDATED_NOTICE,
+  useFreshCartPrices,
+} from './use-fresh-cart-prices'
 
 /** Mirrors `CartProvider`'s `maxQuantityPerItem` default — never offer more than it accepts. */
 const MAX_QUANTITY_PER_ITEM = 99
@@ -211,6 +215,8 @@ export const CartPage: React.FC = () => {
     clearCart,
   } = useCart()
   const router = useRouter()
+  /** Die Momentaufnahme aus dem `localStorage` gegen die hq-Preise abgleichen. */
+  const pricesUpdated = useFreshCartPrices()
 
   const isEmpty = items.length === 0
   const total = grossTotal(summary)
@@ -270,6 +276,16 @@ export const CartPage: React.FC = () => {
             Weiter einkaufen
           </Button>
         </Box>
+
+        {pricesUpdated && !isEmpty && (
+          <Alert
+            data-testid="cart-prices-updated"
+            severity="info"
+            sx={{ mb: { xs: 2, md: 3 } }}
+          >
+            {PRICES_UPDATED_NOTICE}
+          </Alert>
+        )}
 
         {leadTime && !isEmpty && (
           <Alert

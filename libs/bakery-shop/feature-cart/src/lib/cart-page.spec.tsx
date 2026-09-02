@@ -9,16 +9,23 @@
  */
 
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 
 import type { CartItem } from '@bakery/shared/contexts'
 
 import { CartPage } from './cart-page'
 
 const mockPush = jest.fn()
+const mockRefreshItems = jest.fn()
+const mockFetchShopProducts = jest.fn()
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush }),
+}))
+
+jest.mock('@bakery/shared/data-access', () => ({
+  ...jest.requireActual('@bakery/shared/data-access'),
+  fetchShopProducts: () => mockFetchShopProducts(),
 }))
 
 let mockItems: CartItem[] = []
@@ -43,6 +50,7 @@ jest.mock('@bakery/shared/contexts', () => ({
       updateQuantity: jest.fn(),
       removeFromCart: jest.fn(),
       clearCart: jest.fn(),
+      refreshItems: (...args: unknown[]) => mockRefreshItems(...args),
     }
   },
 }))
@@ -81,7 +89,25 @@ const wholeTorte = () =>
 describe('CartPage', () => {
   beforeEach(() => {
     mockPush.mockClear()
+    mockRefreshItems.mockReset().mockReturnValue(false)
+    mockFetchShopProducts.mockReset().mockResolvedValue([])
     mockItems = [line()]
+  })
+
+  it('sagt eine Preisänderung an, sobald der Abgleich mit der API eine findet', async () => {
+    mockRefreshItems.mockReturnValue(true)
+    render(<CartPage />)
+
+    const notice = await screen.findByTestId('cart-prices-updated')
+    expect(notice.textContent).toContain('Preis geändert')
+    expect(mockRefreshItems).toHaveBeenCalledTimes(1)
+  })
+
+  it('zeigt ohne Preisänderung keinen Hinweis', async () => {
+    render(<CartPage />)
+
+    await waitFor(() => expect(mockRefreshItems).toHaveBeenCalled())
+    expect(screen.queryByTestId('cart-prices-updated')).toBeNull()
   })
 
   it('zeigt die Summe genau einmal — cart-total darf sich nicht verdoppeln', () => {
