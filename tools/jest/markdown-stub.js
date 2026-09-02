@@ -4,7 +4,8 @@
  * Beide Pakete werden als reines ESM ausgeliefert; jest transformiert
  * node_modules nicht, deshalb bricht schon der Import des Barrels
  * `@bakery/shared/ui` ab (es zieht `display/markdown-display.tsx` mit).
- * Der Shop rendert nirgends Markdown — ein Platzhalter genügt.
+ * Keine Spec prüft gerendertes Markdown — ein Platzhalter genügt. Geteilt von
+ * bakery-shop, bakery-landing und feature-orders.
  */
 const React = require('react')
 
