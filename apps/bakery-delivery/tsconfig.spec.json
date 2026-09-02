@@ -3,6 +3,7 @@
   "compilerOptions": {
     "outDir": "../../dist/out-tsc",
     "module": "commonjs",
+    "moduleResolution": "node",
     "types": ["jest", "node"],
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true
@@ -14,5 +15,6 @@
     "src/**/*.test.tsx",
     "src/**/*.spec.tsx",
     "src/**/*.d.ts"
-  ]
+  ],
+  "exclude": ["node_modules"]
 }

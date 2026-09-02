@@ -1,4 +1,6 @@
-export default {
+// Benannte Konstante statt anonymem Default-Export - sonst meldet
+// `import/no-anonymous-default-export` bei jedem `nx lint` eine Warnung.
+const config = {
   displayName: 'bakery-delivery',
   preset: '../../jest.preset.js',
   testEnvironment: 'jsdom',
@@ -12,3 +14,5 @@ export default {
   },
   coverageDirectory: '../../coverage/apps/bakery-delivery',
 }
+
+export default config
