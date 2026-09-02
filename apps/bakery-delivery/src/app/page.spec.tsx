@@ -288,6 +288,7 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
       lat: 49.3226,
       lon: 7.3389,
       geocodeSource: null,
+      geocodePrecision: null,
       estimatedArrival: null,
     }
     const withStop: Tour = {
