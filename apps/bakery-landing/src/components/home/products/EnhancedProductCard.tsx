@@ -10,7 +10,6 @@ import {
   CardActionArea,
   CardMedia,
   Fade,
-  Rating,
 } from '@mui/material'
 import LocalFireDepartmentIcon from '@mui/icons-material/LocalFireDepartment'
 import NewReleasesIcon from '@mui/icons-material/NewReleases'
@@ -26,8 +25,6 @@ interface EnhancedProductCardProps extends Product {
   isFreshToday?: boolean
   isNew?: boolean
   isOrganic?: boolean
-  rating?: number
-  reviewCount?: number
 }
 
 const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
@@ -35,8 +32,6 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
     isFreshToday = props.id % 2 === 0,
     isNew = props.id % 10 === 1,
     isOrganic = props.isVegan || false,
-    rating = 4 + (props.id % 10) / 10,
-    reviewCount = 10 + (props.id % 40),
     ...product
   } = props
 
@@ -120,16 +115,6 @@ const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
           <Typography variant="h6" component="h3" sx={styles.name}>
             {product.name}
           </Typography>
-
-          {/* Rating */}
-          {rating && (
-            <Box sx={styles.ratingContainer}>
-              <Rating value={rating} precision={0.5} size="small" readOnly />
-              <Typography variant="body2" color="text.secondary">
-                ({reviewCount})
-              </Typography>
-            </Box>
-          )}
 
           {/* Description */}
           {product.description && (
@@ -258,12 +243,6 @@ const styles = {
     display: '-webkit-box',
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
-  },
-  ratingContainer: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 0.5,
-    mb: 1,
   },
   description: {
     overflow: 'hidden',

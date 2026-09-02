@@ -78,19 +78,18 @@ function formatGroupHours(group: DayGroup): string {
 
 /**
  * Format hours for the map component (zeiten.ts format)
- * Uses abbreviated day names, lists each day in a group, Sunday → 'So und Feiertage'
+ * Uses abbreviated day names and lists each day in a group: 'Di, Mi, Do, Fr'
+ *
+ * Deliberately no holiday claim here: the config has no holiday entry and
+ * holidays are not simply "like Sunday" (e.g. Mariä Himmelfahrt 2025 was
+ * closed). The contact page carries the "an Feiertagen abweichend" note.
  */
 export function getMapDisplayHours() {
   return groupDaysBySchedule().map((group) => {
     const labels = group.days.map((d) => DAY_NAMES.deAbbrev[d])
-    // Special-case: if group contains Sunday, show "So und Feiertage"
-    const label =
-      group.days.includes('sunday') && group.days.length === 1
-        ? 'So und Feiertage'
-        : labels.join(', ')
 
     return {
-      label,
+      label: labels.join(', '),
       value: formatGroupHours(group),
     }
   })
@@ -305,7 +304,7 @@ export function getTodayOpeningTime(): string | null {
 }
 
 /**
- * Get next opening day and time.
+ * Get next opening day and time (time formatted for display, e.g. '5:30').
  * Checks if the bakery opens later today before looking at future days.
  */
 export function getNextOpening(): { day: string; time: string } | null {
@@ -332,7 +331,7 @@ export function getNextOpening(): { day: string; time: string } | null {
     if (currentTime < openTime) {
       return {
         day: 'Heute',
-        time: todayHours.opens,
+        time: formatTime(todayHours.opens),
       }
     }
   }
@@ -345,7 +344,7 @@ export function getNextOpening(): { day: string; time: string } | null {
     if (dayHours.isOpen && dayHours.opens) {
       return {
         day: DAY_NAMES.de[dayName],
-        time: dayHours.opens,
+        time: formatTime(dayHours.opens),
       }
     }
   }
