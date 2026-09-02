@@ -109,6 +109,26 @@ export class ApiError extends Error {
 }
 
 /**
+ * Macht aus einem Fehler der API-Schicht einen deutschen Satz für die
+ * Oberfläche. Netzfehler bleiben absichtlich keine ApiError (flushQueue
+ * unterscheidet daran, ob ein Update wiederholt werden darf) - deshalb
+ * wird hier übersetzt, nicht in request().
+ */
+export function describeError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) return error.message
+  if (
+    error instanceof Error &&
+    (error.name === 'AbortError' || error.name === 'TimeoutError')
+  ) {
+    return 'Die Bäckerei-API antwortet nicht. Bitte gleich noch einmal versuchen.'
+  }
+  if (error instanceof TypeError) {
+    return `Keine Verbindung zur Bäckerei-API (${API_BASE_URL}). Läuft der Server?`
+  }
+  return error instanceof Error ? error.message : fallback
+}
+
+/**
  * Nach so vielen Millisekunden gilt eine Anfrage als gescheitert. Im Funkloch
  * haengt `fetch` sonst minutenlang - und solange es haengt, sind alle Knoepfe
  * gesperrt und die Warteschlange kommt nicht zum Zug.
