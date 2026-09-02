@@ -3,6 +3,7 @@ import React from 'react'
 import {
   Box,
   BoxProps,
+  Button,
   Container,
   Grid,
   Typography,
@@ -11,10 +12,12 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  IconButton,
   InputAdornment,
   TextField,
   Divider,
 } from '@mui/material'
+import ClearIcon from '@mui/icons-material/Clear'
 import SearchIcon from '@mui/icons-material/Search'
 import SortIcon from '@mui/icons-material/Sort'
 import EnhancedProductCard from './EnhancedProductCard'
@@ -32,6 +35,14 @@ const Products: React.FC<Props> = (props) => {
   const [page, setPage] = React.useState(1)
   const [sortBy, setSortBy] = React.useState('')
   const [searchTerm, setSearchTerm] = React.useState('')
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Beide Löschen-Buttons verschwinden mit dem Begriff; der Fokus soll dann
+  // im Suchfeld landen und nicht auf dem Body.
+  const clearSearch = () => {
+    setSearchTerm('')
+    searchInputRef.current?.focus()
+  }
 
   // Items per page
   const itemsPerPage = 8
@@ -62,17 +73,20 @@ const Products: React.FC<Props> = (props) => {
     return result
   }, [items, searchTerm, sortBy])
 
-  // Calculate pagination
+  // Calculate pagination. Clamp the page to the valid range so a stale page
+  // number (e.g. page 5 after switching to a category with a single page)
+  // can never render an empty grid.
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage)
+  const safePage = Math.min(page, Math.max(totalPages, 1))
   const displayedItems = filteredItems.slice(
-    (page - 1) * itemsPerPage,
-    page * itemsPerPage
+    (safePage - 1) * itemsPerPage,
+    safePage * itemsPerPage
   )
 
-  // Reset to page 1 when search or sort changes
+  // Reset to page 1 when the product list (category filter), search or sort changes
   React.useEffect(() => {
     setPage(1)
-  }, [searchTerm, sortBy])
+  }, [items, searchTerm, sortBy])
 
   return (
     <Box
@@ -99,8 +113,9 @@ const Products: React.FC<Props> = (props) => {
             </Box>
           ))}
 
-        {/* Search and Filter Controls */}
-        {showControls && filteredItems.length > 0 && (
+        {/* Search and Filter Controls - bleiben auch ohne Treffer stehen,
+            sonst kann der Kunde den Suchbegriff nicht mehr korrigieren */}
+        {showControls && (
           <Box
             sx={{
               display: 'flex',
@@ -116,6 +131,7 @@ const Products: React.FC<Props> = (props) => {
               variant="outlined"
               size="small"
               value={searchTerm}
+              inputRef={searchInputRef}
               onChange={(e) => setSearchTerm(e.target.value)}
               sx={{ flexGrow: 1, maxWidth: { sm: 300 } }}
               InputProps={{
@@ -124,6 +140,18 @@ const Products: React.FC<Props> = (props) => {
                     <SearchIcon />
                   </InputAdornment>
                 ),
+                endAdornment: searchTerm ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      aria-label="Suche löschen"
+                      size="small"
+                      edge="end"
+                      onClick={clearSearch}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
               }}
             />
 
@@ -170,6 +198,21 @@ const Products: React.FC<Props> = (props) => {
             <Typography variant="h6" color="text.secondary">
               Keine Produkte gefunden
             </Typography>
+            {searchTerm && (
+              <>
+                <Typography color="text.secondary" sx={{ mt: 1 }}>
+                  Zu „{searchTerm}“ passt kein Produkt.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<ClearIcon />}
+                  onClick={clearSearch}
+                  sx={{ mt: 2 }}
+                >
+                  Suche zurücksetzen
+                </Button>
+              </>
+            )}
           </Box>
         )}
 
@@ -184,7 +227,7 @@ const Products: React.FC<Props> = (props) => {
           >
             <Pagination
               count={totalPages}
-              page={page}
+              page={safePage}
               onChange={(_, newPage) => setPage(newPage)}
               color="primary"
               size="large"
