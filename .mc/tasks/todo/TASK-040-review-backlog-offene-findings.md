@@ -95,8 +95,20 @@ dem Fix zuerst gegen die laufende App reproduzieren.
 - Sporadischer Hydration-Mismatch der Katalog-Toolbar (`useId`-Attribute weichen ab),
   `catalog-page.tsx` ~Zeile 603 und 633.
 
+### CI
+
+- Die drei `test-e2e-*`-Jobs in `.github/workflows/ci.yml` sind auf `main` seit mindestens
+  2026-09-01 bei jedem Lauf rot (Shop 9, Management 36, Landing 52 Fehlschläge), deshalb ist auch der
+  Sammel-Job `ci-status` rot. Die Assertions brauchen Produktdaten (`expect(list.length).toBeGreaterThan(0)`),
+  die es in der CI ohne `hq/` und ohne API nicht gibt. Entweder die Suiten gegen den Mock-Server
+  mit `HQ_PRODUCTS_DIR` laufen lassen oder die Jobs ehrlich abschalten; `quality`, `build (*)` und
+  die drei `test-unit`-Shards sind grün.
+
 ### Management
 
+- `/admin/orders` meldet im Dev-Modus sporadisch einen Hydration-Mismatch: MUI-`Select` bekommt auf
+  Server und Client verschiedene `aria-controls`-IDs (`useId`). Gleiche Klasse wie die
+  Katalog-Toolbar im Shop unten; in zwei von vier Aufrufen reproduziert.
 - Team-Chat pollt alle 5 s dauerhaft einen Endpunkt, den es nicht gibt (`admin/chat/page.tsx`,
   ~Zeile 137); entweder abschalten oder nach dem ersten 404 aufhören.
 - Berichte-Seite loggt bei jedem Laden einen Fehler und öffnet das Dev-Overlay, obwohl das Feature
