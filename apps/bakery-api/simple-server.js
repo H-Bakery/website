@@ -1021,9 +1021,13 @@ app.get('/api/baking-list', (req, res) => {
 // was wurde neu eingeräumt (deliveredQty). Jede abgeleitete Zahl kommt aus
 // partner-stats.core - derselben Datei, die auch die echte API benutzt.
 const partnerStats = require('./src/services/partner-stats.core')
+// Atomares Schreiben und Quarantäne kaputter Dateien - für beide Stores.
+const jsonStore = require('./src/services/json-store.core')
 
 // Der Mock-Server hat keine Datenbank. Erfassungen sollen einen Neustart
 // trotzdem überleben, deshalb ein schlichter JSON-Store neben dem Server.
+// Er ist die einzige Aufzeichnung der Backschrank-Besuche: geschrieben wird
+// deshalb atomar, und eine kaputte Datei wird beiseitegelegt, nie überschrieben.
 const PARTNER_STORE = path.join(__dirname, 'data', 'partner-store.json')
 
 /** Auslieferungszustand: CAP-Markt als erster Partner, sonst nichts. */
@@ -1055,8 +1059,7 @@ function seedPartnerStore() {
 
 function savePartnerStore(store) {
   try {
-    fs.mkdirSync(path.dirname(PARTNER_STORE), { recursive: true })
-    fs.writeFileSync(PARTNER_STORE, JSON.stringify(store, null, 2), 'utf-8')
+    jsonStore.writeJsonAtomic(PARTNER_STORE, store)
     return true
   } catch (err) {
     console.warn(
@@ -1067,24 +1070,35 @@ function savePartnerStore(store) {
 }
 
 /**
- * Liest den Store. Fehlt die Datei, wird der Seed angelegt; ist sie kaputt,
- * arbeitet der Server mit dem Seed weiter, statt beim Request abzustürzen.
+ * Liest den Store. Fehlt die Datei, wird der Seed angelegt. Ist sie kaputt,
+ * wandert sie nach `partner-store.json.corrupt-<Zeit>` und der Server arbeitet
+ * mit dem Seed weiter, statt beim Request abzustürzen - das nächste Speichern
+ * legt dann eine frische Datei an, ohne die kaputte (mit allen Besuchen darin)
+ * zu überschreiben.
  */
 function loadPartnerStore() {
   const seed = seedPartnerStore()
   try {
-    if (fs.existsSync(PARTNER_STORE)) {
-      const parsed = JSON.parse(fs.readFileSync(PARTNER_STORE, 'utf-8'))
-      return {
-        partners:
-          Array.isArray(parsed.partners) && parsed.partners.length
-            ? parsed.partners
-            : seed.partners,
-        templates: Array.isArray(parsed.templates) ? parsed.templates : [],
-        visits: Array.isArray(parsed.visits) ? parsed.visits : [],
-      }
+    const read = jsonStore.readJsonOrQuarantine(PARTNER_STORE)
+    if (read.quarantine) {
+      console.error(
+        `Partner-Store ist beschädigt (${read.reason}) und wurde nach ${read.quarantine} verschoben - die erfassten Besuche müssen aus dieser Datei zurückgeholt werden.`
+      )
+      return seed
     }
-    savePartnerStore(seed)
+    if (read.missing) {
+      savePartnerStore(seed)
+      return seed
+    }
+    const parsed = read.data
+    return {
+      partners:
+        Array.isArray(parsed.partners) && parsed.partners.length
+          ? parsed.partners
+          : seed.partners,
+      templates: Array.isArray(parsed.templates) ? parsed.templates : [],
+      visits: Array.isArray(parsed.visits) ? parsed.visits : [],
+    }
   } catch (err) {
     console.warn(`Partner-Store konnte nicht gelesen werden: ${err.message}`)
   }
@@ -1845,13 +1859,10 @@ function seedDeliveryStore() {
 
 function saveDeliveryStore(store) {
   try {
-    fs.mkdirSync(path.dirname(DELIVERY_STORE), { recursive: true })
     // Erst in eine Nachbardatei, dann umbenennen. Stirbt der Prozess mitten im
     // Schreiben, bleibt die alte Datei heil - sonst braechte eine halbe
     // JSON-Datei beim naechsten Start den Seed zurueck, und die Tour waere weg.
-    const tmp = `${DELIVERY_STORE}.${process.pid}.tmp`
-    fs.writeFileSync(tmp, JSON.stringify(store, null, 2), 'utf-8')
-    fs.renameSync(tmp, DELIVERY_STORE)
+    jsonStore.writeJsonAtomic(DELIVERY_STORE, store)
     return true
   } catch (err) {
     console.warn(`Liefer-Store konnte nicht geschrieben werden: ${err.message}`)
@@ -1860,35 +1871,45 @@ function saveDeliveryStore(store) {
 }
 
 /**
- * Liest den Store. Fehlt die Datei, wird der Seed angelegt; ist sie kaputt,
- * arbeitet der Server mit dem Seed weiter, statt beim Request abzustuerzen.
+ * Liest den Store. Fehlt die Datei, wird der Seed angelegt. Ist sie kaputt,
+ * wandert sie nach `delivery-store.json.corrupt-<Zeit>` und der Server arbeitet
+ * mit dem Seed weiter, statt beim Request abzustuerzen - die Touren bleiben in
+ * der verschobenen Datei erhalten.
  */
 function loadDeliveryStore() {
   const seed = seedDeliveryStore()
   try {
-    if (fs.existsSync(DELIVERY_STORE)) {
-      const parsed = JSON.parse(fs.readFileSync(DELIVERY_STORE, 'utf-8'))
-      return {
-        depot: parsed.depot && parsed.depot.street ? parsed.depot : seed.depot,
-        drivers:
-          Array.isArray(parsed.drivers) && parsed.drivers.length
-            ? parsed.drivers
-            : seed.drivers,
-        tours: Array.isArray(parsed.tours)
-          ? parsed.tours
-              .filter((t) => t && Number.isFinite(Number(t.id)))
-              .map((t) => ({
-                ...t,
-                stops: Array.isArray(t.stops) ? t.stops : [],
-              }))
-          : [],
-        geocache:
-          parsed.geocache && typeof parsed.geocache === 'object'
-            ? parsed.geocache
-            : {},
-      }
+    const read = jsonStore.readJsonOrQuarantine(DELIVERY_STORE)
+    if (read.quarantine) {
+      console.error(
+        `Liefer-Store ist beschaedigt (${read.reason}) und wurde nach ${read.quarantine} verschoben - die Touren muessen aus dieser Datei zurueckgeholt werden.`
+      )
+      return seed
     }
-    saveDeliveryStore(seed)
+    if (read.missing) {
+      saveDeliveryStore(seed)
+      return seed
+    }
+    const parsed = read.data
+    return {
+      depot: parsed.depot && parsed.depot.street ? parsed.depot : seed.depot,
+      drivers:
+        Array.isArray(parsed.drivers) && parsed.drivers.length
+          ? parsed.drivers
+          : seed.drivers,
+      tours: Array.isArray(parsed.tours)
+        ? parsed.tours
+            .filter((t) => t && Number.isFinite(Number(t.id)))
+            .map((t) => ({
+              ...t,
+              stops: Array.isArray(t.stops) ? t.stops : [],
+            }))
+        : [],
+      geocache:
+        parsed.geocache && typeof parsed.geocache === 'object'
+          ? parsed.geocache
+          : {},
+    }
   } catch (err) {
     console.warn(`Liefer-Store konnte nicht gelesen werden: ${err.message}`)
   }

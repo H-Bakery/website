@@ -45,10 +45,44 @@ describe('ShopProductCard', () => {
       'Kornbrot 500g'
     )
     // Intl setzt ein geschütztes Leerzeichen vor das Währungszeichen.
-    // Der Zusatz „pro Stück" steht bewusst außerhalb der testid.
+    // Der Zusatz (Grundpreis bzw. „pro Stück") steht bewusst außerhalb der testid.
     expect(screen.getByTestId('product-card-price').textContent).toMatch(
       /^2,50\s€$/
     )
+  })
+
+  describe('Grundpreis (§ 4 PAngV)', () => {
+    it('zeigt den Grundpreis bei Ware nach Gewicht', () => {
+      render(<ShopProductCard product={product} />)
+
+      // 2,50 € für 500 g → 5,00 € je Kilogramm, direkt neben dem Endpreis.
+      expect(screen.getByTestId('product-card-unit-price').textContent).toMatch(
+        /^5,00\s€ \/ kg$/
+      )
+      expect(
+        screen.getByTestId('product-card-unit-price').textContent
+      ).not.toContain('pro Stück')
+    })
+
+    it('zeigt „pro Stück" ohne Gewicht im Namen – nichts wird erfunden', () => {
+      render(
+        <ShopProductCard
+          product={{
+            ...product,
+            id: 'sternweck',
+            numericId: 2,
+            name: 'Sternweck',
+          }}
+        />
+      )
+
+      expect(screen.getByTestId('product-card-unit-price')).toHaveTextContent(
+        'pro Stück'
+      )
+      expect(
+        screen.getByTestId('product-card-unit-price').textContent
+      ).not.toMatch(/\/ kg/)
+    })
   })
 
   it('verlinkt auf den lesbaren Slug, nicht auf die numerische Id', () => {

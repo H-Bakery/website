@@ -329,7 +329,7 @@ describe('Breadcrumbs', () => {
 
       const currentBreadcrumb = screen.getByText('About')
       expect(currentBreadcrumb).toHaveStyle({
-        fontWeight: 'medium',
+        fontWeight: 500,
       })
     })
 

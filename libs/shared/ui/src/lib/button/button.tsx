@@ -2,6 +2,7 @@
 import {
   Button as MuiButton,
   ButtonProps as MuiButtonProps,
+  CircularProgress,
 } from '@mui/material'
 import React from 'react'
 
@@ -14,6 +15,8 @@ export interface ButtonProps extends MuiButtonProps {
   target?: string
   /** Rel attribute for anchor elements */
   rel?: string
+  /** Zeigt einen Spinner und sperrt den Button, solange eine Aktion läuft */
+  loading?: boolean
 }
 
 /**
@@ -29,10 +32,21 @@ export interface ButtonProps extends MuiButtonProps {
 export const Button: React.FC<ButtonProps> = ({
   children,
   variant = 'contained',
+  loading = false,
+  disabled = false,
+  startIcon,
   ...props
 }) => {
   return (
-    <MuiButton variant={variant} {...props}>
+    <MuiButton
+      variant={variant}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      startIcon={
+        loading ? <CircularProgress size={16} color="inherit" /> : startIcon
+      }
+      {...props}
+    >
       {children}
     </MuiButton>
   )

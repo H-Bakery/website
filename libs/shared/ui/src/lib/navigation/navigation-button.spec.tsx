@@ -260,9 +260,9 @@ describe('NavigationButton Component', () => {
       const events: string[] = []
       const mockOnClick = jest.fn(() => events.push('onClick'))
 
-      // Mock router to track when it's called
-      const originalPush = mockPush
-      mockPush.mockImplementation(() => events.push('navigate'))
+      // Mock router to track when it's called (once – otherwise the next
+      // tests would inherit the implementation)
+      mockPush.mockImplementationOnce(() => events.push('navigate'))
 
       renderWithTheme(
         <NavigationButton href="/test" onClick={mockOnClick}>
@@ -274,9 +274,6 @@ describe('NavigationButton Component', () => {
       fireEvent.click(button)
 
       expect(events).toEqual(['onClick', 'navigate'])
-
-      // Restore original mock
-      mockPush.mockImplementation(originalPush)
     })
 
     it('handles multiple rapid clicks gracefully', () => {

@@ -20,7 +20,7 @@ jest.mock('../../hooks/use-production', () => ({
   useDeleteBatch: jest.fn(),
 }))
 
-jest.mock('../hooks/use-production-socket', () => ({
+jest.mock('../../hooks/use-production-socket', () => ({
   useProductionSocket: jest.fn(),
 }))
 
@@ -40,7 +40,7 @@ import {
   useProductionBatches,
   useUpdateBatch,
 } from '../../hooks/use-production'
-import { useProductionSocket } from '../hooks/use-production-socket'
+import { useProductionSocket } from '../../hooks/use-production-socket'
 
 const theme = createTheme()
 

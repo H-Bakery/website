@@ -44,6 +44,10 @@ const renderWithTheme = (component: React.ReactElement) => {
   return render(<ThemeProvider theme={theme}>{component}</ThemeProvider>)
 }
 
+// Beim dragstart hängt die Komponente ein Drag-Bild an <body> und entfernt es
+// erst im nächsten Tick. Ohne diese Pause sieht der folgende Test zwei Karten.
+afterEach(() => new Promise((resolve) => setTimeout(resolve, 0)))
+
 describe('DraggableProductionBatch', () => {
   beforeEach(() => {
     jest.clearAllMocks()

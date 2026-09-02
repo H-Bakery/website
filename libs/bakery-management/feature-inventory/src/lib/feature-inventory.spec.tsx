@@ -1,10 +1,11 @@
-import { render } from '@testing-library/react'
+import * as FeatureInventory from './feature-inventory'
 
-import FeatureInventory from './feature-inventory'
-
+// `feature-inventory.tsx` ist ein Barrel ohne eigene Komponente; der alte
+// Test renderte einen nicht existierenden Default-Export.
 describe('FeatureInventory', () => {
-  it('should render successfully', () => {
-    const { baseElement } = render(<FeatureInventory />)
-    expect(baseElement).toBeTruthy()
+  it('exportiert die Produktions-Komponenten', () => {
+    expect(typeof FeatureInventory.ProductionMetricsCard).toBe('function')
+    expect(typeof FeatureInventory.ResourceOptimizationPanel).toBe('function')
+    expect(typeof FeatureInventory.ProductionStatusPanel).toBe('function')
   })
 })
