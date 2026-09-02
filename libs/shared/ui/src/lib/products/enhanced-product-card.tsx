@@ -70,7 +70,9 @@ interface EnhancedProductCardProps extends Product {
   reviewCount?: number
 }
 
-export const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) => {
+export const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (
+  props
+) => {
   const {
     isFreshToday = Math.random() > 0.5, // Temporary random assignment
     isNew = Math.random() > 0.8,
@@ -144,6 +146,10 @@ export const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) =
         sx={styles.favoriteButton}
         onClick={handleToggleFavorite}
         size="small"
+        aria-label={
+          isFavorite ? 'Aus Favoriten entfernen' : 'Zu Favoriten hinzufügen'
+        }
+        aria-pressed={isFavorite}
       >
         {isFavorite ? (
           <FavoriteIcon sx={{ color: 'primary.main' }} />
@@ -171,7 +177,13 @@ export const EnhancedProductCard: React.FC<EnhancedProductCardProps> = (props) =
                 }}
               />
             ) : (
-              <Box sx={{ width: '100%', height: '100%', backgroundColor: 'grey.200' }} />
+              <Box
+                sx={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: 'grey.200',
+                }}
+              />
             )}
           </Box>
 
@@ -410,4 +422,3 @@ const styles = {
     },
   },
 }
-

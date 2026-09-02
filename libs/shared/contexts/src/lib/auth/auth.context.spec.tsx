@@ -21,18 +21,20 @@ Object.defineProperty(window, 'localStorage', {
   value: localStorageMock,
 })
 
-// Mock bakery API
-const mockBakeryAPI = {
-  login: jest.fn(),
-  logout: jest.fn(),
-  refreshToken: jest.fn(),
-  getCurrentUser: jest.fn(),
-  updateUser: jest.fn(),
-}
-
+// Mock bakery API — jest.mock wird über die Imports gehoben, deshalb darf die
+// Factory keine Konstante aus dieser Datei referenzieren.
 jest.mock('@bakery/shared/data-access', () => ({
-  bakeryAPI: mockBakeryAPI,
+  bakeryAPI: {
+    login: jest.fn(),
+    logout: jest.fn(),
+    refreshToken: jest.fn(),
+    getCurrentUser: jest.fn(),
+    updateUser: jest.fn(),
+  },
 }))
+
+const mockBakeryAPI = jest.requireMock('@bakery/shared/data-access')
+  .bakeryAPI as Record<string, jest.Mock>
 
 // Mock user data
 const mockUser: User = {
@@ -119,8 +121,14 @@ describe('AuthContext', () => {
     expect(result.current.user).toEqual(mockUser)
     expect(result.current.token).toBe(mockResponse.token)
     expect(result.current.isAuthenticated).toBe(true)
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('bakery-auth-token', mockResponse.token)
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('bakery-refresh-token', mockResponse.refreshToken)
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'bakery-auth-token',
+      mockResponse.token
+    )
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'bakery-refresh-token',
+      mockResponse.refreshToken
+    )
   })
 
   it('should handle login failure', async () => {
@@ -170,8 +178,12 @@ describe('AuthContext', () => {
     expect(result.current.user).toBeNull()
     expect(result.current.token).toBeNull()
     expect(result.current.isAuthenticated).toBe(false)
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('bakery-auth-token')
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('bakery-refresh-token')
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(
+      'bakery-auth-token'
+    )
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(
+      'bakery-refresh-token'
+    )
   })
 
   it('should check permissions correctly', async () => {
@@ -231,7 +243,10 @@ describe('AuthContext', () => {
 
     expect(mockBakeryAPI.refreshToken).toHaveBeenCalledWith(refreshToken)
     expect(result.current.token).toBe(newToken)
-    expect(localStorageMock.setItem).toHaveBeenCalledWith('bakery-auth-token', newToken)
+    expect(localStorageMock.setItem).toHaveBeenCalledWith(
+      'bakery-auth-token',
+      newToken
+    )
   })
 
   it('should handle auto-refresh on token expiry', async () => {
@@ -332,16 +347,17 @@ describe('AuthContext', () => {
       await result.current.updateProfile(updateData)
     })
 
-    expect(mockBakeryAPI.updateUser).toHaveBeenCalledWith(mockUser.id, updateData)
+    expect(mockBakeryAPI.updateUser).toHaveBeenCalledWith(
+      mockUser.id,
+      updateData
+    )
     expect(result.current.user).toEqual(updatedUser)
   })
 
   it('should handle session timeout', async () => {
     const { result } = renderHook(() => useAuth(), {
       wrapper: ({ children }) => (
-        <AuthProvider sessionTimeout={30000}>
-          {children}
-        </AuthProvider>
+        <AuthProvider sessionTimeout={30000}>{children}</AuthProvider>
       ),
     })
 
@@ -386,14 +402,20 @@ describe('AuthContext', () => {
       expect(result.current.isLoading).toBe(false)
     })
 
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('bakery-auth-token')
-    expect(localStorageMock.removeItem).toHaveBeenCalledWith('bakery-refresh-token')
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(
+      'bakery-auth-token'
+    )
+    expect(localStorageMock.removeItem).toHaveBeenCalledWith(
+      'bakery-refresh-token'
+    )
   })
 
   it('should throw error when useAuth is used outside provider', () => {
     const { result } = renderHook(() => useAuth())
 
-    expect(() => result.current).toThrow('useAuth must be used within an AuthProvider')
+    expect(() => result.current).toThrow(
+      'useAuth must be used within an AuthProvider'
+    )
   })
 
   describe('Role-based access', () => {

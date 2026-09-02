@@ -1,30 +1,35 @@
-import { body, query, ValidationChain } from 'express-validator';
-import { Request, Response, NextFunction } from 'express';
-import { validationResult } from 'express-validator';
-import { logger } from '../utils/logger';
+import { body, query, ValidationChain } from 'express-validator'
+import { Request, Response, NextFunction } from 'express'
+import { validationResult } from 'express-validator'
+import { logger } from '../utils/logger'
 
 /**
  * Handle validation errors middleware
  */
-export const handleValidationErrors = (req: Request, res: Response, next: NextFunction): void => {
-  const errors = validationResult(req);
-  
+export const handleValidationErrors = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  const errors = validationResult(req)
+
   if (!errors.isEmpty()) {
-    logger.warn('Validation failed:', { errors: errors.array(), url: req.url });
+    logger.warn('Validation failed:', { errors: errors.array(), url: req.url })
     res.status(400).json({
       success: false,
       error: 'Validation failed',
-      details: errors.array().map(error => ({
-        field: 'param' in error ? error.param : 'unknown',
+      details: errors.array().map((error) => ({
+        // express-validator 7 nennt das Feld `path` (bis v6 `param`)
+        field: 'path' in error ? error.path : 'unknown',
         message: error.msg,
-        value: 'value' in error ? error.value : undefined
-      }))
-    });
-    return;
+        value: 'value' in error ? error.value : undefined,
+      })),
+    })
+    return
   }
-  
-  next();
-};
+
+  next()
+}
 
 /**
  * Base date range validation rules
@@ -39,11 +44,11 @@ export const dateRangeValidationRules = (): ValidationChain[] => {
       .isISO8601({ strict: true })
       .withMessage('startDate must be a valid date')
       .custom((value) => {
-        const date = new Date(value);
+        const date = new Date(value)
         if (date > new Date()) {
-          throw new Error('startDate cannot be in the future');
+          throw new Error('startDate cannot be in the future')
         }
-        return true;
+        return true
       }),
 
     query('endDate')
@@ -54,27 +59,29 @@ export const dateRangeValidationRules = (): ValidationChain[] => {
       .isISO8601({ strict: true })
       .withMessage('endDate must be a valid date')
       .custom((value, { req }) => {
-        const endDate = new Date(value);
-        const startDate = new Date(req.query?.['startDate'] as string);
-        
+        const endDate = new Date(value)
+        const startDate = new Date(req.query?.['startDate'] as string)
+
         if (endDate > new Date()) {
-          throw new Error('endDate cannot be in the future');
+          throw new Error('endDate cannot be in the future')
         }
-        
+
         if (endDate < startDate) {
-          throw new Error('endDate must be after or equal to startDate');
+          throw new Error('endDate must be after or equal to startDate')
         }
-        
+
         // Limit date range to 2 years for performance
-        const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+        const daysDiff = Math.ceil(
+          (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+        )
         if (daysDiff > 730) {
-          throw new Error('Date range cannot exceed 2 years (730 days)');
+          throw new Error('Date range cannot exceed 2 years (730 days)')
         }
-        
-        return true;
-      })
-  ];
-};
+
+        return true
+      }),
+  ]
+}
 
 /**
  * Pagination validation rules
@@ -91,9 +98,9 @@ export const paginationValidationRules = (): ValidationChain[] => {
       .optional()
       .isInt({ min: 1, max: 100 })
       .withMessage('limit must be between 1 and 100')
-      .toInt()
-  ];
-};
+      .toInt(),
+  ]
+}
 
 /**
  * Revenue trends validation rules
@@ -101,14 +108,14 @@ export const paginationValidationRules = (): ValidationChain[] => {
 export const revenueTrendsValidationRules = (): ValidationChain[] => {
   return [
     ...dateRangeValidationRules(),
-    
+
     query('granularity')
       .optional()
       .isIn(['daily', 'weekly', 'monthly'])
       .withMessage('granularity must be one of: daily, weekly, monthly')
-      .customSanitizer((value) => value || 'daily')
-  ];
-};
+      .customSanitizer((value) => value || 'daily'),
+  ]
+}
 
 /**
  * Product performance validation rules
@@ -117,28 +124,25 @@ export const productPerformanceValidationRules = (): ValidationChain[] => {
   return [
     ...dateRangeValidationRules(),
     ...paginationValidationRules(),
-    
+
     query('sort')
       .optional()
       .isIn(['top', 'bottom'])
       .withMessage('sort must be either "top" or "bottom"')
-      .customSanitizer((value) => value || 'top')
-  ];
-};
+      .customSanitizer((value) => value || 'top'),
+  ]
+}
 
 /**
  * Cashier performance validation rules
  */
 export const cashierPerformanceValidationRules = (): ValidationChain[] => {
-  return [
-    ...dateRangeValidationRules(),
-    ...paginationValidationRules()
-  ];
-};
+  return [...dateRangeValidationRules(), ...paginationValidationRules()]
+}
 
 /**
  * Validation rules for analytics endpoints that only need date range
  */
 export const summaryValidationRules = (): ValidationChain[] => {
-  return dateRangeValidationRules();
-};
+  return dateRangeValidationRules()
+}
