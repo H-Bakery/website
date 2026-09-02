@@ -425,6 +425,119 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     )
   })
 
+  it('puts the products that are in the cabinet first, opens their groups and names them when switching to Abholung', async () => {
+    const user = userEvent.setup()
+    // Morgens 6 Bauernbrot und 4 Apfeltaschen eingeräumt; mittags waren die
+    // Apfeltaschen ausverkauft (Rest 0, nichts nachgelegt). Roggenbrot und
+    // Kaisersemmel lagen heute nie im Schrank.
+    mockFetchToday.mockResolvedValue({
+      ...DAY_DETAIL,
+      timeline: [
+        {
+          visitId: 1,
+          visitType: 'initial',
+          visitAt: `${BUSINESS_DATE}T06:00:00.000Z`,
+          sequence: 1,
+          staffName: null,
+          note: null,
+          countedQty: 0,
+          deliveredQty: 10,
+          soldSinceLastQty: 0,
+          soldSinceLastRevenue: 0,
+          stockAfterQty: 10,
+          items: [
+            {
+              productId: 2,
+              productSlug: 'bauernbrot',
+              productName: 'Bauernbrot',
+              unitPrice: 5.2,
+              countedQty: null,
+              deliveredQty: 6,
+              soldSinceLastQty: 0,
+              stockAfterQty: 6,
+            },
+            {
+              productId: 4,
+              productSlug: 'apfeltasche',
+              productName: 'Apfeltasche',
+              unitPrice: 1.8,
+              countedQty: null,
+              deliveredQty: 4,
+              soldSinceLastQty: 0,
+              stockAfterQty: 4,
+            },
+          ],
+        },
+        {
+          visitId: 2,
+          visitType: 'refill',
+          visitAt: `${BUSINESS_DATE}T10:00:00.000Z`,
+          sequence: 2,
+          staffName: null,
+          note: null,
+          countedQty: 0,
+          deliveredQty: 0,
+          soldSinceLastQty: 4,
+          soldSinceLastRevenue: 7.2,
+          stockAfterQty: 6,
+          items: [
+            {
+              productId: 4,
+              productSlug: 'apfeltasche',
+              productName: 'Apfeltasche',
+              unitPrice: 1.8,
+              countedQty: 0,
+              deliveredQty: 0,
+              soldSinceLastQty: 4,
+              stockAfterQty: 0,
+            },
+          ],
+        },
+      ],
+    })
+    await renderForm({ initialDate: BUSINESS_DATE })
+
+    const rowOrder = () =>
+      screen
+        .getAllByLabelText(/^Rest erhöhen: /)
+        .map((button) => button.getAttribute('aria-label')?.slice(14))
+
+    // Erstbestückung: Katalogreihenfolge, nur die erste Gruppe offen.
+    expect(rowOrder()).toEqual(['Roggenbrot', 'Bauernbrot'])
+    expect(screen.queryByText(/Im Schrank erwartet/)).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+
+    // Bauernbrot (erwartet 6) rückt vor Roggenbrot; die Teilchen klappen auf,
+    // weil die Apfeltasche heute im Schrank lag - auch wenn sie schon auf 0
+    // gezählt ist. Brötchen bleiben zu: dort lag nie etwas.
+    expect(screen.getByRole('button', { name: /Teilchen/ })).toHaveAttribute(
+      'aria-expanded',
+      'true'
+    )
+    expect(screen.getByRole('button', { name: /Brötchen/ })).toHaveAttribute(
+      'aria-expanded',
+      'false'
+    )
+    await waitFor(() =>
+      expect(rowOrder()).toEqual(['Bauernbrot', 'Roggenbrot', 'Apfeltasche'])
+    )
+    expect(screen.getByText(/erwartet 6/)).toBeInTheDocument()
+    expect(screen.getByText(/erwartet 0/)).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        /Im Schrank erwartet: Bauernbrot 6, Apfeltasche 0 - diese Produkte stehen in jeder Kategorie oben\./
+      )
+    ).toBeInTheDocument()
+
+    // Zurück zur Erstbestückung: wieder Katalogreihenfolge, Hinweis weg.
+    await user.click(screen.getByRole('button', { name: 'Erstbestückung' }))
+    await waitFor(() =>
+      expect(rowOrder()).toEqual(['Roggenbrot', 'Bauernbrot', 'Apfeltasche'])
+    )
+    expect(screen.queryByText(/Im Schrank erwartet/)).toBeNull()
+  })
+
   it('applies the weekday template to the Neu fields when switching to Erstbestückung', async () => {
     const user = userEvent.setup()
     const gate = createGate()
