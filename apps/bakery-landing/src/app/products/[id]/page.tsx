@@ -191,24 +191,6 @@ export default async function ProductPage({ params }: ProductPageProps) {
                 boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
               }}
             >
-              {/* Quality Badge - Deterministic based on product ID */}
-              {product.id % 3 === 0 && (
-                <Chip
-                  icon={<VerifiedIcon />}
-                  label="Premium Qualität"
-                  size="small"
-                  sx={{
-                    position: 'absolute',
-                    top: 16,
-                    left: 16,
-                    zIndex: 1,
-                    bgcolor: 'primary.main',
-                    color: 'white',
-                    fontWeight: '600',
-                  }}
-                />
-              )}
-
               <Box
                 sx={{
                   p: { xs: 3, md: 6 },
@@ -475,7 +457,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
                           fontWeight="600"
                           color="text.primary"
                         >
-                          90 Jahre Erfahrung
+                          Über 90 Jahre Erfahrung
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
                           Seit 1933 in Familienbesitz
