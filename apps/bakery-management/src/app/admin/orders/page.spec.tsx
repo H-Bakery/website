@@ -29,6 +29,11 @@ const mockOrders = [
     status: 'pending',
     createdAt: '2026-08-15T06:00:00.000Z',
     updatedAt: '2026-08-15T06:00:00.000Z',
+    pickupDate: '2026-09-05',
+    pickupTime: '09:30',
+    phone: '06841 555999',
+    email: 'max@example.de',
+    notes: 'Bitte in zwei Tüten packen.',
   },
   {
     id: '2',
@@ -96,6 +101,108 @@ describe('AdminOrdersPage', () => {
       })
     )
     expect(await screen.findByText('Status aktualisiert')).toBeInTheDocument()
+  })
+
+  it('zeigt Abholung, Kontakt und Anmerkung einer Shop-Bestellung', async () => {
+    renderWithTheme(<OrdersPage />)
+    await screen.findByText('Max Mustermann')
+
+    // Die Liste zeigt den Abholtermin, nicht das Bestelldatum - der Bäcker
+    // will wissen, wann jemand vor der Theke steht.
+    expect(screen.getByText(/05\.09\.2026, 09:30 Uhr/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Bestellung 1 anzeigen'))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Abholung')).toBeInTheDocument()
+    expect(
+      within(dialog).getByText(/05\.09\.2026, 09:30 Uhr/)
+    ).toBeInTheDocument()
+    expect(within(dialog).getByText('Telefon')).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('link', { name: '06841 555999' })
+    ).toHaveAttribute('href', 'tel:06841555999')
+    expect(within(dialog).getByText('E-Mail')).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('link', { name: 'max@example.de' })
+    ).toHaveAttribute('href', 'mailto:max@example.de')
+    expect(within(dialog).getByText('Anmerkung')).toBeInTheDocument()
+    expect(
+      within(dialog).getByText('Bitte in zwei Tüten packen.')
+    ).toBeInTheDocument()
+  })
+
+  it('lässt Kontaktzeilen weg, wenn eine Bestellung keine Abholdaten hat', async () => {
+    renderWithTheme(<OrdersPage />)
+    await screen.findByText('Anna Schmidt')
+
+    // Die beiden gesäten Mock-Bestellungen kennen keine Abholung.
+    expect(screen.getByText('–')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByLabelText('Bestellung 2 anzeigen'))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByText('Abholung')).toBeInTheDocument()
+    expect(within(dialog).getByText('–')).toBeInTheDocument()
+    expect(within(dialog).queryByText('Telefon')).toBeNull()
+    expect(within(dialog).queryByText('E-Mail')).toBeNull()
+    expect(within(dialog).queryByText('Anmerkung')).toBeNull()
+  })
+
+  it('übernimmt customerPhone/customerEmail der TypeScript-API', async () => {
+    const rawOrder = {
+      ...mockOrders[1],
+      customerPhone: '0170 1234567',
+      customerEmail: 'anna@example.de',
+    }
+    apiClient.get.mockResolvedValueOnce({ success: true, data: [rawOrder] })
+    apiClient.put.mockImplementationOnce(
+      (_url: string, body: { status: string }) =>
+        Promise.resolve({ success: true, data: { ...rawOrder, ...body } })
+    )
+    renderWithTheme(<OrdersPage />)
+    await screen.findByText('Anna Schmidt')
+    fireEvent.click(screen.getByLabelText('Bestellung 2 anzeigen'))
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('link', { name: '0170 1234567' })
+    ).toHaveAttribute('href', 'tel:01701234567')
+    expect(
+      within(dialog).getByRole('link', { name: 'anna@example.de' })
+    ).toHaveAttribute('href', 'mailto:anna@example.de')
+
+    // Nach einer Statusänderung kommt die Bestellung noch einmal aus der
+    // API - auch diese Antwort muss normalisiert werden.
+    fireEvent.mouseDown(within(dialog).getByLabelText('Status'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Bereit' }))
+    await screen.findByText('Status aktualisiert')
+    expect(
+      within(dialog).getByRole('link', { name: '0170 1234567' })
+    ).toHaveAttribute('href', 'tel:01701234567')
+  })
+
+  it('baut den tel-Link nur aus Ziffern und führendem Plus', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { ...mockOrders[0], id: '3', phone: '(06841) 12/34-56' },
+        { ...mockOrders[0], id: '4', phone: '+49 (0) 6841 12.34' },
+      ],
+    })
+    renderWithTheme(<OrdersPage />)
+    await screen.findAllByText('Max Mustermann')
+
+    fireEvent.click(screen.getByLabelText('Bestellung 3 anzeigen'))
+    let dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('link', { name: '(06841) 12/34-56' })
+    ).toHaveAttribute('href', 'tel:06841123456')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Schließen' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    fireEvent.click(screen.getByLabelText('Bestellung 4 anzeigen'))
+    dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('link', { name: '+49 (0) 6841 12.34' })
+    ).toHaveAttribute('href', 'tel:+49068411234')
   })
 
   it('shows an empty state when there are no orders', async () => {
