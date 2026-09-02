@@ -20,6 +20,10 @@ import {
 } from '@mui/material'
 import type { RevenueData, Granularity } from '@bakery/shared/types'
 
+// Recharts 2 misst Achsenbeschriftungen nicht; die Vorgabe von 60 px reicht
+// für "12.500 €" nicht aus.
+const REVENUE_AXIS_WIDTH = 80
+
 export interface RevenueTrendChartProps {
   data: RevenueData[]
   granularity?: Granularity
@@ -63,6 +67,17 @@ export function RevenueTrendChart({
     return new Intl.NumberFormat('de-DE', {
       style: 'currency',
       currency: 'EUR',
+    }).format(value)
+  }
+
+  // Achsenbeschriftung ohne Cent: "1.500,00 €" ist breiter als die Achse und
+  // wurde links abgeschnitten, so dass jede Stufe als "00,00 €" zu lesen war.
+  const formatAxisCurrency = (value: number) => {
+    return new Intl.NumberFormat('de-DE', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     }).format(value)
   }
 
@@ -125,7 +140,11 @@ export function RevenueTrendChart({
         <Chart data={chartData}>
           <CartesianGrid strokeDasharray="3 3" />
           <XAxis dataKey="date" />
-          <YAxis yAxisId="revenue" tickFormatter={formatCurrency} />
+          <YAxis
+            yAxisId="revenue"
+            width={REVENUE_AXIS_WIDTH}
+            tickFormatter={formatAxisCurrency}
+          />
           {showTransactions && (
             <YAxis yAxisId="transactions" orientation="right" />
           )}
