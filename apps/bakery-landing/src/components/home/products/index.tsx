@@ -73,17 +73,20 @@ const Products: React.FC<Props> = (props) => {
     return result
   }, [items, searchTerm, sortBy])
 
-  // Calculate pagination
+  // Calculate pagination. Clamp the page to the valid range so a stale page
+  // number (e.g. page 5 after switching to a category with a single page)
+  // can never render an empty grid.
   const totalPages = Math.ceil(filteredItems.length / itemsPerPage)
+  const safePage = Math.min(page, Math.max(totalPages, 1))
   const displayedItems = filteredItems.slice(
-    (page - 1) * itemsPerPage,
-    page * itemsPerPage
+    (safePage - 1) * itemsPerPage,
+    safePage * itemsPerPage
   )
 
-  // Reset to page 1 when search or sort changes
+  // Reset to page 1 when the product list (category filter), search or sort changes
   React.useEffect(() => {
     setPage(1)
-  }, [searchTerm, sortBy])
+  }, [items, searchTerm, sortBy])
 
   return (
     <Box
@@ -224,7 +227,7 @@ const Products: React.FC<Props> = (props) => {
           >
             <Pagination
               count={totalPages}
-              page={page}
+              page={safePage}
               onChange={(_, newPage) => setPage(newPage)}
               color="primary"
               size="large"
