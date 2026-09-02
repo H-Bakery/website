@@ -174,7 +174,14 @@ export function AppNavigation({
 
           {children}
 
-          <IconButton color="inherit" onClick={handleMobileMenuOpen} edge="end">
+          <IconButton
+            color="inherit"
+            onClick={handleMobileMenuOpen}
+            edge="end"
+            aria-label="Menü öffnen"
+            aria-haspopup="menu"
+            aria-expanded={Boolean(mobileMenuAnchor) || undefined}
+          >
             <MenuIcon />
           </IconButton>
 
@@ -208,7 +215,14 @@ export function AppNavigation({
 
         {/* Mobile Menu Button */}
         {isMobile && showMobileMenu && variant !== 'minimal' && (
-          <IconButton color="inherit" onClick={handleMobileMenuOpen} edge="end">
+          <IconButton
+            color="inherit"
+            onClick={handleMobileMenuOpen}
+            edge="end"
+            aria-label="Menü öffnen"
+            aria-haspopup="menu"
+            aria-expanded={Boolean(mobileMenuAnchor) || undefined}
+          >
             <MenuIcon />
           </IconButton>
         )}

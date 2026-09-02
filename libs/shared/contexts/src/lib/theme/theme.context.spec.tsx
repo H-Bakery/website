@@ -5,7 +5,12 @@
 
 import React from 'react'
 import { renderHook, act } from '@testing-library/react'
-import { ThemeProvider, useTheme, useColorScheme, useIsDarkMode } from './theme.context'
+import {
+  ThemeProvider,
+  useTheme,
+  useColorScheme,
+  useIsDarkMode,
+} from './theme.context'
 
 // Mock matchMedia
 const mockMatchMedia = (matches: boolean) => ({
@@ -35,7 +40,7 @@ describe('ThemeContext', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     localStorageMock.getItem.mockReturnValue(null)
-    window.matchMedia = jest.fn().mockImplementation(query => {
+    window.matchMedia = jest.fn().mockImplementation((query) => {
       return mockMatchMedia(query === '(prefers-color-scheme: dark)')
     })
   })
@@ -70,7 +75,7 @@ describe('ThemeContext', () => {
       result.current.toggleTheme()
     })
     expect(result.current.mode).toBe('system')
-    
+
     // Toggle back to light
     act(() => {
       result.current.toggleTheme()
@@ -97,7 +102,7 @@ describe('ThemeContext', () => {
 
   it('should detect system preference', () => {
     // Mock dark mode preference
-    window.matchMedia = jest.fn().mockImplementation(query => {
+    window.matchMedia = jest.fn().mockImplementation((query) => {
       return mockMatchMedia(query === '(prefers-color-scheme: dark)')
     })
 
@@ -242,7 +247,7 @@ describe('ThemeContext', () => {
   it('should handle system theme changes', () => {
     let darkModeListener: ((e: MediaQueryListEvent) => void) | null = null
 
-    window.matchMedia = jest.fn().mockImplementation(query => {
+    window.matchMedia = jest.fn().mockImplementation((query) => {
       const mediaQuery = mockMatchMedia(false)
       mediaQuery.addEventListener = jest.fn((event, listener) => {
         if (event === 'change') {
@@ -303,8 +308,15 @@ describe('ThemeContext', () => {
   })
 
   it('should throw error when used outside provider', () => {
-    const { result } = renderHook(() => useTheme())
+    // React meldet den Render-Fehler zusätzlich über console.error
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {})
 
-    expect(() => result.current).toThrow('useTheme must be used within a ThemeProvider')
+    expect(() => renderHook(() => useTheme())).toThrow(
+      'useTheme must be used within a ThemeProvider'
+    )
+
+    consoleError.mockRestore()
   })
 })

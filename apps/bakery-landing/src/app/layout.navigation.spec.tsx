@@ -1,5 +1,11 @@
 import React from 'react'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import { ThemeProvider, createTheme } from '@mui/material/styles'
 import useMediaQuery from '@mui/material/useMediaQuery'
 import { AppNavigation, Breadcrumbs } from '@bakery/shared/ui'
@@ -88,7 +94,7 @@ describe('Landing App Navigation Integration', () => {
       renderWithTheme(<AppNavigation app="landing" />)
 
       // Should show mobile menu button
-      expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /menü/i })).toBeInTheDocument()
 
       // Navigation links should be hidden on mobile
       const navButtons = screen
@@ -101,7 +107,7 @@ describe('Landing App Navigation Integration', () => {
       mockUseMediaQuery.mockReturnValue(true) // Mobile view
       renderWithTheme(<AppNavigation app="landing" />)
 
-      const menuButton = screen.getByRole('button', { name: /menu/i })
+      const menuButton = screen.getByRole('button', { name: /menü/i })
       fireEvent.click(menuButton)
 
       await waitFor(() => {
@@ -160,7 +166,7 @@ describe('Landing App Navigation Integration', () => {
 
       // Should show title and mobile menu
       expect(screen.getByText('Bäckerei Heusser')).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /menu/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /menü/i })).toBeInTheDocument()
     })
   })
 
@@ -256,19 +262,21 @@ describe('Landing App Navigation Integration', () => {
 
       // Navigation should be present
       expect(screen.getByText('Bäckerei Heusser')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: 'Home' })).toBeInTheDocument()
+      expect(
+        within(screen.getByRole('banner')).getByRole('link', { name: 'Home' })
+      ).toBeInTheDocument()
 
       // Custom CTA should be rendered
       expect(
         screen.getByRole('button', { name: 'Termin buchen' })
       ).toBeInTheDocument()
 
-      // Breadcrumbs should be present
-      expect(screen.getByRole('link', { name: 'Home' })).toHaveAttribute(
-        'href',
-        '/'
-      )
-      expect(screen.getByText('About')).toBeInTheDocument()
+      // Breadcrumbs should be present – Navigation und Breadcrumb verlinken beide auf Home
+      const homeLinks = screen.getAllByRole('link', { name: 'Home' })
+      expect(homeLinks).toHaveLength(2)
+      homeLinks.forEach((link) => expect(link).toHaveAttribute('href', '/'))
+      // 'About' steht in der Navigation und als aktueller Breadcrumb
+      expect(screen.getAllByText('About')).toHaveLength(2)
 
       // Main content should be present
       expect(
@@ -305,8 +313,13 @@ describe('Landing App Navigation Integration', () => {
 
       renderWithTheme(<CampaignLayout />)
 
-      // Campaign navigation should be present
-      expect(screen.getByText('Osteraktion 2024')).toBeInTheDocument()
+      // Campaign navigation should be present (Titel in der Leiste, Überschrift im Inhalt)
+      expect(
+        within(screen.getByRole('banner')).getByText('Osteraktion 2024')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Osteraktion 2024' })
+      ).toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'Osterbrote' })).toHaveAttribute(
         'href',
         '/easter/bread'
