@@ -17,6 +17,8 @@ import {
   ProductType,
 } from '@bakery/shared/types'
 
+import { productUnit } from './product-unit'
+
 /* -------------------------------------------------------------------------- */
 /* Types                                                                       */
 /* -------------------------------------------------------------------------- */
@@ -353,6 +355,8 @@ const AVAILABLE_STOCK_SENTINEL = 999
  *   should show); the long body stays on {@link ShopProduct.description}.
  * - The slug is preserved as {@link ShopCartProduct.slug} so the order payload
  *   can reference `'kornbrot-500g'` rather than `'1'`.
+ * - `unit` is the sales unit the cart prints after "pro". A whole cake is
+ *   `'Kuchen'`, not `'Stück'` — in this bakery "Stück" means a slice.
  */
 export function toCartProduct(p: ShopProduct): ShopCartProduct {
   return {
@@ -367,7 +371,7 @@ export function toCartProduct(p: ShopProduct): ShopCartProduct {
     category: CATEGORY_TO_PRODUCT_CATEGORY[p.category],
     type: p.seasonal ? ProductType.Seasonal : ProductType.Fresh,
     price: p.price,
-    unit: 'Stück',
+    unit: productUnit(p),
     stock: p.available ? AVAILABLE_STOCK_SENTINEL : 0,
     status: p.available ? ProductStatus.Available : ProductStatus.OutOfStock,
     image: p.image ?? undefined,

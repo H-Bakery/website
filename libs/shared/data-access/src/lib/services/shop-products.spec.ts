@@ -352,5 +352,27 @@ describe('shop-products', () => {
     it('produces deterministic values so SSR and hydration agree', () => {
       expect(toCartProduct(kornbrot)).toEqual(toCartProduct(kornbrot))
     })
+
+    it('carries the sales unit so a whole cake is not priced "pro Stück" in the cart', () => {
+      expect(toCartProduct(kornbrot).unit).toBe('Stück')
+      expect(
+        toCartProduct({
+          ...kornbrot,
+          id: 'apfelkuchen',
+          name: 'Apfelkuchen',
+          category: 'kuchen',
+          price: 18,
+        }).unit
+      ).toBe('Kuchen')
+      expect(
+        toCartProduct({
+          ...kornbrot,
+          id: 'apfelkuchen-1-stueck',
+          name: 'Apfelkuchen (1 Stück)',
+          category: 'kuchen',
+          price: 1.8,
+        }).unit
+      ).toBe('Stück')
+    })
   })
 })

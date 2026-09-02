@@ -255,6 +255,54 @@ describe('Grundpreis (§ 4 PAngV)', () => {
   })
 })
 
+describe('Verkaufseinheit', () => {
+  it('sagt beim ganzen Kuchen „pro Kuchen“ — „Stück“ ist hier das Portionsstück', () => {
+    render(
+      <ProductDetailPage
+        pid="apfelkuchen"
+        initialProduct={makeUndeclared({
+          id: 'apfelkuchen',
+          numericId: 70,
+          name: 'Apfelkuchen',
+          category: 'kuchen',
+          price: 18,
+        })}
+      />
+    )
+
+    expect(screen.getByText(/pro Kuchen · inkl\. MwSt\./)).toBeInTheDocument()
+    expect(screen.queryByText(/pro Stück/)).not.toBeInTheDocument()
+  })
+
+  it('sagt bei der ganzen Torte „pro Torte“', () => {
+    render(
+      <ProductDetailPage
+        pid="schwarzwaelder-kirsch-torte"
+        initialProduct={makeUndeclared()}
+      />
+    )
+
+    expect(screen.getByText(/pro Torte · inkl\. MwSt\./)).toBeInTheDocument()
+  })
+
+  it('bleibt beim Portionsstück bei „pro Stück“', () => {
+    render(
+      <ProductDetailPage
+        pid="apfelkuchen-1-stueck"
+        initialProduct={makeUndeclared({
+          id: 'apfelkuchen-1-stueck',
+          numericId: 71,
+          name: 'Apfelkuchen (1 Stück)',
+          category: 'kuchen',
+          price: 1.8,
+        })}
+      />
+    )
+
+    expect(screen.getByText(/pro Stück · inkl\. MwSt\./)).toBeInTheDocument()
+  })
+})
+
 describe('Vorbestellfrist', () => {
   it('warnt vor dem Warenkorb-Knopf bei einer ganzen Torte', () => {
     render(

@@ -22,6 +22,8 @@ export * from './lib/services/shop-products'
 export * from './lib/services/shop-orders'
 // Grundpreis je kg fuer Ware nach Gewicht (Pflichtangabe nach § 4 PAngV).
 export * from './lib/services/unit-price'
+// Verkaufseinheit hinter "pro": Stueck, Kuchen, Torte, Rolle.
+export * from './lib/services/product-unit'
 
 // Re-export service instances for convenience
 export { productService } from './lib/services/product.service'

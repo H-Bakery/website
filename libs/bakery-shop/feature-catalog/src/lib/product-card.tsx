@@ -41,6 +41,7 @@ import RemoveIcon from '@mui/icons-material/Remove'
 import { useCart } from '@bakery/shared/contexts'
 import {
   formatEuro,
+  productUnit,
   shopCategoryLabel,
   toCartProduct,
   type ShopProduct,
@@ -445,7 +446,7 @@ export function ShopProductCard({
             variant="caption"
             sx={{ color: 'grey.500', whiteSpace: 'nowrap' }}
           >
-            pro Stück
+            pro {productUnit(product)}
           </Typography>
         </Box>
 
