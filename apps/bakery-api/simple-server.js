@@ -420,6 +420,10 @@ app.put('/api/notifications/preferences', (req, res) => {
 // --- HQ Product edit endpoint (writes back to markdown files) ---
 // --- HQ product file serialisation ------------------------------------------
 const { serializeProductFile } = require('./src/services/product-file.core')
+const {
+  parsePrice,
+  validateProductInput,
+} = require('./src/services/product-input.core')
 
 /** Body text without its leading `# Heading` line. */
 function stripHeading(body) {
@@ -493,6 +497,14 @@ app.put('/api/hq-products/:id', (req, res) => {
     })
   }
 
+  // Die Datei liegt git-versioniert in hq: was hier durchgeht, bleibt.
+  const invalid = validateProductInput(req.body, { partial: true })
+  if (invalid) {
+    return res
+      .status(400)
+      .json({ success: false, error: invalid, message: invalid })
+  }
+
   const {
     name,
     category,
@@ -505,9 +517,9 @@ app.put('/api/hq-products/:id', (req, res) => {
   } = req.body
 
   const updatedData = { ...originalData }
-  if (name !== undefined) updatedData.name = name
+  if (name !== undefined) updatedData.name = name.trim()
   if (category !== undefined) updatedData.category = category
-  if (price !== undefined) updatedData.price = parseFloat(price)
+  if (price !== undefined) updatedData.price = parsePrice(price)
   if (short_description !== undefined)
     updatedData.short_description = short_description
   if (image !== undefined) updatedData.image = image
@@ -555,28 +567,13 @@ app.post('/api/hq-products', (req, res) => {
     seasonal,
   } = req.body
 
-  if (!name || !String(name).trim()) {
-    return res.status(400).json({
-      success: false,
-      error: 'Produktname ist erforderlich',
-      message: 'Produktname ist erforderlich',
-    })
+  const invalid = validateProductInput(req.body, { partial: false })
+  if (invalid) {
+    return res
+      .status(400)
+      .json({ success: false, error: invalid, message: invalid })
   }
-  if (!category || !String(category).trim()) {
-    return res.status(400).json({
-      success: false,
-      error: 'Kategorie ist erforderlich',
-      message: 'Kategorie ist erforderlich',
-    })
-  }
-  const parsedPrice = parseFloat(price)
-  if (Number.isNaN(parsedPrice) || parsedPrice < 0) {
-    return res.status(400).json({
-      success: false,
-      error: 'Preis ist ungültig',
-      message: 'Preis ist ungültig',
-    })
-  }
+  const parsedPrice = parsePrice(price)
 
   const existing = loadHQProducts()
   const id = slugify(name)
