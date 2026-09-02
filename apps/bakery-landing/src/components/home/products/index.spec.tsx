@@ -52,6 +52,7 @@ describe('Products search', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Suche zurücksetzen' }))
 
     expect(search()).toHaveValue('')
+    expect(search()).toHaveFocus()
     expect(screen.getByText('Bauernbrot')).toBeInTheDocument()
     expect(screen.getByText('Laugenbrezel')).toBeInTheDocument()
     expect(screen.getByText('Erdbeertorte')).toBeInTheDocument()
@@ -74,6 +75,7 @@ describe('Products search', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Suche löschen' }))
 
     expect(search()).toHaveValue('')
+    expect(search()).toHaveFocus()
     expect(screen.getByText('Bauernbrot')).toBeInTheDocument()
   })
 

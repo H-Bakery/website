@@ -35,6 +35,14 @@ const Products: React.FC<Props> = (props) => {
   const [page, setPage] = React.useState(1)
   const [sortBy, setSortBy] = React.useState('')
   const [searchTerm, setSearchTerm] = React.useState('')
+  const searchInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Beide Löschen-Buttons verschwinden mit dem Begriff; der Fokus soll dann
+  // im Suchfeld landen und nicht auf dem Body.
+  const clearSearch = () => {
+    setSearchTerm('')
+    searchInputRef.current?.focus()
+  }
 
   // Items per page
   const itemsPerPage = 8
@@ -120,6 +128,7 @@ const Products: React.FC<Props> = (props) => {
               variant="outlined"
               size="small"
               value={searchTerm}
+              inputRef={searchInputRef}
               onChange={(e) => setSearchTerm(e.target.value)}
               sx={{ flexGrow: 1, maxWidth: { sm: 300 } }}
               InputProps={{
@@ -134,7 +143,7 @@ const Products: React.FC<Props> = (props) => {
                       aria-label="Suche löschen"
                       size="small"
                       edge="end"
-                      onClick={() => setSearchTerm('')}
+                      onClick={clearSearch}
                     >
                       <ClearIcon fontSize="small" />
                     </IconButton>
@@ -194,7 +203,7 @@ const Products: React.FC<Props> = (props) => {
                 <Button
                   variant="outlined"
                   startIcon={<ClearIcon />}
-                  onClick={() => setSearchTerm('')}
+                  onClick={clearSearch}
                   sx={{ mt: 2 }}
                 >
                   Suche zurücksetzen
