@@ -3,6 +3,7 @@ import React from 'react'
 import {
   Box,
   BoxProps,
+  Button,
   Container,
   Grid,
   Typography,
@@ -11,10 +12,12 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  IconButton,
   InputAdornment,
   TextField,
   Divider,
 } from '@mui/material'
+import ClearIcon from '@mui/icons-material/Clear'
 import SearchIcon from '@mui/icons-material/Search'
 import SortIcon from '@mui/icons-material/Sort'
 import EnhancedProductCard from './EnhancedProductCard'
@@ -99,8 +102,9 @@ const Products: React.FC<Props> = (props) => {
             </Box>
           ))}
 
-        {/* Search and Filter Controls */}
-        {showControls && filteredItems.length > 0 && (
+        {/* Search and Filter Controls - bleiben auch ohne Treffer stehen,
+            sonst kann der Kunde den Suchbegriff nicht mehr korrigieren */}
+        {showControls && (
           <Box
             sx={{
               display: 'flex',
@@ -124,6 +128,18 @@ const Products: React.FC<Props> = (props) => {
                     <SearchIcon />
                   </InputAdornment>
                 ),
+                endAdornment: searchTerm ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      aria-label="Suche löschen"
+                      size="small"
+                      edge="end"
+                      onClick={() => setSearchTerm('')}
+                    >
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
               }}
             />
 
@@ -170,6 +186,21 @@ const Products: React.FC<Props> = (props) => {
             <Typography variant="h6" color="text.secondary">
               Keine Produkte gefunden
             </Typography>
+            {searchTerm && (
+              <>
+                <Typography color="text.secondary" sx={{ mt: 1 }}>
+                  Zu „{searchTerm}“ passt kein Produkt.
+                </Typography>
+                <Button
+                  variant="outlined"
+                  startIcon={<ClearIcon />}
+                  onClick={() => setSearchTerm('')}
+                  sx={{ mt: 2 }}
+                >
+                  Suche zurücksetzen
+                </Button>
+              </>
+            )}
           </Box>
         )}
 
