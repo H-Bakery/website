@@ -163,6 +163,15 @@ abgeschlossenen Tagen dasselbe und bleibt auf offenen Tagen richtig.
 Preise und Produktnamen werden **als Snapshot** auf `PartnerVisitItem` gespeichert, damit eine
 spätere HQ-Preisänderung alte Abrechnungen nicht rückwirkend verändert.
 
+Der Mock-Server hält die Besuche in `apps/bakery-api/data/partner-store.json` (gitignored) - beim
+`serve:api:simple` ist das die **einzige** Aufzeichnung. Gelesen und geschrieben wird über
+`src/services/json-store.core.js`: erst `.tmp`, dann `rename`, und eine Datei, die sich nicht mehr
+parsen lässt, wandert nach `partner-store.json.corrupt-<Zeit>` statt vom nächsten Speichern mit dem
+Seed überschrieben zu werden (der Server loggt das als Fehler; die Besuche stehen dann in der
+verschobenen Datei). Der Liefer-Store benutzt dieselben Helfer. Nicht durch ein bloßes
+`writeFileSync` ersetzen - genau so gingen früher nach einem Absturz mitten im Schreiben alle
+Besuche verloren.
+
 Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Achtung -
 `apps/bakery-api/jest.config.js` hat `testMatch: ["**/tests/**/*.test.js"]`, führt also **nur**
 plain-JS-Tests unter `tests/` aus. Die TypeScript-Specs unter `src/**/__tests__/` laufen nie mit.
@@ -191,7 +200,8 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   wiederholt.
 - **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*`. Der Store lebt im
   Speicher des Servers und wird nach jeder Änderung atomar nach
-  `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored). Ein Server, der vor diesen
+  `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored, über `json-store.core.js`,
+  siehe Verkaufspartner). Ein Server, der vor diesen
   Routen gestartet wurde, antwortet mit 404 — neu starten.
 - **`Number(null)` ist `0`.** Ein Stopp ohne gefundene Adresse galt dadurch als Punkt (0, 0) und zog
   die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
