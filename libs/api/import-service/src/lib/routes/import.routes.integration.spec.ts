@@ -4,34 +4,38 @@ import { Sequelize, DataTypes } from 'sequelize'
 import { importRoutes } from './import.routes'
 import { importService } from '../services/import.service'
 import { initializeSalesAnalyticsModels } from '@bakery/api/sales-analytics'
-import { authMiddleware } from '@bakery/api/core'
 import type { DailyReport } from '@bakery/shared/types'
-import jwt from 'jsonwebtoken'
 
-// Mock auth middleware for testing
-jest.mock('@bakery/api/core', () => ({
+// Der Router hängt authMiddleware aus @bakery/api/auth ein (dieselbe wie
+// sales-analytics.routes.ts und main.ts). Der Stub antwortet in der Form der
+// echten Middleware ({ success: false, error }) und kennt zwei feste Tokens.
+jest.mock('@bakery/api/auth', () => ({
   authMiddleware: jest.fn((req, res, next) => {
     const authHeader = req.headers.authorization
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ error: 'Unauthorized' })
+    if (!authHeader) {
+      return res
+        .status(401)
+        .json({ success: false, error: 'No token provided' })
+    }
+    if (!authHeader.startsWith('Bearer ')) {
+      return res
+        .status(401)
+        .json({ success: false, error: 'Invalid token format' })
     }
 
     const token = authHeader.split(' ')[1]
     if (token === 'valid-token') {
-      req.user = { id: 1, username: 'admin', role: 'admin' }
+      req.userId = 1
+      req.userRole = 'admin'
       next()
     } else if (token === 'user-token') {
-      req.user = { id: 2, username: 'user', role: 'user' }
+      req.userId = 2
+      req.userRole = 'user'
       next()
     } else {
-      res.status(401).json({ error: 'Invalid token' })
+      res.status(401).json({ success: false, error: 'Invalid token' })
     }
   }),
-  logger: {
-    error: jest.fn(),
-    warn: jest.fn(),
-    info: jest.fn(),
-  },
 }))
 
 describe('Import Routes Integration Tests', () => {
@@ -148,7 +152,10 @@ describe('Import Routes Integration Tests', () => {
         .send(validReport)
 
       expect(response.status).toBe(401)
-      expect(response.body).toEqual({ error: 'Unauthorized' })
+      expect(response.body).toEqual({
+        success: false,
+        error: 'No token provided',
+      })
     })
 
     it('should reject requests with invalid token', async () => {
@@ -158,7 +165,7 @@ describe('Import Routes Integration Tests', () => {
         .send(validReport)
 
       expect(response.status).toBe(401)
-      expect(response.body).toEqual({ error: 'Invalid token' })
+      expect(response.body).toEqual({ success: false, error: 'Invalid token' })
     })
 
     it('should allow admin users to import reports', async () => {

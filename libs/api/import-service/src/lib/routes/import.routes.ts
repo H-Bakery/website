@@ -1,11 +1,14 @@
 import { Router } from 'express'
-import { authMiddleware } from '@bakery/api/core'
+import { authMiddleware } from '@bakery/api/auth'
 import { importController } from '../controllers/import.controller'
 
 const router = Router()
 
 // Der Import schreibt Umsatzdaten; ohne Token geht hier nichts. main.ts hängt
-// den Router ohne eigene Middleware ein, deshalb prüft der Router selbst.
+// den Router ohne eigene Middleware ein, deshalb prüft der Router selbst - mit
+// derselben Middleware wie sales-analytics.routes.ts und main.ts (@bakery/api/auth,
+// die auch die Tokens ausstellt). @bakery/api/core hat einen eigenen Default-Secret
+// und eine andere Fehlerform; ein Login-Token würde dort ohne JWT_SECRET abgelehnt.
 router.use(authMiddleware)
 
 /**
