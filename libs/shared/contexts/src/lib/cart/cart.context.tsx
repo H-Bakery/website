@@ -111,7 +111,11 @@ export interface CartProviderProps {
   maxItems?: number
   /** Maximum quantity per item */
   maxQuantityPerItem?: number
-  /** Auto-save delay in ms */
+  /**
+   * @deprecated Ignored. The cart is written to storage synchronously on every
+   * change; the former debounced save was cancelled by reloads and navigations
+   * and lost the change. Accepted only so existing call sites keep compiling.
+   */
   autoSaveDelay?: number
   /** Validation function */
   validateItem?: (item: CartItem) => string[]
@@ -144,14 +148,12 @@ export const CartProvider: React.FC<CartProviderProps> = ({
   taxRate = 0.19, // 19% German VAT
   maxItems = 100,
   maxQuantityPerItem = 99,
-  autoSaveDelay = 1000,
   validateItem,
 }) => {
   const [items, setItems] = useState<CartItem[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [discountCode, setDiscountCode] = useState<string | null>(null)
   const [discountAmount, setDiscountAmount] = useState(0)
-  const [saveTimeout, setSaveTimeout] = useState<NodeJS.Timeout | null>(null)
 
   // Calculate cart summary
   const summary = useMemo((): CartSummary => {
@@ -287,36 +289,29 @@ export const CartProvider: React.FC<CartProviderProps> = ({
     }
   }, [storageKey, enablePersistence])
 
-  // Save cart to storage with debouncing
+  // Save cart to storage.
+  //
+  // Deliberately synchronous, not debounced. The old 1 s debounce was
+  // cancelled by the effect cleanup on every further change and on unmount,
+  // and nothing flushed it on unload: a reload within a second of
+  // "In den Warenkorb" dropped the item, and a reload right after the order
+  // confirmation brought the just-ordered basket back (clearCart() followed
+  // by router.push() in the shop's checkout-page.tsx).
+  // The `isLoading` gate must stay: it stops the initial empty state from
+  // overwriting a stored cart before the load effect above has read it.
   useEffect(() => {
     if (!enablePersistence || typeof window === 'undefined' || isLoading) return
 
-    // Clear existing timeout
-    if (saveTimeout) {
-      clearTimeout(saveTimeout)
-    }
-
-    // Set new timeout
-    const timeout = setTimeout(() => {
-      try {
-        const data = {
-          items,
-          discountCode,
-          discountAmount,
-          savedAt: new Date().toISOString(),
-        }
-        localStorage.setItem(storageKey, JSON.stringify(data))
-      } catch (error) {
-        console.warn('Failed to save cart to storage:', error)
+    try {
+      const data = {
+        items,
+        discountCode,
+        discountAmount,
+        savedAt: new Date().toISOString(),
       }
-    }, autoSaveDelay)
-
-    setSaveTimeout(timeout)
-
-    return () => {
-      if (timeout) {
-        clearTimeout(timeout)
-      }
+      localStorage.setItem(storageKey, JSON.stringify(data))
+    } catch (error) {
+      console.warn('Failed to save cart to storage:', error)
     }
   }, [
     items,
@@ -324,7 +319,6 @@ export const CartProvider: React.FC<CartProviderProps> = ({
     discountAmount,
     storageKey,
     enablePersistence,
-    autoSaveDelay,
     isLoading,
   ])
 
