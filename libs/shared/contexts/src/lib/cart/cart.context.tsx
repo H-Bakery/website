@@ -364,7 +364,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({
             )
             return prevItems
           }
-          return [...prevItems, { ...product, quantity, notes }]
+          return [
+            ...prevItems,
+            {
+              ...product,
+              quantity: Math.min(quantity, maxQuantityPerItem),
+              notes,
+            },
+          ]
         }
       })
     },

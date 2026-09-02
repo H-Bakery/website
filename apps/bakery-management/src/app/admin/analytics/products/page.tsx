@@ -9,6 +9,7 @@ import {
   Grid,
   Button,
   LinearProgress,
+  Alert,
 } from '@mui/material'
 import {
   Inventory as InventoryIcon,
@@ -40,6 +41,7 @@ export default function ProductAnalyticsPage() {
   const [bottomProducts, setBottomProducts] = useState<
     ProductAnalyticsPerformance[]
   >([])
+  const [isMockData, setIsMockData] = useState(false)
 
   React.useEffect(() => {
     fetchProductData()
@@ -59,20 +61,21 @@ export default function ProductAnalyticsPage() {
   const fetchProductData = async () => {
     try {
       setLoading(true)
-      const [topData, bottomData] = await Promise.all([
-        analyticsService.getProductPerformance({
+      const [top, bottom] = await Promise.all([
+        analyticsService.getProductPerformanceWithSource({
           ...dateRange,
           type: 'top',
           limit: 20,
         }),
-        analyticsService.getProductPerformance({
+        analyticsService.getProductPerformanceWithSource({
           ...dateRange,
           type: 'bottom',
           limit: 10,
         }),
       ])
-      setTopProducts(topData)
-      setBottomProducts(bottomData)
+      setTopProducts(top.data)
+      setBottomProducts(bottom.data)
+      setIsMockData(top.isMock || bottom.isMock)
     } catch (error) {
       console.error('Error fetching product data:', error)
     } finally {
@@ -150,6 +153,13 @@ export default function ProductAnalyticsPage() {
           analyticsParams={{ ...dateRange, granularity: 'daily' }}
         />
       </Box>
+
+      {isMockData && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Die API liefert keine Produktdaten – die angezeigten Zahlen sind
+          Beispieldaten und nicht die echten Verkaufszahlen.
+        </Alert>
+      )}
 
       {/* Statistics for Top Products */}
       {viewType === 'top' && (

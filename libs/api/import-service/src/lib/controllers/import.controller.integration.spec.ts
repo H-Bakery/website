@@ -1,16 +1,16 @@
-import { Sequelize } from 'sequelize';
-import { Request, Response } from 'express';
-import { importController } from './import.controller';
-import { importService } from '../services/import.service';
-import { initSalesAnalyticsModels } from '@bakery/api/sales-analytics';
-import type { DailyReport } from '@bakery/shared/types';
+import { Sequelize, DataTypes } from 'sequelize'
+import { Request, Response } from 'express'
+import { importController } from './import.controller'
+import { importService } from '../services/import.service'
+import { initializeSalesAnalyticsModels } from '@bakery/api/sales-analytics'
+import type { DailyReport } from '@bakery/shared/types'
 
 describe('ImportController Integration Tests', () => {
-  let sequelize: Sequelize;
-  let mockReq: Partial<Request>;
-  let mockRes: Partial<Response>;
-  let jsonMock: jest.Mock;
-  let statusMock: jest.Mock;
+  let sequelize: Sequelize
+  let mockReq: Partial<Request>
+  let mockRes: Partial<Response>
+  let jsonMock: jest.Mock
+  let statusMock: jest.Mock
 
   beforeAll(async () => {
     // Setup in-memory SQLite database
@@ -18,87 +18,98 @@ describe('ImportController Integration Tests', () => {
       dialect: 'sqlite',
       storage: ':memory:',
       logging: false,
-    });
+    })
 
     // Initialize models
     const User = sequelize.define('User', {
       id: {
-        type: Sequelize.INTEGER,
+        type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
       },
       username: {
-        type: Sequelize.STRING,
+        type: DataTypes.STRING,
         allowNull: false,
         unique: true,
       },
       email: {
-        type: Sequelize.STRING,
+        type: DataTypes.STRING,
         allowNull: false,
       },
-      firstName: Sequelize.STRING,
-      lastName: Sequelize.STRING,
-    });
+      firstName: DataTypes.STRING,
+      lastName: DataTypes.STRING,
+    })
 
     const Product = sequelize.define('Product', {
       id: {
-        type: Sequelize.INTEGER,
+        type: DataTypes.INTEGER,
         primaryKey: true,
         autoIncrement: true,
       },
       name: {
-        type: Sequelize.STRING,
+        type: DataTypes.STRING,
         allowNull: false,
       },
       price: {
-        type: Sequelize.DECIMAL(10, 2),
+        type: DataTypes.DECIMAL(10, 2),
         allowNull: false,
       },
-      category: Sequelize.STRING,
-      description: Sequelize.TEXT,
-    });
+      category: DataTypes.STRING,
+      description: DataTypes.TEXT,
+    })
 
     // Initialize sales analytics models
-    initSalesAnalyticsModels(sequelize);
-    
+    initializeSalesAnalyticsModels(sequelize)
+
     // Initialize import service
-    importService.initialize(sequelize);
+    importService.initialize(sequelize)
 
     // Sync database
-    await sequelize.sync({ force: true });
+    await sequelize.sync({ force: true })
 
     // Create test data
     await User.bulkCreate([
-      { username: 'john.doe', email: 'john@test.com', firstName: 'John', lastName: 'Doe' },
-      { username: 'jane.smith', email: 'jane@test.com', firstName: 'Jane', lastName: 'Smith' },
-    ]);
+      {
+        username: 'john.doe',
+        email: 'john@test.com',
+        firstName: 'John',
+        lastName: 'Doe',
+      },
+      {
+        username: 'jane.smith',
+        email: 'jane@test.com',
+        firstName: 'Jane',
+        lastName: 'Smith',
+      },
+    ])
 
     await Product.bulkCreate([
-      { id: 1, name: 'Croissant', price: 2.50, category: 'Gebäck' },
-      { id: 2, name: 'Baguette', price: 1.80, category: 'Brot' },
-      { id: 3, name: 'Pain au Chocolat', price: 3.00, category: 'Gebäck' },
-    ]);
-  });
+      { id: 1, name: 'Croissant', price: 2.5, category: 'Gebäck' },
+      { id: 2, name: 'Baguette', price: 1.8, category: 'Brot' },
+      { id: 3, name: 'Pain au Chocolat', price: 3.0, category: 'Gebäck' },
+    ])
+  })
 
   afterAll(async () => {
-    await sequelize.close();
-  });
+    await sequelize.close()
+  })
 
   beforeEach(async () => {
     // Clear transaction data between tests
-    const { SalesTransaction, TransactionItem, DailySalesReport } = sequelize.models;
-    await TransactionItem.destroy({ where: {} });
-    await SalesTransaction.destroy({ where: {} });
-    await DailySalesReport.destroy({ where: {} });
+    const { SalesTransaction, TransactionItem, DailySalesReport } =
+      sequelize.models
+    await TransactionItem.destroy({ where: {} })
+    await SalesTransaction.destroy({ where: {} })
+    await DailySalesReport.destroy({ where: {} })
 
     // Setup response mocks
-    jsonMock = jest.fn();
-    statusMock = jest.fn().mockReturnThis();
+    jsonMock = jest.fn()
+    statusMock = jest.fn().mockReturnThis()
     mockRes = {
       json: jsonMock,
       status: statusMock,
-    };
-  });
+    }
+  })
 
   describe('POST /api/import/sales-report', () => {
     const validReport: DailyReport = {
@@ -117,18 +128,18 @@ describe('ImportController Integration Tests', () => {
               product: 'Croissant',
               product_id: '1',
               quantity: 2,
-              price: 2.50,
-              total: 5.00,
+              price: 2.5,
+              total: 5.0,
             },
             {
               product: 'Baguette',
               product_id: '2',
               quantity: 1,
-              price: 1.80,
-              total: 1.80,
+              price: 1.8,
+              total: 1.8,
             },
           ],
-          total: 6.80,
+          total: 6.8,
           payment: 'Bar',
         },
         {
@@ -141,28 +152,31 @@ describe('ImportController Integration Tests', () => {
               product: 'Pain au Chocolat',
               product_id: '3',
               quantity: 3,
-              price: 3.00,
-              total: 9.00,
+              price: 3.0,
+              total: 9.0,
             },
           ],
-          total: 9.00,
+          total: 9.0,
           payment: 'Unbar',
         },
       ],
       daily_summary: {
-        total_revenue: 15.80,
-        cash_revenue: 6.80,
+        total_revenue: 15.8,
+        cash_revenue: 6.8,
         transaction_count: 2,
-        vat_totals: { '19%': 3.00 },
+        vat_totals: { '19%': 3.0 },
       },
-    };
+    }
 
     it('should successfully import a new sales report', async () => {
-      mockReq = { body: validReport };
+      mockReq = { body: validReport }
 
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
-      expect(statusMock).toHaveBeenCalledWith(201);
+      expect(statusMock).toHaveBeenCalledWith(201)
       expect(jsonMock).toHaveBeenCalledWith({
         success: true,
         data: {
@@ -172,46 +186,57 @@ describe('ImportController Integration Tests', () => {
           itemsImported: 3,
         },
         message: 'Sales report imported successfully',
-      });
+      })
 
       // Verify data in database
-      const { SalesTransaction, TransactionItem, DailySalesReport } = sequelize.models;
-      
-      const transactions = await SalesTransaction.findAll({ order: [['transaction_id', 'ASC']] });
-      expect(transactions).toHaveLength(2);
-      expect(transactions[0].getDataValue('transaction_id')).toBe('TX001');
-      expect(transactions[0].getDataValue('user_id')).toBe(1); // john.doe
-      expect(transactions[0].getDataValue('total')).toBe('6.80');
-      
-      const items = await TransactionItem.findAll({ order: [['id', 'ASC']] });
-      expect(items).toHaveLength(3);
-      expect(items[0].getDataValue('product_id')).toBe(1); // Croissant
-      expect(items[0].getDataValue('quantity')).toBe(2);
-      
-      const dailyReport = await DailySalesReport.findOne({ where: { date: '2024-01-15' } });
-      expect(dailyReport).toBeTruthy();
-      expect(dailyReport?.getDataValue('total_revenue')).toBe('15.80');
-      expect(dailyReport?.getDataValue('transaction_count')).toBe(2);
-    });
+      const { SalesTransaction, TransactionItem, DailySalesReport } =
+        sequelize.models
+
+      const transactions = await SalesTransaction.findAll({
+        order: [['transaction_id', 'ASC']],
+      })
+      expect(transactions).toHaveLength(2)
+      expect(transactions[0].getDataValue('transaction_id')).toBe('TX001')
+      expect(transactions[0].getDataValue('user_id')).toBe(1) // john.doe
+      expect(transactions[0].getDataValue('total')).toBe('6.80')
+
+      const items = await TransactionItem.findAll({ order: [['id', 'ASC']] })
+      expect(items).toHaveLength(3)
+      expect(items[0].getDataValue('product_id')).toBe(1) // Croissant
+      expect(items[0].getDataValue('quantity')).toBe(2)
+
+      const dailyReport = await DailySalesReport.findOne({
+        where: { date: '2024-01-15' },
+      })
+      expect(dailyReport).toBeTruthy()
+      expect(dailyReport?.getDataValue('total_revenue')).toBe('15.80')
+      expect(dailyReport?.getDataValue('transaction_count')).toBe(2)
+    })
 
     it('should reject duplicate report for same date', async () => {
       // First import
-      mockReq = { body: validReport };
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      mockReq = { body: validReport }
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
       // Reset mocks
-      jsonMock.mockClear();
-      statusMock.mockClear();
+      jsonMock.mockClear()
+      statusMock.mockClear()
 
       // Try to import same date again
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
-      expect(statusMock).toHaveBeenCalledWith(409);
+      expect(statusMock).toHaveBeenCalledWith(409)
       expect(jsonMock).toHaveBeenCalledWith({
         success: false,
         error: 'Report for date 2024-01-15 already exists',
-      });
-    });
+      })
+    })
 
     it('should handle refund transactions correctly', async () => {
       const reportWithRefund: DailyReport = {
@@ -228,11 +253,11 @@ describe('ImportController Integration Tests', () => {
                 product: 'Croissant',
                 product_id: '1',
                 quantity: 5,
-                price: 2.50,
-                total: 12.50,
+                price: 2.5,
+                total: 12.5,
               },
             ],
-            total: 12.50,
+            total: 12.5,
             payment: 'Bar',
           },
           {
@@ -245,33 +270,38 @@ describe('ImportController Integration Tests', () => {
                 product: 'Croissant',
                 product_id: '1',
                 quantity: 1,
-                price: 2.50,
-                total: 2.50,
+                price: 2.5,
+                total: 2.5,
               },
             ],
-            total: 2.50,
+            total: 2.5,
             payment: 'Bar',
           },
         ],
         daily_summary: {
-          total_revenue: 10.00, // 12.50 - 2.50
-          cash_revenue: 10.00,
+          total_revenue: 10.0, // 12.50 - 2.50
+          cash_revenue: 10.0,
           transaction_count: 1, // Only sales count
-          vat_totals: { '19%': 1.90 },
+          vat_totals: { '19%': 1.9 },
         },
-      };
+      }
 
-      mockReq = { body: reportWithRefund };
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      mockReq = { body: reportWithRefund }
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
-      expect(statusMock).toHaveBeenCalledWith(201);
+      expect(statusMock).toHaveBeenCalledWith(201)
 
       // Verify refund transaction in database
-      const { SalesTransaction } = sequelize.models;
-      const refundTx = await SalesTransaction.findOne({ where: { transaction_id: 'TX004' } });
-      expect(refundTx?.getDataValue('type')).toBe('refund');
-      expect(refundTx?.getDataValue('total')).toBe('2.50');
-    });
+      const { SalesTransaction } = sequelize.models
+      const refundTx = await SalesTransaction.findOne({
+        where: { transaction_id: 'TX004' },
+      })
+      expect(refundTx?.getDataValue('type')).toBe('refund')
+      expect(refundTx?.getDataValue('total')).toBe('2.50')
+    })
 
     it('should return 422 for missing user', async () => {
       const reportWithMissingUser: DailyReport = {
@@ -283,17 +313,20 @@ describe('ImportController Integration Tests', () => {
             user: 'unknown.user',
           },
         ],
-      };
+      }
 
-      mockReq = { body: reportWithMissingUser };
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      mockReq = { body: reportWithMissingUser }
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
-      expect(statusMock).toHaveBeenCalledWith(422);
+      expect(statusMock).toHaveBeenCalledWith(422)
       expect(jsonMock).toHaveBeenCalledWith({
         success: false,
         error: expect.stringContaining('User not found: unknown.user'),
-      });
-    });
+      })
+    })
 
     it('should return 422 for missing product', async () => {
       const reportWithMissingProduct: DailyReport = {
@@ -307,24 +340,27 @@ describe('ImportController Integration Tests', () => {
                 product: 'Unknown Product',
                 product_id: '999',
                 quantity: 1,
-                price: 5.00,
-                total: 5.00,
+                price: 5.0,
+                total: 5.0,
               },
             ],
           },
         ],
-      };
+      }
 
-      mockReq = { body: reportWithMissingProduct };
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      mockReq = { body: reportWithMissingProduct }
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
-      expect(statusMock).toHaveBeenCalledWith(422);
+      expect(statusMock).toHaveBeenCalledWith(422)
       expect(jsonMock).toHaveBeenCalledWith({
         success: false,
         error: expect.stringContaining('Product not found: 999'),
-      });
-    });
-  });
+      })
+    })
+  })
 
   describe('POST /api/import/sales-reports/bulk', () => {
     it('should process bulk import with mixed results', async () => {
@@ -346,17 +382,17 @@ describe('ImportController Integration Tests', () => {
                   product: 'Croissant',
                   product_id: '1',
                   quantity: 1,
-                  price: 2.50,
-                  total: 2.50,
+                  price: 2.5,
+                  total: 2.5,
                 },
               ],
-              total: 2.50,
+              total: 2.5,
               payment: 'Bar',
             },
           ],
           daily_summary: {
-            total_revenue: 2.50,
-            cash_revenue: 2.50,
+            total_revenue: 2.5,
+            cash_revenue: 2.5,
             transaction_count: 1,
             vat_totals: { '19%': 0.48 },
           },
@@ -378,22 +414,22 @@ describe('ImportController Integration Tests', () => {
                   product: 'Baguette',
                   product_id: '2',
                   quantity: 1,
-                  price: 1.80,
-                  total: 1.80,
+                  price: 1.8,
+                  total: 1.8,
                 },
               ],
-              total: 1.80,
+              total: 1.8,
               payment: 'Unbar',
             },
           ],
           daily_summary: {
-            total_revenue: 1.80,
+            total_revenue: 1.8,
             cash_revenue: 0,
             transaction_count: 1,
             vat_totals: { '19%': 0.34 },
           },
         },
-      ];
+      ]
 
       // First, import one report to create a duplicate
       const duplicateReport: DailyReport = {
@@ -408,22 +444,28 @@ describe('ImportController Integration Tests', () => {
           transaction_count: 0,
           vat_totals: {},
         },
-      };
+      }
 
-      mockReq = { body: duplicateReport };
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      mockReq = { body: duplicateReport }
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
       // Add duplicate to bulk reports
-      bulkReports.push(duplicateReport);
+      bulkReports.push(duplicateReport)
 
       // Now test bulk import
-      mockReq = { body: { reports: bulkReports } };
-      jsonMock.mockClear();
-      statusMock.mockClear();
+      mockReq = { body: { reports: bulkReports } }
+      jsonMock.mockClear()
+      statusMock.mockClear()
 
-      await importController.importSalesReportsBulk(mockReq as Request, mockRes as Response);
+      await importController.importSalesReportsBulk(
+        mockReq as Request,
+        mockRes as Response
+      )
 
-      expect(statusMock).toHaveBeenCalledWith(201);
+      expect(statusMock).toHaveBeenCalledWith(201)
       expect(jsonMock).toHaveBeenCalledWith({
         success: true,
         data: {
@@ -449,9 +491,9 @@ describe('ImportController Integration Tests', () => {
           ]),
         },
         message: 'Bulk import completed',
-      });
-    });
-  });
+      })
+    })
+  })
 
   describe('GET /api/import/status/:date', () => {
     it('should return correct import status', async () => {
@@ -468,17 +510,23 @@ describe('ImportController Integration Tests', () => {
           transaction_count: 0,
           vat_totals: {},
         },
-      };
+      }
 
-      mockReq = { body: report };
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      mockReq = { body: report }
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
       // Check status for imported date
-      mockReq = { params: { date: '2024-01-25' } };
-      jsonMock.mockClear();
-      statusMock.mockClear();
+      mockReq = { params: { date: '2024-01-25' } }
+      jsonMock.mockClear()
+      statusMock.mockClear()
 
-      await importController.checkImportStatus(mockReq as Request, mockRes as Response);
+      await importController.checkImportStatus(
+        mockReq as Request,
+        mockRes as Response
+      )
 
       expect(jsonMock).toHaveBeenCalledWith({
         success: true,
@@ -486,13 +534,16 @@ describe('ImportController Integration Tests', () => {
           date: '2024-01-25',
           imported: true,
         },
-      });
+      })
 
       // Check status for non-imported date
-      mockReq = { params: { date: '2024-01-26' } };
-      jsonMock.mockClear();
+      mockReq = { params: { date: '2024-01-26' } }
+      jsonMock.mockClear()
 
-      await importController.checkImportStatus(mockReq as Request, mockRes as Response);
+      await importController.checkImportStatus(
+        mockReq as Request,
+        mockRes as Response
+      )
 
       expect(jsonMock).toHaveBeenCalledWith({
         success: true,
@@ -500,9 +551,9 @@ describe('ImportController Integration Tests', () => {
           date: '2024-01-26',
           imported: false,
         },
-      });
-    });
-  });
+      })
+    })
+  })
 
   describe('Transaction rollback on error', () => {
     it('should rollback all changes on validation error', async () => {
@@ -522,11 +573,11 @@ describe('ImportController Integration Tests', () => {
                 product: 'Croissant',
                 product_id: '1',
                 quantity: 1,
-                price: 2.50,
-                total: 2.50,
+                price: 2.5,
+                total: 2.5,
               },
             ],
-            total: 2.50,
+            total: 2.5,
             payment: 'Bar',
           },
           {
@@ -539,35 +590,43 @@ describe('ImportController Integration Tests', () => {
                 product: 'Baguette',
                 product_id: '2',
                 quantity: 1,
-                price: 1.80,
-                total: 1.80,
+                price: 1.8,
+                total: 1.8,
               },
             ],
-            total: 1.80,
+            total: 1.8,
             payment: 'Unbar',
           },
         ],
         daily_summary: {
-          total_revenue: 4.30,
-          cash_revenue: 2.50,
+          total_revenue: 4.3,
+          cash_revenue: 2.5,
           transaction_count: 2,
           vat_totals: { '19%': 0.82 },
         },
-      };
+      }
 
-      mockReq = { body: reportWithError };
-      await importController.importSalesReport(mockReq as Request, mockRes as Response);
+      mockReq = { body: reportWithError }
+      await importController.importSalesReport(
+        mockReq as Request,
+        mockRes as Response
+      )
 
-      expect(statusMock).toHaveBeenCalledWith(422);
+      expect(statusMock).toHaveBeenCalledWith(422)
 
       // Verify no data was saved
-      const { SalesTransaction, TransactionItem, DailySalesReport } = sequelize.models;
-      
-      const transactions = await SalesTransaction.findAll({ where: { date: '2024-01-30' } });
-      expect(transactions).toHaveLength(0);
-      
-      const dailyReport = await DailySalesReport.findOne({ where: { date: '2024-01-30' } });
-      expect(dailyReport).toBeNull();
-    });
-  });
-});
+      const { SalesTransaction, TransactionItem, DailySalesReport } =
+        sequelize.models
+
+      const transactions = await SalesTransaction.findAll({
+        where: { date: '2024-01-30' },
+      })
+      expect(transactions).toHaveLength(0)
+
+      const dailyReport = await DailySalesReport.findOne({
+        where: { date: '2024-01-30' },
+      })
+      expect(dailyReport).toBeNull()
+    })
+  })
+})

@@ -11,7 +11,7 @@ import {
 } from '@bakery/shared/types'
 
 // Mock the hooks
-jest.mock('../hooks/use-production', () => ({
+jest.mock('../../hooks/use-production', () => ({
   useProductionSchedules: jest.fn(),
   useProductionBatches: jest.fn(),
   useUpdateBatch: jest.fn(),
@@ -19,7 +19,7 @@ jest.mock('../hooks/use-production', () => ({
   useDeleteBatch: jest.fn(),
 }))
 
-jest.mock('../hooks/use-production-socket', () => ({
+jest.mock('../../hooks/use-production-socket', () => ({
   useProductionSocket: jest.fn(),
 }))
 
@@ -71,8 +71,8 @@ import {
   useUpdateBatch,
   useCreateBatch,
   useDeleteBatch,
-} from '../hooks/use-production'
-import { useProductionSocket } from '../hooks/use-production-socket'
+} from '../../hooks/use-production'
+import { useProductionSocket } from '../../hooks/use-production-socket'
 
 const mockSchedule: ProductionSchedule = {
   id: 1,

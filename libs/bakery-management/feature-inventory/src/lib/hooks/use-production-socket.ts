@@ -3,7 +3,7 @@
 
 import { useEffect, useCallback, useRef } from 'react'
 import { useQueryClient } from 'react-query'
-import productionSocketService from '../services/productionSocketService'
+import productionSocketService from '../services/production-socket.service'
 import {
   ProductionBatch,
   ProductionStep,

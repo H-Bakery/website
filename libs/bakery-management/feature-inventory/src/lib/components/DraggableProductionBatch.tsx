@@ -126,6 +126,7 @@ export const DraggableProductionBatch: React.FC<
 
   return (
     <Card
+      role="article"
       draggable={canDrag}
       onDragStart={handleDragStart}
       onDragEnd={onDragEnd}

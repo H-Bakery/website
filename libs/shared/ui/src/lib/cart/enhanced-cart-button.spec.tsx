@@ -7,12 +7,17 @@ import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { useMediaQuery } from '@mui/material'
-import { CartItem } from '@bakery/shared/types'
+import { CartItem } from '@bakery/shared/contexts'
+import {
+  ProductCategory,
+  ProductStatus,
+  ProductType,
+} from '@bakery/shared/types'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 
 // Mock Next.js router
 const mockPush = jest.fn()
-const mockPathname = '/'
+let mockPathname = '/'
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
     push: mockPush,
@@ -78,42 +83,48 @@ const mockCartItems: CartItem[] = [
     name: 'Croissant',
     price: 2.5,
     quantity: 2,
-    category: 'Broetchen',
+    category: ProductCategory.Buns,
     image: '/images/croissant.jpg',
-    available: true,
+    type: ProductType.Fresh,
+    stock: 10,
+    status: ProductStatus.Available,
     ingredients: ['flour', 'butter'],
     allergens: ['gluten'],
-    nutritionalInfo: { calories: 231, fat: 12, carbs: 26, protein: 5 },
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    nutritionalInfo: { calories: 231, fat: 12, carbohydrates: 26, protein: 5 },
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
   },
   {
     id: 2,
     name: 'Baguette',
     price: 3.2,
     quantity: 1,
-    category: 'Brot',
+    category: ProductCategory.Bread,
     image: '/images/baguette.jpg',
-    available: true,
+    type: ProductType.Fresh,
+    stock: 10,
+    status: ProductStatus.Available,
     ingredients: ['flour', 'water'],
     allergens: ['gluten'],
-    nutritionalInfo: { calories: 160, fat: 2, carbs: 31, protein: 6 },
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    nutritionalInfo: { calories: 160, fat: 2, carbohydrates: 31, protein: 6 },
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
   },
   {
     id: 3,
     name: 'Apple Strudel',
     price: 4.8,
     quantity: 1,
-    category: 'Kuchen',
+    category: ProductCategory.Cakes,
     image: '/images/strudel.jpg',
-    available: true,
+    type: ProductType.Fresh,
+    stock: 10,
+    status: ProductStatus.Available,
     ingredients: ['flour', 'apples', 'butter'],
     allergens: ['gluten'],
-    nutritionalInfo: { calories: 320, fat: 15, carbs: 42, protein: 4 },
-    createdAt: new Date(),
-    updatedAt: new Date(),
+    nutritionalInfo: { calories: 320, fat: 15, carbohydrates: 42, protein: 4 },
+    createdAt: '2024-01-01T00:00:00.000Z',
+    updatedAt: '2024-01-01T00:00:00.000Z',
   },
 ]
 
@@ -121,7 +132,18 @@ const EnhancedCartButtonWrapper = (
   cartData?: Partial<typeof mockCartContext>
 ) => {
   const CartContext = require('@bakery/shared/contexts').CartContext
-  const contextValue = { ...mockCartContext, ...cartData }
+  // Der echte CartContext liefert die Kennzahlen unter `summary`
+  const flat = { ...mockCartContext, ...cartData }
+  const contextValue = {
+    ...flat,
+    summary: {
+      itemCount: flat.itemCount,
+      totalCount: flat.totalCount,
+      subtotal: flat.totalPrice,
+      tax: 0,
+      total: flat.totalPrice,
+    },
+  }
 
   return (
     <CartContext.Provider value={contextValue}>
@@ -133,6 +155,7 @@ const EnhancedCartButtonWrapper = (
 describe('EnhancedCartButton Component', () => {
   beforeEach(() => {
     jest.clearAllMocks()
+    mockPathname = '/'
     ;(useMediaQuery as jest.Mock).mockReturnValue(false) // Default to desktop
   })
 
@@ -199,6 +222,8 @@ describe('EnhancedCartButton Component', () => {
   describe('Mobile behavior', () => {
     beforeEach(() => {
       ;(useMediaQuery as jest.Mock).mockReturnValue(true) // Mobile
+      // Außerhalb von /admin ist der Button mobil ausgeblendet (Warenkorb sitzt in der Bottom-Nav)
+      mockPathname = '/admin/orders'
     })
 
     it('navigates directly to cart on mobile click', () => {
@@ -227,13 +252,11 @@ describe('EnhancedCartButton Component', () => {
       const cartButton = screen.getByLabelText(/warenkorb/i)
       fireEvent.click(cartButton)
 
-      expect(screen.queryByText('Ihr Warenkorb (4)')).not.toBeInTheDocument()
+      expect(screen.getByText('Ihr Warenkorb (4)')).not.toBeVisible()
     })
 
     it('hides button on mobile when not on admin pages', () => {
-      Object.defineProperty(require('next/navigation'), 'usePathname', {
-        value: () => '/products',
-      })
+      mockPathname = '/products'
 
       renderWithTheme(
         <EnhancedCartButtonWrapper
@@ -268,7 +291,7 @@ describe('EnhancedCartButton Component', () => {
 
       // Click again to hide preview
       fireEvent.click(cartButton)
-      expect(screen.queryByText('Ihr Warenkorb (4)')).not.toBeInTheDocument()
+      expect(screen.getByText('Ihr Warenkorb (4)')).not.toBeVisible()
     })
 
     it('displays cart items in preview', () => {
@@ -300,8 +323,9 @@ describe('EnhancedCartButton Component', () => {
       const cartButton = screen.getByLabelText(/warenkorb/i)
       fireEvent.click(cartButton)
 
-      expect(screen.getByText('2x • €2,50')).toBeInTheDocument()
-      expect(screen.getByText('€5,00')).toBeInTheDocument()
+      expect(screen.getByText(/2x • 2,50\s€/)).toBeInTheDocument()
+      // Zeilensumme und Gesamtsumme
+      expect(screen.getAllByText(/^5,00\s€$/)).toHaveLength(2)
     })
 
     it('displays total price correctly', () => {
@@ -317,7 +341,7 @@ describe('EnhancedCartButton Component', () => {
       fireEvent.click(cartButton)
 
       expect(screen.getByText('Gesamt:')).toBeInTheDocument()
-      expect(screen.getByText('€10,50')).toBeInTheDocument()
+      expect(screen.getByText(/^10,50\s€$/)).toBeInTheDocument()
     })
 
     it('limits preview to first 3 items', () => {
@@ -357,12 +381,10 @@ describe('EnhancedCartButton Component', () => {
       const cartButton = screen.getByLabelText(/warenkorb/i)
       fireEvent.click(cartButton)
 
-      const closeButton =
-        screen.getByLabelText(/close/i) ||
-        screen.getByRole('button', { name: '' })
+      const closeButton = screen.getByRole('button', { name: /schließen/i })
       fireEvent.click(closeButton)
 
-      expect(screen.queryByText('Ihr Warenkorb (4)')).not.toBeInTheDocument()
+      expect(screen.getByText('Ihr Warenkorb (4)')).not.toBeVisible()
     })
   })
 
@@ -422,7 +444,7 @@ describe('EnhancedCartButton Component', () => {
       const viewCartButton = screen.getByText('Warenkorb anzeigen')
       fireEvent.click(viewCartButton)
 
-      expect(screen.queryByText('Ihr Warenkorb (4)')).not.toBeInTheDocument()
+      expect(screen.getByText('Ihr Warenkorb (4)')).not.toBeVisible()
     })
   })
 
@@ -446,12 +468,10 @@ describe('EnhancedCartButton Component', () => {
 
       // Increase count (simulating item addition)
       rerender(
-        renderWithTheme(
-          <EnhancedCartButtonWrapper
-            items={mockCartItems.slice(0, 2)}
-            totalCount={2}
-          />
-        ).children[0] as React.ReactElement
+        <EnhancedCartButtonWrapper
+          items={mockCartItems.slice(0, 2)}
+          totalCount={2}
+        />
       )
 
       const cartButton = screen.getByLabelText(/warenkorb/i)
@@ -468,12 +488,10 @@ describe('EnhancedCartButton Component', () => {
 
       // Decrease count (simulating item removal)
       rerender(
-        renderWithTheme(
-          <EnhancedCartButtonWrapper
-            items={mockCartItems.slice(0, 1)}
-            totalCount={1}
-          />
-        ).children[0] as React.ReactElement
+        <EnhancedCartButtonWrapper
+          items={mockCartItems.slice(0, 1)}
+          totalCount={1}
+        />
       )
 
       const cartButton = screen.getByLabelText(/warenkorb/i)
@@ -574,11 +592,12 @@ describe('EnhancedCartButton Component', () => {
       const cartButton = screen.getByLabelText(/warenkorb/i)
       fireEvent.click(cartButton)
 
+      // alle drei Positionen tragen den langen Namen
       expect(
-        screen.getByText(
+        screen.getAllByText(
           'Very Long Product Name That Should Be Handled Gracefully'
         )
-      ).toBeInTheDocument()
+      ).toHaveLength(3)
     })
 
     it('handles zero prices correctly', () => {
@@ -595,7 +614,7 @@ describe('EnhancedCartButton Component', () => {
       const cartButton = screen.getByLabelText(/warenkorb/i)
       fireEvent.click(cartButton)
 
-      expect(screen.getByText('€0,00')).toBeInTheDocument()
+      expect(screen.getAllByText(/0,00\s€/).length).toBeGreaterThan(0)
     })
   })
 

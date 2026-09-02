@@ -198,8 +198,27 @@ describe('CartContext', () => {
       result.current.addToCart(mockProduct, 10)
     })
 
-    // Quantity should be capped at max
+    // addToCart kappt auf maxQuantityPerItem – die Validierung meldet dann nichts
     expect(result.current.items[0].quantity).toBe(5)
+    expect(result.current.validation.errors[mockProduct.id]).toBeUndefined()
+    expect(result.current.validation.isValid).toBe(true)
+  })
+
+  it('should flag persisted quantities above the limit', () => {
+    localStorageMock.getItem.mockReturnValueOnce(
+      JSON.stringify({ items: [{ ...mockProduct, quantity: 10 }] })
+    )
+
+    const { result } = renderHook(() => useCart(), {
+      wrapper: ({ children }) => (
+        <CartProvider enablePersistence maxQuantityPerItem={5}>
+          {children}
+        </CartProvider>
+      ),
+    })
+
+    expect(result.current.items[0].quantity).toBe(10)
+    expect(result.current.validation.isValid).toBe(false)
     expect(result.current.validation.errors[mockProduct.id]).toContain(
       'Maximum quantity is 5'
     )
