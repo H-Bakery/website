@@ -60,6 +60,7 @@ import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined'
 
 import { useCart } from '@bakery/shared/contexts'
 import {
+  productUnit,
   shopCategoryLabel,
   toCartProduct,
   unitPriceLabel,
@@ -610,7 +611,7 @@ function ProductDetail({ product }: { product: ShopProduct }) {
               testId="product-detail-price"
             />
             <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-              pro Stück · inkl. MwSt.
+              pro {productUnit(product)} · inkl. MwSt.
             </Typography>
           </Box>
 

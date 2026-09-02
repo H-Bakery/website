@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import {
   Alert,
   AlertTitle,
@@ -337,12 +338,19 @@ function TimelineCard({
 
 export default function PartnerDetailClient({
   partnerId,
+  initialDate,
+  justSaved = false,
 }: {
   partnerId: string
+  /** Geschäftstag aus `?date=` - sonst heute. */
+  initialDate?: string
+  /** `?saved=1`: die Erfassungsmaske hat gerade einen Besuch für diesen Tag gespeichert. */
+  justSaved?: boolean
 }) {
+  const router = useRouter()
   // Leer starten: `toBusinessDate()` im Initialisierer landet im SSR-HTML und
   // weicht über Mitternacht vom Browser ab, was die Hydration zerlegt.
-  // Der heutige Geschäftstag wird nach dem Mount gesetzt.
+  // Der Geschäftstag wird nach dem Mount gesetzt.
   const [selectedDate, setSelectedDate] = useState('')
   const [partner, setPartner] = useState<Partner | null>(null)
   const [day, setDay] = useState<DayView | null>(null)
@@ -356,8 +364,22 @@ export default function PartnerDetailClient({
   } | null>(null)
 
   useEffect(() => {
-    setSelectedDate((current) => current || toBusinessDate())
-  }, [])
+    setSelectedDate((current) => current || initialDate || toBusinessDate())
+  }, [initialDate])
+
+  // Bestätigung nach dem Speichern. `saved` kommt gleich wieder aus der URL,
+  // damit ein Reload oder ein Lesezeichen die Meldung nicht wiederholt.
+  useEffect(() => {
+    if (!justSaved) return
+    const savedDate = initialDate || toBusinessDate()
+    setFeedback({
+      message: `Besuch für den ${formatDate(savedDate)} gespeichert.`,
+      severity: 'success',
+    })
+    router.replace(`/admin/partners/${partnerId}?date=${savedDate}`, {
+      scroll: false,
+    })
+  }, [justSaved, initialDate, partnerId, router])
 
   const load = useCallback(async () => {
     // Vor dem Mount steht noch kein Geschäftstag fest - dann nicht laden.

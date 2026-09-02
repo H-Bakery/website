@@ -51,6 +51,41 @@ describe('ShopProductCard', () => {
     )
   })
 
+  it('nennt beim ganzen Kuchen die Einheit — „Stück“ ist hier das Portionsstück', () => {
+    render(
+      <ShopProductCard
+        product={{
+          ...product,
+          id: 'apfelkuchen',
+          numericId: 70,
+          name: 'Apfelkuchen',
+          category: 'kuchen',
+          price: 18,
+        }}
+      />
+    )
+
+    expect(screen.getByText('pro Kuchen')).toBeInTheDocument()
+    expect(screen.queryByText('pro Stück')).not.toBeInTheDocument()
+  })
+
+  it('bleibt beim Portionsstück bei „pro Stück“', () => {
+    render(
+      <ShopProductCard
+        product={{
+          ...product,
+          id: 'apfelkuchen-1-stueck',
+          numericId: 71,
+          name: 'Apfelkuchen (1 Stück)',
+          category: 'kuchen',
+          price: 1.8,
+        }}
+      />
+    )
+
+    expect(screen.getByText('pro Stück')).toBeInTheDocument()
+  })
+
   describe('Grundpreis (§ 4 PAngV)', () => {
     it('zeigt den Grundpreis bei Ware nach Gewicht', () => {
       render(<ShopProductCard product={product} />)

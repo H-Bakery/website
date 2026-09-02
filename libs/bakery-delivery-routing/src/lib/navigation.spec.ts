@@ -1,4 +1,5 @@
 import {
+  buildAddressNavigationUrl,
   buildMultiStopNavigationUrl,
   buildNavigationUrl,
   buildPhoneLink,
@@ -36,6 +37,48 @@ describe('buildNavigationUrl', () => {
     expect(url).toContain('maps.apple.com')
     expect(url).toContain('daddr=49.3226,7.3389')
   })
+
+  it('uebergibt bei einem Strassen-Treffer die Adresse statt der Strassenmitte', () => {
+    const target = { ...stop(49.3251, 7.3444, 'Talstraße 5'), streetOnly: true }
+    expect(buildNavigationUrl(target, ANDROID)).toBe(
+      buildAddressNavigationUrl('Talstraße 5', ANDROID)
+    )
+    expect(buildNavigationUrl(target, IOS)).toBe(
+      buildAddressNavigationUrl('Talstraße 5', IOS)
+    )
+    expect(buildNavigationUrl(target, ANDROID)).not.toContain('49.3251')
+  })
+
+  it('bleibt ohne Adresse auch bei einem Strassen-Treffer bei den Koordinaten', () => {
+    const url = buildNavigationUrl(
+      { ...stop(49.3251, 7.3444), streetOnly: true },
+      ANDROID
+    )
+    expect(url).toContain('destination=49.3251,7.3444')
+  })
+})
+
+describe('buildAddressNavigationUrl', () => {
+  // Fuer Stopps, die nur bis zur Strasse oder gar nicht gefunden wurden:
+  // die Navi-App bekommt den Adresstext, nicht die Strassenmitte.
+  const ADDRESS = 'Talstraße 5, 66424 Homburg'
+  const ENCODED = 'Talstra%C3%9Fe%205%2C%2066424%20Homburg'
+
+  it('uebergibt die Adresse an Google Maps auf Android', () => {
+    const url = buildAddressNavigationUrl(ADDRESS, ANDROID)
+    expect(url).toBe(
+      `https://www.google.com/maps/dir/?api=1&destination=${ENCODED}&travelmode=driving`
+    )
+  })
+
+  it('uebergibt die Adresse an Apple Maps auf dem iPhone', () => {
+    const url = buildAddressNavigationUrl(ADDRESS, IOS)
+    expect(url).toBe(`https://maps.apple.com/?daddr=${ENCODED}&dirflg=d`)
+  })
+
+  it('enthaelt keine Koordinaten', () => {
+    expect(buildAddressNavigationUrl(ADDRESS, ANDROID)).not.toMatch(/\d+\.\d+,/)
+  })
 })
 
 describe('buildMultiStopNavigationUrl', () => {
@@ -59,6 +102,26 @@ describe('buildMultiStopNavigationUrl', () => {
     expect(url).not.toBeNull()
     const waypoints = new URL(String(url)).searchParams.get('waypoints')
     expect(waypoints?.split('|')).toHaveLength(MAX_GOOGLE_WAYPOINTS)
+  })
+
+  it('gibt Strassen-Treffer als Adresse mit, die anderen als Koordinaten', () => {
+    const mixed = [
+      stop(49.31, 7.36),
+      { ...stop(49.32, 7.35, 'Talstraße 5, 66424 Homburg'), streetOnly: true },
+      {
+        ...stop(49.33, 7.34, 'Kaiserstraße 60-62, 66424 Homburg'),
+        streetOnly: true,
+      },
+    ]
+    const url = new URL(
+      String(buildMultiStopNavigationUrl(mixed, undefined, ANDROID))
+    )
+    expect(url.searchParams.get('waypoints')).toBe(
+      '49.31,7.36|Talstraße 5, 66424 Homburg'
+    )
+    expect(url.searchParams.get('destination')).toBe(
+      'Kaiserstraße 60-62, 66424 Homburg'
+    )
   })
 
   it('faellt auf dem iPhone auf das naechste Ziel zurueck', () => {

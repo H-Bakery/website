@@ -18,14 +18,19 @@ import {
   toBusinessDate,
 } from '../../../../lib/partnerTypes'
 
+const mockReplace = jest.fn()
+
+/** Wie in Next selbst: `useRouter()` liefert über alle Renders dasselbe Objekt. */
+const mockRouter = {
+  push: jest.fn(),
+  replace: mockReplace,
+  back: jest.fn(),
+  prefetch: jest.fn(),
+  refresh: jest.fn(),
+}
+
 jest.mock('next/navigation', () => ({
-  useRouter: () => ({
-    push: jest.fn(),
-    replace: jest.fn(),
-    back: jest.fn(),
-    prefetch: jest.fn(),
-    refresh: jest.fn(),
-  }),
+  useRouter: () => mockRouter,
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/admin/partners/1',
 }))
@@ -44,8 +49,11 @@ const mockFetchToday = fetchToday as jest.MockedFunction<typeof fetchToday>
 
 const PARTNER_ID = '1'
 
-/** Die Seite startet immer auf dem heutigen Geschäftstag. */
+/** Ohne `?date=` startet die Seite auf dem heutigen Geschäftstag. */
 const TODAY = toBusinessDate()
+
+/** Ein zurückliegender Tag, wie ihn eine Nacherfassung im Büro anfasst. */
+const PAST_DATE = '2026-08-25'
 
 const PARTNER: Partner = {
   id: 1,
@@ -263,6 +271,10 @@ describe('PartnerDetailClient', () => {
     await renderDetail()
 
     expect(mockFetchToday).toHaveBeenCalledWith(PARTNER_ID, TODAY)
+    expect(screen.getByLabelText('Geschäftstag')).toHaveValue(TODAY)
+    // Ohne `?saved=` gibt es weder Bestätigung noch URL-Korrektur
+    expect(screen.queryByText(/gespeichert\./)).toBeNull()
+    expect(mockReplace).not.toHaveBeenCalled()
     expect(
       screen.getByText(/Tag noch offen – Verkauf und Umsatz sind vorläufig/)
     ).toBeInTheDocument()
@@ -401,6 +413,51 @@ describe('PartnerDetailClient', () => {
     expect(await screen.findByText('Besuch gelöscht.')).toBeInTheDocument()
     // Der Tag wird nach dem Löschen neu berechnet
     await waitFor(() => expect(mockFetchToday).toHaveBeenCalledTimes(2))
+  })
+
+  it('opens the business day from the URL instead of today', async () => {
+    renderWithTheme(
+      <PartnerDetailClient partnerId={PARTNER_ID} initialDate={PAST_DATE} />
+    )
+    await screen.findByRole('heading', { name: 'CAP-Markt Homburg-Kirrberg' })
+
+    expect(mockFetchToday).toHaveBeenCalledWith(PARTNER_ID, PAST_DATE)
+    expect(mockFetchToday).not.toHaveBeenCalledWith(PARTNER_ID, TODAY)
+    expect(screen.getByLabelText('Geschäftstag')).toHaveValue(PAST_DATE)
+    expect(
+      screen.getByRole('heading', {
+        name: `Besuche am ${formatDate(PAST_DATE)}`,
+      })
+    ).toBeInTheDocument()
+    // "Besuch erfassen" bleibt auf demselben Tag
+    expect(
+      screen.getAllByRole('link', { name: 'Besuch erfassen' })[0]
+    ).toHaveAttribute('href', `/admin/partners/1/visit/new?date=${PAST_DATE}`)
+    expect(mockReplace).not.toHaveBeenCalled()
+  })
+
+  it('confirms a visit that was just saved and drops `saved` from the URL', async () => {
+    renderWithTheme(
+      <PartnerDetailClient
+        partnerId={PARTNER_ID}
+        initialDate={PAST_DATE}
+        justSaved
+      />
+    )
+    await screen.findByRole('heading', { name: 'CAP-Markt Homburg-Kirrberg' })
+
+    expect(
+      await screen.findByText(
+        `Besuch für den ${formatDate(PAST_DATE)} gespeichert.`
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Geschäftstag')).toHaveValue(PAST_DATE)
+    // Ein Reload darf die Meldung nicht wiederholen: der Tag bleibt, `saved` geht
+    expect(mockReplace).toHaveBeenCalledTimes(1)
+    expect(mockReplace).toHaveBeenCalledWith(
+      `/admin/partners/1?date=${PAST_DATE}`,
+      { scroll: false }
+    )
   })
 
   it('shows the German error message when the day cannot be loaded', async () => {

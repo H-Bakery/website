@@ -1,5 +1,5 @@
 import React from 'react'
-import { act, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import VisitFormClient from './VisitFormClient'
@@ -49,6 +49,8 @@ const mockFetchVisits = fetchVisits as jest.MockedFunction<typeof fetchVisits>
 /** 25.08.2026 ist ein Dienstag - einer der Liefertage des CAP-Markts. */
 const BUSINESS_DATE = '2026-08-25'
 const PARTNER_ID = '1'
+/** Nach dem Speichern: Detailseite auf dem Tag des Besuchs, mit Bestätigung. */
+const DETAIL_AFTER_SAVE = `/admin/partners/${PARTNER_ID}?date=${BUSINESS_DATE}&saved=1`
 const DRAFT_KEY = `bakery.partnerVisitDraft.v1.${PARTNER_ID}.${BUSINESS_DATE}`
 
 const GROUPS: CatalogueGroup[] = [
@@ -291,7 +293,26 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
       },
     ])
     await waitFor(() =>
-      expect(mockPush).toHaveBeenCalledWith('/admin/partners/1')
+      expect(mockPush).toHaveBeenCalledWith(DETAIL_AFTER_SAVE)
+    )
+  })
+
+  it('leaves the form on the business day of the visit, not on today', async () => {
+    const user = userEvent.setup()
+    await renderForm({ initialDate: BUSINESS_DATE })
+
+    await user.click(screen.getByRole('button', { name: 'Zurück zum Partner' }))
+    expect(mockPush).toHaveBeenLastCalledWith(
+      `/admin/partners/${PARTNER_ID}?date=${BUSINESS_DATE}`
+    )
+
+    // Der Tag folgt dem Zeitpunkt des Besuchs, nicht dem Tag beim Öffnen
+    fireEvent.change(screen.getByLabelText('Zeitpunkt des Besuchs'), {
+      target: { value: '2026-08-24T08:00' },
+    })
+    await user.click(screen.getByRole('button', { name: 'Zurück zum Partner' }))
+    expect(mockPush).toHaveBeenLastCalledWith(
+      `/admin/partners/${PARTNER_ID}?date=2026-08-24`
     )
   })
 
@@ -527,7 +548,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
       expect(storage.removeItem).toHaveBeenCalledWith(DRAFT_KEY)
     )
     expect(store[DRAFT_KEY]).toBeUndefined()
-    expect(mockPush).toHaveBeenCalledWith('/admin/partners/1')
+    expect(mockPush).toHaveBeenCalledWith(DETAIL_AFTER_SAVE)
   })
 
   it('shows the German error message and keeps the draft when saving fails', async () => {

@@ -51,6 +51,12 @@ export interface Stop {
   lat: number | null
   lon: number | null
   geocodeSource: string | null
+  /**
+   * Was die Adresssuche getroffen hat: `house` die Hausnummer, `street` nur
+   * die Straße (der Punkt liegt in der Straßenmitte), `null` unbekannt -
+   * nicht gefunden, von Hand gesetzt oder aus einem älteren Cache.
+   */
+  geocodePrecision: 'house' | 'street' | null
   estimatedArrival: string | null
 }
 

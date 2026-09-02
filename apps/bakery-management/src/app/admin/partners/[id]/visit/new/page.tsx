@@ -3,6 +3,7 @@ import {
   getPartnerCatalogue,
   groupCatalogue,
 } from '../../../../../../lib/partners'
+import { isBusinessDate } from '../../../../../../lib/partnerTypes'
 import VisitFormClient from './VisitFormClient'
 
 /**
@@ -32,8 +33,7 @@ export default async function PartnerVisitNewPage({
     Array.isArray(value) ? value[0] : value
 
   const dateParam = first(query['date'])
-  const initialDate =
-    dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : undefined
+  const initialDate = isBusinessDate(dateParam) ? dateParam : undefined
 
   const visitParam =
     first(query['visit']) ?? first(query['visitId']) ?? first(query['edit'])
