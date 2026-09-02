@@ -14,6 +14,11 @@
  *   Verkauf im Intervall  = Bestand nach Besuch k − Rest_(k+1)
  *   Umsatz                = Σ (Verkauf je Produkt × Preis-Snapshot)
  *   Abverkaufsquote       = Verkauf / Geliefert
+ *
+ * Ein Tag ist *offen*, solange keine Abholung erfasst ist, und *unvollständig*,
+ * wenn die Abholung nicht jedes Produkt mit Bestand gezählt hat: die
+ * ungezählten Stücke sind dann weder verkauft noch Retoure. Beides macht die
+ * Zahlen vorläufig.
  */
 
 'use strict'
@@ -128,6 +133,7 @@ function emptyProductBucket(item) {
     soldQty: 0,
     discrepancyQty: 0,
     revenueCents: 0,
+    uncountedQty: 0,
   }
 }
 
@@ -143,7 +149,8 @@ function emptyProductBucket(item) {
  * Nachlieferung zugleich gezählt *und* geliefert wurde.
  *
  * @param {Array} dayVisits Besuche *eines* Geschäftstags
- * @returns {{ isOpen: boolean, timeline: Array, products: Map }}
+ * @returns {{ isOpen: boolean, isComplete: boolean, uncountedQty: number,
+ *   uncountedProducts: Array, timeline: Array, products: Map }}
  */
 function computeDay(dayVisits) {
   const visits = sortVisits(dayVisits)
@@ -229,7 +236,44 @@ function computeDay(dayVisits) {
   }
 
   const isOpen = !visits.some((v) => v.visitType === 'pickup')
-  return { isOpen, timeline, products, visits }
+
+  // Unvollständige Abholung: ein Produkt lag noch im Schrank, wurde beim
+  // letzten Besuch (der Abholung) aber nicht gezählt. Seine Stücke sind dann
+  // weder verkauft noch Retoure - ohne Markierung läse sich der Tag als
+  // abgeschlossen und die Stücke verschwänden aus der Abrechnung.
+  const last = visits[visits.length - 1]
+  const uncountedProducts = []
+  let uncountedQty = 0
+  if (last && last.visitType === 'pickup') {
+    const countedKeys = new Set(
+      (last.items || [])
+        .filter((item) => item.countedQty != null)
+        .map((item) => item.productSlug || `#${item.productId}`)
+    )
+    for (const [key, stockQty] of stock) {
+      if (stockQty <= 0 || countedKeys.has(key)) continue
+      const bucket = products.get(key)
+      bucket.uncountedQty += stockQty
+      uncountedQty += stockQty
+      uncountedProducts.push({
+        productId: bucket.productId,
+        productSlug: bucket.productSlug,
+        productName: bucket.productName,
+        stockQty,
+      })
+    }
+  }
+  const isComplete = uncountedQty === 0
+
+  return {
+    isOpen,
+    isComplete,
+    uncountedQty,
+    uncountedProducts,
+    timeline,
+    products,
+    visits,
+  }
 }
 
 function rate(numerator, denominator) {
@@ -264,6 +308,7 @@ function computeStats(visits, range = {}) {
     let soldQty = 0
     let returnedQty = 0
     let discrepancyQty = 0
+    let uncountedQty = 0
     let revenueCents = 0
     let returnValueCents = 0
 
@@ -272,6 +317,7 @@ function computeStats(visits, range = {}) {
       soldQty += bucket.soldQty
       returnedQty += bucket.returnedQty
       discrepancyQty += bucket.discrepancyQty
+      uncountedQty += bucket.uncountedQty
       revenueCents += bucket.revenueCents
       returnValueCents += bucket.returnedQty * bucket.unitPriceCents
 
@@ -285,6 +331,7 @@ function computeStats(visits, range = {}) {
           returnedQty: 0,
           soldQty: 0,
           discrepancyQty: 0,
+          uncountedQty: 0,
           revenueCents: 0,
           returnValueCents: 0,
         })
@@ -296,6 +343,7 @@ function computeStats(visits, range = {}) {
       total.returnedQty += bucket.returnedQty
       total.soldQty += bucket.soldQty
       total.discrepancyQty += bucket.discrepancyQty
+      total.uncountedQty += bucket.uncountedQty
       total.revenueCents += bucket.revenueCents
       total.returnValueCents += bucket.returnedQty * bucket.unitPriceCents
     }
@@ -304,12 +352,14 @@ function computeStats(visits, range = {}) {
       businessDate,
       weekday: weekdayOf(businessDate),
       isOpen: day.isOpen,
+      isComplete: day.isComplete,
       visitCount: day.visits.length,
       refillCount: day.visits.filter((v) => v.visitType === 'refill').length,
       deliveredQty,
       soldQty,
       returnedQty,
       discrepancyQty,
+      uncountedQty,
       revenue: fromCents(revenueCents),
       returnValue: fromCents(returnValueCents),
       sellThroughRate: rate(soldQty, deliveredQty),
@@ -326,6 +376,7 @@ function computeStats(visits, range = {}) {
       soldQty: p.soldQty,
       returnedQty: p.returnedQty,
       discrepancyQty: p.discrepancyQty,
+      uncountedQty: p.uncountedQty,
       revenue: fromCents(p.revenueCents),
       returnValue: fromCents(p.returnValueCents),
       sellThroughRate: rate(p.soldQty, p.deliveredQty),
@@ -371,26 +422,33 @@ function computeStats(visits, range = {}) {
   const returnValue =
     Math.round(byDay.reduce((s, d) => s + d.returnValue, 0) * 100) / 100
   const openDays = byDay.filter((d) => d.isOpen)
+  const incompleteDays = byDay.filter((d) => !d.isOpen && !d.isComplete)
 
   return {
     range: { from, to },
     totals: {
       dayCount: byDay.length,
       openDayCount: openDays.length,
+      incompleteDayCount: incompleteDays.length,
       visitCount: byDay.reduce((s, d) => s + d.visitCount, 0),
       refillCount: byDay.reduce((s, d) => s + d.refillCount, 0),
       deliveredQty,
       soldQty,
       returnedQty,
       discrepancyQty: byDay.reduce((s, d) => s + d.discrepancyQty, 0),
+      uncountedQty: byDay.reduce((s, d) => s + d.uncountedQty, 0),
       revenue,
       returnValue,
       sellThroughRate: rate(soldQty, deliveredQty),
       returnRate: rate(returnedQty, deliveredQty),
     },
-    /** Solange ein Tag ohne Abholung dabei ist, sind Verkauf und Umsatz vorläufig. */
-    isProvisional: openDays.length > 0,
+    /**
+     * Vorläufig, solange ein Tag ohne Abholung dabei ist - oder eine Abholung
+     * nicht jedes Produkt mit Bestand gezählt hat (`incompleteDates`).
+     */
+    isProvisional: openDays.length > 0 || incompleteDays.length > 0,
     openDates: openDays.map((d) => d.businessDate),
+    incompleteDates: incompleteDays.map((d) => d.businessDate),
     byProduct,
     byDay,
     byWeekday,
@@ -408,6 +466,9 @@ function computeDayDetail(dayVisits) {
   return {
     businessDate,
     isOpen: day.isOpen,
+    isComplete: day.isComplete,
+    uncountedQty: day.uncountedQty,
+    uncountedProducts: day.uncountedProducts,
     timeline: day.timeline,
     totals: stats.totals,
     byProduct: stats.byProduct,
@@ -441,10 +502,16 @@ function statsToCsv(stats, partner = {}) {
   ])
   push(['Zeitraum', `${stats.range.from || ''} bis ${stats.range.to || ''}`])
   if (stats.isProvisional) {
-    push([
-      'Hinweis',
-      `Vorläufig - ${stats.openDates.length} Tag(e) ohne Abholung`,
-    ])
+    const reasons = []
+    if (stats.openDates.length > 0) {
+      reasons.push(`${stats.openDates.length} Tag(e) ohne Abholung`)
+    }
+    if ((stats.incompleteDates || []).length > 0) {
+      reasons.push(
+        `${stats.incompleteDates.length} Tag(e) mit ungezählten Produkten bei der Abholung`
+      )
+    }
+    push(['Hinweis', `Vorläufig - ${reasons.join(', ')}`])
   }
   push([])
 
@@ -457,6 +524,7 @@ function statsToCsv(stats, partner = {}) {
     'Retoure',
     'Abverkaufsquote',
     'Umsatz',
+    'Ungezählt',
   ])
   for (const p of stats.byProduct) {
     push([
@@ -469,6 +537,7 @@ function statsToCsv(stats, partner = {}) {
         ? ''
         : `${deNumber(p.sellThroughRate * 100, 1)}%`,
       deNumber(p.revenue),
+      p.uncountedQty || 0,
     ])
   }
   push([])
@@ -484,12 +553,17 @@ function statsToCsv(stats, partner = {}) {
     'Retoure',
     'Abverkaufsquote',
     'Umsatz',
+    'Ungezählt',
   ])
   for (const d of stats.byDay) {
     push([
       d.businessDate,
       WEEKDAY_SHORT[d.weekday] || '',
-      d.isOpen ? 'offen' : 'abgeschlossen',
+      d.isOpen
+        ? 'offen'
+        : d.isComplete === false
+        ? 'unvollständig'
+        : 'abgeschlossen',
       d.visitCount,
       d.deliveredQty,
       d.soldQty,
@@ -498,6 +572,7 @@ function statsToCsv(stats, partner = {}) {
         ? ''
         : `${deNumber(d.sellThroughRate * 100, 1)}%`,
       deNumber(d.revenue),
+      d.uncountedQty || 0,
     ])
   }
   push([])
@@ -514,6 +589,7 @@ function statsToCsv(stats, partner = {}) {
   ])
   push(['Umsatz', deNumber(stats.totals.revenue)])
   push(['Retourenwert', deNumber(stats.totals.returnValue)])
+  push(['Ungezählt', stats.totals.uncountedQty || 0])
 
   return rows.join('\r\n')
 }

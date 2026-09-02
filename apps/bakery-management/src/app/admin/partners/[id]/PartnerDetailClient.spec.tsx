@@ -224,6 +224,21 @@ const CLOSED_DAY: DayView = {
   visits: [INITIAL, REFILL, PICKUP].map(visitOf),
 }
 
+/** Abholung erfasst, aber ein zweites Produkt mit Bestand nicht gezählt. */
+const INCOMPLETE_DAY: DayView = {
+  ...CLOSED_DAY,
+  isComplete: false,
+  uncountedQty: 6,
+  uncountedProducts: [
+    {
+      productId: 13,
+      productSlug: 'kaisersemmel',
+      productName: 'Kaisersemmel',
+      stockQty: 6,
+    },
+  ],
+}
+
 /** Kennzahlen-Kachel über ihr Label greifen. */
 function kpi(label: string) {
   const tile = screen.getByText(label).closest('.MuiCard-root')
@@ -285,6 +300,24 @@ describe('PartnerDetailClient', () => {
     // Abgeschlossen: die Retoure ist beziffert statt angekündigt
     expect(kpi('Retoure').getByText('15')).toBeInTheDocument()
     expect(kpi('Retoure').getByText('31,50 €')).toBeInTheDocument()
+  })
+
+  it('warns about a pickup that left a product uncounted and keeps the KPIs provisional', async () => {
+    mockFetchToday.mockResolvedValue(INCOMPLETE_DAY)
+    await renderDetail()
+
+    expect(
+      screen.getByText(/Abholung unvollständig – 6 Stück nicht gezählt/)
+    ).toBeInTheDocument()
+    expect(screen.getByText('Kaisersemmel: 6 erwartet')).toBeInTheDocument()
+    expect(screen.queryByText('Tag abgeschlossen')).toBeNull()
+
+    // Ohne die fehlende Zählung sind Verkauf, Umsatz und Quote nicht endgültig
+    expect(screen.getAllByText('vorläufig')).toHaveLength(3)
+    expect(kpi('Verkauft').getByText('vorläufig')).toBeInTheDocument()
+    expect(
+      kpi('Retoure').getByText('unvollständig gezählt')
+    ).toBeInTheDocument()
   })
 
   it('renders one timeline entry per visit in chronological order', async () => {

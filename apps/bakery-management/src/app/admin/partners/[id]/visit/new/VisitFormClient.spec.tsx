@@ -351,6 +351,80 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     })
   })
 
+  it('blocks a pickup that leaves a product with stock uncounted and offers to set it to 0', async () => {
+    const user = userEvent.setup()
+    // Erstbestückung am Morgen: 10 Roggenbrot und 6 Bauernbrot liegen im Schrank.
+    mockFetchToday.mockResolvedValue({
+      ...DAY_DETAIL,
+      timeline: [
+        {
+          visitId: 1,
+          visitType: 'initial',
+          visitAt: `${BUSINESS_DATE}T06:00:00.000Z`,
+          sequence: 1,
+          staffName: null,
+          note: null,
+          countedQty: 0,
+          deliveredQty: 16,
+          soldSinceLastQty: 0,
+          soldSinceLastRevenue: 0,
+          stockAfterQty: 16,
+          items: [
+            {
+              productId: 1,
+              productSlug: 'roggenbrot',
+              productName: 'Roggenbrot',
+              unitPrice: 4.5,
+              countedQty: null,
+              deliveredQty: 10,
+              soldSinceLastQty: 0,
+              stockAfterQty: 10,
+            },
+            {
+              productId: 2,
+              productSlug: 'bauernbrot',
+              productName: 'Bauernbrot',
+              unitPrice: 5.2,
+              countedQty: null,
+              deliveredQty: 6,
+              soldSinceLastQty: 0,
+              stockAfterQty: 6,
+            },
+          ],
+        },
+      ],
+    })
+    await renderForm({ initialDate: BUSINESS_DATE })
+
+    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+    await user.type(screen.getByLabelText('Rest in Stück: Roggenbrot'), '2')
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+
+    // Bauernbrot liegt laut Tagesverlauf noch da, wurde aber nicht gezählt.
+    expect(
+      await screen.findByText(
+        /Bei der Abholung fehlt der Rest für: Bauernbrot \(erwartet 6\)/
+      )
+    ).toBeInTheDocument()
+    expect(mockCreateVisit).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Rest auf 0 setzen' }))
+    expect(
+      (screen.getByLabelText('Rest in Stück: Bauernbrot') as HTMLInputElement)
+        .value
+    ).toBe('0')
+
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
+    const items = mockCreateVisit.mock.calls[0][1].items
+    expect(items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ productSlug: 'roggenbrot', countedQty: 2 }),
+        expect.objectContaining({ productSlug: 'bauernbrot', countedQty: 0 }),
+      ])
+    )
+  })
+
   it('applies the weekday template to the Neu fields when switching to Erstbestückung', async () => {
     const user = userEvent.setup()
     const gate = createGate()

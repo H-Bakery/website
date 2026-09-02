@@ -148,6 +148,11 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
 - **Ein Geschäftstag ohne `pickup`-Besuch ist offen.** Verkauf und Umsatz sind dann vorläufig
   (`stats.isProvisional`, `openDates`). Ohne diese Kennzeichnung liest sich ein unvollständiger
   Tag im Report als 100 % Abverkauf. Detail-Seite und Report markieren das; nicht wegoptimieren.
+- **Eine Abholung, die nicht jedes Produkt mit Bestand zählt, ist unvollständig.** Der Tag
+  ist dann zwar nicht mehr offen, aber `day.isComplete` ist `false`, die ungezählten Stücke
+  stehen in `uncountedQty`/`uncountedProducts`, und `stats.isProvisional` bleibt gesetzt
+  (`incompleteDates`). Sonst verschwinden diese Stücke lautlos aus der Abrechnung - weder
+  verkauft noch Retoure. Die Erfassungsmaske lässt so eine Abholung nicht ohne Rückfrage speichern.
 - **`countedQty: null` heißt "nicht gezählt", `0` heißt "Schrank war leer".** Der Unterschied
   ändert die Verkaufszahlen. Die Erfassungsmaske hält ihn auseinander, ein Test sichert das ab.
 

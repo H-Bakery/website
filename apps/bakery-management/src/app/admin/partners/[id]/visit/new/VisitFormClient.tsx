@@ -448,6 +448,8 @@ export default function VisitFormClient({
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
+  /** Produkte mit Bestand, deren Rest bei der Abholung nicht gezählt wurde. */
+  const [missingRest, setMissingRest] = useState<CatalogueProduct[]>([])
   const [templateInfo, setTemplateInfo] = useState<string | null>(null)
   const [draftInfo, setDraftInfo] = useState<string | null>(null)
 
@@ -896,9 +898,19 @@ export default function VisitFormClient({
   /* ------------------------------------------------------------------ *
    * Speichern
    * ------------------------------------------------------------------ */
+  /** Alle fehlenden Reste auf 0 setzen - "das Fach war leer", mit einem Tipp. */
+  const applyZeroRest = () => {
+    for (const product of missingRest) {
+      handleRowChange(product.productSlug, 'rest', '0')
+    }
+    setMissingRest([])
+    setFormError(null)
+  }
+
   const handleSubmit = async () => {
     setFormError(null)
     setSaveError(null)
+    setMissingRest([])
 
     const items: VisitPayload['items'] = allProducts
       .filter((product) => hasContent(rows[product.productSlug]))
@@ -921,6 +933,40 @@ export default function VisitFormClient({
         'Bitte mindestens ein Produkt erfassen - Rest und/oder neue Menge.'
       )
       return
+    }
+
+    // Abholung: jedes Produkt, das laut Tagesverlauf noch im Schrank liegt,
+    // braucht einen gezählten Rest. Sonst gilt der Tag als abgeschlossen,
+    // obwohl diese Stücke weder verkauft noch Retoure sind.
+    if (visitType === 'pickup' && sameDayAsLoaded) {
+      const missing = allProducts.filter(
+        (product) =>
+          (expectedStock.get(product.productSlug) ?? 0) > 0 &&
+          parseQty(rows[product.productSlug]?.rest ?? '') == null
+      )
+      if (missing.length > 0) {
+        setMissingRest(missing)
+        setOpenGroups((prev) =>
+          openGroupsWith(
+            prev,
+            displayGroups,
+            missing.map((product) => product.productSlug)
+          )
+        )
+        setFormError(
+          `Bei der Abholung fehlt der Rest für: ${missing
+            .map(
+              (product) =>
+                `${product.productName} (erwartet ${expectedStock.get(
+                  product.productSlug
+                )})`
+            )
+            .join(
+              ', '
+            )}. Bitte zählen – oder auf 0 setzen, wenn das Fach leer war.`
+        )
+        return
+      }
     }
 
     const visitDate = new Date(visitAt)
@@ -1263,7 +1309,17 @@ export default function VisitFormClient({
       )}
 
       {formError && (
-        <Alert severity="warning" sx={{ mt: 2 }}>
+        <Alert
+          severity="warning"
+          sx={{ mt: 2 }}
+          action={
+            missingRest.length > 0 ? (
+              <Button color="inherit" size="small" onClick={applyZeroRest}>
+                Rest auf 0 setzen
+              </Button>
+            ) : undefined
+          }
+        >
           {formError}
         </Alert>
       )}

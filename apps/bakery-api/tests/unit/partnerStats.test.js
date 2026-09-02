@@ -537,6 +537,130 @@ describe('mehrere Produkte in einem Besuch', () => {
   })
 })
 
+// --- Unvollständige Abholung ------------------------------------------------
+
+describe('unvollständige Abholung (nicht jedes Produkt gezählt)', () => {
+  // 10 Brot + 6 Brötchen geliefert; bei der Abholung wird nur das Brot gezählt.
+  const visits = () => [
+    visit('2026-08-25', 'initial', 1, [
+      item(BROT, 0, 10),
+      item(BROETCHEN, 0, 6),
+    ]),
+    visit('2026-08-25', 'pickup', 2, [item(BROT, 2, 0)]),
+  ]
+
+  it('schließt den Tag, markiert ihn aber als unvollständig', () => {
+    const day = computeDay(visits())
+    expect(day.isOpen).toBe(false)
+    expect(day.isComplete).toBe(false)
+    expect(day.uncountedQty).toBe(6)
+    expect(day.uncountedProducts).toEqual([
+      {
+        productId: 2,
+        productSlug: 'kaiserbroetchen',
+        productName: 'Kaiserbrötchen',
+        stockQty: 6,
+      },
+    ])
+  })
+
+  it('bucht die ungezählten Stücke weder als Verkauf noch als Retoure', () => {
+    const stats = computeStats(visits())
+    const broetchen = stats.byProduct.find(
+      (p) => p.productSlug === 'kaiserbroetchen'
+    )
+    expect(broetchen).toMatchObject({
+      deliveredQty: 6,
+      soldQty: 0,
+      returnedQty: 0,
+      uncountedQty: 6,
+    })
+    const brot = stats.byProduct.find((p) => p.productSlug === 'bauernbrot')
+    expect(brot).toMatchObject({ soldQty: 8, returnedQty: 2, uncountedQty: 0 })
+    expect(stats.totals.uncountedQty).toBe(6)
+    expect(stats.totals.incompleteDayCount).toBe(1)
+  })
+
+  it('macht die Zahlen vorläufig, obwohl kein Tag offen ist', () => {
+    const stats = computeStats(visits())
+    expect(stats.openDates).toEqual([])
+    expect(stats.incompleteDates).toEqual(['2026-08-25'])
+    expect(stats.isProvisional).toBe(true)
+    expect(stats.byDay[0]).toMatchObject({
+      isOpen: false,
+      isComplete: false,
+      uncountedQty: 6,
+    })
+  })
+
+  it('gilt als vollständig, sobald jedes Produkt mit Bestand gezählt ist', () => {
+    const complete = [
+      visits()[0],
+      visit('2026-08-25', 'pickup', 2, [
+        item(BROT, 2, 0),
+        item(BROETCHEN, 2, 0),
+      ]),
+    ]
+    const stats = computeStats(complete)
+    expect(stats.isProvisional).toBe(false)
+    expect(stats.incompleteDates).toEqual([])
+    expect(stats.totals.uncountedQty).toBe(0)
+    expect(stats.totals.returnedQty).toBe(4)
+    expect(computeDay(complete)).toMatchObject({
+      isComplete: true,
+      uncountedQty: 0,
+      uncountedProducts: [],
+    })
+  })
+
+  it('verlangt keine Zählung für ein Produkt, das schon leer war', () => {
+    // Brötchen bei der Nachlieferung mit 0 gezählt und nichts nachgelegt:
+    // bei der Abholung liegt keins mehr da, also fehlt auch keine Zählung.
+    const stats = computeStats([
+      visits()[0],
+      visit('2026-08-25', 'refill', 2, [item(BROETCHEN, 0, 0)]),
+      visit('2026-08-25', 'pickup', 3, [item(BROT, 2, 0)]),
+    ])
+    expect(stats.isProvisional).toBe(false)
+    expect(stats.totals.uncountedQty).toBe(0)
+  })
+
+  it('zeigt die Unvollständigkeit auch in computeDayDetail', () => {
+    const detail = computeDayDetail(visits())
+    expect(detail.isOpen).toBe(false)
+    expect(detail.isComplete).toBe(false)
+    expect(detail.uncountedQty).toBe(6)
+    expect(detail.uncountedProducts.map((p) => p.productName)).toEqual([
+      'Kaiserbrötchen',
+    ])
+  })
+
+  it('weist die Unvollständigkeit im CSV aus', () => {
+    const lines = statsToCsv(computeStats(visits()), PARTNER).split('\r\n')
+    expect(lines).toContain(
+      'Hinweis;Vorläufig - 1 Tag(e) mit ungezählten Produkten bei der Abholung'
+    )
+    expect(lines).toContain('Kaiserbrötchen;0,60;6;0;0;0,0%;0,00;6')
+    expect(lines).toContain(
+      '2026-08-25;Di;unvollständig;2;16;8;2;50,0%;28,00;6'
+    )
+    expect(lines).toContain('Ungezählt;6')
+  })
+
+  it('nennt im CSV-Hinweis beide Gründe, wenn beides vorkommt', () => {
+    const lines = statsToCsv(
+      computeStats([
+        ...visits(),
+        visit('2026-08-26', 'initial', 1, [item(BROT, 0, 10)]),
+      ]),
+      PARTNER
+    ).split('\r\n')
+    expect(lines).toContain(
+      'Hinweis;Vorläufig - 1 Tag(e) ohne Abholung, 1 Tag(e) mit ungezählten Produkten bei der Abholung'
+    )
+  })
+})
+
 // --- Rest über Nacht --------------------------------------------------------
 
 describe('Rest über Nacht', () => {
@@ -753,22 +877,24 @@ describe('statsToCsv', () => {
     const csv = reportCsv()
     const lines = csv.split('\r\n')
     expect(lines).toContain(
-      'Produkt;Einzelpreis;Geliefert;Verkauft;Retoure;Abverkaufsquote;Umsatz'
+      'Produkt;Einzelpreis;Geliefert;Verkauft;Retoure;Abverkaufsquote;Umsatz;Ungezählt'
     )
     // 40 geliefert, 28 verkauft, 8 zurück -> 98,00 EUR, Quote 70,0 %
-    expect(lines).toContain('Bauernbrot;3,50;40;28;8;70,0%;98,00')
+    expect(lines).toContain('Bauernbrot;3,50;40;28;8;70,0%;98,00;0')
     expect(lines.filter((line) => /\d\.\d/.test(line))).toEqual([])
   })
 
   it('listet jeden Geschäftstag mit Wochentagskürzel und Status', () => {
     const lines = reportCsv().split('\r\n')
-    expect(lines).toContain('2026-08-25;Di;abgeschlossen;3;30;22;8;73,3%;77,00')
-    expect(lines).toContain('2026-08-26;Mi;offen;2;10;6;0;60,0%;21,00')
+    expect(lines).toContain(
+      '2026-08-25;Di;abgeschlossen;3;30;22;8;73,3%;77,00;0'
+    )
+    expect(lines).toContain('2026-08-26;Mi;offen;2;10;6;0;60,0%;21,00;0')
   })
 
   it('schließt mit dem Gesamtblock ab', () => {
     const lines = reportCsv().split('\r\n')
-    expect(lines.slice(-7)).toEqual([
+    expect(lines.slice(-8)).toEqual([
       'Gesamt',
       'Geliefert;40',
       'Verkauft;28',
@@ -776,6 +902,7 @@ describe('statsToCsv', () => {
       'Abverkaufsquote;70,0%',
       'Umsatz;98,00',
       'Retourenwert;28,00',
+      'Ungezählt;0',
     ])
   })
 
