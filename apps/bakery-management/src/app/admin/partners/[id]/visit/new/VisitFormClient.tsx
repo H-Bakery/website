@@ -707,8 +707,25 @@ export default function VisitFormClient({
         })
       }
     }
+    if (visitType === 'pickup') {
+      // Was heute im Schrank lag, steht in jeder Kategorie oben - auch ein
+      // Produkt, das schon auf 0 gezählt wurde, vor den ~100 nie gelieferten.
+      // Innerhalb davon der höchste erwartete Bestand zuerst.
+      const inCabinet = (product: CatalogueProduct) =>
+        expectedStock.has(product.productSlug) ? 1 : 0
+      const expected = (product: CatalogueProduct) =>
+        expectedStock.get(product.productSlug) ?? 0
+      for (const group of base) {
+        group.products.sort(
+          (a, b) =>
+            inCabinet(b) - inCabinet(a) ||
+            expected(b) - expected(a) ||
+            a.productName.localeCompare(b.productName, 'de')
+        )
+      }
+    }
     return base
-  }, [groups, extras, visitType, salesRanking])
+  }, [groups, extras, visitType, salesRanking, expectedStock])
 
   /** Alle Produkte - Grundlage fürs Speichern, bewusst *ohne* Suchfilter. */
   const allProducts = useMemo(
@@ -723,6 +740,36 @@ export default function VisitFormClient({
         .filter((slug) => hasContent(rows[slug])),
     [allProducts, rows]
   )
+
+  /**
+   * "Mischbrot 500g (6), Kornbrot 500g (0)" - was laut Tagesverlauf im Schrank
+   * liegt. Die Menge steht in Klammern, weil fast jedes Brot mit einer
+   * Gewichtsangabe endet und "Mischbrot 500g 6" sonst zusammenläuft.
+   */
+  const expectedSummary = useMemo(() => {
+    if (expectedStock.size === 0) return ''
+    const names = new Map(
+      allProducts.map((product) => [product.productSlug, product.productName])
+    )
+    const nameOf = (slug: string) => names.get(slug) ?? slug
+    return Array.from(expectedStock.entries())
+      .sort(
+        ([slugA, a], [slugB, b]) =>
+          b - a || nameOf(slugA).localeCompare(nameOf(slugB), 'de')
+      )
+      .map(([slug, qty]) => `${nameOf(slug)} (${qty})`)
+      .join(', ')
+  }, [expectedStock, allProducts])
+
+  // Abholung: die Kategorien aufklappen, in denen heute etwas lag - sonst
+  // liegen Brötchen oder Teilchen aus der Erstbestückung hinter einem
+  // zugeklappten Gruppenkopf, während der Fahrer am Handy zählt.
+  useEffect(() => {
+    if (visitType !== 'pickup') return
+    setOpenGroups((prev) =>
+      openGroupsWith(prev, groups, Array.from(expectedStock.keys()))
+    )
+  }, [visitType, expectedStock, groups])
 
   const totals = useMemo(() => {
     let rest = 0
@@ -1148,6 +1195,11 @@ export default function VisitFormClient({
             Diese Abholung schließt den Geschäftstag ab. Bitte je Produkt den
             Rest zählen - daraus ergeben sich Retoure, Tagesverkauf und Umsatz.
             Ohne Abholung bleibt der Tag offen und alle Zahlen vorläufig.
+            {expectedSummary && (
+              <Box component="span" sx={{ display: 'block', mt: 1 }}>
+                {`Im Schrank erwartet: ${expectedSummary} - diese Produkte stehen in jeder Kategorie oben.`}
+              </Box>
+            )}
           </Alert>
         )}
         {visitType === 'initial' && templateInfo && (
