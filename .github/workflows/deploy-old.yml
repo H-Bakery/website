@@ -128,7 +128,9 @@ jobs:
     if: needs.detect-changes.outputs.deploy-landing == 'true' && github.event.inputs.environment != 'staging'
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      # peaceiris/actions-gh-pages pusht auf den gh-pages-Branch und braucht
+      # dafür Schreibrecht (sonst 403) - wie in deploy-to-github-pages.yml.
+      contents: write
       pages: write
       id-token: write
     steps:

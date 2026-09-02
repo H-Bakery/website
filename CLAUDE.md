@@ -239,7 +239,7 @@ rm -rf apps/bakery-landing/.next
 # Standalone build (always works, recommended)
 NODE_ENV=production npx nx build-static-standalone bakery-landing
 
-# Or via npm script (builds `dist`, not the static export)
+# Or via npm script: same export to apps/bakery-landing/out, but without the sitemap
 npm run build:landing:standalone
 ```
 
