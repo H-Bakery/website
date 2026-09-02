@@ -392,6 +392,9 @@ function normalizeStopInput(body, existing) {
       stop.lon = null
       stop.geocodeSource = null
     }
+    // Die Genauigkeit gehoert zum Suchtreffer; von Hand gesetzte oder
+    // geloeschte Koordinaten haben keine.
+    stop.geocodePrecision = null
   }
 
   if (status === 'done' && base.status !== 'done') {

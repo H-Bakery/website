@@ -394,6 +394,7 @@ export default function DeliveryDashboard() {
         latitude: stop.lat as number,
         longitude: stop.lon as number,
         address: stop.address,
+        streetOnly: stop.geocodePrecision === 'street',
       })),
       currentLocation
         ? {

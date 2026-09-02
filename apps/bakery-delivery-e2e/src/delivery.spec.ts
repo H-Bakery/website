@@ -74,6 +74,55 @@ test.describe('Liefertour', () => {
     }
   })
 
+  test('bietet auch fuer eine nicht gefundene Adresse die Navigation an', async ({
+    page,
+    request,
+  }) => {
+    // Regression: ein Stopp ohne Koordinaten hatte gar keinen
+    // Navigationsknopf - der Fahrer konnte die getippte Adresse nicht einmal
+    // an die Navi-App weiterreichen.
+    const created = await request.post(`${API}/api/deliveries/tours`, {
+      data: { date: '2026-09-12', driverId: 1, name: 'E2E-Tour ohne Adresse' },
+    })
+    expect(created.ok()).toBeTruthy()
+    const tour = await created.json()
+
+    try {
+      const added = await request.post(
+        `${API}/api/deliveries/tours/${tour.id}/stops`,
+        {
+          data: {
+            customer: 'E2E Unauffindbar',
+            street: 'Gibtsnichtweg 999',
+            zip: '66424',
+            city: 'Homburg',
+          },
+        }
+      )
+      expect(added.ok()).toBeTruthy()
+
+      await page.goto('/')
+      await page.getByLabel('Tag', { exact: true }).fill('2026-09-12')
+      await page
+        .getByRole('combobox', { name: 'Tour' })
+        .selectOption(String(tour.id))
+
+      const stop = page
+        .getByRole('listitem')
+        .filter({ hasText: 'E2E Unauffindbar' })
+        .first()
+      await expect(stop).toBeVisible({ timeout: 15_000 })
+      await expect(stop.getByText(/Adresse nicht gefunden/)).toBeVisible({
+        timeout: 30_000,
+      })
+      await expect(
+        stop.getByRole('link', { name: 'Navigation' })
+      ).toHaveAttribute('href', /Gibtsnichtweg%20999/)
+    } finally {
+      await request.delete(`${API}/api/deliveries/tours/${tour.id}`)
+    }
+  })
+
   test('rendert eine Genauigkeit von 0 m als Text, nicht als nackte Null', async ({
     page,
     context,
