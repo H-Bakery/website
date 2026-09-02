@@ -1,19 +1,39 @@
-const fs = require('fs')
+// memfs statt mock-fs, siehe tests/helpers/mockFs.js
+jest.mock('fs', () => require('memfs').fs)
+
+const realFs = jest.requireActual('fs')
 const path = require('path')
-const mockFs = require('mock-fs')
+const mockFs = require('../helpers/mockFs')
 const { parseCSV } = require('../../utils/csvParser')
 const logger = require('../../utils/logger')
 
 describe('CSV Parser', () => {
   const testFixturesPath = path.join(__dirname, '../fixtures')
   const validCsvPath = path.join(testFixturesPath, 'test-products.csv')
-  const edgeCasesCsvPath = path.join(testFixturesPath, 'test-products-edge-cases.csv')
+  const edgeCasesCsvPath = path.join(
+    testFixturesPath,
+    'test-products-edge-cases.csv'
+  )
 
   beforeAll(() => {
     // Make sure the fixture files exist before running tests
-    if (!fs.existsSync(validCsvPath) || !fs.existsSync(edgeCasesCsvPath)) {
-      throw new Error('Test fixture files not found. Please make sure the test fixtures are properly set up.')
+    if (
+      !realFs.existsSync(validCsvPath) ||
+      !realFs.existsSync(edgeCasesCsvPath)
+    ) {
+      throw new Error(
+        'Test fixture files not found. Please make sure the test fixtures are properly set up.'
+      )
     }
+  })
+
+  beforeEach(() => {
+    // Der Parser liest über das gemockte fs - die echten Fixtures deshalb
+    // unter ihrem Pfad in das In-Memory-Dateisystem legen.
+    mockFs({
+      [validCsvPath]: realFs.readFileSync(validCsvPath, 'utf8'),
+      [edgeCasesCsvPath]: realFs.readFileSync(edgeCasesCsvPath, 'utf8'),
+    })
   })
 
   afterEach(() => {
@@ -34,7 +54,7 @@ describe('CSV Parser', () => {
         name: 'Test Bread 500g',
         category: 'Brot',
         image: '/assets/images/products/test-bread.svg',
-        price: '2.5'
+        price: '2.5',
       })
     )
     expect(logger.info).toHaveBeenCalledWith(
@@ -49,16 +69,16 @@ describe('CSV Parser', () => {
     // Assert
     expect(result).toBeInstanceOf(Array)
     expect(result.length).toBeGreaterThan(0)
-    
+
     // Test quotes handling
     expect(result[0].name).toBe('Bread with quotes in name')
-    
+
     // Test comma handling in quoted fields
     expect(result[1].name).toBe('Roll with comma, inside name')
-    
+
     // Test empty fields
     expect(result[2].category).toBe('')
-    
+
     // Skip test for empty name if data doesn't match expected structure
     if (result.length > 5 && result[5]) {
       // Check if item at index 5 has expected category, and if so test name
@@ -71,12 +91,12 @@ describe('CSV Parser', () => {
   test('should handle file read errors gracefully', () => {
     // Arrange
     const nonExistentFilePath = path.join(__dirname, 'non-existent-file.csv')
-    
+
     // Act & Assert
     expect(() => {
       parseCSV(nonExistentFilePath)
     }).toThrow()
-    
+
     expect(logger.error).toHaveBeenCalledWith(
       expect.stringContaining('Error parsing CSV file'),
       expect.anything()
@@ -86,7 +106,7 @@ describe('CSV Parser', () => {
   test('should handle empty files', () => {
     // Arrange
     mockFs({
-      'empty-file.csv': ''
+      'empty-file.csv': '',
     })
 
     // Act & Assert
@@ -102,7 +122,7 @@ describe('CSV Parser', () => {
   test('should handle files with only headers', () => {
     // Arrange
     mockFs({
-      'headers-only.csv': 'id,name,category,image,price\n'
+      'headers-only.csv': 'id,name,category,image,price\n',
     })
 
     // Act
@@ -116,7 +136,8 @@ describe('CSV Parser', () => {
   test('should handle malformed CSV content', () => {
     // Arrange
     mockFs({
-      'malformed.csv': 'id,name,category,image,price\n1,Product name with unmatched "quote,Category,image.jpg,2.99'
+      'malformed.csv':
+        'id,name,category,image,price\n1,Product name with unmatched "quote,Category,image.jpg,2.99',
     })
 
     // Act
@@ -133,7 +154,8 @@ describe('CSV Parser', () => {
   test('should handle CSV with different number of columns', () => {
     // Arrange
     mockFs({
-      'inconsistent-columns.csv': 'id,name,category,image,price\n1,Name,Category\n2,Name2,Category2,image2.jpg,2.99,extra'
+      'inconsistent-columns.csv':
+        'id,name,category,image,price\n1,Name,Category\n2,Name2,Category2,image2.jpg,2.99,extra',
     })
 
     // Act
@@ -142,11 +164,11 @@ describe('CSV Parser', () => {
     // Assert
     expect(result).toBeInstanceOf(Array)
     expect(result.length).toBe(2)
-    
+
     // First row has fewer columns
     expect(result[0].price).toBe('')
     expect(result[0].image).toBe('')
-    
+
     // Extra column in second row should be ignored
     expect(Object.keys(result[1]).length).toBe(5)
   })
