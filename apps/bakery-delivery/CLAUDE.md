@@ -239,6 +239,22 @@ Jede Anfrage bricht nach 15 s ab (`AbortSignal.timeout`, wo der Browser es kann)
 Warteschlange kam nicht zum Zug. Der Hinweis „… warten noch auf den Server" bleibt sichtbar, solange
 etwas in der Schlange liegt, auch wenn das Handy „online" meldet.
 
+**Die Tour selbst hat eine Offline-Kopie.** Jeder Tipp auf „Navigation" reicht das Handy an die
+Navi-App weiter; kommt der Fahrer zurück, lädt der Browser die Seite gern neu — mitten im Funkloch.
+Deshalb merkt sich `delivery-api.ts` die zuletzt geladene Fahrerliste (`bakery-delivery-drivers`)
+und die zuletzt geladene Tourliste samt Tag und Fahrer (`bakery-delivery-tours`). `loadTours()`
+zeigt die Kopie sofort (plus Warteschlange, damit ein Abhaken von eben nicht wieder „Offen" ist)
+und ersetzt sie, sobald der Server antwortet; scheitert der Aufruf, bleibt sie stehen und der
+schwarze Balken sagt „Gespeicherter Stand von HH:MM Uhr". Es ist bewusst **eine** Tourliste, nicht
+eine pro Tag — mit Streckenverlauf ist eine Tour schnell einige Dutzend Kilobyte groß. Die
+Fahrerliste muss mit, sonst bliebe die Auswahl nach dem Neuladen auf „Alle" stehen und die Kopie
+passte nicht zur Auswahl. Der Tag wird absichtlich nicht gemerkt (nach dem Neuladen steht wieder
+der nächste Samstag). Bei einem Ladefehler ohne Kopie zeigt die Seite nur noch die Fehlermeldung,
+**nicht** mehr „noch nichts geplant / Tour anlegen" — sonst legte der Fahrer beim nächsten Netz eine
+zweite Tour an. Was fehlt: ein Service Worker. Ein kaltes Neuladen ganz ohne Netz zeigt weiterhin
+die Fehlerseite des Browsers; die Kopie hilft, sobald die App-Seite selbst da ist (Tab war noch
+offen, Dev-Server oder Hosting erreichbar, nur die API nicht).
+
 ### Navigation
 
 Abbiegen lässt sich der Fahrer von Google oder Apple Maps; `buildNavigationUrl()` erkennt iOS am

@@ -345,3 +345,79 @@ export async function flushQueue(): Promise<{
 
   return { tour, remaining: queue, rejected, offline }
 }
+
+// --- Offline-Kopie ---
+//
+// Jeder Tipp auf „Navigation" reicht das Handy an Google oder Apple Maps
+// weiter; kommt der Fahrer zurueck, laedt der Browser die Seite gern neu - und
+// zwar genau dann, wenn er zwischen zwei Funkzellen steht. Damit dann nicht
+// die leere Seite kommt, bleiben die zuletzt geladene Fahrerliste und Tourliste
+// im localStorage. Es ist bewusst nur *eine* Tourliste (die zuletzt angesehene
+// Kombination aus Tag und Fahrer): mit Streckenverlauf ist eine Tour schnell
+// einige Dutzend Kilobyte gross, eine Kopie pro Tag liefe dem Speicher davon.
+
+const DRIVERS_COPY_KEY = 'bakery-delivery-drivers'
+const TOURS_COPY_KEY = 'bakery-delivery-tours'
+
+export interface ToursCopy {
+  date: string
+  driverId: number | null
+  /** Wann die Liste zuletzt vom Server kam (ISO). */
+  at: string
+  tours: Tour[]
+}
+
+function readCopy<T>(key: string): T | null {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : null
+  } catch {
+    return null
+  }
+}
+
+function writeCopy(key: string, value: unknown): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // Voll oder verweigert - dann eben ohne Kopie.
+  }
+}
+
+export function rememberDrivers(drivers: Driver[]): void {
+  writeCopy(DRIVERS_COPY_KEY, drivers)
+}
+
+export function rememberedDrivers(): Driver[] | null {
+  const parsed = readCopy<unknown>(DRIVERS_COPY_KEY)
+  return Array.isArray(parsed) ? (parsed as Driver[]) : null
+}
+
+export function rememberTours(
+  date: string,
+  driverId: number | null,
+  tours: Tour[]
+): void {
+  const copy: ToursCopy = {
+    date,
+    driverId,
+    at: new Date().toISOString(),
+    tours,
+  }
+  writeCopy(TOURS_COPY_KEY, copy)
+}
+
+/** Die gemerkte Tourliste - nur, wenn sie zu Tag und Fahrer passt. */
+export function rememberedTours(
+  date: string,
+  driverId: number | null
+): ToursCopy | null {
+  const copy = readCopy<Partial<ToursCopy>>(TOURS_COPY_KEY)
+  if (!copy || copy.date !== date || (copy.driverId ?? null) !== driverId) {
+    return null
+  }
+  if (!Array.isArray(copy.tours) || typeof copy.at !== 'string') return null
+  return copy as ToursCopy
+}

@@ -22,6 +22,10 @@ import {
   flushQueue,
   pendingUpdates,
   queueStopUpdate,
+  rememberDrivers,
+  rememberedDrivers,
+  rememberedTours,
+  rememberTours,
   type Driver,
   type QueuedUpdate,
   type Stop,
@@ -64,6 +68,8 @@ export default function DeliveryDashboard() {
   const [isTracking, setIsTracking] = useState(false)
   const [pending, setPending] = useState<QueuedUpdate[]>([])
   const [isOnline, setIsOnline] = useState(true)
+  /** Wann die angezeigte Tourliste vom Server kam - gesetzt, solange sie nur die Offline-Kopie ist. */
+  const [copiedAt, setCopiedAt] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -77,6 +83,9 @@ export default function DeliveryDashboard() {
   // meldet sie an die Tour, die *jetzt* gewaehlt ist, nicht an die von damals.
   const tourIdRef = useRef<number | null>(null)
   tourIdRef.current = tourId
+  // Beim Start laufen zwei Ladevorgaenge kurz hintereinander (erst ohne, dann
+  // mit gemerktem Fahrer). Nur der juengste darf den Bildschirm setzen.
+  const loadSeqRef = useRef(0)
 
   const tour = useMemo(
     () => tours.find((t) => t.id === tourId) ?? null,
@@ -87,21 +96,44 @@ export default function DeliveryDashboard() {
 
   const loadTours = useCallback(
     async (targetDate: string, targetDriver: number | null) => {
+      const seq = ++loadSeqRef.current
       setError(null)
+
+      const show = (list: Tour[]) => {
+        setTours(list)
+        setTourId((current) =>
+          list.some((t) => t.id === current) ? current : list[0]?.id ?? null
+        )
+      }
+
+      // Die Offline-Kopie sofort zeigen, statt im Funkloch 15 s auf den
+      // Timeout zu warten. Antwortet der Server, ersetzt er sie gleich.
+      const copy = rememberedTours(targetDate, targetDriver)
+      if (copy) show(withPendingUpdates(copy.tours, pendingUpdates()))
+
       try {
         const list = await deliveryApi.tours({
           date: targetDate,
           driverId: targetDriver ?? undefined,
         })
-        setTours(list)
-        setTourId((current) =>
-          list.some((t) => t.id === current) ? current : list[0]?.id ?? null
-        )
+        if (seq !== loadSeqRef.current) return
+        show(list)
+        rememberTours(targetDate, targetDriver, list)
+        setCopiedAt(null)
+        setIsOnline(true)
       } catch (err) {
-        setTours([])
-        setError(describeError(err, 'Touren konnten nicht geladen werden.'))
+        if (seq !== loadSeqRef.current) return
+        if (copy) {
+          // Kein Netz, aber die Liste von vorhin: damit faehrt der Fahrer
+          // weiter, das Abhaken landet in der Warteschlange.
+          setCopiedAt(copy.at)
+          setIsOnline(false)
+        } else {
+          setTours([])
+          setError(describeError(err, 'Touren konnten nicht geladen werden.'))
+        }
       } finally {
-        setLoading(false)
+        if (seq === loadSeqRef.current) setLoading(false)
       }
     },
     []
@@ -109,17 +141,26 @@ export default function DeliveryDashboard() {
 
   useEffect(() => {
     let cancelled = false
+    const apply = (list: Driver[]) => {
+      setDrivers(list)
+      const stored = readStoredDriver()
+      const known = list.find((d) => d.id === stored)
+      setDriverId(known ? known.id : list[0]?.id ?? null)
+    }
     deliveryApi
       .drivers()
       .then((list) => {
         if (cancelled) return
-        setDrivers(list)
-        const stored = readStoredDriver()
-        const known = list.find((d) => d.id === stored)
-        setDriverId(known ? known.id : list[0]?.id ?? null)
+        rememberDrivers(list)
+        apply(list)
       })
       .catch((err) => {
-        if (!cancelled)
+        if (cancelled) return
+        // Ohne Netz reicht die gemerkte Fahrerliste. Sonst bliebe die Auswahl
+        // auf „Alle" stehen, und die Offline-Kopie der Tour passte nicht dazu.
+        const remembered = rememberedDrivers()
+        if (remembered) apply(remembered)
+        else
           setError(describeError(err, 'Fahrer konnten nicht geladen werden.'))
       })
     return () => {
@@ -131,6 +172,25 @@ export default function DeliveryDashboard() {
     setLoading(true)
     loadTours(date, driverId)
   }, [date, driverId, loadTours])
+
+  // Die Offline-Kopie wird ersetzt, sobald der Server wieder antwortet - beim
+  // `online`-Event und sonst alle 30 s. Solange etwas in der Warteschlange
+  // liegt, hat deren Nachsenden Vorrang; die Antwort darauf ist ohnehin die
+  // aktuelle Tour.
+  useEffect(() => {
+    if (copiedAt === null) return
+    const reload = () => {
+      if (navigator.onLine && pendingUpdates().length === 0) {
+        loadTours(date, driverId)
+      }
+    }
+    window.addEventListener('online', reload)
+    const retry = window.setInterval(reload, RETRY_INTERVAL_MS)
+    return () => {
+      window.removeEventListener('online', reload)
+      window.clearInterval(retry)
+    }
+  }, [copiedAt, date, driverId, loadTours])
 
   // --- Standort ---
 
@@ -379,6 +439,23 @@ export default function DeliveryDashboard() {
     )
   }, [tour, currentLocation])
 
+  const offlineNotice = [
+    !isOnline
+      ? `Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet${
+          pending.length > 0 ? ` (${pending.length} offen)` : ''
+        }.`
+      : pending.length > 0
+      ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
+      : null,
+    copiedAt
+      ? `Gespeicherter Stand von ${formatTime(
+          copiedAt
+        )} Uhr – wird aktualisiert, sobald der Server antwortet.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <main className={styles.main}>
       <header className={styles.header}>
@@ -386,13 +463,9 @@ export default function DeliveryDashboard() {
         <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
       </header>
 
-      {(!isOnline || pending.length > 0) && (
+      {offlineNotice && (
         <div className={styles.offline} role="status">
-          {isOnline
-            ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
-            : `Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet${
-                pending.length > 0 ? ` (${pending.length} offen)` : ''
-              }.`}
+          {offlineNotice}
         </div>
       )}
 
@@ -466,7 +539,9 @@ export default function DeliveryDashboard() {
 
       {loading && <p className={styles.placeholder}>Tour wird geladen …</p>}
 
-      {!loading && !tour && (
+      {/* Nicht bei einem Ladefehler: sonst legte der Fahrer beim naechsten
+          Netz eine zweite Tour an, weil „noch nichts geplant" dastand. */}
+      {!loading && !tour && !error && (
         <section className={styles.card}>
           <h2>Keine Tour für {formatDate(date)}</h2>
           <p className={styles.placeholder}>
@@ -723,6 +798,20 @@ function applyStopStatus(
     },
     nextStopId: stops.find((s) => s.status === 'open')?.id ?? null,
   }
+}
+
+/**
+ * Spielt die Warteschlange auf die Offline-Kopie: ein Abhaken kurz vor dem
+ * Neuladen soll nicht wieder als „Offen" dastehen.
+ */
+function withPendingUpdates(tours: Tour[], queue: QueuedUpdate[]): Tour[] {
+  return queue.reduce((list, entry) => {
+    const status = entry.body.status
+    if (!status) return list
+    return list.map((t) =>
+      t.id === entry.tourId ? applyStopStatus(t, entry.stopId, status) : t
+    )
+  }, tours)
 }
 
 function readStoredDriver(): number | null {
