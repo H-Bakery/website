@@ -641,6 +641,13 @@ export default function VisitFormClient({
   const weekday = useMemo(() => weekdayOf(businessDate), [businessDate])
   const sameDayAsLoaded = businessDate === initialBusinessDate
 
+  /**
+   * Zurück zur Detailseite - auf dem Geschäftstag des Besuchs, nicht auf
+   * "heute". Sonst landet eine Nacherfassung im Büro auf dem falschen Tag und
+   * der gerade gespeicherte Besuch ist nicht zu sehen.
+   */
+  const detailHref = `/admin/partners/${partnerId}?date=${businessDate}`
+
   /** Erwarteter Bestand je Produkt aus dem bisherigen Tagesverlauf. */
   const expectedStock = useMemo(() => {
     const map = new Map<string, number>()
@@ -994,7 +1001,7 @@ export default function VisitFormClient({
       clearDraft(storageKey)
       // `saving` bleibt absichtlich stehen: der Button ist damit bis zum
       // Seitenwechsel gesperrt und ein zweiter Besuch kann nicht entstehen.
-      router.push(`/admin/partners/${partnerId}`)
+      router.push(`${detailHref}&saved=1`)
       router.refresh()
     } catch (err) {
       setSaveError(
@@ -1037,7 +1044,7 @@ export default function VisitFormClient({
       <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2 }}>
         <IconButton
           aria-label="Zurück zum Partner"
-          onClick={() => router.push(`/admin/partners/${partnerId}`)}
+          onClick={() => router.push(detailHref)}
           sx={{ minWidth: 44, minHeight: 44 }}
         >
           <ArrowBackIcon />
@@ -1360,7 +1367,7 @@ export default function VisitFormClient({
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
-              onClick={() => router.push(`/admin/partners/${partnerId}`)}
+              onClick={() => router.push(detailHref)}
               disabled={saving}
               sx={{ display: { xs: 'none', sm: 'inline-flex' }, minHeight: 48 }}
             >

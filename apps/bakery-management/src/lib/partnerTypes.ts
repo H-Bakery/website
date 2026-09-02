@@ -286,6 +286,21 @@ export function toBusinessDate(date: Date = new Date()): string {
   return `${y}-${m}-${d}`
 }
 
+/**
+ * Ist `value` ein echter Geschäftstag (`YYYY-MM-DD`, existierender Kalendertag)?
+ *
+ * Nur das Muster zu prüfen reicht nicht: `2026-13-45` sieht wie ein Datum aus,
+ * `new Date()` würde es aber stillschweigend auf den 14.02.2027 umrechnen und
+ * die Seite einen Tag anzeigen, der nie angefragt wurde.
+ */
+export function isBusinessDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false
+  }
+  const [y, m, d] = value.split('-').map(Number)
+  return toBusinessDate(new Date(y, m - 1, d)) === value
+}
+
 /** ISO-Wochentag (1 = Mo … 7 = So) eines `YYYY-MM-DD`-Strings. */
 export function weekdayOf(businessDate: string): number | null {
   const parts = businessDate.split('-').map(Number)
