@@ -127,9 +127,15 @@ describe('Input Component', () => {
       renderWithTheme(<Input label="Search" icon={<TestIcon />} />)
 
       const icon = screen.getByTestId('test-icon')
+      const input = screen.getByLabelText('Search')
       expect(icon).toBeInTheDocument()
-      // Icon should be positioned before the input
-      expect(icon.parentElement?.className).toContain('MuiInputAdornment')
+      // Das Icon sitzt als startAdornment im selben Eingabefeld, vor dem <input>
+      expect(icon.closest('.MuiInputBase-root')).toBe(
+        input.closest('.MuiInputBase-root')
+      )
+      expect(
+        icon.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
     })
 
     it('positions icon correctly with multiline input', () => {
@@ -168,7 +174,9 @@ describe('Input Component', () => {
       renderWithTheme(<Input label="Error Input" error />)
 
       const input = screen.getByLabelText('Error Input')
-      expect(input.closest('.MuiFormControl-root')).toHaveClass('Mui-error')
+      // MUI setzt Mui-error auf Eingabefeld und Label, nicht auf den FormControl
+      expect(input).toHaveAttribute('aria-invalid', 'true')
+      expect(input.closest('.MuiFilledInput-root')).toHaveClass('Mui-error')
     })
   })
 
@@ -407,10 +415,10 @@ describe('Input Component', () => {
     it('supports Material UI size prop', () => {
       renderWithTheme(<Input label="Small Input" size="small" />)
 
-      const formControl = screen
+      const inputRoot = screen
         .getByLabelText('Small Input')
-        .closest('.MuiFormControl-root')
-      expect(formControl).toHaveClass('MuiFormControl-sizeSmall')
+        .closest('.MuiInputBase-root')
+      expect(inputRoot).toHaveClass('MuiInputBase-sizeSmall')
     })
 
     it('supports Material UI color prop', () => {
