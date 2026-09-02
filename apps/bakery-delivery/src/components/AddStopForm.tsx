@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import type { StopInput } from '../lib/delivery-api'
+import { describeError, type StopInput } from '../lib/delivery-api'
 import styles from '../app/page.module.css'
 
 export type NewStopInput = StopInput
@@ -27,8 +27,12 @@ export function AddStopForm({ busy, onSubmit }: AddStopFormProps) {
   const [error, setError] = useState<string | null>(null)
 
   const set =
-    (key: keyof typeof EMPTY) => (event: { target: { value: string } }) =>
+    (key: keyof typeof EMPTY) => (event: { target: { value: string } }) => {
+      // Eine alte Fehlermeldung verschwindet, sobald weitergetippt wird -
+      // sonst steht "Keine Verbindung" noch da, wenn das Netz längst zurück ist.
+      setError(null)
       setForm((current) => ({ ...current, [key]: event.target.value }))
+    }
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -52,11 +56,7 @@ export function AddStopForm({ busy, onSubmit }: AddStopFormProps) {
       })
       setForm(EMPTY)
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Stopp konnte nicht angelegt werden.'
-      )
+      setError(describeError(err, 'Stopp konnte nicht angelegt werden.'))
     }
   }
 

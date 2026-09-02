@@ -16,9 +16,9 @@ import {
   watchLocation,
 } from '@bakery/delivery/tracking'
 import {
-  API_BASE_URL,
   ApiError,
   deliveryApi,
+  describeError,
   flushQueue,
   pendingUpdates,
   queueStopUpdate,
@@ -99,7 +99,7 @@ export default function DeliveryDashboard() {
         )
       } catch (err) {
         setTours([])
-        setError(describe(err, 'Touren konnten nicht geladen werden.'))
+        setError(describeError(err, 'Touren konnten nicht geladen werden.'))
       } finally {
         setLoading(false)
       }
@@ -120,7 +120,7 @@ export default function DeliveryDashboard() {
       })
       .catch((err) => {
         if (!cancelled)
-          setError(describe(err, 'Fahrer konnten nicht geladen werden.'))
+          setError(describeError(err, 'Fahrer konnten nicht geladen werden.'))
       })
     return () => {
       cancelled = true
@@ -279,7 +279,7 @@ export default function DeliveryDashboard() {
           : null
       )
     } catch (err) {
-      setError(describe(err, 'Route konnte nicht berechnet werden.'))
+      setError(describeError(err, 'Route konnte nicht berechnet werden.'))
     } finally {
       setBusy(false)
     }
@@ -291,6 +291,10 @@ export default function DeliveryDashboard() {
     try {
       const updated = await deliveryApi.addStop(tour.id, input)
       setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+    } catch (err) {
+      // Das Formular zeigt die Meldung an - aber auf Deutsch, nicht als
+      // rohes "Failed to fetch" des Browsers.
+      throw new Error(describeError(err, 'Stopp konnte nicht angelegt werden.'))
     } finally {
       setBusy(false)
     }
@@ -304,7 +308,7 @@ export default function DeliveryDashboard() {
       const updated = await deliveryApi.removeStop(tour.id, stopId)
       setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
     } catch (err) {
-      setError(describe(err, 'Stopp konnte nicht entfernt werden.'))
+      setError(describeError(err, 'Stopp konnte nicht entfernt werden.'))
     } finally {
       setBusy(false)
     }
@@ -323,7 +327,7 @@ export default function DeliveryDashboard() {
       setTourId(created.id)
       setPlanning(true)
     } catch (err) {
-      setError(describe(err, 'Tour konnte nicht angelegt werden.'))
+      setError(describeError(err, 'Tour konnte nicht angelegt werden.'))
     } finally {
       setBusy(false)
     }
@@ -728,18 +732,4 @@ function readStoredDriver(): number | null {
   } catch {
     return null
   }
-}
-
-function describe(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) return error.message
-  if (
-    error instanceof Error &&
-    (error.name === 'AbortError' || error.name === 'TimeoutError')
-  ) {
-    return 'Die Bäckerei-API antwortet nicht. Bitte gleich noch einmal versuchen.'
-  }
-  if (error instanceof TypeError) {
-    return `Keine Verbindung zur Bäckerei-API (${API_BASE_URL}). Läuft der Server?`
-  }
-  return error instanceof Error ? error.message : fallback
 }
