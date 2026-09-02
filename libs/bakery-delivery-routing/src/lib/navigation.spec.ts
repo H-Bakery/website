@@ -1,4 +1,5 @@
 import {
+  buildAddressNavigationUrl,
   buildMultiStopNavigationUrl,
   buildNavigationUrl,
   buildPhoneLink,
@@ -35,6 +36,29 @@ describe('buildNavigationUrl', () => {
     const url = buildNavigationUrl(stop(49.3226, 7.3389, 'Talstraße 5'), IOS)
     expect(url).toContain('maps.apple.com')
     expect(url).toContain('daddr=49.3226,7.3389')
+  })
+})
+
+describe('buildAddressNavigationUrl', () => {
+  // Fuer Stopps, die nur bis zur Strasse oder gar nicht gefunden wurden:
+  // die Navi-App bekommt den Adresstext, nicht die Strassenmitte.
+  const ADDRESS = 'Talstraße 5, 66424 Homburg'
+  const ENCODED = 'Talstra%C3%9Fe%205%2C%2066424%20Homburg'
+
+  it('uebergibt die Adresse an Google Maps auf Android', () => {
+    const url = buildAddressNavigationUrl(ADDRESS, ANDROID)
+    expect(url).toBe(
+      `https://www.google.com/maps/dir/?api=1&destination=${ENCODED}&travelmode=driving`
+    )
+  })
+
+  it('uebergibt die Adresse an Apple Maps auf dem iPhone', () => {
+    const url = buildAddressNavigationUrl(ADDRESS, IOS)
+    expect(url).toBe(`https://maps.apple.com/?daddr=${ENCODED}&dirflg=d`)
+  })
+
+  it('enthaelt keine Koordinaten', () => {
+    expect(buildAddressNavigationUrl(ADDRESS, ANDROID)).not.toMatch(/\d+\.\d+,/)
   })
 })
 

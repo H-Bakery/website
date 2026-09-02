@@ -41,6 +41,25 @@ export function buildNavigationUrl(
 }
 
 /**
+ * Link zu einem Ziel ohne brauchbare Koordinaten - die Adresssuche hat nichts
+ * oder nur die Strasse gefunden. Dann bekommt die Navi-App den eingegebenen
+ * Text: sie kennt die Hausnummer vielleicht doch, und die Strassenmitte waere
+ * in jedem Fall das falschere Ziel.
+ */
+export function buildAddressNavigationUrl(
+  address: string,
+  userAgent?: string
+): string {
+  const destination = encodeURIComponent(address.trim())
+
+  if (prefersAppleMaps(userAgent)) {
+    return `https://maps.apple.com/?daddr=${destination}&dirflg=d`
+  }
+
+  return `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`
+}
+
+/**
  * Link ueber mehrere Stopps. Google Maps nimmt bis zu neun Zwischenziele; mehr
  * werden abgeschnitten, damit der Link nicht stillschweigend kaputtgeht.
  *

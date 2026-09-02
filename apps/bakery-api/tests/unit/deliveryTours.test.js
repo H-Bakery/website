@@ -435,12 +435,15 @@ describe('normalizeStopInput', () => {
       customer: 'Müller',
       street: 'Talstraße 5',
       status: 'open',
+      geocodePrecision: 'street',
     }
     const gesetzt = core.normalizeStopInput(
       { lat: 49.32, lon: 7.34 },
       bestehend
     ).stop
     expect(gesetzt.geocodeSource).toBe('manual')
+    // Von Hand gesetzte Koordinaten sind kein Strassen-Treffer mehr.
+    expect(gesetzt.geocodePrecision).toBeNull()
 
     const geloescht = core.normalizeStopInput(
       { lat: null, lon: null },
@@ -448,6 +451,7 @@ describe('normalizeStopInput', () => {
     ).stop
     expect(geloescht.lat).toBeNull()
     expect(geloescht.geocodeSource).toBeNull()
+    expect(geloescht.geocodePrecision).toBeNull()
   })
 
   test('lehnt unbekannte Status ab', () => {

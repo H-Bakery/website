@@ -64,23 +64,31 @@ async function fetchJson(url, headers) {
 }
 
 /**
- * Sucht eine Adresse. Rueckgabe `{ lat, lon, displayName }` oder `null`.
+ * Sucht eine Adresse. Rueckgabe `{ lat, lon, displayName, precision }` oder
+ * `null`.
  *
  * Erst wird die volle Adresse probiert, dann - falls die Hausnummer einen
- * Bereich enthaelt wie "36-38" - nur die erste Nummer. Genau daran scheitert
- * Nominatim bei den hiesigen Adressen sonst.
+ * Bereich enthaelt wie "36-38" - nur die erste Nummer, zuletzt die Strasse
+ * ohne Nummer. Genau daran scheitert Nominatim bei den hiesigen Adressen sonst.
+ *
+ * `precision` sagt, was der Treffer wert ist: `'house'`, wenn er eine
+ * Hausnummer traegt, sonst `'street'`. Nominatim antwortet auf "Talstraße 5"
+ * ohne Fehler mit der Strassenmitte, wenn es die Nummer nicht kennt - ohne
+ * diese Kennzeichnung liest sich das wie ein Haus, und der Fahrer wird
+ * dorthin navigiert.
  */
 async function geocodeAddress(address) {
   const query = String(address || '').trim()
   if (!query) return null
 
+  const streetOnly = stripHouseNumber(query)
   for (const candidate of addressCandidates(query)) {
     const url = `${NOMINATIM_URL}?${new URLSearchParams({
       q: candidate,
       format: 'jsonv2',
       limit: '1',
       countrycodes: 'de',
-      addressdetails: '0',
+      addressdetails: '1',
     })}`
 
     const result = await throttleNominatim(() => fetchJson(url))
@@ -91,7 +99,13 @@ async function geocodeAddress(address) {
     const lon = Number(hit.lon)
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue
 
-    return { lat, lon, displayName: hit.display_name || candidate }
+    // Der Kandidat ohne Hausnummer findet bestenfalls die Strasse - gibt
+    // Nominatim dafuer doch irgendein Haus zurueck, ist es nicht das gesuchte.
+    const houseNumber = hit.address && hit.address.house_number
+    const precision =
+      candidate !== streetOnly && houseNumber ? 'house' : 'street'
+
+    return { lat, lon, displayName: hit.display_name || candidate, precision }
   }
 
   return null
@@ -106,15 +120,20 @@ function addressCandidates(address) {
   if (singleNumber !== address) candidates.push(singleNumber)
 
   // Ohne Hausnummer - liefert die Strasse, besser als gar nichts.
-  const withoutNumber = address.replace(
-    /\s*\d+[a-zA-Z]?(\s*[-–/]\s*\d+)?\s*,/,
-    ','
-  )
+  const withoutNumber = stripHouseNumber(address)
   if (withoutNumber !== address && !candidates.includes(withoutNumber)) {
     candidates.push(withoutNumber)
   }
 
   return candidates
+}
+
+/**
+ * "Talstraße 5, 66424 Homburg" -> "Talstraße, 66424 Homburg". Ohne Hausnummer
+ * (oder ohne den Trenner zum Ort) kommt die Adresse unveraendert zurueck.
+ */
+function stripHouseNumber(address) {
+  return address.replace(/\s*\d+[a-zA-Z]?(\s*[-–/]\s*\d+)?\s*,/, ',')
 }
 
 /**

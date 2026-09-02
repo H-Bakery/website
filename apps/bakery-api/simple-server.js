@@ -1834,6 +1834,7 @@ function seedDeliveryStore() {
             lat: null,
             lon: null,
             geocodeSource: null,
+            geocodePrecision: null,
           },
         ],
       },
@@ -2031,6 +2032,10 @@ async function ensureStopCoordinates(store, stop, options) {
     stop.lat = found.hit.lat
     stop.lon = found.hit.lon
     stop.geocodeSource = found.source
+    // 'house' oder 'street' (siehe `geocodeAddress`). Cache-Eintraege aus der
+    // Zeit vor dieser Unterscheidung haben kein `precision` und bleiben
+    // `null` - unbekannt, nicht "Hausnummer".
+    stop.geocodePrecision = found.hit.precision || null
   }
   return stop
 }
@@ -2502,6 +2507,7 @@ app.post(
       lat: null,
       lon: null,
       geocodeSource: null,
+      geocodePrecision: null,
       completedAt: null,
       failureReason: null,
       ...result.stop,
@@ -2537,6 +2543,7 @@ app.patch(
       stop.lat = null
       stop.lon = null
       stop.geocodeSource = null
+      stop.geocodePrecision = null
     }
     await locateWithBudget(store, stop, { force: addressChanged })
 

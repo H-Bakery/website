@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  buildAddressNavigationUrl,
   buildNavigationUrl,
   buildPhoneLink,
   formatRouteDistance,
@@ -32,13 +33,20 @@ export function StopCard({
 }: StopCardProps) {
   const phoneLink = buildPhoneLink(stop.phone)
   const located = hasCoordinates(stop)
-  const navigationUrl = located
-    ? buildNavigationUrl({
-        latitude: stop.lat,
-        longitude: stop.lon,
-        address: stop.address,
-      })
-    : null
+  // Nur die Strasse gefunden: der Punkt liegt in der Strassenmitte. Dann - wie
+  // bei einer gar nicht gefundenen Adresse - bekommt die Navi-App den
+  // eingegebenen Text statt der Koordinaten.
+  const streetOnly = located && stop.geocodePrecision === 'street'
+  const navigationUrl =
+    located && !streetOnly
+      ? buildNavigationUrl({
+          latitude: stop.lat,
+          longitude: stop.lon,
+          address: stop.address,
+        })
+      : stop.address
+      ? buildAddressNavigationUrl(stop.address)
+      : null
 
   const items = formatItems(stop.items)
 
@@ -97,7 +105,13 @@ export function StopCard({
       {!located && (
         <p className={styles.stopWarning}>
           Adresse nicht gefunden – dieser Stopp fehlt auf der Karte und in der
-          Reihenfolge.
+          Reihenfolge. Die Navigation bekommt die eingegebene Adresse.
+        </p>
+      )}
+      {streetOnly && (
+        <p className={styles.stopWarning}>
+          Nur die Straße wurde gefunden, nicht die Hausnummer – die Navigation
+          bekommt die eingegebene Adresse.
         </p>
       )}
 
