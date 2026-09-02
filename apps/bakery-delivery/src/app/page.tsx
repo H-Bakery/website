@@ -69,6 +69,10 @@ export default function DeliveryDashboard() {
   const [busy, setBusy] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Eigenes Flag statt `error`: das teilen sich auch Anlegen, Abhaken und
+  // Routing. Nur ein gescheitertes *Laden* darf "nichts geplant" ersetzen -
+  // sonst nähme ein abgelehntes "Tour anlegen" den Knopf gleich mit.
+  const [loadFailed, setLoadFailed] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
 
   const watchIdRef = useRef<number | null>(null)
@@ -94,11 +98,15 @@ export default function DeliveryDashboard() {
           driverId: targetDriver ?? undefined,
         })
         setTours(list)
+        setLoadFailed(false)
         setTourId((current) =>
           list.some((t) => t.id === current) ? current : list[0]?.id ?? null
         )
       } catch (err) {
+        // Keine Antwort heisst nicht "keine Tour": die Liste bleibt leer, aber
+        // die Oberflaeche darf daraus kein "nichts geplant" machen.
         setTours([])
+        setLoadFailed(true)
         setError(describeError(err, 'Touren konnten nicht geladen werden.'))
       } finally {
         setLoading(false)
@@ -314,6 +322,11 @@ export default function DeliveryDashboard() {
     }
   }
 
+  const reloadTours = () => {
+    setLoading(true)
+    loadTours(date, driverId)
+  }
+
   const createTour = async () => {
     setBusy(true)
     setError(null)
@@ -466,7 +479,20 @@ export default function DeliveryDashboard() {
 
       {loading && <p className={styles.placeholder}>Tour wird geladen …</p>}
 
-      {!loading && !tour && (
+      {!loading && !tour && loadFailed && (
+        <section className={styles.card}>
+          <h2>Tour konnte nicht geladen werden</h2>
+          <p className={styles.placeholder}>
+            Ob für {formatDate(date)} eine Tour geplant ist, lässt sich gerade
+            nicht prüfen.
+          </p>
+          <button type="button" className={styles.button} onClick={reloadTours}>
+            Erneut laden
+          </button>
+        </section>
+      )}
+
+      {!loading && !tour && !loadFailed && (
         <section className={styles.card}>
           <h2>Keine Tour für {formatDate(date)}</h2>
           <p className={styles.placeholder}>
