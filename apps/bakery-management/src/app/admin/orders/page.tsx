@@ -126,7 +126,13 @@ const pickupSortKey = (order: Order) =>
     ? `${order.pickupDate}T${order.pickupTime ?? '00:00'}`
     : order.createdAt
 
-const telHref = (phone: string) => `tel:${phone.replace(/\s/g, '')}`
+/**
+ * `tel:`-Link aus der eingegebenen Nummer: nur Ziffern und ein führendes „+".
+ * Der Shop erlaubt auch „(06841) 12/34-56"; ein „/" gehört nicht in eine
+ * tel-URI und würde auf manchen Geräten das Wählen abbrechen.
+ */
+const telHref = (phone: string) =>
+  `tel:${phone.trim().startsWith('+') ? '+' : ''}${phone.replace(/\D/g, '')}`
 
 const formatPrice = (value: number) =>
   `${Number(value ?? 0)
@@ -180,10 +186,12 @@ export default function AdminOrdersPage() {
   const handleStatusChange = async (order: Order, status: string) => {
     setUpdating(true)
     try {
-      const res = await apiClient.put<Order>(`/api/orders/${order.id}`, {
+      const res = await apiClient.put<RawOrder>(`/api/orders/${order.id}`, {
         status,
       })
-      const updated = res.data ?? { ...order, status }
+      // Auch die Antwort normalisieren, sonst verschwinden Telefon und
+      // E-Mail aus dem Dialog, sobald die Antwort customerPhone liefert.
+      const updated = normalizeOrder(res.data ?? { ...order, status })
       setOrders((prev) => prev.map((o) => (o.id === order.id ? updated : o)))
       setSelected(updated)
       setSnackbar({ message: 'Status aktualisiert', severity: 'success' })

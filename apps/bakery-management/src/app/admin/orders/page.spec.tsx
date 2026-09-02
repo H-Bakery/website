@@ -148,16 +148,16 @@ describe('AdminOrdersPage', () => {
   })
 
   it('übernimmt customerPhone/customerEmail der TypeScript-API', async () => {
-    apiClient.get.mockResolvedValueOnce({
-      success: true,
-      data: [
-        {
-          ...mockOrders[1],
-          customerPhone: '0170 1234567',
-          customerEmail: 'anna@example.de',
-        },
-      ],
-    })
+    const rawOrder = {
+      ...mockOrders[1],
+      customerPhone: '0170 1234567',
+      customerEmail: 'anna@example.de',
+    }
+    apiClient.get.mockResolvedValueOnce({ success: true, data: [rawOrder] })
+    apiClient.put.mockImplementationOnce(
+      (_url: string, body: { status: string }) =>
+        Promise.resolve({ success: true, data: { ...rawOrder, ...body } })
+    )
     renderWithTheme(<OrdersPage />)
     await screen.findByText('Anna Schmidt')
     fireEvent.click(screen.getByLabelText('Bestellung 2 anzeigen'))
@@ -168,6 +168,41 @@ describe('AdminOrdersPage', () => {
     expect(
       within(dialog).getByRole('link', { name: 'anna@example.de' })
     ).toHaveAttribute('href', 'mailto:anna@example.de')
+
+    // Nach einer Statusänderung kommt die Bestellung noch einmal aus der
+    // API - auch diese Antwort muss normalisiert werden.
+    fireEvent.mouseDown(within(dialog).getByLabelText('Status'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Bereit' }))
+    await screen.findByText('Status aktualisiert')
+    expect(
+      within(dialog).getByRole('link', { name: '0170 1234567' })
+    ).toHaveAttribute('href', 'tel:01701234567')
+  })
+
+  it('baut den tel-Link nur aus Ziffern und führendem Plus', async () => {
+    apiClient.get.mockResolvedValueOnce({
+      success: true,
+      data: [
+        { ...mockOrders[0], id: '3', phone: '(06841) 12/34-56' },
+        { ...mockOrders[0], id: '4', phone: '+49 (0) 6841 12.34' },
+      ],
+    })
+    renderWithTheme(<OrdersPage />)
+    await screen.findAllByText('Max Mustermann')
+
+    fireEvent.click(screen.getByLabelText('Bestellung 3 anzeigen'))
+    let dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('link', { name: '(06841) 12/34-56' })
+    ).toHaveAttribute('href', 'tel:06841123456')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Schließen' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+
+    fireEvent.click(screen.getByLabelText('Bestellung 4 anzeigen'))
+    dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByRole('link', { name: '+49 (0) 6841 12.34' })
+    ).toHaveAttribute('href', 'tel:+49068411234')
   })
 
   it('shows an empty state when there are no orders', async () => {
