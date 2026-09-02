@@ -71,8 +71,8 @@ const PriceUpdatedNotice: React.FC = () => {
   if (searchParams.get(PRICE_UPDATED_PARAM) !== PRICE_UPDATED_VALUE) return null
   return (
     <Alert data-testid="order-price-updated" severity="info" sx={{ mb: 2 }}>
-      Ein Preis hat sich seit Ihrem Warenkorb geändert. Hier steht der aktuelle
-      Betrag – bezahlt wird erst bei der Abholung.
+      Ein Preis hat sich geändert, seit Sie den Warenkorb gefüllt haben. Hier
+      steht der gebuchte Betrag – bezahlt wird erst bei der Abholung.
     </Alert>
   )
 }
