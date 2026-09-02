@@ -9,6 +9,7 @@ import {
   Grid,
   Button,
   LinearProgress,
+  Alert,
 } from '@mui/material'
 import {
   ShowChart as ShowChartIcon,
@@ -32,6 +33,7 @@ export default function RevenueAnalyticsPage() {
   })
 
   const [revenueData, setRevenueData] = useState<RevenueData[]>([])
+  const [isMockData, setIsMockData] = useState(false)
 
   React.useEffect(() => {
     fetchRevenueData()
@@ -51,11 +53,13 @@ export default function RevenueAnalyticsPage() {
   const fetchRevenueData = async () => {
     try {
       setLoading(true)
-      const data = await analyticsService.getRevenueTrends({
-        ...dateRange,
-        granularity,
-      })
+      const { data, isMock } =
+        await analyticsService.getRevenueTrendsWithSource({
+          ...dateRange,
+          granularity,
+        })
       setRevenueData(data)
+      setIsMockData(isMock)
     } catch (error) {
       console.error('Error fetching revenue data:', error)
     } finally {
@@ -136,6 +140,13 @@ export default function RevenueAnalyticsPage() {
           analyticsParams={{ ...dateRange, granularity }}
         />
       </Box>
+
+      {isMockData && (
+        <Alert severity="warning" sx={{ mb: 3 }}>
+          Die API liefert keine Umsatzdaten – die angezeigten Zahlen sind
+          Beispieldaten und nicht der echte Umsatz.
+        </Alert>
+      )}
 
       {/* Statistics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
