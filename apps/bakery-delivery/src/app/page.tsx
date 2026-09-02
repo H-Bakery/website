@@ -22,6 +22,10 @@ import {
   flushQueue,
   pendingUpdates,
   queueStopUpdate,
+  rememberDrivers,
+  rememberedDrivers,
+  rememberedTours,
+  rememberTours,
   type Driver,
   type QueuedUpdate,
   type Stop,
@@ -64,6 +68,8 @@ export default function DeliveryDashboard() {
   const [isTracking, setIsTracking] = useState(false)
   const [pending, setPending] = useState<QueuedUpdate[]>([])
   const [isOnline, setIsOnline] = useState(true)
+  /** Wann die angezeigte Tourliste vom Server kam - gesetzt, solange sie nur die Offline-Kopie ist. */
+  const [copiedAt, setCopiedAt] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -81,6 +87,14 @@ export default function DeliveryDashboard() {
   // meldet sie an die Tour, die *jetzt* gewaehlt ist, nicht an die von damals.
   const tourIdRef = useRef<number | null>(null)
   tourIdRef.current = tourId
+  // Beim Start laufen zwei Ladevorgaenge kurz hintereinander (erst ohne, dann
+  // mit gemerktem Fahrer). Nur der juengste darf den Bildschirm setzen.
+  const loadSeqRef = useRef(0)
+  // Solange ein Abhaken unterwegs ist, darf kein Nachladen der Offline-Kopie
+  // die Liste ersetzen: die Aenderung steht noch nicht in der Warteschlange,
+  // und der Server-Stand liesse den Stopp bis zum Nachsenden wieder "Offen".
+  const busyRef = useRef(false)
+  busyRef.current = busy
 
   const tour = useMemo(
     () => tours.find((t) => t.id === tourId) ?? null,
@@ -91,25 +105,53 @@ export default function DeliveryDashboard() {
 
   const loadTours = useCallback(
     async (targetDate: string, targetDriver: number | null) => {
+      const seq = ++loadSeqRef.current
       setError(null)
+
+      const show = (list: Tour[]) => {
+        setTours(list)
+        setTourId((current) =>
+          list.some((t) => t.id === current) ? current : list[0]?.id ?? null
+        )
+      }
+
+      // Die Offline-Kopie sofort zeigen, statt im Funkloch 15 s auf den
+      // Timeout zu warten. Antwortet der Server, ersetzt er sie gleich.
+      // Eine *leere* Kopie zaehlt nicht: sie hilft dem Fahrer nicht weiter,
+      // und "zuletzt war nichts geplant" ist ohne Server genauso wenig
+      // pruefbar wie "keine Antwort" - da darf kein "Tour anlegen" stehen.
+      const remembered = rememberedTours(targetDate, targetDriver)
+      const copy = remembered && remembered.tours.length > 0 ? remembered : null
+      if (copy) show(withPendingUpdates(copy.tours, pendingUpdates()))
+
       try {
         const list = await deliveryApi.tours({
           date: targetDate,
           driverId: targetDriver ?? undefined,
         })
-        setTours(list)
+        if (seq !== loadSeqRef.current) return
+        show(list)
+        rememberTours(targetDate, targetDriver, list)
+        setCopiedAt(null)
         setLoadFailed(false)
-        setTourId((current) =>
-          list.some((t) => t.id === current) ? current : list[0]?.id ?? null
-        )
+        setIsOnline(true)
       } catch (err) {
-        // Keine Antwort heisst nicht "keine Tour": die Liste bleibt leer, aber
-        // die Oberflaeche darf daraus kein "nichts geplant" machen.
-        setTours([])
-        setLoadFailed(true)
-        setError(describeError(err, 'Touren konnten nicht geladen werden.'))
+        if (seq !== loadSeqRef.current) return
+        if (copy) {
+          // Kein Netz, aber die Liste von vorhin: damit faehrt der Fahrer
+          // weiter, das Abhaken landet in der Warteschlange.
+          setCopiedAt(copy.at)
+          setLoadFailed(false)
+          setIsOnline(false)
+        } else {
+          // Keine Antwort heisst nicht "keine Tour": die Liste bleibt leer,
+          // aber die Oberflaeche darf daraus kein "nichts geplant" machen.
+          setTours([])
+          setLoadFailed(true)
+          setError(describeError(err, 'Touren konnten nicht geladen werden.'))
+        }
       } finally {
-        setLoading(false)
+        if (seq === loadSeqRef.current) setLoading(false)
       }
     },
     []
@@ -117,20 +159,32 @@ export default function DeliveryDashboard() {
 
   /**
    * Holt die Fahrerliste und waehlt den gemerkten, sonst den ersten Fahrer.
-   * Liefert die gewaehlte id - oder `undefined`, wenn die API nicht antwortet.
+   * Liefert die gewaehlte id - oder `undefined`, wenn die API nicht antwortet
+   * und auch keine gemerkte Fahrerliste da ist.
    */
   const loadDrivers = useCallback(async (): Promise<
     number | null | undefined
   > => {
-    try {
-      const list = await deliveryApi.drivers()
+    const apply = (list: Driver[]) => {
       setDrivers(list)
       const stored = readStoredDriver()
       const known = list.find((d) => d.id === stored)
       const chosen = known ? known.id : list[0]?.id ?? null
       setDriverId(chosen)
       return chosen
+    }
+    // Die gemerkte Fahrerliste zuerst: sie waehlt den Fahrer sofort, und damit
+    // findet `loadTours` die Offline-Kopie, statt im Funkloch erst 15 s auf
+    // den Timeout von GET /drivers zu warten. Sonst bliebe die Auswahl bis
+    // dahin auf „Alle" stehen, und die Kopie passte nicht dazu.
+    const remembered = rememberedDrivers()
+    const fallback = remembered ? apply(remembered) : undefined
+    try {
+      const list = await deliveryApi.drivers()
+      rememberDrivers(list)
+      return apply(list)
     } catch (err) {
+      if (remembered) return fallback
       setError(describeError(err, 'Fahrer konnten nicht geladen werden.'))
       return undefined
     }
@@ -144,6 +198,38 @@ export default function DeliveryDashboard() {
     setLoading(true)
     loadTours(date, driverId)
   }, [date, driverId, loadTours])
+
+  // Die Offline-Kopie wird ersetzt, sobald der Server wieder antwortet - beim
+  // `online`-Event und sonst alle 30 s. Solange etwas in der Warteschlange
+  // liegt, hat deren Nachsenden Vorrang; die Antwort darauf ist ohnehin die
+  // aktuelle Tour.
+  useEffect(() => {
+    if (copiedAt === null) return
+    const reload = () => {
+      if (
+        navigator.onLine &&
+        !busyRef.current &&
+        pendingUpdates().length === 0
+      ) {
+        loadTours(date, driverId)
+      }
+    }
+    window.addEventListener('online', reload)
+    const retry = window.setInterval(reload, RETRY_INTERVAL_MS)
+    return () => {
+      window.removeEventListener('online', reload)
+      window.clearInterval(retry)
+    }
+  }, [copiedAt, date, driverId, loadTours])
+
+  // Ist die Warteschlange gerade durchgegangen, hat der Server geantwortet:
+  // dann die Kopie sofort ersetzen, statt bis zum naechsten 30-s-Takt den
+  // Balken „wird aktualisiert, sobald der Server antwortet" stehen zu lassen.
+  // Ueber die Ref, weil der Funkloch-Effekt unten nur einmal haengt.
+  const afterFlushRef = useRef<() => void>(() => undefined)
+  afterFlushRef.current = () => {
+    if (copiedAt !== null) loadTours(date, driverId)
+  }
 
   // --- Standort ---
 
@@ -228,6 +314,7 @@ export default function DeliveryDashboard() {
       if (updated) {
         setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
       }
+      if (!offline && remaining.length === 0) afterFlushRef.current()
       if (rejected.length > 0) {
         setHint(
           `${rejected.length} Änderung(en) hat der Server abgelehnt und wurden verworfen.`
@@ -265,6 +352,8 @@ export default function DeliveryDashboard() {
       const updated = await deliveryApi.updateStop(tour.id, stopId, { status })
       setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
       setPending(pendingUpdates())
+      // Der Server hat geantwortet - eine Offline-Kopie gleich ersetzen.
+      if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
         setError(err.message)
@@ -405,6 +494,23 @@ export default function DeliveryDashboard() {
     )
   }, [tour, currentLocation])
 
+  const offlineNotice = [
+    !isOnline
+      ? `Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet${
+          pending.length > 0 ? ` (${pending.length} offen)` : ''
+        }.`
+      : pending.length > 0
+      ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
+      : null,
+    copiedAt
+      ? `Gespeicherter Stand ${describeCopyTime(
+          copiedAt
+        )} – wird aktualisiert, sobald der Server antwortet.`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
   return (
     <main className={styles.main}>
       <header className={styles.header}>
@@ -412,13 +518,9 @@ export default function DeliveryDashboard() {
         <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
       </header>
 
-      {(!isOnline || pending.length > 0) && (
+      {offlineNotice && (
         <div className={styles.offline} role="status">
-          {isOnline
-            ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
-            : `Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet${
-                pending.length > 0 ? ` (${pending.length} offen)` : ''
-              }.`}
+          {offlineNotice}
         </div>
       )}
 
@@ -762,6 +864,38 @@ function applyStopStatus(
     },
     nextStopId: stops.find((s) => s.status === 'open')?.id ?? null,
   }
+}
+
+/**
+ * Spielt die Warteschlange auf die Offline-Kopie: ein Abhaken kurz vor dem
+ * Neuladen soll nicht wieder als „Offen" dastehen.
+ */
+function withPendingUpdates(tours: Tour[], queue: QueuedUpdate[]): Tour[] {
+  return queue.reduce((list, entry) => {
+    const status = entry.body.status
+    if (!status) return list
+    return list.map((t) =>
+      t.id === entry.tourId ? applyStopStatus(t, entry.stopId, status) : t
+    )
+  }, tours)
+}
+
+/**
+ * „von 07:12 Uhr" - oder mit Datum, wenn die Kopie nicht von heute ist. Sonst
+ * laese sich Freitagabend am Samstagfrueh wie „heute frueh".
+ */
+function describeCopyTime(iso: string): string {
+  const at = new Date(iso)
+  if (Number.isNaN(at.getTime())) return 'von –'
+  if (at.toDateString() === new Date().toDateString()) {
+    return `von ${formatTime(iso)} Uhr`
+  }
+  const day = at.toLocaleDateString('de-DE', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+  return `vom ${day}, ${formatTime(iso)} Uhr`
 }
 
 function readStoredDriver(): number | null {

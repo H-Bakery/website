@@ -250,6 +250,29 @@ Jede Anfrage bricht nach 15 s ab (`AbortSignal.timeout`, wo der Browser es kann)
 Warteschlange kam nicht zum Zug. Der Hinweis „… warten noch auf den Server" bleibt sichtbar, solange
 etwas in der Schlange liegt, auch wenn das Handy „online" meldet.
 
+**Die Tour selbst hat eine Offline-Kopie.** Jeder Tipp auf „Navigation" reicht das Handy an die
+Navi-App weiter; kommt der Fahrer zurück, lädt der Browser die Seite gern neu — mitten im Funkloch.
+Deshalb merkt sich `delivery-api.ts` die zuletzt geladene Fahrerliste (`bakery-delivery-drivers`)
+und die zuletzt geladene Tourliste samt Tag und Fahrer (`bakery-delivery-tours`). `loadTours()`
+zeigt die Kopie sofort (plus Warteschlange, damit ein Abhaken von eben nicht wieder „Offen" ist)
+und ersetzt sie, sobald der Server antwortet; scheitert der Aufruf, bleibt sie stehen und der
+schwarze Balken sagt „Gespeicherter Stand von HH:MM Uhr". Es ist bewusst **eine** Tourliste, nicht
+eine pro Tag — mit Streckenverlauf ist eine Tour schnell einige Dutzend Kilobyte groß. Die
+Fahrerliste muss mit, sonst bliebe die Auswahl nach dem Neuladen auf „Alle" stehen und die Kopie
+passte nicht zur Auswahl — und `loadDrivers()` wendet die gemerkte Liste **vor** dem `fetch` an,
+sonst stünde die Kopie erst nach dem 15-s-Timeout von `GET /drivers` da. Der Tag wird absichtlich
+nicht gemerkt (nach dem Neuladen steht wieder der nächste Samstag). Eine **leere** Kopie zählt wie
+keine: „zuletzt war nichts geplant" ist ohne Server genauso wenig prüfbar wie gar keine Antwort,
+also erscheint dann die Karte „Tour konnte nicht geladen werden / Erneut laden", **nicht** „noch
+nichts geplant / Tour anlegen" — sonst legte der Fahrer beim nächsten Netz eine zweite Tour an.
+Das Nachladen der Kopie (`online`-Event, 30-s-Takt) wartet, solange ein Abhaken unterwegs ist
+(`busyRef`) oder die Warteschlange voll ist: die Änderung steht noch in keiner von beiden, und der
+Server-Stand ließe den Stopp bis zum Nachsenden wieder als „Offen" erscheinen. Umgekehrt ersetzt ein
+erfolgreicher `PATCH` (direkt oder aus der Warteschlange) die Kopie sofort, statt den Balken bis zum
+nächsten Takt stehen zu lassen. Was fehlt: ein Service Worker. Ein kaltes Neuladen ganz ohne Netz
+zeigt weiterhin die Fehlerseite des Browsers; die Kopie hilft, sobald die App-Seite selbst da ist
+(Tab war noch offen, Dev-Server oder Hosting erreichbar, nur die API nicht).
+
 ### Navigation
 
 Abbiegen lässt sich der Fahrer von Google oder Apple Maps; `buildNavigationUrl()` erkennt iOS am
