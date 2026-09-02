@@ -2,7 +2,7 @@
 // React Query hooks for production data management with caching and real-time updates
 
 import { useQuery, useMutation, useQueryClient } from 'react-query'
-import { productionAPI } from '../services/productionAPI'
+import { productionAPI } from '../services/production-api'
 import {
   ProductionSchedule,
   ProductionBatch,
@@ -12,7 +12,7 @@ import {
   CapacityAnalysis,
   ProductionFilters,
 } from '../types/production'
-import { useAuth } from '../context/AuthContext'
+import { useAuth } from '@bakery/shared/contexts'
 
 // Query Keys
 export const productionQueryKeys = {
@@ -47,13 +47,13 @@ export function useProductionSchedules(
     includeMetrics?: boolean
   } = {}
 ) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.schedules(), filters],
     () => productionAPI.getSchedules(filters),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 5 * 60 * 1000, // 5 minutes
       cacheTime: 10 * 60 * 1000, // 10 minutes
     }
@@ -64,13 +64,13 @@ export function useProductionSchedules(
  * Get a specific production schedule
  */
 export function useProductionSchedule(id: number) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     productionQueryKeys.schedule(id),
     () => productionAPI.getSchedule(id),
     {
-      enabled: !!token && !!id,
+      enabled: isAuthenticated && !!id,
       staleTime: 2 * 60 * 1000, // 2 minutes
     }
   )
@@ -142,13 +142,13 @@ export function useProductionBatches(
     offset?: number
   } = {}
 ) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.batches(), filters],
     () => productionAPI.getBatches(filters),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 2 * 60 * 1000, // 2 minutes
     }
   )
@@ -158,13 +158,13 @@ export function useProductionBatches(
  * Get a specific production batch
  */
 export function useProductionBatch(id: number) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     productionQueryKeys.batch(id),
     () => productionAPI.getBatch(id),
     {
-      enabled: !!token && !!id,
+      enabled: isAuthenticated && !!id,
       staleTime: 1 * 60 * 1000, // 1 minute for active batches
     }
   )
@@ -174,13 +174,13 @@ export function useProductionBatch(id: number) {
  * Get production batch steps
  */
 export function useBatchSteps(batchId: number) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     productionQueryKeys.batchSteps(batchId),
     () => productionAPI.getBatchSteps(batchId),
     {
-      enabled: !!token && !!batchId,
+      enabled: isAuthenticated && !!batchId,
       staleTime: 30 * 1000, // 30 seconds for real-time tracking
     }
   )
@@ -327,13 +327,13 @@ export function useProductionStatus(
     includeCompleted?: boolean
   } = {}
 ) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.status(), filters],
     () => productionAPI.getProductionStatus(filters),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 15 * 1000, // 15 seconds for real-time data
       refetchInterval: 30 * 1000, // Auto-refresh every 30 seconds
     }
@@ -495,13 +495,13 @@ export function useProductionAnalytics(
     groupBy?: 'day' | 'week' | 'month'
   } = {}
 ) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.analytics(), filters],
     () => productionAPI.getAnalytics(filters),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 5 * 60 * 1000, // 5 minutes for analytics
     }
   )
@@ -518,13 +518,13 @@ export function useEfficiencyReport(
     includeBenchmarks?: boolean
   } = {}
 ) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.analytics(), 'efficiency', filters],
     () => productionAPI.getEfficiencyReport(filters),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 10 * 60 * 1000, // 10 minutes
     }
   )
@@ -540,13 +540,13 @@ export function useCapacityUtilization(
     includeSchedules?: boolean
   } = {}
 ) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.analytics(), 'capacity', filters],
     () => productionAPI.getCapacityUtilization(filters),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 5 * 60 * 1000, // 5 minutes
     }
   )
@@ -599,7 +599,7 @@ export function useCapacityAnalysis(
     date: string
   } = { date: new Date().toISOString().split('T')[0] }
 ) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.capacity(), filters.date],
@@ -622,7 +622,7 @@ export function useCapacityAnalysis(
         workdayEnd: '18:00',
       }),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 5 * 60 * 1000, // 5 minutes
     }
   )
@@ -636,13 +636,13 @@ export function useCapacityAnalysis(
  * Get available workflows
  */
 export function useWorkflows() {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     productionQueryKeys.workflows(),
     () => productionAPI.getWorkflows(),
     {
-      enabled: !!token,
+      enabled: isAuthenticated,
       staleTime: 15 * 60 * 1000, // 15 minutes - workflows don't change often
     }
   )
@@ -652,13 +652,13 @@ export function useWorkflows() {
  * Get specific workflow details
  */
 export function useWorkflow(workflowId: string) {
-  const { token } = useAuth()
+  const { isAuthenticated } = useAuth()
 
   return useQuery(
     [...productionQueryKeys.workflows(), workflowId],
     () => productionAPI.getWorkflow(workflowId),
     {
-      enabled: !!token && !!workflowId,
+      enabled: isAuthenticated && !!workflowId,
       staleTime: 15 * 60 * 1000, // 15 minutes
     }
   )

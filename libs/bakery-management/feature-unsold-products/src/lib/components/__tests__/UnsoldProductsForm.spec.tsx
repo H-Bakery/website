@@ -2,15 +2,15 @@ import React from 'react'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import UnsoldProductsForm from '../unsold-products-form'
-import * as bakeryAPI from '@bakery/shared/data-access'
+import { bakeryAPI } from '@bakery/shared/data-access'
+import { UnsoldProductsForm } from '../UnsoldProductsForm'
 
-// Mock the bakeryAPI
+// Die Komponente lädt die Produkte über `bakeryAPI.products.getAll()`.
 jest.mock('@bakery/shared/data-access', () => ({
-  getProducts: jest.fn(),
+  bakeryAPI: { products: { getAll: jest.fn() } },
 }))
 
-const mockBakeryAPI = bakeryAPI as jest.Mocked<typeof bakeryAPI>
+const mockGetAll = bakeryAPI.products.getAll as jest.Mock
 
 const mockProducts = [
   { id: 1, name: 'Vollkornbrot', category: 'Brot', price: 3.5 },
@@ -23,7 +23,7 @@ describe('UnsoldProductsForm', () => {
 
   beforeEach(() => {
     jest.clearAllMocks()
-    mockBakeryAPI.getProducts.mockResolvedValue(mockProducts)
+    mockGetAll.mockResolvedValue(mockProducts)
   })
 
   it('renders form elements correctly', async () => {
@@ -40,7 +40,7 @@ describe('UnsoldProductsForm', () => {
 
     // Wait for products to load
     await waitFor(() => {
-      expect(mockBakeryAPI.getProducts).toHaveBeenCalled()
+      expect(mockGetAll).toHaveBeenCalled()
     })
   })
 
@@ -48,7 +48,7 @@ describe('UnsoldProductsForm', () => {
     renderWithTheme(<UnsoldProductsForm onSubmit={mockOnSubmit} />)
 
     await waitFor(() => {
-      expect(mockBakeryAPI.getProducts).toHaveBeenCalled()
+      expect(mockGetAll).toHaveBeenCalled()
     })
   })
 
@@ -56,7 +56,7 @@ describe('UnsoldProductsForm', () => {
     renderWithTheme(<UnsoldProductsForm onSubmit={mockOnSubmit} />)
 
     await waitFor(() => {
-      expect(mockBakeryAPI.getProducts).toHaveBeenCalled()
+      expect(mockGetAll).toHaveBeenCalled()
     })
 
     const submitButton = screen.getByRole('button', {
@@ -69,7 +69,7 @@ describe('UnsoldProductsForm', () => {
     renderWithTheme(<UnsoldProductsForm onSubmit={mockOnSubmit} />)
 
     await waitFor(() => {
-      expect(mockBakeryAPI.getProducts).toHaveBeenCalled()
+      expect(mockGetAll).toHaveBeenCalled()
     })
 
     const quantityInput = screen.getByLabelText('Anzahl unverkauft')
@@ -90,7 +90,7 @@ describe('UnsoldProductsForm', () => {
     renderWithTheme(<UnsoldProductsForm onSubmit={mockOnSubmit} />)
 
     await waitFor(() => {
-      expect(mockBakeryAPI.getProducts).toHaveBeenCalled()
+      expect(mockGetAll).toHaveBeenCalled()
     })
 
     // Select a product by typing and selecting from autocomplete
@@ -120,7 +120,7 @@ describe('UnsoldProductsForm', () => {
     renderWithTheme(<UnsoldProductsForm onSubmit={mockOnSubmit} />)
 
     await waitFor(() => {
-      expect(mockBakeryAPI.getProducts).toHaveBeenCalled()
+      expect(mockGetAll).toHaveBeenCalled()
     })
 
     // Select a product
@@ -145,9 +145,7 @@ describe('UnsoldProductsForm', () => {
   })
 
   it('displays error when product loading fails', async () => {
-    mockBakeryAPI.getProducts.mockRejectedValue(
-      new Error('Failed to load products')
-    )
+    mockGetAll.mockRejectedValue(new Error('Failed to load products'))
 
     renderWithTheme(<UnsoldProductsForm onSubmit={mockOnSubmit} />)
 
@@ -163,7 +161,7 @@ describe('UnsoldProductsForm', () => {
     renderWithTheme(<UnsoldProductsForm onSubmit={mockOnSubmit} />)
 
     await waitFor(() => {
-      expect(mockBakeryAPI.getProducts).toHaveBeenCalled()
+      expect(mockGetAll).toHaveBeenCalled()
     })
 
     // Fill form

@@ -75,6 +75,10 @@ export default function DeliveryDashboard() {
   const [busy, setBusy] = useState(false)
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Eigenes Flag statt `error`: das teilen sich auch Anlegen, Abhaken und
+  // Routing. Nur ein gescheitertes *Laden* darf "nichts geplant" ersetzen -
+  // sonst nähme ein abgelehntes "Tour anlegen" den Knopf gleich mit.
+  const [loadFailed, setLoadFailed] = useState(false)
   const [hint, setHint] = useState<string | null>(null)
 
   const watchIdRef = useRef<number | null>(null)
@@ -108,7 +112,11 @@ export default function DeliveryDashboard() {
 
       // Die Offline-Kopie sofort zeigen, statt im Funkloch 15 s auf den
       // Timeout zu warten. Antwortet der Server, ersetzt er sie gleich.
-      const copy = rememberedTours(targetDate, targetDriver)
+      // Eine *leere* Kopie zaehlt nicht: sie hilft dem Fahrer nicht weiter,
+      // und "zuletzt war nichts geplant" ist ohne Server genauso wenig
+      // pruefbar wie "keine Antwort" - da darf kein "Tour anlegen" stehen.
+      const remembered = rememberedTours(targetDate, targetDriver)
+      const copy = remembered && remembered.tours.length > 0 ? remembered : null
       if (copy) show(withPendingUpdates(copy.tours, pendingUpdates()))
 
       try {
@@ -120,6 +128,7 @@ export default function DeliveryDashboard() {
         show(list)
         rememberTours(targetDate, targetDriver, list)
         setCopiedAt(null)
+        setLoadFailed(false)
         setIsOnline(true)
       } catch (err) {
         if (seq !== loadSeqRef.current) return
@@ -127,9 +136,13 @@ export default function DeliveryDashboard() {
           // Kein Netz, aber die Liste von vorhin: damit faehrt der Fahrer
           // weiter, das Abhaken landet in der Warteschlange.
           setCopiedAt(copy.at)
+          setLoadFailed(false)
           setIsOnline(false)
         } else {
+          // Keine Antwort heisst nicht "keine Tour": die Liste bleibt leer,
+          // aber die Oberflaeche darf daraus kein "nichts geplant" machen.
           setTours([])
+          setLoadFailed(true)
           setError(describeError(err, 'Touren konnten nicht geladen werden.'))
         }
       } finally {
@@ -139,34 +152,42 @@ export default function DeliveryDashboard() {
     []
   )
 
-  useEffect(() => {
-    let cancelled = false
+  /**
+   * Holt die Fahrerliste und waehlt den gemerkten, sonst den ersten Fahrer.
+   * Liefert die gewaehlte id - oder `undefined`, wenn die API nicht antwortet
+   * und auch keine gemerkte Fahrerliste da ist.
+   */
+  const loadDrivers = useCallback(async (): Promise<
+    number | null | undefined
+  > => {
     const apply = (list: Driver[]) => {
       setDrivers(list)
       const stored = readStoredDriver()
       const known = list.find((d) => d.id === stored)
-      setDriverId(known ? known.id : list[0]?.id ?? null)
+      const chosen = known ? known.id : list[0]?.id ?? null
+      setDriverId(chosen)
+      return chosen
     }
-    deliveryApi
-      .drivers()
-      .then((list) => {
-        if (cancelled) return
-        rememberDrivers(list)
-        apply(list)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        // Ohne Netz reicht die gemerkte Fahrerliste. Sonst bliebe die Auswahl
-        // auf „Alle" stehen, und die Offline-Kopie der Tour passte nicht dazu.
-        const remembered = rememberedDrivers()
-        if (remembered) apply(remembered)
-        else
-          setError(describeError(err, 'Fahrer konnten nicht geladen werden.'))
-      })
-    return () => {
-      cancelled = true
+    // Die gemerkte Fahrerliste zuerst: sie waehlt den Fahrer sofort, und damit
+    // findet `loadTours` die Offline-Kopie, statt im Funkloch erst 15 s auf
+    // den Timeout von GET /drivers zu warten. Sonst bliebe die Auswahl bis
+    // dahin auf „Alle" stehen, und die Kopie passte nicht dazu.
+    const remembered = rememberedDrivers()
+    const fallback = remembered ? apply(remembered) : undefined
+    try {
+      const list = await deliveryApi.drivers()
+      rememberDrivers(list)
+      return apply(list)
+    } catch (err) {
+      if (remembered) return fallback
+      setError(describeError(err, 'Fahrer konnten nicht geladen werden.'))
+      return undefined
     }
   }, [])
+
+  useEffect(() => {
+    loadDrivers()
+  }, [loadDrivers])
 
   useEffect(() => {
     setLoading(true)
@@ -191,6 +212,15 @@ export default function DeliveryDashboard() {
       window.clearInterval(retry)
     }
   }, [copiedAt, date, driverId, loadTours])
+
+  // Ist die Warteschlange gerade durchgegangen, hat der Server geantwortet:
+  // dann die Kopie sofort ersetzen, statt bis zum naechsten 30-s-Takt den
+  // Balken „wird aktualisiert, sobald der Server antwortet" stehen zu lassen.
+  // Ueber die Ref, weil der Funkloch-Effekt unten nur einmal haengt.
+  const afterFlushRef = useRef<() => void>(() => undefined)
+  afterFlushRef.current = () => {
+    if (copiedAt !== null) loadTours(date, driverId)
+  }
 
   // --- Standort ---
 
@@ -275,6 +305,7 @@ export default function DeliveryDashboard() {
       if (updated) {
         setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
       }
+      if (!offline && remaining.length === 0) afterFlushRef.current()
       if (rejected.length > 0) {
         setHint(
           `${rejected.length} Änderung(en) hat der Server abgelehnt und wurden verworfen.`
@@ -372,6 +403,18 @@ export default function DeliveryDashboard() {
     } finally {
       setBusy(false)
     }
+  }
+
+  const reloadTours = async () => {
+    setLoading(true)
+    if (drivers.length === 0) {
+      // Ohne API fehlten beim ersten Versuch meist auch die Fahrer - die
+      // Auswahl kommt mit demselben Knopf zurueck. Wechselt dadurch der
+      // Fahrer, laedt der Effekt oben die Touren bereits selbst.
+      const chosen = await loadDrivers()
+      if (chosen !== undefined && chosen !== driverId) return
+    }
+    loadTours(date, driverId)
   }
 
   const createTour = async () => {
@@ -539,9 +582,20 @@ export default function DeliveryDashboard() {
 
       {loading && <p className={styles.placeholder}>Tour wird geladen …</p>}
 
-      {/* Nicht bei einem Ladefehler: sonst legte der Fahrer beim naechsten
-          Netz eine zweite Tour an, weil „noch nichts geplant" dastand. */}
-      {!loading && !tour && !error && (
+      {!loading && !tour && loadFailed && (
+        <section className={styles.card}>
+          <h2>Tour konnte nicht geladen werden</h2>
+          <p className={styles.placeholder}>
+            Ob für {formatDate(date)} eine Tour geplant ist, lässt sich gerade
+            nicht prüfen.
+          </p>
+          <button type="button" className={styles.button} onClick={reloadTours}>
+            Erneut laden
+          </button>
+        </section>
+      )}
+
+      {!loading && !tour && !loadFailed && (
         <section className={styles.card}>
           <h2>Keine Tour für {formatDate(date)}</h2>
           <p className={styles.placeholder}>

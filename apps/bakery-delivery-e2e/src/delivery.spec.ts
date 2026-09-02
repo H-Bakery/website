@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Route } from '@playwright/test'
 
 /**
  * Fahrer-App der Samstagsauslieferung.
@@ -185,22 +185,67 @@ test.describe('Liefertour', () => {
     }
   })
 
-  test('bietet ohne Kopie und ohne API keine „Tour anlegen" an', async ({
+  test('zeigt bei leerer Kopie ohne API „Erneut laden“, nicht „Tour anlegen“', async ({
     page,
   }) => {
+    // Zuletzt online gesehen: an diesem Tag war nichts geplant. Ohne Server
+    // ist das genauso wenig pruefbar wie gar keine Antwort - seit dem letzten
+    // Blick kann die Backstube die Tour angelegt haben. Eine leere Kopie
+    // darf deshalb kein "Tour anlegen" anbieten.
     await page.goto('/')
-    await expect(page.getByLabel('Fahrer', { exact: true })).toBeVisible()
-    // Erster Besuch im Funkloch: nichts gemerkt, nichts erreichbar.
-    await page.evaluate(() => window.localStorage.clear())
+    await page.getByLabel('Tag', { exact: true }).fill('2030-01-05')
+    await expect(
+      page.getByRole('button', { name: 'Tour anlegen' })
+    ).toBeVisible({ timeout: 15_000 })
+
     await page.route('**/api/deliveries/**', (route) => route.abort())
     await page.reload()
+    await page.getByLabel('Tag', { exact: true }).fill('2030-01-05')
 
     await expect(
-      page.getByText('Keine Verbindung zur Bäckerei-API')
+      page.getByRole('heading', { name: 'Tour konnte nicht geladen werden' })
     ).toBeVisible({ timeout: 15_000 })
     await expect(
       page.getByRole('button', { name: 'Tour anlegen' })
     ).toHaveCount(0)
-    await expect(page.getByText('noch nichts geplant')).toHaveCount(0)
+    await expect(page.getByText(/noch nichts geplant/)).toHaveCount(0)
+    await expect(page.getByText(/Gespeicherter Stand/)).toHaveCount(0)
+  })
+
+  test('bietet ohne API kein „Tour anlegen“ an, sondern „Erneut laden“', async ({
+    page,
+  }) => {
+    // Server aus oder Funkloch: jede Anfrage scheitert wie im Browser mit
+    // "Failed to fetch". Vorher stand dann "noch nichts geplant" samt aktivem
+    // "Tour anlegen" da - obwohl die Tour auf dem Server längst existierte.
+    const apiDown = (route: Route) => route.abort('connectionrefused')
+    await page.route('**/api/deliveries/**', apiDown)
+    await page.goto('/')
+    await page.getByLabel('Tag', { exact: true }).fill('2030-01-05')
+
+    await expect(
+      page.getByRole('heading', { name: 'Tour konnte nicht geladen werden' })
+    ).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByText(/noch nichts geplant/)).toHaveCount(0)
+    await expect(
+      page.getByRole('button', { name: 'Tour anlegen' })
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Keine Verbindung' })
+    ).toBeVisible()
+
+    // Netz zurück: "Erneut laden" holt den echten Stand des Tages.
+    await page.unroute('**/api/deliveries/**', apiDown)
+    await page.getByRole('button', { name: 'Erneut laden' }).click()
+
+    await expect(
+      page.getByRole('button', { name: 'Tour anlegen' })
+    ).toBeVisible({ timeout: 15_000 })
+    await expect(
+      page.getByRole('button', { name: 'Erneut laden' })
+    ).toHaveCount(0)
+    await expect(
+      page.getByRole('alert').filter({ hasText: 'Keine Verbindung' })
+    ).toHaveCount(0)
   })
 })

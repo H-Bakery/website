@@ -6,7 +6,7 @@
 import React from 'react'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import '@testing-library/jest-dom'
-import { NotificationProvider, useNotification } from './notification.context'
+import { NotificationProvider, useNotifications } from './notification.context'
 
 // Mock WebSocket
 const mockWebSocket = {
@@ -39,7 +39,7 @@ describe('NotificationContext', () => {
   })
 
   it('should initialize with empty notifications', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -48,7 +48,7 @@ describe('NotificationContext', () => {
   })
 
   it('should add notification', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -71,7 +71,7 @@ describe('NotificationContext', () => {
   })
 
   it('should auto-dismiss notifications based on type', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -93,7 +93,7 @@ describe('NotificationContext', () => {
   })
 
   it('should not auto-dismiss persistent notifications', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -117,7 +117,7 @@ describe('NotificationContext', () => {
   })
 
   it('should dismiss notification by id', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -141,7 +141,7 @@ describe('NotificationContext', () => {
   })
 
   it('should mark notification as read', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -166,14 +166,23 @@ describe('NotificationContext', () => {
   })
 
   it('should mark all notifications as read', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
     act(() => {
-      result.current.addNotification({ type: 'info', message: 'Notification 1' })
-      result.current.addNotification({ type: 'info', message: 'Notification 2' })
-      result.current.addNotification({ type: 'info', message: 'Notification 3' })
+      result.current.addNotification({
+        type: 'info',
+        message: 'Notification 1',
+      })
+      result.current.addNotification({
+        type: 'info',
+        message: 'Notification 2',
+      })
+      result.current.addNotification({
+        type: 'info',
+        message: 'Notification 3',
+      })
     })
 
     expect(result.current.unreadCount).toBe(3)
@@ -183,17 +192,23 @@ describe('NotificationContext', () => {
     })
 
     expect(result.current.unreadCount).toBe(0)
-    expect(result.current.notifications.every(n => n.read)).toBe(true)
+    expect(result.current.notifications.every((n) => n.read)).toBe(true)
   })
 
   it('should clear all notifications', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
     act(() => {
-      result.current.addNotification({ type: 'info', message: 'Notification 1' })
-      result.current.addNotification({ type: 'info', message: 'Notification 2' })
+      result.current.addNotification({
+        type: 'info',
+        message: 'Notification 1',
+      })
+      result.current.addNotification({
+        type: 'info',
+        message: 'Notification 2',
+      })
     })
 
     expect(result.current.notifications).toHaveLength(2)
@@ -207,7 +222,7 @@ describe('NotificationContext', () => {
   })
 
   it('should handle different notification types with correct durations', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -244,7 +259,7 @@ describe('NotificationContext', () => {
   })
 
   it('should play sound for notifications when enabled', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: ({ children }) => (
         <NotificationProvider enableSound>{children}</NotificationProvider>
       ),
@@ -262,9 +277,11 @@ describe('NotificationContext', () => {
   })
 
   it('should not play sound when disabled globally', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: ({ children }) => (
-        <NotificationProvider enableSound={false}>{children}</NotificationProvider>
+        <NotificationProvider enableSound={false}>
+          {children}
+        </NotificationProvider>
       ),
     })
 
@@ -281,7 +298,7 @@ describe('NotificationContext', () => {
 
   it('should handle actions on notifications', () => {
     const mockAction = jest.fn()
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -310,7 +327,7 @@ describe('NotificationContext', () => {
   })
 
   it('should handle real-time notifications via WebSocket', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: ({ children }) => (
         <NotificationProvider enableRealTime wsUrl="ws://localhost:8080">
           {children}
@@ -322,7 +339,7 @@ describe('NotificationContext', () => {
 
     // Simulate WebSocket message
     const messageHandler = mockWebSocket.addEventListener.mock.calls.find(
-      call => call[0] === 'message'
+      (call) => call[0] === 'message'
     )?.[1]
 
     act(() => {
@@ -339,11 +356,13 @@ describe('NotificationContext', () => {
     })
 
     expect(result.current.notifications).toHaveLength(1)
-    expect(result.current.notifications[0].message).toBe('Real-time notification')
+    expect(result.current.notifications[0].message).toBe(
+      'Real-time notification'
+    )
   })
 
   it('should reconnect WebSocket on connection loss', async () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: ({ children }) => (
         <NotificationProvider enableRealTime wsUrl="ws://localhost:8080">
           {children}
@@ -353,7 +372,7 @@ describe('NotificationContext', () => {
 
     // Simulate connection close
     const closeHandler = mockWebSocket.addEventListener.mock.calls.find(
-      call => call[0] === 'close'
+      (call) => call[0] === 'close'
     )?.[1]
 
     act(() => {
@@ -367,9 +386,11 @@ describe('NotificationContext', () => {
   })
 
   it('should handle notification limits', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: ({ children }) => (
-        <NotificationProvider maxNotifications={3}>{children}</NotificationProvider>
+        <NotificationProvider maxNotifications={3}>
+          {children}
+        </NotificationProvider>
       ),
     })
 
@@ -391,7 +412,7 @@ describe('NotificationContext', () => {
   })
 
   it('should filter notifications by type', () => {
-    const { result } = renderHook(() => useNotification(), {
+    const { result } = renderHook(() => useNotifications(), {
       wrapper: NotificationProvider,
     })
 
@@ -402,26 +423,34 @@ describe('NotificationContext', () => {
       result.current.addNotification({ type: 'warning', message: 'Warning 1' })
     })
 
-    const successNotifications = result.current.getNotificationsByType('success')
+    const successNotifications =
+      result.current.getNotificationsByType('success')
     const errorNotifications = result.current.getNotificationsByType('error')
 
     expect(successNotifications).toHaveLength(2)
     expect(errorNotifications).toHaveLength(1)
-    expect(successNotifications.every(n => n.type === 'success')).toBe(true)
-    expect(errorNotifications.every(n => n.type === 'error')).toBe(true)
+    expect(successNotifications.every((n) => n.type === 'success')).toBe(true)
+    expect(errorNotifications.every((n) => n.type === 'error')).toBe(true)
   })
 
   it('should throw error when used outside provider', () => {
-    const { result } = renderHook(() => useNotification())
+    // React meldet den Render-Fehler zusätzlich über console.error
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => {})
 
-    expect(() => result.current).toThrow('useNotification must be used within a NotificationProvider')
+    expect(() => renderHook(() => useNotifications())).toThrow(
+      'useNotifications must be used within a NotificationProvider'
+    )
+
+    consoleError.mockRestore()
   })
 
   describe('Convenience methods', () => {
     let result: any
 
     beforeEach(() => {
-      const wrapper = renderHook(() => useNotification(), {
+      const wrapper = renderHook(() => useNotifications(), {
         wrapper: NotificationProvider,
       })
       result = wrapper.result

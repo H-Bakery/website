@@ -52,8 +52,7 @@ nx affected:build          # Build only affected projects
 
 # Static Export (Landing Page)
 nx build-static-standalone bakery-landing  # Recommended: standalone static build
-npm run build:landing:static               # Same as above
-npm run build:landing:nx                   # Uses Nx dependencies (may fail)
+npm run build:landing:standalone           # plain `next build` in apps/bakery-landing (no sitemap)
 nx build-static bakery-landing             # Full Nx build + export
 
 # Testing & Quality
@@ -164,6 +163,15 @@ abgeschlossenen Tagen dasselbe und bleibt auf offenen Tagen richtig.
 Preise und Produktnamen werden **als Snapshot** auf `PartnerVisitItem` gespeichert, damit eine
 spätere HQ-Preisänderung alte Abrechnungen nicht rückwirkend verändert.
 
+Der Mock-Server hält die Besuche in `apps/bakery-api/data/partner-store.json` (gitignored) - beim
+`serve:api:simple` ist das die **einzige** Aufzeichnung. Gelesen und geschrieben wird über
+`src/services/json-store.core.js`: erst `.tmp`, dann `rename`, und eine Datei, die sich nicht mehr
+parsen lässt, wandert nach `partner-store.json.corrupt-<Zeit>` statt vom nächsten Speichern mit dem
+Seed überschrieben zu werden (der Server loggt das als Fehler; die Besuche stehen dann in der
+verschobenen Datei). Der Liefer-Store benutzt dieselben Helfer. Nicht durch ein bloßes
+`writeFileSync` ersetzen - genau so gingen früher nach einem Absturz mitten im Schreiben alle
+Besuche verloren.
+
 Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Achtung -
 `apps/bakery-api/jest.config.js` hat `testMatch: ["**/tests/**/*.test.js"]`, führt also **nur**
 plain-JS-Tests unter `tests/` aus. Die TypeScript-Specs unter `src/**/__tests__/` laufen nie mit.
@@ -192,7 +200,8 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   wiederholt.
 - **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*`. Der Store lebt im
   Speicher des Servers und wird nach jeder Änderung atomar nach
-  `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored). Ein Server, der vor diesen
+  `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored, über `json-store.core.js`,
+  siehe Verkaufspartner). Ein Server, der vor diesen
   Routen gestartet wurde, antwortet mit 404 — neu starten.
 - **`Number(null)` ist `0`.** Ein Stopp ohne gefundene Adresse galt dadurch als Punkt (0, 0) und zog
   die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
@@ -245,8 +254,8 @@ rm -rf apps/bakery-landing/.next
 # Standalone build (always works, recommended)
 NODE_ENV=production npx nx build-static-standalone bakery-landing
 
-# Or via npm script
-npm run build:landing:static
+# Or via npm script: same export to apps/bakery-landing/out, but without the sitemap
+npm run build:landing:standalone
 ```
 
 **Output Location:** `apps/bakery-landing/out/` (ready for deployment)
@@ -270,7 +279,7 @@ NODE_ENV=production npx nx build-static-standalone bakery-landing
 
 ```bash
 # Solution: Use standalone build that avoids problematic dependencies
-npm run build:landing:static
+NODE_ENV=production npx nx build-static-standalone bakery-landing
 ```
 
 **Problem: Module resolution errors for @bakery/\* imports**
