@@ -20,7 +20,7 @@ jest.mock('../utils/openingHours', () => ({
     { label: 'Mo', value: 'Geschlossen' },
     { label: 'Di, Mi, Do, Fr', value: '6:00 - 13:30 Uhr' },
     { label: 'Sa', value: '6:00 - 12:30 Uhr' },
-    { label: 'So und Feiertage', value: '08:00 - 11:00 Uhr' },
+    { label: 'So', value: '8:00 - 11:00 Uhr' },
   ],
 }))
 
