@@ -212,26 +212,27 @@ export default async function ProductPage({ params }: ProductPageProps) {
               <Box
                 sx={{
                   p: { xs: 3, md: 6 },
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
                   height: { xs: 250, md: 450 },
                   bgcolor: 'grey.50',
                 }}
               >
-                <Image
-                  width={400}
-                  height={400}
-                  src={imageSrc}
-                  alt={product.name}
-                  priority
-                  quality={95}
-                  style={{
-                    maxWidth: '100%',
-                    maxHeight: '100%',
-                    objectFit: 'contain',
-                  }}
-                />
+                {/* `fill` statt fester width/height: das Bild wird per CSS in
+                    den Rahmen eingepasst, und next/image warnt im Dev-Modus,
+                    sobald nur eine der beiden Seiten verändert wird. `quality`
+                    hat mit `images.unoptimized` keine Wirkung und löst nur die
+                    Warnung zu `images.qualities` aus. */}
+                <Box
+                  sx={{ position: 'relative', width: '100%', height: '100%' }}
+                >
+                  <Image
+                    fill
+                    src={imageSrc}
+                    alt={product.name}
+                    priority
+                    sizes="(max-width: 900px) 100vw, 50vw"
+                    style={{ objectFit: 'contain' }}
+                  />
+                </Box>
               </Box>
             </Box>
           </Grid>
