@@ -18,6 +18,7 @@ import {
   opensLaterToday,
   getTodayOpeningTime,
 } from '../../../utils/openingHours'
+import { HEADER_SPACE } from '../../header'
 
 // Hero image with warm gradient fallback
 const heroImage = '/assets/images/bakery/fresh-bread-hero.jpg'
@@ -163,6 +164,9 @@ const EnhancedHero: React.FC = () => {
 const styles = {
   hero: {
     position: 'relative' as const,
+    // Vollflächig: schiebt sich unter den fixierten Header, dessen Platz der
+    // Header-Wrapper reserviert
+    mt: { xs: `-${HEADER_SPACE.xs}px`, sm: `-${HEADER_SPACE.sm}px` },
     height: { xs: '85svh', md: '90vh' },
     minHeight: { xs: '400px', md: '550px' },
     maxHeight: { xs: '700px', md: 'none' },

@@ -25,6 +25,15 @@ const ctaItems: MenuItem[] = [
   { label: 'Bestellen', path: '/bestellen', cta: true },
 ]
 
+/**
+ * Platz, den der fixierte Header im Seitenfluss belegt: Abstand oben + Leiste +
+ * Abstand unten (siehe `styles.header`). Der Wrapper in `Header` reserviert ihn,
+ * damit Seiteninhalt - etwa die Breadcrumbs - nicht unter der Leiste beginnt.
+ * Der vollflächige Hero der Startseite zieht sich per negativem Rand wieder
+ * darunter (`EnhancedHero`).
+ */
+export const HEADER_SPACE = { xs: 72, sm: 102 }
+
 const Header = () => {
   const [open, setOpen] = React.useState(false)
   const pathname = usePathname()
@@ -38,6 +47,7 @@ const Header = () => {
     <Box
       sx={{
         position: 'relative',
+        height: HEADER_SPACE,
       }}
     >
       <Box sx={styles.header}>
