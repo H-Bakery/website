@@ -324,10 +324,21 @@ function normalizeStopInput(body, existing) {
     }
   }
 
+  // Optionale Sammelstelle. Ist sie gesetzt, ist der Stopp eine Uebergabe-
+  // stelle: der Server haengt beim Lesen die Vorbestellungen des Tourtags an
+  // (siehe `decorateTour` in `simple-server.js`).
+  const pickupPointId =
+    source.pickupPointId === undefined
+      ? base.pickupPointId || null
+      : String(source.pickupPointId || '').trim() || null
+
   const street = String(
     source.street === undefined ? base.street || '' : source.street
   ).trim()
-  if (!street) {
+  // Eine Sammelstelle darf ohne Strasse stehen: die Adresse des Kindergartens
+  // ist noch nicht bekannt und wird nicht erfunden. Sonst liesse sich so ein
+  // Stopp nicht einmal abhaken.
+  if (!street && !pickupPointId) {
     return {
       error: 'Street is required',
       message: 'Straße und Hausnummer sind erforderlich.',
@@ -377,6 +388,8 @@ function normalizeStopInput(body, existing) {
     items,
     status,
   }
+
+  if (pickupPointId) stop.pickupPointId = pickupPointId
 
   // Koordinaten duerfen manuell gesetzt werden, wenn die Adresssuche daneben
   // liegt. `null` loescht sie und stoesst eine neue Suche an.

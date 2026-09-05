@@ -1,7 +1,7 @@
 // Deutsche Formatierung. Die App laeuft in Homburg, nicht in Zuerich - Locale
 // ist ueberall `de-DE`.
 
-import type { Stop, StopItem } from './delivery-api'
+import type { Preorder, Stop, StopItem } from './delivery-api'
 
 export function formatDate(isoDate: string): string {
   const date = new Date(`${isoDate}T12:00:00`)
@@ -29,10 +29,29 @@ export function formatItems(items: StopItem[]): string {
   return items.map((item) => `${item.qty}× ${item.name}`).join(', ')
 }
 
+/**
+ * Geldbetrag als „12,40 €". Der Fahrer kassiert bar - der Betrag muss
+ * aussehen wie auf dem Kassenbon, nicht wie eine Fliesskommazahl.
+ */
+export function formatCurrency(value: number): string {
+  const amount = Number.isFinite(value) ? value : 0
+  return amount.toLocaleString('de-DE', {
+    style: 'currency',
+    currency: 'EUR',
+  })
+}
+
 export const STOP_STATUS_LABEL: Record<Stop['status'], string> = {
   open: 'Offen',
   done: 'Geliefert',
   failed: 'Nicht angetroffen',
+}
+
+export const PREORDER_STATUS_LABEL: Record<Preorder['status'], string> = {
+  open: 'Offen',
+  handed_over: 'Übergeben',
+  not_collected: 'Nicht abgeholt',
+  cancelled: 'Storniert',
 }
 
 export const TOUR_STATUS_LABEL: Record<'planned' | 'active' | 'done', string> =

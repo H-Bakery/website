@@ -6,7 +6,7 @@ Scope: the `bakery-delivery` app (Fahrer-App), the two libs only it consumes, an
 endpoints of the API. Monorepo-wide rules live in `website/CLAUDE.md` and the workspace root
 `CLAUDE.md` — read those for Nx conventions, the `hq/` content source, and the API's known-broken
 state. Everything below is specific to the delivery system and verified against the tree on
-2026-08-30.
+2026-09-05.
 
 ## What this is
 
@@ -113,7 +113,7 @@ Der Store lebt **im Speicher des Servers** (`getDeliveryStore()`, einmal geladen
 jeder Änderung als JSON neben den Server geschrieben: **`apps/bakery-api/data/delivery-store.json`**
 (gitignored, überlebt Neustarts). Geschrieben wird atomar — erst `.tmp`, dann `rename` —, damit ein
 Absturz mitten im Schreiben nicht eine halbe Datei hinterlässt, die beim nächsten Start den Seed
-zurückbrächte. Aufbau: `depot`, `drivers`, `tours[].stops[]`, `geocache`.
+zurückbrächte. Aufbau: `depot`, `drivers`, `tours[].stops[]`, `pickupPoints`, `preorders`, `geocache`.
 Fehlt die Datei, legt `seedDeliveryStore()` sie an: die Backstube in der Eckstraße 3, zwei Fahrer mit
 Platzhalternamen und die nächste Samstagstour mit dem CAP-Markt als einzigem Stopp. Namen und
 Telefonnummern sind bewusst leer — die trägt das Team mit den echten Daten nach.
@@ -142,11 +142,68 @@ POST   /tours/:id/stops              PATCH /tours/:id/stops/:stopId
 DELETE /tours/:id/stops/:stopId
 POST   /tours/:id/optimize           POST /tours/:id/position
 POST   /geocode
+
+GET    /pickup-points                PUT /pickup-points/:id
+GET    /preorders?date=&pickupPointId=&status=          POST /preorders
+GET    /preorders/summary?date=      (VOR /preorders/:id registriert!)
+GET    /preorders/:id                PATCH /preorders/:id   DELETE /preorders/:id
 ```
 
 Fehlerantworten setzen **`message` _und_ `error`** — `ApiClient` wirft `new Error(data.message)`, ein
 `error`-only-Body verlöre den deutschen Text. Die Liefer-Endpunkte liefern rohe Objekte (wie die
 Partner-Endpunkte), nicht `{success, data}` wie die älteren Order-Routen.
+
+## Sammelstelle Mörsbach: Vorbestellungen
+
+Seit dem 05.09.2026 fährt die Samstagstour **nach Mörsbach an den Kindergarten**. Das ist keine
+gewöhnliche Zustellung, sondern eine **Sammelstelle**: die Kundschaft bestellt vorher vor, die Ware
+wird gesammelt hingebracht und dort in einem Zeitfenster übergeben. Für den Fahrer ist das **ein
+Stopp mit einer Übergabeliste**, nicht zwölf Stopps.
+
+Drei Begriffe, die auseinandergehalten werden müssen:
+
+|                                    | wo erfasst             | was festgehalten wird                            |
+| ---------------------------------- | ---------------------- | ------------------------------------------------ |
+| **Besuch** (Backschrank CAP-Markt) | Management-App         | Restbestand zählen, Verkauf **berechnen**        |
+| **Stopp** (Zustellung)             | Fahrer-App             | zugestellt / nicht angetroffen                   |
+| **Vorbestellung** (Sammelstelle)   | **nur** Management-App | wer was bestellt hat, übergeben / nicht abgeholt |
+
+**Vorbestellt wird ausschließlich in der Management-App** (`/admin/delivery/preorders`) — das Team
+tippt Telefon- und Thekenbestellungen ein. Der Shop bleibt Abholung-only; er weiß von Mörsbach nichts.
+
+**Alle Formeln stehen genau einmal**, in `apps/bakery-api/src/services/delivery-preorders.core.js`
+(dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js` und
+`delivery-tours.core.js`, gleiche `*.core.js`-Glob unter `assets`). Dort stehen Rundung,
+Referenznummern, Bestellschluss, Statusübergänge und die Backlisten-Summierung.
+
+`pickupPoints` und `preorders` liegen im **selben** Store wie die Touren
+(`apps/bakery-api/data/delivery-store.json`); ein älterer Store bekommt die beiden Schlüssel beim
+Laden ergänzt, ohne dass vorhandene Touren angefasst werden.
+
+Vier Regeln, die man kennen muss, bevor man hier etwas ändert:
+
+- **Die Vorbestellungen hängen im Tour-Payload.** `decorateTour()` hängt an jeden Stopp mit
+  `pickupPointId` die Vorbestellungen des Tourtags plus `preorderSummary`. Das ist Absicht und kein
+  überflüssiger Ballast: die Fahrer-App hält die Tourliste als Offline-Kopie im `localStorage` — läge
+  die Übergabeliste hinter einem zweiten Aufruf, wäre sie im Funkloch weg. Stornierte sind nicht dabei.
+- **Preise und Namen sind ein Snapshot** aus `hq`, wie bei `PartnerVisitItem`. Der Client schickt nur
+  `productId` und `qty`; ein mitgeschickter Preis wird ignoriert. Beim **Bearbeiten** wird der
+  Snapshot bereits erfasster Positionen aus der gespeicherten Bestellung übernommen, nicht neu aus
+  `hq` geholt — sonst änderte eine Preispflege rückwirkend eine Woche alte Abrechnung.
+- **Keine Vorbestellung verschwindet lautlos.** `DELETE` storniert (`cancelled`), es löscht nicht.
+  `handed_over → cancelled` und `cancelled → handed_over/not_collected` sind mit **409** gesperrt:
+  eine stornierte Bestellung darf nicht durch ein nachgesendetes Abhaken aus dem Funkloch
+  wiederbelebt werden, und eine bereits übergebene (das Geld ist geflossen) nicht durch ein Storno
+  aus der Abrechnung fallen. Dieselbe Haltung wie bei `uncountedQty` am Backschrank.
+- **Der Sammelstellen-Stopp entsteht beim Anlegen der Tour.** Fällt der Tourtag auf den `weekday`
+  einer aktiven Lieferstelle, hängt `POST /tours` deren Stopp gleich mit an. Für Touren aus älteren
+  Stores passiert das nicht — dafür warnt die Vorbestellungsliste der Management-App, dass die
+  Bestellungen den Fahrer sonst nie erreichen.
+
+Der Bestellschluss (Freitag 12:00) **blockiert nichts** — die Backstube muss nachtragen können.
+Später erfasste Bestellungen tragen `afterDeadline: true` und werden in der Oberfläche markiert.
+
+Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
 
 ## Fallen, die schon einmal zugeschnappt sind
 
@@ -189,6 +246,13 @@ Partner-Endpunkte), nicht `{success, data}` wie die älteren Order-Routen.
   im Core rechnet ab dem zuletzt erledigten Stopp oder der jüngeren gemeldeten Fahrerposition, nie
   früher als jetzt.
 
+- **Ohne Straße keine Adresssuche.** Ein Sammelstellen-Stopp darf ohne Straße angelegt werden (die
+  Adresse des Kindergartens ist noch nicht bekannt). Nominatim antwortet auf „Zweibrücken-Mörsbach"
+  aber bereitwillig mit der Ortsmitte und `precision: 'street'` — auf der Karte sah das aus wie eine
+  gefundene Adresse. `ensureStopCoordinates()` sucht deshalb ohne Straße gar nicht erst.
+- **`window.confirm` blockiert und sieht auf dem Handy aus wie ein Absturz.** Die Rückfrage vor dem
+  Abschließen eines Stopps mit offenen Vorbestellungen steht deshalb in der Oberfläche.
+
 ## Der Build war kaputt, und warum
 
 `libs/bakery-delivery-{routing,tracking}/package.json` deklarierten `"type": "commonjs"`, während die
@@ -224,9 +288,12 @@ Nicht „lösen", indem man die Libs auf CommonJS umschreibt — das bricht ihre
 src/app/page.tsx              Dashboard: Fahrer-/Tagwahl, nächster Stopp, Karte, Stoppliste, Planung
 src/components/StopCard.tsx   ein Stopp mit Navigation / Anrufen / Geliefert / Nicht angetroffen
 src/components/AddStopForm.tsx  Erfassung inkl. „2x Bauernbrot, 10x Brötchen"-Parser
+src/components/HandoverList.tsx  Übergabeliste einer Sammelstelle (Vorbestellungen abhaken)
+src/components/ThemeToggle.tsx   Farbschema System / Hell / Dunkel
 src/components/Map.tsx        Leaflet, dynamisch mit ssr:false
 src/lib/delivery-api.ts       Typen, fetch-Client, Offline-Warteschlange
 src/lib/format.ts             de-DE-Formatierung, Datumshilfen
+src/lib/theme.ts              Farbschema lesen/schreiben + Inline-Skript gegen den Flash
 
 libs/bakery-delivery-tracking  @bakery/delivery/tracking — Location/DeliveryStatus, Geolocation-Wrapper
 libs/bakery-delivery-routing   @bakery/delivery/routing — Geometrie, Reihenfolge, Navi-Links, Formatierung
@@ -273,6 +340,20 @@ nächsten Takt stehen zu lassen. Was fehlt: ein Service Worker. Ein kaltes Neula
 zeigt weiterhin die Fehlerseite des Browsers; die Kopie hilft, sobald die App-Seite selbst da ist
 (Tab war noch offen, Dev-Server oder Hosting erreichbar, nur die API nicht).
 
+### Farbschema
+
+Drei Zustände — **System / Hell / Dunkel** —, gespeichert unter `bakery-delivery-theme`. Die Farben
+sind CSS-Variablen auf `:root`; dunkel wird zweimal definiert, über
+`@media (prefers-color-scheme: dark)` **und** `[data-theme='dark']`, damit die ausdrückliche Wahl in
+beide Richtungen gewinnt. Ein Inline-Skript in `layout.tsx` (die Quelle steht in `src/lib/theme.ts`,
+damit sie nicht doppelt gepflegt wird) setzt `data-theme` **vor dem ersten Paint** — sonst blitzt
+die helle Fassung auf. Während des Renderns darf weder `localStorage` noch `matchMedia` gelesen
+werden, das bricht die Hydration; beides passiert erst im Effect.
+
+Keine festen Farben mehr in `page.module.css`. Die Leaflet-Kacheln werden im Dunkelmodus per
+CSS-Filter abgedunkelt, die Marker bleiben davon ausgenommen. Status ist nie **nur** Farbe — der
+Text daneben bleibt.
+
 ### Navigation
 
 Abbiegen lässt sich der Fahrer von Google oder Apple Maps; `buildNavigationUrl()` erkennt iOS am
@@ -295,9 +376,14 @@ aus, wie bisher.
 **Echt:** Adressen und Koordinaten (Nominatim), Fahrstrecke, Fahrzeit und Streckenverlauf (OSRM),
 Reihenfolge, Geolocation des Fahrers, Statuswechsel, Persistenz über Neustarts.
 
+**Auch echt:** die Vorbestellungen der Sammelstelle Mörsbach — vom Team in der Management-App
+erfasst, mit Preisen aus `hq`, dauerhaft im Liefer-Store, und der Fahrer hakt sie einzeln ab.
+
 **Noch nicht da:** keine Authentifizierung (wer die URL hat, sieht und ändert die Tour), keine
-Anbindung an Bestellungen aus dem Shop (Stopps werden von Hand erfasst), keine Ansicht in der
-Management-App, kein Push an die Kundschaft. `DeliveryTracker` in der Tracking-Lib ist ein
+Anbindung an Bestellungen aus dem Shop (gewöhnliche Stopps werden von Hand erfasst; nur die
+Vorbestellungen der Sammelstelle kommen aus der Management-App), keine Tourplanung in der
+Management-App, kein Push an die Kundschaft. Wer eine übergebene Vorbestellung doch noch stornieren
+will, muss sie erst auf „offen" zurücksetzen — protokolliert wird nicht, wer das war. `DeliveryTracker` in der Tracking-Lib ist ein
 WebSocket-Client ohne Server — die App benutzt ihn nicht, Positionen gehen per HTTP an
 `POST /tours/:id/position` (gedrosselt auf alle 30 s).
 
@@ -317,8 +403,11 @@ verlorene Änderung ans Licht (siehe Fallen).
 
 ## Nächste sinnvolle Schritte
 
+- **Die Adresse des Kindergartens Mörsbach nachtragen** (`/admin/delivery/preorders/lieferstelle`).
+  Bis dahin hat der Stopp keinen Kartenpunkt, und die Navigation läuft über den Ortsnamen.
 - Stopps aus den Shop-Bestellungen erzeugen, statt sie abzutippen.
-- Eine Planungsansicht in der Management-App (die Erfassung steckt derzeit in der Fahrer-App).
+- Eine Planungsansicht in der Management-App (die Erfassung gewöhnlicher Stopps steckt weiterhin in
+  der Fahrer-App; nur die Vorbestellungen der Sammelstelle werden dort erfasst).
 - Authentifizierung, bevor die App aus dem LAN heraus erreichbar gemacht wird.
 - Die Liefer-Endpunkte auch in der echten TypeScript-API (`libs/api/delivery`) verdrahten, sobald
   `serve:api` wieder startet.

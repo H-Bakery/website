@@ -1793,6 +1793,9 @@ app.get('/api/partners/:id/report.csv', (req, res) => {
 // bleiben Reihenfolge und Kilometer Schaetzwerte, aber die Tour funktioniert.
 const tours = require('./src/services/delivery-tours.core')
 const geo = require('./src/services/delivery-geo.core')
+// Vorbestellungen an einer Sammelstelle - Preise, Summen, Referenzen und
+// Bestellschluss stehen in `delivery-preorders.core.js`.
+const preorders = require('./src/services/delivery-preorders.core')
 
 const DELIVERY_STORE = path.join(__dirname, 'data', 'delivery-store.json')
 
@@ -1809,6 +1812,29 @@ function seedDeliveryStore() {
       lat: 49.3015165,
       lon: 7.3695327,
     },
+    // Sammelstellen: dorthin wird gesammelt geliefert, die Kundschaft holt vor
+    // Ort ab. Die Adresse des Kindergartens ist noch nicht bekannt und wird
+    // bewusst leer gelassen - genau wie die Fahrernamen. Erfunden wird nichts;
+    // die Management-Oberflaeche fordert zum Nachtragen auf.
+    pickupPoints: [
+      {
+        id: 'kindergarten-moersbach',
+        name: 'Kindergarten Mörsbach',
+        street: '',
+        zip: '',
+        city: 'Zweibrücken-Mörsbach',
+        weekday: 6,
+        window: '09:00-09:30',
+        orderDeadline: { weekday: 5, time: '12:00' },
+        notes: null,
+        active: true,
+        lat: null,
+        lon: null,
+        geocodeSource: null,
+        geocodePrecision: null,
+      },
+    ],
+    preorders: [],
     // Namen und Nummern bewusst leer - traegt das Team mit den echten Daten nach.
     drivers: [
       { id: 1, name: 'Fahrer 1', phone: null, vehicle: 'car', active: true },
@@ -1842,6 +1868,29 @@ function seedDeliveryStore() {
             timeWindow: '07:00-08:00',
             notes: 'Backschrank bestücken, Reste zählen.',
             items: [],
+            status: 'open',
+            completedAt: null,
+            failureReason: null,
+            lat: null,
+            lon: null,
+            geocodeSource: null,
+            geocodePrecision: null,
+          },
+          {
+            id: 2,
+            customer: 'Kindergarten Mörsbach',
+            // Adresse noch unbekannt - der Ort reicht fuer die Liste, der
+            // Kartenpunkt kommt, sobald das Team Strasse und PLZ nachtraegt.
+            street: '',
+            zip: '',
+            city: 'Zweibrücken-Mörsbach',
+            phone: null,
+            timeWindow: '09:00-09:30',
+            notes: 'Sammelstelle: Vorbestellungen übergeben.',
+            items: [],
+            // Macht aus dem Stopp eine Sammelstelle: der Server haengt beim
+            // Lesen die Vorbestellungen des Tourtags an.
+            pickupPointId: 'kindergarten-moersbach',
             status: 'open',
             completedAt: null,
             failureReason: null,
@@ -1893,6 +1942,11 @@ function loadDeliveryStore() {
     const parsed = read.data
     return {
       depot: parsed.depot && parsed.depot.street ? parsed.depot : seed.depot,
+      // Ein Store aus der Zeit vor den Sammelstellen kennt diese Schluessel
+      // nicht. Sie werden aus dem Seed ergaenzt, die vorhandenen Touren
+      // bleiben unberuehrt - sonst verschwaende die Migration den Stand einer
+      // laufenden Samstagstour.
+      ...preorders.migratePickupKeys(parsed, seed),
       drivers:
         Array.isArray(parsed.drivers) && parsed.drivers.length
           ? parsed.drivers
@@ -1977,6 +2031,10 @@ function findTour(req, res, store) {
   return tour
 }
 
+function findPickupPoint(store, id) {
+  return (store.pickupPoints || []).find((p) => p.id === String(id)) || null
+}
+
 function findStop(req, res, tour) {
   const stopId = Number(req.params.stopId)
   const stop = tour.stops.find((s) => s.id === stopId)
@@ -2041,9 +2099,17 @@ async function lookupAddress(store, address, force) {
  *
  * Schlaegt die Suche fehl, bleibt `lat/lon` auf `null`: der Stopp steht dann
  * ohne Kartenpunkt in der Liste, statt an einer falschen Stelle zu liegen.
+ *
+ * Ohne Strasse wird gar nicht erst gesucht. Seit es Sammelstellen-Stopps gibt,
+ * kann ein Stopp ohne Strasse existieren (die Adresse des Kindergartens ist
+ * unbekannt) - Nominatim liefert dann die Ortsmitte zurueck, und zwar als
+ * `precision: 'street'`. Auf der Karte saehe das aus wie eine gefundene
+ * Adresse. Dieselbe Regel gilt fuer die Sammelstellen selbst, siehe
+ * `hydratePickupPoints`.
  */
 async function ensureStopCoordinates(store, stop, options) {
   if (tours.hasCoordinates(stop)) return stop
+  if (!String((stop && stop.street) || '').trim()) return stop
 
   const address = tours.formatAddress(stop)
   if (!address) return stop
@@ -2086,7 +2152,34 @@ function decorateTour(store, tour) {
       ...stop,
       address: tours.formatAddress(stop),
       estimatedArrival: arrivals[stop.id] || null,
+      ...decorateStopPreorders(store, tour, stop),
     })),
+  }
+}
+
+/**
+ * Uebergabeliste eines Sammelstellen-Stopps.
+ *
+ * Sie steckt bewusst IM Tour-Payload und nicht hinter einem eigenen Aufruf:
+ * die Fahrer-App haelt die Tourliste als Offline-Kopie im `localStorage`, und
+ * im Funkloch vor dem Kindergarten waere eine nachzuladende Liste genau dann
+ * weg, wenn sie gebraucht wird.
+ *
+ * Ein Stopp ohne `pickupPointId` bekommt keine zusaetzlichen Felder - alte
+ * Payloads bleiben damit unveraendert.
+ */
+function decorateStopPreorders(store, tour, stop) {
+  if (!stop || !stop.pickupPointId) return {}
+  const pickupPoint = findPickupPoint(store, stop.pickupPointId)
+  const list = preorders.preordersForStop(
+    store.preorders,
+    stop.pickupPointId,
+    tour.date
+  )
+  return {
+    pickupPoint,
+    preorders: list.map((p) => preorders.decoratePreorder(p, pickupPoint)),
+    preorderSummary: preorders.summarizePreorders(list),
   }
 }
 
@@ -2426,6 +2519,20 @@ app.post(
       stops: [],
     }
 
+    // Faellt der Tourtag auf den Liefertag einer aktiven Sammelstelle, kommt
+    // ihr Stopp gleich mit. Ohne ihn haengt die Uebergabeliste an nichts: die
+    // Vorbestellungen des Tages erreichten den Fahrer nie und blieben fuer
+    // immer offen - und niemand faellt es auf.
+    for (const point of preorders.pickupPointsForDate(
+      store.pickupPoints,
+      date
+    )) {
+      tour.stops.push({
+        id: nextDeliveryId(tour.stops),
+        ...preorders.buildPickupStop(point),
+      })
+    }
+
     store.tours.push(tour)
     saveDeliveryStore(store)
     res.status(201).json(decorateTour(store, tour))
@@ -2674,6 +2781,348 @@ app.post(
 
     if (found.source !== 'cache') saveDeliveryStore(store)
     res.json(found.hit)
+  })
+)
+
+// --- Sammelstellen und Vorbestellungen ---
+//
+// Samstags faehrt die Baeckerei an eine Sammelstelle (den Kindergarten in
+// Moersbach): die Kundschaft bestellt vorher vor, die Ware wird gesammelt
+// hingebracht und dort in einem Zeitfenster uebergeben. Erfasst wird
+// ausschliesslich in der Management-App - der Shop bleibt Abholung-only.
+//
+// Gerechnet wird in `delivery-preorders.core.js`; hier steht nur der
+// Transport: finden, pruefen, speichern.
+
+/**
+ * Nachschlagewerk fuer die Preis-Snapshots. Einmal je Request gebaut - der
+ * Client schickt nur `productId` und `qty`, Name und Preis kommen aus `hq`.
+ */
+function preorderProductLookup() {
+  const index = buildHQIndex()
+  return (productId) =>
+    index.bySlug.get(String(productId)) ||
+    index.byNumericId.get(Number(productId)) ||
+    null
+}
+
+/**
+ * Sucht fehlende Koordinaten der Sammelstellen nach - aber nur, wenn eine
+ * Strasse eingetragen ist. Ohne sie faende Nominatim die Ortsmitte, und die
+ * saehe auf der Karte wie eine gefundene Adresse aus.
+ */
+async function hydratePickupPoints(store, list) {
+  let changed = false
+  for (const point of list) {
+    if (tours.hasCoordinates(point)) continue
+    if (!String(point.street || '').trim()) continue
+    const before = point.lat
+    await ensureStopCoordinates(store, point)
+    if (point.lat !== before) changed = true
+  }
+  if (changed) saveDeliveryStore(store)
+  return changed
+}
+
+/**
+ * Traegt eine geaenderte Adresse der Sammelstelle in die Stopps nach, die auf
+ * sie zeigen. Sonst stuende der Kindergarten in der Fahrer-App weiter ohne
+ * Strasse da, obwohl das Team sie nachgetragen hat. Die Koordinaten werden
+ * geloescht, damit sie neu gesucht werden.
+ */
+function applyPickupPointToStops(store, point) {
+  for (const tour of store.tours) {
+    for (const stop of tour.stops) {
+      if (stop.pickupPointId !== point.id) continue
+      stop.street = point.street
+      stop.zip = point.zip
+      stop.city = point.city
+      stop.lat = null
+      stop.lon = null
+      stop.geocodeSource = null
+      stop.geocodePrecision = null
+    }
+  }
+}
+
+app.get(
+  '/api/deliveries/pickup-points',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    await withBudget(hydratePickupPoints(store, store.pickupPoints))
+    res.json(store.pickupPoints)
+  })
+)
+
+app.put(
+  '/api/deliveries/pickup-points/:id',
+  deliveryRoute(async (req, res) => {
+    const store = getDeliveryStore()
+    const point = findPickupPoint(store, req.params.id)
+    if (!point) {
+      return deliveryError(
+        res,
+        404,
+        'Pickup point not found',
+        'Diese Lieferstelle existiert nicht.'
+      )
+    }
+
+    const result = preorders.normalizePickupPointInput(req.body, point)
+    if (result.error) {
+      return deliveryError(res, 400, result.error, result.message)
+    }
+
+    const addressBefore = tours.formatAddress(point)
+    Object.assign(point, result.pickupPoint)
+    const addressChanged = tours.formatAddress(point) !== addressBefore
+    if (addressChanged) applyPickupPointToStops(store, point)
+
+    // Ausdrueckliche Aktion: hier wird mit `force` gesucht, auch wenn dieselbe
+    // Adresse vor Minuten schon einmal nicht gefunden wurde.
+    if (!tours.hasCoordinates(point) && String(point.street || '').trim()) {
+      await locateWithBudget(store, point, { force: true })
+    }
+
+    saveDeliveryStore(store)
+    res.json(point)
+  })
+)
+
+/** Filtert die Vorbestellungen nach den Query-Parametern der Liste. */
+function filterPreorders(store, query) {
+  let list = store.preorders
+  if (query.pickupPointId !== undefined) {
+    list = list.filter((p) => p.pickupPointId === String(query.pickupPointId))
+  }
+  if (query.date !== undefined) {
+    list = list.filter((p) => p.date === query.date)
+  }
+  if (query.status !== undefined) {
+    list = list.filter((p) => p.status === query.status)
+  }
+  return [...list].sort(
+    (a, b) =>
+      a.date.localeCompare(b.date) ||
+      String(a.reference).localeCompare(String(b.reference))
+  )
+}
+
+/** Prueft `date` und `status` aus der Query; gibt `false` zurueck, wenn geantwortet wurde. */
+function checkPreorderQuery(req, res) {
+  const { date, status } = req.query
+  if (date !== undefined && !tours.isBusinessDate(date)) {
+    deliveryError(
+      res,
+      400,
+      'Invalid date',
+      'Das Datum muss im Format JJJJ-MM-TT angegeben werden.'
+    )
+    return false
+  }
+  if (status !== undefined && !preorders.PREORDER_STATUS.includes(status)) {
+    deliveryError(
+      res,
+      400,
+      'Invalid status',
+      'Status muss "open", "handed_over", "not_collected" oder "cancelled" sein.'
+    )
+    return false
+  }
+  return true
+}
+
+app.get(
+  '/api/deliveries/preorders',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    if (!checkPreorderQuery(req, res)) return
+    res.json(
+      filterPreorders(store, req.query).map((p) =>
+        preorders.decoratePreorder(p, findPickupPoint(store, p.pickupPointId))
+      )
+    )
+  })
+)
+
+// ACHTUNG: `/preorders/summary` muss vor `/preorders/:id` stehen - sonst
+// schluckt der Parameter das Wort "summary" und die Backliste endet in einer
+// 404 fuer die Vorbestellung mit der ID "summary".
+app.get(
+  '/api/deliveries/preorders/summary',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const { date, pickupPointId } = req.query
+    // Die Backliste ist immer die eines Tages - ohne Datum waere sie die Summe
+    // aller Samstage und damit unbrauchbar.
+    if (!tours.isBusinessDate(date)) {
+      return deliveryError(
+        res,
+        400,
+        'Invalid date',
+        'Für die Backliste wird ein Datum im Format JJJJ-MM-TT gebraucht.'
+      )
+    }
+    if (!checkPreorderQuery(req, res)) return
+
+    // Der Bestellschluss haengt am Liefertag *und* an der Sammelstelle; ohne
+    // Angabe ist es die erste aktive. Er wird hier mitgeliefert, damit die
+    // Oberflaeche ihn auch an einem Tag ohne Vorbestellung nennen kann - und
+    // damit die Formel nur im Kern steht.
+    const point =
+      pickupPointId === undefined
+        ? store.pickupPoints.find((p) => p.active !== false) || null
+        : findPickupPoint(store, pickupPointId)
+
+    const list = filterPreorders(store, req.query)
+    res.json({
+      date,
+      pickupPointId: pickupPointId === undefined ? null : String(pickupPointId),
+      deadline: point ? preorders.deadlineFor(date, point.orderDeadline) : null,
+      // Ohne Sammelstellen-Stopp an diesem Tag erreicht die Uebergabeliste den
+      // Fahrer nicht - die Oberflaeche warnt damit.
+      hasPickupStop: point
+        ? preorders.hasPickupStop(store.tours, point.id, date)
+        : false,
+      ...preorders.summarizePreorders(list),
+    })
+  })
+)
+
+function findPreorder(req, res, store) {
+  const id = Number(req.params.id)
+  const preorder = store.preorders.find((p) => p.id === id)
+  if (!preorder) {
+    deliveryError(
+      res,
+      404,
+      'Preorder not found',
+      'Diese Vorbestellung existiert nicht.'
+    )
+    return null
+  }
+  return preorder
+}
+
+app.get(
+  '/api/deliveries/preorders/:id',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const preorder = findPreorder(req, res, store)
+    if (!preorder) return
+    res.json(
+      preorders.decoratePreorder(
+        preorder,
+        findPickupPoint(store, preorder.pickupPointId)
+      )
+    )
+  })
+)
+
+app.post(
+  '/api/deliveries/preorders',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const body = req.body || {}
+
+    // Ohne Angabe die erste aktive Lieferstelle - solange es nur die eine
+    // gibt, muss die Maske sie nicht mitschicken.
+    const pickupPoint = body.pickupPointId
+      ? findPickupPoint(store, body.pickupPointId)
+      : store.pickupPoints.find((p) => p.active !== false) || null
+    if (!pickupPoint) {
+      return deliveryError(
+        res,
+        400,
+        'Pickup point not found',
+        'Diese Lieferstelle existiert nicht.'
+      )
+    }
+
+    const result = preorders.normalizePreorderInput(body, null, {
+      lookupProduct: preorderProductLookup(),
+      pickupPoint,
+    })
+    if (result.error) {
+      return deliveryError(res, 400, result.error, result.message)
+    }
+
+    const preorder = {
+      id: nextDeliveryId(store.preorders),
+      reference: preorders.nextReference(
+        store.preorders,
+        pickupPoint.id,
+        result.preorder.date
+      ),
+      ...result.preorder,
+      createdAt: new Date().toISOString(),
+    }
+    store.preorders.push(preorder)
+    saveDeliveryStore(store)
+    res.status(201).json(preorders.decoratePreorder(preorder, pickupPoint))
+  })
+)
+
+app.patch(
+  '/api/deliveries/preorders/:id',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const preorder = findPreorder(req, res, store)
+    if (!preorder) return
+
+    const pickupPoint = findPickupPoint(store, preorder.pickupPointId)
+    const result = preorders.normalizePreorderInput(req.body, preorder, {
+      lookupProduct: preorderProductLookup(),
+      pickupPoint,
+    })
+    if (result.error) {
+      // `status` ist 409, wenn der Kern einen Statuswechsel ablehnt (storniert
+      // oder bereits uebergeben), sonst 400.
+      return deliveryError(res, result.status, result.error, result.message)
+    }
+
+    Object.assign(preorder, result.preorder)
+    // Die Referenz traegt den Liefertag - wandert die Bestellung auf einen
+    // anderen Samstag, bekommt sie die naechste Nummer dieses Tages.
+    if (!String(preorder.reference || '').includes(preorder.date)) {
+      preorder.reference = preorders.nextReference(
+        store.preorders.filter((p) => p.id !== preorder.id),
+        preorder.pickupPointId,
+        preorder.date
+      )
+    }
+    saveDeliveryStore(store)
+    res.json(preorders.decoratePreorder(preorder, pickupPoint))
+  })
+)
+
+/**
+ * Stornieren statt Loeschen: die Vorbestellung ist die einzige Aufzeichnung
+ * dessen, was jemand bestellt hat, und ihre Referenz wurde vor Ort schon
+ * ausgesprochen.
+ */
+app.delete(
+  '/api/deliveries/preorders/:id',
+  deliveryRoute((req, res) => {
+    const store = getDeliveryStore()
+    const preorder = findPreorder(req, res, store)
+    if (!preorder) return
+
+    // Eine bereits uebergebene Bestellung wird nicht storniert: der Betrag
+    // liegt als Bargeld in der Kasse und braucht seinen Beleg.
+    const result = preorders.cancelPreorder(preorder)
+    if (result.error) {
+      return deliveryError(res, result.status, result.error, result.message)
+    }
+
+    Object.assign(preorder, result.preorder)
+    saveDeliveryStore(store)
+    res.json(
+      preorders.decoratePreorder(
+        preorder,
+        findPickupPoint(store, preorder.pickupPointId)
+      )
+    )
   })
 )
 
