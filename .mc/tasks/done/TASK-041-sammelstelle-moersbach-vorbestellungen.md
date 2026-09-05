@@ -51,10 +51,12 @@ abzuhaken.
 
 ## Offen
 
-- **Die Adresse des Kindergartens fehlt.** Bewusst leer angelegt statt erfunden; bis zum
-  Nachtragen unter `/admin/delivery/preorders/lieferstelle` hat der Stopp keinen Kartenpunkt
-  und die Navigation läuft über den Ortsnamen.
+- ~~Die Adresse des Kindergartens fehlt.~~ Nachgetragen am 05.09.2026: Höhenstraße 24, 66482
+  Zweibrücken-Mörsbach (städt. Kita „Hand in Hand"), von Nominatim auf die Hausnummer genau
+  gefunden und im Seed hinterlegt.
 - Touren aus älteren Stores bekommen den Sammelstellen-Stopp nicht automatisch; die
   Management-Liste warnt in dem Fall.
 - Keine Authentifizierung (gilt für die ganze Fahrer-App).
-- E2E-Suiten nicht erweitert (sind im Repo ohnehin rot, siehe TASK-040).
+- ~~E2E-Suiten nicht erweitert.~~ `apps/bakery-delivery-e2e/src/sammelstelle.spec.ts` deckt
+  Übergabeliste, Abhaken, Rückfrage, Nichtabholung und Dunkelmodus ab — auf Desktop und Pixel 5,
+  26 Tests grün. Die roten Suiten aus TASK-040 (Shop, Management, Landing) bleiben davon unberührt.

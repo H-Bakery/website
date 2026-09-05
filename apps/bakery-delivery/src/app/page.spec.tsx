@@ -466,6 +466,31 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     ).toBeGreaterThan(0)
   })
 
+  it('nennt einen erledigten Sammelstellen-Stopp „Abgeschlossen", nicht „Geliefert"', async () => {
+    // An der Sammelstelle wird nichts zugestellt, sondern ausgegeben.
+    api.tours.mockResolvedValue([
+      {
+        ...pickupTour,
+        stops: [
+          {
+            ...pickupStop,
+            status: 'done',
+            preorders: [preorder({ id: 101, status: 'handed_over' })],
+          },
+        ],
+        progress: { total: 1, done: 1, failed: 0, open: 0, isComplete: true },
+        nextStopId: null,
+      },
+    ])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      (await screen.findAllByText('Abgeschlossen')).length
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText('Geliefert')).toBeNull()
+  })
+
   it('nennt die fehlende Adresse der Sammelstelle, statt „Adresse nicht gefunden" zu behaupten', async () => {
     render(<DeliveryDashboard />)
 

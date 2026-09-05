@@ -47,6 +47,15 @@ export const STOP_STATUS_LABEL: Record<Stop['status'], string> = {
   failed: 'Nicht angetroffen',
 }
 
+/**
+ * An einer Sammelstelle wird nichts zugestellt, sondern ausgegeben - „Geliefert"
+ * waere dort schlicht falsch. Die uebrigen Zustaende bleiben, wie sie sind.
+ */
+export const PICKUP_STOP_STATUS_LABEL: Record<Stop['status'], string> = {
+  ...STOP_STATUS_LABEL,
+  done: 'Abgeschlossen',
+}
+
 export const PREORDER_STATUS_LABEL: Record<Preorder['status'], string> = {
   open: 'Offen',
   handed_over: 'Übergeben',

@@ -26,7 +26,7 @@ Es gibt jetzt npm-Skripte; der Rest läuft über Nx, von `website/` aus:
 ```bash
 npm run serve:delivery                 # Fahrer-App auf Port 4300
 npm run serve:api:simple               # die API, die sie braucht (Port 5000)
-npm run test:e2e:delivery              # Playwright, startet beide Server selbst
+npm run test:e2e:delivery              # Playwright (Desktop + Pixel 5), startet beide Server selbst
 
 npx nx build bakery-delivery
 npx nx lint bakery-delivery
@@ -195,10 +195,14 @@ Vier Regeln, die man kennen muss, bevor man hier etwas ändert:
   eine stornierte Bestellung darf nicht durch ein nachgesendetes Abhaken aus dem Funkloch
   wiederbelebt werden, und eine bereits übergebene (das Geld ist geflossen) nicht durch ein Storno
   aus der Abrechnung fallen. Dieselbe Haltung wie bei `uncountedQty` am Backschrank.
-- **Der Sammelstellen-Stopp entsteht beim Anlegen der Tour.** Fällt der Tourtag auf den `weekday`
-  einer aktiven Lieferstelle, hängt `POST /tours` deren Stopp gleich mit an. Für Touren aus älteren
-  Stores passiert das nicht — dafür warnt die Vorbestellungsliste der Management-App, dass die
-  Bestellungen den Fahrer sonst nie erreichen.
+- **Der Sammelstellen-Stopp entsteht beim Anlegen der Tour — aber nur einmal am Tag.** Fällt der
+  Tourtag auf den `weekday` einer aktiven Lieferstelle, hängt `POST /tours` deren Stopp gleich mit
+  an; trägt an dem Tag schon eine Tour diesen Stopp, bleibt es dabei (`hasPickupStop`). Sonst hätten
+  zwei Samstagsfahrer dieselbe Übergabeliste, und dieselbe Tüte ginge zweimal über den Tresen. Für
+  Touren aus älteren Stores passiert es gar nicht — dafür warnt die Vorbestellungsliste der
+  Management-App, dass die Bestellungen den Fahrer sonst nie erreichen.
+- **An der Sammelstelle heißt „erledigt" nicht „geliefert".** Der Stopp trägt dort
+  `PICKUP_STOP_STATUS_LABEL` („Abgeschlossen"); zugestellt wurde ja nichts, ausgegeben wurde.
 
 Der Bestellschluss (Freitag 12:00) **blockiert nichts** — die Backstube muss nachtragen können.
 Später erfasste Bestellungen tragen `afterDeadline: true` und werden in der Oberfläche markiert.
@@ -246,8 +250,8 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   im Core rechnet ab dem zuletzt erledigten Stopp oder der jüngeren gemeldeten Fahrerposition, nie
   früher als jetzt.
 
-- **Ohne Straße keine Adresssuche.** Ein Sammelstellen-Stopp darf ohne Straße angelegt werden (die
-  Adresse des Kindergartens ist noch nicht bekannt). Nominatim antwortet auf „Zweibrücken-Mörsbach"
+- **Ohne Straße keine Adresssuche.** Ein Sammelstellen-Stopp darf ohne Straße angelegt werden (eine
+  neue Sammelstelle steht anfangs ohne da). Nominatim antwortet auf „Zweibrücken-Mörsbach"
   aber bereitwillig mit der Ortsmitte und `precision: 'street'` — auf der Karte sah das aus wie eine
   gefundene Adresse. `ensureStopCoordinates()` sucht deshalb ohne Straße gar nicht erst.
 - **`window.confirm` blockiert und sieht auf dem Handy aus wie ein Absturz.** Die Rückfrage vor dem
@@ -390,7 +394,9 @@ WebSocket-Client ohne Server — die App benutzt ihn nicht, Positionen gehen per
 ## E2E
 
 `apps/bakery-delivery-e2e/src/delivery.spec.ts` fährt den Weg des Fahrers ab: Tour öffnen, Stopp
-anlegen, Route berechnen, abhaken. Die Konfiguration startet **beide** Server selbst (API auf 5000,
+anlegen, Route berechnen, abhaken. `sammelstelle.spec.ts` daneben die Übergabe in Mörsbach:
+Vorbestellungen am Stopp, Abhaken samt Neuladen, die Rückfrage vor dem Abschließen, Nichtabholung
+und Zurücksetzen, dazu der Dunkelmodus über das Neuladen hinweg. 13 Tests je Projekt, also 26. Die Konfiguration startet **beide** Server selbst (API auf 5000,
 App auf 4300) und setzt Locale `de-DE` sowie eine Position in Homburg. Der zweite Test legt sich seine
 eigene Tour per API an und löscht sie im `finally` wieder, damit er den Store nicht vollmüllt.
 
@@ -401,10 +407,23 @@ seine Tour woanders anlegt. Laufende Server auf diesen Ports werden wiederverwen
 Playwright-Projekte (Desktop, Pixel 5) laufen **parallel** gegen denselben Store — genau so kam die
 verlorene Änderung ans Licht (siehe Fallen).
 
+Drei Regeln, ohne die die Suite reihenweise an Kleinigkeiten scheitert, die gar nicht kaputt sind:
+
+- **Jeder Test bekommt seinen eigenen Tag, je Projekt verschieden.** Vorbestellungen hängen am
+  _Datum_, nicht an der Tour; zwei Tests am selben Tag sähen gegenseitig ihre Bestellungen.
+- **Erst aufräumen, dann anlegen** (`resetDay` / `resetTours`). Ein abgebrochener Lauf lässt seine
+  Tour stehen, der nächste hängt seinen Stopp an dieselbe Tour, und plötzlich zählt die App
+  „1 von 4". Eine übergebene Vorbestellung muss dabei erst auf „offen" zurück — stornieren lässt
+  sie sich sonst nicht, und das ist Absicht.
+- **Wer Stopps zählt, nimmt einen Werktag.** An einem Samstag hängt sich die Sammelstelle selbst an
+  die Tour.
+- **Beträge nie als Regex prüfen.** `Intl` setzt vor das € ein geschütztes Leerzeichen; Playwright
+  normalisiert das nur beim Textvergleich, nicht beim regulären Ausdruck.
+
 ## Nächste sinnvolle Schritte
 
-- **Die Adresse des Kindergartens Mörsbach nachtragen** (`/admin/delivery/preorders/lieferstelle`).
-  Bis dahin hat der Stopp keinen Kartenpunkt, und die Navigation läuft über den Ortsnamen.
+- Die Vorbestellungen der Kundschaft bestätigen (heute erfährt sie nur mündlich, dass die Bestellung
+  angekommen ist).
 - Stopps aus den Shop-Bestellungen erzeugen, statt sie abzutippen.
 - Eine Planungsansicht in der Management-App (die Erfassung gewöhnlicher Stopps steckt weiterhin in
   der Fahrer-App; nur die Vorbestellungen der Sammelstelle werden dort erfasst).

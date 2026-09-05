@@ -9,7 +9,12 @@ import {
 } from '@bakery/delivery/routing'
 import { useState } from 'react'
 import type { PreorderStatus, Stop } from '../lib/delivery-api'
-import { formatItems, formatTime, STOP_STATUS_LABEL } from '../lib/format'
+import {
+  formatItems,
+  formatTime,
+  PICKUP_STOP_STATUS_LABEL,
+  STOP_STATUS_LABEL,
+} from '../lib/format'
 import {
   handoverHeadline,
   HandoverList,
@@ -93,7 +98,11 @@ export function StopCard({
           <p className={styles.stopAddress}>{stop.address}</p>
         </div>
         <span className={`${styles.badge} ${styles[`badge_${stop.status}`]}`}>
-          {STOP_STATUS_LABEL[stop.status]}
+          {
+            (isPickupPoint ? PICKUP_STOP_STATUS_LABEL : STOP_STATUS_LABEL)[
+              stop.status
+            ]
+          }
         </span>
       </div>
 

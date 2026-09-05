@@ -1813,25 +1813,25 @@ function seedDeliveryStore() {
       lon: 7.3695327,
     },
     // Sammelstellen: dorthin wird gesammelt geliefert, die Kundschaft holt vor
-    // Ort ab. Die Adresse des Kindergartens ist noch nicht bekannt und wird
-    // bewusst leer gelassen - genau wie die Fahrernamen. Erfunden wird nichts;
-    // die Management-Oberflaeche fordert zum Nachtragen auf.
+    // Ort ab. Adresse der staedtischen Kita "Hand in Hand" in Moersbach; die
+    // Koordinaten stammen aus Nominatim (Hausnummern-Treffer) und stehen hier
+    // fest, damit der Kartenpunkt auch ohne Adresssuche sofort da ist.
     pickupPoints: [
       {
         id: 'kindergarten-moersbach',
         name: 'Kindergarten Mörsbach',
-        street: '',
-        zip: '',
+        street: 'Höhenstraße 24',
+        zip: '66482',
         city: 'Zweibrücken-Mörsbach',
         weekday: 6,
         window: '09:00-09:30',
         orderDeadline: { weekday: 5, time: '12:00' },
-        notes: null,
+        notes: 'Städt. Kita "Hand in Hand". Übergabe vor dem Eingang.',
         active: true,
-        lat: null,
-        lon: null,
-        geocodeSource: null,
-        geocodePrecision: null,
+        lat: 49.302619,
+        lon: 7.3937453,
+        geocodeSource: 'nominatim',
+        geocodePrecision: 'house',
       },
     ],
     preorders: [],
@@ -1879,10 +1879,8 @@ function seedDeliveryStore() {
           {
             id: 2,
             customer: 'Kindergarten Mörsbach',
-            // Adresse noch unbekannt - der Ort reicht fuer die Liste, der
-            // Kartenpunkt kommt, sobald das Team Strasse und PLZ nachtraegt.
-            street: '',
-            zip: '',
+            street: 'Höhenstraße 24',
+            zip: '66482',
             city: 'Zweibrücken-Mörsbach',
             phone: null,
             timeWindow: '09:00-09:30',
@@ -2523,10 +2521,15 @@ app.post(
     // ihr Stopp gleich mit. Ohne ihn haengt die Uebergabeliste an nichts: die
     // Vorbestellungen des Tages erreichten den Fahrer nie und blieben fuer
     // immer offen - und niemand faellt es auf.
+    //
+    // Aber nur einmal am Tag: samstags faehrt manchmal ein zweiter Fahrer, und
+    // stuende die Sammelstelle auf beiden Touren, haetten zwei Fahrer dieselbe
+    // Uebergabeliste - dieselbe Tuete koennte zweimal herausgegeben werden.
     for (const point of preorders.pickupPointsForDate(
       store.pickupPoints,
       date
     )) {
+      if (preorders.hasPickupStop(store.tours, point.id, date)) continue
       tour.stops.push({
         id: nextDeliveryId(tour.stops),
         ...preorders.buildPickupStop(point),
