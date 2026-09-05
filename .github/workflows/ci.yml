@@ -102,6 +102,12 @@ jobs:
         run: npm ci
 
       - name: Run unit tests (shard ${{ matrix.shard }}/3)
+        # Schaltet die Coverage-Schwellen ab: ein Shard fuehrt nur einen Teil
+        # der Testdateien aus, rechnet die Abdeckung aber ueber alle Quellen -
+        # die Schwelle koennte er gar nicht erreichen. Gemessen wird weiter,
+        # Codecov setzt die drei Teile zusammen.
+        env:
+          JEST_SHARDED: 'true'
         run: |
           npx nx affected --target=test \
             --base=origin/main \

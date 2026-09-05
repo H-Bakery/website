@@ -20,10 +20,18 @@ L.Icon.Default.mergeOptions({
 /** Homburg-Kirrberg - das Liefergebiet, nicht Zuerich. */
 const HOMBURG: [number, number] = [49.3117, 7.3542]
 
+/**
+ * Die Markerfarben kommen als `var(--…)` aus `global.css`. In einem
+ * `style`-Attribut loest die Variable auf, im SVG-Attribut `stroke` nicht -
+ * fuer die Linien steht deshalb unten eine Klasse.
+ *
+ * Die Kartenfarben selbst sind in beiden Modi gleich: der Dunkelmodus filtert
+ * nur `.leaflet-tile-pane`, die Marker- und Overlay-Ebene bleiben unberuehrt.
+ */
 const STATUS_COLOR: Record<Stop['status'], string> = {
-  open: '#8b4513',
-  done: '#2e7d32',
-  failed: '#c62828',
+  open: 'var(--color-map-open)',
+  done: 'var(--color-map-done)',
+  failed: 'var(--color-map-failed)',
 }
 
 interface MapProps {
@@ -89,7 +97,7 @@ export function Map({
     if (hasCoordinates(depot)) {
       const depotPoint: [number, number] = [depot.lat, depot.lon]
       bounds.push(depotPoint)
-      L.marker(depotPoint, { icon: badgeIcon('B', '#37474f') })
+      L.marker(depotPoint, { icon: badgeIcon('B', 'var(--color-map-depot)') })
         .bindPopup(
           `<strong>${escapeHtml(depot.name)}</strong><br/>Start der Tour`
         )
@@ -126,14 +134,14 @@ export function Map({
     // Luftlinie, damit die Reihenfolge trotzdem sichtbar ist.
     if (geometry && geometry.length > 1) {
       L.polyline(geometry, {
-        color: '#1565c0',
+        className: 'route-line',
         weight: 5,
         opacity: 0.75,
       }).addTo(layer)
       geometry.forEach((point) => bounds.push(point))
     } else if (bounds.length > 1) {
       L.polyline(bounds, {
-        color: '#1565c0',
+        className: 'route-line',
         weight: 3,
         opacity: 0.5,
         dashArray: '6 8',
@@ -199,10 +207,18 @@ function badgeIcon(
     className: 'waypoint-marker',
     html: `<div style="
       width:${size}px;height:${size}px;background:${color};
-      border:3px solid ${highlighted ? '#ffd54f' : '#fff'};border-radius:50%;
+      border:3px solid ${
+        highlighted
+          ? 'var(--color-marker-highlight)'
+          : 'var(--color-marker-border)'
+      };border-radius:50%;
       display:flex;align-items:center;justify-content:center;
-      color:#fff;font-weight:700;font-size:${highlighted ? 17 : 14}px;
-      box-shadow:0 2px 6px rgba(0,0,0,.35);">${escapeHtml(label)}</div>`,
+      color:var(--color-marker-label);font-weight:700;font-size:${
+        highlighted ? 17 : 14
+      }px;
+      box-shadow:0 2px 6px var(--color-marker-shadow);">${escapeHtml(
+        label
+      )}</div>`,
     iconSize: [size, size],
     iconAnchor: [size / 2, size / 2],
     popupAnchor: [0, -size / 2],

@@ -7,8 +7,19 @@ import {
   formatRouteDistance,
   hasCoordinates,
 } from '@bakery/delivery/routing'
-import type { Stop } from '../lib/delivery-api'
-import { formatItems, formatTime, STOP_STATUS_LABEL } from '../lib/format'
+import { useState } from 'react'
+import type { PreorderStatus, Stop } from '../lib/delivery-api'
+import {
+  formatItems,
+  formatTime,
+  PICKUP_STOP_STATUS_LABEL,
+  STOP_STATUS_LABEL,
+} from '../lib/format'
+import {
+  handoverHeadline,
+  HandoverList,
+  summarizeHandover,
+} from './HandoverList'
 import styles from '../app/page.module.css'
 
 interface StopCardProps {
@@ -20,6 +31,8 @@ interface StopCardProps {
   busy: boolean
   onStatusChange: (stopId: number, status: Stop['status']) => void
   onRemove?: (stopId: number) => void
+  /** Nur an einer Sammelstelle gebraucht - dort wird je Vorbestellung abgehakt. */
+  onPreorderStatusChange?: (preorderId: number, status: PreorderStatus) => void
 }
 
 export function StopCard({
@@ -30,7 +43,12 @@ export function StopCard({
   busy,
   onStatusChange,
   onRemove,
+  onPreorderStatusChange,
 }: StopCardProps) {
+  // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
+  // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
+  // Browser und sieht auf dem Handy aus wie ein Absturz.
+  const [confirmClose, setConfirmClose] = useState(false)
   const phoneLink = buildPhoneLink(stop.phone)
   const located = hasCoordinates(stop)
   // Nur die Strasse gefunden: der Punkt liegt in der Strassenmitte. Dann - wie
@@ -50,6 +68,21 @@ export function StopCard({
 
   const items = formatItems(stop.items)
 
+  // Ein Stopp mit `pickupPointId` ist eine Sammelstelle: statt einer
+  // Zustellung stehen dort mehrere Vorbestellungen zur Uebergabe an.
+  const isPickupPoint = stop.pickupPointId != null
+  const preorders = stop.preorders ?? []
+  const handover = summarizeHandover(preorders)
+  const closeStop = () => {
+    // Erledigt ist der Stopp erst, wenn jede Vorbestellung entschieden ist -
+    // sonst verschwaende eine ungeklaerte Tuete lautlos aus der Abrechnung.
+    if (handover.open > 0) {
+      setConfirmClose(true)
+      return
+    }
+    onStatusChange(stop.id, 'done')
+  }
+
   return (
     <li
       className={`${styles.stop} ${styles[`stop_${stop.status}`]} ${
@@ -65,7 +98,11 @@ export function StopCard({
           <p className={styles.stopAddress}>{stop.address}</p>
         </div>
         <span className={`${styles.badge} ${styles[`badge_${stop.status}`]}`}>
-          {STOP_STATUS_LABEL[stop.status]}
+          {
+            (isPickupPoint ? PICKUP_STOP_STATUS_LABEL : STOP_STATUS_LABEL)[
+              stop.status
+            ]
+          }
         </span>
       </div>
 
@@ -102,7 +139,18 @@ export function StopCard({
       {stop.status === 'failed' && stop.failureReason && (
         <p className={styles.stopFailure}>Grund: {stop.failureReason}</p>
       )}
-      {!located && (
+      {/* Eine Sammelstelle darf ohne Straße stehen (die Adresse des
+          Kindergartens ist noch nicht bekannt). „Adresse nicht gefunden" wäre
+          dort falsch: es wurde nie eine eingegeben, und die Navigation bekommt
+          auch keine. */}
+      {!located && isPickupPoint && (
+        <p className={styles.stopWarning}>
+          Für diese Sammelstelle ist noch keine Adresse hinterlegt – sie fehlt
+          auf der Karte und in der Reihenfolge. Die Übergabeliste stimmt
+          trotzdem.
+        </p>
+      )}
+      {!located && !isPickupPoint && (
         <p className={styles.stopWarning}>
           Adresse nicht gefunden – dieser Stopp fehlt auf der Karte und in der
           Reihenfolge. Die Navigation bekommt die eingegebene Adresse.
@@ -113,6 +161,47 @@ export function StopCard({
           Nur die Straße wurde gefunden, nicht die Hausnummer – die Navigation
           bekommt die eingegebene Adresse.
         </p>
+      )}
+
+      {isPickupPoint && onPreorderStatusChange && (
+        <>
+          <p className={styles.progressLabel}>{handoverHeadline(handover)}</p>
+          <HandoverList
+            preorders={preorders}
+            busy={busy}
+            onStatusChange={onPreorderStatusChange}
+          />
+        </>
+      )}
+
+      {confirmClose && (
+        <div className={styles.hint} role="alert">
+          <p>
+            {handover.open === 1
+              ? '1 Vorbestellung ist noch offen. Trotzdem abschließen?'
+              : `${handover.open} Vorbestellungen sind noch offen. Trotzdem abschließen?`}
+          </p>
+          <div className={styles.buttonGroup}>
+            <button
+              type="button"
+              className={styles.buttonWarn}
+              disabled={busy}
+              onClick={() => {
+                setConfirmClose(false)
+                onStatusChange(stop.id, 'done')
+              }}
+            >
+              Trotzdem abschließen
+            </button>
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              onClick={() => setConfirmClose(false)}
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
       )}
 
       <div className={styles.stopActions}>
@@ -133,24 +222,37 @@ export function StopCard({
         )}
 
         {stop.status === 'open' ? (
-          <>
+          // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
+          // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
+          isPickupPoint ? (
             <button
               type="button"
               className={styles.buttonSuccess}
               disabled={busy}
-              onClick={() => onStatusChange(stop.id, 'done')}
+              onClick={closeStop}
             >
-              Geliefert
+              Stopp abschließen
             </button>
-            <button
-              type="button"
-              className={styles.buttonWarn}
-              disabled={busy}
-              onClick={() => onStatusChange(stop.id, 'failed')}
-            >
-              Nicht angetroffen
-            </button>
-          </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className={styles.buttonSuccess}
+                disabled={busy}
+                onClick={() => onStatusChange(stop.id, 'done')}
+              >
+                Geliefert
+              </button>
+              <button
+                type="button"
+                className={styles.buttonWarn}
+                disabled={busy}
+                onClick={() => onStatusChange(stop.id, 'failed')}
+              >
+                Nicht angetroffen
+              </button>
+            </>
+          )
         ) : (
           <button
             type="button"

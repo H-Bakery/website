@@ -21,12 +21,15 @@ import {
   describeError,
   flushQueue,
   pendingUpdates,
+  queuePreorderUpdate,
   queueStopUpdate,
   rememberDrivers,
   rememberedDrivers,
   rememberedTours,
   rememberTours,
   type Driver,
+  type Preorder,
+  type PreorderStatus,
   type QueuedUpdate,
   type Stop,
   type Tour,
@@ -40,6 +43,7 @@ import {
 } from '../lib/format'
 import { AddStopForm, type NewStopInput } from '../components/AddStopForm'
 import { StopCard } from '../components/StopCard'
+import { ThemeToggle } from '../components/ThemeToggle'
 import styles from './page.module.css'
 
 const Map = dynamic(() => import('../components/Map').then((mod) => mod.Map), {
@@ -306,13 +310,27 @@ export default function DeliveryDashboard() {
         setIsOnline(true)
         return
       }
-      const { tour: updated, remaining, rejected, offline } = await flushQueue()
+      const {
+        tour: updated,
+        preorders: confirmed,
+        remaining,
+        rejected,
+        offline,
+      } = await flushQueue()
       setPending(remaining)
       // Erst wenn der Server wirklich geantwortet hat, ist "online" wahr -
       // sonst verschwand der Hinweis, waehrend die Aenderungen noch lagen.
       setIsOnline(!offline)
       if (updated) {
         setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      }
+      if (confirmed.length > 0) {
+        // Die Antwort auf ein nachgesendetes Abhaken ist die Vorbestellung
+        // selbst, nicht die Tour - sonst stuende sie bis zum naechsten
+        // Nachladen wieder als „Offen" in der Uebergabeliste.
+        setTours((list) =>
+          list.map((t) => confirmed.reduce(replacePreorder, t))
+        )
       }
       if (!offline && remaining.length === 0) afterFlushRef.current()
       if (rejected.length > 0) {
@@ -361,6 +379,40 @@ export default function DeliveryDashboard() {
       } else {
         // Kein Netz: gemerkt, geht spaeter automatisch raus.
         setPending(queueStopUpdate(tour.id, stopId, { status }))
+        setIsOnline(false)
+      }
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const changePreorderStatus = async (
+    preorderId: number,
+    status: PreorderStatus
+  ) => {
+    if (!tour) return
+    setBusy(true)
+    setError(null)
+
+    // Wie beim Stopp: erst lokal umschalten. Die Familie steht vor dem
+    // Fahrer, das Netz ist am Kindergarten die Ausnahme.
+    const optimistic = applyPreorderStatus(tour, preorderId, status)
+    setTours((list) => list.map((t) => (t.id === tour.id ? optimistic : t)))
+
+    try {
+      const updated = await deliveryApi.updatePreorder(preorderId, { status })
+      setTours((list) =>
+        list.map((t) => (t.id === tour.id ? replacePreorder(t, updated) : t))
+      )
+      setPending(pendingUpdates())
+      if (copiedAt !== null) loadTours(date, driverId)
+    } catch (err) {
+      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        setError(err.message)
+        await loadTours(date, driverId)
+      } else {
+        // Kein Netz: gemerkt, geht spaeter automatisch raus.
+        setPending(queuePreorderUpdate(preorderId, { status }))
         setIsOnline(false)
       }
     } finally {
@@ -514,8 +566,11 @@ export default function DeliveryDashboard() {
   return (
     <main className={styles.main}>
       <header className={styles.header}>
-        <h1>Liefertour</h1>
-        <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
+        <div>
+          <h1>Liefertour</h1>
+          <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
+        </div>
+        <ThemeToggle />
       </header>
 
       {offlineNotice && (
@@ -733,6 +788,7 @@ export default function DeliveryDashboard() {
                   distance={distanceTo(nextStop)}
                   busy={busy}
                   onStatusChange={changeStopStatus}
+                  onPreorderStatusChange={changePreorderStatus}
                 />
               </ul>
             </section>
@@ -800,6 +856,7 @@ export default function DeliveryDashboard() {
                     distance={distanceTo(stop)}
                     busy={busy}
                     onStatusChange={changeStopStatus}
+                    onPreorderStatusChange={changePreorderStatus}
                     onRemove={planning ? removeStop : undefined}
                   />
                 ))}
@@ -866,12 +923,58 @@ function applyStopStatus(
   }
 }
 
+/** Lokale Vorschau einer uebergebenen Vorbestellung. Der Stopp selbst bleibt
+ * offen - erledigt ist er erst, wenn der Fahrer ihn abschliesst. */
+function applyPreorderStatus(
+  tour: Tour,
+  preorderId: number,
+  status: PreorderStatus
+): Tour {
+  return mapPreorder(tour, preorderId, (preorder) => ({
+    ...preorder,
+    status,
+    handedOverAt: status === 'handed_over' ? new Date().toISOString() : null,
+  }))
+}
+
+/** Ersetzt eine Vorbestellung durch den Stand, den der Server bestaetigt hat. */
+function replacePreorder(tour: Tour, updated: Preorder): Tour {
+  return mapPreorder(tour, updated.id, () => updated)
+}
+
+function mapPreorder(
+  tour: Tour,
+  preorderId: number,
+  change: (preorder: Preorder) => Preorder
+): Tour {
+  let hit = false
+  const stops = tour.stops.map((stop) => {
+    if (!stop.preorders?.some((p) => p.id === preorderId)) return stop
+    hit = true
+    return {
+      ...stop,
+      preorders: stop.preorders.map((preorder) =>
+        preorder.id === preorderId ? change(preorder) : preorder
+      ),
+    }
+  })
+  return hit ? { ...tour, stops } : tour
+}
+
 /**
  * Spielt die Warteschlange auf die Offline-Kopie: ein Abhaken kurz vor dem
- * Neuladen soll nicht wieder als „Offen" dastehen.
+ * Neuladen soll nicht wieder als „Offen" dastehen - weder ein Stopp noch eine
+ * eben uebergebene Vorbestellung.
  */
 function withPendingUpdates(tours: Tour[], queue: QueuedUpdate[]): Tour[] {
   return queue.reduce((list, entry) => {
+    if (entry.kind === 'preorder') {
+      // Zu welcher Tour die Vorbestellung gehoert, steht nicht im Eintrag -
+      // gesucht wird sie ueber die Stopps, die sie tragen.
+      return list.map((t) =>
+        applyPreorderStatus(t, entry.preorderId, entry.body.status)
+      )
+    }
     const status = entry.body.status
     if (!status) return list
     return list.map((t) =>

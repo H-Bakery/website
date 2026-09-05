@@ -183,6 +183,19 @@ Die Fahrer-App `bakery-delivery` (Port 4300) fährt die Samstagstour mit ein bis
 Fahrer hakt `done` / `failed` ab. Das ist etwas anderes als der Backschrank-**Besuch** oben: dort
 wird der Restbestand gezählt und der Verkauf berechnet, hier wird nur zugestellt.
 
+Seit dem 05.09.2026 hat die Tour einen zweiten Fall: die **Sammelstelle Kindergarten Mörsbach**.
+Dort wird nicht zugestellt, sondern **vorbestellte Ware übergeben** — ein Stopp, viele Kunden. Die
+Vorbestellungen erfasst **ausschließlich die Management-App** (`/admin/delivery/preorders`), der Shop
+weiß davon nichts. Preise sind ein Snapshot aus `hq`, storniert wird statt gelöscht, und
+`handed_over ↔ cancelled` ist gesperrt — sonst fiele eine bezahlte Übergabe aus der Abrechnung oder
+ein nachgesendetes Abhaken aus dem Funkloch belebte eine stornierte Bestellung wieder. Formeln:
+`apps/bakery-api/src/services/delivery-preorders.core.js`. Die Sammelstelle liegt in der
+**Höhenstraße 24, 66482 Zweibrücken-Mörsbach** (städt. Kita „Hand in Hand"); Adresse und
+Koordinaten stehen im Seed. Der Stopp hängt sich beim Anlegen einer Tour selbst an — aber
+**nur an die erste Tour des Tages**, sonst hätten zwei Samstagsfahrer dieselbe Übergabeliste.
+
+Die Fahrer-App hat außerdem einen **Dunkelmodus** (System / Hell / Dunkel, CSS-Variablen, kein MUI).
+
 Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von außen wissen muss:
 
 - **Alle Server-Formeln stehen genau einmal**, in `apps/bakery-api/src/services/delivery-tours.core.js`

@@ -13,6 +13,24 @@ const API =
   process.env['API_URL'] ||
   `http://localhost:${process.env['API_PORT'] || '5000'}`
 
+/**
+ * Den Tag leerraeumen, bevor der Test ihn benutzt.
+ *
+ * Ein abgebrochener Lauf laesst seine Tour stehen; der naechste Lauf haengt
+ * seinen Stopp dann an dieselbe Tour, und ploetzlich zaehlt die App „1 von 4".
+ */
+async function resetTours(
+  request: import('@playwright/test').APIRequestContext,
+  date: string
+) {
+  const tours = await (
+    await request.get(`${API}/api/deliveries/tours?date=${date}`)
+  ).json()
+  for (const tour of tours) {
+    await request.delete(`${API}/api/deliveries/tours/${tour.id}`)
+  }
+}
+
 test.describe('Liefertour', () => {
   test('zeigt Kopf und Bedienelemente der Tour', async ({ page }) => {
     await page.goto('/')
@@ -31,18 +49,26 @@ test.describe('Liefertour', () => {
     request,
   }) => {
     // Eigene Tour, damit der Test nicht an fremden Daten haengt.
+    const workday =
+      test.info().project.name === 'chromium' ? '2026-09-09' : '2026-09-10'
+    await resetTours(request, workday)
     const created = await request.post(`${API}/api/deliveries/tours`, {
-      data: { date: '2026-09-05', driverId: 1, name: 'E2E-Tour' },
+      // Bewusst ein Werktag: an einem Samstag haengt die Sammelstelle
+      // Moersbach automatisch mit an der Tour, und dieser Test zaehlt Stopps.
+      // Und je Projekt ein eigener Tag, weil beide parallel laufen.
+      data: { date: workday, driverId: 1, name: 'E2E-Tour' },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()
 
     try {
       await page.goto('/')
-      await page.getByLabel('Tag', { exact: true }).fill('2026-09-05')
-      await page
-        .getByRole('combobox', { name: 'Tour' })
-        .selectOption(String(tour.id))
+      await page.getByLabel('Tag', { exact: true }).fill(workday)
+      // Die Tour-Auswahl erscheint nur, wenn der Tag mehr als eine Tour hat -
+      // sonst wartet der Test auf ein Feld, das es nie gibt.
+      await expect(
+        page.getByRole('heading', { name: 'E2E-Tour', level: 2 })
+      ).toBeVisible({ timeout: 20_000 })
 
       await page.getByRole('button', { name: 'Tour planen' }).click()
       await page.getByLabel('Kunde *', { exact: true }).fill('E2E Testkunde')
@@ -81,8 +107,11 @@ test.describe('Liefertour', () => {
     // Regression: ein Stopp ohne Koordinaten hatte gar keinen
     // Navigationsknopf - der Fahrer konnte die getippte Adresse nicht einmal
     // an die Navi-App weiterreichen.
+    const workday =
+      test.info().project.name === 'chromium' ? '2026-09-16' : '2026-09-17'
+    await resetTours(request, workday)
     const created = await request.post(`${API}/api/deliveries/tours`, {
-      data: { date: '2026-09-12', driverId: 1, name: 'E2E-Tour ohne Adresse' },
+      data: { date: workday, driverId: 1, name: 'E2E-Tour ohne Adresse' },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()
@@ -102,10 +131,10 @@ test.describe('Liefertour', () => {
       expect(added.ok()).toBeTruthy()
 
       await page.goto('/')
-      await page.getByLabel('Tag', { exact: true }).fill('2026-09-12')
-      await page
-        .getByRole('combobox', { name: 'Tour' })
-        .selectOption(String(tour.id))
+      await page.getByLabel('Tag', { exact: true }).fill(workday)
+      await expect(
+        page.getByRole('heading', { name: 'E2E-Tour ohne Adresse', level: 2 })
+      ).toBeVisible({ timeout: 20_000 })
 
       const stop = page
         .getByRole('listitem')
@@ -163,8 +192,11 @@ test.describe('Liefertour', () => {
   }) => {
     // Eigener Tag je Playwright-Projekt: beide laufen parallel gegen
     // denselben Store und sollen sich nicht gegenseitig die Tour vorsetzen.
+    // Mittwoche, aus demselben Grund wie oben - und weit weg von den Samstagen
+    // in `sammelstelle.spec.ts`, die parallel laufen.
     const date =
-      test.info().project.name === 'chromium' ? '2027-03-06' : '2027-03-13'
+      test.info().project.name === 'chromium' ? '2027-03-03' : '2027-03-10'
+    await resetTours(request, date)
     const created = await request.post(`${API}/api/deliveries/tours`, {
       data: { date, driverId: 1, name: 'Funkloch-Tour' },
     })

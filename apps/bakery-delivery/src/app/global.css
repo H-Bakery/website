@@ -1,3 +1,210 @@
+/* Farbtokens der Fahrer-App.
+
+   Die App steht bewusst ausserhalb des MUI-Stacks (siehe apps/bakery-delivery/CLAUDE.md),
+   der Dunkelmodus laeuft deshalb ueber CSS-Variablen statt ueber eine Bibliothek.
+   Jede Farbe der App kommt aus einem dieser Tokens - eine feste Farbe im Stylesheet
+   oder in einer Komponente ist im dunklen Modus unsichtbar oder blendend.
+
+   Dunkel wird zweimal definiert:
+   - `@media (prefers-color-scheme: dark)` fuer die Systemeinstellung,
+   - `:root[data-theme='dark']` fuer die ausdrueckliche Wahl.
+   Die Media Query traegt zusaetzlich `:not([data-theme='light'])`. Ohne diesen
+   Ausschluss waere die Wahl einseitig - dunkel liesse sich erzwingen, hell
+   nicht, weil auf einem dunkel eingestellten Geraet die Media Query greift und
+   `:root` sie nicht ueberschreiben kann (gleiche Spezifitaet, spaeter im Code). */
+
+:root {
+  /* Flaechen */
+  --color-bg: #f4f2ef; /* Seitenhintergrund */
+  --color-surface: #ffffff; /* Karten, Ghost-Knoepfe */
+  --color-surface-muted: #f6f2ed; /* eingebettete Flaeche: Artikelliste, Hover */
+  --color-surface-sunken: #e8e2db; /* Fortschrittsspur, Kartenplatzhalter */
+  --color-field-bg: #ffffff; /* Eingabefelder */
+
+  /* Rahmen und Schatten */
+  --color-border: #e2dbd3; /* dekorative 1px-Rahmen */
+  --color-border-strong: #9d9186; /* Rahmen von Bedienelementen, >= 3:1 */
+  --color-shadow: rgba(0, 0, 0, 0.12);
+
+  /* Text */
+  --color-text: #2b2118;
+  --color-text-muted: #6d6257;
+  --color-text-faint: #746a5d; /* Kleinstschrift (Feldbeschriftungen) */
+
+  /* Akzent (Marke) */
+  --color-accent: #8b4513;
+  --color-accent-hover: #6b3410;
+  --color-accent-contrast: #ffffff;
+  --color-accent-ring: rgba(139, 69, 19, 0.25);
+
+  /* Status "offen" */
+  --color-open-surface: #ede7e0;
+  --color-open-text: #4a4038;
+
+  /* Status "geliefert" */
+  --color-success: #2e7d32;
+  --color-success-hover: #256428;
+  --color-success-contrast: #ffffff;
+  --color-success-surface: #dcedde;
+  --color-success-text: #1b5e20;
+  --color-success-tint: #f6faf6; /* Hintergrund eines erledigten Stopps */
+
+  /* Status "nicht angetroffen" - zugleich Fehlerfarbe */
+  --color-danger: #c62828;
+  --color-danger-hover: #a41f1f;
+  --color-danger-contrast: #ffffff;
+  --color-danger-surface: #fdecea;
+  --color-danger-border: #f5c2bd;
+  --color-danger-text: #a02012;
+  --color-danger-tint: #fdf7f6;
+
+  /* Warnung */
+  --color-warning-surface: #fdf3e2;
+  --color-warning-border: #f0dcb4;
+  --color-warning-text: #8a5a00;
+
+  /* Hinweis (laufender Stopp) */
+  --color-info-surface: #e3eefb;
+  --color-info-text: #14508f;
+
+  /* Umgekehrte Flaeche: der Offline-Balken */
+  --color-inverse-bg: #2b2118;
+  --color-inverse-text: #ffffff;
+
+  /* Karte. Die Markerfarben sind in beiden Modi gleich: sie liegen auf den
+     Kacheln, nicht auf einer App-Flaeche, und der Kachelfilter unten laesst
+     die Marker-Ebene unberuehrt. */
+  --color-map-open: #8b4513;
+  --color-map-done: #2e7d32;
+  --color-map-failed: #c62828;
+  --color-map-depot: #37474f;
+  --color-marker-border: #ffffff;
+  --color-marker-highlight: #ffd54f;
+  --color-marker-label: #ffffff;
+  --color-marker-shadow: rgba(0, 0, 0, 0.35);
+  --color-route: #1565c0;
+  --color-position: #1565c0;
+  --color-position-ring: rgba(21, 101, 192, 0.5);
+  --color-position-ring-fade: rgba(21, 101, 192, 0);
+  --map-tile-filter: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --color-bg: #16130f;
+    --color-surface: #221d18;
+    --color-surface-muted: #2b241d;
+    --color-surface-sunken: #332b23;
+    --color-field-bg: #191410;
+
+    --color-border: #3a322a;
+    --color-border-strong: #776b5e;
+    --color-shadow: rgba(0, 0, 0, 0.5);
+
+    --color-text: #f2ece5;
+    --color-text-muted: #c3b8ab;
+    --color-text-faint: #a4988a;
+
+    --color-accent: #e2924f;
+    --color-accent-hover: #efa768;
+    --color-accent-contrast: #1d1206;
+    --color-accent-ring: rgba(226, 146, 79, 0.35);
+
+    --color-open-surface: #3a3128;
+    --color-open-text: #e0d4c6;
+
+    --color-success: #5cbf62;
+    --color-success-hover: #74d079;
+    --color-success-contrast: #06210a;
+    --color-success-surface: #16341a;
+    --color-success-text: #a6e0a9;
+    --color-success-tint: #1b2a1c;
+
+    --color-danger: #f07a5a;
+    --color-danger-hover: #f5927a;
+    --color-danger-contrast: #2a0b03;
+    --color-danger-surface: #3a1712;
+    --color-danger-border: #6d2c22;
+    --color-danger-text: #ff9e85;
+    --color-danger-tint: #2a1714;
+
+    --color-warning-surface: #3a2b0f;
+    --color-warning-border: #5c4718;
+    --color-warning-text: #f5c465;
+
+    --color-info-surface: #12263a;
+    --color-info-text: #8fc0f5;
+
+    --color-inverse-bg: #3b2f24;
+    --color-inverse-text: #f7f2ec;
+
+    --color-route: #64b5f6;
+    --color-position: #64b5f6;
+    --color-position-ring: rgba(100, 181, 246, 0.5);
+    --color-position-ring-fade: rgba(100, 181, 246, 0);
+    /* Nur die Kachel-Ebene wird gefiltert (siehe unten), deshalb bleiben
+       Marker, Linien und Popups in ihren eigenen Farben. */
+    --map-tile-filter: invert(1) hue-rotate(180deg) brightness(0.85)
+      contrast(1.05) saturate(0.75);
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-bg: #16130f;
+  --color-surface: #221d18;
+  --color-surface-muted: #2b241d;
+  --color-surface-sunken: #332b23;
+  --color-field-bg: #191410;
+
+  --color-border: #3a322a;
+  --color-border-strong: #776b5e;
+  --color-shadow: rgba(0, 0, 0, 0.5);
+
+  --color-text: #f2ece5;
+  --color-text-muted: #c3b8ab;
+  --color-text-faint: #a4988a;
+
+  --color-accent: #e2924f;
+  --color-accent-hover: #efa768;
+  --color-accent-contrast: #1d1206;
+  --color-accent-ring: rgba(226, 146, 79, 0.35);
+
+  --color-open-surface: #3a3128;
+  --color-open-text: #e0d4c6;
+
+  --color-success: #5cbf62;
+  --color-success-hover: #74d079;
+  --color-success-contrast: #06210a;
+  --color-success-surface: #16341a;
+  --color-success-text: #a6e0a9;
+  --color-success-tint: #1b2a1c;
+
+  --color-danger: #f07a5a;
+  --color-danger-hover: #f5927a;
+  --color-danger-contrast: #2a0b03;
+  --color-danger-surface: #3a1712;
+  --color-danger-border: #6d2c22;
+  --color-danger-text: #ff9e85;
+  --color-danger-tint: #2a1714;
+
+  --color-warning-surface: #3a2b0f;
+  --color-warning-border: #5c4718;
+  --color-warning-text: #f5c465;
+
+  --color-info-surface: #12263a;
+  --color-info-text: #8fc0f5;
+
+  --color-inverse-bg: #3b2f24;
+  --color-inverse-text: #f7f2ec;
+
+  --color-route: #64b5f6;
+  --color-position: #64b5f6;
+  --color-position-ring: rgba(100, 181, 246, 0.5);
+  --color-position-ring-fade: rgba(100, 181, 246, 0);
+  --map-tile-filter: invert(1) hue-rotate(180deg) brightness(0.85)
+    contrast(1.05) saturate(0.75);
+}
+
 *,
 *::before,
 *::after {
@@ -19,9 +226,24 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
+html {
+  /* Damit Scrollbalken und Formular-Standardfarben des Browsers mitziehen. */
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html:not([data-theme='light']) {
+    color-scheme: dark;
+  }
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
+}
+
 body {
-  color: #2b2118;
-  background: #f4f2ef;
+  color: var(--color-text);
+  background: var(--color-bg);
 }
 
 a {
@@ -38,22 +260,22 @@ select {
 .pulse-dot {
   width: 18px;
   height: 18px;
-  background-color: #1565c0;
-  border: 3px solid #fff;
+  background-color: var(--color-position);
+  border: 3px solid var(--color-marker-border);
   border-radius: 50%;
-  box-shadow: 0 0 0 rgba(21, 101, 192, 0.5);
+  box-shadow: 0 0 0 var(--color-position-ring);
   animation: pulse 2s infinite;
 }
 
 @keyframes pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(21, 101, 192, 0.5);
+    box-shadow: 0 0 0 0 var(--color-position-ring);
   }
   70% {
-    box-shadow: 0 0 0 14px rgba(21, 101, 192, 0);
+    box-shadow: 0 0 0 14px var(--color-position-ring-fade);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(21, 101, 192, 0);
+    box-shadow: 0 0 0 0 var(--color-position-ring-fade);
   }
 }
 
@@ -66,4 +288,43 @@ select {
 /* Leaflet-Popups an die App-Typografie angleichen. */
 .leaflet-container {
   font-family: inherit;
+}
+
+/* Der Streckenverlauf wird ueber eine Klasse eingefaerbt, nicht ueber Leaflets
+   `color`-Option: die landet als SVG-Attribut `stroke` im DOM, und dort loest
+   `var(--…)` nicht auf. Als CSS-Eigenschaft tut es das. */
+.route-line {
+  stroke: var(--color-route);
+}
+
+/* Nur die Kachel-Ebene abdunkeln. `.leaflet-marker-pane`, `.leaflet-overlay-pane`
+   und die Popups sind Geschwister von `.leaflet-tile-pane`, kein Filter erbt
+   also auf sie - die Marker behalten ihre Statusfarben. */
+.leaflet-tile-pane {
+  filter: var(--map-tile-filter);
+}
+
+.leaflet-container .leaflet-control-attribution {
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.leaflet-container .leaflet-control-attribution a {
+  color: var(--color-text-muted);
+}
+
+.leaflet-container .leaflet-popup-content-wrapper,
+.leaflet-container .leaflet-popup-tip {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.leaflet-container .leaflet-bar a {
+  background: var(--color-surface);
+  color: var(--color-text);
+  border-bottom-color: var(--color-border);
+}
+
+.leaflet-container .leaflet-bar a:hover {
+  background: var(--color-surface-muted);
 }

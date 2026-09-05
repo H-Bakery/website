@@ -5,7 +5,11 @@ import {
   deliveryApi,
   rememberDrivers,
   rememberTours,
+  pendingUpdates,
+  queuePreorderUpdate,
   type Driver,
+  type Preorder,
+  type Stop,
   type Tour,
 } from '../lib/delivery-api'
 import { nextSaturdayIso } from '../lib/format'
@@ -24,6 +28,7 @@ jest.mock('../lib/delivery-api', () => ({
     tours: jest.fn(),
     createTour: jest.fn(),
     updateStop: jest.fn(),
+    updatePreorder: jest.fn(),
     reportPosition: jest.fn(),
   },
 }))
@@ -351,5 +356,248 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
     )
     expect(screen.queryByText(/Kein Netz/)).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+/**
+ * Sammelstelle: der Fahrer steht im Übergabefenster am Kindergarten, die
+ * Familien kommen nacheinander. Netz gibt es dort nicht verlässlich - eine
+ * Übergabe muss trotzdem ankommen, und ein noch nicht abgehakter Kunde darf
+ * nicht lautlos mit dem Stopp abgeschlossen werden.
+ */
+describe('DeliveryDashboard an der Sammelstelle', () => {
+  const date = nextSaturdayIso()
+
+  const preorder = (overrides: Partial<Preorder>): Preorder => ({
+    id: 101,
+    reference: 'MO-2026-09-12-01',
+    pickupPointId: 'kindergarten-moersbach',
+    date,
+    customer: 'Vorbestellung 1',
+    phone: null,
+    items: [
+      {
+        productId: 'bauernbrot',
+        name: 'Bauernbrot',
+        qty: 2,
+        unit: 'Stück',
+        unitPrice: 3.05,
+        lineTotal: 6.1,
+      },
+    ],
+    total: 6.1,
+    note: null,
+    status: 'open',
+    handedOverAt: null,
+    createdAt: '2026-09-10T08:00:00.000Z',
+    updatedAt: '2026-09-10T08:00:00.000Z',
+    deadline: null,
+    afterDeadline: false,
+    ...overrides,
+  })
+
+  const pickupStop: Stop = {
+    id: 1,
+    customer: 'Kindergarten Mörsbach',
+    street: '',
+    zip: '',
+    city: 'Zweibrücken-Mörsbach',
+    address: 'Zweibrücken-Mörsbach',
+    phone: null,
+    timeWindow: '09:00-09:30',
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    lat: null,
+    lon: null,
+    geocodeSource: null,
+    geocodePrecision: null,
+    estimatedArrival: null,
+    pickupPointId: 'kindergarten-moersbach',
+    preorders: [
+      preorder({ id: 101, reference: 'MO-2026-09-12-01', total: 6.1 }),
+      preorder({
+        id: 102,
+        reference: 'MO-2026-09-12-02',
+        customer: 'Vorbestellung 2',
+        total: 6.2,
+      }),
+    ],
+  }
+
+  const pickupTour: Tour = {
+    ...tour,
+    date,
+    stops: [pickupStop],
+    progress: { total: 1, done: 0, failed: 0, open: 1, isComplete: false },
+    nextStopId: 1,
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    api.drivers.mockResolvedValue([])
+    api.tours.mockResolvedValue([pickupTour])
+  })
+
+  afterEach(() => {
+    delete (global as { fetch?: unknown }).fetch
+  })
+
+  it('zeigt die Übergabeliste mit Kopfzeile statt „Geliefert / Nicht angetroffen"', async () => {
+    render(<DeliveryDashboard />)
+
+    // Der Stopp steht zweimal auf der Seite („Nächster Stopp" und die Liste).
+    expect(
+      (await screen.findAllByText(/0 von 2 übergeben/)).length
+    ).toBeGreaterThan(0)
+    expect(
+      screen.getAllByText(/Bar zu kassieren: 12,30/).length
+    ).toBeGreaterThan(0)
+    expect(screen.getAllByText('MO-2026-09-12-01').length).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Geliefert' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Nicht angetroffen' })
+    ).toBeNull()
+    expect(
+      screen.getAllByRole('button', { name: 'Stopp abschließen' }).length
+    ).toBeGreaterThan(0)
+  })
+
+  it('nennt einen erledigten Sammelstellen-Stopp „Abgeschlossen", nicht „Geliefert"', async () => {
+    // An der Sammelstelle wird nichts zugestellt, sondern ausgegeben.
+    api.tours.mockResolvedValue([
+      {
+        ...pickupTour,
+        stops: [
+          {
+            ...pickupStop,
+            status: 'done',
+            preorders: [preorder({ id: 101, status: 'handed_over' })],
+          },
+        ],
+        progress: { total: 1, done: 1, failed: 0, open: 0, isComplete: true },
+        nextStopId: null,
+      },
+    ])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      (await screen.findAllByText('Abgeschlossen')).length
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText('Geliefert')).toBeNull()
+  })
+
+  it('nennt die fehlende Adresse der Sammelstelle, statt „Adresse nicht gefunden" zu behaupten', async () => {
+    render(<DeliveryDashboard />)
+
+    expect(
+      (await screen.findAllByText(/noch keine Adresse hinterlegt/)).length
+    ).toBeGreaterThan(0)
+    // Der Text für gewöhnliche Stopps verspricht der Navigation die eingegebene
+    // Adresse - es wurde aber nie eine eingegeben.
+    expect(screen.queryByText(/Adresse nicht gefunden/)).toBeNull()
+  })
+
+  it('fragt nach, bevor der Stopp mit offenen Vorbestellungen abgeschlossen wird', async () => {
+    render(<DeliveryDashboard />)
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Stopp abschließen' }))[0]
+    )
+
+    // Kein window.confirm: das blockiert und sieht auf dem Handy aus wie ein
+    // Absturz. Die Rückfrage steht in der Oberfläche.
+    expect(
+      screen.getByText(
+        '2 Vorbestellungen sind noch offen. Trotzdem abschließen?'
+      )
+    ).toBeTruthy()
+    expect(api.updateStop).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }))
+    expect(screen.queryByText(/Trotzdem abschließen\?/)).toBeNull()
+    expect(api.updateStop).not.toHaveBeenCalled()
+
+    api.updateStop.mockResolvedValue(pickupTour)
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Stopp abschließen' })[0]
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Trotzdem abschließen' })
+    )
+    await waitFor(() =>
+      expect(api.updateStop).toHaveBeenCalledWith(7, 1, { status: 'done' })
+    )
+  })
+
+  it('legt die Warteschlange über die Offline-Kopie der Tour', async () => {
+    // Sonst stünde ein eben übergebener Kunde nach dem Neuladen im Funkloch
+    // wieder auf „Offen" - und bekäme seine Tüte womöglich ein zweites Mal.
+    rememberTours(date, null, [pickupTour])
+    queuePreorderUpdate(101, { status: 'handed_over' })
+    api.tours.mockRejectedValue(networkError())
+    ;(global as { fetch?: unknown }).fetch = jest
+      .fn()
+      .mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      (await screen.findAllByText(/1 von 2 übergeben/)).length
+    ).toBeGreaterThan(0)
+    expect(
+      screen.getAllByText(/Bar zu kassieren: 6,20/).length
+    ).toBeGreaterThan(0)
+  })
+
+  it('legt eine Übergabe im Funkloch in die Warteschlange und sendet sie beim nächsten Lauf', async () => {
+    api.updatePreorder.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Übergeben' }))[0]
+    )
+
+    // Sofort umgeschaltet - der Fahrer wartet nicht auf das Netz.
+    await waitFor(() =>
+      expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
+    )
+    expect(screen.getByText(/Kein Netz/)).toBeTruthy()
+    expect(pendingUpdates()).toEqual([
+      expect.objectContaining({
+        kind: 'preorder',
+        preorderId: 101,
+        body: { status: 'handed_over' },
+      }),
+    ])
+
+    // Funk ist wieder da: die Warteschlange geht ueber den echten Client raus.
+    const handedOver = {
+      ...pickupStop.preorders?.[0],
+      status: 'handed_over',
+      handedOverAt: '2026-09-12T07:15:00.000Z',
+    }
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify(handedOver),
+    })
+    ;(global as { fetch?: unknown }).fetch = fetchMock
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(
+      /\/api\/deliveries\/preorders\/101$/
+    )
+    expect(fetchMock.mock.calls[0][1].method).toBe('PATCH')
+    expect(pendingUpdates()).toEqual([])
+    expect(screen.queryByText(/Kein Netz/)).toBeNull()
+    expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
   })
 })

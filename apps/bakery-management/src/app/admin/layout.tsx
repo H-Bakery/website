@@ -82,6 +82,12 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/partners/[id]/visit/new': 'Besuch erfassen',
   '/admin/partners/[id]/templates': 'Standard-Bestückung',
   '/admin/partners/[id]/report': 'Report',
+  // Vorbestellungen an der Sammelstelle: die nackte ID sagt niemandem etwas,
+  // die Referenz (MO-…) steht auf der Seite selbst.
+  '/admin/delivery/preorders/[id]': null,
+  '/admin/delivery/preorders/new': 'Neue Vorbestellung',
+  '/admin/delivery/preorders/backliste': 'Backliste',
+  '/admin/delivery/preorders/lieferstelle': 'Lieferstelle',
 }
 
 /** Human readable breadcrumb segments for the current path. */

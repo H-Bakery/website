@@ -110,6 +110,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Lieferverwaltung',
   },
   {
+    label: 'Vorbestellungen',
+    href: '/admin/delivery/preorders',
+    // `iconMap` in layout.tsx kennt keinen eigenen Schlüssel dafür - ein
+    // unbekannter ließe die Zeile ohne Symbol stehen.
+    icon: 'orders',
+    description: 'Sammelstelle Mörsbach',
+  },
+  {
     label: 'Verkaufspartner',
     href: '/admin/partners',
     icon: 'partners',
