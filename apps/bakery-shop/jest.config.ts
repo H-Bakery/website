@@ -26,12 +26,18 @@ export default {
     '!src/**/index.{ts,tsx}',
   ],
   coverageDirectory: '../../coverage/apps/bakery-shop',
-  coverageThreshold: {
-    global: {
-      branches: 66,
-      functions: 68,
-      lines: 68,
-      statements: 68,
-    },
-  },
+  // Siehe apps/bakery-management/jest.config.ts: ein Shard kann die Schwelle
+  // gar nicht erreichen, weil er nur einen Teil der Testdateien ausfuehrt.
+  ...(process.env.JEST_SHARDED === 'true'
+    ? {}
+    : {
+        coverageThreshold: {
+          global: {
+            branches: 66,
+            functions: 68,
+            lines: 68,
+            statements: 68,
+          },
+        },
+      }),
 }
