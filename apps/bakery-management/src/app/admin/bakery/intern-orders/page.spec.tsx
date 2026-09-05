@@ -93,7 +93,7 @@ describe('InternOrdersPage', () => {
   })
 
   it('marks an order as done from the list', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     render(<InternOrdersPage />)
     await screen.findByText('Mehl nachbestellen')
 
@@ -114,7 +114,7 @@ describe('InternOrdersPage', () => {
   })
 
   it('creates a new order via the form including an item line', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     render(<InternOrdersPage />)
     await screen.findByText('Mehl nachbestellen')
 
@@ -162,7 +162,7 @@ describe('InternOrdersPage', () => {
   })
 
   it('keeps an item line that was typed but never added with "+"', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     render(<InternOrdersPage />)
     await screen.findByText('Mehl nachbestellen')
 
@@ -188,7 +188,7 @@ describe('InternOrdersPage', () => {
   })
 
   it('opens the edit form pre-filled and cancels back to the list', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     render(<InternOrdersPage />)
     await screen.findByText('Mehl nachbestellen')
 

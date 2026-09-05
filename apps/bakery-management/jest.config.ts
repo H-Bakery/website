@@ -25,6 +25,11 @@ export default {
     '!src/**/index.{ts,tsx}',
   ],
   coverageDirectory: '../../coverage/apps/bakery-management',
+  // Die Formulare hier werden mit `userEvent` bedient - MUI-Autocomplete,
+  // Mengenknoepfe, Speichern. Lokal dauert so ein Test ein bis zwei Sekunden,
+  // auf den CI-Runnern reichten die 5 s von Jest nicht (`PreorderFormClient`
+  // und `InternOrdersPage` liefen dort in den Timeout, obwohl nichts kaputt war).
+  testTimeout: 15000,
   // Beim Sharden (`--shard=n/3` in CI) laeuft nur ein Teil der Testdateien, die
   // Abdeckung wird aber ueber *alle* Quelldateien gerechnet - die Schwelle
   // schlaegt dann zwangslaeufig fehl, egal wie gut getestet ist. Gemessen wird

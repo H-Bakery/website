@@ -151,7 +151,7 @@ describe('PreorderFormClient', () => {
   })
 
   it('legt eine Vorbestellung an und schickt je Position nur productId und qty', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithTheme(<PreorderFormClient initialDate={DATE} />)
 
     await screen.findByLabelText('Artikel suchen und hinzufügen')
@@ -182,7 +182,7 @@ describe('PreorderFormClient', () => {
   })
 
   it('rechnet die Summe live und rundet auf Cent', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithTheme(<PreorderFormClient initialDate={DATE} />)
 
     await screen.findByLabelText('Artikel suchen und hinzufügen')
@@ -196,7 +196,7 @@ describe('PreorderFormClient', () => {
   })
 
   it('besteht auf Kundenname und mindestens einer Position', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     renderWithTheme(<PreorderFormClient initialDate={DATE} />)
 
     await screen.findByLabelText('Artikel suchen und hinzufügen')
@@ -221,7 +221,7 @@ describe('PreorderFormClient', () => {
   })
 
   it('zeigt die deutsche Fehlermeldung des Servers an', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     mockCreate.mockRejectedValue(
       new Error(
         'Der 14.09.2026 ist kein Samstag — an diesem Tag wird nicht nach Zweibrücken-Mörsbach geliefert.'
@@ -244,7 +244,7 @@ describe('PreorderFormClient', () => {
   // überschreibt ein Speichern um 09:05 das „Übergeben", das der Fahrer um
   // 09:03 abgehakt hat.
   it('lädt eine bestehende Bestellung und schickt den unveränderten Status nicht mit', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     mockFetchPreorder.mockResolvedValue(EXISTING)
     renderWithTheme(<PreorderFormClient preorderId={7} />)
 
@@ -267,7 +267,7 @@ describe('PreorderFormClient', () => {
   })
 
   it('schickt den Status mit, sobald er in der Maske geändert wurde', async () => {
-    const user = userEvent.setup()
+    const user = userEvent.setup({ delay: null })
     mockFetchPreorder.mockResolvedValue(EXISTING)
     renderWithTheme(<PreorderFormClient preorderId={7} />)
 
