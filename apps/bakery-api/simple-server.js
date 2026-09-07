@@ -2006,7 +2006,7 @@ function loadDeliveryStore() {
       return seed
     }
     const parsed = read.data
-    return {
+    return scrubStoredCoordinates({
       depot: parsed.depot && parsed.depot.street ? parsed.depot : seed.depot,
       // Ein Store aus der Zeit vor den Sammelstellen kennt diese Schluessel
       // nicht. Sie werden aus dem Seed ergaenzt, die vorhandenen Touren
@@ -2029,11 +2029,47 @@ function loadDeliveryStore() {
         parsed.geocache && typeof parsed.geocache === 'object'
           ? parsed.geocache
           : {},
-    }
+    })
   } catch (err) {
     console.warn(`Liefer-Store konnte nicht gelesen werden: ${err.message}`)
   }
   return seed
+}
+
+/**
+ * Ein Store aus der Zeit, als (0, 0) und Werte ausserhalb des Wertebereichs
+ * noch als Koordinaten durchkamen, bekommt sie beim Laden auf `null` gesetzt:
+ * die Adresse wird dann beim naechsten Lesen neu gesucht, statt dass der
+ * Stopp (oder gleich die ganze Tour) im Atlantik liegt. Cache-Treffer mit
+ * solchen Werten fliegen raus, eine unbrauchbare Fahrerposition auch.
+ */
+function scrubStoredCoordinates(store) {
+  let scrubbed = 0
+  if (tours.scrubCoordinates(store.depot)) scrubbed++
+  for (const point of store.pickupPoints || []) {
+    if (tours.scrubCoordinates(point)) scrubbed++
+  }
+  for (const tour of store.tours) {
+    for (const stop of tour.stops) {
+      if (tours.scrubCoordinates(stop)) scrubbed++
+    }
+    if (tour.lastPosition && !tours.hasCoordinates(tour.lastPosition)) {
+      tour.lastPosition = null
+      scrubbed++
+    }
+  }
+  for (const key of Object.keys(store.geocache)) {
+    if (!tours.hasCoordinates(store.geocache[key])) {
+      delete store.geocache[key]
+      scrubbed++
+    }
+  }
+  if (scrubbed > 0) {
+    console.warn(
+      `Liefer-Store: ${scrubbed} unbrauchbare Koordinaten (ausserhalb -90..90/-180..180 oder (0, 0)) verworfen - die Adressen werden neu gesucht.`
+    )
+  }
+  return store
 }
 
 /**
@@ -2050,6 +2086,9 @@ function getDeliveryStore() {
   if (!deliveryStore) deliveryStore = loadDeliveryStore()
   return deliveryStore
 }
+
+const PLANNED_START_MESSAGE =
+  'Die geplante Abfahrt muss eine Uhrzeit im Format HH:MM sein (00:00 bis 23:59).'
 
 /** Fehlerantwort mit deutschem Text - ApiClient wirft `new Error(data.message)`. */
 function deliveryError(res, status, error, message) {
@@ -2257,25 +2296,29 @@ function decorateStopPreorders(store, tour, stop) {
 async function recalculateTour(store, tour, { optimize } = {}) {
   const open = tour.stops.filter((s) => s.status === 'open')
   const routable = open.length > 0 ? open : tour.stops
+  // Umsortiert werden nur offene Stopps, und nur auf ihren eigenen Plaetzen:
+  // ein zugestellter Stopp bleibt, wo er war, und behaelt seine Nummer. Auf
+  // einer fertigen Tour (nichts mehr offen) wird nur noch nachgerechnet.
+  const reorder = optimize && open.length > 0
 
   const routed = await geo.routeTour(store.depot, routable, {
-    optimize,
+    optimize: reorder,
     vehicleType: tour.vehicleType,
   })
 
   if (routed) {
-    if (optimize && routed.order.length > 0) {
-      applyStopOrder(tour, routed.order)
+    if (reorder && routed.order.length > 0) {
+      tour.stops = tours.applyOpenStopOrder(tour.stops, routed.order)
     }
     tour.distance = routed.distance
     tour.duration = routed.duration
     tour.geometry = routed.geometry
     tour.isEstimate = false
   } else {
-    if (optimize) {
-      const ordered = tours.orderStopsNearestNeighbour(store.depot, routable)
-      applyStopOrder(
-        tour,
+    if (reorder) {
+      const ordered = tours.orderStopsNearestNeighbour(store.depot, open)
+      tour.stops = tours.applyOpenStopOrder(
+        tour.stops,
         ordered.map((s) => s.id)
       )
     }
@@ -2332,16 +2375,12 @@ app.put(
     // Tour am alten Ort. Ohne Koordinaten gibt es kein Depot - `Number(null)`
     // waere 0, und jede Tour begaenne im Atlantik.
     if (body.lat !== undefined || body.lon !== undefined) {
-      if (!tours.isNumber(body.lat) || !tours.isNumber(body.lon)) {
-        return deliveryError(
-          res,
-          400,
-          'Invalid coordinates',
-          'Koordinaten der Backstube müssen Zahlen sein.'
-        )
+      const coords = tours.validateCoordinates(body.lat, body.lon)
+      if (coords.error) {
+        return deliveryError(res, 400, coords.error, coords.message)
       }
-      depot.lat = Number(body.lat)
-      depot.lon = Number(body.lon)
+      depot.lat = coords.lat
+      depot.lon = coords.lon
     } else if (
       tours.formatAddress(depot) !== tours.formatAddress(store.depot)
     ) {
@@ -2452,6 +2491,14 @@ app.put(
  */
 async function hydrateTours(store, list) {
   let changed = false
+  // Ein Depot ohne Koordinaten (beim Laden verworfen, siehe
+  // `scrubStoredCoordinates`) wird hier nachgesucht - sonst gaebe es fuer
+  // keine Tour mehr Strecke, Reihenfolge oder Ankunftszeiten.
+  if (!tours.hasCoordinates(store.depot)) {
+    const before = store.depot.lat
+    await ensureStopCoordinates(store, store.depot)
+    if (store.depot.lat !== before) changed = true
+  }
   for (const tour of list) {
     for (const stop of tour.stops) {
       if (tours.hasCoordinates(stop)) continue
@@ -2562,15 +2609,29 @@ app.post(
       )
     }
 
+    // Leer heisst Default (06:30); "99:99" hiesse frueher auch Default, und
+    // "25:61" wurde beim Aendern sogar gespeichert - die Ankunftszeiten
+    // fielen dann auf "jetzt" zusammen.
+    const plannedStartGiven =
+      body.plannedStart !== undefined &&
+      body.plannedStart !== null &&
+      body.plannedStart !== ''
+    if (plannedStartGiven && !tours.isClockTime(body.plannedStart)) {
+      return deliveryError(
+        res,
+        400,
+        'Invalid plannedStart',
+        PLANNED_START_MESSAGE
+      )
+    }
+
     const tour = {
       id: nextDeliveryId(store.tours),
       date,
       driverId: driverId || null,
       name: String(body.name || 'Tour').trim() || 'Tour',
       status: 'planned',
-      plannedStart: /^\d{2}:\d{2}$/.test(body.plannedStart)
-        ? body.plannedStart
-        : '06:30',
+      plannedStart: plannedStartGiven ? body.plannedStart : '06:30',
       vehicleType: ['bike', 'car', 'van'].includes(body.vehicleType)
         ? body.vehicleType
         : 'car',
@@ -2664,8 +2725,17 @@ app.patch(
     }
     if (body.name !== undefined)
       tour.name = String(body.name).trim() || tour.name
-    if (/^\d{2}:\d{2}$/.test(body.plannedStart))
+    if (body.plannedStart !== undefined) {
+      if (!tours.isClockTime(body.plannedStart)) {
+        return deliveryError(
+          res,
+          400,
+          'Invalid plannedStart',
+          PLANNED_START_MESSAGE
+        )
+      }
       tour.plannedStart = body.plannedStart
+    }
     if (['bike', 'car', 'van'].includes(body.vehicleType)) {
       tour.vehicleType = body.vehicleType
     }
@@ -2801,20 +2871,17 @@ app.post(
     if (!tour) return
 
     const body = req.body || {}
-    // `isNumber`, nicht `Number.isFinite(Number(x))`: `null` waere sonst eine
-    // gueltige Position auf dem Nullmeridian.
-    if (!tours.isNumber(body.lat) || !tours.isNumber(body.lon)) {
-      return deliveryError(
-        res,
-        400,
-        'Invalid position',
-        'Position benötigt gültige Koordinaten.'
-      )
+    // `validateCoordinates`, nicht `Number.isFinite(Number(x))`: `null` waere
+    // sonst eine gueltige Position auf dem Nullmeridian - und ein Handy, das
+    // lat 999 meldet, verschoebe die Ankunftszeiten der ganzen Tour.
+    const coords = tours.validateCoordinates(body.lat, body.lon)
+    if (coords.error) {
+      return deliveryError(res, 400, coords.error, coords.message)
     }
 
     tour.lastPosition = {
-      lat: Number(body.lat),
-      lon: Number(body.lon),
+      lat: coords.lat,
+      lon: coords.lon,
       accuracy: tours.isNumber(body.accuracy) ? Number(body.accuracy) : null,
       speed: tours.isNumber(body.speed) ? Number(body.speed) : null,
       at: new Date().toISOString(),

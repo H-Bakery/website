@@ -228,9 +228,12 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
   `delivery-tours.core.js`, Frontend: `@bakery/delivery/routing`), nie mit
   `Number.isFinite(Number(x))` oder `!== null`. Das gilt auch für das Depot und die Fahrerposition.
+  `hasCoordinates()` verlangt seit dem 07.09.2026 außerdem −90..90 / −180..180 und lehnt das Paar
+  `(0, 0)` ab; Eingaben prüft `validateCoordinates()` (400 mit `message` + `error`), gespeicherte
+  Altwerte werden beim Laden des Stores auf `null` gesetzt und neu gesucht.
 
-Tests: `npx nx test delivery-routing` (32), `npx nx test delivery-tracking` (7) und
-`apps/bakery-api/tests/unit/deliveryTours.test.js` (46) für die Rechenlogik des Servers.
+Tests: `npx nx test delivery-routing` (47), `npx nx test delivery-tracking` (7) und
+`apps/bakery-api/tests/unit/deliveryTours.test.js` (61) für die Rechenlogik des Servers.
 
 ## Important Notes
 
