@@ -18,7 +18,7 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-09-02
-updated: 2026-09-02
+updated: 2026-09-07
 ---
 
 # Review-Backlog - offene Findings aus dem App-Review vom 2026-09-02
@@ -119,18 +119,47 @@ dem Fix zuerst gegen die laufende App reproduzieren.
 
 ### Management
 
-- `/admin/orders` meldet im Dev-Modus sporadisch einen Hydration-Mismatch: MUI-`Select` bekommt auf
+- **Nicht fixen (Dev-only-Framework-Verhalten), beim nächsten Next/React-Update erneut prüfen:**
+  `/admin/orders` meldet im Dev-Modus sporadisch einen Hydration-Mismatch: MUI-`Select` bekommt auf
   Server und Client verschiedene `aria-controls`-IDs (`useId`). Gleiche Klasse wie die
   Katalog-Toolbar im Shop unten; in zwei von vier Aufrufen reproduziert.
-- Team-Chat pollt alle 5 s dauerhaft einen Endpunkt, den es nicht gibt (`admin/chat/page.tsx`,
-  ~Zeile 137); entweder abschalten oder nach dem ersten 404 aufhören.
+  Befund vom 2026-09-07 (Branch `fix/management-review-findings`, Next 16.1.6, MUI 5.18):
+  - Diagnose aus der Bearbeitung: reproduzierbar nur unter **Turbopack-Dev** (`next dev`), und dort
+    nur in einem warmen Browser-Kontext (~35 % der Aufrufe); unter `next dev --webpack` 0 von 57
+    Aufrufen. Sobald man den Baum instrumentiert, verschwindet der Fehler (Heisenbug); ohne
+    `AppRouterCacheProvider` (Emotion) trat er nicht auf. Ein passendes Upstream-Issue ist nicht
+    belegt - die Einordnung als Turbopack/React-Canary-Race ist deshalb plausibel, nicht bewiesen.
+  - Im Orders-Baum, im Admin-Layout und in den Providern gibt es keine render-zeitige Verzweigung,
+    die Server- und Client-Baum auseinanderziehen würde: Theme und Auth lesen `localStorage` nur in
+    Effekten. Einzige Ausnahme ist `useState(getSystemColorScheme())` im Theme-Kontext
+    (`matchMedia` beim ersten Render) - sie ist hier inert, weil die Management-App mit
+    `defaultMode="dark"` startet und `systemPrefersDark` nur bei `mode === 'system'` in den Baum
+    eingeht; sie würde auch nur die Palette ändern, nicht die Baumform, an der `useId` hängt.
+  - **Produktionsbuild geprüft** (`next build --webpack` + `next start`, Mock-API dahinter, 30 Aufrufe
+    mit Playwright, je zur Hälfte frische und warme Kontexte): das `aria-controls` des Status-Selects
+    ist im Server-HTML, nach der Hydration und nach dem Öffnen identisch und zeigt auf die `id` der
+    tatsächlich gerenderten Listbox (7 Optionen); keine Konsolenmeldung. Der befürchtete stille
+    A11y-Defekt (Client behält ein Server-`aria-controls`, das ins Leere zeigt) tritt in Produktion
+    also nicht auf.
+  - Prüfrezept: Seite laden, `aria-controls` des `[role="combobox"]` mit dem Wert im rohen
+    Server-HTML vergleichen, Select öffnen, `id` der `[role="listbox"]` gegen `aria-controls`
+    halten; dazu Konsole auf Hydration-Warnungen beobachten. Die Skripte lagen im Session-Scratchpad.
+- ~~Team-Chat pollt alle 5 s dauerhaft einen Endpunkt, den es nicht gibt (`admin/chat/page.tsx`,
+  ~Zeile 137); entweder abschalten oder nach dem ersten 404 aufhören.~~ **Erledigt** in
+  `fix/management-review-findings`: Erreichbarkeit als Zustand, Polling nur bei „online", nach dem
+  ersten Fehlschlag ruhiger Hinweis mit „Erneut versuchen"; drei Tests.
 - Berichte-Seite loggt bei jedem Laden einen Fehler und öffnet das Dev-Overlay, obwohl das Feature
   absichtlich nicht angebunden ist (`admin/reports/page.tsx`, ~Zeile 142).
-- Social-Media: Vorschau-Platzhalter im Dark Mode unsichtbar, überlappt auf Mobil die Karte;
+- ~~Social-Media: Vorschau-Platzhalter im Dark Mode unsichtbar, überlappt auf Mobil die Karte;
   Legenden-Chip verfehlt im Light Mode den Kontrast (`admin/social-media/page.tsx`, ~Zeile 1002).
-  Regeln dazu stehen in `/Users/sebastian/develop/bakery/CLAUDE.md` unter „Dark mode".
-- Next.js warnt bei jeder clientseitigen Navigation wegen `scroll-behavior: smooth`
-  (`apps/bakery-management/src/app/layout.tsx`, Zeile 18).
+  Regeln dazu stehen in `/Users/sebastian/develop/bakery/CLAUDE.md` unter „Dark mode".~~ **Erledigt**
+  in `fix/management-review-findings`: Platzhalter im Textfluss der (immer weißen) Karte in
+  Kartenfarbe (7,2:1), Chips folgen der Palette (16:1 / 18,7:1), Vorschau skaliert per `cqw`;
+  Kontraste mit Playwright in beiden Modi bei 1280 und 375 px gemessen, drei Tests.
+- ~~Next.js warnt bei jeder clientseitigen Navigation wegen `scroll-behavior: smooth`
+  (`apps/bakery-management/src/app/layout.tsx`, Zeile 18).~~ **Erledigt** in
+  `fix/management-review-findings`: `data-scroll-behavior="smooth"` auf `<html>` (so sieht es
+  Next 16 vor); ein Test sichert das Attribut ab.
 
 ### Delivery
 

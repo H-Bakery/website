@@ -550,28 +550,31 @@ export default function SocialMediaPage() {
             </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 2 }}>
+          {/* Seiten-Chrome, keine Grafik: Die Markenfarben erreichen auf
+              background.paper keinen Lesekontrast (Grün 1,9:1, Magenta
+              4,2:1), deshalb Theme-Farben - siehe CLAUDE.md, Dark mode. */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: 1,
+              mt: 2,
+            }}
+          >
             <Chip
               icon={<TextSnippetIcon />}
               label="Text-fokussierte Designs"
               size="small"
-              sx={{
-                borderColor: BRAND_COLORS.primary,
-                color: BRAND_COLORS.primary,
-                '& .MuiChip-icon': { color: BRAND_COLORS.primary },
-              }}
               variant="outlined"
+              sx={{ color: 'text.primary', borderColor: 'divider' }}
             />
             <Chip
               icon={<PhotoCameraIcon />}
               label="Mit Firmen-Logo"
               size="small"
-              sx={{
-                borderColor: BRAND_COLORS.success,
-                color: BRAND_COLORS.success,
-                '& .MuiChip-icon': { color: BRAND_COLORS.success },
-              }}
               variant="outlined"
+              sx={{ color: 'text.primary', borderColor: 'divider' }}
             />
           </Box>
         </Container>
@@ -802,6 +805,10 @@ export default function SocialMediaPage() {
                 sx={{
                   width: '100%',
                   aspectRatio: '1',
+                  // Bezugsgröße 540 px: alle Maße innen in cqw (1cqw = 1 %
+                  // der Vorschaubreite), damit die Karte am Handy mitschrumpft,
+                  // statt dass Fußzeile und Texte übereinanderliegen.
+                  containerType: 'inline-size',
                   background: `linear-gradient(180deg, ${BRAND_COLORS.bgPaper} 0%, ${BRAND_COLORS.bgLight} 100%)`,
                   border: '2px solid',
                   borderColor: BRAND_COLORS.border,
@@ -815,10 +822,10 @@ export default function SocialMediaPage() {
                 <Box
                   sx={{
                     position: 'absolute',
-                    top: 20,
-                    left: 20,
-                    width: 100,
-                    height: 100,
+                    top: '3.7cqw',
+                    left: '3.7cqw',
+                    width: '18.5cqw',
+                    height: '18.5cqw',
                     borderRadius: '50%',
                     bgcolor: BRAND_COLORS.primary,
                     opacity: 0.05,
@@ -827,10 +834,10 @@ export default function SocialMediaPage() {
                 <Box
                   sx={{
                     position: 'absolute',
-                    bottom: 40,
-                    right: 40,
-                    width: 80,
-                    height: 80,
+                    bottom: '7.4cqw',
+                    right: '7.4cqw',
+                    width: '14.8cqw',
+                    height: '14.8cqw',
                     borderRadius: '50%',
                     bgcolor: BRAND_COLORS.primary,
                     opacity: 0.05,
@@ -855,7 +862,7 @@ export default function SocialMediaPage() {
                   <Box
                     sx={{
                       bgcolor: BRAND_COLORS.primary,
-                      p: 2,
+                      p: '3cqw',
                       textAlign: 'center',
                       display: 'flex',
                       justifyContent: 'center',
@@ -866,6 +873,7 @@ export default function SocialMediaPage() {
                       width={120}
                       height={30}
                       color={BRAND_COLORS.bgPaper}
+                      style={{ width: '22cqw', height: '5.5cqw' }}
                     />
                   </Box>
 
@@ -877,23 +885,44 @@ export default function SocialMediaPage() {
                       color: BRAND_COLORS.primaryDark,
                       fontWeight: 'bold',
                       fontFamily: "'Playfair Display', serif",
-                      mt: 2,
-                      mb: 1,
+                      fontSize: '3.7cqw',
+                      mt: '3cqw',
+                      mb: '1.5cqw',
                     }}
                   >
                     {templateContent.heading}
                   </Typography>
 
                   {/* Content */}
-                  <Box sx={{ p: 3, textAlign: 'center' }}>
+                  <Box sx={{ p: '4.4cqw', textAlign: 'center' }}>
+                    {/* Platzhalter dort, wo später Titel und Text stehen -
+                        nicht absolut über der Karte, sonst liegt er am Handy
+                        auf der Überschrift. Die Karte ist immer weiß, also
+                        Markenfarbe statt text.secondary (im Dark Mode wäre
+                        das hellgrau auf weiß). */}
+                    {!content.title && !content.description && (
+                      <Typography
+                        variant="body1"
+                        sx={{
+                          color: BRAND_COLORS.textMedium,
+                          fontStyle: 'italic',
+                          fontFamily: "'Lora', serif",
+                          fontSize: '3cqw',
+                        }}
+                      >
+                        Füllen Sie das Formular aus, um eine Vorschau zu sehen
+                      </Typography>
+                    )}
+
                     {content.title && (
                       <Typography
                         variant="h4"
                         sx={{
-                          mb: 2,
+                          mb: '3cqw',
                           fontWeight: 'bold',
                           color: BRAND_COLORS.textDark,
                           fontFamily: "'Playfair Display', serif",
+                          fontSize: '6.3cqw',
                         }}
                       >
                         {content.title}
@@ -904,9 +933,10 @@ export default function SocialMediaPage() {
                       <Typography
                         variant="body1"
                         sx={{
-                          mb: 2,
+                          mb: '3cqw',
                           color: BRAND_COLORS.textMedium,
                           fontFamily: "'Lora', serif",
+                          fontSize: '3cqw',
                         }}
                       >
                         {content.description}
@@ -919,14 +949,17 @@ export default function SocialMediaPage() {
                           display: 'inline-block',
                           bgcolor: BRAND_COLORS.success,
                           color: BRAND_COLORS.bgPaper,
-                          px: 3,
-                          py: 1,
-                          borderRadius: 2,
-                          mb: 2,
+                          px: '4.4cqw',
+                          py: '1.5cqw',
+                          borderRadius: '1.5cqw',
+                          mb: '3cqw',
                           boxShadow: '0 2px 8px rgba(26, 218, 103, 0.3)',
                         }}
                       >
-                        <Typography variant="h3" sx={{ fontWeight: 'bold' }}>
+                        <Typography
+                          variant="h3"
+                          sx={{ fontWeight: 'bold', fontSize: '8.9cqw' }}
+                        >
                           {content.price}€
                         </Typography>
                       </Box>
@@ -939,6 +972,7 @@ export default function SocialMediaPage() {
                           fontStyle: 'italic',
                           color: BRAND_COLORS.primary,
                           fontFamily: "'Lora', serif",
+                          fontSize: '2.6cqw',
                         }}
                       >
                         {content.additionalInfo}
@@ -954,7 +988,7 @@ export default function SocialMediaPage() {
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    height: 100,
+                    height: '18.5cqw',
                     bgcolor: BRAND_COLORS.primary,
                     display: 'flex',
                     alignItems: 'center',
@@ -967,6 +1001,7 @@ export default function SocialMediaPage() {
                       color: BRAND_COLORS.bgPaper,
                       textAlign: 'center',
                       fontFamily: "'Lora', serif",
+                      fontSize: '2.6cqw',
                     }}
                   >
                     Traditionelle Handwerkskunst seit 1952
@@ -977,10 +1012,10 @@ export default function SocialMediaPage() {
                 <Box
                   sx={{
                     position: 'absolute',
-                    bottom: 110,
-                    right: 30,
-                    width: 60,
-                    height: 60,
+                    bottom: '20.4cqw',
+                    right: '5.5cqw',
+                    width: '11cqw',
+                    height: '11cqw',
                     borderRadius: '50%',
                     bgcolor: 'rgba(255, 255, 255, 0.2)',
                     display: 'flex',
@@ -990,7 +1025,7 @@ export default function SocialMediaPage() {
                 >
                   <Typography
                     sx={{
-                      fontSize: '36px',
+                      fontSize: '6.7cqw',
                       fontWeight: 'bold',
                       color: BRAND_COLORS.bgPaper,
                     }}
@@ -998,22 +1033,6 @@ export default function SocialMediaPage() {
                     H
                   </Typography>
                 </Box>
-
-                {!content.title && !content.description && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      top: '50%',
-                      left: '50%',
-                      transform: 'translate(-50%, -50%)',
-                      textAlign: 'center',
-                    }}
-                  >
-                    <Typography variant="body1" color="text.secondary">
-                      Füllen Sie das Formular aus, um eine Vorschau zu sehen
-                    </Typography>
-                  </Box>
-                )}
               </Box>
 
               <Alert
