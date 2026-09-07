@@ -1,7 +1,7 @@
 // Deutsche Formatierung. Die App laeuft in Homburg, nicht in Zuerich - Locale
 // ist ueberall `de-DE`.
 
-import type { Preorder, Stop, StopItem } from './delivery-api'
+import type { GoodsDisposition, Preorder, Stop, StopItem } from './delivery-api'
 
 export function formatDate(isoDate: string): string {
   const date = new Date(`${isoDate}T12:00:00`)
@@ -54,6 +54,22 @@ export const STOP_STATUS_LABEL: Record<Stop['status'], string> = {
 export const PICKUP_STOP_STATUS_LABEL: Record<Stop['status'], string> = {
   ...STOP_STATUS_LABEL,
   done: 'Abgeschlossen',
+}
+
+/**
+ * Die Gruende, die der Fahrer antippen kann. „Sonstiges" ist keiner davon,
+ * sondern ein Freitext - gespeichert wird immer der Text, nie ein Schluessel,
+ * damit die Backstube ihn ohne Nachschlagen lesen kann.
+ */
+export const FAILURE_REASONS = [
+  'Nicht angetroffen',
+  'Adresse nicht gefunden',
+  'Annahme verweigert',
+] as const
+
+export const GOODS_DISPOSITION_LABEL: Record<GoodsDisposition, string> = {
+  taken_back: 'Ware mitgenommen',
+  left_at_address: 'Ware abgestellt',
 }
 
 export const PREORDER_STATUS_LABEL: Record<Preorder['status'], string> = {
