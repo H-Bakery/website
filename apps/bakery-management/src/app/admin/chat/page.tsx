@@ -17,6 +17,7 @@ import {
   ChatMessageList,
   ChatMessageInput,
 } from '@bakery/management/feature-chat'
+import { currentToken } from '../../../lib/authSession'
 
 // Types for chat messages
 interface ChatMessage {
@@ -33,8 +34,16 @@ interface ChatUser {
   username: string
 }
 
-const TOKEN_KEY = 'bakery-auth-token'
-const CHAT_ENDPOINT = '/api/chat'
+/**
+ * Der Chat liegt auf der API, nicht auf dem Next-Origin: ein relatives
+ * `/api/chat` landete vorher bei der Management-App selbst (immer 404), egal
+ * was `NEXT_PUBLIC_API_URL` sagt.
+ */
+const API_BASE = (
+  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
+  'http://localhost:5000'
+).replace(/\/$/, '')
+const CHAT_ENDPOINT = `${API_BASE}/api/chat`
 const POLL_INTERVAL_MS = 5000
 
 /**
@@ -90,8 +99,8 @@ const useOptionalAuthUser = (): ChatUser | null => {
   }
 }
 
-const getToken = () =>
-  typeof window !== 'undefined' ? localStorage.getItem(TOKEN_KEY) : null
+/** Token der Anmeldung (`/admin/login`), dasselbe wie am `apiClient`. */
+const getToken = () => currentToken()
 
 const authHeaders = (): HeadersInit => {
   const token = getToken()
