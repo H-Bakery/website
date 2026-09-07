@@ -287,6 +287,54 @@
   font-size: 0.9rem;
 }
 
+/* --- Auswahl (Grund / Verbleib der Ware) ---
+   Jede Zeile ist eine 44-px-Trefferflaeche; das Radio allein waere auf dem
+   Handy im Auto nicht zu treffen. */
+
+.choiceTitle {
+  margin: 0 0 0.5rem;
+  font-weight: 600;
+}
+
+.choiceGroup {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  border: none;
+  min-width: 0;
+}
+
+.choiceLegend {
+  padding: 0;
+  margin-bottom: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-faint);
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 44px;
+  padding: 0 0.25rem;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.choice input {
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: var(--color-accent);
+}
+
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+
 /* --- Stopps --- */
 
 .stopList {

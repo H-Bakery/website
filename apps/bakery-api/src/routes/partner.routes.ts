@@ -32,8 +32,6 @@ const router = Router()
 // HILFSFUNKTIONEN
 // ============================================================================
 
-const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
-
 const UMLAUT_MAP: Record<string, string> = {
   ä: 'ae',
   ö: 'oe',
@@ -47,23 +45,11 @@ interface TemplateItemInput {
   quantity: number
 }
 
-interface VisitItemInput {
-  productId: number
-  productSlug: string
-  productName: string
-  unitPrice: number
-  countedQty: number | null
-  deliveredQty: number
-}
+type VisitItemInput = partnerStats.PlainVisitItem
 
 function toInt(value: unknown, fallback = 0): number {
   const n = Number(value)
   return Number.isFinite(n) ? Math.trunc(n) : fallback
-}
-
-function toNumber(value: unknown, fallback = 0): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : fallback
 }
 
 function optionalString(value: unknown): string | null {
@@ -89,10 +75,15 @@ function parseNumericId(value: unknown): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
-function isBusinessDate(value: unknown): value is string {
-  if (typeof value !== 'string' || !DATE_PATTERN.test(value)) return false
-  const [year, month, day] = value.split('-').map(Number)
-  return year >= 1970 && month >= 1 && month <= 12 && day >= 1 && day <= 31
+/** Kalendarisch gültig - die Prüfung teilt sich die Route mit dem Mock-Server. */
+const isBusinessDate = partnerStats.isBusinessDate
+
+/**
+ * `active` nur aus einem echten Boolean - `Boolean('false')` wäre `true`.
+ * @returns `null`, wenn der Wert unbrauchbar ist
+ */
+function parseActive(value: unknown): boolean | null {
+  return typeof value === 'boolean' ? value : null
 }
 
 /** `2026-08-30` → `30.08.2026` für Meldungen an das Team. */
@@ -146,31 +137,14 @@ function normalizeTemplateItems(value: unknown): TemplateItemInput[] {
 }
 
 /**
- * Positionen eines Besuchs prüfen und normalisieren.
- * `null` = ungültige Eingabe (der Aufrufer antwortet dann mit 400).
- * `countedQty` bleibt `null`, wenn nicht gezählt wurde - das ist etwas
- * anderes als "0 Stück vorgefunden" und darf nicht zusammenfallen.
+ * Positionen eines Besuchs prüfen und normalisieren - die Regeln stehen im
+ * Core (`validateVisitItems`): Rest `null` bleibt "nicht gezählt" und ist
+ * etwas anderes als `0`, Mengen sind ganzzahlig und begrenzt, negative Preise
+ * fliegen raus. Die echte API hat keinen HQ-Katalog zur Hand, prüft die
+ * Existenz des Produkts also nicht.
  */
-function normalizeVisitItems(value: unknown): VisitItemInput[] | null {
-  if (value === undefined || value === null) return []
-  if (!Array.isArray(value)) return null
-  const items: VisitItemInput[] = []
-  for (const raw of value as any[]) {
-    const productSlug = String(raw?.productSlug || '').trim()
-    if (productSlug === '') return null
-    const counted = raw?.countedQty
-    const notCounted =
-      counted === null || counted === undefined || counted === ''
-    items.push({
-      productId: toInt(raw?.productId, 0),
-      productSlug,
-      productName: String(raw?.productName || productSlug),
-      unitPrice: Math.max(0, toNumber(raw?.unitPrice, 0)),
-      countedQty: notCounted ? null : Math.max(0, toInt(counted, 0)),
-      deliveredQty: Math.max(0, toInt(raw?.deliveredQty, 0)),
-    })
-  }
-  return items
+function normalizeVisitItems(value: unknown): partnerStats.VisitItemsResult {
+  return partnerStats.validateVisitItems(value)
 }
 
 function serializePartner(row: any): Record<string, any> {
@@ -390,6 +364,16 @@ router.post('/', async (req: Request, res: Response) => {
       )
     }
 
+    const active = body.active === undefined ? true : parseActive(body.active)
+    if (active === null) {
+      return fail(
+        res,
+        400,
+        'INVALID_ACTIVE',
+        'Das Feld "active" muss true oder false sein (kein Text).'
+      )
+    }
+
     const partner = await Partner.create({
       name,
       slug,
@@ -402,7 +386,7 @@ router.post('/', async (req: Request, res: Response) => {
       deliveryDays: normalizeWeekdays(body.deliveryDays),
       settlementModel:
         body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission',
-      active: body.active === undefined ? true : Boolean(body.active),
+      active,
       notes: optionalString(body.notes),
     })
 
@@ -509,7 +493,18 @@ router.put('/:id', async (req: Request, res: Response) => {
       }
       updates.settlementModel = body.settlementModel
     }
-    if (body.active !== undefined) updates.active = Boolean(body.active)
+    if (body.active !== undefined) {
+      const active = parseActive(body.active)
+      if (active === null) {
+        return fail(
+          res,
+          400,
+          'INVALID_ACTIVE',
+          'Das Feld "active" muss true oder false sein (kein Text).'
+        )
+      }
+      updates.active = active
+    }
     if (body.notes !== undefined) updates.notes = optionalString(body.notes)
 
     await partner.update(updates)
@@ -577,7 +572,15 @@ router.put('/:id/templates/:weekday', async (req: Request, res: Response) => {
     }
 
     const items = normalizeTemplateItems(body.items)
-    const active = body.active === undefined ? true : Boolean(body.active)
+    const active = body.active === undefined ? true : parseActive(body.active)
+    if (active === null) {
+      return fail(
+        res,
+        400,
+        'INVALID_ACTIVE',
+        'Das Feld "active" muss true oder false sein (kein Text).'
+      )
+    }
 
     const existing = await PartnerDeliveryTemplate.findOne({
       where: { partnerId: partner.id, weekday },
@@ -721,15 +724,11 @@ router.post('/:id/visits', async (req: Request, res: Response) => {
       )
     }
 
-    const items = normalizeVisitItems(body.items)
-    if (items === null) {
-      return fail(
-        res,
-        400,
-        'INVALID_ITEMS',
-        'Ungültige Positionen - jede Zeile braucht ein Produkt (productSlug).'
-      )
+    const parsedItems = normalizeVisitItems(body.items)
+    if (parsedItems.ok === false) {
+      return fail(res, 400, 'INVALID_ITEMS', parsedItems.message)
     }
+    const items = parsedItems.items
 
     // Pro Geschäftstag gibt es genau eine Erstbestückung.
     if (visitType === 'initial') {
@@ -883,15 +882,11 @@ router.patch('/:id/visits/:visitId', async (req: Request, res: Response) => {
 
     let items: VisitItemInput[] | null = null
     if (body.items !== undefined) {
-      items = normalizeVisitItems(body.items)
-      if (items === null) {
-        return fail(
-          res,
-          400,
-          'INVALID_ITEMS',
-          'Ungültige Positionen - jede Zeile braucht ein Produkt (productSlug).'
-        )
+      const parsedItems = normalizeVisitItems(body.items)
+      if (parsedItems.ok === false) {
+        return fail(res, 400, 'INVALID_ITEMS', parsedItems.message)
       }
+      items = parsedItems.items
     }
 
     const sequelize = getSequelize()

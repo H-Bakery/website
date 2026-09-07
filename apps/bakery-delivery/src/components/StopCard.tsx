@@ -8,13 +8,15 @@ import {
   hasCoordinates,
 } from '@bakery/delivery/routing'
 import { useState } from 'react'
-import type { PreorderStatus, Stop } from '../lib/delivery-api'
+import type { FailureDetails, PreorderStatus, Stop } from '../lib/delivery-api'
 import {
   formatItems,
   formatTime,
+  GOODS_DISPOSITION_LABEL,
   PICKUP_STOP_STATUS_LABEL,
   STOP_STATUS_LABEL,
 } from '../lib/format'
+import { FailureForm } from './FailureForm'
 import {
   handoverHeadline,
   HandoverList,
@@ -28,11 +30,23 @@ interface StopCardProps {
   isNext: boolean
   /** Luftlinie ab der aktuellen Fahrerposition, `null` wenn unbekannt. */
   distance: number | null
+  /**
+   * Sperrt die Knoepfe *dieses* Stopps - waehrend sein eigener Statuswechsel
+   * unterwegs ist oder die ganze Tour umgebaut wird. Ein haengender Request
+   * an einem anderen Stopp darf diesen hier nicht blockieren.
+   */
   busy: boolean
-  onStatusChange: (stopId: number, status: Stop['status']) => void
+  /** Bei `failed` kommen Grund und Verbleib der Ware mit. */
+  onStatusChange: (
+    stopId: number,
+    status: Stop['status'],
+    details?: FailureDetails
+  ) => void
   onRemove?: (stopId: number) => void
   /** Nur an einer Sammelstelle gebraucht - dort wird je Vorbestellung abgehakt. */
   onPreorderStatusChange?: (preorderId: number, status: PreorderStatus) => void
+  /** Vorbestellungen, deren eigener Statuswechsel gerade unterwegs ist. */
+  busyPreorderIds?: ReadonlySet<number>
 }
 
 export function StopCard({
@@ -44,11 +58,14 @@ export function StopCard({
   onStatusChange,
   onRemove,
   onPreorderStatusChange,
+  busyPreorderIds,
 }: StopCardProps) {
   // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
   // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
   // Browser und sieht auf dem Handy aus wie ein Absturz.
   const [confirmClose, setConfirmClose] = useState(false)
+  // "Nicht angetroffen" fragt erst nach Grund und Verbleib der Ware.
+  const [askFailure, setAskFailure] = useState(false)
   const phoneLink = buildPhoneLink(stop.phone)
   const located = hasCoordinates(stop)
   // Nur die Strasse gefunden: der Punkt liegt in der Strassenmitte. Dann - wie
@@ -136,9 +153,15 @@ export function StopCard({
 
       {items && <p className={styles.stopItems}>{items}</p>}
       {stop.notes && <p className={styles.stopNotes}>{stop.notes}</p>}
-      {stop.status === 'failed' && stop.failureReason && (
-        <p className={styles.stopFailure}>Grund: {stop.failureReason}</p>
-      )}
+      {stop.status === 'failed' &&
+        (stop.failureReason || stop.goodsDisposition) && (
+          <p className={styles.stopFailure}>
+            {stop.failureReason && `Grund: ${stop.failureReason}`}
+            {stop.failureReason && stop.goodsDisposition && ' · '}
+            {stop.goodsDisposition &&
+              GOODS_DISPOSITION_LABEL[stop.goodsDisposition]}
+          </p>
+        )}
       {/* Eine Sammelstelle darf ohne Straße stehen (die Adresse des
           Kindergartens ist noch nicht bekannt). „Adresse nicht gefunden" wäre
           dort falsch: es wurde nie eine eingegeben, und die Navigation bekommt
@@ -169,6 +192,7 @@ export function StopCard({
           <HandoverList
             preorders={preorders}
             busy={busy}
+            busyIds={busyPreorderIds}
             onStatusChange={onPreorderStatusChange}
           />
         </>
@@ -202,6 +226,17 @@ export function StopCard({
             </button>
           </div>
         </div>
+      )}
+
+      {askFailure && (
+        <FailureForm
+          busy={busy}
+          onSubmit={(details) => {
+            setAskFailure(false)
+            onStatusChange(stop.id, 'failed', details)
+          }}
+          onCancel={() => setAskFailure(false)}
+        />
       )}
 
       <div className={styles.stopActions}>
@@ -246,8 +281,9 @@ export function StopCard({
               <button
                 type="button"
                 className={styles.buttonWarn}
-                disabled={busy}
-                onClick={() => onStatusChange(stop.id, 'failed')}
+                disabled={busy || askFailure}
+                aria-expanded={askFailure}
+                onClick={() => setAskFailure(true)}
               >
                 Nicht angetroffen
               </button>

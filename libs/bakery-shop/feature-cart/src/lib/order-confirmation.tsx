@@ -22,10 +22,12 @@ import {
   Typography,
 } from '@mui/material'
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline'
+import SearchOffIcon from '@mui/icons-material/SearchOff'
 import StorefrontOutlinedIcon from '@mui/icons-material/StorefrontOutlined'
 
 import { fetchShopOrder, formatEuro } from '@bakery/shared/data-access'
 import type { ShopOrder, ShopOrderItem } from '@bakery/shared/data-access'
+import { BRAND_FACTS } from '@bakery/shared/utils'
 
 import { PRICE_UPDATED_PARAM, PRICE_UPDATED_VALUE } from './confirmation-link'
 import { formatGermanDate } from './pickup'
@@ -35,7 +37,16 @@ export interface OrderConfirmationProps {
   orderId: string
 }
 
-type LoadState = 'loading' | 'loaded' | 'unavailable'
+/**
+ * `unavailable` heißt: der Server hat nicht geantwortet — die Bestellung kann
+ * sehr wohl existieren. `not-found` heißt: er hat geantwortet, und unter dem
+ * Code gibt es nichts. Die beiden auseinanderzuhalten ist der ganze Punkt:
+ * Vorher bekam ein beliebiger Code in der URL eine Erfolgsseite mit grünem
+ * Haken und „Ihre Bestellung ist trotzdem bei uns" — eine Zusage, die niemand
+ * gegeben hatte. Und `loading` zeigt beides noch nicht: bis der Server
+ * geantwortet hat, ist auch der Haken eine Zusage ohne Grundlage.
+ */
+type LoadState = 'loading' | 'loaded' | 'unavailable' | 'not-found'
 
 /** A labelled fact in the details panel. */
 const DetailRow: React.FC<{ label: string; children: React.ReactNode }> = ({
@@ -96,6 +107,170 @@ function totalOf(order: ShopOrder | null): number {
   )
 }
 
+/** Der Bestellcode als Kasten — auf der Erfolgsseite wie im Ladezustand. */
+const OrderCodeBox: React.FC<{ orderId: string }> = ({ orderId }) => (
+  <Box
+    sx={{
+      display: 'inline-block',
+      mt: 3,
+      px: 3,
+      py: 1.5,
+      borderRadius: 2,
+      bgcolor: 'grey.100',
+      border: '1px solid',
+      borderColor: 'divider',
+    }}
+  >
+    <Typography variant="overline" color="text.secondary">
+      Bestellcode
+    </Typography>
+    <Typography
+      data-testid="order-number"
+      variant="h3"
+      component="p"
+      sx={{
+        // Der Code ist kurz und gruppiert - er darf nie mitten in einer
+        // Gruppe umbrechen, sonst liest ihn niemand richtig vor.
+        whiteSpace: 'nowrap',
+        letterSpacing: '0.08em',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {orderId || 'unbekannt'}
+    </Typography>
+  </Box>
+)
+
+/**
+ * Solange die Antwort aussteht, wissen wir nichts über die Bestellung — also
+ * auch kein Haken und kein „Danke". Das ist nicht nur ein kurzer Moment: die
+ * Route ist eine Clientkomponente mit dynamischem Parameter, dieser Zustand
+ * ist deshalb genau das Server-HTML. Ein vertippter Link (oder ein Crawler
+ * ohne JS) bekam vorher zuerst eine Zusage, die niemand gegeben hatte.
+ */
+const OrderLoading: React.FC<{ orderId: string }> = ({ orderId }) => (
+  <Box
+    data-testid="order-loading"
+    aria-busy="true"
+    sx={{ py: { xs: 3, md: 6 }, bgcolor: 'background.default' }}
+  >
+    <Container maxWidth="md">
+      <Paper
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          p: { xs: 2.5, md: 4 },
+          textAlign: 'center',
+        }}
+      >
+        <CircularProgress size={40} aria-hidden="true" />
+        <Typography variant="h1" component="h1" sx={{ mt: 1.5 }}>
+          Bestellung wird geladen …
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ mt: 1.5, maxWidth: 560, mx: 'auto' }}
+        >
+          Einen Moment, wir sehen nach, was unter diesem Bestellcode gebucht
+          ist.
+        </Typography>
+        <OrderCodeBox orderId={orderId} />
+      </Paper>
+    </Container>
+  </Box>
+)
+
+/**
+ * Kein grüner Haken, kein „Danke": unter diesem Code gibt es keine Bestellung.
+ * Wer gerade bestellt hat und hier landet, soll nicht raten müssen — deshalb
+ * steht die Telefonnummer dabei, nicht nur „Weiter einkaufen".
+ */
+const OrderNotFound: React.FC<{ orderId: string }> = ({ orderId }) => (
+  <Box
+    data-testid="order-not-found"
+    sx={{ py: { xs: 3, md: 6 }, bgcolor: 'background.default' }}
+  >
+    <Container maxWidth="md">
+      <Paper
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          p: { xs: 2.5, md: 4 },
+          textAlign: 'center',
+        }}
+      >
+        <SearchOffIcon
+          sx={{ fontSize: 64, color: 'text.secondary' }}
+          aria-hidden="true"
+        />
+        <Typography variant="h1" component="h1" sx={{ mt: 1 }}>
+          Bestellung nicht gefunden
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ mt: 1.5, maxWidth: 560, mx: 'auto' }}
+        >
+          {orderId ? (
+            <React.Fragment>
+              Unter dem Bestellcode{' '}
+              <Box
+                component="span"
+                data-testid="order-number"
+                sx={{
+                  fontWeight: 700,
+                  whiteSpace: 'nowrap',
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {orderId}
+              </Box>{' '}
+              haben wir keine Bestellung. Vielleicht ist der Link unvollständig
+              oder der Code vertippt.
+            </React.Fragment>
+          ) : (
+            'Dieser Link enthält keinen Bestellcode.'
+          )}
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ mt: 1.5, maxWidth: 560, mx: 'auto' }}
+        >
+          Sie haben gerade bestellt und landen trotzdem hier? Dann rufen Sie uns
+          bitte kurz an, wir sehen nach:{' '}
+          <Box
+            component="a"
+            href={BRAND_FACTS.phoneHref}
+            sx={{ fontWeight: 700, color: 'primary.main' }}
+          >
+            {BRAND_FACTS.phone}
+          </Box>
+          .
+        </Typography>
+
+        <Stack
+          direction={{ xs: 'column', sm: 'row' }}
+          spacing={1.5}
+          justifyContent="center"
+          sx={{ mt: 3 }}
+        >
+          <Button
+            component={NextLink}
+            href="/products"
+            variant="contained"
+            size="large"
+            startIcon={<StorefrontOutlinedIcon />}
+          >
+            Weiter einkaufen
+          </Button>
+          <Button component={NextLink} href="/cart" variant="outlined">
+            Zum Warenkorb
+          </Button>
+        </Stack>
+      </Paper>
+    </Container>
+  </Box>
+)
+
 export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
   orderId,
 }) => {
@@ -104,7 +279,7 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
 
   React.useEffect(() => {
     if (!orderId) {
-      setState('unavailable')
+      setState('not-found')
       return
     }
 
@@ -118,11 +293,15 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
           setOrder(result)
           setState('loaded')
         } else {
-          // Orders live in memory on the API — a restart legitimately loses them.
-          setState('unavailable')
+          // Der Server kennt den Code nicht. Beim Mock-Server kann das auch
+          // ein Neustart sein (die Bestellungen liegen dort im Speicher) —
+          // trotzdem ist „nicht gefunden" die einzige ehrliche Antwort; die
+          // Seite nennt dafür die Telefonnummer.
+          setState('not-found')
         }
       })
       .catch(() => {
+        // Netz oder Server weg: über die Bestellung selbst wissen wir nichts.
         if (!cancelled) setState('unavailable')
       })
 
@@ -134,6 +313,13 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
   const items = orderItemsOf(order)
   const total = totalOf(order)
   const pickupDate = order?.pickupDate ? formatGermanDate(order.pickupDate) : ''
+
+  if (state === 'not-found') {
+    return <OrderNotFound orderId={orderId} />
+  }
+  if (state === 'loading') {
+    return <OrderLoading orderId={orderId} />
+  }
 
   return (
     <Box
@@ -165,62 +351,18 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
             bereit. Bitte notieren Sie sich Ihren Bestellcode.
           </Typography>
 
-          <Box
-            sx={{
-              display: 'inline-block',
-              mt: 3,
-              px: 3,
-              py: 1.5,
-              borderRadius: 2,
-              bgcolor: 'grey.100',
-              border: '1px solid',
-              borderColor: 'divider',
-            }}
-          >
-            <Typography variant="overline" color="text.secondary">
-              Bestellcode
-            </Typography>
-            <Typography
-              data-testid="order-number"
-              variant="h3"
-              component="p"
-              sx={{
-                // Der Code ist kurz und gruppiert - er darf nie mitten in einer
-                // Gruppe umbrechen, sonst liest ihn niemand richtig vor.
-                whiteSpace: 'nowrap',
-                letterSpacing: '0.08em',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {orderId || 'unbekannt'}
-            </Typography>
-          </Box>
+          <OrderCodeBox orderId={orderId} />
         </Paper>
 
         <Paper
           variant="outlined"
           sx={{ borderRadius: 2, mt: { xs: 2, md: 3 }, p: { xs: 2, md: 3 } }}
         >
-          {state === 'loading' ? (
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1.5,
-                py: 3,
-              }}
-            >
-              <CircularProgress size={22} />
-              <Typography color="text.secondary">
-                Bestelldetails werden geladen …
-              </Typography>
-            </Box>
-          ) : state === 'unavailable' ? (
-            <Alert severity="info">
-              Die Einzelheiten können wir gerade nicht anzeigen. Ihre Bestellung
-              ist trotzdem bei uns – nennen Sie uns im Laden einfach Ihren
-              Bestellcode.
+          {state === 'unavailable' ? (
+            <Alert severity="info" data-testid="order-unavailable">
+              Die Einzelheiten können wir gerade nicht anzeigen – der Server
+              antwortet nicht. Eine eben abgeschickte Bestellung ist davon nicht
+              betroffen: nennen Sie uns im Laden einfach Ihren Bestellcode.
             </Alert>
           ) : (
             <React.Fragment>

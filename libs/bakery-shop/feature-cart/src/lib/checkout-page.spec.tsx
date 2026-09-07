@@ -324,6 +324,66 @@ describe('CheckoutPage', () => {
     )
   })
 
+  it('verwirft beim Zurückholen eine Abholzeit, die für heute schon vorbei ist', () => {
+    jest.useFakeTimers()
+    try {
+      // Dienstag 12:00 Uhr: die Kasse bietet für heute nur noch ab 13:00 an.
+      jest.setSystemTime(new Date(`${TUESDAY}T12:00:00`))
+      window.sessionStorage.setItem(
+        CHECKOUT_FORM_STORAGE_KEY,
+        JSON.stringify({
+          customerName: 'Erika Mustermann',
+          phone: '06841 123456',
+          pickupDate: TUESDAY,
+          pickupTime: '06:00',
+        })
+      )
+      render(<CheckoutPage />)
+
+      const select = screen.getByTestId('pickup-time') as HTMLSelectElement
+      // Vorher hielt der Zustand „06:00" fest, während das Feld „Uhrzeit
+      // wählen" zeigte — und das Absenden „nicht mehr möglich" meldete.
+      expect(select.value).toBe('')
+      expect(select.options[select.selectedIndex].textContent).toBe(
+        'Uhrzeit wählen'
+      )
+      expect(optionsOf(select)).not.toContain('06:00')
+      // Das Datum und die Kontaktdaten bleiben erhalten.
+      expect(
+        (screen.getByTestId('pickup-date') as HTMLInputElement).value
+      ).toBe(TUESDAY)
+      expect(
+        (screen.getByTestId('customer-name') as HTMLInputElement).value
+      ).toBe('Erika Mustermann')
+      // Und die Session trägt die vergangene Uhrzeit nicht weiter.
+      const stored = JSON.parse(
+        window.sessionStorage.getItem(CHECKOUT_FORM_STORAGE_KEY) as string
+      )
+      expect(stored.pickupTime).toBeUndefined()
+      expect(stored.pickupDate).toBe(TUESDAY)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('behält beim Zurückholen eine Abholzeit, die heute noch geht', () => {
+    jest.useFakeTimers()
+    try {
+      jest.setSystemTime(new Date(`${TUESDAY}T07:00:00`))
+      window.sessionStorage.setItem(
+        CHECKOUT_FORM_STORAGE_KEY,
+        JSON.stringify({ pickupDate: TUESDAY, pickupTime: '09:00' })
+      )
+      render(<CheckoutPage />)
+
+      expect(
+        (screen.getByTestId('pickup-time') as HTMLSelectElement).value
+      ).toBe('09:00')
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('räumt die Kontaktdaten weg, sobald die Bestellung durch ist', async () => {
     mockSubmitOrder.mockResolvedValue({ id: '8QMZ-QXS5-HM0W' })
     render(<CheckoutPage />)

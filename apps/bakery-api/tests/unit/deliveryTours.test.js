@@ -36,7 +36,26 @@ describe('hasCoordinates', () => {
   test('akzeptiert echte Koordinaten, auch als String', () => {
     expect(core.hasCoordinates({ lat: 49.3, lon: 7.36 })).toBe(true)
     expect(core.hasCoordinates({ lat: '49.3', lon: '7.36' })).toBe(true)
-    expect(core.hasCoordinates({ lat: 0, lon: 0 })).toBe(true)
+    expect(core.hasCoordinates({ lat: -33.9, lon: 151.2 })).toBe(true)
+    expect(core.hasCoordinates({ lat: 90, lon: -180 })).toBe(true)
+  })
+
+  // (0, 0) liegt im Golf von Guinea und ist das klassische Ergebnis von
+  // `Number(null)` - als Depot- oder Stopp-Koordinate immer ein Fehler.
+  test('lehnt (0, 0) und Werte ausserhalb des Wertebereichs ab', () => {
+    expect(core.hasCoordinates({ lat: 0, lon: 0 })).toBe(false)
+    expect(core.hasCoordinates({ lat: '0', lon: '0' })).toBe(false)
+    expect(core.hasCoordinates({ lat: 999, lon: 7.36 })).toBe(false)
+    expect(core.hasCoordinates({ lat: 49.3, lon: -181 })).toBe(false)
+    expect(core.hasCoordinates({ lat: 90.0001, lon: 7 })).toBe(false)
+    // Ein einzelner Nullwert ist erlaubt - der Aequator und der Nullmeridian
+    // existieren, nur ihr Schnittpunkt ist verdaechtig.
+    expect(core.hasCoordinates({ lat: 0, lon: 7.36 })).toBe(true)
+    expect(core.hasCoordinates({ lat: 49.3, lon: 0 })).toBe(true)
+    expect(core.isLatitude(-90)).toBe(true)
+    expect(core.isLatitude(-90.5)).toBe(false)
+    expect(core.isLongitude('180')).toBe(true)
+    expect(core.isLongitude(180.5)).toBe(false)
   })
 
   // `Number(true)` ist 1, `Number([])` und `Number(' ')` sind 0 - aus einem
@@ -48,6 +67,95 @@ describe('hasCoordinates', () => {
     expect(core.isNumber(' ')).toBe(false)
     expect(core.isNumber({})).toBe(false)
     expect(core.isNumber(NaN)).toBe(false)
+  })
+})
+
+describe('validateCoordinates', () => {
+  test('gibt gueltige Paare als Zahlen zurueck', () => {
+    expect(core.validateCoordinates('49.3', 7.36)).toEqual({
+      lat: 49.3,
+      lon: 7.36,
+    })
+  })
+
+  test('meldet fehlende, halbe und unsinnige Paare mit deutschem Text', () => {
+    for (const [lat, lon] of [
+      [null, null],
+      [49.3, null],
+      [undefined, 7.36],
+      ['abc', 7.36],
+      [true, 7.36],
+    ]) {
+      const result = core.validateCoordinates(lat, lon)
+      expect(result.error).toBe('Invalid coordinates')
+      expect(result.message).toMatch(/Zahlen/)
+    }
+  })
+
+  test('meldet Werte ausserhalb des Wertebereichs und (0, 0)', () => {
+    expect(core.validateCoordinates(999, 7.36).error).toBe(
+      'Coordinates out of range'
+    )
+    expect(core.validateCoordinates(49.3, -500).error).toBe(
+      'Coordinates out of range'
+    )
+    const island = core.validateCoordinates(0, 0)
+    expect(island.error).toBe('Coordinates out of range')
+    expect(island.message).toMatch(/\(0, 0\)/)
+  })
+})
+
+describe('scrubCoordinates', () => {
+  test('setzt (0, 0) und Werte ausserhalb des Bereichs auf null', () => {
+    const stop = {
+      lat: 0,
+      lon: 0,
+      geocodeSource: 'manual',
+      geocodePrecision: null,
+    }
+    expect(core.scrubCoordinates(stop)).toBe(true)
+    expect(stop).toEqual({
+      lat: null,
+      lon: null,
+      geocodeSource: null,
+      geocodePrecision: null,
+    })
+
+    const depot = { lat: 999, lon: 7.36 }
+    expect(core.scrubCoordinates(depot)).toBe(true)
+    expect(depot).toEqual({ lat: null, lon: null })
+  })
+
+  test('laesst gueltige und bereits leere Punkte in Ruhe', () => {
+    const ok = { lat: 49.3, lon: 7.36, geocodeSource: 'nominatim' }
+    expect(core.scrubCoordinates(ok)).toBe(false)
+    expect(ok.geocodeSource).toBe('nominatim')
+    expect(core.scrubCoordinates({ lat: null, lon: null })).toBe(false)
+    expect(core.scrubCoordinates({ street: 'Talstraße 5' })).toBe(false)
+    expect(core.scrubCoordinates(null)).toBe(false)
+  })
+})
+
+describe('isClockTime', () => {
+  test('akzeptiert nur HH:MM mit 00-23 und 00-59', () => {
+    for (const ok of ['00:00', '06:30', '23:59', '09:05']) {
+      expect(core.isClockTime(ok)).toBe(true)
+    }
+    for (const bad of [
+      '99:99',
+      '24:00',
+      '25:61',
+      '6:30',
+      '06:3',
+      '06.30',
+      '',
+      null,
+      undefined,
+      630,
+      '06:30:00',
+    ]) {
+      expect(core.isClockTime(bad)).toBe(false)
+    }
   })
 })
 
@@ -191,24 +299,54 @@ describe('estimateArrivals', () => {
 
 describe('arrivalBaseline', () => {
   const NOW = Date.parse('2026-09-05T07:00:00.000Z')
+  // Die geplante Abfahrt ist eine Ortszeit ohne Zeitzone - so wie sie
+  // `arrivalBaseline` aus `date + plannedStart` baut.
+  const localIso = (date, time) => new Date(`${date}T${time}:00`).toISOString()
 
   test('rechnet eine geplante Tour ab Datum und geplanter Abfahrt', () => {
+    // Zwei Tage vor der Tour: die Abfahrt liegt in der Zukunft.
+    const twoDaysBefore = Date.parse('2026-09-03T07:00:00.000Z')
     const baseline = core.arrivalBaseline(
       DEPOT,
       { date: '2026-09-05', plannedStart: '06:30', startedAt: null, stops: [] },
-      NOW
+      twoDaysBefore
     )
     expect(baseline.origin).toBe(DEPOT)
-    expect(baseline.startedAt).toBe('2026-09-05T06:30:00')
+    expect(baseline.startedAt).toBe(localIso('2026-09-05', '06:30'))
   })
 
   test('nimmt 06:30 als Abfahrt, wenn keine geplant ist', () => {
+    const twoDaysBefore = Date.parse('2026-09-03T07:00:00.000Z')
     const baseline = core.arrivalBaseline(
       DEPOT,
       { date: '2026-09-05', startedAt: null, stops: [] },
-      NOW
+      twoDaysBefore
     )
-    expect(baseline.startedAt).toBe('2026-09-05T06:30:00')
+    expect(baseline.startedAt).toBe(localIso('2026-09-05', '06:30'))
+  })
+
+  // Regression: am Tourtag um 10:48 stand an einer geplanten Tour "Ankunft
+  // ca. 06:38" - die Abfahrt war laengst vorbei, der Fahrer hatte nur noch
+  // nichts abgehakt.
+  test('rechnet eine geplante Tour nie frueher als jetzt', () => {
+    const lateMorning = Date.parse(localIso('2026-09-05', '10:48'))
+    const baseline = core.arrivalBaseline(
+      DEPOT,
+      { date: '2026-09-05', plannedStart: '06:30', startedAt: null, stops: [] },
+      lateMorning
+    )
+    expect(baseline.origin).toBe(DEPOT)
+    expect(baseline.startedAt).toBe(new Date(lateMorning).toISOString())
+  })
+
+  test('faellt bei kaputter Abfahrtszeit auf 06:30 zurueck', () => {
+    const twoDaysBefore = Date.parse('2026-09-03T07:00:00.000Z')
+    const baseline = core.arrivalBaseline(
+      DEPOT,
+      { date: '2026-09-05', plannedStart: '99:99', startedAt: null, stops: [] },
+      twoDaysBefore
+    )
+    expect(baseline.startedAt).toBe(localIso('2026-09-05', '06:30'))
   })
 
   test('rechnet eine laufende Tour ab dem zuletzt erledigten Stopp', () => {
@@ -265,6 +403,48 @@ describe('arrivalBaseline', () => {
     const baseline = core.arrivalBaseline(DEPOT, tour, NOW)
     expect(baseline.origin).toBe(DEPOT)
     expect(baseline.startedAt).toBe('2026-09-05T07:15:00.000Z')
+  })
+})
+
+describe('applyOpenStopOrder', () => {
+  const stops = [
+    { id: 1, status: 'done' },
+    { id: 2, status: 'open' },
+    { id: 3, status: 'open' },
+    { id: 4, status: 'failed' },
+    { id: 5, status: 'open' },
+  ]
+
+  // Regression: "Route berechnen" auf einer laufenden Tour schob den um
+  // sieben Uhr gelieferten CAP-Markt ans Ende und nummerierte alles neu.
+  test('laesst erledigte Stopps auf ihrem Platz und sortiert nur offene', () => {
+    const result = core.applyOpenStopOrder(stops, [5, 3, 2])
+    expect(result.map((s) => s.id)).toEqual([1, 5, 3, 4, 2])
+    // Dieselben Objekte, kein Kopieren.
+    expect(result[0]).toBe(stops[0])
+    expect(result[1]).toBe(stops[4])
+  })
+
+  test('haengt offene Stopps ohne Platz in der Reihenfolge hinten an', () => {
+    // Stopp 2 hat keine Koordinaten und fehlt in der Router-Antwort.
+    const result = core.applyOpenStopOrder(stops, [5, 3])
+    expect(result.map((s) => s.id)).toEqual([1, 5, 3, 4, 2])
+  })
+
+  test('aendert ohne offene Stopps nichts', () => {
+    const finished = [
+      { id: 1, status: 'done' },
+      { id: 2, status: 'failed' },
+    ]
+    expect(core.applyOpenStopOrder(finished, [2, 1]).map((s) => s.id)).toEqual([
+      1, 2,
+    ])
+    expect(core.applyOpenStopOrder([], [1])).toEqual([])
+  })
+
+  test('nimmt IDs auch als Strings', () => {
+    const result = core.applyOpenStopOrder(stops, ['3', '2', '5'])
+    expect(result.map((s) => s.id)).toEqual([1, 3, 2, 4, 5])
   })
 })
 
@@ -417,6 +597,84 @@ describe('normalizeStopInput', () => {
     expect(gescheitert.failureReason).toBe('Nicht angetroffen')
   })
 
+  test('haelt Grund und Verbleib der Ware bei "nicht angetroffen" fest', () => {
+    const bestehend = {
+      customer: 'Müller',
+      street: 'Talstraße 5',
+      status: 'open',
+    }
+    const { stop } = core.normalizeStopInput(
+      {
+        status: 'failed',
+        failureReason: '  Annahme verweigert ',
+        goodsDisposition: 'left_at_address',
+      },
+      bestehend
+    )
+    expect(stop.failureReason).toBe('Annahme verweigert')
+    expect(stop.goodsDisposition).toBe('left_at_address')
+
+    // Ohne Angabe bleibt der Verbleib offen - er wird nicht erfunden.
+    const ohne = core.normalizeStopInput({ status: 'failed' }, bestehend).stop
+    expect(ohne.goodsDisposition).toBeNull()
+
+    // Ein spaeteres PATCH ohne die Felder laesst die Angaben stehen.
+    const nochmal = core.normalizeStopInput({ notes: 'Hund' }, stop).stop
+    expect(nochmal.failureReason).toBe('Annahme verweigert')
+    expect(nochmal.goodsDisposition).toBe('left_at_address')
+  })
+
+  test('lehnt einen unbekannten Verbleib und einen zu langen Grund ab', () => {
+    const bestehend = { customer: 'Müller', street: 'Talstraße 5' }
+    const verbleib = core.normalizeStopInput(
+      { status: 'failed', goodsDisposition: 'eaten' },
+      bestehend
+    )
+    expect(verbleib.error).toBe('Invalid goods disposition')
+    expect(verbleib.message).toMatch(/Verbleib der Ware/)
+
+    const grund = core.normalizeStopInput(
+      {
+        status: 'failed',
+        failureReason: 'x'.repeat(core.FAILURE_REASON_MAX_LENGTH + 1),
+      },
+      bestehend
+    )
+    expect(grund.error).toBe('Failure reason too long')
+    expect(grund.message).toMatch(/Zeichen/)
+
+    // Leer und `null` sind kein Fehler, sondern "keine Angabe".
+    expect(
+      core.normalizeStopInput(
+        { status: 'failed', goodsDisposition: '' },
+        bestehend
+      ).stop.goodsDisposition
+    ).toBeNull()
+  })
+
+  test('raeumt Grund und Verbleib beim Zuruecksetzen und beim Liefern weg', () => {
+    const gescheitert = {
+      customer: 'Müller',
+      street: 'Talstraße 5',
+      status: 'failed',
+      completedAt: '2026-09-05T06:00:00.000Z',
+      failureReason: 'Nicht angetroffen',
+      goodsDisposition: 'taken_back',
+    }
+    const offen = core.normalizeStopInput({ status: 'open' }, gescheitert).stop
+    expect(offen.failureReason).toBeNull()
+    expect(offen.goodsDisposition).toBeNull()
+
+    // Zweiter Versuch geklappt: die Ware ist angekommen, der Verbleib von
+    // vorhin stimmt nicht mehr.
+    const geliefert = core.normalizeStopInput(
+      { status: 'done' },
+      gescheitert
+    ).stop
+    expect(geliefert.failureReason).toBeNull()
+    expect(geliefert.goodsDisposition).toBeNull()
+  })
+
   test('setzt ein Zurueckstellen auf offen sauber zurueck', () => {
     const erledigt = {
       customer: 'Müller',
@@ -461,6 +719,36 @@ describe('normalizeStopInput', () => {
         null
       ).error
     ).toBe('Invalid status')
+  })
+
+  test('lehnt Koordinaten ausserhalb des Wertebereichs und (0, 0) ab', () => {
+    const base = { customer: 'Müller', street: 'Talstraße 5' }
+    expect(
+      core.normalizeStopInput({ ...base, lat: 999, lon: 7.3 }, null).error
+    ).toBe('Coordinates out of range')
+    expect(
+      core.normalizeStopInput({ ...base, lat: 49.3, lon: -181 }, null).error
+    ).toBe('Coordinates out of range')
+    const island = core.normalizeStopInput({ ...base, lat: 0, lon: 0 }, null)
+    expect(island.error).toBe('Coordinates out of range')
+    expect(island.message).toMatch(/\(0, 0\)/)
+  })
+
+  test('lehnt ein halbes Koordinatenpaar ab, statt es stumm zu loeschen', () => {
+    const base = { customer: 'Müller', street: 'Talstraße 5' }
+    expect(core.normalizeStopInput({ ...base, lat: 49.3 }, null).error).toBe(
+      'Invalid coordinates'
+    )
+    expect(
+      core.normalizeStopInput({ ...base, lat: 49.3, lon: null }, null).error
+    ).toBe('Invalid coordinates')
+    // Beide leer heisst weiterhin "loeschen und neu suchen".
+    const geloescht = core.normalizeStopInput(
+      { ...base, lat: '', lon: '' },
+      { ...base, lat: 49.3, lon: 7.3, geocodeSource: 'manual' }
+    ).stop
+    expect(geloescht.lat).toBeNull()
+    expect(geloescht.geocodeSource).toBeNull()
   })
 })
 

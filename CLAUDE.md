@@ -154,6 +154,14 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
   verkauft noch Retoure. Die Erfassungsmaske lässt so eine Abholung nicht ohne Rückfrage speichern.
 - **`countedQty: null` heißt "nicht gezählt", `0` heißt "Schrank war leer".** Der Unterschied
   ändert die Verkaufszahlen. Die Erfassungsmaske hält ihn auseinander, ein Test sichert das ab.
+  Serverseitig prüft `validateVisitItems(items, lookup)` im Core jede Position (seit 2026-09-07):
+  ein nicht-numerischer Rest wie `"abc"` wird mit 400 abgelehnt statt zu `0` zu werden, Mengen
+  sind ganzzahlig und auf 0…10000 begrenzt, negative Preise und Produkte außerhalb des Katalogs
+  fliegen raus, Name und Kennungen kommen aus dem Katalog. Beide Server rufen diese eine Funktion;
+  `isBusinessDate()` daneben lehnt kalendarisch unmögliche Tage (`2026-02-30`) ab.
+- **`csvCell()` maskiert Formelzellen.** Partner- und Produktnamen landen im CSV-Report; eine
+  Zelle, die mit `=`, `+`, `-`, `@`, Tab oder CR beginnt, bekommt ein Apostroph voran und wird
+  eingefasst, sonst führt Excel sie aus. Schlichte Zahlen (`-5`) bleiben Zahlen.
 
 Die Tagesformel aus der Aufgabe (`Σ Geliefert − Rest bei der Abholung`) stimmt nur, wenn der
 letzte Besuch eine Abholung ohne Lieferung ist. Der Core rechnet stattdessen je Produkt einen
@@ -220,9 +228,12 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
   `delivery-tours.core.js`, Frontend: `@bakery/delivery/routing`), nie mit
   `Number.isFinite(Number(x))` oder `!== null`. Das gilt auch für das Depot und die Fahrerposition.
+  `hasCoordinates()` verlangt seit dem 07.09.2026 außerdem −90..90 / −180..180 und lehnt das Paar
+  `(0, 0)` ab; Eingaben prüft `validateCoordinates()` (400 mit `message` + `error`), gespeicherte
+  Altwerte werden beim Laden des Stores auf `null` gesetzt und neu gesucht.
 
-Tests: `npx nx test delivery-routing` (32), `npx nx test delivery-tracking` (7) und
-`apps/bakery-api/tests/unit/deliveryTours.test.js` (46) für die Rechenlogik des Servers.
+Tests: `npx nx test delivery-routing` (47), `npx nx test delivery-tracking` (7) und
+`apps/bakery-api/tests/unit/deliveryTours.test.js` (61) für die Rechenlogik des Servers.
 
 ## Kassenberichte (hq/data/reports)
 
