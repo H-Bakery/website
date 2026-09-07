@@ -3,6 +3,7 @@ import {
   BakingItem,
   AdditionalProductionItem,
 } from '../../types/prepTask'
+import { formatTrayInfo } from '../../utils/trayInfo'
 
 export class PrintUtils {
   static printProductionPlan(
@@ -52,7 +53,7 @@ export class PrintUtils {
             (section) => `
         <div class="section">
           <div class="section-title">□ ${section.name.toUpperCase()}</div>
-          <p><em>${section.description}</em></p>
+          ${section.description ? `<p><em>${section.description}</em></p>` : ''}
           ${
             section.items
               ? section.items
@@ -62,11 +63,7 @@ export class PrintUtils {
               <div class="item-row">
                 <span>□ ${item.name}</span>
                 <span>${item.quantity} Stück${
-                      item.tray_number ? ` (Blech ${item.tray_number})` : ''
-                    }${
-                      item.tray_numbers
-                        ? ` (Bleche ${item.tray_numbers.join(', ')})`
-                        : ''
+                      formatTrayInfo(item) ? ` (${formatTrayInfo(item)})` : ''
                     }</span>
               </div>
               ${

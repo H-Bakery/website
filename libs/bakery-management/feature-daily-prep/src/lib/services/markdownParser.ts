@@ -1,4 +1,5 @@
 import { PrepSection, PrepTaskItem, PrepIngredient } from '../types/prepTask'
+import { getTrayNumbers } from '../utils/trayInfo'
 
 export class MarkdownParser {
   /**
@@ -70,18 +71,13 @@ export class MarkdownParser {
             completed: false,
           }
 
-          // Parse tray numbers
-          if (cells[2]) {
-            if (cells[2].includes('-')) {
-              // Range like "11-13"
-              const [start, end] = cells[2].split('-').map((n) => parseInt(n))
-              item.tray_numbers = []
-              for (let t = start; t <= end; t++) {
-                item.tray_numbers.push(t)
-              }
-            } else {
-              item.tray_number = parseInt(cells[2])
-            }
+          // Parse tray numbers - a missing or unparseable third column
+          // leaves both tray fields unset (the UI then shows no tray text)
+          const trays = MarkdownParser.parseTrayCell(cells[2])
+          if (trays.length === 1) {
+            item.tray_number = trays[0]
+          } else if (trays.length > 1) {
+            item.tray_numbers = trays
           }
 
           currentTable.push(item)
@@ -149,6 +145,30 @@ export class MarkdownParser {
   }
 
   /**
+   * Parse the "Tray #" cell of a prep table: "5" → [5], "11-13" → [11, 12, 13].
+   * Empty, missing or non-numeric cells yield [] instead of NaN.
+   */
+  public static parseTrayCell(cell: string | undefined): number[] {
+    const text = (cell || '').trim()
+    if (!text) return []
+
+    const range = text.match(/^(\d+)\s*[-–]\s*(\d+)$/)
+    if (range) {
+      const start = parseInt(range[1], 10)
+      const end = parseInt(range[2], 10)
+      if (end < start) return []
+      const trays: number[] = []
+      for (let t = start; t <= end; t++) {
+        trays.push(t)
+      }
+      return trays
+    }
+
+    const single = text.match(/^\d+$/)
+    return single ? [parseInt(text, 10)] : []
+  }
+
+  /**
    * Convert PrepSection array to markdown format
    */
   public static convertToMarkdown(sections: PrepSection[]): string {
@@ -181,14 +201,13 @@ export class MarkdownParser {
         markdown += '| Item | Quantity | Tray # |\n'
         markdown += '|------|----------|--------|\n'
         section.items.forEach((item) => {
-          let trayInfo = ''
-          if (item.tray_number) {
-            trayInfo = item.tray_number.toString()
-          } else if (item.tray_numbers) {
-            trayInfo = `${item.tray_numbers[0]}-${
-              item.tray_numbers[item.tray_numbers.length - 1]
-            }`
-          }
+          const trays = getTrayNumbers(item)
+          const trayInfo =
+            trays.length === 0
+              ? ''
+              : trays.length === 1
+              ? String(trays[0])
+              : `${trays[0]}-${trays[trays.length - 1]}`
           markdown += `| ${item.name} | ${item.quantity} | ${trayInfo} |\n`
         })
         markdown += '\n'

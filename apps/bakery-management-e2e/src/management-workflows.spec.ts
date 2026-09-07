@@ -1,7 +1,24 @@
+/**
+ * @fileoverview Wunschliste, keine Prüfung.
+ *
+ * Diese Suite wurde mit dem Projekt generiert und beschreibt eine Verwaltung,
+ * die es so nicht gibt: kein Login (`/admin/login` existiert nicht, es gibt
+ * keine Anmeldung), keine der `data-testid`s (`metric-card-orders`,
+ * `orders-table`, `production-calendar` …), keine PDF-Rechnungen, keine
+ * Dienstpläne, keine Einstellungen mit Schweizer Adresse und CHF. Gegen die
+ * echte App schlugen deshalb alle Tests fehl - in CI seit dem ersten Lauf.
+ *
+ * Sie bleibt als Skizze möglicher Funktionen stehen und ist als Ganzes
+ * übersprungen. Was die Verwaltung wirklich tut, prüft
+ * `management-smoke.spec.ts`. Wer eine der Funktionen baut, zieht den
+ * passenden Test von hier dorthin und gibt ihm echte Selektoren.
+ */
+
 import { test, expect } from '@playwright/test'
 
 test.describe('Management Workflows', () => {
-  test.use({ storageState: 'apps/bakery-management-e2e/.auth/user.json' })
+  // Kein Login, kein storageState: die .auth/user.json entstuende nie.
+  test.skip(true, 'Nicht gebaut - siehe Kopf der Datei.')
 
   test.beforeEach(async ({ page }) => {
     await page.goto('/admin')
