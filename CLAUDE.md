@@ -280,6 +280,40 @@ Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/re
 und in der Management-App `src/lib/reports.spec.ts`, `admin/reports/**/*.spec.tsx`,
 `admin/analytics/**/*.spec.tsx` - alle mit synthetischen Fixtures, nie mit echten Tagesfiles.
 
+## Finanzdaten (`/admin/finance`, TASK-038)
+
+Bankumsätze aus dem privaten `hq`-Repo (`hq/data/finance/finance-summary.json`, `schema_version` 1).
+Dieses Repo ist öffentlich, `hq` nicht - deshalb gelten hier vier Regeln:
+
+- **Nur das bereinigte Aggregat verlässt einen Server.** Der Sanitizer in
+  `apps/bakery-api/src/services/finance.core.js` ist eine _Whitelist_: `accounts` (IBANs) und
+  `top_counterparties` (Klarnamen) fallen komplett weg, `uncategorized` behält nur `count`/`amount`.
+  Ein neues Feld im Export ist unsichtbar, bis es dort bewusst freigegeben wird. Der Core trägt auch
+  Monatsreihe, Kostenstruktur und die Invariante `Einnahmen + Ausgaben + Neutral = Kontoveränderung`
+  (`checkInvariant`) - genau einmal, wie `partner-stats.core.js`. Der Loader der Management-App
+  (`src/lib/finance.ts`) lädt denselben Core per `require` mit `// nx-ignore-next-line` und
+  `eslint-disable-line`; beide Marker müssen an genau dieser Stelle bleiben, sonst hängt
+  `bakery-management` im Nx-Graph an `bakery-api` und `nx build` baut erst die API.
+- **Endpunkte nur mit Rolle `admin`.** `GET /api/finance/summary` und `/api/finance/months?from=&to=`
+  liegen in `apps/bakery-api/src/routes/finance.mock.js`, geschützt durch `requireRole('admin')` aus
+  `src/routes/auth.mock.js` - der Mock-Server hat seit TASK-038 ein echtes JWT-Login
+  (`POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/refresh`, `POST /api/auth/logout`;
+  Benutzer aus `MOCK_ADMIN_USER`/`MOCK_ADMIN_PASSWORD`, optional `MOCK_STAFF_*`; `JWT_SECRET` sonst
+  pro Start zufällig). Ohne Token 401, mit falscher Rolle 403, beides als JSON mit `message` und
+  `error`. Die Management-App hat dafür `/admin/login`; das Token wird in `localStorage` gehalten
+  (`src/lib/authSession.ts`), weil `ApiClient` und `AuthProvider` es sonst beim Neuladen verlieren.
+- **Kein Fallback auf Beispieldaten.** Fehlt `hq` (CI), fehlt die Datei oder stimmt die
+  `schema_version` nicht, antwortet der Server mit `status: 'no-data'` und loggt das; die Seite zeigt
+  „Keine Finanzdaten vorhanden". `HQ_FINANCE_DIR` überschreibt den Pfad `<website>/../hq/data/finance`.
+- **Synthetische Testdaten.** `apps/bakery-api/tests/fixtures/finance-summary.synthetic.js` ist
+  erfunden; nie einen echten Auszug in Fixtures, Snapshots, Screenshots oder Commit-Messages kopieren.
+
+Die Seite zeigt eine **Cashflow-Sicht nach Buchungsdatum, keine GuV** - der Hinweis steht bewusst in
+der Oberfläche. Nicht zugeordnete Buchungen sind gewollt und ein Info-Hinweis, keine Warnung.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/finance*.test.js` (Core,
+Auth und Routen) und `npx nx test bakery-management` (`src/lib/finance.spec.ts`, `FinanceClient.spec.tsx`).
+
 ## Important Notes
 
 - Always check existing patterns before implementing new features
