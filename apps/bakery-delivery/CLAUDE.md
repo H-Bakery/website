@@ -329,6 +329,18 @@ Stopps (bzw. der Vorbestellung), dessen Änderung unterwegs ist — `busyStops` 
 `page.tsx`. Sonst stand der Fahrer 15 s lang am nächsten Haus und konnte nichts abhaken. Nur
 „Route berechnen" wartet, bis nichts mehr unterwegs ist: es nummeriert die ganze Tour um.
 
+Die Kehrseite: zwei PATCHes zugleich, und **jede Server-Antwort ersetzt die ganze Tour**. Hängt der
+an Stopp A (ein noch nicht geokodierter Stopp wartet serverseitig bis zu 2,5 s auf Nominatim) und
+antwortet der an Stopp B zuerst, steht A in Bs Tour noch „Offen" — das Abhaken von eben wäre weg,
+und läuft A danach in den Timeout, läge `done` zwar in der Warteschlange, die Karte zeigte aber
+„Offen" mit aktivem Knopf. Deshalb hält `inFlightRef` jede laufende Änderung als `LocalUpdate`
+(Stopp-Body bzw. Vorbestellungsstatus), und jede Tour vom Server — Antwort eines PATCH, Flush der
+Warteschlange, `loadTours`, Route/Stopp anlegen/entfernen — geht durch `withInFlight()`
+(`mergeTour()`), das dieselbe `withPendingUpdates()` wie die Offline-Kopie benutzt. Ausgetragen wird
+ein Eintrag erst mit der eigenen Antwort, der 4xx-Ablehnung (dann gilt der Server-Stand) oder dem
+Netzfehler, der ihn in die Warteschlange legt. Vorbestellungen brauchen das genauso, weil sie im
+Tour-Payload hängen; `busyPreorders` sperrt den Stopp nicht. Drei `page.spec`-Fälle sichern das ab.
+
 ### „Nicht angetroffen" hält Grund und Verbleib der Ware fest
 
 Der Knopf öffnet erst eine Rückfrage in der Karte (`FailureForm.tsx`): Grund (Nicht angetroffen /

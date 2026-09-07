@@ -467,6 +467,112 @@ describe('DeliveryDashboard beim Abhaken', () => {
     ).toBe(true)
   })
 
+  /**
+   * Die Sperre je Stopp erlaubt zwei PATCHes zugleich - und jede Antwort
+   * ersetzt die ganze Tour. Antwortet B vor A (A ist noch nicht geokodiert,
+   * der Server wartet bis zu 2,5 s auf Nominatim), steht A in Bs Antwort noch
+   * „Offen". Ohne Ueberlagerung zeigte Karte A wieder „Geliefert" als Knopf,
+   * und der Fahrer hakte doppelt ab oder hielt das Abhaken fuer verloren.
+   */
+  const serverTourWithBDone: Tour = {
+    ...twoStops,
+    stops: [
+      stop(1, 'Kunde A'),
+      {
+        ...stop(2, 'Kunde B'),
+        status: 'done',
+        completedAt: '2026-09-12T07:20:00.000Z',
+      },
+    ],
+    progress: { total: 2, done: 1, failed: 0, open: 1, isComplete: false },
+    nextStopId: 1,
+  }
+
+  /** PATCH an Stopp A haengt (steuerbar), an Stopp B antwortet der Server. */
+  const hangingA = () => {
+    let rejectA: (err: unknown) => void = () => undefined
+    api.updateStop.mockImplementation((_tourId, stopId) => {
+      if (stopId === 1) {
+        return new Promise<Tour>((_resolve, reject) => {
+          rejectA = reject
+        })
+      }
+      return Promise.resolve(serverTourWithBDone)
+    })
+    return { failA: (err: unknown) => rejectA(err) }
+  }
+
+  it('lässt die Antwort auf Stopp B ein noch laufendes Abhaken von Stopp A stehen', async () => {
+    hangingA()
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+
+    fireEvent.click(
+      within(card('Kunde A')).getByRole('button', { name: 'Geliefert' })
+    )
+    expect(await screen.findByText(/1 von 2 geliefert/)).toBeTruthy()
+    fireEvent.click(
+      within(card('Kunde B')).getByRole('button', { name: 'Geliefert' })
+    )
+    await waitFor(() => expect(api.updateStop).toHaveBeenCalledTimes(2))
+
+    // Bs Antwort ist da - A bleibt trotzdem geliefert, weil sein PATCH noch laeuft.
+    expect(await screen.findByText(/2 von 2 geliefert/)).toBeTruthy()
+    const a = within(card('Kunde A'))
+    expect(
+      (a.getByRole('button', { name: 'Zurücksetzen' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(true)
+    expect(a.queryByRole('button', { name: 'Geliefert' })).toBeNull()
+    // B ist vom Server bestaetigt und wieder frei.
+    expect(
+      (
+        within(card('Kunde B')).getByRole('button', {
+          name: 'Zurücksetzen',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+  })
+
+  it('hält das Abhaken von A, wenn es nach Bs Antwort im Funkloch landet', async () => {
+    const { failA } = hangingA()
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+
+    fireEvent.click(
+      within(card('Kunde A')).getByRole('button', { name: 'Geliefert' })
+    )
+    fireEvent.click(
+      within(card('Kunde B')).getByRole('button', { name: 'Geliefert' })
+    )
+    expect(await screen.findByText(/2 von 2 geliefert/)).toBeTruthy()
+
+    // Jetzt bricht A nach dem Timeout ab: die Aenderung wandert in die
+    // Warteschlange, die Karte zeigt weiter „geliefert" - nicht „Offen" mit
+    // aktivem Knopf, als waere nie abgehakt worden.
+    await act(async () => {
+      failA(networkError())
+    })
+    expect(await screen.findByText(/Kein Netz/)).toBeTruthy()
+    expect(screen.getByText(/2 von 2 geliefert/)).toBeTruthy()
+    const a = within(card('Kunde A'))
+    expect(
+      (a.getByRole('button', { name: 'Zurücksetzen' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false)
+    expect(a.queryByRole('button', { name: 'Geliefert' })).toBeNull()
+    expect(pendingUpdates()).toEqual([
+      expect.objectContaining({
+        kind: 'stop',
+        tourId: 7,
+        stopId: 1,
+        body: { status: 'done' },
+      }),
+    ])
+  })
+
   it('schickt Grund und Verbleib der Ware mit „Nicht angetroffen" und zeigt sie an', async () => {
     api.updateStop.mockImplementation(async (_tourId, stopId, body) => ({
       ...twoStops,
@@ -750,6 +856,47 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     await waitFor(() =>
       expect(api.updateStop).toHaveBeenCalledWith(7, 1, { status: 'done' })
     )
+  })
+
+  it('setzt eine Übergabe, die noch unterwegs ist, nicht durch die Antwort auf den Stopp zurück', async () => {
+    // Die Vorbestellungen haengen an der Tour. Haengt der PATCH an der
+    // Uebergabe und antwortet der Stopp-PATCH zuerst, kennt dessen Tour die
+    // Uebergabe noch nicht - sie darf trotzdem nicht wieder „Offen" werden.
+    api.updatePreorder.mockImplementation(() => new Promise(() => undefined))
+    api.updateStop.mockResolvedValue({
+      ...pickupTour,
+      stops: [
+        {
+          ...pickupStop,
+          status: 'done',
+          completedAt: '2026-09-12T09:30:00.000Z',
+        },
+      ],
+      progress: { total: 1, done: 1, failed: 0, open: 0, isComplete: true },
+      nextStopId: null,
+    })
+
+    render(<DeliveryDashboard />)
+    fireEvent.click(
+      (await screen.findAllByRole('button', { name: 'Übergeben' }))[0]
+    )
+    await waitFor(() =>
+      expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
+    )
+
+    fireEvent.click(
+      screen.getAllByRole('button', { name: 'Stopp abschließen' })[0]
+    )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Trotzdem abschließen' })
+    )
+    await waitFor(() =>
+      expect(api.updateStop).toHaveBeenCalledWith(7, 1, { status: 'done' })
+    )
+
+    expect(await screen.findByText('Abgeschlossen')).toBeTruthy()
+    expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/0 von 2 übergeben/)).toBeNull()
   })
 
   it('legt die Warteschlange über die Offline-Kopie der Tour', async () => {
