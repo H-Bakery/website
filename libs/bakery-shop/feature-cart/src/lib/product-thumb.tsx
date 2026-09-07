@@ -7,6 +7,7 @@
 
 import React from 'react'
 import Box from '@mui/material/Box'
+import { isUsableProductImage } from '@bakery/shop/feature-catalog'
 
 export interface ProductThumbProps {
   /** Public image path, e.g. `/assets/images/products/kornbrot.svg`. */
@@ -31,7 +32,9 @@ export const ProductThumb: React.FC<ProductThumbProps> = ({
   size = 72,
 }) => {
   const [failed, setFailed] = React.useState(false)
-  const hasImage = typeof src === 'string' && src.trim().length > 0 && !failed
+  // 43 hq-Produkte tragen `image: "images/"` - das ist kein Bild und wird
+  // (wie im Katalog) gar nicht erst angefragt, sonst gibt es je Artikel einen 404.
+  const hasImage = isUsableProductImage(src) && !failed
 
   return (
     <Box

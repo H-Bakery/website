@@ -58,6 +58,8 @@ describe('ChatPage - Polling gegen einen fehlenden Endpunkt', () => {
 
     await screen.findByText(/noch nicht eingerichtet/i)
     expect(fetchMock).toHaveBeenCalledTimes(1)
+    // Der Chat liegt auf der API, nicht auf dem Next-Origin.
+    expect(String(fetchMock.mock.calls[0][0])).toMatch(/^http.*\/api\/chat$/)
 
     await advance(POLL_MS * 3)
     expect(fetchMock).toHaveBeenCalledTimes(1)
