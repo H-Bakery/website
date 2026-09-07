@@ -2,6 +2,7 @@ import {
   CheckoutFormValues,
   EMPTY_CHECKOUT_FORM,
   type LeadTimeLimit,
+  availablePickupSlots,
   earliestBookablePickupDate,
   firstInvalidField,
   leadTimeLimitFor,
@@ -452,5 +453,106 @@ describe('serializeCheckoutForm / restoreCheckoutForm', () => {
     expect(
       restoreCheckoutForm(JSON.stringify({ pickupDate: MONDAY }), TODAY)
     ).toBeNull()
+  })
+
+  /* Die Uhrzeit: Datum bleibt, ein vergangener Slot fällt weg. */
+
+  it('verwirft eine Abholzeit für heute, die inzwischen vorbei ist', () => {
+    // Sonntag 09:30 Uhr: mit einer Stunde Vorlauf bleibt nur noch 10:30.
+    const restored = restoreCheckoutForm(
+      JSON.stringify({
+        customerName: 'Anna Beck',
+        pickupDate: TODAY,
+        pickupTime: '08:30',
+      }),
+      TODAY,
+      9 * 60 + 30
+    )
+    expect(restored).toEqual({
+      ...EMPTY_CHECKOUT_FORM,
+      customerName: 'Anna Beck',
+      pickupDate: TODAY,
+      pickupTime: '',
+    })
+  })
+
+  it('verwirft eine Abholzeit für heute, die in der Vorlaufzeit liegt', () => {
+    const restored = restoreCheckoutForm(
+      JSON.stringify({ pickupDate: TODAY, pickupTime: '10:00' }),
+      TODAY,
+      9 * 60 + 30
+    )
+    expect((restored as CheckoutFormValues).pickupTime).toBe('')
+  })
+
+  it('behält eine Abholzeit für heute, die noch buchbar ist', () => {
+    const restored = restoreCheckoutForm(
+      JSON.stringify({ pickupDate: TODAY, pickupTime: '10:30' }),
+      TODAY,
+      9 * 60 + 30
+    )
+    expect(restored).toEqual({
+      ...EMPTY_CHECKOUT_FORM,
+      pickupDate: TODAY,
+      pickupTime: '10:30',
+    })
+  })
+
+  it('lässt einen Slot an einem späteren Tag von der Uhrzeit unberührt', () => {
+    const restored = restoreCheckoutForm(
+      JSON.stringify({ pickupDate: TUESDAY, pickupTime: '06:00' }),
+      TODAY,
+      23 * 60
+    )
+    expect((restored as CheckoutFormValues).pickupTime).toBe('06:00')
+  })
+
+  it('verwirft eine Uhrzeit, die es an diesem Tag gar nicht gibt', () => {
+    // Sonntags öffnet die Bäckerei erst um 08:00.
+    const restored = restoreCheckoutForm(
+      JSON.stringify({ pickupDate: TODAY, pickupTime: '06:00' }),
+      TODAY
+    )
+    expect((restored as CheckoutFormValues).pickupTime).toBe('')
+  })
+
+  it('verwirft einen Wert, der keine Uhrzeit ist', () => {
+    const restored = restoreCheckoutForm(
+      JSON.stringify({ pickupDate: TUESDAY, pickupTime: 'bald' }),
+      TODAY,
+      0
+    )
+    expect((restored as CheckoutFormValues).pickupTime).toBe('')
+  })
+
+  it('prüft die Uhrzeit ohne Uhr nur gegen das Tagesraster', () => {
+    const restored = restoreCheckoutForm(
+      JSON.stringify({ pickupDate: TODAY, pickupTime: '08:00' }),
+      TODAY
+    )
+    expect((restored as CheckoutFormValues).pickupTime).toBe('08:00')
+  })
+})
+
+describe('availablePickupSlots', () => {
+  it('bietet ohne Datum nichts an', () => {
+    expect(availablePickupSlots('', { iso: TODAY, minutes: 0 })).toEqual([])
+  })
+
+  it('rechnet heute die Vorlaufzeit ein', () => {
+    // Sonntag 08:45 Uhr + 60 Minuten Vorlauf → erst ab 10:00.
+    expect(
+      availablePickupSlots(TODAY, { iso: TODAY, minutes: 8 * 60 + 45 })
+    ).toEqual(['10:00', '10:30'])
+  })
+
+  it('bietet an einem anderen Tag den ganzen Tagesbogen an', () => {
+    expect(
+      availablePickupSlots(TUESDAY, { iso: TODAY, minutes: 23 * 60 })
+    ).toEqual(TUESDAY_SLOTS)
+  })
+
+  it('kennt vor dem Mount keine Uhr und damit keine Vorlaufzeit', () => {
+    expect(availablePickupSlots(TODAY, null)).toEqual(pickupTimeSlots(TODAY))
   })
 })

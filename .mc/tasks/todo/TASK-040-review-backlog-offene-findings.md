@@ -95,6 +95,19 @@ dem Fix zuerst gegen die laufende App reproduzieren.
 - Sporadischer Hydration-Mismatch der Katalog-Toolbar (`useId`-Attribute weichen ab),
   `catalog-page.tsx` ~Zeile 603 und 633.
 
+  **Stand 2026-09-07 (Branch `fix/shop-review-findings`):** die ersten drei Shop-Findings sind
+  reproduziert und gefixt (Abholzeit beim Wiederherstellen gegen die Slots geprüft, ehrliche
+  „Bestellung nicht gefunden"-Ansicht, Suchfeld liest `useSearchParams()` statt einmalig
+  `window.location`). Der Hydration-Mismatch ließ sich **nicht reproduzieren**: 38 Aufrufe von
+  `/products` (mit/ohne `q`, `category`, `sort`), Kaltstart mit frischem `.next`, gefülltem
+  Warenkorb, CPU-Drossel 4x/6x und Netzdrossel, dev (webpack) und `next build`/`next start` -
+  null Hydration-Meldungen. Was sich nachweisen lässt: in dev suspendieren beide
+  Suspense-Grenzen auf dem Server (`B:0` in `products/page.tsx`, `B:1` in `CatalogPage`) und
+  streamen nacheinander nach; der `useId`-Pfad hängt damit an der Reihenfolge, in der React die
+  dehydrierten Grenzen hydriert. Nicht geprüft werden konnte Turbopack (Standard von
+  `npm run serve:shop`; im Worktree mit symlinktem `node_modules` nicht lauffähig) - der nächste
+  Versuch sollte dort ansetzen. Kein `suppressHydrationWarning` eingebaut.
+
 ### CI
 
 - Die drei `test-e2e-*`-Jobs in `.github/workflows/ci.yml` sind auf `main` seit mindestens
