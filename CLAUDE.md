@@ -204,7 +204,7 @@ Koordinaten stehen im Seed. Der Stopp hängt sich beim Anlegen einer Tour selbst
 
 Die Fahrer-App hat außerdem einen **Dunkelmodus** (System / Hell / Dunkel, CSS-Variablen, kein MUI).
 
-Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von außen wissen muss:
+Details stehen in `apps/bakery-delivery/CLAUDE.md`. Fünf Dinge, die man von außen wissen muss:
 
 - **Alle Server-Formeln stehen genau einmal**, in `apps/bakery-api/src/services/delivery-tours.core.js`
   (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`, gleiche `*.core.js`-Glob
@@ -231,9 +231,14 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   `hasCoordinates()` verlangt seit dem 07.09.2026 außerdem −90..90 / −180..180 und lehnt das Paar
   `(0, 0)` ab; Eingaben prüft `validateCoordinates()` (400 mit `message` + `error`), gespeicherte
   Altwerte werden beim Laden des Stores auf `null` gesetzt und neu gesucht.
+- **Zeitfenster zählen in der ETA-Kette mit.** `parseTimeWindow()` liest „09:00-09:30", „08.00-09.00",
+  „ab 09:00", „bis 09:30"; eine einzelne Uhrzeit nur mit Präfix (`ab`/`nicht vor`/`frühestens` → Beginn,
+  `bis`/`spätestens`/`vor` → Ende), sonst Freitext ohne Wirkung; die Ankunft ist `max(eta, Fensterbeginn)`, die Wartezeit
+  steht als `waitSeconds` am Stopp, ein verpasstes Fenster als `missesTimeWindow`. „Route berechnen"
+  sortiert mit Fenstern im Core (Nearest Neighbour mit Zeitfenstern) und lässt OSRM nur messen.
 
-Tests: `npx nx test delivery-routing` (47), `npx nx test delivery-tracking` (7) und
-`apps/bakery-api/tests/unit/deliveryTours.test.js` (61) für die Rechenlogik des Servers.
+Tests: `npx nx test delivery-routing` (61), `npx nx test delivery-tracking` (7) und
+`apps/bakery-api/tests/unit/deliveryTours.test.js` (83) für die Rechenlogik des Servers.
 
 ## Kassenberichte (hq/data/reports)
 
@@ -353,6 +358,28 @@ und Routen, synthetische Fixtures in Temp-Verzeichnissen) und in der Management-
 `src/lib/targetsApi.spec.ts`, `components/targets/TargetsTile.spec.tsx`,
 `admin/finance/tagesziel/TagesZielClient.spec.tsx` (Fixtures: `src/lib/targetsFixtures.ts`, erfunden).
 Keine echten Beträge in Code, Tests, Fixtures oder Commit-Messages - das Repo ist öffentlich.
+
+## E2E-Suiten (Playwright)
+
+Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).
+Was sie starten, steht **einmal** in `tools/e2e/servers.js`: in Entwicklung `nx serve` plus ein
+laufender Server, in CI (`CI=true` oder `E2E_BUILT=1`) `next start` auf dem Build in `dist/apps/`
+bzw. der statische Landing-Export hinter `tools/e2e/serve-static.js`, dazu die Mock-API auf dem
+**synthetischen Produktkatalog** `tools/e2e/hq-products` (56 Markdown-Produkte im `hq`-Format).
+So laufen die Jobs `test-e2e-*` in `.github/workflows/ci.yml` ohne das private `hq` und ohne
+Datenbank. Details, Ports und die Bedingungen, die der Katalog erfüllen muss: `tools/e2e/README.md`.
+
+App und Mock-API müssen **dieselben Produktdateien** lesen - die Suiten vergleichen die Oberfläche
+mit `GET /api/products`. `productsDir()` in `servers.js` entscheidet das für beide Server auf
+einmal: gebaut immer das Fixture, in Entwicklung `HQ_PRODUCTS_DIR`, sonst `../hq/products`, sonst
+das Fixture. Nicht einem der beiden Server ein eigenes Verzeichnis geben.
+
+Die Shop-Suite ist datengetrieben (liest `GET /api/products` und vergleicht). Die generierten
+Suiten `landing-page.spec.ts` und `management-workflows.spec.ts` beschreiben nie gebaute
+Oberflächen (Schweizer Platzhalter, CHF, `data-testid`s ohne Gegenstück) und sind als Ganzes mit
+Begründung übersprungen; geprüft wird die echte App in `landing-smoke.spec.ts` und
+`management-smoke.spec.ts`. Wer eine dieser Funktionen baut, zieht den Test um und gibt ihm
+echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
 
 ## Important Notes
 

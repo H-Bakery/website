@@ -32,6 +32,7 @@ import {
   PrepTaskItem,
   AdditionalProductionItem,
 } from '../../types/prepTask'
+import { formatTrayInfo } from '../../utils/trayInfo'
 
 interface EnhancedPrepTaskCardProps {
   section: PrepSection
@@ -68,15 +69,6 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
     const totalItems = section.items.length
     const completedItems = section.items.filter((item) => item.completed).length
     return (completedItems / totalItems) * 100
-  }
-
-  const formatTrayInfo = (item: PrepTaskItem): string => {
-    if (item.tray_numbers && item.trays_of) {
-      return `${item.tray_numbers.length} Bleche à ${
-        item.trays_of
-      } (Blech ${item.tray_numbers.join(', ')})`
-    }
-    return `Blech ${item.tray_number}`
   }
 
   const getStockStatusLabel = (
@@ -314,14 +306,16 @@ const EnhancedPrepTaskCard: React.FC<EnhancedPrepTaskCardProps> = ({
                     }
                     secondary={
                       <Box sx={{ mt: 0.5 }}>
-                        <Typography
-                          component="span"
-                          variant="body2"
-                          color="text.secondary"
-                          display="block"
-                        >
-                          {formatTrayInfo(item)}
-                        </Typography>
+                        {formatTrayInfo(item) && (
+                          <Typography
+                            component="span"
+                            variant="body2"
+                            color="text.secondary"
+                            display="block"
+                          >
+                            {formatTrayInfo(item)}
+                          </Typography>
+                        )}
                         {item.current_stock !== undefined && (
                           <Box
                             sx={{

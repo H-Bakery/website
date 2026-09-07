@@ -304,12 +304,21 @@ select {
   filter: var(--map-tile-filter);
 }
 
-.leaflet-container .leaflet-control-attribution {
+/* Attribution "Leaflet | © OpenStreetMap": muss sichtbar bleiben (OSM-Tile-
+   Policy), also in beiden Modi lesbar sein. `leaflet.css` setzt
+   `.leaflet-container .leaflet-control-attribution { background: rgba(255,
+   255, 255, 0.8) }` - gleiche Spezifitaet wie eine Regel mit zwei Klassen
+   hier, und weil `Map.tsx` das Leaflet-Stylesheet nach `global.css` laedt,
+   gewann Leaflet per Reihenfolge: im Dunkelmodus stand der gedaempfte helle
+   Text auf einem fast weissen Balken (~1,8:1). Der Selektor traegt deshalb
+   den Elternknoten `.leaflet-control-container` mit (drei Klassen), kein
+   `!important`. */
+.leaflet-container .leaflet-control-container .leaflet-control-attribution {
   background: var(--color-surface);
   color: var(--color-text-muted);
 }
 
-.leaflet-container .leaflet-control-attribution a {
+.leaflet-container .leaflet-control-container .leaflet-control-attribution a {
   color: var(--color-text-muted);
 }
 

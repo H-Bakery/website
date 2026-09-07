@@ -1,6 +1,24 @@
+/**
+ * @fileoverview Wunschliste, keine Prüfung.
+ *
+ * Diese Suite wurde mit dem Projekt generiert und beschreibt eine Landing,
+ * die es so nie gab: `data-testid`s wie `hero-section` oder `newsletter-form`
+ * kommen in `apps/bakery-landing/src` nicht vor, die Kontaktdaten sind Schweizer
+ * Platzhalter (`+41`, `Hauptstrasse`), Newsletter, Lightbox und Google-Maps-Popup
+ * sind nicht gebaut. Gegen die echte Seite schlugen deshalb alle Tests fehl -
+ * in CI seit dem ersten Lauf.
+ *
+ * Sie bleibt als Skizze möglicher Funktionen stehen und ist als Ganzes
+ * übersprungen. Was die Landing wirklich tut, prüft `landing-smoke.spec.ts`.
+ * Wer eine der Funktionen baut, zieht den passenden Test von hier dorthin
+ * und gibt ihm echte Selektoren.
+ */
+
 import { test, expect } from '@playwright/test'
 
 test.describe('Landing Page Experience', () => {
+  test.skip(true, 'Nicht gebaut - siehe Kopf der Datei.')
+
   test.beforeEach(async ({ page }) => {
     await page.goto('/')
   })
