@@ -73,7 +73,7 @@ describe('OrderConfirmation', () => {
 
   it('zeigt den Hinweis nicht, wenn es keine Einzelheiten gibt, an denen er hinge', async () => {
     mockSearch = 'preis=aktualisiert'
-    mockFetchShopOrder.mockResolvedValue(null)
+    mockFetchShopOrder.mockRejectedValue(new Error('Server nicht erreichbar'))
     render(<OrderConfirmation orderId={bookedOrder.id} />)
 
     await waitFor(() =>
@@ -82,5 +82,62 @@ describe('OrderConfirmation', () => {
       )
     )
     expect(screen.queryByTestId('order-price-updated')).toBeNull()
+  })
+
+  /* ------------------------------------------------------------------ */
+  /* Unbekannter Bestellcode                                             */
+  /* ------------------------------------------------------------------ */
+
+  it('rendert für einen unbekannten Code keine Erfolgsseite', async () => {
+    mockFetchShopOrder.mockResolvedValue(null)
+    render(<OrderConfirmation orderId="GIBT-ES-NICHT" />)
+
+    const view = await screen.findByTestId('order-not-found')
+    expect(view.textContent).toContain('Bestellung nicht gefunden')
+    expect(screen.getByTestId('order-number').textContent).toBe('GIBT-ES-NICHT')
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Bestellung nicht gefunden',
+      })
+    ).toBeTruthy()
+    // Vorher: grüner Haken, „Danke" und „Ihre Bestellung ist trotzdem bei uns".
+    expect(screen.queryByTestId('order-confirmation')).toBeNull()
+    expect(view.textContent).not.toContain('Danke')
+    expect(view.textContent).not.toContain('trotzdem bei uns')
+  })
+
+  it('nennt dem, der gerade bestellt hat, die Telefonnummer', async () => {
+    mockFetchShopOrder.mockResolvedValue(null)
+    render(<OrderConfirmation orderId="GIBT-ES-NICHT" />)
+
+    await screen.findByTestId('order-not-found')
+    expect(
+      screen.getByRole('link', { name: '06841 2229' }).getAttribute('href')
+    ).toBe('tel:+4968412229')
+    expect(
+      screen
+        .getByRole('link', { name: /Weiter einkaufen/ })
+        .getAttribute('href')
+    ).toBe('/products')
+  })
+
+  it('behandelt einen fehlenden Code wie einen unbekannten', async () => {
+    render(<OrderConfirmation orderId="" />)
+
+    const view = await screen.findByTestId('order-not-found')
+    expect(view.textContent).toContain('enthält keinen Bestellcode')
+    expect(mockFetchShopOrder).not.toHaveBeenCalled()
+  })
+
+  it('unterscheidet „nicht gefunden" von „Server antwortet nicht"', async () => {
+    mockFetchShopOrder.mockRejectedValue(new Error('Server nicht erreichbar'))
+    render(<OrderConfirmation orderId={bookedOrder.id} />)
+
+    await screen.findByTestId('order-unavailable')
+    // Über die Bestellung selbst wissen wir nichts — also weder Erfolgsseite
+    // ohne Einschränkung noch „nicht gefunden".
+    expect(screen.queryByTestId('order-not-found')).toBeNull()
+    expect(screen.getByTestId('order-number').textContent).toBe(bookedOrder.id)
   })
 })

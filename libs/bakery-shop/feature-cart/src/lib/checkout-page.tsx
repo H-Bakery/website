@@ -42,12 +42,10 @@ import {
 } from './use-fresh-cart-prices'
 import {
   ALL_PICKUP_SLOTS,
-  PICKUP_LEAD_MINUTES,
   formatGermanDate,
   formatOpeningWindow,
   openingHoursSentence,
   openingWindowFor,
-  pickupTimeSlots,
   toIsoDate,
   weekdayNameFor,
 } from './pickup'
@@ -57,6 +55,8 @@ import {
   CheckoutFormValues,
   EMPTY_CHECKOUT_FORM,
   type LeadTimeLimit,
+  type PickupClock,
+  availablePickupSlots,
   firstInvalidField,
   leadTimeLimitFor,
   minPickupIsoDate,
@@ -93,9 +93,7 @@ const SUBMIT_TIMEOUT_ERROR =
   'Die Verbindung ist zu langsam — wir haben keine Bestätigung bekommen. Bitte prüfen Sie Ihre Verbindung und schicken Sie die Bestellung noch einmal ab.'
 
 /** "Now", read on mount and again on submit — never during render, or hydration breaks. */
-interface ClientNow {
-  iso: string
-  minutes: number
+interface ClientNow extends PickupClock {
   /** Derselbe Zeitpunkt als `Date`, für die Vorbestellfrist. */
   stamp: Date
 }
@@ -110,17 +108,6 @@ function readClientNow(): ClientNow {
   }
 }
 
-/**
- * Die Slots, die an `pickupDate` wirklich buchbar sind — heute erst ab
- * `now + PICKUP_LEAD_MINUTES`. Anzeige und Prüfung rechnen beide hiermit.
- */
-function slotsFor(pickupDate: string, now: ClientNow | null): string[] {
-  if (!pickupDate) return []
-  const earliest =
-    now && pickupDate === now.iso ? now.minutes + PICKUP_LEAD_MINUTES : 0
-  return pickupTimeSlots(pickupDate, earliest)
-}
-
 /* -------------------------------------------------------------------------- */
 /* Formular über einen Seitenwechsel retten                                    */
 /* -------------------------------------------------------------------------- */
@@ -131,11 +118,12 @@ function slotsFor(pickupDate: string, now: ClientNow | null): string[] {
  * werden nirgends geloggt und nach der abgeschickten Bestellung gelöscht.
  */
 
-function readStoredForm(todayIso: string): CheckoutFormValues | null {
+function readStoredForm(now: PickupClock): CheckoutFormValues | null {
   try {
     return restoreCheckoutForm(
       window.sessionStorage.getItem(CHECKOUT_FORM_STORAGE_KEY),
-      todayIso
+      now.iso,
+      now.minutes
     )
   } catch {
     // Privater Modus o. Ä. — dann gibt es eben keine Wiederherstellung.
@@ -183,7 +171,7 @@ export const CheckoutPage: React.FC = () => {
     const mounted = readClientNow()
     setNow(mounted)
 
-    const stored = readStoredForm(mounted.iso)
+    const stored = readStoredForm(mounted)
     if (stored) setValues(stored)
     setIsRestored(true)
   }, [])
@@ -220,7 +208,7 @@ export const CheckoutPage: React.FC = () => {
 
   /** Slots really available on the chosen day; same-day keeps a Vorlaufzeit. */
   const slotsForDate = React.useMemo(
-    () => slotsFor(values.pickupDate, now),
+    () => availablePickupSlots(values.pickupDate, now),
     [values.pickupDate, now]
   )
 
@@ -305,7 +293,7 @@ export const CheckoutPage: React.FC = () => {
     const found = validateCheckout(
       values,
       fresh.iso,
-      slotsFor(values.pickupDate, fresh),
+      availablePickupSlots(values.pickupDate, fresh),
       leadTimeLimitFor(items, fresh.stamp)
     )
     setErrors(found)
