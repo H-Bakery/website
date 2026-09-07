@@ -28,10 +28,12 @@ import {
   rememberedTours,
   rememberTours,
   type Driver,
+  type FailureDetails,
   type Preorder,
   type PreorderStatus,
   type QueuedUpdate,
   type Stop,
+  type StopInput,
   type Tour,
 } from '../lib/delivery-api'
 import {
@@ -76,7 +78,17 @@ export default function DeliveryDashboard() {
   const [copiedAt, setCopiedAt] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(true)
+  // `busy` sperrt die ganze Tour (Route berechnen, Stopp anlegen/entfernen).
+  // Ein Statuswechsel sperrt dagegen nur seinen eigenen Stopp bzw. seine
+  // eigene Vorbestellung: im Funkloch haengt ein PATCH bis zu 15 s, und so
+  // lange muss der Fahrer den naechsten Stopp trotzdem abhaken koennen.
   const [busy, setBusy] = useState(false)
+  const [busyStops, setBusyStops] = useState<ReadonlySet<number>>(
+    () => new Set()
+  )
+  const [busyPreorders, setBusyPreorders] = useState<ReadonlySet<number>>(
+    () => new Set()
+  )
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Eigenes Flag statt `error`: das teilen sich auch Anlegen, Abhaken und
@@ -97,8 +109,9 @@ export default function DeliveryDashboard() {
   // Solange ein Abhaken unterwegs ist, darf kein Nachladen der Offline-Kopie
   // die Liste ersetzen: die Aenderung steht noch nicht in der Warteschlange,
   // und der Server-Stand liesse den Stopp bis zum Nachsenden wieder "Offen".
+  const anyInFlight = busy || busyStops.size > 0 || busyPreorders.size > 0
   const busyRef = useRef(false)
-  busyRef.current = busy
+  busyRef.current = anyInFlight
 
   const tour = useMemo(
     () => tours.find((t) => t.id === tourId) ?? null,
@@ -357,17 +370,26 @@ export default function DeliveryDashboard() {
 
   // --- Aktionen ---
 
-  const changeStopStatus = async (stopId: number, status: Stop['status']) => {
+  const changeStopStatus = async (
+    stopId: number,
+    status: Stop['status'],
+    details?: FailureDetails
+  ) => {
     if (!tour) return
-    setBusy(true)
+    if (busyStops.has(stopId)) return
+    setBusyStops((set) => withId(set, stopId, true))
     setError(null)
 
+    // Grund und Verbleib der Ware gehen im selben PATCH mit - und landen so
+    // auch in der Warteschlange, wenn das Netz fehlt.
+    const body: Partial<StopInput> = { status, ...stopDetails(status, details) }
+
     // Erst lokal umschalten: der Fahrer soll nicht auf das Netz warten.
-    const optimistic = applyStopStatus(tour, stopId, status)
+    const optimistic = applyStopUpdate(tour, stopId, body)
     setTours((list) => list.map((t) => (t.id === tour.id ? optimistic : t)))
 
     try {
-      const updated = await deliveryApi.updateStop(tour.id, stopId, { status })
+      const updated = await deliveryApi.updateStop(tour.id, stopId, body)
       setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
       setPending(pendingUpdates())
       // Der Server hat geantwortet - eine Offline-Kopie gleich ersetzen.
@@ -378,11 +400,11 @@ export default function DeliveryDashboard() {
         await loadTours(date, driverId)
       } else {
         // Kein Netz: gemerkt, geht spaeter automatisch raus.
-        setPending(queueStopUpdate(tour.id, stopId, { status }))
+        setPending(queueStopUpdate(tour.id, stopId, body))
         setIsOnline(false)
       }
     } finally {
-      setBusy(false)
+      setBusyStops((set) => withId(set, stopId, false))
     }
   }
 
@@ -391,7 +413,8 @@ export default function DeliveryDashboard() {
     status: PreorderStatus
   ) => {
     if (!tour) return
-    setBusy(true)
+    if (busyPreorders.has(preorderId)) return
+    setBusyPreorders((set) => withId(set, preorderId, true))
     setError(null)
 
     // Wie beim Stopp: erst lokal umschalten. Die Familie steht vor dem
@@ -416,7 +439,7 @@ export default function DeliveryDashboard() {
         setIsOnline(false)
       }
     } finally {
-      setBusy(false)
+      setBusyPreorders((set) => withId(set, preorderId, false))
     }
   }
 
@@ -753,7 +776,7 @@ export default function DeliveryDashboard() {
                 type="button"
                 className={styles.button}
                 onClick={runOptimize}
-                disabled={busy || tour.stops.length === 0}
+                disabled={anyInFlight || tour.stops.length === 0}
               >
                 Route berechnen
               </button>
@@ -786,7 +809,8 @@ export default function DeliveryDashboard() {
                   position={tour.stops.indexOf(nextStop) + 1}
                   isNext
                   distance={distanceTo(nextStop)}
-                  busy={busy}
+                  busy={busy || busyStops.has(nextStop.id)}
+                  busyPreorderIds={busyPreorders}
                   onStatusChange={changeStopStatus}
                   onPreorderStatusChange={changePreorderStatus}
                 />
@@ -854,7 +878,8 @@ export default function DeliveryDashboard() {
                     position={index + 1}
                     isNext={stop.id === tour.nextStopId}
                     distance={distanceTo(stop)}
-                    busy={busy}
+                    busy={busy || busyStops.has(stop.id)}
+                    busyPreorderIds={busyPreorders}
                     onStatusChange={changeStopStatus}
                     onPreorderStatusChange={changePreorderStatus}
                     onRemove={planning ? removeStop : undefined}
@@ -891,18 +916,56 @@ export default function DeliveryDashboard() {
   )
 }
 
+/** Ein Eintrag in einer Menge ein- oder austragen, ohne sie zu mutieren. */
+function withId(
+  set: ReadonlySet<number>,
+  id: number,
+  present: boolean
+): ReadonlySet<number> {
+  const next = new Set(set)
+  if (present) next.add(id)
+  else next.delete(id)
+  return next
+}
+
+/**
+ * Was zum Status an Feldern mitgeht. Nur `failed` traegt Grund und Verbleib;
+ * bei `done` und `open` raeumt der Server beides selbst weg (Core), der Body
+ * bleibt wie bisher `{ status }`.
+ */
+function stopDetails(
+  status: Stop['status'],
+  details?: FailureDetails
+): Pick<StopInput, 'failureReason' | 'goodsDisposition'> {
+  if (status !== 'failed') return {}
+  return {
+    failureReason: details?.failureReason ?? 'Nicht angetroffen',
+    goodsDisposition: details?.goodsDisposition ?? null,
+  }
+}
+
 /** Lokale Vorschau eines Statuswechsels, damit die Liste sofort reagiert. */
-function applyStopStatus(
+function applyStopUpdate(
   tour: Tour,
   stopId: number,
-  status: Stop['status']
+  body: Partial<StopInput>
 ): Tour {
+  const status = body.status
+  if (!status) return tour
   const stops = tour.stops.map((stop) =>
     stop.id === stopId
       ? {
           ...stop,
           status,
           completedAt: status === 'open' ? null : new Date().toISOString(),
+          failureReason:
+            status === 'failed'
+              ? body.failureReason ?? stop.failureReason ?? 'Nicht angetroffen'
+              : null,
+          goodsDisposition:
+            status === 'failed'
+              ? body.goodsDisposition ?? stop.goodsDisposition ?? null
+              : null,
         }
       : stop
   )
@@ -975,10 +1038,9 @@ function withPendingUpdates(tours: Tour[], queue: QueuedUpdate[]): Tour[] {
         applyPreorderStatus(t, entry.preorderId, entry.body.status)
       )
     }
-    const status = entry.body.status
-    if (!status) return list
+    if (!entry.body.status) return list
     return list.map((t) =>
-      t.id === entry.tourId ? applyStopStatus(t, entry.stopId, status) : t
+      t.id === entry.tourId ? applyStopUpdate(t, entry.stopId, entry.body) : t
     )
   }, tours)
 }

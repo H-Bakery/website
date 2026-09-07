@@ -23,6 +23,14 @@ const STOP_SERVICE_TIME = 180
 
 const STOP_STATUS = ['open', 'done', 'failed']
 const TOUR_STATUS = ['planned', 'active', 'done']
+/**
+ * Verbleib der Ware bei "nicht angetroffen": wieder mitgenommen oder vor Ort
+ * abgestellt. Ohne diese Angabe weiss die Backstube am Montag nicht, ob die
+ * Tuete zurueckkam oder beim Kunden liegt.
+ */
+const GOODS_DISPOSITION = ['taken_back', 'left_at_address']
+/** Ein Grund ist eine Zeile, kein Aufsatz. */
+const FAILURE_REASON_MAX_LENGTH = 200
 
 /** Entfernung zweier Punkte in Metern (Haversine). */
 function haversineMeters(a, b) {
@@ -410,19 +418,51 @@ function normalizeStopInput(body, existing) {
     stop.geocodePrecision = null
   }
 
+  // Grund und Verbleib der Ware gehoeren zu "nicht angetroffen". Sie kommen
+  // auch aus der Offline-Warteschlange der Fahrer-App, deshalb werden sie
+  // geprueft wie jedes andere Feld - ein Tippfehler im Body soll eine 400
+  // geben, nicht lautlos eine leere Angabe.
+  if (
+    source.failureReason !== undefined &&
+    source.failureReason !== null &&
+    String(source.failureReason).trim().length > FAILURE_REASON_MAX_LENGTH
+  ) {
+    return {
+      error: 'Failure reason too long',
+      message: `Der Grund darf höchstens ${FAILURE_REASON_MAX_LENGTH} Zeichen lang sein.`,
+    }
+  }
+  const goodsDisposition =
+    source.goodsDisposition === undefined
+      ? base.goodsDisposition || null
+      : source.goodsDisposition || null
+  if (
+    goodsDisposition !== null &&
+    !GOODS_DISPOSITION.includes(goodsDisposition)
+  ) {
+    return {
+      error: 'Invalid goods disposition',
+      message:
+        'Verbleib der Ware muss "taken_back" (mitgenommen) oder "left_at_address" (abgestellt) sein.',
+    }
+  }
+
   if (status === 'done' && base.status !== 'done') {
     stop.completedAt = source.completedAt || new Date().toISOString()
     stop.failureReason = null
+    stop.goodsDisposition = null
   }
   if (status === 'failed') {
     stop.completedAt = source.completedAt || new Date().toISOString()
     stop.failureReason =
       String(source.failureReason || base.failureReason || '').trim() ||
       'Nicht angetroffen'
+    stop.goodsDisposition = goodsDisposition
   }
   if (status === 'open') {
     stop.completedAt = null
     stop.failureReason = null
+    stop.goodsDisposition = null
   }
 
   return { stop }
@@ -441,6 +481,8 @@ module.exports = {
   STOP_SERVICE_TIME,
   STOP_STATUS,
   TOUR_STATUS,
+  GOODS_DISPOSITION,
+  FAILURE_REASON_MAX_LENGTH,
   haversineMeters,
   normalizeAddress,
   formatAddress,

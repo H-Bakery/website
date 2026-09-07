@@ -149,6 +149,27 @@ describe('HandoverList', () => {
     expect(onStatusChange).toHaveBeenCalledWith(1, 'open')
   })
 
+  it('sperrt nur die Zeile, deren Abhaken noch unterwegs ist', () => {
+    // Die naechste Familie steht schon vor dem Fahrer; der haengende PATCH
+    // der vorigen darf ihren Knopf nicht ausgrauen.
+    render(
+      <HandoverList
+        preorders={[
+          preorder({ id: 101, customer: 'Vorbestellung 1' }),
+          preorder({ id: 102, customer: 'Vorbestellung 2' }),
+        ]}
+        busy={false}
+        busyIds={new Set([101])}
+        onStatusChange={jest.fn()}
+      />
+    )
+
+    const buttons = screen.getAllByRole('button', {
+      name: 'Übergeben',
+    }) as HTMLButtonElement[]
+    expect(buttons.map((b) => b.disabled)).toEqual([true, false])
+  })
+
   it('warnt bei einer nach Bestellschluss aufgenommenen Vorbestellung', () => {
     render(
       <HandoverList

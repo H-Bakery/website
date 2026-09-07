@@ -293,6 +293,7 @@ src/app/page.tsx              Dashboard: Fahrer-/Tagwahl, nächster Stopp, Karte
 src/components/StopCard.tsx   ein Stopp mit Navigation / Anrufen / Geliefert / Nicht angetroffen
 src/components/AddStopForm.tsx  Erfassung inkl. „2x Bauernbrot, 10x Brötchen"-Parser
 src/components/HandoverList.tsx  Übergabeliste einer Sammelstelle (Vorbestellungen abhaken)
+src/components/FailureForm.tsx   Rückfrage zu „Nicht angetroffen": Grund und Verbleib der Ware
 src/components/ThemeToggle.tsx   Farbschema System / Hell / Dunkel
 src/components/Map.tsx        Leaflet, dynamisch mit ssr:false
 src/lib/delivery-api.ts       Typen, fetch-Client, Offline-Warteschlange
@@ -305,7 +306,9 @@ libs/bakery-delivery-routing   @bakery/delivery/routing — Geometrie, Reihenfol
 
 Kein Material UI, kein React Context, keine Shared-Lib der anderen Apps — diese App steht bewusst
 außerhalb des MUI-Stacks. Die Oberfläche ist mobile-first mit 44-px-Trefferflächen; der Breakpoint bei
-768 px ist der Ausnahmefall (Backstube am Rechner).
+768 px ist der Ausnahmefall (Backstube am Rechner). Das gilt auch für die Zoom-Knöpfe der Karte:
+Leaflet zeichnet sie 26 bzw. 30 px groß, `global.css` zieht sie auf 44 px und färbt sie über die
+Variablen (sonst bleiben sie im Dunkelmodus weiß).
 
 ### Offline
 
@@ -320,6 +323,22 @@ Jede Anfrage bricht nach 15 s ab (`AbortSignal.timeout`, wo der Browser es kann)
 `fetch` im Funkloch minutenlang — und solange es hing, waren alle Knöpfe gesperrt und die
 Warteschlange kam nicht zum Zug. Der Hinweis „… warten noch auf den Server" bleibt sichtbar, solange
 etwas in der Schlange liegt, auch wenn das Handy „online" meldet.
+
+**Die Sperre gilt je Stopp, nicht je Seite.** Ein hängender Status-PATCH sperrt nur die Knöpfe des
+Stopps (bzw. der Vorbestellung), dessen Änderung unterwegs ist — `busyStops` / `busyPreorders` in
+`page.tsx`. Sonst stand der Fahrer 15 s lang am nächsten Haus und konnte nichts abhaken. Nur
+„Route berechnen" wartet, bis nichts mehr unterwegs ist: es nummeriert die ganze Tour um.
+
+### „Nicht angetroffen" hält Grund und Verbleib der Ware fest
+
+Der Knopf öffnet erst eine Rückfrage in der Karte (`FailureForm.tsx`): Grund (Nicht angetroffen /
+Adresse nicht gefunden / Annahme verweigert / Sonstiges mit Freitext) und Verbleib der Ware (Ware
+mitgenommen / Ware abgestellt). Beides geht **im selben Status-PATCH** mit — `failureReason` (immer
+der lesbare Text, kein Schlüssel) und `goodsDisposition` (`taken_back` / `left_at_address`) — und
+landet so auch in der Offline-Warteschlange. Der Server prüft beides in `normalizeStopInput()`
+(`GOODS_DISPOSITION`, `FAILURE_REASON_MAX_LENGTH` im Core) und räumt es bei `done`/`open` selbst weg;
+der Body für diese Stati bleibt `{ status }`. Die Stoppkarte zeigt „Grund: … · Ware abgestellt".
+Ohne den Verbleib wusste die Backstube am Montag nicht, ob die Tüte zurückkam oder vor der Haustür lag.
 
 **Die Tour selbst hat eine Offline-Kopie.** Jeder Tipp auf „Navigation" reicht das Handy an die
 Navi-App weiter; kommt der Fahrer zurück, lädt der Browser die Seite gern neu — mitten im Funkloch.

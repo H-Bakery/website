@@ -417,6 +417,84 @@ describe('normalizeStopInput', () => {
     expect(gescheitert.failureReason).toBe('Nicht angetroffen')
   })
 
+  test('haelt Grund und Verbleib der Ware bei "nicht angetroffen" fest', () => {
+    const bestehend = {
+      customer: 'Müller',
+      street: 'Talstraße 5',
+      status: 'open',
+    }
+    const { stop } = core.normalizeStopInput(
+      {
+        status: 'failed',
+        failureReason: '  Annahme verweigert ',
+        goodsDisposition: 'left_at_address',
+      },
+      bestehend
+    )
+    expect(stop.failureReason).toBe('Annahme verweigert')
+    expect(stop.goodsDisposition).toBe('left_at_address')
+
+    // Ohne Angabe bleibt der Verbleib offen - er wird nicht erfunden.
+    const ohne = core.normalizeStopInput({ status: 'failed' }, bestehend).stop
+    expect(ohne.goodsDisposition).toBeNull()
+
+    // Ein spaeteres PATCH ohne die Felder laesst die Angaben stehen.
+    const nochmal = core.normalizeStopInput({ notes: 'Hund' }, stop).stop
+    expect(nochmal.failureReason).toBe('Annahme verweigert')
+    expect(nochmal.goodsDisposition).toBe('left_at_address')
+  })
+
+  test('lehnt einen unbekannten Verbleib und einen zu langen Grund ab', () => {
+    const bestehend = { customer: 'Müller', street: 'Talstraße 5' }
+    const verbleib = core.normalizeStopInput(
+      { status: 'failed', goodsDisposition: 'eaten' },
+      bestehend
+    )
+    expect(verbleib.error).toBe('Invalid goods disposition')
+    expect(verbleib.message).toMatch(/Verbleib der Ware/)
+
+    const grund = core.normalizeStopInput(
+      {
+        status: 'failed',
+        failureReason: 'x'.repeat(core.FAILURE_REASON_MAX_LENGTH + 1),
+      },
+      bestehend
+    )
+    expect(grund.error).toBe('Failure reason too long')
+    expect(grund.message).toMatch(/Zeichen/)
+
+    // Leer und `null` sind kein Fehler, sondern "keine Angabe".
+    expect(
+      core.normalizeStopInput(
+        { status: 'failed', goodsDisposition: '' },
+        bestehend
+      ).stop.goodsDisposition
+    ).toBeNull()
+  })
+
+  test('raeumt Grund und Verbleib beim Zuruecksetzen und beim Liefern weg', () => {
+    const gescheitert = {
+      customer: 'Müller',
+      street: 'Talstraße 5',
+      status: 'failed',
+      completedAt: '2026-09-05T06:00:00.000Z',
+      failureReason: 'Nicht angetroffen',
+      goodsDisposition: 'taken_back',
+    }
+    const offen = core.normalizeStopInput({ status: 'open' }, gescheitert).stop
+    expect(offen.failureReason).toBeNull()
+    expect(offen.goodsDisposition).toBeNull()
+
+    // Zweiter Versuch geklappt: die Ware ist angekommen, der Verbleib von
+    // vorhin stimmt nicht mehr.
+    const geliefert = core.normalizeStopInput(
+      { status: 'done' },
+      gescheitert
+    ).stop
+    expect(geliefert.failureReason).toBeNull()
+    expect(geliefert.goodsDisposition).toBeNull()
+  })
+
   test('setzt ein Zurueckstellen auf offen sauber zurueck', () => {
     const erledigt = {
       customer: 'Müller',

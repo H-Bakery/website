@@ -1871,6 +1871,7 @@ function seedDeliveryStore() {
             status: 'open',
             completedAt: null,
             failureReason: null,
+            goodsDisposition: null,
             lat: null,
             lon: null,
             geocodeSource: null,
@@ -1892,6 +1893,7 @@ function seedDeliveryStore() {
             status: 'open',
             completedAt: null,
             failureReason: null,
+            goodsDisposition: null,
             lat: null,
             lon: null,
             geocodeSource: null,
@@ -2641,6 +2643,7 @@ app.post(
       geocodePrecision: null,
       completedAt: null,
       failureReason: null,
+      goodsDisposition: null,
       ...result.stop,
     }
 

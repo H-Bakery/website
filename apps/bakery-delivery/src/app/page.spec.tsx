@@ -1,5 +1,12 @@
 import React from 'react'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import DeliveryDashboard from './page'
 import {
   deliveryApi,
@@ -356,6 +363,218 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
     )
     expect(screen.queryByText(/Kein Netz/)).toBeNull()
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+})
+
+/**
+ * Abhaken im Funkloch: ein PATCH haengt bis zu 15 s. Frueher sperrte das
+ * jeden Knopf der Seite - der Fahrer stand am naechsten Haus und konnte nichts
+ * tun. Jetzt ist nur der Stopp gesperrt, dessen Aenderung unterwegs ist. Und
+ * "Nicht angetroffen" haelt fest, warum und wo die Ware geblieben ist.
+ */
+describe('DeliveryDashboard beim Abhaken', () => {
+  const date = nextSaturdayIso()
+
+  const stop = (id: number, customer: string): Stop => ({
+    id,
+    customer,
+    street: 'Talstraße 5',
+    zip: '66424',
+    city: 'Homburg',
+    address: 'Talstraße 5, 66424 Homburg',
+    phone: null,
+    timeWindow: null,
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    goodsDisposition: null,
+    lat: 49.3226,
+    lon: 7.3389,
+    geocodeSource: null,
+    geocodePrecision: null,
+    estimatedArrival: null,
+  })
+
+  const twoStops: Tour = {
+    ...tour,
+    date,
+    stops: [stop(1, 'Kunde A'), stop(2, 'Kunde B')],
+    progress: { total: 2, done: 0, failed: 0, open: 2, isComplete: false },
+    nextStopId: 1,
+  }
+
+  /** Die Karte eines Stopps in der Liste „Alle Stopps". */
+  const card = (customer: string) => {
+    const heading = screen.getAllByRole('heading', { name: customer })
+    // Das letzte Vorkommen liegt in der Liste; das erste kann der
+    // "Naechster Stopp"-Block sein.
+    return heading[heading.length - 1].closest('li') as HTMLElement
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    api.drivers.mockResolvedValue([])
+    api.tours.mockResolvedValue([twoStops])
+  })
+
+  it('sperrt bei einem hängenden Statuswechsel nur den betroffenen Stopp', async () => {
+    // Der PATCH kommt nie zurueck - so lange haengt fetch im Funkloch.
+    api.updateStop.mockImplementation(() => new Promise(() => undefined))
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+
+    fireEvent.click(
+      within(card('Kunde A')).getByRole('button', { name: 'Geliefert' })
+    )
+    expect(await screen.findByText(/1 von 2 geliefert/)).toBeTruthy()
+
+    // Der eigene Stopp wartet auf den Server ...
+    expect(
+      (
+        within(card('Kunde A')).getByRole('button', {
+          name: 'Zurücksetzen',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
+    // ... der naechste nicht.
+    const next = within(card('Kunde B'))
+    expect(
+      (next.getByRole('button', { name: 'Geliefert' }) as HTMLButtonElement)
+        .disabled
+    ).toBe(false)
+    expect(
+      (
+        next.getByRole('button', {
+          name: 'Nicht angetroffen',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(false)
+
+    fireEvent.click(next.getByRole('button', { name: 'Geliefert' }))
+    expect(await screen.findByText(/2 von 2 geliefert/)).toBeTruthy()
+    expect(api.updateStop).toHaveBeenCalledTimes(2)
+    // Ein Umbau der ganzen Tour wartet dagegen, bis nichts mehr unterwegs ist.
+    expect(
+      (
+        screen.getByRole('button', {
+          name: 'Route berechnen',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
+  })
+
+  it('schickt Grund und Verbleib der Ware mit „Nicht angetroffen" und zeigt sie an', async () => {
+    api.updateStop.mockImplementation(async (_tourId, stopId, body) => ({
+      ...twoStops,
+      stops: twoStops.stops.map((s) =>
+        s.id === stopId
+          ? {
+              ...s,
+              status: 'failed' as const,
+              completedAt: new Date().toISOString(),
+              failureReason: body.failureReason ?? null,
+              goodsDisposition: body.goodsDisposition ?? null,
+            }
+          : s
+      ),
+      progress: { total: 2, done: 0, failed: 1, open: 1, isComplete: false },
+      nextStopId: 2,
+    }))
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+
+    const a = within(card('Kunde A'))
+    fireEvent.click(a.getByRole('button', { name: 'Nicht angetroffen' }))
+    // Noch nichts gesendet: erst kommt die Rueckfrage.
+    expect(api.updateStop).not.toHaveBeenCalled()
+    fireEvent.click(a.getByRole('radio', { name: 'Adresse nicht gefunden' }))
+    fireEvent.click(a.getByRole('radio', { name: 'Ware abgestellt' }))
+    fireEvent.click(
+      a.getByRole('button', { name: 'Als nicht angetroffen speichern' })
+    )
+
+    await waitFor(() =>
+      expect(api.updateStop).toHaveBeenCalledWith(7, 1, {
+        status: 'failed',
+        failureReason: 'Adresse nicht gefunden',
+        goodsDisposition: 'left_at_address',
+      })
+    )
+    expect(
+      await a.findByText('Grund: Adresse nicht gefunden · Ware abgestellt')
+    ).toBeTruthy()
+    expect(screen.getByText(/1 nicht angetroffen/)).toBeTruthy()
+  })
+
+  it('legt Grund und Verbleib im Funkloch mit in die Warteschlange', async () => {
+    api.updateStop.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+
+    const a = within(card('Kunde A'))
+    fireEvent.click(a.getByRole('button', { name: 'Nicht angetroffen' }))
+    fireEvent.click(a.getByRole('radio', { name: 'Annahme verweigert' }))
+    fireEvent.click(
+      a.getByRole('button', { name: 'Als nicht angetroffen speichern' })
+    )
+
+    await screen.findByText(/Kein Netz/)
+    expect(pendingUpdates()).toEqual([
+      expect.objectContaining({
+        kind: 'stop',
+        tourId: 7,
+        stopId: 1,
+        body: {
+          status: 'failed',
+          failureReason: 'Annahme verweigert',
+          goodsDisposition: 'taken_back',
+        },
+      }),
+    ])
+    // Die lokale Vorschau zeigt den Grund schon, bevor der Server ihn kennt.
+    expect(
+      a.getByText('Grund: Annahme verweigert · Ware mitgenommen')
+    ).toBeTruthy()
+  })
+
+  it('räumt den Grund weg, wenn der Stopp doch geliefert wird', async () => {
+    api.tours.mockResolvedValue([
+      {
+        ...twoStops,
+        stops: [
+          {
+            ...stop(1, 'Kunde A'),
+            status: 'failed',
+            failureReason: 'Nicht angetroffen',
+            goodsDisposition: 'taken_back',
+          },
+          stop(2, 'Kunde B'),
+        ],
+        progress: { total: 2, done: 0, failed: 1, open: 1, isComplete: false },
+        nextStopId: 2,
+      },
+    ])
+    api.updateStop.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+    const a = within(card('Kunde A'))
+    expect(a.getByText(/Grund: Nicht angetroffen/)).toBeTruthy()
+
+    fireEvent.click(a.getByRole('button', { name: 'Zurücksetzen' }))
+    await screen.findByText(/Kein Netz/)
+    expect(a.queryByText(/Grund:/)).toBeNull()
+    expect(pendingUpdates()[0]).toEqual(
+      expect.objectContaining({
+        body: { status: 'open' },
+      })
+    )
   })
 })
 
