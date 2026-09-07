@@ -64,6 +64,12 @@ function loadHQProducts() {
 app.use(cors())
 app.use(express.json())
 
+// Anmeldung (JWT) und die dahinter liegenden Finanz-Endpunkte. Alles Weitere
+// hier ist bewusst ungeschuetzt - Mock-Server. Details in den beiden Dateien.
+const auth = require('./src/routes/auth.mock').createAuth()
+auth.install(app)
+require('./src/routes/finance.mock').install(app, auth)
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({

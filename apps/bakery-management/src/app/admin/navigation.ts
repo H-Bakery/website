@@ -148,6 +148,12 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Umsatz & Produkte',
   },
   {
+    label: 'Finanzen',
+    href: '/admin/finance',
+    icon: 'finance',
+    description: 'Kontobewegungen (nur Admin)',
+  },
+  {
     label: 'Benachrichtigungen',
     href: '/admin/notifications',
     icon: 'notifications',
@@ -170,6 +176,12 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     href: '/admin/settings',
     icon: 'settings',
     description: 'Systemeinstellungen',
+  },
+  {
+    label: 'Anmeldung',
+    href: '/admin/login',
+    icon: 'login',
+    description: 'An- und Abmelden',
   },
   {
     label: 'Shop',
