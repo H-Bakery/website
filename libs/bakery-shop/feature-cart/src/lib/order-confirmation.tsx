@@ -43,7 +43,8 @@ export interface OrderConfirmationProps {
  * Code gibt es nichts. Die beiden auseinanderzuhalten ist der ganze Punkt:
  * Vorher bekam ein beliebiger Code in der URL eine Erfolgsseite mit grünem
  * Haken und „Ihre Bestellung ist trotzdem bei uns" — eine Zusage, die niemand
- * gegeben hatte.
+ * gegeben hatte. Und `loading` zeigt beides noch nicht: bis der Server
+ * geantwortet hat, ist auch der Haken eine Zusage ohne Grundlage.
  */
 type LoadState = 'loading' | 'loaded' | 'unavailable' | 'not-found'
 
@@ -105,6 +106,79 @@ function totalOf(order: ShopOrder | null): number {
     0
   )
 }
+
+/** Der Bestellcode als Kasten — auf der Erfolgsseite wie im Ladezustand. */
+const OrderCodeBox: React.FC<{ orderId: string }> = ({ orderId }) => (
+  <Box
+    sx={{
+      display: 'inline-block',
+      mt: 3,
+      px: 3,
+      py: 1.5,
+      borderRadius: 2,
+      bgcolor: 'grey.100',
+      border: '1px solid',
+      borderColor: 'divider',
+    }}
+  >
+    <Typography variant="overline" color="text.secondary">
+      Bestellcode
+    </Typography>
+    <Typography
+      data-testid="order-number"
+      variant="h3"
+      component="p"
+      sx={{
+        // Der Code ist kurz und gruppiert - er darf nie mitten in einer
+        // Gruppe umbrechen, sonst liest ihn niemand richtig vor.
+        whiteSpace: 'nowrap',
+        letterSpacing: '0.08em',
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      {orderId || 'unbekannt'}
+    </Typography>
+  </Box>
+)
+
+/**
+ * Solange die Antwort aussteht, wissen wir nichts über die Bestellung — also
+ * auch kein Haken und kein „Danke". Das ist nicht nur ein kurzer Moment: die
+ * Route ist eine Clientkomponente mit dynamischem Parameter, dieser Zustand
+ * ist deshalb genau das Server-HTML. Ein vertippter Link (oder ein Crawler
+ * ohne JS) bekam vorher zuerst eine Zusage, die niemand gegeben hatte.
+ */
+const OrderLoading: React.FC<{ orderId: string }> = ({ orderId }) => (
+  <Box
+    data-testid="order-loading"
+    aria-busy="true"
+    sx={{ py: { xs: 3, md: 6 }, bgcolor: 'background.default' }}
+  >
+    <Container maxWidth="md">
+      <Paper
+        variant="outlined"
+        sx={{
+          borderRadius: 2,
+          p: { xs: 2.5, md: 4 },
+          textAlign: 'center',
+        }}
+      >
+        <CircularProgress size={40} aria-hidden="true" />
+        <Typography variant="h1" component="h1" sx={{ mt: 1.5 }}>
+          Bestellung wird geladen …
+        </Typography>
+        <Typography
+          color="text.secondary"
+          sx={{ mt: 1.5, maxWidth: 560, mx: 'auto' }}
+        >
+          Einen Moment, wir sehen nach, was unter diesem Bestellcode gebucht
+          ist.
+        </Typography>
+        <OrderCodeBox orderId={orderId} />
+      </Paper>
+    </Container>
+  </Box>
+)
 
 /**
  * Kein grüner Haken, kein „Danke": unter diesem Code gibt es keine Bestellung.
@@ -243,6 +317,9 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
   if (state === 'not-found') {
     return <OrderNotFound orderId={orderId} />
   }
+  if (state === 'loading') {
+    return <OrderLoading orderId={orderId} />
+  }
 
   return (
     <Box
@@ -274,58 +351,14 @@ export const OrderConfirmation: React.FC<OrderConfirmationProps> = ({
             bereit. Bitte notieren Sie sich Ihren Bestellcode.
           </Typography>
 
-          <Box
-            sx={{
-              display: 'inline-block',
-              mt: 3,
-              px: 3,
-              py: 1.5,
-              borderRadius: 2,
-              bgcolor: 'grey.100',
-              border: '1px solid',
-              borderColor: 'divider',
-            }}
-          >
-            <Typography variant="overline" color="text.secondary">
-              Bestellcode
-            </Typography>
-            <Typography
-              data-testid="order-number"
-              variant="h3"
-              component="p"
-              sx={{
-                // Der Code ist kurz und gruppiert - er darf nie mitten in einer
-                // Gruppe umbrechen, sonst liest ihn niemand richtig vor.
-                whiteSpace: 'nowrap',
-                letterSpacing: '0.08em',
-                fontVariantNumeric: 'tabular-nums',
-              }}
-            >
-              {orderId || 'unbekannt'}
-            </Typography>
-          </Box>
+          <OrderCodeBox orderId={orderId} />
         </Paper>
 
         <Paper
           variant="outlined"
           sx={{ borderRadius: 2, mt: { xs: 2, md: 3 }, p: { xs: 2, md: 3 } }}
         >
-          {state === 'loading' ? (
-            <Box
-              sx={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 1.5,
-                py: 3,
-              }}
-            >
-              <CircularProgress size={22} />
-              <Typography color="text.secondary">
-                Bestelldetails werden geladen …
-              </Typography>
-            </Box>
-          ) : state === 'unavailable' ? (
+          {state === 'unavailable' ? (
             <Alert severity="info" data-testid="order-unavailable">
               Die Einzelheiten können wir gerade nicht anzeigen – der Server
               antwortet nicht. Eine eben abgeschickte Bestellung ist davon nicht

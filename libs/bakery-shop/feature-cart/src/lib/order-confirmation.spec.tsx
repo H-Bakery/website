@@ -85,6 +85,54 @@ describe('OrderConfirmation', () => {
   })
 
   /* ------------------------------------------------------------------ */
+  /* Ladezustand                                                         */
+  /* ------------------------------------------------------------------ */
+
+  it('verspricht nichts, solange der Server nicht geantwortet hat', async () => {
+    // Die Route ist eine Clientkomponente mit dynamischem Parameter — dieser
+    // Zustand ist das Server-HTML, das ein vertippter Link als Erstes zeigt.
+    let resolveOrder: (order: ShopOrder | null) => void = () => undefined
+    mockFetchShopOrder.mockReturnValue(
+      new Promise<ShopOrder | null>((resolve) => {
+        resolveOrder = resolve
+      })
+    )
+    render(<OrderConfirmation orderId="GIBT-ES-NICHT" />)
+
+    const view = screen.getByTestId('order-loading')
+    expect(view.textContent).toContain('Bestellung wird geladen')
+    expect(screen.getByTestId('order-number').textContent).toBe('GIBT-ES-NICHT')
+    // Kein grüner Haken, kein „Danke", keine Erfolgsseite — und auch noch
+    // kein „nicht gefunden".
+    expect(screen.queryByTestId('order-confirmation')).toBeNull()
+    expect(screen.queryByTestId('order-not-found')).toBeNull()
+    expect(screen.queryByTestId('CheckCircleOutlineIcon')).toBeNull()
+    expect(view.textContent).not.toContain('Danke')
+    expect(view.textContent).not.toContain('legen alles für Sie zurück')
+
+    resolveOrder(null)
+    await screen.findByTestId('order-not-found')
+    expect(screen.queryByTestId('order-loading')).toBeNull()
+  })
+
+  it('zeigt Haken und „Danke" erst, wenn die Bestellung da ist', async () => {
+    render(<OrderConfirmation orderId={bookedOrder.id} />)
+
+    expect(screen.queryByTestId('CheckCircleOutlineIcon')).toBeNull()
+
+    const view = await screen.findByTestId('order-confirmation')
+    expect(screen.getByTestId('CheckCircleOutlineIcon')).toBeTruthy()
+    expect(
+      screen.getByRole('heading', {
+        level: 1,
+        name: 'Danke – wir legen alles für Sie zurück',
+      })
+    ).toBeTruthy()
+    expect(view.textContent).toContain('Kornbrot 500g')
+    expect(screen.queryByTestId('order-loading')).toBeNull()
+  })
+
+  /* ------------------------------------------------------------------ */
   /* Unbekannter Bestellcode                                             */
   /* ------------------------------------------------------------------ */
 
