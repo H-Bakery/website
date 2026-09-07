@@ -37,6 +37,8 @@ import {
   ExpandLess,
   ExpandMore,
   RemoveShoppingCart as UnsoldIcon,
+  AccountBalance as FinanceIcon,
+  Login as LoginIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -68,6 +70,8 @@ const iconMap: Record<string, React.ReactElement> = {
   unsold: <UnsoldIcon />,
   analytics: <AnalyticsIcon />,
   chat: <ChatIcon />,
+  finance: <FinanceIcon />,
+  login: <LoginIcon />,
 }
 
 /**

@@ -136,16 +136,22 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Mitarbeiterverwaltung',
   },
   {
-    label: 'Berichte',
+    label: 'Kassenberichte',
     href: '/admin/reports',
     icon: 'reports',
-    description: 'Berichte & Zeitpläne',
+    description: 'Kassenberichte aus dem HQ-Archiv',
   },
   {
     label: 'Analysen',
     href: '/admin/analytics',
     icon: 'analytics',
     description: 'Umsatz & Produkte',
+  },
+  {
+    label: 'Finanzen',
+    href: '/admin/finance',
+    icon: 'finance',
+    description: 'Kontobewegungen (nur Admin)',
   },
   {
     label: 'Benachrichtigungen',
@@ -170,6 +176,12 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     href: '/admin/settings',
     icon: 'settings',
     description: 'Systemeinstellungen',
+  },
+  {
+    label: 'Anmeldung',
+    href: '/admin/login',
+    icon: 'login',
+    description: 'An- und Abmelden',
   },
   {
     label: 'Shop',

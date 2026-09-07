@@ -10,6 +10,24 @@ export interface ApiClientOptions {
   headers?: Record<string, string>
 }
 
+/**
+ * Error thrown for non-2xx responses. Carries the HTTP status so callers can
+ * tell "not logged in" (401) and "wrong role" (403) apart from a broken
+ * server – the message alone (taken from the body's `message`) cannot.
+ */
+export class ApiError extends Error {
+  readonly status: number
+  /** Machine-readable code from the body's `error` field, if any. */
+  readonly code?: string
+
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
 export class ApiClient {
   private baseUrl: string
   private timeout: number
@@ -49,8 +67,8 @@ export class ApiClient {
    * Get authorization header
    */
   getAuthHeader(): Record<string, string> {
-    return this.defaultHeaders['Authorization'] 
-      ? { 'Authorization': this.defaultHeaders['Authorization'] }
+    return this.defaultHeaders['Authorization']
+      ? { Authorization: this.defaultHeaders['Authorization'] }
       : {}
   }
 
@@ -97,8 +115,10 @@ export class ApiClient {
       }
 
       if (!response.ok) {
-        throw new Error(
-          data?.message || `HTTP ${response.status}: ${response.statusText}`
+        throw new ApiError(
+          data?.message || `HTTP ${response.status}: ${response.statusText}`,
+          response.status,
+          typeof data?.error === 'string' ? data.error : undefined
         )
       }
 

@@ -235,6 +235,85 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
 Tests: `npx nx test delivery-routing` (47), `npx nx test delivery-tracking` (7) und
 `apps/bakery-api/tests/unit/deliveryTours.test.js` (61) für die Rechenlogik des Servers.
 
+## Kassenberichte (hq/data/reports)
+
+Die Management-App zeigt unter `/admin/reports` die **Tagesabschlüsse der Kasse** aus
+`hq/data/reports/converted/` (ein JSON je Tag und Kasse, `YYYY-MM-DD_<Kasse>[_2].json`; Pfad über
+`HQ_REPORTS_DIR` oder `<website>/../hq/data/reports`). Das Dashboard („Kasse · Stand: <Tag>") und
+`/admin/analytics/*` rechnen mit denselben Daten. Das frühere `apps/reports` (kein Nx-Projekt,
+toter Pfad ins stillgelegte `content/`-Repo) ist seit dem 07.09.2026 gelöscht.
+
+Fünf Dinge, die man wissen muss:
+
+- **Die Formeln stehen genau einmal**, in `apps/bakery-api/src/services/reports.core.js`
+  (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`); die Datei-Lese-Schicht
+  daneben in `reports-files.core.js`. Der Mock-Server (`src/routes/reports.mock.js`, eine Zeile in
+  `simple-server.js`) und der Loader der Management-App (`apps/bakery-management/src/lib/reports.ts`)
+  benutzen beide. Der Loader lädt den Core zur Laufzeit über Nodes `createRequire` aus dem Monorepo,
+  weil ein statischer Import einer App vom Modul-Grenzen-Lint verboten ist (`Imports of apps are
+forbidden`) - wer die Datei verschiebt, muss `CORE_DIR` in `reports.ts` nachziehen.
+- **`payment: 'Unbar'` ist Karte.** Wer auf `'Karte'` filtert, bekommt null. `'Keine'` sind
+  Gutscheineinlösungen und 0-Euro-Bons („Ohne Zahlung").
+- **Ein Tag ohne Datei ist eine Lücke, kein Umsatz 0** (`status: 'no-data'`). Montag ist Ruhetag,
+  dazu Betriebsferien und fehlende Exporte. Liste, Detailseite und Analysen zeigen das als „kein
+  Bericht"; nicht wegoptimieren. Fehlt das ganze Verzeichnis (CI), wird einmal
+  `HQ reports directory not found` geloggt und leer geantwortet - es gibt **keine** Beispieldaten
+  mehr, auch nicht in `analyticsService` (`available: false` statt `Math.random()`).
+- **Umsatz = Σ Bon-Total ohne abgebrochene Belege** (`type: 'cancelled'`), Stornos negativ. Genau so
+  stimmt die Summe mit dem Kassenabschluss (`daily_summary.total_revenue`) überein. Bons zählen ohne
+  Storno-Gegenbuchungen - **überall gleich**: Kachel (`receiptCount`), Zahlungsmix
+  (`payments.*.count`) und Kassenabschluss (`closings[].receiptCount`) ergeben dieselbe Zahl; die rohe
+  Buchungszahl inkl. Stornos und Abbrüche steht nur in `closings[].transactionCount`. Positionsmengen
+  einzelner Tage können durch Storno-Paare über die Tagesgrenze negativ sein - die Detailseite warnt
+  dann, statt die Zeile zu verstecken.
+- **Ein Zeitraum ist höchstens `MAX_RANGE_DAYS` (400) Tage lang.** Die Zahl steht im Core; der
+  Mock-Server lehnt längere Anfragen mit `range_too_large` ab, die Archivseite kürzt
+  `?from=&to=` mit `clampRange` (das Ende bleibt, der Anfang rückt nach) und sagt es an. Ohne die
+  Kappung liefert `?from=2000-01-01` jede Tagesdatei als HTML - ein Tippfehler im Jahr genügt.
+
+Endpunkte des Mock-Servers: `GET /api/reports/daily?from=&to=`, `/api/reports/daily/:date`,
+`/api/reports/monthly/:month` sowie `/api/analytics/{revenue-trends,product-performance,payment-methods,summary}`.
+Fehler mit `message` **und** `error`. Die echte TypeScript-API hat unter `/api/reports/daily` einen
+älteren, DB-basierten Vertrag - der ist nicht angeglichen.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/reportsCore.test.js` (25)
+und in der Management-App `src/lib/reports.spec.ts`, `admin/reports/**/*.spec.tsx`,
+`admin/analytics/**/*.spec.tsx` - alle mit synthetischen Fixtures, nie mit echten Tagesfiles.
+
+## Finanzdaten (`/admin/finance`, TASK-038)
+
+Bankumsätze aus dem privaten `hq`-Repo (`hq/data/finance/finance-summary.json`, `schema_version` 1).
+Dieses Repo ist öffentlich, `hq` nicht - deshalb gelten hier vier Regeln:
+
+- **Nur das bereinigte Aggregat verlässt einen Server.** Der Sanitizer in
+  `apps/bakery-api/src/services/finance.core.js` ist eine _Whitelist_: `accounts` (IBANs) und
+  `top_counterparties` (Klarnamen) fallen komplett weg, `uncategorized` behält nur `count`/`amount`.
+  Ein neues Feld im Export ist unsichtbar, bis es dort bewusst freigegeben wird. Der Core trägt auch
+  Monatsreihe, Kostenstruktur und die Invariante `Einnahmen + Ausgaben + Neutral = Kontoveränderung`
+  (`checkInvariant`) - genau einmal, wie `partner-stats.core.js`. Der Loader der Management-App
+  (`src/lib/finance.ts`) lädt denselben Core per `require` mit `// nx-ignore-next-line` und
+  `eslint-disable-line`; beide Marker müssen an genau dieser Stelle bleiben, sonst hängt
+  `bakery-management` im Nx-Graph an `bakery-api` und `nx build` baut erst die API.
+- **Endpunkte nur mit Rolle `admin`.** `GET /api/finance/summary` und `/api/finance/months?from=&to=`
+  liegen in `apps/bakery-api/src/routes/finance.mock.js`, geschützt durch `requireRole('admin')` aus
+  `src/routes/auth.mock.js` - der Mock-Server hat seit TASK-038 ein echtes JWT-Login
+  (`POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/refresh`, `POST /api/auth/logout`;
+  Benutzer aus `MOCK_ADMIN_USER`/`MOCK_ADMIN_PASSWORD`, optional `MOCK_STAFF_*`; `JWT_SECRET` sonst
+  pro Start zufällig). Ohne Token 401, mit falscher Rolle 403, beides als JSON mit `message` und
+  `error`. Die Management-App hat dafür `/admin/login`; das Token wird in `localStorage` gehalten
+  (`src/lib/authSession.ts`), weil `ApiClient` und `AuthProvider` es sonst beim Neuladen verlieren.
+- **Kein Fallback auf Beispieldaten.** Fehlt `hq` (CI), fehlt die Datei oder stimmt die
+  `schema_version` nicht, antwortet der Server mit `status: 'no-data'` und loggt das; die Seite zeigt
+  „Keine Finanzdaten vorhanden". `HQ_FINANCE_DIR` überschreibt den Pfad `<website>/../hq/data/finance`.
+- **Synthetische Testdaten.** `apps/bakery-api/tests/fixtures/finance-summary.synthetic.js` ist
+  erfunden; nie einen echten Auszug in Fixtures, Snapshots, Screenshots oder Commit-Messages kopieren.
+
+Die Seite zeigt eine **Cashflow-Sicht nach Buchungsdatum, keine GuV** - der Hinweis steht bewusst in
+der Oberfläche. Nicht zugeordnete Buchungen sind gewollt und ein Info-Hinweis, keine Warnung.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/finance*.test.js` (Core,
+Auth und Routen) und `npx nx test bakery-management` (`src/lib/finance.spec.ts`, `FinanceClient.spec.tsx`).
+
 ## E2E-Suiten (Playwright)
 
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).

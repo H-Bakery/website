@@ -82,6 +82,12 @@ app.use(cors())
 // liefert der Error-Handler am Ende der Datei.
 app.use(express.json({ limit: mockInput.JSON_BODY_LIMIT }))
 
+// Anmeldung (JWT) und die dahinter liegenden Finanz-Endpunkte. Alles Weitere
+// hier ist bewusst ungeschuetzt - Mock-Server. Details in den beiden Dateien.
+const auth = require('./src/routes/auth.mock').createAuth()
+auth.install(app)
+require('./src/routes/finance.mock').install(app, auth)
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({
@@ -3266,6 +3272,9 @@ app.delete(
     )
   })
 )
+
+// Kassenberichte aus hq/data/reports und die Analyse-Endpunkte dazu
+require('./src/routes/reports.mock')(app)
 
 // --- Fehlerantworten ------------------------------------------------------------
 // Express antwortet ohne diese beiden Handler mit HTML-Seiten: die 404-Seite

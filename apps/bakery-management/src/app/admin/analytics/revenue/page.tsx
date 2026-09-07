@@ -10,6 +10,7 @@ import {
   Button,
   LinearProgress,
   Alert,
+  Link as MuiLink,
 } from '@mui/material'
 import {
   ShowChart as ShowChartIcon,
@@ -33,7 +34,7 @@ export default function RevenueAnalyticsPage() {
   })
 
   const [revenueData, setRevenueData] = useState<RevenueData[]>([])
-  const [isMockData, setIsMockData] = useState(false)
+  const [available, setAvailable] = useState(true)
 
   React.useEffect(() => {
     fetchRevenueData()
@@ -53,15 +54,17 @@ export default function RevenueAnalyticsPage() {
   const fetchRevenueData = async () => {
     try {
       setLoading(true)
-      const { data, isMock } =
+      const { data, available: fromApi } =
         await analyticsService.getRevenueTrendsWithSource({
           ...dateRange,
           granularity,
         })
       setRevenueData(data)
-      setIsMockData(isMock)
+      setAvailable(fromApi)
     } catch (error) {
       console.error('Error fetching revenue data:', error)
+      setRevenueData([])
+      setAvailable(false)
     } finally {
       setLoading(false)
     }
@@ -81,6 +84,13 @@ export default function RevenueAnalyticsPage() {
   }
 
   const stats = calculateStats()
+  const hasData = available && revenueData.length > 0
+  const periodLabel =
+    granularity === 'weekly'
+      ? 'Woche'
+      : granularity === 'monthly'
+      ? 'Monat'
+      : 'Tag'
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('de-DE', {
@@ -107,7 +117,7 @@ export default function RevenueAnalyticsPage() {
           Umsatzanalyse
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Detaillierte Ansicht der Umsatzentwicklung
+          Umsatzentwicklung aus den Kassenberichten (Tagesabschlüsse der Kasse)
         </Typography>
       </Box>
 
@@ -141,61 +151,93 @@ export default function RevenueAnalyticsPage() {
         />
       </Box>
 
-      {isMockData && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          Die API liefert keine Umsatzdaten – die angezeigten Zahlen sind
-          Beispieldaten und nicht der echte Umsatz.
+      {!available && !loading && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Die API liefert keine Umsatzdaten. Es werden keine Zahlen angezeigt -
+          Beispieldaten gibt es hier bewusst nicht.
         </Alert>
       )}
 
-      {/* Statistics */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper elevation={2} sx={{ p: 3 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Gesamtumsatz
-            </Typography>
-            <Typography variant="h5">{formatCurrency(stats.total)}</Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper elevation={2} sx={{ p: 3 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Durchschnitt
-            </Typography>
-            <Typography variant="h5">
-              {formatCurrency(stats.average)}
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper elevation={2} sx={{ p: 3 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Höchster Umsatz
-            </Typography>
-            <Typography variant="h5">
-              {formatCurrency(stats.highest)}
-            </Typography>
-          </Paper>
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <Paper elevation={2} sx={{ p: 3 }}>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              Niedrigster Umsatz
-            </Typography>
-            <Typography variant="h5">{formatCurrency(stats.lowest)}</Typography>
-          </Paper>
-        </Grid>
-      </Grid>
+      {available && !loading && revenueData.length === 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Für den gewählten Zeitraum liegt kein Kassenbericht vor.
+        </Alert>
+      )}
 
-      {/* Revenue Chart */}
-      <RevenueTrendChart
-        data={revenueData}
-        granularity={granularity}
-        title="Umsatzentwicklung"
-        height={500}
-        showTransactions={true}
-      />
+      {hasData && (
+        <>
+          {/* Statistics */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Gesamtumsatz
+                </Typography>
+                <Typography variant="h5">
+                  {formatCurrency(stats.total)}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  {revenueData.length}{' '}
+                  {revenueData.length === 1 ? periodLabel : `${periodLabel}e`}{' '}
+                  mit Bericht
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Durchschnitt je {periodLabel}
+                </Typography>
+                <Typography variant="h5">
+                  {formatCurrency(stats.average)}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Höchster Umsatz
+                </Typography>
+                <Typography variant="h5">
+                  {formatCurrency(stats.highest)}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper elevation={2} sx={{ p: 3 }}>
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Niedrigster Umsatz
+                </Typography>
+                <Typography variant="h5">
+                  {formatCurrency(stats.lowest)}
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Revenue Chart */}
+          <RevenueTrendChart
+            data={revenueData}
+            granularity={granularity}
+            title="Umsatzentwicklung"
+            height={500}
+            showTransactions={true}
+          />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', mt: 2 }}
+          >
+            Quelle: Kassenberichte aus dem HQ-Archiv. Tage ohne Bericht
+            (Ruhetag, Betriebsferien) fehlen in der Reihe, sie sind nicht 0.
+            Details je Tag im{' '}
+            <MuiLink component={Link} href="/admin/reports">
+              Berichtsarchiv
+            </MuiLink>
+            .
+          </Typography>
+        </>
+      )}
     </Box>
   )
 }
