@@ -93,6 +93,25 @@ export function formatSignedEuro(value: number): string {
   return value < 0 ? `−${text}` : `+${text}`
 }
 
+/**
+ * Fußnote zur Wochentagstabelle. Das Verhältnis Ø Ist / Ziel ist an allen
+ * Wochentagen dasselbe (der Server liefert es einmal je Stufe), deshalb
+ * steht es nicht in jeder Zeile - dort läse es sich, als hätten alle
+ * Wochentage exakt gleich abgeschnitten.
+ */
+export function describeAverageRatio(ratio: number): string {
+  const delta = Math.abs(ratio - 1)
+  if (delta < 0.0005) {
+    return 'Im Faktorfenster lag der Ø Ist-Umsatz genau auf dem Tagesziel; das gilt für alle Wochentage gleichermaßen, weil die Faktoren aus denselben Tagen stammen.'
+  }
+  const direction = ratio > 1 ? 'über' : 'unter'
+  return `Im Faktorfenster lag der Ø Ist-Umsatz ${percent1.format(
+    delta
+  )} ${direction} dem Tagesziel (${formatRatio(
+    ratio
+  )} des Ziels). Das Verhältnis ist an allen Wochentagen dasselbe, weil die Faktoren aus denselben Tagen stammen - die Spalte Abweichung zeigt deshalb nur den Betrag.`
+}
+
 /** `2026-09-02` → `02.09.` */
 function shortDate(date: string): string {
   const [, m, d] = date.split('-')
@@ -203,16 +222,17 @@ function WeekdayTable({
   targets: TargetsResponse
   level: TargetLevelKey
 }) {
-  const rows = targets.levels[level].weekdays
+  const current = targets.levels[level]
+  const rows = current.weekdays
   return (
     <Paper elevation={3} sx={{ p: 3 }}>
       <Typography variant="h6" component="h2" gutterBottom>
         Ziel je Wochentag
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Tagesbasis {formatEuro(targets.levels[level].daily_base)} ×
-        Wochentagsfaktor. Faktoren aus {targets.factors.days_used ?? 0} Tagen
-        vom {formatReportDate(targets.factors.window?.from ?? '')} bis{' '}
+        Tagesbasis {formatEuro(current.daily_base)} × Wochentagsfaktor. Faktoren
+        aus {targets.factors.days_used ?? 0} Tagen vom{' '}
+        {formatReportDate(targets.factors.window?.from ?? '')} bis{' '}
         {formatReportDate(targets.factors.window?.to ?? '')}, normiert auf
         Mittelwert 1. Ø Ist ist der Durchschnitt derselben Tage.
       </Typography>
@@ -230,16 +250,6 @@ function WeekdayTable({
           </TableHead>
           <TableBody>
             {rows.map((row) => {
-              const diff =
-                row.target !== null && row.average_revenue !== null
-                  ? row.average_revenue - row.target
-                  : null
-              const ratio =
-                row.target !== null &&
-                row.target > 0 &&
-                row.average_revenue !== null
-                  ? row.average_revenue / row.target
-                  : null
               return (
                 <TableRow key={row.iso}>
                   <TableCell>
@@ -267,11 +277,9 @@ function WeekdayTable({
                       : formatEuro(row.average_revenue)}
                   </TableCell>
                   <TableCell align="right">
-                    {diff === null
+                    {row.deviation === null
                       ? '–'
-                      : `${formatSignedEuro(diff)}${
-                          ratio !== null ? ` (${formatRatio(ratio)})` : ''
-                        }`}
+                      : formatSignedEuro(row.deviation)}
                   </TableCell>
                   <TableCell align="right">{row.samples}</TableCell>
                 </TableRow>
@@ -280,6 +288,16 @@ function WeekdayTable({
           </TableBody>
         </Table>
       </Box>
+      {current.average_ratio !== null && (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ mt: 2 }}
+          data-testid="weekday-average-ratio"
+        >
+          {describeAverageRatio(current.average_ratio)}
+        </Typography>
+      )}
     </Paper>
   )
 }

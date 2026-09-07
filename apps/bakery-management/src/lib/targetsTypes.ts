@@ -51,6 +51,8 @@ export interface TargetWeekday {
   factor: number | null
   target: number | null
   average_revenue: number | null
+  /** Ø Ist − Ziel, vom Server gerechnet; `null` ohne Ziel oder ohne Daten. */
+  deviation: number | null
   samples: number
 }
 
@@ -63,6 +65,11 @@ export interface TargetLevel {
   breakeven_monthly: number
   pos_target_monthly: number
   daily_base: number
+  /**
+   * Ø Ist / Ziel - an allen Wochentagen derselbe Wert (Faktoren sind auf die
+   * Wochentagsmittel normiert), deshalb einmal je Stufe statt je Zeile.
+   */
+  average_ratio: number | null
   weekdays: TargetWeekday[]
   private_draw_monthly?: number
   private_draw_source?: 'config' | 'derived' | 'none'
@@ -91,6 +98,8 @@ export interface TargetFactors {
   reason?: string
   window?: { from: string; to: string; months: number }
   days_used?: number
+  /** Mittel der Wochentagsmittel (Normierungsbasis der Faktoren). */
+  mean_average_revenue?: number
   weekdays?: Array<{
     iso: number
     label: string

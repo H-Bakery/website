@@ -327,7 +327,11 @@ Break-even als Tagesziel je Wochentag, rückblickend aus den Tagesabschlüssen d
   normiert auf Mittelwert 1 über die geöffneten Wochentage), Zielstufen (`computeTargets`), Ampel
   (`evaluateDay`) und Zeiträume (`aggregatePeriod`, `aggregateToDate` mit Hochrechnung). Die
   Management-App rechnet **nichts** selbst - sie zeigt, was `/api/finance/targets*` liefert
-  (`src/routes/targets.mock.js`, Rolle `admin`, Fehler mit `message` + `error`).
+  (`src/routes/targets.mock.js`, Rolle `admin`, Fehler mit `message` + `error`). Das gilt auch für
+  die Wochentagstabelle: `deviation` (Ø Ist − Ziel) kommt je Zeile vom Server, und das Verhältnis
+  Ø Ist / Ziel steht **einmal je Stufe** (`average_ratio`) - es ist per Konstruktion an allen
+  Wochentagen gleich (Faktoren sind auf die Wochentagsmittel normiert) und steht deshalb als Fußnote
+  unter der Tabelle, nicht als Prozent in jeder Zeile, wo es wie „alle Wochentage gleich gut" läse.
 - **Die Config liegt in `hq`, nicht hier:** `hq/data/finance/config/targets.json` (`HQ_FINANCE_DIR`).
   `mode: 'derived'` leitet aus `finance-summary.json` ab, `mode: 'manual'` überschreibt die Ableitung
   vollständig. Fehlt die Datei oder ist sie unplausibel (Schwellen, Ruhetage, Kostenquote ≥ 1, keine

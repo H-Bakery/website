@@ -102,16 +102,26 @@ function level(
     breakeven_monthly: base * 20 + 2000,
     pos_target_monthly: base * 20,
     daily_base: base,
-    weekdays: FACTORS.map((factor, i) => ({
-      iso: i + 1,
-      label: WEEKDAYS[i],
-      short: SHORT[i],
-      closed: i === 0,
-      factor,
-      target: factor === null ? null : Math.round(base * factor * 100) / 100,
-      average_revenue: factor === null ? null : Math.round(base * factor * 1.1),
-      samples: factor === null ? 0 : 12,
-    })),
+    average_ratio: 1.1,
+    weekdays: FACTORS.map((factor, i) => {
+      const target =
+        factor === null ? null : Math.round(base * factor * 100) / 100
+      const average = factor === null ? null : Math.round(base * factor * 1.1)
+      return {
+        iso: i + 1,
+        label: WEEKDAYS[i],
+        short: SHORT[i],
+        closed: i === 0,
+        factor,
+        target,
+        average_revenue: average,
+        deviation:
+          target === null || average === null
+            ? null
+            : Math.round((average - target) * 100) / 100,
+        samples: factor === null ? 0 : 12,
+      }
+    }),
     ...(key === 'draw'
       ? { private_draw_monthly: 1000, private_draw_source: 'derived' as const }
       : {}),
@@ -145,6 +155,7 @@ export function syntheticTargets(
       status: 'ok',
       window: { from: '2026-03-03', to: '2026-06-02', months: 3 },
       days_used: 72,
+      mean_average_revenue: 200,
       weekdays: FACTORS.map((factor, i) => ({
         iso: i + 1,
         label: WEEKDAYS[i],

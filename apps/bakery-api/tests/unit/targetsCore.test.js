@@ -501,6 +501,29 @@ describe('targets.core - computeTargets', () => {
     const { targets } = fullTargets({ non_pos_revenue_monthly: 99999 })
     expect(targets.levels.breakeven.pos_target_monthly).toBe(0)
     expect(targets.levels.breakeven.weekdays[5].target).toBe(0)
+    // Ohne Ziel gibt es kein Verhältnis, aber die Abweichung bleibt lesbar.
+    expect(targets.levels.breakeven.average_ratio).toBeNull()
+    expect(targets.levels.breakeven.weekdays[5].deviation).toBe(200)
+  })
+
+  it('liefert die Abweichung je Wochentag und das Verhältnis Ø Ist / Ziel einmal je Stufe', () => {
+    const { targets, factors } = fullTargets()
+    const be = targets.levels.breakeven
+    // Mittel der Wochentagsmittel (100 ×5, 200, 50) / 6 = 108.33
+    expect(factors.mean_average_revenue).toBeCloseTo(108.33, 2)
+    // Ø Ist / Ziel = Mittel der Wochentagsmittel / Tagesbasis - für jeden Wochentag gleich
+    expect(be.average_ratio).toBeCloseTo(108.3333 / 185.7143, 3)
+    for (const w of be.weekdays) {
+      if (w.closed || w.samples === 0) {
+        expect(w.deviation).toBeNull()
+        continue
+      }
+      expect(w.deviation).toBeCloseTo(w.average_revenue - w.target, 2)
+      expect(w.average_revenue / w.target).toBeCloseTo(be.average_ratio, 2)
+    }
+    expect(be.weekdays[0].deviation).toBeNull()
+    // Entnahme-Stufe hat die höhere Basis, also das kleinere Verhältnis
+    expect(targets.levels.draw.average_ratio).toBeLessThan(be.average_ratio)
   })
 
   it('reicht "kein Ziel" aus Kostenbasis oder Faktoren durch', () => {

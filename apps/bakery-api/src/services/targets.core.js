@@ -771,6 +771,7 @@ function computeWeekdayFactors(days, config, options = {}) {
     status: 'ok',
     window: { from, to: asOf, months: config.weekday_window_months },
     days_used: used,
+    mean_average_revenue: round2(meanOfAverages),
     weekdays,
   }
 }
@@ -779,26 +780,50 @@ function computeWeekdayFactors(days, config, options = {}) {
 // ZIELWERTE
 // ============================================================================
 
+/**
+ * Eine Zielstufe. Neben dem Ziel je Wochentag liefert sie die Abweichung
+ * `Ø Ist − Ziel` je Wochentag und **einmal** das Verhältnis `Ø Ist / Ziel`
+ * (`average_ratio`): weil Ziel = Basis × Faktor und Faktor = Ø Ist /
+ * Mittel der Wochentagsmittel, ist dieses Verhältnis an jedem Wochentag
+ * dasselbe (Mittel der Wochentagsmittel / Basis) - es beschreibt, wie weit
+ * das Haus im Faktorfenster insgesamt über oder unter dem Ziel lag, nicht
+ * einen einzelnen Wochentag. Es steht deshalb an der Stufe, nicht an der
+ * Zeile.
+ */
 function levelTargets(fixed, costBase, factors, config, extra) {
   const breakeven = fixed / costBase.contribution_ratio
   const posTarget = Math.max(0, breakeven - costBase.non_pos_revenue_monthly)
   const dailyBase = posTarget / config.business_days_per_month
+  const meanAverage = isFiniteNumber(factors.mean_average_revenue)
+    ? factors.mean_average_revenue
+    : null
   return {
     ...extra,
     fixed_costs_monthly: round2(fixed),
     breakeven_monthly: round2(breakeven),
     pos_target_monthly: round2(posTarget),
     daily_base: round2(dailyBase),
-    weekdays: factors.weekdays.map((w) => ({
-      iso: w.iso,
-      label: w.label,
-      short: w.short,
-      closed: w.closed,
-      factor: w.factor,
-      target: w.factor === null ? null : round2(dailyBase * w.factor),
-      average_revenue: w.average_revenue,
-      samples: w.samples,
-    })),
+    average_ratio:
+      meanAverage !== null && dailyBase > 0
+        ? round4(meanAverage / dailyBase)
+        : null,
+    weekdays: factors.weekdays.map((w) => {
+      const target = w.factor === null ? null : round2(dailyBase * w.factor)
+      return {
+        iso: w.iso,
+        label: w.label,
+        short: w.short,
+        closed: w.closed,
+        factor: w.factor,
+        target,
+        average_revenue: w.average_revenue,
+        deviation:
+          target === null || w.average_revenue === null
+            ? null
+            : round2(w.average_revenue - target),
+        samples: w.samples,
+      }
+    }),
   }
 }
 

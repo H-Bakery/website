@@ -2,7 +2,10 @@ import React from 'react'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import TagesZielClient, { formatSignedEuro } from './TagesZielClient'
+import TagesZielClient, {
+  describeAverageRatio,
+  formatSignedEuro,
+} from './TagesZielClient'
 import {
   syntheticPeriod,
   syntheticStatus,
@@ -186,6 +189,13 @@ describe('TagesZielClient', () => {
     })
     expect(within(weekdayTable).getByText('Ruhetag')).toBeInTheDocument()
     expect(within(weekdayTable).getByText('1,50')).toBeInTheDocument()
+    // Abweichung kommt vom Server und steht ohne Prozent in der Zeile;
+    // das (an allen Wochentagen gleiche) Verhältnis steht einmal darunter.
+    expect(within(weekdayTable).getByText('+30,00 €')).toBeInTheDocument()
+    expect(within(weekdayTable).queryByText(/110 %/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('weekday-average-ratio')).toHaveTextContent(
+      /10 % über dem Tagesziel \(110 %/
+    )
 
     // Tagesverlauf: Ruhetag und laufender Tag sind offen, nicht rot
     await waitFor(() =>
@@ -265,5 +275,11 @@ describe('TagesZielClient', () => {
   it('formatiert Abweichungen mit Vorzeichen', () => {
     expect(formatSignedEuro(12.3)).toMatch(/^\+12,30/)
     expect(formatSignedEuro(-4)).toMatch(/^−4,00/)
+  })
+
+  it('beschreibt das Verhältnis Ø Ist / Ziel als Fußnote', () => {
+    expect(describeAverageRatio(1.16)).toMatch(/16\s% über dem Tagesziel/)
+    expect(describeAverageRatio(0.9)).toMatch(/10\s% unter dem Tagesziel/)
+    expect(describeAverageRatio(1)).toMatch(/genau auf dem Tagesziel/)
   })
 })
