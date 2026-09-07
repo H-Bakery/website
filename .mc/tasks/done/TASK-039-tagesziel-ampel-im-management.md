@@ -2,7 +2,7 @@
 id: TASK-039
 title: Tagesziel-Ampel - Break-even als täglicher Messwert im Management
 slug: tagesziel-ampel-im-management
-status: todo
+status: done
 priority: 2
 owner: ''
 projects: []
@@ -18,7 +18,7 @@ depends_on:
   - TASK-038
 due_date: ''
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-07
 ---
 
 # Tagesziel-Ampel - Break-even als täglicher Messwert im Management
@@ -214,23 +214,37 @@ GET /api/finance/targets/period?from=&to=   Tagesreihe + Wochen-/Monatsaggregat
 
 ## Akzeptanzkriterien
 
-- [ ] Zielwerte werden aus `finance-summary.json` abgeleitet (`mode: 'derived'`)
-- [ ] `mode: 'manual'` überschreibt die Ableitung vollständig
-- [ ] Wochentagsfaktoren aus rollierendem Fenster, normiert auf Mittelwert 1
-- [ ] Ruhetage, Ferien und Tage ohne Bericht verzerren die Faktoren nicht
-- [ ] Beide Zielstufen abrufbar, die Entnahme-Stufe als Annahme gekennzeichnet
-- [ ] Ampel je Tag mit den Zuständen grün / gelb / rot / offen
-- [ ] Farbe nie alleiniger Informationsträger — Zahl und Textlabel immer vorhanden
-- [ ] Kontrast in Light und Dark Mode geprüft
-- [ ] Woche bis heute und Monat bis heute inkl. Hochrechnung
-- [ ] Zuletzt ausgewerteter Tag und Stand der Kostenbasis sichtbar
-- [ ] Laufender Tag wird als offen dargestellt, nicht als rot
-- [ ] Fehlende Konfiguration führt zu „kein Ziel verfügbar", nicht zu einem geschätzten Wert
-- [ ] Endpunkte auth- und rollengeschützt
-- [ ] Keine echten Beträge in Code, Tests oder Fixtures dieses Repos
-- [ ] Berechnungslogik ist getestet und liegt an genau einer Stelle
-- [ ] Alle Texte auf Deutsch
-- [ ] `npm test` und `npm run lint` laufen durch
+- [x] Zielwerte werden aus `finance-summary.json` abgeleitet (`mode: 'derived'`)
+- [x] `mode: 'manual'` überschreibt die Ableitung vollständig
+- [x] Wochentagsfaktoren aus rollierendem Fenster, normiert auf Mittelwert 1
+- [x] Ruhetage, Ferien und Tage ohne Bericht verzerren die Faktoren nicht
+- [x] Beide Zielstufen abrufbar, die Entnahme-Stufe als Annahme gekennzeichnet
+- [x] Ampel je Tag mit den Zuständen grün / gelb / rot / offen
+- [x] Farbe nie alleiniger Informationsträger — Zahl und Textlabel immer vorhanden
+- [x] Kontrast in Light und Dark Mode geprüft
+- [x] Woche bis heute und Monat bis heute inkl. Hochrechnung
+- [x] Zuletzt ausgewerteter Tag und Stand der Kostenbasis sichtbar
+- [x] Laufender Tag wird als offen dargestellt, nicht als rot
+- [x] Fehlende Konfiguration führt zu „kein Ziel verfügbar", nicht zu einem geschätzten Wert
+- [x] Endpunkte auth- und rollengeschützt
+- [x] Keine echten Beträge in Code, Tests oder Fixtures dieses Repos
+- [x] Berechnungslogik ist getestet und liegt an genau einer Stelle
+- [x] Alle Texte auf Deutsch
+- [x] `npm test` und `npm run lint` laufen durch
+
+## Stand nach Umsetzung (2026-09-07, PR #103)
+
+Umgesetzt wie beschrieben; die Rechnung steht in `apps/bakery-api/src/services/targets.core.js`, die
+Mock-Routen in `src/routes/targets.mock.js`, Kachel und Seite in der Management-App, die Config privat
+in `hq/data/finance/config/targets.json` (`mode: 'derived'`, keine Beträge im Repo). Zum Kriterium
+„`npm test` und `npm run lint` laufen durch": die neuen Suiten sind grün, die sieben vorbestehenden
+roten Test-Tasks (siehe Workspace-CLAUDE.md) sind unverändert und nicht Teil dieses Tasks.
+
+Bewusst offen geblieben (siehe unten): Öffnungskalender fehlt, deshalb sind vergangene Tage ohne
+Bericht „offen" und nicht von Ferien unterscheidbar; die Privatentnahme wird aus `privat` +
+`geldtransit` abgeleitet und als Annahme gekennzeichnet, bis fachlich geklärt ist, ob das Entnahmen
+sind; nur der Mock-Server kennt die Endpunkte (wie bei den Finanzendpunkten aus TASK-038); die
+Hochrechnung überträgt den bisherigen Zielerreichungsgrad des Monats auf die Resttage.
 
 ## Offene Punkte
 
