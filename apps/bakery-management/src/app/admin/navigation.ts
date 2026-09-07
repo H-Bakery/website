@@ -136,10 +136,10 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Mitarbeiterverwaltung',
   },
   {
-    label: 'Berichte',
+    label: 'Kassenberichte',
     href: '/admin/reports',
     icon: 'reports',
-    description: 'Berichte & Zeitpläne',
+    description: 'Kassenberichte aus dem HQ-Archiv',
   },
   {
     label: 'Analysen',

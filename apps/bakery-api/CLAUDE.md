@@ -37,7 +37,7 @@ npx tsc --noEmit -p apps/bakery-api/tsconfig.app.json  # Type-check
 ## Key Modules
 
 - **Auth:** JWT login/logout/refresh, bcrypt password hashing
-- **Products:** CRUD with CSV import from content repo
+- **Products:** CRUD; the mock server reads `hq/products/*.md` (the CSV seeder points at a path that does not resolve, see the workspace CLAUDE.md)
 - **Orders:** Order lifecycle management
 - **Cash:** Daily cash register reconciliation
 - **Production:** Batch scheduling and workflow tracking

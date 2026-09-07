@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box,
+  Button,
   Typography,
   Card,
   CardContent,
@@ -37,6 +38,44 @@ const CHAT_ENDPOINT = '/api/chat'
 const POLL_INTERVAL_MS = 5000
 
 /**
+ * Erreichbarkeit des Chat-Endpunkts. Gepollt wird nur bei `online`: Der
+ * Mock-Server kennt `/api/chat` nicht, und ein Endpunkt, der einmal 404
+ * geliefert hat, wird nicht alle fünf Sekunden erneut gefragt - sonst füllt
+ * sich die Konsole mit Fehlern, und der Server bekommt Dauerlast für nichts.
+ * Ein erneuter Versuch geht nur über den Button.
+ */
+type ChatAvailability =
+  | 'unknown'
+  | 'online'
+  | 'missing'
+  | 'unauthorized'
+  | 'offline'
+
+const AVAILABILITY_HINTS: Record<
+  Exclude<ChatAvailability, 'unknown' | 'online'>,
+  { severity: 'info' | 'warning'; text: string }
+> = {
+  missing: {
+    severity: 'info',
+    text: 'Der Team-Chat ist auf diesem Server noch nicht eingerichtet. Neue Nachrichten werden nicht abgefragt.',
+  },
+  unauthorized: {
+    severity: 'info',
+    text: 'Bitte melden Sie sich an, um den Team-Chat zu nutzen.',
+  },
+  offline: {
+    severity: 'warning',
+    text: 'Der Chat-Server ist derzeit nicht erreichbar. Neue Nachrichten werden erst nach einem erneuten Versuch abgefragt.',
+  },
+}
+
+const availabilityFromStatus = (status: number): ChatAvailability => {
+  if (status === 404) return 'missing'
+  if (status === 401 || status === 403) return 'unauthorized'
+  return 'offline'
+}
+
+/**
  * `useAuth` throws when no AuthProvider is mounted (this page used to crash
  * with a 500 because of that). Degrade gracefully to a read-only chat instead.
  * The hook order stays stable because `useAuth` is always called exactly once.
@@ -66,7 +105,10 @@ const ChatPage: React.FC = () => {
   const chatUser = useOptionalAuthUser()
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState<boolean>(true)
-  const [error, setError] = useState<string | null>(null)
+  const [availability, setAvailability] = useState<ChatAvailability>('unknown')
+  const [retrying, setRetrying] = useState<boolean>(false)
+  const [attempt, setAttempt] = useState<number>(0)
+  const [sendError, setSendError] = useState<string | null>(null)
   const [sending, setSending] = useState<boolean>(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -81,24 +123,18 @@ const ChatPage: React.FC = () => {
       const response = await fetch(CHAT_ENDPOINT, { headers: authHeaders() })
 
       if (!response.ok) {
-        throw new Error(
-          response.status === 401 || response.status === 403
-            ? 'Bitte melden Sie sich an, um den Team-Chat zu nutzen.'
-            : 'Chat-Nachrichten konnten nicht geladen werden.'
-        )
+        setAvailability(availabilityFromStatus(response.status))
+        return
       }
 
       const data = await response.json()
       setMessages(Array.isArray(data) ? data : data?.data ?? [])
-      setError(null)
-    } catch (err) {
-      setError(
-        err instanceof Error && err.message.startsWith('Bitte')
-          ? err.message
-          : 'Der Chat-Server ist derzeit nicht erreichbar.'
-      )
+      setAvailability('online')
+    } catch {
+      setAvailability('offline')
     } finally {
       setLoading(false)
+      setRetrying(false)
     }
   }, [])
 
@@ -119,9 +155,9 @@ const ChatPage: React.FC = () => {
       }
 
       await fetchMessages()
-      setError(null)
+      setSendError(null)
     } catch (err) {
-      setError(
+      setSendError(
         err instanceof Error
           ? err.message
           : 'Nachricht konnte nicht gesendet werden.'
@@ -131,12 +167,23 @@ const ChatPage: React.FC = () => {
     }
   }
 
-  // Initial load and polling setup
+  // Erster Abruf - und jeder weitere Versuch per Button.
   useEffect(() => {
     fetchMessages()
+  }, [fetchMessages, attempt])
+
+  // Polling nur, solange der Endpunkt antwortet. Schlägt ein Abruf fehl,
+  // wechselt `availability`, der Effekt räumt auf, und das Intervall ist weg.
+  useEffect(() => {
+    if (availability !== 'online') return
     const interval = setInterval(fetchMessages, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
-  }, [fetchMessages])
+  }, [availability, fetchMessages])
+
+  const retry = () => {
+    setRetrying(true)
+    setAttempt((n) => n + 1)
+  }
 
   if (loading) {
     return (
@@ -151,7 +198,11 @@ const ChatPage: React.FC = () => {
     )
   }
 
-  const canSend = Boolean(chatUser || getToken())
+  const hint =
+    availability === 'unknown' || availability === 'online'
+      ? null
+      : AVAILABILITY_HINTS[availability]
+  const canSend = availability === 'online' && Boolean(chatUser || getToken())
 
   return (
     <Box>
@@ -178,12 +229,34 @@ const ChatPage: React.FC = () => {
         />
         <Divider />
 
-        {error && (
-          <Alert severity="error" sx={{ m: 2 }}>
-            {error}
+        {hint && (
+          <Alert
+            severity={hint.severity}
+            sx={{ m: 2 }}
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={retry}
+                disabled={retrying}
+              >
+                Erneut versuchen
+              </Button>
+            }
+          >
+            {hint.text}
           </Alert>
         )}
-        {!error && !canSend && (
+        {sendError && (
+          <Alert
+            severity="error"
+            sx={{ m: 2 }}
+            onClose={() => setSendError(null)}
+          >
+            {sendError}
+          </Alert>
+        )}
+        {!hint && !canSend && (
           <Alert severity="info" sx={{ m: 2 }}>
             Sie sind nicht angemeldet – Nachrichten können nur gelesen werden.
           </Alert>
@@ -216,7 +289,7 @@ const ChatPage: React.FC = () => {
                   height="100%"
                 >
                   <Typography color="text.secondary" align="center">
-                    {error
+                    {hint
                       ? 'Keine Nachrichten verfügbar.'
                       : 'Noch keine Nachrichten. Seien Sie der Erste, der eine Nachricht sendet!'}
                   </Typography>

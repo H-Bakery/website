@@ -154,6 +154,14 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
   verkauft noch Retoure. Die Erfassungsmaske lässt so eine Abholung nicht ohne Rückfrage speichern.
 - **`countedQty: null` heißt "nicht gezählt", `0` heißt "Schrank war leer".** Der Unterschied
   ändert die Verkaufszahlen. Die Erfassungsmaske hält ihn auseinander, ein Test sichert das ab.
+  Serverseitig prüft `validateVisitItems(items, lookup)` im Core jede Position (seit 2026-09-07):
+  ein nicht-numerischer Rest wie `"abc"` wird mit 400 abgelehnt statt zu `0` zu werden, Mengen
+  sind ganzzahlig und auf 0…10000 begrenzt, negative Preise und Produkte außerhalb des Katalogs
+  fliegen raus, Name und Kennungen kommen aus dem Katalog. Beide Server rufen diese eine Funktion;
+  `isBusinessDate()` daneben lehnt kalendarisch unmögliche Tage (`2026-02-30`) ab.
+- **`csvCell()` maskiert Formelzellen.** Partner- und Produktnamen landen im CSV-Report; eine
+  Zelle, die mit `=`, `+`, `-`, `@`, Tab oder CR beginnt, bekommt ein Apostroph voran und wird
+  eingefasst, sonst führt Excel sie aus. Schlichte Zahlen (`-5`) bleiben Zahlen.
 
 Die Tagesformel aus der Aufgabe (`Σ Geliefert − Rest bei der Abholung`) stimmt nur, wenn der
 letzte Besuch eine Abholung ohne Lieferung ist. Der Core rechnet stattdessen je Produkt einen
@@ -220,9 +228,57 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
   `delivery-tours.core.js`, Frontend: `@bakery/delivery/routing`), nie mit
   `Number.isFinite(Number(x))` oder `!== null`. Das gilt auch für das Depot und die Fahrerposition.
+  `hasCoordinates()` verlangt seit dem 07.09.2026 außerdem −90..90 / −180..180 und lehnt das Paar
+  `(0, 0)` ab; Eingaben prüft `validateCoordinates()` (400 mit `message` + `error`), gespeicherte
+  Altwerte werden beim Laden des Stores auf `null` gesetzt und neu gesucht.
 
-Tests: `npx nx test delivery-routing` (32), `npx nx test delivery-tracking` (7) und
-`apps/bakery-api/tests/unit/deliveryTours.test.js` (46) für die Rechenlogik des Servers.
+Tests: `npx nx test delivery-routing` (47), `npx nx test delivery-tracking` (7) und
+`apps/bakery-api/tests/unit/deliveryTours.test.js` (61) für die Rechenlogik des Servers.
+
+## Kassenberichte (hq/data/reports)
+
+Die Management-App zeigt unter `/admin/reports` die **Tagesabschlüsse der Kasse** aus
+`hq/data/reports/converted/` (ein JSON je Tag und Kasse, `YYYY-MM-DD_<Kasse>[_2].json`; Pfad über
+`HQ_REPORTS_DIR` oder `<website>/../hq/data/reports`). Das Dashboard („Kasse · Stand: <Tag>") und
+`/admin/analytics/*` rechnen mit denselben Daten. Das frühere `apps/reports` (kein Nx-Projekt,
+toter Pfad ins stillgelegte `content/`-Repo) ist seit dem 07.09.2026 gelöscht.
+
+Fünf Dinge, die man wissen muss:
+
+- **Die Formeln stehen genau einmal**, in `apps/bakery-api/src/services/reports.core.js`
+  (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`); die Datei-Lese-Schicht
+  daneben in `reports-files.core.js`. Der Mock-Server (`src/routes/reports.mock.js`, eine Zeile in
+  `simple-server.js`) und der Loader der Management-App (`apps/bakery-management/src/lib/reports.ts`)
+  benutzen beide. Der Loader lädt den Core zur Laufzeit über Nodes `createRequire` aus dem Monorepo,
+  weil ein statischer Import einer App vom Modul-Grenzen-Lint verboten ist (`Imports of apps are
+forbidden`) - wer die Datei verschiebt, muss `CORE_DIR` in `reports.ts` nachziehen.
+- **`payment: 'Unbar'` ist Karte.** Wer auf `'Karte'` filtert, bekommt null. `'Keine'` sind
+  Gutscheineinlösungen und 0-Euro-Bons („Ohne Zahlung").
+- **Ein Tag ohne Datei ist eine Lücke, kein Umsatz 0** (`status: 'no-data'`). Montag ist Ruhetag,
+  dazu Betriebsferien und fehlende Exporte. Liste, Detailseite und Analysen zeigen das als „kein
+  Bericht"; nicht wegoptimieren. Fehlt das ganze Verzeichnis (CI), wird einmal
+  `HQ reports directory not found` geloggt und leer geantwortet - es gibt **keine** Beispieldaten
+  mehr, auch nicht in `analyticsService` (`available: false` statt `Math.random()`).
+- **Umsatz = Σ Bon-Total ohne abgebrochene Belege** (`type: 'cancelled'`), Stornos negativ. Genau so
+  stimmt die Summe mit dem Kassenabschluss (`daily_summary.total_revenue`) überein. Bons zählen ohne
+  Storno-Gegenbuchungen - **überall gleich**: Kachel (`receiptCount`), Zahlungsmix
+  (`payments.*.count`) und Kassenabschluss (`closings[].receiptCount`) ergeben dieselbe Zahl; die rohe
+  Buchungszahl inkl. Stornos und Abbrüche steht nur in `closings[].transactionCount`. Positionsmengen
+  einzelner Tage können durch Storno-Paare über die Tagesgrenze negativ sein - die Detailseite warnt
+  dann, statt die Zeile zu verstecken.
+- **Ein Zeitraum ist höchstens `MAX_RANGE_DAYS` (400) Tage lang.** Die Zahl steht im Core; der
+  Mock-Server lehnt längere Anfragen mit `range_too_large` ab, die Archivseite kürzt
+  `?from=&to=` mit `clampRange` (das Ende bleibt, der Anfang rückt nach) und sagt es an. Ohne die
+  Kappung liefert `?from=2000-01-01` jede Tagesdatei als HTML - ein Tippfehler im Jahr genügt.
+
+Endpunkte des Mock-Servers: `GET /api/reports/daily?from=&to=`, `/api/reports/daily/:date`,
+`/api/reports/monthly/:month` sowie `/api/analytics/{revenue-trends,product-performance,payment-methods,summary}`.
+Fehler mit `message` **und** `error`. Die echte TypeScript-API hat unter `/api/reports/daily` einen
+älteren, DB-basierten Vertrag - der ist nicht angeglichen.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/reportsCore.test.js` (25)
+und in der Management-App `src/lib/reports.spec.ts`, `admin/reports/**/*.spec.tsx`,
+`admin/analytics/**/*.spec.tsx` - alle mit synthetischen Fixtures, nie mit echten Tagesfiles.
 
 ## Finanzdaten (`/admin/finance`, TASK-038)
 

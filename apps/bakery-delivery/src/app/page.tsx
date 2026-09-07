@@ -28,10 +28,13 @@ import {
   rememberedTours,
   rememberTours,
   type Driver,
+  type FailureDetails,
   type Preorder,
   type PreorderStatus,
+  type PreorderUpdate,
   type QueuedUpdate,
   type Stop,
+  type StopInput,
   type Tour,
 } from '../lib/delivery-api'
 import {
@@ -76,7 +79,17 @@ export default function DeliveryDashboard() {
   const [copiedAt, setCopiedAt] = useState<string | null>(null)
 
   const [loading, setLoading] = useState(true)
+  // `busy` sperrt die ganze Tour (Route berechnen, Stopp anlegen/entfernen).
+  // Ein Statuswechsel sperrt dagegen nur seinen eigenen Stopp bzw. seine
+  // eigene Vorbestellung: im Funkloch haengt ein PATCH bis zu 15 s, und so
+  // lange muss der Fahrer den naechsten Stopp trotzdem abhaken koennen.
   const [busy, setBusy] = useState(false)
+  const [busyStops, setBusyStops] = useState<ReadonlySet<number>>(
+    () => new Set()
+  )
+  const [busyPreorders, setBusyPreorders] = useState<ReadonlySet<number>>(
+    () => new Set()
+  )
   const [planning, setPlanning] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Eigenes Flag statt `error`: das teilen sich auch Anlegen, Abhaken und
@@ -97,12 +110,39 @@ export default function DeliveryDashboard() {
   // Solange ein Abhaken unterwegs ist, darf kein Nachladen der Offline-Kopie
   // die Liste ersetzen: die Aenderung steht noch nicht in der Warteschlange,
   // und der Server-Stand liesse den Stopp bis zum Nachsenden wieder "Offen".
+  const anyInFlight = busy || busyStops.size > 0 || busyPreorders.size > 0
   const busyRef = useRef(false)
-  busyRef.current = busy
+  busyRef.current = anyInFlight
+  // Was gerade unterwegs ist, als Aenderung selbst - nicht nur als Sperre.
+  // Jede Server-Antwort ersetzt die *ganze* Tour: haengt der PATCH an Stopp A
+  // (Nominatim braucht bis zu 2,5 s) und antwortet der an Stopp B zuerst,
+  // steht A in Bs Antwort noch „Offen" und ueberschriebe das Abhaken von eben.
+  // Deshalb wird jede Tour vom Server vor dem Anzeigen mit dem ueberlagert,
+  // was noch laeuft (`withInFlight`). Erst die eigene Antwort - oder der
+  // Netzfehler, der die Aenderung in die Warteschlange legt - traegt sie aus.
+  // (`Map` ist hier die Karte; die Sammlung heisst deshalb ausdruecklich.)
+  const inFlightRef = useRef(new globalThis.Map<string, LocalUpdate>())
 
   const tour = useMemo(
     () => tours.find((t) => t.id === tourId) ?? null,
     [tours, tourId]
+  )
+
+  /** Eine Tour vom Server, ueberlagert mit den noch laufenden Aenderungen. */
+  const withInFlight = useCallback(
+    (list: Tour[]): Tour[] =>
+      withPendingUpdates(list, Array.from(inFlightRef.current.values())),
+    []
+  )
+
+  /** Ersetzt eine Tour durch die Server-Antwort - ohne laufende Aenderungen zu verlieren. */
+  const mergeTour = useCallback(
+    (updated: Tour) => {
+      setTours((list) =>
+        list.map((t) => (t.id === updated.id ? withInFlight([updated])[0] : t))
+      )
+    },
+    [withInFlight]
   )
 
   // --- Laden ---
@@ -126,7 +166,9 @@ export default function DeliveryDashboard() {
       // pruefbar wie "keine Antwort" - da darf kein "Tour anlegen" stehen.
       const remembered = rememberedTours(targetDate, targetDriver)
       const copy = remembered && remembered.tours.length > 0 ? remembered : null
-      if (copy) show(withPendingUpdates(copy.tours, pendingUpdates()))
+      if (copy) {
+        show(withInFlight(withPendingUpdates(copy.tours, pendingUpdates())))
+      }
 
       try {
         const list = await deliveryApi.tours({
@@ -134,7 +176,9 @@ export default function DeliveryDashboard() {
           driverId: targetDriver ?? undefined,
         })
         if (seq !== loadSeqRef.current) return
-        show(list)
+        // Gemerkt wird der Server-Stand; was noch laeuft, kommt entweder als
+        // eigene Antwort zurueck oder landet in der Warteschlange.
+        show(withInFlight(list))
         rememberTours(targetDate, targetDriver, list)
         setCopiedAt(null)
         setLoadFailed(false)
@@ -158,7 +202,7 @@ export default function DeliveryDashboard() {
         if (seq === loadSeqRef.current) setLoading(false)
       }
     },
-    []
+    [withInFlight]
   )
 
   /**
@@ -321,15 +365,13 @@ export default function DeliveryDashboard() {
       // Erst wenn der Server wirklich geantwortet hat, ist "online" wahr -
       // sonst verschwand der Hinweis, waehrend die Aenderungen noch lagen.
       setIsOnline(!offline)
-      if (updated) {
-        setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
-      }
+      if (updated) mergeTour(updated)
       if (confirmed.length > 0) {
         // Die Antwort auf ein nachgesendetes Abhaken ist die Vorbestellung
         // selbst, nicht die Tour - sonst stuende sie bis zum naechsten
         // Nachladen wieder als „Offen" in der Uebergabeliste.
         setTours((list) =>
-          list.map((t) => confirmed.reduce(replacePreorder, t))
+          withInFlight(list.map((t) => confirmed.reduce(replacePreorder, t)))
         )
       }
       if (!offline && remaining.length === 0) afterFlushRef.current()
@@ -353,36 +395,62 @@ export default function DeliveryDashboard() {
       window.removeEventListener('offline', goOffline)
       window.clearInterval(retry)
     }
-  }, [])
+    // Beide sind stabil (useCallback ohne wechselnde Abhaengigkeiten); der
+    // Effekt haengt also weiterhin nur einmal.
+  }, [mergeTour, withInFlight])
 
   // --- Aktionen ---
 
-  const changeStopStatus = async (stopId: number, status: Stop['status']) => {
+  const changeStopStatus = async (
+    stopId: number,
+    status: Stop['status'],
+    details?: FailureDetails
+  ) => {
     if (!tour) return
-    setBusy(true)
+    if (busyStops.has(stopId)) return
+    setBusyStops((set) => withId(set, stopId, true))
     setError(null)
 
+    // Grund und Verbleib der Ware gehen im selben PATCH mit - und landen so
+    // auch in der Warteschlange, wenn das Netz fehlt.
+    const body: Partial<StopInput> = { status, ...stopDetails(status, details) }
+    const key = inFlightKey('stop', stopId)
+    inFlightRef.current.set(key, {
+      kind: 'stop',
+      tourId: tour.id,
+      stopId,
+      body,
+    })
+
     // Erst lokal umschalten: der Fahrer soll nicht auf das Netz warten.
-    const optimistic = applyStopStatus(tour, stopId, status)
+    const optimistic = applyStopUpdate(tour, stopId, body)
     setTours((list) => list.map((t) => (t.id === tour.id ? optimistic : t)))
 
     try {
-      const updated = await deliveryApi.updateStop(tour.id, stopId, { status })
-      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      const updated = await deliveryApi.updateStop(tour.id, stopId, body)
+      // Ab hier gilt fuer diesen Stopp die Antwort des Servers - was an den
+      // *anderen* Stopps noch laeuft, legt mergeTour wieder darueber.
+      inFlightRef.current.delete(key)
+      mergeTour(updated)
       setPending(pendingUpdates())
       // Der Server hat geantwortet - eine Offline-Kopie gleich ersetzen.
       if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        // Abgelehnt: der Server-Stand gilt, die Vorschau darf nicht bleiben.
+        inFlightRef.current.delete(key)
         setError(err.message)
         await loadTours(date, driverId)
       } else {
-        // Kein Netz: gemerkt, geht spaeter automatisch raus.
-        setPending(queueStopUpdate(tour.id, stopId, { status }))
+        // Kein Netz: gemerkt, geht spaeter automatisch raus. Von jetzt an
+        // haelt die Warteschlange die Aenderung, nicht mehr diese Liste.
+        setPending(queueStopUpdate(tour.id, stopId, body))
+        inFlightRef.current.delete(key)
         setIsOnline(false)
       }
     } finally {
-      setBusy(false)
+      inFlightRef.current.delete(key)
+      setBusyStops((set) => withId(set, stopId, false))
     }
   }
 
@@ -391,8 +459,19 @@ export default function DeliveryDashboard() {
     status: PreorderStatus
   ) => {
     if (!tour) return
-    setBusy(true)
+    if (busyPreorders.has(preorderId)) return
+    setBusyPreorders((set) => withId(set, preorderId, true))
     setError(null)
+
+    // Die Vorbestellungen haengen an der Tour: die Antwort auf einen
+    // Stopp-PATCH braechte sonst eine eben uebergebene Bestellung wieder
+    // auf „Offen", solange ihr eigener PATCH noch haengt.
+    const key = inFlightKey('preorder', preorderId)
+    inFlightRef.current.set(key, {
+      kind: 'preorder',
+      preorderId,
+      body: { status },
+    })
 
     // Wie beim Stopp: erst lokal umschalten. Die Familie steht vor dem
     // Fahrer, das Netz ist am Kindergarten die Ausnahme.
@@ -401,6 +480,7 @@ export default function DeliveryDashboard() {
 
     try {
       const updated = await deliveryApi.updatePreorder(preorderId, { status })
+      inFlightRef.current.delete(key)
       setTours((list) =>
         list.map((t) => (t.id === tour.id ? replacePreorder(t, updated) : t))
       )
@@ -408,15 +488,18 @@ export default function DeliveryDashboard() {
       if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+        inFlightRef.current.delete(key)
         setError(err.message)
         await loadTours(date, driverId)
       } else {
         // Kein Netz: gemerkt, geht spaeter automatisch raus.
         setPending(queuePreorderUpdate(preorderId, { status }))
+        inFlightRef.current.delete(key)
         setIsOnline(false)
       }
     } finally {
-      setBusy(false)
+      inFlightRef.current.delete(key)
+      setBusyPreorders((set) => withId(set, preorderId, false))
     }
   }
 
@@ -426,7 +509,7 @@ export default function DeliveryDashboard() {
     setError(null)
     try {
       const updated = await deliveryApi.optimize(tour.id)
-      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      mergeTour(updated)
       setHint(
         updated.isEstimate
           ? 'Reihenfolge sortiert. Kilometer sind geschätzt – der Routendienst war nicht erreichbar.'
@@ -444,7 +527,7 @@ export default function DeliveryDashboard() {
     setBusy(true)
     try {
       const updated = await deliveryApi.addStop(tour.id, input)
-      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      mergeTour(updated)
     } catch (err) {
       // Das Formular zeigt die Meldung an - aber auf Deutsch, nicht als
       // rohes "Failed to fetch" des Browsers.
@@ -460,7 +543,7 @@ export default function DeliveryDashboard() {
     setError(null)
     try {
       const updated = await deliveryApi.removeStop(tour.id, stopId)
-      setTours((list) => list.map((t) => (t.id === updated.id ? updated : t)))
+      mergeTour(updated)
     } catch (err) {
       setError(describeError(err, 'Stopp konnte nicht entfernt werden.'))
     } finally {
@@ -753,7 +836,7 @@ export default function DeliveryDashboard() {
                 type="button"
                 className={styles.button}
                 onClick={runOptimize}
-                disabled={busy || tour.stops.length === 0}
+                disabled={anyInFlight || tour.stops.length === 0}
               >
                 Route berechnen
               </button>
@@ -786,7 +869,8 @@ export default function DeliveryDashboard() {
                   position={tour.stops.indexOf(nextStop) + 1}
                   isNext
                   distance={distanceTo(nextStop)}
-                  busy={busy}
+                  busy={busy || busyStops.has(nextStop.id)}
+                  busyPreorderIds={busyPreorders}
                   onStatusChange={changeStopStatus}
                   onPreorderStatusChange={changePreorderStatus}
                 />
@@ -854,7 +938,8 @@ export default function DeliveryDashboard() {
                     position={index + 1}
                     isNext={stop.id === tour.nextStopId}
                     distance={distanceTo(stop)}
-                    busy={busy}
+                    busy={busy || busyStops.has(stop.id)}
+                    busyPreorderIds={busyPreorders}
                     onStatusChange={changeStopStatus}
                     onPreorderStatusChange={changePreorderStatus}
                     onRemove={planning ? removeStop : undefined}
@@ -891,18 +976,56 @@ export default function DeliveryDashboard() {
   )
 }
 
+/** Ein Eintrag in einer Menge ein- oder austragen, ohne sie zu mutieren. */
+function withId(
+  set: ReadonlySet<number>,
+  id: number,
+  present: boolean
+): ReadonlySet<number> {
+  const next = new Set(set)
+  if (present) next.add(id)
+  else next.delete(id)
+  return next
+}
+
+/**
+ * Was zum Status an Feldern mitgeht. Nur `failed` traegt Grund und Verbleib;
+ * bei `done` und `open` raeumt der Server beides selbst weg (Core), der Body
+ * bleibt wie bisher `{ status }`.
+ */
+function stopDetails(
+  status: Stop['status'],
+  details?: FailureDetails
+): Pick<StopInput, 'failureReason' | 'goodsDisposition'> {
+  if (status !== 'failed') return {}
+  return {
+    failureReason: details?.failureReason ?? 'Nicht angetroffen',
+    goodsDisposition: details?.goodsDisposition ?? null,
+  }
+}
+
 /** Lokale Vorschau eines Statuswechsels, damit die Liste sofort reagiert. */
-function applyStopStatus(
+function applyStopUpdate(
   tour: Tour,
   stopId: number,
-  status: Stop['status']
+  body: Partial<StopInput>
 ): Tour {
+  const status = body.status
+  if (!status) return tour
   const stops = tour.stops.map((stop) =>
     stop.id === stopId
       ? {
           ...stop,
           status,
           completedAt: status === 'open' ? null : new Date().toISOString(),
+          failureReason:
+            status === 'failed'
+              ? body.failureReason ?? stop.failureReason ?? 'Nicht angetroffen'
+              : null,
+          goodsDisposition:
+            status === 'failed'
+              ? body.goodsDisposition ?? stop.goodsDisposition ?? null
+              : null,
         }
       : stop
   )
@@ -962,11 +1085,25 @@ function mapPreorder(
 }
 
 /**
- * Spielt die Warteschlange auf die Offline-Kopie: ein Abhaken kurz vor dem
- * Neuladen soll nicht wieder als „Offen" dastehen - weder ein Stopp noch eine
- * eben uebergebene Vorbestellung.
+ * Eine lokal bekannte Aenderung, die der Server noch nicht bestaetigt hat -
+ * ein Eintrag der Warteschlange (`QueuedUpdate` ohne `id`/`queuedAt`) oder ein
+ * PATCH, der gerade noch unterwegs ist.
  */
-function withPendingUpdates(tours: Tour[], queue: QueuedUpdate[]): Tour[] {
+type LocalUpdate =
+  | { kind: 'stop'; tourId: number; stopId: number; body: Partial<StopInput> }
+  | { kind: 'preorder'; preorderId: number; body: PreorderUpdate }
+
+function inFlightKey(kind: LocalUpdate['kind'], id: number): string {
+  return `${kind}:${id}`
+}
+
+/**
+ * Spielt lokale Aenderungen auf eine Tourliste: die Warteschlange auf die
+ * Offline-Kopie, die laufenden PATCHes auf jede Server-Antwort. Ein Abhaken
+ * soll nicht wieder als „Offen" dastehen, nur weil der Server es noch nicht
+ * kennt - weder ein Stopp noch eine eben uebergebene Vorbestellung.
+ */
+function withPendingUpdates(tours: Tour[], queue: LocalUpdate[]): Tour[] {
   return queue.reduce((list, entry) => {
     if (entry.kind === 'preorder') {
       // Zu welcher Tour die Vorbestellung gehoert, steht nicht im Eintrag -
@@ -975,10 +1112,9 @@ function withPendingUpdates(tours: Tour[], queue: QueuedUpdate[]): Tour[] {
         applyPreorderStatus(t, entry.preorderId, entry.body.status)
       )
     }
-    const status = entry.body.status
-    if (!status) return list
+    if (!entry.body.status) return list
     return list.map((t) =>
-      t.id === entry.tourId ? applyStopStatus(t, entry.stopId, status) : t
+      t.id === entry.tourId ? applyStopUpdate(t, entry.stopId, entry.body) : t
     )
   }, tours)
 }

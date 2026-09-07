@@ -1,8 +1,14 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, {
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import NextLink from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import AppBar from '@mui/material/AppBar'
 import Badge from '@mui/material/Badge'
 import Box from '@mui/material/Box'
@@ -37,30 +43,76 @@ const CATEGORY_LINKS: ReadonlyArray<{
   })),
 ]
 
+/* -------------------------------------------------------------------------- */
+/* Produktsuche                                                                */
+/* -------------------------------------------------------------------------- */
+
+const SEARCH_PLACEHOLDER = 'Brot, Brötchen, Kuchen …'
+
+const searchFormSx = {
+  order: { xs: 3, md: 2 },
+  display: 'flex',
+  alignItems: 'center',
+  gap: 0.5,
+  flexGrow: 1,
+  flexBasis: { xs: '100%', md: 0 },
+  maxWidth: { md: 520 },
+  pl: 1.5,
+  pr: 0.5,
+  py: 0.25,
+  borderRadius: 1,
+  border: 1,
+  borderColor: 'divider',
+  bgcolor: 'grey.50',
+  transition: 'border-color 120ms ease, background-color 120ms ease',
+  '&:focus-within': {
+    borderColor: 'primary.main',
+    bgcolor: 'background.paper',
+  },
+} as const
+
+const searchInputSx = {
+  flexGrow: 1,
+  fontSize: '0.9375rem',
+  color: 'text.primary',
+  '& input::-webkit-search-cancel-button': { display: 'none' },
+} as const
+
+const searchButtonSx = {
+  color: 'primary.contrastText',
+  bgcolor: 'primary.main',
+  borderRadius: 1,
+  '&:hover': { bgcolor: 'primary.dark' },
+} as const
+
 /**
- * Kopfzeile des Online-Shops.
+ * Produktsuche — echtes Formular, damit Enter absendet.
  *
- * Nicht die schwebende Marketing-Navigation der Landingpage, sondern
- * Ladenchrome: Wortmarke, echte Produktsuche, Warenkorb mit Zähler und eine
- * immer erreichbare Kategorieleiste. Klebt oben am Viewport.
+ * Das Feld zeigt die **aktive** Suche, nicht die zuletzt getippte: Der
+ * Begriff kommt aus `useSearchParams()`, also aus der URL, und folgt jeder
+ * Navigation — dem Zurück-Knopf, „Filter zurücksetzen" im Katalog, einem
+ * Kategorie-Link. Vorher wurde `window.location.search` genau einmal beim
+ * Mount gelesen; weil die Kopfzeile im Layout über jede clientseitige
+ * Navigation hinweg bestehen bleibt, stand danach dauerhaft „Brot" im Feld,
+ * während der Katalog längst „Kuchen" oder gar nichts mehr zeigte.
+ *
+ * Getippt wird lokal; überschrieben wird das Feld nur, wenn sich `q` in der
+ * URL tatsächlich ändert — eine halb getippte Suche überlebt so eine
+ * Navigation, bei der `q` gleich bleibt.
  */
-export function ShopHeader() {
+function ShopSearch() {
   const router = useRouter()
-  const { summary } = useCart()
-  const [term, setTerm] = useState('')
-  const [mounted, setMounted] = useState(false)
+  const searchParams = useSearchParams()
+  const urlQuery = searchParams.get('q') ?? ''
+  const [term, setTerm] = useState(urlQuery)
+  const syncedQueryRef = useRef(urlQuery)
 
   useEffect(() => {
-    // Der Warenkorb kommt aus dem localStorage. Erst nach dem Mount zählen,
-    // sonst weicht das Client-Rendering vom Server-HTML ab (Hydration).
-    setMounted(true)
-
-    // Suchbegriff aus der URL übernehmen (Direktaufruf oder Reload).
-    const query = new URLSearchParams(window.location.search).get('q')
-    if (query) {
-      setTerm(query)
+    if (urlQuery !== syncedQueryRef.current) {
+      syncedQueryRef.current = urlQuery
+      setTerm(urlQuery)
     }
-  }, [])
+  }, [urlQuery])
 
   const handleSubmit = useCallback(
     (event: React.FormEvent<HTMLFormElement>) => {
@@ -72,6 +124,98 @@ export function ShopHeader() {
     },
     [router, term]
   )
+
+  return (
+    <Box
+      component="form"
+      role="search"
+      onSubmit={handleSubmit}
+      data-testid="shop-search"
+      sx={searchFormSx}
+    >
+      <InputBase
+        value={term}
+        onChange={(event) => setTerm(event.target.value)}
+        placeholder={SEARCH_PLACEHOLDER}
+        inputProps={{
+          'data-testid': 'shop-search-input',
+          'aria-label': 'Produkte durchsuchen',
+          enterKeyHint: 'search',
+          type: 'search',
+        }}
+        sx={searchInputSx}
+      />
+      {term ? (
+        <IconButton
+          type="button"
+          size="small"
+          aria-label="Suche zurücksetzen"
+          onClick={() => setTerm('')}
+          sx={{ color: 'text.secondary' }}
+        >
+          <ClearIcon fontSize="small" />
+        </IconButton>
+      ) : null}
+      <IconButton
+        type="submit"
+        size="small"
+        aria-label="Suchen"
+        sx={searchButtonSx}
+      >
+        <SearchIcon fontSize="small" />
+      </IconButton>
+    </Box>
+  )
+}
+
+/**
+ * Was steht, solange `useSearchParams()` auf dem Server noch nichts weiß
+ * (statisch vorgerenderte Seiten). Dasselbe Formular, nur ohne Begriff und
+ * ohne Verhalten — damit die Kopfzeile nicht springt, sobald die echte Suche
+ * hydriert.
+ */
+function ShopSearchFallback() {
+  return (
+    <Box component="form" role="search" sx={searchFormSx}>
+      <InputBase
+        value=""
+        readOnly
+        placeholder={SEARCH_PLACEHOLDER}
+        inputProps={{ 'aria-label': 'Produkte durchsuchen', type: 'search' }}
+        sx={searchInputSx}
+      />
+      <IconButton
+        type="button"
+        size="small"
+        aria-label="Suchen"
+        sx={searchButtonSx}
+      >
+        <SearchIcon fontSize="small" />
+      </IconButton>
+    </Box>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Kopfzeile                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Kopfzeile des Online-Shops.
+ *
+ * Nicht die schwebende Marketing-Navigation der Landingpage, sondern
+ * Ladenchrome: Wortmarke, echte Produktsuche, Warenkorb mit Zähler und eine
+ * immer erreichbare Kategorieleiste. Klebt oben am Viewport.
+ */
+export function ShopHeader() {
+  const { summary } = useCart()
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    // Der Warenkorb kommt aus dem localStorage. Erst nach dem Mount zählen,
+    // sonst weicht das Client-Rendering vom Server-HTML ab (Hydration).
+    setMounted(true)
+  }, [])
 
   const itemCount = mounted ? summary.totalCount : 0
 
@@ -131,76 +275,13 @@ export function ShopHeader() {
           </Typography>
         </Box>
 
-        {/* Produktsuche — echtes Formular, damit Enter absendet. */}
-        <Box
-          component="form"
-          role="search"
-          onSubmit={handleSubmit}
-          data-testid="shop-search"
-          sx={{
-            order: { xs: 3, md: 2 },
-            display: 'flex',
-            alignItems: 'center',
-            gap: 0.5,
-            flexGrow: 1,
-            flexBasis: { xs: '100%', md: 0 },
-            maxWidth: { md: 520 },
-            pl: 1.5,
-            pr: 0.5,
-            py: 0.25,
-            borderRadius: 1,
-            border: 1,
-            borderColor: 'divider',
-            bgcolor: 'grey.50',
-            transition: 'border-color 120ms ease, background-color 120ms ease',
-            '&:focus-within': {
-              borderColor: 'primary.main',
-              bgcolor: 'background.paper',
-            },
-          }}
-        >
-          <InputBase
-            value={term}
-            onChange={(event) => setTerm(event.target.value)}
-            placeholder="Brot, Brötchen, Kuchen …"
-            inputProps={{
-              'data-testid': 'shop-search-input',
-              'aria-label': 'Produkte durchsuchen',
-              enterKeyHint: 'search',
-              type: 'search',
-            }}
-            sx={{
-              flexGrow: 1,
-              fontSize: '0.9375rem',
-              color: 'text.primary',
-              '& input::-webkit-search-cancel-button': { display: 'none' },
-            }}
-          />
-          {term ? (
-            <IconButton
-              type="button"
-              size="small"
-              aria-label="Suche zurücksetzen"
-              onClick={() => setTerm('')}
-              sx={{ color: 'text.secondary' }}
-            >
-              <ClearIcon fontSize="small" />
-            </IconButton>
-          ) : null}
-          <IconButton
-            type="submit"
-            size="small"
-            aria-label="Suchen"
-            sx={{
-              color: 'primary.contrastText',
-              bgcolor: 'primary.main',
-              borderRadius: 1,
-              '&:hover': { bgcolor: 'primary.dark' },
-            }}
-          >
-            <SearchIcon fontSize="small" />
-          </IconButton>
-        </Box>
+        {/*
+          Die Suche liest die URL. Auf statisch vorgerenderten Seiten kennt
+          der Server sie nicht — ohne Suspense-Grenze bräche dort der Build ab.
+        */}
+        <Suspense fallback={<ShopSearchFallback />}>
+          <ShopSearch />
+        </Suspense>
 
         {/* Warenkorb mit Live-Zähler. */}
         <Box

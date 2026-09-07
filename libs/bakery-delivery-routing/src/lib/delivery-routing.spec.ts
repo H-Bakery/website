@@ -1,9 +1,11 @@
 import {
+  arrivalBaseline,
   buildEstimatedRoute,
   calculateHaversineDistance,
   estimateLeg,
   formatDuration,
   formatRouteDistance,
+  hasCoordinates,
   MockMapProvider,
   normalizeAddress,
   optimizeRouteOrder,
@@ -31,6 +33,112 @@ function waypoint(
     orderId: name,
   }
 }
+
+describe('hasCoordinates', () => {
+  it('erkennt fehlende Werte als "keine Koordinaten"', () => {
+    expect(hasCoordinates(null)).toBe(false)
+    expect(hasCoordinates(undefined)).toBe(false)
+    expect(hasCoordinates({ lat: null, lon: null })).toBe(false)
+    expect(hasCoordinates({ lat: undefined, lon: undefined })).toBe(false)
+    expect(hasCoordinates({ lat: '', lon: '' })).toBe(false)
+    expect(hasCoordinates({ lat: 49.3, lon: null })).toBe(false)
+    expect(hasCoordinates({ lat: NaN, lon: 7.36 })).toBe(false)
+  })
+
+  it('akzeptiert echte Koordinaten, auch als String', () => {
+    expect(hasCoordinates({ lat: 49.3, lon: 7.36 })).toBe(true)
+    expect(hasCoordinates({ lat: '49.3', lon: '7.36' })).toBe(true)
+    expect(hasCoordinates({ lat: 0, lon: 7.36 })).toBe(true)
+  })
+
+  // (0, 0) ist "Null Island" im Golf von Guinea - das Ergebnis von
+  // `Number(null)`, nie eine Lieferadresse. Leaflet zoege die Karte dorthin.
+  it('lehnt (0, 0) und Werte ausserhalb des Wertebereichs ab', () => {
+    expect(hasCoordinates({ lat: 0, lon: 0 })).toBe(false)
+    expect(hasCoordinates({ lat: 999, lon: 7.36 })).toBe(false)
+    expect(hasCoordinates({ lat: 49.3, lon: -181 })).toBe(false)
+    expect(hasCoordinates({ lat: 90, lon: 180 })).toBe(true)
+  })
+})
+
+describe('arrivalBaseline', () => {
+  const DEPOT = { lat: 49.3015165, lon: 7.3695327 }
+  const localIso = (date: string, time: string) =>
+    new Date(`${date}T${time}:00`).toISOString()
+
+  it('rechnet eine geplante Tour ab Datum und geplanter Abfahrt', () => {
+    const twoDaysBefore = Date.parse('2026-09-03T07:00:00.000Z')
+    const baseline = arrivalBaseline(
+      DEPOT,
+      { date: '2026-09-05', plannedStart: '06:30', startedAt: null },
+      twoDaysBefore
+    )
+    expect(baseline.origin).toBe(DEPOT)
+    expect(baseline.startedAt).toBe(localIso('2026-09-05', '06:30'))
+  })
+
+  // Regression: am Tourtag um 10:48 stand an einer geplanten Tour
+  // "Ankunft ca. 06:38".
+  it('rechnet eine geplante Tour nie frueher als jetzt', () => {
+    const lateMorning = Date.parse(localIso('2026-09-05', '10:48'))
+    const baseline = arrivalBaseline(
+      DEPOT,
+      { date: '2026-09-05', plannedStart: '06:30', startedAt: null },
+      lateMorning
+    )
+    expect(baseline.startedAt).toBe(new Date(lateMorning).toISOString())
+  })
+
+  it('rechnet eine laufende Tour ab dem zuletzt erledigten Stopp', () => {
+    const now = Date.parse('2026-09-05T07:00:00.000Z')
+    const done = {
+      id: 1,
+      lat: 49.300633,
+      lon: 7.3663013,
+      status: 'done',
+      completedAt: '2026-09-05T06:40:00.000Z',
+    }
+    const baseline = arrivalBaseline(
+      DEPOT,
+      {
+        date: '2026-09-05',
+        startedAt: '2026-09-05T04:30:00.000Z',
+        stops: [done, { id: 2, lat: 49.32, lon: 7.34, status: 'open' }],
+      },
+      now
+    )
+    expect(baseline.origin).toBe(done)
+    expect(baseline.startedAt).toBe('2026-09-05T07:00:00.000Z')
+  })
+
+  it('zieht eine juengere Fahrerposition dem letzten Stopp vor', () => {
+    const now = Date.parse('2026-09-05T07:00:00.000Z')
+    const lastPosition = {
+      lat: 49.31,
+      lon: 7.35,
+      at: '2026-09-05T06:50:00.000Z',
+    }
+    const baseline = arrivalBaseline(
+      DEPOT,
+      {
+        date: '2026-09-05',
+        startedAt: '2026-09-05T04:30:00.000Z',
+        lastPosition,
+        stops: [
+          {
+            id: 1,
+            lat: 49.300633,
+            lon: 7.3663013,
+            status: 'done',
+            completedAt: '2026-09-05T06:40:00.000Z',
+          },
+        ],
+      },
+      now
+    )
+    expect(baseline.origin).toBe(lastPosition)
+  })
+})
 
 describe('calculateHaversineDistance', () => {
   it('misst Kirrberg -> Homburg Mitte auf etwa 3,8 km', () => {
