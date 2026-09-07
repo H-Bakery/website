@@ -277,8 +277,11 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   stand „Ankunft ca. 06:34" – Abfahrt plus vier Minuten Fahrt –, und ein danach angelegter Stopp
   mit 08:00–09:00 hieß „Stopp 2, 06:42". `timeWindow` wurde nur als String durchgereicht. Seit dem
   07.09.2026 liest `parseTimeWindow()` im Core das Fenster („09:00-09:30", „9:00 – 9:30",
-  „ab 09:00", „bis 09:30"; Freitext wie „vormittags" bleibt erlaubt und wirkungslos), und
-  `estimateArrivalDetails()` rechnet je Stopp `ankunft = max(eta, Fensterbeginn)`. Die Wartezeit
+  „08.00-09.00", „ab 09:00", „bis 09:30"; Freitext wie „vormittags" bleibt erlaubt und wirkungslos).
+  Eine **einzelne Uhrzeit zählt nur mit Präfix**: `ab`/`nicht vor`/`frühestens` ergeben einen Beginn,
+  `bis`/`spätestens`/`vor` ein Ende, „09:00 Uhr" oder „ca. 12:30" bleiben Freitext – sonst würde
+  „spätestens 09:30" als Beginn gelesen und der Fahrer wartete bis 09:30. Danach rechnet
+  `estimateArrivalDetails()` je Stopp `ankunft = max(eta, Fensterbeginn)`. Die Wartezeit
   steht als `waitSeconds` am Stopp und wandert in die Folge-ETAs; liegt die Ankunft nach dem
   Fensterende, ist `missesTimeWindow` gesetzt und die Stoppkarte sagt „Zeitfenster … voraussichtlich
   nicht mehr einhaltbar". „Route berechnen" respektiert die Fenster ebenfalls: sobald ein offener

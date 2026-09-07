@@ -170,9 +170,19 @@ function point(stop) {
   return { lat: Number(stop.lat), lon: Number(stop.lon) }
 }
 
+/** Praefixe, mit denen eine einzelne Uhrzeit als Fensterbeginn bzw. -ende gilt. */
+const SINGLE_TIME_START = /^(ab|nicht vor|fr(ü|ue)hestens)\b/i
+const SINGLE_TIME_END = /^(bis|sp(ä|ae)testens|vor)\b/i
+
 /**
  * Liest das Zeitfenster eines Stopps: "09:00-09:30", "9:00 – 9:30",
- * "ab 09:00" (nur Beginn), "bis 09:30" (nur Ende).
+ * "08.00-09.00", "ab 09:00" (nur Beginn), "bis 09:30" (nur Ende).
+ *
+ * Eine einzelne Uhrzeit zaehlt nur mit erkennbarem Praefix: "ab", "nicht vor",
+ * "fruehestens" ergeben einen Beginn, "bis", "spaetestens", "vor" ein Ende.
+ * Ohne Praefix ("09:00 Uhr", "ca. 12:30") bleibt sie Freitext - sonst wuerde
+ * "spaetestens 09:30" als Beginn gelesen und die ETA-Kette wartete bis 09:30,
+ * das Gegenteil der Absicht.
  *
  * Rueckgabe `{ start, end }` als "HH:MM" oder `null` je Grenze; `null`
  * insgesamt, wenn kein Fenster lesbar ist ("vormittags") oder das Ende vor
@@ -185,7 +195,8 @@ function parseTimeWindow(value) {
   if (!text) return null
 
   const times = []
-  const pattern = /(\d{1,2}):(\d{2})/g
+  // "HH:MM" oder deutsch "HH.MM"; ein Datum wie "19.09.2026" ist keine Uhrzeit.
+  const pattern = /(?<![\d.])(\d{1,2})[:.](\d{2})(?![\d.])/g
   let match
   while ((match = pattern.exec(text)) !== null && times.length < 2) {
     const clock = `${match[1].padStart(2, '0')}:${match[2]}`
@@ -198,8 +209,9 @@ function parseTimeWindow(value) {
     if (times[1] < times[0]) return null
     return { start: times[0], end: times[1] }
   }
-  if (/^bis\b/i.test(text)) return { start: null, end: times[0] }
-  return { start: times[0], end: null }
+  if (SINGLE_TIME_START.test(text)) return { start: times[0], end: null }
+  if (SINGLE_TIME_END.test(text)) return { start: null, end: times[0] }
+  return null
 }
 
 /**

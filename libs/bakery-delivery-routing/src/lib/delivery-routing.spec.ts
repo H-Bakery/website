@@ -326,6 +326,27 @@ describe('parseTimeWindow', () => {
     expect(parseTimeWindow('bis 09:30')).toEqual({ start: null, end: '09:30' })
   })
 
+  it('deutet eine einzelne Uhrzeit nur mit erkennbarem Praefix', () => {
+    expect(parseTimeWindow('spätestens 09:30')).toEqual({
+      start: null,
+      end: '09:30',
+    })
+    expect(parseTimeWindow('nicht vor 10:00')).toEqual({
+      start: '10:00',
+      end: null,
+    })
+    expect(parseTimeWindow('09:00 Uhr')).toBeNull()
+    expect(parseTimeWindow('ca. 12:30')).toBeNull()
+  })
+
+  it('liest die deutsche Punkt-Schreibweise, aber kein Datum', () => {
+    expect(parseTimeWindow('08.00-09.00')).toEqual({
+      start: '08:00',
+      end: '09:00',
+    })
+    expect(parseTimeWindow('19.09.2026')).toBeNull()
+  })
+
   it('laesst Freitext und Unsinn ohne Wirkung', () => {
     expect(parseTimeWindow('vormittags')).toBeNull()
     expect(parseTimeWindow('')).toBeNull()

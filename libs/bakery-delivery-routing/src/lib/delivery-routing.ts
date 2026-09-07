@@ -134,9 +134,16 @@ export interface TimeWindow {
   end: string | null
 }
 
+/** Praefixe, mit denen eine einzelne Uhrzeit als Fensterbeginn bzw. -ende gilt. */
+const SINGLE_TIME_START = /^(ab|nicht vor|fr(ü|ue)hestens)\b/i
+const SINGLE_TIME_END = /^(bis|sp(ä|ae)testens|vor)\b/i
+
 /**
  * Liest das Zeitfenster eines Stopps: "09:00-09:30", "9:00 – 9:30",
- * "ab 09:00" (nur Beginn), "bis 09:30" (nur Ende). `null`, wenn kein Fenster
+ * "08.00-09.00", "ab 09:00" (nur Beginn), "bis 09:30" (nur Ende). Eine
+ * einzelne Uhrzeit zaehlt nur mit erkennbarem Praefix ("ab", "nicht vor",
+ * "fruehestens" → Beginn; "bis", "spaetestens", "vor" → Ende), ohne Praefix
+ * ("09:00 Uhr", "ca. 12:30") bleibt sie Freitext. `null`, wenn kein Fenster
  * lesbar ist ("vormittags") oder das Ende vor dem Beginn liegt - Freitext
  * bleibt erlaubt und wirkt dann nur nicht auf die Ankunftszeiten.
  * Identisch mit `parseTimeWindow()` in `delivery-tours.core.js`.
@@ -147,7 +154,8 @@ export function parseTimeWindow(value: unknown): TimeWindow | null {
   if (!text) return null
 
   const times: string[] = []
-  const pattern = /(\d{1,2}):(\d{2})/g
+  // "HH:MM" oder deutsch "HH.MM"; ein Datum wie "19.09.2026" ist keine Uhrzeit.
+  const pattern = /(?<![\d.])(\d{1,2})[:.](\d{2})(?![\d.])/g
   let match: RegExpExecArray | null
   while ((match = pattern.exec(text)) !== null && times.length < 2) {
     const clock = `${match[1].padStart(2, '0')}:${match[2]}`
@@ -160,8 +168,9 @@ export function parseTimeWindow(value: unknown): TimeWindow | null {
     if (times[1] < times[0]) return null
     return { start: times[0], end: times[1] }
   }
-  if (/^bis\b/i.test(text)) return { start: null, end: times[0] }
-  return { start: times[0], end: null }
+  if (SINGLE_TIME_START.test(text)) return { start: times[0], end: null }
+  if (SINGLE_TIME_END.test(text)) return { start: null, end: times[0] }
+  return null
 }
 
 /** Fensterbeginn und -ende als Zeitstempel (ms) am Tag `date`. */

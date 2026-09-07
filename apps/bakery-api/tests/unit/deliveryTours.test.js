@@ -255,6 +255,42 @@ describe('parseTimeWindow / timeWindowBounds', () => {
     })
   })
 
+  test('deutet eine einzelne Uhrzeit nur mit erkennbarem Praefix', () => {
+    // "spaetestens" ist ein Ende - als Beginn gelesen wartete die ETA-Kette
+    // bis 09:30 und schoebe alle Folge-Stopps.
+    expect(core.parseTimeWindow('spätestens 09:30')).toEqual({
+      start: null,
+      end: '09:30',
+    })
+    expect(core.parseTimeWindow('vor 11:00')).toEqual({
+      start: null,
+      end: '11:00',
+    })
+    expect(core.parseTimeWindow('nicht vor 10:00')).toEqual({
+      start: '10:00',
+      end: null,
+    })
+    expect(core.parseTimeWindow('frühestens 8:15')).toEqual({
+      start: '08:15',
+      end: null,
+    })
+    // Ohne Praefix bleibt die Uhrzeit Freitext
+    expect(core.parseTimeWindow('09:00 Uhr')).toBeNull()
+    expect(core.parseTimeWindow('ca. 12:30')).toBeNull()
+  })
+
+  test('liest die deutsche Punkt-Schreibweise, aber kein Datum', () => {
+    expect(core.parseTimeWindow('08.00-09.00')).toEqual({
+      start: '08:00',
+      end: '09:00',
+    })
+    expect(core.parseTimeWindow('ab 8.30')).toEqual({
+      start: '08:30',
+      end: null,
+    })
+    expect(core.parseTimeWindow('19.09.2026')).toBeNull()
+  })
+
   test('laesst Freitext, leere Werte und Unsinn ohne Wirkung', () => {
     expect(core.parseTimeWindow('vormittags')).toBeNull()
     expect(core.parseTimeWindow('')).toBeNull()
