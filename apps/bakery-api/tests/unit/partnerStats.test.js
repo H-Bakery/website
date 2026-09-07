@@ -16,8 +16,14 @@ const {
   VISIT_TYPE_LABELS,
   WEEKDAY_LABELS,
   WEEKDAY_SHORT,
+  MAX_ITEM_QTY,
+  MAX_UNIT_PRICE,
   businessDateOf,
   weekdayOf,
+  isBusinessDate,
+  validateVisitItems,
+  snapshotLookup,
+  csvCell,
   sortVisits,
   groupByBusinessDate,
   computeDay,
@@ -184,6 +190,439 @@ describe('weekdayOf', () => {
 })
 
 // --- Sortierung und Gruppierung --------------------------------------------
+
+describe('isBusinessDate', () => {
+  it('akzeptiert ein kalendarisch gültiges Datum', () => {
+    expect(isBusinessDate('2026-08-25')).toBe(true)
+    expect(isBusinessDate('2024-02-29')).toBe(true)
+    expect(isBusinessDate('2026-12-31')).toBe(true)
+  })
+
+  it('lehnt Tage ab, die es im Kalender nicht gibt', () => {
+    expect(isBusinessDate('2026-02-30')).toBe(false)
+    expect(isBusinessDate('2026-02-29')).toBe(false)
+    expect(isBusinessDate('2026-04-31')).toBe(false)
+    expect(isBusinessDate('2026-13-01')).toBe(false)
+    expect(isBusinessDate('2026-00-10')).toBe(false)
+  })
+
+  it('verlangt genau das Format JJJJ-MM-TT', () => {
+    expect(isBusinessDate('2026-8-5')).toBe(false)
+    expect(isBusinessDate('25.08.2026')).toBe(false)
+    expect(isBusinessDate('2026-08-25T07:00')).toBe(false)
+    expect(isBusinessDate(20260825)).toBe(false)
+    expect(isBusinessDate(null)).toBe(false)
+    expect(isBusinessDate(undefined)).toBe(false)
+  })
+})
+
+// --- Besuchspositionen prüfen ------------------------------------------------
+
+describe('validateVisitItems', () => {
+  /** Synthetischer Katalog in der HQ-Form (`id`, `numeric_id`, `name`, `price`). */
+  const CATALOGUE = [
+    { id: 'bauernbrot', numeric_id: 1, name: 'Bauernbrot', price: 3.5 },
+    {
+      id: 'kaiserbroetchen',
+      numeric_id: 2,
+      name: 'Kaiserbrötchen',
+      price: 0.6,
+    },
+  ]
+  const lookup = (item) =>
+    CATALOGUE.find(
+      (p) =>
+        p.id === item.productSlug || p.numeric_id === Number(item.productId)
+    ) || null
+
+  const single = (fields, useLookup = true) =>
+    validateVisitItems(
+      [{ productSlug: 'bauernbrot', ...fields }],
+      useLookup ? lookup : undefined
+    )
+
+  it('nimmt eine saubere Position an und liefert sie normalisiert zurück', () => {
+    const result = validateVisitItems(
+      [{ productSlug: 'bauernbrot', countedQty: 3, deliveredQty: 10 }],
+      lookup
+    )
+    expect(result).toEqual({
+      ok: true,
+      items: [
+        {
+          productId: 1,
+          productSlug: 'bauernbrot',
+          productName: 'Bauernbrot',
+          unitPrice: 3.5,
+          countedQty: 3,
+          deliveredQty: 10,
+        },
+      ],
+    })
+  })
+
+  it('behandelt fehlende Positionen als leere Liste', () => {
+    expect(validateVisitItems(undefined, lookup)).toEqual({
+      ok: true,
+      items: [],
+    })
+    expect(validateVisitItems(null, lookup)).toEqual({ ok: true, items: [] })
+    expect(validateVisitItems([], lookup)).toEqual({ ok: true, items: [] })
+  })
+
+  it('lehnt alles ab, was keine Liste ist', () => {
+    const result = validateVisitItems({ productSlug: 'bauernbrot' }, lookup)
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('INVALID_ITEMS')
+    expect(result.message).toMatch(/Liste von Positionen/)
+  })
+
+  it('lehnt eine Position ab, die kein Objekt ist', () => {
+    expect(validateVisitItems(['bauernbrot'], lookup).ok).toBe(false)
+    expect(validateVisitItems([null], lookup).ok).toBe(false)
+    expect(validateVisitItems([[]], lookup).ok).toBe(false)
+  })
+
+  describe('countedQty - null heißt "nicht gezählt", 0 heißt "Schrank war leer"', () => {
+    it('hält null, undefined und den leeren String als "nicht gezählt" fest', () => {
+      for (const counted of [null, undefined, '']) {
+        const result = single({ countedQty: counted, deliveredQty: 5 })
+        expect(result.ok).toBe(true)
+        expect(result.items[0].countedQty).toBeNull()
+      }
+    })
+
+    it('hält 0 als gezählt fest - das ist etwas anderes als null', () => {
+      const result = single({ countedQty: 0, deliveredQty: 5 })
+      expect(result.items[0].countedQty).toBe(0)
+    })
+
+    it('lehnt einen nicht-numerischen Rest ab, statt ihn zu 0 zu machen', () => {
+      const result = single({ countedQty: 'abc', deliveredQty: 5 })
+      expect(result.ok).toBe(false)
+      expect(result.message).toMatch(/Position 1 \(bauernbrot\)/)
+      expect(result.message).toMatch(/Rest/)
+      expect(result.message).toMatch(/leer = nicht gezählt/)
+    })
+
+    it('lehnt Booleans, Objekte und Dezimalzahlen als Rest ab', () => {
+      expect(single({ countedQty: true }).ok).toBe(false)
+      expect(single({ countedQty: false }).ok).toBe(false)
+      expect(single({ countedQty: {} }).ok).toBe(false)
+      expect(single({ countedQty: 1.5 }).ok).toBe(false)
+      expect(single({ countedQty: '1.5' }).ok).toBe(false)
+      expect(single({ countedQty: NaN }).ok).toBe(false)
+      expect(single({ countedQty: Infinity }).ok).toBe(false)
+    })
+
+    it('nimmt einen Ziffern-String als Rest an', () => {
+      const result = single({ countedQty: '7' })
+      expect(result.ok).toBe(true)
+      expect(result.items[0].countedQty).toBe(7)
+    })
+
+    it('begrenzt den Rest auf 0 bis MAX_ITEM_QTY', () => {
+      expect(MAX_ITEM_QTY).toBe(10000)
+      expect(single({ countedQty: -1 }).ok).toBe(false)
+      expect(single({ countedQty: MAX_ITEM_QTY + 1 }).ok).toBe(false)
+      expect(single({ countedQty: 99999999 }).ok).toBe(false)
+      expect(single({ countedQty: MAX_ITEM_QTY }).ok).toBe(true)
+    })
+  })
+
+  describe('deliveredQty', () => {
+    it('fehlt die Lieferung, sind es 0 Stück', () => {
+      for (const delivered of [undefined, null, '']) {
+        const result = single({ countedQty: 2, deliveredQty: delivered })
+        expect(result.ok).toBe(true)
+        expect(result.items[0].deliveredQty).toBe(0)
+      }
+    })
+
+    it('lehnt negative, nicht ganzzahlige und zu große Mengen ab', () => {
+      expect(single({ deliveredQty: -3 }).ok).toBe(false)
+      expect(single({ deliveredQty: 2.5 }).ok).toBe(false)
+      expect(single({ deliveredQty: 'zehn' }).ok).toBe(false)
+      expect(single({ deliveredQty: MAX_ITEM_QTY + 1 }).ok).toBe(false)
+      const result = single({ deliveredQty: -3 })
+      expect(result.message).toMatch(/gelieferte Menge/)
+    })
+  })
+
+  describe('unitPrice - Preis-Snapshot', () => {
+    it('übernimmt den Katalogpreis, wenn der Request keinen nennt', () => {
+      for (const price of [undefined, null, '']) {
+        const result = single({ deliveredQty: 1, unitPrice: price })
+        expect(result.items[0].unitPrice).toBe(3.5)
+      }
+    })
+
+    it('behält einen gültigen Preis aus dem Request, auf Cent gerundet', () => {
+      expect(
+        single({ deliveredQty: 1, unitPrice: 3.2 }).items[0].unitPrice
+      ).toBe(3.2)
+      expect(
+        single({ deliveredQty: 1, unitPrice: 3.199 }).items[0].unitPrice
+      ).toBe(3.2)
+      expect(
+        single({ deliveredQty: 1, unitPrice: '2,75' }).items[0].unitPrice
+      ).toBe(2.75)
+      expect(single({ deliveredQty: 1, unitPrice: 0 }).items[0].unitPrice).toBe(
+        0
+      )
+    })
+
+    it('lehnt negative, unsinnige und zu hohe Preise ab', () => {
+      expect(MAX_UNIT_PRICE).toBe(10000)
+      const negative = single({ deliveredQty: 1, unitPrice: -2 })
+      expect(negative.ok).toBe(false)
+      expect(negative.message).toMatch(/Einzelpreis/)
+      expect(single({ deliveredQty: 1, unitPrice: 'gratis' }).ok).toBe(false)
+      expect(
+        single({ deliveredQty: 1, unitPrice: MAX_UNIT_PRICE + 1 }).ok
+      ).toBe(false)
+    })
+  })
+
+  describe('Produkt', () => {
+    it('lehnt ein Produkt ab, das nicht im Katalog steht', () => {
+      const result = validateVisitItems(
+        [{ productSlug: 'gibt-es-nicht', deliveredQty: 5 }],
+        lookup
+      )
+      expect(result.ok).toBe(false)
+      expect(result.message).toMatch(/Position 1 \(gibt-es-nicht\)/)
+      expect(result.message).toMatch(/Unbekanntes Produkt/)
+    })
+
+    it('findet das Produkt auch über die numerische Kennung', () => {
+      const result = validateVisitItems(
+        [{ productId: 2, deliveredQty: 5 }],
+        lookup
+      )
+      expect(result.ok).toBe(true)
+      expect(result.items[0]).toMatchObject({
+        productId: 2,
+        productSlug: 'kaiserbroetchen',
+        productName: 'Kaiserbrötchen',
+        unitPrice: 0.6,
+      })
+    })
+
+    it('nimmt Name und Kennungen aus dem Katalog, nicht aus dem Request', () => {
+      const result = validateVisitItems(
+        [
+          {
+            productSlug: 'bauernbrot',
+            productId: 999,
+            productName: '=CMD()',
+            deliveredQty: 1,
+          },
+        ],
+        lookup
+      )
+      expect(result.items[0]).toMatchObject({
+        productId: 1,
+        productName: 'Bauernbrot',
+      })
+    })
+
+    it('verlangt ein Produkt je Position', () => {
+      expect(validateVisitItems([{ deliveredQty: 5 }], lookup).ok).toBe(false)
+      expect(
+        validateVisitItems([{ productSlug: '   ', deliveredQty: 5 }], lookup).ok
+      ).toBe(false)
+      expect(validateVisitItems([{ deliveredQty: 5 }]).ok).toBe(false)
+    })
+
+    it('lehnt ein doppelt aufgeführtes Produkt ab', () => {
+      const result = validateVisitItems(
+        [
+          { productSlug: 'bauernbrot', countedQty: 2, deliveredQty: 5 },
+          { productSlug: 'bauernbrot', deliveredQty: 1 },
+        ],
+        lookup
+      )
+      expect(result.ok).toBe(false)
+      expect(result.message).toMatch(/Position 2 \(bauernbrot\)/)
+      expect(result.message).toMatch(/doppelt/)
+    })
+
+    it('prüft ohne Katalog nur die Zahlen und übernimmt die Angaben des Requests', () => {
+      const result = validateVisitItems([
+        {
+          productSlug: ' irgendwas ',
+          productId: '42',
+          productName: 'Irgendwas',
+          unitPrice: 1.25,
+          countedQty: '3',
+          deliveredQty: 4,
+        },
+      ])
+      expect(result).toEqual({
+        ok: true,
+        items: [
+          {
+            productId: 42,
+            productSlug: 'irgendwas',
+            productName: 'Irgendwas',
+            unitPrice: 1.25,
+            countedQty: 3,
+            deliveredQty: 4,
+          },
+        ],
+      })
+      expect(single({ countedQty: 'abc' }, false).ok).toBe(false)
+      expect(single({ unitPrice: -1, deliveredQty: 1 }, false).ok).toBe(false)
+    })
+  })
+
+  describe('snapshotLookup - Korrektur eines Besuchs mit ausgelistetem Produkt', () => {
+    /** Gespeicherter Besuch: "landbrot" stand damals im Katalog, heute nicht mehr. */
+    const STORED_ITEMS = [
+      {
+        id: 1,
+        productId: 7,
+        productSlug: 'landbrot',
+        productName: 'Landbrot',
+        unitPrice: 2.8,
+        countedQty: 0,
+        deliveredQty: 12,
+      },
+      {
+        id: 2,
+        productId: 1,
+        productSlug: 'bauernbrot',
+        productName: 'Bauernbrot (alt)',
+        unitPrice: 3.2,
+        countedQty: null,
+        deliveredQty: 4,
+      },
+    ]
+    const snapshot = snapshotLookup(STORED_ITEMS)
+    const withFallback = (item) => lookup(item) || snapshot(item)
+
+    it('liefert den Snapshot in Katalogform - über Slug oder numerische Kennung', () => {
+      expect(snapshot({ productSlug: 'landbrot' })).toEqual({
+        id: 'landbrot',
+        numeric_id: 7,
+        name: 'Landbrot',
+        price: 2.8,
+      })
+      expect(snapshot({ productId: '7' })).toMatchObject({ id: 'landbrot' })
+      expect(snapshot({ productSlug: 'gibt-es-nicht' })).toBeNull()
+      expect(snapshot({ productId: 0 })).toBeNull()
+      expect(snapshot(null)).toBeNull()
+      expect(snapshotLookup(undefined)({ productSlug: 'landbrot' })).toBeNull()
+    })
+
+    it('lässt die Korrektur durch, wie sie die Erfassungsmaske schickt', () => {
+      const result = validateVisitItems(
+        [
+          {
+            productId: 7,
+            productSlug: 'landbrot',
+            productName: 'Landbrot',
+            unitPrice: 2.8,
+            countedQty: 3,
+            deliveredQty: 0,
+          },
+          { productSlug: 'bauernbrot', countedQty: 1, deliveredQty: 0 },
+        ],
+        withFallback
+      )
+      expect(result).toEqual({
+        ok: true,
+        items: [
+          {
+            productId: 7,
+            productSlug: 'landbrot',
+            productName: 'Landbrot',
+            unitPrice: 2.8,
+            countedQty: 3,
+            deliveredQty: 0,
+          },
+          {
+            // Katalog gewinnt vor dem Snapshot: Name und Preis aus HQ,
+            // nicht "(alt)" zu 3,20.
+            productId: 1,
+            productSlug: 'bauernbrot',
+            productName: 'Bauernbrot',
+            unitPrice: 3.5,
+            countedQty: 1,
+            deliveredQty: 0,
+          },
+        ],
+      })
+    })
+
+    it('nimmt den Snapshot-Preis, wenn der Request keinen mitschickt', () => {
+      const result = validateVisitItems(
+        [{ productSlug: 'landbrot', countedQty: 2 }],
+        withFallback
+      )
+      expect(result.ok).toBe(true)
+      expect(result.items[0]).toMatchObject({
+        productName: 'Landbrot',
+        unitPrice: 2.8,
+      })
+    })
+
+    it('lehnt ein Produkt weiterhin ab, das weder im Katalog noch im Besuch steht', () => {
+      const result = validateVisitItems(
+        [{ productSlug: 'neu-und-unbekannt', deliveredQty: 5 }],
+        withFallback
+      )
+      expect(result.ok).toBe(false)
+      expect(result.message).toMatch(/Position 1 \(neu-und-unbekannt\)/)
+      expect(result.message).toMatch(/Unbekanntes Produkt/)
+    })
+  })
+
+  it('verwirft Zeilen ohne jede Information, behält aber "0 gezählt"', () => {
+    const result = validateVisitItems(
+      [
+        { productSlug: 'bauernbrot' },
+        { productSlug: 'kaiserbroetchen', countedQty: 0, deliveredQty: 0 },
+      ],
+      lookup
+    )
+    expect(result.ok).toBe(true)
+    expect(result.items.map((item) => item.productSlug)).toEqual([
+      'kaiserbroetchen',
+    ])
+  })
+
+  it('bricht bei der ersten ungültigen Position ab und nennt ihre Nummer', () => {
+    const result = validateVisitItems(
+      [
+        { productSlug: 'bauernbrot', deliveredQty: 5 },
+        { productSlug: 'kaiserbroetchen', countedQty: 'x' },
+      ],
+      lookup
+    )
+    expect(result.ok).toBe(false)
+    expect(result.message).toMatch(/^Position 2 \(kaiserbroetchen\)/)
+  })
+
+  it('liefert Positionen, die computeDay unverändert verrechnet', () => {
+    const initial = validateVisitItems(
+      [{ productSlug: 'bauernbrot', countedQty: 0, deliveredQty: 20 }],
+      lookup
+    ).items
+    const pickup = validateVisitItems(
+      [{ productSlug: 'bauernbrot', countedQty: 8 }],
+      lookup
+    ).items
+    const day = computeDay([
+      visit('2026-08-25', 'initial', 1, initial),
+      visit('2026-08-25', 'pickup', 2, pickup),
+    ])
+    const brot = day.products.get('bauernbrot')
+    expect(brot.soldQty).toBe(12)
+    expect(brot.revenueCents).toBe(4200)
+  })
+})
 
 describe('sortVisits', () => {
   it('ordnet nach Geschäftstag, dann nach sequence', () => {
@@ -916,11 +1355,73 @@ describe('statsToCsv', () => {
     expect(lines).toContain('Abrechnungsmodell;Festkauf')
   })
 
+  it('maskiert Zellen, die Excel als Formel ausführen würde', () => {
+    // Partner- und Produktname kommen aus Eingaben - eine Zelle wie `=CMD()`
+    // darf in Excel/LibreOffice nicht als Formel laufen (CSV-Injection).
+    const evil = {
+      ...BROT,
+      productName: '=HYPERLINK("http://x.example";"Klick")',
+    }
+    const csv = statsToCsv(
+      computeStats([
+        visit('2026-08-25', 'initial', 1, [item(evil, 0, 10)]),
+        visit('2026-08-25', 'pickup', 2, [item(evil, 4, 0)]),
+      ]),
+      { name: '@SUM(A1:A9)', settlementModel: 'commission' }
+    )
+    const lines = csv.split('\r\n')
+    expect(lines).toContain('Partner;"\'@SUM(A1:A9)"')
+    expect(lines).toContain(
+      '"\'=HYPERLINK(""http://x.example"";""Klick"")";3,50;10;6;4;60,0%;21,00;0'
+    )
+    expect(lines.some((line) => /^=|;=/.test(line))).toBe(false)
+  })
+
   it('exportiert einen leeren Zeitraum ohne Quote statt mit 0 %', () => {
     const lines = statsToCsv(computeStats([]), PARTNER).split('\r\n')
     expect(lines).toContain('Zeitraum; bis ')
     expect(lines).toContain('Abverkaufsquote;')
     expect(lines).toContain('Umsatz;0,00')
     expect(lines).toContain('Retourenwert;0,00')
+  })
+})
+
+describe('csvCell', () => {
+  it('lässt harmlose Zellen unverändert', () => {
+    expect(csvCell('Bauernbrot')).toBe('Bauernbrot')
+    expect(csvCell(12)).toBe('12')
+    expect(csvCell('3,50')).toBe('3,50')
+    expect(csvCell('70,0%')).toBe('70,0%')
+    expect(csvCell('2026-08-25')).toBe('2026-08-25')
+    expect(csvCell(null)).toBe('')
+    expect(csvCell(undefined)).toBe('')
+  })
+
+  it('fasst Semikolon, Anführungszeichen und Zeilenumbrüche ein', () => {
+    expect(csvCell('a;b')).toBe('"a;b"')
+    expect(csvCell('sag "hallo"')).toBe('"sag ""hallo"""')
+    expect(csvCell('zwei\nZeilen')).toBe('"zwei\nZeilen"')
+    expect(csvCell('alt\rMac')).toBe('"alt\rMac"')
+  })
+
+  it('setzt vor =, +, -, @, Tab und CR ein Apostroph und fasst die Zelle ein', () => {
+    expect(csvCell('=1+1')).toBe('"\'=1+1"')
+    expect(csvCell('+49 6841 123')).toBe('"\'+49 6841 123"')
+    expect(csvCell("-2+3+cmd|' /C calc'!A0")).toBe(
+      "\"'-2+3+cmd|' /C calc'!A0\""
+    )
+    expect(csvCell('@SUM(A1)')).toBe('"\'@SUM(A1)"')
+    expect(csvCell('\t=1')).toBe('"\'\t=1"')
+    expect(csvCell('\r=1')).toBe('"\'\r=1"')
+  })
+
+  it('lässt schlichte negative Zahlen Zahlen', () => {
+    expect(csvCell('-5')).toBe('-5')
+    expect(csvCell('-3,50')).toBe('-3,50')
+    expect(csvCell(-7)).toBe('-7')
+  })
+
+  it('maskiert einen Formelversuch auch dann, wenn er wie ein Datum aussieht', () => {
+    expect(csvCell('=DATE(2026;8;25)')).toBe('"\'=DATE(2026;8;25)"')
   })
 })

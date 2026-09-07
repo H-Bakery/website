@@ -427,6 +427,52 @@ describe('normalizePickupPointInput', () => {
       core.normalizePickupPointInput({ name: '' }, KINDERGARTEN).message
     ).toBe('Der Name der Lieferstelle ist erforderlich.')
   })
+
+  test('prueft manuelle Koordinaten wie bei den Stopps', () => {
+    // Gueltig: uebernommen als manuell gesetzt, als Zahl.
+    const ok = core.normalizePickupPointInput(
+      { lat: '49.25', lon: 7.36 },
+      KINDERGARTEN
+    )
+    expect(ok.error).toBeUndefined()
+    expect(ok.pickupPoint).toMatchObject({
+      lat: 49.25,
+      lon: 7.36,
+      geocodeSource: 'manual',
+      geocodePrecision: null,
+    })
+
+    // Ausserhalb des Wertebereichs, (0, 0) und ein halbes Paar sind Fehler -
+    // nicht stillschweigend null, sonst bliebe 999 bis zum Neustart im Store.
+    for (const body of [
+      { lat: 999, lon: 7 },
+      { lat: -91, lon: 7 },
+      { lat: 49, lon: 181 },
+      { lat: 0, lon: 0 },
+      { lat: 49.2 },
+      { lat: 'abc', lon: 7 },
+    ]) {
+      const result = core.normalizePickupPointInput(body, KINDERGARTEN)
+      expect(result.pickupPoint).toBeUndefined()
+      expect(result.status).toBe(400)
+      expect(['Invalid coordinates', 'Coordinates out of range']).toContain(
+        result.error
+      )
+      expect(typeof result.message).toBe('string')
+    }
+
+    // Beide leer loescht die Koordinaten und stoesst eine neue Suche an.
+    const cleared = core.normalizePickupPointInput(
+      { lat: null, lon: '' },
+      { ...KINDERGARTEN, lat: 49.2, lon: 7.4, geocodeSource: 'nominatim' }
+    )
+    expect(cleared.error).toBeUndefined()
+    expect(cleared.pickupPoint).toMatchObject({
+      lat: null,
+      lon: null,
+      geocodeSource: null,
+    })
+  })
 })
 
 describe('preordersForStop', () => {

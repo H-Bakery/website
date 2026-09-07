@@ -88,8 +88,82 @@ function isNumber(value) {
   )
 }
 
+/** Breitengrad -90..90, Laengengrad -180..180 - alles andere ist Tippfehler. */
+function isLatitude(value) {
+  return isNumber(value) && Math.abs(Number(value)) <= 90
+}
+
+function isLongitude(value) {
+  return isNumber(value) && Math.abs(Number(value)) <= 180
+}
+
+/**
+ * (0, 0) - "Null Island" im Golf von Guinea - ist das klassische Ergebnis von
+ * `Number(null)` oder einem leeren Formular und nie eine Lieferadresse. Wer
+ * es als Koordinate durchliesse, zoege Karte, Reihenfolge und Kilometer der
+ * Tour in den Atlantik.
+ */
+function isNullIsland(lat, lon) {
+  return Number(lat) === 0 && Number(lon) === 0
+}
+
 function hasCoordinates(stop) {
-  return stop != null && isNumber(stop.lat) && isNumber(stop.lon)
+  return (
+    stop != null &&
+    isLatitude(stop.lat) &&
+    isLongitude(stop.lon) &&
+    !isNullIsland(stop.lat, stop.lon)
+  )
+}
+
+/**
+ * Prueft ein Koordinatenpaar aus einem Request-Body.
+ * Rueckgabe: `{ lat, lon }` als Zahlen oder `{ error, message }`.
+ */
+function validateCoordinates(lat, lon) {
+  if (!isNumber(lat) || !isNumber(lon)) {
+    return {
+      error: 'Invalid coordinates',
+      message: 'Koordinaten müssen als Zahlen (lat und lon) angegeben werden.',
+    }
+  }
+  if (!isLatitude(lat) || !isLongitude(lon)) {
+    return {
+      error: 'Coordinates out of range',
+      message:
+        'Koordinaten außerhalb des gültigen Bereichs: Breite -90 bis 90, Länge -180 bis 180.',
+    }
+  }
+  if (isNullIsland(lat, lon)) {
+    return {
+      error: 'Coordinates out of range',
+      message:
+        'Die Koordinate (0, 0) liegt im Atlantik und ist keine Adresse. Koordinaten weglassen oder auf null setzen, damit die Adresse gesucht wird.',
+    }
+  }
+  return { lat: Number(lat), lon: Number(lon) }
+}
+
+/**
+ * Setzt unbrauchbare Koordinaten eines gespeicherten Punkts auf `null`, damit
+ * die Adresse neu gesucht wird. Gebraucht beim Laden eines Stores aus der Zeit,
+ * als (0, 0) und Werte ausserhalb des Wertebereichs noch durchkamen.
+ * Rueckgabe: true, wenn etwas geaendert wurde.
+ */
+function scrubCoordinates(point) {
+  if (point == null || typeof point !== 'object') return false
+  if (point.lat == null && point.lon == null) return false
+  if (hasCoordinates(point)) return false
+  point.lat = null
+  point.lon = null
+  if ('geocodeSource' in point) point.geocodeSource = null
+  if ('geocodePrecision' in point) point.geocodePrecision = null
+  return true
+}
+
+/** Uhrzeit als "HH:MM" mit 00-23 Stunden und 00-59 Minuten. */
+function isClockTime(value) {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
 }
 
 function point(stop) {
@@ -197,8 +271,22 @@ function estimateArrivals(depot, stops, startedAt, vehicleType) {
  * neun Uhr noch bei 06:41.
  */
 function arrivalBaseline(depot, tour, now) {
-  const plannedStart = `${tour.date}T${tour.plannedStart || '06:30'}:00`
-  if (!tour.startedAt) return { origin: depot, startedAt: plannedStart }
+  const current = now === undefined ? Date.now() : now
+  if (!tour.startedAt) {
+    // Ist die geplante Abfahrt schon vorbei - Tourtag, der Fahrer hat noch
+    // nicht abgehakt -, stuende sonst am ersten Stopp "Ankunft ca. 06:38",
+    // waehrend die Uhr 10:48 zeigt. Frueher als jetzt geht es nicht.
+    let planned = Date.parse(
+      `${tour.date}T${
+        isClockTime(tour.plannedStart) ? tour.plannedStart : '06:30'
+      }:00`
+    )
+    if (!Number.isFinite(planned)) planned = current
+    return {
+      origin: depot,
+      startedAt: new Date(Math.max(planned, current)).toISOString(),
+    }
+  }
 
   let origin = depot
   let at = Date.parse(tour.startedAt)
@@ -222,8 +310,31 @@ function arrivalBaseline(depot, tour, now) {
     }
   }
 
-  const current = now === undefined ? Date.now() : now
   return { origin, startedAt: new Date(Math.max(at, current)).toISOString() }
+}
+
+/**
+ * Neue Reihenfolge fuer "Route berechnen" auf einer laufenden Tour.
+ *
+ * Nur die offenen Stopps werden nach `orderIds` umsortiert, und zwar auf den
+ * Plaetzen, die offene Stopps schon belegen; zugestellte und nicht
+ * angetroffene bleiben, wo sie sind. Sonst rutschte der um sieben Uhr
+ * gelieferte CAP-Markt ans Ende der Liste und hiesse ploetzlich "Stopp 6".
+ * Offene Stopps, die in `orderIds` fehlen (keine Koordinaten), haengen in
+ * ihrer bisherigen Reihenfolge hinter den sortierten. Gibt ein neues Array
+ * zurueck; die Stopp-Objekte selbst bleiben dieselben.
+ */
+function applyOpenStopOrder(stops, orderIds) {
+  const rank = new Map((orderIds || []).map((id, index) => [Number(id), index]))
+  const rankOf = (stop) =>
+    rank.has(Number(stop.id))
+      ? rank.get(Number(stop.id))
+      : Number.MAX_SAFE_INTEGER
+  const open = stops
+    .filter((s) => s.status === 'open')
+    .sort((a, b) => rankOf(a) - rankOf(b))
+  let next = 0
+  return stops.map((s) => (s.status === 'open' ? open[next++] : s))
 }
 
 /** Zaehlt den Stand einer Tour. */
@@ -402,16 +513,20 @@ function normalizeStopInput(body, existing) {
   // Koordinaten duerfen manuell gesetzt werden, wenn die Adresssuche daneben
   // liegt. `null` loescht sie und stoesst eine neue Suche an.
   if (source.lat !== undefined || source.lon !== undefined) {
-    // `isNumber` statt `Number.isFinite(Number(x))`: `null` waere sonst 0 und
-    // ein Loeschen der Koordinaten setzte den Stopp auf den Nullmeridian.
-    if (isNumber(source.lat) && isNumber(source.lon)) {
-      stop.lat = Number(source.lat)
-      stop.lon = Number(source.lon)
-      stop.geocodeSource = 'manual'
-    } else {
+    const blank = (v) => v === undefined || v === null || v === ''
+    if (blank(source.lat) && blank(source.lon)) {
       stop.lat = null
       stop.lon = null
       stop.geocodeSource = null
+    } else {
+      // `validateCoordinates` statt `Number.isFinite(Number(x))`: `null`
+      // waere sonst 0, und ein halbes Paar oder (0, 0) setzte den Stopp auf
+      // den Nullmeridian statt eine Fehlermeldung auszuloesen.
+      const coords = validateCoordinates(source.lat, source.lon)
+      if (coords.error) return coords
+      stop.lat = coords.lat
+      stop.lon = coords.lon
+      stop.geocodeSource = 'manual'
     }
     // Die Genauigkeit gehoert zum Suchtreffer; von Hand gesetzte oder
     // geloeschte Koordinaten haben keine.
@@ -488,6 +603,12 @@ module.exports = {
   formatAddress,
   hasCoordinates,
   isNumber,
+  isLatitude,
+  isLongitude,
+  validateCoordinates,
+  scrubCoordinates,
+  isClockTime,
+  applyOpenStopOrder,
   orderStopsNearestNeighbour,
   estimateLeg,
   estimateTour,

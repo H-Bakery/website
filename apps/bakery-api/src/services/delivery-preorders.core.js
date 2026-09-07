@@ -603,14 +603,22 @@ function normalizePickupPointInput(body, existing) {
     zip !== trimmed(base.zip) ||
     city !== trimmed(base.city)
   if (source.lat !== undefined || source.lon !== undefined) {
-    if (tours.isNumber(source.lat) && tours.isNumber(source.lon)) {
-      pickupPoint.lat = Number(source.lat)
-      pickupPoint.lon = Number(source.lon)
-      pickupPoint.geocodeSource = 'manual'
-    } else {
+    const blank = (v) => v === undefined || v === null || v === ''
+    if (blank(source.lat) && blank(source.lon)) {
       pickupPoint.lat = null
       pickupPoint.lon = null
       pickupPoint.geocodeSource = null
+    } else {
+      // Dieselbe Regel wie bei den Stopps (`validateCoordinates`): ein halbes
+      // Paar, 999 oder (0, 0) ist ein Fehler. Vorher galt `isNumber` allein,
+      // und `hasCoordinates` verwarf den Wert spaeter stillschweigend - bei
+      // einer Sammelstelle ohne Strasse blieb er bis zum naechsten Neustart
+      // im Store.
+      const coords = tours.validateCoordinates(source.lat, source.lon)
+      if (coords.error) return fail(coords.error, coords.message)
+      pickupPoint.lat = coords.lat
+      pickupPoint.lon = coords.lon
+      pickupPoint.geocodeSource = 'manual'
     }
     pickupPoint.geocodePrecision = null
   } else if (addressChanged) {
