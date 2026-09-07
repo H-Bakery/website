@@ -2,7 +2,7 @@
 id: TASK-038
 title: HQ-Reports und Finanzdaten in der Management-App anbinden
 slug: hq-reports-und-finanzdaten-anbinden
-status: todo
+status: done
 priority: 2
 owner: ''
 projects: []
@@ -17,7 +17,7 @@ sprint: ''
 depends_on: []
 due_date: ''
 created: 2026-08-31
-updated: 2026-08-31
+updated: 2026-09-07
 ---
 
 # HQ-Reports und Finanzdaten in der Management-App anbinden
@@ -246,35 +246,72 @@ GET /api/finance/months?from=&to=     Monatsreihe (Einnahmen/Ausgaben/Ergebnis)
 
 ## Akzeptanzkriterien
 
-- [ ] Tagesberichte aus `hq/data/reports/converted` sind in `/admin/reports` sichtbar
-- [ ] Zeitraumfilter und Tagesdetail funktionieren
-- [ ] Tage ohne Bericht werden als Lücke gekennzeichnet, nicht als Umsatz 0
-- [ ] Zahlungsmix rechnet `Unbar` korrekt als Karte
-- [ ] `/admin/finance` zeigt Monatsverlauf und Kostenstruktur aus `finance-summary.json`
-- [ ] Finanz-Endpunkte sind auth- und rollengeschützt
-- [ ] Ausgelieferte Finanzdaten enthalten **keine** IBANs und keine Namen von Privatpersonen
-- [ ] Kein Fixture, Mock oder Snapshot in diesem Repo enthält echte Kontodaten
-- [ ] Fehlendes `hq`-Verzeichnis führt zu geloggtem Hinweis und leerem Ergebnis, nicht zum Absturz
-- [ ] `/admin/analytics/revenue` zeigt entweder echte Zahlen oder gar keine
-- [ ] Einnahmen + Ausgaben + Neutral = Kontoveränderung wird als Test geprüft
-- [ ] Alle Texte auf Deutsch
-- [ ] `npm test` und `npm run lint` laufen durch
+Stand 2026-09-07, geprüft gegen `main` nach den Merges von PR #98 (Kassenberichte) und PR #99
+(Finanzdaten):
+
+- [x] Tagesberichte aus `hq/data/reports/converted` sind in `/admin/reports` sichtbar
+      (`admin/reports/ReportsArchiveClient.tsx`, Loader `src/lib/reports.ts`)
+- [x] Zeitraumfilter und Tagesdetail funktionieren (`admin/reports/[date]`)
+- [x] Tage ohne Bericht werden als Lücke gekennzeichnet, nicht als Umsatz 0
+      (`status: 'no-data'`, Chip „kein Bericht", Schalter „Tage ohne Bericht ausblenden")
+- [x] Zahlungsmix rechnet `Unbar` korrekt als Karte (`reports.core.js`, `PAYMENT_LABELS`)
+- [x] `/admin/finance` zeigt Monatsverlauf und Kostenstruktur aus `finance-summary.json`
+      (`admin/finance/FinanceClient.tsx`)
+- [x] Finanz-Endpunkte sind auth- und rollengeschützt (`/api/finance/*` hinter
+      `requireRole('admin')` aus `src/routes/auth.mock.js`; Login unter `/admin/login`)
+- [x] Ausgelieferte Finanzdaten enthalten **keine** IBANs und keine Namen von Privatpersonen
+      (`finance.core.js` streicht `accounts` und `top_counterparties` komplett, Whitelist-Sanitizer)
+- [x] Kein Fixture, Mock oder Snapshot in diesem Repo enthält echte Kontodaten
+      (`tests/fixtures/finance-summary.synthetic.js`, synthetische Tage in `reports.spec.ts`)
+- [x] Fehlendes `hq`-Verzeichnis führt zu geloggtem Hinweis und leerem Ergebnis, nicht zum Absturz
+      (`{ status: 'no-data', reason }` in Loader und Route)
+- [x] `/admin/analytics/revenue` zeigt entweder echte Zahlen oder gar keine
+      (`analyticsService.getRevenueTrendsWithSource()` liefert `{ data, available }` von
+      `/api/analytics/revenue-trends` aus `reports.mock.js`; das `Math.random()`-Sample ist weg)
+- [x] Einnahmen + Ausgaben + Neutral = Kontoveränderung wird als Test geprüft
+      (`tests/unit/financeCore.test.js`)
+- [x] Alle Texte auf Deutsch
+- [x] `npm test` und `npm run lint` laufen durch - die neuen Suites (`reportsCore`, `financeCore`,
+      `financeRoutes`, `reports.spec`, `finance.spec`, `financeApi.spec`, Client-Specs) sind grün;
+      die sieben vorbestehenden roten Test-Tasks (siehe `/Users/sebastian/develop/bakery/CLAUDE.md`)
+      sind unverändert und gehören nicht zu diesem Task
+
+Phase 4 ist ebenfalls erledigt: `apps/reports` wurde in PR #98 gelöscht, die stale Verweise auf das
+stillgelegte `content/`-Repo sind aus dem Code entfernt.
 
 ## Offene Punkte
 
-- **Kategorien in den Kassenberichten.** `convert_reports.js` verwirft `group_name`,
-  deshalb ist jede Umsatz-nach-Kategorie-Auswertung derzeit leer. Reparatur bedeutet
-  Neukonvertierung aller Tage und Neugenerierung aller Tagesberichte — großer Diff im
-  `hq`-Repo. Eigener Task, vorher abstimmen.
-- **Auslieferungsweg.** Liest die App zur Laufzeit aus dem Dateisystem (wie der
-  Produkt-Loader) oder wird `finance-summary.json` zur Build-Zeit eingebettet? Das
-  Dateisystem ist aktueller, funktioniert aber im statischen Export nicht.
-- **Aktualität.** Die Daten entstehen durch manuelle Skriptläufe im `hq`-Repo. Soll die
-  UI `generated_at` anzeigen, damit klar ist, wie alt der Stand ist?
-- **Historie.** Die Kassendaten reichen weiter zurück als die Bankdaten. Zeiträume, in
-  denen nur eine Quelle existiert, sollten als solche erkennbar sein.
-- **Mehrere Konten.** Momentan wird ein Geschäftskonto ausgewertet. Das Schema trägt
-  mehrere (`accounts` ist ein Array), die UI noch nicht.
+### Stand nach Umsetzung (2026-09-07)
+
+Was von den ursprünglichen Fragen wie entschieden wurde, und was bewusst offen bleibt:
+
+- **Kategorien in den Kassenberichten - weiterhin leer.** `convert_reports.js` verwirft nach wie
+  vor `group_name`; die App zeigt deshalb keinen Umsatz nach Kategorie. Reparatur bleibt ein
+  eigener Task im `hq`-Repo (Neukonvertierung aller Tage), vorher abstimmen.
+- **Auslieferungsweg - Dateisystem zur Laufzeit, mit einer Falle.** Beide Management-Loader
+  (`src/lib/reports.ts`, `src/lib/finance.ts`) lesen `hq` zur Laufzeit wie der Produkt-Loader
+  (`HQ_REPORTS_DIR` / `HQ_FINANCE_DIR`, sonst `<website>/../hq/data/...`). Die Formeln liegen aber
+  in `apps/bakery-api/src/services/{reports,reports-files,finance}.core.js`, und die Loader laden
+  diese Dateien **zur Laufzeit per `require`** aus dem Quellbaum (ein statischer Import über die
+  App-Grenze ist vom Modul-Grenzen-Lint verboten). Wird nur das Build-Artefakt der Management-App
+  deployt (Vercel, ohne `apps/bakery-api/src`), fehlt der Core und die Seiten antworten mit
+  „keine Daten". Ein Deployment braucht entweder den ganzen Monorepo-Checkout oder eine Verlagerung
+  der Cores in eine Lib.
+- **Auth gilt nur für `/api/finance/*`.** `auth.mock.js` bringt dem Mock-Server erstmals ein
+  JWT-Login (admin/admin, überschreibbar mit `MOCK_ADMIN_USER` / `MOCK_ADMIN_PASSWORD`), aber
+  `requireAuth`/`requireRole` sind nur an die Finanz-Routen gehängt. Kassenberichte
+  (`/api/reports/*`, `/api/analytics/*`) und alle älteren Mock-Routen sind weiter offen - für den
+  Mock-Server so beabsichtigt, für die echte API nicht.
+- **`POST /api/auth/refresh` akzeptiert auch ein Access-Token.** Der `AuthContext` speichert das
+  Refresh-Token nie ab und schickt einen leeren String; damit die Sitzung trotzdem verlängert
+  werden kann, gilt ersatzweise ein noch gültiges Access-Token im Bearer-Header. Unauthentifiziert
+  geht nichts, aber die Trennung Access/Refresh ist damit aufgeweicht - beim Umzug auf die echte
+  API nicht übernehmen.
+- **Aktualität.** Entschieden: Dashboard-Kacheln, Berichte und Finanzseite zeigen „Stand: …"
+  (`generated_at` bzw. jüngster Berichtstag).
+- **Historie.** Zeiträume, in denen nur Kassen- oder nur Bankdaten existieren, sind in der UI
+  nicht als solche markiert; der Kassen/Bank-Abgleich aus den Notes ist nicht gebaut.
+- **Mehrere Konten.** Unverändert: ein Konto; `accounts` wird beim Ausliefern ohnehin gestrichen.
 
 ## Notes
 
