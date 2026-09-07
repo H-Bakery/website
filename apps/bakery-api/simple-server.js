@@ -2247,12 +2247,15 @@ function decorateTour(store, tour) {
   // Geplante Tour: ab Depot und geplanter Abfahrt. Laufende Tour: ab dem
   // zuletzt erledigten Stopp bzw. der juengeren Fahrerposition - siehe
   // `arrivalBaseline` im Core.
+  // Zeitfenster zaehlen mit: vor dem Fensterbeginn wird gewartet, die
+  // Wartezeit wandert in die Folge-ETAs, ein verpasstes Fenster wird markiert.
   const baseline = tours.arrivalBaseline(store.depot, tour)
-  const arrivals = tours.estimateArrivals(
+  const arrivals = tours.estimateArrivalDetails(
     baseline.origin,
     tour.stops.filter((s) => s.status === 'open'),
     baseline.startedAt,
-    tour.vehicleType
+    tour.vehicleType,
+    tour.date
   )
 
   return {
@@ -2261,12 +2264,19 @@ function decorateTour(store, tour) {
     driver: store.drivers.find((d) => d.id === tour.driverId) || null,
     progress,
     nextStopId: next ? next.id : null,
-    stops: tour.stops.map((stop) => ({
-      ...stop,
-      address: tours.formatAddress(stop),
-      estimatedArrival: arrivals[stop.id] || null,
-      ...decorateStopPreorders(store, tour, stop),
-    })),
+    stops: tour.stops.map((stop) => {
+      const arrival = arrivals[stop.id] || null
+      return {
+        ...stop,
+        address: tours.formatAddress(stop),
+        estimatedArrival: arrival ? arrival.arrival : null,
+        // Sekunden Wartezeit bis zum Fensterbeginn (0, wenn keine).
+        waitSeconds: arrival ? arrival.waitSeconds : null,
+        // Ankunft nach dem Fensterende - das Fenster ist nicht mehr einhaltbar.
+        missesTimeWindow: arrival ? arrival.missesTimeWindow : false,
+        ...decorateStopPreorders(store, tour, stop),
+      }
+    }),
   }
 }
 
@@ -2303,19 +2313,40 @@ function decorateStopPreorders(store, tour, stop) {
  */
 async function recalculateTour(store, tour, { optimize } = {}) {
   const open = tour.stops.filter((s) => s.status === 'open')
-  const routable = open.length > 0 ? open : tour.stops
   // Umsortiert werden nur offene Stopps, und nur auf ihren eigenen Plaetzen:
   // ein zugestellter Stopp bleibt, wo er war, und behaelt seine Nummer. Auf
   // einer fertigen Tour (nichts mehr offen) wird nur noch nachgerechnet.
   const reorder = optimize && open.length > 0
 
+  // Zeitfenster: OSRMs Trip-Endpunkt kennt keine, er wuerde die Sammelstelle
+  // (09:00-09:30) als naechsten Nachbarn um 06:34 anfahren. Hat ein offener
+  // Stopp ein lesbares Fenster, sortiert deshalb der Core (Nearest Neighbour
+  // mit Zeitfenstern, ab dem Ausgangspunkt der Ankunftsprognose), und OSRM
+  // misst nur noch Strecke und Verlauf in dieser Reihenfolge.
+  const windowed =
+    reorder && open.some((s) => tours.parseTimeWindow(s.timeWindow) !== null)
+  if (windowed) {
+    const baseline = tours.arrivalBaseline(store.depot, tour)
+    const ordered = tours.orderStopsNearestNeighbour(baseline.origin, open, {
+      startedAt: baseline.startedAt,
+      vehicleType: tour.vehicleType,
+      date: tour.date,
+    })
+    tour.stops = tours.applyOpenStopOrder(
+      tour.stops,
+      ordered.map((s) => s.id)
+    )
+  }
+  const openNow = tour.stops.filter((s) => s.status === 'open')
+  const routable = openNow.length > 0 ? openNow : tour.stops
+
   const routed = await geo.routeTour(store.depot, routable, {
-    optimize: reorder,
+    optimize: reorder && !windowed,
     vehicleType: tour.vehicleType,
   })
 
   if (routed) {
-    if (reorder && routed.order.length > 0) {
+    if (reorder && !windowed && routed.order.length > 0) {
       tour.stops = tours.applyOpenStopOrder(tour.stops, routed.order)
     }
     tour.distance = routed.distance
@@ -2323,8 +2354,13 @@ async function recalculateTour(store, tour, { optimize } = {}) {
     tour.geometry = routed.geometry
     tour.isEstimate = false
   } else {
-    if (reorder) {
-      const ordered = tours.orderStopsNearestNeighbour(store.depot, open)
+    if (reorder && !windowed) {
+      const baseline = tours.arrivalBaseline(store.depot, tour)
+      const ordered = tours.orderStopsNearestNeighbour(baseline.origin, open, {
+        startedAt: baseline.startedAt,
+        vehicleType: tour.vehicleType,
+        date: tour.date,
+      })
       tour.stops = tours.applyOpenStopOrder(
         tour.stops,
         ordered.map((s) => s.id)

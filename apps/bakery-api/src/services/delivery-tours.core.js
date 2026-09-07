@@ -170,39 +170,207 @@ function point(stop) {
   return { lat: Number(stop.lat), lon: Number(stop.lon) }
 }
 
+/** Praefixe, mit denen eine einzelne Uhrzeit als Fensterbeginn bzw. -ende gilt. */
+const SINGLE_TIME_START = /^(ab|nicht vor|fr(ü|ue)hestens)\b/i
+const SINGLE_TIME_END = /^(bis|sp(ä|ae)testens|vor)\b/i
+
+/**
+ * Liest das Zeitfenster eines Stopps: "09:00-09:30", "9:00 – 9:30",
+ * "08.00-09.00", "ab 09:00" (nur Beginn), "bis 09:30" (nur Ende).
+ *
+ * Eine einzelne Uhrzeit zaehlt nur mit erkennbarem Praefix: "ab", "nicht vor",
+ * "fruehestens" ergeben einen Beginn, "bis", "spaetestens", "vor" ein Ende.
+ * Ohne Praefix ("09:00 Uhr", "ca. 12:30") bleibt sie Freitext - sonst wuerde
+ * "spaetestens 09:30" als Beginn gelesen und die ETA-Kette wartete bis 09:30,
+ * das Gegenteil der Absicht.
+ *
+ * Rueckgabe `{ start, end }` als "HH:MM" oder `null` je Grenze; `null`
+ * insgesamt, wenn kein Fenster lesbar ist ("vormittags") oder das Ende vor
+ * dem Beginn liegt. Freitext bleibt erlaubt - er wirkt dann nur nicht auf
+ * die Ankunftszeiten. Identisch mit `parseTimeWindow()` im Frontend.
+ */
+function parseTimeWindow(value) {
+  if (typeof value !== 'string') return null
+  const text = value.trim()
+  if (!text) return null
+
+  const times = []
+  // "HH:MM" oder deutsch "HH.MM"; ein Datum wie "19.09.2026" ist keine Uhrzeit.
+  const pattern = /(?<![\d.])(\d{1,2})[:.](\d{2})(?![\d.])/g
+  let match
+  while ((match = pattern.exec(text)) !== null && times.length < 2) {
+    const clock = `${match[1].padStart(2, '0')}:${match[2]}`
+    if (!isClockTime(clock)) return null
+    times.push(clock)
+  }
+  if (times.length === 0) return null
+  if (times.length === 2) {
+    // "HH:MM" vergleicht sich als String korrekt.
+    if (times[1] < times[0]) return null
+    return { start: times[0], end: times[1] }
+  }
+  if (SINGLE_TIME_START.test(text)) return { start: times[0], end: null }
+  if (SINGLE_TIME_END.test(text)) return { start: null, end: times[0] }
+  return null
+}
+
+/**
+ * Fensterbeginn und -ende als Zeitstempel (ms) am Tourtag, fehlende Grenzen
+ * `null`. Rechnet wie `arrivalBaseline()` in lokaler Zeit.
+ */
+function timeWindowBounds(date, timeWindow) {
+  const window = parseTimeWindow(timeWindow)
+  if (!window || !isBusinessDate(date)) return { start: null, end: null }
+  const at = (clock) => {
+    if (!clock) return null
+    const ms = Date.parse(`${date}T${clock}:00`)
+    return Number.isFinite(ms) ? ms : null
+  }
+  return { start: at(window.start), end: at(window.end) }
+}
+
+/**
+ * Tourtag fuer die Zeitfenster: das uebergebene Datum, sonst der lokale Tag
+ * der Startzeit - ein Fenster "09:00-09:30" gilt an dem Tag, an dem gefahren
+ * wird.
+ */
+function windowDate(date, startedAtMs) {
+  if (isBusinessDate(date)) return date
+  return Number.isFinite(startedAtMs)
+    ? toBusinessDate(new Date(startedAtMs))
+    : null
+}
+
+/**
+ * Ankunft an `stop`, wenn man `from` zur Zeit `at` (ms) verlaesst.
+ * Vor Fensterbeginn wird gewartet: `arrival = max(eta, start)`. `late` heisst,
+ * dass selbst die Ankunft nach dem Fensterende liegt.
+ */
+function arrivalAt(from, stop, at, vehicleType, window) {
+  const leg = estimateLeg(from, point(stop), vehicleType)
+  const eta = at + leg.duration * 1000
+  const arrival = window.start != null ? Math.max(eta, window.start) : eta
+  return {
+    distance: leg.distance,
+    eta,
+    arrival,
+    waitSeconds: Math.max(0, (arrival - eta) / 1000),
+    late: window.end != null && arrival > window.end,
+  }
+}
+
 /**
  * Bringt Stopps per Nearest Neighbour ab dem Startpunkt in Reihenfolge.
+ *
+ * Mit `options.startedAt` (ISO) und `options.date` (YYYY-MM-DD) werden die
+ * Zeitfenster der Stopps beruecksichtigt - Heuristik "Nearest Neighbour mit
+ * Zeitfenstern", identisch mit `optimizeRouteOrder()` im Frontend:
+ *
+ *   1. Je Kandidat wird die fruehestmoegliche Bedienung gerechnet:
+ *      `max(Ankunft, Fensterbeginn)`. Ohne Fenster ist das die Ankunft, und
+ *      die Sortierung faellt auf das gewoehnliche Nearest Neighbour zurueck.
+ *   2. Kandidaten, deren Fenster schon verpasst waere, kommen nach allen
+ *      anderen; ebenso Kandidaten, nach denen ein anderer Stopp mit Ende sein
+ *      Fenster verloere, den man jetzt noch puenktlich erreichte (ein Schritt
+ *      Vorausschau, direkter Weg).
+ *   3. Bei gleicher Bedienzeit (beide warten auf denselben Fensterbeginn)
+ *      entscheidet die kuerzere Etappe.
+ *
+ * Das ist keine exakte Loesung des Tourenproblems mit Zeitfenstern, aber
+ * nachvollziehbar: "07:00-08:00" vor "08:00-09:00" vor "09:00-09:30", und ein
+ * Stopp ohne Fenster wird dazwischen bedient, wo er ohne Wartezeit passt.
  *
  * Stopps ohne Koordinaten koennen nicht sortiert werden - sie behalten ihre
  * Eingabereihenfolge und haengen hinten an, statt die Tour zu verfaelschen.
  * Ohne Startpunkt (Depot nicht gefunden) bleibt die Reihenfolge, wie sie ist.
  */
-function orderStopsNearestNeighbour(origin, stops) {
+function orderStopsNearestNeighbour(origin, stops, options) {
   if (!hasCoordinates(origin)) return [...stops]
   const locatable = stops.filter(hasCoordinates)
   const unlocatable = stops.filter((s) => !hasCoordinates(s))
   if (locatable.length <= 1) return [...locatable, ...unlocatable]
+
+  const opts = options || {}
+  const vehicleType = opts.vehicleType
+  let cursor = Date.parse(opts.startedAt)
+  const timed = Number.isFinite(cursor)
+  // Ohne Startzeit zaehlt nur die Fahrzeit ab 0 - dieselbe Reihenfolge wie
+  // die reine Entfernung, weil die Geschwindigkeit je Tour konstant ist.
+  if (!timed) cursor = 0
+  const date = timed ? windowDate(opts.date, cursor) : null
+  const noWindow = { start: null, end: null }
+  const windows = new Map(
+    locatable.map((s) => [
+      s,
+      timed ? timeWindowBounds(date, s.timeWindow) : noWindow,
+    ])
+  )
 
   const remaining = [...locatable]
   const ordered = []
   let current = point(origin)
 
   while (remaining.length > 0) {
-    let nearestIndex = 0
-    let nearestDistance = Infinity
-    for (let i = 0; i < remaining.length; i++) {
-      const distance = haversineMeters(current, point(remaining[i]))
-      if (distance < nearestDistance) {
-        nearestDistance = distance
-        nearestIndex = i
+    let best = null
+    for (const candidate of remaining) {
+      const here = arrivalAt(
+        current,
+        candidate,
+        cursor,
+        vehicleType,
+        windows.get(candidate)
+      )
+
+      let harms = false
+      if (timed) {
+        const depart = here.arrival + STOP_SERVICE_TIME * 1000
+        for (const other of remaining) {
+          if (other === candidate) continue
+          const window = windows.get(other)
+          if (window.end == null) continue
+          const now = arrivalAt(current, other, cursor, vehicleType, window)
+          // Schon jetzt nicht mehr zu schaffen - dann kann der Kandidat nichts
+          // mehr verderben.
+          if (now.late) continue
+          const after = arrivalAt(
+            point(candidate),
+            other,
+            depart,
+            vehicleType,
+            window
+          )
+          if (after.late) {
+            harms = true
+            break
+          }
+        }
+      }
+
+      const rank = [
+        here.late ? 1 : 0,
+        harms ? 1 : 0,
+        here.arrival,
+        here.distance,
+      ]
+      if (best === null || compareRank(rank, best.rank) < 0) {
+        best = { stop: candidate, rank, arrival: here.arrival }
       }
     }
-    const next = remaining.splice(nearestIndex, 1)[0]
-    ordered.push(next)
-    current = point(next)
+
+    remaining.splice(remaining.indexOf(best.stop), 1)
+    ordered.push(best.stop)
+    current = point(best.stop)
+    cursor = best.arrival + STOP_SERVICE_TIME * 1000
   }
 
   return [...ordered, ...unlocatable]
+}
+
+function compareRank(a, b) {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
+  }
+  return 0
 }
 
 /** Geschaetzte Fahrstrecke und -zeit einer Etappe. */
@@ -237,25 +405,55 @@ function estimateTour(depot, stops, vehicleType) {
 }
 
 /**
- * Voraussichtliche Ankunft je Stopp ab `startedAt` (ISO-Strings).
- * Bereits erledigte Stopps bekommen keine Prognose mehr.
+ * Voraussichtliche Ankunft je Stopp ab `startedAt` (ISO) in Tourreihenfolge.
+ *
+ * Ein Stopp mit Zeitfenster wird nicht vor dem Fensterbeginn bedient:
+ * `arrival = max(eta, Fensterbeginn)`. Die Wartezeit steht in `waitSeconds`
+ * und schiebt alle folgenden Ankuenfte nach hinten - sonst stuende an der
+ * Sammelstelle mit Fenster 09:00-09:30 "Ankunft ca. 06:34". Liegt selbst die
+ * Ankunft nach dem Fensterende, ist `missesTimeWindow` gesetzt; die
+ * Oberflaeche zeigt das als Hinweis. `date` ist der Tourtag der Fenster
+ * (sonst der lokale Tag von `startedAt`).
+ *
+ * Rueckgabe je Stopp-ID: `{ arrival, waitSeconds, missesTimeWindow }`.
+ * Stopps ohne Koordinaten bekommen keine Prognose; ohne Depot-Koordinaten
+ * bleibt das Ergebnis leer.
  */
-function estimateArrivals(depot, stops, startedAt, vehicleType) {
+function estimateArrivalDetails(depot, stops, startedAt, vehicleType, date) {
   const arrivals = {}
   if (!hasCoordinates(depot)) return arrivals
   let cursor = new Date(startedAt).getTime()
   if (!Number.isFinite(cursor)) cursor = Date.now()
+  const day = windowDate(date, cursor)
   let previous = point(depot)
 
   for (const stop of stops) {
     if (!hasCoordinates(stop)) continue
-    const leg = estimateLeg(previous, point(stop), vehicleType)
-    cursor += leg.duration * 1000
-    arrivals[stop.id] = new Date(cursor).toISOString()
-    cursor += STOP_SERVICE_TIME * 1000
+    const window = timeWindowBounds(day, stop.timeWindow)
+    const here = arrivalAt(previous, stop, cursor, vehicleType, window)
+    arrivals[stop.id] = {
+      arrival: new Date(here.arrival).toISOString(),
+      waitSeconds: here.waitSeconds,
+      missesTimeWindow: here.late,
+    }
+    cursor = here.arrival + STOP_SERVICE_TIME * 1000
     previous = point(stop)
   }
 
+  return arrivals
+}
+
+/** Wie `estimateArrivalDetails`, nur die Ankunft je Stopp-ID als ISO-String. */
+function estimateArrivals(depot, stops, startedAt, vehicleType, date) {
+  const details = estimateArrivalDetails(
+    depot,
+    stops,
+    startedAt,
+    vehicleType,
+    date
+  )
+  const arrivals = {}
+  for (const id of Object.keys(details)) arrivals[id] = details[id].arrival
   return arrivals
 }
 
@@ -609,10 +807,13 @@ module.exports = {
   scrubCoordinates,
   isClockTime,
   applyOpenStopOrder,
+  parseTimeWindow,
+  timeWindowBounds,
   orderStopsNearestNeighbour,
   estimateLeg,
   estimateTour,
   estimateArrivals,
+  estimateArrivalDetails,
   arrivalBaseline,
   tourProgress,
   nextOpenStop,

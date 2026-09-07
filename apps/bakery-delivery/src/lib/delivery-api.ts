@@ -151,7 +151,15 @@ export interface Stop {
    * nicht gefunden, von Hand gesetzt oder aus einem älteren Cache.
    */
   geocodePrecision: 'house' | 'street' | null
+  /** Fruehestens zum Beginn des Zeitfensters - der Server wartet in der ETA-Kette. */
   estimatedArrival: string | null
+  /**
+   * Sekunden Wartezeit bis zum Fensterbeginn (0 ohne Wartezeit). Aeltere
+   * Offline-Kopien haben das Feld nicht.
+   */
+  waitSeconds?: number | null
+  /** Die Ankunft liegt nach dem Fensterende - das Fenster ist nicht mehr einhaltbar. */
+  missesTimeWindow?: boolean
   /** Gesetzt, wenn der Stopp eine Sammelstelle ist. Alte Payloads haben es nicht. */
   pickupPointId?: string | null
   pickupPoint?: PickupPoint | null
