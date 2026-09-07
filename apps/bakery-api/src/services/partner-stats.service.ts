@@ -246,6 +246,17 @@ export function validateVisitItems(
   return core.validateVisitItems(items, lookup)
 }
 
+/**
+ * Lookup über den Snapshot eines gespeicherten Besuchs - für Korrekturen, damit
+ * ein inzwischen aus dem Katalog verschwundenes Produkt korrigierbar bleibt.
+ * Als Fallback hinter die Katalogsuche hängen: `(i) => hq(i) || snapshot(i)`.
+ */
+export function snapshotLookup(
+  existingItems: ReadonlyArray<Partial<PlainVisitItem>> | null | undefined
+): (item: Record<string, unknown>) => CatalogueProduct | null {
+  return core.snapshotLookup(existingItems)
+}
+
 function toNumber(value: unknown, fallback = 0): number {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
@@ -355,6 +366,7 @@ export default {
   isBusinessDate,
   isVisitType,
   validateVisitItems,
+  snapshotLookup,
   toPlainVisitItem,
   toPlainVisit,
   toPlainVisits,

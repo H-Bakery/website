@@ -1246,11 +1246,19 @@ function findHQProduct(index, item) {
  * fehlt der Preis im Request, kommt er aus HQ. Genau das hält alte Reports
  * korrekt, wenn sich später ein Preis ändert.
  *
+ * Beim Korrigieren (`existingItems` = Positionen des gespeicherten Besuchs)
+ * gilt zusätzlich dessen Snapshot als bekannt: ein Produkt, das inzwischen aus
+ * `hq/products` verschwunden ist, bleibt so korrigierbar, statt den ganzen
+ * Besuch mit "Unbekanntes Produkt" zu blockieren. Neue Besuche bekommen den
+ * Fallback nicht.
+ *
  * @returns {{ ok: true, items: Array } | { ok: false, error: string, message: string }}
  */
-function normalizeVisitItems(items, index) {
-  const result = partnerStats.validateVisitItems(items, (item) =>
-    findHQProduct(index, item)
+function normalizeVisitItems(items, index, existingItems) {
+  const fromSnapshot = partnerStats.snapshotLookup(existingItems)
+  const result = partnerStats.validateVisitItems(
+    items,
+    (item) => findHQProduct(index, item) || fromSnapshot(item)
   )
   if (!result.ok) return result
   return {
@@ -1643,7 +1651,7 @@ app.patch('/api/partners/:id/visits/:visitId', (req, res) => {
   }
   let items = null
   if (body.items !== undefined) {
-    items = normalizeVisitItems(body.items, buildHQIndex())
+    items = normalizeVisitItems(body.items, buildHQIndex(), visit.items)
     if (!items.ok) {
       return partnerError(res, 400, 'Invalid items', items.message)
     }

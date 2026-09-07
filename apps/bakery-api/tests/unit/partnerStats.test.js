@@ -22,6 +22,7 @@ const {
   weekdayOf,
   isBusinessDate,
   validateVisitItems,
+  snapshotLookup,
   csvCell,
   sortVisits,
   groupByBusinessDate,
@@ -473,6 +474,108 @@ describe('validateVisitItems', () => {
       })
       expect(single({ countedQty: 'abc' }, false).ok).toBe(false)
       expect(single({ unitPrice: -1, deliveredQty: 1 }, false).ok).toBe(false)
+    })
+  })
+
+  describe('snapshotLookup - Korrektur eines Besuchs mit ausgelistetem Produkt', () => {
+    /** Gespeicherter Besuch: "landbrot" stand damals im Katalog, heute nicht mehr. */
+    const STORED_ITEMS = [
+      {
+        id: 1,
+        productId: 7,
+        productSlug: 'landbrot',
+        productName: 'Landbrot',
+        unitPrice: 2.8,
+        countedQty: 0,
+        deliveredQty: 12,
+      },
+      {
+        id: 2,
+        productId: 1,
+        productSlug: 'bauernbrot',
+        productName: 'Bauernbrot (alt)',
+        unitPrice: 3.2,
+        countedQty: null,
+        deliveredQty: 4,
+      },
+    ]
+    const snapshot = snapshotLookup(STORED_ITEMS)
+    const withFallback = (item) => lookup(item) || snapshot(item)
+
+    it('liefert den Snapshot in Katalogform - über Slug oder numerische Kennung', () => {
+      expect(snapshot({ productSlug: 'landbrot' })).toEqual({
+        id: 'landbrot',
+        numeric_id: 7,
+        name: 'Landbrot',
+        price: 2.8,
+      })
+      expect(snapshot({ productId: '7' })).toMatchObject({ id: 'landbrot' })
+      expect(snapshot({ productSlug: 'gibt-es-nicht' })).toBeNull()
+      expect(snapshot({ productId: 0 })).toBeNull()
+      expect(snapshot(null)).toBeNull()
+      expect(snapshotLookup(undefined)({ productSlug: 'landbrot' })).toBeNull()
+    })
+
+    it('lässt die Korrektur durch, wie sie die Erfassungsmaske schickt', () => {
+      const result = validateVisitItems(
+        [
+          {
+            productId: 7,
+            productSlug: 'landbrot',
+            productName: 'Landbrot',
+            unitPrice: 2.8,
+            countedQty: 3,
+            deliveredQty: 0,
+          },
+          { productSlug: 'bauernbrot', countedQty: 1, deliveredQty: 0 },
+        ],
+        withFallback
+      )
+      expect(result).toEqual({
+        ok: true,
+        items: [
+          {
+            productId: 7,
+            productSlug: 'landbrot',
+            productName: 'Landbrot',
+            unitPrice: 2.8,
+            countedQty: 3,
+            deliveredQty: 0,
+          },
+          {
+            // Katalog gewinnt vor dem Snapshot: Name und Preis aus HQ,
+            // nicht "(alt)" zu 3,20.
+            productId: 1,
+            productSlug: 'bauernbrot',
+            productName: 'Bauernbrot',
+            unitPrice: 3.5,
+            countedQty: 1,
+            deliveredQty: 0,
+          },
+        ],
+      })
+    })
+
+    it('nimmt den Snapshot-Preis, wenn der Request keinen mitschickt', () => {
+      const result = validateVisitItems(
+        [{ productSlug: 'landbrot', countedQty: 2 }],
+        withFallback
+      )
+      expect(result.ok).toBe(true)
+      expect(result.items[0]).toMatchObject({
+        productName: 'Landbrot',
+        unitPrice: 2.8,
+      })
+    })
+
+    it('lehnt ein Produkt weiterhin ab, das weder im Katalog noch im Besuch steht', () => {
+      const result = validateVisitItems(
+        [{ productSlug: 'neu-und-unbekannt', deliveredQty: 5 }],
+        withFallback
+      )
+      expect(result.ok).toBe(false)
+      expect(result.message).toMatch(/Position 1 \(neu-und-unbekannt\)/)
+      expect(result.message).toMatch(/Unbekanntes Produkt/)
     })
   })
 

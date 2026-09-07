@@ -271,6 +271,48 @@ function validateVisitItems(items, lookup) {
 }
 
 /**
+ * Nachschlagewerk für Korrekturen: der Snapshot eines schon gespeicherten
+ * Besuchs. Ein Produkt, das seit der Erfassung aus dem Katalog verschwunden
+ * ist (Datei gelöscht, `id` umbenannt), soll beim Korrigieren nicht mit
+ * "Unbekanntes Produkt" abgewiesen werden - sonst könnte der Nutzer die Zeile
+ * nur leeren, und genau die Mengen gingen verloren, die die Erfassungsmaske
+ * für solche Positionen ausdrücklich mitschickt. Neue Besuche bekommen diesen
+ * Fallback nicht; dort muss jedes Produkt im Katalog stehen.
+ *
+ * Gesucht wird über den Slug, ersatzweise über eine positive numerische
+ * Kennung (`0` steht für "unbekannt" und trifft deshalb nie).
+ *
+ * @param {Array<{productSlug?: string, productId?: number, productName?: string,
+ *   unitPrice?: number}>|null|undefined} existingItems Positionen des
+ *   gespeicherten Besuchs
+ * @returns {(item: object) => ({id: string, numeric_id: number, name: string,
+ *   price: number} | null)} Lookup in der Form des HQ-Katalogs
+ */
+function snapshotLookup(existingItems) {
+  const items = Array.isArray(existingItems)
+    ? existingItems.filter((e) => e && typeof e === 'object')
+    : []
+  return (item) => {
+    if (!item || typeof item !== 'object') return null
+    const slug =
+      typeof item.productSlug === 'string' ? item.productSlug.trim() : ''
+    const numericId = strictInt(item.productId)
+    const found = items.find((e) =>
+      slug
+        ? e.productSlug === slug
+        : numericId != null && numericId > 0 && e.productId === numericId
+    )
+    if (!found) return null
+    return {
+      id: found.productSlug,
+      numeric_id: found.productId,
+      name: found.productName || found.productSlug,
+      price: found.unitPrice,
+    }
+  }
+}
+
+/**
  * Chronologische Reihenfolge: Geschäftstag, dann `sequence`, dann Zeitpunkt.
  * `sequence` gewinnt vor `visitAt`, damit eine korrigierte Uhrzeit die
  * Reihenfolge der Erfassung nicht durcheinanderbringt.
@@ -792,6 +834,7 @@ module.exports = {
   weekdayOf,
   isBusinessDate,
   validateVisitItems,
+  snapshotLookup,
   csvCell,
   sortVisits,
   groupByBusinessDate,
