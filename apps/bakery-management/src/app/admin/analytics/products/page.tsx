@@ -41,7 +41,10 @@ export default function ProductAnalyticsPage() {
   const [bottomProducts, setBottomProducts] = useState<
     ProductAnalyticsPerformance[]
   >([])
-  const [isMockData, setIsMockData] = useState(false)
+  const [allProducts, setAllProducts] = useState<ProductAnalyticsPerformance[]>(
+    []
+  )
+  const [available, setAvailable] = useState(true)
 
   React.useEffect(() => {
     fetchProductData()
@@ -61,7 +64,7 @@ export default function ProductAnalyticsPage() {
   const fetchProductData = async () => {
     try {
       setLoading(true)
-      const [top, bottom] = await Promise.all([
+      const [top, bottom, all] = await Promise.all([
         analyticsService.getProductPerformanceWithSource({
           ...dateRange,
           type: 'top',
@@ -72,12 +75,22 @@ export default function ProductAnalyticsPage() {
           type: 'bottom',
           limit: 10,
         }),
+        analyticsService.getProductPerformanceWithSource({
+          ...dateRange,
+          type: 'top',
+          limit: 200,
+        }),
       ])
       setTopProducts(top.data)
       setBottomProducts(bottom.data)
-      setIsMockData(top.isMock || bottom.isMock)
+      setAllProducts(all.data)
+      setAvailable(top.available && bottom.available && all.available)
     } catch (error) {
       console.error('Error fetching product data:', error)
+      setTopProducts([])
+      setBottomProducts([])
+      setAllProducts([])
+      setAvailable(false)
     } finally {
       setLoading(false)
     }
@@ -95,6 +108,7 @@ export default function ProductAnalyticsPage() {
   }
 
   const topStats = calculateStats(topProducts)
+  const hasData = available && allProducts.length > 0
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('de-DE', {
@@ -121,7 +135,7 @@ export default function ProductAnalyticsPage() {
           Produktanalyse
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Verkaufsleistung und Produktranking
+          Verkaufte Mengen je Produkt aus den Kassenberichten
         </Typography>
       </Box>
 
@@ -154,115 +168,151 @@ export default function ProductAnalyticsPage() {
         />
       </Box>
 
-      {isMockData && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          Die API liefert keine Produktdaten – die angezeigten Zahlen sind
-          Beispieldaten und nicht die echten Verkaufszahlen.
+      {!available && !loading && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Die API liefert keine Produktdaten. Es werden keine Zahlen angezeigt -
+          Beispieldaten gibt es hier bewusst nicht.
         </Alert>
       )}
 
-      {/* Statistics for Top Products */}
-      {viewType === 'top' && (
-        <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper elevation={2} sx={{ p: 3 }}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Gesamtumsatz Top 20
-              </Typography>
-              <Typography variant="h5">
-                {formatCurrency(topStats.totalRevenue)}
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper elevation={2} sx={{ p: 3 }}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Verkaufte Menge
-              </Typography>
-              <Typography variant="h5">
-                {topStats.totalQuantity} Stück
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper elevation={2} sx={{ p: 3 }}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Ø Verkaufspreis
-              </Typography>
-              <Typography variant="h5">
-                {formatCurrency(topStats.avgPrice)}
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Paper elevation={2} sx={{ p: 3 }}>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Bestseller
-              </Typography>
-              <Typography variant="h5" noWrap>
-                {topProducts[0]?.productName ?? '–'}
-              </Typography>
-            </Paper>
-          </Grid>
-        </Grid>
+      {available && !loading && allProducts.length === 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Für den gewählten Zeitraum liegt kein Kassenbericht vor.
+        </Alert>
       )}
 
-      {/* Product Tables */}
-      {viewType === 'top' ? (
-        <Box>
-          <ProductRankingTable
-            products={topProducts}
-            title="Top 20 Produkte"
-            showRank={true}
-            pageSize={20}
-            height={600}
-          />
+      {hasData && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Mengen sind Nettomengen aus den Bons. Fehleingaben werden an der Kasse
+          durch eine negative Gegenbuchung ausgeglichen, die auch an einem
+          anderen Tag liegen kann - über kurze Zeiträume können einzelne
+          Stückzahlen deshalb abweichen. Umsätze stimmen mit dem Kassenabschluss
+          überein.
+        </Alert>
+      )}
 
-          <Box mt={4}>
-            <Paper elevation={3} sx={{ p: 3 }}>
-              <Typography variant="h6" component="h2" gutterBottom>
-                Schwache Produkte - Handlungsbedarf
-              </Typography>
-              {bottomProducts.length === 0 && !loading && (
-                <Typography color="text.secondary">
-                  Keine Daten für den gewählten Zeitraum.
-                </Typography>
-              )}
-              <Grid container spacing={2} sx={{ mt: 1 }}>
-                {bottomProducts.map((product) => (
-                  <Grid item xs={12} sm={6} md={4} key={product.productId}>
-                    <Paper
-                      elevation={1}
-                      sx={{
-                        p: 2,
-                        bgcolor: 'error.light',
-                        color: 'error.contrastText',
-                      }}
-                    >
-                      <Typography variant="subtitle1" fontWeight="bold">
-                        {product.productName}
-                      </Typography>
-                      <Typography variant="body2">
-                        Nur {product.quantitySold} Stück verkauft
-                      </Typography>
-                      <Typography variant="body2">
-                        Umsatz: {formatCurrency(product.revenue)}
-                      </Typography>
-                    </Paper>
-                  </Grid>
-                ))}
+      {hasData && (
+        <>
+          {/* Statistics for Top Products */}
+          {viewType === 'top' && (
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={2} sx={{ p: 3 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    Gesamtumsatz Top 20
+                  </Typography>
+                  <Typography variant="h5">
+                    {formatCurrency(topStats.totalRevenue)}
+                  </Typography>
+                </Paper>
               </Grid>
-            </Paper>
-          </Box>
-        </Box>
-      ) : (
-        <ProductRankingTable
-          products={[...topProducts, ...bottomProducts]}
-          title="Alle Produkte"
-          showRank={true}
-          pageSize={50}
-          height={600}
-        />
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={2} sx={{ p: 3 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    Verkaufte Menge
+                  </Typography>
+                  <Typography variant="h5">
+                    {topStats.totalQuantity} Stück
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={2} sx={{ p: 3 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    Ø Verkaufspreis
+                  </Typography>
+                  <Typography variant="h5">
+                    {formatCurrency(topStats.avgPrice)}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Paper elevation={2} sx={{ p: 3 }}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    gutterBottom
+                  >
+                    Bestseller
+                  </Typography>
+                  <Typography variant="h5" noWrap>
+                    {topProducts[0]?.productName ?? '–'}
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Product Tables */}
+          {viewType === 'top' ? (
+            <Box>
+              <ProductRankingTable
+                products={topProducts}
+                title="Top 20 Produkte"
+                showRank={true}
+                pageSize={20}
+                height={600}
+              />
+
+              <Box mt={4}>
+                <Paper elevation={3} sx={{ p: 3 }}>
+                  <Typography variant="h6" component="h2" gutterBottom>
+                    Schwache Produkte - Handlungsbedarf
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Die Produkte mit den wenigsten verkauften Stück im Zeitraum
+                    (nur Produkte, die überhaupt verkauft wurden).
+                  </Typography>
+                  {bottomProducts.length === 0 && !loading && (
+                    <Typography color="text.secondary">
+                      Keine Daten für den gewählten Zeitraum.
+                    </Typography>
+                  )}
+                  <Grid container spacing={2} sx={{ mt: 1 }}>
+                    {bottomProducts.map((product) => (
+                      <Grid item xs={12} sm={6} md={4} key={product.productId}>
+                        <Paper
+                          elevation={1}
+                          sx={{ p: 2, bgcolor: 'action.hover' }}
+                        >
+                          <Typography variant="subtitle1" fontWeight="bold">
+                            {product.productName}
+                          </Typography>
+                          <Typography variant="body2">
+                            Nur {product.quantitySold} Stück verkauft
+                          </Typography>
+                          <Typography variant="body2">
+                            Umsatz: {formatCurrency(product.revenue)}
+                          </Typography>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Paper>
+              </Box>
+            </Box>
+          ) : (
+            <ProductRankingTable
+              products={allProducts}
+              title="Alle Produkte"
+              showRank={true}
+              pageSize={50}
+              height={600}
+            />
+          )}
+        </>
       )}
     </Box>
   )

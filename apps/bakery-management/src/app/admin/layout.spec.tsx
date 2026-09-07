@@ -48,7 +48,7 @@ describe('AdminLayout', () => {
       'Produkte',
       'Kasse',
       'Personal',
-      'Berichte',
+      'Kassenberichte',
       'Analysen',
       'Team-Chat',
       'Einstellungen',

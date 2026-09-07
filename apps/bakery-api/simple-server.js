@@ -3267,6 +3267,9 @@ app.delete(
   })
 )
 
+// Kassenberichte aus hq/data/reports und die Analyse-Endpunkte dazu
+require('./src/routes/reports.mock')(app)
+
 // --- Fehlerantworten ------------------------------------------------------------
 // Express antwortet ohne diese beiden Handler mit HTML-Seiten: die 404-Seite
 // fuer unbekannte Routen, und bei kaputtem JSON oder zu grossem Body eine

@@ -26,30 +26,44 @@ const revenue = [
   { date: '2026-08-02', revenue: 2500, transactionCount: 120 },
 ]
 
-const warning = /Beispieldaten und nicht der echte Umsatz/
+const unavailable = /Die API liefert keine Umsatzdaten/
+const noReports = /liegt kein Kassenbericht vor/
 
 describe('RevenueAnalyticsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks()
   })
 
-  it('warnt sichtbar, wenn die Zahlen nur Beispieldaten sind', async () => {
+  it('zeigt gar keine Zahlen, wenn die API nicht antwortet', async () => {
     analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
-      data: revenue,
-      isMock: true,
+      data: [],
+      available: false,
     })
 
     renderWithTheme(<RevenueAnalyticsPage />)
 
-    expect(await screen.findByText(warning)).toBeInTheDocument()
-    // Die Kennzahlen bleiben stehen - nur eben als gekennzeichnete Beispieldaten.
-    expect(screen.getByText('4.000,00 €')).toBeInTheDocument()
+    expect(await screen.findByText(unavailable)).toBeInTheDocument()
+    expect(screen.queryByText('Gesamtumsatz')).not.toBeInTheDocument()
+    expect(screen.queryByText(/€/)).not.toBeInTheDocument()
   })
 
-  it('zeigt keine Warnung, wenn die API echte Umsatzdaten liefert', async () => {
+  it('unterscheidet „kein Bericht im Zeitraum" vom Ausfall', async () => {
+    analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
+      data: [],
+      available: true,
+    })
+
+    renderWithTheme(<RevenueAnalyticsPage />)
+
+    expect(await screen.findByText(noReports)).toBeInTheDocument()
+    expect(screen.queryByText(unavailable)).not.toBeInTheDocument()
+    expect(screen.queryByText('Gesamtumsatz')).not.toBeInTheDocument()
+  })
+
+  it('zeigt echte Umsatzdaten ohne Warnung', async () => {
     analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
       data: revenue,
-      isMock: false,
+      available: true,
     })
 
     renderWithTheme(<RevenueAnalyticsPage />)
@@ -57,6 +71,8 @@ describe('RevenueAnalyticsPage', () => {
     await waitFor(() =>
       expect(screen.getByText('4.000,00 €')).toBeInTheDocument()
     )
-    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+    expect(screen.getByText('2 Tage mit Bericht')).toBeInTheDocument()
+    expect(screen.queryByText(unavailable)).not.toBeInTheDocument()
+    expect(screen.queryByText(noReports)).not.toBeInTheDocument()
   })
 })

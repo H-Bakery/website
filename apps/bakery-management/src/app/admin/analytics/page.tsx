@@ -8,6 +8,7 @@ import {
   Paper,
   Button,
   Alert,
+  Link as MuiLink,
   Stack,
 } from '@mui/material'
 import {
@@ -49,6 +50,7 @@ export default function AnalyticsPage() {
   >([])
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodData[]>([])
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
+  const [available, setAvailable] = useState(true)
 
   React.useEffect(() => {
     fetchAnalyticsData()
@@ -77,32 +79,42 @@ export default function AnalyticsPage() {
         paymentRes,
         summaryRes,
       ] = await Promise.all([
-        analyticsService.getRevenueTrends({
+        analyticsService.getRevenueTrendsWithSource({
           ...dateRange,
           granularity: 'daily',
         }),
-        analyticsService.getProductPerformance({
+        analyticsService.getProductPerformanceWithSource({
           ...dateRange,
           type: 'top',
           limit: 10,
         }),
-        analyticsService.getProductPerformance({
+        analyticsService.getProductPerformanceWithSource({
           ...dateRange,
           type: 'bottom',
           limit: 5,
         }),
-        analyticsService.getPaymentMethods(dateRange),
-        analyticsService.getSummary(dateRange),
+        analyticsService.getPaymentMethodsWithSource(dateRange),
+        analyticsService.getSummaryWithSource(dateRange),
       ])
 
-      setRevenueData(revenueRes)
-      setTopProducts(topProductsRes)
-      setBottomProducts(bottomProductsRes)
-      setPaymentMethods(paymentRes)
-      setSummary(summaryRes)
+      setRevenueData(revenueRes.data)
+      setTopProducts(topProductsRes.data)
+      setBottomProducts(bottomProductsRes.data)
+      setPaymentMethods(paymentRes.data)
+      setSummary(summaryRes.data)
+      setAvailable(
+        [
+          revenueRes,
+          topProductsRes,
+          bottomProductsRes,
+          paymentRes,
+          summaryRes,
+        ].every((r) => r.available)
+      )
     } catch (err) {
       console.error('Error fetching analytics:', err)
       setError('Analysedaten konnten nicht geladen werden.')
+      setAvailable(false)
     } finally {
       setLoading(false)
     }
@@ -115,6 +127,8 @@ export default function AnalyticsPage() {
     }).format(amount)
   }
 
+  const hasData = available && summary !== null
+
   return (
     <Box>
       {/* Header */}
@@ -124,7 +138,7 @@ export default function AnalyticsPage() {
           Analysen
         </Typography>
         <Typography variant="subtitle1" color="text.secondary">
-          Umsatz- und Verkaufsanalysen
+          Umsatz- und Verkaufsanalysen aus den Kassenberichten
         </Typography>
       </Box>
 
@@ -149,10 +163,6 @@ export default function AnalyticsPage() {
           Produktanalyse
         </Button>
       </Stack>
-
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Liefert die API keine Analysedaten, werden Beispieldaten angezeigt.
-      </Alert>
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
@@ -180,102 +190,142 @@ export default function AnalyticsPage() {
         />
       </Box>
 
-      {/* Summary Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <AnalyticsSummaryCard
-            title="Gesamtumsatz"
-            value={formatCurrency(summary?.totalRevenue || 0)}
-            subtitle={`${summary?.totalTransactions || 0} Transaktionen`}
-            loading={loading}
-            color="success"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <AnalyticsSummaryCard
-            title="Ø Transaktionswert"
-            value={formatCurrency(summary?.avgTransactionValue || 0)}
-            loading={loading}
-            color="primary"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <AnalyticsSummaryCard
-            title="Meistverkauft"
-            value={summary?.topSellingProduct?.productName || '-'}
-            subtitle={`${summary?.topSellingProduct?.quantitySold || 0} Stück`}
-            loading={loading}
-            color="info"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <AnalyticsSummaryCard
-            title="Bargeldanteil"
-            value={`${summary?.cashPercentage?.toFixed(1) || 0}%`}
-            subtitle="des Gesamtumsatzes"
-            loading={loading}
-            color="warning"
-          />
-        </Grid>
-      </Grid>
+      {!available && !loading && (
+        <Alert severity="error" sx={{ mb: 3 }}>
+          Die API liefert keine Analysedaten. Es werden keine Zahlen angezeigt -
+          Beispieldaten gibt es hier bewusst nicht.
+        </Alert>
+      )}
 
-      {/* Revenue Chart */}
-      <Box mb={4}>
-        <RevenueTrendChart
-          data={revenueData}
-          title="Umsatzentwicklung"
-          height={400}
-          showTransactions={true}
-        />
-      </Box>
+      {available && !loading && summary === null && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Für den gewählten Zeitraum liegt kein Kassenbericht vor. Tage ohne
+          Bericht sind Lücken, kein Umsatz von 0 €.
+        </Alert>
+      )}
 
-      {/* Product Performance */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} lg={8}>
-          <ProductRankingTable
-            products={topProducts}
-            title="Top Produkte"
-            showRank={true}
-            pageSize={10}
+      {hasData && (
+        <>
+          {/* Summary Cards */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <AnalyticsSummaryCard
+                title="Gesamtumsatz"
+                value={formatCurrency(summary.totalRevenue)}
+                subtitle={`${summary.totalTransactions} Bons`}
+                loading={loading}
+                color="success"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <AnalyticsSummaryCard
+                title="Ø Bon"
+                value={formatCurrency(summary.avgTransactionValue)}
+                loading={loading}
+                color="primary"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <AnalyticsSummaryCard
+                title="Meistverkauft"
+                value={summary.topSellingProduct?.productName || '-'}
+                subtitle={`${
+                  summary.topSellingProduct?.quantitySold || 0
+                } Stück`}
+                loading={loading}
+                color="info"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <AnalyticsSummaryCard
+                title="Bargeldanteil"
+                value={`${summary.cashPercentage.toLocaleString('de-DE', {
+                  maximumFractionDigits: 1,
+                })} %`}
+                subtitle="des Umsatzes (Rest: Karte)"
+                loading={loading}
+                color="warning"
+              />
+            </Grid>
+          </Grid>
+
+          {/* Revenue Chart */}
+          <Box mb={4}>
+            <RevenueTrendChart
+              data={revenueData}
+              title="Umsatzentwicklung"
+              height={400}
+              showTransactions={true}
+            />
+          </Box>
+
+          {/* Product Performance */}
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            <Grid item xs={12} lg={8}>
+              <ProductRankingTable
+                products={topProducts}
+                title="Top Produkte"
+                showRank={true}
+                pageSize={10}
+                height={400}
+              />
+            </Grid>
+            <Grid item xs={12} lg={4}>
+              <Paper elevation={3} sx={{ p: 3, height: 500 }}>
+                <Typography variant="h6" component="h2" gutterBottom>
+                  Schwache Produkte
+                </Typography>
+                <Box sx={{ mt: 2 }}>
+                  {bottomProducts.length === 0 && !loading && (
+                    <Typography color="text.secondary">
+                      Keine Daten für den gewählten Zeitraum.
+                    </Typography>
+                  )}
+                  {bottomProducts.map((product) => (
+                    <Box
+                      key={product.productId}
+                      sx={{
+                        mb: 2,
+                        p: 2,
+                        bgcolor: 'action.hover',
+                        borderRadius: 1,
+                      }}
+                    >
+                      <Typography variant="subtitle1">
+                        {product.productName}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {product.quantitySold} Stück -{' '}
+                        {formatCurrency(product.revenue)}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Payment Methods */}
+          <PaymentMethodsChart
+            data={paymentMethods}
+            title="Zahlungsarten"
             height={400}
           />
-        </Grid>
-        <Grid item xs={12} lg={4}>
-          <Paper elevation={3} sx={{ p: 3, height: 500 }}>
-            <Typography variant="h6" component="h2" gutterBottom>
-              Schwache Produkte
-            </Typography>
-            <Box sx={{ mt: 2 }}>
-              {bottomProducts.length === 0 && !loading && (
-                <Typography color="text.secondary">
-                  Keine Daten für den gewählten Zeitraum.
-                </Typography>
-              )}
-              {bottomProducts.map((product) => (
-                <Box
-                  key={product.productId}
-                  sx={{ mb: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}
-                >
-                  <Typography variant="subtitle1">
-                    {product.productName}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {product.quantitySold} Stück -{' '}
-                    {formatCurrency(product.revenue)}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-          </Paper>
-        </Grid>
-      </Grid>
 
-      {/* Payment Methods */}
-      <PaymentMethodsChart
-        data={paymentMethods}
-        title="Zahlungsmethoden"
-        height={400}
-      />
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ display: 'block', mt: 2 }}
+          >
+            Quelle: Kassenberichte aus dem HQ-Archiv (Tagesabschlüsse). Karte =
+            Zahlungsart „Unbar" der Kasse. Einzelne Tage im{' '}
+            <MuiLink component={Link} href="/admin/reports">
+              Berichtsarchiv
+            </MuiLink>
+            .
+          </Typography>
+        </>
+      )}
     </Box>
   )
 }
