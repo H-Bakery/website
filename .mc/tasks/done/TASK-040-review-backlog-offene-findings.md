@@ -2,7 +2,7 @@
 id: TASK-040
 title: Review-Backlog - offene Findings aus dem App-Review vom 2026-09-02
 slug: review-backlog-offene-findings
-status: todo
+status: done
 priority: 3
 owner: ''
 projects: []
@@ -40,62 +40,78 @@ Erledigt und gemerged (je ein PR pro Finding, jeder PR unabhängig reviewt):
   beim Geocoding kennzeichnen, „Erneut laden" ohne API, Offline-Kopie der Tourliste).
 - Drumherum: Unit-Test-Plumbing (#62, #65, #68, #69), Legacy-Deploy-Workflow nur manuell (#75).
 
-Übrig bleiben die niedrig eingestuften Findings unten. Sie sind bewusst **nicht** in dieser
-Session gefixt worden: keines blockiert den Betrieb, und jedes verdient einen eigenen kleinen PR.
-Fünf davon hat der Skeptiker bestätigt (mit Fix-Vorschlag), die anderen sind ungeprüft - vor
-dem Fix zuerst gegen die laufende App reproduzieren.
+Die niedrig eingestuften Findings unten blieben zunächst offen: keines blockierte den Betrieb, und
+jedes verdiente einen eigenen kleinen PR. Am 2026-09-07 sind sie in einer zweiten Runde abgearbeitet
+worden (PR #91-#99, dazu #97 für die CI); die Einträge unten sind durchgestrichen und tragen den PR.
+Was bleibt, steht unter „Ergebnis".
 
 ## Bestätigt (mit Fix-Vorschlag im Review)
 
 ### Mock-API (`apps/bakery-api/simple-server.js`)
 
-- **Lieferzeiten und Koordinaten werden nicht auf Wertebereiche geprüft.** `plannedStart: '99:99'`
+- ~~**Lieferzeiten und Koordinaten werden nicht auf Wertebereiche geprüft.** `plannedStart: '99:99'`
   und `lat: 999` werden angenommen, die ETAs fallen dann auf „jetzt" zusammen. Betroffen:
   `POST/PATCH /api/deliveries/tours/:id`, `.../stops`, `.../position`, `PUT /api/deliveries/depot`.
   Fix serverseitig in `delivery-tours.core.js` (Uhrzeit `HH:MM` mit 0-23/0-59, Koordinaten
-  -90..90 / -180..180); die Routing-Lib nicht anfassen.
-- **Besuchspositionen werden kaum validiert** (`normalizeVisitItems`, ~Zeile 1210): nicht-numerisches
+  -90..90 / -180..180); die Routing-Lib nicht anfassen.~~ **Erledigt** in PR #93: `isClockTime()`
+  und `validateCoordinates()` in `delivery-tours.core.js`, die Routen antworten mit 400 und
+  deutschem `message`.
+- ~~**Besuchspositionen werden kaum validiert** (`normalizeVisitItems`, ~Zeile 1210): nicht-numerisches
   `countedQty` wird zu `0` („Schrank war leer" statt „nicht gezählt"), Mengen unbegrenzt, unbekannte
   Produkte und negative Preise akzeptiert. Fix einmal im Core: `validateVisitItems(items, lookup)`
   in `partner-stats.core.js`, von beiden Servern benutzt. Die `null`-vs-`0`-Regel aus
-  `website/CLAUDE.md` gilt weiter.
-- **Fehlerhaftes JSON, zu große Bodies und unbekannte Routen antworten mit Express-HTML-Seiten**
+  `website/CLAUDE.md` gilt weiter.~~ **Erledigt** in PR #92: `validateVisitItems(items, lookup)`
+  mit `snapshotLookup()` im Core; nicht-numerisches `countedQty` bleibt `null`, Mengen sind
+  begrenzt, unbekannte Produkte und negative Preise werden abgewiesen.
+- ~~**Fehlerhaftes JSON, zu große Bodies und unbekannte Routen antworten mit Express-HTML-Seiten**
   (Stacktrace mit absoluten Pfaden). Fix: `app.disable('x-powered-by')`, vor `app.listen` ein
   404-Handler und ein Error-Handler, die `{ error, message }` als JSON liefern (deutscher `message`,
-  weil `ApiClient` daraus die Fehlermeldung baut).
-- **Mutierende Mock-Routen übernehmen beliebige Bodies** (`...req.body` in `PUT /api/orders/:id`,
+  weil `ApiClient` daraus die Fehlermeldung baut).~~ **Erledigt** in PR #91: JSON-404- und
+  Error-Handler, `x-powered-by` aus, Body-Limit 200 kB; `simple-server.js` exportiert die App und
+  ruft `listen` nur bei `require.main === module`, damit supertest sie in-process testen kann.
+- ~~**Mutierende Mock-Routen übernehmen beliebige Bodies** (`...req.body` in `PUT /api/orders/:id`,
   `POST /api/staff`, `/api/cash`, `/api/inventory/:id/adjust`, `/api/production`,
   `/api/notifications`). Sichtbar im Admin: eine Bestellung zeigt „1999" als Datum. Fix: explizite
-  Feldauswahl und Status-Whitelist je Route.
+  Feldauswahl und Status-Whitelist je Route.~~ **Erledigt** in PR #91: Feldauswahl und
+  Status-Whitelists je Route in `apps/bakery-api/src/services/mock-input.core.js`.
 
 ### Delivery
 
-- **Geplante Tour am Tourtag zeigt ETAs in der Vergangenheit** („Ankunft ca. 06:38" um 10:48).
+- ~~**Geplante Tour am Tourtag zeigt ETAs in der Vergangenheit** („Ankunft ca. 06:38" um 10:48).
   `arrivalBaseline()` in `delivery-tours.core.js` (~Zeile 193) muss für eine noch nicht gestartete
   Tour `max(plannedStart, now)` als Basis nehmen. Beide Fassungen anfassen (Core und
-  `@bakery/delivery/routing`), sonst fällt `core-consistency.spec.ts` um.
+  `@bakery/delivery/routing`), sonst fällt `core-consistency.spec.ts` um.~~ **Erledigt** in PR #93:
+  `arrivalBaseline()` = `max(plannedStart, jetzt)` in beiden Fassungen, `core-consistency.spec.ts`
+  rechnet sie gegeneinander.
 
 ## Ungeprüft (zuerst reproduzieren)
 
 ### Mock-API
 
-- CSV-Formel-Injection im Partner-Report: Zellen, die mit `=`, `+`, `-`, `@` beginnen, werden in
-  `csvCell()` (`partner-stats.core.js`) nicht maskiert.
-- Partner-Stammdaten: leerer Name, `'false'` wird zu `active: true` (`Boolean(body.active)`),
-  kalendarisch ungültiger `businessDate` wird akzeptiert.
+- ~~CSV-Formel-Injection im Partner-Report: Zellen, die mit `=`, `+`, `-`, `@` beginnen, werden in
+  `csvCell()` (`partner-stats.core.js`) nicht maskiert.~~ **Erledigt** in PR #92: `csvCell()`
+  maskiert führende Formelzeichen.
+- ~~Partner-Stammdaten: leerer Name, `'false'` wird zu `active: true` (`Boolean(body.active)`),
+  kalendarisch ungültiger `businessDate` wird akzeptiert.~~ **Erledigt** in PR #92:
+  `isBusinessDate()` im Core prüft kalendarisch, `active` nur aus einem echten Boolean
+  (`parseActive`), leerer Name wird abgewiesen (`partnerName`).
 
 ### Shop
 
-- Wiederhergestelltes Kassenformular behält eine bereits vergangene Abholzeit; das Select wirkt
-  leer, beim Absenden kommt ein Fehler (`checkout-page.tsx`, Restore ~Zeile 178).
-- Unbekannte Bestellnummer rendert eine Erfolgsseite („Ihre Bestellung ist trotzdem bei uns")
-  (`order-confirmation.tsx`, ~Zeile 100 und 199).
-- Suchfeld im Header zeigt nach clientseitiger Navigation nicht die aktive Suche
-  (`apps/bakery-shop/src/components/shop-header.tsx`, ~Zeile 50).
-- Sporadischer Hydration-Mismatch der Katalog-Toolbar (`useId`-Attribute weichen ab),
-  `catalog-page.tsx` ~Zeile 603 und 633.
+- ~~Wiederhergestelltes Kassenformular behält eine bereits vergangene Abholzeit; das Select wirkt
+  leer, beim Absenden kommt ein Fehler (`checkout-page.tsx`, Restore ~Zeile 178).~~ **Erledigt** in
+  PR #95: die wiederhergestellte Abholzeit wird gegen `availablePickupSlots()` geprüft und sonst
+  verworfen.
+- ~~Unbekannte Bestellnummer rendert eine Erfolgsseite („Ihre Bestellung ist trotzdem bei uns")
+  (`order-confirmation.tsx`, ~Zeile 100 und 199).~~ **Erledigt** in PR #95: Bestellbestätigung mit
+  den Zuständen loading / not-found / unavailable statt einer Erfolgsseite.
+- ~~Suchfeld im Header zeigt nach clientseitiger Navigation nicht die aktive Suche
+  (`apps/bakery-shop/src/components/shop-header.tsx`, ~Zeile 50).~~ **Erledigt** in PR #95: das
+  Suchfeld liest `useSearchParams()` statt einmalig `window.location`.
+- **Nicht reproduzierbar, Prüfung unter Turbopack steht aus:** Sporadischer Hydration-Mismatch der
+  Katalog-Toolbar (`useId`-Attribute weichen ab), `catalog-page.tsx` ~Zeile 603 und 633.
 
-  **Stand 2026-09-07 (Branch `fix/shop-review-findings`):** die ersten drei Shop-Findings sind
+  **Befund 2026-09-07 (PR #95):** die ersten drei Shop-Findings sind
   reproduziert und gefixt (Abholzeit beim Wiederherstellen gegen die Slots geprüft, ehrliche
   „Bestellung nicht gefunden"-Ansicht, Suchfeld liest `useSearchParams()` statt einmalig
   `window.location`). Der Hydration-Mismatch ließ sich **nicht reproduzieren**: 38 Aufrufe von
@@ -110,12 +126,14 @@ dem Fix zuerst gegen die laufende App reproduzieren.
 
 ### CI
 
-- Die drei `test-e2e-*`-Jobs in `.github/workflows/ci.yml` sind auf `main` seit mindestens
+- ~~Die drei `test-e2e-*`-Jobs in `.github/workflows/ci.yml` sind auf `main` seit mindestens
   2026-09-01 bei jedem Lauf rot (Shop 9, Management 36, Landing 52 Fehlschläge), deshalb ist auch der
   Sammel-Job `ci-status` rot. Die Assertions brauchen Produktdaten (`expect(list.length).toBeGreaterThan(0)`),
   die es in der CI ohne `hq/` und ohne API nicht gibt. Entweder die Suiten gegen den Mock-Server
   mit `HQ_PRODUCTS_DIR` laufen lassen oder die Jobs ehrlich abschalten; `quality`, `build (*)` und
-  die drei `test-unit`-Shards sind grün.
+  die drei `test-unit`-Shards sind grün.~~ **In Arbeit** in PR #97: die E2E-Jobs laufen seit PR #97
+  gegen gebaute Apps und die Mock-API mit einem synthetischen Katalog (`tools/e2e/hq-products`,
+  gestartet über `tools/e2e/servers.js`). Das Ergebnis des ersten CI-Laufs steht im PR.
 
 ### Management
 
@@ -123,7 +141,7 @@ dem Fix zuerst gegen die laufende App reproduzieren.
   `/admin/orders` meldet im Dev-Modus sporadisch einen Hydration-Mismatch: MUI-`Select` bekommt auf
   Server und Client verschiedene `aria-controls`-IDs (`useId`). Gleiche Klasse wie die
   Katalog-Toolbar im Shop unten; in zwei von vier Aufrufen reproduziert.
-  Befund vom 2026-09-07 (Branch `fix/management-review-findings`, Next 16.1.6, MUI 5.18):
+  Befund vom 2026-09-07 (PR #96, Next 16.1.6, MUI 5.18):
   - Diagnose aus der Bearbeitung: reproduzierbar nur unter **Turbopack-Dev** (`next dev`), und dort
     nur in einem warmen Browser-Kontext (~35 % der Aufrufe); unter `next dev --webpack` 0 von 57
     Aufrufen. Sobald man den Baum instrumentiert, verschwindet der Fehler (Heisenbug); ohne
@@ -146,33 +164,40 @@ dem Fix zuerst gegen die laufende App reproduzieren.
     halten; dazu Konsole auf Hydration-Warnungen beobachten. Die Skripte lagen im Session-Scratchpad.
 - ~~Team-Chat pollt alle 5 s dauerhaft einen Endpunkt, den es nicht gibt (`admin/chat/page.tsx`,
   ~Zeile 137); entweder abschalten oder nach dem ersten 404 aufhören.~~ **Erledigt** in
-  `fix/management-review-findings`: Erreichbarkeit als Zustand, Polling nur bei „online", nach dem
+  PR #96: Erreichbarkeit als Zustand, Polling nur bei „online", nach dem
   ersten Fehlschlag ruhiger Hinweis mit „Erneut versuchen"; drei Tests.
-- Berichte-Seite loggt bei jedem Laden einen Fehler und öffnet das Dev-Overlay, obwohl das Feature
-  absichtlich nicht angebunden ist (`admin/reports/page.tsx`, ~Zeile 142).
+- ~~Berichte-Seite loggt bei jedem Laden einen Fehler und öffnet das Dev-Overlay, obwohl das Feature
+  absichtlich nicht angebunden ist (`admin/reports/page.tsx`, ~Zeile 142).~~ **Erledigt** in
+  PR #98 (TASK-038): der Stub ist durch das Berichtsarchiv aus `hq/data/reports` ersetzt; ohne
+  `hq` antwortet die Seite mit „keine Daten" statt mit einem Fehler.
 - ~~Social-Media: Vorschau-Platzhalter im Dark Mode unsichtbar, überlappt auf Mobil die Karte;
   Legenden-Chip verfehlt im Light Mode den Kontrast (`admin/social-media/page.tsx`, ~Zeile 1002).
   Regeln dazu stehen in `/Users/sebastian/develop/bakery/CLAUDE.md` unter „Dark mode".~~ **Erledigt**
-  in `fix/management-review-findings`: Platzhalter im Textfluss der (immer weißen) Karte in
+  in PR #96: Platzhalter im Textfluss der (immer weißen) Karte in
   Kartenfarbe (7,2:1), Chips folgen der Palette (16:1 / 18,7:1), Vorschau skaliert per `cqw`;
   Kontraste mit Playwright in beiden Modi bei 1280 und 375 px gemessen, drei Tests.
 - ~~Next.js warnt bei jeder clientseitigen Navigation wegen `scroll-behavior: smooth`
   (`apps/bakery-management/src/app/layout.tsx`, Zeile 18).~~ **Erledigt** in
-  `fix/management-review-findings`: `data-scroll-behavior="smooth"` auf `<html>` (so sieht es
+  PR #96: `data-scroll-behavior="smooth"` auf `<html>` (so sieht es
   Next 16 vor); ein Test sichert das Attribut ab.
 
 ### Delivery
 
-- „Route berechnen" auf einer laufenden Tour schiebt zugestellte Stopps ans Ende und nummeriert
-  alles neu (`POST /api/deliveries/tours/:id/optimize`, `simple-server.js` ~Zeile 2119).
-- API akzeptiert `(0, 0)` als manuelle Stopp- oder Depot-Koordinate (`delivery-tours.core.js`
-  ~Zeile 386) - `hasCoordinates()` ist hier zu großzügig.
-- Ein hängender Status-Request sperrt 15 s lang alle „Geliefert"/„Nicht angetroffen"-Buttons
-  (`page.tsx` ~Zeile 244); die Sperre sollte je Stopp gelten.
-- „Nicht angetroffen" hält keinen Grund fest; die Bäckerei kann nicht nachvollziehen, was mit der
-  Ware passiert ist (`StopCard.tsx` ~Zeile 135).
-- Zoom-Buttons der Karte sind 30 x 30 px, unter der 44-px-Touch-Regel der App (`global.css`
-  Zeile 67).
+- ~~„Route berechnen" auf einer laufenden Tour schiebt zugestellte Stopps ans Ende und nummeriert
+  alles neu (`POST /api/deliveries/tours/:id/optimize`, `simple-server.js` ~Zeile 2119).~~
+  **Erledigt** in PR #93: `applyOpenStopOrder()` ordnet nur die offenen Stopps neu, erledigte
+  behalten Platz und Nummer.
+- ~~API akzeptiert `(0, 0)` als manuelle Stopp- oder Depot-Koordinate (`delivery-tours.core.js`
+  ~Zeile 386) - `hasCoordinates()` ist hier zu großzügig.~~ **Erledigt** in PR #93:
+  `hasCoordinates()` lehnt `(0, 0)` in beiden Fassungen ab.
+- ~~Ein hängender Status-Request sperrt 15 s lang alle „Geliefert"/„Nicht angetroffen"-Buttons
+  (`page.tsx` ~Zeile 244); die Sperre sollte je Stopp gelten.~~ **Erledigt** in PR #94: Sperre je
+  Stopp (`busyStops`, `inFlightRef`).
+- ~~„Nicht angetroffen" hält keinen Grund fest; die Bäckerei kann nicht nachvollziehen, was mit der
+  Ware passiert ist (`StopCard.tsx` ~Zeile 135).~~ **Erledigt** in PR #94: `FailureForm` erfasst
+  `failureReason` und `goodsDisposition`.
+- ~~Zoom-Buttons der Karte sind 30 x 30 px, unter der 44-px-Touch-Regel der App (`global.css`
+  Zeile 67).~~ **Erledigt** in PR #94: Zoom-Knöpfe 44 px.
 
 ## Vorgehen
 
@@ -190,6 +215,24 @@ dem Fix zuerst gegen die laufende App reproduzieren.
 - Jedes Finding oben ist entweder gemerged oder mit Begründung als „nicht fixen" markiert.
 - `npm run lint:all`, `npm run type-check` und die betroffenen `nx test`-Projekte sind grün.
 - Die Zahl der roten Test-Tasks sinkt oder bleibt gleich.
+
+## Ergebnis
+
+Stand 2026-09-07: alle Findings sind gemerged (PR #91-#96, #98) oder mit Begründung eingeordnet.
+Übrig bleiben genau zwei Befunde, die keinen Fix bekommen:
+
+- **Management, `/admin/orders`:** Hydration-Mismatch der MUI-`Select`-IDs - Dev-only-Verhalten
+  unter Turbopack, im Produktionsbuild nachweislich nicht vorhanden. **Nicht fixen**, beim nächsten
+  Next/React-Update erneut prüfen (Rezept oben).
+- **Shop, Katalog-Toolbar:** derselbe Befund-Typ, in 38 Versuchen (webpack-dev und Produktionsbuild)
+  **nicht reproduzierbar**; die Prüfung unter Turbopack steht aus. Ohne Reproduktion kein Fix.
+
+Die CI-E2E-Jobs sind nicht Teil dieses Backlogs geblieben: PR #97 stellt sie auf gebaute Apps plus
+Mock-API mit synthetischem Katalog um; ob der erste Lauf grün ist, steht im PR, nicht hier.
+
+Von den Akzeptanzkriterien: jedes Finding ist gemerged oder als „nicht fixen" markiert; Lint,
+Type-Check und die betroffenen `nx test`-Projekte waren in jedem PR grün; die Zahl der roten
+Test-Tasks ist mit 7 von 46 unverändert (siehe `/Users/sebastian/develop/bakery/CLAUDE.md`).
 
 ## Notes
 
