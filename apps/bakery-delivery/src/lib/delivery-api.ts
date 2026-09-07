@@ -34,6 +34,19 @@ export interface StopItem {
 
 export type StopStatus = 'open' | 'done' | 'failed'
 
+/**
+ * Verbleib der Ware bei „Nicht angetroffen": wieder mitgenommen oder vor Ort
+ * abgestellt. Die Werte kennt der Server (`GOODS_DISPOSITION` im Core); die
+ * deutschen Bezeichnungen stehen in `format.ts`.
+ */
+export type GoodsDisposition = 'taken_back' | 'left_at_address'
+
+/** Was der Fahrer zu einem gescheiterten Stopp festhaelt. */
+export interface FailureDetails {
+  failureReason: string
+  goodsDisposition: GoodsDisposition | null
+}
+
 // --- Sammelstelle (Kindergarten Mörsbach) ---
 //
 // Ein Stopp mit `pickupPointId` ist keine Zustellung, sondern eine
@@ -127,6 +140,8 @@ export interface Stop {
   status: StopStatus
   completedAt: string | null
   failureReason: string | null
+  /** Nur bei `failed`. Aeltere Payloads haben das Feld nicht. */
+  goodsDisposition?: GoodsDisposition | null
   lat: number | null
   lon: number | null
   geocodeSource: string | null
@@ -193,6 +208,8 @@ export interface StopInput {
   notes?: string | null
   items?: Array<{ name: string; qty: number; unit?: string }>
   status?: StopStatus
+  failureReason?: string | null
+  goodsDisposition?: GoodsDisposition | null
   lat?: number | null
   lon?: number | null
 }

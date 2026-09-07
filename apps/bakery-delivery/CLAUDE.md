@@ -30,10 +30,10 @@ npm run test:e2e:delivery              # Playwright (Desktop + Pixel 5), startet
 
 npx nx build bakery-delivery
 npx nx lint bakery-delivery
-npx nx test delivery-routing           # 32 Tests, darunter der Abgleich mit dem Server-Core
+npx nx test delivery-routing           # 47 Tests, darunter der Abgleich mit dem Server-Core
 npx nx test delivery-tracking          # 7 Tests
 npx jest --config apps/bakery-api/jest.config.js --rootDir apps/bakery-api \
-  --testPathPattern deliveryTours      # 46 Tests der Server-Rechenlogik
+  --testPathPattern deliveryTours      # 61 Tests der Server-Rechenlogik
 npx tsc --noEmit -p apps/bakery-delivery/tsconfig.json   # laeuft auch in `npm run type-check`
 ```
 
@@ -221,6 +221,26 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   unveränderte Reihenfolge zurück. Im Frontend heißt die Prüfung ebenfalls `hasCoordinates()`
   (`@bakery/delivery/routing`) — `stop.lat !== null` hätte `undefined` durchgelassen, und Leaflet
   wirft bei `[undefined, undefined]` die ganze Karte weg.
+- **`hasCoordinates()` war zu großzügig.** `lat: 999` und das Paar `(0, 0)` („Null Island" im Golf
+  von Guinea, das Ergebnis von `Number(null)` oder einem leeren Formular) gingen als manuelle
+  Stopp-, Depot- und Fahrerkoordinaten durch; die ETAs fielen dann auf „jetzt" zusammen oder die
+  Karte zog in den Atlantik. Seit dem 07.09.2026 verlangt `hasCoordinates()` in **beiden**
+  Fassungen −90..90 / −180..180 und lehnt genau das Paar `(0, 0)` ab (ein einzelner Nullwert bleibt
+  erlaubt — Äquator und Nullmeridian existieren). `validateCoordinates()` im Core liefert dafür die
+  400-Antwort mit deutschem Text (`POST/PATCH …/stops`, `POST …/position`, `PUT /depot`); ein halbes
+  Paar ist jetzt ebenfalls ein Fehler, nur `lat: null, lon: null` (oder beide leer) löscht die
+  Koordinaten und stößt die Suche neu an. **Bereits gespeicherte** Werte dieser Art setzt
+  `scrubStoredCoordinates()` beim Laden des Stores auf `null` (Depot, Stopps, Fahrerposition,
+  Sammelstellen, `geocache`) und loggt eine Warnung; die Adresse wird beim nächsten Lesen neu
+  gesucht, das Depot in `hydrateTours()` gleich mit. `plannedStart` wird mit `isClockTime()`
+  (`HH:MM`, 00–23 / 00–59) geprüft — `99:99` war vorher stillschweigend der Default, `25:61` wurde
+  beim Ändern sogar gespeichert.
+- **„Route berechnen" auf einer laufenden Tour** schob zugestellte Stopps ans Ende und nummerierte
+  alles neu — der um sieben Uhr gelieferte CAP-Markt hieß plötzlich „Stopp 6". `applyOpenStopOrder()`
+  im Core sortiert nur die offenen Stopps, und zwar auf den Plätzen, die offene Stopps schon
+  belegen; `done`/`failed` bleiben, wo sie sind. Auf einer fertigen Tour (nichts mehr offen) wird
+  nur noch nachgerechnet. `PATCH /tours/:id` mit `stopOrder` ist davon unberührt — das ist die
+  ausdrückliche Handsortierung und ordnet weiterhin alles.
 - **Jeder Request las den Store neu und schrieb seine Kopie zurück.** Ein Handler, der auf Nominatim
   oder OSRM wartete, überschrieb danach alles, was inzwischen abgehakt oder angelegt worden war — so
   verlor die E2E-Suite, die zwei Browser parallel fährt, ihren frisch angelegten Stopp. Der Store ist
@@ -245,10 +265,13 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   ein, wenn sich die _Menge_ der Stopps ändert (Fingerprint aus den IDs), nicht beim Abhaken.
 - **Ankunftszeiten einer geplanten Tour** dürfen nicht ab „jetzt" gerechnet werden, sonst steht an
   der Samstagstour die Uhrzeit von heute Nachmittag. Grundlage ist `date + plannedStart` (Default
-  06:30). **Bei einer laufenden Tour** darf umgekehrt nicht ab Depot und `startedAt` gerechnet
-  werden — dann stünde am sechsten Stopp um neun Uhr noch „Ankunft ca. 06:41". `arrivalBaseline()`
-  im Core rechnet ab dem zuletzt erledigten Stopp oder der jüngeren gemeldeten Fahrerposition, nie
-  früher als jetzt.
+  06:30) — **aber nie früher als jetzt**: am Tourtag um 10:48 stand an der noch nicht gestarteten
+  Tour sonst „Ankunft ca. 06:38". **Bei einer laufenden Tour** darf umgekehrt nicht ab Depot und
+  `startedAt` gerechnet werden — dann stünde am sechsten Stopp um neun Uhr noch „Ankunft ca. 06:41".
+  `arrivalBaseline()` im Core rechnet ab dem zuletzt erledigten Stopp oder der jüngeren gemeldeten
+  Fahrerposition, nie früher als jetzt. Die TypeScript-Fassung in `@bakery/delivery/routing` heißt
+  genauso und wird in `core-consistency.spec.ts` gegen den Server gerechnet — die App selbst nimmt
+  die `estimatedArrival` aus dem Tour-Payload.
 
 - **Ohne Straße keine Adresssuche.** Ein Sammelstellen-Stopp darf ohne Straße angelegt werden (eine
   neue Sammelstelle steht anfangs ohne da). Nominatim antwortet auf „Zweibrücken-Mörsbach"
@@ -293,6 +316,7 @@ src/app/page.tsx              Dashboard: Fahrer-/Tagwahl, nächster Stopp, Karte
 src/components/StopCard.tsx   ein Stopp mit Navigation / Anrufen / Geliefert / Nicht angetroffen
 src/components/AddStopForm.tsx  Erfassung inkl. „2x Bauernbrot, 10x Brötchen"-Parser
 src/components/HandoverList.tsx  Übergabeliste einer Sammelstelle (Vorbestellungen abhaken)
+src/components/FailureForm.tsx   Rückfrage zu „Nicht angetroffen": Grund und Verbleib der Ware
 src/components/ThemeToggle.tsx   Farbschema System / Hell / Dunkel
 src/components/Map.tsx        Leaflet, dynamisch mit ssr:false
 src/lib/delivery-api.ts       Typen, fetch-Client, Offline-Warteschlange
@@ -305,7 +329,9 @@ libs/bakery-delivery-routing   @bakery/delivery/routing — Geometrie, Reihenfol
 
 Kein Material UI, kein React Context, keine Shared-Lib der anderen Apps — diese App steht bewusst
 außerhalb des MUI-Stacks. Die Oberfläche ist mobile-first mit 44-px-Trefferflächen; der Breakpoint bei
-768 px ist der Ausnahmefall (Backstube am Rechner).
+768 px ist der Ausnahmefall (Backstube am Rechner). Das gilt auch für die Zoom-Knöpfe der Karte:
+Leaflet zeichnet sie 26 bzw. 30 px groß, `global.css` zieht sie auf 44 px und färbt sie über die
+Variablen (sonst bleiben sie im Dunkelmodus weiß).
 
 ### Offline
 
@@ -320,6 +346,34 @@ Jede Anfrage bricht nach 15 s ab (`AbortSignal.timeout`, wo der Browser es kann)
 `fetch` im Funkloch minutenlang — und solange es hing, waren alle Knöpfe gesperrt und die
 Warteschlange kam nicht zum Zug. Der Hinweis „… warten noch auf den Server" bleibt sichtbar, solange
 etwas in der Schlange liegt, auch wenn das Handy „online" meldet.
+
+**Die Sperre gilt je Stopp, nicht je Seite.** Ein hängender Status-PATCH sperrt nur die Knöpfe des
+Stopps (bzw. der Vorbestellung), dessen Änderung unterwegs ist — `busyStops` / `busyPreorders` in
+`page.tsx`. Sonst stand der Fahrer 15 s lang am nächsten Haus und konnte nichts abhaken. Nur
+„Route berechnen" wartet, bis nichts mehr unterwegs ist: es nummeriert die ganze Tour um.
+
+Die Kehrseite: zwei PATCHes zugleich, und **jede Server-Antwort ersetzt die ganze Tour**. Hängt der
+an Stopp A (ein noch nicht geokodierter Stopp wartet serverseitig bis zu 2,5 s auf Nominatim) und
+antwortet der an Stopp B zuerst, steht A in Bs Tour noch „Offen" — das Abhaken von eben wäre weg,
+und läuft A danach in den Timeout, läge `done` zwar in der Warteschlange, die Karte zeigte aber
+„Offen" mit aktivem Knopf. Deshalb hält `inFlightRef` jede laufende Änderung als `LocalUpdate`
+(Stopp-Body bzw. Vorbestellungsstatus), und jede Tour vom Server — Antwort eines PATCH, Flush der
+Warteschlange, `loadTours`, Route/Stopp anlegen/entfernen — geht durch `withInFlight()`
+(`mergeTour()`), das dieselbe `withPendingUpdates()` wie die Offline-Kopie benutzt. Ausgetragen wird
+ein Eintrag erst mit der eigenen Antwort, der 4xx-Ablehnung (dann gilt der Server-Stand) oder dem
+Netzfehler, der ihn in die Warteschlange legt. Vorbestellungen brauchen das genauso, weil sie im
+Tour-Payload hängen; `busyPreorders` sperrt den Stopp nicht. Drei `page.spec`-Fälle sichern das ab.
+
+### „Nicht angetroffen" hält Grund und Verbleib der Ware fest
+
+Der Knopf öffnet erst eine Rückfrage in der Karte (`FailureForm.tsx`): Grund (Nicht angetroffen /
+Adresse nicht gefunden / Annahme verweigert / Sonstiges mit Freitext) und Verbleib der Ware (Ware
+mitgenommen / Ware abgestellt). Beides geht **im selben Status-PATCH** mit — `failureReason` (immer
+der lesbare Text, kein Schlüssel) und `goodsDisposition` (`taken_back` / `left_at_address`) — und
+landet so auch in der Offline-Warteschlange. Der Server prüft beides in `normalizeStopInput()`
+(`GOODS_DISPOSITION`, `FAILURE_REASON_MAX_LENGTH` im Core) und räumt es bei `done`/`open` selbst weg;
+der Body für diese Stati bleibt `{ status }`. Die Stoppkarte zeigt „Grund: … · Ware abgestellt".
+Ohne den Verbleib wusste die Backstube am Montag nicht, ob die Tüte zurückkam oder vor der Haustür lag.
 
 **Die Tour selbst hat eine Offline-Kopie.** Jeder Tipp auf „Navigation" reicht das Handy an die
 Navi-App weiter; kommt der Fahrer zurück, lädt der Browser die Seite gern neu — mitten im Funkloch.
