@@ -230,7 +230,8 @@ Stand 2026-09-07: alle Findings sind gemerged (PR #91-#96, #98) oder mit Begrün
   **nicht reproduzierbar**; die Prüfung unter Turbopack steht aus. Ohne Reproduktion kein Fix.
 
 Die CI-E2E-Jobs sind nicht Teil dieses Backlogs geblieben: PR #97 stellt sie auf gebaute Apps plus
-Mock-API mit synthetischem Katalog um; ob der erste Lauf grün ist, steht im PR, nicht hier.
+Mock-API mit synthetischem Katalog um; seit dem Merge am 2026-09-07 sind alle drei Jobs und
+`ci-status` auf `main` grün.
 
 Von den Akzeptanzkriterien: jedes Finding ist gemerged oder als „nicht fixen" markiert; Lint,
 Type-Check und die betroffenen `nx test`-Projekte waren in jedem PR grün; die Zahl der roten
