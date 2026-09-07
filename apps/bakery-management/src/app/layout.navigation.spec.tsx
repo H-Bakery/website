@@ -32,7 +32,7 @@ describe('management navigation model', () => {
         'Bestellungen',
         'Bäckerei',
         'Produkte',
-        'Berichte',
+        'Kassenberichte',
         'Analysen',
         'Team-Chat',
         'Einstellungen',

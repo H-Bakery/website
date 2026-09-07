@@ -3129,6 +3129,9 @@ app.delete(
   })
 )
 
+// Kassenberichte aus hq/data/reports und die Analyse-Endpunkte dazu
+require('./src/routes/reports.mock')(app)
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Bakery API server running on port ${PORT}`)

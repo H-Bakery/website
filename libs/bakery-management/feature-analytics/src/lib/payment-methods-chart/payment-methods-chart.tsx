@@ -41,9 +41,12 @@ export function PaymentMethodsChart({
     }).format(value)
   }
 
-  const totalAmount = data.reduce((sum, item) => sum + item.amount, 0)
+  // Zahlungsarten ohne Betrag (Gutscheineinlösungen, 0-Euro-Bons) ergäben
+  // ein 0-%-Segment; sie stehen im Berichtsarchiv, nicht im Kuchen.
+  const visible = data.filter((item) => item.amount > 0)
+  const totalAmount = visible.reduce((sum, item) => sum + item.amount, 0)
 
-  const chartData = data.map((item) => ({
+  const chartData = visible.map((item) => ({
     ...item,
     percentage: ((item.amount / totalAmount) * 100).toFixed(1),
   }))
@@ -147,6 +150,7 @@ export function PaymentMethodsChart({
             outerRadius={120}
             fill="#8884d8"
             dataKey="amount"
+            nameKey="method"
           >
             {chartData.map((entry, index) => (
               <Cell

@@ -224,6 +224,44 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
 Tests: `npx nx test delivery-routing` (32), `npx nx test delivery-tracking` (7) und
 `apps/bakery-api/tests/unit/deliveryTours.test.js` (46) für die Rechenlogik des Servers.
 
+## Kassenberichte (hq/data/reports)
+
+Die Management-App zeigt unter `/admin/reports` die **Tagesabschlüsse der Kasse** aus
+`hq/data/reports/converted/` (ein JSON je Tag und Kasse, `YYYY-MM-DD_<Kasse>[_2].json`; Pfad über
+`HQ_REPORTS_DIR` oder `<website>/../hq/data/reports`). Das Dashboard („Kasse · Stand: <Tag>") und
+`/admin/analytics/*` rechnen mit denselben Daten. Das frühere `apps/reports` (kein Nx-Projekt,
+toter Pfad ins stillgelegte `content/`-Repo) ist seit dem 07.09.2026 gelöscht.
+
+Vier Dinge, die man wissen muss:
+
+- **Die Formeln stehen genau einmal**, in `apps/bakery-api/src/services/reports.core.js`
+  (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`); die Datei-Lese-Schicht
+  daneben in `reports-files.core.js`. Der Mock-Server (`src/routes/reports.mock.js`, eine Zeile in
+  `simple-server.js`) und der Loader der Management-App (`apps/bakery-management/src/lib/reports.ts`)
+  benutzen beide. Der Loader lädt den Core zur Laufzeit über Nodes `createRequire` aus dem Monorepo,
+  weil ein statischer Import einer App vom Modul-Grenzen-Lint verboten ist (`Imports of apps are
+forbidden`) - wer die Datei verschiebt, muss `CORE_DIR` in `reports.ts` nachziehen.
+- **`payment: 'Unbar'` ist Karte.** Wer auf `'Karte'` filtert, bekommt null. `'Keine'` sind
+  Gutscheineinlösungen und 0-Euro-Bons („Ohne Zahlung").
+- **Ein Tag ohne Datei ist eine Lücke, kein Umsatz 0** (`status: 'no-data'`). Montag ist Ruhetag,
+  dazu Betriebsferien und fehlende Exporte. Liste, Detailseite und Analysen zeigen das als „kein
+  Bericht"; nicht wegoptimieren. Fehlt das ganze Verzeichnis (CI), wird einmal
+  `HQ reports directory not found` geloggt und leer geantwortet - es gibt **keine** Beispieldaten
+  mehr, auch nicht in `analyticsService` (`available: false` statt `Math.random()`).
+- **Umsatz = Σ Bon-Total ohne abgebrochene Belege** (`type: 'cancelled'`), Stornos negativ. Genau so
+  stimmt die Summe mit dem Kassenabschluss (`daily_summary.total_revenue`) überein. Bons zählen ohne
+  Storno-Gegenbuchungen. Positionsmengen einzelner Tage können durch Storno-Paare über die
+  Tagesgrenze negativ sein - die Detailseite warnt dann, statt die Zeile zu verstecken.
+
+Endpunkte des Mock-Servers: `GET /api/reports/daily?from=&to=`, `/api/reports/daily/:date`,
+`/api/reports/monthly/:month` sowie `/api/analytics/{revenue-trends,product-performance,payment-methods,summary}`.
+Fehler mit `message` **und** `error`. Die echte TypeScript-API hat unter `/api/reports/daily` einen
+älteren, DB-basierten Vertrag - der ist nicht angeglichen.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/reportsCore.test.js` (24)
+und in der Management-App `src/lib/reports.spec.ts`, `admin/reports/**/*.spec.tsx`,
+`admin/analytics/**/*.spec.tsx` - alle mit synthetischen Fixtures, nie mit echten Tagesfiles.
+
 ## Important Notes
 
 - Always check existing patterns before implementing new features

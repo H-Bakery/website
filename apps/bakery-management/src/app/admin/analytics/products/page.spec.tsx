@@ -25,33 +25,48 @@ const products = [
   { productId: '1', productName: 'Bauernbrot', quantitySold: 10, revenue: 35 },
 ]
 
-const warning = /Beispieldaten und nicht die echten Verkaufszahlen/
+const unavailable = /Die API liefert keine Produktdaten/
 
 describe('ProductAnalyticsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks()
   })
 
-  it('warnt sichtbar, wenn die Zahlen nur Beispieldaten sind', async () => {
+  it('zeigt gar keine Zahlen, wenn die API nicht antwortet', async () => {
     analyticsService.getProductPerformanceWithSource.mockResolvedValue({
-      data: products,
-      isMock: true,
+      data: [],
+      available: false,
     })
 
     renderWithTheme(<ProductAnalyticsPage />)
 
-    expect(await screen.findByText(warning)).toBeInTheDocument()
+    expect(await screen.findByText(unavailable)).toBeInTheDocument()
+    expect(screen.queryByText('Bestseller')).not.toBeInTheDocument()
   })
 
-  it('zeigt keine Warnung, wenn die API echte Produktdaten liefert', async () => {
+  it('meldet einen Zeitraum ohne Kassenbericht als solchen', async () => {
+    analyticsService.getProductPerformanceWithSource.mockResolvedValue({
+      data: [],
+      available: true,
+    })
+
+    renderWithTheme(<ProductAnalyticsPage />)
+
+    expect(
+      await screen.findByText(/liegt kein Kassenbericht vor/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(unavailable)).not.toBeInTheDocument()
+  })
+
+  it('zeigt echte Produktdaten ohne Warnung', async () => {
     analyticsService.getProductPerformanceWithSource.mockResolvedValue({
       data: products,
-      isMock: false,
+      available: true,
     })
 
     renderWithTheme(<ProductAnalyticsPage />)
 
     await waitFor(() => expect(screen.getByText('35,00 €')).toBeInTheDocument())
-    expect(screen.queryByText(warning)).not.toBeInTheDocument()
+    expect(screen.queryByText(unavailable)).not.toBeInTheDocument()
   })
 })
