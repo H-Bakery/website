@@ -30,10 +30,10 @@ npm run test:e2e:delivery              # Playwright (Desktop + Pixel 5), startet
 
 npx nx build bakery-delivery
 npx nx lint bakery-delivery
-npx nx test delivery-routing           # 32 Tests, darunter der Abgleich mit dem Server-Core
+npx nx test delivery-routing           # 47 Tests, darunter der Abgleich mit dem Server-Core
 npx nx test delivery-tracking          # 7 Tests
 npx jest --config apps/bakery-api/jest.config.js --rootDir apps/bakery-api \
-  --testPathPattern deliveryTours      # 46 Tests der Server-Rechenlogik
+  --testPathPattern deliveryTours      # 61 Tests der Server-Rechenlogik
 npx tsc --noEmit -p apps/bakery-delivery/tsconfig.json   # laeuft auch in `npm run type-check`
 ```
 
@@ -221,6 +221,26 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   unveränderte Reihenfolge zurück. Im Frontend heißt die Prüfung ebenfalls `hasCoordinates()`
   (`@bakery/delivery/routing`) — `stop.lat !== null` hätte `undefined` durchgelassen, und Leaflet
   wirft bei `[undefined, undefined]` die ganze Karte weg.
+- **`hasCoordinates()` war zu großzügig.** `lat: 999` und das Paar `(0, 0)` („Null Island" im Golf
+  von Guinea, das Ergebnis von `Number(null)` oder einem leeren Formular) gingen als manuelle
+  Stopp-, Depot- und Fahrerkoordinaten durch; die ETAs fielen dann auf „jetzt" zusammen oder die
+  Karte zog in den Atlantik. Seit dem 07.09.2026 verlangt `hasCoordinates()` in **beiden**
+  Fassungen −90..90 / −180..180 und lehnt genau das Paar `(0, 0)` ab (ein einzelner Nullwert bleibt
+  erlaubt — Äquator und Nullmeridian existieren). `validateCoordinates()` im Core liefert dafür die
+  400-Antwort mit deutschem Text (`POST/PATCH …/stops`, `POST …/position`, `PUT /depot`); ein halbes
+  Paar ist jetzt ebenfalls ein Fehler, nur `lat: null, lon: null` (oder beide leer) löscht die
+  Koordinaten und stößt die Suche neu an. **Bereits gespeicherte** Werte dieser Art setzt
+  `scrubStoredCoordinates()` beim Laden des Stores auf `null` (Depot, Stopps, Fahrerposition,
+  Sammelstellen, `geocache`) und loggt eine Warnung; die Adresse wird beim nächsten Lesen neu
+  gesucht, das Depot in `hydrateTours()` gleich mit. `plannedStart` wird mit `isClockTime()`
+  (`HH:MM`, 00–23 / 00–59) geprüft — `99:99` war vorher stillschweigend der Default, `25:61` wurde
+  beim Ändern sogar gespeichert.
+- **„Route berechnen" auf einer laufenden Tour** schob zugestellte Stopps ans Ende und nummerierte
+  alles neu — der um sieben Uhr gelieferte CAP-Markt hieß plötzlich „Stopp 6". `applyOpenStopOrder()`
+  im Core sortiert nur die offenen Stopps, und zwar auf den Plätzen, die offene Stopps schon
+  belegen; `done`/`failed` bleiben, wo sie sind. Auf einer fertigen Tour (nichts mehr offen) wird
+  nur noch nachgerechnet. `PATCH /tours/:id` mit `stopOrder` ist davon unberührt — das ist die
+  ausdrückliche Handsortierung und ordnet weiterhin alles.
 - **Jeder Request las den Store neu und schrieb seine Kopie zurück.** Ein Handler, der auf Nominatim
   oder OSRM wartete, überschrieb danach alles, was inzwischen abgehakt oder angelegt worden war — so
   verlor die E2E-Suite, die zwei Browser parallel fährt, ihren frisch angelegten Stopp. Der Store ist
@@ -245,10 +265,13 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   ein, wenn sich die _Menge_ der Stopps ändert (Fingerprint aus den IDs), nicht beim Abhaken.
 - **Ankunftszeiten einer geplanten Tour** dürfen nicht ab „jetzt" gerechnet werden, sonst steht an
   der Samstagstour die Uhrzeit von heute Nachmittag. Grundlage ist `date + plannedStart` (Default
-  06:30). **Bei einer laufenden Tour** darf umgekehrt nicht ab Depot und `startedAt` gerechnet
-  werden — dann stünde am sechsten Stopp um neun Uhr noch „Ankunft ca. 06:41". `arrivalBaseline()`
-  im Core rechnet ab dem zuletzt erledigten Stopp oder der jüngeren gemeldeten Fahrerposition, nie
-  früher als jetzt.
+  06:30) — **aber nie früher als jetzt**: am Tourtag um 10:48 stand an der noch nicht gestarteten
+  Tour sonst „Ankunft ca. 06:38". **Bei einer laufenden Tour** darf umgekehrt nicht ab Depot und
+  `startedAt` gerechnet werden — dann stünde am sechsten Stopp um neun Uhr noch „Ankunft ca. 06:41".
+  `arrivalBaseline()` im Core rechnet ab dem zuletzt erledigten Stopp oder der jüngeren gemeldeten
+  Fahrerposition, nie früher als jetzt. Die TypeScript-Fassung in `@bakery/delivery/routing` heißt
+  genauso und wird in `core-consistency.spec.ts` gegen den Server gerechnet — die App selbst nimmt
+  die `estimatedArrival` aus dem Tour-Payload.
 
 - **Ohne Straße keine Adresssuche.** Ein Sammelstellen-Stopp darf ohne Straße angelegt werden (eine
   neue Sammelstelle steht anfangs ohne da). Nominatim antwortet auf „Zweibrücken-Mörsbach"
