@@ -42,6 +42,7 @@ import {
   formatPercent,
   formatReportDateLong,
 } from '../../lib/reportFormat'
+import TargetsTile from '../../components/targets/TargetsTile'
 
 /** Kennzahlen des jüngsten Kassentags, vom Server geladen. */
 export interface LatestReportTile {
@@ -549,6 +550,9 @@ export default function DashboardClient({
             : 'Das HQ-Berichtsverzeichnis ist auf diesem Rechner nicht erreichbar - Kassenzahlen werden nicht angezeigt.'}
         </Alert>
       )}
+
+      {/* Tagesziel-Ampel (TASK-039): nur nach Anmeldung als Admin */}
+      <TargetsTile />
 
       {/* Quick Links */}
       <Typography

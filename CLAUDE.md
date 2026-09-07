@@ -314,6 +314,42 @@ der Oberfläche. Nicht zugeordnete Buchungen sind gewollt und ein Info-Hinweis, 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/finance*.test.js` (Core,
 Auth und Routen) und `npx nx test bakery-management` (`src/lib/finance.spec.ts`, `FinanceClient.spec.tsx`).
 
+## Tagesziel-Ampel (`/admin/finance/tagesziel`, TASK-039)
+
+Break-even als Tagesziel je Wochentag, rückblickend aus den Tagesabschlüssen der Kasse; Dashboard-Kachel
+(`components/targets/TargetsTile.tsx`) und Detailseite. Vier Dinge, die man wissen muss:
+
+- **Die gesamte Rechnung steht genau einmal**, in `apps/bakery-api/src/services/targets.core.js`
+  (dependency-freies CommonJS wie `finance.core.js`): Kostenbasis (`computeCostBase`: Fixkosten =
+  Netto aller `ausgabe`/`offen`-Kategorien außerhalb `variable_categories`, Kostenquote = variable
+  Kosten / Einnahmen, Umsatz außer Kasse = Einnahmen − Unterkategorien `bar`/`karte`/`karte_elv`),
+  Wochentagsfaktoren (`computeWeekdayFactors`: rollierendes Fenster bis zum jüngsten ausgewerteten Tag,
+  normiert auf Mittelwert 1 über die geöffneten Wochentage), Zielstufen (`computeTargets`), Ampel
+  (`evaluateDay`) und Zeiträume (`aggregatePeriod`, `aggregateToDate` mit Hochrechnung). Die
+  Management-App rechnet **nichts** selbst - sie zeigt, was `/api/finance/targets*` liefert
+  (`src/routes/targets.mock.js`, Rolle `admin`, Fehler mit `message` + `error`).
+- **Die Config liegt in `hq`, nicht hier:** `hq/data/finance/config/targets.json` (`HQ_FINANCE_DIR`).
+  `mode: 'derived'` leitet aus `finance-summary.json` ab, `mode: 'manual'` überschreibt die Ableitung
+  vollständig. Fehlt die Datei oder ist sie unplausibel (Schwellen, Ruhetage, Kostenquote ≥ 1, keine
+  Fixkosten), antwortet der Server mit `status: 'no-target'` und einem Grund - **nie** mit einem
+  geschätzten Ziel. `non_pos_revenue_monthly` und `private_draw_monthly` sind bewusst `null`; die
+  Ableitung daraus ist eine **Annahme** (`assumed: true` an der Entnahme-Stufe, `cost_base.assumptions`),
+  und die Oberfläche sagt das.
+- **`open` heißt nicht rot.** Der laufende Tag, die Zukunft, Ruhetage (`closed_weekdays`, ISO 1 = Montag)
+  und vergangene Tage ohne Bericht (Ferien, Feiertage, fehlender Export - ohne Öffnungskalender nicht
+  unterscheidbar) sind `status: 'open'` mit `reason` und Label. Sie zählen weder als Ist noch als Ziel,
+  und sie fließen nicht in die Faktoren ein. Ein Tag mit Umsatz ≤ 0 (Storno-Tag) ebenso wenig.
+  `last_evaluated_date` ist der jüngste Tag **vor** heute mit Bericht - im Regelfall gestern.
+- **Farbe ist nie der einzige Träger.** `TargetStatusChip` zeigt immer Label + Verhältnis, trägt
+  `data-status` und eine je Modus geprüfte Palette (`useTargetStatusColors`, ≥ 4,5:1 auf `paper` in
+  Light und Dark). Keine MUI-`warning.main`-Texte dafür - die fallen in Light auf ~3:1.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/targets*.test.js` (Core
+und Routen, synthetische Fixtures in Temp-Verzeichnissen) und in der Management-App
+`src/lib/targetsApi.spec.ts`, `components/targets/TargetsTile.spec.tsx`,
+`admin/finance/tagesziel/TagesZielClient.spec.tsx` (Fixtures: `src/lib/targetsFixtures.ts`, erfunden).
+Keine echten Beträge in Code, Tests, Fixtures oder Commit-Messages - das Repo ist öffentlich.
+
 ## Important Notes
 
 - Always check existing patterns before implementing new features
