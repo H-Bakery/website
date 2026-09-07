@@ -16,8 +16,10 @@ import {
   isLongitude,
   normalizeAddress,
   optimizeRouteOrder,
+  parseTimeWindow,
   ROAD_DETOUR_FACTOR,
   STOP_SERVICE_TIME,
+  timeWindowBounds,
   withEstimatedArrivals,
   type RouteWaypoint,
 } from './delivery-routing'
@@ -138,6 +140,110 @@ describe('Server- und Frontend-Geometrie', () => {
       const expected = Date.parse(serverArrivals[Number(waypoint.address)])
       expect(waypoint.estimatedArrival?.getTime()).toBeCloseTo(expected, -1)
     })
+  })
+
+  it('lesen Zeitfenster gleich', () => {
+    for (const value of [
+      '09:00-09:30',
+      '9:00 – 9:30',
+      '07:00 bis 08:00',
+      'ab 09:00',
+      'bis 09:30',
+      'vormittags',
+      '10:00-09:00',
+      '25:00-26:00',
+      '',
+      null,
+      undefined,
+    ]) {
+      expect(parseTimeWindow(value)).toEqual(core.parseTimeWindow(value))
+      expect(timeWindowBounds('2026-09-19', value)).toEqual(
+        core.timeWindowBounds('2026-09-19', value)
+      )
+    }
+    expect(timeWindowBounds('2026-02-30', '09:00-09:30')).toEqual(
+      core.timeWindowBounds('2026-02-30', '09:00-09:30')
+    )
+  })
+
+  // Die Zeitfenster der Samstagstour: CAP-Markt 07:00-08:00, ein Kunde
+  // 08:00-09:00, die Sammelstelle 09:00-09:30, zwei Stopps ohne Fenster.
+  const WINDOWS: Record<number, string | null> = {
+    1: '07:00-08:00',
+    2: '08:00-09:00',
+    3: null,
+    4: null,
+    5: '09:00-09:30',
+  }
+  const windowedStops = STOPS.map((s) => ({ ...s, timeWindow: WINDOWS[s.id] }))
+  const windowedWaypoints: RouteWaypoint[] = windowedStops.map((s) => ({
+    location: { ...toLocation(s), timestamp: new Date(0) },
+    address: String(s.id),
+    type: 'delivery',
+    timeWindow: s.timeWindow,
+  }))
+
+  it('sortieren Stopps mit Zeitfenstern in derselben Reihenfolge', () => {
+    for (const startedAt of [
+      '2026-09-19T06:30:00',
+      '2026-09-19T08:50:00',
+      '2026-09-19T09:40:00',
+    ]) {
+      const serverOrder = core
+        .orderStopsNearestNeighbour(DEPOT, windowedStops, {
+          startedAt: new Date(startedAt).toISOString(),
+          vehicleType: 'car',
+          date: '2026-09-19',
+        })
+        .map((s: { id: number }) => s.id)
+      const clientOrder = optimizeRouteOrder(
+        windowedWaypoints,
+        toLocation(DEPOT),
+        {
+          startedAt: new Date(startedAt),
+          vehicleType: 'car',
+          date: '2026-09-19',
+        }
+      ).map((w) => Number(w.address))
+      expect(clientOrder).toEqual(serverOrder)
+    }
+  })
+
+  it('kommen mit Zeitfenstern auf dieselben Ankunfts- und Wartezeiten', () => {
+    for (const startedAt of ['2026-09-19T06:30:00', '2026-09-19T09:40:00']) {
+      const start = new Date(startedAt)
+      const server = core.estimateArrivalDetails(
+        DEPOT,
+        windowedStops,
+        start.toISOString(),
+        'car',
+        '2026-09-19'
+      )
+      const route = withEstimatedArrivals(
+        {
+          id: 'x',
+          distance: 0,
+          duration: 0,
+          waypoints: [
+            {
+              location: { ...toLocation(DEPOT), timestamp: start },
+              address: 'Depot',
+              type: 'pickup',
+            },
+            ...windowedWaypoints,
+          ],
+        },
+        start,
+        'car',
+        '2026-09-19'
+      )
+      route.waypoints.slice(1).forEach((waypoint) => {
+        const expected = server[Number(waypoint.address)]
+        expect(waypoint.estimatedArrival?.toISOString()).toBe(expected.arrival)
+        expect(waypoint.waitSeconds).toBeCloseTo(expected.waitSeconds, 3)
+        expect(waypoint.missesTimeWindow).toBe(expected.missesTimeWindow)
+      })
+    }
   })
 
   it('normalisieren Adressen gleich', () => {

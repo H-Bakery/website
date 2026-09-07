@@ -228,6 +228,181 @@ describe('orderStopsNearestNeighbour', () => {
   })
 })
 
+describe('parseTimeWindow / timeWindowBounds', () => {
+  test('liest Fenster mit Beginn und Ende in mehreren Schreibweisen', () => {
+    expect(core.parseTimeWindow('09:00-09:30')).toEqual({
+      start: '09:00',
+      end: '09:30',
+    })
+    expect(core.parseTimeWindow('9:00 – 9:30')).toEqual({
+      start: '09:00',
+      end: '09:30',
+    })
+    expect(core.parseTimeWindow(' 07:00 bis 08:00 ')).toEqual({
+      start: '07:00',
+      end: '08:00',
+    })
+  })
+
+  test('kennt "ab" und "bis" mit nur einer Grenze', () => {
+    expect(core.parseTimeWindow('ab 09:00')).toEqual({
+      start: '09:00',
+      end: null,
+    })
+    expect(core.parseTimeWindow('bis 09:30')).toEqual({
+      start: null,
+      end: '09:30',
+    })
+  })
+
+  test('laesst Freitext, leere Werte und Unsinn ohne Wirkung', () => {
+    expect(core.parseTimeWindow('vormittags')).toBeNull()
+    expect(core.parseTimeWindow('')).toBeNull()
+    expect(core.parseTimeWindow(null)).toBeNull()
+    expect(core.parseTimeWindow(undefined)).toBeNull()
+    expect(core.parseTimeWindow(930)).toBeNull()
+    // Ende vor Beginn und Uhrzeiten, die es nicht gibt
+    expect(core.parseTimeWindow('10:00-09:00')).toBeNull()
+    expect(core.parseTimeWindow('25:00-26:00')).toBeNull()
+    expect(core.parseTimeWindow('09:60')).toBeNull()
+  })
+
+  test('legt die Grenzen auf den Tourtag in lokaler Zeit', () => {
+    const bounds = core.timeWindowBounds('2026-09-19', '09:00-09:30')
+    expect(bounds.start).toBe(Date.parse('2026-09-19T09:00:00'))
+    expect(bounds.end).toBe(Date.parse('2026-09-19T09:30:00'))
+    expect(core.timeWindowBounds('2026-09-19', 'ab 09:00')).toEqual({
+      start: Date.parse('2026-09-19T09:00:00'),
+      end: null,
+    })
+  })
+
+  test('kennt ohne lesbares Fenster oder Datum keine Grenzen', () => {
+    const none = { start: null, end: null }
+    expect(core.timeWindowBounds('2026-09-19', 'vormittags')).toEqual(none)
+    expect(core.timeWindowBounds('2026-09-19', null)).toEqual(none)
+    expect(core.timeWindowBounds(null, '09:00-09:30')).toEqual(none)
+    expect(core.timeWindowBounds('2026-02-30', '09:00-09:30')).toEqual(none)
+  })
+})
+
+// Die Samstagstour mit Zeitfenstern: CAP-Markt 07:00-08:00, ein Kunde in
+// Homburg 08:00-09:00, die Sammelstelle Moersbach 09:00-09:30.
+const SAMMELSTELLE = {
+  id: 4,
+  lat: 49.302619,
+  lon: 7.3937453,
+  status: 'open',
+  timeWindow: '09:00-09:30',
+}
+const CAP_MARKT_FENSTER = { ...CAP_MARKT, timeWindow: '07:00-08:00' }
+const TALSTRASSE_FENSTER = { ...TALSTRASSE, timeWindow: '08:00-09:00' }
+const ABFAHRT = new Date('2026-09-19T06:30:00').toISOString()
+const TOURTAG = '2026-09-19'
+
+describe('orderStopsNearestNeighbour mit Zeitfenstern', () => {
+  // Regression: die Sammelstelle (09:00-09:30) war der naechste Nachbar des
+  // Depots und stand um 06:34 auf Platz 1, der Kunde mit 08:00-09:00 dahinter.
+  test('sortiert Stopps mit Fenster nach Fensterbeginn', () => {
+    const order = core
+      .orderStopsNearestNeighbour(
+        DEPOT,
+        [SAMMELSTELLE, TALSTRASSE_FENSTER, CAP_MARKT_FENSTER],
+        { startedAt: ABFAHRT, vehicleType: 'car', date: TOURTAG }
+      )
+      .map((s) => s.id)
+    expect(order).toEqual([
+      CAP_MARKT_FENSTER.id,
+      TALSTRASSE_FENSTER.id,
+      SAMMELSTELLE.id,
+    ])
+  })
+
+  test('bedient einen Stopp ohne Fenster, wo er ohne Wartezeit passt', () => {
+    const order = core
+      .orderStopsNearestNeighbour(
+        DEPOT,
+        [SAMMELSTELLE, CAP_MARKT_FENSTER, KAISERSTRASSE],
+        { startedAt: ABFAHRT, vehicleType: 'car', date: TOURTAG }
+      )
+      .map((s) => s.id)
+    // Kaiserstrasse (kein Fenster) sofort, CAP-Markt ab 07:00, Sammelstelle ab 09:00.
+    expect(order).toEqual([
+      KAISERSTRASSE.id,
+      CAP_MARKT_FENSTER.id,
+      SAMMELSTELLE.id,
+    ])
+  })
+
+  test('nimmt den naechsten Nachbarn nicht, wenn er einem anderen das Fenster nimmt', () => {
+    // Zwei Stopps ohne Fenster nah am Depot, ein Stopp mit knappem Fenster,
+    // das nur zu halten ist, wenn er sofort angefahren wird.
+    const knapp = {
+      id: 7,
+      lat: 49.3226,
+      lon: 7.3389,
+      status: 'open',
+      timeWindow: '06:30-06:40',
+    }
+    const nah = { id: 8, lat: 49.3025, lon: 7.371, status: 'open' }
+    const order = core
+      .orderStopsNearestNeighbour(DEPOT, [nah, CAP_MARKT, knapp], {
+        startedAt: ABFAHRT,
+        vehicleType: 'car',
+        date: TOURTAG,
+      })
+      .map((s) => s.id)
+    expect(order[0]).toBe(knapp.id)
+  })
+
+  test('haengt einen Stopp mit bereits verpasstem Fenster nach hinten', () => {
+    const verpasst = { ...CAP_MARKT, timeWindow: '05:00-06:00' }
+    const order = core
+      .orderStopsNearestNeighbour(
+        DEPOT,
+        [verpasst, TALSTRASSE, KAISERSTRASSE],
+        { startedAt: ABFAHRT, vehicleType: 'car', date: TOURTAG }
+      )
+      .map((s) => s.id)
+    expect(order[order.length - 1]).toBe(verpasst.id)
+  })
+
+  test('ohne Startzeit bleibt es beim Nearest Neighbour', () => {
+    const order = core
+      .orderStopsNearestNeighbour(DEPOT, [
+        SAMMELSTELLE,
+        TALSTRASSE_FENSTER,
+        CAP_MARKT_FENSTER,
+      ])
+      .map((s) => s.id)
+    expect(order[0]).toBe(CAP_MARKT_FENSTER.id)
+    expect(order).toEqual(
+      core
+        .orderStopsNearestNeighbour(DEPOT, [
+          SAMMELSTELLE,
+          TALSTRASSE,
+          CAP_MARKT,
+        ])
+        .map((s) => s.id)
+    )
+  })
+
+  test('laesst Freitext-Fenster ohne Wirkung', () => {
+    const vormittags = { ...SAMMELSTELLE, timeWindow: 'vormittags' }
+    const mit = core
+      .orderStopsNearestNeighbour(DEPOT, [vormittags, TALSTRASSE, CAP_MARKT], {
+        startedAt: ABFAHRT,
+        vehicleType: 'car',
+        date: TOURTAG,
+      })
+      .map((s) => s.id)
+    const ohne = core
+      .orderStopsNearestNeighbour(DEPOT, [SAMMELSTELLE, TALSTRASSE, CAP_MARKT])
+      .map((s) => s.id)
+    expect(mit).toEqual(ohne)
+  })
+})
+
 describe('estimateTour', () => {
   test('rechnet Strecke, Zeit und Standzeit je Stopp', () => {
     const estimate = core.estimateTour(DEPOT, [CAP_MARKT, TALSTRASSE], 'car')
@@ -294,6 +469,115 @@ describe('estimateArrivals', () => {
       'car'
     )
     expect(arrivals).toEqual({})
+  })
+})
+
+describe('estimateArrivalDetails mit Zeitfenstern', () => {
+  // Regression: an der Sammelstelle mit Fenster 09:00-09:30 stand
+  // "Ankunft ca. 06:34" - Abfahrt 06:30 plus vier Minuten Fahrt.
+  test('kommt nicht vor dem Fensterbeginn an und weist die Wartezeit aus', () => {
+    const details = core.estimateArrivalDetails(
+      DEPOT,
+      [SAMMELSTELLE],
+      ABFAHRT,
+      'car',
+      TOURTAG
+    )
+    expect(details[SAMMELSTELLE.id].arrival).toBe(
+      new Date('2026-09-19T09:00:00').toISOString()
+    )
+    expect(details[SAMMELSTELLE.id].waitSeconds).toBeGreaterThan(2 * 3600)
+    expect(details[SAMMELSTELLE.id].missesTimeWindow).toBe(false)
+  })
+
+  test('schiebt die Wartezeit in die Folge-ETAs', () => {
+    const details = core.estimateArrivalDetails(
+      DEPOT,
+      [SAMMELSTELLE, KAISERSTRASSE],
+      ABFAHRT,
+      'car',
+      TOURTAG
+    )
+    // Nach 09:00 plus Standzeit plus Fahrt - nicht 06:4x.
+    expect(Date.parse(details[KAISERSTRASSE.id].arrival)).toBeGreaterThan(
+      Date.parse('2026-09-19T09:03:00')
+    )
+    expect(details[KAISERSTRASSE.id].waitSeconds).toBe(0)
+    expect(details[KAISERSTRASSE.id].missesTimeWindow).toBe(false)
+  })
+
+  test('markiert ein Fenster, das nicht mehr einhaltbar ist', () => {
+    // Beim Kunden mit 08:00-09:00 wird bis 08:00 gewartet; ein Stopp mit
+    // 07:00-07:30 dahinter ist dann nicht mehr zu schaffen.
+    const zuSpaet = { ...KAISERSTRASSE, timeWindow: '07:00-07:30' }
+    const details = core.estimateArrivalDetails(
+      DEPOT,
+      [TALSTRASSE_FENSTER, zuSpaet],
+      ABFAHRT,
+      'car',
+      TOURTAG
+    )
+    expect(details[TALSTRASSE_FENSTER.id].missesTimeWindow).toBe(false)
+    expect(details[zuSpaet.id].missesTimeWindow).toBe(true)
+    expect(details[zuSpaet.id].waitSeconds).toBe(0)
+    // Die Ankunft ist trotzdem die echte Prognose, nicht das Fensterende.
+    expect(Date.parse(details[zuSpaet.id].arrival)).toBeGreaterThan(
+      Date.parse('2026-09-19T08:00:00')
+    )
+  })
+
+  test('nimmt ohne Tourtag den Tag der Startzeit', () => {
+    const mit = core.estimateArrivalDetails(
+      DEPOT,
+      [SAMMELSTELLE],
+      ABFAHRT,
+      'car',
+      TOURTAG
+    )
+    const ohne = core.estimateArrivalDetails(
+      DEPOT,
+      [SAMMELSTELLE],
+      ABFAHRT,
+      'car'
+    )
+    expect(ohne[SAMMELSTELLE.id]).toEqual(mit[SAMMELSTELLE.id])
+  })
+
+  test('laesst Freitext-Fenster ohne Wirkung', () => {
+    const vormittags = { ...SAMMELSTELLE, timeWindow: 'vormittags' }
+    const details = core.estimateArrivalDetails(
+      DEPOT,
+      [vormittags],
+      ABFAHRT,
+      'car',
+      TOURTAG
+    )
+    expect(details[vormittags.id].waitSeconds).toBe(0)
+    expect(details[vormittags.id].missesTimeWindow).toBe(false)
+    expect(Date.parse(details[vormittags.id].arrival)).toBeLessThan(
+      Date.parse('2026-09-19T07:00:00')
+    )
+  })
+
+  test('estimateArrivals liefert dieselben Ankuenfte als ISO-String', () => {
+    const details = core.estimateArrivalDetails(
+      DEPOT,
+      [CAP_MARKT_FENSTER, SAMMELSTELLE],
+      ABFAHRT,
+      'car',
+      TOURTAG
+    )
+    const arrivals = core.estimateArrivals(
+      DEPOT,
+      [CAP_MARKT_FENSTER, SAMMELSTELLE],
+      ABFAHRT,
+      'car',
+      TOURTAG
+    )
+    expect(arrivals).toEqual({
+      [CAP_MARKT_FENSTER.id]: details[CAP_MARKT_FENSTER.id].arrival,
+      [SAMMELSTELLE.id]: details[SAMMELSTELLE.id].arrival,
+    })
   })
 })
 

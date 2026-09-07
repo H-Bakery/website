@@ -4,6 +4,7 @@ import {
   buildAddressNavigationUrl,
   buildNavigationUrl,
   buildPhoneLink,
+  formatDuration,
   formatRouteDistance,
   hasCoordinates,
 } from '@bakery/delivery/routing'
@@ -85,6 +86,16 @@ export function StopCard({
 
   const items = formatItems(stop.items)
 
+  // Zeitfenster: der Server rechnet die Ankunft nicht vor dem Fensterbeginn
+  // und schickt die Wartezeit mit. Unter einer halben Minute ist sie keine
+  // Erwaehnung wert ("0 min" waere nur Rauschen).
+  const waitMinutes =
+    stop.status === 'open' && stop.waitSeconds != null
+      ? Math.round(stop.waitSeconds / 60)
+      : 0
+  const missesTimeWindow =
+    stop.status === 'open' && stop.missesTimeWindow === true
+
   // Ein Stopp mit `pickupPointId` ist eine Sammelstelle: statt einer
   // Zustellung stehen dort mehrere Vorbestellungen zur Uebergabe an.
   const isPickupPoint = stop.pickupPointId != null
@@ -136,6 +147,12 @@ export function StopCard({
             <dd>{formatTime(stop.estimatedArrival)}</dd>
           </div>
         )}
+        {waitMinutes > 0 && (
+          <div>
+            <dt>Wartezeit bis Fensterbeginn</dt>
+            <dd>{formatDuration(waitMinutes * 60)}</dd>
+          </div>
+        )}
         {/* `!= null` statt Truthiness: 0 m ist eine gueltige Entfernung. */}
         {distance != null && (
           <div>
@@ -151,6 +168,16 @@ export function StopCard({
         )}
       </dl>
 
+      {/* Die ETA liegt nach dem Fensterende: der Fahrer soll das sehen, bevor
+          er losfaehrt - und die Backstube kann anrufen. */}
+      {missesTimeWindow && stop.timeWindow && (
+        <p className={styles.stopWarning}>
+          Zeitfenster {stop.timeWindow} voraussichtlich nicht mehr einhaltbar
+          {stop.estimatedArrival &&
+            ` – Ankunft erst gegen ${formatTime(stop.estimatedArrival)} Uhr`}
+          .
+        </p>
+      )}
       {items && <p className={styles.stopItems}>{items}</p>}
       {stop.notes && <p className={styles.stopNotes}>{stop.notes}</p>}
       {stop.status === 'failed' &&

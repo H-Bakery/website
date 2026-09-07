@@ -30,10 +30,10 @@ npm run test:e2e:delivery              # Playwright (Desktop + Pixel 5), startet
 
 npx nx build bakery-delivery
 npx nx lint bakery-delivery
-npx nx test delivery-routing           # 47 Tests, darunter der Abgleich mit dem Server-Core
+npx nx test delivery-routing           # 59 Tests, darunter der Abgleich mit dem Server-Core
 npx nx test delivery-tracking          # 7 Tests
 npx jest --config apps/bakery-api/jest.config.js --rootDir apps/bakery-api \
-  --testPathPattern deliveryTours      # 61 Tests der Server-Rechenlogik
+  --testPathPattern deliveryTours      # 81 Tests der Server-Rechenlogik
 npx tsc --noEmit -p apps/bakery-delivery/tsconfig.json   # laeuft auch in `npm run type-check`
 ```
 
@@ -273,6 +273,30 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   genauso und wird in `core-consistency.spec.ts` gegen den Server gerechnet — die App selbst nimmt
   die `estimatedArrival` aus dem Tour-Payload.
 
+- **Die Ankunftsschätzung ignorierte das Zeitfenster.** An der Sammelstelle (Fenster 09:00–09:30)
+  stand „Ankunft ca. 06:34" – Abfahrt plus vier Minuten Fahrt –, und ein danach angelegter Stopp
+  mit 08:00–09:00 hieß „Stopp 2, 06:42". `timeWindow` wurde nur als String durchgereicht. Seit dem
+  07.09.2026 liest `parseTimeWindow()` im Core das Fenster („09:00-09:30", „9:00 – 9:30",
+  „ab 09:00", „bis 09:30"; Freitext wie „vormittags" bleibt erlaubt und wirkungslos), und
+  `estimateArrivalDetails()` rechnet je Stopp `ankunft = max(eta, Fensterbeginn)`. Die Wartezeit
+  steht als `waitSeconds` am Stopp und wandert in die Folge-ETAs; liegt die Ankunft nach dem
+  Fensterende, ist `missesTimeWindow` gesetzt und die Stoppkarte sagt „Zeitfenster … voraussichtlich
+  nicht mehr einhaltbar". „Route berechnen" respektiert die Fenster ebenfalls: sobald ein offener
+  Stopp ein lesbares Fenster hat, sortiert `orderStopsNearestNeighbour()` mit `startedAt`/`date`
+  (Heuristik „Nearest Neighbour mit Zeitfenstern", im Core-Kommentar beschrieben) ab dem
+  Ausgangspunkt der Ankunftsprognose, und OSRM misst nur noch Strecke und Verlauf in dieser
+  Reihenfolge – der Trip-Endpunkt kennt keine Zeitfenster. `done`/`failed`-Stopps bleiben wie
+  bisher auf ihrem Platz (`applyOpenStopOrder`). Die TypeScript-Fassung (`parseTimeWindow`,
+  `timeWindowBounds`, `optimizeRouteOrder(…, options)`, `withEstimatedArrivals(…, date)`) wird in
+  `core-consistency.spec.ts` gegen den Server gerechnet. `tour.duration` enthält die Wartezeit
+  **nicht** – das ist reine Fahr- plus Standzeit; die Wartezeit sieht man an den ETAs.
+- **Die Kartenattribution war im Dunkelmodus unlesbar** (~1,8:1). `leaflet.css` setzt
+  `.leaflet-container .leaflet-control-attribution { background: rgba(255,255,255,0.8) }` mit
+  derselben Spezifität wie die Regel in `global.css`, und weil `Map.tsx` das Leaflet-Stylesheet
+  nach `global.css` lädt, gewann Leaflet per Reihenfolge. Die Regel trägt jetzt
+  `.leaflet-control-container` mit (drei Klassen, kein `!important`); gemessen per Playwright
+  und `getComputedStyle`: hell 5,9:1, dunkel 8,6:1. Die Attribution muss sichtbar bleiben
+  (OSM-Tile-Policy) – nicht ausblenden.
 - **Ohne Straße keine Adresssuche.** Ein Sammelstellen-Stopp darf ohne Straße angelegt werden (eine
   neue Sammelstelle steht anfangs ohne da). Nominatim antwortet auf „Zweibrücken-Mörsbach"
   aber bereitwillig mit der Ortsmitte und `precision: 'street'` — auf der Karte sah das aus wie eine

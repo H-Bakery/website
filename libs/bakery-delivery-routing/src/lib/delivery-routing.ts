@@ -32,8 +32,15 @@ export interface RouteWaypoint {
   address: string
   type: 'pickup' | 'delivery' | 'waypoint'
   orderId?: string
+  /** Fruehestens zum Fensterbeginn - siehe `withEstimatedArrivals`. */
   estimatedArrival?: Date
   notes?: string
+  /** Zeitfenster wie am Stopp erfasst, z. B. "09:00-09:30"; siehe `parseTimeWindow`. */
+  timeWindow?: string | null
+  /** Sekunden Wartezeit bis zum Fensterbeginn, 0 ohne Wartezeit. */
+  waitSeconds?: number
+  /** Die Ankunft liegt nach dem Fensterende - das Fenster ist nicht mehr einhaltbar. */
+  missesTimeWindow?: boolean
 }
 
 export interface RouteOptimizationRequest {
@@ -119,6 +126,132 @@ function isFiniteNumber(value: unknown): boolean {
 /** Uhrzeit als "HH:MM" mit 00-23 Stunden und 00-59 Minuten. */
 export function isClockTime(value: unknown): value is string {
   return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+}
+
+/** Zeitfenster eines Stopps mit optionalen Grenzen als "HH:MM". */
+export interface TimeWindow {
+  start: string | null
+  end: string | null
+}
+
+/**
+ * Liest das Zeitfenster eines Stopps: "09:00-09:30", "9:00 – 9:30",
+ * "ab 09:00" (nur Beginn), "bis 09:30" (nur Ende). `null`, wenn kein Fenster
+ * lesbar ist ("vormittags") oder das Ende vor dem Beginn liegt - Freitext
+ * bleibt erlaubt und wirkt dann nur nicht auf die Ankunftszeiten.
+ * Identisch mit `parseTimeWindow()` in `delivery-tours.core.js`.
+ */
+export function parseTimeWindow(value: unknown): TimeWindow | null {
+  if (typeof value !== 'string') return null
+  const text = value.trim()
+  if (!text) return null
+
+  const times: string[] = []
+  const pattern = /(\d{1,2}):(\d{2})/g
+  let match: RegExpExecArray | null
+  while ((match = pattern.exec(text)) !== null && times.length < 2) {
+    const clock = `${match[1].padStart(2, '0')}:${match[2]}`
+    if (!isClockTime(clock)) return null
+    times.push(clock)
+  }
+  if (times.length === 0) return null
+  if (times.length === 2) {
+    // "HH:MM" vergleicht sich als String korrekt.
+    if (times[1] < times[0]) return null
+    return { start: times[0], end: times[1] }
+  }
+  if (/^bis\b/i.test(text)) return { start: null, end: times[0] }
+  return { start: times[0], end: null }
+}
+
+/** Fensterbeginn und -ende als Zeitstempel (ms) am Tag `date`. */
+export interface TimeWindowBounds {
+  start: number | null
+  end: number | null
+}
+
+/**
+ * Fensterbeginn und -ende als Zeitstempel am Tourtag (lokale Zeit, wie
+ * `arrivalBaseline`), fehlende Grenzen `null`. Identisch mit
+ * `timeWindowBounds()` im Server-Core.
+ */
+export function timeWindowBounds(
+  date: string | null | undefined,
+  timeWindow: unknown
+): TimeWindowBounds {
+  const window = parseTimeWindow(timeWindow)
+  if (!window || !isBusinessDate(date)) return { start: null, end: null }
+  const at = (clock: string | null): number | null => {
+    if (!clock) return null
+    const ms = Date.parse(`${date}T${clock}:00`)
+    return Number.isFinite(ms) ? ms : null
+  }
+  return { start: at(window.start), end: at(window.end) }
+}
+
+/** YYYY-MM-DD, und der Tag existiert - wie `isBusinessDate()` im Server-Core. */
+function isBusinessDate(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false
+  }
+  const [y, m, d] = value.split('-').map(Number)
+  const date = new Date(Date.UTC(y, m - 1, d))
+  return (
+    date.getUTCFullYear() === y &&
+    date.getUTCMonth() === m - 1 &&
+    date.getUTCDate() === d
+  )
+}
+
+/** Lokales Datum als YYYY-MM-DD - `toISOString()` waere UTC und schoebe den Tag. */
+function toBusinessDate(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** Tourtag der Zeitfenster: das uebergebene Datum, sonst der lokale Tag der Startzeit. */
+function windowDate(
+  date: string | null | undefined,
+  startedAtMs: number
+): string | null {
+  if (isBusinessDate(date)) return date
+  return Number.isFinite(startedAtMs)
+    ? toBusinessDate(new Date(startedAtMs))
+    : null
+}
+
+interface ArrivalAt {
+  distance: number
+  eta: number
+  arrival: number
+  waitSeconds: number
+  late: boolean
+}
+
+/**
+ * Ankunft an `to`, wenn man `from` zur Zeit `at` (ms) verlaesst. Vor dem
+ * Fensterbeginn wird gewartet: `arrival = max(eta, start)`; `late` heisst,
+ * dass selbst die Ankunft nach dem Fensterende liegt.
+ */
+function arrivalAt(
+  from: Pick<Location, 'latitude' | 'longitude'>,
+  to: Pick<Location, 'latitude' | 'longitude'>,
+  at: number,
+  vehicleType: NonNullable<RouteOptimizationRequest['vehicleType']>,
+  window: TimeWindowBounds
+): ArrivalAt {
+  const leg = estimateLeg(from, to, vehicleType)
+  const eta = at + leg.duration * 1000
+  const arrival = window.start != null ? Math.max(eta, window.start) : eta
+  return {
+    distance: leg.distance,
+    eta,
+    arrival,
+    waitSeconds: Math.max(0, (arrival - eta) / 1000),
+    late: window.end != null && arrival > window.end,
+  }
 }
 
 /** Ein Punkt mit Koordinaten, wie ihn Depot, Stopp und Fahrerposition tragen. */
@@ -246,6 +379,14 @@ export function estimateLeg(
   return { distance, duration: distance / AVERAGE_SPEED_MS[vehicleType] }
 }
 
+export interface RouteOrderOptions {
+  /** Abfahrt am Startpunkt. Ohne sie werden Zeitfenster nicht beruecksichtigt. */
+  startedAt?: Date
+  vehicleType?: RouteOptimizationRequest['vehicleType']
+  /** Tourtag der Zeitfenster (YYYY-MM-DD); Default: lokaler Tag von `startedAt`. */
+  date?: string | null
+}
+
 /**
  * Bringt die Stopps in eine sinnvolle Reihenfolge (Nearest Neighbour ab
  * `origin`).
@@ -253,10 +394,19 @@ export function estimateLeg(
  * Wichtig: die Reihenfolge wird vom *Start* aus aufgebaut, nicht ab dem ersten
  * Listeneintrag. Sonst haengt das Ergebnis davon ab, welchen Stopp die Backstube
  * zufaellig zuerst eingetippt hat.
+ *
+ * Mit `options.startedAt` zaehlen die Zeitfenster der Wegpunkte mit - dieselbe
+ * Heuristik "Nearest Neighbour mit Zeitfenstern" wie
+ * `orderStopsNearestNeighbour()` im Server-Core (dort steht sie beschrieben):
+ * je Kandidat die fruehestmoegliche Bedienung `max(Ankunft, Fensterbeginn)`,
+ * verpasste Fenster und Kandidaten, die einem anderen Stopp das Fenster
+ * nehmen, ans Ende, bei Gleichstand die kuerzere Etappe. Ohne Fenster ist das
+ * das gewoehnliche Nearest Neighbour.
  */
 export function optimizeRouteOrder(
   waypoints: RouteWaypoint[],
-  origin?: Pick<Location, 'latitude' | 'longitude'>
+  origin?: Pick<Location, 'latitude' | 'longitude'>,
+  options: RouteOrderOptions = {}
 ): RouteWaypoint[] {
   if (waypoints.length <= 1) return [...waypoints]
 
@@ -265,31 +415,98 @@ export function optimizeRouteOrder(
   let current: Pick<Location, 'latitude' | 'longitude'> =
     origin ?? remaining[0].location
 
+  const vehicleType = options.vehicleType ?? 'car'
+  let cursor = options.startedAt ? options.startedAt.getTime() : NaN
+  const timed = Number.isFinite(cursor)
+  // Ohne Startzeit zaehlt nur die Fahrzeit ab 0 - dieselbe Reihenfolge wie
+  // die reine Entfernung, weil die Geschwindigkeit je Tour konstant ist.
+  if (!timed) cursor = 0
+  const date = timed ? windowDate(options.date, cursor) : null
+  const noWindow: TimeWindowBounds = { start: null, end: null }
+  const windows = new Map<RouteWaypoint, TimeWindowBounds>(
+    remaining.map((w) => [
+      w,
+      timed ? timeWindowBounds(date, w.timeWindow) : noWindow,
+    ])
+  )
+
   if (!origin) {
-    optimized.push(remaining.shift() as RouteWaypoint)
+    const first = remaining.shift() as RouteWaypoint
+    optimized.push(first)
+    if (timed) cursor += STOP_SERVICE_TIME * 1000
   }
 
   while (remaining.length > 0) {
-    let nearestIndex = 0
-    let nearestDistance = Infinity
+    let best: {
+      waypoint: RouteWaypoint
+      rank: number[]
+      arrival: number
+    } | null = null
 
-    for (let i = 0; i < remaining.length; i++) {
-      const distance = calculateHaversineDistance(
+    for (const candidate of remaining) {
+      const here = arrivalAt(
         current,
-        remaining[i].location
+        candidate.location,
+        cursor,
+        vehicleType,
+        windows.get(candidate) ?? noWindow
       )
-      if (distance < nearestDistance) {
-        nearestDistance = distance
-        nearestIndex = i
+
+      let harms = false
+      if (timed) {
+        const depart = here.arrival + STOP_SERVICE_TIME * 1000
+        for (const other of remaining) {
+          if (other === candidate) continue
+          const window = windows.get(other) ?? noWindow
+          if (window.end == null) continue
+          const now = arrivalAt(
+            current,
+            other.location,
+            cursor,
+            vehicleType,
+            window
+          )
+          if (now.late) continue
+          const after = arrivalAt(
+            candidate.location,
+            other.location,
+            depart,
+            vehicleType,
+            window
+          )
+          if (after.late) {
+            harms = true
+            break
+          }
+        }
+      }
+
+      const rank = [
+        here.late ? 1 : 0,
+        harms ? 1 : 0,
+        here.arrival,
+        here.distance,
+      ]
+      if (best === null || compareRank(rank, best.rank) < 0) {
+        best = { waypoint: candidate, rank, arrival: here.arrival }
       }
     }
 
-    const next = remaining.splice(nearestIndex, 1)[0]
-    optimized.push(next)
-    current = next.location
+    const next = best as { waypoint: RouteWaypoint; arrival: number }
+    remaining.splice(remaining.indexOf(next.waypoint), 1)
+    optimized.push(next.waypoint)
+    current = next.waypoint.location
+    cursor = next.arrival + STOP_SERVICE_TIME * 1000
   }
 
   return optimized
+}
+
+function compareRank(a: number[], b: number[]): number {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
+  }
+  return 0
 }
 
 /**
@@ -331,25 +548,42 @@ export function buildEstimatedRoute(request: RouteOptimizationRequest): Route {
 /**
  * Traegt die voraussichtliche Ankunft in jeden Wegpunkt ein. Der Abholpunkt
  * bekommt die Startzeit, jeder weitere Stopp Fahrzeit plus Standzeit.
+ *
+ * Ein Wegpunkt mit `timeWindow` wird nicht vor dem Fensterbeginn bedient:
+ * `estimatedArrival = max(eta, Fensterbeginn)`, die Wartezeit steht in
+ * `waitSeconds` und schiebt alle folgenden Ankuenfte nach hinten. Liegt die
+ * Ankunft nach dem Fensterende, ist `missesTimeWindow` gesetzt. `date` ist
+ * der Tourtag der Fenster (Default: lokaler Tag von `startedAt`). Dieselbe
+ * Rechnung wie `estimateArrivalDetails()` im Server-Core.
  */
 export function withEstimatedArrivals(
   route: Route,
   startedAt: Date = new Date(),
-  vehicleType: NonNullable<RouteOptimizationRequest['vehicleType']> = 'car'
+  vehicleType: NonNullable<RouteOptimizationRequest['vehicleType']> = 'car',
+  date?: string | null
 ): Route {
   let cursor = startedAt.getTime()
+  const day = windowDate(date, cursor)
 
   const waypoints = route.waypoints.map((waypoint, index) => {
-    if (index > 0) {
-      const leg = estimateLeg(
-        route.waypoints[index - 1].location,
-        waypoint.location,
-        vehicleType
-      )
-      cursor += leg.duration * 1000
-      if (index > 1) cursor += STOP_SERVICE_TIME * 1000
+    if (index === 0) {
+      return { ...waypoint, estimatedArrival: new Date(cursor) }
     }
-    return { ...waypoint, estimatedArrival: new Date(cursor) }
+    if (index > 1) cursor += STOP_SERVICE_TIME * 1000
+    const here = arrivalAt(
+      route.waypoints[index - 1].location,
+      waypoint.location,
+      cursor,
+      vehicleType,
+      timeWindowBounds(day, waypoint.timeWindow)
+    )
+    cursor = here.arrival
+    return {
+      ...waypoint,
+      estimatedArrival: new Date(here.arrival),
+      waitSeconds: here.waitSeconds,
+      missesTimeWindow: here.late,
+    }
   })
 
   return { ...route, waypoints }

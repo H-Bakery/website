@@ -204,7 +204,7 @@ Koordinaten stehen im Seed. Der Stopp hängt sich beim Anlegen einer Tour selbst
 
 Die Fahrer-App hat außerdem einen **Dunkelmodus** (System / Hell / Dunkel, CSS-Variablen, kein MUI).
 
-Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von außen wissen muss:
+Details stehen in `apps/bakery-delivery/CLAUDE.md`. Fünf Dinge, die man von außen wissen muss:
 
 - **Alle Server-Formeln stehen genau einmal**, in `apps/bakery-api/src/services/delivery-tours.core.js`
   (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`, gleiche `*.core.js`-Glob
@@ -231,9 +231,13 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
   `hasCoordinates()` verlangt seit dem 07.09.2026 außerdem −90..90 / −180..180 und lehnt das Paar
   `(0, 0)` ab; Eingaben prüft `validateCoordinates()` (400 mit `message` + `error`), gespeicherte
   Altwerte werden beim Laden des Stores auf `null` gesetzt und neu gesucht.
+- **Zeitfenster zählen in der ETA-Kette mit.** `parseTimeWindow()` liest „09:00-09:30", „ab 09:00",
+  „bis 09:30" (Freitext bleibt wirkungslos); die Ankunft ist `max(eta, Fensterbeginn)`, die Wartezeit
+  steht als `waitSeconds` am Stopp, ein verpasstes Fenster als `missesTimeWindow`. „Route berechnen"
+  sortiert mit Fenstern im Core (Nearest Neighbour mit Zeitfenstern) und lässt OSRM nur messen.
 
-Tests: `npx nx test delivery-routing` (47), `npx nx test delivery-tracking` (7) und
-`apps/bakery-api/tests/unit/deliveryTours.test.js` (61) für die Rechenlogik des Servers.
+Tests: `npx nx test delivery-routing` (59), `npx nx test delivery-tracking` (7) und
+`apps/bakery-api/tests/unit/deliveryTours.test.js` (81) für die Rechenlogik des Servers.
 
 ## Kassenberichte (hq/data/reports)
 
