@@ -82,13 +82,29 @@ export const STOP_SERVICE_TIME = 180
  * Dieselbe Pruefung wie `hasCoordinates()` in `delivery-tours.core.js`:
  * `null`, `undefined`, Leerstring und NaN sind "keine Koordinaten" - ein
  * `stop.lat !== null` haette `undefined` durchgelassen, und Leaflet wirft bei
- * `[undefined, undefined]` die ganze Karte weg.
+ * `[undefined, undefined]` die ganze Karte weg. Werte ausserhalb von -90..90
+ * bzw. -180..180 sind Tippfehler, und (0, 0) - "Null Island" im Golf von
+ * Guinea - ist das Ergebnis von `Number(null)`, nie eine Lieferadresse.
  */
 export function hasCoordinates<T extends { lat?: unknown; lon?: unknown }>(
   value: T | null | undefined
 ): value is T & { lat: number; lon: number } {
   if (!value) return false
-  return isFiniteNumber(value.lat) && isFiniteNumber(value.lon)
+  return (
+    isLatitude(value.lat) &&
+    isLongitude(value.lon) &&
+    !(Number(value.lat) === 0 && Number(value.lon) === 0)
+  )
+}
+
+/** Breitengrad -90..90 - identisch mit `isLatitude()` im Server-Core. */
+export function isLatitude(value: unknown): boolean {
+  return isFiniteNumber(value) && Math.abs(Number(value)) <= 90
+}
+
+/** Laengengrad -180..180 - identisch mit `isLongitude()` im Server-Core. */
+export function isLongitude(value: unknown): boolean {
+  return isFiniteNumber(value) && Math.abs(Number(value)) <= 180
 }
 
 function isFiniteNumber(value: unknown): boolean {
@@ -98,6 +114,95 @@ function isFiniteNumber(value: unknown): boolean {
     value.trim() !== '' &&
     Number.isFinite(Number(value))
   )
+}
+
+/** Uhrzeit als "HH:MM" mit 00-23 Stunden und 00-59 Minuten. */
+export function isClockTime(value: unknown): value is string {
+  return typeof value === 'string' && /^([01]\d|2[0-3]):[0-5]\d$/.test(value)
+}
+
+/** Ein Punkt mit Koordinaten, wie ihn Depot, Stopp und Fahrerposition tragen. */
+export interface Coordinates {
+  lat: number | string | null | undefined
+  lon: number | string | null | undefined
+}
+
+export interface ArrivalBaselineStop extends Coordinates {
+  status?: string | null
+  completedAt?: string | null
+}
+
+export interface ArrivalBaselineTour {
+  /** Tourtag als YYYY-MM-DD. */
+  date: string
+  /** Geplante Abfahrt als HH:MM; Default 06:30. */
+  plannedStart?: string | null
+  /** ISO-Zeitpunkt, ab dem die Tour laeuft; `null` bei einer geplanten Tour. */
+  startedAt?: string | null
+  stops?: ArrivalBaselineStop[] | null
+  lastPosition?: (Coordinates & { at?: string | null }) | null
+}
+
+export interface ArrivalBaseline<TOrigin> {
+  origin: TOrigin
+  /** ISO-Zeitpunkt, ab dem die Ankunftszeiten laufen. */
+  startedAt: string
+}
+
+/**
+ * Ausgangspunkt und -zeit der Ankunftsprognose - die TypeScript-Fassung von
+ * `arrivalBaseline()` in `delivery-tours.core.js`; `core-consistency.spec.ts`
+ * rechnet beide gegeneinander.
+ *
+ * Geplante Tour: Depot ab Datum + geplanter Abfahrt, aber nie frueher als
+ * jetzt - am Tourtag um 10:48 stuende sonst "Ankunft ca. 06:38" an der Tour.
+ *
+ * Laufende Tour: ab dem zuletzt erledigten Stopp (Ort und Zeit) oder der
+ * juengeren gemeldeten Fahrerposition, ebenfalls nie frueher als jetzt.
+ */
+export function arrivalBaseline<TDepot, TStop extends ArrivalBaselineStop>(
+  depot: TDepot,
+  tour: ArrivalBaselineTour & { stops?: TStop[] | null },
+  now: number = Date.now()
+): ArrivalBaseline<
+  TDepot | TStop | NonNullable<ArrivalBaselineTour['lastPosition']>
+> {
+  if (!tour.startedAt) {
+    const start = isClockTime(tour.plannedStart) ? tour.plannedStart : '06:30'
+    let planned = Date.parse(`${tour.date}T${start}:00`)
+    if (!Number.isFinite(planned)) planned = now
+    return {
+      origin: depot,
+      startedAt: new Date(Math.max(planned, now)).toISOString(),
+    }
+  }
+
+  let origin:
+    | TDepot
+    | TStop
+    | NonNullable<ArrivalBaselineTour['lastPosition']> = depot
+  let at = Date.parse(tour.startedAt)
+  if (!Number.isFinite(at)) at = 0
+
+  for (const stop of tour.stops ?? []) {
+    if (stop.status === 'open' || !hasCoordinates(stop)) continue
+    const completed = Date.parse(stop.completedAt ?? '')
+    if (Number.isFinite(completed) && completed >= at) {
+      at = completed
+      origin = stop
+    }
+  }
+
+  const position = tour.lastPosition
+  if (hasCoordinates(position)) {
+    const reported = Date.parse(position.at ?? '')
+    if (Number.isFinite(reported) && reported > at) {
+      at = reported
+      origin = position
+    }
+  }
+
+  return { origin, startedAt: new Date(Math.max(at, now)).toISOString() }
 }
 
 /**

@@ -9,10 +9,12 @@
 import { ProductCategory } from '@bakery/shared/types'
 
 import {
+  PICKUP_LEAD_MINUTES,
   formatGermanDate,
   formatOpeningWindow,
   openingWindowFor,
   parseIsoDate,
+  pickupTimeSlots,
   timeToMinutes,
   toIsoDate,
   weekdayNameFor,
@@ -242,6 +244,40 @@ export function minPickupIsoDate(
   return earliest > todayIso ? earliest : todayIso
 }
 
+/* -------------------------------------------------------------------------- */
+/* Abholzeiten                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * „Jetzt", so weit die Kasse es braucht: das heutige Datum und die Uhrzeit in
+ * Minuten seit Mitternacht. Wird im Effect gelesen, nie im Render — sonst
+ * weicht das Server-HTML vom Client ab.
+ */
+export interface PickupClock {
+  /** Heutiges Datum, `YYYY-MM-DD`. */
+  iso: string
+  /** Uhrzeit in Minuten seit Mitternacht (lokal). */
+  minutes: number
+}
+
+/**
+ * Die Slots, die an `pickupDate` wirklich buchbar sind — heute erst ab
+ * `now + PICKUP_LEAD_MINUTES`. Anzeige, Prüfung und Wiederherstellung rechnen
+ * alle drei hiermit; eine zweite Fassung dieser Regel darf es nicht geben,
+ * sonst zeigt die Auswahl etwas anderes an, als die Prüfung annimmt.
+ *
+ * @param now `null`, solange die Uhr noch nicht gelesen ist (vor dem Mount).
+ */
+export function availablePickupSlots(
+  pickupDate: string,
+  now: PickupClock | null
+): string[] {
+  if (!pickupDate) return []
+  const earliest =
+    now && pickupDate === now.iso ? now.minutes + PICKUP_LEAD_MINUTES : 0
+  return pickupTimeSlots(pickupDate, earliest)
+}
+
 /**
  * @param value the `YYYY-MM-DD` from the date input.
  * @param todayIso today's local date; pass `''` while it is still unknown
@@ -430,13 +466,23 @@ export function serializeCheckoutForm(values: CheckoutFormValues): string {
  * ein Abholtermin, der inzwischen in der Vergangenheit oder auf dem Ruhetag
  * liegt, wird verworfen statt still stehen zu bleiben.
  *
+ * Dasselbe gilt für die **Uhrzeit**: Wer die Kasse am Vormittag ausfüllt, in
+ * den Warenkorb wechselt und nach dem Mittag zurückkommt, hätte sonst eine
+ * Abholzeit im Formular, die es für heute nicht mehr gibt. Das Auswahlfeld
+ * kann so einen Wert nicht anzeigen — es sah leer aus, während die Prüfung
+ * beim Absenden „nicht mehr möglich" meldete. Jetzt bleibt das Datum stehen,
+ * die Uhrzeit wird geleert, und das Feld sagt ehrlich „Uhrzeit wählen".
+ *
  * @param raw der rohe Eintrag aus dem `sessionStorage`.
  * @param todayIso heutiges Datum; `''` überspringt die Datumsprüfung.
+ * @param nowMinutes Uhrzeit in Minuten seit Mitternacht; ohne sie gilt für
+ * heute keine Vorlaufzeit, geprüft wird dann nur gegen das Tagesraster.
  * @returns `null`, wenn nichts Brauchbares gespeichert war.
  */
 export function restoreCheckoutForm(
   raw: string | null | undefined,
-  todayIso = ''
+  todayIso = '',
+  nowMinutes?: number
 ): CheckoutFormValues | null {
   if (typeof raw !== 'string' || raw === '') return null
 
@@ -465,6 +511,21 @@ export function restoreCheckoutForm(
   if (!dateStillUsable) {
     values.pickupDate = ''
     values.pickupTime = ''
+  } else if (values.pickupTime !== '') {
+    // Eine Uhrzeit, die die Auswahl nicht mehr anbietet — vorbei, in der
+    // Vorlaufzeit oder gar kein Slot dieses Tages — hätte im Feld unsichtbar
+    // weitergelebt. Nur die Uhrzeit fällt weg; das Datum darf bleiben.
+    const clock =
+      todayIso && typeof nowMinutes === 'number' && Number.isFinite(nowMinutes)
+        ? { iso: todayIso, minutes: nowMinutes }
+        : null
+    if (
+      !availablePickupSlots(values.pickupDate, clock).includes(
+        values.pickupTime
+      )
+    ) {
+      values.pickupTime = ''
+    }
   }
 
   const hasSomething = STORED_FIELDS.some((field) => values[field] !== '')

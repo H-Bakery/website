@@ -217,6 +217,46 @@ export function isVisitType(value: unknown): value is VisitType {
   return VISIT_TYPES.indexOf(value as VisitType) !== -1
 }
 
+/** Kalendarisch gültiger Geschäftstag `YYYY-MM-DD` - `2026-02-30` fällt durch. */
+export function isBusinessDate(value: unknown): value is string {
+  return core.isBusinessDate(value)
+}
+
+/** Katalogeintrag, wie ihn `validateVisitItems` von der Suche erwartet. */
+export interface CatalogueProduct {
+  id?: string
+  numeric_id?: number | string
+  name?: string
+  price?: number | string
+}
+
+export type VisitItemsResult =
+  | { ok: true; items: PlainVisitItem[] }
+  | { ok: false; error: string; message: string }
+
+/**
+ * Positionen eines Besuchs prüfen und normalisieren - die Regeln (Rest `null`
+ * ≠ `0`, Mengen 0…10000, keine negativen Preise, keine Duplikate) stehen im
+ * Core. Ohne `lookup` wird die Existenz des Produkts nicht geprüft.
+ */
+export function validateVisitItems(
+  items: unknown,
+  lookup?: (item: Record<string, unknown>) => CatalogueProduct | null
+): VisitItemsResult {
+  return core.validateVisitItems(items, lookup)
+}
+
+/**
+ * Lookup über den Snapshot eines gespeicherten Besuchs - für Korrekturen, damit
+ * ein inzwischen aus dem Katalog verschwundenes Produkt korrigierbar bleibt.
+ * Als Fallback hinter die Katalogsuche hängen: `(i) => hq(i) || snapshot(i)`.
+ */
+export function snapshotLookup(
+  existingItems: ReadonlyArray<Partial<PlainVisitItem>> | null | undefined
+): (item: Record<string, unknown>) => CatalogueProduct | null {
+  return core.snapshotLookup(existingItems)
+}
+
 function toNumber(value: unknown, fallback = 0): number {
   const n = Number(value)
   return Number.isFinite(n) ? n : fallback
@@ -323,7 +363,10 @@ export default {
   WEEKDAY_SHORT,
   businessDateOf,
   weekdayOf,
+  isBusinessDate,
   isVisitType,
+  validateVisitItems,
+  snapshotLookup,
   toPlainVisitItem,
   toPlainVisit,
   toPlainVisits,

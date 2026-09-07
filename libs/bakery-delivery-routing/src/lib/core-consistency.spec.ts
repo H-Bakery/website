@@ -7,9 +7,13 @@
 
 import * as path from 'path'
 import {
+  arrivalBaseline,
   calculateHaversineDistance,
   estimateLeg,
   hasCoordinates,
+  isClockTime,
+  isLatitude,
+  isLongitude,
   normalizeAddress,
   optimizeRouteOrder,
   ROAD_DETOUR_FACTOR,
@@ -154,12 +158,82 @@ describe('Server- und Frontend-Geometrie', () => {
       { lat: ' ', lon: ' ' },
       { lat: 49.3, lon: null },
       { lat: 0, lon: 0 },
+      { lat: '0', lon: '0' },
+      { lat: 0, lon: 7.36 },
+      { lat: 49.3, lon: 0 },
       { lat: '49.3', lon: '7.36' },
       { lat: NaN, lon: 7.36 },
       { lat: true, lon: true },
+      { lat: 999, lon: 7.36 },
+      { lat: 49.3, lon: -181 },
+      { lat: 90, lon: 180 },
+      { lat: -90, lon: -180 },
+      { lat: 90.0001, lon: 7.36 },
     ]
     for (const sample of samples) {
       expect(hasCoordinates(sample)).toBe(core.hasCoordinates(sample))
+      expect(isLatitude(sample.lat)).toBe(core.isLatitude(sample.lat))
+      expect(isLongitude(sample.lon)).toBe(core.isLongitude(sample.lon))
+    }
+  })
+
+  it('pruefen Uhrzeiten gleich', () => {
+    for (const value of [
+      '06:30',
+      '00:00',
+      '23:59',
+      '24:00',
+      '99:99',
+      '25:61',
+      '6:30',
+      '',
+      null,
+      undefined,
+      630,
+    ]) {
+      expect(isClockTime(value)).toBe(core.isClockTime(value))
+    }
+  })
+
+  it('kommen auf denselben Ausgangspunkt der Ankunftsprognose', () => {
+    const planned = {
+      date: '2026-09-05',
+      plannedStart: '06:30',
+      startedAt: null,
+      stops: [],
+      lastPosition: null,
+    }
+    const active = {
+      date: '2026-09-05',
+      startedAt: '2026-09-05T04:30:00.000Z',
+      lastPosition: { lat: 49.31, lon: 7.35, at: '2026-09-05T06:50:00.000Z' },
+      stops: [
+        {
+          ...STOPS[0],
+          status: 'done',
+          completedAt: '2026-09-05T05:00:00.000Z',
+        },
+        {
+          ...STOPS[1],
+          status: 'failed',
+          completedAt: '2026-09-05T06:40:00.000Z',
+        },
+        { ...STOPS[2], status: 'open' },
+      ],
+    }
+    const withoutPosition = { ...active, lastPosition: null }
+    const clocks = [
+      Date.parse('2026-09-03T07:00:00.000Z'), // zwei Tage vorher
+      Date.parse('2026-09-05T03:00:00.000Z'), // Tourtag, vor der Abfahrt
+      Date.parse('2026-09-05T08:48:00.000Z'), // Tourtag, Abfahrt laengst vorbei
+    ]
+    for (const tour of [planned, active, withoutPosition]) {
+      for (const now of clocks) {
+        const server = core.arrivalBaseline(DEPOT, tour, now)
+        const client = arrivalBaseline(DEPOT, tour, now)
+        expect(client.startedAt).toBe(server.startedAt)
+        expect(client.origin).toBe(server.origin)
+      }
     }
   })
 })

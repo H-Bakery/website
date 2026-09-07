@@ -13,6 +13,9 @@ const mockSummary = {
   total: 0,
 }
 
+/** Die Suchparameter der „aktuellen" URL — der Test schaltet sie um. */
+let mockSearch = ''
+
 jest.mock('next/navigation', () => ({
   // Der Verweis auf mockPush passiert erst beim Aufruf, nicht beim Import.
   useRouter: () => ({
@@ -21,6 +24,7 @@ jest.mock('next/navigation', () => ({
     prefetch: jest.fn(),
   }),
   usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(mockSearch),
 }))
 
 jest.mock('@bakery/shared/contexts', () => ({
@@ -39,7 +43,7 @@ describe('ShopHeader', () => {
   beforeEach(() => {
     mockPush.mockClear()
     mockSummary.totalCount = 0
-    window.history.replaceState({}, '', '/')
+    mockSearch = ''
   })
 
   it('rendert die Ladenzeile mit der Marken-Wortmarke', () => {
@@ -89,10 +93,59 @@ describe('ShopHeader', () => {
     })
 
     it('übernimmt einen Suchbegriff aus der URL', () => {
-      window.history.replaceState({}, '', '/products?q=Brezel')
+      mockSearch = 'q=Brezel'
       renderHeader()
 
       expect(screen.getByTestId('shop-search-input')).toHaveValue('Brezel')
+    })
+
+    /*
+     * Die Kopfzeile lebt im Layout und überlebt jede clientseitige
+     * Navigation. Vorher las sie die URL genau einmal beim Mount — danach
+     * stand „Brezel" im Feld, egal was der Katalog gerade zeigte.
+     */
+    it('folgt der aktiven Suche, wenn sich die URL clientseitig ändert', () => {
+      mockSearch = 'q=Brezel'
+      const { rerender } = renderHeader()
+      expect(screen.getByTestId('shop-search-input')).toHaveValue('Brezel')
+
+      // Im Katalog „Kuchen" getippt → die URL trägt jetzt q=Kuchen.
+      mockSearch = 'q=Kuchen'
+      rerender(
+        <ThemeProvider theme={shopTheme}>
+          <ShopHeader />
+        </ThemeProvider>
+      )
+      expect(screen.getByTestId('shop-search-input')).toHaveValue('Kuchen')
+
+      // „Filter zurücksetzen" oder „Alle Produkte" → kein q mehr.
+      mockSearch = ''
+      rerender(
+        <ThemeProvider theme={shopTheme}>
+          <ShopHeader />
+        </ThemeProvider>
+      )
+      expect(screen.getByTestId('shop-search-input')).toHaveValue('')
+      expect(
+        screen.queryByRole('button', { name: 'Suche zurücksetzen' })
+      ).not.toBeInTheDocument()
+    })
+
+    it('wirft eine halb getippte Suche nicht weg, solange q gleich bleibt', () => {
+      mockSearch = 'category=brot'
+      const { rerender } = renderHeader()
+      fireEvent.change(screen.getByTestId('shop-search-input'), {
+        target: { value: 'Laug' },
+      })
+
+      // Navigation zu einer anderen Kategorie — q war und bleibt leer.
+      mockSearch = 'category=kuchen'
+      rerender(
+        <ThemeProvider theme={shopTheme}>
+          <ShopHeader />
+        </ThemeProvider>
+      )
+      expect(screen.getByTestId('shop-search-input')).toHaveValue('Laug')
     })
 
     it('lässt sich zurücksetzen', () => {
