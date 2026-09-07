@@ -14,7 +14,8 @@ const report: DailyReport = {
       filename: null,
       registerId: '4711',
       reportNumber: 1,
-      transactionCount: 3,
+      transactionCount: 4,
+      receiptCount: 2,
     },
   ],
   closingCount: 1,
@@ -60,6 +61,11 @@ describe('DayReportClient', () => {
     expect(screen.getByText('10,00 €')).toBeInTheDocument()
     expect(screen.getByText(/1 Storno \(-4,00 €\)/)).toBeInTheDocument()
     expect(screen.getByText(/Karte 3,00 €/)).toBeInTheDocument()
+    // Der Abschluss-Chip zählt Bons wie die Kachel, nicht die rohen Buchungen
+    expect(
+      screen.getByText('Kasse 4711 · Abschluss 1 · 2 Bons')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/4 Bons/)).not.toBeInTheDocument()
 
     const table = screen.getByRole('table', { name: 'Positionen nach Produkt' })
     expect(within(table).getAllByRole('row').slice(1)).toHaveLength(3)

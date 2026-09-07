@@ -58,7 +58,10 @@ export interface ReportClosing {
   filename: string | null
   registerId: string | null
   reportNumber: number | null
+  /** Alle Buchungen der Datei - auch Stornos und abgebrochene Belege. */
   transactionCount: number
+  /** Bons dieses Abschlusses, gezählt wie `receiptCount` des Tages. */
+  receiptCount: number
 }
 
 export interface DailyReportMissing {
@@ -154,13 +157,22 @@ export interface DailyReportList {
   summary: RangeReportResult
 }
 
+export interface ReportRange {
+  from: string
+  to: string
+  /** true, wenn der gewünschte Zeitraum auf `MAX_RANGE_DAYS` gekürzt wurde. */
+  truncated: boolean
+}
+
 interface ReportsCore {
+  MAX_RANGE_DAYS: number
   isValidDate(value: unknown): boolean
   isValidMonth(value: unknown): boolean
   weekdayLabel(date: string): string
   listDates(from: string, to: string): string[]
   monthBounds(month: string): { from: string; to: string }
   addDays(date: string, n: number): string
+  clampRange(from: string, to: string): ReportRange
   toDailySummary(report: DailyReportResult): DailyReportListEntry
   aggregateRange(
     from: string,
@@ -259,6 +271,9 @@ export function listDailyReports(from: string, to: string): DailyReportList {
   const { core, files } = loadCore()
   const dir = getHQReportsDir()
   const valid = core.isValidDate(from) && core.isValidDate(to) && from <= to
+  // Sicherheitsnetz für jeden Aufrufer: nie mehr als MAX_RANGE_DAYS Tage
+  // lesen. Die Seite kürzt vorher selbst (`clampReportRange`) und zeigt es an.
+  if (valid) ({ from, to } = core.clampRange(from, to))
   const reports = valid ? files.readDailyReportsInRange(dir, from, to) : []
   const byDate = new Map(reports.map((r) => [r.date, r]))
   const days: DailyReportListEntry[] = valid
@@ -322,4 +337,18 @@ export function shiftDate(date: string, days: number): string {
 
 export function isValidReportDate(value: unknown): value is string {
   return loadCore().core.isValidDate(value)
+}
+
+/** Obergrenze eines Zeitraums in Tagen - dieselbe wie im Mock-Server. */
+export function maxReportRangeDays(): number {
+  return loadCore().core.MAX_RANGE_DAYS
+}
+
+/**
+ * Zeitraum auf die Obergrenze kürzen (das Ende bleibt, der Anfang rückt nach).
+ * Ein `?from=2000-01-01` in der URL liest sonst jedes Tagesfile und rendert
+ * tausende Zeilen.
+ */
+export function clampReportRange(from: string, to: string): ReportRange {
+  return loadCore().core.clampRange(from, to)
 }

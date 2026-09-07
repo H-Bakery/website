@@ -1,8 +1,10 @@
 import React from 'react'
 import {
+  clampReportRange,
   isValidReportDate,
   listDailyReports,
   listReportDates,
+  maxReportRangeDays,
   shiftDate,
 } from '../../../lib/reports'
 import { todayIso } from '../../../lib/reportFormat'
@@ -15,7 +17,9 @@ import ReportsArchiveClient from './ReportsArchiveClient'
  * das Ergebnis an die Client-Komponente weiter. Der Zeitraum steht in der URL
  * (`?from=&to=`), damit die Liste verlinkbar bleibt und der Server bei jedem
  * Wechsel neu liest; ohne Parameter: die letzten 30 Tage bis zum jüngsten
- * Tag mit Bericht.
+ * Tag mit Bericht. Länger als `MAX_RANGE_DAYS` (Core) wird der Zeitraum nie -
+ * die URL ist frei tippbar, und ein Tippfehler im Jahr würde sonst jedes
+ * Tagesfile lesen und tausende Zeilen rendern.
  */
 export default async function ReportsPage({
   searchParams,
@@ -34,14 +38,17 @@ export default async function ReportsPage({
   let to = isValidReportDate(toParam) ? toParam : latest
   let from = isValidReportDate(fromParam) ? fromParam : shiftDate(to, -29)
   if (from > to) [from, to] = [to, from]
+  const range = clampReportRange(from, to)
 
-  const list = listDailyReports(from, to)
+  const list = listDailyReports(range.from, range.to)
 
   return (
     <ReportsArchiveClient
       list={list}
       latestDate={dates.length > 0 ? latest : null}
       earliestDate={dates.length > 0 ? dates[0] : null}
+      requestedFrom={range.truncated ? from : null}
+      maxRangeDays={maxReportRangeDays()}
     />
   )
 }

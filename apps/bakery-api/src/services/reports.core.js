@@ -18,7 +18,14 @@
  *                abgebrochene Belege)
  *   Ø Bon      = Umsatz / Bons
  *   Zahlungsmix: `Bar` = Bargeld, `Unbar` = Karte, `Keine` = ohne Zahlung
- *                (Gutscheineinlösung, 0-Euro-Bons)
+ *                (Gutscheineinlösung, 0-Euro-Bons). Der Betrag je Zahlungsart
+ *                enthält die Storno-Gegenbuchungen (negativ), die Bon-Zahl je
+ *                Zahlungsart nicht - so ergeben die Zahlungsarten zusammen
+ *                wieder `receiptCount`.
+ *
+ * Jede Bon-Zahl auf der Detailseite (Kachel, Zahlungsmix, Kassenabschluss)
+ * zählt nach derselben Regel. Die rohe Zahl aller Buchungen eines Abschlusses
+ * (inkl. Stornos und Abbrüche) steht daneben in `closings[].transactionCount`.
  *
  * Abgebrochene Belege (`type: 'cancelled'`, Kasse: „AV-Belegabbruch") tragen
  * einen Betrag, sind aber nie kassiert worden - sie zählen weder zum Umsatz
@@ -77,6 +84,14 @@ const MONTH_LABELS = [
   'November',
   'Dezember',
 ]
+
+/**
+ * Obergrenze für einen Zeitraum in Tagen. Eine Anfrage über Jahre liest sonst
+ * hunderte Dateien und rendert tausende Zeilen - ein Tippfehler im Jahr genügt.
+ * Der Mock-Server lehnt größere Zeiträume ab, die Management-App kürzt sie
+ * (`clampRange`). Beide benutzen dieselbe Zahl.
+ */
+const MAX_RANGE_DAYS = 400
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 const MONTH_RE = /^\d{4}-\d{2}$/
@@ -137,6 +152,23 @@ function listDates(from, to) {
   if (!isValidDate(from) || !isValidDate(to) || from > to) return dates
   for (let d = from; d <= to; d = addDays(d, 1)) dates.push(d)
   return dates
+}
+
+/**
+ * Zeitraum auf höchstens `MAX_RANGE_DAYS` Tage kürzen. Das Ende bleibt stehen
+ * und der Anfang rückt nach - `to` ist in der Oberfläche an den jüngsten
+ * Bericht gebunden, und die jüngsten Tage sind die, die man sehen will.
+ * `truncated` sagt, ob gekürzt wurde, damit die Oberfläche das anzeigen kann.
+ */
+function clampRange(from, to, maxDays) {
+  const limit =
+    Number.isInteger(maxDays) && maxDays > 0 ? maxDays : MAX_RANGE_DAYS
+  if (!isValidDate(from) || !isValidDate(to) || from > to) {
+    return { from, to, truncated: false }
+  }
+  const earliest = addDays(to, -(limit - 1))
+  if (from >= earliest) return { from, to, truncated: false }
+  return { from: earliest, to, truncated: true }
 }
 
 /** Erster und letzter Tag eines Monats `YYYY-MM`. */
@@ -239,12 +271,16 @@ function aggregateDay(date, closings) {
     const transactions = Array.isArray(data.transactions)
       ? data.transactions
       : []
-    closingInfos.push({
+    const closing = {
       filename: entry.filename || null,
       registerId: data.register_id != null ? String(data.register_id) : null,
       reportNumber: data.report_number != null ? data.report_number : null,
+      /** Alle Buchungen der Datei, auch Stornos und abgebrochene Belege. */
       transactionCount: transactions.length,
-    })
+      /** Bons nach derselben Regel wie `receiptCount` des Tages. */
+      receiptCount: 0,
+    }
+    closingInfos.push(closing)
 
     for (const tx of transactions) {
       if (!tx || typeof tx !== 'object') continue
@@ -259,11 +295,15 @@ function aggregateDay(date, closings) {
         acc.stornoAmount += total
       } else {
         acc.receiptCount += 1
+        closing.receiptCount += 1
       }
 
+      // Die Gegenbuchung nimmt der Zahlungsart ihren Betrag wieder weg, ist
+      // aber kein eigener Bon - sonst zählte der Zahlungsmix mehr Bons als
+      // die Kachel daneben.
       const bucket = acc.payments[paymentBucket(tx.payment)]
       bucket.amount += total
-      bucket.count += 1
+      if (tx.type !== 'storno') bucket.count += 1
 
       const time = receiptTime(tx.timestamp)
       if (time) {
@@ -520,6 +560,7 @@ module.exports = {
   WEEKDAY_LABELS,
   WEEKDAY_SHORT,
   MONTH_LABELS,
+  MAX_RANGE_DAYS,
   toCents,
   fromCents,
   isValidDate,
@@ -530,6 +571,7 @@ module.exports = {
   monthLabel,
   addDays,
   listDates,
+  clampRange,
   monthBounds,
   isoWeek,
   isoWeekStart,

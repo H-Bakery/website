@@ -39,6 +39,10 @@ interface Props {
   /** Jüngster Tag mit Bericht - `null`, wenn es gar keine Berichte gibt. */
   latestDate: string | null
   earliestDate: string | null
+  /** Gewünschter Anfang, falls der Server den Zeitraum gekürzt hat. */
+  requestedFrom?: string | null
+  /** Obergrenze des Zeitraums in Tagen (aus dem Core). */
+  maxRangeDays?: number
 }
 
 function monthOf(date: string) {
@@ -67,6 +71,8 @@ export default function ReportsArchiveClient({
   list,
   latestDate,
   earliestDate,
+  requestedFrom = null,
+  maxRangeDays,
 }: Props) {
   const router = useRouter()
   const [from, setFrom] = useState(list.from)
@@ -125,6 +131,14 @@ export default function ReportsArchiveClient({
           Das Berichtsverzeichnis (<code>hq/data/reports/converted</code>) ist
           auf diesem Rechner nicht erreichbar. Es werden keine Zahlen angezeigt
           - Beispieldaten gibt es hier bewusst nicht.
+        </Alert>
+      )}
+
+      {requestedFrom && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Der Zeitraum ab {formatReportDate(requestedFrom)} wurde auf
+          {maxRangeDays ? ` ${maxRangeDays}` : ' die erlaubten'} Tage gekürzt
+          und beginnt jetzt am {formatReportDate(list.from)}.
         </Alert>
       )}
 

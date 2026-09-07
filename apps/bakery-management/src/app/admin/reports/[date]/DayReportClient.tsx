@@ -127,7 +127,7 @@ export default function DayReportClient({
               variant="outlined"
               label={`Kasse ${c.registerId ?? '?'} · Abschluss ${
                 c.reportNumber ?? i + 1
-              } · ${c.transactionCount} Bons`}
+              } · ${c.receiptCount} Bons`}
             />
           ))}
           {report.firstReceipt && report.lastReceipt && (

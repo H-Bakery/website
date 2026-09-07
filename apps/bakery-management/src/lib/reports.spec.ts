@@ -8,11 +8,13 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import {
+  clampReportRange,
   getDailyReport,
   getLatestDailyReport,
   getMonthlyReport,
   listDailyReports,
   listReportDates,
+  maxReportRangeDays,
   reportsAvailable,
   shiftDate,
 } from './reports'
@@ -162,6 +164,27 @@ describe('reports loader', () => {
     expect(list.days).toEqual([])
     expect(list.summary.status).toBe('no-data')
     expect(getDailyReport('Dienstag').status).toBe('no-data')
+  })
+
+  it('liest nie mehr als die Obergrenze an Tagen, auch wenn die URL mehr verlangt', () => {
+    writeDay('2026-05-09_4711.json', '2026-05-09', [tx([BROT])])
+    const max = maxReportRangeDays()
+    expect(max).toBe(400)
+
+    const range = clampReportRange('2000-01-01', '2026-05-09')
+    expect(range).toEqual({
+      from: shiftDate('2026-05-09', -(max - 1)),
+      to: '2026-05-09',
+      truncated: true,
+    })
+    expect(clampReportRange('2026-05-01', '2026-05-09').truncated).toBe(false)
+
+    // Sicherheitsnetz im Loader selbst: der Zeitraum wird stillschweigend gekürzt
+    const list = listDailyReports('2000-01-01', '2026-05-09')
+    expect(list.from).toBe(range.from)
+    expect(list.days).toHaveLength(max)
+    expect(list.summary.status).toBe('ok')
+    expect(list.summary.revenue).toBe(4)
   })
 
   it('liefert Monat, jüngsten Tag und Datumsverschiebung', () => {

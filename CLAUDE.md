@@ -232,7 +232,7 @@ Die Management-App zeigt unter `/admin/reports` die **Tagesabschlüsse der Kasse
 `/admin/analytics/*` rechnen mit denselben Daten. Das frühere `apps/reports` (kein Nx-Projekt,
 toter Pfad ins stillgelegte `content/`-Repo) ist seit dem 07.09.2026 gelöscht.
 
-Vier Dinge, die man wissen muss:
+Fünf Dinge, die man wissen muss:
 
 - **Die Formeln stehen genau einmal**, in `apps/bakery-api/src/services/reports.core.js`
   (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`); die Datei-Lese-Schicht
@@ -250,15 +250,22 @@ forbidden`) - wer die Datei verschiebt, muss `CORE_DIR` in `reports.ts` nachzieh
   mehr, auch nicht in `analyticsService` (`available: false` statt `Math.random()`).
 - **Umsatz = Σ Bon-Total ohne abgebrochene Belege** (`type: 'cancelled'`), Stornos negativ. Genau so
   stimmt die Summe mit dem Kassenabschluss (`daily_summary.total_revenue`) überein. Bons zählen ohne
-  Storno-Gegenbuchungen. Positionsmengen einzelner Tage können durch Storno-Paare über die
-  Tagesgrenze negativ sein - die Detailseite warnt dann, statt die Zeile zu verstecken.
+  Storno-Gegenbuchungen - **überall gleich**: Kachel (`receiptCount`), Zahlungsmix
+  (`payments.*.count`) und Kassenabschluss (`closings[].receiptCount`) ergeben dieselbe Zahl; die rohe
+  Buchungszahl inkl. Stornos und Abbrüche steht nur in `closings[].transactionCount`. Positionsmengen
+  einzelner Tage können durch Storno-Paare über die Tagesgrenze negativ sein - die Detailseite warnt
+  dann, statt die Zeile zu verstecken.
+- **Ein Zeitraum ist höchstens `MAX_RANGE_DAYS` (400) Tage lang.** Die Zahl steht im Core; der
+  Mock-Server lehnt längere Anfragen mit `range_too_large` ab, die Archivseite kürzt
+  `?from=&to=` mit `clampRange` (das Ende bleibt, der Anfang rückt nach) und sagt es an. Ohne die
+  Kappung liefert `?from=2000-01-01` jede Tagesdatei als HTML - ein Tippfehler im Jahr genügt.
 
 Endpunkte des Mock-Servers: `GET /api/reports/daily?from=&to=`, `/api/reports/daily/:date`,
 `/api/reports/monthly/:month` sowie `/api/analytics/{revenue-trends,product-performance,payment-methods,summary}`.
 Fehler mit `message` **und** `error`. Die echte TypeScript-API hat unter `/api/reports/daily` einen
 älteren, DB-basierten Vertrag - der ist nicht angeglichen.
 
-Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/reportsCore.test.js` (24)
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/reportsCore.test.js` (25)
 und in der Management-App `src/lib/reports.spec.ts`, `admin/reports/**/*.spec.tsx`,
 `admin/analytics/**/*.spec.tsx` - alle mit synthetischen Fixtures, nie mit echten Tagesfiles.
 

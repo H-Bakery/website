@@ -29,8 +29,8 @@ const path = require('path')
 const core = require('../services/reports.core')
 const files = require('../services/reports-files.core')
 
-/** Zeitraum-Obergrenze: eine Anfrage über Jahre liest sonst hunderte Dateien. */
-const MAX_RANGE_DAYS = 400
+/** Zeitraum-Obergrenze - dieselbe wie in der Management-App (`clampRange`). */
+const MAX_RANGE_DAYS = core.MAX_RANGE_DAYS
 
 function fail(res, status, error, message) {
   return res.status(status).json({ error, message })

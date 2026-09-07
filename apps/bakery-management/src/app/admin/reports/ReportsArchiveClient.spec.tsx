@@ -33,6 +33,7 @@ function day(
         registerId: '4711',
         reportNumber: 1,
         transactionCount: 2,
+        receiptCount: 2,
       },
     ],
     closingCount: 1,
@@ -174,6 +175,23 @@ describe('ReportsArchiveClient', () => {
     expect(mockPush).toHaveBeenLastCalledWith(
       '/admin/reports?from=2026-04-30&to=2026-05-06'
     )
+  })
+
+  it('sagt, wenn der Server den Zeitraum gekürzt hat', () => {
+    renderWithTheme(
+      <ReportsArchiveClient
+        list={list}
+        latestDate="2026-05-06"
+        earliestDate="2026-01-02"
+        requestedFrom="2000-01-01"
+        maxRangeDays={400}
+      />
+    )
+    expect(
+      screen.getByText(
+        /Zeitraum ab 01\.01\.2000 wurde auf 400 Tage gekürzt und beginnt jetzt am 04\.05\.2026/
+      )
+    ).toBeInTheDocument()
   })
 
   it('warnt, wenn das Berichtsverzeichnis fehlt, und zeigt keine Zahlen', () => {

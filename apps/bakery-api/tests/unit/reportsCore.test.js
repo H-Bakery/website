@@ -158,6 +158,14 @@ describe('aggregateDay', () => {
     expect(report.stornoCount).toBe(1)
     expect(report.stornoAmount).toBe(-4)
     expect(report.avgReceipt).toBe(1.5)
+    // Dieselbe Bon-Zahl an jeder Stelle der Detailseite: Kachel (receiptCount),
+    // Zahlungsmix und Kassenabschluss. Die Gegenbuchung zieht dem Zahlungsmix
+    // nur den Betrag ab, keinen Bon; die rohe Buchungszahl bleibt daneben.
+    expect(report.payments.cash).toEqual({ amount: 3, count: 2 })
+    expect(report.closings[0]).toMatchObject({
+      transactionCount: 3,
+      receiptCount: 2,
+    })
 
     const brot = report.products.find((p) => p.productId === '101')
     expect(brot).toMatchObject({ quantity: 0, revenue: 0 })
@@ -219,6 +227,11 @@ describe('aggregateDay', () => {
     expect(report.revenue).toBe(4)
     expect(report.receiptCount).toBe(1)
     expect(report.cancelledCount).toBe(1)
+    expect(report.payments.cash.count).toBe(1)
+    expect(report.closings[0]).toMatchObject({
+      transactionCount: 2,
+      receiptCount: 1,
+    })
     expect(report.products.find((p) => p.productId === '102')).toBeUndefined()
   })
 
@@ -432,6 +445,36 @@ describe('Kalender', () => {
       to: '2024-02-29',
     })
     expect(core.monthBounds('2026-02').to).toBe('2026-02-28')
+  })
+
+  it('kürzt einen zu langen Zeitraum am Anfang, nie am Ende', () => {
+    expect(core.MAX_RANGE_DAYS).toBe(400)
+    // 400 Tage inklusive Grenzen passen genau
+    const full = core.clampRange('2025-01-01', '2026-02-04')
+    expect(core.listDates(full.from, full.to)).toHaveLength(400)
+    expect(full).toEqual({
+      from: '2025-01-01',
+      to: '2026-02-04',
+      truncated: false,
+    })
+    // ein Tag mehr: der Anfang rückt nach, das Ende bleibt
+    expect(core.clampRange('2024-12-31', '2026-02-04')).toEqual({
+      from: '2025-01-01',
+      to: '2026-02-04',
+      truncated: true,
+    })
+    expect(core.clampRange('2000-01-01', '2030-12-31', 3)).toEqual({
+      from: '2030-12-29',
+      to: '2030-12-31',
+      truncated: true,
+    })
+    // ungültige oder verdrehte Zeiträume werden nicht angefasst
+    expect(core.clampRange('2026-02-02', '2026-02-01')).toEqual({
+      from: '2026-02-02',
+      to: '2026-02-01',
+      truncated: false,
+    })
+    expect(core.clampRange('gestern', '2026-02-01').truncated).toBe(false)
   })
 
   it('rechnet ISO-Wochen', () => {
