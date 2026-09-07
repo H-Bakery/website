@@ -692,6 +692,7 @@ function buildPickupStop(pickupPoint) {
     status: 'open',
     completedAt: null,
     failureReason: null,
+    goodsDisposition: null,
     lat: located ? Number(point.lat) : null,
     lon: located ? Number(point.lon) : null,
     geocodeSource: located ? point.geocodeSource || null : null,

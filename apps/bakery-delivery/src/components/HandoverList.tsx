@@ -66,13 +66,21 @@ const BADGE_MODIFIER: Record<PreorderStatus, string> = {
 
 interface HandoverListProps {
   preorders: Preorder[]
+  /** Sperrt alle Zeilen - etwa waehrend der Stopp selbst abgeschlossen wird. */
   busy: boolean
+  /**
+   * Sperrt nur die Zeilen, deren eigener Statuswechsel gerade unterwegs ist.
+   * Die naechste Familie steht schon vor dem Fahrer; ein haengender Request
+   * der vorigen darf sie nicht warten lassen.
+   */
+  busyIds?: ReadonlySet<number>
   onStatusChange: (preorderId: number, status: PreorderStatus) => void
 }
 
 export function HandoverList({
   preorders,
   busy,
+  busyIds,
   onStatusChange,
 }: HandoverListProps) {
   if (preorders.length === 0) {
@@ -88,6 +96,7 @@ export function HandoverList({
       {preorders.map((preorder, index) => {
         const phoneLink = buildPhoneLink(preorder.phone)
         const items = formatItems(preorder.items)
+        const rowBusy = busy || (busyIds?.has(preorder.id) ?? false)
 
         return (
           <li
@@ -144,7 +153,7 @@ export function HandoverList({
                   <button
                     type="button"
                     className={styles.buttonSuccess}
-                    disabled={busy}
+                    disabled={rowBusy}
                     onClick={() => onStatusChange(preorder.id, 'handed_over')}
                   >
                     Übergeben
@@ -152,7 +161,7 @@ export function HandoverList({
                   <button
                     type="button"
                     className={styles.buttonWarn}
-                    disabled={busy}
+                    disabled={rowBusy}
                     onClick={() => onStatusChange(preorder.id, 'not_collected')}
                   >
                     Nicht abgeholt
@@ -162,7 +171,7 @@ export function HandoverList({
                 <button
                   type="button"
                   className={styles.buttonGhost}
-                  disabled={busy}
+                  disabled={rowBusy}
                   onClick={() => onStatusChange(preorder.id, 'open')}
                 >
                   Zurücksetzen
