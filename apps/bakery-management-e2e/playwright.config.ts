@@ -3,10 +3,9 @@ import { nxE2EPreset } from '@nx/playwright/preset'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const {
-  FIXTURE_PRODUCTS_DIR,
   mockApiServer,
   nextApp,
-  usesBuiltApp,
+  productsDir,
 } = require('../../tools/e2e/servers')
 
 // For CI, you may want to set BASE_URL to the deployed application.
@@ -26,8 +25,11 @@ const apiURL = process.env['API_URL'] || 'http://localhost:5000'
  * `/admin/login`.
  *
  * Which servers run is decided in `tools/e2e/servers.js`. The product list is
- * read from `HQ_PRODUCTS_DIR` at build time; in CI the build *and* the mock
- * API point at the synthetic fixture so both agree on the catalogue.
+ * read from `HQ_PRODUCTS_DIR` - at build time for `next start`, per request
+ * on the dev server. Both servers get `productsDir()`: in CI the synthetic
+ * fixture the app was built with, in development the same directory the mock
+ * API reads (`HQ_PRODUCTS_DIR`, else `../hq/products`, else the fixture) -
+ * the suite compares the UI with `GET /api/products`, so they must agree.
  */
 export default defineConfig({
   ...nxE2EPreset(__filename, { testDir: './src' }),
@@ -53,12 +55,6 @@ export default defineConfig({
 
   webServer: [
     mockApiServer(apiURL),
-    nextApp(
-      'bakery-management',
-      baseURL,
-      // The dev server reads the products per request; give it the fixture
-      // whenever the suite runs on the built (fixture-fed) API anyway.
-      usesBuiltApp() ? { HQ_PRODUCTS_DIR: FIXTURE_PRODUCTS_DIR } : {}
-    ),
+    nextApp('bakery-management', baseURL, { HQ_PRODUCTS_DIR: productsDir() }),
   ],
 })

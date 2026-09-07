@@ -8,6 +8,9 @@
  * - **Entwicklung** (Standard): `nx serve <app>` und laufende Server werden
  *   wiederverwendet (`reuseExistingServer`). Wer die Mock-API schon auf 5000
  *   laufen hat, testet gegen deren Daten - in der Regel das echte `hq`.
+ *   Startet Playwright die Server selbst, lesen App und API aus derselben
+ *   Quelle (`productsDir()`): `HQ_PRODUCTS_DIR` aus der Umgebung, sonst das
+ *   `hq` neben dem Repo, und erst wenn es das nicht gibt, das Fixture.
  * - **Gebaut** (`CI=true` oder `E2E_BUILT=1`): die Suite startet ihre Server
  *   selbst - `next start` auf dem Build in `dist/apps/<app>` (bzw. der
  *   statische Export der Landing) und die Mock-API auf dem synthetischen
@@ -19,6 +22,7 @@
  * Platz haben.
  */
 
+const fs = require('fs')
 const path = require('path')
 
 const ROOT = path.resolve(__dirname, '..', '..')
@@ -29,6 +33,24 @@ const FIXTURE_PRODUCTS_DIR = path.join(ROOT, 'tools', 'e2e', 'hq-products')
 /** Läuft die Suite gegen die gebaute App statt gegen `nx serve`? */
 function usesBuiltApp() {
   return process.env.E2E_BUILT === '1' || Boolean(process.env.CI)
+}
+
+/**
+ * Das Produktverzeichnis, das App *und* Mock-API bekommen, wenn Playwright sie
+ * startet. Beide müssen dieselben Dateien lesen - der Dashboard-Zähler, die
+ * Produktliste und die Shop-Kasse vergleichen die Oberfläche mit
+ * `GET /api/products`. Ein Server, der nur das Fixture sieht, während der
+ * andere `hq` liest, lässt die Suite mit „56 statt 103“ umfallen.
+ *
+ * - Gebaut: immer das Fixture - so ist die App gebaut worden (ci.yml, README).
+ * - Entwicklung: `HQ_PRODUCTS_DIR` aus der Umgebung, sonst das `hq` neben dem
+ *   Repo (der Standard der App-Loader), sonst das Fixture.
+ */
+function productsDir() {
+  if (usesBuiltApp()) return FIXTURE_PRODUCTS_DIR
+  if (process.env.HQ_PRODUCTS_DIR) return process.env.HQ_PRODUCTS_DIR
+  const hq = path.join(ROOT, '..', 'hq', 'products')
+  return fs.existsSync(hq) ? hq : FIXTURE_PRODUCTS_DIR
 }
 
 /** Sollen laufende Server übernommen werden? In CI nie - dort ist alles frisch. */
@@ -43,11 +65,9 @@ function portOf(url) {
 }
 
 /**
- * Die Mock-API (`apps/bakery-api/simple-server.js`) auf dem Fixture-Katalog.
- *
- * `HQ_PRODUCTS_DIR` zeigt bewusst immer auf das Fixture: startet Playwright
- * den Server selbst, sollen die Daten unabhängig davon sein, ob auf dieser
- * Maschine ein `hq` liegt. Ein bereits laufender Server bleibt unangetastet.
+ * Die Mock-API (`apps/bakery-api/simple-server.js`) auf `productsDir()` -
+ * in CI das Fixture, in Entwicklung dieselbe Quelle wie der Dev-Server.
+ * Ein bereits laufender Server bleibt unangetastet.
  */
 function mockApiServer(apiURL) {
   return {
@@ -55,7 +75,7 @@ function mockApiServer(apiURL) {
     url: `${apiURL}/health`,
     env: {
       PORT: String(portOf(apiURL)),
-      HQ_PRODUCTS_DIR: FIXTURE_PRODUCTS_DIR,
+      HQ_PRODUCTS_DIR: productsDir(),
     },
     reuseExistingServer: reuseExistingServer(),
     cwd: ROOT,
@@ -112,5 +132,6 @@ module.exports = {
   landingApp,
   mockApiServer,
   nextApp,
+  productsDir,
   usesBuiltApp,
 }

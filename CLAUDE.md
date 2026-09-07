@@ -234,6 +234,11 @@ bzw. der statische Landing-Export hinter `tools/e2e/serve-static.js`, dazu die M
 So laufen die Jobs `test-e2e-*` in `.github/workflows/ci.yml` ohne das private `hq` und ohne
 Datenbank. Details, Ports und die Bedingungen, die der Katalog erfüllen muss: `tools/e2e/README.md`.
 
+App und Mock-API müssen **dieselben Produktdateien** lesen - die Suiten vergleichen die Oberfläche
+mit `GET /api/products`. `productsDir()` in `servers.js` entscheidet das für beide Server auf
+einmal: gebaut immer das Fixture, in Entwicklung `HQ_PRODUCTS_DIR`, sonst `../hq/products`, sonst
+das Fixture. Nicht einem der beiden Server ein eigenes Verzeichnis geben.
+
 Die Shop-Suite ist datengetrieben (liest `GET /api/products` und vergleicht). Die generierten
 Suiten `landing-page.spec.ts` und `management-workflows.spec.ts` beschreiben nie gebaute
 Oberflächen (Schweizer Platzhalter, CHF, `data-testid`s ohne Gegenstück) und sind als Ganzes mit

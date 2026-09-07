@@ -92,12 +92,19 @@ test.describe('Produkte', () => {
     const firstName = (await rows.first().locator('td').first().innerText())
       .split('\n')[0]
       .trim()
-    await rows
+    const editButton = rows
       .first()
       .getByRole('button', { name: `${firstName} bearbeiten` })
-      .click()
+    const editURL = /\/admin\/products\/[^/]+$/
 
-    await expect(page).toHaveURL(/\/admin\/products\/[^/]+$/)
+    // Der Knopf navigiert per `router.push`, also erst nach der Hydration.
+    // Der Dev-Server hydriert hundert Zeilen spürbar später, als sie sichtbar
+    // sind - ein Klick davor verpufft ohne Fehler. Deshalb klicken, bis die
+    // URL wechselt; im Build greift der erste Klick.
+    await expect(async () => {
+      if (!editURL.test(page.url())) await editButton.click({ timeout: 2_000 })
+      await expect(page).toHaveURL(editURL, { timeout: 2_000 })
+    }).toPass({ timeout: 20_000 })
     await expect(page.getByLabel('Produktname')).toHaveValue(firstName)
     await expect(page.getByLabel('Preis (EUR)')).not.toHaveValue('')
   })
