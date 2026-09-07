@@ -1,6 +1,8 @@
 import { defineConfig, devices } from '@playwright/test'
 import { nxE2EPreset } from '@nx/playwright/preset'
-import { workspaceRoot } from '@nx/devkit'
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { mockApiServer, nextApp } = require('../../tools/e2e/servers')
 
 // For CI, you may want to set BASE_URL to the deployed application.
 const baseURL = process.env['BASE_URL'] || 'http://localhost:4200'
@@ -15,6 +17,10 @@ const apiURL = process.env['API_URL'] || 'http://localhost:5000'
  * projects: a desktop one and a Chromium-based mobile one (Pixel 5). The
  * Firefox and WebKit projects were removed — they could only ever produce
  * "browser not installed" failures.
+ *
+ * Which servers run and where the data comes from is decided in
+ * `tools/e2e/servers.js`: `nx serve` plus a reused API in development, the
+ * build in `dist/` plus the mock API on the synthetic product fixture in CI.
  */
 export default defineConfig({
   ...nxE2EPreset(__filename, { testDir: './src' }),
@@ -42,22 +48,7 @@ export default defineConfig({
     },
   ],
 
-  /* Run both servers before the tests: the API serves the real products and
+  /* Run both servers before the tests: the API serves the products and
      accepts the orders, the shop is the app under test. */
-  webServer: [
-    {
-      command: 'npm run serve:api:simple',
-      url: `${apiURL}/health`,
-      reuseExistingServer: !process.env.CI,
-      cwd: workspaceRoot,
-      timeout: 120_000,
-    },
-    {
-      command: 'nx serve bakery-shop',
-      url: baseURL,
-      reuseExistingServer: !process.env.CI,
-      cwd: workspaceRoot,
-      timeout: 180_000,
-    },
-  ],
+  webServer: [mockApiServer(apiURL), nextApp('bakery-shop', baseURL)],
 })

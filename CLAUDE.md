@@ -224,6 +224,23 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Vier Dinge, die man von auß
 Tests: `npx nx test delivery-routing` (32), `npx nx test delivery-tracking` (7) und
 `apps/bakery-api/tests/unit/deliveryTours.test.js` (46) für die Rechenlogik des Servers.
 
+## E2E-Suiten (Playwright)
+
+Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).
+Was sie starten, steht **einmal** in `tools/e2e/servers.js`: in Entwicklung `nx serve` plus ein
+laufender Server, in CI (`CI=true` oder `E2E_BUILT=1`) `next start` auf dem Build in `dist/apps/`
+bzw. der statische Landing-Export hinter `tools/e2e/serve-static.js`, dazu die Mock-API auf dem
+**synthetischen Produktkatalog** `tools/e2e/hq-products` (56 Markdown-Produkte im `hq`-Format).
+So laufen die Jobs `test-e2e-*` in `.github/workflows/ci.yml` ohne das private `hq` und ohne
+Datenbank. Details, Ports und die Bedingungen, die der Katalog erfüllen muss: `tools/e2e/README.md`.
+
+Die Shop-Suite ist datengetrieben (liest `GET /api/products` und vergleicht). Die generierten
+Suiten `landing-page.spec.ts` und `management-workflows.spec.ts` beschreiben nie gebaute
+Oberflächen (Schweizer Platzhalter, CHF, `data-testid`s ohne Gegenstück) und sind als Ganzes mit
+Begründung übersprungen; geprüft wird die echte App in `landing-smoke.spec.ts` und
+`management-smoke.spec.ts`. Wer eine dieser Funktionen baut, zieht den Test um und gibt ihm
+echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
+
 ## Important Notes
 
 - Always check existing patterns before implementing new features

@@ -11,3 +11,8 @@ out
 # Von Next generiert ("This file should not be edited") und bei jedem Build neu
 # geschrieben - sonst faellt format:check nach jedem Build ueber die Datei.
 next-env.d.ts
+
+# Synthetischer Produktkatalog der E2E-Suiten im Format von hq/products/*.md:
+# Prettier wuerde die Anfuehrungszeichen im Frontmatter umschreiben, die
+# serializeProductFile() im Mock-Server genau so setzt.
+tools/e2e/hq-products
