@@ -1,3 +1,13 @@
+/**
+ * @fileoverview Anmeldung, die es nicht gibt.
+ *
+ * Die Verwaltung hat keinen Login - `/admin/login` existiert nicht, und die
+ * `data-testid`s unten kommen in der App nicht vor. Die Datei gehört zu
+ * `management-workflows.spec.ts` (übersprungen) und wird von keinem
+ * Playwright-Projekt mehr aufgenommen: `playwright.config.ts` hat kein
+ * `setup`-Projekt. Sie bleibt als Vorlage, falls eine Anmeldung gebaut wird.
+ */
+
 import { test as setup, expect } from '@playwright/test'
 import path from 'path'
 

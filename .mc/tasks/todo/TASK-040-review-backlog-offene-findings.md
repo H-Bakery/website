@@ -110,12 +110,16 @@ dem Fix zuerst gegen die laufende App reproduzieren.
 
 ### CI
 
-- Die drei `test-e2e-*`-Jobs in `.github/workflows/ci.yml` sind auf `main` seit mindestens
-  2026-09-01 bei jedem Lauf rot (Shop 9, Management 36, Landing 52 Fehlschläge), deshalb ist auch der
-  Sammel-Job `ci-status` rot. Die Assertions brauchen Produktdaten (`expect(list.length).toBeGreaterThan(0)`),
-  die es in der CI ohne `hq/` und ohne API nicht gibt. Entweder die Suiten gegen den Mock-Server
-  mit `HQ_PRODUCTS_DIR` laufen lassen oder die Jobs ehrlich abschalten; `quality`, `build (*)` und
-  die drei `test-unit`-Shards sind grün.
+- ~~Die drei `test-e2e-*`-Jobs in `.github/workflows/ci.yml` sind auf `main` seit mindestens
+  2026-09-01 bei jedem Lauf rot (Shop 9, Management 36, Landing 52 Fehlschläge).~~ **Erledigt
+  2026-09-07 (Branch `fix/ci-e2e-jobs`).** Ursachen waren drei: die Suiten starteten `nx serve`
+  statt des gebauten Artefakts und hatten keine Produktdaten (kein `hq`, keine API in CI); Landing
+  und Management listeten Firefox/WebKit/Mobile Safari, obwohl nur Chromium installiert wird; die
+  Landing- und Management-Specs beschrieben eine nie gebaute Oberfläche (Schweizer Platzhalter, CHF,
+  `data-testid`s ohne Gegenstück, Login ohne Login-Seite). Jetzt: `tools/e2e/servers.js` startet in
+  CI `next start` auf dem Build plus die Mock-API auf dem synthetischen Katalog
+  `tools/e2e/hq-products`; die Landing läuft gegen ihren statischen Export; die generierten Specs
+  sind mit Begründung übersprungen, echte Smoke-Suiten prüfen die tatsächliche App.
 
 ### Management
 

@@ -35,17 +35,31 @@ jobs:
         id: filter
         with:
           filters: |
+            # Die E2E-Suiten, ihr gemeinsames Werkzeug (tools/e2e) und dieser
+            # Workflow zaehlen mit - sonst laeuft eine geaenderte Suite erst,
+            # wenn zufaellig auch die App angefasst wird.
             shop:
               - 'apps/bakery-shop/**'
+              - 'apps/bakery-shop-e2e/**'
               - 'libs/bakery-shop/**'
               - 'libs/shared/**'
+              - 'apps/bakery-api/simple-server.js'
+              - 'tools/e2e/**'
+              - '.github/workflows/ci.yml'
             management:
               - 'apps/bakery-management/**'
+              - 'apps/bakery-management-e2e/**'
               - 'libs/bakery-management/**'
               - 'libs/shared/**'
+              - 'apps/bakery-api/simple-server.js'
+              - 'tools/e2e/**'
+              - '.github/workflows/ci.yml'
             landing:
               - 'apps/bakery-landing/**'
+              - 'apps/bakery-landing-e2e/**'
               - 'libs/shared/**'
+              - 'tools/e2e/**'
+              - '.github/workflows/ci.yml'
             libs:
               - 'libs/**'
             api:
@@ -151,8 +165,14 @@ jobs:
           NODE_ENV: production
         run: npx nx build bakery-shop --configuration=production
 
+      # Playwright startet die Server selbst (tools/e2e/servers.js, CI=true):
+      # `next start` auf dem Build oben und die Mock-API
+      # (apps/bakery-api/simple-server.js) auf dem synthetischen
+      # Produktkatalog tools/e2e/hq-products. Das private hq-Repo ist hier
+      # nicht ausgecheckt; ohne den Katalog haette der Shop 0 Produkte und
+      # jede Zaehl-Assertion waere rot.
       - name: Run E2E tests
-        run: npx nx e2e bakery-shop-e2e --configuration=ci
+        run: npx nx e2e bakery-shop-e2e
 
       - name: Upload test results
         if: always()
@@ -187,10 +207,17 @@ jobs:
           # Same pair as in the build job below, for the same two reasons.
           NX_ISOLATE_PLUGINS: 'false'
           NODE_ENV: production
+          # Die Produktliste wird beim Bauen aus dem Markdown-Verzeichnis
+          # gelesen (generateStaticParams). Ohne hq: der synthetische Katalog,
+          # denselben bekommt die Mock-API im naechsten Schritt.
+          HQ_PRODUCTS_DIR: ${{ github.workspace }}/tools/e2e/hq-products
         run: npx nx build bakery-management --configuration=production
 
+      # Server startet Playwright selbst (tools/e2e/servers.js, CI=true):
+      # `next start` auf dem Build und die Mock-API, beide auf
+      # tools/e2e/hq-products.
       - name: Run E2E tests
-        run: npx nx e2e bakery-management-e2e --configuration=ci
+        run: npx nx e2e bakery-management-e2e
 
       - name: Upload test results
         if: always()
@@ -227,8 +254,12 @@ jobs:
           NODE_ENV: production
         run: npx nx build bakery-landing --configuration=production
 
+      # Der statische Export in apps/bakery-landing/out ist genau das, was nach
+      # GitHub Pages geht - ohne hq, mit dem gebuendelten Produkt-Fallback.
+      # tools/e2e/serve-static.js liefert ihn wie Pages aus (`/about` ->
+      # about.html, Unbekanntes -> 404.html mit Status 404).
       - name: Run E2E tests
-        run: npx nx e2e bakery-landing-e2e --configuration=ci
+        run: npx nx e2e bakery-landing-e2e
 
       - name: Upload test results
         if: always()
