@@ -1,77 +1,60 @@
 import { defineConfig, devices } from '@playwright/test'
 import { nxE2EPreset } from '@nx/playwright/preset'
-import { workspaceRoot } from '@nx/devkit'
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const {
+  mockApiServer,
+  nextApp,
+  productsDir,
+} = require('../../tools/e2e/servers')
 
 // For CI, you may want to set BASE_URL to the deployed application.
 const baseURL = process.env['BASE_URL'] || 'http://localhost:3001'
 
-/**
- * Read environment variables from file.
- * https://github.com/motdotla/dotenv
- */
-// require('dotenv').config();
+/** Dashboard, Bestellungen usw. lesen von der Mock-API. */
+const apiURL = process.env['API_URL'] || 'http://localhost:5000'
 
 /**
  * See https://playwright.dev/docs/test-configuration.
+ *
+ * Only Chromium is installed (`npx playwright install --with-deps chromium`
+ * in CI), so the suite runs on a desktop and a Chromium-based mobile profile.
+ *
+ * There is no `setup` / `authenticated` project any more: the management app
+ * has no login, so an auth setup could only ever fail on a missing
+ * `/admin/login`.
+ *
+ * Which servers run is decided in `tools/e2e/servers.js`. The product list is
+ * read from `HQ_PRODUCTS_DIR` - at build time for `next start`, per request
+ * on the dev server. Both servers get `productsDir()`: in CI the synthetic
+ * fixture the app was built with, in development the same directory the mock
+ * API reads (`HQ_PRODUCTS_DIR`, else `../hq/products`, else the fixture) -
+ * the suite compares the UI with `GET /api/products`, so they must agree.
  */
 export default defineConfig({
   ...nxE2EPreset(__filename, { testDir: './src' }),
+  timeout: 60_000,
+  expect: { timeout: 10_000 },
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     baseURL,
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on-first-retry',
+    navigationTimeout: 30_000,
   },
-  /* Configure projects for major browsers */
   projects: [
-    // Logs in once and writes .auth/user.json (src/auth.setup.ts); the
-    // `authenticated` project below depends on it.
-    {
-      name: 'setup',
-      testMatch: /.*\.setup\.ts/,
-    },
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
-
     {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
-
-    // Test against mobile viewports.
-    {
-      name: 'Mobile Chrome',
+      name: 'mobile',
       use: { ...devices['Pixel 5'] },
-    },
-    {
-      name: 'Mobile Safari',
-      use: { ...devices['iPhone 12'] },
-    },
-
-    // Test with authenticated state
-    {
-      name: 'authenticated',
-      use: {
-        ...devices['Desktop Chrome'],
-        // Use prepared auth state.
-        storageState: 'apps/bakery-management-e2e/.auth/user.json',
-      },
-      dependencies: ['setup'],
     },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'nx serve bakery-management --port=3001',
-    url: 'http://localhost:3001',
-    reuseExistingServer: !process.env.CI,
-    cwd: workspaceRoot,
-  },
+  webServer: [
+    mockApiServer(apiURL),
+    nextApp('bakery-management', baseURL, { HQ_PRODUCTS_DIR: productsDir() }),
+  ],
 })
