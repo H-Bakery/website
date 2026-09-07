@@ -94,6 +94,225 @@ function weekdayOf(businessDate) {
 }
 
 /**
+ * Kalendarisch gültiger Geschäftstag (`YYYY-MM-DD`). Das Muster allein reicht
+ * nicht: `new Date(2026, 1, 30)` läuft stillschweigend auf den 2. März über,
+ * deshalb wird das Datum hin- und zurückgerechnet.
+ */
+function isBusinessDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false
+  }
+  const [y, m, d] = value.split('-').map(Number)
+  return businessDateOf(new Date(y, m - 1, d)) === value
+}
+
+/** Obergrenze für Stückzahlen je Position - mehr passt in keinen Backschrank. */
+const MAX_ITEM_QTY = 10000
+/** Obergrenze für den Preis-Snapshot in EUR. */
+const MAX_UNIT_PRICE = 10000
+
+/**
+ * Ganze Zahl aus einer Eingabe, streng: Zahlen und Ziffern-Strings (`"5"`)
+ * gelten, `true`, `"abc"`, `1.5` oder ein Objekt nicht. `Number("abc")` wäre
+ * `NaN` und `Number(true)` wäre `1` - beides darf nie zu einer Menge werden.
+ * @returns {number|null} `null` = unbrauchbar
+ */
+function strictInt(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value : null
+  }
+  if (typeof value === 'string' && /^\s*-?\d+\s*$/.test(value)) {
+    return Number(value)
+  }
+  return null
+}
+
+function strictNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value === 'string' && /^\s*-?\d+([.,]\d+)?\s*$/.test(value)) {
+    return Number(value.replace(',', '.'))
+  }
+  return null
+}
+
+function isBlank(value) {
+  return value === null || value === undefined || value === ''
+}
+
+/**
+ * Positionen eines Besuchs prüfen und normalisieren - die eine Stelle, an der
+ * entschieden wird, was als Rest, Lieferung und Preis-Snapshot in die
+ * Abrechnung darf. Beide Server benutzen sie; die Regeln:
+ *
+ * - `countedQty` `null`/`''`/fehlend heißt "nicht gezählt" und bleibt `null`.
+ *   `0` heißt "Schrank war leer". Alles andere muss eine ganze Zahl zwischen
+ *   0 und `MAX_ITEM_QTY` sein - `"abc"` wird abgelehnt, nicht zu `0`, sonst
+ *   entstünde aus einem Tippfehler ein Verkauf des ganzen Bestands.
+ * - `deliveredQty` fehlend heißt 0, sonst gleiche Grenzen.
+ * - `unitPrice` fehlend heißt Katalogpreis, sonst 0 … `MAX_UNIT_PRICE`,
+ *   auf Cent gerundet. Negative Preise fliegen raus.
+ * - Mit `lookup` muss jedes Produkt im Katalog stehen; Name und Kennungen
+ *   kommen dann aus dem Katalog, nicht aus dem Request. Ohne `lookup`
+ *   (echte API, kein HQ-Katalog zur Hand) gelten die Angaben des Requests.
+ * - Ein Produkt darf je Besuch nur einmal vorkommen - zwei Zeilen würden im
+ *   Bestands-Automaten gegeneinander rechnen.
+ * - Zeilen ohne jede Information (nicht gezählt, nichts geliefert) werden
+ *   verworfen, sonst steht im Report der halbe Katalog mit lauter Nullen.
+ *
+ * @param {unknown} items Positionen aus dem Request (`undefined`/`null` = keine)
+ * @param {(item: object) => ({id?: string, numeric_id?: number|string,
+ *   name?: string, price?: number|string} | null | undefined)} [lookup]
+ *   Katalogsuche, z. B. über den HQ-Index des Mock-Servers
+ * @returns {{ ok: true, items: Array } | { ok: false, error: string, message: string }}
+ */
+function validateVisitItems(items, lookup) {
+  const fail = (message) => ({ ok: false, error: 'INVALID_ITEMS', message })
+  if (isBlank(items)) return { ok: true, items: [] }
+  if (!Array.isArray(items)) {
+    return fail('Der Besuch braucht eine Liste von Positionen.')
+  }
+
+  const out = []
+  const seen = new Set()
+  for (let i = 0; i < items.length; i += 1) {
+    const raw = items[i]
+    const pos = `Position ${i + 1}`
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return fail(`${pos}: Die Position muss ein Objekt sein.`)
+    }
+
+    const requestedSlug =
+      typeof raw.productSlug === 'string' ? raw.productSlug.trim() : ''
+    const requestedId = strictInt(raw.productId)
+    const label =
+      requestedSlug || (requestedId != null ? `#${requestedId}` : '')
+    if (!label) {
+      return fail(`${pos}: Die Position braucht ein Produkt (productSlug).`)
+    }
+
+    let productSlug = requestedSlug
+    let productId = requestedId == null ? 0 : requestedId
+    let productName =
+      typeof raw.productName === 'string' && raw.productName.trim()
+        ? raw.productName.trim()
+        : productSlug
+    let catalogPrice = null
+
+    if (typeof lookup === 'function') {
+      const product = lookup(raw) || null
+      if (!product) {
+        return fail(
+          `${pos} (${label}): Unbekanntes Produkt - es steht nicht im Katalog.`
+        )
+      }
+      productSlug = String(product.id || productSlug)
+      productId = strictInt(product.numeric_id) ?? productId
+      productName = String(product.name || productName || productSlug)
+      catalogPrice = strictNumber(product.price)
+    }
+    if (!productSlug) {
+      return fail(`${pos}: Die Position braucht ein Produkt (productSlug).`)
+    }
+    if (seen.has(productSlug)) {
+      return fail(
+        `${pos} (${productSlug}): Das Produkt ist doppelt aufgeführt - jedes Produkt nur einmal je Besuch.`
+      )
+    }
+    seen.add(productSlug)
+
+    let countedQty = null
+    if (!isBlank(raw.countedQty)) {
+      countedQty = strictInt(raw.countedQty)
+      if (countedQty == null || countedQty < 0 || countedQty > MAX_ITEM_QTY) {
+        return fail(
+          `${pos} (${productSlug}): Der Rest muss eine ganze Zahl zwischen 0 und ${MAX_ITEM_QTY} sein (leer = nicht gezählt).`
+        )
+      }
+    }
+
+    let deliveredQty = 0
+    if (!isBlank(raw.deliveredQty)) {
+      deliveredQty = strictInt(raw.deliveredQty)
+      if (
+        deliveredQty == null ||
+        deliveredQty < 0 ||
+        deliveredQty > MAX_ITEM_QTY
+      ) {
+        return fail(
+          `${pos} (${productSlug}): Die gelieferte Menge muss eine ganze Zahl zwischen 0 und ${MAX_ITEM_QTY} sein.`
+        )
+      }
+    }
+
+    let unitPrice
+    if (isBlank(raw.unitPrice)) {
+      unitPrice = catalogPrice == null ? 0 : catalogPrice
+    } else {
+      unitPrice = strictNumber(raw.unitPrice)
+      if (unitPrice == null || unitPrice < 0 || unitPrice > MAX_UNIT_PRICE) {
+        return fail(
+          `${pos} (${productSlug}): Der Einzelpreis muss zwischen 0 und ${MAX_UNIT_PRICE} EUR liegen.`
+        )
+      }
+    }
+    unitPrice = Math.max(0, Math.round(unitPrice * 100) / 100)
+
+    if (countedQty === null && deliveredQty === 0) continue
+    out.push({
+      productId,
+      productSlug,
+      productName,
+      unitPrice,
+      countedQty,
+      deliveredQty,
+    })
+  }
+  return { ok: true, items: out }
+}
+
+/**
+ * Nachschlagewerk für Korrekturen: der Snapshot eines schon gespeicherten
+ * Besuchs. Ein Produkt, das seit der Erfassung aus dem Katalog verschwunden
+ * ist (Datei gelöscht, `id` umbenannt), soll beim Korrigieren nicht mit
+ * "Unbekanntes Produkt" abgewiesen werden - sonst könnte der Nutzer die Zeile
+ * nur leeren, und genau die Mengen gingen verloren, die die Erfassungsmaske
+ * für solche Positionen ausdrücklich mitschickt. Neue Besuche bekommen diesen
+ * Fallback nicht; dort muss jedes Produkt im Katalog stehen.
+ *
+ * Gesucht wird über den Slug, ersatzweise über eine positive numerische
+ * Kennung (`0` steht für "unbekannt" und trifft deshalb nie).
+ *
+ * @param {Array<{productSlug?: string, productId?: number, productName?: string,
+ *   unitPrice?: number}>|null|undefined} existingItems Positionen des
+ *   gespeicherten Besuchs
+ * @returns {(item: object) => ({id: string, numeric_id: number, name: string,
+ *   price: number} | null)} Lookup in der Form des HQ-Katalogs
+ */
+function snapshotLookup(existingItems) {
+  const items = Array.isArray(existingItems)
+    ? existingItems.filter((e) => e && typeof e === 'object')
+    : []
+  return (item) => {
+    if (!item || typeof item !== 'object') return null
+    const slug =
+      typeof item.productSlug === 'string' ? item.productSlug.trim() : ''
+    const numericId = strictInt(item.productId)
+    const found = items.find((e) =>
+      slug
+        ? e.productSlug === slug
+        : numericId != null && numericId > 0 && e.productId === numericId
+    )
+    if (!found) return null
+    return {
+      id: found.productSlug,
+      numeric_id: found.productId,
+      name: found.productName || found.productSlug,
+      price: found.unitPrice,
+    }
+  }
+}
+
+/**
  * Chronologische Reihenfolge: Geschäftstag, dann `sequence`, dann Zeitpunkt.
  * `sequence` gewinnt vor `visitAt`, damit eine korrigierte Uhrzeit die
  * Reihenfolge der Erfassung nicht durcheinanderbringt.
@@ -481,9 +700,19 @@ function deNumber(value, decimals = 2) {
   return Number(value).toFixed(decimals).replace('.', ',')
 }
 
+/**
+ * Eine CSV-Zelle. Semikolon, Anführungszeichen und Zeilenumbrüche werden
+ * eingefasst; eine Zelle, die mit `=`, `+`, `-`, `@`, Tab oder CR beginnt,
+ * bekommt ein Apostroph voran - Excel und LibreOffice würden sie sonst als
+ * Formel ausführen (CSV-Injection über Partner- oder Produktnamen).
+ */
 function csvCell(value) {
-  const s = value == null ? '' : String(value)
-  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
+  let s = value == null ? '' : String(value)
+  // Eine schlichte Zahl (`-5`, `-3,50`) ist keine Formel und bleibt Zahl.
+  const formulaLike =
+    /^[=+\-@\t\r]/.test(s) && !/^[+-]?\d+([.,]\d+)?%?$/.test(s)
+  if (formulaLike) s = `'${s}`
+  return formulaLike || /[";\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
 /**
@@ -599,8 +828,14 @@ module.exports = {
   VISIT_TYPE_LABELS,
   WEEKDAY_LABELS,
   WEEKDAY_SHORT,
+  MAX_ITEM_QTY,
+  MAX_UNIT_PRICE,
   businessDateOf,
   weekdayOf,
+  isBusinessDate,
+  validateVisitItems,
+  snapshotLookup,
+  csvCell,
   sortVisits,
   groupByBusinessDate,
   computeDay,

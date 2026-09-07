@@ -8,6 +8,20 @@ const crypto = require('crypto')
 const app = express()
 const PORT = process.env.PORT || 5000
 
+// Feldauswahl der mutierenden Mock-Routen und JSON-Fehlerantworten -
+// siehe mock-input.core.js. Der Server prueft hier nichts selbst.
+const mockInput = require('./src/services/mock-input.core')
+
+/** Antwort auf ein abgelehntes Ergebnis aus mock-input.core - 400 mit deutschem `message`. */
+function rejectInput(res, result) {
+  return res.status(400).json({
+    success: false,
+    error: result.error,
+    field: result.field,
+    message: result.message,
+  })
+}
+
 // HQ products directory
 const HQ_PRODUCTS_DIR =
   process.env.HQ_PRODUCTS_DIR ||
@@ -61,8 +75,12 @@ function loadHQProducts() {
 }
 
 // Middleware
+// Kein `X-Powered-By: Express` - verraet Software und Version an jeden Client.
+app.disable('x-powered-by')
 app.use(cors())
-app.use(express.json())
+// Bodies ueber dem Limit lehnt body-parser mit 413 ab; die JSON-Antwort dazu
+// liefert der Error-Handler am Ende der Datei.
+app.use(express.json({ limit: mockInput.JSON_BODY_LIMIT }))
 
 // Health check
 app.get('/health', (req, res) => {
@@ -224,10 +242,14 @@ app.put('/api/orders/:id', (req, res) => {
       error: 'Order not found',
       message: 'Bestellung nicht gefunden.',
     })
+  // Nur Status und Anmerkung sind aenderbar. Vorher wurde `...req.body`
+  // uebernommen: `createdAt: 1999` stand dann als Datum in der Bestellliste,
+  // `total: 0` machte die Bestellung kostenlos.
+  const result = mockInput.validateOrderUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   orders[index] = {
     ...orders[index],
-    ...req.body,
-    id: orders[index].id,
+    ...result.value,
     updatedAt: new Date().toISOString(),
   }
   res.json({ success: true, data: orders[index] })
@@ -280,9 +302,11 @@ app.get('/api/cash', (req, res) => {
 })
 
 app.post('/api/cash', (req, res) => {
+  const result = mockInput.validateCashEntry(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const entry = {
     id: String(cashEntries.length + 1),
-    ...req.body,
+    ...result.value,
     createdAt: new Date().toISOString(),
   }
   cashEntries.push(entry)
@@ -341,9 +365,11 @@ app.get('/api/notifications', (req, res) => {
 })
 
 app.post('/api/notifications', (req, res) => {
+  const result = mockInput.validateNotification(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const notification = {
     id: String(notifications.length + 1),
-    ...req.body,
+    ...result.value,
     read: false,
     channel: 'inApp',
     createdAt: new Date().toISOString(),
@@ -727,14 +753,19 @@ app.get('/api/staff/:id', (req, res) => {
 })
 
 app.post('/api/staff', (req, res) => {
-  const { username, email, firstName, lastName, role } = req.body
+  const result = mockInput.validateStaffCreate(req.body)
+  if (!result.ok) return rejectInput(res, result)
+  if (staffMembers.some((s) => s.username === result.value.username)) {
+    return res.status(409).json({
+      success: false,
+      error: 'username_taken',
+      field: 'username',
+      message: 'Dieser Benutzername ist bereits vergeben.',
+    })
+  }
   const newMember = {
     id: Math.max(...staffMembers.map((s) => s.id)) + 1,
-    username,
-    email,
-    firstName,
-    lastName,
-    role: role || 'staff',
+    ...result.value,
     isActive: true,
     lastLogin: null,
     createdAt: new Date().toISOString(),
@@ -749,10 +780,24 @@ app.put('/api/staff/:id', (req, res) => {
   if (index === -1)
     return res.status(404).json({ error: 'Staff member not found' })
 
-  const { id: _id, createdAt: _ca, ...safeFields } = req.body
+  const result = mockInput.validateStaffUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
+  if (
+    result.value.username &&
+    staffMembers.some(
+      (s, i) => i !== index && s.username === result.value.username
+    )
+  ) {
+    return res.status(409).json({
+      success: false,
+      error: 'username_taken',
+      field: 'username',
+      message: 'Dieser Benutzername ist bereits vergeben.',
+    })
+  }
   staffMembers[index] = {
     ...staffMembers[index],
-    ...safeFields,
+    ...result.value,
     updatedAt: new Date().toISOString(),
   }
   res.json(staffMembers[index])
@@ -825,10 +870,11 @@ app.get('/api/production/:id', (req, res) => {
 })
 
 app.post('/api/production', (req, res) => {
+  const result = mockInput.validateProductionCreate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const plan = {
     id: String(productionPlans.length + 1),
-    ...req.body,
-    status: req.body.status || 'planned',
+    ...result.value,
   }
   productionPlans.push(plan)
   res.status(201).json({ success: true, data: plan })
@@ -840,10 +886,11 @@ app.put('/api/production/:id', (req, res) => {
     return res
       .status(404)
       .json({ success: false, error: 'Production plan not found' })
+  const result = mockInput.validateProductionUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   productionPlans[index] = {
     ...productionPlans[index],
-    ...req.body,
-    id: productionPlans[index].id,
+    ...result.value,
   }
   res.json({ success: true, data: productionPlans[index] })
 })
@@ -946,9 +993,11 @@ app.get('/api/inventory/:id', (req, res) => {
 })
 
 app.post('/api/inventory', (req, res) => {
+  const result = mockInput.validateInventoryCreate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const item = {
     id: String(inventoryItems.length + 1),
-    ...req.body,
+    ...result.value,
     lastRestocked: new Date().toISOString().split('T')[0],
   }
   inventoryItems.push(item)
@@ -961,10 +1010,11 @@ app.put('/api/inventory/:id', (req, res) => {
     return res
       .status(404)
       .json({ success: false, error: 'Inventory item not found' })
+  const result = mockInput.validateInventoryUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   inventoryItems[index] = {
     ...inventoryItems[index],
-    ...req.body,
-    id: inventoryItems[index].id,
+    ...result.value,
   }
   res.json({ success: true, data: inventoryItems[index] })
 })
@@ -975,8 +1025,14 @@ app.post('/api/inventory/:id/adjust', (req, res) => {
     return res
       .status(404)
       .json({ success: false, error: 'Inventory item not found' })
-  const { adjustment, reason } = req.body
-  inventoryItems[index].stock += adjustment || 0
+  // `adjustment || 0` hiess vorher: ein Tippfehler im Feldnamen war eine
+  // stille Null-Buchung, und ein String wurde an den Bestand angehaengt.
+  const result = mockInput.validateInventoryAdjustment(
+    req.body,
+    inventoryItems[index]
+  )
+  if (!result.ok) return rejectInput(res, result)
+  inventoryItems[index].stock += result.value.adjustment
   inventoryItems[index].lastRestocked = new Date().toISOString().split('T')[0]
   res.json({ success: true, data: inventoryItems[index] })
 })
@@ -1120,15 +1176,23 @@ function wholeNumber(value, fallback = 0) {
   return Number.isFinite(n) ? Math.trunc(n) : fallback
 }
 
-function isBusinessDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+/** Kalendarisch gültiger Geschäftstag - `2026-02-30` fällt durch. */
+const isBusinessDate = partnerStats.isBusinessDate
+
+/**
+ * `active` nur aus einem echten Boolean. `Boolean('false')` wäre `true` -
+ * ein Partner ließe sich per String-Body nicht mehr deaktivieren.
+ * @returns {boolean|null} `null` = unbrauchbar
+ */
+function parseActive(value) {
+  return typeof value === 'boolean' ? value : null
 }
 
-/** Preis-Snapshot: `null`/`''`/Unsinn fällt auf den HQ-Preis zurück. */
-function snapshotPrice(value, fallback) {
-  if (value === null || value === undefined || value === '') return fallback
-  const n = Number(value)
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : fallback
+/** Nicht-leerer Name für Partner-Stammdaten, sonst `null`. */
+function partnerName(value) {
+  if (typeof value !== 'string') return null
+  const name = value.trim()
+  return name === '' ? null : name
 }
 
 /** Umlaut-sicherer Slug - gleiche Konvention wie bei den HQ-Produkten. */
@@ -1184,12 +1248,30 @@ function parseRange(req) {
   return { from: from || null, to: to || null }
 }
 
+function invalidBusinessDate(res) {
+  return partnerError(
+    res,
+    400,
+    'Invalid business date',
+    'Ungültiger Geschäftstag. Erwartet wird ein gültiges Datum im Format JJJJ-MM-TT.'
+  )
+}
+
+function invalidActive(res) {
+  return partnerError(
+    res,
+    400,
+    'Invalid active flag',
+    'Das Feld "active" muss true oder false sein (kein Text).'
+  )
+}
+
 function invalidRange(res) {
   return partnerError(
     res,
     400,
     'Invalid range',
-    'Ungültiger Zeitraum. Datumsangaben werden im Format JJJJ-MM-TT erwartet.'
+    'Ungültiger Zeitraum. Erwartet werden gültige Datumsangaben im Format JJJJ-MM-TT.'
   )
 }
 
@@ -1214,47 +1296,31 @@ function findHQProduct(index, item) {
 }
 
 /**
- * Positionen eines Besuchs normalisieren. `productName` und `unitPrice` werden
- * als Snapshot festgeschrieben - fehlen sie im Request, kommen sie aus HQ.
- * Genau das hält alte Reports korrekt, wenn sich später ein Preis ändert.
+ * Positionen eines Besuchs prüfen und normalisieren - die Regeln stehen im
+ * Core (`validateVisitItems`), hier kommt nur der HQ-Katalog als Nachschlagewerk
+ * dazu. `productName` und `unitPrice` werden als Snapshot festgeschrieben:
+ * fehlt der Preis im Request, kommt er aus HQ. Genau das hält alte Reports
+ * korrekt, wenn sich später ein Preis ändert.
+ *
+ * Beim Korrigieren (`existingItems` = Positionen des gespeicherten Besuchs)
+ * gilt zusätzlich dessen Snapshot als bekannt: ein Produkt, das inzwischen aus
+ * `hq/products` verschwunden ist, bleibt so korrigierbar, statt den ganzen
+ * Besuch mit "Unbekanntes Produkt" zu blockieren. Neue Besuche bekommen den
+ * Fallback nicht.
+ *
+ * @returns {{ ok: true, items: Array } | { ok: false, error: string, message: string }}
  */
-function normalizeVisitItems(items, index) {
-  return (
-    (Array.isArray(items) ? items : [])
-      .map((item) => {
-        const hq = findHQProduct(index, item)
-        const counted =
-          item.countedQty === null ||
-          item.countedQty === undefined ||
-          item.countedQty === ''
-            ? null
-            : Math.max(0, wholeNumber(item.countedQty, 0))
-        return {
-          productId: wholeNumber(
-            item.productId,
-            hq ? wholeNumber(hq.numeric_id, 0) : 0
-          ),
-          productSlug: item.productSlug || (hq ? hq.id : ''),
-          productName:
-            item.productName ||
-            (hq ? hq.name : item.productSlug || 'Unbekannt'),
-          unitPrice: snapshotPrice(
-            item.unitPrice,
-            hq ? Number(hq.price) || 0 : 0
-          ),
-          countedQty: counted,
-          deliveredQty: Math.max(0, wholeNumber(item.deliveredQty, 0)),
-        }
-      })
-      // Zeilen ohne jede Information (nicht gezählt, nichts geliefert) fliegen
-      // raus - sonst steht im Report der halbe Katalog mit lauter Nullen.
-      .filter(
-        (item) =>
-          item.productSlug &&
-          (item.countedQty !== null || item.deliveredQty > 0)
-      )
-      .map((item, i) => ({ id: i + 1, ...item }))
+function normalizeVisitItems(items, index, existingItems) {
+  const fromSnapshot = partnerStats.snapshotLookup(existingItems)
+  const result = partnerStats.validateVisitItems(
+    items,
+    (item) => findHQProduct(index, item) || fromSnapshot(item)
   )
+  if (!result.ok) return result
+  return {
+    ok: true,
+    items: result.items.map((item, i) => ({ id: i + 1, ...item })),
+  }
 }
 
 function partnerVisits(store, partnerId) {
@@ -1305,7 +1371,8 @@ app.get('/api/partners', (req, res) => {
 app.post('/api/partners', (req, res) => {
   const store = loadPartnerStore()
   const body = req.body || {}
-  if (!body.name || !String(body.name).trim()) {
+  const name = partnerName(body.name)
+  if (!name) {
     return partnerError(
       res,
       400,
@@ -1313,7 +1380,10 @@ app.post('/api/partners', (req, res) => {
       'Der Name des Partners ist erforderlich.'
     )
   }
-  const slug = partnerSlug(body.slug || body.name)
+  if (body.active !== undefined && parseActive(body.active) === null) {
+    return invalidActive(res)
+  }
+  const slug = partnerSlug(body.slug || name)
   if (store.partners.some((p) => p.slug === slug)) {
     return partnerError(
       res,
@@ -1324,7 +1394,7 @@ app.post('/api/partners', (req, res) => {
   }
   const partner = {
     id: nextPartnerId(store.partners),
-    name: String(body.name).trim(),
+    name,
     slug,
     street: body.street || '',
     zip: body.zip || '',
@@ -1339,7 +1409,7 @@ app.post('/api/partners', (req, res) => {
       : [2, 3, 4, 5, 6],
     settlementModel:
       body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission',
-    active: body.active === undefined ? true : Boolean(body.active),
+    active: body.active === undefined ? true : body.active,
     notes: body.notes || null,
   }
   store.partners.push(partner)
@@ -1360,6 +1430,18 @@ app.put('/api/partners/:id', (req, res) => {
   if (!partner) return
   const body = req.body || {}
 
+  if (body.name !== undefined && !partnerName(body.name)) {
+    return partnerError(
+      res,
+      400,
+      'Name is required',
+      'Der Name des Partners darf nicht leer sein.'
+    )
+  }
+  if (body.active !== undefined && parseActive(body.active) === null) {
+    return invalidActive(res)
+  }
+
   if (body.slug !== undefined) {
     const slug = partnerSlug(body.slug)
     if (store.partners.some((p) => p.slug === slug && p.id !== partner.id)) {
@@ -1372,8 +1454,8 @@ app.put('/api/partners/:id', (req, res) => {
     }
     partner.slug = slug
   }
+  if (body.name !== undefined) partner.name = partnerName(body.name)
   for (const field of [
-    'name',
     'street',
     'zip',
     'city',
@@ -1393,7 +1475,7 @@ app.put('/api/partners/:id', (req, res) => {
     partner.settlementModel =
       body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission'
   }
-  if (body.active !== undefined) partner.active = Boolean(body.active)
+  if (body.active !== undefined) partner.active = body.active
 
   savePartnerStore(store)
   res.json(partner)
@@ -1429,6 +1511,9 @@ app.put('/api/partners/:id/templates/:weekday', (req, res) => {
       'Die Vorlage braucht eine Liste von Positionen.'
     )
   }
+  if (body.active !== undefined && parseActive(body.active) === null) {
+    return invalidActive(res)
+  }
 
   const index = buildHQIndex()
   const items = (body.items || [])
@@ -1459,7 +1544,7 @@ app.put('/api/partners/:id/templates/:weekday', (req, res) => {
     store.templates.push(template)
   } else {
     template.items = items
-    if (body.active !== undefined) template.active = Boolean(body.active)
+    if (body.active !== undefined) template.active = body.active
   }
   savePartnerStore(store)
   res.json(template)
@@ -1492,7 +1577,7 @@ app.get('/api/partners/:id/visits/today', (req, res) => {
       res,
       400,
       'Invalid date',
-      'Ungültiges Datum. Erwartet wird das Format JJJJ-MM-TT.'
+      'Ungültiges Datum. Erwartet wird ein gültiges Datum im Format JJJJ-MM-TT.'
     )
   }
   const businessDate = date || partnerStats.businessDateOf(new Date())
@@ -1523,21 +1608,12 @@ app.post('/api/partners/:id/visits', (req, res) => {
       )}.`
     )
   }
-  if (body.items !== undefined && !Array.isArray(body.items)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid items',
-      'Der Besuch braucht eine Liste von Positionen.'
-    )
+  const items = normalizeVisitItems(body.items, buildHQIndex())
+  if (!items.ok) {
+    return partnerError(res, 400, 'Invalid items', items.message)
   }
   if (body.businessDate !== undefined && !isBusinessDate(body.businessDate)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid business date',
-      'Ungültiger Geschäftstag. Erwartet wird das Format JJJJ-MM-TT.'
-    )
+    return invalidBusinessDate(res)
   }
   const visitAt = body.visitAt ? new Date(body.visitAt) : new Date()
   if (Number.isNaN(visitAt.getTime())) {
@@ -1581,7 +1657,7 @@ app.post('/api/partners/:id/visits', (req, res) => {
     staffId: body.staffId == null ? null : wholeNumber(body.staffId, null),
     staffName: body.staffName || null,
     note: body.note || null,
-    items: normalizeVisitItems(body.items, buildHQIndex()),
+    items: items.items,
     createdAt: now,
     updatedAt: now,
   }
@@ -1629,21 +1705,15 @@ app.patch('/api/partners/:id/visits/:visitId', (req, res) => {
       )}.`
     )
   }
-  if (body.items !== undefined && !Array.isArray(body.items)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid items',
-      'Der Besuch braucht eine Liste von Positionen.'
-    )
+  let items = null
+  if (body.items !== undefined) {
+    items = normalizeVisitItems(body.items, buildHQIndex(), visit.items)
+    if (!items.ok) {
+      return partnerError(res, 400, 'Invalid items', items.message)
+    }
   }
   if (body.businessDate !== undefined && !isBusinessDate(body.businessDate)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid business date',
-      'Ungültiger Geschäftstag. Erwartet wird das Format JJJJ-MM-TT.'
-    )
+    return invalidBusinessDate(res)
   }
   let visitAt = visit.visitAt
   if (body.visitAt !== undefined) {
@@ -1698,9 +1768,7 @@ app.patch('/api/partners/:id/visits/:visitId', (req, res) => {
   }
   if (body.staffName !== undefined) visit.staffName = body.staffName || null
   if (body.note !== undefined) visit.note = body.note || null
-  if (body.items !== undefined) {
-    visit.items = normalizeVisitItems(body.items, buildHQIndex())
-  }
+  if (items) visit.items = items.items
   visit.updatedAt = new Date().toISOString()
 
   savePartnerStore(store)
@@ -3196,9 +3264,49 @@ app.delete(
   })
 )
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Bakery API server running on port ${PORT}`)
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
-  console.log(`Health check: http://localhost:${PORT}/health`)
+// --- Fehlerantworten ------------------------------------------------------------
+// Express antwortet ohne diese beiden Handler mit HTML-Seiten: die 404-Seite
+// fuer unbekannte Routen, und bei kaputtem JSON oder zu grossem Body eine
+// Seite mit Stacktrace samt absoluten Pfaden dieses Rechners. `ApiClient`
+// baut seine Fehlermeldung aus `data.message` - das gibt es nur als JSON.
+// Beide muessen NACH allen Routen registriert sein.
+
+app.use((req, res) => {
+  const body = mockInput.notFound(req.method, req.originalUrl)
+  res.status(body.status).json({
+    success: false,
+    error: body.error,
+    message: body.message,
+  })
 })
+
+// Vier Argumente: nur so erkennt Express einen Error-Handler.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const body = mockInput.describeError(err)
+  if (body.status >= 500) {
+    // Ins Log gehoert der ganze Fehler, nach aussen nur die Kurzfassung.
+    console.error(
+      `Unbehandelter Fehler bei ${req.method} ${req.originalUrl}:`,
+      err
+    )
+  }
+  if (res.headersSent) return res.end()
+  res.status(body.status).json({
+    success: false,
+    error: body.error,
+    message: body.message,
+  })
+})
+
+// Start server - nur beim direkten Aufruf. Die Tests laden die App
+// in-process (`module.exports`) und lassen supertest den Port waehlen.
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Bakery API server running on port ${PORT}`)
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
+    console.log(`Health check: http://localhost:${PORT}/health`)
+  })
+}
+
+module.exports = app
