@@ -1176,15 +1176,23 @@ function wholeNumber(value, fallback = 0) {
   return Number.isFinite(n) ? Math.trunc(n) : fallback
 }
 
-function isBusinessDate(value) {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+/** Kalendarisch gültiger Geschäftstag - `2026-02-30` fällt durch. */
+const isBusinessDate = partnerStats.isBusinessDate
+
+/**
+ * `active` nur aus einem echten Boolean. `Boolean('false')` wäre `true` -
+ * ein Partner ließe sich per String-Body nicht mehr deaktivieren.
+ * @returns {boolean|null} `null` = unbrauchbar
+ */
+function parseActive(value) {
+  return typeof value === 'boolean' ? value : null
 }
 
-/** Preis-Snapshot: `null`/`''`/Unsinn fällt auf den HQ-Preis zurück. */
-function snapshotPrice(value, fallback) {
-  if (value === null || value === undefined || value === '') return fallback
-  const n = Number(value)
-  return Number.isFinite(n) ? Math.round(n * 100) / 100 : fallback
+/** Nicht-leerer Name für Partner-Stammdaten, sonst `null`. */
+function partnerName(value) {
+  if (typeof value !== 'string') return null
+  const name = value.trim()
+  return name === '' ? null : name
 }
 
 /** Umlaut-sicherer Slug - gleiche Konvention wie bei den HQ-Produkten. */
@@ -1240,12 +1248,30 @@ function parseRange(req) {
   return { from: from || null, to: to || null }
 }
 
+function invalidBusinessDate(res) {
+  return partnerError(
+    res,
+    400,
+    'Invalid business date',
+    'Ungültiger Geschäftstag. Erwartet wird ein gültiges Datum im Format JJJJ-MM-TT.'
+  )
+}
+
+function invalidActive(res) {
+  return partnerError(
+    res,
+    400,
+    'Invalid active flag',
+    'Das Feld "active" muss true oder false sein (kein Text).'
+  )
+}
+
 function invalidRange(res) {
   return partnerError(
     res,
     400,
     'Invalid range',
-    'Ungültiger Zeitraum. Datumsangaben werden im Format JJJJ-MM-TT erwartet.'
+    'Ungültiger Zeitraum. Erwartet werden gültige Datumsangaben im Format JJJJ-MM-TT.'
   )
 }
 
@@ -1270,47 +1296,31 @@ function findHQProduct(index, item) {
 }
 
 /**
- * Positionen eines Besuchs normalisieren. `productName` und `unitPrice` werden
- * als Snapshot festgeschrieben - fehlen sie im Request, kommen sie aus HQ.
- * Genau das hält alte Reports korrekt, wenn sich später ein Preis ändert.
+ * Positionen eines Besuchs prüfen und normalisieren - die Regeln stehen im
+ * Core (`validateVisitItems`), hier kommt nur der HQ-Katalog als Nachschlagewerk
+ * dazu. `productName` und `unitPrice` werden als Snapshot festgeschrieben:
+ * fehlt der Preis im Request, kommt er aus HQ. Genau das hält alte Reports
+ * korrekt, wenn sich später ein Preis ändert.
+ *
+ * Beim Korrigieren (`existingItems` = Positionen des gespeicherten Besuchs)
+ * gilt zusätzlich dessen Snapshot als bekannt: ein Produkt, das inzwischen aus
+ * `hq/products` verschwunden ist, bleibt so korrigierbar, statt den ganzen
+ * Besuch mit "Unbekanntes Produkt" zu blockieren. Neue Besuche bekommen den
+ * Fallback nicht.
+ *
+ * @returns {{ ok: true, items: Array } | { ok: false, error: string, message: string }}
  */
-function normalizeVisitItems(items, index) {
-  return (
-    (Array.isArray(items) ? items : [])
-      .map((item) => {
-        const hq = findHQProduct(index, item)
-        const counted =
-          item.countedQty === null ||
-          item.countedQty === undefined ||
-          item.countedQty === ''
-            ? null
-            : Math.max(0, wholeNumber(item.countedQty, 0))
-        return {
-          productId: wholeNumber(
-            item.productId,
-            hq ? wholeNumber(hq.numeric_id, 0) : 0
-          ),
-          productSlug: item.productSlug || (hq ? hq.id : ''),
-          productName:
-            item.productName ||
-            (hq ? hq.name : item.productSlug || 'Unbekannt'),
-          unitPrice: snapshotPrice(
-            item.unitPrice,
-            hq ? Number(hq.price) || 0 : 0
-          ),
-          countedQty: counted,
-          deliveredQty: Math.max(0, wholeNumber(item.deliveredQty, 0)),
-        }
-      })
-      // Zeilen ohne jede Information (nicht gezählt, nichts geliefert) fliegen
-      // raus - sonst steht im Report der halbe Katalog mit lauter Nullen.
-      .filter(
-        (item) =>
-          item.productSlug &&
-          (item.countedQty !== null || item.deliveredQty > 0)
-      )
-      .map((item, i) => ({ id: i + 1, ...item }))
+function normalizeVisitItems(items, index, existingItems) {
+  const fromSnapshot = partnerStats.snapshotLookup(existingItems)
+  const result = partnerStats.validateVisitItems(
+    items,
+    (item) => findHQProduct(index, item) || fromSnapshot(item)
   )
+  if (!result.ok) return result
+  return {
+    ok: true,
+    items: result.items.map((item, i) => ({ id: i + 1, ...item })),
+  }
 }
 
 function partnerVisits(store, partnerId) {
@@ -1361,7 +1371,8 @@ app.get('/api/partners', (req, res) => {
 app.post('/api/partners', (req, res) => {
   const store = loadPartnerStore()
   const body = req.body || {}
-  if (!body.name || !String(body.name).trim()) {
+  const name = partnerName(body.name)
+  if (!name) {
     return partnerError(
       res,
       400,
@@ -1369,7 +1380,10 @@ app.post('/api/partners', (req, res) => {
       'Der Name des Partners ist erforderlich.'
     )
   }
-  const slug = partnerSlug(body.slug || body.name)
+  if (body.active !== undefined && parseActive(body.active) === null) {
+    return invalidActive(res)
+  }
+  const slug = partnerSlug(body.slug || name)
   if (store.partners.some((p) => p.slug === slug)) {
     return partnerError(
       res,
@@ -1380,7 +1394,7 @@ app.post('/api/partners', (req, res) => {
   }
   const partner = {
     id: nextPartnerId(store.partners),
-    name: String(body.name).trim(),
+    name,
     slug,
     street: body.street || '',
     zip: body.zip || '',
@@ -1395,7 +1409,7 @@ app.post('/api/partners', (req, res) => {
       : [2, 3, 4, 5, 6],
     settlementModel:
       body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission',
-    active: body.active === undefined ? true : Boolean(body.active),
+    active: body.active === undefined ? true : body.active,
     notes: body.notes || null,
   }
   store.partners.push(partner)
@@ -1416,6 +1430,18 @@ app.put('/api/partners/:id', (req, res) => {
   if (!partner) return
   const body = req.body || {}
 
+  if (body.name !== undefined && !partnerName(body.name)) {
+    return partnerError(
+      res,
+      400,
+      'Name is required',
+      'Der Name des Partners darf nicht leer sein.'
+    )
+  }
+  if (body.active !== undefined && parseActive(body.active) === null) {
+    return invalidActive(res)
+  }
+
   if (body.slug !== undefined) {
     const slug = partnerSlug(body.slug)
     if (store.partners.some((p) => p.slug === slug && p.id !== partner.id)) {
@@ -1428,8 +1454,8 @@ app.put('/api/partners/:id', (req, res) => {
     }
     partner.slug = slug
   }
+  if (body.name !== undefined) partner.name = partnerName(body.name)
   for (const field of [
-    'name',
     'street',
     'zip',
     'city',
@@ -1449,7 +1475,7 @@ app.put('/api/partners/:id', (req, res) => {
     partner.settlementModel =
       body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission'
   }
-  if (body.active !== undefined) partner.active = Boolean(body.active)
+  if (body.active !== undefined) partner.active = body.active
 
   savePartnerStore(store)
   res.json(partner)
@@ -1485,6 +1511,9 @@ app.put('/api/partners/:id/templates/:weekday', (req, res) => {
       'Die Vorlage braucht eine Liste von Positionen.'
     )
   }
+  if (body.active !== undefined && parseActive(body.active) === null) {
+    return invalidActive(res)
+  }
 
   const index = buildHQIndex()
   const items = (body.items || [])
@@ -1515,7 +1544,7 @@ app.put('/api/partners/:id/templates/:weekday', (req, res) => {
     store.templates.push(template)
   } else {
     template.items = items
-    if (body.active !== undefined) template.active = Boolean(body.active)
+    if (body.active !== undefined) template.active = body.active
   }
   savePartnerStore(store)
   res.json(template)
@@ -1548,7 +1577,7 @@ app.get('/api/partners/:id/visits/today', (req, res) => {
       res,
       400,
       'Invalid date',
-      'Ungültiges Datum. Erwartet wird das Format JJJJ-MM-TT.'
+      'Ungültiges Datum. Erwartet wird ein gültiges Datum im Format JJJJ-MM-TT.'
     )
   }
   const businessDate = date || partnerStats.businessDateOf(new Date())
@@ -1579,21 +1608,12 @@ app.post('/api/partners/:id/visits', (req, res) => {
       )}.`
     )
   }
-  if (body.items !== undefined && !Array.isArray(body.items)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid items',
-      'Der Besuch braucht eine Liste von Positionen.'
-    )
+  const items = normalizeVisitItems(body.items, buildHQIndex())
+  if (!items.ok) {
+    return partnerError(res, 400, 'Invalid items', items.message)
   }
   if (body.businessDate !== undefined && !isBusinessDate(body.businessDate)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid business date',
-      'Ungültiger Geschäftstag. Erwartet wird das Format JJJJ-MM-TT.'
-    )
+    return invalidBusinessDate(res)
   }
   const visitAt = body.visitAt ? new Date(body.visitAt) : new Date()
   if (Number.isNaN(visitAt.getTime())) {
@@ -1637,7 +1657,7 @@ app.post('/api/partners/:id/visits', (req, res) => {
     staffId: body.staffId == null ? null : wholeNumber(body.staffId, null),
     staffName: body.staffName || null,
     note: body.note || null,
-    items: normalizeVisitItems(body.items, buildHQIndex()),
+    items: items.items,
     createdAt: now,
     updatedAt: now,
   }
@@ -1685,21 +1705,15 @@ app.patch('/api/partners/:id/visits/:visitId', (req, res) => {
       )}.`
     )
   }
-  if (body.items !== undefined && !Array.isArray(body.items)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid items',
-      'Der Besuch braucht eine Liste von Positionen.'
-    )
+  let items = null
+  if (body.items !== undefined) {
+    items = normalizeVisitItems(body.items, buildHQIndex(), visit.items)
+    if (!items.ok) {
+      return partnerError(res, 400, 'Invalid items', items.message)
+    }
   }
   if (body.businessDate !== undefined && !isBusinessDate(body.businessDate)) {
-    return partnerError(
-      res,
-      400,
-      'Invalid business date',
-      'Ungültiger Geschäftstag. Erwartet wird das Format JJJJ-MM-TT.'
-    )
+    return invalidBusinessDate(res)
   }
   let visitAt = visit.visitAt
   if (body.visitAt !== undefined) {
@@ -1754,9 +1768,7 @@ app.patch('/api/partners/:id/visits/:visitId', (req, res) => {
   }
   if (body.staffName !== undefined) visit.staffName = body.staffName || null
   if (body.note !== undefined) visit.note = body.note || null
-  if (body.items !== undefined) {
-    visit.items = normalizeVisitItems(body.items, buildHQIndex())
-  }
+  if (items) visit.items = items.items
   visit.updatedAt = new Date().toISOString()
 
   savePartnerStore(store)
