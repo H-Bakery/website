@@ -8,6 +8,20 @@ const crypto = require('crypto')
 const app = express()
 const PORT = process.env.PORT || 5000
 
+// Feldauswahl der mutierenden Mock-Routen und JSON-Fehlerantworten -
+// siehe mock-input.core.js. Der Server prueft hier nichts selbst.
+const mockInput = require('./src/services/mock-input.core')
+
+/** Antwort auf ein abgelehntes Ergebnis aus mock-input.core - 400 mit deutschem `message`. */
+function rejectInput(res, result) {
+  return res.status(400).json({
+    success: false,
+    error: result.error,
+    field: result.field,
+    message: result.message,
+  })
+}
+
 // HQ products directory
 const HQ_PRODUCTS_DIR =
   process.env.HQ_PRODUCTS_DIR ||
@@ -61,8 +75,12 @@ function loadHQProducts() {
 }
 
 // Middleware
+// Kein `X-Powered-By: Express` - verraet Software und Version an jeden Client.
+app.disable('x-powered-by')
 app.use(cors())
-app.use(express.json())
+// Bodies ueber dem Limit lehnt body-parser mit 413 ab; die JSON-Antwort dazu
+// liefert der Error-Handler am Ende der Datei.
+app.use(express.json({ limit: mockInput.JSON_BODY_LIMIT }))
 
 // Health check
 app.get('/health', (req, res) => {
@@ -224,10 +242,14 @@ app.put('/api/orders/:id', (req, res) => {
       error: 'Order not found',
       message: 'Bestellung nicht gefunden.',
     })
+  // Nur Status und Anmerkung sind aenderbar. Vorher wurde `...req.body`
+  // uebernommen: `createdAt: 1999` stand dann als Datum in der Bestellliste,
+  // `total: 0` machte die Bestellung kostenlos.
+  const result = mockInput.validateOrderUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   orders[index] = {
     ...orders[index],
-    ...req.body,
-    id: orders[index].id,
+    ...result.value,
     updatedAt: new Date().toISOString(),
   }
   res.json({ success: true, data: orders[index] })
@@ -280,9 +302,11 @@ app.get('/api/cash', (req, res) => {
 })
 
 app.post('/api/cash', (req, res) => {
+  const result = mockInput.validateCashEntry(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const entry = {
     id: String(cashEntries.length + 1),
-    ...req.body,
+    ...result.value,
     createdAt: new Date().toISOString(),
   }
   cashEntries.push(entry)
@@ -341,9 +365,11 @@ app.get('/api/notifications', (req, res) => {
 })
 
 app.post('/api/notifications', (req, res) => {
+  const result = mockInput.validateNotification(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const notification = {
     id: String(notifications.length + 1),
-    ...req.body,
+    ...result.value,
     read: false,
     channel: 'inApp',
     createdAt: new Date().toISOString(),
@@ -727,14 +753,19 @@ app.get('/api/staff/:id', (req, res) => {
 })
 
 app.post('/api/staff', (req, res) => {
-  const { username, email, firstName, lastName, role } = req.body
+  const result = mockInput.validateStaffCreate(req.body)
+  if (!result.ok) return rejectInput(res, result)
+  if (staffMembers.some((s) => s.username === result.value.username)) {
+    return res.status(409).json({
+      success: false,
+      error: 'username_taken',
+      field: 'username',
+      message: 'Dieser Benutzername ist bereits vergeben.',
+    })
+  }
   const newMember = {
     id: Math.max(...staffMembers.map((s) => s.id)) + 1,
-    username,
-    email,
-    firstName,
-    lastName,
-    role: role || 'staff',
+    ...result.value,
     isActive: true,
     lastLogin: null,
     createdAt: new Date().toISOString(),
@@ -749,10 +780,24 @@ app.put('/api/staff/:id', (req, res) => {
   if (index === -1)
     return res.status(404).json({ error: 'Staff member not found' })
 
-  const { id: _id, createdAt: _ca, ...safeFields } = req.body
+  const result = mockInput.validateStaffUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
+  if (
+    result.value.username &&
+    staffMembers.some(
+      (s, i) => i !== index && s.username === result.value.username
+    )
+  ) {
+    return res.status(409).json({
+      success: false,
+      error: 'username_taken',
+      field: 'username',
+      message: 'Dieser Benutzername ist bereits vergeben.',
+    })
+  }
   staffMembers[index] = {
     ...staffMembers[index],
-    ...safeFields,
+    ...result.value,
     updatedAt: new Date().toISOString(),
   }
   res.json(staffMembers[index])
@@ -825,10 +870,11 @@ app.get('/api/production/:id', (req, res) => {
 })
 
 app.post('/api/production', (req, res) => {
+  const result = mockInput.validateProductionCreate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const plan = {
     id: String(productionPlans.length + 1),
-    ...req.body,
-    status: req.body.status || 'planned',
+    ...result.value,
   }
   productionPlans.push(plan)
   res.status(201).json({ success: true, data: plan })
@@ -840,10 +886,11 @@ app.put('/api/production/:id', (req, res) => {
     return res
       .status(404)
       .json({ success: false, error: 'Production plan not found' })
+  const result = mockInput.validateProductionUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   productionPlans[index] = {
     ...productionPlans[index],
-    ...req.body,
-    id: productionPlans[index].id,
+    ...result.value,
   }
   res.json({ success: true, data: productionPlans[index] })
 })
@@ -946,9 +993,11 @@ app.get('/api/inventory/:id', (req, res) => {
 })
 
 app.post('/api/inventory', (req, res) => {
+  const result = mockInput.validateInventoryCreate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   const item = {
     id: String(inventoryItems.length + 1),
-    ...req.body,
+    ...result.value,
     lastRestocked: new Date().toISOString().split('T')[0],
   }
   inventoryItems.push(item)
@@ -961,10 +1010,11 @@ app.put('/api/inventory/:id', (req, res) => {
     return res
       .status(404)
       .json({ success: false, error: 'Inventory item not found' })
+  const result = mockInput.validateInventoryUpdate(req.body)
+  if (!result.ok) return rejectInput(res, result)
   inventoryItems[index] = {
     ...inventoryItems[index],
-    ...req.body,
-    id: inventoryItems[index].id,
+    ...result.value,
   }
   res.json({ success: true, data: inventoryItems[index] })
 })
@@ -975,8 +1025,14 @@ app.post('/api/inventory/:id/adjust', (req, res) => {
     return res
       .status(404)
       .json({ success: false, error: 'Inventory item not found' })
-  const { adjustment, reason } = req.body
-  inventoryItems[index].stock += adjustment || 0
+  // `adjustment || 0` hiess vorher: ein Tippfehler im Feldnamen war eine
+  // stille Null-Buchung, und ein String wurde an den Bestand angehaengt.
+  const result = mockInput.validateInventoryAdjustment(
+    req.body,
+    inventoryItems[index]
+  )
+  if (!result.ok) return rejectInput(res, result)
+  inventoryItems[index].stock += result.value.adjustment
   inventoryItems[index].lastRestocked = new Date().toISOString().split('T')[0]
   res.json({ success: true, data: inventoryItems[index] })
 })
@@ -3141,9 +3197,49 @@ app.delete(
   })
 )
 
-// Start server
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Bakery API server running on port ${PORT}`)
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
-  console.log(`Health check: http://localhost:${PORT}/health`)
+// --- Fehlerantworten ------------------------------------------------------------
+// Express antwortet ohne diese beiden Handler mit HTML-Seiten: die 404-Seite
+// fuer unbekannte Routen, und bei kaputtem JSON oder zu grossem Body eine
+// Seite mit Stacktrace samt absoluten Pfaden dieses Rechners. `ApiClient`
+// baut seine Fehlermeldung aus `data.message` - das gibt es nur als JSON.
+// Beide muessen NACH allen Routen registriert sein.
+
+app.use((req, res) => {
+  const body = mockInput.notFound(req.method, req.originalUrl)
+  res.status(body.status).json({
+    success: false,
+    error: body.error,
+    message: body.message,
+  })
 })
+
+// Vier Argumente: nur so erkennt Express einen Error-Handler.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  const body = mockInput.describeError(err)
+  if (body.status >= 500) {
+    // Ins Log gehoert der ganze Fehler, nach aussen nur die Kurzfassung.
+    console.error(
+      `Unbehandelter Fehler bei ${req.method} ${req.originalUrl}:`,
+      err
+    )
+  }
+  if (res.headersSent) return res.end()
+  res.status(body.status).json({
+    success: false,
+    error: body.error,
+    message: body.message,
+  })
+})
+
+// Start server - nur beim direkten Aufruf. Die Tests laden die App
+// in-process (`module.exports`) und lassen supertest den Port waehlen.
+if (require.main === module) {
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Bakery API server running on port ${PORT}`)
+    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`)
+    console.log(`Health check: http://localhost:${PORT}/health`)
+  })
+}
+
+module.exports = app
