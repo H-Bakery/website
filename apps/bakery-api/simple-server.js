@@ -87,6 +87,8 @@ app.use(express.json({ limit: mockInput.JSON_BODY_LIMIT }))
 const auth = require('./src/routes/auth.mock').createAuth()
 auth.install(app)
 require('./src/routes/finance.mock').install(app, auth)
+// Tagesziel-Ampel (TASK-039): Break-even je Wochentag, ebenfalls nur fuer Admins.
+require('./src/routes/targets.mock').install(app, auth)
 
 // Health check
 app.get('/health', (req, res) => {

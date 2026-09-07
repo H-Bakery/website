@@ -154,6 +154,12 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Kontobewegungen (nur Admin)',
   },
   {
+    label: 'Tagesziel',
+    href: '/admin/finance/tagesziel',
+    icon: 'target',
+    description: 'Break-even-Ampel (nur Admin)',
+  },
+  {
     label: 'Benachrichtigungen',
     href: '/admin/notifications',
     icon: 'notifications',

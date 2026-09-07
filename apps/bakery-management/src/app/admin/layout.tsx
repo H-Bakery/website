@@ -38,6 +38,7 @@ import {
   ExpandMore,
   RemoveShoppingCart as UnsoldIcon,
   AccountBalance as FinanceIcon,
+  Flag as TargetIcon,
   Login as LoginIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
@@ -71,6 +72,7 @@ const iconMap: Record<string, React.ReactElement> = {
   analytics: <AnalyticsIcon />,
   chat: <ChatIcon />,
   finance: <FinanceIcon />,
+  target: <TargetIcon />,
   login: <LoginIcon />,
 }
 
