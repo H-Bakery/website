@@ -47,6 +47,21 @@ describe('Management RootLayout', () => {
     expect(container.querySelector('html')).toHaveAttribute('lang', 'de')
   })
 
+  it('meldet Next das sanfte Scrollen aus global.css', () => {
+    // Ohne dieses Attribut warnt Next im Dev-Modus bei jeder clientseitigen
+    // Navigation ("Detected `scroll-behavior: smooth` on the <html> element").
+    const { container } = render(
+      <RootLayout>
+        <div>Content</div>
+      </RootLayout>
+    )
+
+    expect(container.querySelector('html')).toHaveAttribute(
+      'data-scroll-behavior',
+      'smooth'
+    )
+  })
+
   it('exposes German metadata', () => {
     expect(metadata.title).toBe('Bäckerei Heusser - Management System')
     expect(metadata.description).toContain('Verwaltungssystem')

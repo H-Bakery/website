@@ -15,7 +15,11 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="de">
+    // global.css setzt `scroll-behavior: smooth` auf <html>. Next schaltet das
+    // bei clientseitiger Navigation kurz ab, damit die Seite nicht animiert
+    // nach oben rollt - aber nur, wenn es per data-scroll-behavior davon weiß;
+    // sonst warnt es im Dev-Modus bei jedem Seitenwechsel.
+    <html lang="de" data-scroll-behavior="smooth">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
