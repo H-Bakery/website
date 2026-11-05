@@ -5,8 +5,9 @@
  * calls `createApp()`; integration tests (B1) do the same with `:memory:`
  * and drive the result through supertest.
  *
- * Mounted (roadmap §4): health, auth, users, partners. The other pilot
- * domains get their mount points below as their tasks land.
+ * Mounted (roadmap §4): health, auth, users, partners, and the hq read-only
+ * data (B4: reports, analytics, finance, targets). The other pilot domains
+ * get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
  * endpoints and health. That is structural, not an allow-list: the public
@@ -29,6 +30,7 @@ import {
   createUsersRouter,
   partnerRoutes,
 } from './routes'
+import { createHqDataRouter, HqDataOptions } from './routes/hq-data.routes'
 import { AuthRouterOptions } from './routes/auth.routes'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
@@ -48,6 +50,11 @@ export interface CreateAppOptions {
    * from 127.0.0.1, so `req.ip` - and the login rate limit - see the client).
    */
   trustProxy?: boolean | number | string
+  /**
+   * hq read-only data (B4): `reportsDir`, `financeDir` (default
+   * `HQ_REPORTS_DIR` / `HQ_FINANCE_DIR`), `today` and `log` for tests.
+   */
+  hq?: HqDataOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -88,7 +95,10 @@ export function createApp(options: CreateAppOptions = {}): Application {
 
   // --- Pilot domains -------------------------------------------------------
   app.use('/api/partners', partnerRoutes) // B6: roles + hq catalogue
-  // B4: reports, analytics, finance, targets   (mock modules + auth adapter)
+  // B4: /api/reports, /api/analytics (inhaber), /api/finance/* incl. targets
+  // (inhaber, personal session) - the mock modules behind the auth adapter.
+  // Absolute paths, so mounted at the root.
+  app.use(createHqDataRouter(options.hq))
   // B5: /api/products, /api/hq-products        (hq markdown, worktree writes)
   // B7: /api/preorders (+ /api/deliveries/preorders alias, shop POST /api/orders)
   // Z*: /api/backzettel

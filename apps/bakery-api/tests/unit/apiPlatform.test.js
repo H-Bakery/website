@@ -121,6 +121,18 @@ describe('parsePort / loadConfig', () => {
       api.ConfigError
     )
   })
+
+  test('HQ_REPORTS_DIR / HQ_FINANCE_DIR (B4): resolved against cwd, empty = unset', () => {
+    const config = api.loadConfig(
+      { HQ_REPORTS_DIR: ' /var/lib/hq/data/reports ', HQ_FINANCE_DIR: 'fin' },
+      '/srv/x'
+    )
+    expect(config.hqReportsDir).toBe('/var/lib/hq/data/reports')
+    expect(config.hqFinanceDir).toBe('/srv/x/fin')
+    const unset = api.loadConfig({ HQ_REPORTS_DIR: '  ' }, '/srv/x')
+    expect(unset.hqReportsDir).toBeUndefined()
+    expect(unset.hqFinanceDir).toBeUndefined()
+  })
 })
 
 describe('error responses', () => {

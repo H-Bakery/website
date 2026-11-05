@@ -52,10 +52,18 @@ export async function startServer(
   // come from the create-user CLI.
   await bootstrapAdmin()
 
+  if (config.isProduction && (!config.hqReportsDir || !config.hqFinanceDir)) {
+    // Not fatal: the endpoints answer "keine Daten" - but on the box the
+    // default `<website>/../hq` is almost certainly not the read clone.
+    console.warn(
+      '[WARN] HQ_REPORTS_DIR / HQ_FINANCE_DIR not set - reports, finance and Tagesziel read <website>/../hq/data.'
+    )
+  }
   const app = createApp({
     sequelize,
     corsOrigins: config.corsOrigins,
     trustProxy: config.trustProxy,
+    hq: { reportsDir: config.hqReportsDir, financeDir: config.hqFinanceDir },
   })
   const server = http.createServer(app)
 

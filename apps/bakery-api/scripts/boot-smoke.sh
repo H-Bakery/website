@@ -3,7 +3,8 @@
 #   bundle -> create-user CLI on a fresh SQLite file (twice: create, then the
 #   idempotent reset with a new password) -> start in production mode
 #   -> GET /health -> guard (401 without session) -> login -> /api/auth/me,
-#   /api/partners, JSON 404 with a session -> stop -> start again on the same
+#   /api/partners, JSON 404 with a session, B4 reports/finance from a
+#   synthetic hq tree (tests/fixtures/hq-data.synthetic.js) -> stop -> start again on the same
 #   file (migrations must not re-run) -> GET /health + login -> stop.
 #
 # Usage (from anywhere):
@@ -80,6 +81,7 @@ start_server() {
     cd "$WORK"
     NODE_ENV=production PORT="$PORT" DB_PATH="$WORK/smoke.db" \
       JWT_SECRET="$JWT_SECRET" \
+      HQ_REPORTS_DIR="$WORK/hq/reports" HQ_FINANCE_DIR="$WORK/hq/finance" \
       exec node --enable-source-maps "$BUNDLE"
   ) >"$LOG" 2>&1 &
   PID=$!
@@ -145,6 +147,10 @@ create_user verkauf
 SMOKE_PASSWORD="$(random_hex 12)"
 create_user inhaber
 
+echo "[boot-smoke] synthetic hq tree (B4)"
+node -e "require(process.argv[1]).writeSyntheticHq(process.argv[2])" \
+  "$ROOT/apps/bakery-api/tests/fixtures/hq-data.synthetic.js" "$WORK/hq"
+
 echo "[boot-smoke] first start"
 start_server
 wait_for_health
@@ -156,6 +162,11 @@ expect_status 200 /api/auth/me "me"
 grep -q '"role":"inhaber"' "$WORK/resp.json" || fail "reset did not apply the role: $(cat "$WORK/resp.json")"
 expect_status 200 /api/partners "partners with session"
 expect_status 404 /api/gibt-es-nicht "unknown route with session"
+expect_status 200 "/api/reports/daily?from=2026-03-01&to=2026-03-08" "reports (B4)"
+grep -q '"available":true' "$WORK/resp.json" || fail "reports did not read HQ_REPORTS_DIR: $(head -c 300 "$WORK/resp.json")"
+expect_status 200 /api/finance/targets/status "Tagesziel (B4)"
+grep -q '"status":"ok"' "$WORK/resp.json" || fail "Tagesziel did not read HQ_FINANCE_DIR: $(head -c 300 "$WORK/resp.json")"
+echo "[boot-smoke] reports + Tagesziel from the bundle ok"
 stop_server
 
 echo "[boot-smoke] second start (same database)"
