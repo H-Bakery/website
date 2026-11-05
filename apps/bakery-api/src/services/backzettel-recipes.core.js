@@ -135,10 +135,23 @@ function parseFillingRecipe(markdown, options) {
   const recipes = parseFillingRecipes(markdown)
   const section = options && options.section
   if (!section) return recipes[0] || null
-  const wanted = cleanHeading(section).toLowerCase()
+  return findRecipeBySection(recipes, section)
+}
+
+/**
+ * Sucht in geparsten Rezepten die Ueberschrift `section` - bereinigt wie die
+ * Ueberschriften selbst (Emoji, Doppelpunkt), ohne Gross-/Kleinschreibung,
+ * exakt oder als Anfang. Einzige Stelle dafuer; Loader und
+ * `parseFillingRecipe` benutzen beide diese Funktion.
+ * @returns {object|null}
+ */
+function findRecipeBySection(recipes, section) {
+  const list = Array.isArray(recipes) ? recipes : []
+  const wanted = cleanHeading(String(section || '')).toLowerCase()
+  if (!wanted) return null
   return (
-    recipes.find((r) => r.title.toLowerCase() === wanted) ||
-    recipes.find((r) => r.title.toLowerCase().startsWith(wanted)) ||
+    list.find((r) => r.title.toLowerCase() === wanted) ||
+    list.find((r) => r.title.toLowerCase().startsWith(wanted)) ||
     null
   )
 }
@@ -196,6 +209,7 @@ module.exports = {
   parseAmount,
   parseFillingRecipes,
   parseFillingRecipe,
+  findRecipeBySection,
   findRecipeForFilling,
   scaleRecipe,
   slugify,

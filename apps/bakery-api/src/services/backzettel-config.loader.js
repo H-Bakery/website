@@ -2,9 +2,12 @@
 //
 // Liest `hq/config/backzettel.yaml`, den hq-Produktkatalog und die
 // Fuellungsrezepte von der Platte; geprueft und gerechnet wird in den
-// dependency-freien Cores daneben. Die einzige Abhaengigkeit ist js-yaml
-// (im Root-node_modules ueber gray-matter, v3; v4 funktioniert genauso,
-// weil nur `load` mit `CORE_SCHEMA` benutzt wird - kein `!!js/...`).
+// dependency-freien Cores daneben. Die einzige Abhaengigkeit ist js-yaml.
+// ACHTUNG: im Root-package.json ist js-yaml (noch) nicht deklariert; es
+// liegt nur als v3 ueber gray-matter im Root-node_modules (B0 soll js-yaml ^4
+// aufnehmen). v3 und v4 funktionieren beide, weil nur `load` mit
+// `CORE_SCHEMA` benutzt wird - kein `!!js/...`. Wer den Loader ins hq-CI
+// kopiert (H2), muss dort js-yaml installieren.
 
 const fs = require('fs')
 const path = require('path')
@@ -132,7 +135,23 @@ function loadFillingRecipes(config, hqRoot) {
       })
       continue
     }
-    const file = path.resolve(hqRoot, f.recipe)
+    // Nie ausserhalb von hq lesen: der Validator verlangt schon einen
+    // relativen Pfad unter data/recipes/, hier wird es noch einmal am
+    // aufgeloesten Pfad geprueft (Zweitschutz, falls jemand ungeprueft laedt).
+    const root = path.resolve(hqRoot)
+    const file = path.resolve(root, f.recipe)
+    if (
+      !configCore.isSafeRecipePath(f.recipe) ||
+      !file.startsWith(root + path.sep)
+    ) {
+      missing.push({
+        id: f.id,
+        message: `Rezeptpfad ${JSON.stringify(
+          f.recipe
+        )} liegt nicht unter data/recipes/ in hq und wird nicht gelesen.`,
+      })
+      continue
+    }
     if (!cache.has(file)) {
       let parsed = null
       try {
@@ -151,12 +170,7 @@ function loadFillingRecipes(config, hqRoot) {
       continue
     }
     const recipe = f.section
-      ? all.find(
-          (r) => r.title.toLowerCase() === String(f.section).toLowerCase()
-        ) ||
-        all.find((r) =>
-          r.title.toLowerCase().startsWith(String(f.section).toLowerCase())
-        )
+      ? recipesCore.findRecipeBySection(all, f.section)
       : recipesCore.findRecipeForFilling(all, f.id)
     if (!recipe) {
       missing.push({

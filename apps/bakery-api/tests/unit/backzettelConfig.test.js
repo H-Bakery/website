@@ -314,6 +314,50 @@ describe('validateBackzettelConfig', () => {
     )
   })
 
+  it('verlangt Rezeptpfade relativ unter data/recipes/ mit .md (nie ausserhalb von hq)', () => {
+    const at = (recipe) => {
+      const cfg = config()
+      cfg.fillings[0].recipe = recipe
+      return paths(validate(cfg))
+    }
+    for (const bad of [
+      '/etc/passwd',
+      '../../../website/package.json',
+      'data/recipes/../../../x.md',
+      'data/recipes/./x.md',
+      'data/recipes//x.md',
+      'data\\recipes\\x.md',
+      'data/recipes/x.txt',
+      'fillings/x.md',
+    ]) {
+      expect(at(bad)).toContain('fillings[0].recipe')
+    }
+    expect(at('data/recipes/fillings/Gefüllte-Kränze.md')).toEqual([])
+    expect(core.isSafeRecipePath(null)).toBe(false)
+  })
+
+  it('verlangt bei gefuellten Posten die Grundmenge je Variante', () => {
+    const cfg = config()
+    cfg.items.find((i) => i.id === 'zopf-gefuellt').base = { 6: 5 }
+    const r = validate(cfg)
+    const e = r.errors.find((x) => x.path === 'items[5].base.6')
+    expect(e.message).toMatch(/je Variante, z\. B\. \{ nuss: 5 \}/)
+    // null (noch nicht festgelegt) ist erlaubt
+    cfg.items.find((i) => i.id === 'zopf-gefuellt').base = { 6: null }
+    expect(validate(cfg).errors).toEqual([])
+  })
+
+  it('warnt, wenn zwei Posten dasselbe Blech belegen', () => {
+    const cfg = config()
+    cfg.items.find((i) => i.id === 'schnecke').tray = { no: 8 }
+    const r = validate(cfg)
+    expect(r.ok).toBe(true)
+    expect(r.warnings).toContainEqual({
+      path: 'items[4].tray.no',
+      message: 'Blech 8 ist auch Posten „plunder“ zugeordnet.',
+    })
+  })
+
   it('sammelt mehrere Fehler auf einmal statt beim ersten abzubrechen', () => {
     const cfg = config({ version: 3 })
     cfg.items[0].unit = 'Laib'
@@ -401,6 +445,16 @@ describe('Fuellungsrezepte (hq-Markdown)', () => {
     expect(recipes.parseFillingRecipe(md).title).toBe('Testkompott')
   })
 
+  it('findet einen Abschnitt auch mit Emoji oder Doppelpunkt in der Angabe', () => {
+    const all = recipes.parseFillingRecipes(RECIPE_MD)
+    expect(recipes.findRecipeBySection(all, '🌰 Nussfüllung:').title).toBe(
+      'Nussfüllung'
+    )
+    expect(recipes.findRecipeBySection(all, 'mohn').title).toBe('Mohnfüllung')
+    expect(recipes.findRecipeBySection(all, '')).toBeNull()
+    expect(recipes.findRecipeBySection(null, 'Mohn')).toBeNull()
+  })
+
   it('findet das Rezept zu einer Fuellungs-ID', () => {
     const all = recipes.parseFillingRecipes(RECIPE_MD)
     expect(recipes.findRecipeForFilling(all, 'mohn').title).toBe('Mohnfüllung')
@@ -455,8 +509,13 @@ describe('Loader und CLI', () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'backzettel-'))
     fs.mkdirSync(path.join(dir, 'config'))
     fs.mkdirSync(path.join(dir, 'products'))
-    fs.mkdirSync(path.join(dir, 'fillings'))
-    fs.writeFileSync(path.join(dir, 'fillings', 'test.md'), RECIPE_MD)
+    fs.mkdirSync(path.join(dir, 'data', 'recipes', 'fillings'), {
+      recursive: true,
+    })
+    fs.writeFileSync(
+      path.join(dir, 'data', 'recipes', 'fillings', 'test.md'),
+      RECIPE_MD
+    )
     for (const p of PRODUCTS) {
       fs.writeFileSync(
         path.join(dir, 'products', `${p.numeric_id}-${p.id}.md`),
@@ -478,7 +537,7 @@ describe('Loader und CLI', () => {
       'version: 1\nitems: [\n'
     )
     const noRecipe = config()
-    noRecipe.fillings[1].recipe = 'fillings/fehlt.md'
+    noRecipe.fillings[1].recipe = 'data/recipes/fillings/fehlt.md'
     fs.writeFileSync(path.join(dir, 'config', 'rezept.yaml'), toYaml(noRecipe))
   })
   afterAll(() => fs.rmSync(dir, { recursive: true, force: true }))
@@ -545,6 +604,37 @@ describe('Loader und CLI', () => {
     expect(missing).toEqual([])
     expect(loaded.nuss.batch_g).toBe(2000)
     expect(loaded.mohn.title).toBe('Mohnfüllung')
+  })
+
+  it('Loader: gleiche Abschnittssuche wie der Rezept-Core (Emoji/Doppelpunkt)', () => {
+    const r = loader.loadBackzettelConfig(path.join(dir, 'config', 'ok.yaml'))
+    r.config.fillings[0].section = '🌰 Nussfüllung:'
+    const { recipes: loaded, missing } = loader.loadFillingRecipes(
+      r.config,
+      dir
+    )
+    expect(missing).toEqual([])
+    expect(loaded.nuss.title).toBe('Nussfüllung')
+  })
+
+  it('Loader: liest auch ungeprueft nie ausserhalb von hq', () => {
+    const outside = path.join(path.dirname(dir), 'backzettel-outside.md')
+    fs.writeFileSync(outside, RECIPE_MD)
+    try {
+      const cfg = {
+        fillings: [
+          { id: 'a', recipe: outside },
+          { id: 'b', recipe: '../backzettel-outside.md' },
+          { id: 'c', recipe: 'data/recipes/../../../backzettel-outside.md' },
+        ],
+      }
+      const { recipes: loaded, missing } = loader.loadFillingRecipes(cfg, dir)
+      expect(loaded).toEqual({})
+      expect(missing.map((m) => m.id)).toEqual(['a', 'b', 'c'])
+      expect(missing[0].message).toMatch(/nicht unter data\/recipes\//)
+    } finally {
+      fs.rmSync(outside, { force: true })
+    }
   })
 
   it('CLI: Exit 0 fuer eine gueltige Datei', () => {

@@ -169,6 +169,66 @@ function lineKey(itemId, variant) {
   return `${itemId}|${variant || ''}`
 }
 
+/**
+ * Loest eine Produkt-ID (hq-Slug oder numerische ID aus dem Katalog) zu
+ * Posten und Faktor auf. Einzige Stelle dafuer: `computeDay`,
+ * `computePreorderDeltas` und `variantsForProduct` benutzen sie.
+ * @returns {(productId: unknown) => ({item: object, factor: number} | null)}
+ */
+function createProductResolver(config, catalog) {
+  const cfg = ensureNormalized(config)
+  const products = productIndex(cfg)
+  const numeric = numericIndex(catalog)
+  return (raw) => {
+    if (raw === undefined || raw === null) return null
+    const key = String(raw)
+    if (products.has(key)) return products.get(key)
+    const slug = numeric.get(key)
+    return slug && products.has(slug) ? products.get(slug) : null
+  }
+}
+
+/**
+ * Welcher Posten, welcher Faktor und welche Varianten gehoeren zu einem
+ * Produkt? Fuer die Pruefung von `preorder_items.variant` (B7, roadmap §5.3):
+ * `variants` leer heisst, das Produkt nimmt keine Variante an.
+ * @returns {{itemId:string, name:string, unit:string, factor:number, variants:string[]} | null}
+ */
+function variantsForProduct(config, productId, catalog) {
+  const hit = createProductResolver(config, catalog)(productId)
+  if (!hit) return null
+  return {
+    itemId: hit.item.id,
+    name: hit.item.name,
+    unit: hit.item.unit,
+    factor: hit.factor,
+    variants: [...hit.item.variants],
+  }
+}
+
+/** `null`/`''`/unbekannt -> `null`; sonst die Variante. Ohne Warnungen. */
+function cleanVariant(item, variant) {
+  const v = variant === undefined || variant === '' ? null : variant
+  if (v === null || item.variants.length === 0) return null
+  return item.variants.includes(v) ? v : null
+}
+
+/** Akzeptiert flache Positionen oder Vorbestellungen mit `items`. */
+function asPreorderItems(list) {
+  const arr = Array.isArray(list) ? list : []
+  return arr.some((p) => p && Array.isArray(p.items))
+    ? flattenPreorders(arr)
+    : arr
+}
+
+/** Zaehlt eine Position fuer `date`? (nicht storniert, Menge > 0, Abholtag) */
+function countablePreorderQty(raw, date) {
+  if (!raw || raw.status === 'cancelled') return null
+  if ((raw.pickupDate || raw.date) !== date) return null
+  const qty = Number(raw.qty === undefined ? raw.quantity : raw.qty)
+  return Number.isFinite(qty) && qty > 0 ? qty : null
+}
+
 // ---------------------------------------------------------------------------
 // Tagesrechnung
 // ---------------------------------------------------------------------------
@@ -219,8 +279,7 @@ function computeDay(args) {
   }
 
   const open = cfg.days.includes(weekday)
-  const products = productIndex(cfg)
-  const numeric = numericIndex(a.catalog)
+  const resolveProduct = createProductResolver(cfg, a.catalog)
   const itemsById = new Map(cfg.items.map((i) => [i.id, i]))
 
   // Sammeltöpfe je Zeile: exakte (ungerundete) Summen
@@ -233,14 +292,6 @@ function computeDay(args) {
       acc.set(key, b)
     }
     return b
-  }
-
-  const resolveProduct = (raw) => {
-    if (raw === undefined || raw === null) return null
-    const key = String(raw)
-    if (products.has(key)) return products.get(key)
-    const slug = numeric.get(key)
-    return slug && products.has(slug) ? products.get(slug) : null
   }
 
   const resolveVariant = (item, variant, source) => {
@@ -270,13 +321,9 @@ function computeDay(args) {
   // Vorbestellungen
   const unmatched = new Map()
   let preordersOnClosedDay = 0
-  for (const raw of Array.isArray(a.preorderItems) ? a.preorderItems : []) {
-    if (!raw) continue
-    if (raw.status === 'cancelled') continue
-    const pickup = raw.pickupDate || raw.date
-    if (pickup !== date) continue
-    const qty = Number(raw.qty === undefined ? raw.quantity : raw.qty)
-    if (!Number.isFinite(qty) || qty <= 0) continue
+  for (const raw of asPreorderItems(a.preorderItems)) {
+    const qty = countablePreorderQty(raw, date)
+    if (qty === null) continue
     const productId = raw.productSlug || raw.productId
     const hit = resolveProduct(productId)
     if (!hit) {
@@ -380,22 +427,36 @@ function computeDay(args) {
     }
   }
 
-  // Zeilen
+  // Zeilen. `null` als Grundmenge heisst „noch nicht festgelegt“ (anders als
+  // 0 = „wird nicht gebacken“): die Zeile erscheint mit `baseUnset: true`,
+  // auch ohne Menge, und es gibt eine Warnung `base_unset`.
   const lines = []
+  const unset = []
   if (open) {
     for (const item of cfg.items) {
+      const hasDay = Object.prototype.hasOwnProperty.call(item.base, weekday)
       const baseDay = item.base[weekday]
       const variants =
         item.variants.length > 0 ? [...item.variants, null] : [null]
       for (const variant of variants) {
         let base = 0
-        if (baseDay !== undefined && baseDay !== null) {
+        let baseUnset = false
+        if (hasDay && baseDay === null) {
+          // ganzer Tag offen: bei Varianten jede Variante, sonst die Zeile
+          baseUnset = item.variants.length === 0 || variant !== null
+        } else if (baseDay !== undefined && baseDay !== null) {
           if (typeof baseDay === 'object') {
-            base = variant === null ? 0 : Number(baseDay[variant]) || 0
+            if (variant !== null) {
+              const v = baseDay[variant]
+              if (v === null) baseUnset = true
+              else base = Number(v) || 0
+            }
           } else if (variant === null) {
             base = Number(baseDay) || 0
           }
         }
+        if (baseUnset)
+          unset.push(variant ? `${item.name} (${variant})` : item.name)
         const b = acc.get(lineKey(item.id, variant)) || {
           preorders: 0,
           cap: 0,
@@ -409,7 +470,7 @@ function computeDay(args) {
         const correction = tidy(b.correction, item.unit)
         const empty =
           base === 0 && preorders === 0 && cap === 0 && correction === 0
-        if (empty && !a.includeEmpty) continue
+        if (empty && !baseUnset && !a.includeEmpty) continue
         const total = Math.max(
           0,
           tidy(seasoned + preorders + cap + correction, item.unit)
@@ -422,6 +483,7 @@ function computeDay(args) {
           unit: item.unit,
           variant,
           base,
+          baseUnset,
           seasonal: tidy(seasoned - base, item.unit),
           preorders,
           preordersExact: round2(b.preorders),
@@ -439,6 +501,16 @@ function computeDay(args) {
         lines.push(line)
       }
     }
+  }
+
+  if (unset.length > 0) {
+    warnings.push({
+      code: 'base_unset',
+      items: unset,
+      message: `Grundmenge für ${
+        WEEKDAY_NAMES[weekday]
+      } noch nicht festgelegt: ${unset.join(', ')}.`,
+    })
   }
 
   const sections = cfg.sections
@@ -642,8 +714,94 @@ function computePrep(cfg, lines, weekday) {
 }
 
 /**
- * Unterschiede zwischen dem freigegebenen und dem neu gerechneten Zettel.
- * Nur Zeilen, deren `total` sich geaendert hat; nie still zusammengefuehrt.
+ * Vorbestellungs-Deltas nach der Freigabe (roadmap §5.3/§5.4): je
+ * Vorbestellung × Posten × Variante, wie viel sich gegenueber dem Stand bei
+ * der Freigabe geaendert hat - in Posten-Einheiten (Viertel = 0,25).
+ *
+ * Die Grundlage sind die Vorbestellungen selbst, nicht die Zeilensummen:
+ * eine neue Viertel-Bestellung, die in der Aufrundung verschwindet, oder
+ * eine neue Bestellung plus eine gleich grosse Stornierung aendern keine
+ * Gesamtmenge, sind aber trotzdem Deltas. Nie still zusammengefuehrt.
+ *
+ * Z3 speichert bei der Freigabe die (flachen) Vorbestellungspositionen des
+ * Tages als `before`; jede Zeile des Ergebnisses passt 1:1 auf
+ * `backzettel_deltas` (date, item_id, variant, qty, preorder_id).
+ *
+ * @param {object} args
+ * @param {object} args.config Stammdaten.
+ * @param {string} args.date Produktionstag.
+ * @param {Array} args.before Positionen zum Zeitpunkt der Freigabe.
+ * @param {Array} args.after Positionen jetzt (flach oder `{id, items}`).
+ * @param {Array} [args.catalog] hq-Produkte fuer numerische IDs.
+ * @returns {Array<{key, itemId, name, unit, variant, preorderId, before, after, qty, kind}>}
+ *   `kind`: `added` (vorher 0), `cancelled` (jetzt 0) oder `changed`.
+ */
+function computePreorderDeltas(args) {
+  const a = args || {}
+  if (!isValidDate(a.date)) return []
+  const cfg = ensureNormalized(a.config)
+  if (!cfg.days.includes(isoWeekday(a.date))) return []
+  const resolve = createProductResolver(cfg, a.catalog)
+
+  const sum = (list) => {
+    const out = new Map()
+    for (const raw of asPreorderItems(list)) {
+      const qty = countablePreorderQty(raw, a.date)
+      if (qty === null) continue
+      const hit = resolve(raw.productSlug || raw.productId)
+      if (!hit) continue // unbekannte Produkte meldet computeDay
+      const variant = cleanVariant(hit.item, raw.variant)
+      const preorderId =
+        raw.preorderId === undefined || raw.preorderId === null
+          ? null
+          : raw.preorderId
+      const k = `${String(preorderId)}#${lineKey(hit.item.id, variant)}`
+      const e = out.get(k) || { item: hit.item, variant, preorderId, qty: 0 }
+      e.qty += qty * hit.factor
+      out.set(k, e)
+    }
+    return out
+  }
+
+  const before = sum(a.before)
+  const after = sum(a.after)
+  const keys = [
+    ...after.keys(),
+    ...[...before.keys()].filter((k) => !after.has(k)),
+  ]
+  const deltas = []
+  for (const k of keys) {
+    const b = before.get(k)
+    const n = after.get(k)
+    const ref = n || b
+    const qtyBefore = b ? round2(b.qty) : 0
+    const qtyAfter = n ? round2(n.qty) : 0
+    const qty = round2(qtyAfter - qtyBefore)
+    if (qty === 0) continue
+    deltas.push({
+      key: lineKey(ref.item.id, ref.variant),
+      itemId: ref.item.id,
+      name: ref.item.name,
+      unit: ref.item.unit,
+      variant: ref.variant,
+      preorderId: ref.preorderId,
+      before: qtyBefore,
+      after: qtyAfter,
+      qty,
+      kind:
+        qtyBefore === 0 ? 'added' : qtyAfter === 0 ? 'cancelled' : 'changed',
+    })
+  }
+  return deltas
+}
+
+/**
+ * Zeilen-Vergleich zwischen dem freigegebenen und dem neu gerechneten
+ * Zettel, als Zusatzinformation fuer die Anzeige. Gemeldet wird eine Zeile,
+ * wenn sich `total` geaendert hat ODER sich ihre Vorbestellungen geaendert
+ * haben (`preordersExact`, `preorderIds`) - auch wenn die Gesamtmenge gleich
+ * bleibt (Viertel in der Aufrundung, Neu + Storno). Die Deltas je
+ * Vorbestellung liefert `computePreorderDeltas`.
  */
 function computeDeltas(confirmedLines, newLines) {
   const before = new Map()
@@ -659,6 +817,7 @@ function computeDeltas(confirmedLines, newLines) {
     ...[...before.keys()].filter((k) => !after.has(k)),
   ]
   const fields = ['base', 'seasonal', 'preorders', 'cap', 'correction']
+  const ids = (l) => (l && Array.isArray(l.preorderIds) ? l.preorderIds : [])
   const deltas = []
   for (const key of keys) {
     const b = before.get(key)
@@ -667,7 +826,21 @@ function computeDeltas(confirmedLines, newLines) {
     const totalBefore = b ? Number(b.total) || 0 : 0
     const totalAfter = n ? Number(n.total) || 0 : 0
     const qty = round2(totalAfter - totalBefore)
-    if (qty === 0) continue
+    const idsBefore = ids(b)
+    const idsAfter = ids(n)
+    const preorderIdsAdded = idsAfter.filter((id) => !idsBefore.includes(id))
+    const preorderIdsRemoved = idsBefore.filter((id) => !idsAfter.includes(id))
+    const exactDelta = round2(
+      (n ? Number(n.preordersExact) || 0 : 0) -
+        (b ? Number(b.preordersExact) || 0 : 0)
+    )
+    if (
+      qty === 0 &&
+      exactDelta === 0 &&
+      preorderIdsAdded.length === 0 &&
+      preorderIdsRemoved.length === 0
+    )
+      continue
     const changes = {}
     for (const f of fields) {
       const d = round2(
@@ -685,6 +858,9 @@ function computeDeltas(confirmedLines, newLines) {
       after: totalAfter,
       qty,
       changes,
+      preordersExact: exactDelta,
+      preorderIdsAdded,
+      preorderIdsRemoved,
     })
   }
   return deltas
@@ -693,6 +869,9 @@ function computeDeltas(confirmedLines, newLines) {
 module.exports = {
   computeDay,
   computeDeltas,
+  computePreorderDeltas,
+  createProductResolver,
+  variantsForProduct,
   computeHefeteig,
   computeFillings,
   computePrep,

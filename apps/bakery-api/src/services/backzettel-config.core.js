@@ -100,6 +100,24 @@ function isNonNegativeNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
 }
 
+/** Rezepte liegen in hq unter diesem Verzeichnis; nur dort wird gelesen. */
+const RECIPE_DIR = 'data/recipes/'
+
+/**
+ * `fillings[].recipe` muss ein relativer Pfad unter `data/recipes/` sein, der
+ * auf `.md` endet - ohne `..`, `.`, leere Segmente, Backslash oder absoluten
+ * Pfad. Die YAML schreibt spaeter die App (B5b) und das hq-CI merged sie
+ * (H2); ein Pfad wie `/etc/passwd` oder `../../x` darf nie gelesen werden.
+ */
+function isSafeRecipePath(value) {
+  if (typeof value !== 'string') return false
+  if (!value.startsWith(RECIPE_DIR) || !value.endsWith('.md')) return false
+  if (/[\\\0]/.test(value)) return false
+  return value
+    .split('/')
+    .every((seg) => seg !== '' && seg !== '.' && seg !== '..')
+}
+
 /** YAML-Schluessel `6:` kommen als String "6" im Objekt an. */
 function weekdayKey(key) {
   const n = Number(key)
@@ -264,6 +282,16 @@ function validateBackzettelConfig(obj, options) {
           (typeof f.recipe !== 'string' || !f.recipe.trim())
         ) {
           err(`${p}.recipe`, 'recipe muss ein Pfad (Text) sein.')
+        } else if (
+          typeof f.recipe === 'string' &&
+          !isSafeRecipePath(f.recipe)
+        ) {
+          err(
+            `${p}.recipe`,
+            `Rezeptpfad ${JSON.stringify(
+              f.recipe
+            )} muss relativ unter ${RECIPE_DIR} liegen und auf .md enden (kein „..“, kein absoluter Pfad).`
+          )
         }
         if (
           f.section !== undefined &&
@@ -285,6 +313,7 @@ function validateBackzettelConfig(obj, options) {
   const itemIds = new Set()
   const productOwner = new Map()
   const pluOwner = new Map()
+  const trayOwner = new Map()
   if (!Array.isArray(obj.items)) {
     err('items', 'items muss eine Liste sein.')
   } else {
@@ -504,6 +533,16 @@ function validateBackzettelConfig(obj, options) {
             )
           } else if (new Set(nos).size !== nos.length) {
             err(`${p}.tray.no`, 'tray.no enthält eine Blechnummer doppelt.')
+          } else {
+            for (const no of nos) {
+              const owner = trayOwner.get(no)
+              if (owner && owner !== label)
+                warn(
+                  `${p}.tray.no`,
+                  `Blech ${no} ist auch Posten „${owner}“ zugeordnet.`
+                )
+              else trayOwner.set(no, label)
+            }
           }
           if (
             t.per_tray !== undefined &&
@@ -547,6 +586,7 @@ function validateBackzettelConfig(obj, options) {
           )
         }
       }
+      const hasFilling = item.filling_g !== undefined && item.filling_g !== null
       if (item.base !== undefined && item.base !== null) {
         if (!isPlainObject(item.base)) {
           err(`${p}.base`, 'base muss eine Zuordnung Wochentag → Menge sein.')
@@ -579,6 +619,17 @@ function validateBackzettelConfig(obj, options) {
                 if (q !== null) checkQty(`${bp}.${v}`, q)
               }
             } else {
+              if (hasFilling) {
+                // Sonst landet die ganze Tagesmenge auf der Zeile ohne
+                // Variante und faellt aus dem Fuellungsbedarf.
+                err(
+                  bp,
+                  `Posten „${label}“ ist gefüllt (filling_g); die Grundmenge braucht eine Menge je Variante, z. B. { ${
+                    variants[0] || 'nuss'
+                  }: ${value} }.`
+                )
+                continue
+              }
               checkQty(bp, value)
             }
           }
@@ -826,7 +877,9 @@ module.exports = {
   UNITS,
   INTEGER_UNITS,
   WEEKDAY_NAMES,
+  RECIPE_DIR,
   isSlug,
+  isSafeRecipePath,
   validateBackzettelConfig,
   normalizeConfig,
 }

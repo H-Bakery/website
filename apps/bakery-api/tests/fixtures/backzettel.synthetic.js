@@ -113,13 +113,13 @@ function config(overrides = {}) {
       {
         id: 'nuss',
         name: 'Nussfüllung',
-        recipe: 'fillings/test.md',
+        recipe: 'data/recipes/fillings/test.md',
         section: 'Nussfüllung',
       },
       {
         id: 'mohn',
         name: 'Mohnfüllung',
-        recipe: 'fillings/test.md',
+        recipe: 'data/recipes/fillings/test.md',
         section: 'Mohnfüllung',
       },
     ],

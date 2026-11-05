@@ -469,7 +469,7 @@ describe('Hefeteig (portiert aus HefezopfCalculator)', () => {
     expect(h.doughs[0].weighing[0]).toMatchObject({ piece_g: 600, pieces: 4 })
   })
 
-  it('der gefuellte Kranz ist einstellbar (Q-B3: 1 × 1200 g statt 2 × 600 g)', () => {
+  it('der gefuellte Kranz ist einstellbar (Q-B3: hq-Notiz 1 × 1200 g, alter Code 3 × 600 g; Testwert 2 × 600 g)', () => {
     const cfg = config()
     cfg.items.find((i) => i.id === 'kranz-gefuellt').dough = {
       id: 'hefeteig-test',
@@ -631,6 +631,279 @@ describe('Vorbereitung je Wochentag', () => {
 
   it('Sonntag: default greift, Wagen nicht', () => {
     expect(ids(day(SUN))).toEqual([['sauerteig', 'misch']])
+  })
+})
+
+describe('HefezopfCalculator-Spec, Zahlen 1:1 (Q-B3: gefuellter Kranz 3 × 600 g wie im alten Code)', () => {
+  // Nachbau der Stammdaten aus apps/bakery-management/src/features/production
+  // (data/doughPieces.ts, productionCalculator.ts) - oeffentlicher Altcode,
+  // keine hq-Werte. Ein Produkt = ein Posten; Menge kommt als Korrektur.
+  function oldConfig() {
+    return {
+      version: 1,
+      days: [6],
+      sections: ['hefeteig'],
+      items: [
+        {
+          id: 'hefekranz',
+          name: 'Hefekranz',
+          section: 'hefeteig',
+          variants: ['nuss', 'schoko'],
+          dough: { id: 'hefeteig', piece_g: 600, pieces: 3 }, // „Gefüllter Kranz“
+          filling_g: 1200,
+        },
+        {
+          id: 'zopf-gefuellt',
+          name: 'Gefüllter Zopf',
+          section: 'hefeteig',
+          variants: ['nuss', 'schoko'],
+          dough: { id: 'hefeteig', piece_g: 500, pieces: 1 },
+          filling_g: 450,
+        },
+        {
+          id: 'hefezopf-plain',
+          name: 'Hefezopf Plain',
+          section: 'hefeteig',
+          dough: { id: 'hefeteig', piece_g: 300, pieces: 3 }, // „Großer Zopf“
+        },
+      ],
+      doughs: [{ id: 'hefeteig', name: 'Hefeteig', batch_max_kg: 40 }],
+      fillings: [],
+      prep: [],
+    }
+  }
+  const run = (corrections) =>
+    core.computeDay({ config: oldConfig(), date: SAT, corrections })
+
+  it('Teiggewicht = Gewicht × Anzahl × Menge (2 × Hefekranz Nuss)', () => {
+    const r = run([{ itemId: 'hefekranz', variant: 'nuss', qty: 2 }])
+    expect(r.hefeteig.dough_g).toBe(2 * 3 * 600)
+    expect(r.hefeteig.doughs[0].weighing).toEqual([
+      expect.objectContaining({ piece_g: 600, pieces: 6 }),
+    ])
+  })
+
+  it('Teigstuecke gleicher Art werden ueber Produkte summiert', () => {
+    const r = run([
+      { itemId: 'hefekranz', variant: 'nuss', qty: 1 },
+      { itemId: 'hefekranz', variant: 'schoko', qty: 1 },
+    ])
+    expect(r.hefeteig.doughs[0].weighing[0].pieces).toBe(6)
+  })
+
+  it('Fuellung je Sorte: 2 × 1200 + 3 × 450 Nuss, Schoko 0', () => {
+    const r = run([
+      { itemId: 'hefekranz', variant: 'nuss', qty: 2 },
+      { itemId: 'zopf-gefuellt', variant: 'nuss', qty: 3 },
+      { itemId: 'hefezopf-plain', qty: 5 },
+    ])
+    expect(r.fillings.map((f) => [f.id, f.grams])).toEqual([
+      ['nuss', 2 * 1200 + 3 * 450],
+    ])
+  })
+
+  it('Chargen zu 40 kg: 1 × 900 g = 1, 45 × 900 g = 40,5 kg = 2', () => {
+    expect(
+      run([{ itemId: 'hefezopf-plain', qty: 1 }]).hefeteig.doughs[0].batches
+    ).toBe(1)
+    expect(
+      run([{ itemId: 'hefezopf-plain', qty: 45 }]).hefeteig.doughs[0].batches
+    ).toBe(2)
+  })
+})
+
+describe('Grundmenge noch nicht festgelegt (null)', () => {
+  it('zeigt die Zeile mit baseUnset und warnt, 0 bleibt still', () => {
+    const cfg = config()
+    cfg.items.find((i) => i.id === 'kranz').base = { 6: null }
+    cfg.items.find((i) => i.id === 'kranz-gefuellt').base = {
+      6: { nuss: null, mohn: 1 },
+    }
+    cfg.items.find((i) => i.id === 'zopf-gefuellt').base = { 6: null }
+    cfg.items.find((i) => i.id === 'plunder').base[6] = 0
+    const r = core.computeDay({ config: cfg, date: SAT })
+    expect(line(r, 'kranz')).toMatchObject({ baseUnset: true, total: 0 })
+    expect(line(r, 'kranz-gefuellt', 'nuss')).toMatchObject({
+      baseUnset: true,
+    })
+    expect(line(r, 'kranz-gefuellt', 'mohn')).toMatchObject({
+      baseUnset: false,
+      total: 1,
+    })
+    expect(line(r, 'zopf-gefuellt', 'nuss').baseUnset).toBe(true)
+    expect(line(r, 'zopf-gefuellt', 'mohn').baseUnset).toBe(true)
+    expect(line(r, 'zopf-gefuellt', null)).toBeUndefined()
+    expect(line(r, 'plunder')).toBeUndefined() // 0 = wird nicht gebacken
+    const w = r.warnings.find((x) => x.code === 'base_unset')
+    expect(w.items).toEqual([
+      'Zopf gefüllt (nuss)',
+      'Zopf gefüllt (mohn)',
+      'Kranz gefüllt (nuss)',
+      'Kranz',
+    ])
+    expect(w.message).toMatch(/Samstag noch nicht festgelegt/)
+  })
+
+  it('ohne null keine Warnung', () => {
+    expect(day(SAT).warnings.some((w) => w.code === 'base_unset')).toBe(false)
+    expect(day(SAT).lines.every((l) => l.baseUnset === false)).toBe(true)
+  })
+
+  it('eine Vorbestellung zaehlt auch auf einer offenen Zeile', () => {
+    const cfg = config()
+    cfg.items.find((i) => i.id === 'kranz').base = { 6: null }
+    const r = core.computeDay({
+      config: cfg,
+      date: SAT,
+      preorderItems: [pre('test-kranz', 2)],
+    })
+    expect(line(r, 'kranz')).toMatchObject({ baseUnset: true, total: 2 })
+  })
+})
+
+describe('computePreorderDeltas (je Vorbestellung, roadmap §5.3)', () => {
+  const deltas = (before, after, extra = {}) =>
+    core.computePreorderDeltas({
+      config: config(),
+      date: SAT,
+      catalog: PRODUCTS,
+      before,
+      after,
+      ...extra,
+    })
+
+  it('meldet ein Viertel, das in der Aufrundung verschwindet', () => {
+    const before = [pre('test-kranz-viertel', 3, { preorderId: 1 })]
+    const after = [...before, pre('test-kranz-viertel', 1, { preorderId: 2 })]
+    // Zeilensumme bleibt gleich: ceil(0,75) = ceil(1,0) = 1
+    const lb = day(SAT, { preorderItems: before }).lines
+    const la = day(SAT, { preorderItems: after }).lines
+    expect(line({ lines: la }, 'kranz').total).toBe(
+      line({ lines: lb }, 'kranz').total
+    )
+    expect(deltas(before, after)).toEqual([
+      {
+        key: 'kranz|',
+        itemId: 'kranz',
+        name: 'Kranz',
+        unit: 'Stück',
+        variant: null,
+        preorderId: 2,
+        before: 0,
+        after: 0.25,
+        qty: 0.25,
+        kind: 'added',
+      },
+    ])
+    // und der Zeilenvergleich verschluckt es auch nicht mehr
+    const d = core.computeDeltas(lb, la)
+    expect(d).toHaveLength(1)
+    expect(d[0]).toMatchObject({
+      itemId: 'kranz',
+      qty: 0,
+      preordersExact: 0.25,
+      preorderIdsAdded: [2],
+      preorderIdsRemoved: [],
+    })
+  })
+
+  it('neue Bestellung plus gleich grosse Stornierung: zwei Deltas, Summe 0', () => {
+    const before = [pre('test-weck', 3, { preorderId: 1 })]
+    const after = [
+      pre('test-weck', 3, { preorderId: 1, status: 'cancelled' }),
+      pre('test-weck', 3, { preorderId: 2 }),
+    ]
+    const d = deltas(before, after)
+    expect(d.map((x) => [x.preorderId, x.qty, x.kind])).toEqual([
+      [2, 3, 'added'],
+      [1, -3, 'cancelled'],
+    ])
+    const lines = core.computeDeltas(
+      day(SAT, { preorderItems: before }).lines,
+      day(SAT, { preorderItems: after }).lines
+    )
+    expect(lines[0]).toMatchObject({
+      itemId: 'weck',
+      qty: 0,
+      preordersExact: 0,
+      preorderIdsAdded: [2],
+      preorderIdsRemoved: [1],
+    })
+  })
+
+  it('geaenderte Menge, Variante, numerische ID und verschachtelte Form', () => {
+    const before = [
+      {
+        id: 7,
+        pickupDate: SAT,
+        items: [{ productId: 902, qty: 1, variant: 'nuss' }],
+      },
+    ]
+    const after = [
+      {
+        id: 7,
+        pickupDate: SAT,
+        items: [
+          { productId: 902, qty: 1, variant: 'nuss' },
+          {
+            productSlug: 'test-kranz-gefuellt-viertel',
+            qty: 2,
+            variant: 'mohn',
+          },
+        ],
+      },
+    ]
+    expect(
+      deltas(before, after).map((x) => [x.key, x.preorderId, x.qty, x.kind])
+    ).toEqual([['kranz-gefuellt|mohn', 7, 0.5, 'added']])
+    const changed = [
+      {
+        id: 7,
+        pickupDate: SAT,
+        items: [{ productId: 902, qty: 3, variant: 'nuss' }],
+      },
+    ]
+    expect(deltas(before, changed)[0]).toMatchObject({
+      key: 'kranz-gefuellt|nuss',
+      before: 1,
+      after: 3,
+      qty: 2,
+      kind: 'changed',
+    })
+  })
+
+  it('ignoriert andere Tage, Ruhetage, unbekannte Produkte; ohne Aenderung leer', () => {
+    const before = [pre('test-weck', 3, { preorderId: 1 })]
+    expect(deltas(before, before)).toEqual([])
+    expect(
+      deltas([], [pre('test-weck', 3, { preorderId: 1, pickupDate: SUN })])
+    ).toEqual([])
+    expect(deltas([], [pre('gibt-es-nicht', 3, { preorderId: 1 })])).toEqual([])
+    expect(
+      deltas([], [pre('test-weck', 3, { preorderId: 1, pickupDate: MON })], {
+        date: MON,
+      })
+    ).toEqual([])
+    expect(deltas(null, undefined, { date: 'kaputt' })).toEqual([])
+  })
+})
+
+describe('variantsForProduct (fuer die Pruefung von preorder_items.variant, B7)', () => {
+  it('liefert Posten, Faktor und erlaubte Varianten', () => {
+    expect(
+      core.variantsForProduct(config(), 'test-kranz-gefuellt-viertel')
+    ).toEqual({
+      itemId: 'kranz-gefuellt',
+      name: 'Kranz gefüllt',
+      unit: 'Stück',
+      factor: 0.25,
+      variants: ['nuss', 'mohn'],
+    })
+    expect(core.variantsForProduct(config(), 907, PRODUCTS)).toMatchObject({
+      itemId: 'weck',
+      variants: [],
+    })
+    expect(core.variantsForProduct(config(), 'gibt-es-nicht')).toBeNull()
   })
 })
 
