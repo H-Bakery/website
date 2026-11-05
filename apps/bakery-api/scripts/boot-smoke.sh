@@ -100,6 +100,7 @@ check_404() {
   status="$(curl -s -o "$WORK/404.json" -w '%{http_code}' "$BASE/api/gibt-es-nicht")"
   [[ "$status" == "404" ]] || fail "unknown route answered $status"
   grep -q '"message"' "$WORK/404.json" || fail "404 without message: $(cat "$WORK/404.json")"
+  grep -q '"error"' "$WORK/404.json" || fail "404 without error: $(cat "$WORK/404.json")"
 }
 
 echo "[boot-smoke] first start (fresh database)"

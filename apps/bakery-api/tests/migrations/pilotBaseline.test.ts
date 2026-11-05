@@ -228,6 +228,71 @@ describe('pilot baseline on a fresh database', () => {
     ).rejects.toThrow()
   })
 
+  it('never serialises password or PIN hashes, however the user was loaded', async () => {
+    await initializeModels(sequelize)
+    const { User } = await import('../../src/models')
+    const created = await User.create({
+      username: 'test.geheim',
+      displayName: 'Test Geheim',
+      role: 'verkauf',
+      passwordHash: 'scrypt$synthetic-secret',
+      pinHash: 'scrypt$synthetic-pin',
+    })
+    const withSecrets = await User.scope('withSecrets').findByPk(created.id)
+    const explicit = await User.findAll({
+      attributes: ['id', 'username', 'passwordHash', 'pinHash'],
+      where: { id: created.id },
+    })
+    const plain = await User.findByPk(created.id)
+
+    // The hashes are readable on the instance where login needs them ...
+    expect(withSecrets?.passwordHash).toBe('scrypt$synthetic-secret')
+    expect(withSecrets?.pinHash).toBe('scrypt$synthetic-pin')
+    // ... but never in JSON.
+    for (const user of [created, withSecrets, explicit[0], plain]) {
+      const json = JSON.stringify(user)
+      expect(json).toContain('test.geheim')
+      expect(json).not.toMatch(/synthetic-secret|synthetic-pin/)
+      expect(user?.toJSON()).not.toHaveProperty('passwordHash')
+      expect(user?.toJSON()).not.toHaveProperty('pinHash')
+    }
+    // The default scope still keeps them out of ordinary queries.
+    expect(plain?.get('passwordHash')).toBeUndefined()
+  })
+
+  it("stores 'no variant' as '' in preorder_items, backzettel_lines and backzettel_deltas", async () => {
+    for (const table of [
+      'preorder_items',
+      'backzettel_lines',
+      'backzettel_deltas',
+    ]) {
+      const variant = (
+        await sequelize.getQueryInterface().describeTable(table)
+      )['variant']
+      expect({ table, allowNull: variant.allowNull }).toEqual({
+        table,
+        allowNull: false,
+      })
+      expect(String(variant.defaultValue).replace(/'/g, '')).toBe('')
+    }
+    await initializeModels(sequelize)
+    const { PreorderItem, Preorder } = await import('../../src/models')
+    const preorder = await Preorder.create({
+      code: 'TE-2026-11-28-01',
+      channel: 'telefon',
+      customerName: 'Erika Beispiel',
+      pickupDate: '2026-11-28',
+    })
+    const item = await PreorderItem.create({
+      preorderId: preorder.id,
+      productId: 'testbrot',
+      productName: 'Testbrot',
+      unitPrice: 3,
+      quantity: 1,
+    })
+    expect((await PreorderItem.findByPk(item.id))?.variant).toBe('')
+  })
+
   it('allows one Backzettel line per day, item and variant - also without variant', async () => {
     await sequelize.query(
       "INSERT INTO backzettel_days (date, created_at, updated_at) VALUES ('2026-11-24', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
@@ -394,6 +459,147 @@ describe('pilot baseline on a database that ran the legacy migrations', () => {
     const again = await runMigrations(sequelize, quiet)
     expect(again.executed).toEqual([])
     expect(again.pending).toEqual([])
+  })
+})
+
+describe('pilot baseline on a database with a sync()-shaped users table', () => {
+  let sequelize: Sequelize
+  const partnerMigration = LEGACY.filter(
+    (m) => m.name === '20260830120000-create-partner-tables.js'
+  )
+
+  beforeAll(async () => {
+    sequelize = await freshDb()
+    // What the old `sequelize.sync()` left behind: lowercase `users`, no
+    // first/last name, `isActive` instead of `active`.
+    await sequelize.query(
+      `CREATE TABLE users (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         username VARCHAR(255) NOT NULL UNIQUE,
+         password VARCHAR(255) NOT NULL,
+         email VARCHAR(255),
+         role TEXT DEFAULT 'user',
+         isActive TINYINT(1) DEFAULT 1,
+         createdAt DATETIME NOT NULL,
+         updatedAt DATETIME NOT NULL)`
+    )
+    const now = "'2026-09-01 08:00:00'"
+    await sequelize.query(
+      `INSERT INTO users (id, username, password, email, role, isActive, createdAt, updatedAt)
+       VALUES (3, 'sync.admin', 'bcrypt-synthetic', 'a@example.org', 'admin', 1, ${now}, ${now}),
+              (5, 'sync.user', 'bcrypt-synthetic', 'u@example.org', 'user', 1, ${now}, ${now})`
+    )
+    await runMigrations(sequelize, { ...quiet, migrations: partnerMigration })
+    await sequelize.query(
+      `INSERT INTO Partners (id, name, slug, deliveryDays, settlementModel, active, createdAt, updatedAt)
+       VALUES (1, 'Testmarkt', 'testmarkt', '[2]', 'commission', 1, ${now}, ${now})`
+    )
+    await sequelize.query(
+      `INSERT INTO PartnerVisits (id, partnerId, businessDate, visitAt, visitType, sequence, staffId, staffName, createdAt, updatedAt)
+       VALUES (1, 1, '2026-09-01', ${now}, 'initial', 1, 5, 'Sync User', ${now}, ${now})`
+    )
+    await runMigrations(sequelize, quiet)
+  })
+  afterAll(() => sequelize.close())
+
+  it('rebuilds it: display name falls back to the username, roles mapped, disabled', async () => {
+    const users = await sequelize.query(
+      'SELECT id, username, display_name, role, password_hash, active FROM users ORDER BY id',
+      { type: QueryTypes.SELECT }
+    )
+    expect(users).toEqual([
+      {
+        id: 3,
+        username: 'sync.admin',
+        display_name: 'sync.admin',
+        role: 'inhaber',
+        password_hash: baseline.LEGACY_PASSWORD_HASH,
+        active: 0,
+      },
+      {
+        id: 5,
+        username: 'sync.user',
+        display_name: 'sync.user',
+        role: 'verkauf',
+        password_hash: baseline.LEGACY_PASSWORD_HASH,
+        active: 0,
+      },
+    ])
+    expect(await columns(sequelize, 'users')).not.toContain('isActive')
+  })
+
+  it('keeps PartnerVisits.staffId valid and leaves no dangling keys', async () => {
+    const [visit] = await sequelize.query<{ staffId: number }>(
+      'SELECT staffId FROM PartnerVisits WHERE id = 1',
+      { type: QueryTypes.SELECT }
+    )
+    expect(visit.staffId).toBe(5)
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
+    expect(await tableNames(sequelize)).not.toContain('users__b2')
+  })
+})
+
+describe('legacy users rebuild is atomic', () => {
+  async function legacyDb(rows: string): Promise<Sequelize> {
+    const sequelize = await freshDb()
+    // No NOT NULL on username: lets a test plant a row the new table rejects.
+    await sequelize.query(
+      `CREATE TABLE users (id INTEGER PRIMARY KEY, username VARCHAR(255), role TEXT, createdAt DATETIME, updatedAt DATETIME)`
+    )
+    await sequelize.query(
+      `INSERT INTO users (id, username, role) VALUES ${rows}`
+    )
+    return sequelize
+  }
+
+  it('rolls back completely when the copy fails, and keeps foreign keys on', async () => {
+    const sequelize = await legacyDb(
+      "(1, 'ok.user', 'admin'), (2, NULL, 'user')"
+    )
+    await expect(runMigrations(sequelize, quiet)).rejects.toThrow()
+
+    expect(await tableNames(sequelize)).toEqual(['SequelizeMeta', 'users'])
+    expect(await columns(sequelize, 'users')).toContain('createdAt')
+    const rows = await sequelize.query(
+      'SELECT id, username FROM users ORDER BY id',
+      {
+        type: QueryTypes.SELECT,
+      }
+    )
+    expect(rows).toEqual([
+      { id: 1, username: 'ok.user' },
+      { id: 2, username: null },
+    ])
+    const [fk] = await sequelize.query<{ foreign_keys: number }>(
+      'PRAGMA foreign_keys',
+      { type: QueryTypes.SELECT }
+    )
+    expect(fk.foreign_keys).toBe(1)
+
+    // Fixing the data lets the next start succeed.
+    await sequelize.query(
+      "UPDATE users SET username = 'fixed.user' WHERE id = 2"
+    )
+    await runMigrations(sequelize, quiet)
+    expect(await columns(sequelize, 'users')).toContain('password_hash')
+    await sequelize.close()
+  })
+
+  it('cleans up a users__b2 left over by an interrupted earlier run', async () => {
+    const sequelize = await legacyDb("(1, 'ok.user', 'admin')")
+    await sequelize.query('CREATE TABLE users__b2 (id INTEGER PRIMARY KEY)')
+    await runMigrations(sequelize, quiet)
+    const tables = await tableNames(sequelize)
+    expect(tables).toContain('users')
+    expect(tables).not.toContain('users__b2')
+    const users = await sequelize.query(
+      'SELECT id, username, role FROM users',
+      {
+        type: QueryTypes.SELECT,
+      }
+    )
+    expect(users).toEqual([{ id: 1, username: 'ok.user', role: 'inhaber' }])
+    await sequelize.close()
   })
 })
 

@@ -121,15 +121,24 @@ their models use `underscored: true` and camelCase attributes.
   the pilot shape with its ids (so `PartnerVisits.staffId` stays valid): `display_name` from
   first/last name, `admin` → `inhaber`, else `verkauf`, `active = 0`, password hash
   `LEGACY_PASSWORD_HASH` (never a valid scrypt hash). Old bcrypt hashes are not carried over.
-- `backzettel_lines.variant` is `NOT NULL DEFAULT ''` (`''` = no variant) so the unique index
-  `(date, item_id, variant)` holds; an expression index would break Sequelize's `describeTable`.
+  The rebuild is atomic: `PRAGMA foreign_keys = OFF` outside, then create/copy/drop/rename in one
+  `BEGIN IMMEDIATE … COMMIT` on the default connection (not `sequelize.transaction()`, which opens
+  its own connection with foreign keys on, so the DROP would cascade), and a `foreign_key_check`
+  on references to `users` before the commit. A failed copy rolls back to the old table.
+- **"No variant" is `''`, never NULL** - `preorder_items.variant`, `backzettel_lines.variant` and
+  `backzettel_deltas.variant` are all `NOT NULL DEFAULT ''` (`variantColumn()`). That keeps the
+  unique index `(date, item_id, variant)` on `backzettel_lines` sound (NULLs are distinct; an
+  expression index would break Sequelize's `describeTable`) and lets Z2 and the preorder sums
+  (B7) join and group the three tables without `COALESCE`. Write `''`, not null.
 - Weekdays: partners ISO (1 = Monday); `pickup_points.weekday` / `order_deadline.weekday` are JS
   (0 = Sunday), as in `delivery-preorders.core.js`.
 - `initializeModels()` initialises only the pilot models (`PILOT_MODELS`). The legacy models
   (Cash, Chat, Product, Order, Inventory, Recipe, Notification\*, Production\*, ...) are still
   exported so unmounted code compiles, carry `@deprecated`, are **not initialised** and have no
-  table. `User` hides `passwordHash`/`pinHash` in its default scope; login reads them through
-  `User.scope('withSecrets')`.
+  table. `User` keeps `passwordHash`/`pinHash` out twice: the default scope drops them from finder
+  queries (login reads them through `User.scope('withSecrets')`), and `toJSON()` always deletes
+  them - the scope alone does not cover the instance `User.create()` returns or
+  `findAll({ attributes: [...] })`. Never serialise a user by hand around `toJSON()`.
 
 ## Tests
 

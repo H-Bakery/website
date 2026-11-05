@@ -33,8 +33,10 @@ type-check; `npx nx run bakery-api:typecheck` checks the pilot graph **and** `ts
   changes count; extra keys on the real API and `null` are tolerated unless `strictKeys`).
   Example: `parity/partners.parity.test.ts`.
 - **`../scripts/boot-smoke.sh`** - bundle → start in production mode on a fresh SQLite file →
-  `/health` + JSON 404 → restart on the same file (no migration may re-run). CI runs it in the
-  `build (bakery-api)` job. `SMOKE_LOGIN_USER`/`SMOKE_LOGIN_PASSWORD` add a login check.
+  `/health` + JSON 404 (`message` and `error`) → restart on the same file (no migration may
+  re-run). CI runs it in the `build (bakery-api)` job. `SMOKE_LOGIN_USER`/`SMOKE_LOGIN_PASSWORD`
+  add a login check; CI sets them to the in-memory default admin of `libs/api/auth`. **B3**
+  removes that seed and must switch CI to an account the smoke creates with `create-user`.
 
 ### TS specs that do not run (triage of the "31")
 

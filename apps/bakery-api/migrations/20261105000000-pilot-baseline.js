@@ -125,6 +125,16 @@ function userRef(Sequelize) {
   }
 }
 
+/**
+ * "No variant" is '' everywhere (preorder_items, backzettel_lines,
+ * backzettel_deltas), never NULL: a UNIQUE index treats NULLs as distinct, an
+ * expression index (IFNULL) breaks Sequelize's describeTable() on SQLite, and
+ * one convention lets the Z2 sums join and group across the three tables.
+ */
+function variantColumn(Sequelize) {
+  return { type: Sequelize.STRING(64), allowNull: false, defaultValue: '' }
+}
+
 function usersAttributes(Sequelize) {
   return {
     id: idColumn(Sequelize),
@@ -179,23 +189,56 @@ async function migrateLegacyUsers(queryInterface, Sequelize, tableName) {
     type: Sequelize.QueryTypes.SELECT,
   })
   const foreignKeysWereOn = Number(Object.values(fk || {})[0]) === 1
-  // Dropping the old table must not cascade into PartnerVisits & co.; the
-  // pragma is a no-op inside a transaction, Umzug runs without one.
+  const usersViolations = async () =>
+    (
+      await sequelize.query('PRAGMA foreign_key_check', {
+        type: Sequelize.QueryTypes.SELECT,
+      })
+    ).filter((row) => String(row.parent).toLowerCase() === 'users').length
+  const violationsBefore = await usersViolations()
+
+  // SQLite's table rebuild (https://sqlite.org/lang_altertable.html#otheralter):
+  // foreign keys off *outside* the transaction (the pragma is a no-op inside
+  // one) so the DROP does not cascade into PartnerVisits & co., then
+  // create/copy/drop/rename atomically, then foreign_key_check before commit.
+  //
+  // Plain BEGIN/COMMIT on the default connection, not sequelize.transaction():
+  // Sequelize opens a separate connection per transaction (with
+  // foreign_keys = ON), so the pragma above would not apply there. Umzug runs
+  // migrations without a transaction, at startup, before anything else uses
+  // the connection.
   await sequelize.query('PRAGMA foreign_keys = OFF')
   try {
-    await queryInterface.createTable('users__b2', usersAttributes(Sequelize))
-    await sequelize.query(
-      `INSERT INTO "users__b2" (id, username, display_name, role, password_hash, pin_hash, active, created_at, updated_at)
-       SELECT ${q('id')}, ${q(
-        'username'
-      )}, ${displayName}, ${role}, :hash, NULL, 0, ${createdAt}, ${updatedAt}
-       FROM ${q(tableName)}`,
-      { replacements: { hash: LEGACY_PASSWORD_HASH } }
-    )
-    await sequelize.query(`DROP TABLE ${q(tableName)}`)
-    // References written as "Users" (PartnerVisits.staffId) resolve to the
-    // new table: SQLite compares table names case-insensitively.
-    await sequelize.query('ALTER TABLE "users__b2" RENAME TO "users"')
+    await sequelize.query('BEGIN IMMEDIATE')
+    try {
+      // Leftover of a run that crashed before this was atomic.
+      await sequelize.query('DROP TABLE IF EXISTS "users__b2"')
+      await queryInterface.createTable('users__b2', usersAttributes(Sequelize))
+      await sequelize.query(
+        `INSERT INTO "users__b2" (id, username, display_name, role, password_hash, pin_hash, active, created_at, updated_at)
+         SELECT ${q('id')}, ${q(
+          'username'
+        )}, ${displayName}, ${role}, :hash, NULL, 0, ${createdAt}, ${updatedAt}
+         FROM ${q(tableName)}`,
+        { replacements: { hash: LEGACY_PASSWORD_HASH } }
+      )
+      await sequelize.query(`DROP TABLE ${q(tableName)}`)
+      // References written as "Users" (PartnerVisits.staffId) resolve to the
+      // new table: SQLite compares table names case-insensitively.
+      await sequelize.query('ALTER TABLE "users__b2" RENAME TO "users"')
+      const violationsAfter = await usersViolations()
+      if (violationsAfter > violationsBefore) {
+        throw new Error(
+          `Rebuilding "${tableName}" would leave ${
+            violationsAfter - violationsBefore
+          } dangling reference(s) to users; rolled back.`
+        )
+      }
+      await sequelize.query('COMMIT')
+    } catch (error) {
+      await sequelize.query('ROLLBACK').catch(() => undefined)
+      throw error
+    }
   } finally {
     if (foreignKeysWereOn) await sequelize.query('PRAGMA foreign_keys = ON')
   }
@@ -488,7 +531,10 @@ module.exports = {
         unit_price: { type: Sequelize.DECIMAL(10, 2), allowNull: false },
         quantity: { type: Sequelize.INTEGER, allowNull: false },
         // Filling etc., validated against the Backzettel item's `variants`.
-        variant: { type: Sequelize.STRING(64), allowNull: true },
+        // '' = no variant, as in backzettel_lines/backzettel_deltas, so sums
+        // per product and variant (Z2, B7 /api/preorders/sums) join and group
+        // without COALESCE.
+        variant: variantColumn(Sequelize),
         ...timestamps(Sequelize),
       },
       [{ fields: ['preorder_id'] }, { fields: ['product_id'] }]
@@ -526,14 +572,8 @@ module.exports = {
         },
         // Backzettel item id from hq/config/backzettel.yaml.
         item_id: { type: Sequelize.STRING(128), allowNull: false },
-        // '' = item without variants. NOT NULL on purpose: a UNIQUE index
-        // treats NULLs as distinct, and an expression index (IFNULL) breaks
-        // Sequelize's describeTable() on SQLite.
-        variant: {
-          type: Sequelize.STRING(64),
-          allowNull: false,
-          defaultValue: '',
-        },
+        // '' = item without variants (see variantColumn).
+        variant: variantColumn(Sequelize),
         base: {
           type: Sequelize.DECIMAL(10, 2),
           allowNull: false,
@@ -590,7 +630,7 @@ module.exports = {
           onDelete: 'CASCADE',
         },
         item_id: { type: Sequelize.STRING(128), allowNull: false },
-        variant: { type: Sequelize.STRING(64), allowNull: true },
+        variant: variantColumn(Sequelize),
         qty: { type: Sequelize.DECIMAL(10, 2), allowNull: false },
         preorder_id: {
           type: Sequelize.INTEGER,

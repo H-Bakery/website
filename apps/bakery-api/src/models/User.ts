@@ -1,10 +1,15 @@
 /**
  * A personal staff account (D5). Table `users` from the pilot baseline.
  *
- * Hashes only - scrypt via `node:crypto` (D12); the format is B3's. The
- * default scope leaves both hashes out, so a serialised user never carries
- * them. A user
- * without `pin_hash` cannot switch in at a station by PIN. Users are
+ * Hashes only - scrypt via `node:crypto` (D12); the format is B3's. Two
+ * guards keep them in the database:
+ * - the default scope leaves both hashes out of finder queries; login reads
+ *   them through `User.scope('withSecrets')`;
+ * - `toJSON()` always drops them, because the scope does not cover the
+ *   instance `User.create()` returns, nor `findAll({ attributes: [...] })`
+ *   with explicit attributes, nor `withSecrets` rows. So `res.json(user)` is
+ *   safe however the instance was obtained.
+ * A user without `pin_hash` cannot switch in at a station by PIN. Users are
  * deactivated, not deleted: preorders, visits and the audit log point at
  * them.
  */
@@ -34,6 +39,16 @@ export class User extends Model<
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 
+  /** Attributes that never leave the server, whatever the scope. */
+  static readonly SECRET_ATTRIBUTES = ['passwordHash', 'pinHash'] as const
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  toJSON<T = any>(): T {
+    const values: Record<string, unknown> = { ...this.get() }
+    for (const key of User.SECRET_ATTRIBUTES) delete values[key]
+    return values as T
+  }
+
   static initModel(sequelize: Sequelize): typeof User {
     User.init(
       {
@@ -62,7 +77,7 @@ export class User extends Model<
         underscored: true,
         timestamps: true,
         defaultScope: {
-          attributes: { exclude: ['passwordHash', 'pinHash'] },
+          attributes: { exclude: [...User.SECRET_ATTRIBUTES] },
         },
         // `User.scope('withSecrets')` replaces the default scope: login only.
         scopes: { withSecrets: {} },

@@ -2,7 +2,8 @@
  * One line of a preorder. `productId` is the hq slug; name, unit and price are
  * snapshots taken at entry, so a later hq price change does not alter old
  * orders. `variant` (filling etc.) is validated against the Backzettel item's
- * `variants` (§5.3).
+ * `variants` (§5.3); '' means "no variant", never null (same convention as
+ * `backzettel_lines` and `backzettel_deltas`).
  */
 import {
   CreationOptional,
@@ -26,7 +27,7 @@ export class PreorderItem extends Model<
   /** SQLite returns DECIMAL as a number; other dialects as a string. */
   declare unitPrice: number
   declare quantity: number
-  declare variant: CreationOptional<string | null>
+  declare variant: CreationOptional<string>
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 
@@ -52,7 +53,11 @@ export class PreorderItem extends Model<
           allowNull: false,
           validate: { min: 1, isInt: true },
         },
-        variant: { type: DataTypes.STRING(64), allowNull: true },
+        variant: {
+          type: DataTypes.STRING(64),
+          allowNull: false,
+          defaultValue: '',
+        },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
       },
