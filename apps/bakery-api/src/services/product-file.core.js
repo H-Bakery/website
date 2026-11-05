@@ -20,6 +20,30 @@ const FRONTMATTER_ORDER = [
 ]
 const ALWAYS_QUOTED = new Set(['image', 'short_description'])
 
+/**
+ * Texte, die YAML (gray-matter: js-yaml 3, YAML 1.1) ungequotet als etwas
+ * anderes liest oder gar nicht parsen kann. Lieber einmal zu oft quoten:
+ * ein ungequoteter Name, der zur Zahl wird oder die Datei unlesbar macht,
+ * nimmt das Produkt aus allen Listen (B5-Review).
+ */
+const NEEDS_QUOTES = [
+  // Indikatorzeichen am Anfang - auch Anführungszeichen, `?` und `:`.
+  /^[\s>|*&!%@`{}[\],#?:'"-]/,
+  // `: ` / ` #` mitten im Text, `:` am Ende (Schlüssel-Syntax).
+  /:\s|\s#|:$/,
+  // null / bool, alle Schreibweisen von YAML 1.1.
+  /^(true|false|null|yes|no|on|off|y|n|~)$/i,
+  // Zahlen: dezimal, mit `_`, Exponent, hex/oktal/binär, Sexagesimal.
+  /^[-+]?[\d.][\d_.:a-fA-FxXoObB+-]*$/,
+  // .inf / .nan
+  /^[-+]?\.(inf|nan)$/i,
+  // Datum/Zeitstempel (wird zu Date).
+  /^\d{4}-\d\d?-\d\d?/,
+  // Steuerzeichen (Zeilenumbruch, Tab, ...) nur in doppelten Anführungszeichen.
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f]/,
+]
+
 function yamlScalar(key, value) {
   if (typeof value === 'boolean' || typeof value === 'number')
     return String(value)
@@ -27,11 +51,8 @@ function yamlScalar(key, value) {
   const needsQuotes =
     ALWAYS_QUOTED.has(key) ||
     str === '' ||
-    /^[\s>|*&!%@`{}[\],#-]/.test(str) ||
-    /:\s|\s#/.test(str) ||
-    /^(true|false|null|yes|no|on|off|~)$/i.test(str) ||
-    /^[\d.+-]+$/.test(str) ||
-    str !== str.trim()
+    str !== str.trim() ||
+    NEEDS_QUOTES.some((pattern) => pattern.test(str))
   return needsQuotes ? JSON.stringify(str) : str
 }
 

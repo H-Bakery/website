@@ -9,12 +9,13 @@ import * as http from 'http'
 import { Sequelize } from 'sequelize'
 
 import { createApp } from './app'
-import { ServerConfig, loadConfig } from './config/env'
+import { ServerConfig, loadConfig, loadHqConfig } from './config/env'
 import { openDatabase } from './db/database'
 import { runMigrations } from './db/migrate'
 import { initializeModels } from './models'
 import { runPartnerSeeder } from './seeders/partner.seeder'
 import { bootstrapAdmin } from './auth/users.service'
+import { defaultProductsDir } from './services/hq-catalogue'
 
 /** How long shutdown waits for running requests before cutting them. */
 export const SHUTDOWN_DEADLINE_MS = 10_000
@@ -30,6 +31,8 @@ export async function startServer(
   config: ServerConfig = loadConfig()
 ): Promise<RunningServer> {
   console.log(`[INFO] Starting bakery-api (${config.nodeEnv})`)
+  // Before the database: a misconfigured hq must not migrate anything.
+  const hq = loadHqConfig()
   console.log(`[INFO] Database: ${config.dbPath}`)
 
   const { sequelize, info } = await openDatabase({
@@ -59,7 +62,17 @@ export async function startServer(
       '[WARN] HQ_REPORTS_DIR / HQ_FINANCE_DIR not set - reports, finance and Tagesziel read <website>/../hq/data.'
     )
   }
+  const hqProductsDir = hq.productsDir ?? defaultProductsDir()
+  const hqWriteDir = hq.writeDir
+  console.log(`[INFO] hq products: ${hqProductsDir}`)
+  console.log(
+    hqWriteDir
+      ? `[INFO] hq writes: commits in ${hqWriteDir}/products`
+      : '[INFO] hq writes: HQ_WRITE_DIR not set, writing to the read dir (development)'
+  )
+
   const app = createApp({
+    hqProducts: { productsDir: hqProductsDir, writeDir: hqWriteDir },
     sequelize,
     corsOrigins: config.corsOrigins,
     trustProxy: config.trustProxy,

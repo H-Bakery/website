@@ -196,6 +196,92 @@ export function resolveOptionalDir(
   return value ? path.resolve(cwd, value) : undefined
 }
 
+/** Wo die API hq liest und schreibt (B5, D6/D9). */
+export interface HqConfig {
+  /**
+   * Lese-Klon `products/`: `HQ_PRODUCTS_DIR`, sonst `${HQ_DIR}/products`.
+   * `null` außerhalb von Produktion = `<website>/../hq/products` (siehe
+   * `defaultProductsDir()` in `hq-catalogue.ts`).
+   */
+  productsDir: string | null
+  /** Wurzel des Schreib-Worktrees (`HQ_WRITE_DIR`), `null` = Entwicklung. */
+  writeDir: string | null
+}
+
+function isInside(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child)
+  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+}
+
+/**
+ * hq-Verzeichnisse. In Produktion **müssen** Lese-Klon und Schreib-Worktree
+ * gesetzt und absolut sein: ohne `HQ_WRITE_DIR` gingen Produktänderungen in den
+ * Lese-Klon, den `hq-sync.sh` alle 10 min per `reset --hard` zurücksetzt - der
+ * Benutzer sähe „gespeichert" und die Änderung wäre weg (D6). In jeder
+ * Umgebung dürfen sich die beiden nicht überlappen.
+ */
+export function loadHqConfig(
+  env: NodeJS.ProcessEnv = process.env,
+  cwd: string = process.cwd()
+): HqConfig {
+  const isProduction = (env['NODE_ENV'] || 'development') === 'production'
+  const value = (name: string) => {
+    const raw = env[name]?.trim()
+    return raw ? raw : undefined
+  }
+  const productsRaw =
+    value('HQ_PRODUCTS_DIR') ??
+    (value('HQ_DIR')
+      ? path.join(value('HQ_DIR') as string, 'products')
+      : undefined)
+  const writeRaw = value('HQ_WRITE_DIR')
+
+  if (isProduction) {
+    if (!productsRaw) {
+      throw new ConfigError(
+        'HQ_PRODUCTS_DIR (or HQ_DIR) is required in production (absolute path of the read clone).'
+      )
+    }
+    if (!path.isAbsolute(productsRaw)) {
+      throw new ConfigError(
+        `HQ_PRODUCTS_DIR must be absolute in production, got "${productsRaw}".`
+      )
+    }
+    if (!writeRaw) {
+      throw new ConfigError(
+        'HQ_WRITE_DIR is required in production - product edits must never go into the read clone.'
+      )
+    }
+    if (!path.isAbsolute(writeRaw)) {
+      throw new ConfigError(
+        `HQ_WRITE_DIR must be absolute in production, got "${writeRaw}".`
+      )
+    }
+  }
+
+  const productsDir = productsRaw ? path.resolve(cwd, productsRaw) : null
+  const writeDir = writeRaw ? path.resolve(cwd, writeRaw) : null
+  if (writeDir) {
+    // Die Wurzel des Lese-Klons: `HQ_DIR`; in Produktion ohne `HQ_DIR`
+    // vorsichtshalber das Verzeichnis über `products/`.
+    const hqDir = value('HQ_DIR')
+    const readRoots = hqDir
+      ? [path.resolve(cwd, hqDir)]
+      : isProduction && productsDir
+      ? [path.dirname(productsDir)]
+      : []
+    if (productsDir) readRoots.push(productsDir)
+    for (const readRoot of readRoots) {
+      if (isInside(writeDir, readRoot) || isInside(readRoot, writeDir)) {
+        throw new ConfigError(
+          `HQ_WRITE_DIR ("${writeDir}") must be a separate clone, not inside or around the read clone ("${readRoot}").`
+        )
+      }
+    }
+  }
+  return { productsDir, writeDir }
+}
+
 export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
   cwd: string = process.cwd()

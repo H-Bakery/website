@@ -5,9 +5,9 @@
  * calls `createApp()`; integration tests (B1) do the same with `:memory:`
  * and drive the result through supertest.
  *
- * Mounted (roadmap §4): health, auth, users, partners, and the hq read-only
- * data (B4: reports, analytics, finance, targets). The other pilot domains
- * get their mount points below as their tasks land.
+ * Mounted (roadmap §4): health, auth, users, partners, the hq read-only
+ * data (B4: reports, analytics, finance, targets) and products (B5). The
+ * other pilot domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
  * endpoints and health. That is structural, not an allow-list: the public
@@ -32,6 +32,8 @@ import {
 } from './routes'
 import { createHqDataRouter, HqDataOptions } from './routes/hq-data.routes'
 import { AuthRouterOptions } from './routes/auth.routes'
+import { createHqProductsRouters } from './routes/hq-products.routes'
+import { HqProductsOptions } from './services/hq-products.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
 export interface CreateAppOptions {
@@ -55,6 +57,11 @@ export interface CreateAppOptions {
    * `HQ_REPORTS_DIR` / `HQ_FINANCE_DIR`), `today` and `log` for tests.
    */
   hq?: HqDataOptions
+  /**
+   * hq products (B5): read clone and write worktree. Default
+   * `HQ_PRODUCTS_DIR` / `HQ_WRITE_DIR` (unset = write to the read dir, dev).
+   */
+  hqProducts?: HqProductsOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -99,7 +106,10 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // (inhaber, personal session) - the mock modules behind the auth adapter.
   // Absolute paths, so mounted at the root.
   app.use(createHqDataRouter(options.hq))
-  // B5: /api/products, /api/hq-products        (hq markdown, worktree writes)
+  // B5: hq markdown; reads any session, writes inhaber (HQ_WRITE_DIR commit)
+  const hqProducts = createHqProductsRouters(options.hqProducts)
+  app.use('/api/products', hqProducts.products)
+  app.use('/api/hq-products', hqProducts.hqProducts)
   // B7: /api/preorders (+ /api/deliveries/preorders alias, shop POST /api/orders)
   // Z*: /api/backzettel
 

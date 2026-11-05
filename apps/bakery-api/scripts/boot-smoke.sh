@@ -79,9 +79,12 @@ start_server() {
   : >"$LOG"
   (
     cd "$WORK"
+    # Production requires both hq directories (B5); they need not exist for
+    # the smoke run - reads answer an empty catalogue, writes 503.
     NODE_ENV=production PORT="$PORT" DB_PATH="$WORK/smoke.db" \
       JWT_SECRET="$JWT_SECRET" \
       HQ_REPORTS_DIR="$WORK/hq/reports" HQ_FINANCE_DIR="$WORK/hq/finance" \
+      HQ_PRODUCTS_DIR="$WORK/hq/products" HQ_WRITE_DIR="$WORK/hq-write" \
       exec node --enable-source-maps "$BUNDLE"
   ) >"$LOG" 2>&1 &
   PID=$!

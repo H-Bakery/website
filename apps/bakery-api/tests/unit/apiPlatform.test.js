@@ -89,6 +89,80 @@ describe('ensureJwtSecret', () => {
   })
 })
 
+describe('loadHqConfig (B5)', () => {
+  test('development: everything optional, HQ_DIR gives products/', () => {
+    expect(api.loadHqConfig({}, '/srv/x')).toEqual({
+      productsDir: null,
+      writeDir: null,
+    })
+    expect(api.loadHqConfig({ HQ_DIR: '/srv/hq' }, '/srv/x')).toEqual({
+      productsDir: '/srv/hq/products',
+      writeDir: null,
+    })
+    expect(
+      api.loadHqConfig(
+        { HQ_DIR: '/srv/hq', HQ_PRODUCTS_DIR: 'p', HQ_WRITE_DIR: 'w' },
+        '/srv/x'
+      )
+    ).toEqual({ productsDir: '/srv/x/p', writeDir: '/srv/x/w' })
+  })
+
+  test('production: read clone and write worktree required and absolute', () => {
+    const prod = { NODE_ENV: 'production' }
+    expect(() => api.loadHqConfig({ ...prod, HQ_WRITE_DIR: '/var/w' })).toThrow(
+      /HQ_PRODUCTS_DIR/
+    )
+    expect(() =>
+      api.loadHqConfig({ ...prod, HQ_PRODUCTS_DIR: '/var/hq/products' })
+    ).toThrow(/HQ_WRITE_DIR is required/)
+    expect(() =>
+      api.loadHqConfig({
+        ...prod,
+        HQ_PRODUCTS_DIR: 'hq/products',
+        HQ_WRITE_DIR: '/var/w',
+      })
+    ).toThrow(/absolute/)
+    expect(() =>
+      api.loadHqConfig({
+        ...prod,
+        HQ_PRODUCTS_DIR: '/var/hq/products',
+        HQ_WRITE_DIR: 'w',
+      })
+    ).toThrow(/absolute/)
+    expect(
+      api.loadHqConfig({
+        ...prod,
+        HQ_DIR: '/var/hq',
+        HQ_WRITE_DIR: '/var/hq-write',
+      })
+    ).toEqual({ productsDir: '/var/hq/products', writeDir: '/var/hq-write' })
+  })
+
+  test('the write worktree may never be (inside) the read clone', () => {
+    for (const env of [
+      { HQ_PRODUCTS_DIR: '/var/hq/products', HQ_WRITE_DIR: '/var/hq' },
+      {
+        HQ_PRODUCTS_DIR: '/var/hq/products',
+        HQ_WRITE_DIR: '/var/hq/products/w',
+      },
+      { HQ_DIR: '/var/hq', HQ_WRITE_DIR: '/var/hq/w' },
+      { HQ_DIR: '/var/hq', HQ_WRITE_DIR: '/var' },
+      {
+        NODE_ENV: 'production',
+        HQ_PRODUCTS_DIR: '/var/hq/products',
+        HQ_WRITE_DIR: '/var/hq/w',
+      },
+      {
+        NODE_ENV: 'production',
+        HQ_DIR: '/var/hq',
+        HQ_WRITE_DIR: '/var/hq',
+      },
+    ]) {
+      expect(() => api.loadHqConfig(env, '/srv/x')).toThrow(/separate clone/)
+    }
+  })
+})
+
 describe('parsePort / loadConfig', () => {
   test('port', () => {
     expect(api.parsePort(undefined)).toBe(5000)
