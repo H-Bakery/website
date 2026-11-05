@@ -43,7 +43,15 @@ import {
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { MANAGEMENT_NAVIGATION, isNavItemActive } from './navigation'
+import {
+  MANAGEMENT_NAVIGATION,
+  PILOT_UPCOMING_NAVIGATION,
+  getNavigation,
+  type NavItem,
+  isNavItemActive,
+} from './navigation'
+import { isPilotMode, isPilotPathAllowed } from '../../lib/pilotMode'
+import PilotUnavailable from '../../components/pilot/PilotUnavailable'
 
 const drawerWidth = 280
 
@@ -99,10 +107,10 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
 /** Human readable breadcrumb segments for the current path. */
 function getBreadcrumb(pathname: string): string[] {
   const segments = pathname.split('/').filter(Boolean)
-  const flat = MANAGEMENT_NAVIGATION.flatMap((item) => [
-    item,
-    ...(item.submenu ?? []),
-  ])
+  const flat: NavItem[] = [
+    ...MANAGEMENT_NAVIGATION.flatMap((item) => [item, ...(item.submenu ?? [])]),
+    ...PILOT_UPCOMING_NAVIGATION,
+  ]
   return segments
     .map((segment, index) => {
       const href = '/' + segments.slice(0, index + 1).join('/')
@@ -126,13 +134,24 @@ function getBreadcrumb(pathname: string): string[] {
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
   const pathname = usePathname()
+  // Pilotbetrieb (F2): gefilterte Navigation und Sperre der Demo-Seiten - die
+  // erlaubten Routen stehen genau einmal in src/lib/pilotMode.ts.
+  // Die Sperre versteckt nur Demo-Seiten im Browser; sie ist KEINE
+  // Zugriffskontrolle (Server-Komponente und RSC-Payload einer gesperrten Seite
+  // entstehen trotzdem, die API bleibt direkt erreichbar). Durchgesetzt wird
+  // der Zugriff von der middleware.ts aus F1 und den Rollen-Guards der API.
+  const pilot = isPilotMode()
+  const navigation = React.useMemo(() => getNavigation(pilot), [pilot])
+  const blocked = !isPilotPathAllowed(pathname, pilot)
   const [openSubmenus, setOpenSubmenus] = React.useState<
     Record<string, boolean>
   >(() =>
     Object.fromEntries(
-      MANAGEMENT_NAVIGATION.filter((item) =>
-        item.submenu?.some((sub) => isNavItemActive(pathname, sub.href))
-      ).map((item) => [item.label, true])
+      getNavigation(pilot)
+        .filter((item) =>
+          item.submenu?.some((sub) => isNavItemActive(pathname, sub.href))
+        )
+        .map((item) => [item.label, true])
     )
   )
 
@@ -161,7 +180,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
       </Toolbar>
       <Divider />
       <List>
-        {MANAGEMENT_NAVIGATION.map((item) => {
+        {navigation.map((item) => {
           const icon = item.icon ? iconMap[item.icon] : <DashboardIcon />
 
           // Handle items with submenus
@@ -327,10 +346,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Management System
           </Typography>
-          {process.env.NODE_ENV !== 'production' && (
+          {pilot ? (
             <Typography variant="body2" color="inherit">
-              Entwicklung
+              Pilotbetrieb
             </Typography>
+          ) : (
+            process.env.NODE_ENV !== 'production' && (
+              <Typography variant="body2" color="inherit">
+                Entwicklung
+              </Typography>
+            )
           )}
         </Toolbar>
       </AppBar>
@@ -400,7 +425,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </Typography>
         </Box>
 
-        {children}
+        {blocked ? <PilotUnavailable /> : children}
       </Box>
     </Box>
   )

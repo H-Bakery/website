@@ -4,6 +4,8 @@
  * (Next.js restricts the exports of layout/page files).
  */
 
+import { isPilotMode, isPilotPathAllowed } from '../../lib/pilotMode'
+
 /** Public URL of the customer shop (linked from the sidebar). */
 const SHOP_URL = process.env.NEXT_PUBLIC_SHOP_URL || 'http://localhost:4200'
 
@@ -110,12 +112,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Lieferverwaltung',
   },
   {
-    label: 'Vorbestellungen',
+    // Nicht „Vorbestellungen": so heißt der kommende allgemeine Bildschirm
+    // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
+    label: 'Sammelstelle Mörsbach',
     href: '/admin/delivery/preorders',
     // `iconMap` in layout.tsx kennt keinen eigenen Schlüssel dafür - ein
     // unbekannter ließe die Zeile ohne Symbol stehen.
     icon: 'orders',
-    description: 'Sammelstelle Mörsbach',
+    description: 'Vorbestellungen Kindergarten',
   },
   {
     label: 'Verkaufspartner',
@@ -197,3 +201,79 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     external: true,
   },
 ]
+
+/**
+ * Kommende Pilot-Bildschirme (roadmap §5.5, §6 M1/M2). Ein Eintrag erscheint in
+ * der Navigation erst, wenn `ready: true` ist - in beiden Modi, direkt unter dem
+ * Dashboard. Wer die Seite baut, setzt `ready` auf `true`;
+ * `pilotMode.spec.ts` prüft, dass `ready` genau dann gesetzt ist, wenn die
+ * zugehörige `page.tsx` existiert. Die Routen selbst stehen bereits in
+ * `PILOT_ALLOWED_ROUTES` (src/lib/pilotMode.ts).
+ *
+ * Geprüft wird die Index-Seite genau unter `href`: M2 plant für den Backzettel
+ * nur `/admin/backzettel/grundmengen` und `/admin/backzettel/[datum]` - es
+ * braucht zusätzlich `admin/backzettel/page.tsx` (z. B. Weiterleitung auf den
+ * nächsten Produktionstag), sonst führte der Menüeintrag ins Leere.
+ * M1 entscheidet beim Freischalten von `/admin/preorders`, ob „Sammelstelle
+ * Mörsbach" (/admin/delivery/preorders) darin aufgeht.
+ */
+export interface UpcomingNavItem extends NavItem {
+  href: string
+  /** Seite gebaut? Erst dann taucht der Eintrag in der Navigation auf. */
+  ready: boolean
+}
+
+export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
+  {
+    label: 'Vorbestellungen',
+    href: '/admin/preorders',
+    icon: 'orders',
+    description: 'Telefon, WhatsApp & Shop (M1)',
+    ready: false,
+  },
+  {
+    label: 'Backzettel',
+    href: '/admin/backzettel',
+    icon: 'baking',
+    description: 'Tagesplan der Backstube (M2)',
+    ready: false,
+  },
+  {
+    label: 'Backstube',
+    href: '/backstube',
+    icon: 'production',
+    description: 'Tablet-Ansicht (M2)',
+    ready: false,
+  },
+]
+
+/** Entfernt alles, was im Pilotbetrieb gesperrt ist (auch externe Links). */
+export function filterNavigationForPilot(items: NavItem[]): NavItem[] {
+  return items.flatMap((item): NavItem[] => {
+    if (item.submenu) {
+      const submenu = filterNavigationForPilot(item.submenu)
+      return submenu.length > 0 ? [{ ...item, submenu }] : []
+    }
+    // Der Shop läuft nicht auf der Bäckerei-Box.
+    if (item.external || !item.href) return []
+    return isPilotPathAllowed(item.href, true) ? [item] : []
+  })
+}
+
+/**
+ * Die Navigation für den aktuellen Modus: fertige Pilot-Bildschirme direkt
+ * unter dem Dashboard, im Pilotbetrieb ohne die gesperrten Routen.
+ */
+export function getNavigation(pilot: boolean = isPilotMode()): NavItem[] {
+  const ready: NavItem[] = PILOT_UPCOMING_NAVIGATION.filter(
+    (item) => item.ready
+  ).map(({ label, href, icon, description }) => ({
+    label,
+    href,
+    icon,
+    description,
+  }))
+  const [dashboard, ...rest] = MANAGEMENT_NAVIGATION
+  const items = [dashboard, ...ready, ...rest]
+  return pilot ? filterNavigationForPilot(items) : items
+}

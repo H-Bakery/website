@@ -358,6 +358,48 @@ und Routen, synthetische Fixtures in Temp-Verzeichnissen) und in der Management-
 `admin/finance/tagesziel/TagesZielClient.spec.tsx` (Fixtures: `src/lib/targetsFixtures.ts`, erfunden).
 Keine echten Beträge in Code, Tests, Fixtures oder Commit-Messages - das Repo ist öffentlich.
 
+## Pilotbetrieb (`NEXT_PUBLIC_PILOT_MODE`, F2)
+
+Mit `NEXT_PUBLIC_PILOT_MODE=1` zeigt die Management-App nur die Seiten mit echten Daten (Spalte
+„Keep" in `docs/roadmap.md` §3) plus Anmeldung und die kommenden Pilot-Bildschirme; alles andere
+fehlt in der Navigation und zeigt beim direkten Aufruf „Im Pilotbetrieb nicht verfügbar". Ohne die
+Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
+
+- **Der Schalter wirkt beim Build, nicht beim Start.** `NEXT_PUBLIC_*` setzt Next.js bei
+  `next build` in das Bundle ein. Auf der Box (O1/O3) muss die Variable also beim `next build`
+  gesetzt sein; erst bei `next start` gesetzt, bleibt sie wirkungslos. Dokumentiert in
+  `apps/bakery-management/.env.example`.
+- **Genau eine Liste erlaubter Routen:** `PILOT_ALLOWED_ROUTES` in
+  `apps/bakery-management/src/lib/pilotMode.ts`. `/admin` gilt nur exakt, jede andere Route schließt
+  ihre Unterseiten ein (`/admin/finance` deckt Tagesziel; `/admin/delivery` ist gesperrt,
+  `/admin/delivery/preorders` offen). Navigation (`getNavigation(pilot)` in `admin/navigation.ts`),
+  Seiten-Sperre und Dashboard-Schnellzugriffe fragen alle `isPilotPathAllowed()`. Wer eine Seite
+  freigibt, ändert nur diese Liste. Die rollengefilterte Navigation aus F1 baut auf
+  `getNavigation()` auf, nicht auf `MANAGEMENT_NAVIGATION`.
+- **Die Sperre sitzt in `admin/layout.tsx` und ist keine Zugriffskontrolle.** Sie ersetzt im Browser
+  `children` durch `PilotUnavailable`; Server-Komponente und RSC-Payload einer gesperrten Seite
+  entstehen trotzdem, die API bleibt direkt erreichbar. Sie liegt nicht in `middleware.ts`, weil
+  Next.js nur eine Middleware erlaubt und die F1 gehört - F1 kann dort `isPilotPathAllowed()`
+  aufrufen und umleiten. Durchgesetzt wird Zugriff von F1 und den Rollen-Guards der API.
+- **Kommende Bildschirme schalten sich über `ready` frei.** `PILOT_UPCOMING_NAVIGATION` in
+  `admin/navigation.ts` führt `/admin/preorders` (M1), `/admin/backzettel` und `/backstube` (M2) mit
+  `ready: false`; ein Eintrag erscheint (direkt unter dem Dashboard) erst mit `ready: true`.
+  `src/lib/pilotMode.spec.ts` fällt um, wenn `ready` und die Existenz der `page.tsx` **genau unter
+  `href`** auseinanderlaufen, und auch, wenn es Unterseiten ohne diese Index-Seite gibt - M2 braucht
+  also neben `backzettel/grundmengen` und `backzettel/[datum]` eine `admin/backzettel/page.tsx`
+  (z. B. Weiterleitung auf den nächsten Produktionstag). `/backstube` liegt außerhalb `/admin` und
+  bekommt weder Seitenleiste noch Sperre. Der Mörsbach-Eintrag heißt deshalb „Sammelstelle
+  Mörsbach", nicht „Vorbestellungen"; ob er in `/admin/preorders` aufgeht, entscheidet M1.
+- **Keine Mock-Abfragen im Pilotbetrieb.** Das Dashboard blendet „Offene Bestellungen",
+  „Produktionsübersicht" und „Letzte Aktivitäten" aus und fragt `/api/orders` und `/api/production`
+  nicht an. Der `NotificationProvider` bleibt (das Dashboard ruft `useNotifications()`), lädt aber
+  dank `loadOnMount={false}` nichts, pollt nicht und fragt nicht nach Browser-Mitteilungen - die
+  echte API hat kein `/api/notifications`.
+
+Tests: `src/lib/pilotMode.spec.ts`, `src/app/admin/layout.pilot.spec.tsx`,
+`src/app/admin/DashboardClient.spec.tsx` (Management-App) und
+`libs/shared/contexts/src/lib/notification/notification.loadOnMount.spec.tsx`.
+
 ## E2E-Suiten (Playwright)
 
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).

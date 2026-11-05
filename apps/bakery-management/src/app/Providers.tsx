@@ -18,6 +18,7 @@ import {
   persistSession,
   restoreSession,
 } from '../lib/authSession'
+import { isPilotMode } from '../lib/pilotMode'
 
 /**
  * Bridges the shared theme context (mode/persistence) to an actual MUI theme,
@@ -63,6 +64,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   // State-Initialisierer und nicht in einem Effekt (Effekte der Eltern laufen
   // nach denen der Kinder).
   React.useState(() => restoreSession())
+  const pilot = isPilotMode()
 
   return (
     // Dark is the default for the admin UI; a stored preference (or the
@@ -73,7 +75,16 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             macht der Provider beim Start keinen Request. */}
         <AuthProvider checkAuthOnMount>
           <AuthSessionSync>
-            <NotificationProvider enableRealTime={false}>
+            {/* Pilotbetrieb: die echte API hat kein /api/notifications - kein
+                Laden beim Start, kein 30-s-Polling und keine Browser-Rückfrage
+                nach Mitteilungen. Der Provider bleibt, weil das Dashboard
+                useNotifications() aufruft. */}
+            <NotificationProvider
+              enableRealTime={false}
+              pollingInterval={pilot ? 0 : undefined}
+              requestPermissionOnMount={!pilot}
+              loadOnMount={!pilot}
+            >
               {children}
             </NotificationProvider>
           </AuthSessionSync>

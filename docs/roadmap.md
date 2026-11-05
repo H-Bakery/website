@@ -536,7 +536,7 @@ Exit criteria:
 - [ ] **F1** Login against the real contract; PIN station screen (tap name → PIN, auto-logout at
       closing / 12 h idle); `middleware.ts` route guard; role-filtered navigation and start page;
       user management screen (M, → B3).
-- [ ] **F2** `PILOT_MODE`: hide the demo routes and navigation listed in §3 (S).
+- [x] **F2** `PILOT_MODE`: hide the demo routes and navigation listed in §3 (S).
 - [ ] **F3** PWA manifest + service worker (app shell only); check the layout on phone, tablet
       and PC (S).
 - [ ] **F4** Point `API_URL` and the `next.config.js` proxy at the real API; remove `bakeryAPI`

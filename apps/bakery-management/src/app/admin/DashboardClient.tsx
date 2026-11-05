@@ -43,6 +43,7 @@ import {
   formatReportDateLong,
 } from '../../lib/reportFormat'
 import TargetsTile from '../../components/targets/TargetsTile'
+import { isPilotMode, isPilotPathAllowed } from '../../lib/pilotMode'
 
 /** Kennzahlen des jüngsten Kassentags, vom Server geladen. */
 export interface LatestReportTile {
@@ -180,6 +181,12 @@ export default function DashboardClient({
   reportsAvailable,
 }: Props) {
   const router = useRouter()
+  // Pilotbetrieb (F2): Kacheln aus Mock-Daten (Bestellungen, Produktion,
+  // Benachrichtigungen) und Schnellzugriffe auf gesperrte Seiten entfallen.
+  const pilot = isPilotMode()
+  const visibleQuickLinks = quickLinks.filter((link) =>
+    isPilotPathAllowed(link.href, pilot)
+  )
   const { notifications, isLoading: notificationsLoading } = useNotifications()
 
   const [stats, setStats] = React.useState<DashboardStats>(EMPTY_STATS)
@@ -192,10 +199,13 @@ export default function DashboardClient({
     setApiStatus('checking')
 
     const safe = <T,>(request: Promise<T>) => request.catch(() => null)
+    // Im Pilotbetrieb sind /api/orders und /api/production nicht gemountet.
     const [orders, products, production] = await Promise.all([
-      safe(apiClient.get<OrderSummary[]>('/api/orders')),
+      pilot ? null : safe(apiClient.get<OrderSummary[]>('/api/orders')),
       safe(apiClient.get<ProductSummary[]>('/api/products')),
-      safe(apiClient.get<ProductionSummary[]>('/api/production')),
+      pilot
+        ? null
+        : safe(apiClient.get<ProductionSummary[]>('/api/production')),
     ])
 
     // If none of the requests came back, the API is unreachable.
@@ -225,11 +235,14 @@ export default function DashboardClient({
       ).length,
     })
     setLoading(false)
-  }, [])
+  }, [pilot])
 
   React.useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
+
+  // Drei statt vier Kacheln im Pilotbetrieb - die Zeile bleibt trotzdem voll.
+  const statsColumns = pilot ? 4 : 3
 
   const productionProgress =
     stats.productionTotal > 0
@@ -267,13 +280,13 @@ export default function DashboardClient({
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
-      {/* Statistics Cards */}
+      {/* Statistics Cards (im Pilotbetrieb ohne „Offene Bestellungen") */}
       <Grid
         container
         spacing={{ xs: 1.5, md: 3 }}
         sx={{ mb: { xs: 2, md: 4 } }}
       >
-        <Grid item xs={6} sm={6} md={3}>
+        <Grid item xs={6} sm={6} md={statsColumns}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -307,7 +320,7 @@ export default function DashboardClient({
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={3}>
+        <Grid item xs={6} sm={6} md={statsColumns}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -346,7 +359,7 @@ export default function DashboardClient({
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={3}>
+        <Grid item xs={6} sm={6} md={statsColumns}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -385,39 +398,41 @@ export default function DashboardClient({
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={3}>
-          <Paper sx={{ p: { xs: 2, md: 3 } }}>
-            <Box
-              sx={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                mb: 2,
-              }}
-            >
-              <Box>
-                <Typography color="text.secondary" variant="body2">
-                  Offene Bestellungen
-                </Typography>
-                <Typography
-                  variant="h4"
-                  sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
-                >
-                  {stats.ordersOpen}
-                </Typography>
-              </Box>
-              <OrdersIcon
+        {!pilot && (
+          <Grid item xs={6} sm={6} md={statsColumns}>
+            <Paper sx={{ p: { xs: 2, md: 3 } }}>
+              <Box
                 sx={{
-                  color: 'primary.main',
-                  fontSize: { xs: 28, md: 40 },
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  mb: 2,
                 }}
-              />
-            </Box>
-            <Button size="small" onClick={() => router.push('/admin/orders')}>
-              {stats.ordersTotal} Bestellungen gesamt
-            </Button>
-          </Paper>
-        </Grid>
+              >
+                <Box>
+                  <Typography color="text.secondary" variant="body2">
+                    Offene Bestellungen
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                  >
+                    {stats.ordersOpen}
+                  </Typography>
+                </Box>
+                <OrdersIcon
+                  sx={{
+                    color: 'primary.main',
+                    fontSize: { xs: 28, md: 40 },
+                  }}
+                />
+              </Box>
+              <Button size="small" onClick={() => router.push('/admin/orders')}>
+                {stats.ordersTotal} Bestellungen gesamt
+              </Button>
+            </Paper>
+          </Grid>
+        )}
       </Grid>
 
       {/* Kasse: jüngster Tagesabschluss aus hq/data/reports */}
@@ -570,7 +585,7 @@ export default function DashboardClient({
         spacing={{ xs: 1.5, md: 3 }}
         sx={{ mb: { xs: 2, md: 4 } }}
       >
-        {quickLinks.map((link) => (
+        {visibleQuickLinks.map((link) => (
           <Grid item xs={6} sm={6} md={4} lg={3} key={link.href}>
             <Card
               sx={{
@@ -619,118 +634,122 @@ export default function DashboardClient({
         ))}
       </Grid>
 
-      {/* Production overview & recent activity */}
+      {/* Production overview & recent activity (Mock-Daten: nicht im Pilot) */}
       <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Produktionsübersicht
-            </Typography>
-            {stats.productionTotal === 0 && !loading ? (
-              <Typography variant="body2" color="text.secondary">
-                Keine Produktionsaufträge vorhanden.
+        {!pilot && (
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 3, height: '100%' }}>
+              <Typography variant="h6" gutterBottom>
+                Produktionsübersicht
               </Typography>
-            ) : (
-              <>
-                <Box sx={{ mb: 3 }}>
-                  <Box
-                    sx={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      mb: 1,
-                    }}
-                  >
-                    <Typography variant="body2">
-                      Abgeschlossene Aufträge
-                    </Typography>
-                    <Typography variant="body2" fontWeight="bold">
-                      {productionProgress}%
-                    </Typography>
+              {stats.productionTotal === 0 && !loading ? (
+                <Typography variant="body2" color="text.secondary">
+                  Keine Produktionsaufträge vorhanden.
+                </Typography>
+              ) : (
+                <>
+                  <Box sx={{ mb: 3 }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        mb: 1,
+                      }}
+                    >
+                      <Typography variant="body2">
+                        Abgeschlossene Aufträge
+                      </Typography>
+                      <Typography variant="body2" fontWeight="bold">
+                        {productionProgress}%
+                      </Typography>
+                    </Box>
+                    <LinearProgress
+                      variant="determinate"
+                      value={productionProgress}
+                      sx={{ height: 10, borderRadius: 5 }}
+                      color="success"
+                      aria-label="Produktionsfortschritt"
+                    />
                   </Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={productionProgress}
-                    sx={{ height: 10, borderRadius: 5 }}
-                    color="success"
-                    aria-label="Produktionsfortschritt"
-                  />
-                </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Aufträge gesamt
-                    </Typography>
-                    <Typography variant="h6">
-                      {stats.productionTotal}
-                    </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        Aufträge gesamt
+                      </Typography>
+                      <Typography variant="h6">
+                        {stats.productionTotal}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        Abgeschlossen
+                      </Typography>
+                      <Typography variant="h6">
+                        {stats.productionCompleted}
+                      </Typography>
+                    </Grid>
                   </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2" color="text.secondary">
-                      Abgeschlossen
-                    </Typography>
-                    <Typography variant="h6">
-                      {stats.productionCompleted}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </>
-            )}
-            <Button
-              size="small"
-              sx={{ mt: 2 }}
-              onClick={() => router.push('/admin/production')}
-            >
-              Zur Produktion
-            </Button>
-          </Paper>
-        </Grid>
+                </>
+              )}
+              <Button
+                size="small"
+                sx={{ mt: 2 }}
+                onClick={() => router.push('/admin/production')}
+              >
+                Zur Produktion
+              </Button>
+            </Paper>
+          </Grid>
+        )}
 
-        <Grid item xs={12} md={6}>
-          <Paper sx={{ p: 3, height: '100%' }}>
-            <Typography variant="h6" gutterBottom>
-              Letzte Aktivitäten
-            </Typography>
-            {notificationsLoading && recentNotifications.length === 0 ? (
-              <LinearProgress sx={{ my: 2 }} />
-            ) : recentNotifications.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                Keine aktuellen Benachrichtigungen.
+        {!pilot && (
+          <Grid item xs={12} md={6}>
+            <Paper sx={{ p: 3, height: '100%' }}>
+              <Typography variant="h6" gutterBottom>
+                Letzte Aktivitäten
               </Typography>
-            ) : (
-              <List dense disablePadding>
-                {recentNotifications.map((n) => (
-                  <ListItem key={n.id} disableGutters>
-                    <ListItemIcon sx={{ minWidth: 28 }}>
-                      <CircleIcon
-                        sx={{
-                          fontSize: 12,
-                          color: notificationColor[n.type] ?? 'text.disabled',
+              {notificationsLoading && recentNotifications.length === 0 ? (
+                <LinearProgress sx={{ my: 2 }} />
+              ) : recentNotifications.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Keine aktuellen Benachrichtigungen.
+                </Typography>
+              ) : (
+                <List dense disablePadding>
+                  {recentNotifications.map((n) => (
+                    <ListItem key={n.id} disableGutters>
+                      <ListItemIcon sx={{ minWidth: 28 }}>
+                        <CircleIcon
+                          sx={{
+                            fontSize: 12,
+                            color: notificationColor[n.type] ?? 'text.disabled',
+                          }}
+                        />
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={n.title}
+                        secondary={`${n.message} · ${formatRelativeTime(
+                          n.createdAt
+                        )}`}
+                        primaryTypographyProps={{
+                          fontWeight: n.read ? 'normal' : 'bold',
                         }}
                       />
-                    </ListItemIcon>
-                    <ListItemText
-                      primary={n.title}
-                      secondary={`${n.message} · ${formatRelativeTime(
-                        n.createdAt
-                      )}`}
-                      primaryTypographyProps={{
-                        fontWeight: n.read ? 'normal' : 'bold',
-                      }}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            )}
-            <Button
-              size="small"
-              sx={{ mt: 2 }}
-              component={Link}
-              href="/admin/notifications"
-            >
-              Alle Benachrichtigungen
-            </Button>
-          </Paper>
-        </Grid>
+                    </ListItem>
+                  ))}
+                </List>
+              )}
+              <Button
+                size="small"
+                sx={{ mt: 2 }}
+                component={Link}
+                href="/admin/notifications"
+              >
+                Alle Benachrichtigungen
+              </Button>
+            </Paper>
+          </Grid>
+        )}
 
         {/* System status – real reachability check of the API */}
         <Grid item xs={12}>
