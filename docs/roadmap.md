@@ -17,26 +17,38 @@ _Single working document. Created 2026-11-05 (KW 45), owner huhn511. Supersedes
 
 ## 0. How to work with this document
 
-**Current status (2026-11-05, after wave 1).**
+**Current status (2026-11-05, after wave 2).**
 
-- **Merged on `pilot` (website, not pushed):** B0 + B1 + B2 (`feat/B0-api-start` inside
-  `feat/B2-baseline-and-B1-harness`), F2 (`feat/F2-pilot-mode`), O1–O4 software
-  (`feat/O1-O4-ops`), Z1/Z2 core (`feat/Z1-Z2-backzettel-core`), each after review + fix.
-  Integration fixes on `pilot`: `js-yaml` ^4 as a root dependency, `HOST` passed to `listen()`,
-  a `marked` stub so the legacy jest suites load.
-- **Verified on `pilot`:** `npm run type-check` ok; `npx jest -c apps/bakery-api/jest.config.js`
-  59 suites / 1211 tests green, 0 red; `nx test bakery-management` 39 suites / 301 tests green;
-  bundle starts, migrates, serves `/health` + `/api/partners`; `boot-smoke.sh` ok;
-  `deploy/tests/run-tests.sh` 157 ok; `npm run lint:all` 9 projects, 0 errors.
-- **The real API is not deployable yet:** auth is still the in-memory lib (`admin`/`admin123`),
-  partners have no guards. Do not put it on the box before B3 + B6.
+- **Merged on `pilot` (website, not pushed):** wave 1 (B0, B1, B2, F2, O1–O4 software, Z1/Z2
+  core) and wave 2: B3 (`feat/B3-auth`), F3 (`feat/F3-pwa`), B4
+  (`feat/B4-reports-finance-mount`), B5 (`feat/B5-hq-products`), B6
+  (`feat/B6-partners-hardening`), B7 + P4 (`feat/B7-preorders`), Z3 (`feat/Z3-backzettel-api`),
+  F1 (`feat/F1-login-station-roles`), each after review + fix.
+- **What the real API now is:** every `/api` route behind a session (401 without);
+  `admin`/`admin123` is gone, accounts come from `cli.js create-user`; PIN stations; roles
+  `inhaber`/`verkauf`/`backstube`/`fahrer`. Mounted: auth, users, partners (roles + hq catalogue),
+  reports/analytics/finance/Tagesziel (mock modules, owner only; finance/Tagesziel need a password
+  session), products + hq-products (worktree commits, local until B5b), preorders + the Mörsbach
+  alias + shop `POST /api/orders`, Backzettel. Nightly anonymisation timer (P4). CLI:
+  `create-user`, `import-partners`, `import-preorders`, `anonymize-preorders`.
+- **The management app** logs in against B3 (refresh rotation, PIN station, role navigation,
+  user/station admin, server-side guard in `src/proxy.ts`) and is a PWA (app shell only). Its
+  screens still read the mock contract (`NEXT_PUBLIC_API_URL`) - switching them over is F4.
+- **Verified on `pilot`:** `npm run type-check` ok; API jest 81 suites / 1902 tests green, 0 red
+  (6 suites skipped); `nx test bakery-management` 55 suites / 477 tests green; bundle builds;
+  `boot-smoke.sh` ok; `deploy/tests/run-tests.sh` 157 ok; `npm run lint:all` 9 projects, 0 errors;
+  end-to-end API smoke on the bundle (create-user, login, `/me`, products, preorder → sums →
+  Backzettel draft, `no-config`, `ruhetag`, 401/403) 19/19.
 - **`hq` branches, committed but unpushed** (worktrees in the session scratchpad):
   `feat/H1-pipeline-hardening` (H1, needs the on-Pi test before merge) and
   `feat/Z1-backzettel-config` (draft `config/backzettel.yaml`, open values as `null`, needs Z0).
-  `hq` main is still `244c6d9`; its untracked `data/vending/` is left alone.
-- **Next (wave 2):** **B3** first (auth, `create-user`, rate limiter) → then in parallel **B4, B5,
-  B6, F1, F3**; then F4, B7 (→ M1). Owner: push/merge the two `hq` branches (H1 after the Pi
-  test), chase Q1–Q8 (§7) and the baker session Z0 before 12.11.
+- **Next (wave 3):** F4 (management screens onto the real API: `API_URL`, `user.email` →
+  `displayName`, `personal_session_required` on finance/Tagesziel, partner CSV download via
+  `fetch` with the token, `approved`/"wartet auf Freigabe" on products), P1–P3 (with P2 moving the
+  Mörsbach screens from the `/api/deliveries` alias onto `/api/preorders`), Z4–Z7, B5b, H2, Z9 -
+  and the **M0 verification loop** on the box (O1 hardware, first `deploy.sh` run, `create-user`
+  per staff member, `import-partners` / `import-preorders` dry run then real, restore drill).
+  Owner decisions waiting: see §11 (2026-11-05, wave 2).
 
 - **Source of truth.** This file is the plan, the decisions and the progress log in one place.
   Nothing else in `.mc/proposals` or `.mc/research` holds pilot decisions.
@@ -529,24 +541,28 @@ Exit criteria:
 - [x] **B2** Pilot baseline migration (S, → B0, `feat/B2-baseline-and-B1-harness`): users,
       refresh_tokens, audit_log, partners\*, preorders, preorder_items (with `variant`),
       pickup_points. The old 17 migrations are archived.
-- [ ] **B3** Auth (M, → B2): User/RefreshToken models; scrypt for password + PIN;
+- [x] **B3** Auth (M, → B2, `feat/B3-auth`): User/RefreshToken models; scrypt for password + PIN;
       `login/me/refresh/logout/pin`; role guards; rate limit 5 / 5 min; idempotent `create-user`
       CLI; user admin endpoints (`inhaber`). The server refuses to start in production without a
       stable `JWT_SECRET`.
-- [ ] **B4** Mount reports/analytics/finance/targets modules with the auth adapter (S, → B3).
-- [ ] **B5** hq products router, read + write to the worktree (S–M, → B0), extracted from
+- [x] **B4** Mount reports/analytics/finance/targets modules with the auth adapter (S, → B3,
+      `feat/B4-reports-finance-mount`).
+- [x] **B5** hq products router, read + write to the worktree (S–M, → B0), extracted from
       `simple-server.js` using `product-file.core.js`/`product-input.core.js`. A local commit only
-      until B5b.
-- [ ] **B6** Partners: guards, hq catalogue lookup, parity test, `partner-store.json` import (S, → B3, B5).
+      until B5b. (`feat/B5-hq-products`)
+- [x] **B6** Partners: guards, hq catalogue lookup, parity test, `partner-store.json` import (S, → B3, B5,
+      `feat/B6-partners-hardening`).
 
 **Frontend shell**
 
-- [ ] **F1** Login against the real contract; PIN station screen (tap name → PIN, auto-logout at
+- [x] **F1** (`feat/F1-login-station-roles`) Login against the real contract; PIN station screen (tap name → PIN, auto-logout at
       closing / 12 h idle); `middleware.ts` route guard; role-filtered navigation and start page;
-      user management screen (M, → B3).
+      user management screen (M, → B3). The guard is Next 16's `src/proxy.ts` (cookie copy of the
+      access token, checked against `/api/auth/me`); closing-time logout is optional
+      (`NEXT_PUBLIC_STATION_LOGOUT_AT`, time open).
 - [x] **F2** `PILOT_MODE`: hide the demo routes and navigation listed in §3 (S, `feat/F2-pilot-mode`).
-- [ ] **F3** PWA manifest + service worker (app shell only); check the layout on phone, tablet
-      and PC (S).
+- [x] **F3** PWA manifest + service worker (app shell only); check the layout on phone, tablet
+      and PC (S, `feat/F3-pwa`).
 - [ ] **F4** Point `API_URL` and the `next.config.js` proxy at the real API; remove `bakeryAPI`
       mock paths from pilot screens (S, → B4–B6).
 
@@ -582,7 +598,7 @@ Exit criteria:
 - Handover works from the Abholliste and nothing is lost.
 - Staff rate entry "not slower than paper".
 
-- [ ] **B7** Preorders (M–L, → B3, B5):
+- [x] **B7** Preorders (M–L, → B3, B5, `feat/B7-preorders`):
   - Models Preorder/PreorderItem/PickupPoint.
   - Generalise `delivery-preorders.core.js`: `channel` (laden, telefon, whatsapp, shop,
     sammelstelle); pickup at the Laden (date + time) **or** a pickup point.
@@ -596,7 +612,8 @@ Exit criteria:
 - [ ] **P2** Abholliste per day and pickup point: tick-off at handover, A4 print (S, → B7). The
       Mörsbach screens move onto the new API.
 - [ ] **P3** List, search, edit, cancel; day overview with sums per product (S, → B7).
-- [ ] **P4** GDPR: anonymise customer name and phone 90 days after pickup (nightly job) (S).
+- [x] **P4** GDPR: anonymise customer name and phone 90 days after pickup (nightly job) (S,
+      `feat/B7-preorders`: every status, also the note; `bakery-anonymize.timer` 23:45).
 - [ ] **P5** Products: Christmas items (Stollen, Plätzchen) with prices in `hq/products`; add the
       missing Sunday/weekday items (§5.2) via PR (S, owner + agent).
 - [ ] **P6** Onboarding: 15 min per person, a one-page cheat sheet (German), a paper fallback
@@ -619,9 +636,12 @@ Exit criteria:
 - [~] **Z2** `backzettel.core.js` + tests (M, → Z1, B7 sums): port `HefezopfCalculator`/filling
   scaling and its spec (filled Kranz per Q-B3), quarters, CAP template, deltas, prep by
   weekday; `trayInfo` reused. Core + 117 tests on `pilot` (`feat/Z1-Z2-backzettel-core`),
-  per-preorder deltas; waits for B7 sums and the Q-B answers.
-- [ ] **Z3** Models `backzettel_days/lines/deltas` + `/api/backzettel` (get day, recompute draft,
-      correction, confirm, tick line, deltas) + audit (M, → B2, Z2).
+  per-preorder deltas. B7 landed (and fixed the `storniert` filter in the core); waits for the
+  Q-B answers.
+- [x] **Z3** Models `backzettel_days/lines/deltas` + `/api/backzettel` (get day, recompute draft,
+      correction, confirm, tick line, deltas) + audit (M, → B2, Z2, `feat/Z3-backzettel-api`).
+      A confirmed day is frozen (`computed_snapshot`); deltas are recorded on read until B7's
+      write path records them.
 - [ ] **Z4** Grundmengen screen (S–M, → Z3, B5b). Shows next to each Basis a read-only reference:
       median sold on that weekday over the last 6 trading weeks via `plu` from `converted/`
       (info only, never applied automatically).
@@ -807,10 +827,11 @@ PC width, in light and dark. It checks role filtering, 401s without a session, a
 
 ## 11. Log
 
-| Date       | Entry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2026-11-05 | Research by 6 read-only agents (management app, backend, real TS API, hq business needs, backlog, Backzettel/Saturday).                                                                                                                                                                                                                                                                                                                                                                              |
-| 2026-11-05 | Owner decisions:<br>• own bakery first<br>• pilot ASAP<br>• Vorbestellungen + Backzettel<br>• all four device types<br>• dedicated box in the bakery, Wi-Fi only<br>• personal accounts + tablet PIN<br>• hq edits via PR<br>• **real TS backend, not the mock server**<br>• Backzettel essential, Saturday Hefeteig first-class                                                                                                                                                                     |
-| 2026-11-05 | `hq` pulled to `244c6d9`. Agent research on how `hq` is written (§4a). Owner decisions D13–D15: `hq` is the shared living document with one owner per path; the app pushes non-personal daily snapshots directly; master-data PRs auto-merge on green `hq` CI; only H1 + H2 in the pilot, rest in M4.                                                                                                                                                                                                |
-| 2026-11-05 | Draft RES-001/PROP-001…007 folded into this file and removed.                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| 2026-11-05 | Wave 1 merged into `pilot` (`--no-ff`): O1–O4, F2, Z1/Z2, B0+B1+B2. Conflicts: `CLAUDE.md` (kept both the F2 and Z sections); `apps/bakery-api/project.json` (old `@nx/js:tsc` build with Z1's `*.loader.js` asset glob dropped, B0 bundles with esbuild). Integration fixes: `js-yaml` ^4 root dependency, `HOST` → `listen()`, `marked` jest stub. All API/management tests, lint, type-check, bundle start, boot smoke and deploy tests green. H1 and the Z1 YAML stay on unpushed `hq` branches. |
+| Date       | Entry                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 2026-11-05 | Research by 6 read-only agents (management app, backend, real TS API, hq business needs, backlog, Backzettel/Saturday).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| 2026-11-05 | Owner decisions:<br>• own bakery first<br>• pilot ASAP<br>• Vorbestellungen + Backzettel<br>• all four device types<br>• dedicated box in the bakery, Wi-Fi only<br>• personal accounts + tablet PIN<br>• hq edits via PR<br>• **real TS backend, not the mock server**<br>• Backzettel essential, Saturday Hefeteig first-class                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 2026-11-05 | `hq` pulled to `244c6d9`. Agent research on how `hq` is written (§4a). Owner decisions D13–D15: `hq` is the shared living document with one owner per path; the app pushes non-personal daily snapshots directly; master-data PRs auto-merge on green `hq` CI; only H1 + H2 in the pilot, rest in M4.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 2026-11-05 | Draft RES-001/PROP-001…007 folded into this file and removed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| 2026-11-05 | Wave 1 merged into `pilot` (`--no-ff`): O1–O4, F2, Z1/Z2, B0+B1+B2. Conflicts: `CLAUDE.md` (kept both the F2 and Z sections); `apps/bakery-api/project.json` (old `@nx/js:tsc` build with Z1's `*.loader.js` asset glob dropped, B0 bundles with esbuild). Integration fixes: `js-yaml` ^4 root dependency, `HOST` → `listen()`, `marked` jest stub. All API/management tests, lint, type-check, bundle start, boot smoke and deploy tests green. H1 and the Z1 YAML stay on unpushed `hq` branches.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| 2026-11-05 | Wave 2 merged into `pilot` (`--no-ff`, in this order): B3, F3, B4, B5, B6, B7 (+P4), Z3, F1. Conflicts: `apps/bakery-api/src/app.ts` (all mounts below the guard: partners with B5's catalogue dir, hq-data, products, preorders with the same dir, Backzettel), `server.ts`/`config/env.ts` (B4 dirs + B5 `loadHqConfig`), `cli.ts` (import-partners + import-/anonymize-preorders, generic `withDatabase<T>(work, { migrate })`), `db/migrations.ts` + expected lists in two tests (Z3 `20261112` before B7 `20261113`), `boot-smoke.sh` (all four `HQ_*`), `admin/layout.tsx` (F3 label style + F1 hidden on xs), `.env.example`, both `CLAUDE.md`. No integration fixes needed. Green: type-check, API jest 81/1902, management 55/477, bundle, boot smoke, deploy tests 157, lint 9 projects, API smoke 19/19. Owner decisions open: finance/Tagesziel only with a password session (`FINANCE_PERSONAL_SESSION_ONLY`, default on); product writes, Backzettel reopen and visit DELETE from a PIN station / by verkauf+fahrer; closing time for station logout; public shop order endpoint (rate limit, spam). |
