@@ -407,39 +407,52 @@ function createDeliveriesRouter(service: PreordersService): Router {
           return
         }
       }
-      const result = await service.update(req.params['id'], body, req, {
-        requireVariant: false,
-        guard: (current) => {
-          if (!current.pickupPointId) {
-            return { ok: false, ...LEGACY_NOT_FOUND }
-          }
-          if (body['status'] !== undefined) {
-            const blocked = core.checkStatusTransition(
-              core.toLegacyStatus(current),
-              body['status']
-            )
-            if (blocked) {
-              return {
-                ok: false,
-                status: blocked.status,
-                error: blocked.error,
-                message: blocked.message,
-              }
-            }
-          }
-          if (core.legacyItemsLoseVariants(current.items, body['items'])) {
+      const guard = (current: PreorderRecord): Result<never> | null => {
+        if (!current.pickupPointId) {
+          return { ok: false, ...LEGACY_NOT_FOUND }
+        }
+        if (body['status'] !== undefined) {
+          const blocked = core.checkStatusTransition(
+            core.toLegacyStatus(current),
+            body['status']
+          )
+          if (blocked) {
             return {
               ok: false,
-              status: 409,
-              error: 'has_variants',
-              message:
-                'Diese Vorbestellung enthält Sorten (z. B. Füllungen) und lässt sich nur in der neuen Vorbestell-Maske ändern.',
+              status: blocked.status,
+              error: blocked.error,
+              message: blocked.message,
             }
           }
-          return null
-        },
-        mapBody: (current) => core.fromLegacyInput(body, current),
-      })
+        }
+        if (core.legacyItemsLoseVariants(current.items, body['items'])) {
+          return {
+            ok: false,
+            status: 409,
+            error: 'has_variants',
+            message:
+              'Diese Vorbestellung enthält Sorten (z. B. Füllungen) und lässt sich nur in der neuen Vorbestell-Maske ändern.',
+          }
+        }
+        return null
+      }
+      const mapBody = (current: PreorderRecord) =>
+        core.fromLegacyInput(body, current)
+      // Reines Abhaken (nur `status`) geht am Formular vorbei: keine erneute
+      // Prüfung von Liefertag, Positionen usw. - sonst ließe sich eine
+      // Bestellung nach einer Wochentagsänderung der Stelle nicht mehr übergeben.
+      const statusOnly =
+        Object.keys(body).length === 1 && body['status'] !== undefined
+      const result = statusOnly
+        ? await service.changeStatus(req.params['id'], body, req, {
+            guard,
+            mapBody,
+          })
+        : await service.update(req.params['id'], body, req, {
+            requireVariant: false,
+            guard,
+            mapBody,
+          })
       if (!result.ok && result.status === 404) return legacyNotFound(res)
       if (fail(res, result) || !result.ok) return
       res.json(await legacyOf(service, result.data))

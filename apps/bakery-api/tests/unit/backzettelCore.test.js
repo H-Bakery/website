@@ -188,6 +188,7 @@ describe('Vorbestellungen', () => {
         pre('test-weck', 5),
         pre('test-weck', 7, { pickupDate: SUN }),
         pre('test-weck', 9, { status: 'cancelled' }),
+        pre('test-weck', 4, { status: 'storniert' }), // B7-Status der echten API
         { productId: 'test-weck', quantity: 2, date: SAT }, // alternative Feldnamen
       ],
     })

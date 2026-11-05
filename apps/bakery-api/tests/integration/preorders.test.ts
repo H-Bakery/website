@@ -327,6 +327,111 @@ describe('/api/preorders CRUD', () => {
     ).toBe(1)
   })
 
+  it('never gives a code out twice, not even after the holder moved away', async () => {
+    const first = (await create(laden({ pickupDate: '2026-12-08' }))).body.data
+    expect(first.code).toBe('LA-2026-12-08-01')
+    const moved = await request(api.app)
+      .patch(`/api/preorders/${first.id}`)
+      .set(tokens['verkauf'])
+      .send({
+        channel: 'sammelstelle',
+        pickupDate: '2026-12-12',
+        pickupTime: null,
+        pickupPointId: MOERSBACH,
+      })
+    expect(moved.status).toBe(200)
+    expect(moved.body.data.code).toMatch(/^MO-2026-12-12-\d{2}$/)
+    // the old slip still says LA-2026-12-08-01: the next customer gets -02
+    const next = (await create(laden({ pickupDate: '2026-12-08' }))).body.data
+    expect(next.code).toBe('LA-2026-12-08-02')
+    // moving back does not revive the old code either
+    const back = await request(api.app)
+      .patch(`/api/preorders/${first.id}`)
+      .set(tokens['verkauf'])
+      .send({
+        channel: 'telefon',
+        pickupDate: '2026-12-08',
+        pickupPointId: null,
+      })
+    expect(back.body.data.code).toBe('LA-2026-12-08-03')
+  })
+
+  it('rejects non-integer quantities with 400 invalid_quantity, drops explicit 0', async () => {
+    for (const quantity of ['abc', 2.7, -1, null, '', true]) {
+      const res = await create(
+        laden({ items: [{ productId: 'kornbrot-500g', quantity }] })
+      )
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({
+        success: false,
+        error: 'invalid_quantity',
+        message: expect.stringContaining('ganze Zahl'),
+      })
+    }
+    const ok = await create(
+      laden({
+        pickupDate: '2026-12-09',
+        items: [
+          { productId: 'kornbrot-500g', quantity: '3' },
+          { productId: 'musterweck', quantity: 0 },
+        ],
+      })
+    )
+    expect(ok.status).toBe(201)
+    expect(
+      ok.body.data.items.map((i: { productId: string; quantity: number }) => [
+        i.productId,
+        i.quantity,
+      ])
+    ).toEqual([['kornbrot-500g', 3]])
+  })
+
+  it('keeps items, day and place of an abgeholt preorder (409 until reset)', async () => {
+    const p = (await create(laden({ pickupDate: '2026-12-10' }))).body.data
+    await request(api.app)
+      .post(`/api/preorders/${p.id}/status`)
+      .set(tokens['verkauf'])
+      .send({ status: 'abgeholt', paid: true })
+      .expect(200)
+    const patch = (b: Record<string, unknown>) =>
+      request(api.app)
+        .patch(`/api/preorders/${p.id}`)
+        .set(tokens['verkauf'])
+        .send(b)
+    for (const change of [
+      { pickupDate: '2026-12-14' },
+      {
+        channel: 'sammelstelle',
+        pickupDate: '2026-12-12',
+        pickupTime: null,
+        pickupPointId: MOERSBACH,
+      },
+      { items: [{ productId: 'kornbrot-500g', quantity: 5 }] },
+    ]) {
+      const res = await patch(change)
+      expect(res.status).toBe(409)
+      expect(res.body).toMatchObject({ error: 'already_picked_up' })
+    }
+    // the same items again and plain fields are fine
+    expect(
+      (await patch({ items: [{ productId: 'kornbrot-500g', quantity: 2 }] }))
+        .status
+    ).toBe(200)
+    expect((await patch({ note: 'Beleg nachgereicht' })).status).toBe(200)
+    // with a reset to offen in the same request the change goes through
+    const reset = await patch({
+      status: 'offen',
+      items: [{ productId: 'kornbrot-500g', quantity: 5 }],
+    })
+    expect(reset.status).toBe(200)
+    expect(reset.body.data).toMatchObject({
+      status: 'offen',
+      pickedUpAt: null,
+      total: expect.any(Number),
+    })
+    expect(reset.body.data.items[0].quantity).toBe(5)
+  })
+
   it('walks offen → bereit → abgeholt and locks abgeholt ↔ storniert', async () => {
     const p = (await create(laden())).body.data
     const status = (body: Record<string, unknown>) =>
@@ -767,6 +872,60 @@ describe('/api/deliveries alias (Mörsbach mock contract)', () => {
         where: { entity: 'pickup_point', action: 'update' },
       })
     ).toBe(2)
+  })
+
+  it('hands over by status alone after the weekday changed, and handover means paid', async () => {
+    const p = (
+      await request(api.app)
+        .post('/api/deliveries/preorders')
+        .set(tokens['verkauf'])
+        .send({ ...body, date: '2026-12-05' })
+    ).body
+    expect(p.paid).toBe(false)
+    const point = `/api/deliveries/pickup-points/${MOERSBACH}`
+    await request(api.app)
+      .put(point)
+      .set(tokens['inhaber'])
+      .send({ weekday: 5, orderDeadline: { weekday: 4, time: '12:00' } })
+      .expect(200)
+    try {
+      const patch = (b: Record<string, unknown>, role = 'verkauf') =>
+        request(api.app)
+          .patch(`/api/deliveries/preorders/${p.id}`)
+          .set(tokens[role])
+          .send(b)
+      // a form save re-validates the day and fails ...
+      const form = await patch({ status: 'handed_over', customer: 'X Y' })
+      expect(form.status).toBe(400)
+      expect(form.body.error).toBe('invalid_delivery_day')
+      // ... plain ticking off does not
+      const handed = await patch({ status: 'handed_over' }, 'fahrer')
+      expect(handed.status).toBe(200)
+      expect(handed.body).toMatchObject({
+        status: 'handed_over',
+        paid: true,
+        handedOverAt: NOW.toISOString(),
+      })
+      const row = await Preorder.findByPk(p.id)
+      expect(row).toMatchObject({ status: 'abgeholt', paid: true })
+      // reopening through the alias keeps paid (nothing was refunded)
+      const reopened = await patch({ status: 'open' })
+      expect(reopened.body).toMatchObject({ status: 'open', paid: true })
+      // cancelling a Laden preorder through the alias stays a 404
+      const shopLike = (await create(laden({ pickupDate: '2026-12-01' }))).body
+        .data
+      const del = await request(api.app)
+        .delete(`/api/deliveries/preorders/${shopLike.id}`)
+        .set(tokens['verkauf'])
+      expect(del.status).toBe(404)
+      expect((await Preorder.findByPk(shopLike.id))?.status).toBe('offen')
+    } finally {
+      await request(api.app)
+        .put(point)
+        .set(tokens['inhaber'])
+        .send({ weekday: 6, orderDeadline: { weekday: 5, time: '12:00' } })
+        .expect(200)
+    }
   })
 })
 

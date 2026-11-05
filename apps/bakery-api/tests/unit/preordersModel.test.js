@@ -421,6 +421,103 @@ describe('price snapshots on update', () => {
   })
 })
 
+describe('abgeholt is history', () => {
+  const picked = () => ({
+    ...ok(
+      core.normalizeOrderInput({ ...LADEN, status: 'abgeholt' }, null, opts())
+    ),
+    pickedUpAt: NOW,
+  })
+
+  it.each([
+    [{ pickupDate: '2026-11-18' }],
+    [{ items: [{ productId: 'kornbrot-500g', quantity: 3 }] }],
+    [
+      {
+        items: [
+          { productId: 'kornbrot-500g', quantity: 2 },
+          { productId: 'musterweck', quantity: 1 },
+        ],
+      },
+    ],
+    [
+      {
+        channel: 'sammelstelle',
+        pickupDate: '2026-11-21',
+        pickupTime: null,
+        pickupPointId: POINT.id,
+      },
+    ],
+  ])('refuses %j with 409 already_picked_up', (change) => {
+    const result = core.normalizeOrderInput(change, picked(), opts())
+    expect(result).toMatchObject({ error: 'already_picked_up', status: 409 })
+    expect(result.message).toContain('Offen')
+  })
+
+  it('allows plain fields, the same items and a change together with a reset', () => {
+    const base = picked()
+    expect(
+      ok(core.normalizeOrderInput({ note: 'Beleg', paid: true }, base, opts()))
+    ).toMatchObject({ note: 'Beleg', paid: true, status: 'abgeholt' })
+    expect(
+      ok(
+        core.normalizeOrderInput(
+          { items: [{ productId: 'kornbrot-500g', quantity: 2 }] },
+          base,
+          opts()
+        )
+      ).status
+    ).toBe('abgeholt')
+    expect(
+      ok(
+        core.normalizeOrderInput(
+          { status: 'offen', pickupDate: '2026-11-18' },
+          base,
+          opts()
+        )
+      )
+    ).toMatchObject({
+      status: 'offen',
+      pickupDate: '2026-11-18',
+      pickedUpAt: null,
+    })
+  })
+})
+
+describe('quantities are not coerced', () => {
+  it.each([['abc'], [2.7], [-2], [null], [{}]])(
+    'quantity %j is 400 invalid_quantity',
+    (quantity) => {
+      expect(
+        core.normalizeOrderInput(
+          { ...LADEN, items: [{ productId: 'kornbrot-500g', quantity }] },
+          null,
+          opts()
+        )
+      ).toMatchObject({ error: 'invalid_quantity', status: 400 })
+    }
+  )
+
+  it('drops a line only on an explicit 0', () => {
+    const p = ok(
+      core.normalizeOrderInput(
+        {
+          ...LADEN,
+          items: [
+            { productId: 'kornbrot-500g', quantity: '2' },
+            { productId: 'musterweck', qty: 0 },
+          ],
+        },
+        null,
+        opts()
+      )
+    )
+    expect(p.items.map((i) => [i.productId, i.quantity])).toEqual([
+      ['kornbrot-500g', 2],
+    ])
+  })
+})
+
 describe('status transitions', () => {
   it.each([
     ['offen', 'bereit'],
@@ -799,11 +896,17 @@ describe('mock status mapping (alias)', () => {
         },
       ],
     })
+    // handover means paid (Mörsbach collects at the handover), like the import
     expect(
       core.fromLegacyInput({ status: 'handed_over' }, { status: 'bereit' })
     ).toEqual({
       status: 'abgeholt',
+      paid: true,
     })
+    // already handed over: paid is left as it is
+    expect(
+      core.fromLegacyInput({ status: 'handed_over' }, { status: 'abgeholt' })
+    ).toEqual({ status: 'abgeholt' })
   })
 
   it('renders a record in the mock shape, variant in the name', () => {
@@ -992,13 +1095,45 @@ describe('P4 anonymisation', () => {
     [{ status: 'storniert', pickupDate: '2026-08-06' }, true],
     [{ status: 'bereit', notCollectedAt: NOW, pickupDate: '2026-08-06' }, true],
     [{ status: 'abgeholt', pickupDate: '2026-08-07' }, false],
-    [{ status: 'offen', pickupDate: '2026-01-01' }, false],
-    [{ status: 'bereit', pickupDate: '2026-01-01' }, false],
+    // 90 days after pickup the status no longer matters (P4)
+    [{ status: 'offen', pickupDate: '2026-01-01' }, true],
+    [{ status: 'bereit', pickupDate: '2026-08-06' }, true],
+    [{ status: 'offen', pickupDate: '2026-08-07' }, false],
     [
       { status: 'abgeholt', pickupDate: '2026-01-01', anonymizedAt: NOW },
       false,
     ],
   ])('%j due: %s', (preorder, due) => {
     expect(core.isDueForAnonymization(preorder, '2026-08-07')).toBe(due)
+  })
+
+  it.each([
+    [{ status: 'offen' }, true],
+    [{ status: 'bereit' }, true],
+    [{ status: 'bereit', notCollectedAt: NOW }, false],
+    [{ status: 'abgeholt' }, false],
+    [{ status: 'storniert' }, false],
+  ])('%j was unfinished: %s', (preorder, unfinished) => {
+    expect(core.wasUnfinished(preorder)).toBe(unfinished)
+  })
+})
+
+describe('parseQuantity (strict, no silent truncation)', () => {
+  it.each([
+    [3, 3],
+    [0, 0],
+    ['4', 4],
+    [' 5 ', 5],
+    [2.7, null],
+    [-1, null],
+    ['abc', null],
+    ['2.5', null],
+    ['', null],
+    [null, null],
+    [undefined, null],
+    [true, null],
+    [Number.NaN, null],
+  ])('%j -> %j', (value, expected) => {
+    expect(core.parseQuantity(value)).toBe(expected)
   })
 })

@@ -971,6 +971,31 @@ function itemKey(productId, variant) {
 }
 
 /**
+ * Menge einer Position im neuen Modell: ganze Zahl >= 0 (Zahl oder
+ * Ziffernfolge), sonst `null` = ungueltig. Anders als `tours.wholeNumber`
+ * wird nichts still abgeschnitten - `"abc"` waere sonst eine gestrichene
+ * Zeile und `2.7` zwei Stueck (gleiche Regel wie `validateVisitItems` bei
+ * den Verkaufspartnern).
+ */
+function parseQuantity(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 ? value : null
+  }
+  if (typeof value === 'string' && /^\s*\d+\s*$/.test(value)) {
+    return Number(value.trim())
+  }
+  return null
+}
+
+/** Positionen als vergleichbarer Schluessel (Produkt, Variante, Menge). */
+function itemsSignature(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((i) => `${itemKey(i.productId, i.variant)}|${Number(i.quantity)}`)
+    .sort()
+    .join(';')
+}
+
+/**
  * Prueft und normalisiert eine Vorbestellung des allgemeinen Modells.
  *
  * @param {object} body Request-Body: `{ channel, customerName, customerPhone?,
@@ -1182,11 +1207,18 @@ function normalizeOrderInput(body, existing, options) {
       if (!requested) {
         return fail('invalid_items', 'Eine Position ist unvollständig.')
       }
-      const qty = tours.wholeNumber(
-        raw.quantity === undefined ? raw.qty : raw.quantity,
-        0
+      const qty = parseQuantity(
+        raw.quantity === undefined ? raw.qty : raw.quantity
       )
-      if (qty <= 0) continue // 0 = Zeile gestrichen
+      if (qty === null) {
+        return fail(
+          'invalid_quantity',
+          `Die Menge von „${
+            trimmed(raw.name) || requested
+          }“ muss eine ganze Zahl zwischen 0 und ${MAX_QTY_PER_ITEM} sein.`
+        )
+      }
+      if (qty === 0) continue // ausdrueckliche 0 = Zeile gestrichen
       const variant = cleanVariantInput(raw.variant)
       if (variant === null) {
         return fail(
@@ -1273,6 +1305,26 @@ function normalizeOrderInput(body, existing, options) {
       'items_required',
       'Eine Vorbestellung braucht mindestens eine Position.'
     )
+  }
+
+  // Nach der Uebergabe ist die Bestellung Geschichte: Positionen, Abholtag
+  // und Abholort bleiben, solange sie `abgeholt` ist - sonst aenderten sich
+  // Summen und Tageszahlen rueckwirkend. Wie beim Stornieren: erst auf
+  // „Offen" zuruecksetzen (im selben Request erlaubt).
+  if (
+    base.status === 'abgeholt' &&
+    statusResult.changes.status === 'abgeholt'
+  ) {
+    const moved =
+      pickupDate !== base.pickupDate ||
+      (pickupPoint ? pickupPoint.id : null) !== (base.pickupPointId || null)
+    if (moved || itemsSignature(items) !== itemsSignature(base.items)) {
+      return fail(
+        'already_picked_up',
+        'Diese Vorbestellung wurde bereits abgeholt — Positionen, Abholtag und Abholort lassen sich nicht mehr ändern. Bitte zuerst auf „Offen" zurücksetzen.',
+        409
+      )
+    }
   }
 
   return {
@@ -1449,6 +1501,15 @@ function fromLegacyInput(body, current) {
     out.status = mapped.status
     if (mapped.notCollected !== undefined)
       out.notCollected = mapped.notCollected
+    // Mörsbach kassiert bei der Übergabe, und die alte Maske hat keinen
+    // Bezahlt-Schalter: übergeben heißt bezahlt - dieselbe Regel wie der
+    // Import (`legacyPreorderToRecord`).
+    if (
+      out.status === 'abgeholt' &&
+      (!current || current.status !== 'abgeholt')
+    ) {
+      out.paid = true
+    }
   }
   return out
 }
@@ -1592,19 +1653,26 @@ function anonymizeCutoff(todayIso, days) {
 }
 
 /**
- * Faellig: noch nicht anonymisiert, Abholtag vor dem Stichtag und
- * abgeschlossen (abgeholt, storniert oder als "nicht abgeholt" markiert).
- * Offene Bestellungen bleiben - sie meldet der Lauf als Restposten.
+ * Faellig: noch nicht anonymisiert und Abholtag vor dem Stichtag - **egal in
+ * welchem Status**. 90 Tage nach dem Abholtag ist der Status nicht mehr
+ * entscheidend; eine Uebergabe, die niemand abgehakt hat (an der Ladentheke
+ * in der Spitzenwoche wahrscheinlich), darf Name und Telefon nicht unbegrenzt
+ * aufbewahren (roadmap P4).
  */
 function isDueForAnonymization(preorder, cutoff) {
   const p = preorder || {}
   if (!cutoff || p.anonymizedAt) return false
-  if (!(String(p.pickupDate) < cutoff)) return false
-  return (
-    p.status === 'abgeholt' ||
-    p.status === 'storniert' ||
-    (p.status === 'bereit' && !!p.notCollectedAt)
-  )
+  return String(p.pickupDate) < cutoff
+}
+
+/**
+ * War die Vorbestellung beim Anonymisieren noch nicht abgeschlossen (`offen`
+ * oder `bereit` ohne "nicht abgeholt")? Nur fuer den Bericht - ein Hinweis,
+ * dass dort nie abgehakt wurde.
+ */
+function wasUnfinished(preorder) {
+  const p = preorder || {}
+  return p.status === 'offen' || (p.status === 'bereit' && !p.notCollectedAt)
 }
 
 module.exports = {
@@ -1648,6 +1716,7 @@ module.exports = {
   normalizeStatusChange,
   normalizeOrderInput,
   cleanVariantInput,
+  parseQuantity,
   checkVariant,
   codePrefixFor,
   codeNeedsRenewal,
@@ -1662,4 +1731,5 @@ module.exports = {
   legacyPreorderToRecord,
   anonymizeCutoff,
   isDueForAnonymization,
+  wasUnfinished,
 }
