@@ -1,0 +1,39 @@
+# Nächtliches Backup: SQLite-Kopie + restic off-site - roadmap O2.
+# Gestartet von bakery-backup.timer (23:30). Exit-Codes: siehe backup.sh.
+
+[Unit]
+Description=Bäckerei Heusser - Backup (SQLite + restic)
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=bakery
+Group=bakery
+EnvironmentFile=/etc/bakery/bakery.env
+EnvironmentFile=-/etc/bakery/ops.env
+Environment=BAKERY_ENV_LOADED=1
+# restic-Cache unter /var/cache/bakery-restic (legt systemd mit Besitzer bakery an)
+CacheDirectory=bakery-restic
+Environment=RESTIC_CACHE_DIR=/var/cache/bakery-restic
+ExecStart=/opt/bakery/bin/backup.sh
+TimeoutStartSec=2h
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bakery
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+CapabilityBoundingSet=

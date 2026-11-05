@@ -1,0 +1,100 @@
+# Caddy auf der Bäckerei-Box - roadmap D4, O1.
+#
+#   https://intern.{$BAKERY_DOMAIN}
+#     /api/*  -> bakery-api         127.0.0.1:5000
+#     sonst   -> bakery-management  127.0.0.1:4201
+#
+# Die Box ist nur im Bäckerei-WLAN erreichbar. Das Zertifikat kommt trotzdem
+# von Let's Encrypt, über die DNS-01-Challenge: Caddy legt einen TXT-Eintrag
+# über die API des DNS-Anbieters an, kein Port muss ins Internet offen sein.
+# Im öffentlichen DNS zeigt `intern.<domain>` als A-Eintrag auf die feste
+# LAN-IP der Box (Q2).
+#
+# Variablen aus /etc/caddy/bakery.env (Vorlage: deploy/caddy/caddy.env.example,
+# geladen über caddy.service.d/bakery.conf):
+#   BAKERY_DOMAIN         z. B. example.de  -> intern.example.de
+#   ACME_EMAIL            Kontakt für Let's Encrypt
+#   ACME_DNS_API_TOKEN    Token des DNS-Anbieters
+#   ACME_DNS_OVERRIDE     Zone, in der der TXT-Eintrag wirklich angelegt wird
+#
+# DNS-PLUGIN (offen bis Q2 beantwortet ist): das Standard-Caddy kann kein
+# DNS-01. Es braucht genau ein Modul aus github.com/caddy-dns, passend zum
+# Anbieter, der den TXT-Eintrag anlegt:
+#   caddy add-package github.com/caddy-dns/<anbieter>   (danach: apt-mark hold caddy)
+#
+# Stand 2026-11-05: die Domain der Bäckerei liegt bei STRATO (NS *.rzone.de).
+# STRATO hat keine DNS-API, also gibt es dafür kein Caddy-Plugin. Vorschlag
+# (siehe docs/runbook.md, "Zertifikat"): bei STRATO einen CNAME
+#   _acme-challenge.intern.<domain>  ->  _acme-challenge.intern.<zone-bei-desec>
+# anlegen und den TXT-Eintrag bei deSEC (kostenlos, caddy-dns/desec) setzen
+# lassen - das ist der unten aktive Block. Zieht die ganze Domain zu einem
+# Anbieter mit API um (Cloudflare, Hetzner, ...), stattdessen den passenden
+# Block einkommentieren und `dns_challenge_override_domain` streichen.
+
+{
+	email {$ACME_EMAIL}
+	# Kein HTTP-Challenge: die Box ist aus dem Internet nicht erreichbar.
+	# Admin-API nur lokal (Standard), Logs ins Journal.
+}
+
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		# Bewusst nur die Teile einer CSP, die Next.js/MUI (Inline-Skripte und
+		# -Styles) nicht brechen. Eine volle CSP braucht Nonces in der App.
+		Content-Security-Policy "frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+		-Server
+		-X-Powered-By
+	}
+}
+
+intern.{$BAKERY_DOMAIN} {
+	tls {
+		# --- aktiv: deSEC + CNAME-Delegation von STRATO aus (Vorschlag zu Q2) ---
+		dns desec {
+			token {$ACME_DNS_API_TOKEN}
+		}
+		dns_challenge_override_domain {$ACME_DNS_OVERRIDE}
+
+		# --- Alternative: Domain liegt bei Cloudflare (caddy-dns/cloudflare) ---
+		# dns cloudflare {$ACME_DNS_API_TOKEN}
+
+		# --- Alternative: Domain liegt bei Hetzner DNS (caddy-dns/hetzner) ---
+		# dns hetzner {$ACME_DNS_API_TOKEN}
+
+		# Öffentliche Resolver für die Propagationsprüfung - der Router der
+		# Bäckerei kennt den TXT-Eintrag womöglich erst spät.
+		resolvers 1.1.1.1 9.9.9.9
+	}
+
+	# Nur aus dem LAN (und über Tailscale, O4). Alles andere wird ohne Antwort getrennt.
+	@outside not remote_ip private_ranges 100.64.0.0/10
+	abort @outside
+
+	import security_headers
+	encode zstd gzip
+
+	request_body {
+		max_size 5MB
+	}
+
+	handle /api/* {
+		reverse_proxy 127.0.0.1:5000
+	}
+
+	handle {
+		reverse_proxy 127.0.0.1:4201
+	}
+
+	log {
+		output stderr
+		format console
+	}
+}
+
+# http:// leitet Caddy automatisch auf https:// um.
