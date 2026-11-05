@@ -1,3 +1,5 @@
+> **Superseded (2026-11-05)** by [roadmap.md](roadmap.md) (pilot plan, decisions D1–D12). Kept for history.
+
 # Product Requirements Document (PRD)
 
 ## **1. Title**
