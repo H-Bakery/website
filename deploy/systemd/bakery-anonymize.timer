@@ -1,0 +1,14 @@
+# Vorbestellungen anonymisieren jede Nacht um 23:45 (nach dem Backup um 23:30,
+# vor dem Backbeginn um 02:00) - roadmap P4.
+
+[Unit]
+Description=Bäckerei Heusser - Vorbestellungen anonymisieren nachts 23:45
+
+[Timer]
+OnCalendar=*-*-* 23:45:00 Europe/Berlin
+RandomizedDelaySec=2min
+# War die Box um 23:45 aus, läuft der Lauf nach dem Start nach.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -221,9 +221,14 @@ function asPreorderItems(list) {
     : arr
 }
 
-/** Zaehlt eine Position fuer `date`? (nicht storniert, Menge > 0, Abholtag) */
+/**
+ * Zaehlt eine Position fuer `date`? (nicht storniert, Menge > 0, Abholtag)
+ * Storniert heisst im Mock `cancelled`, in der echten API (B7) `storniert`.
+ */
 function countablePreorderQty(raw, date) {
-  if (!raw || raw.status === 'cancelled') return null
+  if (!raw || raw.status === 'cancelled' || raw.status === 'storniert') {
+    return null
+  }
   if ((raw.pickupDate || raw.date) !== date) return null
   const qty = Number(raw.qty === undefined ? raw.quantity : raw.qty)
   return Number.isFinite(qty) && qty > 0 ? qty : null

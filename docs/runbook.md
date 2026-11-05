@@ -51,7 +51,8 @@ Timer: hq-Sync alle 10 min + 14:50/17:50 · Backup 23:30 · Health alle 5 min
 | `journalctl -u bakery-*`            | alle Logs                                                      |
 
 Dienste: `bakery-api`, `bakery-management` (laufen dauerhaft, `Restart=always`), dazu
-`bakery-hq-sync`, `bakery-backup`, `bakery-health` als Timer. Alles läuft als Benutzer `bakery`.
+`bakery-hq-sync`, `bakery-backup`, `bakery-health`, `bakery-anonymize` als Timer. Alles läuft als
+Benutzer `bakery`.
 Die Zeitpläne stehen ausdrücklich in `Europe/Berlin`.
 
 **Rechte – nicht lockern.** `ops.env` und `restic-password` kann der Benutzer `bakery` nicht
@@ -252,6 +253,17 @@ sudo -u bakery bash -c 'set -a; . /etc/bakery/bakery.env; set +a; cd /opt/bakery
 - Danach in der App: Inhaber registriert Laden- und Backstube-Tablet als Station
   (`POST /api/auth/stations`, Oberfläche kommt mit F1) und setzt die PINs unter Benutzer.
 
+Vorbestellungen aus dem Mock-Server übernehmen (B7, einmal vor dem Go-live 17.11.): die Datei
+`apps/bakery-api/data/delivery-store.json` vom Entwicklungsrechner auf die Box kopieren, erst
+einen Probelauf, dann den echten Lauf. Idempotent – ein zweiter Lauf überspringt alles schon
+Importierte; Touren und Fahrer bleiben liegen (D11).
+
+```bash
+sudo -u bakery bash -c 'set -a; . /etc/bakery/bakery.env; set +a; cd /opt/bakery/current &&
+  node dist/apps/bakery-api/bundle/cli.js import-preorders --file /tmp/delivery-store.json --dry-run'
+# Bericht prüfen (imported / alreadyImported / skipped), dann ohne --dry-run; Datei danach löschen
+```
+
 Abnahme M0 (roadmap §6):
 
 - [ ] `https://intern.<domain>` lädt auf Handy, Laden-Tablet, Backstube-Tablet und Büro-PC,
@@ -341,6 +353,17 @@ Jede Nacht um 23:30 (`bakery-backup.timer`; Backbeginn ist 02:00):
 5. `backup/last-success` – der Health-Check meldet, wenn es älter als 36 h ist
 
 Nicht gesichert, weil reproduzierbar: Code (`/opt/bakery`), hq-Lese-Klon (liegt auf GitHub).
+
+**Anonymisierung (P4, DSGVO).** Jede Nacht um 23:45 (`bakery-anonymize.timer`) setzt
+`cli.js anonymize-preorders` bei **jeder** Vorbestellung, deren Abholtag mehr als 90 Tage
+zurückliegt – egal in welchem Status –, den Namen auf `anonymisiert` und löscht Telefon und
+Anmerkung; Positionen und Summen bleiben. Der Bericht zählt unter `unfinished`, wie viele davon nie
+abgeschlossen waren (offen/bereit) – wächst die Zahl, werden Übergaben nicht abgehakt. Der Lauf
+**migriert nie**: stehen nach einem Deploy Migrationen aus (API-Neustart fehlgeschlagen), bricht er
+mit Exit 1 ab und nennt sie – dann zuerst die API in Ordnung bringen (§4). Von Hand:
+`sudo systemctl start bakery-anonymize && journalctl -u bakery-anonymize -n 50` (Probelauf:
+`cli.js anonymize-preorders --dry-run`). Die Backups enthalten die Namen noch bis zu ihrem Ablauf
+(`--keep-weekly 8`, also höchstens etwa 8 Wochen länger).
 
 ### 5.2 Erstes Einrichten des Off-site-Ziels (Q4)
 
@@ -488,6 +511,7 @@ Minute der Störung.
 | Box antwortet gar nicht (kein Ping, kein SSH)         | Strom, Kabel, LED                                             | Stromstecker ziehen und wieder einstecken; Papier-Fallback; Entwickler anrufen          |
 | Alarm „Backup"                                        | `journalctl -u bakery-backup -n 50`                           | Exit 10–13 siehe `backup.sh`; Ziel/Netz prüfen; `systemctl start bakery-backup`         |
 | Alarm „hq-Sync"                                       | `journalctl -u bakery-hq-sync -n 20`                          | §6; die App läuft mit dem letzten Stand weiter, kein Notfall                            |
+| Anonymisierung lief nicht / `unfinished` wächst       | `journalctl -u bakery-anonymize -n 50`                        | ausstehende Migration → API neu starten; dann `systemctl start bakery-anonymize`        |
 | Alarm „Speicherplatz"                                 | `df -h /var/lib/bakery`, `du -sh /opt/bakery/releases/*`      | `KEEP_RELEASES` senken, `journalctl --vacuum-time=14d`, alte `backup/snapshots` löschen |
 | Produkte/Preise geändert, App zeigt alten Stand       | `cat /var/lib/bakery/state/hq-sync.ok`                        | Änderung schon in hq `main` gemerged? Sonst „wartet auf Freigabe" (D6); Sync von Hand   |
 | Kein Telegram trotz Störung                           | `journalctl -u bakery-health -n 20`                           | Token/Chat-ID in `ops.env`; Telegram-Fehler werden beim nächsten Lauf erneut gesendet   |

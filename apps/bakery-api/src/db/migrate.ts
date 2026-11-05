@@ -68,3 +68,19 @@ export async function runMigrations(
     pending: pending.map((m) => m.name),
   }
 }
+
+/**
+ * Names of migrations not yet applied - without running any. For jobs that
+ * must not change the schema under a running server (nightly anonymiser).
+ */
+export async function pendingMigrations(
+  sequelize: Sequelize,
+  options: { migrations?: MigrationEntry[] } = {}
+): Promise<string[]> {
+  const umzug = createUmzug(
+    sequelize,
+    options.migrations ?? MIGRATIONS,
+    () => undefined
+  )
+  return (await umzug.pending()).map((m) => m.name)
+}

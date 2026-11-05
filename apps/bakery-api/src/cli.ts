@@ -20,12 +20,22 @@
  *
  * Works against `DB_PATH` (same rules as the server, `.env` in the working
  * directory is read) and runs pending migrations first. Needs no JWT secret.
+ *
+ * B7/P4 (Vorbestellungen):
+ *
+ *   cli.js import-preorders --file apps/bakery-api/data/delivery-store.json [--dry-run]
+ *   cli.js anonymize-preorders [--dry-run] [--days 90] [--today YYYY-MM-DD]
+ *
+ * Both are idempotent and print a JSON report on stdout; `anonymize-preorders`
+ * runs nightly from `deploy/systemd/bakery-anonymize.timer` (23:45). It never
+ * migrates: with pending migrations it stops (exit 1), so a deploy whose API
+ * restart failed does not get its schema changed under the old process.
  */
 import * as fs from 'fs'
 
 import { ConfigError, loadConfig, loadEnvFile } from './config/env'
 import { openDatabase } from './db/database'
-import { runMigrations } from './db/migrate'
+import { pendingMigrations, runMigrations } from './db/migrate'
 import { initializeModels } from './models'
 import {
   UserInputError,
@@ -38,6 +48,10 @@ import {
   formatImportReport,
   importPartnerStore,
 } from './services/partner-import.service'
+import {
+  anonymizePreorders,
+  importDeliveryStore,
+} from './services/preorders-maintenance'
 
 const USAGE = `Aufruf:
   cli.js create-user --username <name> --display-name <Anzeigename> --role <rolle>
@@ -57,7 +71,16 @@ const USAGE = `Aufruf:
   und Besuche mit ihren Preis-Snapshots. Mehrfach ausführbar - Vorhandenes
   wird erkannt und nicht doppelt angelegt. --dry-run rechnet nur durch,
   --update-partners überschreibt Stammdaten und Vorlagen vorhandener
-  Partner mit denen aus der Datei. Exit 2: Einträge nicht übernommen.`
+  Partner mit denen aus der Datei. Exit 2: Einträge nicht übernommen.
+
+  cli.js import-preorders --file <delivery-store.json> [--dry-run]
+    Übernimmt Sammelstellen und Vorbestellungen aus dem Store des
+    Mock-Servers. Idempotent (schon importierte werden übersprungen).
+
+  cli.js anonymize-preorders [--dry-run] [--days 90] [--today JJJJ-MM-TT]
+    DSGVO: Name, Telefon und Anmerkung aller Vorbestellungen, deren
+    Abholtag mehr als 90 Tage zurückliegt, werden gelöscht (in jedem
+    Status). Migriert nie: bei ausstehenden Migrationen bricht der Lauf ab.`
 
 /** Options without a value. */
 const BOOLEAN_FLAGS = new Set(['dry-run', 'update-partners'])
@@ -182,8 +205,14 @@ async function createUser(flags: Record<string, string>): Promise<void> {
   })
 }
 
-/** Opens `DB_PATH` (server rules), migrates, initialises the models. */
-async function withDatabase<T>(fn: (dbPath: string) => Promise<T>): Promise<T> {
+/**
+ * Opens `DB_PATH` (server rules), migrates, initialises the models.
+ * `migrate: false` refuses a database with pending migrations instead.
+ */
+async function withDatabase<T>(
+  work: (dbPath: string) => Promise<T>,
+  options: { migrate?: boolean } = {}
+): Promise<T> {
   const config = loadConfig()
   const { sequelize } = await openDatabase({
     storage: config.dbPath,
@@ -191,6 +220,18 @@ async function withDatabase<T>(fn: (dbPath: string) => Promise<T>): Promise<T> {
     logSql: config.dbLogSql,
   })
   try {
+    if (options.migrate === false) {
+      const pending = await pendingMigrations(sequelize)
+      if (pending.length > 0) {
+        throw new UserInputError(
+          `Die Datenbank ${config.dbPath} hat ${pending.length} ausstehende ` +
+            `Migration(en) (${pending.join(', ')}). Dieser Befehl ändert das ` +
+            'Schema nicht - bitte zuerst die API (neu) starten, sie migriert beim Start.'
+        )
+      }
+      await initializeModels(sequelize)
+      return await work(config.dbPath)
+    }
     const migrations = await runMigrations(sequelize, {
       log: (message) => console.error(`[migrate] ${message}`),
     })
@@ -200,7 +241,7 @@ async function withDatabase<T>(fn: (dbPath: string) => Promise<T>): Promise<T> {
       )
     }
     await initializeModels(sequelize)
-    return await fn(config.dbPath)
+    return await work(config.dbPath)
   } finally {
     await sequelize.close()
   }
@@ -255,6 +296,72 @@ async function importPartners(flags: Record<string, string>): Promise<number> {
   })
 }
 
+function onlyFlags(flags: Record<string, string>, allowed: string[]): void {
+  const unknown = Object.keys(flags).filter((f) => !allowed.includes(f))
+  if (unknown.length > 0) {
+    throw new UserInputError(`Unbekannte Option: --${unknown[0]}\n\n${USAGE}`)
+  }
+}
+
+async function importPreorders(flags: Record<string, string>): Promise<void> {
+  onlyFlags(flags, ['file', 'dry-run'])
+  if (!flags['file']) throw new UserInputError(`--file fehlt.\n\n${USAGE}`)
+  let store: unknown
+  try {
+    store = JSON.parse(fs.readFileSync(flags['file'], 'utf8'))
+  } catch (error) {
+    throw new UserInputError(
+      `${flags['file']} lässt sich nicht lesen: ${(error as Error).message}`
+    )
+  }
+  const dryRun = flags['dry-run'] === 'true'
+  await withDatabase(async () => {
+    const report = await importDeliveryStore(store, { dryRun })
+    console.log(JSON.stringify(report, null, 2))
+    console.error(
+      `${dryRun ? '[PROBELAUF] ' : ''}${report.imported.length} importiert, ` +
+        `${report.alreadyImported.length} schon vorhanden, ` +
+        `${report.skipped.length} übersprungen; Sammelstellen neu: ` +
+        `${report.pickupPoints.created.length}.`
+    )
+  })
+}
+
+async function anonymize(flags: Record<string, string>): Promise<void> {
+  onlyFlags(flags, ['dry-run', 'days', 'today'])
+  let days: number | undefined
+  if (flags['days'] !== undefined) {
+    days = Number(flags['days'])
+    if (!Number.isInteger(days) || days < 1 || String(days) !== flags['days']) {
+      throw new UserInputError('--days muss eine ganze Zahl ≥ 1 sein.')
+    }
+  }
+  const today = flags['today']
+  if (today !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+    throw new UserInputError('--today muss JJJJ-MM-TT sein.')
+  }
+  const dryRun = flags['dry-run'] === 'true'
+  await withDatabase(
+    async () => {
+      let report
+      try {
+        report = await anonymizePreorders({ days, today, dryRun })
+      } catch (error) {
+        throw new UserInputError((error as Error).message)
+      }
+      console.log(JSON.stringify(report, null, 2))
+      console.error(
+        `${dryRun ? '[PROBELAUF] ' : ''}${
+          report.anonymized.length
+        } Vorbestellung(en) ` +
+          `mit Abholtag vor ${report.cutoff} anonymisiert; davon ${report.unfinished} ` +
+          `nie abgeschlossen (offen/bereit).`
+      )
+    },
+    { migrate: false }
+  )
+}
+
 export async function main(argv: string[]): Promise<number> {
   try {
     loadEnvFile()
@@ -265,6 +372,14 @@ export async function main(argv: string[]): Promise<number> {
     }
     if (command === 'import-partners') {
       return await importPartners(flags)
+    }
+    if (command === 'import-preorders') {
+      await importPreorders(flags)
+      return 0
+    }
+    if (command === 'anonymize-preorders') {
+      await anonymize(flags)
+      return 0
     }
     if (command === undefined || command === 'help' || command === '--help') {
       console.log(USAGE)

@@ -15,6 +15,12 @@ process.env.JWT_SECRET = 'test-jwt-secret-for-unit-tests-minimum-32-characters'
 process.env.HQ_PRODUCTS_DIR = path.join(nowhere, 'products')
 process.env.HQ_REPORTS_DIR = path.join(nowhere, 'reports')
 process.env.HQ_FINANCE_DIR = path.join(nowhere, 'finance')
+// B7: the preorder variants hook reads the Backzettel master data.
+process.env.HQ_BACKZETTEL_CONFIG = path.join(
+  nowhere,
+  'config',
+  'backzettel.yaml'
+)
 // B5: never commit into a developer's hq write worktree from a test.
 delete process.env.HQ_WRITE_DIR
 delete process.env.HQ_WRITE_BRANCH

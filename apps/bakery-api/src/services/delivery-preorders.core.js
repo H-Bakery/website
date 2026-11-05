@@ -138,16 +138,26 @@ function referencePrefix(pickupPointId) {
  * sonst rufen vor Ort zwei Leute auf dieselbe Nummer.
  */
 function nextReference(list, pickupPointId, date) {
-  const prefix = referencePrefix(pickupPointId)
-  const base = `${prefix}-${date}-`
-  let max = 0
+  const codes = []
   for (const entry of Array.isArray(list) ? list : []) {
     if (!entry || entry.pickupPointId !== pickupPointId) continue
     if (entry.date !== date) continue
-    const reference = String(entry.reference || '')
-    const seq = reference.startsWith(base)
-      ? Number(reference.slice(base.length))
-      : 0
+    codes.push(entry.reference)
+  }
+  return nextCode(codes, referencePrefix(pickupPointId), date)
+}
+
+/**
+ * Naechster Code `<PREFIX>-<date>-<nn>` zu einer Liste schon vergebener Codes
+ * (B7). Gezaehlt wird ueber alle Codes mit diesem Anfang - auch die
+ * stornierter Bestellungen, s. `nextReference()`.
+ */
+function nextCode(codes, prefix, date) {
+  const base = `${prefix}-${date}-`
+  let max = 0
+  for (const code of Array.isArray(codes) ? codes : []) {
+    const text = String(code || '')
+    const seq = text.startsWith(base) ? Number(text.slice(base.length)) : 0
     if (Number.isFinite(seq) && seq > max) max = seq
   }
   return `${base}${String(max + 1).padStart(2, '0')}`
@@ -718,6 +728,953 @@ function hasPickupStop(tourList, pickupPointId, date) {
   )
 }
 
+// ===========================================================================
+// B7: das allgemeine Vorbestell-Modell der echten API
+// ===========================================================================
+//
+// Die Sammelstelle oben ist ein Sonderfall: jede Vorbestellung - am Telefon,
+// per WhatsApp, an der Theke, aus dem Shop oder fuer Moersbach - wird
+// entweder **im Laden** (Datum + optional Uhrzeit) oder an einer
+// **Sammelstelle** (Datum = ihr Liefertag, ihr Fenster gilt) abgeholt.
+//
+//   Status   offen -> bereit -> abgeholt, oder storniert
+//   gesperrt abgeholt -> storniert   (Ware raus, Geld kassiert)
+//            storniert -> bereit | abgeholt (Nachlauf kennt das Storno nicht)
+//   "Nicht abgeholt" ist kein eigener Status, sondern `bereit` +
+//   `notCollectedAt` - die Ware liegt da, die Kundschaft kam nicht.
+//
+// Abbildung der Mock-Status (Alias `/api/deliveries/preorders`):
+//
+//   open          <-> offen, bereit (ohne notCollectedAt)
+//   handed_over   <-> abgeholt
+//   not_collected <-> bereit + notCollectedAt
+//   cancelled     <-> storniert
+//
+// Die Uebergaenge sind auf beiden Seiten dieselben, deshalb kann der Alias die
+// alte Pruefung (`checkStatusTransition`) mit ihren Meldungen behalten.
+
+const CHANNELS = ['laden', 'telefon', 'whatsapp', 'shop', 'sammelstelle']
+
+const CHANNEL_LABELS = {
+  laden: 'Laden',
+  telefon: 'Telefon',
+  whatsapp: 'WhatsApp',
+  shop: 'Online-Shop',
+  sammelstelle: 'Sammelstelle',
+}
+
+const STATUS = ['offen', 'bereit', 'abgeholt', 'storniert']
+
+const STATUS_LABELS = {
+  offen: 'Offen',
+  bereit: 'Bereit',
+  abgeholt: 'Abgeholt',
+  storniert: 'Storniert',
+}
+
+/** Filterwert fuer "Abholung im Laden" - darf keine Sammelstellen-ID sein. */
+const LADEN_PICKUP = 'laden'
+
+/** Code-Kuerzel einer Abholung im Laden: `LA-2026-11-21-03`. */
+const LADEN_CODE_PREFIX = 'LA'
+
+const MAX_PHONE_LENGTH = 40
+const MAX_VARIANT_LENGTH = 64
+const VARIANT_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/
+
+/** P4: Name und Telefon verschwinden 90 Tage nach dem Abholtag. */
+const ANONYMIZE_AFTER_DAYS = 90
+const ANONYMIZED_NAME = 'anonymisiert'
+
+const LEGACY_STATUS_FROM = {
+  open: 'offen',
+  handed_over: 'abgeholt',
+  not_collected: 'bereit',
+  cancelled: 'storniert',
+}
+
+function nowIso(now) {
+  if (now === undefined || now === null) return new Date().toISOString()
+  const d = now instanceof Date ? now : new Date(now)
+  return Number.isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString()
+}
+
+/**
+ * Erlaubte Statuswechsel im neuen Modell - dieselben zwei Sperren wie
+ * `checkStatusTransition()`, mit Codes statt Mock-Texten.
+ */
+function checkTransition(from, to) {
+  if (!from || from === to) return null
+  if (from === 'abgeholt' && to === 'storniert') {
+    return fail(
+      'already_picked_up',
+      'Diese Vorbestellung wurde bereits abgeholt und kann nicht storniert werden — bitte zuerst auf „Offen" zurücksetzen.',
+      409
+    )
+  }
+  if (from === 'storniert' && (to === 'bereit' || to === 'abgeholt')) {
+    return fail(
+      'cancelled',
+      'Diese Vorbestellung wurde storniert — bitte zuerst auf „Offen" zurücksetzen.',
+      409
+    )
+  }
+  return null
+}
+
+/**
+ * Setzt Status, Abholzeitpunkt und "nicht abgeholt" konsistent.
+ *
+ * @param {object} base bisheriger Stand (`status`, `pickedUpAt`, `notCollectedAt`)
+ * @param {string} status Zielstatus (schon geprueft)
+ * @param {boolean|undefined} notCollected `true` markiert "nicht abgeholt"
+ *   (nur mit `bereit`), `false` nimmt es zurueck, `undefined` laesst es,
+ *   solange der Status `bereit` bleibt.
+ */
+function statusFields(base, status, notCollected, now) {
+  const at = nowIso(now)
+  const pickedUpAt =
+    status === 'abgeholt'
+      ? base.status === 'abgeholt' && base.pickedUpAt
+        ? base.pickedUpAt
+        : at
+      : null
+  let notCollectedAt = null
+  if (status === 'bereit') {
+    if (notCollected === true) notCollectedAt = base.notCollectedAt || at
+    else if (notCollected === undefined && base.status === 'bereit') {
+      notCollectedAt = base.notCollectedAt || null
+    }
+  }
+  return { status, pickedUpAt, notCollectedAt }
+}
+
+/**
+ * Prueft einen Statuswechsel (`POST /api/preorders/:id/status`).
+ *
+ * @param {object} existing bisherige Vorbestellung
+ * @param {object} body `{ status, notCollected?, paid? }`
+ * @param {object} [options] `{ allowedTargets?: string[], now? }` - der Fahrer
+ *   darf nur `abgeholt` und "nicht abgeholt" setzen.
+ * @returns {{ changes: object } | { error, message, status }}
+ */
+function normalizeStatusChange(existing, body, options) {
+  const base = existing || {}
+  const source = body || {}
+  const opts = options || {}
+  if (base.anonymizedAt) return anonymizedError()
+
+  let status = source.status === undefined ? base.status : source.status
+  if (!STATUS.includes(status)) {
+    return fail(
+      'invalid_status',
+      'Status muss „offen", „bereit", „abgeholt" oder „storniert" sein.'
+    )
+  }
+  let notCollected
+  if (source.notCollected !== undefined) {
+    if (typeof source.notCollected !== 'boolean') {
+      return fail('invalid_not_collected', '„Nicht abgeholt" ist ungültig.')
+    }
+    notCollected = source.notCollected
+    if (notCollected && source.status === undefined) status = 'bereit'
+    if (notCollected && status !== 'bereit') {
+      return fail(
+        'invalid_not_collected',
+        '„Nicht abgeholt" geht nur zusammen mit dem Status „bereit".'
+      )
+    }
+  }
+  if (source.paid !== undefined && typeof source.paid !== 'boolean') {
+    return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
+  }
+  if (Array.isArray(opts.allowedTargets)) {
+    const target = notCollected ? 'nicht_abgeholt' : status
+    if (status !== base.status || notCollected !== undefined) {
+      if (!opts.allowedTargets.includes(target)) {
+        return fail(
+          'forbidden',
+          'Für diesen Statuswechsel fehlt die Berechtigung.',
+          403
+        )
+      }
+    }
+  }
+  const blocked = checkTransition(base.status, status)
+  if (blocked) return blocked
+
+  const changes = statusFields(base, status, notCollected, opts.now)
+  if (source.paid !== undefined) changes.paid = source.paid
+  return { changes }
+}
+
+function anonymizedError() {
+  return fail(
+    'anonymized',
+    'Diese Vorbestellung ist anonymisiert und kann nicht mehr geändert werden.',
+    409
+  )
+}
+
+/** `''` (keine Variante) oder ein Slug wie `nuss`; sonst `null` (ungueltig). */
+function cleanVariantInput(value) {
+  if (value === undefined || value === null) return ''
+  if (typeof value !== 'string') return null
+  const v = value.trim().toLowerCase()
+  if (v === '') return ''
+  if (v.length > MAX_VARIANT_LENGTH || !VARIANT_PATTERN.test(v)) return null
+  return v
+}
+
+/**
+ * Prueft die Variante einer neuen Position gegen die Backzettel-Stammdaten.
+ *
+ * `variantsForProduct(productId)` liefert `null`, wenn es keine Stammdaten
+ * gibt oder das Produkt dort nicht vorkommt - dann gilt jeder Slug (es gibt
+ * nichts, wogegen man pruefen koennte; der Backzettel warnt selbst). Sonst
+ * `{ variants: [...] }`: leer heisst "keine Variante", sonst muss eine davon
+ * gewaehlt sein (ausser `requireVariant: false`, Alias der alten Maske).
+ */
+function checkVariant(name, variant, info, requireVariant) {
+  if (!info || !Array.isArray(info.variants)) return null
+  const allowed = info.variants
+  if (allowed.length === 0) {
+    if (variant !== '') {
+      return fail(
+        'invalid_variant',
+        `„${name}“ gibt es nicht in Sorten - bitte ohne Sorte bestellen.`
+      )
+    }
+    return null
+  }
+  if (variant === '') {
+    if (!requireVariant) return null
+    return fail(
+      'variant_required',
+      `Bitte für „${name}“ eine Sorte wählen: ${allowed.join(', ')}.`
+    )
+  }
+  if (!allowed.includes(variant)) {
+    return fail(
+      'invalid_variant',
+      `„${variant}“ ist keine Sorte von „${name}“ (möglich: ${allowed.join(
+        ', '
+      )}).`
+    )
+  }
+  return null
+}
+
+function itemKey(productId, variant) {
+  return `${productId}|${variant || ''}`
+}
+
+/**
+ * Menge einer Position im neuen Modell: ganze Zahl >= 0 (Zahl oder
+ * Ziffernfolge), sonst `null` = ungueltig. Anders als `tours.wholeNumber`
+ * wird nichts still abgeschnitten - `"abc"` waere sonst eine gestrichene
+ * Zeile und `2.7` zwei Stueck (gleiche Regel wie `validateVisitItems` bei
+ * den Verkaufspartnern).
+ */
+function parseQuantity(value) {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) && value >= 0 ? value : null
+  }
+  if (typeof value === 'string' && /^\s*\d+\s*$/.test(value)) {
+    return Number(value.trim())
+  }
+  return null
+}
+
+/** Positionen als vergleichbarer Schluessel (Produkt, Variante, Menge). */
+function itemsSignature(items) {
+  return (Array.isArray(items) ? items : [])
+    .map((i) => `${itemKey(i.productId, i.variant)}|${Number(i.quantity)}`)
+    .sort()
+    .join(';')
+}
+
+/**
+ * Prueft und normalisiert eine Vorbestellung des allgemeinen Modells.
+ *
+ * @param {object} body Request-Body: `{ channel, customerName, customerPhone?,
+ *   pickupDate, pickupTime?, pickupPointId?, note?, paid?, status?,
+ *   notCollected?, items: [{ productId, quantity | qty, variant? }] }`
+ * @param {object|null} existing bestehende Vorbestellung (PATCH), sonst null
+ * @param {object} options
+ * @param {(id: string) => object|null} options.lookupProduct hq-Produkt per
+ *   Slug oder numerischer ID (`{ id, name, price }`)
+ * @param {(id: string) => object|null} options.findPickupPoint Sammelstelle
+ * @param {(productId: string) => ({variants: string[]}|null)} [options.variantsForProduct]
+ * @param {boolean} [options.requireVariant=true]
+ * @param {Date|string} [options.now]
+ * @returns {{ preorder: object } | { error, message, status }}
+ */
+function normalizeOrderInput(body, existing, options) {
+  const source = body && typeof body === 'object' ? body : {}
+  const base = existing || {}
+  const opts = options || {}
+  const requireVariant = opts.requireVariant !== false
+  if (base.anonymizedAt) return anonymizedError()
+
+  const pick = (key) => (source[key] === undefined ? base[key] : source[key])
+
+  // --- Kanal
+  const channel = pick('channel')
+  if (!CHANNELS.includes(channel)) {
+    return fail(
+      'invalid_channel',
+      'Bitte den Bestellweg wählen: Laden, Telefon, WhatsApp, Shop oder Sammelstelle.'
+    )
+  }
+
+  // --- Kundschaft
+  const rawName = pick('customerName')
+  if (
+    rawName !== undefined &&
+    rawName !== null &&
+    typeof rawName !== 'string'
+  ) {
+    return fail('invalid_customer', 'Der Name des Kunden ist ungültig.')
+  }
+  const customerName = trimmed(rawName)
+  if (!customerName) {
+    return fail('customer_required', 'Der Name des Kunden ist erforderlich.')
+  }
+  if (customerName.length > MAX_TEXT_LENGTH) {
+    return fail('customer_too_long', 'Der Name des Kunden ist zu lang.')
+  }
+  const rawPhone = pick('customerPhone')
+  if (
+    rawPhone !== undefined &&
+    rawPhone !== null &&
+    typeof rawPhone !== 'string'
+  ) {
+    return fail('invalid_phone', 'Die Telefonnummer ist ungültig.')
+  }
+  const customerPhone = tours.normalizePhone(rawPhone)
+  if (customerPhone && customerPhone.length > MAX_PHONE_LENGTH) {
+    return fail('invalid_phone', 'Die Telefonnummer ist zu lang.')
+  }
+
+  // --- Abholung: Laden oder Sammelstelle
+  const pickupDate = trimmed(pick('pickupDate'))
+  if (!tours.isBusinessDate(pickupDate)) {
+    return fail(
+      'invalid_date',
+      'Das Abholdatum muss im Format JJJJ-MM-TT angegeben werden.'
+    )
+  }
+
+  const rawPoint =
+    source.pickupPointId === undefined
+      ? base.pickupPointId
+      : source.pickupPointId
+  if (
+    rawPoint !== undefined &&
+    rawPoint !== null &&
+    typeof rawPoint !== 'string'
+  ) {
+    return fail('invalid_pickup_point', 'Diese Sammelstelle existiert nicht.')
+  }
+  const pickupPointId = trimmed(rawPoint) || null
+  let pickupPoint = null
+  if (pickupPointId) {
+    pickupPoint =
+      typeof opts.findPickupPoint === 'function'
+        ? opts.findPickupPoint(pickupPointId)
+        : null
+    if (!pickupPoint) {
+      return fail('unknown_pickup_point', 'Diese Sammelstelle existiert nicht.')
+    }
+    if (pickupPoint.active === false && base.pickupPointId !== pickupPointId) {
+      return fail(
+        'inactive_pickup_point',
+        `Die Sammelstelle „${pickupPoint.name}“ ist nicht aktiv.`
+      )
+    }
+  }
+  if (channel === 'sammelstelle' && !pickupPoint) {
+    return fail(
+      'pickup_point_required',
+      'Für eine Sammelstellen-Bestellung bitte die Sammelstelle wählen.'
+    )
+  }
+
+  let pickupTime = null
+  const rawTime = source.pickupTime
+  if (pickupPoint) {
+    if (
+      rawTime !== undefined &&
+      rawTime !== null &&
+      (typeof rawTime !== 'string' || rawTime.trim() !== '')
+    ) {
+      return fail(
+        'pickup_time_not_allowed',
+        'An einer Sammelstelle gilt ihr Übergabefenster - bitte keine Abholzeit angeben.'
+      )
+    }
+    if (tours.isNumber(pickupPoint.weekday)) {
+      const weekday = Number(pickupPoint.weekday)
+      if (weekdayOf(pickupDate) !== weekday) {
+        return fail(
+          'invalid_delivery_day',
+          `Der ${formatGermanDate(pickupDate)} ist kein ${
+            WEEKDAY_LABELS[weekday] || 'Liefertag'
+          } — an diesem Tag wird nicht nach ${placeLabel(
+            pickupPoint
+          )} geliefert.`
+        )
+      }
+    }
+  } else {
+    const time = rawTime === undefined ? base.pickupTime : rawTime
+    if (time !== undefined && time !== null && time !== '') {
+      if (typeof time !== 'string' || !TIME_PATTERN.test(time.trim())) {
+        return fail(
+          'invalid_time',
+          'Die Abholzeit muss im Format HH:MM angegeben werden.'
+        )
+      }
+      pickupTime = time.trim()
+    }
+  }
+
+  // --- Anmerkung, bezahlt
+  if (
+    source.note !== undefined &&
+    source.note !== null &&
+    typeof source.note !== 'string'
+  ) {
+    return fail('invalid_note', 'Die Anmerkung ist ungültig.')
+  }
+  const note =
+    source.note === undefined ? base.note || null : trimmed(source.note) || null
+  if (note && note.length > MAX_TEXT_LENGTH) {
+    return fail('note_too_long', 'Bitte fassen Sie die Anmerkung kürzer.')
+  }
+  if (source.paid !== undefined && typeof source.paid !== 'boolean') {
+    return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
+  }
+  const paid = source.paid === undefined ? !!base.paid : source.paid
+
+  // --- Status
+  const statusResult = normalizeStatusChange(
+    { ...base, status: base.status || 'offen' },
+    {
+      status: source.status === undefined ? undefined : source.status,
+      notCollected: source.notCollected,
+    },
+    { now: opts.now }
+  )
+  if (statusResult.error) return statusResult
+  // Neu angelegt: kein Uebergang, aber ein Status ausser `offen` ist erlaubt
+  // (z. B. nachgetragene, schon abgeholte Papierbestellung).
+
+  // --- Positionen
+  let items
+  if (source.items === undefined) {
+    items = Array.isArray(base.items) ? base.items : []
+  } else {
+    if (!Array.isArray(source.items)) {
+      return fail('invalid_items', 'Die Artikelliste ist ungültig.')
+    }
+    if (source.items.length > MAX_ITEMS) {
+      return fail(
+        'too_many_items',
+        `Eine Vorbestellung darf höchstens ${MAX_ITEMS} verschiedene Artikel enthalten.`
+      )
+    }
+    // Snapshots bestehender Positionen bleiben (Preis wie zugesagt) - wie
+    // in `normalizePreorderInput`, nur je Produkt *und* Variante.
+    const snapshots = new Map()
+    for (const item of Array.isArray(base.items) ? base.items : []) {
+      if (item && item.productId != null) {
+        snapshots.set(itemKey(item.productId, item.variant), item)
+      }
+    }
+
+    const merged = new Map()
+    for (const raw of source.items) {
+      if (!raw || typeof raw !== 'object') {
+        return fail('invalid_items', 'Eine Position ist unvollständig.')
+      }
+      const requested =
+        typeof raw.productId === 'number'
+          ? String(raw.productId)
+          : trimmed(raw.productId)
+      if (!requested) {
+        return fail('invalid_items', 'Eine Position ist unvollständig.')
+      }
+      const qty = parseQuantity(
+        raw.quantity === undefined ? raw.qty : raw.quantity
+      )
+      if (qty === null) {
+        return fail(
+          'invalid_quantity',
+          `Die Menge von „${
+            trimmed(raw.name) || requested
+          }“ muss eine ganze Zahl zwischen 0 und ${MAX_QTY_PER_ITEM} sein.`
+        )
+      }
+      if (qty === 0) continue // ausdrueckliche 0 = Zeile gestrichen
+      const variant = cleanVariantInput(raw.variant)
+      if (variant === null) {
+        return fail(
+          'invalid_variant',
+          'Die Sorte ist ungültig (nur Kleinbuchstaben, Ziffern und Bindestriche).'
+        )
+      }
+
+      let snapshot = snapshots.get(itemKey(requested, variant))
+      let product = null
+      if (!snapshot && typeof opts.lookupProduct === 'function') {
+        product = opts.lookupProduct(requested)
+        if (!product) {
+          return fail(
+            'unknown_product',
+            `„${trimmed(raw.name) || requested}“ steht nicht im Sortiment.`
+          )
+        }
+        snapshot = snapshots.get(itemKey(product.id, variant))
+      }
+
+      let entry
+      if (snapshot) {
+        entry = {
+          productId: String(snapshot.productId),
+          name: snapshot.name,
+          variant,
+          unit: snapshot.unit || 'Stück',
+          unitPrice: Number(snapshot.unitPrice),
+        }
+      } else {
+        if (!product) {
+          return fail(
+            'unknown_product',
+            `„${trimmed(raw.name) || requested}“ steht nicht im Sortiment.`
+          )
+        }
+        const name = trimmed(product.name) || String(product.id)
+        const info =
+          typeof opts.variantsForProduct === 'function'
+            ? opts.variantsForProduct(String(product.id))
+            : null
+        const variantError = checkVariant(name, variant, info, requireVariant)
+        if (variantError) return variantError
+        // `Number(null)` ist 0 - ein fehlender Preis darf nicht 0 € werden.
+        const price =
+          product.price === null || product.price === undefined
+            ? NaN
+            : Number(product.price)
+        if (!Number.isFinite(price) || price < 0) {
+          return fail(
+            'invalid_price',
+            `Für „${name}“ ist kein Preis hinterlegt.`
+          )
+        }
+        entry = {
+          productId: String(product.id),
+          name,
+          variant,
+          unit: trimmed(product.unit) || 'Stück',
+          unitPrice: roundCents(price),
+        }
+      }
+
+      const key = itemKey(entry.productId, entry.variant)
+      const previous = merged.get(key)
+      const quantity = (previous ? previous.quantity : 0) + qty
+      if (quantity > MAX_QTY_PER_ITEM) {
+        return fail(
+          'invalid_quantity',
+          `Bitte wählen Sie je Artikel eine Menge zwischen 1 und ${MAX_QTY_PER_ITEM}.`
+        )
+      }
+      merged.set(key, { ...entry, quantity })
+    }
+    items = [...merged.values()].map((item) => ({
+      ...item,
+      lineTotal: lineTotal(item.quantity, item.unitPrice),
+    }))
+  }
+
+  if (items.length === 0) {
+    return fail(
+      'items_required',
+      'Eine Vorbestellung braucht mindestens eine Position.'
+    )
+  }
+
+  // Nach der Uebergabe ist die Bestellung Geschichte: Positionen, Abholtag
+  // und Abholort bleiben, solange sie `abgeholt` ist - sonst aenderten sich
+  // Summen und Tageszahlen rueckwirkend. Wie beim Stornieren: erst auf
+  // „Offen" zuruecksetzen (im selben Request erlaubt).
+  if (
+    base.status === 'abgeholt' &&
+    statusResult.changes.status === 'abgeholt'
+  ) {
+    const moved =
+      pickupDate !== base.pickupDate ||
+      (pickupPoint ? pickupPoint.id : null) !== (base.pickupPointId || null)
+    if (moved || itemsSignature(items) !== itemsSignature(base.items)) {
+      return fail(
+        'already_picked_up',
+        'Diese Vorbestellung wurde bereits abgeholt — Positionen, Abholtag und Abholort lassen sich nicht mehr ändern. Bitte zuerst auf „Offen" zurücksetzen.',
+        409
+      )
+    }
+  }
+
+  return {
+    preorder: {
+      channel,
+      customerName,
+      customerPhone,
+      pickupDate,
+      pickupTime,
+      pickupPointId: pickupPoint ? pickupPoint.id : null,
+      paid,
+      note,
+      ...statusResult.changes,
+      items,
+      total: orderTotal(items.map((i) => ({ lineTotal: i.lineTotal }))),
+    },
+  }
+}
+
+/** Code-Kuerzel: Sammelstelle (`MO`) oder Laden (`LA`). */
+function codePrefixFor(pickupPointId) {
+  return pickupPointId ? referencePrefix(pickupPointId) : LADEN_CODE_PREFIX
+}
+
+/** Muss eine Vorbestellung nach einer Aenderung einen neuen Code bekommen? */
+function codeNeedsRenewal(code, pickupPointId, pickupDate) {
+  return !String(code || '').startsWith(
+    `${codePrefixFor(pickupPointId)}-${pickupDate}-`
+  )
+}
+
+/**
+ * Summen je Produkt und Variante (Backzettel, `GET /api/preorders/sums`).
+ * Stornierte zaehlen nicht; Mengen bleiben Stueck des Produkts - die
+ * Umrechnung auf Backzettel-Posten (Viertel, Faktoren) macht Z2.
+ */
+function sumByProductVariant(list) {
+  const active = (Array.isArray(list) ? list : []).filter(
+    (p) => p && p.status !== 'storniert'
+  )
+  const sums = new Map()
+  for (const preorder of active) {
+    const seen = new Set()
+    for (const item of preorder.items || []) {
+      const variant = item.variant || ''
+      const key = itemKey(item.productId, variant)
+      const entry = sums.get(key) || {
+        productId: String(item.productId),
+        variant,
+        name: item.name,
+        unit: item.unit || 'Stück',
+        quantity: 0,
+        preorders: 0,
+      }
+      entry.quantity += tours.wholeNumber(item.quantity, 0)
+      if (!seen.has(key)) {
+        entry.preorders += 1
+        seen.add(key)
+      }
+      sums.set(key, entry)
+    }
+  }
+  return [...sums.values()].sort(
+    (a, b) =>
+      String(a.name).localeCompare(String(b.name), 'de') ||
+      a.variant.localeCompare(b.variant, 'de')
+  )
+}
+
+/** Kopfzahlen eines Tages (`GET /api/preorders/day`). */
+function summarizeDay(list) {
+  const all = Array.isArray(list) ? list : []
+  const active = all.filter((p) => p && p.status !== 'storniert')
+  const byStatus = { offen: 0, bereit: 0, abgeholt: 0, storniert: 0 }
+  const byChannel = {}
+  for (const p of all) {
+    if (byStatus[p.status] !== undefined) byStatus[p.status] += 1
+  }
+  for (const p of active) {
+    byChannel[p.channel] = (byChannel[p.channel] || 0) + 1
+  }
+  return {
+    count: active.length,
+    total: roundCents(active.reduce((sum, p) => sum + roundCents(p.total), 0)),
+    byStatus,
+    notCollected: active.filter((p) => p.notCollectedAt).length,
+    paid: active.filter((p) => p.paid).length,
+    unpaidTotal: roundCents(
+      active
+        .filter((p) => !p.paid && p.status !== 'abgeholt')
+        .reduce((sum, p) => sum + roundCents(p.total), 0)
+    ),
+    byChannel,
+  }
+}
+
+/**
+ * Sortierung der Abholliste: Sammelstellen-/Ladenabholung, dann Uhrzeit
+ * (ohne Uhrzeit zuletzt), dann Code.
+ */
+function comparePickup(a, b) {
+  return (
+    String(a.pickupDate).localeCompare(String(b.pickupDate)) ||
+    String(a.pickupPointId || '').localeCompare(
+      String(b.pickupPointId || '')
+    ) ||
+    String(a.pickupTime || '99:99').localeCompare(
+      String(b.pickupTime || '99:99')
+    ) ||
+    String(a.code).localeCompare(String(b.code))
+  )
+}
+
+// --- Alias: altes Mock-Format ------------------------------------------------
+
+/** Neuer Status -> Mock-Status (`open`/`handed_over`/`not_collected`/`cancelled`). */
+function toLegacyStatus(preorder) {
+  const p = preorder || {}
+  if (p.status === 'storniert') return 'cancelled'
+  if (p.status === 'abgeholt') return 'handed_over'
+  if (p.status === 'bereit' && p.notCollectedAt) return 'not_collected'
+  return 'open'
+}
+
+/**
+ * Mock-Status aus dem Body -> `{ status, notCollected }` des neuen Modells.
+ * `open` laesst eine `bereit` gemeldete Bestellung auf `bereit` - sonst setzte
+ * jedes Speichern der alten Maske (sie schickt den Status immer mit) eine
+ * gepackte Bestellung zurueck auf `offen`.
+ */
+function fromLegacyStatus(legacy, current) {
+  const cur = current || {}
+  if (legacy === 'open') {
+    if (cur.status === 'bereit')
+      return { status: 'bereit', notCollected: false }
+    return { status: 'offen', notCollected: undefined }
+  }
+  if (legacy === 'not_collected')
+    return { status: 'bereit', notCollected: true }
+  return { status: LEGACY_STATUS_FROM[legacy], notCollected: undefined }
+}
+
+/**
+ * Body der alten Moersbach-Maske -> Body des neuen Modells. Felder, die der
+ * Body nicht nennt, bleiben `undefined` (PATCH laesst sie stehen).
+ */
+function fromLegacyInput(body, current) {
+  const source = body && typeof body === 'object' ? body : {}
+  const out = {}
+  if (!current) out.channel = 'sammelstelle'
+  if (source.customer !== undefined) out.customerName = source.customer
+  if (source.phone !== undefined) out.customerPhone = source.phone
+  if (source.date !== undefined) out.pickupDate = source.date
+  if (source.note !== undefined) out.note = source.note
+  if (source.pickupPointId !== undefined) {
+    out.pickupPointId = source.pickupPointId
+  }
+  if (source.items !== undefined) {
+    out.items = Array.isArray(source.items)
+      ? source.items.map((raw) =>
+          raw && typeof raw === 'object'
+            ? {
+                productId: raw.productId,
+                quantity: raw.qty,
+                variant: raw.variant,
+                name: raw.name,
+              }
+            : raw
+        )
+      : source.items
+  }
+  if (source.status !== undefined) {
+    const mapped = fromLegacyStatus(String(source.status), current)
+    out.status = mapped.status
+    if (mapped.notCollected !== undefined)
+      out.notCollected = mapped.notCollected
+    // Mörsbach kassiert bei der Übergabe, und die alte Maske hat keinen
+    // Bezahlt-Schalter: übergeben heißt bezahlt - dieselbe Regel wie der
+    // Import (`legacyPreorderToRecord`).
+    if (
+      out.status === 'abgeholt' &&
+      (!current || current.status !== 'abgeholt')
+    ) {
+      out.paid = true
+    }
+  }
+  return out
+}
+
+/**
+ * Die alte Moersbach-Maske kennt keine Sorten: sie fuehrt eine Zeile je
+ * Produkt und schickt `{ productId, qty }` ohne `variant`. Hat die Bestellung
+ * schon Positionen mit Sorte (aus der neuen Maske), wuerde ein Speichern dort
+ * die Sorten verlieren oder Zeilen zusammenlegen. Der Alias lehnt das ab.
+ */
+function legacyItemsLoseVariants(currentItems, incomingItems) {
+  if (!Array.isArray(incomingItems)) return false
+  const withVariant = new Set(
+    (Array.isArray(currentItems) ? currentItems : [])
+      .filter((item) => item && item.variant)
+      .map((item) => String(item.productId))
+  )
+  if (withVariant.size === 0) return false
+  return incomingItems.some(
+    (raw) =>
+      raw &&
+      typeof raw === 'object' &&
+      raw.variant === undefined &&
+      withVariant.has(String(raw.productId))
+  )
+}
+
+function isoOrNull(value) {
+  if (value === null || value === undefined) return null
+  const d = value instanceof Date ? value : new Date(value)
+  return Number.isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+/**
+ * Vorbestellung des neuen Modells -> Mock-Form (`decoratePreorder`), fuer
+ * den Alias. Eine Variante steht im Namen (`Zopf gefüllt (nuss)`) und als
+ * Zusatzfeld `variant`; `code`, `channel` und `paid` kommen als Zusatzfelder
+ * mit - die alte Oberflaeche liest sie nicht.
+ */
+function toLegacyPreorder(preorder, pickupPoint, now) {
+  const p = preorder || {}
+  const legacy = {
+    id: p.id,
+    reference: p.code,
+    pickupPointId: p.pickupPointId,
+    date: p.pickupDate,
+    customer: p.customerName || '',
+    phone: p.customerPhone || null,
+    items: (p.items || []).map((item) => {
+      const out = {
+        productId: item.productId,
+        name: item.variant ? `${item.name} (${item.variant})` : item.name,
+        qty: item.quantity,
+        unit: item.unit,
+        unitPrice: Number(item.unitPrice),
+        lineTotal: lineTotal(item.quantity, item.unitPrice),
+      }
+      if (item.variant) out.variant = item.variant
+      return out
+    }),
+    total: roundCents(p.total),
+    note: p.note || null,
+    status: toLegacyStatus(p),
+    handedOverAt: isoOrNull(p.pickedUpAt),
+    createdAt: isoOrNull(p.createdAt),
+    updatedAt: isoOrNull(p.updatedAt),
+    code: p.code,
+    channel: p.channel,
+    paid: !!p.paid,
+  }
+  return decoratePreorder(legacy, pickupPoint, now)
+}
+
+// --- Import aus dem Mock-Store -------------------------------------------------
+
+/**
+ * Eine Vorbestellung aus `delivery-store.json` -> Datensatz des neuen Modells,
+ * oder `{ skip: Grund }`. Kanal `sammelstelle`; uebergeben heisst bezahlt
+ * (in Moersbach wird bei der Uebergabe kassiert). Preise und Namen bleiben,
+ * wie sie im Store stehen (Snapshots).
+ */
+function legacyPreorderToRecord(legacy) {
+  const p = legacy || {}
+  const code = trimmed(p.reference)
+  if (!code || code.length > 32) return { skip: 'ohne gültige Referenz' }
+  if (!tours.isBusinessDate(p.date)) return { skip: 'ohne gültiges Datum' }
+  if (!trimmed(p.pickupPointId)) return { skip: 'ohne Sammelstelle' }
+  const status = LEGACY_STATUS_FROM[p.status]
+  if (!status) return { skip: `unbekannter Status „${p.status}“` }
+  const items = []
+  for (const raw of Array.isArray(p.items) ? p.items : []) {
+    const quantity = tours.wholeNumber(raw && raw.qty, 0)
+    const price = Number(raw && raw.unitPrice)
+    if (!raw || !trimmed(String(raw.productId == null ? '' : raw.productId)))
+      continue
+    if (quantity <= 0 || !Number.isFinite(price) || price < 0) continue
+    items.push({
+      productId: String(raw.productId),
+      name: trimmed(raw.name) || String(raw.productId),
+      variant: '',
+      unit: trimmed(raw.unit) || 'Stück',
+      unitPrice: roundCents(price),
+      quantity: Math.min(quantity, MAX_QTY_PER_ITEM),
+    })
+  }
+  if (items.length === 0) return { skip: 'ohne Positionen' }
+  const updatedAt = isoOrNull(p.updatedAt)
+  return {
+    record: {
+      code,
+      channel: 'sammelstelle',
+      customerName: trimmed(p.customer) || ANONYMIZED_NAME,
+      customerPhone: tours.normalizePhone(p.phone),
+      pickupDate: p.date,
+      pickupTime: null,
+      pickupPointId: trimmed(p.pickupPointId),
+      status,
+      paid: status === 'abgeholt',
+      note: trimmed(p.note) || null,
+      pickedUpAt: status === 'abgeholt' ? isoOrNull(p.handedOverAt) : null,
+      notCollectedAt:
+        p.status === 'not_collected' ? updatedAt || nowIso() : null,
+      createdAt: isoOrNull(p.createdAt) || updatedAt || nowIso(),
+      updatedAt: updatedAt || isoOrNull(p.createdAt) || nowIso(),
+      items,
+    },
+  }
+}
+
+// --- P4: Anonymisierung (DSGVO) -----------------------------------------------
+
+/** Erster Abholtag, der noch *nicht* anonymisiert wird: heute − 90 Tage. */
+function anonymizeCutoff(todayIso, days) {
+  const span = days === undefined ? ANONYMIZE_AFTER_DAYS : days
+  if (!tours.isBusinessDate(todayIso)) return null
+  if (!Number.isInteger(span) || span < 1) return null
+  const [y, m, d] = todayIso.split('-').map(Number)
+  const at = new Date(Date.UTC(y, m - 1, d))
+  at.setUTCDate(at.getUTCDate() - span)
+  return at.toISOString().slice(0, 10)
+}
+
+/**
+ * Faellig: noch nicht anonymisiert und Abholtag vor dem Stichtag - **egal in
+ * welchem Status**. 90 Tage nach dem Abholtag ist der Status nicht mehr
+ * entscheidend; eine Uebergabe, die niemand abgehakt hat (an der Ladentheke
+ * in der Spitzenwoche wahrscheinlich), darf Name und Telefon nicht unbegrenzt
+ * aufbewahren (roadmap P4).
+ */
+function isDueForAnonymization(preorder, cutoff) {
+  const p = preorder || {}
+  if (!cutoff || p.anonymizedAt) return false
+  return String(p.pickupDate) < cutoff
+}
+
+/**
+ * War die Vorbestellung beim Anonymisieren noch nicht abgeschlossen (`offen`
+ * oder `bereit` ohne "nicht abgeholt")? Nur fuer den Bericht - ein Hinweis,
+ * dass dort nie abgehakt wurde.
+ */
+function wasUnfinished(preorder) {
+  const p = preorder || {}
+  return p.status === 'offen' || (p.status === 'bereit' && !p.notCollectedAt)
+}
+
 module.exports = {
   PREORDER_STATUS,
   PREORDER_STATUS_LABELS,
@@ -732,6 +1689,7 @@ module.exports = {
   placeLabel,
   referencePrefix,
   nextReference,
+  nextCode,
   deadlineFor,
   isAfterDeadline,
   summarizePreorders,
@@ -745,4 +1703,33 @@ module.exports = {
   normalizePickupPointInput,
   migratePickupKeys,
   preordersForStop,
+  // B7
+  CHANNELS,
+  CHANNEL_LABELS,
+  STATUS,
+  STATUS_LABELS,
+  LADEN_PICKUP,
+  LADEN_CODE_PREFIX,
+  ANONYMIZE_AFTER_DAYS,
+  ANONYMIZED_NAME,
+  checkTransition,
+  normalizeStatusChange,
+  normalizeOrderInput,
+  cleanVariantInput,
+  parseQuantity,
+  checkVariant,
+  codePrefixFor,
+  codeNeedsRenewal,
+  sumByProductVariant,
+  summarizeDay,
+  comparePickup,
+  toLegacyStatus,
+  fromLegacyStatus,
+  fromLegacyInput,
+  legacyItemsLoseVariants,
+  toLegacyPreorder,
+  legacyPreorderToRecord,
+  anonymizeCutoff,
+  isDueForAnonymization,
+  wasUnfinished,
 }
