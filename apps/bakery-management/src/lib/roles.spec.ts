@@ -51,6 +51,17 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['fahrer', '/admin', false],
     ['fahrer', '/admin/delivery', false],
     ['fahrer', '/admin/products', false],
+    // P1/P3: Fahrer lesen Vorbestellungen, erfassen aber keine
+    ['fahrer', '/admin/preorders', true],
+    ['fahrer', '/admin/preorders/12', true],
+    ['fahrer', '/admin/preorders/tag', true],
+    ['fahrer', '/admin/preorders/abholliste', true],
+    ['fahrer', '/admin/preorders/neu', false],
+    ['fahrer', '/admin/preorders/neu/x', false],
+    ['fahrer', '/admin/preordersx', false],
+    ['verkauf', '/admin/preorders/neu', true],
+    ['verkauf', '/admin/preorders/7', true],
+    ['backstube', '/admin/preorders/tag', false],
   ])('%s → %s: %s', (role, path, allowed) => {
     expect(isPathAllowedForRole(path, role)).toBe(allowed)
   })
@@ -126,6 +137,7 @@ describe('getNavigationForRole', () => {
     expect(hrefs(getNavigationForRole('verkauf', true)).sort()).toEqual(
       [
         '/admin',
+        '/admin/preorders',
         '/admin/delivery/preorders',
         '/admin/products',
         '/admin/partners',
@@ -134,8 +146,9 @@ describe('getNavigationForRole', () => {
     )
   })
 
-  it('Fahrer: nur die Sammelstelle Mörsbach und Einstellungen', () => {
+  it('Fahrer: Vorbestellungen (lesen), Sammelstelle Mörsbach, Einstellungen', () => {
     expect(hrefs(getNavigationForRole('fahrer', true))).toEqual([
+      '/admin/preorders',
       '/admin/delivery/preorders',
       '/admin/settings',
     ])

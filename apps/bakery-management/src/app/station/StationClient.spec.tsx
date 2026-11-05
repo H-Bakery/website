@@ -134,7 +134,10 @@ describe('Station', () => {
       expect(submit).toBeEnabled()
       fireEvent.click(submit)
 
-      await waitFor(() => expect(mockReplace).toHaveBeenCalledWith('/admin'))
+      // Verkauf startet seit M1 (P3 gebaut) in den Vorbestellungen
+      await waitFor(() =>
+        expect(mockReplace).toHaveBeenCalledWith('/admin/preorders')
+      )
       // führende Null bleibt: die PIN ist ein String
       expect(pinLogin).toHaveBeenCalledWith('st_x', 2, '0420')
     })

@@ -117,6 +117,10 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/delivery/preorders/new': 'Neue Vorbestellung',
   '/admin/delivery/preorders/backliste': 'Backliste',
   '/admin/delivery/preorders/lieferstelle': 'Lieferstelle',
+  // Vorbestellungen (P1/P3): der Code steht auf der Seite selbst.
+  '/admin/preorders/[id]': null,
+  '/admin/preorders/neu': 'Neue Vorbestellung',
+  '/admin/preorders/tag': 'Tagesübersicht',
 }
 
 /** Human readable breadcrumb segments for the current path. */

@@ -222,8 +222,10 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
  * nur `/admin/backzettel/grundmengen` und `/admin/backzettel/[datum]` - es
  * braucht zusätzlich `admin/backzettel/page.tsx` (z. B. Weiterleitung auf den
  * nächsten Produktionstag), sonst führte der Menüeintrag ins Leere.
- * M1 entscheidet beim Freischalten von `/admin/preorders`, ob „Sammelstelle
- * Mörsbach" (/admin/delivery/preorders) darin aufgeht.
+ * `/admin/preorders` (P1/P3) ist seit M1 gebaut. „Sammelstelle Mörsbach"
+ * (/admin/delivery/preorders) bleibt daneben stehen, bis P2 die Mörsbach-Seiten
+ * auf `/api/preorders` umgestellt hat; neue Sammelstellen-Bestellungen lassen
+ * sich schon in der allgemeinen Maske erfassen (Abholort wählen).
  */
 export interface UpcomingNavItem extends NavItem {
   href: string
@@ -236,8 +238,8 @@ export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
     label: 'Vorbestellungen',
     href: '/admin/preorders',
     icon: 'orders',
-    description: 'Telefon, WhatsApp & Shop (M1)',
-    ready: false,
+    description: 'Laden, Telefon, WhatsApp & Sammelstelle',
+    ready: true,
   },
   {
     label: 'Backzettel',
