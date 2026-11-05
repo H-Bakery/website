@@ -1,8 +1,9 @@
 /**
  * Entry point of the bundle (`dist/apps/bakery-api/bundle/main.js`).
  *
- * `./config/load-env` must stay the first import: it loads `.env` and the
- * JWT secret before the auth lib reads them while it is being imported.
+ * `./config/load-env` must stay the first import: it loads `.env` and checks
+ * the JWT secret before anything reads them (production refuses to start
+ * without a stable `JWT_SECRET` of at least 32 characters).
  */
 import './config/load-env'
 

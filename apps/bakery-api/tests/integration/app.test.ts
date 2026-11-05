@@ -5,21 +5,42 @@
  */
 import request from 'supertest'
 
+import { MIGRATIONS } from '../../src/db/migrations'
+import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 
 let api: TestApp
+let token: string
 
 beforeAll(async () => {
   api = await createTestApp({ seedPartners: true })
+  // Every /api route needs a session since B3.
+  token = await sessionFor(api.app, 'test.inhaber', 'inhaber')
 })
 
 afterAll(async () => {
   await api.close()
 })
 
+/** supertest with the session of a synthetic inhaber. */
+function authed() {
+  const agent = request(api.app)
+  return {
+    get: (path: string) => agent.get(path).set(bearer(token)),
+    post: (path: string) => agent.post(path).set(bearer(token)),
+    put: (path: string) => agent.put(path).set(bearer(token)),
+    patch: (path: string) => agent.patch(path).set(bearer(token)),
+    delete: (path: string) => agent.delete(path).set(bearer(token)),
+  }
+}
+
 describe('createTestApp', () => {
-  it('runs the pilot baseline and nothing else', () => {
-    expect(api.migrations).toEqual(['20261105000000-pilot-baseline.js'])
+  it('runs the static migration list (pilot baseline + B3 auth)', () => {
+    expect(api.migrations).toEqual(MIGRATIONS.map((m) => m.name))
+    expect(api.migrations).toEqual([
+      '20261105000000-pilot-baseline.js',
+      '20261106000000-auth-sessions-stations.js',
+    ])
   })
 })
 
@@ -36,7 +57,7 @@ describe('health', () => {
 
 describe('error shape', () => {
   it('answers unknown routes with a JSON 404 carrying error and message', async () => {
-    const res = await request(api.app).get('/api/gibt-es-nicht')
+    const res = await authed().get('/api/gibt-es-nicht')
     expect(res.status).toBe(404)
     expect(res.headers['content-type']).toMatch(/application\/json/)
     expect(res.body).toMatchObject({ success: false, error: 'not_found' })
@@ -62,7 +83,7 @@ describe('error shape', () => {
 
 describe('partners CRUD smoke', () => {
   it('lists the seeded partner', async () => {
-    const res = await request(api.app).get('/api/partners')
+    const res = await authed().get('/api/partners')
     expect(res.status).toBe(200)
     expect(Array.isArray(res.body)).toBe(true)
     expect(res.body).toEqual(
@@ -73,7 +94,7 @@ describe('partners CRUD smoke', () => {
   })
 
   it('creates, reads, updates a partner and rejects a duplicate slug', async () => {
-    const created = await request(api.app)
+    const created = await authed()
       .post('/api/partners')
       .send({
         name: 'Testmarkt Musterstadt',
@@ -90,11 +111,11 @@ describe('partners CRUD smoke', () => {
     })
     const id = created.body.id
 
-    const read = await request(api.app).get(`/api/partners/${id}`)
+    const read = await authed().get(`/api/partners/${id}`)
     expect(read.status).toBe(200)
     expect(read.body.city).toBe('Musterstadt')
 
-    const updated = await request(api.app)
+    const updated = await authed()
       .put(`/api/partners/${id}`)
       .send({ active: false, notes: 'Nur zum Testen.' })
     expect(updated.status).toBe(200)
@@ -103,7 +124,7 @@ describe('partners CRUD smoke', () => {
       notes: 'Nur zum Testen.',
     })
 
-    const duplicate = await request(api.app)
+    const duplicate = await authed()
       .post('/api/partners')
       .send({ name: 'Testmarkt Musterstadt' })
     expect(duplicate.status).toBe(409)
@@ -122,7 +143,7 @@ describe('partners CRUD smoke', () => {
       productName: 'Testbrot',
       unitPrice: 2.5,
     }
-    const initial = await request(api.app)
+    const initial = await authed()
       .post('/api/partners/1/visits')
       .send({
         businessDate: '2026-11-03',
@@ -132,7 +153,7 @@ describe('partners CRUD smoke', () => {
     expect(initial.status).toBe(201)
     expect(initial.body).toMatchObject({ sequence: 1, visitType: 'initial' })
 
-    const pickup = await request(api.app)
+    const pickup = await authed()
       .post('/api/partners/1/visits')
       .send({
         businessDate: '2026-11-03',
@@ -142,7 +163,7 @@ describe('partners CRUD smoke', () => {
     expect(pickup.status).toBe(201)
     expect(pickup.body.sequence).toBe(2)
 
-    const list = await request(api.app).get(
+    const list = await authed().get(
       '/api/partners/1/visits?from=2026-11-03&to=2026-11-03'
     )
     expect(list.status).toBe(200)
@@ -188,7 +209,7 @@ describe('partners CRUD smoke', () => {
   })
 
   it('answers an unknown partner with 404 and a German message', async () => {
-    const res = await request(api.app).get('/api/partners/999')
+    const res = await authed().get('/api/partners/999')
     expect(res.status).toBe(404)
     expect(res.body).toEqual(
       expect.objectContaining({

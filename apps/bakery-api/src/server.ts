@@ -14,6 +14,7 @@ import { openDatabase } from './db/database'
 import { runMigrations } from './db/migrate'
 import { initializeModels } from './models'
 import { runPartnerSeeder } from './seeders/partner.seeder'
+import { bootstrapAdmin } from './auth/users.service'
 
 /** How long shutdown waits for running requests before cutting them. */
 export const SHUTDOWN_DEADLINE_MS = 10_000
@@ -47,8 +48,15 @@ export async function startServer(
 
   await initializeModels(sequelize)
   await runPartnerSeeder()
+  // Development only (BOOTSTRAP_ADMIN_USER/_PASSWORD); production accounts
+  // come from the create-user CLI.
+  await bootstrapAdmin()
 
-  const app = createApp({ sequelize, corsOrigins: config.corsOrigins })
+  const app = createApp({
+    sequelize,
+    corsOrigins: config.corsOrigins,
+    trustProxy: config.trustProxy,
+  })
   const server = http.createServer(app)
 
   try {
@@ -68,14 +76,6 @@ export async function startServer(
       config.port
     }`
   )
-
-  if (config.isProduction) {
-    // B0 still mounts the in-memory auth lib (admin/admin123) and unguarded
-    // partner routes. Do not deploy before B3 (auth) and B6 (guards).
-    console.warn(
-      '[WARN] Auth is still the in-memory development lib and /api/partners has no guards. Not fit for deployment before B3 and B6.'
-    )
-  }
 
   let closing: Promise<void> | null = null
   const close = (deadlineMs = SHUTDOWN_DEADLINE_MS) => {

@@ -11,7 +11,8 @@ const logger = {
   db: (message: string, ...args: any[]) =>
     console.log(`[DB] ${message}`, ...args),
 }
-import { runUserSeeder } from './user.seeder'
+// No user seeder (B3): accounts come from the create-user CLI, in
+// development optionally from BOOTSTRAP_ADMIN_* (auth/users.service.ts).
 import { runProductSeeder } from './product.seeder'
 import { runNotificationSeeder } from './notification.seeder'
 import { runTemplateSeeder } from './template.seeder'
@@ -22,7 +23,6 @@ export async function runSeeders(): Promise<void> {
 
   try {
     // Run seeders in order
-    await runUserSeeder()
     await runProductSeeder()
     await runNotificationSeeder()
     await runTemplateSeeder()

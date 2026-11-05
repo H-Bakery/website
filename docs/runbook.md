@@ -233,8 +233,24 @@ sudo /opt/bakery/bin/deploy.sh main      # npm ci + Build dauern auf dem Pi ~10�
 sudo /opt/bakery/bin/install.sh --check  # prüft u. a. node -e "require('sqlite3')" im Release
 ```
 
-Konten anlegen: mit der `create-user`-CLI aus B3 (Befehl steht nach B3 hier). Liste der
-Mitarbeitenden: Q5.
+Konten anlegen (B3; Liste der Mitarbeitenden: Q5). Die CLI läuft als `bakery` mit der Umgebung
+der API, also gegen dieselbe `DB_PATH`; sie migriert bei Bedarf und braucht kein `JWT_SECRET`.
+Das Passwort wird am Terminal zweimal verdeckt abgefragt, die PIN (4–6 Ziffern, optional) kommt
+aus `CREATE_USER_PIN`:
+
+```bash
+sudo -u bakery bash -c 'set -a; . /etc/bakery/bakery.env; set +a; cd /opt/bakery/current &&
+  node dist/apps/bakery-api/bundle/cli.js create-user \
+    --username anna --display-name "Anna" --role verkauf'
+# mit Stations-PIN:  ... set +a; export CREATE_USER_PIN=1234; cd ...
+```
+
+- Rollen: `inhaber`, `verkauf`, `backstube`, `fahrer`. Zuerst das Inhaber-Konto.
+- Derselbe Befehl für ein vorhandenes Konto setzt Name, Rolle und Passwort neu, aktiviert es
+  wieder und beendet alle seine Sitzungen (vergessenes Passwort, gesperrtes Konto). Es gibt kein
+  Standardkonto; `BOOTSTRAP_ADMIN_*` wird in Produktion ignoriert.
+- Danach in der App: Inhaber registriert Laden- und Backstube-Tablet als Station
+  (`POST /api/auth/stations`, Oberfläche kommt mit F1) und setzt die PINs unter Benutzer.
 
 Abnahme M0 (roadmap §6):
 
@@ -495,7 +511,8 @@ Liegt ausgedruckt im Laden und in der Backstube (P6):
   `dist/apps/bakery-api/bundle/main.js`, `DB_PATH` ist in Produktion Pflicht, `HOST` geht an
   `listen()`, das Bundle loggt nur nach stdout. `deploy/bakery.env.example` ist mit
   `apps/bakery-api/src/config/env.ts` abgeglichen.
-- **B3:** `create-user`-CLI-Befehl in §3.9 eintragen.
+- **B3 (erledigt, `feat/B3-auth`):** `create-user`-CLI-Befehl steht in §3.9; `TRUST_PROXY`
+  (Vorgabe `loopback`) in `deploy/bakery.env.example` dokumentiert.
 - **B5b/Z9:** Anlage des Schreib-Klons `HQ_WRITE_DIR` (und des `main`-Worktrees für Snapshots)
   gehört zu diesen Aufgaben; `install.sh` legt nur den Lese-Klon an.
 - Die Caddyfile ist ohne Caddy-Binary geschrieben und nicht maschinell geprüft; auf der Box

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Bundles the pilot API into one file: dist/apps/bakery-api/bundle/main.js
+ * Bundles the pilot API: dist/apps/bakery-api/bundle/main.js (server) and
+ * dist/apps/bakery-api/bundle/cli.js (operator CLI, `create-user`).
  *
  * - App code, `@bakery/*` libs (tsconfig paths, source) and the `*.core.js`
  *   business rules are bundled.
@@ -21,7 +22,7 @@ import path from 'node:path'
 
 const appDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(appDir, '../..')
-const outfile = path.join(rootDir, 'dist/apps/bakery-api/bundle/main.js')
+const outdir = path.join(rootDir, 'dist/apps/bakery-api/bundle')
 const watch = process.argv.includes('--watch')
 
 /**
@@ -44,8 +45,12 @@ const externalPackages = {
 /** @type {import('esbuild').BuildOptions} */
 const options = {
   absWorkingDir: rootDir,
-  entryPoints: [path.join(appDir, 'src/main.ts')],
-  outfile,
+  // main.js = the server; cli.js = operator commands (create-user, B3).
+  entryPoints: {
+    main: path.join(appDir, 'src/main.ts'),
+    cli: path.join(appDir, 'src/cli.ts'),
+  },
+  outdir,
   bundle: true,
   platform: 'node',
   target: 'node20',
@@ -60,7 +65,7 @@ const options = {
 if (watch) {
   const ctx = await esbuild.context(options)
   await ctx.watch()
-  console.log(`[bundle] watching, output ${path.relative(rootDir, outfile)}`)
+  console.log(`[bundle] watching, output ${path.relative(rootDir, outdir)}`)
 } else {
   const result = await esbuild.build(options)
   const inputs = Object.keys(result.metafile.inputs)

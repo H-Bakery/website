@@ -3,6 +3,7 @@
  * `src/routes/` and `libs/api/*` is unmounted and is removed in B12.
  */
 
-export { default as authRoutes } from './auth.routes'
+export { createPublicAuthRouter, createSessionAuthRouter } from './auth.routes'
 export { createHealthRouter } from './health.routes'
 export { default as partnerRoutes } from './partner.routes'
+export { createUsersRouter } from './users.routes'

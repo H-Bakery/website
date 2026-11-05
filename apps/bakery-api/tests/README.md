@@ -34,9 +34,12 @@ type-check; `npx nx run bakery-api:typecheck` checks the pilot graph **and** `ts
   Example: `parity/partners.parity.test.ts`.
 - **`../scripts/boot-smoke.sh`** - bundle → start in production mode on a fresh SQLite file →
   `/health` + JSON 404 (`message` and `error`) → restart on the same file (no migration may
-  re-run). CI runs it in the `build (bakery-api)` job. `SMOKE_LOGIN_USER`/`SMOKE_LOGIN_PASSWORD`
-  add a login check; CI sets them to the in-memory default admin of `libs/api/auth`. **B3**
-  removes that seed and must switch CI to an account the smoke creates with `create-user`.
+  re-run). CI runs it in the `build (bakery-api)` job. Since B3 it also runs the bundled
+  `cli.js create-user` twice on the fresh file (create, then idempotent reset with a new
+  password), logs in with that account, and checks the global guard (`/api/partners` 401
+  without a session, 200 with one; unknown `/api` routes 404 with a session).
+- **`helpers/auth.ts`** (B3) - `createUser()`, `login()`, `bearer()`, `sessionFor()` for
+  integration tests: every `/api` route except login/refresh/pin/station-users needs a session.
 
 ### TS specs that do not run (triage of the "31")
 

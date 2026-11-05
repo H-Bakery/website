@@ -126,7 +126,7 @@ website/
 | Management    | `npm run serve:management` | 4201 | Working                                              |
 | Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                            |
 | API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data) - parity reference until cutover |
-| API (real TS) | `npm run serve:api`        | 5000 | Starts (B0): health, auth (in-memory), partners only |
+| API (real TS) | `npm run serve:api`        | 5000 | Starts: health, auth (B3, SQLite), users, partners   |
 
 The real TypeScript API (`bakery-api`, roadmap D2) is built by esbuild into one file,
 `dist/apps/bakery-api/bundle/main.js` (`apps/bakery-api/build.mjs`, target `bakery-api:bundle`), and
@@ -134,9 +134,10 @@ runs against the root `node_modules`. On start it opens SQLite at `DB_PATH` (def
 `./data/bakery.db` relative to the working directory, gitignored; **absolute and required in
 production**), switches it to WAL with `busy_timeout`, runs the migrations in-process (Umzug, static
 list in `src/db/migrations.ts`), then `initializeModels()`, then listens. Mounted so far: `/health`
-(+ `/api/health`), `/api/auth`, `/api/partners`; every other path is a JSON 404 with `error` +
-`message`. The other pilot domains (products, reports, finance, targets, preorders, Backzettel) are
-added by their roadmap tasks; until then the frontend still talks to `serve:api:simple`. Details in
+(+ `/api/health`), `/api/auth`, `/api/users`, `/api/partners`. Every `/api` path except login,
+refresh, PIN and the station user list needs a session (401); with a session an unknown path is a
+JSON 404 with `error` + `message`. See "Anmeldung (B3)" below. The other pilot domains (products,
+reports, finance, targets, preorders, Backzettel) are added by their roadmap tasks; until then the frontend still talks to `serve:api:simple`. Details in
 `apps/bakery-api/CLAUDE.md`.
 
 ## Verkaufspartner (Backschrank CAP-Markt)
@@ -471,6 +472,49 @@ Oberflächen (Schweizer Platzhalter, CHF, `data-testid`s ohne Gegenstück) und s
 Begründung übersprungen; geprüft wird die echte App in `landing-smoke.spec.ts` und
 `management-smoke.spec.ts`. Wer eine dieser Funktionen baut, zieht den Test um und gibt ihm
 echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
+
+## Anmeldung (B3, echte API)
+
+Persönliche Konten plus PIN-Stationen (D5) in SQLite, Passwort und PIN als scrypt-Hash aus
+`node:crypto` (D12). Endpunkte und Antworthülle wie `auth.mock.js` (`login`, `me`, `refresh`,
+`logout`, `{ success, data: { user, token, refreshToken, expiresIn } }`) plus
+`POST /api/auth/pin`, `GET /api/auth/station/users`, `/api/auth/stations` und `/api/users`
+(nur `inhaber`, nur aus einer persönlichen Sitzung). Details, Tabelle der Endpunkte und Fehlercodes: `apps/bakery-api/CLAUDE.md`,
+Abschnitt „Auth (B3)". Was man von außen wissen muss:
+
+- **Das `user`-Objekt weicht vom Mock ab (bewusste D3-Abweichung).** Echt:
+  `{ id, username, displayName, role, active, isActive, createdAt, updatedAt, sessionKind }`.
+  `email`, `firstName`, `lastName` und `lastLogin` gibt es nicht - die Pilot-Tabelle `users` hat
+  sie nicht, und erfunden werden sie nicht. Rollen sind `inhaber | verkauf | backstube | fahrer`
+  statt `admin | staff`. Für F1: `admin/login/page.tsx` („Angemeldet als {user.email}") und
+  `admin/chat/page.tsx` lesen heute `user.email` - auf `displayName`/`username` umstellen.
+- **Es gibt kein Standardkonto.** `admin`/`admin123` ist entfernt. Konten legt die CLI an
+  (nach `npm run build:api`):
+  `npm run api:create-user -- --username anna --display-name "Anna" --role verkauf`
+  (Passwort über `CREATE_USER_PASSWORD` oder stdin, PIN optional über `CREATE_USER_PIN`; idempotent, setzt ein vorhandenes oder deaktiviertes Konto zurück). In der
+  Entwicklung legt `BOOTSTRAP_ADMIN_USER`/`BOOTSTRAP_ADMIN_PASSWORD` beim Start einen Inhaber an;
+  in Produktion wird das ignoriert.
+- **Jede `/api`-Route braucht eine Sitzung** außer login, refresh, pin und station/users - auch
+  `/api/partners`. Die Wache sitzt in `app.ts` _vor_ allen Fachroutern; neue Domänen (B4, B5, B7,
+  Z\*) werden darunter eingehängt und prüfen Rollen mit `requireRole(...)`. `inhaber` darf alles.
+- **Refresh-Tokens rotieren** und müssen vom Client gespeichert werden; ein bloßes Access-Token
+  wird an `/refresh` (anders als beim Mock) nicht angenommen. Wer ein bereits rotiertes Token
+  erneut schickt, beendet die ganze Sitzung - außer innerhalb von 10 s nach der Rotation, solange
+  das Nachfolge-Token unbenutzt ist: dann 409 `refresh_superseded` (zweiter Tab, wiederholter
+  Request), die Sitzung bleibt. Für F1: der `AuthProvider` schickt heute alle 5 min einen leeren
+  Refresh-Token und würde gegen die echte API abgemeldet; Refreshes über Tabs hinweg
+  serialisieren und bei 409 das neue Token aus dem Speicher nehmen.
+- **Logout ist öffentlich** und nimmt das Access-Token (Bearer) _oder_ `{ refreshToken }` - ein
+  Tablet, dessen Access-Token (1 h) abgelaufen ist, kann seine Sitzung trotzdem beenden. Ohne
+  gültiges Token antwortet es wie der Mock mit 200 `Abgemeldet.`
+- **Stationen:** ein Inhaber registriert ein Gerät (`POST /api/auth/stations`), das Token kommt
+  einmal zurück und wird als `X-Station-Token` geschickt. PIN-Sitzungen enden 12 h nach der PIN.
+  Eine PIN-Sitzung trägt die volle Rolle, darf aber **Benutzer und Stationen nicht verwalten**
+  (403 `personal_session_required`, auch als `inhaber`) - das geht nur mit Benutzername und
+  Passwort. `userId` an `/pin` nur als ganze Zahl oder `"7"` (sonst 400).
+- **Rate-Limit** (Fehlversuche je 5 min → 429): 5 je IP + Benutzer, 30 je IP über alle Benutzer
+  (Passwort-Spraying), bei der PIN zusätzlich 10 je Benutzer über alle IPs. `req.ip` kommt hinter Caddy aus
+  `X-Forwarded-For` (`TRUST_PROXY`, Vorgabe `loopback`).
 
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 

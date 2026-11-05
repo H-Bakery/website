@@ -1,10 +1,9 @@
 /**
  * Server configuration, read once from the environment.
  *
- * `loadEnvFile()` must run before any module that reads `process.env` at
- * import time (the auth lib builds its `AuthService` - and captures
- * `JWT_SECRET` - while it is being imported). `main.ts` therefore imports
- * `./config/load-env` first.
+ * `loadEnvFile()` must run before anything reads `process.env` (B3's auth
+ * service reads `JWT_SECRET` in `createApp()`). `main.ts` therefore imports
+ * `./config/load-env` first; the CLI calls `loadEnvFile()` itself.
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -25,6 +24,11 @@ export interface ServerConfig {
   /** Log every SQL statement (`DB_LOG_SQL=true`). */
   dbLogSql: boolean
   corsOrigins: string[]
+  /**
+   * Express `trust proxy` (`TRUST_PROXY`, default `loopback`): which hops may
+   * set `X-Forwarded-For`. Decides `req.ip`, which the login rate limit keys on.
+   */
+  trustProxy: boolean | number | string
 }
 
 export class ConfigError extends Error {
@@ -62,9 +66,10 @@ export function loadEnvFile(cwd: string = process.cwd()): string | null {
 }
 
 /**
- * JWT secret policy. Production refuses to start without a real secret; in
- * development a fixed default keeps tokens valid across restarts.
- * (B3 rewrites auth and tightens this further.)
+ * JWT secret policy. Production refuses to start without a real secret
+ * (at least 32 characters, not the development default); in development a
+ * fixed default keeps tokens valid across restarts. The auth service (B3)
+ * refuses secrets shorter than 32 characters in every environment.
  */
 export function ensureJwtSecret(env: NodeJS.ProcessEnv = process.env): void {
   const isProduction = env['NODE_ENV'] === 'production'
@@ -87,7 +92,7 @@ export function ensureJwtSecret(env: NodeJS.ProcessEnv = process.env): void {
     )
   }
   if (secret.length < 32) {
-    console.warn('[WARN] JWT_SECRET should be at least 32 characters long.')
+    throw new ConfigError('JWT_SECRET must be at least 32 characters long.')
   }
 }
 
@@ -155,6 +160,26 @@ export function resolveDbPath(
   return path.resolve(cwd, value ?? DEFAULT_DB_PATH)
 }
 
+/**
+ * `TRUST_PROXY`: unset → `loopback` (Caddy on the same box); `false`/`0` →
+ * trust nobody; a number → that many hops; anything else is passed to
+ * Express as is (e.g. `loopback, 10.0.0.0/8`).
+ */
+export function parseTrustProxy(
+  raw: string | undefined
+): boolean | number | string {
+  const value = raw?.trim()
+  if (!value) return 'loopback'
+  if (value === 'false' || value === '0') return false
+  if (value === 'true') {
+    throw new ConfigError(
+      'TRUST_PROXY=true would let every client fake its IP (and dodge the login rate limit). Use "loopback" or a hop count.'
+    )
+  }
+  if (/^[0-9]+$/.test(value)) return Number(value)
+  return value
+}
+
 export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
   cwd: string = process.cwd()
@@ -181,5 +206,6 @@ export function loadConfig(
     ),
     dbLogSql: env['DB_LOG_SQL'] === 'true',
     corsOrigins,
+    trustProxy: parseTrustProxy(env['TRUST_PROXY']),
   }
 }
