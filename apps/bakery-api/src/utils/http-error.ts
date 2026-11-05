@@ -25,6 +25,95 @@ export function sendError(
   return res.status(status).json(body)
 }
 
+/** Code and German text per status, for errors that bring neither. */
+export const STATUS_ERRORS: Record<number, { error: string; message: string }> =
+  {
+    400: { error: 'bad_request', message: 'Die Anfrage ist ungültig.' },
+    401: {
+      error: 'unauthorized',
+      message: 'Bitte melden Sie sich an.',
+    },
+    403: {
+      error: 'forbidden',
+      message: 'Für diese Aktion fehlt die Berechtigung.',
+    },
+    404: { error: 'not_found', message: 'Nicht gefunden.' },
+    405: {
+      error: 'method_not_allowed',
+      message: 'Diese Methode ist hier nicht erlaubt.',
+    },
+    409: {
+      error: 'conflict',
+      message: 'Die Änderung steht im Konflikt mit dem aktuellen Stand.',
+    },
+    413: { error: 'payload_too_large', message: 'Die Anfrage ist zu groß.' },
+    415: {
+      error: 'unsupported_media_type',
+      message: 'Das Format der Anfrage wird nicht unterstützt.',
+    },
+    422: {
+      error: 'validation_failed',
+      message: 'Die Eingaben sind unvollständig oder ungültig.',
+    },
+    429: {
+      error: 'too_many_requests',
+      message: 'Zu viele Anfragen. Bitte kurz warten und erneut versuchen.',
+    },
+    500: { error: 'internal_error', message: 'Interner Serverfehler.' },
+    501: {
+      error: 'not_implemented',
+      message: 'Diese Funktion ist noch nicht verfügbar.',
+    },
+    503: {
+      error: 'service_unavailable',
+      message: 'Der Dienst ist vorübergehend nicht erreichbar.',
+    },
+  }
+
+function defaultsFor(status: number): { error: string; message: string } {
+  return (
+    STATUS_ERRORS[status] ??
+    (status >= 500 ? STATUS_ERRORS[500] : STATUS_ERRORS[400])
+  )
+}
+
+/**
+ * Safety net for routers that do not use `sendError` yet (the in-memory
+ * `libs/api/auth`, until B3 rewrites it): a JSON error response (status
+ * >= 400) without a string `error` and `message` gets them filled in from
+ * the status, with German text. An existing English `error`/`message` from
+ * the lib is replaced by the German text and kept as `detail`.
+ */
+export const ensureErrorShape: RequestHandler = (_req, res, next) => {
+  const json = res.json.bind(res)
+  res.json = (body?: unknown) => {
+    if (
+      res.statusCode >= 400 &&
+      body !== null &&
+      typeof body === 'object' &&
+      !Array.isArray(body)
+    ) {
+      const b = body as Record<string, unknown>
+      if (typeof b['error'] !== 'string' || typeof b['message'] !== 'string') {
+        const known = defaultsFor(res.statusCode)
+        const detail =
+          (typeof b['message'] === 'string' && b['message']) ||
+          (typeof b['error'] === 'string' && b['error']) ||
+          undefined
+        return json({
+          ...b,
+          success: false,
+          error: known.error,
+          message: known.message,
+          ...(detail ? { detail } : {}),
+        })
+      }
+    }
+    return json(body)
+  }
+  next()
+}
+
 /** JSON 404 for every route that is not mounted. */
 export const notFoundHandler: RequestHandler = (req, res) => {
   sendError(
@@ -73,7 +162,8 @@ export function createErrorHandler(
       return
     }
     if (typeof status === 'number' && status >= 400 && status < 500) {
-      sendError(res, status, 'bad_request', 'Die Anfrage ist ungültig.')
+      const known = STATUS_ERRORS[status] ?? STATUS_ERRORS[400]
+      sendError(res, status, known.error, known.message)
       return
     }
 

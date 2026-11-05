@@ -43,12 +43,21 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
 2. `config/env.ts` → `loadConfig()`: `PORT`, `DB_PATH`, `DB_BUSY_TIMEOUT_MS` (5000), `DB_LOG_SQL`,
    `CORS_ORIGIN` (comma-separated; default the local dev ports).
    **`DB_PATH`**: default `./data/bakery.db` relative to the working directory (gitignored as
-   `/data/`); in production it is **required and must be absolute** - the server refuses to start
-   otherwise.
+   `/data/`); in production it is **required, absolute, not `:memory:`, and its directory must
+   already exist** - the server refuses to start otherwise (Sequelize would silently create a
+   fresh empty database at a mistyped path).
 3. `db/database.ts` → `openDatabase()`: Sequelize SQLite, `PRAGMA journal_mode = WAL` (persistent),
    `busy_timeout` on **every** connection. Sequelize's SQLite dialect opens one connection per
    transaction and does not run `afterConnect` hooks, so the timeout is set by wrapping
    `connectionManager.getConnection` - don't replace that with a one-off `PRAGMA` query.
+   **Write transactions are serialised in-process** (`serializeTransactions`, FIFO, one at a time)
+   and start as `BEGIN IMMEDIATE`. busy_timeout alone does not prevent `SQLITE_BUSY`: a DEFERRED
+   transaction that reads then writes fails at once on the lock upgrade, and many IMMEDIATE
+   transactions busy-waiting together starve node-sqlite3's 4-thread libuv pool. Use the
+   **managed** form `sequelize.transaction(async (t) => …)`; an unmanaged `await transaction()`
+   holds the queue until `commit()`/`rollback()`. A nested `transaction()` call inside a managed
+   callback bypasses the queue - pass `{ transaction: t }` to get a savepoint. Regression test:
+   `tests/unit/apiPlatform.test.js` (20 parallel read-then-write transactions).
 4. `db/migrate.ts` → `runMigrations()`: Umzug in-process over the **static list** in
    `db/migrations.ts` (each file `require`d by literal, so esbuild bundles it). Bookkeeping in
    `SequelizeMeta` with the `.js` names, compatible with databases migrated by `sequelize-cli`.
@@ -56,18 +65,21 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
    The 17 legacy migrations still run; B2 replaces them with a pilot baseline.
 5. `initializeModels(sequelize)` - after the migrations, never before.
 6. `runPartnerSeeder()` - idempotent (by slug), creates the first sales partner.
-7. `createApp({ sequelize, corsOrigins })` + `listen`. SIGTERM/SIGINT close the server and the DB.
+7. `createApp({ sequelize, corsOrigins })` + `listen`. SIGTERM/SIGINT close the server (idle
+   keep-alive sockets at once, open requests after `SHUTDOWN_DEADLINE_MS` = 10 s) and then the DB.
+   In production the server logs a warning that auth and partner guards are not done yet: **do not
+   deploy B0 before B3 (auth) and B6 (guards)** - it still accepts `admin`/`admin123`.
 
 ## App (`src/app.ts`)
 
 `createApp(options)` builds the Express app without `listen` and without DB setup, for the server
 and for supertest (B1). Mounted for the pilot:
 
-| Path                     | Router                     | Note                                          |
-| ------------------------ | -------------------------- | --------------------------------------------- |
-| `/health`, `/api/health` | `routes/health.routes.ts`  | no session; `SELECT 1` if a DB was passed     |
-| `/api/auth`              | `libs/api/auth`            | in-memory users (admin/admin123); B3 rewrites |
-| `/api/partners`          | `routes/partner.routes.ts` | Backschrank; B6 adds guards                   |
+| Path                     | Router                     | Note                                                                         |
+| ------------------------ | -------------------------- | ---------------------------------------------------------------------------- |
+| `/health`, `/api/health` | `routes/health.routes.ts`  | no session; `SELECT 1` if a DB was passed                                    |
+| `/api/auth`              | `libs/api/auth`            | in-memory users (admin/admin123); B3 rewrites; errors via `ensureErrorShape` |
+| `/api/partners`          | `routes/partner.routes.ts` | Backschrank; B6 adds guards                                                  |
 
 Mount points for B4 (reports/analytics/finance/targets), B5 (products/hq-products), B7 (preorders)
 and Z\* (Backzettel) are marked in `app.ts`. Everything else is unmounted: recipes, inventory, cash,
@@ -80,17 +92,30 @@ Every error body carries `error` (code) **and** `message` (German) - `ApiClient`
 `new Error(data.message)`. Use `sendError(res, status, error, message)` from
 `src/utils/http-error.ts`. Unknown routes get a JSON 404 (`not_found`), bad JSON 400
 (`invalid_json`), bodies over 200 kB 413 (`payload_too_large`), anything unhandled 500
-(`internal_error`, no internals in the body; the stack goes to the log).
+(`internal_error`, no internals in the body; the stack goes to the log). An error passed to
+`next()` with a 4xx `status` keeps its meaning: code and German text come from `STATUS_ERRORS`
+(401 `unauthorized`, 403 `forbidden`, 429 `too_many_requests`, …; unknown 4xx → `bad_request`).
+
+`libs/api/auth` does not follow this (English, partly no `message`, `{ errors: [...] }` from the
+validators). Until B3 rewrites it on `sendError`, `/api/auth` is mounted behind
+`ensureErrorShape`, which fills in `error` + German `message` from the status and keeps the lib's
+English text as `detail`. Its 401 text is the generic „Bitte melden Sie sich an." - also for a
+wrong password.
 
 ## Tests
 
 `jest.config.js` runs only plain-JS tests under `tests/**/*.test.js` (the `*.core.js` business
-rules): `npx jest -c apps/bakery-api/jest.config.js`. Three legacy suites need `express-rate-limit`,
+rules): `npx jest -c apps/bakery-api/jest.config.js`. TS sources can be pulled into such a test
+with `tests/helpers/loadTs.js` (esbuild, same settings as `build.mjs`); `tests/unit/apiPlatform.test.js`
+uses it for `config/env.ts`, `utils/http-error.ts` and `db/database.ts`. Three legacy suites need `express-rate-limit`,
 which is declared in the root `package.json` but only present after `npm ci`. The TS specs under
 `src/**/__tests__/` never run; B1 adds a TS jest project and supertest tests against `createApp()`.
 
 ## Known state
 
+- Runtime packages the bundle loads (`express`, `cors`, `helmet`, `sequelize`, `sqlite3`, `umzug`,
+  `jsonwebtoken`, `bcrypt`) are root `dependencies`, so `npm ci --omit=dev` keeps them. Building
+  still needs dev dependencies (esbuild, typescript).
 - Auth is still the in-memory `libs/api/auth` (users lost on restart, `/refresh` → 501). B3.
 - The 17 legacy migrations create many tables the pilot does not use; models and migrations drift
   outside the partner tables. B2.

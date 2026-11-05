@@ -86,7 +86,7 @@ export function ensureJwtSecret(env: NodeJS.ProcessEnv = process.env): void {
   }
 }
 
-function parsePort(raw: string | undefined): number {
+export function parsePort(raw: string | undefined): number {
   if (raw === undefined || raw === '') return DEFAULT_PORT
   const port = Number(raw)
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
@@ -120,11 +120,15 @@ export function resolveDbPath(
   cwd: string = process.cwd()
 ): string {
   const value = raw && raw.trim() !== '' ? raw.trim() : undefined
-  if (value === ':memory:') return value
   if (isProduction) {
     if (!value) {
       throw new ConfigError(
         'DB_PATH is required in production (absolute path, e.g. /var/lib/bakery/bakery.db).'
+      )
+    }
+    if (value === ':memory:') {
+      throw new ConfigError(
+        'DB_PATH=:memory: is not allowed in production - every record would be lost on restart.'
       )
     }
     if (!path.isAbsolute(value)) {
@@ -132,8 +136,17 @@ export function resolveDbPath(
         `DB_PATH must be absolute in production, got "${value}".`
       )
     }
+    // Sequelize would create missing directories and an empty database, so
+    // a typo in the path would start silently on a blank DB.
+    const dir = path.dirname(value)
+    if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+      throw new ConfigError(
+        `The directory of DB_PATH does not exist in production: "${dir}".`
+      )
+    }
     return value
   }
+  if (value === ':memory:') return value
   return path.resolve(cwd, value ?? DEFAULT_DB_PATH)
 }
 

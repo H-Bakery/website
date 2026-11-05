@@ -15,11 +15,14 @@ import { runMigrations } from './db/migrate'
 import { initializeModels } from './models'
 import { runPartnerSeeder } from './seeders/partner.seeder'
 
+/** How long shutdown waits for running requests before cutting them. */
+export const SHUTDOWN_DEADLINE_MS = 10_000
+
 export interface RunningServer {
   server: http.Server
   sequelize: Sequelize
   config: ServerConfig
-  close: () => Promise<void>
+  close: (deadlineMs?: number) => Promise<void>
 }
 
 export async function startServer(
@@ -48,19 +51,48 @@ export async function startServer(
   const app = createApp({ sequelize, corsOrigins: config.corsOrigins })
   const server = http.createServer(app)
 
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(config.port, () => {
-      server.off('error', reject)
-      resolve()
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once('error', reject)
+      server.listen(config.port, () => {
+        server.off('error', reject)
+        resolve()
+      })
     })
-  })
+  } catch (error) {
+    await sequelize.close().catch(() => undefined)
+    throw error
+  }
   console.log(`[INFO] bakery-api listening on http://localhost:${config.port}`)
 
+  if (config.isProduction) {
+    // B0 still mounts the in-memory auth lib (admin/admin123) and unguarded
+    // partner routes. Do not deploy before B3 (auth) and B6 (guards).
+    console.warn(
+      '[WARN] Auth is still the in-memory development lib and /api/partners has no guards. Not fit for deployment before B3 and B6.'
+    )
+  }
+
   let closing: Promise<void> | null = null
-  const close = () => {
+  const close = (deadlineMs = SHUTDOWN_DEADLINE_MS) => {
     if (!closing) {
-      closing = new Promise<void>((resolve) => server.close(() => resolve()))
+      closing = new Promise<void>((resolve) => {
+        // Keep-alive sockets would hold server.close() open; drop idle ones
+        // now and cut the rest after the deadline (systemd sends SIGKILL
+        // after TimeoutStopSec otherwise, without closing the DB).
+        const timer = setTimeout(() => {
+          console.warn(
+            `[WARN] Requests still open after ${deadlineMs} ms - closing connections`
+          )
+          server.closeAllConnections()
+        }, deadlineMs)
+        timer.unref()
+        server.close(() => {
+          clearTimeout(timer)
+          resolve()
+        })
+        server.closeIdleConnections()
+      })
         .then(() => sequelize.close())
         .then(() => undefined)
     }

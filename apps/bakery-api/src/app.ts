@@ -15,7 +15,11 @@ import { Sequelize } from 'sequelize'
 
 import { loggerMiddleware } from './middleware/logger.middleware'
 import { authRoutes, createHealthRouter, partnerRoutes } from './routes'
-import { createErrorHandler, notFoundHandler } from './utils/http-error'
+import {
+  createErrorHandler,
+  ensureErrorShape,
+  notFoundHandler,
+} from './utils/http-error'
 
 export interface CreateAppOptions {
   /** Used by the health check only; models are initialised by the caller. */
@@ -51,7 +55,9 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api/health', health)
 
   // --- Auth (B3 rewrites this on Sequelize: login/me/refresh/logout/pin) ---
-  app.use('/api/auth', authRoutes)
+  // ensureErrorShape: the lib answers errors in English and partly without
+  // `message`; this fills in `error` + German `message` until B3.
+  app.use('/api/auth', ensureErrorShape, authRoutes)
 
   // --- Pilot domains -------------------------------------------------------
   app.use('/api/partners', partnerRoutes) // B6 adds guards + hq catalogue
