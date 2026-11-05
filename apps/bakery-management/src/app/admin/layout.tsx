@@ -136,6 +136,10 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   const pathname = usePathname()
   // Pilotbetrieb (F2): gefilterte Navigation und Sperre der Demo-Seiten - die
   // erlaubten Routen stehen genau einmal in src/lib/pilotMode.ts.
+  // Die Sperre versteckt nur Demo-Seiten im Browser; sie ist KEINE
+  // Zugriffskontrolle (Server-Komponente und RSC-Payload einer gesperrten Seite
+  // entstehen trotzdem, die API bleibt direkt erreichbar). Durchgesetzt wird
+  // der Zugriff von der middleware.ts aus F1 und den Rollen-Guards der API.
   const pilot = isPilotMode()
   const navigation = React.useMemo(() => getNavigation(pilot), [pilot])
   const blocked = !isPilotPathAllowed(pathname, pilot)

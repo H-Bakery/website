@@ -240,6 +240,17 @@ describe('kommende Pilot-Bildschirme', () => {
     }
   )
 
+  it.each(PILOT_UPCOMING_NAVIGATION.map((i) => [i.href] as const))(
+    '%s: wer Unterseiten baut, baut auch die Index-Seite',
+    (href) => {
+      // M2 plant /admin/backzettel/grundmengen und /admin/backzettel/[datum];
+      // ohne admin/backzettel/page.tsx bliebe der Menüeintrag für immer aus
+      // (oder führte, von Hand freigeschaltet, auf eine 404).
+      const dir = path.join(appDir, href)
+      if (fs.existsSync(dir)) expect(pageExists(href)).toBe(true)
+    }
+  )
+
   it('erscheinen nur, wenn sie fertig sind', () => {
     PILOT_UPCOMING_NAVIGATION.forEach((item) => {
       const shown = hrefs(getNavigation(true)).includes(item.href)

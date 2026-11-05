@@ -76,11 +76,14 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         <AuthProvider checkAuthOnMount>
           <AuthSessionSync>
             {/* Pilotbetrieb: die echte API hat kein /api/notifications - kein
-                30-s-Polling und keine Browser-Rückfrage nach Mitteilungen. */}
+                Laden beim Start, kein 30-s-Polling und keine Browser-Rückfrage
+                nach Mitteilungen. Der Provider bleibt, weil das Dashboard
+                useNotifications() aufruft. */}
             <NotificationProvider
               enableRealTime={false}
               pollingInterval={pilot ? 0 : undefined}
               requestPermissionOnMount={!pilot}
+              loadOnMount={!pilot}
             >
               {children}
             </NotificationProvider>

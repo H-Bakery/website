@@ -37,7 +37,7 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
     ;[
       'Dashboard',
       'Produkte',
-      'Vorbestellungen',
+      'Sammelstelle Mörsbach',
       'Verkaufspartner',
       'Kassenberichte',
       'Analysen',

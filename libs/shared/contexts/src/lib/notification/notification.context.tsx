@@ -5,13 +5,21 @@
  * @module @bakery/shared/contexts/notification
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import type { 
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react'
+import type {
   Notification as NotificationType,
   NotificationPreferences,
   NotificationChannel,
   NotificationCategory,
-  NotificationPriority 
+  NotificationPriority,
 } from '@bakery/shared/types'
 import { notificationService } from '@bakery/shared/data-access'
 
@@ -91,7 +99,9 @@ export interface NotificationContextType {
   /** Refresh notifications from server */
   refresh: () => Promise<void>
   /** Update preferences */
-  updatePreferences: (preferences: Partial<NotificationPreferences>) => Promise<void>
+  updatePreferences: (
+    preferences: Partial<NotificationPreferences>
+  ) => Promise<void>
   /** Reset preferences to defaults */
   resetPreferences: () => Promise<void>
   /** Send test notification */
@@ -114,6 +124,12 @@ export interface NotificationProviderProps {
   pollingInterval?: number
   /** Whether to request notification permission on mount */
   requestPermissionOnMount?: boolean
+  /**
+   * Whether to load notifications from the API on mount (default true).
+   * false: no request at all until `refresh()` is called - for
+   * deployments whose API has no /api/notifications (management pilot mode).
+   */
+  loadOnMount?: boolean
   /** Maximum notifications to keep in memory */
   maxNotifications?: number
   /** Auto-mark as read delay in ms */
@@ -125,7 +141,9 @@ export interface NotificationProviderProps {
 /**
  * Notification context
  */
-const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
+const NotificationContext = createContext<NotificationContextType | undefined>(
+  undefined
+)
 
 /**
  * Calculate notification statistics
@@ -140,16 +158,28 @@ const calculateStats = (notifications: Notification[]): NotificationStats => {
   }
 
   // Initialize counters
-  const categories: NotificationCategory[] = ['order', 'inventory', 'staff', 'system', 'customer']
+  const categories: NotificationCategory[] = [
+    'order',
+    'inventory',
+    'staff',
+    'system',
+    'customer',
+  ]
   const priorities: NotificationPriority[] = ['low', 'medium', 'high', 'urgent']
   const channels: NotificationChannel[] = ['inApp', 'email', 'sms', 'push']
 
-  categories.forEach(cat => { stats.byCategory[cat] = 0 })
-  priorities.forEach(pri => { stats.byPriority[pri] = 0 })
-  channels.forEach(cha => { stats.byChannel[cha] = 0 })
+  categories.forEach((cat) => {
+    stats.byCategory[cat] = 0
+  })
+  priorities.forEach((pri) => {
+    stats.byPriority[pri] = 0
+  })
+  channels.forEach((cha) => {
+    stats.byChannel[cha] = 0
+  })
 
   // Count notifications
-  notifications.forEach(notification => {
+  notifications.forEach((notification) => {
     if (!notification.read) stats.unread++
     stats.byCategory[notification.category]++
     stats.byPriority[notification.priority]++
@@ -166,17 +196,23 @@ const filterNotifications = (
   notifications: Notification[],
   filters: NotificationFilters
 ): Notification[] => {
-  return notifications.filter(notification => {
+  return notifications.filter((notification) => {
     // Unread filter
     if (filters.unreadOnly && notification.read) return false
 
     // Category filter
-    if (filters.categories?.length && !filters.categories.includes(notification.category)) {
+    if (
+      filters.categories?.length &&
+      !filters.categories.includes(notification.category)
+    ) {
       return false
     }
 
     // Priority filter
-    if (filters.priorities?.length && !filters.priorities.includes(notification.priority)) {
+    if (
+      filters.priorities?.length &&
+      !filters.priorities.includes(notification.priority)
+    ) {
       return false
     }
 
@@ -189,7 +225,10 @@ const filterNotifications = (
     // Date range filter
     if (filters.dateRange) {
       const createdAt = new Date(notification.createdAt)
-      if (createdAt < filters.dateRange.start || createdAt > filters.dateRange.end) {
+      if (
+        createdAt < filters.dateRange.start ||
+        createdAt > filters.dateRange.end
+      ) {
         return false
       }
     }
@@ -197,8 +236,12 @@ const filterNotifications = (
     // Search filter
     if (filters.search) {
       const searchLower = filters.search.toLowerCase()
-      const matchesTitle = notification.title.toLowerCase().includes(searchLower)
-      const matchesMessage = notification.message.toLowerCase().includes(searchLower)
+      const matchesTitle = notification.title
+        .toLowerCase()
+        .includes(searchLower)
+      const matchesMessage = notification.message
+        .toLowerCase()
+        .includes(searchLower)
       if (!matchesTitle && !matchesMessage) return false
     }
 
@@ -214,16 +257,18 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   enableRealTime = true,
   pollingInterval = 30000, // 30 seconds
   requestPermissionOnMount = true,
+  loadOnMount = true,
   maxNotifications = 100,
   autoMarkAsReadDelay = 5000, // 5 seconds
   soundUrl = '/notification-sound.mp3',
 }) => {
   const [notifications, setNotifications] = useState<Notification[]>([])
-  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
+  const [preferences, setPreferences] =
+    useState<NotificationPreferences | null>(null)
   const [filters, setFilters] = useState<NotificationFilters>({})
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(loadOnMount)
   const [isConnected, setIsConnected] = useState(false)
-  
+
   const wsRef = useRef<WebSocket | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
@@ -235,10 +280,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     [notifications, filters]
   )
 
-  const stats = useMemo(
-    () => calculateStats(notifications),
-    [notifications]
-  )
+  const stats = useMemo(() => calculateStats(notifications), [notifications])
 
   const unreadCount = stats.unread
 
@@ -252,7 +294,11 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // Request notification permission
   useEffect(() => {
-    if (requestPermissionOnMount && typeof window !== 'undefined' && 'Notification' in window) {
+    if (
+      requestPermissionOnMount &&
+      typeof window !== 'undefined' &&
+      'Notification' in window
+    ) {
       if (Notification.permission === 'default') {
         Notification.requestPermission()
       }
@@ -281,54 +327,59 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, [maxNotifications])
 
   // Show browser notification
-  const showBrowserNotification = useCallback((notification: Notification) => {
-    if (!preferences?.channels?.inApp?.enabled) return
-    if (typeof window === 'undefined' || !('Notification' in window)) return
-    if (Notification.permission !== 'granted') return
+  const showBrowserNotification = useCallback(
+    (notification: Notification) => {
+      if (!preferences?.channels?.inApp?.enabled) return
+      if (typeof window === 'undefined' || !('Notification' in window)) return
+      if (Notification.permission !== 'granted') return
 
-    // Check preferences
-    const inAppSettings = preferences.channels.inApp
-    const categoryEnabled = inAppSettings?.categories?.includes(notification.category) !== false
-    if (!categoryEnabled) return
+      // Check preferences
+      const inAppSettings = preferences.channels.inApp
+      const categoryEnabled =
+        inAppSettings?.categories?.includes(notification.category) !== false
+      if (!categoryEnabled) return
 
-    // Check priority threshold
-    const priorityOrder: Record<NotificationPriority, number> = {
-      low: 0,
-      medium: 1,
-      high: 2,
-      urgent: 3,
-    }
-    const threshold = priorityOrder[inAppSettings?.minPriority] || 0
-    const priority = priorityOrder[notification.priority] || 0
-    if (priority < threshold) return
+      // Check priority threshold
+      const priorityOrder: Record<NotificationPriority, number> = {
+        low: 0,
+        medium: 1,
+        high: 2,
+        urgent: 3,
+      }
+      const threshold = priorityOrder[inAppSettings?.minPriority] || 0
+      const priority = priorityOrder[notification.priority] || 0
+      if (priority < threshold) return
 
-    // Check quiet hours
-    if (preferences.quietHours?.enabled) {
-      const now = new Date()
-      const currentHour = now.getHours()
-      const startHour = parseInt(preferences.quietHours.start.split(':')[0])
-      const endHour = parseInt(preferences.quietHours.end.split(':')[0])
-      
-      const inQuietHours = startHour > endHour
-        ? currentHour >= startHour || currentHour < endHour
-        : currentHour >= startHour && currentHour < endHour
-      
-      if (inQuietHours) return
-    }
+      // Check quiet hours
+      if (preferences.quietHours?.enabled) {
+        const now = new Date()
+        const currentHour = now.getHours()
+        const startHour = parseInt(preferences.quietHours.start.split(':')[0])
+        const endHour = parseInt(preferences.quietHours.end.split(':')[0])
 
-    // Show notification
-    new Notification(notification.title, {
-      body: notification.message,
-      icon: '/logo192.png',
-      tag: notification.id,
-      data: notification,
-    })
+        const inQuietHours =
+          startHour > endHour
+            ? currentHour >= startHour || currentHour < endHour
+            : currentHour >= startHour && currentHour < endHour
 
-    // Play sound
-    if (preferences.sound?.enabled && audioRef.current) {
-      audioRef.current.play().catch(console.error)
-    }
-  }, [preferences])
+        if (inQuietHours) return
+      }
+
+      // Show notification
+      new Notification(notification.title, {
+        body: notification.message,
+        icon: '/logo192.png',
+        tag: notification.id,
+        data: notification,
+      })
+
+      // Play sound
+      if (preferences.sound?.enabled && audioRef.current) {
+        audioRef.current.play().catch(console.error)
+      }
+    },
+    [preferences]
+  )
 
   // Setup WebSocket connection
   useEffect(() => {
@@ -359,13 +410,13 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         ws.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data)
-            
+
             if (data.type === 'notification') {
               const notification = data.payload as Notification
-              
+
               // Add to notifications
-              setNotifications(prev => {
-                const filtered = prev.filter(n => n.id !== notification.id)
+              setNotifications((prev) => {
+                const filtered = prev.filter((n) => n.id !== notification.id)
                 const updated = [notification, ...filtered]
                 // Keep only max notifications
                 return updated.slice(0, maxNotifications)
@@ -400,7 +451,12 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       ws?.close()
       wsRef.current = null
     }
-  }, [enableRealTime, maxNotifications, showBrowserNotification, autoMarkAsReadDelay])
+  }, [
+    enableRealTime,
+    maxNotifications,
+    showBrowserNotification,
+    autoMarkAsReadDelay,
+  ])
 
   // Setup polling fallback
   useEffect(() => {
@@ -421,13 +477,14 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // Initial load
   useEffect(() => {
+    if (!loadOnMount) return
     loadNotifications()
-  }, [loadNotifications])
+  }, [loadOnMount, loadNotifications])
 
   // Cleanup auto-mark timeouts
   useEffect(() => {
     return () => {
-      autoMarkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
+      autoMarkTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout))
       autoMarkTimeoutsRef.current.clear()
     }
   }, [])
@@ -443,8 +500,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       }
 
       // Optimistic update
-      setNotifications(prev =>
-        prev.map(n => n.id === id ? { ...n, read: true } : n)
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
       )
 
       // Send to server
@@ -452,8 +509,8 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     } catch (error) {
       console.error('Failed to mark as read:', error)
       // Revert on error
-      setNotifications(prev =>
-        prev.map(n => n.id === id ? { ...n, read: false } : n)
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: false } : n))
       )
     }
   }, [])
@@ -462,20 +519,18 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const markAllAsRead = useCallback(async () => {
     try {
       // Cancel all auto-mark timeouts
-      autoMarkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
+      autoMarkTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout))
       autoMarkTimeoutsRef.current.clear()
 
       // Optimistic update
-      setNotifications(prev =>
-        prev.map(n => ({ ...n, read: true }))
-      )
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
 
       // Send to server
       // TODO: Implement bulk mark as read in service
       await Promise.all(
         notifications
-          .filter(n => !n.read)
-          .map(n => notificationService.deleteNotification(n.id))
+          .filter((n) => !n.read)
+          .map((n) => notificationService.deleteNotification(n.id))
       )
     } catch (error) {
       console.error('Failed to mark all as read:', error)
@@ -485,32 +540,35 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, [notifications, loadNotifications])
 
   // Delete notification handler
-  const deleteNotification = useCallback(async (id: string) => {
-    try {
-      // Cancel auto-mark timeout if exists
-      const timeout = autoMarkTimeoutsRef.current.get(id)
-      if (timeout) {
-        clearTimeout(timeout)
-        autoMarkTimeoutsRef.current.delete(id)
+  const deleteNotification = useCallback(
+    async (id: string) => {
+      try {
+        // Cancel auto-mark timeout if exists
+        const timeout = autoMarkTimeoutsRef.current.get(id)
+        if (timeout) {
+          clearTimeout(timeout)
+          autoMarkTimeoutsRef.current.delete(id)
+        }
+
+        // Optimistic update
+        setNotifications((prev) => prev.filter((n) => n.id !== id))
+
+        // Send to server
+        await notificationService.deleteNotification(id)
+      } catch (error) {
+        console.error('Failed to delete notification:', error)
+        // Reload on error
+        loadNotifications()
       }
-
-      // Optimistic update
-      setNotifications(prev => prev.filter(n => n.id !== id))
-
-      // Send to server
-      await notificationService.deleteNotification(id)
-    } catch (error) {
-      console.error('Failed to delete notification:', error)
-      // Reload on error
-      loadNotifications()
-    }
-  }, [loadNotifications])
+    },
+    [loadNotifications]
+  )
 
   // Clear all handler
   const clearAll = useCallback(async () => {
     try {
       // Cancel all auto-mark timeouts
-      autoMarkTimeoutsRef.current.forEach(timeout => clearTimeout(timeout))
+      autoMarkTimeoutsRef.current.forEach((timeout) => clearTimeout(timeout))
       autoMarkTimeoutsRef.current.clear()
 
       // Optimistic update
@@ -519,7 +577,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       // Send to server
       // TODO: Implement bulk delete in service
       await Promise.all(
-        notifications.map(n => notificationService.deleteNotification(n.id))
+        notifications.map((n) => notificationService.deleteNotification(n.id))
       )
     } catch (error) {
       console.error('Failed to clear all notifications:', error)
@@ -529,17 +587,20 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   }, [notifications, loadNotifications])
 
   // Update preferences handler
-  const updatePreferences = useCallback(async (prefs: Partial<NotificationPreferences>) => {
-    try {
-      const updated = await notificationService.updatePreferences(prefs)
-      if (updated.success && updated.data) {
-        setPreferences(updated.data)
+  const updatePreferences = useCallback(
+    async (prefs: Partial<NotificationPreferences>) => {
+      try {
+        const updated = await notificationService.updatePreferences(prefs)
+        if (updated.success && updated.data) {
+          setPreferences(updated.data)
+        }
+      } catch (error) {
+        console.error('Failed to update preferences:', error)
+        throw error
       }
-    } catch (error) {
-      console.error('Failed to update preferences:', error)
-      throw error
-    }
-  }, [])
+    },
+    []
+  )
 
   // Reset preferences handler
   const resetPreferences = useCallback(async () => {
@@ -551,7 +612,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           inApp: { enabled: true, categories: [], minPriority: 'low' },
           email: { enabled: true, categories: [], minPriority: 'medium' },
           sms: { enabled: false, categories: [], minPriority: 'high' },
-          push: { enabled: true, categories: [], minPriority: 'medium' }
+          push: { enabled: true, categories: [], minPriority: 'medium' },
         },
         quietHours: {
           enabled: false,
@@ -561,17 +622,17 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         },
         sound: {
           enabled: true,
-          volume: 50
+          volume: 50,
         },
         digest: {
           enabled: false,
           frequency: 'daily',
           time: '09:00',
-          categories: []
+          categories: [],
         },
-        language: 'de'
+        language: 'de',
       }
-      
+
       const updated = await notificationService.updatePreferences(defaultPrefs)
       if (updated.success && updated.data) {
         setPreferences(updated.data)
@@ -623,7 +684,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     try {
       const registration = await navigator.serviceWorker.ready
       const subscription = await registration.pushManager.getSubscription()
-      
+
       if (subscription) {
         await subscription.unsubscribe()
         // TODO: Send unsubscribe to server
@@ -693,7 +754,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 export const useNotifications = (): NotificationContextType => {
   const context = useContext(NotificationContext)
   if (!context) {
-    throw new Error('useNotifications must be used within a NotificationProvider')
+    throw new Error(
+      'useNotifications must be used within a NotificationProvider'
+    )
   }
   return context
 }
@@ -709,7 +772,8 @@ export const useUnreadCount = (): number => {
 /**
  * Hook to get notification preferences
  */
-export const useNotificationPreferences = (): NotificationPreferences | null => {
-  const { preferences } = useNotifications()
-  return preferences
-}
+export const useNotificationPreferences =
+  (): NotificationPreferences | null => {
+    const { preferences } = useNotifications()
+    return preferences
+  }

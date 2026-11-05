@@ -112,12 +112,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Lieferverwaltung',
   },
   {
-    label: 'Vorbestellungen',
+    // Nicht „Vorbestellungen": so heißt der kommende allgemeine Bildschirm
+    // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
+    label: 'Sammelstelle Mörsbach',
     href: '/admin/delivery/preorders',
     // `iconMap` in layout.tsx kennt keinen eigenen Schlüssel dafür - ein
     // unbekannter ließe die Zeile ohne Symbol stehen.
     icon: 'orders',
-    description: 'Sammelstelle Mörsbach',
+    description: 'Vorbestellungen Kindergarten',
   },
   {
     label: 'Verkaufspartner',
@@ -207,6 +209,13 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
  * `pilotMode.spec.ts` prüft, dass `ready` genau dann gesetzt ist, wenn die
  * zugehörige `page.tsx` existiert. Die Routen selbst stehen bereits in
  * `PILOT_ALLOWED_ROUTES` (src/lib/pilotMode.ts).
+ *
+ * Geprüft wird die Index-Seite genau unter `href`: M2 plant für den Backzettel
+ * nur `/admin/backzettel/grundmengen` und `/admin/backzettel/[datum]` - es
+ * braucht zusätzlich `admin/backzettel/page.tsx` (z. B. Weiterleitung auf den
+ * nächsten Produktionstag), sonst führte der Menüeintrag ins Leere.
+ * M1 entscheidet beim Freischalten von `/admin/preorders`, ob „Sammelstelle
+ * Mörsbach" (/admin/delivery/preorders) darin aufgeht.
  */
 export interface UpcomingNavItem extends NavItem {
   href: string
