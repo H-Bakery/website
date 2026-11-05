@@ -19,9 +19,9 @@ import Link from 'next/link'
 import {
   ProductRankingTable,
   DateRangePicker,
-  ExportButton,
 } from '@bakery/management/feature-analytics'
 import { analyticsService } from '@bakery/shared/data-access'
+import OwnerOnlyNotice from '../../../../components/analytics/OwnerOnlyNotice'
 import type {
   ProductAnalyticsPerformance,
   DateRange,
@@ -45,6 +45,8 @@ export default function ProductAnalyticsPage() {
     []
   )
   const [available, setAvailable] = useState(true)
+  // F4: 403 = falsche Rolle (Analysen nur für den Inhaber, B4).
+  const [forbidden, setForbidden] = useState(false)
 
   React.useEffect(() => {
     fetchProductData()
@@ -85,6 +87,7 @@ export default function ProductAnalyticsPage() {
       setBottomProducts(bottom.data)
       setAllProducts(all.data)
       setAvailable(top.available && bottom.available && all.available)
+      setForbidden(Boolean(top.forbidden || bottom.forbidden || all.forbidden))
     } catch (error) {
       console.error('Error fetching product data:', error)
       setTopProducts([])
@@ -162,13 +165,11 @@ export default function ProductAnalyticsPage() {
             <ToggleButton value="all">Alle Produkte</ToggleButton>
           </ToggleButtonGroup>
         </Box>
-        <ExportButton
-          formats={['csv', 'pdf', 'excel']}
-          analyticsParams={{ ...dateRange, granularity: 'daily' }}
-        />
       </Box>
 
-      {!available && !loading && (
+      {forbidden && !loading && <OwnerOnlyNotice />}
+
+      {!available && !forbidden && !loading && (
         <Alert severity="error" sx={{ mb: 3 }}>
           Die API liefert keine Produktdaten. Es werden keine Zahlen angezeigt -
           Beispieldaten gibt es hier bewusst nicht.

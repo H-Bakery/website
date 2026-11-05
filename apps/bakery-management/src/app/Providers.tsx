@@ -15,6 +15,13 @@ import { SessionProvider } from '../lib/session'
 import RouteGuard from '../components/auth/RouteGuard'
 import { isPilotMode } from '../lib/pilotMode'
 import ThemeColorSync from '../components/pwa/ThemeColorSync'
+import { apiClient } from '@bakery/shared/data-access'
+import { resolveBrowserApiBase } from '../lib/apiBase'
+
+// F4: der Browser spricht die API über die eigene Origin an (`/api/...`) -
+// Caddy auf der Box bzw. src/proxy.ts leiten weiter. Gesetzt, bevor eine
+// Komponente lädt; `NEXT_PUBLIC_API_URL` überschreibt nur, wenn es gesetzt ist.
+apiClient.setBaseUrl(resolveBrowserApiBase())
 
 /**
  * Bridges the shared theme context (mode/persistence) to an actual MUI theme,

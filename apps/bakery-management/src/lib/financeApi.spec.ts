@@ -55,6 +55,15 @@ describe('financeApi', () => {
       kind: 'forbidden',
       message: 'nicht erlaubt',
     })
+    expect(
+      classifyFinanceError(
+        new ApiError('Nur mit Passwort.', 403, 'personal_session_required')
+      )
+    ).toEqual({
+      kind: 'personal_session',
+      message:
+        'Bitte mit Passwort anmelden – an der PIN-Station nicht verfügbar.',
+    })
     expect(classifyFinanceError(new ApiError('kaputt', 500)).kind).toBe('error')
     expect(classifyFinanceError(new Error('Request timeout'))).toEqual({
       kind: 'error',

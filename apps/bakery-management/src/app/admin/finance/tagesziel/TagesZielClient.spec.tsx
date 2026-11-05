@@ -15,8 +15,10 @@ import {
 jest.mock('@bakery/shared/data-access', () => {
   class ApiError extends Error {
     status: number
-    constructor(message: string, status: number) {
+    code?: string
+    constructor(message: string, status: number, code?: string) {
       super(message)
+      this.code = code
       this.name = 'ApiError'
       this.status = status
     }
@@ -51,7 +53,7 @@ jest.mock('recharts', () => {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { apiClient, ApiError } = require('@bakery/shared/data-access') as {
   apiClient: { get: jest.Mock }
-  ApiError: new (message: string, status: number) => Error
+  ApiError: new (message: string, status: number, code?: string) => Error
 }
 
 function mockHappyPath(
@@ -117,6 +119,22 @@ describe('TagesZielClient', () => {
       'href',
       '/admin/login?next=/admin/finance/tagesziel'
     )
+  })
+
+  it('zeigt an der PIN-Station den Passwort-Hinweis statt "Keine Berechtigung" (F4)', async () => {
+    apiClient.get.mockRejectedValue(
+      new ApiError('Nur mit Passwort.', 403, 'personal_session_required')
+    )
+    renderWithTheme(<TagesZielClient />)
+    expect(
+      await screen.findByText('Tagesziel an der Station nicht verfügbar')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Bitte mit Passwort anmelden – an der PIN-Station nicht verfügbar.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Keine Berechtigung')).toBeNull()
   })
 
   it('zeigt bei falscher Rolle "Keine Berechtigung"', async () => {

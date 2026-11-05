@@ -18,6 +18,7 @@ import {
   ChatMessageInput,
 } from '@bakery/management/feature-chat'
 import { currentToken } from '../../../lib/authSession'
+import { resolveBrowserApiBase } from '../../../lib/apiBase'
 
 // Types for chat messages
 interface ChatMessage {
@@ -35,15 +36,10 @@ interface ChatUser {
 }
 
 /**
- * Der Chat liegt auf der API, nicht auf dem Next-Origin: ein relatives
- * `/api/chat` landete vorher bei der Management-App selbst (immer 404), egal
- * was `NEXT_PUBLIC_API_URL` sagt.
+ * Der Chat liegt auf der API. Seit F4 über die eigene Origin (`/api/...`,
+ * weitergeleitet von Caddy bzw. src/proxy.ts), wie jeder andere Aufruf.
  */
-const API_BASE = (
-  (typeof process !== 'undefined' && process.env['NEXT_PUBLIC_API_URL']) ||
-  'http://localhost:5000'
-).replace(/\/$/, '')
-const CHAT_ENDPOINT = `${API_BASE}/api/chat`
+const CHAT_ENDPOINT = `${resolveBrowserApiBase()}/api/chat`
 const POLL_INTERVAL_MS = 5000
 
 /**

@@ -24,7 +24,14 @@ import {
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import SaveIcon from '@mui/icons-material/Save'
 import { apiClient } from '@bakery/shared/data-access'
-import type { ManagementProduct } from '../../../../lib/products'
+import {
+  PENDING_APPROVAL_LABEL,
+  pendingApprovalHint,
+  toManagementProduct,
+  type ApiHqProduct,
+  type ManagementProduct,
+} from '../../../../lib/products'
+import { useOptionalSession } from '../../../../lib/session'
 
 const statusLabels: Record<string, string> = {
   active: 'Verfügbar',
@@ -56,6 +63,12 @@ export default function ProductEditClient({
   initialProduct?: ManagementProduct
 }) {
   const router = useRouter()
+  // F4: schreiben darf nur der Inhaber (B5). Ohne Sitzung (Specs) wie bisher.
+  const role = useOptionalSession()?.user?.role
+  const canEdit = !role || role === 'inhaber'
+  const [current, setCurrent] = useState<ManagementProduct | undefined>(
+    initialProduct
+  )
   const [name, setName] = useState(initialProduct?.name ?? '')
   const [category, setCategory] = useState(initialProduct?.categoryKey ?? '')
   const [price, setPrice] = useState(initialProduct?.price?.toString() ?? '0')
@@ -108,26 +121,54 @@ export default function ProductEditClient({
     }
     setSaving(true)
     try {
-      const res = await apiClient.put(`/api/hq-products/${productId}`, {
-        name: name.trim(),
-        category,
-        price: parsedPrice,
-        short_description: shortDescription.trim(),
-        description,
-        image: image.trim(),
-        available: status !== 'unavailable',
-        seasonal: status === 'seasonal',
-      })
+      const res = await apiClient.put<ApiHqProduct>(
+        `/api/hq-products/${encodeURIComponent(productId)}`,
+        {
+          name: name.trim(),
+          category,
+          price: parsedPrice,
+          short_description: shortDescription.trim(),
+          description,
+          image: image.trim(),
+          available: status !== 'unavailable',
+          seasonal: status === 'seasonal',
+        }
+      )
 
       if (!res.success) {
         throw new Error(res.error || res.message || 'Speichern fehlgeschlagen')
       }
 
+      // B5: die Antwort trägt `pendingApproval` (und oben `pending`) - eine
+      // Änderung wartet auf Freigabe, bis die rollende hq-PR gemergt ist.
+      const pending =
+        res.data?.pendingApproval === true ||
+        (res as { pending?: unknown }).pending === true
+      if (res.data) {
+        // Die PUT-Antwort trägt kein `approved`. Freigegeben ist, was vor
+        // dem ersten wartenden Speichern galt: der bisherige freigegebene
+        // Stand, sonst der Stand vor diesem Speichern.
+        const approved =
+          !pending || !current
+            ? null
+            : current.pendingApproval
+            ? current.approved
+            : {
+                name: current.name,
+                price: current.price,
+                status: current.status,
+              }
+        setCurrent({
+          ...toManagementProduct({ ...res.data, pendingApproval: pending }),
+          approved,
+        })
+      }
       setFeedback({
-        message: 'Produkt erfolgreich gespeichert',
+        message: pending
+          ? 'Gespeichert - die Änderung wartet auf Freigabe.'
+          : 'Produkt erfolgreich gespeichert',
         severity: 'success',
       })
-      router.refresh()
     } catch (err) {
       setFeedback({
         message: err instanceof Error ? err.message : 'Fehler beim Speichern',
@@ -162,7 +203,28 @@ export default function ProductEditClient({
             size="small"
             sx={{ ml: 2 }}
           />
+          {current?.pendingApproval && (
+            <Chip
+              label={PENDING_APPROVAL_LABEL}
+              color="info"
+              variant="outlined"
+              size="small"
+              sx={{ ml: 1 }}
+            />
+          )}
         </Box>
+
+        {current?.pendingApproval && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            {pendingApprovalHint(current)}
+          </Alert>
+        )}
+        {!canEdit && (
+          <Alert severity="info" sx={{ mb: 3 }}>
+            Produkte ändert nur der Inhaber. Die Angaben hier sind nur zum
+            Ansehen.
+          </Alert>
+        )}
 
         <Grid container spacing={3}>
           <Grid item xs={12} md={4}>
@@ -186,7 +248,8 @@ export default function ProductEditClient({
                     objectFit: 'contain',
                     borderRadius: 1,
                     mb: 2,
-                    border: '1px solid #ddd',
+                    border: '1px solid',
+                    borderColor: 'divider',
                   }}
                 />
               ) : (
@@ -315,16 +378,18 @@ export default function ProductEditClient({
               >
                 Zurück
               </Button>
-              <Button
-                variant="contained"
-                onClick={handleSave}
-                startIcon={
-                  saving ? <CircularProgress size={18} /> : <SaveIcon />
-                }
-                disabled={saving}
-              >
-                {saving ? 'Speichern...' : 'Speichern'}
-              </Button>
+              {canEdit && (
+                <Button
+                  variant="contained"
+                  onClick={handleSave}
+                  startIcon={
+                    saving ? <CircularProgress size={18} /> : <SaveIcon />
+                  }
+                  disabled={saving}
+                >
+                  {saving ? 'Speichern...' : 'Speichern'}
+                </Button>
+              )}
             </Box>
           </Grid>
         </Grid>

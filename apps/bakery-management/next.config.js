@@ -4,13 +4,6 @@
 const { composePlugins, withNx } = require('@nx/next')
 
 /**
- * Server-side base URL of the bakery API. The management app proxies all
- * `/api/*` requests to this host (see `rewrites` below), so the browser only
- * ever talks to the same origin. Configure via `API_URL` (see .env.example).
- */
-const API_URL = process.env.API_URL || 'http://localhost:5000'
-
-/**
  * Version des Service Workers (PWA, F3): je Build eine neue, damit der Browser
  * nach einem Deploy den neuen Worker holt und der den alten Cache abräumt.
  * `SW_VERSION` (z. B. der Git-Commit) überschreibt den Zeitstempel.
@@ -50,14 +43,9 @@ const nextConfig = {
       },
     ]
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${API_URL}/api/:path*`,
-      },
-    ]
-  },
+  // Kein `rewrites()` für /api mehr (F4): `next build` schreibt Rewrites ins
+  // Routen-Manifest, ein erst bei `next start` gesetztes API_URL wirkte nie.
+  // Die Weiterleitung /api/* -> API_URL macht jetzt src/proxy.ts zur Laufzeit.
 }
 
 const plugins = [

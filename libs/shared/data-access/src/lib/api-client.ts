@@ -53,6 +53,31 @@ export interface RequestOptions {
  */
 export type UnauthorizedHandler = () => Promise<boolean>
 
+/** Result of `ApiClient.getBlob()`. */
+export interface BlobDownload {
+  blob: Blob
+  contentType: string | null
+  /** File name from `Content-Disposition`, if the server sent one. */
+  filename: string | null
+}
+
+/** `filename` (or RFC 5987 `filename*`) from a `Content-Disposition` header. */
+export function filenameFromDisposition(header: string | null): string | null {
+  if (!header) return null
+  const extended = /filename\*\s*=\s*(?:UTF-8|utf-8)''([^;]+)/.exec(header)
+  if (extended) {
+    try {
+      return decodeURIComponent(extended[1].trim().replace(/^"|"$/g, ''))
+    } catch {
+      // fall through to the plain parameter
+    }
+  }
+  const plain = /filename\s*=\s*("([^"]*)"|[^;]+)/.exec(header)
+  if (!plain) return null
+  const value = (plain[2] ?? plain[1]).trim()
+  return value || null
+}
+
 export class ApiClient {
   private baseUrl: string
   private timeout: number
@@ -66,6 +91,19 @@ export class ApiClient {
       'Content-Type': 'application/json',
       ...options.headers,
     }
+  }
+
+  /**
+   * Change the base URL, e.g. to `''` for same-origin requests in a browser
+   * app that proxies `/api` itself (bakery-management, F4).
+   */
+  setBaseUrl(baseUrl: string) {
+    this.baseUrl = baseUrl.replace(/\/$/, '')
+  }
+
+  /** The base URL requests are sent to (`''` = same origin). */
+  getBaseUrl(): string {
+    return this.baseUrl
   }
 
   /**
@@ -123,8 +161,23 @@ export class ApiClient {
     options: RequestInit = {},
     requestOptions: RequestOptions = {}
   ): Promise<ApiResponse<T>> {
+    return this.withUnauthorizedRetry(
+      () => this.send<T>(endpoint, options, requestOptions),
+      requestOptions
+    )
+  }
+
+  /**
+   * Runs `attempt`; on a 401 for a request that carried a bearer token, asks
+   * the unauthorized handler once and, if it set a new token, runs `attempt`
+   * again (which reads the new header at send time).
+   */
+  private async withUnauthorizedRetry<R>(
+    attempt: () => Promise<R>,
+    requestOptions: RequestOptions
+  ): Promise<R> {
     try {
-      return await this.send<T>(endpoint, options, requestOptions)
+      return await attempt()
     } catch (error) {
       const handler = this.unauthorizedHandler
       const failed = error as Partial<ApiError> | null
@@ -136,7 +189,7 @@ export class ApiClient {
       ) {
         const renewed = await handler().catch(() => false)
         if (renewed) {
-          return this.send<T>(endpoint, options, requestOptions)
+          return attempt()
         }
       }
       throw error
@@ -236,6 +289,76 @@ export class ApiClient {
     }
 
     return this.request<T>(url, { method: 'GET' }, options)
+  }
+
+  /**
+   * GET a file (CSV, PDF …) with the same headers, error handling and
+   * 401-refresh as the JSON methods. A plain `<a href>` cannot carry the
+   * bearer token, so downloads from a guarded API must go through this.
+   * Errors arrive as `ApiError` with the body's German `message`.
+   */
+  async getBlob(
+    endpoint: string,
+    options: RequestOptions = {}
+  ): Promise<BlobDownload> {
+    return this.withUnauthorizedRetry(
+      () => this.sendForBlob(endpoint, options),
+      options
+    )
+  }
+
+  private async sendForBlob(
+    endpoint: string,
+    requestOptions: RequestOptions
+  ): Promise<BlobDownload> {
+    const headers: Record<string, string> = {
+      ...this.defaultHeaders,
+      ...requestOptions.headers,
+    }
+    delete headers['Content-Type']
+    const withAuth = Boolean(headers['Authorization'])
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), this.timeout)
+    try {
+      const response = await fetch(`${this.baseUrl}${endpoint}`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal,
+      })
+      const contentType = response.headers.get('content-type')
+      if (!response.ok) {
+        let data: any = null
+        try {
+          data = contentType?.includes('application/json')
+            ? await response.json()
+            : null
+        } catch {
+          data = null
+        }
+        const apiError = new ApiError(
+          data?.message || `HTTP ${response.status}: ${response.statusText}`,
+          response.status,
+          typeof data?.error === 'string' ? data.error : undefined
+        )
+        apiError.withAuth = withAuth
+        throw apiError
+      }
+      const blob = await response.blob()
+      return {
+        blob,
+        contentType,
+        filename: filenameFromDisposition(
+          response.headers.get('content-disposition')
+        ),
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timeout')
+      }
+      throw error
+    } finally {
+      clearTimeout(timeoutId)
+    }
   }
 
   /**

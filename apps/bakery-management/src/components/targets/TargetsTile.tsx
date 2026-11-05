@@ -15,6 +15,7 @@ import { Login as LoginIcon, Flag as TargetIcon } from '@mui/icons-material'
 import { useSession } from '../../lib/session'
 import {
   classifyFinanceError,
+  PERSONAL_SESSION_HINT,
   fetchTargetStatus,
   type FinanceAccessProblem,
 } from '../../lib/targetsApi'
@@ -188,6 +189,8 @@ export default function TargetsTile() {
               </Button>
             </Stack>
           </Paper>
+        ) : state.kind === 'personal_session' ? (
+          <Alert severity="info">Tagesziel: {PERSONAL_SESSION_HINT}</Alert>
         ) : state.kind === 'forbidden' ? (
           <Alert severity="info">
             Keine Berechtigung - das Tagesziel sehen nur Konten mit der Rolle

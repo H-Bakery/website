@@ -114,4 +114,14 @@ describe('proxy', () => {
     expect(rewrittenTo(response)).toBeNull()
     expect(fetchMock).not.toHaveBeenCalled()
   })
+
+  it('/api geht an API_URL weiter - mit Query, ohne Sitzungsprüfung (F4)', async () => {
+    const response = await proxy(
+      request('/api/partners/3/report.csv?from=2026-01-01&to=2026-01-31')
+    )
+    expect(response.headers.get(REWRITE)).toBe(
+      'http://localhost:5000/api/partners/3/report.csv?from=2026-01-01&to=2026-01-31'
+    )
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
 })

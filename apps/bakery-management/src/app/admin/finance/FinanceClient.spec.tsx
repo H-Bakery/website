@@ -50,7 +50,7 @@ jest.mock('recharts', () => {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { apiClient, ApiError } = require('@bakery/shared/data-access') as {
   apiClient: { get: jest.Mock }
-  ApiError: new (message: string, status: number) => Error
+  ApiError: new (message: string, status: number, code?: string) => Error
 }
 
 /**
@@ -166,6 +166,22 @@ describe('FinanceClient', () => {
     renderWithTheme(<FinanceClient />)
     expect(await screen.findByText('Keine Berechtigung')).toBeInTheDocument()
     expect(screen.getByText(/Inhaber\/Admin/)).toBeInTheDocument()
+  })
+
+  it('zeigt an der PIN-Station den Hinweis auf die Passwort-Anmeldung (F4)', async () => {
+    apiClient.get.mockRejectedValue(
+      new ApiError('Nur mit Passwort.', 403, 'personal_session_required')
+    )
+    renderWithTheme(<FinanceClient />)
+    expect(
+      await screen.findByText(
+        'Bitte mit Passwort anmelden – an der PIN-Station nicht verfügbar.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: /Mit Passwort anmelden/ })
+    ).toHaveAttribute('href', '/admin/login?next=/admin/finance')
+    expect(screen.queryByText('Keine Berechtigung')).toBeNull()
   })
 
   it('zeigt "keine Daten" mit Grund und ohne Beispielwerte', async () => {
