@@ -15,6 +15,7 @@ import { runMigrations } from './db/migrate'
 import { initializeModels } from './models'
 import { runPartnerSeeder } from './seeders/partner.seeder'
 import { bootstrapAdmin } from './auth/users.service'
+import { defaultProductsDir } from './services/hq-catalogue'
 
 /** How long shutdown waits for running requests before cutting them. */
 export const SHUTDOWN_DEADLINE_MS = 10_000
@@ -52,7 +53,17 @@ export async function startServer(
   // come from the create-user CLI.
   await bootstrapAdmin()
 
+  const hqProductsDir = defaultProductsDir()
+  const hqWriteDir = process.env['HQ_WRITE_DIR'] || null
+  console.log(`[INFO] hq products: ${hqProductsDir}`)
+  console.log(
+    hqWriteDir
+      ? `[INFO] hq writes: commits in ${hqWriteDir}/products`
+      : '[INFO] hq writes: HQ_WRITE_DIR not set, writing to the read dir (development)'
+  )
+
   const app = createApp({
+    hqProducts: { productsDir: hqProductsDir, writeDir: hqWriteDir },
     sequelize,
     corsOrigins: config.corsOrigins,
     trustProxy: config.trustProxy,
