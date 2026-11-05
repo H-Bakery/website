@@ -516,6 +516,29 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
   (Passwort-Spraying), bei der PIN zusätzlich 10 je Benutzer über alle IPs. `req.ip` kommt hinter Caddy aus
   `X-Forwarded-For` (`TRUST_PROXY`, Vorgabe `loopback`).
 
+## hq-Produkte auf der echten API (B5)
+
+`GET /api/products`, `GET /api/hq-products[/:id]`, `PUT /api/hq-products/:id` und
+`POST /api/hq-products` gibt es jetzt auch in der TypeScript-API, mit dem Vertrag des Mock-Servers
+(D3; eine Parity-Suite vergleicht Antworten **und** die geschriebenen Bytes). Lesen darf jede
+Sitzung, Schreiben nur `inhaber`; kein DELETE. Details: `apps/bakery-api/CLAUDE.md`, Abschnitt
+„hq products (B5)". Von außen wichtig:
+
+- **Zwei Schreibwege.** Mit `HQ_WRITE_DIR` (Box) landet die Datei im Schreib-Worktree
+  (`app/edits`) und wird dort committet - Autor `Verwaltung (App)`, Bearbeiter als
+  `Co-authored-by`; Push + PR folgt mit B5b. Ohne `HQ_WRITE_DIR` (Entwicklung) wird wie beim Mock
+  direkt nach `HQ_PRODUCTS_DIR` geschrieben. Den Lese-Klon fasst die API mit `HQ_WRITE_DIR` nie an.
+- **`pendingApproval`** steht zusätzlich an jedem Produkt: die Datei im Schreib-Worktree weicht vom
+  Lese-Klon ab („wartet auf Freigabe", die Oberfläche dazu kommt später). GETs liefern bis zum
+  Merge den **freigegebenen** Stand. `PUT`/`POST` antworten zusätzlich mit `pending`.
+  `GET /api/hq-products` (Liste) gibt es nur in der echten API; sie zeigt auch neu angelegte,
+  noch nicht gemergte Produkte, `/api/products` (Shop) nicht.
+- **Katalog für andere Domänen:** Partner (B6) und Vorbestellungen (B7) holen Name und Preis für
+  ihre Snapshots aus `getCatalogue()` / `getProduct()` in
+  `apps/bakery-api/src/services/hq-catalogue.ts` - freigegebener Stand, gecacht, nie eigene
+  Dateizugriffe.
+- Ein Speichern ohne Änderung schreibt und committet nichts (Null-Diff-Invariante bleibt).
+
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 
 Pilot-Betrieb auf einem Rechner in der Bäckerei: systemd-Units, Caddy (LAN-HTTPS über DNS-01),

@@ -84,16 +84,17 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
 `createApp(options)` builds the Express app without `listen` and without DB setup, for the server
 and for supertest (B1). Mounted for the pilot:
 
-| Path                     | Router                                   | Note                                          |
-| ------------------------ | ---------------------------------------- | --------------------------------------------- |
-| `/health`, `/api/health` | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed     |
-| `/api/auth` (public)     | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users - see B3   |
-| `/api` (guard)           | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**    |
-| `/api/auth` (session)    | `routes/auth.routes.ts` (session router) | me, logout, stations                          |
-| `/api/users`             | `routes/users.routes.ts`                 | user admin, `inhaber` only                    |
-| `/api/partners`          | `routes/partner.routes.ts`               | Backschrank; session required; B6: roles + hq |
+| Path                                | Router                                   | Note                                                       |
+| ----------------------------------- | ---------------------------------------- | ---------------------------------------------------------- |
+| `/health`, `/api/health`            | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed                  |
+| `/api/auth` (public)                | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users - see B3                |
+| `/api` (guard)                      | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**                 |
+| `/api/auth` (session)               | `routes/auth.routes.ts` (session router) | me, logout, stations                                       |
+| `/api/users`                        | `routes/users.routes.ts`                 | user admin, `inhaber` only                                 |
+| `/api/partners`                     | `routes/partner.routes.ts`               | Backschrank; session required; B6: roles + hq              |
+| `/api/products`, `/api/hq-products` | `routes/hq-products.routes.ts`           | hq catalogue; reads any session, writes `inhaber` - see B5 |
 
-Mount points for B4 (reports/analytics/finance/targets), B5 (products/hq-products), B7 (preorders)
+Mount points for B4 (reports/analytics/finance/targets), B7 (preorders)
 and Z\* (Backzettel) are marked in `app.ts` **below the global guard** - mount new domains there
 and add `requireRole(...)`. `libs/api/auth` is no longer mounted (the lib stays until B12).
 Everything else is unmounted: recipes, inventory, cash, chat, dashboard, staff, notifications,
@@ -219,6 +220,59 @@ Needs no `JWT_SECRET`. Tests: `tests/integration/cli.test.ts`.
 Tests: `tests/unit/authCrypto.test.js`, `tests/integration/{auth,stations,users,cli}.test.ts`
 (helpers in `tests/helpers/auth.ts`); `scripts/boot-smoke.sh` creates its account with the
 bundled CLI.
+
+## hq products (B5)
+
+Products are the markdown files in `hq/products` (D9), served with the mock's contract (D3).
+Code: rules in `src/services/hq-products.core.js` (dependency-free; field rules, slug, next
+`numeric_id`, commit message), validation in `product-input.core.js`, serialisation in
+`product-file.core.js` (`serializeProductFile` - key order and quoting, **zero-diff round trip**),
+cache in `src/services/hq-catalogue.ts`, file I/O + git in `src/services/hq-products.service.ts`,
+routes in `src/routes/hq-products.routes.ts`.
+
+| Endpoint                           | Who       | Answer                                                                                                                     |
+| ---------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/products[?category=]`    | session   | `{ success, data: HQProduct[], count }` - read clone only                                                                  |
+| `GET /api/hq-products[?category=]` | session   | same, plus products only in the write worktree (new, `pendingApproval`)                                                    |
+| `GET /api/hq-products/:id`         | session   | `{ success, data }`; read clone, else a pending new product; 404 `not_found`                                               |
+| `PUT /api/hq-products/:id`         | `inhaber` | `{ success, data, pending }`; 400 `validation`, 404, 500 `hq_commit_failed`, 503 `hq_unavailable` / `hq_write_unavailable` |
+| `POST /api/hq-products`            | `inhaber` | 201 `{ success, data, pending }`; 400 `validation` / `invalid_id`, 409 `product_exists`                                    |
+
+`HQProduct` = the mock's `loadHQProducts()` shape (`id, numeric_id, name, category, price, available,
+seasonal, image, short_description, allergens, allergens_source, allergen_recipe, description`)
+**plus `pendingApproval`**. Write answers are the mock's (`frontmatter + description`) plus
+`data.pendingApproval` and top-level `pending`. No DELETE (deleting a product = deleting a file in hq).
+
+- **Two write modes.** `HQ_WRITE_DIR` set (the box): the file goes to
+  `${HQ_WRITE_DIR}/products` (worktree on `app/edits`), then `git add` + `git commit -- <file>`
+  there, author and committer `Verwaltung (App) <verwaltung@bakery.local>`, message
+  `products: <Name> (<id>) geändert|angelegt` + `Co-authored-by: <displayName> <username@bakery.local>`.
+  git runs through `execFile` with argument arrays, never a shell string. Only the product path is
+  committed - whatever else sits in the index stays. Push + PR is **B5b**; until then the commits
+  are local. `HQ_WRITE_DIR` unset (development): written straight into `HQ_PRODUCTS_DIR`, no git,
+  like the mock. The read clone is never written when `HQ_WRITE_DIR` is set.
+- **"wartet auf Freigabe"**: a product is `pendingApproval: true` when its file in the write worktree
+  differs byte-wise from the read clone's (or exists only there). GETs serve the **approved**
+  version (read clone) with the flag; a PUT builds on the write worktree's version, so edits
+  accumulate. Caveat: a write worktree that lags behind `origin/main` makes files look pending
+  until B5b rebases it.
+- **No-op saves write and commit nothing** (identical bytes) - tested for every sample file with the
+  body the edit form sends. A failed commit restores the file (or removes a new one), unstages it
+  and answers 500. Writes are serialised in-process (read-modify-write + git index).
+- **Catalogue for other domains** (B6 partners, B7 preorders): `getCatalogue()` / `getProduct(slug |
+numeric_id)` from `hq-catalogue.ts` - read clone only (approved prices for snapshots), frozen
+  objects, one cache per directory, re-read when the directory mtime changes (git re-creates files
+  on checkout/reset) or after 60 s (`CATALOGUE_TTL_MS`; an in-place edit does not touch the
+  directory mtime), and invalidated by our own writes. Missing directory: empty catalogue, logged
+  once (`HQ products directory not found`), writes 503.
+- `HQ_PRODUCTS_DIR` default: `<website>/../hq/products` (found via `nx.json` from cwd). The server
+  logs both directories at start. `createApp({ hqProducts: { productsDir, writeDir } })` overrides
+  them (tests). `tests/setup-ts.js` unsets `HQ_WRITE_DIR`.
+
+Tests: `tests/unit/hqProductsCore.test.js`, `tests/unit/hqCatalogue.test.ts`,
+`tests/integration/hqProducts.test.ts` (temp copies of `tools/e2e/hq-products`, a temp git repo as
+`HQ_WRITE_DIR`), `tests/parity/hqProducts.parity.test.ts` (same answers **and the same bytes on
+disk** as `simple-server.js` for GET/PUT/POST).
 
 ## Schema (B2)
 
