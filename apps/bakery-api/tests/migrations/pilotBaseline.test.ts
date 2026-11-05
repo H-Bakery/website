@@ -83,9 +83,14 @@ describe('pilot baseline on a fresh database', () => {
     ])
   })
 
-  it('creates exactly the pilot tables (with the B3 auth tables)', async () => {
+  it('creates exactly the pilot tables (with the B3 auth and B7 tables)', async () => {
     expect(await tableNames(sequelize)).toEqual(
-      [...baseline.TABLES, ...authMigration.TABLES, 'SequelizeMeta'].sort()
+      [
+        ...baseline.TABLES,
+        ...authMigration.TABLES,
+        ...preordersMigration.TABLES,
+        'SequelizeMeta',
+      ].sort()
     )
   })
 
@@ -644,8 +649,39 @@ describe('B7 preorders migration', () => {
     expect(await columns(sequelize, 'preorders')).not.toContain(
       'not_collected_at'
     )
+    expect(await tableNames(sequelize)).not.toContain('preorder_codes')
     // the point stays: preorders may reference it
     expect(await points()).toHaveLength(1)
+    await sequelize.close()
+  })
+})
+
+describe('B7 code registry (preorder_codes)', () => {
+  it('backfills the codes of existing preorders, idempotently', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    const qi = sequelize.getQueryInterface()
+    await preordersMigration.down(qi, Sequelize)
+    const now = new Date()
+    await qi.bulkInsert('preorders', [
+      {
+        code: 'LA-2026-11-17-01',
+        channel: 'telefon',
+        customer_name: 'Testkunde',
+        pickup_date: '2026-11-17',
+        status: 'offen',
+        paid: false,
+        created_at: now,
+        updated_at: now,
+      },
+    ])
+    await preordersMigration.up(qi, Sequelize)
+    await preordersMigration.up(qi, Sequelize)
+    expect(
+      await sequelize.query('SELECT code FROM preorder_codes', {
+        type: QueryTypes.SELECT,
+      })
+    ).toEqual([{ code: 'LA-2026-11-17-01' }])
     await sequelize.close()
   })
 })

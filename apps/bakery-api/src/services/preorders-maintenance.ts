@@ -8,7 +8,7 @@
  * (`dryRun`) macht dieselbe Arbeit und rollt am Ende zurück, damit der
  * Bericht genau das zeigt, was ein echter Lauf täte.
  */
-import { Op } from 'sequelize'
+import { Op, QueryTypes } from 'sequelize'
 
 import { audit } from '../auth/audit'
 import {
@@ -18,6 +18,7 @@ import {
   Preorder,
   PreorderItem,
 } from '../models'
+import { allocateCode, registerCode } from './preorders.service'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./delivery-preorders.core')
@@ -192,19 +193,24 @@ export async function importDeliveryStore(
         })
         continue
       }
+      // Keep the store's reference as code unless it is taken or was
+      // handed out before (codes are single-use, see `allocateCode`).
       let code: string = rec.code
-      if (await Preorder.findOne({ where: { code }, transaction })) {
-        const prefix = core.codePrefixFor(rec.pickupPointId)
-        const taken = await Preorder.findAll({
-          attributes: ['code'],
-          where: { code: { [Op.like]: `${prefix}-${rec.pickupDate}-%` } },
-          transaction,
-        })
-        code = core.nextCode(
-          taken.map((r) => r.code),
-          prefix,
-          rec.pickupDate
+      const [retired] = await getSequelize().query(
+        'SELECT code FROM preorder_codes WHERE code = ?',
+        { replacements: [code], type: QueryTypes.SELECT, transaction }
+      )
+      if (
+        retired ||
+        (await Preorder.findOne({ where: { code }, transaction }))
+      ) {
+        code = await allocateCode(
+          rec.pickupPointId,
+          rec.pickupDate,
+          transaction
         )
+      } else {
+        await registerCode(code, transaction)
       }
       const row = await Preorder.create(
         {
@@ -278,15 +284,24 @@ export interface AnonymizeReport {
   dryRun: boolean
   today: string
   cutoff: string
-  anonymized: Array<{ id: number; code: string; pickupDate: string }>
-  /** Older than the cutoff but still offen/bereit: never anonymised automatically. */
-  stillOpen: number
+  anonymized: Array<{
+    id: number
+    code: string
+    pickupDate: string
+    status: string
+  }>
+  /**
+   * Of `anonymized`: how many were never closed (offen, or bereit without
+   * "nicht abgeholt") - a hint that handovers were not ticked off. They are
+   * anonymised all the same (P4: 90 days after pickup, whatever the status).
+   */
+  unfinished: number
 }
 
 /**
- * Anonymisiert Vorbestellungen, deren Abholtag mehr als `days` (90) Tage
- * zurückliegt und die abgeschlossen sind (abgeholt, storniert, nicht
- * abgeholt): `customerName` → `anonymisiert`, `customerPhone` und `note`
+ * Anonymisiert jede Vorbestellung, deren Abholtag mehr als `days` (90) Tage
+ * zurückliegt - in jedem Status, auch offen/bereit (eine nie abgehakte
+ * Übergabe darf Name und Telefon nicht unbegrenzt behalten): `customerName` → `anonymisiert`, `customerPhone` und `note`
  * → null, `anonymizedAt` = jetzt. Positionen, Summen und Codes bleiben (sie
  * sind keine Personendaten und tragen die Statistik). Danach ist die
  * Bestellung schreibgeschützt (409 `anonymized`).
@@ -315,14 +330,12 @@ export async function anonymizePreorders(
       today,
       cutoff,
       anonymized: [],
-      stillOpen: 0,
+      unfinished: 0,
     }
     for (const row of candidates) {
       const plain = row.get({ plain: true })
-      if (!core.isDueForAnonymization(plain, cutoff)) {
-        report.stillOpen += 1
-        continue
-      }
+      if (!core.isDueForAnonymization(plain, cutoff)) continue
+      if (core.wasUnfinished(plain)) report.unfinished += 1
       await row.update(
         {
           customerName: core.ANONYMIZED_NAME,
@@ -337,13 +350,19 @@ export async function anonymizePreorders(
         'anonymize',
         'preorder',
         row.id,
-        { code: row.code, pickupDate: row.pickupDate, cutoff },
+        {
+          code: row.code,
+          pickupDate: row.pickupDate,
+          status: row.status,
+          cutoff,
+        },
         { transaction, userId: null }
       )
       report.anonymized.push({
         id: row.id,
         code: row.code,
         pickupDate: String(row.pickupDate),
+        status: row.status,
       })
     }
     return report

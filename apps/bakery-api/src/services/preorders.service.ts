@@ -13,7 +13,7 @@
  * Transaktion und schreibt `audit_log` in derselben Transaktion. Ins Audit
  * kommen nie Name oder Telefon (P4 anonymisiert sie, das Audit bliebe sonst).
  */
-import { Op, Transaction, WhereOptions } from 'sequelize'
+import { Op, QueryTypes, Transaction, WhereOptions } from 'sequelize'
 import type { Request } from 'express'
 
 import { audit } from '../auth/audit'
@@ -309,6 +309,52 @@ function singleString(value: unknown): string | undefined | null {
   return value
 }
 
+/**
+ * Next free pickup code of a day and place, registered in `preorder_codes`
+ * in the same transaction. Codes are single-use: a preorder that moves to
+ * another day or place keeps its old code in the registry, so the next
+ * customer of that day never inherits it (an Abholzettel or a printed list
+ * may still carry it). Cancelled preorders keep theirs anyway.
+ */
+export async function allocateCode(
+  pickupPointId: string | null,
+  pickupDate: string,
+  transaction: Transaction
+): Promise<string> {
+  const prefix = core.codePrefixFor(pickupPointId)
+  const like = `${prefix}-${pickupDate}-%`
+  const sequelize = getSequelize()
+  const [registered, current] = await Promise.all([
+    sequelize.query<{ code: string }>(
+      'SELECT code FROM preorder_codes WHERE code LIKE ?',
+      { replacements: [like], type: QueryTypes.SELECT, transaction }
+    ),
+    Preorder.findAll({
+      attributes: ['code'],
+      where: { code: { [Op.like]: like } },
+      transaction,
+    }),
+  ])
+  const code: string = core.nextCode(
+    [...registered.map((r) => r.code), ...current.map((r) => r.code)],
+    prefix,
+    pickupDate
+  )
+  await registerCode(code, transaction)
+  return code
+}
+
+/** Records a code as handed out (idempotent). Import uses it for kept codes. */
+export async function registerCode(
+  code: string,
+  transaction: Transaction
+): Promise<void> {
+  await getSequelize().query(
+    'INSERT OR IGNORE INTO preorder_codes (code, created_at) VALUES (?, ?)',
+    { replacements: [code, new Date().toISOString()], transaction }
+  )
+}
+
 export class PreordersService {
   private readonly productsDir: string
   private readonly variants: VariantsForProduct
@@ -595,26 +641,6 @@ export class PreordersService {
     }
   }
 
-  private async allocateCode(
-    pickupPointId: string | null,
-    pickupDate: string,
-    transaction: Transaction,
-    excludeId?: number
-  ): Promise<string> {
-    const prefix = core.codePrefixFor(pickupPointId)
-    const base = `${prefix}-${pickupDate}-`
-    const rows = await Preorder.findAll({
-      attributes: ['id', 'code'],
-      where: { code: { [Op.like]: `${base}%` } },
-      transaction,
-    })
-    return core.nextCode(
-      rows.filter((r) => r.id !== excludeId).map((r) => r.code),
-      prefix,
-      pickupDate
-    )
-  }
-
   private async writeItems(
     preorderId: number,
     items: PreorderRecord['items'],
@@ -659,7 +685,7 @@ export class PreordersService {
         )
       }
       const input = result.preorder
-      const code = await this.allocateCode(
+      const code = await allocateCode(
         input.pickupPointId,
         input.pickupDate,
         transaction
@@ -746,12 +772,7 @@ export class PreordersService {
         next.pickupPointId,
         next.pickupDate
       )
-        ? await this.allocateCode(
-            next.pickupPointId,
-            next.pickupDate,
-            transaction,
-            current.id
-          )
+        ? await allocateCode(next.pickupPointId, next.pickupDate, transaction)
         : current.code
       await Preorder.update(
         {
@@ -801,12 +822,21 @@ export class PreordersService {
     id: unknown,
     body: unknown,
     req: Request | null,
-    options: { allowedTargets?: string[]; action?: string } = {}
+    options: {
+      allowedTargets?: string[]
+      action?: string
+      guard?: (current: PreorderRecord) => Result<never> | null
+      mapBody?: (current: PreorderRecord) => unknown
+    } = {}
   ): Promise<Result<PreorderRecord>> {
     return getSequelize().transaction(async (transaction) => {
       const current = await this.findRecord(id, transaction)
       if (!current) return notFound<PreorderRecord>()
-      const result = core.normalizeStatusChange(current, body, {
+      // Inside the transaction: no window between check and write.
+      const refused = options.guard?.(current)
+      if (refused) return refused
+      const input = options.mapBody ? options.mapBody(current) : body
+      const result = core.normalizeStatusChange(current, input, {
         allowedTargets: options.allowedTargets,
         now: this.now(),
       })
@@ -854,21 +884,15 @@ export class PreordersService {
     })
   }
 
-  /** Stornieren - nie löschen. */
+  /** Stornieren - nie löschen. `guard` läuft in derselben Transaktion. */
   async cancel(
     id: unknown,
     req: Request | null,
     guard?: (current: PreorderRecord) => Result<never> | null
   ): Promise<Result<PreorderRecord>> {
-    if (guard) {
-      const current = await this.findRecord(id)
-      if (current) {
-        const refused = guard(current)
-        if (refused) return refused
-      }
-    }
     return this.changeStatus(id, { status: 'storniert' }, req, {
       action: 'cancel',
+      guard,
     })
   }
 

@@ -12,7 +12,15 @@
  *    missing. The address is public (städt. Kita "Hand in Hand", see the
  *    website CLAUDE.md); no personal data.
  *
- * Idempotent: the column is added only if missing, the row only if absent.
+ * 3. `preorder_codes`: every pickup code ever handed out (`MO-…`, `LA-…`).
+ *    A code is single-use - when a preorder moves to another day or place it
+ *    gets a new code, and its old one must never go to the next customer of
+ *    that day (an Abholzettel or a printed list may still carry it). The
+ *    preorders table alone cannot tell, because the moved row no longer holds
+ *    the old code. Backfilled from `preorders.code`.
+ *
+ * Idempotent: the column and table are added only if missing, the row only if
+ * absent, the backfill skips codes already registered.
  */
 
 const MOERSBACH = {
@@ -34,8 +42,12 @@ const MOERSBACH = {
   geocode_precision: 'house',
 }
 
+/** Tables this migration creates (the pilot baseline test lists them). */
+const TABLES = ['preorder_codes']
+
 module.exports = {
   MOERSBACH,
+  TABLES,
 
   async up(queryInterface, Sequelize) {
     const columns = await queryInterface.describeTable('preorders')
@@ -56,10 +68,35 @@ module.exports = {
         { ...MOERSBACH, created_at: now, updated_at: now },
       ])
     }
+
+    const tables = (await queryInterface.showAllTables()).map((t) =>
+      typeof t === 'string' ? t : t.tableName
+    )
+    if (!tables.includes('preorder_codes')) {
+      await queryInterface.createTable('preorder_codes', {
+        code: {
+          type: Sequelize.STRING(32),
+          allowNull: false,
+          primaryKey: true,
+        },
+        created_at: { type: Sequelize.DATE, allowNull: false },
+      })
+    }
+    await queryInterface.sequelize.query(
+      `INSERT INTO preorder_codes (code, created_at)
+         SELECT code, created_at FROM preorders
+         WHERE code NOT IN (SELECT code FROM preorder_codes)`
+    )
   },
 
   async down(queryInterface) {
     // The pickup point stays (preorders may reference it).
+    const tables = (await queryInterface.showAllTables()).map((t) =>
+      typeof t === 'string' ? t : t.tableName
+    )
+    if (tables.includes('preorder_codes')) {
+      await queryInterface.dropTable('preorder_codes')
+    }
     const columns = await queryInterface.describeTable('preorders')
     if (columns.not_collected_at) {
       await queryInterface.removeColumn('preorders', 'not_collected_at')
