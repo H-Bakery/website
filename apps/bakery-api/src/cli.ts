@@ -12,9 +12,17 @@
  * gets the given name, role and password, is reactivated and loses its
  * sessions.
  *
+ * B6: `import-partners --file <partner-store.json> [--dry-run]
+ * [--update-partners]` copies the mock server's partner store into SQLite
+ * (idempotent, one transaction; see `services/partner-import.service.ts`).
+ * Exit code 0 = everything imported (or already there), 2 = some entries
+ * were not imported (listed), 1 = error, nothing changed.
+ *
  * Works against `DB_PATH` (same rules as the server, `.env` in the working
  * directory is read) and runs pending migrations first. Needs no JWT secret.
  */
+import * as fs from 'fs'
+
 import { ConfigError, loadConfig, loadEnvFile } from './config/env'
 import { openDatabase } from './db/database'
 import { runMigrations } from './db/migrate'
@@ -24,9 +32,16 @@ import {
   upsertUser,
   validateUserInput,
 } from './auth/users.service'
+import {
+  ImportInputError,
+  assertPartnerStore,
+  formatImportReport,
+  importPartnerStore,
+} from './services/partner-import.service'
 
 const USAGE = `Aufruf:
   cli.js create-user --username <name> --display-name <Anzeigename> --role <rolle>
+  cli.js import-partners --file <partner-store.json> [--dry-run] [--update-partners]
 
   Rollen: inhaber, verkauf, backstube, fahrer
   Passwort: Umgebungsvariable CREATE_USER_PASSWORD, sonst von stdin
@@ -35,7 +50,17 @@ const USAGE = `Aufruf:
   Datenbank: DB_PATH (wie der Server; .env im Arbeitsverzeichnis wird gelesen)
 
   Legt den Benutzer an oder setzt einen vorhandenen (auch deaktivierten)
-  zurück: Name, Rolle und Passwort neu, wieder aktiv, alle Sitzungen beendet.`
+  zurück: Name, Rolle und Passwort neu, wieder aktiv, alle Sitzungen beendet.
+
+  import-partners übernimmt den Partner-Store des Mock-Servers
+  (apps/bakery-api/data/partner-store.json): Partner (per Kürzel), Vorlagen
+  und Besuche mit ihren Preis-Snapshots. Mehrfach ausführbar - Vorhandenes
+  wird erkannt und nicht doppelt angelegt. --dry-run rechnet nur durch,
+  --update-partners überschreibt Stammdaten und Vorlagen vorhandener
+  Partner mit denen aus der Datei. Exit 2: Einträge nicht übernommen.`
+
+/** Options without a value. */
+const BOOLEAN_FLAGS = new Set(['dry-run', 'update-partners'])
 
 export function parseArgs(argv: string[]): {
   command: string | undefined
@@ -48,7 +73,12 @@ export function parseArgs(argv: string[]): {
     const match = /^--([a-z-]+)(?:=(.*))?$/.exec(arg)
     if (!match) throw new UserInputError(`Unbekanntes Argument: ${arg}`)
     const [, name, inline] = match
-    if (inline !== undefined) {
+    if (BOOLEAN_FLAGS.has(name)) {
+      if (inline !== undefined) {
+        throw new UserInputError(`--${name} nimmt keinen Wert.`)
+      }
+      flags[name] = 'true'
+    } else if (inline !== undefined) {
       flags[name] = inline
     } else {
       const value = rest[i + 1]
@@ -142,6 +172,18 @@ async function createUser(flags: Record<string, string>): Promise<void> {
   // Before touching the database: bad input must not migrate anything.
   validateUserInput(input)
 
+  await withDatabase(async (dbPath) => {
+    const { user, created } = await upsertUser(input)
+    console.log(
+      `${created ? 'Angelegt' : 'Zurückgesetzt und aktiviert'}: ` +
+        `${user.username} (id ${user.id}, Rolle ${user.role}, ` +
+        `PIN ${user.hasPin ? 'gesetzt' : 'keine'}) in ${dbPath}`
+    )
+  })
+}
+
+/** Opens `DB_PATH` (server rules), migrates, initialises the models. */
+async function withDatabase<T>(fn: (dbPath: string) => Promise<T>): Promise<T> {
   const config = loadConfig()
   const { sequelize } = await openDatabase({
     storage: config.dbPath,
@@ -158,15 +200,59 @@ async function createUser(flags: Record<string, string>): Promise<void> {
       )
     }
     await initializeModels(sequelize)
-    const { user, created } = await upsertUser(input)
-    console.log(
-      `${created ? 'Angelegt' : 'Zurückgesetzt und aktiviert'}: ` +
-        `${user.username} (id ${user.id}, Rolle ${user.role}, ` +
-        `PIN ${user.hasPin ? 'gesetzt' : 'keine'}) in ${config.dbPath}`
-    )
+    return await fn(config.dbPath)
   } finally {
     await sequelize.close()
   }
+}
+
+/** `import-partners` (B6): 0 = alles übernommen, 2 = Einträge ausgelassen. */
+async function importPartners(flags: Record<string, string>): Promise<number> {
+  const unknown = Object.keys(flags).filter(
+    (f) => !['file', 'dry-run', 'update-partners'].includes(f)
+  )
+  if (unknown.length > 0) {
+    throw new UserInputError(`Unbekannte Option: --${unknown[0]}\n\n${USAGE}`)
+  }
+  const file = flags['file']
+  if (!file) throw new UserInputError(`--file fehlt.\n\n${USAGE}`)
+
+  // Read and parse before the database is opened: a bad file migrates nothing.
+  let store: unknown
+  try {
+    store = JSON.parse(fs.readFileSync(file, 'utf-8'))
+  } catch (error) {
+    const reason =
+      (error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? 'nicht gefunden'
+        : 'kein gültiges JSON'
+    throw new UserInputError(`Datei ${file}: ${reason}.`)
+  }
+  try {
+    assertPartnerStore(store)
+  } catch (error) {
+    if (error instanceof ImportInputError) {
+      throw new UserInputError(`Datei ${file}: ${error.message}`)
+    }
+    throw error
+  }
+
+  return withDatabase(async (dbPath) => {
+    let report
+    try {
+      report = await importPartnerStore(store, {
+        dryRun: flags['dry-run'] === 'true',
+        updatePartners: flags['update-partners'] === 'true',
+      })
+    } catch (error) {
+      if (error instanceof ImportInputError) {
+        throw new UserInputError(error.message)
+      }
+      throw error
+    }
+    console.log(`${formatImportReport(report)}\nDatenbank: ${dbPath}`)
+    return report.problems.length > 0 ? 2 : 0
+  })
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -176,6 +262,9 @@ export async function main(argv: string[]): Promise<number> {
     if (command === 'create-user') {
       await createUser(flags)
       return 0
+    }
+    if (command === 'import-partners') {
+      return await importPartners(flags)
     }
     if (command === undefined || command === 'help' || command === '--help') {
       console.log(USAGE)

@@ -8,18 +8,24 @@ import request from 'supertest'
 import { MIGRATIONS } from '../../src/db/migrations'
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
+import { makeProductsDir, removeTempDirs } from '../helpers/hqProducts'
 
 let api: TestApp
 let token: string
 
 beforeAll(async () => {
-  api = await createTestApp({ seedPartners: true })
+  api = await createTestApp({
+    seedPartners: true,
+    // Partner visits need products from the (synthetic) hq catalogue (B6).
+    app: { hqProducts: { productsDir: makeProductsDir(), writeDir: null } },
+  })
   // Every /api route needs a session since B3.
   token = await sessionFor(api.app, 'test.inhaber', 'inhaber')
 })
 
 afterAll(async () => {
   await api.close()
+  removeTempDirs()
 })
 
 /** supertest with the session of a synthetic inhaber. */
@@ -138,9 +144,8 @@ describe('partners CRUD smoke', () => {
 
   it('records visits and derives the day from them', async () => {
     const item = {
-      productId: 9001,
-      productSlug: 'testbrot',
-      productName: 'Testbrot',
+      productId: 1,
+      productSlug: 'kornbrot-500g',
       unitPrice: 2.5,
     }
     const initial = await authed()
@@ -167,7 +172,7 @@ describe('partners CRUD smoke', () => {
       '/api/partners/1/visits?from=2026-11-03&to=2026-11-03'
     )
     expect(list.status).toBe(200)
-    expect(JSON.stringify(list.body)).toContain('testbrot')
+    expect(JSON.stringify(list.body)).toContain('kornbrot-500g')
   })
 
   it('links a visit to a user of the pilot users table', async () => {

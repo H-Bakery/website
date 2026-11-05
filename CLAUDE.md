@@ -196,6 +196,70 @@ Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Seit B
 `tests/helpers/createTestApp.ts` (`createApp()` auf `:memory:` mit der Pilot-Baseline) getestet,
 der Abgleich mit `simple-server.js` über `tests/parity/` - Details in `apps/bakery-api/tests/README.md`.
 
+### Verkaufspartner auf der echten API (B6)
+
+Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.routes.ts`,
+`createPartnerRouter()`) sind gehärtet; Details in `apps/bakery-api/CLAUDE.md`, Abschnitt
+„Partners (B6)". Von außen wichtig:
+
+- **Rollen.** Lesen: jede Sitzung. Besuche erfassen, korrigieren, löschen: `inhaber`, `verkauf`,
+  `fahrer` (`backstube` → 403). Partner-Stammdaten (`POST`/`PUT /api/partners[/:id]`) und
+  Standard-Bestückung (`PUT …/templates/:weekday`): nur `inhaber`. Jeder Schreibzugriff steht mit
+  Benutzer im `audit_log`; `staffId` eines Besuchs kommt aus der Sitzung, nie aus dem Body,
+  `staffName` ist ohne Angabe der Anzeigename.
+- **Produkte aus dem hq-Katalog** (B5, `hq-catalogue.ts`, freigegebener Stand, dasselbe
+  Verzeichnis wie `/api/products`): `validateVisitItems` bekommt jetzt auch auf der echten API den
+  Katalog - Name und Kennungen aus hq, Preis aus hq, wenn der Request keinen schickt, ein Produkt
+  außerhalb des Katalogs 400 `INVALID_ITEMS`. Beim Korrigieren gilt der gespeicherte Snapshot
+  zusätzlich (ein inzwischen gelöschtes Produkt bleibt korrigierbar). Fehlt das hq-Verzeichnis
+  ganz, antwortet die API 503 `hq_unavailable` statt „Unbekanntes Produkt".
+- **Eine Erstbestückung je Tag - geprüft in der Transaktion.** Die Doppelprüfung (POST und PATCH)
+  läuft in der serialisierten Schreib-Transaktion; zwei gleichzeitige Erfassungen ergeben genau
+  ein 201 und ein 409 `DUPLICATE_INITIAL_VISIT`. Wandert ein Besuch per PATCH auf einen anderen
+  Tag, bekommt er dort die nächste laufende Nummer.
+- **Mock-Vertrag (D3) angeglichen:** `GET /api/partners?active=true|false`, neuer Partner ohne
+  `deliveryDays` = Di-Sa, Vorlagen-`PUT` antwortet 200 (auch beim Anlegen), ergänzt Kennungen aus
+  hq, lässt Menge 0 weg und lässt `active` stehen, wenn der Request es nicht nennt (vorher setzte
+  jedes Speichern die Vorlage wieder aktiv); `DELETE` eines Besuchs antwortet 200
+  `{ id, deleted: true, message }` statt 204. **Bewusst anders als der Mock:** eigene
+  Fehlercodes (`INVALID_ITEMS` statt `Invalid items`, plus `success: false` - das Frontend liest
+  nur `message`), `GET …/templates` legt beim Lesen keine leeren Vorlagen an, `from > to` ist 400,
+  ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (die Erfassungsmaske schickt
+  `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
+  `commission`.
+- **Parity:** `apps/bakery-api/tests/parity/partners.parity.test.ts` spielt dasselbe Szenario
+  (Partner, Vorlage, Besuche, Korrektur, Tageswechsel, Löschen, Kennzahlen, Report, CSV) auf
+  Mock und echter API durch und vergleicht Status, Form und - wo beide dieselben Daten halten -
+  die Werte; das CSV byte-genau. Die Abweichungen oben sind dort als Erwartung festgeschrieben.
+- **Für F4 offen:** der CSV-Export der Report-Seite ist ein schlichter Link
+  (`reportCsvUrl()` in `partnerApi.ts`) ohne `Authorization`-Header - gegen die echte API ist
+  das 401. Der Download muss über `fetch` mit Token + Blob laufen.
+
+**Import des Mock-Stores** (`partner-store.json` → SQLite), idempotent, in einer Transaktion:
+
+```bash
+npm run build:api
+DB_PATH=/var/lib/bakery/bakery.db npm run api:import-partners -- \
+  --file apps/bakery-api/data/partner-store.json --dry-run      # erst durchrechnen
+DB_PATH=/var/lib/bakery/bakery.db npm run api:import-partners -- \
+  --file apps/bakery-api/data/partner-store.json                # dann übernehmen
+# = node dist/apps/bakery-api/bundle/cli.js import-partners --file … [--dry-run] [--update-partners]
+```
+
+Partner werden über den Slug wiedererkannt (der geseedete CAP-Markt bleibt, wie er ist; mit
+`--update-partners` bekommen vorhandene Partner und Vorlagen die Stammdaten aus der Datei),
+Vorlagen über Partner + Wochentag, Besuche über Partner + Geschäftstag + Typ + Zeitpunkt - ein
+zweiter Lauf legt nichts doppelt an. Positionen behalten ihren **Preis- und Namens-Snapshot** aus
+der Datei (kein Nachschlagen in hq). `staffId` des Mocks wird nicht übernommen (zeigt auf keinen
+Benutzer), `staffName` schon. Geprüft wird mit den Regeln der Erfassung; was nicht passt
+(ungültiger Tag, zweite Erstbestückung, auch gegen schon erfasste Besuche in der Datenbank),
+wird übersprungen und aufgelistet - Exit-Code 2, sonst 0, bei unbrauchbarer Datei 1 (dann wird
+die Datenbank gar nicht geöffnet). `--dry-run` rechnet den ganzen Import in der Transaktion durch
+und rollt zurück. Regeln: `src/services/partner-import.core.js` (Tests
+`tests/unit/partnerImportCore.test.js`), Schreibseite `partner-import.service.ts`
+(`tests/integration/partnerImport.test.ts`, CLI `partnerImportCli.test.ts`), synthetische
+Vorlage `tests/fixtures/partner-store.synthetic.json`.
+
 ## Liefertouren (Samstagsauslieferung)
 
 Die Fahrer-App `bakery-delivery` (Port 4300) fährt die Samstagstour mit ein bis zwei Fahrern. Eine

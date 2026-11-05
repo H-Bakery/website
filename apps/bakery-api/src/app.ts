@@ -5,7 +5,7 @@
  * calls `createApp()`; integration tests (B1) do the same with `:memory:`
  * and drive the result through supertest.
  *
- * Mounted (roadmap §4): health, auth, users, partners, the hq read-only
+ * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
  * data (B4: reports, analytics, finance, targets) and products (B5). The
  * other pilot domains get their mount points below as their tasks land.
  *
@@ -28,7 +28,7 @@ import {
   createPublicAuthRouter,
   createSessionAuthRouter,
   createUsersRouter,
-  partnerRoutes,
+  createPartnerRouter,
 } from './routes'
 import { createHqDataRouter, HqDataOptions } from './routes/hq-data.routes'
 import { AuthRouterOptions } from './routes/auth.routes'
@@ -101,13 +101,18 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api/users', createUsersRouter(auth)) // inhaber only
 
   // --- Pilot domains -------------------------------------------------------
-  app.use('/api/partners', partnerRoutes) // B6: roles + hq catalogue
+  // B5: hq markdown; reads any session, writes inhaber (HQ_WRITE_DIR commit)
+  const hqProducts = createHqProductsRouters(options.hqProducts)
+  // B6: reads any session, visits inhaber/verkauf/fahrer, master data
+  // inhaber; products of a visit come from the same hq catalogue (read clone)
+  app.use(
+    '/api/partners',
+    createPartnerRouter({ productsDir: hqProducts.service.productsDir })
+  )
   // B4: /api/reports, /api/analytics (inhaber), /api/finance/* incl. targets
   // (inhaber, personal session) - the mock modules behind the auth adapter.
   // Absolute paths, so mounted at the root.
   app.use(createHqDataRouter(options.hq))
-  // B5: hq markdown; reads any session, writes inhaber (HQ_WRITE_DIR commit)
-  const hqProducts = createHqProductsRouters(options.hqProducts)
   app.use('/api/products', hqProducts.products)
   app.use('/api/hq-products', hqProducts.hqProducts)
   // B7: /api/preorders (+ /api/deliveries/preorders alias, shop POST /api/orders)
