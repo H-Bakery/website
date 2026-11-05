@@ -160,8 +160,10 @@ and `npx nx test bakery-api` (`--selectProjects js|ts`):
 - `scripts/boot-smoke.sh`: bundle → start (production mode, fresh SQLite) → `/health` → restart
   without re-running migrations. Runs in CI in the `build (bakery-api)` job.
 
-Three legacy JS suites need `express-rate-limit`, which is declared in the root `package.json` but
-only present after `npm ci`.
+The legacy suites that load `index.js` (`healthAPI`, `securityIntegration`) need
+`express-rate-limit` (root dependency, run `npm ci`) and reach `marked`@16, which is ESM-only; the
+`js` project maps `marked` to `tests/helpers/markedStub.js`. Both go with the legacy layer in B12.
+State on `pilot` 2026-11-05: 59 suites pass, 6 skipped, 0 failing.
 
 ## Known state
 

@@ -41,6 +41,9 @@ const js = {
   coveragePathIgnorePatterns: ['/node_modules/', '/test/fixtures/'],
   testPathIgnorePatterns: ['/node_modules/'],
   testMatch: ['<rootDir>/tests/**/*.test.js'],
+  // marked@16 is ESM-only; the legacy layer (index.js -> utils/recipeParser.js)
+  // requires it. See tests/helpers/markedStub.js.
+  moduleNameMapper: { '^marked$': '<rootDir>/tests/helpers/markedStub.js' },
 }
 
 /** @type {import('jest').Config} */
