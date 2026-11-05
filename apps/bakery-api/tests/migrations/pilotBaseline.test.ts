@@ -659,3 +659,47 @@ describe('B3 auth migration (stations, auth_sessions)', () => {
     await sequelize.close()
   })
 })
+
+describe('B3 auth migration: usernames', () => {
+  it('lower-cases legacy usernames unless the normalised name is taken', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name.includes('pilot-baseline')),
+    })
+    const now = "'2026-09-01 08:00:00'"
+    await sequelize.query(
+      `INSERT INTO users (id, username, display_name, role, password_hash, active, created_at, updated_at)
+       VALUES (1, 'Alt.Admin', 'Alt Admin', 'inhaber', '!legacy-user-disabled', 0, ${now}, ${now}),
+              (2, ' alt.staff ', 'Alt Staff', 'verkauf', '!legacy-user-disabled', 0, ${now}, ${now}),
+              (3, 'Doppelt', 'Doppelt A', 'verkauf', '!legacy-user-disabled', 0, ${now}, ${now}),
+              (4, 'doppelt', 'Doppelt B', 'verkauf', '!legacy-user-disabled', 0, ${now}, ${now}),
+              (5, 'schon.klein', 'Klein', 'verkauf', '!legacy-user-disabled', 0, ${now}, ${now})`
+    )
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
+    let warnings: string[] = []
+    try {
+      await runMigrations(sequelize, quiet)
+      // Idempotent.
+      await authMigration.up(sequelize.getQueryInterface(), Sequelize)
+      warnings = warn.mock.calls.map((c) => String(c[0]))
+    } finally {
+      warn.mockRestore()
+    }
+    const users = await sequelize.query<{ id: number; username: string }>(
+      'SELECT id, username FROM users ORDER BY id',
+      { type: QueryTypes.SELECT }
+    )
+    expect(users).toEqual([
+      { id: 1, username: 'alt.admin' },
+      { id: 2, username: 'alt.staff' },
+      { id: 3, username: 'Doppelt' },
+      { id: 4, username: 'doppelt' },
+      { id: 5, username: 'schon.klein' },
+    ])
+    // Only the collision is reported, on each run.
+    expect(warnings.length).toBeGreaterThan(0)
+    expect(warnings.every((w) => w.includes('users.id 3'))).toBe(true)
+    await sequelize.close()
+  })
+})

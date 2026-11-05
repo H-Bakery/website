@@ -8,7 +8,9 @@
  *   carries the role from the database, not from the token.
  * - Refresh token: 32 random bytes (`rt_…`), only its SHA-256 is stored in
  *   `refresh_tokens`. Rotated on every refresh; presenting a rotated token
- *   again revokes its whole session (reuse = theft). 14 days, sliding.
+ *   again revokes its whole session (reuse = theft) - except within 10 s of
+ *   the rotation while the successor is unused (parallel refresh, 409).
+ *   14 days, sliding.
  * - Station session: PIN at a registered station, ends hard 12 hours after the
  *   PIN; neither refresh nor access token outlives that.
  * - Station token: long-lived (`st_…`), SHA-256 in `stations`, revocable.
@@ -35,6 +37,12 @@ export const ACCESS_TOKEN_TTL_SECONDS = 60 * 60
 export const REFRESH_TOKEN_TTL_SECONDS = 14 * 24 * 60 * 60
 export const STATION_SESSION_TTL_SECONDS = 12 * 60 * 60
 export const MIN_JWT_SECRET_LENGTH = 32
+/**
+ * A token rotated less than this long ago, whose successor is still unused,
+ * is a concurrent refresh (two tabs, a retried request), not theft: it gets
+ * a 409 and the session survives.
+ */
+export const REFRESH_REUSE_GRACE_MS = 10 * 1000
 
 export const REFRESH_TOKEN_PREFIX = 'rt_'
 export const STATION_TOKEN_PREFIX = 'st_'
@@ -46,13 +54,23 @@ export interface AuthServiceOptions {
   now?: () => number
 }
 
-/** User as the API returns it: never a hash. */
+/**
+ * User as the API returns it: never a hash.
+ *
+ * Deviation from the mock (D3), deliberate: the pilot `users` table has
+ * `username` + `displayName`, no `email`/`firstName`/`lastName`/`lastLogin`,
+ * so those mock fields are absent rather than invented. `isActive` mirrors
+ * `active` because the shared `User` type and the mock carry it. Roles are
+ * D5's (`inhaber`, ...), not the mock's `admin`/`staff`.
+ */
 export interface PublicUser {
   id: number
   username: string
   displayName: string
   role: string
   active: boolean
+  /** Same as `active` (mock / `@bakery/shared/types` name). */
+  isActive: boolean
   createdAt: Date
   updatedAt: Date
   sessionKind?: SessionKind
@@ -92,6 +110,7 @@ export function publicUser(user: User, kind?: SessionKind): PublicUser {
     displayName: values.displayName,
     role: values.role,
     active: Boolean(values.active),
+    isActive: Boolean(values.active),
     createdAt: values.createdAt,
     updatedAt: values.updatedAt,
   }
@@ -312,7 +331,14 @@ export function createAuthService(options: AuthServiceOptions = {}) {
     userAgent: string | null
   ): Promise<
     | { ok: true; issued: IssuedSession; userId: number; sessionId: number }
-    | { ok: false; reuse: boolean; userId?: number; sessionId?: number }
+    | {
+        ok: false
+        reuse: boolean
+        /** Lost a race against a parallel refresh (grace window). */
+        superseded?: boolean
+        userId?: number
+        sessionId?: number
+      }
   > {
     if (typeof raw !== 'string' || raw.length === 0 || raw.length > 200) {
       return { ok: false, reuse: false }
@@ -331,6 +357,27 @@ export function createAuthService(options: AuthServiceOptions = {}) {
       if (!session) return { ok: false as const, reuse: false }
 
       if (row.revokedAt) {
+        // Rotated moments ago and the new token not used yet: a parallel
+        // refresh of the same client, not a stolen copy. Refuse without
+        // ending the session; the client picks up the winner's token.
+        if (row.replacedBy && !session.revokedAt) {
+          const successor = await RefreshToken.findByPk(row.replacedBy, {
+            transaction,
+          })
+          if (
+            successor &&
+            !successor.revokedAt &&
+            nowMs - row.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS
+          ) {
+            return {
+              ok: false as const,
+              reuse: false,
+              superseded: true,
+              userId: session.userId,
+              sessionId: session.id,
+            }
+          }
+        }
         // A rotated token came back: someone holds a copy. End the chain.
         const wasOpen = !session.revokedAt
         await revokeSession(session, 'reuse', transaction)
@@ -383,6 +430,22 @@ export function createAuthService(options: AuthServiceOptions = {}) {
     })
   }
 
+  /**
+   * The session a refresh token belongs to - also for a rotated or expired
+   * token (logout). `null` for anything unknown.
+   */
+  async function findSessionByRefreshToken(
+    raw: unknown
+  ): Promise<AuthSession | null> {
+    if (typeof raw !== 'string' || raw.length === 0 || raw.length > 200) {
+      return null
+    }
+    const row = await RefreshToken.findOne({
+      where: { tokenHash: authCrypto.hashToken(raw) },
+    })
+    return row?.sessionId ? AuthSession.findByPk(row.sessionId) : null
+  }
+
   // ----------------------------------------------------------- credentials
 
   /** Password check; `null` for unknown, inactive or wrong (same timing). */
@@ -400,11 +463,9 @@ export function createAuthService(options: AuthServiceOptions = {}) {
 
   /** PIN check; `null` for unknown, inactive, no PIN or wrong PIN. */
   async function checkPin(userId: unknown, pin: unknown): Promise<User | null> {
-    const id = Number(userId)
+    const id = authCrypto.parseUserId(userId) as number | null
     const user =
-      Number.isInteger(id) && id > 0
-        ? await User.scope('withSecrets').findByPk(id)
-        : null
+      id !== null ? await User.scope('withSecrets').findByPk(id) : null
     const wellFormed = authCrypto.validatePin(pin) === null
     const ok = await authCrypto.verifySecret(
       wellFormed ? pin : '',
@@ -464,6 +525,7 @@ export function createAuthService(options: AuthServiceOptions = {}) {
     revokeSession,
     revokeUserSessions,
     rotateRefreshToken,
+    findSessionByRefreshToken,
     checkPassword,
     checkPin,
     registerStation,

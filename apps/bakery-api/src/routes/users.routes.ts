@@ -1,5 +1,7 @@
 /**
- * `/api/users` - user administration (B3), role `inhaber` only.
+ * `/api/users` - user administration (B3), role `inhaber` only, and only
+ * from a personal session (a PIN at a station is 403
+ * `personal_session_required`).
  *
  *   GET   /                 -> { success, data: AdminUser[] }
  *   POST  /                 { username, displayName, role, password, pin? } -> 201 { success, data }
@@ -21,7 +23,11 @@ import { Op, Transaction } from 'sequelize'
 import { audit } from '../auth/audit'
 import { AuthError } from '../auth/types'
 import type { AuthService } from '../auth/auth.service'
-import { asyncHandler, requireRole } from '../auth/middleware'
+import {
+  asyncHandler,
+  requirePersonalSession,
+  requireRole,
+} from '../auth/middleware'
 import { adminUser } from '../auth/users.service'
 import { User, getSequelize } from '../models'
 import type { UserRole } from '../models/User'
@@ -58,7 +64,7 @@ async function otherActiveInhaber(
 
 export function createUsersRouter(service: AuthService): Router {
   const router = Router()
-  router.use(requireRole('inhaber'))
+  router.use(requireRole('inhaber'), requirePersonalSession)
 
   router.get(
     '/',

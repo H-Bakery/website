@@ -476,11 +476,18 @@ echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
 ## Anmeldung (B3, echte API)
 
 Persönliche Konten plus PIN-Stationen (D5) in SQLite, Passwort und PIN als scrypt-Hash aus
-`node:crypto` (D12). Vertrag wie `auth.mock.js` (`login`, `me`, `refresh`, `logout`) plus
+`node:crypto` (D12). Endpunkte und Antworthülle wie `auth.mock.js` (`login`, `me`, `refresh`,
+`logout`, `{ success, data: { user, token, refreshToken, expiresIn } }`) plus
 `POST /api/auth/pin`, `GET /api/auth/station/users`, `/api/auth/stations` und `/api/users`
-(nur `inhaber`). Details, Tabelle der Endpunkte und Fehlercodes: `apps/bakery-api/CLAUDE.md`,
+(nur `inhaber`, nur aus einer persönlichen Sitzung). Details, Tabelle der Endpunkte und Fehlercodes: `apps/bakery-api/CLAUDE.md`,
 Abschnitt „Auth (B3)". Was man von außen wissen muss:
 
+- **Das `user`-Objekt weicht vom Mock ab (bewusste D3-Abweichung).** Echt:
+  `{ id, username, displayName, role, active, isActive, createdAt, updatedAt, sessionKind }`.
+  `email`, `firstName`, `lastName` und `lastLogin` gibt es nicht - die Pilot-Tabelle `users` hat
+  sie nicht, und erfunden werden sie nicht. Rollen sind `inhaber | verkauf | backstube | fahrer`
+  statt `admin | staff`. Für F1: `admin/login/page.tsx` („Angemeldet als {user.email}") und
+  `admin/chat/page.tsx` lesen heute `user.email` - auf `displayName`/`username` umstellen.
 - **Es gibt kein Standardkonto.** `admin`/`admin123` ist entfernt. Konten legt die CLI an
   (nach `npm run build:api`):
   `npm run api:create-user -- --username anna --display-name "Anna" --role verkauf`
@@ -492,11 +499,21 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
   Z\*) werden darunter eingehängt und prüfen Rollen mit `requireRole(...)`. `inhaber` darf alles.
 - **Refresh-Tokens rotieren** und müssen vom Client gespeichert werden; ein bloßes Access-Token
   wird an `/refresh` (anders als beim Mock) nicht angenommen. Wer ein bereits rotiertes Token
-  erneut schickt, beendet die ganze Sitzung. Für F1: der `AuthProvider` schickt heute alle 5 min
-  einen leeren Refresh-Token und würde gegen die echte API abgemeldet.
+  erneut schickt, beendet die ganze Sitzung - außer innerhalb von 10 s nach der Rotation, solange
+  das Nachfolge-Token unbenutzt ist: dann 409 `refresh_superseded` (zweiter Tab, wiederholter
+  Request), die Sitzung bleibt. Für F1: der `AuthProvider` schickt heute alle 5 min einen leeren
+  Refresh-Token und würde gegen die echte API abgemeldet; Refreshes über Tabs hinweg
+  serialisieren und bei 409 das neue Token aus dem Speicher nehmen.
+- **Logout ist öffentlich** und nimmt das Access-Token (Bearer) _oder_ `{ refreshToken }` - ein
+  Tablet, dessen Access-Token (1 h) abgelaufen ist, kann seine Sitzung trotzdem beenden. Ohne
+  gültiges Token antwortet es wie der Mock mit 200 `Abgemeldet.`
 - **Stationen:** ein Inhaber registriert ein Gerät (`POST /api/auth/stations`), das Token kommt
   einmal zurück und wird als `X-Station-Token` geschickt. PIN-Sitzungen enden 12 h nach der PIN.
-- **Rate-Limit:** 5 Fehlversuche / 5 min je IP + Benutzer → 429. `req.ip` kommt hinter Caddy aus
+  Eine PIN-Sitzung trägt die volle Rolle, darf aber **Benutzer und Stationen nicht verwalten**
+  (403 `personal_session_required`, auch als `inhaber`) - das geht nur mit Benutzername und
+  Passwort. `userId` an `/pin` nur als ganze Zahl oder `"7"` (sonst 400).
+- **Rate-Limit** (Fehlversuche je 5 min → 429): 5 je IP + Benutzer, 30 je IP über alle Benutzer
+  (Passwort-Spraying), bei der PIN zusätzlich 10 je Benutzer über alle IPs. `req.ip` kommt hinter Caddy aus
   `X-Forwarded-For` (`TRUST_PROXY`, Vorgabe `loopback`).
 
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)

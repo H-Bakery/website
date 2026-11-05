@@ -164,6 +164,61 @@ describe('POST /api/auth/pin', () => {
     expect(res.status).toBe(400)
   })
 
+  it('a userId in any other spelling than the canonical one is a 400', async () => {
+    const id = ids['laden']
+    for (const userId of [
+      `0${id}`,
+      `00${id}`,
+      ` ${id}`,
+      `${id}.0`,
+      `${id}e0`,
+      `0x${id.toString(16)}`,
+      id + 0.5,
+      0,
+      null,
+      undefined,
+      [id],
+    ]) {
+      const res = await request(api.app)
+        .post('/api/auth/pin')
+        .set('X-Station-Token', stationToken)
+        .send({ userId, pin: '0420' })
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'validation' })
+      expect(typeof res.body.message).toBe('string')
+    }
+    // The canonical string form is accepted.
+    const ok = await request(api.app)
+      .post('/api/auth/pin')
+      .set('X-Station-Token', stationToken)
+      .send({ userId: String(id), pin: '0420' })
+    expect(ok.status).toBe(200)
+  })
+
+  it('a PIN session cannot administer users or stations, even as inhaber', async () => {
+    const pin = await request(api.app)
+      .post('/api/auth/pin')
+      .set('X-Station-Token', stationToken)
+      .send({ userId: ids['inhaber'], pin: '9999' })
+    expect(pin.status).toBe(200)
+    const token = pin.body.data.token
+    expect(
+      (await request(api.app).get('/api/auth/me').set(bearer(token))).status
+    ).toBe(200)
+    for (const call of [
+      request(api.app).get('/api/users'),
+      request(api.app).get('/api/auth/stations'),
+      request(api.app).post('/api/auth/stations').send({ name: 'Heimlich' }),
+      request(api.app).delete(`/api/auth/stations/${stationId}`),
+    ]) {
+      const res = await call.set(bearer(token))
+      expect(res.status).toBe(403)
+      expect(res.body).toMatchObject({ error: 'personal_session_required' })
+      expect(typeof res.body.message).toBe('string')
+    }
+    expect((await Station.findByPk(stationId))?.revokedAt).toBeNull()
+  })
+
   it('opens a station session that ends 12 h after the PIN', async () => {
     const start = clock
     const res = await request(api.app)
@@ -240,6 +295,53 @@ describe('POST /api/auth/pin', () => {
     expect(blocked.status).toBe(429)
     expect(blocked.body).toMatchObject({ error: 'too_many_requests' })
     expect(typeof blocked.body.message).toBe('string')
+
+    // Another spelling of the same id opens no fresh counter: the canonical
+    // string shares the key, everything else is refused before the limiter.
+    const id = ids['inhaber']
+    const spell = (userId: unknown) =>
+      request(api.app)
+        .post('/api/auth/pin')
+        .set('X-Station-Token', stationToken)
+        .set('X-Forwarded-For', '198.51.100.250')
+        .send({ userId, pin: '9999' })
+    expect((await spell(String(id))).status).toBe(429)
+    for (const userId of [
+      `0${id}`,
+      `000${id}`,
+      ` ${id}`,
+      `${id}.0`,
+      `${id}e0`,
+    ]) {
+      expect((await spell(userId)).status).toBe(400)
+    }
+  })
+
+  it('rate limit: 10 wrong PINs per user from any IPs -> 429', async () => {
+    const target = await createUser({
+      username: 'test.pinziel',
+      role: 'verkauf',
+      pin: '5555',
+    })
+    const attempt = (pin: string, ip: string) =>
+      request(api.app)
+        .post('/api/auth/pin')
+        .set('X-Station-Token', stationToken)
+        .set('X-Forwarded-For', ip)
+        .send({ userId: target.id, pin })
+    for (let i = 0; i < 10; i++) {
+      expect((await attempt('0000', `192.0.2.${i + 1}`)).status).toBe(401)
+    }
+    const blocked = await attempt('5555', '192.0.2.99')
+    expect(blocked.status).toBe(429)
+    expect(blocked.body).toMatchObject({ error: 'too_many_requests' })
+    // Other users at the station are not affected.
+    const other = await request(api.app)
+      .post('/api/auth/pin')
+      .set('X-Station-Token', stationToken)
+      .set('X-Forwarded-For', '192.0.2.99')
+      .send({ userId: ids['laden'], pin: '0420' })
+    expect(other.status).toBe(200)
   })
 })
 

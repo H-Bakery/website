@@ -6,7 +6,9 @@
  *   requireRole(...roles)    403 unless `req.user.role` is one of `roles`;
  *                            `inhaber` passes every check; 401 without a user
  *   requireStation(service)  header `X-Station-Token` -> `req.station`, else 403
- *   loginRateLimit(...)      5 failed attempts / 5 min per IP + login name -> 429
+ *   loginRateLimit(...)      failed attempts / 5 min per IP + account, per IP,
+ *                            per account -> 429
+ *   requirePersonalSession   403 for station (PIN) sessions
  *
  * Routers mounted after the global guard need only `requireRole`.
  */
@@ -24,6 +26,10 @@ export const STATION_TOKEN_HEADER = 'x-station-token'
 
 export const LOGIN_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000
 export const LOGIN_RATE_LIMIT_MAX = 5
+/** Failed attempts per IP across all accounts (password spraying). */
+export const LOGIN_RATE_LIMIT_IP_MAX = 30
+/** Failed PIN attempts per user across all IPs. */
+export const PIN_RATE_LIMIT_USER_MAX = 10
 
 export function bearerToken(req: Request): string | null {
   const header = req.headers.authorization || ''
@@ -81,6 +87,27 @@ export function requireRole(...roles: UserRole[]): RequestHandler {
   }
 }
 
+/**
+ * Administration (users, stations) needs a personal session: a PIN on a
+ * shared tablet must not unlock it, even for an `inhaber`.
+ */
+export const requirePersonalSession: RequestHandler = (req, res, next) => {
+  if (!req.user) {
+    sendUnauthorized(res)
+    return
+  }
+  if (req.user.sessionKind !== 'personal') {
+    sendError(
+      res,
+      403,
+      'personal_session_required',
+      'Diese Verwaltung ist an einer Station nicht verfügbar. Bitte mit Benutzername und Passwort anmelden.'
+    )
+    return
+  }
+  next()
+}
+
 export function requireStation(service: AuthService): RequestHandler {
   return asyncHandler(async (req, res, next) => {
     const raw = req.headers[STATION_TOKEN_HEADER]
@@ -101,16 +128,25 @@ export function requireStation(service: AuthService): RequestHandler {
 }
 
 /**
- * Brute-force brake for login and PIN: `max` failed attempts per window and
- * per IP + login name (username or user id). Successful logins do not count.
- * Each `createApp()` gets its own in-memory store.
+ * Brute-force brake for login and PIN: `max` failed attempts per window.
+ * The counter key is `keyOf(req)` (the account: username or canonical user
+ * id), prefixed with the client IP unless `perIp: false`; without `keyOf`
+ * the limit is per IP alone. Successful logins do not count. Each
+ * `createApp()` gets its own in-memory store.
+ *
+ * The routes stack several of these (see `auth.routes.ts`): per IP + account
+ * (5), per IP across all accounts (30, against password spraying) and, for
+ * the PIN, per account across all IPs (10 - a 4-digit PIN space is tiny).
  */
 export function loginRateLimit(options: {
-  /** Which body field names the account (`username` or `userId`). */
-  keyOf: (req: Request) => string
+  /** Which account the attempt names; omitted = per IP only. */
+  keyOf?: (req: Request) => string
+  /** Prefix the key with the client IP (default true). */
+  perIp?: boolean
   windowMs?: number
   max?: number
 }): RequestHandler {
+  const perIp = options.perIp !== false
   return rateLimit({
     windowMs: options.windowMs ?? LOGIN_RATE_LIMIT_WINDOW_MS,
     limit: options.max ?? LOGIN_RATE_LIMIT_MAX,
@@ -118,7 +154,12 @@ export function loginRateLimit(options: {
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     keyGenerator: (req) =>
-      `${ipKeyGenerator(req.ip ?? 'unknown')}|${options.keyOf(req)}`,
+      [
+        perIp ? `ip:${ipKeyGenerator(req.ip ?? 'unknown')}` : '',
+        options.keyOf ? options.keyOf(req) : '',
+      ]
+        .filter(Boolean)
+        .join('|'),
     handler: (_req, res) => {
       sendError(
         res,

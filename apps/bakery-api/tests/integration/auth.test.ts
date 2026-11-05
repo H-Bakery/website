@@ -13,9 +13,14 @@ import { TEST_PASSWORD, bearer, createUser, login } from '../helpers/auth'
 jest.setTimeout(30000)
 
 let api: TestApp
+/** Injected clock: real time, moved forward where a test needs it. */
+let clock = Date.now()
 
 beforeAll(async () => {
-  api = await createTestApp({ seedPartners: true })
+  api = await createTestApp({
+    seedPartners: true,
+    app: { auth: { now: () => clock } },
+  })
   await createUser({
     username: 'test.inhaber',
     role: 'inhaber',
@@ -55,6 +60,7 @@ describe('POST /api/auth/login', () => {
       displayName: 'Test Inhaber',
       role: 'inhaber',
       active: true,
+      isActive: true,
       sessionKind: 'personal',
     })
     expect(JSON.stringify(res.body)).not.toMatch(/scrypt|passwordHash|pinHash/)
@@ -219,7 +225,8 @@ describe('POST /api/auth/refresh', () => {
     expect(rotated.status).toBe(200)
     const current = rotated.body.data
 
-    // An attacker replays the old token.
+    // An attacker replays the old token, after the grace window.
+    clock += 11 * 1000
     const replay = await request(api.app)
       .post('/api/auth/refresh')
       .send({ refreshToken: first.refreshToken })
@@ -261,6 +268,52 @@ describe('POST /api/auth/refresh', () => {
   })
 })
 
+describe('POST /api/auth/refresh - parallel refreshes (grace window)', () => {
+  it('a parallel refresh loses with 409 and the session survives', async () => {
+    const first = await login(api.app, 'test.verkauf')
+    const results = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        request(api.app)
+          .post('/api/auth/refresh')
+          .send({ refreshToken: first.refreshToken })
+      )
+    )
+    const statuses = results.map((r) => r.status).sort()
+    expect(statuses).toEqual([200, 409, 409, 409, 409, 409])
+    for (const loser of results.filter((r) => r.status === 409)) {
+      expectErrorShape(loser.body, 'refresh_superseded')
+    }
+    const winner = results.find((r) => r.status === 200)!.body.data
+    expect(
+      (await request(api.app).get('/api/auth/me').set(bearer(winner.token)))
+        .status
+    ).toBe(200)
+    const next = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: winner.refreshToken })
+    expect(next.status).toBe(200)
+    const sid = (jwt.decode(first.token) as { sid: number }).sid
+    expect((await AuthSession.findByPk(sid))?.revokedAt).toBeNull()
+  })
+
+  it('within the window, but the successor was already used: reuse', async () => {
+    const first = await login(api.app, 'test.verkauf')
+    const second = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    const third = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: second.body.data.refreshToken })
+    expect(third.status).toBe(200)
+    const replay = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(replay.status).toBe(401)
+    const sid = (jwt.decode(first.token) as { sid: number }).sid
+    expect((await AuthSession.findByPk(sid))?.revokeReason).toBe('reuse')
+  })
+})
+
 describe('POST /api/auth/logout', () => {
   it('ends this session: access and refresh token stop working', async () => {
     const other = await login(api.app, 'test.verkauf')
@@ -289,9 +342,45 @@ describe('POST /api/auth/logout', () => {
     ).toBe(200)
   })
 
-  it('needs a session', async () => {
-    const res = await request(api.app).post('/api/auth/logout')
-    expect(res.status).toBe(401)
+  it('works with only the refresh token once the access token expired', async () => {
+    const session = await login(api.app, 'test.verkauf')
+    const start = clock
+    clock += 2 * 60 * 60 * 1000 // access token (1 h) is gone
+    try {
+      expect(
+        (await request(api.app).get('/api/auth/me').set(bearer(session.token)))
+          .status
+      ).toBe(401)
+      const res = await request(api.app)
+        .post('/api/auth/logout')
+        .set(bearer(session.token))
+        .send({ refreshToken: session.refreshToken })
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ success: true, message: 'Abgemeldet.' })
+      const refresh = await request(api.app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: session.refreshToken })
+      expect(refresh.status).toBe(401)
+      const sid = (jwt.decode(session.token) as { sid: number }).sid
+      expect((await AuthSession.findByPk(sid))?.revokeReason).toBe('logout')
+      const audit = await AuditLog.findOne({
+        where: { action: 'logout', entityId: String(session.user['id']) },
+        order: [['id', 'DESC']],
+      })
+      expect(audit?.data).toMatchObject({ via: 'refresh' })
+    } finally {
+      clock = start
+    }
+  })
+
+  it('without any token it is an idempotent no-op (as in the mock)', async () => {
+    const before = await AuditLog.count({ where: { action: 'logout' } })
+    for (const body of [{}, { refreshToken: 'rt_gibtesnicht' }]) {
+      const res = await request(api.app).post('/api/auth/logout').send(body)
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({ success: true, message: 'Abgemeldet.' })
+    }
+    expect(await AuditLog.count({ where: { action: 'logout' } })).toBe(before)
   })
 })
 
@@ -393,6 +482,23 @@ describe('rate limit (5 failed attempts / 5 min per IP + username)', () => {
       .set('X-Forwarded-For', '203.0.113.7')
       .send({ username: 'test.inhaber', password: TEST_PASSWORD })
     expect(other.status).toBe(200)
+  })
+
+  it('caps failures per IP across usernames (password spraying)', async () => {
+    const ip = '203.0.113.60'
+    for (let i = 0; i < 30; i++) {
+      const res = await request(api.app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', ip)
+        .send({ username: `test.spray${i}`, password: 'falsch-falsch' })
+      expect(res.status).toBe(401)
+    }
+    const blocked = await request(api.app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', ip)
+      .send({ username: 'test.inhaber', password: TEST_PASSWORD })
+    expect(blocked.status).toBe(429)
+    expectErrorShape(blocked.body, 'too_many_requests')
   })
 
   it('successful logins do not count', async () => {

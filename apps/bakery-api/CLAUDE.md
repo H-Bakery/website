@@ -119,23 +119,28 @@ that has to be mounted before it is rewritten.
 Personal accounts plus PIN stations (roadmap D5, D12). Code in `src/auth/` (service, middleware,
 `audit()`, users service), routes in `src/routes/auth.routes.ts` and `users.routes.ts`, hashing
 and validation in `src/services/auth-crypto.core.js` (dependency-free CommonJS, tested in
-`tests/unit/authCrypto.test.js`). Contract = the mock's `auth.mock.js` shapes, plus PIN/stations:
+`tests/unit/authCrypto.test.js`). Endpoints and envelope = the mock's `auth.mock.js`, plus
+PIN/stations; the `user` object deliberately deviates (see below the table):
 
 | Endpoint                                                                                                 | Who                             | Body / answer                                                                                                  |
 | -------------------------------------------------------------------------------------------------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | `POST /api/auth/login`                                                                                   | public, rate-limited            | `{ username \| email, password }` → `{ success, data: { user, token, refreshToken, expiresIn, sessionKind } }` |
-| `POST /api/auth/refresh`                                                                                 | public                          | `{ refreshToken }` → same `data` shape, **new** `refreshToken`                                                 |
+| `POST /api/auth/refresh`                                                                                 | public                          | `{ refreshToken }` → same `data` shape, **new** `refreshToken`; 409 `refresh_superseded` (parallel refresh)    |
 | `POST /api/auth/pin`                                                                                     | `X-Station-Token`, rate-limited | `{ userId, pin: "0420" }` → same `data` shape, `sessionKind: 'station'`                                        |
 | `GET /api/auth/station/users`                                                                            | `X-Station-Token`               | `{ success, data: [{ id, displayName, role }] }` (active users with a PIN)                                     |
 | `GET /api/auth/me`                                                                                       | session                         | `{ success, data: user + sessionKind + stationId }`                                                            |
-| `POST /api/auth/logout`                                                                                  | session                         | ends **this** session → `{ success, message: 'Abgemeldet.' }`                                                  |
-| `GET/POST /api/auth/stations`, `DELETE /api/auth/stations/:id`                                           | `inhaber`                       | register `{ name }` → 201 `{ station, token }` (token shown once); revoke ends its sessions                    |
-| `GET/POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/password`, `POST /api/users/:id/pin` | `inhaber`                       | `AdminUser` = user + `hasPin`, never a hash                                                                    |
+| `POST /api/auth/logout`                                                                                  | public                          | Bearer and/or `{ refreshToken }` → ends **that** session; always `{ success, message: 'Abgemeldet.' }`         |
+| `GET/POST /api/auth/stations`, `DELETE /api/auth/stations/:id`                                           | `inhaber`, personal session     | register `{ name }` → 201 `{ station, token }` (token shown once); revoke ends its sessions                    |
+| `GET/POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/password`, `POST /api/users/:id/pin` | `inhaber`, personal session     | `AdminUser` = user + `hasPin`, never a hash                                                                    |
 
-`user` = `{ id, username, displayName, role, active, createdAt, updatedAt, sessionKind }`. Roles
-`inhaber | verkauf | backstube | fahrer`. Errors via `sendError`: 400 `validation`, 401
+`user` = `{ id, username, displayName, role, active, isActive, createdAt, updatedAt, sessionKind }`.
+Roles `inhaber | verkauf | backstube | fahrer`. **D3 deviation, deliberate:** the mock's `email`,
+`firstName`, `lastName`, `lastLogin` do not exist (the pilot `users` table has no such columns and
+the API does not invent them); `isActive` mirrors `active` for the shared `User` type. F1 must read
+`displayName`/`username` where the management app reads `user.email` today
+(`admin/login/page.tsx`, `admin/chat/page.tsx`). Errors via `sendError`: 400 `validation`, 401
 `invalid_credentials` („Benutzername oder Passwort falsch.") / `invalid_pin` / `unauthorized`,
-403 `forbidden` / `station_required`, 404 `not_found`, 409 `username_taken` / `last_inhaber`, 429
+403 `forbidden` / `station_required` / `personal_session_required`, 404 `not_found`, 409 `username_taken` / `last_inhaber` / `refresh_superseded`, 429
 `too_many_requests`.
 
 What to know before changing it:
@@ -148,7 +153,10 @@ What to know before changing it:
   `sessionKind`, `sessionId`, `stationId`) comes from the database, not from the token claims.
 - **Refresh tokens** (`rt_…`, 32 random bytes) are stored as SHA-256 only, rotated on every
   refresh (`revokedAt` + `replacedBy`). A rotated token presented again revokes the whole session
-  (`revoke_reason = 'reuse'`, audited as `refresh_reuse`). Personal sessions slide to 14 days on
+  (`revoke_reason = 'reuse'`, audited as `refresh_reuse`) - **except** within
+  `REFRESH_REUSE_GRACE_MS` (10 s) of the rotation while the successor is unused: that is a
+  parallel refresh (two tabs, a retry) and gets 409 `refresh_superseded` without ending the
+  session. A thief who wins such a race is caught on the client's next refresh. Personal sessions slide to 14 days on
   each refresh; **station sessions end 12 h after the PIN** - neither refresh nor access token
   outlives that (`expiresIn` shrinks towards the end). Unlike the mock, a bare access token is
   **not** accepted at `/refresh`: the client must keep the refresh token (F1).
@@ -157,10 +165,26 @@ What to know before changing it:
   401, with a session a 404. `requireRole(...roles)` needs no service; `inhaber` passes every check.
 - **Stations:** `X-Station-Token` (`st_…`, SHA-256 in `stations`). PIN login without a valid, not
   revoked station token is 403. PINs are 4-6 digits **as a string** (a number would lose leading
-  zeros → 400).
-- **Rate limit** (`loginRateLimit`, express-rate-limit, per `createApp()` in memory): 5 **failed**
-  attempts per 5 min per IP + username (login) or IP + userId (PIN) → 429. Successful logins do
-  not count. `req.ip` depends on `TRUST_PROXY` (default `loopback`, Caddy).
+  zeros → 400). `userId` must be canonical (`parseUserId`: JSON integer > 0 or `"7"`); `"07"`,
+  `" 7"`, `"7.0"`, `"0x7"` are 400 **before** the rate limiter - otherwise each spelling of one id
+  had its own counter and a PIN could be brute-forced without limit.
+- **Station sessions carry the user's full role but cannot administer** (`requirePersonalSession`
+  on `/api/users` and `/api/auth/stations`, 403 `personal_session_required`): a 4-digit PIN on a
+  shared tablet must not unlock user/station admin. Open question for the owner whether finance
+  (B4) gets the same guard.
+- **Logout is public**: Bearer access token, else `{ refreshToken }` (also a rotated or expired
+  one) names the session; it is revoked and audited (`via: 'access' | 'refresh'`). Nothing valid
+  → still 200, as in the mock.
+- **Rate limit** (`loginRateLimit`, express-rate-limit, per `createApp()` in memory), **failed**
+  attempts per 5 min → 429: 5 per IP + username (login) or IP + userId (PIN); 30 per IP across all
+  accounts (`LOGIN_RATE_LIMIT_IP_MAX`, password spraying); for the PIN also 10 per user across all
+  IPs (`PIN_RATE_LIMIT_USER_MAX`; the side effect - anyone at a station can lock a user's PIN
+  login for 5 min - is accepted, password login still works). Successful logins do not count.
+  `req.ip` depends on `TRUST_PROXY` (default `loopback`, Caddy).
+  Tests override via `createApp({ auth: { rateLimit: { max, ipMax, pinUserMax, windowMs } } })`.
+- **Usernames are lower-case.** Login and the CLI normalise (`trim().toLowerCase()`) and look up
+  with SQLite's case-sensitive `=`; the B3 migration lower-cases legacy names from the B2 rebuild
+  unless the lower-case name is taken (then it warns and leaves the row for a manual fix).
 - **scrypt** (`node:crypto`, N=2^14, r=8, p=1, 16-byte salt): `scrypt$N$r$p$salt$hash`
   (base64url). `verifySecret` runs one scrypt even for unknown users, users without PIN and the
   legacy marker `!legacy-user-disabled`, and refuses parameters outside bounds.
@@ -259,7 +283,7 @@ and `npx nx test bakery-api` (`--selectProjects js|ts`):
 The legacy suites that load `index.js` (`healthAPI`, `securityIntegration`) need
 `express-rate-limit` (root dependency, run `npm ci`) and reach `marked`@16, which is ESM-only; the
 `js` project maps `marked` to `tests/helpers/markedStub.js`. Both go with the legacy layer in B12.
-State on `feat/B3-auth` 2026-11-05: 64 suites pass (1305 tests), 6 skipped, 0 failing.
+State on `feat/B3-auth` 2026-11-05: 64 suites pass (1314 tests), 6 skipped, 0 failing.
 
 ## Known state
 

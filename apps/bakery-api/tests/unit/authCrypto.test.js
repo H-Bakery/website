@@ -110,6 +110,40 @@ describe('validation', () => {
     }
   })
 
+  test('user id: one canonical spelling per user (PIN rate-limit key)', () => {
+    expect(core.parseUserId(2)).toBe(2)
+    expect(core.parseUserId('2')).toBe(2)
+    expect(core.parseUserId('1234567890')).toBe(1234567890)
+    for (const bad of [
+      '02',
+      '002',
+      '00002',
+      ' 2',
+      '2 ',
+      '2.0',
+      '2e0',
+      '0x2',
+      '+2',
+      '0',
+      '-2',
+      '',
+      '12345678901',
+      0,
+      -2,
+      2.5,
+      Number.MAX_SAFE_INTEGER + 1,
+      NaN,
+      Infinity,
+      null,
+      undefined,
+      true,
+      [2],
+      { id: 2 },
+    ]) {
+      expect(core.parseUserId(bad)).toBeNull()
+    }
+  })
+
   test('username is normalised to lower case and restricted', () => {
     expect(core.normalizeUsername('  Anna.B ')).toBe('anna.b')
     expect(core.validateUsername('Anna.B')).toBeNull()

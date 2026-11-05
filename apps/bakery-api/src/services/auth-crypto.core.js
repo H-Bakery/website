@@ -36,6 +36,7 @@ const MAX_P = 16
 const PASSWORD_MIN_LENGTH = 8
 const PASSWORD_MAX_LENGTH = 200
 const PIN_PATTERN = /^[0-9]{4,6}$/
+const USER_ID_PATTERN = /^[1-9][0-9]{0,9}$/
 const USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{1,63}$/
 const DISPLAY_NAME_MAX_LENGTH = 120
 const ROLES = Object.freeze(['inhaber', 'verkauf', 'backstube', 'fahrer'])
@@ -187,6 +188,27 @@ function validatePin(pin) {
   return null
 }
 
+/**
+ * Canonical user id from a request body: a JSON integer > 0 or a string of
+ * plain decimal digits without a leading zero (`"7"`). Everything else -
+ * `"07"`, `" 7"`, `"7.0"`, `"7e0"`, `"0x7"`, `7.5` - is `null`.
+ *
+ * The PIN rate limit is keyed on this id; accepting several spellings of the
+ * same user would give each spelling its own counter (unlimited PIN tries).
+ *
+ * @returns {number|null}
+ */
+function parseUserId(value) {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? value : null
+  }
+  if (typeof value === 'string' && USER_ID_PATTERN.test(value)) {
+    const id = Number(value)
+    return Number.isSafeInteger(id) ? id : null
+  }
+  return null
+}
+
 /** Usernames are compared and stored lower-case, without surrounding spaces. */
 function normalizeUsername(username) {
   return typeof username === 'string' ? username.trim().toLowerCase() : ''
@@ -254,6 +276,7 @@ module.exports = {
   needsRehash,
   validatePassword,
   validatePin,
+  parseUserId,
   validateUsername,
   normalizeUsername,
   validateDisplayName,

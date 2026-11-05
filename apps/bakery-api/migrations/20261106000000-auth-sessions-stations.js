@@ -13,6 +13,12 @@
  *   refresh_tokens  + `session_id`: every token of one rotation chain belongs
  *                   to the same session, so reuse of a rotated token revokes
  *                   the whole chain in one update.
+ *   users.username  lower-cased and trimmed: login and `create-user` compare
+ *                   normalised names with a case-sensitive `=`, and the B2
+ *                   rebuild kept legacy names as they were (`Admin` could
+ *                   never log in, `create-user --username Admin` would add a
+ *                   second row instead of resetting the old one). A name whose
+ *                   normalised form is taken stays as it is and is logged.
  *
  * Idempotent like the baseline: tables are created only if missing, the
  * column only if absent.
@@ -20,6 +26,34 @@
 
 const TABLES = ['stations', 'auth_sessions']
 const SESSION_KINDS = ['personal', 'station']
+
+/** Same rule as `normalizeUsername` in `src/services/auth-crypto.core.js`. */
+function normalizeUsername(name) {
+  return String(name).trim().toLowerCase()
+}
+
+async function normalizeUsernames(queryInterface) {
+  const sequelize = queryInterface.sequelize
+  const [rows] = await sequelize.query(
+    'SELECT id, username FROM users ORDER BY id'
+  )
+  const taken = new Set(rows.map((r) => r.username))
+  for (const row of rows) {
+    const normal = normalizeUsername(row.username)
+    if (normal === row.username) continue
+    if (normal === '' || taken.has(normal)) {
+      console.warn(
+        `[migration] users.id ${row.id}: Benutzername nicht kleingeschrieben, weil "${normal}" schon vergeben ist - bitte von Hand klären.`
+      )
+      continue
+    }
+    await sequelize.query('UPDATE users SET username = ? WHERE id = ?', {
+      replacements: [normal, row.id],
+    })
+    taken.delete(row.username)
+    taken.add(normal)
+  }
+}
 
 async function existingTables(queryInterface) {
   const tables = await queryInterface.showAllTables()
@@ -33,6 +67,7 @@ async function existingTables(queryInterface) {
 module.exports = {
   TABLES,
   SESSION_KINDS,
+  normalizeUsernames,
 
   up: async (queryInterface, Sequelize) => {
     const tables = await existingTables(queryInterface)
@@ -112,6 +147,8 @@ module.exports = {
       })
       await queryInterface.addIndex('refresh_tokens', ['session_id'])
     }
+
+    await normalizeUsernames(queryInterface)
   },
 
   down: async (queryInterface) => {

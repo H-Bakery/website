@@ -8,15 +8,18 @@
  *   POST /login           { username | email, password }
  *                         -> { success, data: { user, token, refreshToken, expiresIn, sessionKind } }
  *   POST /refresh         { refreshToken } -> { success, data: { user, token, refreshToken, expiresIn, sessionKind } }
+ *                         409 refresh_superseded: a parallel refresh won (< 10 s ago)
  *   POST /pin             X-Station-Token, { userId, pin } -> as /login, sessionKind 'station'
  *   GET  /station/users   X-Station-Token -> { success, data: [{ id, displayName, role }] }
+ *   POST /logout          Bearer access token and/or { refreshToken }
+ *                         -> { success, message }   (revokes that session; also
+ *                         works with an expired access token, as in the mock)
  *
  * session (after the guard)
  *   GET    /me            -> { success, data: user (+ sessionKind) }
- *   POST   /logout        -> { success, message }   (revokes the session)
- *   GET    /stations      inhaber -> { success, data: Station[] }
- *   POST   /stations      inhaber, { name } -> 201 { success, data: { station, token } }
- *   DELETE /stations/:id  inhaber -> { success, data: station }  (revoke)
+ *   GET    /stations      inhaber, personal session -> { success, data: Station[] }
+ *   POST   /stations      inhaber, personal session, { name } -> 201 { success, data: { station, token } }
+ *   DELETE /stations/:id  inhaber, personal session -> { success, data: station }  (revoke)
  */
 import { Request, Router } from 'express'
 
@@ -24,13 +27,20 @@ import { audit, auditQuietly } from '../auth/audit'
 import type { AuthService } from '../auth/auth.service'
 import { publicUser } from '../auth/auth.service'
 import {
+  LOGIN_RATE_LIMIT_IP_MAX,
+  PIN_RATE_LIMIT_USER_MAX,
   asyncHandler,
+  bearerToken,
   loginRateLimit,
+  requirePersonalSession,
   requireRole,
   requireStation,
 } from '../auth/middleware'
 import { AuthSession, Station, User, getSequelize } from '../models'
 import { sendError } from '../utils/http-error'
+
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const authCrypto = require('../services/auth-crypto.core')
 
 const INVALID_CREDENTIALS = 'Benutzername oder Passwort falsch.'
 const INVALID_PIN =
@@ -39,8 +49,17 @@ const SESSION_EXPIRED = 'Sitzung abgelaufen. Bitte melden Sie sich erneut an.'
 const STATION_NAME_MAX = 80
 
 export interface AuthRouterOptions {
-  /** Rate limit for login and PIN (default 5 per 5 minutes). */
-  rateLimit?: { windowMs?: number; max?: number }
+  /**
+   * Rate limits for login and PIN, failed attempts per window (default
+   * 5 minutes): `max` per IP + account (5), `ipMax` per IP (30),
+   * `pinUserMax` per PIN user across all IPs (10).
+   */
+  rateLimit?: {
+    windowMs?: number
+    max?: number
+    ipMax?: number
+    pinUserMax?: number
+  }
 }
 
 function bodyOf(req: Request): Record<string, unknown> {
@@ -65,12 +84,21 @@ export function createPublicAuthRouter(
   options: AuthRouterOptions = {}
 ): Router {
   const router = Router()
+  const limits = options.rateLimit ?? {}
+  const windowMs = limits.windowMs
+  // Per IP across all accounts: one IP may not spray passwords or PINs.
+  const perIp = loginRateLimit({
+    windowMs,
+    max: limits.ipMax ?? LOGIN_RATE_LIMIT_IP_MAX,
+  })
 
   router.post(
     '/login',
+    perIp,
     loginRateLimit({
       keyOf: (req) => `u:${loginName(req)}`,
-      ...options.rateLimit,
+      windowMs,
+      max: limits.max,
     }),
     asyncHandler(async (req, res) => {
       const body = bodyOf(req)
@@ -129,6 +157,15 @@ export function createPublicAuthRouter(
       // `in` narrowing: the project compiles without strictNullChecks, where
       // a boolean discriminant does not narrow.
       if (!('issued' in result)) {
+        if (result.superseded) {
+          sendError(
+            res,
+            409,
+            'refresh_superseded',
+            'Die Sitzung wurde gerade schon erneuert (anderes Fenster). Bitte das neue Token verwenden.'
+          )
+          return
+        }
         if (result.reuse) {
           await auditQuietly(
             req,
@@ -146,34 +183,51 @@ export function createPublicAuthRouter(
     })
   )
 
+  // The PIN limits key on the canonical user id; any other spelling of an id
+  // ("02", " 2", "2.0") is a 400 before the limiters, so it cannot open a
+  // fresh counter for the same user.
+  const pinUserId = (req: Request): number | null =>
+    authCrypto.parseUserId(bodyOf(req)['userId'])
+  const pinUserKey = (req: Request) => `pin:${pinUserId(req)}`
+
   router.post(
     '/pin',
     requireStation(service),
+    (req, res, next) => {
+      if (pinUserId(req) === null) {
+        sendError(
+          res,
+          400,
+          'validation',
+          'Bitte einen Benutzer auswählen (userId als ganze Zahl).'
+        )
+        return
+      }
+      next()
+    },
+    perIp,
+    loginRateLimit({ keyOf: pinUserKey, windowMs, max: limits.max }),
     loginRateLimit({
-      keyOf: (req) => `pin:${String(bodyOf(req)['userId'] ?? '')}`,
-      ...options.rateLimit,
+      keyOf: pinUserKey,
+      perIp: false,
+      windowMs,
+      max: limits.pinUserMax ?? PIN_RATE_LIMIT_USER_MAX,
     }),
     asyncHandler(async (req, res) => {
       const body = bodyOf(req)
       const station = req.station as Station
-      if (
-        body['userId'] === undefined ||
-        body['userId'] === null ||
-        typeof body['pin'] !== 'string'
-      ) {
+      const userId = pinUserId(req) as number
+      if (typeof body['pin'] !== 'string') {
         sendError(res, 400, 'validation', 'Benutzer und PIN sind erforderlich.')
         return
       }
-      const user = await service.checkPin(body['userId'], body['pin'])
+      const user = await service.checkPin(userId, body['pin'])
       if (!user) {
         await auditQuietly(
           req,
           'login_failed',
           'user',
-          typeof body['userId'] === 'number' ||
-            typeof body['userId'] === 'string'
-            ? String(body['userId']).slice(0, 64)
-            : null,
+          userId,
           { ip: req.ip, kind: 'station', stationId: station.id },
           { userId: null }
         )
@@ -223,6 +277,38 @@ export function createPublicAuthRouter(
     })
   )
 
+  router.post(
+    '/logout',
+    asyncHandler(async (req, res) => {
+      // Ends one session (this device) with all its refresh tokens. Public,
+      // because the access token lives only 1 h: a tablet idle for longer
+      // must still be able to end its session with the refresh token.
+      // Nothing to end (no or unknown token) is still a success, as in the
+      // mock - the client forgets its tokens either way.
+      const viaAccess = await service.verifyAccessToken(bearerToken(req))
+      const session = viaAccess
+        ? await AuthSession.findByPk(viaAccess.sessionId)
+        : await service.findSessionByRefreshToken(bodyOf(req)['refreshToken'])
+      if (session && !session.revokedAt) {
+        await getSequelize().transaction(async (transaction) => {
+          await service.revokeSession(session, 'logout', transaction)
+          await audit(
+            req,
+            'logout',
+            'user',
+            session.userId,
+            {
+              sessionKind: session.kind,
+              via: viaAccess ? 'access' : 'refresh',
+            },
+            { userId: session.userId, transaction }
+          )
+        })
+      }
+      res.json({ success: true, message: 'Abgemeldet.' })
+    })
+  )
+
   return router
 }
 
@@ -247,33 +333,10 @@ export function createSessionAuthRouter(service: AuthService): Router {
     })
   )
 
-  router.post(
-    '/logout',
-    asyncHandler(async (req, res) => {
-      // Ends this session (this device) only, with all its refresh tokens.
-      await getSequelize().transaction(async (transaction) => {
-        const session = await AuthSession.findByPk(req.user!.sessionId, {
-          transaction,
-        })
-        if (session) {
-          await service.revokeSession(session, 'logout', transaction)
-          await audit(
-            req,
-            'logout',
-            'user',
-            req.user!.id,
-            { sessionKind: session.kind },
-            { transaction }
-          )
-        }
-      })
-      res.json({ success: true, message: 'Abgemeldet.' })
-    })
-  )
-
   router.get(
     '/stations',
     requireRole('inhaber'),
+    requirePersonalSession,
     asyncHandler(async (_req, res) => {
       const stations = await Station.findAll({
         order: [
@@ -288,6 +351,7 @@ export function createSessionAuthRouter(service: AuthService): Router {
   router.post(
     '/stations',
     requireRole('inhaber'),
+    requirePersonalSession,
     asyncHandler(async (req, res) => {
       const raw = bodyOf(req)['name']
       const name =
@@ -327,6 +391,7 @@ export function createSessionAuthRouter(service: AuthService): Router {
   router.delete(
     '/stations/:id',
     requireRole('inhaber'),
+    requirePersonalSession,
     asyncHandler(async (req, res) => {
       const id = Number(req.params['id'])
       const station =
