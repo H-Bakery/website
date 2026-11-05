@@ -196,15 +196,27 @@ describe('import + anonymise (functions)', () => {
     })
   })
 
-  it('anonymises finished preorders 90 days after pickup, leaves open ones', async () => {
+  it('anonymises every preorder 90 days after pickup, whatever its status', async () => {
+    // a newer one that must stay (pickup after the cutoff)
+    await importDeliveryStore({
+      preorders: [
+        legacy(11, { reference: 'MO-2026-08-08-01', date: '2026-08-08' }),
+      ],
+    })
     // today 2026-10-31: cutoff 2026-08-02, pickup 2026-08-01 is due
     const dry = await anonymizePreorders({ today: '2026-10-31', dryRun: true })
     expect(dry.cutoff).toBe('2026-08-02')
-    expect(dry.anonymized.map((a) => a.code)).toEqual([
-      'MO-2026-08-01-01',
-      'MO-2026-08-01-02',
-      'MO-2026-08-01-03',
+    expect(dry.anonymized.map((a) => [a.code, a.status])).toEqual([
+      ['MO-2026-08-01-01', 'abgeholt'],
+      ['MO-2026-08-01-02', 'storniert'],
+      ['MO-2026-08-01-03', 'bereit'],
+      ['MO-2026-08-01-04', 'offen'],
+      ['NO-2026-08-01-01', 'offen'],
+      ['MO-2026-08-01-77', 'offen'],
+      ['MO-2026-08-01-78', 'offen'],
     ])
+    // offen, and bereit without "nicht abgeholt", count as never finished
+    expect(dry.unfinished).toBe(4)
     expect(await Preorder.count({ where: { anonymizedAt: null } })).toBe(
       await Preorder.count()
     )
@@ -213,8 +225,7 @@ describe('import + anonymise (functions)', () => {
     expect(tooEarly.anonymized).toEqual([])
 
     const report = await anonymizePreorders({ today: '2026-10-31' })
-    expect(report.anonymized).toHaveLength(3)
-    expect(report.stillOpen).toBeGreaterThanOrEqual(2)
+    expect(report.anonymized).toHaveLength(7)
     const done = await Preorder.findOne({ where: { code: 'MO-2026-08-01-01' } })
     expect(done).toMatchObject({
       customerName: 'anonymisiert',
@@ -223,17 +234,27 @@ describe('import + anonymise (functions)', () => {
       status: 'abgeholt',
     })
     expect(done?.anonymizedAt).toBeInstanceOf(Date)
+    // never ticked off: anonymised all the same (P4 has no status condition)
     const open = await Preorder.findOne({ where: { code: 'MO-2026-08-01-04' } })
-    expect(open?.customerName).toBe('Testkunde 4')
+    expect(open).toMatchObject({
+      customerName: 'anonymisiert',
+      customerPhone: null,
+      status: 'offen',
+    })
+    const newer = await Preorder.findOne({
+      where: { code: 'MO-2026-08-08-01' },
+    })
+    expect(newer?.customerName).toBe('Testkunde 11')
+    expect(newer?.anonymizedAt).toBeNull()
 
     expect(
       (await anonymizePreorders({ today: '2026-10-31' })).anonymized
     ).toEqual([])
-    expect(
-      await AuditLog.count({
-        where: { action: 'anonymize', entity: 'preorder' },
-      })
-    ).toBe(3)
+    const audits = await AuditLog.findAll({
+      where: { action: 'anonymize', entity: 'preorder' },
+    })
+    expect(audits).toHaveLength(7)
+    expect(JSON.stringify(audits.map((a) => a.data))).not.toContain('Testkunde')
   })
 
   it('locks anonymised preorders against edits over HTTP', async () => {
@@ -305,6 +326,25 @@ describe('CLI', () => {
     expect(await count()).toBe(5)
   })
 
+  it('anonymize-preorders never migrates: it stops on pending migrations', async () => {
+    expect(await main(['anonymize-preorders', '--today', '2026-10-31'])).toBe(1)
+    expect(out).toEqual([])
+    const { sequelize } = await openDatabase({
+      storage: process.env['DB_PATH']!,
+    })
+    try {
+      const tables = (await sequelize.getQueryInterface().showAllTables()).map(
+        (t) =>
+          String(
+            typeof t === 'string' ? t : (t as { tableName: string }).tableName
+          )
+      )
+      expect(tables).not.toContain('preorders')
+    } finally {
+      await sequelize.close()
+    }
+  })
+
   it('anonymize-preorders runs with options and rejects bad ones', async () => {
     const file = path.join(dir, 'delivery-store.json')
     fs.writeFileSync(file, JSON.stringify(STORE))
@@ -319,7 +359,7 @@ describe('CLI', () => {
     expect(
       await main(['anonymize-preorders', '--today=2026-10-31', '--days', '30'])
     ).toBe(0)
-    expect(JSON.parse(out[2]).anonymized).toHaveLength(3)
+    expect(JSON.parse(out[2]).anonymized).toHaveLength(5)
     expect(await main(['anonymize-preorders'])).toBe(0) // today = Berlin date
 
     expect(await main(['anonymize-preorders', '--days', '0'])).toBe(1)

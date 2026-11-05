@@ -21,13 +21,15 @@
  *   cli.js anonymize-preorders [--dry-run] [--days 90] [--today YYYY-MM-DD]
  *
  * Both are idempotent and print a JSON report on stdout; `anonymize-preorders`
- * runs nightly from `deploy/systemd/bakery-anonymize.timer` (23:45).
+ * runs nightly from `deploy/systemd/bakery-anonymize.timer` (23:45). It never
+ * migrates: with pending migrations it stops (exit 1), so a deploy whose API
+ * restart failed does not get its schema changed under the old process.
  */
 import * as fs from 'fs'
 
 import { ConfigError, loadConfig, loadEnvFile } from './config/env'
 import { openDatabase } from './db/database'
-import { runMigrations } from './db/migrate'
+import { pendingMigrations, runMigrations } from './db/migrate'
 import { initializeModels } from './models'
 import {
   UserInputError,
@@ -56,8 +58,9 @@ const USAGE = `Aufruf:
     Mock-Servers. Idempotent (schon importierte werden übersprungen).
 
   cli.js anonymize-preorders [--dry-run] [--days 90] [--today JJJJ-MM-TT]
-    DSGVO: Name, Telefon und Anmerkung abgeschlossener Vorbestellungen,
-    deren Abholtag mehr als 90 Tage zurückliegt, werden gelöscht.`
+    DSGVO: Name, Telefon und Anmerkung aller Vorbestellungen, deren
+    Abholtag mehr als 90 Tage zurückliegt, werden gelöscht (in jedem
+    Status). Migriert nie: bei ausstehenden Migrationen bricht der Lauf ab.`
 
 /** Flags without a value. */
 const BOOLEAN_FLAGS = new Set(['dry-run'])
@@ -179,9 +182,13 @@ async function createUser(flags: Record<string, string>): Promise<void> {
   })
 }
 
-/** Opens `DB_PATH` (server rules), migrates, initialises the models. */
+/**
+ * Opens `DB_PATH` (server rules), migrates, initialises the models.
+ * `migrate: false` refuses a database with pending migrations instead.
+ */
 async function withDatabase(
-  work: (dbPath: string) => Promise<void>
+  work: (dbPath: string) => Promise<void>,
+  options: { migrate?: boolean } = {}
 ): Promise<void> {
   const config = loadConfig()
   const { sequelize } = await openDatabase({
@@ -190,6 +197,19 @@ async function withDatabase(
     logSql: config.dbLogSql,
   })
   try {
+    if (options.migrate === false) {
+      const pending = await pendingMigrations(sequelize)
+      if (pending.length > 0) {
+        throw new UserInputError(
+          `Die Datenbank ${config.dbPath} hat ${pending.length} ausstehende ` +
+            `Migration(en) (${pending.join(', ')}). Dieser Befehl ändert das ` +
+            'Schema nicht - bitte zuerst die API (neu) starten, sie migriert beim Start.'
+        )
+      }
+      await initializeModels(sequelize)
+      await work(config.dbPath)
+      return
+    }
     const migrations = await runMigrations(sequelize, {
       log: (message) => console.error(`[migrate] ${message}`),
     })
@@ -250,22 +270,25 @@ async function anonymize(flags: Record<string, string>): Promise<void> {
     throw new UserInputError('--today muss JJJJ-MM-TT sein.')
   }
   const dryRun = flags['dry-run'] === 'true'
-  await withDatabase(async () => {
-    let report
-    try {
-      report = await anonymizePreorders({ days, today, dryRun })
-    } catch (error) {
-      throw new UserInputError((error as Error).message)
-    }
-    console.log(JSON.stringify(report, null, 2))
-    console.error(
-      `${dryRun ? '[PROBELAUF] ' : ''}${
-        report.anonymized.length
-      } Vorbestellung(en) ` +
-        `mit Abholtag vor ${report.cutoff} anonymisiert; ${report.stillOpen} ältere ` +
-        `sind noch offen/bereit und bleiben.`
-    )
-  })
+  await withDatabase(
+    async () => {
+      let report
+      try {
+        report = await anonymizePreorders({ days, today, dryRun })
+      } catch (error) {
+        throw new UserInputError((error as Error).message)
+      }
+      console.log(JSON.stringify(report, null, 2))
+      console.error(
+        `${dryRun ? '[PROBELAUF] ' : ''}${
+          report.anonymized.length
+        } Vorbestellung(en) ` +
+          `mit Abholtag vor ${report.cutoff} anonymisiert; davon ${report.unfinished} ` +
+          `nie abgeschlossen (offen/bereit).`
+      )
+    },
+    { migrate: false }
+  )
 }
 
 export async function main(argv: string[]): Promise<number> {
