@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/react'
-import RootLayout, { metadata } from './layout'
+import RootLayout, { metadata, viewport } from './layout'
 
 // Providers pull in the shared context stack (auth, notifications, theme)
 // which is covered by its own tests – keep this test focused on the shell.
@@ -8,6 +8,11 @@ jest.mock('./Providers', () => ({
   default: ({ children }: { children: React.ReactNode }) => (
     <div data-testid="providers">{children}</div>
   ),
+}))
+
+jest.mock('../components/pwa/ServiceWorkerRegistration', () => ({
+  __esModule: true,
+  default: () => <span data-testid="sw-registration" />,
 }))
 
 jest.mock('@mui/material-nextjs/v14-appRouter', () => ({
@@ -65,5 +70,39 @@ describe('Management RootLayout', () => {
   it('exposes German metadata', () => {
     expect(metadata.title).toBe('Bäckerei Heusser - Management System')
     expect(metadata.description).toContain('Verwaltungssystem')
+  })
+
+  describe('PWA (F3)', () => {
+    it('verlinkt Manifest und Apple-Touch-Icon', () => {
+      expect(metadata.manifest).toBe('/manifest.webmanifest')
+      expect(metadata.applicationName).toBe('Heusser Verwaltung')
+      expect(metadata.icons).toMatchObject({
+        apple: [{ url: '/icons/apple-touch-icon.png', sizes: '180x180' }],
+      })
+      expect(metadata.appleWebApp).toMatchObject({
+        capable: true,
+        title: 'Verwaltung',
+      })
+    })
+
+    it('setzt Viewport und Statusleistenfarbe je Modus, Zoom bleibt erlaubt', () => {
+      expect(viewport.width).toBe('device-width')
+      expect(viewport.initialScale).toBe(1)
+      expect(viewport.maximumScale).toBeUndefined()
+      expect(viewport.userScalable).toBeUndefined()
+      expect(viewport.themeColor).toEqual([
+        { media: '(prefers-color-scheme: light)', color: '#1976d2' },
+        { media: '(prefers-color-scheme: dark)', color: '#272727' },
+      ])
+    })
+
+    it('bindet die Service-Worker-Registrierung ein', () => {
+      render(
+        <RootLayout>
+          <div>Content</div>
+        </RootLayout>
+      )
+      expect(screen.getByTestId('sw-registration')).toBeInTheDocument()
+    })
   })
 })
