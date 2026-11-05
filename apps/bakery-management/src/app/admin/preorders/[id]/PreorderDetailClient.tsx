@@ -420,7 +420,17 @@ export default function PreorderDetailClient({ id }: { id: number }) {
         </Grid>
         <Grid item xs={12} md={7}>
           <TableContainer component={Paper} variant="outlined">
-            <Table size="small" aria-label="Positionen">
+            <Table
+              size="small"
+              aria-label="Positionen"
+              sx={{
+                // passt am Telefon (390 px) ohne seitliches Scrollen
+                '& td, & th': { px: { xs: 1, sm: 2 } },
+                '& td:not(:first-of-type), & th:not(:first-of-type)': {
+                  whiteSpace: 'nowrap',
+                },
+              }}
+            >
               <TableHead>
                 <TableRow>
                   <TableCell>Artikel</TableCell>

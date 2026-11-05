@@ -90,6 +90,9 @@ const printStyles = (
   />
 )
 
+/** Schmalere Zellen am Telefon; die Summen-Tabelle passt so auf 390 px. */
+const COMPACT_TABLE = { '& td, & th': { px: { xs: 1, sm: 2 } } } as const
+
 function Tile({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
@@ -326,7 +329,11 @@ export default function PreorderDayClient({
                 variant="outlined"
                 sx={{ mb: 3 }}
               >
-                <Table size="small" aria-label="Summen je Produkt und Sorte">
+                <Table
+                  size="small"
+                  aria-label="Summen je Produkt und Sorte"
+                  sx={COMPACT_TABLE}
+                >
                   <TableHead>
                     <TableRow>
                       <TableCell>Produkt</TableCell>
@@ -377,7 +384,11 @@ export default function PreorderDayClient({
               <Typography color="text.secondary">Keine.</Typography>
             ) : (
               <TableContainer component={Paper} variant="outlined">
-                <Table size="small" aria-label="Bestellungen des Tages">
+                <Table
+                  size="small"
+                  aria-label="Bestellungen des Tages"
+                  sx={COMPACT_TABLE}
+                >
                   <TableHead>
                     <TableRow>
                       <TableCell>Code</TableCell>

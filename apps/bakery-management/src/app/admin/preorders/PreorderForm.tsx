@@ -779,33 +779,10 @@ export default function PreorderForm({
                 )}
               </Stack>
             </Section>
-
-            <Section title="Zahlung & Notiz">
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={paid}
-                    onChange={(event) => setPaid(event.target.checked)}
-                  />
-                }
-                label={paid ? 'Bezahlt' : 'Noch nicht bezahlt'}
-                sx={{ mb: 1, minHeight: 44 }}
-              />
-              <TextField
-                label="Notiz (optional)"
-                value={note}
-                onChange={(event) => setNote(event.target.value)}
-                fullWidth
-                multiline
-                minRows={2}
-                inputProps={{ maxLength: 500 }}
-                helperText="Wird 90 Tage nach der Abholung gelöscht, wie Name und Telefon."
-              />
-            </Section>
           </Stack>
         </Grid>
 
-        {/* ---------------- rechts: Artikel ---------------- */}
+        {/* ------- rechts: Artikel, Bestellung, Zahlung (am Telefon darunter) ------- */}
         <Grid item xs={12} md={7}>
           <Stack spacing={2}>
             <Section title="Artikel">
@@ -1156,6 +1133,29 @@ export default function PreorderForm({
                   ? 'Vorhandene Positionen behalten ihren Preis von damals.'
                   : 'Der Preis wird beim Speichern festgehalten.'}
               </Typography>
+            </Section>
+
+            <Section title="Zahlung & Notiz">
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={paid}
+                    onChange={(event) => setPaid(event.target.checked)}
+                  />
+                }
+                label={paid ? 'Bezahlt' : 'Noch nicht bezahlt'}
+                sx={{ mb: 1, minHeight: 44 }}
+              />
+              <TextField
+                label="Notiz (optional)"
+                value={note}
+                onChange={(event) => setNote(event.target.value)}
+                fullWidth
+                multiline
+                minRows={2}
+                inputProps={{ maxLength: 500 }}
+                helperText="Wird 90 Tage nach der Abholung gelöscht, wie Name und Telefon."
+              />
             </Section>
           </Stack>
         </Grid>

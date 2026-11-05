@@ -116,14 +116,16 @@ describe('PreorderDetailClient (P3)', () => {
     mockCancel.mockResolvedValue(preorder({ status: 'storniert' }))
     renderAs('verkauf')
     await user.click(await screen.findByRole('button', { name: 'Stornieren' }))
-    const dialog = screen.getByRole('dialog')
+    // findBy/waitFor statt getBy: unter Last dauert der MUI-Übergang länger
+    const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/Gelöscht wird nichts/)).toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Behalten' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(mockCancel).not.toHaveBeenCalled()
 
     await user.click(screen.getByRole('button', { name: 'Stornieren' }))
     await user.click(
-      within(screen.getByRole('dialog')).getByRole('button', {
+      within(await screen.findByRole('dialog')).getByRole('button', {
         name: 'Stornieren',
       })
     )
