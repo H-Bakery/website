@@ -3,6 +3,7 @@ import { screen, fireEvent } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import ProductListClient from './ProductListClient'
 import type { ManagementProduct } from '../../../lib/products'
+import { fakeSession, WithSession } from '../../../lib/testing/fakeSession'
 
 const mockPush = jest.fn()
 jest.mock('next/navigation', () => ({
@@ -86,5 +87,20 @@ describe('ProductListClient (admin/products)', () => {
     expect(screen.getByText('Keine Produkte gefunden.')).toBeInTheDocument()
     expect(screen.getByText('Produktliste (0)')).toBeInTheDocument()
     expect(screen.queryByRole('table')).toBeNull()
+  })
+
+  it('Verkauf sieht die Liste nur lesend (F1)', () => {
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>
+        <ProductListClient products={products} />
+      </WithSession>
+    )
+    expect(screen.getByText('Produktliste (3)')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /Neues Produkt/ })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Roggenbrot bearbeiten' })
+    ).not.toBeInTheDocument()
   })
 })

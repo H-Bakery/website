@@ -12,7 +12,7 @@ import {
   Typography,
 } from '@mui/material'
 import { Login as LoginIcon, Flag as TargetIcon } from '@mui/icons-material'
-import { useAuth } from '@bakery/shared/contexts'
+import { useSession } from '../../lib/session'
 import {
   classifyFinanceError,
   fetchTargetStatus,
@@ -107,7 +107,7 @@ function ValueLine({
  * zeigt die Kachel deshalb „Anmeldung erforderlich" mit Link - keinen Fehler.
  */
 export default function TargetsTile() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useSession()
   const [state, setState] = useState<TileState>({ phase: 'loading' })
 
   const load = useCallback(async () => {

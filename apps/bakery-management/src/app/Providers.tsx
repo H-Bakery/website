@@ -7,17 +7,12 @@ import {
 } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import {
-  AuthProvider,
   NotificationProvider,
   ThemeProvider,
-  useAuth,
   useColorScheme,
 } from '@bakery/shared/contexts'
-import {
-  clearSession,
-  persistSession,
-  restoreSession,
-} from '../lib/authSession'
+import { SessionProvider } from '../lib/session'
+import RouteGuard from '../components/auth/RouteGuard'
 import { isPilotMode } from '../lib/pilotMode'
 import ThemeColorSync from '../components/pwa/ThemeColorSync'
 
@@ -44,28 +39,7 @@ function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   )
 }
 
-/**
- * Spiegelt den Anmeldezustand nach `localStorage`: ein gültiges Token bleibt
- * über ein Neuladen erhalten, nach Abmeldung oder abgelaufenem Token wird der
- * Eintrag entfernt. Sitzt *innerhalb* des AuthProviders, damit `isLoading`
- * die Prüfung beim Start (`GET /api/auth/me`) abwarten kann.
- */
-function AuthSessionSync({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth()
-  React.useEffect(() => {
-    if (isLoading) return
-    if (isAuthenticated) persistSession()
-    else clearSession()
-  }, [isAuthenticated, isLoading])
-  return <>{children}</>
-}
-
 export default function Providers({ children }: { children: React.ReactNode }) {
-  // Ein gespeichertes Token muss auf dem apiClient sitzen, *bevor* der
-  // AuthProvider beim Mount `GET /api/auth/me` aufruft - deshalb synchron im
-  // State-Initialisierer und nicht in einem Effekt (Effekte der Eltern laufen
-  // nach denen der Kinder).
-  React.useState(() => restoreSession())
   const pilot = isPilotMode()
 
   return (
@@ -73,24 +47,24 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     // "Systemeinstellung folgen" toggle) still wins over it.
     <ThemeProvider defaultMode="dark" storageKey="bakery-management-theme">
       <MuiThemeBridge>
-        {/* Auth: der Mock-Server kennt seit TASK-038 /api/auth/*; ohne Token
-            macht der Provider beim Start keinen Request. */}
-        <AuthProvider checkAuthOnMount>
-          <AuthSessionSync>
-            {/* Pilotbetrieb: die echte API hat kein /api/notifications - kein
+        {/* Anmeldung (F1): Sitzung in localStorage, Refresh bei 401,
+            Leerlauf-Abmeldung. Der RouteGuard lässt /admin und /backstube
+            erst mit gültiger Sitzung rendern - vorher nur einen
+            Ladezustand. */}
+        <SessionProvider>
+          {/* Pilotbetrieb: die echte API hat kein /api/notifications - kein
                 Laden beim Start, kein 30-s-Polling und keine Browser-Rückfrage
                 nach Mitteilungen. Der Provider bleibt, weil das Dashboard
                 useNotifications() aufruft. */}
-            <NotificationProvider
-              enableRealTime={false}
-              pollingInterval={pilot ? 0 : undefined}
-              requestPermissionOnMount={!pilot}
-              loadOnMount={!pilot}
-            >
-              {children}
-            </NotificationProvider>
-          </AuthSessionSync>
-        </AuthProvider>
+          <NotificationProvider
+            enableRealTime={false}
+            pollingInterval={pilot ? 0 : undefined}
+            requestPermissionOnMount={!pilot}
+            loadOnMount={!pilot}
+          >
+            <RouteGuard>{children}</RouteGuard>
+          </NotificationProvider>
+        </SessionProvider>
       </MuiThemeBridge>
     </ThemeProvider>
   )

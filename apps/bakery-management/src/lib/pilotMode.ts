@@ -49,6 +49,7 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   '/admin/finance', // inkl. /admin/finance/tagesziel
   '/admin/social-media', // nur Inhaber
   '/admin/settings', // Design / Dunkelmodus
+  '/admin/users', // Benutzer & Stationen (F1, nur Inhaber)
   // Kommende Pilot-Bildschirme (M1/M2):
   '/admin/preorders',
   '/admin/backzettel',

@@ -12,7 +12,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material'
-import { useAuth } from '@bakery/shared/contexts'
+import { useOptionalSession } from '../../../lib/session'
 import {
   ChatMessageList,
   ChatMessageInput,
@@ -85,18 +85,12 @@ const availabilityFromStatus = (status: number): ChatAvailability => {
 }
 
 /**
- * `useAuth` throws when no AuthProvider is mounted (this page used to crash
- * with a 500 because of that). Degrade gracefully to a read-only chat instead.
- * The hook order stays stable because `useAuth` is always called exactly once.
+ * Without a SessionProvider (or without a session) the chat degrades to
+ * read-only instead of crashing (this page used to 500 on a missing provider).
  */
 const useOptionalAuthUser = (): ChatUser | null => {
-  try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks -- called unconditionally; try/catch only guards the missing-provider throw
-    const { user } = useAuth()
-    return user ? { id: String(user.id), username: user.email } : null
-  } catch {
-    return null
-  }
+  const user = useOptionalSession()?.user
+  return user ? { id: String(user.id), username: user.displayName } : null
 }
 
 /** Token der Anmeldung (`/admin/login`), dasselbe wie am `apiClient`. */

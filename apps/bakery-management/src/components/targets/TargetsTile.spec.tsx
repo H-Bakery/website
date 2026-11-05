@@ -17,8 +17,8 @@ jest.mock('@bakery/shared/data-access', () => {
 })
 
 const authState = { isAuthenticated: false, isLoading: false }
-jest.mock('@bakery/shared/contexts', () => ({
-  useAuth: () => authState,
+jest.mock('../../lib/session', () => ({
+  useSession: () => authState,
 }))
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires

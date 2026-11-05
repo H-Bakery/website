@@ -44,6 +44,8 @@ import {
 } from '../../lib/reportFormat'
 import TargetsTile from '../../components/targets/TargetsTile'
 import { isPilotMode, isPilotPathAllowed } from '../../lib/pilotMode'
+import { useOptionalSession } from '../../lib/session'
+import { isPathAllowedForRole } from '../../lib/roles'
 
 /** Kennzahlen des jüngsten Kassentags, vom Server geladen. */
 export interface LatestReportTile {
@@ -184,9 +186,18 @@ export default function DashboardClient({
   // Pilotbetrieb (F2): Kacheln aus Mock-Daten (Bestellungen, Produktion,
   // Benachrichtigungen) und Schnellzugriffe auf gesperrte Seiten entfallen.
   const pilot = isPilotMode()
-  const visibleQuickLinks = quickLinks.filter((link) =>
-    isPilotPathAllowed(link.href, pilot)
-  )
+  // F1: das Dashboard ist auch Ausweich-Startseite für Verkauf und Backstube
+  // - Kasse, Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite
+  // dahinter öffnen darf (ROLE_ACCESS). Ohne Sitzung (Specs) wie bisher.
+  const session = useOptionalSession()
+  const role = session?.user?.role ?? null
+  const sessionKind = session?.sessionKind ?? null
+  const allowed = (href: string) =>
+    isPilotPathAllowed(href, pilot) &&
+    (role === null || isPathAllowedForRole(href, role, sessionKind))
+  const visibleQuickLinks = quickLinks.filter((link) => allowed(link.href))
+  const showCash = allowed('/admin/reports')
+  const showTargets = allowed('/admin/finance/tagesziel')
   const { notifications, isLoading: notificationsLoading } = useNotifications()
 
   const [stats, setStats] = React.useState<DashboardStats>(EMPTY_STATS)
@@ -435,139 +446,149 @@ export default function DashboardClient({
         )}
       </Grid>
 
-      {/* Kasse: jüngster Tagesabschluss aus hq/data/reports */}
-      <Typography
-        variant="h5"
-        gutterBottom
-        sx={{
-          mb: { xs: 1.5, md: 2 },
-          fontSize: { xs: '1.25rem', md: '1.5rem' },
-        }}
-      >
-        Kasse
-        {latestReport && (
+      {showCash && (
+        <>
+          {/* Kasse: jüngster Tagesabschluss aus hq/data/reports */}
           <Typography
-            component="span"
-            variant="body2"
-            color="text.secondary"
-            sx={{ ml: 1.5 }}
+            variant="h5"
+            gutterBottom
+            sx={{
+              mb: { xs: 1.5, md: 2 },
+              fontSize: { xs: '1.25rem', md: '1.5rem' },
+            }}
           >
-            Stand:{' '}
-            {formatReportDateLong(latestReport.date, latestReport.weekday)}
-          </Typography>
-        )}
-      </Typography>
-      {latestReport ? (
-        <Grid
-          container
-          spacing={{ xs: 1.5, md: 3 }}
-          sx={{ mb: { xs: 2, md: 4 } }}
-        >
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  mb: 2,
-                }}
+            Kasse
+            {latestReport && (
+              <Typography
+                component="span"
+                variant="body2"
+                color="text.secondary"
+                sx={{ ml: 1.5 }}
               >
-                <Box>
+                Stand:{' '}
+                {formatReportDateLong(latestReport.date, latestReport.weekday)}
+              </Typography>
+            )}
+          </Typography>
+          {latestReport ? (
+            <Grid
+              container
+              spacing={{ xs: 1.5, md: 3 }}
+              sx={{ mb: { xs: 2, md: 4 } }}
+            >
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      mb: 2,
+                    }}
+                  >
+                    <Box>
+                      <Typography color="text.secondary" variant="body2">
+                        Tagesumsatz
+                      </Typography>
+                      <Typography
+                        variant="h4"
+                        sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                      >
+                        {formatEuro(latestReport.revenue)}
+                      </Typography>
+                    </Box>
+                    <CashRegisterIcon
+                      sx={{
+                        color: 'success.main',
+                        fontSize: { xs: 28, md: 40 },
+                      }}
+                    />
+                  </Box>
+                  <Button
+                    size="small"
+                    component={Link}
+                    href={`/admin/reports/${latestReport.date}`}
+                  >
+                    Tagesbericht öffnen
+                  </Button>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
                   <Typography color="text.secondary" variant="body2">
-                    Tagesumsatz
+                    Bons
                   </Typography>
                   <Typography
                     variant="h4"
-                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
+                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
                   >
-                    {formatEuro(latestReport.revenue)}
+                    {latestReport.receiptCount}
                   </Typography>
-                </Box>
-                <CashRegisterIcon
-                  sx={{ color: 'success.main', fontSize: { xs: 28, md: 40 } }}
-                />
-              </Box>
-              <Button
-                size="small"
-                component={Link}
-                href={`/admin/reports/${latestReport.date}`}
-              >
-                Tagesbericht öffnen
-              </Button>
-            </Paper>
-          </Grid>
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Typography color="text.secondary" variant="body2">
-                Bons
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
-              >
-                {latestReport.receiptCount}
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ display: { xs: 'none', sm: 'block' } }}
-              >
-                Kassenbons am {latestReport.weekday}
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Typography color="text.secondary" variant="body2">
-                Ø Bon
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
-              >
-                {formatEuro(latestReport.avgReceipt)}
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ display: { xs: 'none', sm: 'block' } }}
-              >
-                Umsatz je Bon
-              </Typography>
-            </Paper>
-          </Grid>
-          <Grid item xs={6} sm={6} md={3}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Typography color="text.secondary" variant="body2">
-                Zahlungsmix
-              </Typography>
-              <Typography
-                variant="h4"
-                sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
-              >
-                {formatPercent(latestReport.cashShare)} bar
-              </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ display: { xs: 'none', sm: 'block' } }}
-              >
-                {formatPercent(latestReport.cardShare)} Karte
-              </Typography>
-            </Paper>
-          </Grid>
-        </Grid>
-      ) : (
-        <Alert severity={reportsAvailable ? 'info' : 'warning'} sx={{ mb: 4 }}>
-          {reportsAvailable
-            ? 'Noch kein Kassenbericht im HQ-Archiv.'
-            : 'Das HQ-Berichtsverzeichnis ist auf diesem Rechner nicht erreichbar - Kassenzahlen werden nicht angezeigt.'}
-        </Alert>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: { xs: 'none', sm: 'block' } }}
+                  >
+                    Kassenbons am {latestReport.weekday}
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
+                  <Typography color="text.secondary" variant="body2">
+                    Ø Bon
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
+                  >
+                    {formatEuro(latestReport.avgReceipt)}
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: { xs: 'none', sm: 'block' } }}
+                  >
+                    Umsatz je Bon
+                  </Typography>
+                </Paper>
+              </Grid>
+              <Grid item xs={6} sm={6} md={3}>
+                <Paper sx={{ p: { xs: 2, md: 3 } }}>
+                  <Typography color="text.secondary" variant="body2">
+                    Zahlungsmix
+                  </Typography>
+                  <Typography
+                    variant="h4"
+                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' }, mb: 2 }}
+                  >
+                    {formatPercent(latestReport.cashShare)} bar
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ display: { xs: 'none', sm: 'block' } }}
+                  >
+                    {formatPercent(latestReport.cardShare)} Karte
+                  </Typography>
+                </Paper>
+              </Grid>
+            </Grid>
+          ) : (
+            <Alert
+              severity={reportsAvailable ? 'info' : 'warning'}
+              sx={{ mb: 4 }}
+            >
+              {reportsAvailable
+                ? 'Noch kein Kassenbericht im HQ-Archiv.'
+                : 'Das HQ-Berichtsverzeichnis ist auf diesem Rechner nicht erreichbar - Kassenzahlen werden nicht angezeigt.'}
+            </Alert>
+          )}
+        </>
       )}
 
       {/* Tagesziel-Ampel (TASK-039): nur nach Anmeldung als Admin */}
-      <TargetsTile />
+      {showTargets && <TargetsTile />}
 
       {/* Quick Links */}
       <Typography

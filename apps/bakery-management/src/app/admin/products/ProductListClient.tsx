@@ -25,6 +25,8 @@ import {
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import type { ManagementProduct } from '../../../lib/products'
+import { useOptionalSession } from '../../../lib/session'
+import { isPathAllowedForRole } from '../../../lib/roles'
 
 const categoryColors: Record<
   string,
@@ -47,6 +49,11 @@ export default function ProductListClient({
   products,
 }: ProductListClientProps) {
   const router = useRouter()
+  // F1: Verkauf sieht die Liste nur lesend (ROLE_ACCESS) - ohne „Neues
+  // Produkt“ und Bearbeiten. Ohne Sitzung (Specs) bleibt alles wie bisher;
+  // Schreibrechte setzt die API durch (B5).
+  const role = useOptionalSession()?.user?.role
+  const canEdit = !role || isPathAllowedForRole('/admin/products/new', role)
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
   const activeProducts = products.filter((p) => p.status === 'active').length
@@ -89,14 +96,16 @@ export default function ProductListClient({
             Verwaltung und Bearbeitung aller Backwaren und Produkte
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          size={isMobile ? 'medium' : 'large'}
-          onClick={() => router.push('/admin/products/new')}
-        >
-          Neues Produkt
-        </Button>
+        {canEdit && (
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            size={isMobile ? 'medium' : 'large'}
+            onClick={() => router.push('/admin/products/new')}
+          >
+            Neues Produkt
+          </Button>
+        )}
       </Box>
 
       {/* Product Statistics */}
@@ -231,7 +240,7 @@ export default function ProductListClient({
                   <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     Status
                   </TableCell>
-                  <TableCell align="center">Aktionen</TableCell>
+                  {canEdit && <TableCell align="center">Aktionen</TableCell>}
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -314,18 +323,20 @@ export default function ProductListClient({
                         size="small"
                       />
                     </TableCell>
-                    <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
-                      <IconButton
-                        size="small"
-                        color="primary"
-                        aria-label={`${product.name} bearbeiten`}
-                        onClick={() =>
-                          router.push(`/admin/products/${product.id}`)
-                        }
-                      >
-                        <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
-                      </IconButton>
-                    </TableCell>
+                    {canEdit && (
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap' }}>
+                        <IconButton
+                          size="small"
+                          color="primary"
+                          aria-label={`${product.name} bearbeiten`}
+                          onClick={() =>
+                            router.push(`/admin/products/${product.id}`)
+                          }
+                        >
+                          <EditIcon fontSize={isMobile ? 'small' : 'medium'} />
+                        </IconButton>
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))}
               </TableBody>
