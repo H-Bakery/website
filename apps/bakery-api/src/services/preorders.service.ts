@@ -19,7 +19,11 @@ import type { Request } from 'express'
 import { audit } from '../auth/audit'
 import { getSequelize, PickupPoint, Preorder, PreorderItem } from '../models'
 import { catalogueFor, defaultProductsDir } from './hq-catalogue'
-import { createVariantsHook, VariantsForProduct } from './preorder-variants'
+import {
+  createVariantsHook,
+  VariantsForProduct,
+  VariantsMap,
+} from './preorder-variants'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./delivery-preorders.core')
@@ -32,6 +36,12 @@ export interface PreordersOptions {
   productsDir?: string
   /** Varianten-Haken (default: `hq/config/backzettel.yaml`, s. preorder-variants.ts). */
   variantsForProduct?: VariantsForProduct
+  /**
+   * Alle Produkte mit Sorten (`GET /variants`); default: `all()` des
+   * Standard-Hakens. Wer nur `variantsForProduct` übergibt, bekommt `null`
+   * (keine Liste, Sorten-Chips bleiben aus).
+   */
+  variantsMap?: () => VariantsMap | null
   /** Uhr (Tests). */
   now?: () => Date
 }
@@ -358,12 +368,32 @@ export async function registerCode(
 export class PreordersService {
   private readonly productsDir: string
   private readonly variants: VariantsForProduct
+  private readonly allVariants: () => VariantsMap | null
   private readonly clock: () => Date
 
   constructor(options: PreordersOptions = {}) {
     this.productsDir = options.productsDir ?? defaultProductsDir()
-    this.variants = options.variantsForProduct ?? createVariantsHook()
+    if (options.variantsForProduct) {
+      this.variants = options.variantsForProduct
+      this.allVariants = options.variantsMap ?? (() => null)
+    } else {
+      const hook = createVariantsHook()
+      this.variants = hook
+      this.allVariants = options.variantsMap ?? hook.all
+    }
     this.clock = options.now ?? (() => new Date())
+  }
+
+  /**
+   * Sorten je Produkt aus den Backzettel-Stammdaten (P1). `configured: false`
+   * heißt: keine gültige `backzettel.yaml` - dann nimmt die API jede Sorte an
+   * und die Maske bietet keine an.
+   */
+  variantsByProduct(): { configured: boolean; products: VariantsMap } {
+    const map = this.allVariants()
+    return map
+      ? { configured: true, products: map }
+      : { configured: false, products: {} }
   }
 
   now(): Date {

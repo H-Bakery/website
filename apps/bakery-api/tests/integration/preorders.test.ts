@@ -6,6 +6,7 @@
 import request from 'supertest'
 
 import { AuditLog, Preorder } from '../../src/models'
+import { PreordersService } from '../../src/services/preorders.service'
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { makeProductsDir, removeTempDirs } from '../helpers/hqProducts'
@@ -26,12 +27,19 @@ const variantsForProduct = (id: string) =>
     ? { itemId: 'weck', variants: [] }
     : null
 
+const variantsMap = () => ({ mustersemmel: ['nuss', 'schoko'] })
+
 beforeAll(async () => {
   const productsDir = makeProductsDir()
   api = await createTestApp({
     app: {
       hqProducts: { productsDir, writeDir: null },
-      preorders: { productsDir, variantsForProduct, now: () => NOW },
+      preorders: {
+        productsDir,
+        variantsForProduct,
+        variantsMap,
+        now: () => NOW,
+      },
     },
   })
   for (const role of ['inhaber', 'verkauf', 'backstube', 'fahrer'] as const) {
@@ -62,6 +70,7 @@ describe('session and roles', () => {
   it.each([
     ['get', '/api/preorders'],
     ['get', '/api/preorders/sums?date=2026-11-17'],
+    ['get', '/api/preorders/variants'],
     ['post', '/api/preorders'],
     ['get', '/api/deliveries/preorders'],
     ['get', '/api/deliveries/pickup-points'],
@@ -129,6 +138,62 @@ describe('session and roles', () => {
       .send({ status: 'abgeholt', paid: true })
     expect(handover.status).toBe(200)
     expect(handover.body.data).toMatchObject({ status: 'abgeholt', paid: true })
+  })
+})
+
+describe('GET /api/preorders/variants (P1 variant chips)', () => {
+  it('lists the Sorten per product for verkauf, fahrer and inhaber', async () => {
+    for (const role of ['verkauf', 'fahrer', 'inhaber']) {
+      const res = await request(api.app)
+        .get('/api/preorders/variants')
+        .set(tokens[role])
+      expect(res.status).toBe(200)
+      expect(res.body).toEqual({
+        success: true,
+        data: { mustersemmel: ['nuss', 'schoko'] },
+        configured: true,
+        count: 1,
+      })
+    }
+  })
+
+  it('is not for the Backstube (403 with message)', async () => {
+    const res = await request(api.app)
+      .get('/api/preorders/variants')
+      .set(tokens['backstube'])
+    expect(res.status).toBe(403)
+    expect(res.body.error).toBe('forbidden')
+    expect(typeof res.body.message).toBe('string')
+  })
+
+  it('is not swallowed by /:id', async () => {
+    const res = await request(api.app)
+      .get('/api/preorders/variants')
+      .set(tokens['verkauf'])
+    expect(res.body.data).not.toHaveProperty('code')
+  })
+
+  it('says configured: false when only a per-product hook exists', () => {
+    const service = new PreordersService({ variantsForProduct })
+    expect(service.variantsByProduct()).toEqual({
+      configured: false,
+      products: {},
+    })
+  })
+
+  it('matches the product a variant is required for', async () => {
+    const res = await create(
+      laden({ items: [{ productId: 'mustersemmel', quantity: 1 }] })
+    )
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('variant_required')
+    const ok = await create(
+      laden({
+        items: [{ productId: 'mustersemmel', variant: 'nuss', quantity: 1 }],
+      })
+    )
+    expect(ok.status).toBe(201)
+    expect(ok.body.data.items[0]).toMatchObject({ variant: 'nuss' })
   })
 })
 

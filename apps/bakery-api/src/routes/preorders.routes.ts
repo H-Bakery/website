@@ -8,6 +8,7 @@
  *   GET    /sums?date=[&pickupPointId=]   { success, data: { date, pickupPointId, preorderCount, items } }
  *   GET    /day?date=         { success, data: { date, summary, sums, pickupPoints, preorders } }
  *   GET    /pickup-points     { success, data: PickupPoint[] }
+ *   GET    /variants          { success, data: { [productId]: Sorten[] }, configured }
  *   GET    /:id               { success, data: Preorder }
  *   POST   /                  201 { success, data }          verkauf, inhaber
  *   PATCH  /:id               { success, data }              verkauf, inhaber
@@ -127,6 +128,18 @@ function createPreordersRouter(service: PreordersService): Router {
       res.json({ success: true, data, count: data.length })
     })
   )
+
+  // Sorten-Chips der Erfassungsmaske (P1): welche Produkte laut
+  // `backzettel.yaml` eine Sorte brauchen. Ohne Stammdaten leer.
+  router.get('/variants', requireRole(...READ_ROLES), (_req, res) => {
+    const { configured, products } = service.variantsByProduct()
+    res.json({
+      success: true,
+      data: products,
+      configured,
+      count: Object.keys(products).length,
+    })
+  })
 
   router.get(
     '/:id',

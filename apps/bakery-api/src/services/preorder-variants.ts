@@ -10,6 +10,10 @@
  * Sorten-Slug an. Steht das Produkt in einem Posten, prüft
  * `delivery-preorders.core.js` (`checkVariant`) gegen dessen `variants`.
  *
+ * `hook.all()` liefert alle Produkte mit Sorten auf einmal
+ * (`{ [productId]: ['nuss', …] }`, `null` ohne gültige Stammdatei) - für
+ * `GET /api/preorders/variants`, die Sorten-Chips der Erfassungsmaske (P1).
+ *
  * Pfad (erster Treffer): `options.configPath` → `HQ_BACKZETTEL_CONFIG` →
  * `${HQ_DIR}/config/backzettel.yaml` → `<website>/../hq/config/backzettel.yaml`
  * (dieselbe Reihenfolge wie der Backzettel-Loader von Z3). Neu gelesen wird,
@@ -31,6 +35,14 @@ export interface VariantInfo {
 }
 
 export type VariantsForProduct = (productId: string) => VariantInfo | null
+
+/** `{ [productId]: Sorten }` - nur Produkte, die Sorten haben. */
+export type VariantsMap = Record<string, string[]>
+
+/** Der Haken aus `createVariantsHook`: je Produkt, und alle auf einmal. */
+export interface VariantsHook extends VariantsForProduct {
+  all: () => VariantsMap | null
+}
 
 export interface VariantsHookOptions {
   configPath?: string
@@ -55,7 +67,7 @@ export function defaultBackzettelConfigPath(
 
 export function createVariantsHook(
   options: VariantsHookOptions = {}
-): VariantsForProduct {
+): VariantsHook {
   const configPath = path.resolve(
     options.configPath ?? defaultBackzettelConfigPath(options.env)
   )
@@ -91,10 +103,15 @@ export function createVariantsHook(
     return config
   }
 
-  return (productId: string) => {
+  const hook = ((productId: string) => {
     const config = load()
     if (!config) return null
     const info = backzettel.variantsForProduct(config, productId)
     return info ? { itemId: info.itemId, variants: info.variants } : null
+  }) as VariantsHook
+  hook.all = () => {
+    const config = load()
+    return config ? (backzettel.variantsByProduct(config) as VariantsMap) : null
   }
+  return hook
 }

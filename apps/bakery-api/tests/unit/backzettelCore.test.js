@@ -908,6 +908,33 @@ describe('variantsForProduct (fuer die Pruefung von preorder_items.variant, B7)'
   })
 })
 
+describe('variantsByProduct (Erfassungsmaske P1)', () => {
+  it('listet jedes Produkt mit Sorten, ohne Produkte ohne Sorten', () => {
+    expect(core.variantsByProduct(config())).toEqual({
+      'test-zopf-gefuellt': ['nuss', 'mohn'],
+      'test-kranz-gefuellt': ['nuss', 'mohn'],
+      'test-kranz-gefuellt-viertel': ['nuss', 'mohn'],
+    })
+  })
+
+  it('stimmt mit variantsForProduct überein', () => {
+    const map = core.variantsByProduct(config())
+    for (const id of Object.keys(map)) {
+      expect(core.variantsForProduct(config(), id).variants).toEqual(map[id])
+    }
+  })
+
+  it('liefert Kopien, nicht die Listen der Stammdaten', () => {
+    const cfg = config()
+    const map = core.variantsByProduct(cfg)
+    map['test-zopf-gefuellt'].push('x')
+    expect(core.variantsByProduct(cfg)['test-zopf-gefuellt']).toEqual([
+      'nuss',
+      'mohn',
+    ])
+  })
+})
+
 describe('computeDeltas', () => {
   it('meldet nur geaenderte Gesamtmengen, mit Herkunft der Aenderung', () => {
     const confirmed = day(SAT).lines
