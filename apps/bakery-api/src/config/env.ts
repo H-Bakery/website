@@ -29,6 +29,13 @@ export interface ServerConfig {
    * set `X-Forwarded-For`. Decides `req.ip`, which the login rate limit keys on.
    */
   trustProxy: boolean | number | string
+  /**
+   * hq read clone paths (B4): `HQ_REPORTS_DIR` (holds `converted/`) and
+   * `HQ_FINANCE_DIR`, resolved against `cwd`. Undefined = the modules'
+   * default `<website>/../hq/data/{reports,finance}`.
+   */
+  hqReportsDir: string | undefined
+  hqFinanceDir: string | undefined
 }
 
 export class ConfigError extends Error {
@@ -180,6 +187,15 @@ export function parseTrustProxy(
   return value
 }
 
+/** Optional directory variable: trimmed, resolved against `cwd`, '' = unset. */
+export function resolveOptionalDir(
+  raw: string | undefined,
+  cwd: string = process.cwd()
+): string | undefined {
+  const value = raw?.trim()
+  return value ? path.resolve(cwd, value) : undefined
+}
+
 export function loadConfig(
   env: NodeJS.ProcessEnv = process.env,
   cwd: string = process.cwd()
@@ -207,5 +223,7 @@ export function loadConfig(
     dbLogSql: env['DB_LOG_SQL'] === 'true',
     corsOrigins,
     trustProxy: parseTrustProxy(env['TRUST_PROXY']),
+    hqReportsDir: resolveOptionalDir(env['HQ_REPORTS_DIR'], cwd),
+    hqFinanceDir: resolveOptionalDir(env['HQ_FINANCE_DIR'], cwd),
   }
 }

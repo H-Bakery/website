@@ -183,7 +183,14 @@ export interface ParityRequest {
   method: 'get' | 'post' | 'put' | 'patch' | 'delete'
   path: string
   body?: unknown
+  /** Sent to both servers. */
   headers?: Record<string, string>
+  /**
+   * Sent to one side only, on top of `headers` - e.g. a mock login token for
+   * the mock and a B3 session for the real API (B4).
+   */
+  mockHeaders?: Record<string, string>
+  realHeaders?: Record<string, string>
 }
 
 export interface ParitySide {
@@ -199,9 +206,16 @@ export interface ParityResult {
   differences: string[]
 }
 
-async function send(app: Application, req: ParityRequest): Promise<ParitySide> {
+async function send(
+  app: Application,
+  req: ParityRequest,
+  sideHeaders: Record<string, string> | undefined
+): Promise<ParitySide> {
   let call = request(app)[req.method](req.path)
-  for (const [name, value] of Object.entries(req.headers ?? {})) {
+  for (const [name, value] of Object.entries({
+    ...req.headers,
+    ...sideHeaders,
+  })) {
     call = call.set(name, value)
   }
   const res =
@@ -214,7 +228,8 @@ export async function compare(
   apps: { mock: Application; real: Application },
   options: DiffOptions = {}
 ): Promise<ParityResult> {
-  const [mock, real] = [await send(apps.mock, req), await send(apps.real, req)]
+  const mock = await send(apps.mock, req, req.mockHeaders)
+  const real = await send(apps.real, req, req.realHeaders)
   const differences: string[] = []
   if (mock.status !== real.status) {
     differences.push(`status: mock ${mock.status}, real ${real.status}`)

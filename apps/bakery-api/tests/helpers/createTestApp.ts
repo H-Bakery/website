@@ -22,6 +22,12 @@ import { MigrationEntry } from '../../src/db/migrations'
 import { initializeModels } from '../../src/models'
 import { runPartnerSeeder } from '../../src/seeders/partner.seeder'
 
+const QUIET_LOG = {
+  log: () => undefined,
+  warn: () => undefined,
+  error: () => undefined,
+}
+
 export interface TestAppOptions {
   /** Run the idempotent partner seed (CAP-Markt, id 1), as `server.ts` does. */
   seedPartners?: boolean
@@ -62,6 +68,8 @@ export async function createTestApp(
   const app = createApp({
     logRequests: false,
     ...options.app,
+    // The hq modules (B4) log their data source on mount; quiet by default.
+    hq: { log: QUIET_LOG, ...options.app?.hq },
     sequelize,
   })
 
