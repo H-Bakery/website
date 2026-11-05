@@ -19,6 +19,7 @@ import {
   restoreSession,
 } from '../lib/authSession'
 import { isPilotMode } from '../lib/pilotMode'
+import ThemeColorSync from '../components/pwa/ThemeColorSync'
 
 /**
  * Bridges the shared theme context (mode/persistence) to an actual MUI theme,
@@ -37,6 +38,7 @@ function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   return (
     <MuiThemeProvider theme={theme}>
       <CssBaseline />
+      <ThemeColorSync mode={colorScheme} />
       {children}
     </MuiThemeProvider>
   )

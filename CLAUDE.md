@@ -412,6 +412,53 @@ Tests: `src/lib/pilotMode.spec.ts`, `src/app/admin/layout.pilot.spec.tsx`,
 `src/app/admin/DashboardClient.spec.tsx` (Management-App) und
 `libs/shared/contexts/src/lib/notification/notification.loadOnMount.spec.tsx`.
 
+## PWA der Management-App (F3)
+
+Eine installierbare App „Heusser Verwaltung" für Handy, Laden-Tablet, Backstube und Büro-PC (D7).
+Name, Farben, Icon-Pfade und die Registrierungsregel stehen **einmal** in
+`apps/bakery-management/src/lib/pwa.ts`; Manifest (`src/app/manifest.ts` → `/manifest.webmanifest`),
+Metadaten/Viewport (`src/app/layout.tsx`) und Registrierung lesen von dort. Fünf Dinge:
+
+- **Der Service Worker cacht nur die App-Hülle.** `public/sw.js` (statisch, kein Build-Schritt):
+  `/_next/static/*`, `/icons/*`, `/favicon.ico` cache-first; `/offline.html` beim Installieren.
+  **Nie** `/api/*` (auch nicht als direkt geöffneter Link) und nie HTML - Seitenaufrufe gehen immer
+  ans Netz und werden nicht abgelegt. Antwortet der Server nicht oder meldet Caddy 502-504, kommt die
+  Offline-Seite „Keine Verbindung zum Server – bitte WLAN prüfen". RSC-Abrufe, Manifest und fremde
+  Hosts reicht er unberührt durch. Wer dort etwas cachen will, das Daten trägt: nicht.
+- **Registriert wird nur im Produktions-Build** (`shouldRegisterServiceWorker`: `NODE_ENV ===
+'production'`, Browser-Support, sicherer Kontext - HTTPS über Caddy oder localhost). In
+  `next dev` und jest nie; dort meldet `ServiceWorkerRegistration` einen alten Worker der App sogar
+  ab und löscht seine `heusser-verwaltung-*`-Caches (sonst lieferte ein früher `next start` auf
+  4201 alte Chunks an `next dev`). Notschalter auf der Box: `NEXT_PUBLIC_DISABLE_SW=1` beim
+  **Build** - meldet beim nächsten Aufruf ab.
+- **Je Build eine neue Worker-Version.** `next.config.js` setzt `NEXT_PUBLIC_SW_VERSION`
+  (`SW_VERSION` aus der Umgebung, sonst Zeitstempel); registriert wird `/sw.js?v=<Version>`, der neue
+  Worker löscht beim Aktivieren die Caches der alten. `/sw.js` geht mit `Cache-Control: no-cache,
+no-store` raus. Das Cache-Präfix steht in `sw.js` und `pwa.ts` - `pwa.spec.ts` prüft, dass beide
+  gleich sind.
+- **Statusleistenfarbe = AppBar-Farbe.** Hell `#1976d2` (`primary.main`), dunkel `#272727`
+  (`background.paper` + Elevation-4-Overlay). `pwa.spec.ts` rechnet beides aus `createTheme` nach;
+  wer das Theme ändert, zieht `PWA_THEME_COLORS` nach. Die Metadaten liefern je
+  `prefers-color-scheme` einen Startwert, `ThemeColorSync` (in `Providers.tsx`) setzt danach den
+  echten Modus der App (Standard dunkel). Das Manifest kennt nur eine Farbe: die dunkle.
+- **Icons** aus dem Heusser-Monogramm des Shops (`apps/bakery-shop/public/favicon.svg`):
+  `node apps/bakery-management/pwa/render-icons.mjs` schreibt die SVG-Quellen nach `pwa/` und die
+  PNGs (192/512 `any`, 192/512 `maskable`, 180er Apple-Touch-Icon) nach `public/icons/`.
+
+Für F1 (`middleware.ts`): `/sw.js`, `/manifest.webmanifest`, `/offline.html`, `/icons/*` und
+`/favicon.ico` müssen ohne Anmeldung erreichbar bleiben - sonst scheitert die Installation des
+Workers, und die Offline-Seite kommt nie in den Cache.
+
+Layout geprüft (Playwright, `next dev`, Pilotbetrieb, ohne API) bei 320, 390, 820, 844×390 und
+1440 px in hell und dunkel: kein waagrechtes Scrollen der Seite; unter 900 px (`md`) klappt die
+Seitenleiste zur Schublade ein - auch auf dem Tablet hochkant (820 px), quer (1180 px) steht sie
+fest. Breite Tabellen (Kassenberichte, Produktliste) scrollen in ihrem eigenen Container.
+
+Tests: `src/lib/pwa.spec.ts` (Manifest, Icon-Dateien und -Größen, Farben gegen MUI, Registrierungsregel),
+`src/lib/sw.spec.ts` (führt `public/sw.js` in einer nachgebauten Worker-Umgebung aus: kein `/api`,
+kein HTML im Cache, Netz zuerst, Offline-Seite), `src/components/pwa/ServiceWorkerRegistration.spec.tsx`,
+`src/app/layout.spec.tsx` (Metadaten, Viewport).
+
 ## Backzettel (Kern, Z1/Z2)
 
 Stammdaten in `hq/config/backzettel.yaml` (privat), Tagesrechnung hier. Plan: `docs/roadmap.md` §5.

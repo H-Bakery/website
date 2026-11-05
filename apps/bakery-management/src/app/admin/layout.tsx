@@ -55,6 +55,9 @@ import PilotUnavailable from '../../components/pilot/PilotUnavailable'
 
 const drawerWidth = 280
 
+/** Kennzeichen rechts in der AppBar: nie umbrechen, nie gequetscht. */
+const statusLabelSx = { ml: 1, flexShrink: 0, whiteSpace: 'nowrap' } as const
+
 interface AdminLayoutProps {
   children: React.ReactNode
 }
@@ -346,13 +349,15 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             Management System
           </Typography>
+          {/* Auf schmalen Handys (320 px) kürzt sich der Titel, das Kennzeichen
+              bleibt ganz und mit Abstand stehen (F3, Layout-Prüfung). */}
           {pilot ? (
-            <Typography variant="body2" color="inherit">
+            <Typography variant="body2" color="inherit" sx={statusLabelSx}>
               Pilotbetrieb
             </Typography>
           ) : (
             process.env.NODE_ENV !== 'production' && (
-              <Typography variant="body2" color="inherit">
+              <Typography variant="body2" color="inherit" sx={statusLabelSx}>
                 Entwicklung
               </Typography>
             )
