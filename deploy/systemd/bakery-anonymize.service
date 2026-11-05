@@ -1,0 +1,40 @@
+# DSGVO (roadmap P4): Name, Telefon und Anmerkung abgeschlossener
+# Vorbestellungen 90 Tage nach dem Abholtag löschen.
+# Gestartet von bakery-anonymize.timer (23:45). Idempotent; ein Lauf, der
+# nichts findet, ändert nichts. Bericht als JSON im Journal:
+#   journalctl -u bakery-anonymize -n 50
+
+[Unit]
+Description=Bäckerei Heusser - Vorbestellungen anonymisieren (DSGVO)
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md
+# Dieselbe Datenbank wie die API; SQLite (WAL + busy_timeout) verträgt den
+# kurzen Schreiber neben dem laufenden Dienst.
+After=bakery-api.service
+
+[Service]
+Type=oneshot
+User=bakery
+Group=bakery
+WorkingDirectory=/opt/bakery/current
+EnvironmentFile=/etc/bakery/bakery.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/apps/bakery-api/bundle/cli.js anonymize-preorders
+TimeoutStartSec=10min
+Nice=10
+
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/bakery
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/caddy
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=

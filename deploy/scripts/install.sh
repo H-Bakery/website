@@ -39,8 +39,8 @@ BAKERY_ROOT="${BAKERY_ROOT:-/opt/bakery}"
 APP_USER="${APP_USER:-bakery}"
 NODE_BIN="/usr/bin/node"
 NODE_MIN_MAJOR=20
-UNITS="bakery-api.service bakery-management.service bakery-hq-sync.service bakery-hq-sync.timer bakery-backup.service bakery-backup.timer bakery-health.service bakery-health.timer"
-TIMERS="bakery-hq-sync.timer bakery-backup.timer bakery-health.timer"
+UNITS="bakery-api.service bakery-management.service bakery-hq-sync.service bakery-hq-sync.timer bakery-backup.service bakery-backup.timer bakery-health.service bakery-health.timer bakery-anonymize.service bakery-anonymize.timer"
+TIMERS="bakery-hq-sync.timer bakery-backup.timer bakery-health.timer bakery-anonymize.timer"
 
 mode="full"
 use_apt=0
