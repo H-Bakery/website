@@ -54,7 +54,7 @@ export async function startServer(
   try {
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
-      server.listen(config.port, () => {
+      server.listen(config.port, config.host, () => {
         server.off('error', reject)
         resolve()
       })
@@ -63,7 +63,11 @@ export async function startServer(
     await sequelize.close().catch(() => undefined)
     throw error
   }
-  console.log(`[INFO] bakery-api listening on http://localhost:${config.port}`)
+  console.log(
+    `[INFO] bakery-api listening on http://${config.host ?? 'localhost'}:${
+      config.port
+    }`
+  )
 
   if (config.isProduction) {
     // B0 still mounts the in-memory auth lib (admin/admin123) and unguarded

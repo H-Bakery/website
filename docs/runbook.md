@@ -491,10 +491,10 @@ Liegt ausgedruckt im Laden und in der Backstube (P6):
 
 - **Q1** Hardware, **Q2** feste IP + DNS-Weg (§3.7), **Q3** hq-Token, **Q4** Backup-Ziel,
   **Q8** Tailscale – ohne sie bleibt O1/O2/O4 Vorbereitung.
-- **B0:** `deploy.sh` erwartet `npx nx run bakery-api:bundle` → `dist/apps/bakery-api/bundle/main.js`
-  und `DB_PATH`. Bitte zusätzlich `HOST` beim `listen()` beachten (Vorgabe `127.0.0.1`) und nur
-  nach stdout loggen: die Unit erlaubt Schreiben nur unter `/var/lib/bakery`. Nach dem Merge
-  `deploy/bakery.env.example` mit `apps/bakery-api/src/config/env.ts` abgleichen.
+- **B0 (erledigt, `pilot` 2026-11-05):** `bakery-api:bundle` schreibt
+  `dist/apps/bakery-api/bundle/main.js`, `DB_PATH` ist in Produktion Pflicht, `HOST` geht an
+  `listen()`, das Bundle loggt nur nach stdout. `deploy/bakery.env.example` ist mit
+  `apps/bakery-api/src/config/env.ts` abgeglichen.
 - **B3:** `create-user`-CLI-Befehl in §3.9 eintragen.
 - **B5b/Z9:** Anlage des Schreib-Klons `HQ_WRITE_DIR` (und des `main`-Worktrees für Snapshots)
   gehört zu diesen Aufgaben; `install.sh` legt nur den Lese-Klon an.

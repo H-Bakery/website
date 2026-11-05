@@ -13,6 +13,11 @@ export interface ServerConfig {
   nodeEnv: string
   isProduction: boolean
   port: number
+  /**
+   * Interface to listen on (`HOST`, e.g. `127.0.0.1` on the box behind Caddy).
+   * Undefined = Node's default, all interfaces.
+   */
+  host: string | undefined
   /** Absolute path of the SQLite file, or `:memory:`. */
   dbPath: string
   /** Milliseconds a connection waits for a lock before SQLITE_BUSY. */
@@ -167,6 +172,7 @@ export function loadConfig(
     nodeEnv,
     isProduction,
     port: parsePort(env['PORT']),
+    host: env['HOST']?.trim() || undefined,
     dbPath: resolveDbPath(env['DB_PATH'], isProduction, cwd),
     dbBusyTimeoutMs: parsePositiveInt(
       'DB_BUSY_TIMEOUT_MS',

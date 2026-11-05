@@ -113,6 +113,10 @@ describe('parsePort / loadConfig', () => {
     expect(config.dbBusyTimeoutMs).toBe(250)
     expect(config.dbPath).toBe('/srv/x/data/bakery.db')
     expect(config.isProduction).toBe(false)
+    expect(config.host).toBeUndefined()
+    expect(api.loadConfig({ HOST: ' 127.0.0.1 ' }, '/srv/x').host).toBe(
+      '127.0.0.1'
+    )
     expect(() => api.loadConfig({ DB_BUSY_TIMEOUT_MS: '-1' })).toThrow(
       api.ConfigError
     )

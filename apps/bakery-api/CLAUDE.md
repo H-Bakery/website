@@ -40,7 +40,8 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
 1. `config/load-env.ts` (first import of `main.ts`): loads `.env` from the working directory via
    `process.loadEnvFile` (already-set variables win), enforces `JWT_SECRET` (production: required,
    ≥ 32 chars; development: fixed default with a warning).
-2. `config/env.ts` → `loadConfig()`: `PORT`, `DB_PATH`, `DB_BUSY_TIMEOUT_MS` (5000), `DB_LOG_SQL`,
+2. `config/env.ts` → `loadConfig()`: `PORT`, `HOST` (interface for `listen`; unset = all, the box
+   sets `127.0.0.1`), `DB_PATH`, `DB_BUSY_TIMEOUT_MS` (5000), `DB_LOG_SQL`,
    `CORS_ORIGIN` (comma-separated; default the local dev ports).
    **`DB_PATH`**: default `./data/bakery.db` relative to the working directory (gitignored as
    `/data/`); in production it is **required, absolute, not `:memory:`, and its directory must
