@@ -182,6 +182,14 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Content Creator',
   },
   {
+    // F1: Konten, Rollen, Passwörter, PINs und Stationen - nur Inhaber
+    // (ROLE_ACCESS in src/lib/roles.ts, API: /api/users nur `inhaber`).
+    label: 'Benutzer',
+    href: '/admin/users',
+    icon: 'users',
+    description: 'Konten, Rollen & PINs',
+  },
+  {
     label: 'Einstellungen',
     href: '/admin/settings',
     icon: 'settings',

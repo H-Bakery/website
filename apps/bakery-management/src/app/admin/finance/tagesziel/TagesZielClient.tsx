@@ -42,7 +42,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useAuth } from '@bakery/shared/contexts'
+import { useSession } from '../../../../lib/session'
 import {
   classifyFinanceError,
   fetchTargetPeriod,
@@ -487,7 +487,7 @@ type PageState =
   | { phase: 'ok'; targets: TargetsResponse; status: TargetStatusResponse }
 
 export default function TagesZielClient() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useSession()
   const [state, setState] = useState<PageState>({ phase: 'loading' })
   const [level, setLevel] = useState<TargetLevelKey>('breakeven')
   const [from, setFrom] = useState('')

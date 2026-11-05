@@ -3,12 +3,7 @@ import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import ChatPage from './page'
 
-// Ohne AuthProvider wirft useAuth - genau der Fall, den die Seite abfängt.
-jest.mock('@bakery/shared/contexts', () => ({
-  useAuth: () => {
-    throw new Error('useAuth must be used within an AuthProvider')
-  },
-}))
+// Ohne SessionProvider (kein jest.mock nötig): die Seite läuft nur lesend.
 
 jest.mock('@bakery/management/feature-chat', () => ({
   ChatMessageList: ({ messages }: { messages: { message: string }[] }) => (

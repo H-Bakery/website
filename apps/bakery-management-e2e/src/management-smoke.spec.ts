@@ -8,14 +8,32 @@
  * vergleicht die Suite Zahlen der Oberfläche mit dem, was die API liefert,
  * statt Werte fest zu verdrahten.
  *
- * Es gibt keinen Login: die App kennt keine Anmeldung, `/admin` ist offen.
+ * Seit F1 braucht `/admin` eine Sitzung: `signIn()` (login.ts) meldet sich
+ * an der Mock-API an und legt die Sitzung vor jedem Test in `localStorage`.
  * Nichts hier speichert - `PUT /api/hq-products/:id` schriebe in die
  * Produktdateien, in CI also ins Fixture.
  */
 
 import { expect, test, request as playwrightRequest } from '@playwright/test'
+import { signIn } from './login'
 
 const API_BASE = process.env['API_URL'] || 'http://localhost:5000'
+
+test.beforeEach(async ({ page }) => {
+  await signIn(page)
+})
+
+test('ohne Sitzung führt /admin zur Anmeldung', async ({ browser }) => {
+  const context = await browser.newContext()
+  const page = await context.newPage()
+  try {
+    await page.goto('/admin/products')
+    await expect(page).toHaveURL(/\/admin\/login\?next=%2Fadmin%2Fproducts/)
+    await expect(page.getByRole('heading', { name: 'Anmeldung' })).toBeVisible()
+  } finally {
+    await context.close()
+  }
+})
 
 /** Anzahl der Einträge, die `GET <pfad>` der Mock-API liefert. */
 async function apiCount(path: string): Promise<number> {

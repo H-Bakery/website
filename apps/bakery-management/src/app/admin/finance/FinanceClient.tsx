@@ -42,7 +42,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { useAuth } from '@bakery/shared/contexts'
+import { useSession } from '../../../lib/session'
 import {
   classifyFinanceError,
   fetchFinanceMonths,
@@ -462,7 +462,7 @@ interface RangeView {
 }
 
 export default function FinanceClient() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useSession()
   const [state, setState] = useState<PageState>({ phase: 'loading' })
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')

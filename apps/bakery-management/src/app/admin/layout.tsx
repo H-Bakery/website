@@ -40,6 +40,7 @@ import {
   AccountBalance as FinanceIcon,
   Flag as TargetIcon,
   Login as LoginIcon,
+  ManageAccounts as UsersIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -52,6 +53,15 @@ import {
 } from './navigation'
 import { isPilotMode, isPilotPathAllowed } from '../../lib/pilotMode'
 import PilotUnavailable from '../../components/pilot/PilotUnavailable'
+import { useOptionalSession } from '../../lib/session'
+import {
+  ROLE_LABELS,
+  getNavigationForRole,
+  isPathAllowedForRole,
+  startPathForRole,
+} from '../../lib/roles'
+import NoAccess from '../../components/auth/NoAccess'
+import LogoutButton from '../../components/auth/LogoutButton'
 
 const drawerWidth = 280
 
@@ -82,6 +92,7 @@ const iconMap: Record<string, React.ReactElement> = {
   finance: <FinanceIcon />,
   target: <TargetIcon />,
   login: <LoginIcon />,
+  users: <UsersIcon />,
 }
 
 /**
@@ -132,8 +143,40 @@ function getBreadcrumb(pathname: string): string[] {
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
-  const [mobileOpen, setMobileOpen] = React.useState(false)
   const pathname = usePathname()
+  // Die Anmeldeseite steht ohne Seitenleiste und Navigation da.
+  if (pathname === '/admin/login') {
+    return (
+      <Box
+        component="main"
+        sx={{
+          minHeight: '100vh',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: { xs: 'flex-start', sm: 'center' },
+          p: { xs: 2, sm: 3 },
+          bgcolor: 'background.default',
+        }}
+      >
+        {children}
+      </Box>
+    )
+  }
+  return <AdminShell pathname={pathname}>{children}</AdminShell>
+}
+
+function AdminShell({
+  children,
+  pathname,
+}: AdminLayoutProps & { pathname: string }) {
+  const [mobileOpen, setMobileOpen] = React.useState(false)
+  // Rolle (F1): Navigation und Seiten-Sperre nach ROLE_ACCESS
+  // (src/lib/roles.ts). Ohne SessionProvider (Layout-Tests) gilt die volle
+  // Navigation - in der App rendert der RouteGuard das Layout nur mit
+  // gültiger Sitzung.
+  const session = useOptionalSession()
+  const user = session?.user ?? null
+  const role = user?.role ?? null
   // Pilotbetrieb (F2): gefilterte Navigation und Sperre der Demo-Seiten - die
   // erlaubten Routen stehen genau einmal in src/lib/pilotMode.ts.
   // Die Sperre versteckt nur Demo-Seiten im Browser; sie ist KEINE
@@ -141,8 +184,13 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
   // entstehen trotzdem, die API bleibt direkt erreichbar). Durchgesetzt wird
   // der Zugriff von der middleware.ts aus F1 und den Rollen-Guards der API.
   const pilot = isPilotMode()
-  const navigation = React.useMemo(() => getNavigation(pilot), [pilot])
+  const navigation = React.useMemo(
+    () => (role ? getNavigationForRole(role, pilot) : getNavigation(pilot)),
+    [pilot, role]
+  )
   const blocked = !isPilotPathAllowed(pathname, pilot)
+  const forbidden = role !== null && !isPathAllowedForRole(pathname, role)
+  const isStation = session?.sessionKind === 'station'
   const [openSubmenus, setOpenSubmenus] = React.useState<
     Record<string, boolean>
   >(() =>
@@ -347,15 +395,61 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
             Management System
           </Typography>
           {pilot ? (
-            <Typography variant="body2" color="inherit">
+            <Typography
+              variant="body2"
+              color="inherit"
+              sx={{ display: { xs: 'none', sm: 'block' } }}
+            >
               Pilotbetrieb
             </Typography>
           ) : (
             process.env.NODE_ENV !== 'production' && (
-              <Typography variant="body2" color="inherit">
+              <Typography
+                variant="body2"
+                color="inherit"
+                sx={{ display: { xs: 'none', sm: 'block' } }}
+              >
                 Entwicklung
               </Typography>
             )
+          )}
+          {user && (
+            <Box
+              sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 2 }}
+            >
+              <Box
+                sx={{
+                  textAlign: 'right',
+                  display: { xs: isStation ? 'block' : 'none', sm: 'block' },
+                  minWidth: 0,
+                }}
+              >
+                <Typography
+                  variant="body2"
+                  color="inherit"
+                  noWrap
+                  data-testid="session-user"
+                >
+                  {user.displayName}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="inherit"
+                  noWrap
+                  sx={{ opacity: 0.8, display: 'block' }}
+                >
+                  {ROLE_LABELS[user.role]}
+                  {isStation ? ' · Station' : ''}
+                </Typography>
+              </Box>
+              {/* Auf einer Station groß und gefüllt: wer fertig ist, tippt
+                  hier und das Tablet steht wieder bei den Namenskacheln. */}
+              <LogoutButton
+                color="inherit"
+                variant={isStation ? 'outlined' : 'text'}
+                size={isStation ? 'large' : 'medium'}
+              />
+            </Box>
           )}
         </Toolbar>
       </AppBar>
@@ -425,7 +519,16 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           </Typography>
         </Box>
 
-        {blocked ? <PilotUnavailable /> : children}
+        {blocked ? (
+          <PilotUnavailable />
+        ) : forbidden && role ? (
+          <NoAccess
+            roleLabel={ROLE_LABELS[role]}
+            startPath={startPathForRole(role)}
+          />
+        ) : (
+          children
+        )}
       </Box>
     </Box>
   )
