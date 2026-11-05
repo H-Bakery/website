@@ -549,7 +549,7 @@ describe('partners parity: stats and report', () => {
       m.headers['content-disposition']
     )
     expect(r.text).toBe(m.text)
-    expect(r.text.startsWith('﻿')).toBe(true)
+    expect(r.text.charCodeAt(0)).toBe(0xfeff)
     await parityError(get(`${P}/report.csv?from=gestern`), 400)
     await parityError(get('/api/partners/999/report.csv'), 404)
   })

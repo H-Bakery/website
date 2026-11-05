@@ -1,0 +1,173 @@
+{
+  "_comment": "Synthetischer Partner-Store (B6, Import-Tests). Erfunden - keine echten Mengen, Preise oder Namen.",
+  "partners": [
+    {
+      "id": 1,
+      "name": "CAP-Markt Homburg-Kirrberg",
+      "slug": "cap-markt-homburg-kirrberg",
+      "street": "Musterweg 1",
+      "zip": "00000",
+      "city": "Musterstadt",
+      "contactName": "Test Kontakt",
+      "phone": null,
+      "email": null,
+      "deliveryDays": [2, 3, 4, 5, 6],
+      "settlementModel": "commission",
+      "active": true,
+      "notes": "Synthetischer Eintrag."
+    },
+    {
+      "id": 2,
+      "name": "Testmarkt Beispielstadt",
+      "slug": "testmarkt-beispielstadt",
+      "street": "",
+      "zip": "",
+      "city": "Beispielstadt",
+      "contactName": null,
+      "phone": null,
+      "email": null,
+      "deliveryDays": [3, 6],
+      "settlementModel": "firm_sale",
+      "active": false,
+      "notes": null
+    }
+  ],
+  "templates": [
+    {
+      "id": 1,
+      "partnerId": 1,
+      "weekday": 2,
+      "items": [
+        { "productId": 1, "productSlug": "kornbrot-500g", "quantity": 4 },
+        { "productId": 13, "productSlug": "musterweck", "quantity": 0 }
+      ],
+      "active": true
+    },
+    { "id": 2, "partnerId": 1, "weekday": 3, "items": [], "active": true },
+    {
+      "id": 3,
+      "partnerId": 2,
+      "weekday": 6,
+      "items": [
+        { "productId": 13, "productSlug": "musterweck", "quantity": 12 }
+      ],
+      "active": false
+    }
+  ],
+  "visits": [
+    {
+      "id": 1,
+      "partnerId": 1,
+      "businessDate": "2026-03-03",
+      "visitAt": "2026-03-03T05:30:00.000Z",
+      "visitType": "initial",
+      "sequence": 1,
+      "staffId": 3,
+      "staffName": "Test Fahrer",
+      "note": null,
+      "items": [
+        {
+          "id": 1,
+          "productId": 1,
+          "productSlug": "kornbrot-500g",
+          "productName": "Kornbrot 500g (alter Name)",
+          "unitPrice": 2.1,
+          "countedQty": null,
+          "deliveredQty": 8
+        },
+        {
+          "id": 2,
+          "productId": 9001,
+          "productSlug": "altes-testbrot",
+          "productName": "Altes Testbrot",
+          "unitPrice": 1.5,
+          "countedQty": null,
+          "deliveredQty": 4
+        }
+      ],
+      "createdAt": "2026-03-03T05:31:00.000Z",
+      "updatedAt": "2026-03-03T05:31:00.000Z"
+    },
+    {
+      "id": 2,
+      "partnerId": 1,
+      "businessDate": "2026-03-03",
+      "visitAt": "2026-03-03T17:45:00.000Z",
+      "visitType": "pickup",
+      "sequence": 2,
+      "staffId": null,
+      "staffName": "Test Fahrer",
+      "note": "Abholung",
+      "items": [
+        {
+          "id": 1,
+          "productId": 1,
+          "productSlug": "kornbrot-500g",
+          "productName": "Kornbrot 500g (alter Name)",
+          "unitPrice": 2.1,
+          "countedQty": 2,
+          "deliveredQty": 0
+        },
+        {
+          "id": 2,
+          "productId": 9001,
+          "productSlug": "altes-testbrot",
+          "productName": "Altes Testbrot",
+          "unitPrice": 1.5,
+          "countedQty": 0,
+          "deliveredQty": 0
+        }
+      ],
+      "createdAt": "2026-03-03T17:46:00.000Z",
+      "updatedAt": "2026-03-03T17:46:00.000Z"
+    },
+    {
+      "id": 3,
+      "partnerId": 1,
+      "businessDate": "2026-03-04",
+      "visitAt": "2026-03-04T05:30:00.000Z",
+      "visitType": "initial",
+      "sequence": 1,
+      "staffId": null,
+      "staffName": null,
+      "note": null,
+      "items": [
+        {
+          "id": 1,
+          "productId": 13,
+          "productSlug": "musterweck",
+          "productName": "Musterweck",
+          "unitPrice": 0.4,
+          "countedQty": null,
+          "deliveredQty": 15
+        }
+      ],
+      "createdAt": "2026-03-04T05:31:00.000Z",
+      "updatedAt": "2026-03-04T05:31:00.000Z"
+    },
+    {
+      "id": 4,
+      "partnerId": 2,
+      "businessDate": "2026-03-04",
+      "visitAt": "2026-03-04T06:15:00.000Z",
+      "visitType": "initial",
+      "sequence": 1,
+      "staffId": null,
+      "staffName": "Test Verkauf",
+      "note": null,
+      "items": [
+        {
+          "id": 1,
+          "productId": 13,
+          "productSlug": "musterweck",
+          "productName": "Musterweck",
+          "unitPrice": 0.4,
+          "countedQty": null,
+          "deliveredQty": 6
+        }
+      ],
+      "createdAt": "2026-03-04T06:16:00.000Z",
+      "updatedAt": "2026-03-04T06:16:00.000Z"
+    }
+  ]
+}

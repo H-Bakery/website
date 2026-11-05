@@ -46,6 +46,10 @@ import { PlainVisit, StatsRange } from '../services/partner-stats.service'
 import { sendError } from '../utils/http-error'
 import { logger } from '../utils/logger'
 
+// Der Core ist absichtlich CommonJS ohne Typen - deshalb per require geladen.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const partnerRules = require('../services/partner-import.core')
+
 // ============================================================================
 // OPTIONEN UND ROLLEN
 // ============================================================================
@@ -70,13 +74,6 @@ const canWriteMasterData = requireRole(...MASTER_DATA_ROLES)
 // ============================================================================
 // HILFSFUNKTIONEN
 // ============================================================================
-
-const UMLAUT_MAP: Record<string, string> = {
-  ä: 'ae',
-  ö: 'oe',
-  ü: 'ue',
-  ß: 'ss',
-}
 
 /** Liefertage eines neuen Partners ohne Angabe - wie im Mock: Di-Sa. */
 const DEFAULT_DELIVERY_DAYS = [2, 3, 4, 5, 6]
@@ -141,30 +138,10 @@ function formatDe(businessDate: string): string {
   return `${day}.${month}.${year}`
 }
 
-export function slugify(value: string): string {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[äöüß]/g, (char) => UMLAUT_MAP[char] || char)
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
-
-/** ISO-Wochentage, dedupliziert und sortiert - alles andere fliegt raus. */
-export function normalizeWeekdays(value: unknown): number[] {
-  let raw: any = value
-  if (typeof raw === 'string') {
-    try {
-      raw = JSON.parse(raw)
-    } catch {
-      raw = []
-    }
-  }
-  if (!Array.isArray(raw)) return []
-  const days = raw
-    .map((day: unknown) => Number(day))
-    .filter((day: number) => Number.isInteger(day) && day >= 1 && day <= 7)
-  return Array.from(new Set<number>(days)).sort((a, b) => a - b)
-}
+/** Slug und Wochentage: dieselben Regeln wie der Import (`partner-import.core.js`). */
+const slugify: (value: string) => string = partnerRules.slugify
+const normalizeWeekdays: (value: unknown) => number[] =
+  partnerRules.normalizeWeekdays
 
 /** Gespeicherte Vorlagen-Positionen lesen (JSON-Spalte, evtl. als Text). */
 function storedTemplateItems(value: unknown): TemplateItemInput[] {
@@ -520,6 +497,9 @@ function answerError(
   logger.error(fallback.log, error)
   return sendError(res, 500, fallback.code, fallback.message)
 }
+
+/** Byte-Order-Mark vor dem CSV (als Escape, nie als unsichtbares Zeichen). */
+const BOM = String.fromCharCode(0xfeff)
 
 const INVALID_ACTIVE_MESSAGE =
   'Das Feld "active" muss true oder false sein (kein Text).'
@@ -1312,7 +1292,7 @@ export function createPartnerRouter(
       res.setHeader('Content-Type', 'text/csv; charset=utf-8')
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
       // BOM voran, sonst zeigt Excel die Umlaute als Buchstabensalat.
-      return res.send(`﻿${csv}`)
+      return res.send(BOM + csv)
     } catch (error) {
       return answerError(res, error, {
         code: 'REPORT_CSV_FAILED',

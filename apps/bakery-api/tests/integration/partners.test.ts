@@ -335,7 +335,7 @@ describe('hq catalogue lookup for visit items (B6)', () => {
         writeDir: null,
       },
     })
-    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {})
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined)
     const res = await request(own)
       .post('/api/partners/1/visits')
       .set(bearer(tokens['verkauf']))
