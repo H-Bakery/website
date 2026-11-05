@@ -27,11 +27,12 @@ import {
 } from '../services/backzettel-source'
 import {
   BackzettelError,
+  BackzettelHooks,
   createBackzettelService,
 } from '../services/backzettel.service'
 import { sendError } from '../utils/http-error'
 
-export type BackzettelRouterOptions = BackzettelSourceOptions
+export type BackzettelRouterOptions = BackzettelSourceOptions & BackzettelHooks
 
 function handle(
   fn: (req: Request, res: Response) => Promise<unknown>
@@ -55,7 +56,9 @@ function handle(
 export function createBackzettelRouter(
   options: BackzettelRouterOptions = {}
 ): Router {
-  const service = createBackzettelService(createBackzettelSource(options))
+  const service = createBackzettelService(createBackzettelSource(options), {
+    onConfirmed: options.onConfirmed,
+  })
   const router = Router()
   const planners = requireRole('backstube') // inhaber passes every check
   const owner = requireRole('inhaber')

@@ -30,3 +30,9 @@ process.env.HQ_BACKZETTEL_CONFIG = path.join(
 // B5: never commit into a developer's hq write worktree from a test.
 delete process.env.HQ_WRITE_DIR
 delete process.env.HQ_WRITE_BRANCH
+// B5b/Z9: never push to a real remote or call the real GitHub API.
+delete process.env.HQ_SNAPSHOT_DIR
+delete process.env.HQ_GITHUB_TOKEN
+delete process.env.GITHUB_TOKEN
+delete process.env.GITHUB_API_URL
+delete process.env.HQ_GITHUB_REPO

@@ -9,13 +9,20 @@ import * as http from 'http'
 import { Sequelize } from 'sequelize'
 
 import { createApp } from './app'
-import { ServerConfig, loadConfig, loadHqConfig } from './config/env'
+import {
+  ServerConfig,
+  loadConfig,
+  loadHqConfig,
+  loadHqSyncConfig,
+} from './config/env'
 import { openDatabase } from './db/database'
 import { runMigrations } from './db/migrate'
 import { initializeModels } from './models'
 import { runPartnerSeeder } from './seeders/partner.seeder'
 import { bootstrapAdmin } from './auth/users.service'
 import { defaultProductsDir } from './services/hq-catalogue'
+import { HqEditsSync } from './services/hq-edits-sync.service'
+import { HqSnapshotWriter } from './services/hq-snapshots.service'
 
 /** How long shutdown waits for running requests before cutting them. */
 export const SHUTDOWN_DEADLINE_MS = 10_000
@@ -33,6 +40,7 @@ export async function startServer(
   console.log(`[INFO] Starting bakery-api (${config.nodeEnv})`)
   // Before the database: a misconfigured hq must not migrate anything.
   const hq = loadHqConfig()
+  const hqSync = loadHqSyncConfig()
   console.log(`[INFO] Database: ${config.dbPath}`)
 
   const { sequelize, info } = await openDatabase({
@@ -71,8 +79,35 @@ export async function startServer(
       : '[INFO] hq writes: HQ_WRITE_DIR not set, writing to the read dir (development)'
   )
 
+  // B5b: push app/edits + one rolling PR; Z9: snapshots to main. Both retry
+  // every 15 min (unref'd timers) and are stopped on close.
+  const edits = new HqEditsSync({
+    writeDir: hqWriteDir,
+    token: hqSync.token,
+    githubRepo: hqSync.githubRepo,
+    githubApiUrl: hqSync.githubApiUrl,
+    retryMs: hqSync.retryMs,
+  })
+  const snapshots = new HqSnapshotWriter({
+    snapshotDir: hq.snapshotDir,
+    token: hqSync.token,
+    retryMs: hqSync.retryMs,
+  })
+  console.log(
+    edits.enabled
+      ? `[INFO] hq write-back: app/edits -> PR in ${hqSync.githubRepo}`
+      : `[INFO] hq write-back off: ${edits.disabledReason}`
+  )
+  console.log(
+    snapshots.enabled
+      ? `[INFO] hq snapshots: ${hq.snapshotDir} (data/production/** -> main)`
+      : `[INFO] hq snapshots off: ${snapshots.status().reason}`
+  )
+  await edits.init()
+
   const app = createApp({
     hqProducts: { productsDir: hqProductsDir, writeDir: hqWriteDir },
+    hqSync: { edits, snapshots },
     sequelize,
     corsOrigins: config.corsOrigins,
     trustProxy: config.trustProxy,
@@ -97,6 +132,8 @@ export async function startServer(
       config.port
     }`
   )
+  edits.start()
+  snapshots.start()
 
   let closing: Promise<void> | null = null
   const close = (deadlineMs = SHUTDOWN_DEADLINE_MS) => {
@@ -118,6 +155,10 @@ export async function startServer(
         })
         server.closeIdleConnections()
       })
+        .then(() => {
+          edits.stop()
+          snapshots.stop()
+        })
         .then(() => sequelize.close())
         .then(() => undefined)
     }

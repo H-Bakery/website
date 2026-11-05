@@ -206,6 +206,55 @@ export interface HqConfig {
   productsDir: string | null
   /** Wurzel des Schreib-Worktrees (`HQ_WRITE_DIR`), `null` = Entwicklung. */
   writeDir: string | null
+  /**
+   * Z9: zweiter Worktree auf `main` für `data/production/**`
+   * (`HQ_SNAPSHOT_DIR`), `null` = keine Snapshots.
+   */
+  snapshotDir: string | null
+}
+
+/** B5b/Z9: Übertragung nach GitHub. */
+export interface HqSyncConfig {
+  /** `HQ_GITHUB_TOKEN`, sonst `GITHUB_TOKEN`; `null` = B5b aus. */
+  token: string | null
+  /** `HQ_GITHUB_REPO`, Vorgabe `H-Bakery/hq`. */
+  githubRepo: string
+  /** `GITHUB_API_URL`, Vorgabe `https://api.github.com` (Tests: Fake-Server). */
+  githubApiUrl: string
+  /** `HQ_SYNC_RETRY_MS`, Vorgabe 15 min. */
+  retryMs: number
+}
+
+export const DEFAULT_HQ_GITHUB_REPO = 'H-Bakery/hq'
+export const DEFAULT_GITHUB_API_URL = 'https://api.github.com'
+export const DEFAULT_HQ_SYNC_RETRY_MS = 15 * 60 * 1000
+
+export function loadHqSyncConfig(
+  env: NodeJS.ProcessEnv = process.env
+): HqSyncConfig {
+  const value = (name: string) => env[name]?.trim() || undefined
+  const repo = value('HQ_GITHUB_REPO') ?? DEFAULT_HQ_GITHUB_REPO
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) {
+    throw new ConfigError(`HQ_GITHUB_REPO must be "owner/repo", got "${repo}".`)
+  }
+  const apiUrl = value('GITHUB_API_URL') ?? DEFAULT_GITHUB_API_URL
+  if (!/^https?:\/\//.test(apiUrl)) {
+    throw new ConfigError(`GITHUB_API_URL must be an http(s) URL.`)
+  }
+  const retryMs = parsePositiveInt(
+    'HQ_SYNC_RETRY_MS',
+    env['HQ_SYNC_RETRY_MS'],
+    DEFAULT_HQ_SYNC_RETRY_MS
+  )
+  if (retryMs < 1000) {
+    throw new ConfigError('HQ_SYNC_RETRY_MS must be at least 1000.')
+  }
+  return {
+    token: value('HQ_GITHUB_TOKEN') ?? value('GITHUB_TOKEN') ?? null,
+    githubRepo: repo,
+    githubApiUrl: apiUrl,
+    retryMs,
+  }
 }
 
 function isInside(child: string, parent: string): boolean {
@@ -259,27 +308,51 @@ export function loadHqConfig(
     }
   }
 
+  const snapshotRaw = value('HQ_SNAPSHOT_DIR')
+  if (isProduction && snapshotRaw && !path.isAbsolute(snapshotRaw)) {
+    throw new ConfigError(
+      `HQ_SNAPSHOT_DIR must be absolute in production, got "${snapshotRaw}".`
+    )
+  }
+
   const productsDir = productsRaw ? path.resolve(cwd, productsRaw) : null
   const writeDir = writeRaw ? path.resolve(cwd, writeRaw) : null
-  if (writeDir) {
-    // Die Wurzel des Lese-Klons: `HQ_DIR`; in Produktion ohne `HQ_DIR`
-    // vorsichtshalber das Verzeichnis über `products/`.
-    const hqDir = value('HQ_DIR')
-    const readRoots = hqDir
-      ? [path.resolve(cwd, hqDir)]
-      : isProduction && productsDir
-      ? [path.dirname(productsDir)]
-      : []
-    if (productsDir) readRoots.push(productsDir)
+  const snapshotDir = snapshotRaw ? path.resolve(cwd, snapshotRaw) : null
+  // Die Wurzel des Lese-Klons: `HQ_DIR`; in Produktion ohne `HQ_DIR`
+  // vorsichtshalber das Verzeichnis über `products/`.
+  const hqDir = value('HQ_DIR')
+  const readRoots = hqDir
+    ? [path.resolve(cwd, hqDir)]
+    : isProduction && productsDir
+    ? [path.dirname(productsDir)]
+    : []
+  if (productsDir) readRoots.push(productsDir)
+  const writers: [string, string | null][] = [
+    ['HQ_WRITE_DIR', writeDir],
+    ['HQ_SNAPSHOT_DIR', snapshotDir],
+  ]
+  for (const [name, dir] of writers) {
+    if (!dir) continue
     for (const readRoot of readRoots) {
-      if (isInside(writeDir, readRoot) || isInside(readRoot, writeDir)) {
+      if (isInside(dir, readRoot) || isInside(readRoot, dir)) {
         throw new ConfigError(
-          `HQ_WRITE_DIR ("${writeDir}") must be a separate clone, not inside or around the read clone ("${readRoot}").`
+          `${name} ("${dir}") must be a separate clone, not inside or around the read clone ("${readRoot}").`
         )
       }
     }
   }
-  return { productsDir, writeDir }
+  // Z9: der main-Worktree ist ein eigener Worktree neben app/edits - nie
+  // derselbe Pfad, nie darin (ein Commit nähme sonst die Dateien des anderen mit).
+  if (
+    writeDir &&
+    snapshotDir &&
+    (isInside(writeDir, snapshotDir) || isInside(snapshotDir, writeDir))
+  ) {
+    throw new ConfigError(
+      `HQ_SNAPSHOT_DIR ("${snapshotDir}") must be its own worktree, not inside or around HQ_WRITE_DIR ("${writeDir}").`
+    )
+  }
+  return { productsDir, writeDir, snapshotDir }
 }
 
 export function loadConfig(

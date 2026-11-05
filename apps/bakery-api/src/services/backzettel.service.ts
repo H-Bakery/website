@@ -210,7 +210,19 @@ export interface GetDayOptions {
   req?: Request | null
 }
 
-export function createBackzettelService(source: BackzettelSource) {
+export interface BackzettelHooks {
+  /**
+   * Z9: after a confirm committed, with the confirmed day view and the role
+   * of whoever confirmed (never the name - D13). Must not throw; it is not
+   * awaited, so a slow or offline hq never delays the confirm.
+   */
+  onConfirmed?: (day: unknown, context: { role: string | null }) => void
+}
+
+export function createBackzettelService(
+  source: BackzettelSource,
+  hooks: BackzettelHooks = {}
+) {
   // ------------------------------------------------------------- views
 
   async function draftView(
@@ -752,7 +764,15 @@ export function createBackzettelService(source: BackzettelSource) {
         { transaction }
       )
     })
-    return getDay(date, { recordDeltas: false })
+    const confirmed = await getDay(date, { recordDeltas: false })
+    if (hooks.onConfirmed) {
+      try {
+        hooks.onConfirmed(confirmed, { role: req.user?.role ?? null })
+      } catch (error) {
+        console.error('[backzettel] onConfirmed hook failed:', error)
+      }
+    }
+    return confirmed
   }
 
   async function reopen(date: string, body: unknown, req: Request) {

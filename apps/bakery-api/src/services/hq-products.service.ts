@@ -12,9 +12,11 @@
  *   - `HQ_WRITE_DIR` gesetzt (Box): die Datei landet in
  *     `${HQ_WRITE_DIR}/products` (Worktree auf `app/edits`) und wird dort
  *     committet - Autor `Verwaltung (App)`, Bearbeiter als
- *     `Co-authored-by`-Trailer. Push + PR macht B5b. Bis zum Merge
- *     unterscheidet sich die Datei vom Lese-Klon: das Produkt trägt
- *     `pendingApproval: true` ("wartet auf Freigabe").
+ *     `Co-authored-by`-Trailer. Push + rollende PR macht
+ *     `hq-edits-sync.service.ts` (B5b, `afterCommit`). Bis zum Merge
+ *     unterscheidet sich die Datei von `origin/main` (B5b, `approvedFiles`;
+ *     ohne B5b vom Lese-Klon): das Produkt trägt `pendingApproval: true`
+ *     ("wartet auf Freigabe").
  *   - `HQ_WRITE_DIR` nicht gesetzt (Entwicklung): direkt nach
  *     `HQ_PRODUCTS_DIR`, wie der Mock-Server, ohne git.
  *
@@ -22,7 +24,6 @@
  * `hq-products.core.js`, die Prüfung in `product-input.core.js`, die
  * Serialisierung in `product-file.core.js`. Diese Datei macht nur I/O.
  */
-import { execFile } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 
@@ -33,8 +34,10 @@ import {
   defaultProductsDir,
   HqCatalogue,
   HqProduct,
+  parseProductFile,
   ProductFile,
 } from './hq-catalogue'
+import { runHqGit, withRepoLock } from './hq-git'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./hq-products.core')
@@ -68,25 +71,9 @@ export type GitRunner = (
   options: { cwd: string; env: NodeJS.ProcessEnv }
 ) => Promise<string>
 
+/** Default runner: `hq-git.ts` (execFile, argument array, timeout). */
 export const runGit: GitRunner = (args, options) =>
-  new Promise((resolve, reject) => {
-    execFile(
-      'git',
-      args,
-      { cwd: options.cwd, env: options.env, timeout: 30_000 },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(
-            new Error(
-              `git ${args[0]} failed: ${String(stderr || error.message).trim()}`
-            )
-          )
-          return
-        }
-        resolve(String(stdout))
-      }
-    )
-  })
+  runHqGit(options.cwd, args, { env: options.env, timeoutMs: 30_000 })
 
 export interface HqProductsOptions {
   /** Lese-Klon `products/` (Default `HQ_PRODUCTS_DIR`). */
@@ -103,6 +90,13 @@ export interface HqProductsOptions {
   production?: boolean
   /** Für Tests. */
   git?: GitRunner
+  /**
+   * B5b: Produktdateien auf `origin/main` (Dateiname → Inhalt), gegen die
+   * `pendingApproval` gerechnet wird. `null`/nicht gesetzt = Lese-Klon.
+   */
+  approvedFiles?: () => ReadonlyMap<string, string> | null
+  /** B5b: nach jedem Commit im Schreib-Worktree (Push + PR anstoßen). */
+  afterCommit?: () => void
 }
 
 /**
@@ -182,6 +176,10 @@ export class HqProductsService {
   readonly writeBranch: string
   readonly production: boolean
   private readonly git: GitRunner
+  private readonly approvedFiles: () => ReadonlyMap<string, string> | null
+  private readonly afterCommit: () => void
+  /** Geparste freigegebene Dateien, je Inhalt (B5b). */
+  private approvedParsed = new Map<string, ProductFile | null>()
   /** Schreibvorgänge nacheinander: lesen-ändern-schreiben + git-Index. */
   private queue: Promise<unknown> = Promise.resolve()
 
@@ -199,6 +197,8 @@ export class HqProductsService {
     this.production =
       options.production ?? process.env['NODE_ENV'] === 'production'
     this.git = options.git ?? runGit
+    this.approvedFiles = options.approvedFiles ?? (() => null)
+    this.afterCommit = options.afterCommit ?? (() => undefined)
   }
 
   get read(): HqCatalogue {
@@ -215,14 +215,39 @@ export class HqProductsService {
     return dir ? catalogueFor(dir) : null
   }
 
-  /** Dateinamen, deren Inhalt im Schreib-Worktree vom Lese-Klon abweicht. */
+  /**
+   * Der freigegebene Inhalt einer Produktdatei: aus `origin/main` (B5b, wie
+   * zuletzt abgeholt), sonst aus dem Lese-Klon. `undefined` = gibt es dort
+   * nicht. Der Lese-Klon hinkt `origin/main` bis zu 10 min hinterher - gegen
+   * ihn gerechnet stünde ein gerade gemergtes Produkt noch als wartend da.
+   */
+  private approvedRaw(file: string): string | undefined {
+    const approved = this.approvedFiles()
+    if (approved) return approved.get(file)
+    return this.read.fileNamed(file)?.raw
+  }
+
+  /** Der freigegebene Stand als Produktdatei (`null` = neu). */
+  private approvedFile(file: string): ProductFile | null {
+    const approved = this.approvedFiles()
+    if (!approved) return this.read.fileNamed(file)
+    const raw = approved.get(file)
+    if (raw === undefined) return null
+    const key = `${file}\0${raw}`
+    if (!this.approvedParsed.has(key)) {
+      if (this.approvedParsed.size > 500) this.approvedParsed.clear()
+      this.approvedParsed.set(key, parseProductFile(file, raw))
+    }
+    return this.approvedParsed.get(key) ?? null
+  }
+
+  /** Dateinamen, deren Inhalt im Schreib-Worktree vom freigegebenen abweicht. */
   pendingFiles(): Set<string> {
     const pending = new Set<string>()
     const write = this.write
     if (!write) return pending
-    const read = this.read
     for (const file of write.files()) {
-      if (read.fileNamed(file.file)?.raw !== file.raw) pending.add(file.file)
+      if (this.approvedRaw(file.file) !== file.raw) pending.add(file.file)
     }
     return pending
   }
@@ -265,12 +290,15 @@ export class HqProductsService {
   ): ManagedProduct | null {
     const current = writeFile ?? readFile
     if (!current?.product) return null
-    const pending = writeFile !== null && writeFile.raw !== readFile?.raw
+    const pending =
+      writeFile !== null && writeFile.raw !== this.approvedRaw(writeFile.file)
     const product: ManagedProduct = {
       ...current.product,
       pendingApproval: pending,
     }
-    if (pending) product.approved = readFile?.product ?? null
+    if (pending) {
+      product.approved = this.approvedFile(current.file)?.product ?? null
+    }
     return product
   }
 
@@ -304,7 +332,11 @@ export class HqProductsService {
   }
 
   private enqueue<T>(job: () => Promise<T>): Promise<T> {
-    const run = this.queue.then(job, job)
+    // Im Schreib-Worktree dieselbe Warteschlange wie Rebase + Push (B5b):
+    // ein Rebase trifft nie auf einen halben Commit.
+    const writeDir = this.writeDir
+    const locked = writeDir ? () => withRepoLock(writeDir, job) : job
+    const run = this.queue.then(locked, locked)
     this.queue = run.catch(() => undefined)
     return run
   }
@@ -451,8 +483,11 @@ export class HqProductsService {
     if (before === content) return { ok: true, status: 200, pending }
 
     writeFileAtomic(full, content)
+    let committed = false
     try {
-      if (this.writeDir) await this.commit(file, action, product, editor)
+      if (this.writeDir) {
+        committed = await this.commit(file, action, product, editor)
+      }
     } catch (error) {
       console.error('[hq-products] commit failed:', error)
       try {
@@ -468,6 +503,13 @@ export class HqProductsService {
       return fail(500, 'hq_commit_failed', MSG.commitFailed)
     }
     this.invalidate()
+    if (committed) {
+      try {
+        this.afterCommit()
+      } catch (error) {
+        console.error('[hq-products] afterCommit failed:', error)
+      }
+    }
     return { ok: true, status: 200, pending }
   }
 
@@ -487,7 +529,7 @@ export class HqProductsService {
     action: 'update' | 'create',
     product: Record<string, unknown>,
     editor: Editor
-  ): Promise<void> {
+  ): Promise<boolean> {
     const cwd = this.writeDir as string
     const env = this.gitEnv()
     const rel = `products/${file}`
@@ -499,7 +541,7 @@ export class HqProductsService {
       ['diff', '--cached', '--name-only', '--', rel],
       { cwd, env }
     )
-    if (staged.trim() === '') return
+    if (staged.trim() === '') return false
     // Pfadangabe beim Commit: nur diese Datei, nie was sonst im Index liegt.
     await this.git(
       [
@@ -514,6 +556,7 @@ export class HqProductsService {
       ],
       { cwd, env }
     )
+    return true
   }
 
   /** Branch des Schreib-Worktrees (`HEAD` = losgelöst), `null` = kein Repo. */
