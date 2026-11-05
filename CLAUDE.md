@@ -400,6 +400,45 @@ Tests: `src/lib/pilotMode.spec.ts`, `src/app/admin/layout.pilot.spec.tsx`,
 `src/app/admin/DashboardClient.spec.tsx` (Management-App) und
 `libs/shared/contexts/src/lib/notification/notification.loadOnMount.spec.tsx`.
 
+## Backzettel (Kern, Z1/Z2)
+
+Stammdaten in `hq/config/backzettel.yaml` (privat), Tagesrechnung hier. Plan: `docs/roadmap.md` §5.
+
+- **Die Rechnung steht genau einmal**, in `apps/bakery-api/src/services/backzettel.core.js`
+  (dependency-freies CommonJS): `computeDay({config, date, preorderItems, capTemplate, corrections,
+seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt | CAP | Korrektur |
+  Gesamt) je Posten/Variante, die Hefeteig-Zusammenfassung (Teigstücke, Teig g, Chargen,
+  Abwiegeliste), den Füllungsbedarf mit skaliertem Rezept und die Vorbereitungen;
+  `computePreorderDeltas({config, date, before, after})` liefert die Deltas **je Vorbestellung**
+  (passt 1:1 auf `backzettel_deltas`; Z3 speichert dafür bei der Freigabe die Vorbestellungs-
+  positionen des Tages), `computeDeltas` vergleicht zusätzlich die Zeilen. Nie nur Summen
+  vergleichen: ein Viertel verschwindet in der Aufrundung, Neu + Storno heben sich auf.
+  `variantsForProduct` sagt, welche Varianten ein Produkt annimmt (für B7).
+  Schema-Prüfung: `backzettel-config.core.js` (`validateBackzettelConfig`, `normalizeConfig`),
+  Rezepte: `backzettel-recipes.core.js`, Datei-Lesen (js-yaml): `backzettel-config.loader.js`.
+- **Viertel erst summieren, dann aufrunden** - je Zeile (Posten × Variante). Aufgerundet wird mit
+  Toleranz (`roundUp`), sonst wird aus 10 × 1,1 = 11,000…02 eine 12. Stück/Blech ganzzahlig,
+  Liter/kg auf 0,01 (Haferbrot 1,24 l).
+- **Teigstücke und Füllungsgramm kommen aus der YAML**, nicht aus Code. Der gefüllte Kranz
+  (hq: 1 × 1200 g, alter Code: 3 × 600 g) ist offen (Q-B3) und nur dort einzustellen.
+- **`null` als Grundmenge heißt „noch nicht festgelegt“, `0` heißt „wird nicht gebacken“.** Eine
+  `null`-Zeile erscheint mit `baseUnset: true` (Warnung `base_unset`); nicht zu 0 zusammenlegen.
+  Gefüllte Posten (`filling_g`) brauchen die Grundmenge je Variante, sonst fehlt sie im
+  Füllungsbedarf (der Validator lehnt eine bloße Zahl ab).
+- **Rezeptpfade nur relativ unter `data/recipes/` und `.md`** - Validator und Loader prüfen das
+  beide; die YAML schreibt später die App (B5b).
+- **Variante = Füllungs-ID.** Gefüllte Ware ohne Variante zählt im Teig, aber nicht in der Füllung
+  (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
+- `formatTrayInfo` ist ein **Duplikat** von `feature-daily-prep/.../utils/trayInfo.ts`; beide
+  ändern.
+- CLI für das hq-CI (H2): `node apps/bakery-api/scripts/validate-backzettel.js <yaml> [productsDir]
+[--json]`, Exit 1 bei Fehlern. Der Loader braucht `js-yaml`, das im Root-`package.json` noch fehlt
+  (nur über `gray-matter` vorhanden) - B0 nimmt es auf, das hq-CI muss es selbst installieren. Nur Dateien mit `*.core.js`/`*.loader.js` in `src/services`
+  landen per `assets` in `dist/`.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/backzettel` (117,
+synthetische Fixtures in `tests/fixtures/backzettel.synthetic.js`).
+
 ## E2E-Suiten (Playwright)
 
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).

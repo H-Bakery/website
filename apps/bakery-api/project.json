@@ -34,6 +34,11 @@
             "input": "apps/bakery-api/src/services",
             "glob": "*.core.js",
             "output": "src/services"
+          },
+          {
+            "input": "apps/bakery-api/src/services",
+            "glob": "*.loader.js",
+            "output": "src/services"
           }
         ]
       }
