@@ -14,7 +14,17 @@
  *
  * Works against `DB_PATH` (same rules as the server, `.env` in the working
  * directory is read) and runs pending migrations first. Needs no JWT secret.
+ *
+ * B7/P4 (Vorbestellungen):
+ *
+ *   cli.js import-preorders --file apps/bakery-api/data/delivery-store.json [--dry-run]
+ *   cli.js anonymize-preorders [--dry-run] [--days 90] [--today YYYY-MM-DD]
+ *
+ * Both are idempotent and print a JSON report on stdout; `anonymize-preorders`
+ * runs nightly from `deploy/systemd/bakery-anonymize.timer` (23:45).
  */
+import * as fs from 'fs'
+
 import { ConfigError, loadConfig, loadEnvFile } from './config/env'
 import { openDatabase } from './db/database'
 import { runMigrations } from './db/migrate'
@@ -24,6 +34,10 @@ import {
   upsertUser,
   validateUserInput,
 } from './auth/users.service'
+import {
+  anonymizePreorders,
+  importDeliveryStore,
+} from './services/preorders-maintenance'
 
 const USAGE = `Aufruf:
   cli.js create-user --username <name> --display-name <Anzeigename> --role <rolle>
@@ -35,7 +49,18 @@ const USAGE = `Aufruf:
   Datenbank: DB_PATH (wie der Server; .env im Arbeitsverzeichnis wird gelesen)
 
   Legt den Benutzer an oder setzt einen vorhandenen (auch deaktivierten)
-  zurück: Name, Rolle und Passwort neu, wieder aktiv, alle Sitzungen beendet.`
+  zurück: Name, Rolle und Passwort neu, wieder aktiv, alle Sitzungen beendet.
+
+  cli.js import-preorders --file <delivery-store.json> [--dry-run]
+    Übernimmt Sammelstellen und Vorbestellungen aus dem Store des
+    Mock-Servers. Idempotent (schon importierte werden übersprungen).
+
+  cli.js anonymize-preorders [--dry-run] [--days 90] [--today JJJJ-MM-TT]
+    DSGVO: Name, Telefon und Anmerkung abgeschlossener Vorbestellungen,
+    deren Abholtag mehr als 90 Tage zurückliegt, werden gelöscht.`
+
+/** Flags without a value. */
+const BOOLEAN_FLAGS = new Set(['dry-run'])
 
 export function parseArgs(argv: string[]): {
   command: string | undefined
@@ -50,6 +75,8 @@ export function parseArgs(argv: string[]): {
     const [, name, inline] = match
     if (inline !== undefined) {
       flags[name] = inline
+    } else if (BOOLEAN_FLAGS.has(name)) {
+      flags[name] = 'true'
     } else {
       const value = rest[i + 1]
       if (value === undefined || value.startsWith('--')) {
@@ -142,6 +169,20 @@ async function createUser(flags: Record<string, string>): Promise<void> {
   // Before touching the database: bad input must not migrate anything.
   validateUserInput(input)
 
+  await withDatabase(async (dbPath) => {
+    const { user, created } = await upsertUser(input)
+    console.log(
+      `${created ? 'Angelegt' : 'Zurückgesetzt und aktiviert'}: ` +
+        `${user.username} (id ${user.id}, Rolle ${user.role}, ` +
+        `PIN ${user.hasPin ? 'gesetzt' : 'keine'}) in ${dbPath}`
+    )
+  })
+}
+
+/** Opens `DB_PATH` (server rules), migrates, initialises the models. */
+async function withDatabase(
+  work: (dbPath: string) => Promise<void>
+): Promise<void> {
   const config = loadConfig()
   const { sequelize } = await openDatabase({
     storage: config.dbPath,
@@ -158,15 +199,73 @@ async function createUser(flags: Record<string, string>): Promise<void> {
       )
     }
     await initializeModels(sequelize)
-    const { user, created } = await upsertUser(input)
-    console.log(
-      `${created ? 'Angelegt' : 'Zurückgesetzt und aktiviert'}: ` +
-        `${user.username} (id ${user.id}, Rolle ${user.role}, ` +
-        `PIN ${user.hasPin ? 'gesetzt' : 'keine'}) in ${config.dbPath}`
-    )
+    await work(config.dbPath)
   } finally {
     await sequelize.close()
   }
+}
+
+function onlyFlags(flags: Record<string, string>, allowed: string[]): void {
+  const unknown = Object.keys(flags).filter((f) => !allowed.includes(f))
+  if (unknown.length > 0) {
+    throw new UserInputError(`Unbekannte Option: --${unknown[0]}\n\n${USAGE}`)
+  }
+}
+
+async function importPreorders(flags: Record<string, string>): Promise<void> {
+  onlyFlags(flags, ['file', 'dry-run'])
+  if (!flags['file']) throw new UserInputError(`--file fehlt.\n\n${USAGE}`)
+  let store: unknown
+  try {
+    store = JSON.parse(fs.readFileSync(flags['file'], 'utf8'))
+  } catch (error) {
+    throw new UserInputError(
+      `${flags['file']} lässt sich nicht lesen: ${(error as Error).message}`
+    )
+  }
+  const dryRun = flags['dry-run'] === 'true'
+  await withDatabase(async () => {
+    const report = await importDeliveryStore(store, { dryRun })
+    console.log(JSON.stringify(report, null, 2))
+    console.error(
+      `${dryRun ? '[PROBELAUF] ' : ''}${report.imported.length} importiert, ` +
+        `${report.alreadyImported.length} schon vorhanden, ` +
+        `${report.skipped.length} übersprungen; Sammelstellen neu: ` +
+        `${report.pickupPoints.created.length}.`
+    )
+  })
+}
+
+async function anonymize(flags: Record<string, string>): Promise<void> {
+  onlyFlags(flags, ['dry-run', 'days', 'today'])
+  let days: number | undefined
+  if (flags['days'] !== undefined) {
+    days = Number(flags['days'])
+    if (!Number.isInteger(days) || days < 1 || String(days) !== flags['days']) {
+      throw new UserInputError('--days muss eine ganze Zahl ≥ 1 sein.')
+    }
+  }
+  const today = flags['today']
+  if (today !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(today)) {
+    throw new UserInputError('--today muss JJJJ-MM-TT sein.')
+  }
+  const dryRun = flags['dry-run'] === 'true'
+  await withDatabase(async () => {
+    let report
+    try {
+      report = await anonymizePreorders({ days, today, dryRun })
+    } catch (error) {
+      throw new UserInputError((error as Error).message)
+    }
+    console.log(JSON.stringify(report, null, 2))
+    console.error(
+      `${dryRun ? '[PROBELAUF] ' : ''}${
+        report.anonymized.length
+      } Vorbestellung(en) ` +
+        `mit Abholtag vor ${report.cutoff} anonymisiert; ${report.stillOpen} ältere ` +
+        `sind noch offen/bereit und bleiben.`
+    )
+  })
 }
 
 export async function main(argv: string[]): Promise<number> {
@@ -175,6 +274,14 @@ export async function main(argv: string[]): Promise<number> {
     const { command, flags } = parseArgs(argv)
     if (command === 'create-user') {
       await createUser(flags)
+      return 0
+    }
+    if (command === 'import-preorders') {
+      await importPreorders(flags)
+      return 0
+    }
+    if (command === 'anonymize-preorders') {
+      await anonymize(flags)
       return 0
     }
     if (command === undefined || command === 'help' || command === '--help') {
