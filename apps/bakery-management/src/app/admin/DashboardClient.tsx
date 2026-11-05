@@ -189,10 +189,12 @@ export default function DashboardClient({
   // F1: das Dashboard ist auch Ausweich-Startseite für Verkauf und Backstube
   // - Kasse, Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite
   // dahinter öffnen darf (ROLE_ACCESS). Ohne Sitzung (Specs) wie bisher.
-  const role = useOptionalSession()?.user?.role ?? null
+  const session = useOptionalSession()
+  const role = session?.user?.role ?? null
+  const sessionKind = session?.sessionKind ?? null
   const allowed = (href: string) =>
     isPilotPathAllowed(href, pilot) &&
-    (role === null || isPathAllowedForRole(href, role))
+    (role === null || isPathAllowedForRole(href, role, sessionKind))
   const visibleQuickLinks = quickLinks.filter((link) => allowed(link.href))
   const showCash = allowed('/admin/reports')
   const showTargets = allowed('/admin/finance/tagesziel')

@@ -57,6 +57,12 @@ export interface SessionContextValue {
   isLoading: boolean
   /** Warum die App zuletzt abgemeldet hat (deutsch), sonst `null`. */
   endReason: string | null
+  /**
+   * `true` nach „Abmelden" (bis zur nächsten Anmeldung). Der RouteGuard
+   * leitet dann ohne `?next=` weiter - die nächste Person soll nicht auf der
+   * letzten Seite der vorigen landen.
+   */
+  loggedOut: boolean
   clearEndReason: () => void
   login: (username: string, password: string) => Promise<SessionUser>
   pinLogin: (
@@ -170,6 +176,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = React.useState<StoredSession | null>(null)
   const [status, setStatus] = React.useState<SessionStatus>('loading')
   const [endReason, setEndReason] = React.useState<string | null>(null)
+  const [loggedOut, setLoggedOut] = React.useState(false)
 
   const becomeAnonymous = React.useCallback((reason: string | null) => {
     setSession(null)
@@ -307,6 +314,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     setSession(next)
     setStatus('authenticated')
     setEndReason(null)
+    setLoggedOut(false)
     return next.user
   }, [])
 
@@ -336,6 +344,9 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   )
 
   const logout = React.useCallback(async () => {
+    // Vor dem Zustandswechsel setzen: rendert der RouteGuard die Seite als
+    // anonym, weiß er schon, dass das kein Ablauf war.
+    setLoggedOut(true)
     await endSession(null)
     return logoutTarget()
   }, [endSession])
@@ -350,12 +361,22 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       isAuthenticated: status === 'authenticated' && session !== null,
       isLoading: status === 'loading',
       endReason,
+      loggedOut,
       clearEndReason,
       login,
       pinLogin,
       logout,
     }),
-    [status, session, endReason, clearEndReason, login, pinLogin, logout]
+    [
+      status,
+      session,
+      endReason,
+      loggedOut,
+      clearEndReason,
+      login,
+      pinLogin,
+      logout,
+    ]
   )
 
   return (

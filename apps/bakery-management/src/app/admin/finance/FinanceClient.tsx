@@ -488,7 +488,7 @@ export default function FinanceClient() {
     }
   }, [])
 
-  // Erst laden, wenn der AuthProvider ein gespeichertes Token geprüft hat -
+  // Erst laden, wenn der SessionProvider ein gespeichertes Token geprüft hat -
   // sonst liefe die Anfrage ohne Header los und die Seite zeigte kurz
   // "Anmeldung erforderlich", obwohl man angemeldet ist.
   useEffect(() => {

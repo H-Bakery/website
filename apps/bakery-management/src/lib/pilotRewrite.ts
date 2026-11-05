@@ -6,8 +6,8 @@
  * wie bisher `PilotUnavailable`, weil `usePathname()` die Original-URL liefert.
  *
  * Erlaubte Routen stehen weiter nur in `PILOT_ALLOWED_ROUTES` (pilotMode.ts).
- * Anmeldung und Rollen prüft der Proxy nicht - die Tokens liegen in
- * `localStorage`, der Server sieht sie nicht (RouteGuard, API).
+ * Anmeldung und Rollen prüft der Proxy danach über das Sitzungs-Cookie
+ * (`lib/serverSession.ts`).
  */
 
 import { isPilotMode, isPilotPathAllowed } from './pilotMode'

@@ -96,4 +96,17 @@ describe('AdminLayout mit Rollen (F1)', () => {
     expect(screen.getByText('Seiteninhalt')).toBeInTheDocument()
     expect(document.querySelector('.MuiDrawer-paper')).toBeNull()
   })
+
+  it('Inhaber an der Station: keine Benutzerverwaltung, mit Begründung', () => {
+    renderLayout(
+      '/admin/users',
+      fakeSession({ role: 'inhaber', sessionKind: 'station' })
+    )
+    expect(navLabels()).not.toContain('Benutzer')
+    expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()
+    expect(
+      screen.getByText(/an einer Station nicht verfügbar/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
+  })
 })

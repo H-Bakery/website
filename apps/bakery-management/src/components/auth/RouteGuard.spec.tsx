@@ -72,10 +72,22 @@ describe('RouteGuard', () => {
     expect(screen.queryByText('Geschützter Inhalt')).not.toBeInTheDocument()
   })
 
+  it('nach „Abmelden" zur Anmeldung ohne ?next= (kein Rennen mit dem LogoutButton)', () => {
+    renderGuard('/admin/finance', fakeSession({ loggedOut: true }))
+    expect(mockReplace).toHaveBeenCalledWith('/admin/login')
+  })
+
+  it('nach „Abmelden" an der Station zu den Namenskacheln', () => {
+    saveStation({ token: 'st_x', name: 'Laden' })
+    renderGuard('/admin/partners', fakeSession({ loggedOut: true }))
+    expect(mockReplace).toHaveBeenCalledWith('/station')
+  })
+
   it('anonymousRedirect kodiert den Rückweg', () => {
     expect(anonymousRedirect('/admin/users', false)).toBe(
       '/admin/login?next=%2Fadmin%2Fusers'
     )
     expect(anonymousRedirect('/admin/users', true)).toBe('/station')
+    expect(anonymousRedirect('/admin/users', false, true)).toBe('/admin/login')
   })
 })

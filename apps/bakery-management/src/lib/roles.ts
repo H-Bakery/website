@@ -7,9 +7,10 @@
  * (`resolvePostLoginPath`) fragen alle diese Tabelle. Wer einer Rolle eine
  * Seite gibt oder nimmt, ändert nur sie.
  *
- * Das ist Bedienführung, keine Zugriffskontrolle: Daten schützt die API mit
- * `requireRole(...)` (B3). Die Seiten-Sperre verhindert nur, dass jemand im
- * Laden auf einer Seite landet, deren Anfragen ohnehin mit 403 enden.
+ * Im Browser ist das Bedienführung. Durchgesetzt wird dieselbe Tabelle
+ * serverseitig von `src/proxy.ts` (Server-Komponenten rendern nur für
+ * erlaubte Rollen, `lib/serverSession.ts`) und an der API mit
+ * `requireRole(...)` (B3).
  *
  * Aufgebaut auf `getNavigation()` aus F2 (admin/navigation.ts), damit
  * Pilotbetrieb und Rollen sich überlagern: was im Pilotbetrieb fehlt, fehlt
@@ -136,14 +137,41 @@ function matchesRule(path: string, rule: RouteRule): boolean {
   return underPrefix(path, rule)
 }
 
-/** Ob die Rolle `pathname` öffnen darf. Öffentliche Pfade darf jede. */
+/**
+ * Seiten, die nur eine persönliche Anmeldung (Benutzername + Passwort) öffnet,
+ * nie eine PIN-Sitzung an einer Station - auch nicht für den Inhaber. Die API
+ * verweigert sie dort mit 403 `personal_session_required` (B3,
+ * `requirePersonalSession`); hier wird daraus Bedienführung statt
+ * Fehlermeldung.
+ */
+export const PERSONAL_ONLY_ROUTES: readonly string[] = ['/admin/users']
+
+/** Sitzungsart, wie sie `authSession.ts` speichert (hier ohne Import-Zyklus). */
+export type AccessSessionKind = 'personal' | 'station'
+
+/** Ob `pathname` an einer Station (PIN-Sitzung) gesperrt ist. */
+export function isPersonalOnlyPath(pathname: string): boolean {
+  const path = normalizePath(pathname)
+  return PERSONAL_ONLY_ROUTES.some((prefix) => underPrefix(path, prefix))
+}
+
+/** Begründung für „Kein Zugriff" an einer Station (deutsch). */
+export const STATION_NO_ACCESS_REASON =
+  'Diese Seite ist an einer Station nicht verfügbar. Bitte an einem eigenen Gerät mit Benutzername und Passwort anmelden.'
+
+/**
+ * Ob die Rolle `pathname` öffnen darf. Öffentliche Pfade darf jede. Mit
+ * `sessionKind: 'station'` sind zusätzlich `PERSONAL_ONLY_ROUTES` gesperrt.
+ */
 export function isPathAllowedForRole(
   pathname: string,
-  role: PilotRole | null | undefined
+  role: PilotRole | null | undefined,
+  sessionKind?: AccessSessionKind | null
 ): boolean {
   const path = normalizePath(pathname)
   if (PUBLIC_PATHS.includes(path)) return true
   if (!role) return false
+  if (sessionKind === 'station' && isPersonalOnlyPath(path)) return false
   const access = ROLE_ACCESS[role]
   if (access.routes === 'all') return true
   return access.routes.some((rule) => matchesRule(path, rule))
@@ -181,24 +209,32 @@ export function resolvePostLoginPath(
   return startPathForRole(role)
 }
 
-function filterForRole(items: NavItem[], role: PilotRole): NavItem[] {
+function filterForRole(
+  items: NavItem[],
+  role: PilotRole,
+  sessionKind: AccessSessionKind | null
+): NavItem[] {
   return items.flatMap((item): NavItem[] => {
     if (item.submenu) {
-      const submenu = filterForRole(item.submenu, role)
+      const submenu = filterForRole(item.submenu, role, sessionKind)
       return submenu.length > 0 ? [{ ...item, submenu }] : []
     }
     // Die Anmeldung steht in der Kopfzeile (Name + Abmelden), nicht im Menü.
     if (item.href === '/admin/login') return []
     if (item.external) return role === 'inhaber' ? [item] : []
     if (!item.href) return []
-    return isPathAllowedForRole(item.href, role) ? [item] : []
+    return isPathAllowedForRole(item.href, role, sessionKind) ? [item] : []
   })
 }
 
-/** Navigation für Rolle und Modus: `getNavigation(pilot)`, gefiltert nach `ROLE_ACCESS`. */
+/**
+ * Navigation für Rolle, Modus und Sitzungsart: `getNavigation(pilot)`,
+ * gefiltert nach `ROLE_ACCESS` (an einer Station ohne `PERSONAL_ONLY_ROUTES`).
+ */
 export function getNavigationForRole(
   role: PilotRole,
-  pilot: boolean = isPilotMode()
+  pilot: boolean = isPilotMode(),
+  sessionKind: AccessSessionKind | null = null
 ): NavItem[] {
-  return filterForRole(getNavigation(pilot), role)
+  return filterForRole(getNavigation(pilot), role, sessionKind)
 }

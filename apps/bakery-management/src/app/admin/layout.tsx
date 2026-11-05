@@ -59,6 +59,7 @@ import {
   getNavigationForRole,
   isPathAllowedForRole,
   startPathForRole,
+  STATION_NO_ACCESS_REASON,
 } from '../../lib/roles'
 import NoAccess from '../../components/auth/NoAccess'
 import LogoutButton from '../../components/auth/LogoutButton'
@@ -177,19 +178,23 @@ function AdminShell({
   const session = useOptionalSession()
   const user = session?.user ?? null
   const role = user?.role ?? null
+  const sessionKind = session?.sessionKind ?? null
   // Pilotbetrieb (F2): gefilterte Navigation und Sperre der Demo-Seiten - die
   // erlaubten Routen stehen genau einmal in src/lib/pilotMode.ts.
-  // Die Sperre versteckt nur Demo-Seiten im Browser; sie ist KEINE
-  // Zugriffskontrolle (Server-Komponente und RSC-Payload einer gesperrten Seite
-  // entstehen trotzdem, die API bleibt direkt erreichbar). Durchgesetzt wird
-  // der Zugriff von der middleware.ts aus F1 und den Rollen-Guards der API.
+  // Die Sperre hier ist Bedienführung im Browser. Durchgesetzt wird der
+  // Zugriff serverseitig von src/proxy.ts (Pilot-Sperre + Sitzungs-Cookie mit
+  // Rollenprüfung, F1) und von den Rollen-Guards der API.
   const pilot = isPilotMode()
   const navigation = React.useMemo(
-    () => (role ? getNavigationForRole(role, pilot) : getNavigation(pilot)),
-    [pilot, role]
+    () =>
+      role
+        ? getNavigationForRole(role, pilot, sessionKind)
+        : getNavigation(pilot),
+    [pilot, role, sessionKind]
   )
   const blocked = !isPilotPathAllowed(pathname, pilot)
-  const forbidden = role !== null && !isPathAllowedForRole(pathname, role)
+  const forbidden =
+    role !== null && !isPathAllowedForRole(pathname, role, sessionKind)
   const isStation = session?.sessionKind === 'station'
   const [openSubmenus, setOpenSubmenus] = React.useState<
     Record<string, boolean>
@@ -525,6 +530,11 @@ function AdminShell({
           <NoAccess
             roleLabel={ROLE_LABELS[role]}
             startPath={startPathForRole(role)}
+            reason={
+              sessionKind === 'station' && isPathAllowedForRole(pathname, role)
+                ? STATION_NO_ACCESS_REASON
+                : undefined
+            }
           />
         ) : (
           children

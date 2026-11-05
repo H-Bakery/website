@@ -528,7 +528,7 @@ export default function TagesZielClient() {
     }
   }, [])
 
-  // Erst laden, wenn der AuthProvider ein gespeichertes Token geprüft hat.
+  // Erst laden, wenn der SessionProvider ein gespeichertes Token geprüft hat.
   useEffect(() => {
     if (authLoading) return
     load()

@@ -519,14 +519,18 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
 ## Anmeldung, Stationen und Rollen in der Management-App (F1)
 
 Die Management-App spricht den B3-Vertrag (Abschnitt oben). Ohne Sitzung zeigt kein Bildschirm unter
-`/admin` oder `/backstube` etwas außer der Anmeldung. Sechs Dinge, die man wissen muss:
+`/admin` oder `/backstube` etwas außer der Anmeldung - weder im Browser noch im Server-HTML/RSC-Payload.
+Sieben Dinge, die man wissen muss:
 
 - **Die Sitzung gehört `src/lib/session.tsx`, nicht dem geteilten `AuthProvider`.** `SessionProvider`
   (in `Providers.tsx`) ersetzt in dieser App den `AuthProvider` aus `@bakery/shared/contexts` - der
   schickte alle 5 min einen leeren Refresh-Token und kannte weder PIN noch Pilot-Rollen. Seiten
   lesen `useSession()` (wirft ohne Provider) oder `useOptionalSession()` (Layout, Chat, Produkte,
   Dashboard - rendern auch ohne). `useAuth()` aus den Shared Contexts hat in dieser App **keinen
-  Provider** mehr; wer es neu benutzt, bekommt einen Fehler.
+  Provider** mehr und würde zur Laufzeit werfen - deshalb verbietet
+  `apps/bakery-management/.eslintrc.json` (`no-restricted-imports`) `useAuth`, `useCurrentUser`,
+  `useIsAuthenticated`, `AuthProvider` und `RootProvider` aus `@bakery/shared/contexts`; ein
+  Zweig, der das Muster mitbringt, fällt im Lint statt im Browser.
 - **Speicher: `src/lib/authSession.ts`** - `bakery-management-session` (Access- + Refresh-Token,
   Benutzer, `sessionKind`, Anmeldezeit), `bakery-management-activity` (letzte Bedienung, von allen
   Tabs gemeinsam), `bakery-management-station` (Stations-Token; bleibt beim Abmelden stehen). Der
@@ -541,13 +545,36 @@ Die Management-App spricht den B3-Vertrag (Abschnitt oben). Ohne Sitzung zeigt k
   Laden). Login, Refresh, PIN und Logout laufen mit `retryOnUnauthorized: false` (`src/lib/authApi.ts`).
   Zusätzliche Header je Anfrage (`X-Station-Token`) gehen über das neue dritte Argument
   `RequestOptions` von `get/post/put/patch/delete`.
-- **Wache: `components/auth/RouteGuard.tsx`, client-seitig, in `Providers.tsx`.** Solange `status`
+- **Serverseitige Wache: `src/proxy.ts` + Sitzungs-Cookie.** Server-Komponenten lesen hq-Daten
+  (Berichtsarchiv, Kassentag, Kassen-Kachel des Dashboards, Produktliste) - ohne Prüfung stünden
+  sie im RSC-Payload jeder anonymen Anfrage. Darum spiegelt `authSession.ts` (`saveSession`,
+  `restoreSession`, `clearSession`) das **Access-Token** in das Cookie `bakery-management-at`
+  (`src/lib/sessionCookie.ts`, `SameSite=Lax`, von JS gesetzt - nicht schwächer als
+  `localStorage`, die API nimmt keine Cookies an). Der Proxy fragt damit
+  `GET {API_URL}/api/auth/me` (`src/lib/serverSession.ts`: 30 s Cache je Token, abgelaufenes `exp`
+  ohne Anfrage, API weg = ungültig) und lässt `/admin/**` und `/backstube/**` (außer
+  `/admin/login`) nur rendern, wenn `ROLE_ACCESS` Rolle **und** Sitzungsart die Seite erlauben.
+  Sonst schreibt er auf `/admin/sitzung-pruefen` um (URL bleibt, keine Daten, `no-store`); dort
+  erneuert `components/auth/SessionCheckPending.tsx` das Token (`GET /api/auth/me`, 401 → Refresh
+  → neues Cookie) und holt die Seite mit `router.refresh()` neu - einmal, danach ein Hinweis mit
+  „Erneut versuchen" statt einer Schleife. Geprüfte Rolle/Sitzungsart reicht der Proxy als
+  `x-bakery-role` / `x-bakery-session-kind` an die Seite (eingehende Header dieser Namen löscht er
+  immer); `admin/page.tsx` liest die Kassenzahlen nur, wenn die Rolle `/admin/reports` öffnen darf
+  (`mayLoadCashTile`) - Verkauf/Backstube bekommen das Dashboard ohne Kassen-Payload. Wer eine neue
+  Server-Komponente mit sensiblen Daten baut, gibt die Route in `ROLE_ACCESS` nur den Rollen, die
+  sie sehen dürfen; der Proxy erledigt den Rest. `API_URL` muss für `next start` gesetzt sein (auf
+  der Box über `bakery.env`). Ein widerrufenes Token rendert höchstens 30 s weiter Seiten; die API
+  lehnt es sofort ab.
+- **Client-Wache: `components/auth/RouteGuard.tsx`, in `Providers.tsx`.** Solange `status`
   `loading` ist (Start, `GET /api/auth/me`) oder eine Weiterleitung läuft, steht nur
   `SessionLoading` da - auch im Server-HTML, also kein Aufblitzen geschützter Inhalte. Ohne
-  Sitzung: `/admin/login?next=…`, auf einem Gerät mit Stations-Token `/station`. Sie sitzt nicht
+  Sitzung: `/admin/login?next=…`, auf einem Gerät mit Stations-Token `/station`; nach „Abmelden"
+  (`loggedOut` im Sitzungskontext) **ohne** `?next=`, damit die nächste Person nicht auf der
+  letzten Seite der vorigen landet. Sie sitzt nicht
   im Admin-Layout, weil `/backstube` keins hat (und F2s `pilotMode.spec.ts` ein Verzeichnis
   `app/backstube/` ohne `page.tsx` verbietet). Die Rolle prüft unter `/admin` das Admin-Layout
-  („Kein Zugriff" statt Inhalt), außerhalb die Wache. Das ist Bedienführung - Daten schützt die API.
+  („Kein Zugriff" statt Inhalt), außerhalb die Wache. Das ist Bedienführung - Daten schützen der
+  Proxy (Server-Komponenten) und die API.
 - **Eine Tabelle Rolle → Routen + Startseite: `ROLE_ACCESS` in `src/lib/roles.ts`.** Inhaber alles;
   Verkauf Dashboard, `/admin/preorders` (M1), Sammelstelle Mörsbach, Produkte **nur die Liste**
   (ohne Neu/Bearbeiten), Backschrank; Backstube Dashboard, `/admin/backzettel`, `/backstube`;
@@ -556,7 +583,10 @@ Die Management-App spricht den B3-Vertrag (Abschnitt oben). Ohne Sitzung zeigt k
   `/admin`, Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
   `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
   Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
-  eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`).
+  eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
+  (`/admin/users`) sind an einer Station (PIN-Sitzung) auch für den Inhaber gesperrt - wie
+  `requirePersonalSession` der API; Navigation, Layout („Kein Zugriff" mit Begründung) und Proxy
+  fragen `isPathAllowedForRole(path, role, sessionKind)`.
 - **Station (`/station`, außerhalb `/admin`, ohne Seitenleiste).** Ohne Token richtet ein mit
   Passwort angemeldeter Inhaber das Gerät ein (`POST /api/auth/stations`); danach wird seine
   persönliche Sitzung auf dem Tablet beendet. Mit Token: Namenskacheln
@@ -564,19 +594,25 @@ Die Management-App spricht den B3-Vertrag (Abschnitt oben). Ohne Sitzung zeigt k
   `"0420"`) → `POST /api/auth/pin` → Startseite der Rolle. Eine widerrufene Station (403
   `station_required`) vergisst ihr Token und zeigt wieder die Einrichtung. Leerlauf
   (`src/lib/sessionPolicy.ts`): Station nach `NEXT_PUBLIC_STATION_IDLE_MINUTES` (10) zurück zu den
-  Kacheln, spätestens 12 h nach der PIN; persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h).
+  Kacheln, spätestens 12 h nach der PIN; optional zur Uhrzeit `NEXT_PUBLIC_STATION_LOGOUT_AT`
+  (`HH:MM`, Ortszeit, z. B. Ladenschluss - ohne Wert keine feste Uhrzeit, weil die Backstube
+  nachmittags vorbereitet); persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h).
   „Abmelden" (`components/auth/LogoutButton.tsx`) steht in der Kopfzeile, auf Stationen groß -
   Z6 (`/backstube`, ohne Admin-Layout) muss ihn selbst einbinden.
 
 Dazu: `/admin/users` (nur Inhaber) verwaltet Konten, Rollen, Passwörter, PINs und Stationen
 (Widerrufen); Fehler wie `last_inhaber` kommen als deutsche API-Meldung in den Dialog.
-**`src/proxy.ts`** (Next 16, früher `middleware.ts`) schreibt im Pilotbetrieb gesperrte
+**`src/proxy.ts`** (Next 16, früher `middleware.ts`) schreibt außerdem im Pilotbetrieb gesperrte
 `/admin`-Routen auf `/admin/nicht-verfuegbar` um (`src/lib/pilotRewrite.ts`), sodass die
-Demo-Seiten serverseitig gar nicht mehr rendern; Anmeldung prüft der Proxy nicht (die Tokens liegen
-in `localStorage`). Die E2E-Smoke-Suite meldet sich an der Mock-API an
-(`apps/bakery-management-e2e/src/login.ts`, `admin`/`admin`).
+Demo-Seiten serverseitig gar nicht mehr rendern. Die E2E-Smoke-Suite meldet sich an der Mock-API
+an (`apps/bakery-management-e2e/src/login.ts`, `admin`/`admin`, Rolle aus der Antwort normalisiert),
+legt die Sitzung in `localStorage` **und** das Sitzungs-Cookie, und prüft, dass eine anonyme
+`GET /admin/products` keinen Produktnamen enthält.
 
-Tests: `src/lib/{authSession,roles,sessionPolicy}.spec.ts`, `src/lib/session.spec.tsx`,
+Tests: `src/lib/{authSession,roles,sessionPolicy,serverSession}.spec.ts`, `src/proxy.spec.ts`
+(beide `@jest-environment node` - `test-setup.ts` legt die Browser-Attrappen nur mit `window` an),
+`admin/page.spec.tsx` (Kassen-Kachel nach Rolle), `components/auth/SessionCheckPending.spec.tsx`,
+`src/lib/session.spec.tsx`,
 `src/lib/session.refresh.spec.tsx` (echter `ApiClient`, nachgebautes `fetch`),
 `components/auth/RouteGuard.spec.tsx`, `admin/login/page.spec.tsx`, `station/StationClient.spec.tsx`,
 `admin/users/UsersClient.spec.tsx`, `admin/layout.roles.spec.tsx`,

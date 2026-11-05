@@ -16,21 +16,29 @@ import NoAccess from './NoAccess'
  * Wohin ohne Sitzung: ein als Station eingerichtetes Gerät zu den
  * Namenskacheln, jedes andere zur Anmeldung (mit `?next=` zurück).
  */
-export function anonymousRedirect(pathname: string, isStation: boolean) {
+export function anonymousRedirect(
+  pathname: string,
+  isStation: boolean,
+  loggedOut = false
+) {
   if (isStation) return '/station'
+  // Nach „Abmelden" kein `?next=`: sonst landet die nächste Person auf der
+  // letzten Seite der vorigen (LogoutButton und Wache führen so zum selben Ziel).
+  if (loggedOut) return '/admin/login'
   return `/admin/login?next=${encodeURIComponent(pathname)}`
 }
 
 /**
  * Client-seitige Wache für `/admin/**` und `/backstube/**` (F1).
  *
- * Die Tokens liegen in `localStorage`, der Server sieht sie nicht - deshalb
- * entscheidet der Browser: solange die Sitzung geprüft wird oder eine
+ * Die Sitzung liegt in `localStorage`: solange sie geprüft wird oder eine
  * Weiterleitung läuft, steht nur ein Ladezustand da, nie die geschützte
- * Seite. Ohne Sitzung geht es zur Anmeldung bzw. zur Station.
+ * Seite. Ohne Sitzung geht es zur Anmeldung bzw. zur Station. Serverseitig
+ * rendert `src/proxy.ts` geschützte Seiten nur mit gültigem Sitzungs-Cookie
+ * (sonst die leere Prüfseite) - so stehen auch im RSC-Payload keine Daten.
  *
  * Rollen: unter `/admin` prüft das Admin-Layout (mit Seitenleiste); außerhalb
- * (`/backstube`) prüft diese Wache selbst. Daten schützt die API.
+ * (`/backstube`) prüft diese Wache selbst.
  */
 export default function RouteGuard({
   children,
@@ -39,14 +47,16 @@ export default function RouteGuard({
 }) {
   const pathname = usePathname() || '/'
   const router = useRouter()
-  const { status, user } = useSession()
+  const { status, user, sessionKind, loggedOut } = useSession()
   const isProtected = isProtectedPath(pathname)
 
   React.useEffect(() => {
     if (isProtected && status === 'anonymous') {
-      router.replace(anonymousRedirect(pathname, loadStation() !== null))
+      router.replace(
+        anonymousRedirect(pathname, loadStation() !== null, loggedOut)
+      )
     }
-  }, [isProtected, status, pathname, router])
+  }, [isProtected, status, pathname, router, loggedOut])
 
   if (!isProtected) return <>{children}</>
   if (status !== 'authenticated' || !user) {
@@ -61,7 +71,7 @@ export default function RouteGuard({
     )
   }
   const insideAdmin = pathname === '/admin' || pathname.startsWith('/admin/')
-  if (!insideAdmin && !isPathAllowedForRole(pathname, user.role)) {
+  if (!insideAdmin && !isPathAllowedForRole(pathname, user.role, sessionKind)) {
     return (
       <NoAccess
         roleLabel={ROLE_LABELS[user.role]}

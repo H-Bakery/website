@@ -26,6 +26,7 @@ export function fakeSession(
     isAuthenticated: status === 'authenticated' && user !== null,
     isLoading: status === 'loading',
     endReason: null,
+    loggedOut: false,
     clearEndReason: jest.fn(),
     login: jest.fn(),
     pinLogin: jest.fn(),

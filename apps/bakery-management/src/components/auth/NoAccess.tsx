@@ -12,9 +12,12 @@ import Link from 'next/link'
 export default function NoAccess({
   roleLabel,
   startPath,
+  reason,
 }: {
   roleLabel: string
   startPath: string
+  /** Eigene Begründung statt „für die Rolle … nicht freigegeben". */
+  reason?: string
 }) {
   return (
     <Paper
@@ -34,7 +37,8 @@ export default function NoAccess({
         </Typography>
       </Box>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Diese Seite ist für die Rolle „{roleLabel}“ nicht freigegeben.
+        {reason ??
+          `Diese Seite ist für die Rolle „${roleLabel}“ nicht freigegeben.`}
       </Typography>
       <Button variant="contained" component={Link} href={startPath}>
         Zur Startseite

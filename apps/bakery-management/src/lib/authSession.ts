@@ -12,6 +12,10 @@
  * - `bakery-management-station`: Stations-Token dieses Geräts (bleibt beim
  *   Abmelden erhalten - das Gerät bleibt Station).
  *
+ * Zusätzlich spiegeln `saveSession`/`restoreSession`/`clearSession` das
+ * Access-Token in das Cookie aus `sessionCookie.ts`, damit `src/proxy.ts`
+ * serverseitig prüfen kann, ob eine Seite überhaupt rendern darf.
+ *
  * Der Refresh-Token muss gespeichert werden: die echte API nimmt an
  * `/api/auth/refresh` kein Access-Token an und rotiert den Refresh-Token bei
  * jedem Aufruf (B3).
@@ -22,6 +26,7 @@
 
 import { apiClient } from '@bakery/shared/data-access'
 import { normalizeRole, type PilotRole } from './roles'
+import { writeSessionCookie } from './sessionCookie'
 
 export const SESSION_STORAGE_KEY = 'bakery-management-session'
 export const ACTIVITY_STORAGE_KEY = 'bakery-management-activity'
@@ -129,6 +134,7 @@ export function loadSession(): StoredSession | null {
 export function saveSession(session: StoredSession): void {
   write(SESSION_STORAGE_KEY, JSON.stringify(session))
   write(LEGACY_TOKEN_STORAGE_KEY, null)
+  writeSessionCookie(session.token)
 }
 
 /** Vergisst die Sitzung (nicht die Station) und nimmt das Token vom `apiClient`. */
@@ -136,6 +142,7 @@ export function clearSession(): void {
   write(SESSION_STORAGE_KEY, null)
   write(ACTIVITY_STORAGE_KEY, null)
   write(LEGACY_TOKEN_STORAGE_KEY, null)
+  writeSessionCookie(null)
   apiClient.clearAuthToken()
 }
 
@@ -145,7 +152,10 @@ export function clearSession(): void {
  */
 export function restoreSession(): StoredSession | null {
   const session = loadSession()
-  if (session) apiClient.setAuthToken(session.token)
+  if (session) {
+    apiClient.setAuthToken(session.token)
+    writeSessionCookie(session.token)
+  }
   return session
 }
 

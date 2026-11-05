@@ -1,7 +1,11 @@
 import {
+  SESSION_END_MESSAGES,
   STATION_MAX_SESSION_MS,
   idleLimitMs,
+  nextClockTimeAfter,
+  parseClockTime,
   sessionEndReason,
+  stationLogoutAtMinutes,
 } from './sessionPolicy'
 import { PILOT_UNAVAILABLE_PATH, pilotRewriteTarget } from './pilotRewrite'
 
@@ -69,6 +73,62 @@ describe('sessionEndReason', () => {
         12 * HOUR
       )
     ).toBe('idle')
+  })
+})
+
+describe('Tagesende an der Station (NEXT_PUBLIC_STATION_LOGOUT_AT)', () => {
+  /** Lokale Zeit wie auf dem Tablet. */
+  const at = (h: number, m = 0, day = 10) =>
+    new Date(2026, 10, day, h, m, 0, 0).getTime()
+
+  it('parseClockTime liest HH:MM, sonst null', () => {
+    expect(parseClockTime('13:30')).toBe(13 * 60 + 30)
+    expect(parseClockTime(' 7:05 ')).toBe(7 * 60 + 5)
+    expect(parseClockTime('24:00')).toBeNull()
+    expect(parseClockTime('13.30')).toBeNull()
+    expect(parseClockTime('')).toBeNull()
+    expect(parseClockTime(undefined)).toBeNull()
+    expect(stationLogoutAtMinutes(undefined)).toBeNull()
+    expect(stationLogoutAtMinutes('18:00')).toBe(18 * 60)
+  })
+
+  it('nextClockTimeAfter: heute, wenn noch nicht vorbei, sonst morgen', () => {
+    expect(nextClockTimeAfter(at(7), 13 * 60 + 30)).toBe(at(13, 30))
+    expect(nextClockTimeAfter(at(14), 13 * 60 + 30)).toBe(at(13, 30, 11))
+  })
+
+  it('beendet eine Stationssitzung ab der Uhrzeit, trotz Bedienung', () => {
+    const s = {
+      sessionKind: 'station' as const,
+      startedAt: at(7),
+      lastActivityAt: at(13, 29),
+    }
+    const cutoff = 13 * 60 + 30
+    expect(sessionEndReason(s, at(13, 29), 10 * MIN, cutoff)).toBeNull()
+    expect(sessionEndReason(s, at(13, 30), 10 * MIN, cutoff)).toBe('closing')
+    expect(SESSION_END_MESSAGES.closing).toMatch(/Tagesende/)
+  })
+
+  it('wer nach der Uhrzeit die PIN eingibt, bleibt angemeldet (bis morgen)', () => {
+    const s = {
+      sessionKind: 'station' as const,
+      startedAt: at(14),
+      lastActivityAt: at(15),
+    }
+    expect(sessionEndReason(s, at(15, 5), 10 * MIN, 13 * 60 + 30)).toBeNull()
+  })
+
+  it('gilt nicht für persönliche Sitzungen und nicht ohne Wert', () => {
+    const personal = {
+      sessionKind: 'personal' as const,
+      startedAt: at(7),
+      lastActivityAt: at(13, 59),
+    }
+    expect(
+      sessionEndReason(personal, at(14), 12 * HOUR, 13 * 60 + 30)
+    ).toBeNull()
+    const station = { ...personal, sessionKind: 'station' as const }
+    expect(sessionEndReason(station, at(14), 10 * MIN, null)).toBeNull()
   })
 })
 

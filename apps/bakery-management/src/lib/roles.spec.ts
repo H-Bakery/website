@@ -3,6 +3,7 @@ import {
   ROLE_ACCESS,
   getNavigationForRole,
   isPathAllowedForRole,
+  isPersonalOnlyPath,
   isProtectedPath,
   normalizeRole,
   resolvePostLoginPath,
@@ -158,5 +159,28 @@ describe('getNavigationForRole', () => {
     const items = hrefs(getNavigationForRole('inhaber', true))
     expect(items).not.toContain('/admin/cash')
     expect(items).toContain('/admin/users')
+  })
+})
+
+describe('Station (PIN-Sitzung)', () => {
+  it('sperrt die Benutzerverwaltung auch für den Inhaber', () => {
+    expect(isPathAllowedForRole('/admin/users', 'inhaber', 'station')).toBe(
+      false
+    )
+    expect(isPathAllowedForRole('/admin/users', 'inhaber', 'personal')).toBe(
+      true
+    )
+    expect(isPathAllowedForRole('/admin/users', 'inhaber')).toBe(true)
+    expect(isPersonalOnlyPath('/admin/users/3')).toBe(true)
+    expect(isPathAllowedForRole('/admin/reports', 'inhaber', 'station')).toBe(
+      true
+    )
+  })
+
+  it('blendet „Benutzer" an der Station aus der Navigation aus', () => {
+    const navHrefs = (kind: 'personal' | 'station' | null) =>
+      hrefs(getNavigationForRole('inhaber', true, kind))
+    expect(navHrefs('personal')).toContain('/admin/users')
+    expect(navHrefs('station')).not.toContain('/admin/users')
   })
 })

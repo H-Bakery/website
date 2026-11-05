@@ -35,6 +35,29 @@ test('ohne Sitzung führt /admin zur Anmeldung', async ({ browser }) => {
   }
 })
 
+test('ohne Sitzung liefert der Server keine Seitendaten aus', async ({
+  playwright,
+  baseURL,
+}) => {
+  // Die Produktliste ist eine Server-Komponente: ohne gültiges Sitzungs-
+  // Cookie schreibt src/proxy.ts auf die leere Prüfseite um - weder HTML noch
+  // RSC-Payload dürfen einen Produktnamen tragen.
+  const api = await playwrightRequest.newContext()
+  const anonymous = await playwright.request.newContext({ baseURL })
+  try {
+    const products = await (await api.get(`${API_BASE}/api/products`)).json()
+    const list = Array.isArray(products) ? products : products.data
+    const name: string = list[0].name
+    const response = await anonymous.get('/admin/products')
+    expect(response.status()).toBe(200)
+    const html = await response.text()
+    expect(html).not.toContain(name)
+  } finally {
+    await api.dispose()
+    await anonymous.dispose()
+  }
+})
+
 /** Anzahl der Einträge, die `GET <pfad>` der Mock-API liefert. */
 async function apiCount(path: string): Promise<number> {
   const context = await playwrightRequest.newContext()

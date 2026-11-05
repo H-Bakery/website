@@ -18,6 +18,7 @@ import {
   type StoredSession,
 } from './authSession'
 import { useMemoryStorage } from './testing/memoryStorage'
+import { SESSION_COOKIE_NAME, readSessionCookie } from './sessionCookie'
 
 const SESSION: StoredSession = {
   token: 'acc-1',
@@ -70,6 +71,21 @@ describe('authSession', () => {
     expect(loadSession()).toBeNull()
     expect(loadLastActivity()).toBeNull()
     expect(currentToken()).toBeNull()
+  })
+
+  it('spiegelt das Access-Token ins Sitzungs-Cookie für den Proxy', () => {
+    clearSession()
+    expect(readSessionCookie()).toBeNull()
+    saveSession({ ...SESSION, token: 'acc-2' })
+    expect(readSessionCookie()).toBe('acc-2')
+    expect(document.cookie).toContain(`${SESSION_COOKIE_NAME}=acc-2`)
+    // Alte Sitzung ohne Cookie (vor F1-Fix): restoreSession setzt es nach.
+    document.cookie = `${SESSION_COOKIE_NAME}=; Path=/; Max-Age=0`
+    expect(readSessionCookie()).toBeNull()
+    restoreSession()
+    expect(readSessionCookie()).toBe('acc-2')
+    clearSession()
+    expect(readSessionCookie()).toBeNull()
   })
 
   it('lässt das Stations-Token beim Abmelden stehen', () => {
