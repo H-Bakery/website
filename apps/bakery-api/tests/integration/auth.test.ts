@@ -9,6 +9,7 @@ import request from 'supertest'
 import { AuditLog, AuthSession, RefreshToken } from '../../src/models'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { TEST_PASSWORD, bearer, createUser, login } from '../helpers/auth'
+import { makeProductsDir, removeTempDirs } from '../helpers/hqProducts'
 
 jest.setTimeout(30000)
 
@@ -19,7 +20,11 @@ let clock = Date.now()
 beforeAll(async () => {
   api = await createTestApp({
     seedPartners: true,
-    app: { auth: { now: () => clock } },
+    app: {
+      auth: { now: () => clock },
+      // Partner visits need products from the (synthetic) hq catalogue (B6).
+      hqProducts: { productsDir: makeProductsDir(), writeDir: null },
+    },
   })
   await createUser({
     username: 'test.inhaber',
@@ -33,6 +38,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await api.close()
+  removeTempDirs()
 })
 
 function expectErrorShape(body: Record<string, unknown>, error: string) {
@@ -445,9 +451,8 @@ describe('global guard and role guard', () => {
         visitType: 'initial',
         items: [
           {
-            productId: 9001,
-            productSlug: 'testbrot',
-            productName: 'Testbrot',
+            productId: 1,
+            productSlug: 'kornbrot-500g',
             unitPrice: 2.5,
             countedQty: null,
             deliveredQty: 10,

@@ -1,5 +1,5 @@
 /**
- * Verkaufspartner-Routen (TASK-037) - Backschrank beim CAP-Markt.
+ * Verkaufspartner-Routen (TASK-037, B6) - Backschrank beim CAP-Markt.
  *
  * Erfasst werden *Besuche* am Regal, nicht Lieferungen: jeder Besuch hält
  * fest, was noch dalag (`countedQty`) und was neu eingeräumt wurde
@@ -8,13 +8,26 @@
  * (der wiederum an `partner-stats.core.js` delegiert), damit die echte API,
  * der Mock-Server und die Tests dieselben Formeln benutzen.
  *
- * Fehlerantworten setzen immer `error` (Code) **und** `message` (deutscher
- * Text): der `ApiClient` im Frontend wirft `new Error(data.message)`, ohne
- * `message` ginge der deutsche Text verloren.
+ * Rollen (B6, D5) - die Sitzung selbst prüft der globale Guard in `app.ts`:
+ *   lesen (GET)                          jede Sitzung
+ *   Besuche erfassen/korrigieren/löschen inhaber, verkauf, fahrer
+ *   Partner-Stammdaten, Standard-Bestückung  inhaber
+ *
+ * Produkte der Besuche kommen aus dem hq-Katalog (B5, `hq-catalogue.ts`,
+ * freigegebener Stand): Name, Kennungen und - wenn der Request keinen
+ * schickt - der Preis werden als Snapshot gespeichert, ein Produkt außerhalb
+ * des Katalogs wird abgelehnt (wie im Mock). Beim Korrigieren gilt der
+ * Snapshot des gespeicherten Besuchs zusätzlich als bekannt.
+ *
+ * Jeder Schreibzugriff landet mit dem Benutzer im `audit_log` (D5).
+ * Fehlerantworten über `sendError`: `error` (Code) **und** `message`.
  */
 
-import { Router, Request, Response } from 'express'
-import { Op } from 'sequelize'
+import { Request, Response, Router } from 'express'
+import { Op, Transaction } from 'sequelize'
+
+import { audit } from '../auth/audit'
+import { requireRole } from '../auth/middleware'
 import {
   Partner,
   PartnerDeliveryTemplate,
@@ -22,11 +35,37 @@ import {
   PartnerVisitItem,
   getSequelize,
 } from '../models'
+import {
+  HqCatalogue,
+  HqProduct,
+  catalogueFor,
+  defaultProductsDir,
+} from '../services/hq-catalogue'
 import * as partnerStats from '../services/partner-stats.service'
 import { PlainVisit, StatsRange } from '../services/partner-stats.service'
+import { sendError } from '../utils/http-error'
 import { logger } from '../utils/logger'
 
-const router = Router()
+// ============================================================================
+// OPTIONEN UND ROLLEN
+// ============================================================================
+
+export interface PartnerRouterOptions {
+  /**
+   * Lese-Klon der hq-Produkte (Default `HQ_PRODUCTS_DIR`, s. `hq-catalogue`).
+   * `createApp()` reicht das Verzeichnis der hq-Produkte durch, damit
+   * Produkte und Partner denselben Katalog sehen.
+   */
+  productsDir?: string
+}
+
+/** Besuche erfassen, korrigieren, löschen. `inhaber` darf immer. */
+export const VISIT_WRITE_ROLES = ['verkauf', 'fahrer'] as const
+/** Stammdaten und Vorlagen: nur `inhaber`. */
+const MASTER_DATA_ROLES = ['inhaber'] as const
+
+const canWriteVisits = requireRole(...VISIT_WRITE_ROLES)
+const canWriteMasterData = requireRole(...MASTER_DATA_ROLES)
 
 // ============================================================================
 // HILFSFUNKTIONEN
@@ -39,6 +78,9 @@ const UMLAUT_MAP: Record<string, string> = {
   ß: 'ss',
 }
 
+/** Liefertage eines neuen Partners ohne Angabe - wie im Mock: Di-Sa. */
+const DEFAULT_DELIVERY_DAYS = [2, 3, 4, 5, 6]
+
 interface TemplateItemInput {
   productId: number
   productSlug: string
@@ -46,6 +88,16 @@ interface TemplateItemInput {
 }
 
 type VisitItemInput = partnerStats.PlainVisitItem
+
+/**
+ * Erwarteter Abbruch innerhalb einer Transaktion (z. B. doppelte
+ * Erstbestückung): rollt zurück und wird mit `status`/`code` beantwortet.
+ */
+class RouteError extends Error {
+  constructor(readonly status: number, readonly code: string, message: string) {
+    super(message)
+  }
+}
 
 function toInt(value: unknown, fallback = 0): number {
   const n = Number(value)
@@ -56,16 +108,6 @@ function optionalString(value: unknown): string | null {
   if (value === null || value === undefined) return null
   const text = String(value).trim()
   return text === '' ? null : text
-}
-
-/** Fehlerantwort mit maschinenlesbarem Code *und* deutschem Text. */
-function fail(
-  res: Response,
-  status: number,
-  error: string,
-  message: string
-): Response {
-  return res.status(status).json({ success: false, error, message })
 }
 
 /** `:id`/`:visitId` müssen positive Ganzzahlen sein - sonst 404. */
@@ -86,13 +128,20 @@ function parseActive(value: unknown): boolean | null {
   return typeof value === 'boolean' ? value : null
 }
 
+/** Nicht-leerer Name aus einem String (wie im Mock), sonst `null`. */
+function partnerName(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const name = value.trim()
+  return name === '' ? null : name
+}
+
 /** `2026-08-30` → `30.08.2026` für Meldungen an das Team. */
 function formatDe(businessDate: string): string {
   const [year, month, day] = businessDate.split('-')
   return `${day}.${month}.${year}`
 }
 
-function slugify(value: string): string {
+export function slugify(value: string): string {
   return String(value || '')
     .toLowerCase()
     .replace(/[äöüß]/g, (char) => UMLAUT_MAP[char] || char)
@@ -101,7 +150,7 @@ function slugify(value: string): string {
 }
 
 /** ISO-Wochentage, dedupliziert und sortiert - alles andere fliegt raus. */
-function normalizeWeekdays(value: unknown): number[] {
+export function normalizeWeekdays(value: unknown): number[] {
   let raw: any = value
   if (typeof raw === 'string') {
     try {
@@ -117,7 +166,8 @@ function normalizeWeekdays(value: unknown): number[] {
   return Array.from(new Set<number>(days)).sort((a, b) => a - b)
 }
 
-function normalizeTemplateItems(value: unknown): TemplateItemInput[] {
+/** Gespeicherte Vorlagen-Positionen lesen (JSON-Spalte, evtl. als Text). */
+function storedTemplateItems(value: unknown): TemplateItemInput[] {
   let raw: any = value
   if (typeof raw === 'string') {
     try {
@@ -136,15 +186,105 @@ function normalizeTemplateItems(value: unknown): TemplateItemInput[] {
     .filter((item: TemplateItemInput) => item.productSlug !== '')
 }
 
+/** Produkt aus dem hq-Katalog: erst per Slug, dann per `numeric_id` (wie der Mock). */
+function findCatalogueProduct(
+  catalogue: HqCatalogue,
+  item: Record<string, unknown> | null | undefined
+): Readonly<HqProduct> | null {
+  if (!item || typeof item !== 'object') return null
+  const slug =
+    typeof item['productSlug'] === 'string' ? item['productSlug'].trim() : ''
+  if (slug) {
+    const bySlug = catalogue.list().find((p) => p.id === slug)
+    if (bySlug) return bySlug
+  }
+  const rawId = item['productId']
+  const numericId =
+    typeof rawId === 'number' || (typeof rawId === 'string' && rawId !== '')
+      ? Number(rawId)
+      : NaN
+  if (Number.isInteger(numericId) && numericId > 0) {
+    return catalogue.get(numericId)
+  }
+  return null
+}
+
+/**
+ * Positionen der Standard-Bestückung - Regeln des Mocks: Kennungen aus dem
+ * hq-Katalog ergänzen, Positionen ohne Produkt oder mit Menge 0 entfallen.
+ */
+function normalizeTemplateInput(
+  items: unknown[],
+  catalogue: HqCatalogue
+): TemplateItemInput[] {
+  return items
+    .map((raw) => {
+      const item = (raw && typeof raw === 'object' ? raw : {}) as Record<
+        string,
+        unknown
+      >
+      const hq = findCatalogueProduct(catalogue, item)
+      const fallbackId = hq ? toInt(hq.numeric_id, 0) : 0
+      return {
+        productId: toInt(item['productId'], fallbackId),
+        productSlug:
+          (typeof item['productSlug'] === 'string'
+            ? item['productSlug'].trim()
+            : '') || (hq ? hq.id : ''),
+        quantity: Math.max(0, toInt(item['quantity'], 0)),
+      }
+    })
+    .filter((item) => item.productSlug !== '' && item.quantity > 0)
+}
+
+type ItemsResult =
+  | { ok: true; items: VisitItemInput[] }
+  | { ok: false; status: number; error: string; message: string }
+
 /**
  * Positionen eines Besuchs prüfen und normalisieren - die Regeln stehen im
  * Core (`validateVisitItems`): Rest `null` bleibt "nicht gezählt" und ist
  * etwas anderes als `0`, Mengen sind ganzzahlig und begrenzt, negative Preise
- * fliegen raus. Die echte API hat keinen HQ-Katalog zur Hand, prüft die
- * Existenz des Produkts also nicht.
+ * fliegen raus, Produkte außerhalb des hq-Katalogs auch. Name und Kennungen
+ * kommen aus dem Katalog, der Preis auch, wenn der Request keinen schickt.
+ *
+ * Beim Korrigieren gilt der Snapshot des gespeicherten Besuchs zusätzlich als
+ * bekannt - ein inzwischen aus hq verschwundenes Produkt bleibt korrigierbar.
+ *
+ * Fehlt das hq-Verzeichnis ganz, ist ein "unbekanntes Produkt" kein
+ * Eingabefehler, sondern ein Betriebsproblem: 503 `hq_unavailable`.
  */
-function normalizeVisitItems(value: unknown): partnerStats.VisitItemsResult {
-  return partnerStats.validateVisitItems(value)
+function normalizeVisitItems(
+  value: unknown,
+  catalogue: HqCatalogue,
+  existingItems?: ReadonlyArray<Partial<VisitItemInput>>
+): ItemsResult {
+  const fromSnapshot = partnerStats.snapshotLookup(existingItems)
+  let unresolved = false
+  const result = partnerStats.validateVisitItems(value, (item) => {
+    const product =
+      findCatalogueProduct(catalogue, item) ?? fromSnapshot(item) ?? null
+    if (!product) unresolved = true
+    return product
+  })
+  if (result.ok === false) {
+    if (unresolved && !catalogue.available()) {
+      return {
+        ok: false,
+        status: 503,
+        error: 'hq_unavailable',
+        message:
+          'Der Produktkatalog aus hq ist gerade nicht erreichbar - der Besuch kann nicht gespeichert werden. Bitte später erneut versuchen.',
+      }
+    }
+    return {
+      ok: false,
+      status: 400,
+      error: 'INVALID_ITEMS',
+      message: result.message,
+    }
+  }
+  return { ok: true, items: result.items }
 }
 
 function serializePartner(row: any): Record<string, any> {
@@ -173,7 +313,7 @@ function serializeTemplate(row: any): Record<string, any> {
     id: template.id,
     partnerId: template.partnerId,
     weekday: toInt(template.weekday, 0),
-    items: normalizeTemplateItems(template.items),
+    items: storedTemplateItems(template.items),
     active: template.active !== false,
   }
 }
@@ -183,9 +323,9 @@ async function loadPartner(
   req: Request,
   res: Response
 ): Promise<Partner | null> {
-  const id = parseNumericId(req.params.id)
+  const id = parseNumericId(req.params['id'])
   if (id === null) {
-    fail(
+    sendError(
       res,
       404,
       'PARTNER_NOT_FOUND',
@@ -195,7 +335,7 @@ async function loadPartner(
   }
   const partner = await Partner.findByPk(id)
   if (!partner) {
-    fail(
+    sendError(
       res,
       404,
       'PARTNER_NOT_FOUND',
@@ -212,9 +352,9 @@ async function loadVisit(
   req: Request,
   res: Response
 ): Promise<PartnerVisit | null> {
-  const visitId = parseNumericId(req.params.visitId)
+  const visitId = parseNumericId(req.params['visitId'])
   if (visitId === null) {
-    fail(
+    sendError(
       res,
       404,
       'VISIT_NOT_FOUND',
@@ -224,9 +364,10 @@ async function loadVisit(
   }
   const visit = await PartnerVisit.findOne({
     where: { id: visitId, partnerId },
+    include: [{ model: PartnerVisitItem, as: 'items' }],
   })
   if (!visit) {
-    fail(
+    sendError(
       res,
       404,
       'VISIT_NOT_FOUND',
@@ -239,10 +380,10 @@ async function loadVisit(
 
 /** `?from=`/`?to=` prüfen; `null` = es wurde bereits mit 400 geantwortet. */
 function parseRange(req: Request, res: Response): StatsRange | null {
-  const from = typeof req.query.from === 'string' ? req.query.from : ''
-  const to = typeof req.query.to === 'string' ? req.query.to : ''
+  const from = typeof req.query['from'] === 'string' ? req.query['from'] : ''
+  const to = typeof req.query['to'] === 'string' ? req.query['to'] : ''
   if (from && !isBusinessDate(from)) {
-    fail(
+    sendError(
       res,
       400,
       'INVALID_RANGE',
@@ -251,7 +392,7 @@ function parseRange(req: Request, res: Response): StatsRange | null {
     return null
   }
   if (to && !isBusinessDate(to)) {
-    fail(
+    sendError(
       res,
       400,
       'INVALID_RANGE',
@@ -260,7 +401,7 @@ function parseRange(req: Request, res: Response): StatsRange | null {
     return null
   }
   if (from && to && from > to) {
-    fail(
+    sendError(
       res,
       400,
       'INVALID_RANGE',
@@ -304,745 +445,907 @@ async function loadVisitWithItems(visitId: number): Promise<PlainVisit> {
   return partnerStats.toPlainVisit(row)
 }
 
-/** Angemeldete Person, falls die Route hinter dem Auth-Middleware hängt. */
+/** Angemeldete Person (globaler Guard) - jeder Besuch wird ihr zugeordnet. */
 function currentUserId(req: Request): number | null {
-  const id = Number((req as any).user?.id)
+  const id = Number(req.user?.id)
   return Number.isInteger(id) && id > 0 ? id : null
 }
 
+/**
+ * Pro Geschäftstag und Partner genau eine Erstbestückung. Läuft **in** der
+ * (serialisierten) Schreib-Transaktion - zwei gleichzeitige Erfassungen
+ * können so nicht beide durch die Prüfung kommen.
+ */
+async function assertNoOtherInitial(
+  partnerId: number,
+  businessDate: string,
+  exceptVisitId: number | null,
+  transaction: Transaction,
+  hint: string
+): Promise<void> {
+  const where: any = { partnerId, businessDate, visitType: 'initial' }
+  if (exceptVisitId !== null) where.id = { [Op.ne]: exceptVisitId }
+  const duplicates = await PartnerVisit.count({ where, transaction })
+  if (duplicates > 0) {
+    throw new RouteError(
+      409,
+      'DUPLICATE_INITIAL_VISIT',
+      `Für den ${formatDe(
+        businessDate
+      )} ist bereits eine Erstbestückung erfasst. ${hint}`
+    )
+  }
+}
+
+/** Nächste laufende Nummer im Geschäftstag (ohne den Besuch selbst). */
+async function nextSequence(
+  partnerId: number,
+  businessDate: string,
+  exceptVisitId: number | null,
+  transaction: Transaction
+): Promise<number> {
+  const where: any = { partnerId, businessDate }
+  if (exceptVisitId !== null) where.id = { [Op.ne]: exceptVisitId }
+  const maxSequence = await PartnerVisit.max('sequence', { where, transaction })
+  return Math.max(0, toInt(maxSequence, 0)) + 1
+}
+
+/** Slug darf kein anderer Partner haben - Prüfung in der Transaktion. */
+async function assertSlugFree(
+  slug: string,
+  exceptId: number | null,
+  transaction: Transaction
+): Promise<void> {
+  const where: any = { slug }
+  if (exceptId !== null) where.id = { [Op.ne]: exceptId }
+  const taken = await Partner.findOne({ where, transaction })
+  if (taken) {
+    throw new RouteError(
+      409,
+      'PARTNER_SLUG_TAKEN',
+      `Es gibt bereits einen Verkaufspartner mit dem Kürzel "${slug}".`
+    )
+  }
+}
+
+/** Fehler aus einem Handler beantworten: erwartete mit Code, sonst 500. */
+function answerError(
+  res: Response,
+  error: unknown,
+  fallback: { code: string; message: string; log: string }
+): Response {
+  if (error instanceof RouteError) {
+    return sendError(res, error.status, error.code, error.message)
+  }
+  logger.error(fallback.log, error)
+  return sendError(res, 500, fallback.code, fallback.message)
+}
+
+const INVALID_ACTIVE_MESSAGE =
+  'Das Feld "active" muss true oder false sein (kein Text).'
+
 // ============================================================================
-// PARTNER
+// ROUTER
 // ============================================================================
 
-// Alle Verkaufspartner
-router.get('/', async (_req: Request, res: Response) => {
-  try {
-    const partners = await Partner.findAll({ order: [['name', 'ASC']] })
-    return res.json(partners.map(serializePartner))
-  } catch (error) {
-    logger.error('Failed to load sales partners', error)
-    return fail(
-      res,
-      500,
-      'PARTNERS_LOAD_FAILED',
-      'Die Verkaufspartner konnten nicht geladen werden.'
-    )
-  }
-})
+export function createPartnerRouter(
+  options: PartnerRouterOptions = {}
+): Router {
+  const router = Router()
+  const catalogue = (): HqCatalogue =>
+    catalogueFor(options.productsDir ?? defaultProductsDir())
 
-// Verkaufspartner anlegen
-router.post('/', async (req: Request, res: Response) => {
-  try {
-    const body = (req.body || {}) as any
-    const name = String(body.name || '').trim()
-    if (!name) {
-      return fail(
-        res,
-        400,
-        'INVALID_NAME',
-        'Der Name des Verkaufspartners fehlt.'
-      )
+  // ==========================================================================
+  // PARTNER
+  // ==========================================================================
+
+  // Alle Verkaufspartner, optional `?active=true|false` (wie der Mock)
+  router.get('/', async (req: Request, res: Response) => {
+    try {
+      const where: any = {}
+      const active = req.query['active']
+      if (active !== undefined) where.active = active === 'true'
+      const partners = await Partner.findAll({
+        where,
+        order: [['name', 'ASC']],
+      })
+      return res.json(partners.map(serializePartner))
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'PARTNERS_LOAD_FAILED',
+        message: 'Die Verkaufspartner konnten nicht geladen werden.',
+        log: 'Failed to load sales partners',
+      })
     }
+  })
 
-    const slug = slugify(body.slug ? String(body.slug) : name)
-    if (!slug) {
-      return fail(
-        res,
-        400,
-        'INVALID_SLUG',
-        'Aus dem Namen ließ sich kein Kürzel bilden - bitte ein Kürzel angeben.'
-      )
-    }
-
-    const existing = await Partner.findOne({ where: { slug } })
-    if (existing) {
-      return fail(
-        res,
-        409,
-        'PARTNER_SLUG_TAKEN',
-        `Es gibt bereits einen Verkaufspartner mit dem Kürzel "${slug}".`
-      )
-    }
-
-    const active = body.active === undefined ? true : parseActive(body.active)
-    if (active === null) {
-      return fail(
-        res,
-        400,
-        'INVALID_ACTIVE',
-        'Das Feld "active" muss true oder false sein (kein Text).'
-      )
-    }
-
-    const partner = await Partner.create({
-      name,
-      slug,
-      street: String(body.street || ''),
-      zip: String(body.zip || ''),
-      city: String(body.city || ''),
-      contactName: optionalString(body.contactName),
-      phone: optionalString(body.phone),
-      email: optionalString(body.email),
-      deliveryDays: normalizeWeekdays(body.deliveryDays),
-      settlementModel:
-        body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission',
-      active,
-      notes: optionalString(body.notes),
-    })
-
-    logger.info(`Sales partner created: ${partner.slug}`)
-    return res.status(201).json(serializePartner(partner))
-  } catch (error) {
-    logger.error('Failed to create sales partner', error)
-    return fail(
-      res,
-      500,
-      'PARTNER_CREATE_FAILED',
-      'Der Verkaufspartner konnte nicht angelegt werden.'
-    )
-  }
-})
-
-// Ein Verkaufspartner
-router.get('/:id', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-    return res.json(serializePartner(partner))
-  } catch (error) {
-    logger.error('Failed to load sales partner', error)
-    return fail(
-      res,
-      500,
-      'PARTNER_LOAD_FAILED',
-      'Der Verkaufspartner konnte nicht geladen werden.'
-    )
-  }
-})
-
-// Verkaufspartner bearbeiten
-router.put('/:id', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-
-    const body = (req.body || {}) as any
-    const updates: any = {}
-
-    if (body.name !== undefined) {
-      const name = String(body.name).trim()
+  // Verkaufspartner anlegen (inhaber)
+  router.post('/', canWriteMasterData, async (req: Request, res: Response) => {
+    try {
+      const body = (req.body || {}) as any
+      const name = partnerName(body.name)
       if (!name) {
-        return fail(
+        return sendError(
           res,
           400,
           'INVALID_NAME',
-          'Der Name des Verkaufspartners darf nicht leer sein.'
+          'Der Name des Verkaufspartners fehlt.'
         )
       }
-      updates.name = name
-    }
 
-    if (body.slug !== undefined) {
-      const slug = slugify(String(body.slug))
+      const slug = slugify(body.slug ? String(body.slug) : name)
       if (!slug) {
-        return fail(
+        return sendError(
           res,
           400,
           'INVALID_SLUG',
-          'Das Kürzel darf nicht leer sein.'
+          'Aus dem Namen ließ sich kein Kürzel bilden - bitte ein Kürzel angeben.'
         )
       }
-      if (slug !== partner.slug) {
-        const taken = await Partner.findOne({
-          where: { slug, id: { [Op.ne]: partner.id } },
+
+      const active = body.active === undefined ? true : parseActive(body.active)
+      if (active === null) {
+        return sendError(res, 400, 'INVALID_ACTIVE', INVALID_ACTIVE_MESSAGE)
+      }
+
+      const partner = await getSequelize().transaction(async (transaction) => {
+        await assertSlugFree(slug, null, transaction)
+        const created = await Partner.create(
+          {
+            name,
+            slug,
+            street: String(body.street || ''),
+            zip: String(body.zip || ''),
+            city: String(body.city || ''),
+            contactName: optionalString(body.contactName),
+            phone: optionalString(body.phone),
+            email: optionalString(body.email),
+            deliveryDays:
+              body.deliveryDays === undefined
+                ? [...DEFAULT_DELIVERY_DAYS]
+                : normalizeWeekdays(body.deliveryDays),
+            settlementModel:
+              body.settlementModel === 'firm_sale' ? 'firm_sale' : 'commission',
+            active,
+            notes: optionalString(body.notes),
+          },
+          { transaction }
+        )
+        await audit(
+          req,
+          'create',
+          'partner',
+          created.id,
+          { slug },
+          { transaction }
+        )
+        return created
+      })
+
+      logger.info(`Sales partner created: ${partner.slug}`)
+      return res.status(201).json(serializePartner(partner))
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'PARTNER_CREATE_FAILED',
+        message: 'Der Verkaufspartner konnte nicht angelegt werden.',
+        log: 'Failed to create sales partner',
+      })
+    }
+  })
+
+  // Ein Verkaufspartner
+  router.get('/:id', async (req: Request, res: Response) => {
+    try {
+      const partner = await loadPartner(req, res)
+      if (!partner) return
+      return res.json(serializePartner(partner))
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'PARTNER_LOAD_FAILED',
+        message: 'Der Verkaufspartner konnte nicht geladen werden.',
+        log: 'Failed to load sales partner',
+      })
+    }
+  })
+
+  // Verkaufspartner bearbeiten (inhaber)
+  router.put(
+    '/:id',
+    canWriteMasterData,
+    async (req: Request, res: Response) => {
+      try {
+        const partner = await loadPartner(req, res)
+        if (!partner) return
+
+        const body = (req.body || {}) as any
+        const updates: any = {}
+
+        if (body.name !== undefined) {
+          const name = partnerName(body.name)
+          if (!name) {
+            return sendError(
+              res,
+              400,
+              'INVALID_NAME',
+              'Der Name des Verkaufspartners darf nicht leer sein.'
+            )
+          }
+          updates.name = name
+        }
+
+        if (body.slug !== undefined) {
+          const slug = slugify(String(body.slug))
+          if (!slug) {
+            return sendError(
+              res,
+              400,
+              'INVALID_SLUG',
+              'Das Kürzel darf nicht leer sein.'
+            )
+          }
+          updates.slug = slug
+        }
+
+        if (body.street !== undefined)
+          updates.street = String(body.street || '')
+        if (body.zip !== undefined) updates.zip = String(body.zip || '')
+        if (body.city !== undefined) updates.city = String(body.city || '')
+        if (body.contactName !== undefined) {
+          updates.contactName = optionalString(body.contactName)
+        }
+        if (body.phone !== undefined) updates.phone = optionalString(body.phone)
+        if (body.email !== undefined) updates.email = optionalString(body.email)
+        if (body.deliveryDays !== undefined) {
+          updates.deliveryDays = normalizeWeekdays(body.deliveryDays)
+        }
+        if (body.settlementModel !== undefined) {
+          if (
+            body.settlementModel !== 'commission' &&
+            body.settlementModel !== 'firm_sale'
+          ) {
+            return sendError(
+              res,
+              400,
+              'INVALID_SETTLEMENT_MODEL',
+              'Unbekanntes Abrechnungsmodell - erlaubt sind "commission" (Kommission) und "firm_sale" (Festkauf).'
+            )
+          }
+          updates.settlementModel = body.settlementModel
+        }
+        if (body.active !== undefined) {
+          const active = parseActive(body.active)
+          if (active === null) {
+            return sendError(res, 400, 'INVALID_ACTIVE', INVALID_ACTIVE_MESSAGE)
+          }
+          updates.active = active
+        }
+        if (body.notes !== undefined) updates.notes = optionalString(body.notes)
+
+        await getSequelize().transaction(async (transaction) => {
+          if (updates.slug !== undefined && updates.slug !== partner.slug) {
+            await assertSlugFree(updates.slug, partner.id, transaction)
+          }
+          await partner.update(updates, { transaction })
+          await audit(
+            req,
+            'update',
+            'partner',
+            partner.id,
+            // Nur die Feldnamen - Kontaktdaten gehören nicht ins Protokoll.
+            { fields: Object.keys(updates).sort() },
+            { transaction }
+          )
         })
-        if (taken) {
-          return fail(
+        logger.info(`Sales partner updated: ${partner.slug}`)
+        return res.json(serializePartner(partner))
+      } catch (error) {
+        return answerError(res, error, {
+          code: 'PARTNER_UPDATE_FAILED',
+          message: 'Der Verkaufspartner konnte nicht gespeichert werden.',
+          log: 'Failed to update sales partner',
+        })
+      }
+    }
+  )
+
+  // ==========================================================================
+  // STANDARD-BESTÜCKUNG (Vorlagen je Wochentag)
+  // ==========================================================================
+
+  router.get('/:id/templates', async (req: Request, res: Response) => {
+    try {
+      const partner = await loadPartner(req, res)
+      if (!partner) return
+
+      const templates = await PartnerDeliveryTemplate.findAll({
+        where: { partnerId: partner.id },
+        order: [['weekday', 'ASC']],
+      })
+      return res.json(templates.map(serializeTemplate))
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'TEMPLATES_LOAD_FAILED',
+        message: 'Die Standard-Bestückung konnte nicht geladen werden.',
+        log: 'Failed to load partner delivery templates',
+      })
+    }
+  })
+
+  // Vorlage eines Wochentags speichern (inhaber). 200 auch beim Anlegen (Mock).
+  router.put(
+    '/:id/templates/:weekday',
+    canWriteMasterData,
+    async (req: Request, res: Response) => {
+      try {
+        const partner = await loadPartner(req, res)
+        if (!partner) return
+
+        const weekday = Number(req.params['weekday'])
+        if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
+          return sendError(
             res,
-            409,
-            'PARTNER_SLUG_TAKEN',
-            `Es gibt bereits einen Verkaufspartner mit dem Kürzel "${slug}".`
+            400,
+            'INVALID_WEEKDAY',
+            'Ungültiger Wochentag - erlaubt sind 1 (Montag) bis 7 (Sonntag).'
           )
         }
-      }
-      updates.slug = slug
-    }
 
-    if (body.street !== undefined) updates.street = String(body.street || '')
-    if (body.zip !== undefined) updates.zip = String(body.zip || '')
-    if (body.city !== undefined) updates.city = String(body.city || '')
-    if (body.contactName !== undefined) {
-      updates.contactName = optionalString(body.contactName)
-    }
-    if (body.phone !== undefined) updates.phone = optionalString(body.phone)
-    if (body.email !== undefined) updates.email = optionalString(body.email)
-    if (body.deliveryDays !== undefined) {
-      updates.deliveryDays = normalizeWeekdays(body.deliveryDays)
-    }
-    if (body.settlementModel !== undefined) {
-      if (
-        body.settlementModel !== 'commission' &&
-        body.settlementModel !== 'firm_sale'
-      ) {
-        return fail(
-          res,
-          400,
-          'INVALID_SETTLEMENT_MODEL',
-          'Unbekanntes Abrechnungsmodell - erlaubt sind "commission" (Kommission) und "firm_sale" (Festkauf).'
+        const body = (req.body || {}) as any
+        if (body.items !== undefined && !Array.isArray(body.items)) {
+          return sendError(
+            res,
+            400,
+            'INVALID_ITEMS',
+            'Die Vorlage braucht eine Liste von Positionen (items).'
+          )
+        }
+        let active: boolean | null | undefined
+        if (body.active !== undefined) {
+          active = parseActive(body.active)
+          if (active === null) {
+            return sendError(res, 400, 'INVALID_ACTIVE', INVALID_ACTIVE_MESSAGE)
+          }
+        }
+
+        const items = normalizeTemplateInput(body.items || [], catalogue())
+
+        const template = await getSequelize().transaction(
+          async (transaction) => {
+            const existing = await PartnerDeliveryTemplate.findOne({
+              where: { partnerId: partner.id, weekday },
+              transaction,
+            })
+            let saved: PartnerDeliveryTemplate
+            if (existing) {
+              // `active` bleibt stehen, wenn der Request es nicht nennt.
+              const updates: any = { items }
+              if (active !== undefined) updates.active = active
+              saved = await existing.update(updates, { transaction })
+            } else {
+              saved = await PartnerDeliveryTemplate.create(
+                {
+                  partnerId: partner.id,
+                  weekday,
+                  items,
+                  active: active ?? true,
+                },
+                { transaction }
+              )
+            }
+            await audit(
+              req,
+              existing ? 'update' : 'create',
+              'partner_template',
+              saved.id,
+              { partnerId: partner.id, weekday, itemCount: items.length },
+              { transaction }
+            )
+            return saved
+          }
         )
-      }
-      updates.settlementModel = body.settlementModel
-    }
-    if (body.active !== undefined) {
-      const active = parseActive(body.active)
-      if (active === null) {
-        return fail(
-          res,
-          400,
-          'INVALID_ACTIVE',
-          'Das Feld "active" muss true oder false sein (kein Text).'
+        logger.info(
+          `Partner template saved: partner=${partner.id} weekday=${weekday}`
         )
+        return res.json(serializeTemplate(template))
+      } catch (error) {
+        return answerError(res, error, {
+          code: 'TEMPLATE_SAVE_FAILED',
+          message: 'Die Standard-Bestückung konnte nicht gespeichert werden.',
+          log: 'Failed to save partner delivery template',
+        })
       }
-      updates.active = active
     }
-    if (body.notes !== undefined) updates.notes = optionalString(body.notes)
+  )
 
-    await partner.update(updates)
-    logger.info(`Sales partner updated: ${partner.slug}`)
-    return res.json(serializePartner(partner))
-  } catch (error) {
-    logger.error('Failed to update sales partner', error)
-    return fail(
-      res,
-      500,
-      'PARTNER_UPDATE_FAILED',
-      'Der Verkaufspartner konnte nicht gespeichert werden.'
-    )
-  }
-})
+  // ==========================================================================
+  // BESUCHE
+  // ==========================================================================
 
-// ============================================================================
-// STANDARD-BESTÜCKUNG (Vorlagen je Wochentag)
-// ============================================================================
+  // Besuche im Zeitraum
+  router.get('/:id/visits', async (req: Request, res: Response) => {
+    try {
+      const partner = await loadPartner(req, res)
+      if (!partner) return
 
-router.get('/:id/templates', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
+      const range = parseRange(req, res)
+      if (!range) return
 
-    const templates = await PartnerDeliveryTemplate.findAll({
-      where: { partnerId: partner.id },
-      order: [['weekday', 'ASC']],
-    })
-    return res.json(templates.map(serializeTemplate))
-  } catch (error) {
-    logger.error('Failed to load partner delivery templates', error)
-    return fail(
-      res,
-      500,
-      'TEMPLATES_LOAD_FAILED',
-      'Die Standard-Bestückung konnte nicht geladen werden.'
-    )
-  }
-})
-
-router.put('/:id/templates/:weekday', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-
-    const weekday = Number(req.params.weekday)
-    if (!Number.isInteger(weekday) || weekday < 1 || weekday > 7) {
-      return fail(
-        res,
-        400,
-        'INVALID_WEEKDAY',
-        'Ungültiger Wochentag - erlaubt sind 1 (Montag) bis 7 (Sonntag).'
-      )
-    }
-
-    const body = (req.body || {}) as any
-    if (body.items !== undefined && !Array.isArray(body.items)) {
-      return fail(
-        res,
-        400,
-        'INVALID_ITEMS',
-        'Die Vorlage braucht eine Liste von Positionen (items).'
-      )
-    }
-
-    const items = normalizeTemplateItems(body.items)
-    const active = body.active === undefined ? true : parseActive(body.active)
-    if (active === null) {
-      return fail(
-        res,
-        400,
-        'INVALID_ACTIVE',
-        'Das Feld "active" muss true oder false sein (kein Text).'
-      )
-    }
-
-    const existing = await PartnerDeliveryTemplate.findOne({
-      where: { partnerId: partner.id, weekday },
-    })
-
-    if (existing) {
-      await existing.update({ items, active })
-      logger.info(
-        `Partner template updated: partner=${partner.id} weekday=${weekday}`
-      )
-      return res.json(serializeTemplate(existing))
-    }
-
-    const created = await PartnerDeliveryTemplate.create({
-      partnerId: partner.id,
-      weekday,
-      items,
-      active,
-    })
-    logger.info(
-      `Partner template created: partner=${partner.id} weekday=${weekday}`
-    )
-    return res.status(201).json(serializeTemplate(created))
-  } catch (error) {
-    logger.error('Failed to save partner delivery template', error)
-    return fail(
-      res,
-      500,
-      'TEMPLATE_SAVE_FAILED',
-      'Die Standard-Bestückung konnte nicht gespeichert werden.'
-    )
-  }
-})
-
-// ============================================================================
-// BESUCHE
-// ============================================================================
-
-// Besuche im Zeitraum
-router.get('/:id/visits', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-
-    const range = parseRange(req, res)
-    if (!range) return
-
-    const visits = await loadVisits(partner.id, range)
-    return res.json(visits)
-  } catch (error) {
-    logger.error('Failed to load partner visits', error)
-    return fail(
-      res,
-      500,
-      'VISITS_LOAD_FAILED',
-      'Die Besuche konnten nicht geladen werden.'
-    )
-  }
-})
-
-// Tagesansicht: Timeline, Kennzahlen und die Rohdaten des Geschäftstags
-router.get('/:id/visits/today', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-
-    const requested = typeof req.query.date === 'string' ? req.query.date : ''
-    if (requested && !isBusinessDate(requested)) {
-      return fail(
-        res,
-        400,
-        'INVALID_BUSINESS_DATE',
-        'Ungültiger Geschäftstag - erwartet wird das Format JJJJ-MM-TT.'
-      )
-    }
-    const businessDate =
-      requested || partnerStats.businessDateOf(new Date()) || ''
-
-    const visits = await loadVisits(partner.id, {
-      from: businessDate,
-      to: businessDate,
-    })
-    const detail = partnerStats.getDayDetail(visits)
-
-    return res.json({
-      ...detail,
-      // Ohne Besuche kennt der Core den Tag nicht - der angefragte gilt.
-      businessDate: detail.businessDate || businessDate,
-      visits,
-    })
-  } catch (error) {
-    logger.error('Failed to load partner day detail', error)
-    return fail(
-      res,
-      500,
-      'DAY_LOAD_FAILED',
-      'Der Geschäftstag konnte nicht geladen werden.'
-    )
-  }
-})
-
-// Besuch erfassen
-router.post('/:id/visits', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-
-    const body = (req.body || {}) as any
-
-    if (!partnerStats.isVisitType(body.visitType)) {
-      return fail(
-        res,
-        400,
-        'INVALID_VISIT_TYPE',
-        'Unbekannter Besuchstyp - erlaubt sind "initial" (Erstbestückung), "refill" (Nachlieferung) und "pickup" (Abholung).'
-      )
-    }
-    const visitType = body.visitType
-
-    const visitAt = body.visitAt ? new Date(body.visitAt) : new Date()
-    if (Number.isNaN(visitAt.getTime())) {
-      return fail(
-        res,
-        400,
-        'INVALID_VISIT_AT',
-        'Ungültiger Zeitpunkt - bitte Datum und Uhrzeit des Besuchs prüfen.'
-      )
-    }
-
-    // Der Geschäftstag wird aus dem Zeitpunkt abgeleitet, wenn er fehlt.
-    const businessDate =
-      body.businessDate === undefined || body.businessDate === null
-        ? partnerStats.businessDateOf(visitAt)
-        : body.businessDate
-    if (!isBusinessDate(businessDate)) {
-      return fail(
-        res,
-        400,
-        'INVALID_BUSINESS_DATE',
-        'Ungültiger Geschäftstag - erwartet wird das Format JJJJ-MM-TT.'
-      )
-    }
-
-    const parsedItems = normalizeVisitItems(body.items)
-    if (parsedItems.ok === false) {
-      return fail(res, 400, 'INVALID_ITEMS', parsedItems.message)
-    }
-    const items = parsedItems.items
-
-    // Pro Geschäftstag gibt es genau eine Erstbestückung.
-    if (visitType === 'initial') {
-      const duplicates = await PartnerVisit.count({
-        where: {
-          partnerId: partner.id,
-          businessDate,
-          visitType: 'initial',
-        },
+      return res.json(await loadVisits(partner.id, range))
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'VISITS_LOAD_FAILED',
+        message: 'Die Besuche konnten nicht geladen werden.',
+        log: 'Failed to load partner visits',
       })
-      if (duplicates > 0) {
-        return fail(
-          res,
-          409,
-          'DUPLICATE_INITIAL_VISIT',
-          `Für den ${formatDe(
-            businessDate
-          )} ist bereits eine Erstbestückung erfasst. Bitte den bestehenden Besuch korrigieren oder eine Nachlieferung erfassen.`
-        )
-      }
     }
+  })
 
-    const sequelize = getSequelize()
-    const visitId = await sequelize.transaction(async (transaction) => {
-      // Die laufende Nummer vergibt der Server - sie zählt innerhalb des
-      // Geschäftstags und darf nicht vom Client kommen.
-      const maxSequence = await PartnerVisit.max('sequence', {
-        where: { partnerId: partner.id, businessDate },
-        transaction,
-      })
-      const sequence = Math.max(0, toInt(maxSequence, 0)) + 1
+  // Tagesansicht: Timeline, Kennzahlen und die Rohdaten des Geschäftstags
+  router.get('/:id/visits/today', async (req: Request, res: Response) => {
+    try {
+      const partner = await loadPartner(req, res)
+      if (!partner) return
 
-      const visit = await PartnerVisit.create(
-        {
-          partnerId: partner.id,
-          businessDate,
-          visitAt,
-          visitType,
-          sequence,
-          staffId: currentUserId(req),
-          staffName: optionalString(body.staffName),
-          note: optionalString(body.note),
-        },
-        { transaction }
-      )
-
-      if (items.length > 0) {
-        await PartnerVisitItem.bulkCreate(
-          items.map((item) => ({ ...item, visitId: visit.id })),
-          { transaction, validate: true }
-        )
-      }
-
-      return visit.id
-    })
-
-    logger.info(
-      `Partner visit recorded: partner=${partner.id} date=${businessDate} type=${visitType}`
-    )
-    return res.status(201).json(await loadVisitWithItems(visitId))
-  } catch (error) {
-    logger.error('Failed to record partner visit', error)
-    return fail(
-      res,
-      500,
-      'VISIT_CREATE_FAILED',
-      'Der Besuch konnte nicht gespeichert werden.'
-    )
-  }
-})
-
-// Besuch korrigieren
-router.patch('/:id/visits/:visitId', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-
-    const visit = await loadVisit(partner.id, req, res)
-    if (!visit) return
-
-    const body = (req.body || {}) as any
-    const updates: any = {}
-
-    if (body.visitAt !== undefined) {
-      const visitAt = new Date(body.visitAt)
-      if (Number.isNaN(visitAt.getTime())) {
-        return fail(
-          res,
-          400,
-          'INVALID_VISIT_AT',
-          'Ungültiger Zeitpunkt - bitte Datum und Uhrzeit des Besuchs prüfen.'
-        )
-      }
-      updates.visitAt = visitAt
-    }
-
-    if (body.visitType !== undefined) {
-      if (!partnerStats.isVisitType(body.visitType)) {
-        return fail(
-          res,
-          400,
-          'INVALID_VISIT_TYPE',
-          'Unbekannter Besuchstyp - erlaubt sind "initial" (Erstbestückung), "refill" (Nachlieferung) und "pickup" (Abholung).'
-        )
-      }
-      updates.visitType = body.visitType
-    }
-
-    // Der Geschäftstag bleibt bei einer Uhrzeit-Korrektur bewusst stehen -
-    // sonst würde eine Nacherfassung den Tag unter der Hand verschieben.
-    if (body.businessDate !== undefined) {
-      if (!isBusinessDate(body.businessDate)) {
-        return fail(
+      const requested =
+        typeof req.query['date'] === 'string' ? req.query['date'] : ''
+      if (requested && !isBusinessDate(requested)) {
+        return sendError(
           res,
           400,
           'INVALID_BUSINESS_DATE',
           'Ungültiger Geschäftstag - erwartet wird das Format JJJJ-MM-TT.'
         )
       }
-      updates.businessDate = body.businessDate
-    }
+      const businessDate =
+        requested || partnerStats.businessDateOf(new Date()) || ''
 
-    if (body.note !== undefined) updates.note = optionalString(body.note)
-    if (body.staffName !== undefined) {
-      updates.staffName = optionalString(body.staffName)
-    }
-
-    const targetType = updates.visitType || visit.visitType
-    const targetDate =
-      updates.businessDate || String(visit.businessDate).slice(0, 10)
-    if (targetType === 'initial') {
-      const duplicates = await PartnerVisit.count({
-        where: {
-          partnerId: partner.id,
-          businessDate: targetDate,
-          visitType: 'initial',
-          id: { [Op.ne]: visit.id },
-        },
+      const visits = await loadVisits(partner.id, {
+        from: businessDate,
+        to: businessDate,
       })
-      if (duplicates > 0) {
-        return fail(
-          res,
-          409,
-          'DUPLICATE_INITIAL_VISIT',
-          `Für den ${formatDe(
-            targetDate
-          )} ist bereits eine Erstbestückung erfasst. Es kann nur eine je Geschäftstag geben.`
-        )
-      }
-    }
+      const detail = partnerStats.getDayDetail(visits)
 
-    let items: VisitItemInput[] | null = null
-    if (body.items !== undefined) {
-      const parsedItems = normalizeVisitItems(body.items)
-      if (parsedItems.ok === false) {
-        return fail(res, 400, 'INVALID_ITEMS', parsedItems.message)
-      }
-      items = parsedItems.items
+      return res.json({
+        ...detail,
+        // Ohne Besuche kennt der Core den Tag nicht - der angefragte gilt.
+        businessDate: detail.businessDate || businessDate,
+        visits,
+      })
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'DAY_LOAD_FAILED',
+        message: 'Der Geschäftstag konnte nicht geladen werden.',
+        log: 'Failed to load partner day detail',
+      })
     }
+  })
 
-    const sequelize = getSequelize()
-    await sequelize.transaction(async (transaction) => {
-      if (Object.keys(updates).length > 0) {
-        await visit.update(updates, { transaction })
-      }
-      if (items) {
-        // Positionen werden komplett ersetzt - Teil-Updates einzelner Zeilen
-        // wären beim Nachzählen im Markt die fehleranfälligere Variante.
-        await PartnerVisitItem.destroy({
-          where: { visitId: visit.id },
-          transaction,
-        })
-        if (items.length > 0) {
-          await PartnerVisitItem.bulkCreate(
-            items.map((item) => ({ ...item, visitId: visit.id })),
-            { transaction, validate: true }
+  // Besuch erfassen (inhaber, verkauf, fahrer)
+  router.post(
+    '/:id/visits',
+    canWriteVisits,
+    async (req: Request, res: Response) => {
+      try {
+        const partner = await loadPartner(req, res)
+        if (!partner) return
+
+        const body = (req.body || {}) as any
+
+        if (!partnerStats.isVisitType(body.visitType)) {
+          return sendError(
+            res,
+            400,
+            'INVALID_VISIT_TYPE',
+            'Unbekannter Besuchstyp - erlaubt sind "initial" (Erstbestückung), "refill" (Nachlieferung) und "pickup" (Abholung).'
           )
         }
+        const visitType = body.visitType
+
+        const visitAt = body.visitAt ? new Date(body.visitAt) : new Date()
+        if (Number.isNaN(visitAt.getTime())) {
+          return sendError(
+            res,
+            400,
+            'INVALID_VISIT_AT',
+            'Ungültiger Zeitpunkt - bitte Datum und Uhrzeit des Besuchs prüfen.'
+          )
+        }
+
+        // Der Geschäftstag wird aus dem Zeitpunkt abgeleitet, wenn er fehlt.
+        const businessDate =
+          body.businessDate === undefined || body.businessDate === null
+            ? partnerStats.businessDateOf(visitAt)
+            : body.businessDate
+        if (!isBusinessDate(businessDate)) {
+          return sendError(
+            res,
+            400,
+            'INVALID_BUSINESS_DATE',
+            'Ungültiger Geschäftstag - erwartet wird das Format JJJJ-MM-TT.'
+          )
+        }
+
+        const parsedItems = normalizeVisitItems(body.items, catalogue())
+        if (parsedItems.ok === false) {
+          return sendError(
+            res,
+            parsedItems.status,
+            parsedItems.error,
+            parsedItems.message
+          )
+        }
+        const items = parsedItems.items
+
+        const visitId = await getSequelize().transaction(
+          async (transaction) => {
+            if (visitType === 'initial') {
+              await assertNoOtherInitial(
+                partner.id,
+                businessDate,
+                null,
+                transaction,
+                'Bitte den bestehenden Besuch korrigieren oder eine Nachlieferung erfassen.'
+              )
+            }
+            // Die laufende Nummer vergibt der Server - sie zählt innerhalb
+            // des Geschäftstags und darf nicht vom Client kommen.
+            const sequence = await nextSequence(
+              partner.id,
+              businessDate,
+              null,
+              transaction
+            )
+
+            const visit = await PartnerVisit.create(
+              {
+                partnerId: partner.id,
+                businessDate,
+                visitAt,
+                visitType,
+                sequence,
+                staffId: currentUserId(req),
+                // Ohne Angabe: wer angemeldet ist (D5).
+                staffName:
+                  optionalString(body.staffName) ??
+                  optionalString(req.user?.displayName),
+                note: optionalString(body.note),
+              },
+              { transaction }
+            )
+
+            if (items.length > 0) {
+              await PartnerVisitItem.bulkCreate(
+                items.map((item) => ({ ...item, visitId: visit.id })),
+                { transaction, validate: true }
+              )
+            }
+            await audit(
+              req,
+              'create',
+              'partner_visit',
+              visit.id,
+              {
+                partnerId: partner.id,
+                businessDate,
+                visitType,
+                itemCount: items.length,
+              },
+              { transaction }
+            )
+            return visit.id
+          }
+        )
+
+        logger.info(
+          `Partner visit recorded: partner=${partner.id} date=${businessDate} type=${visitType}`
+        )
+        return res.status(201).json(await loadVisitWithItems(visitId))
+      } catch (error) {
+        return answerError(res, error, {
+          code: 'VISIT_CREATE_FAILED',
+          message: 'Der Besuch konnte nicht gespeichert werden.',
+          log: 'Failed to record partner visit',
+        })
       }
-    })
+    }
+  )
 
-    logger.info(
-      `Partner visit updated: partner=${partner.id} visit=${visit.id}`
-    )
-    return res.json(await loadVisitWithItems(visit.id))
-  } catch (error) {
-    logger.error('Failed to update partner visit', error)
-    return fail(
-      res,
-      500,
-      'VISIT_UPDATE_FAILED',
-      'Der Besuch konnte nicht gespeichert werden.'
-    )
-  }
-})
+  // Besuch korrigieren (inhaber, verkauf, fahrer)
+  router.patch(
+    '/:id/visits/:visitId',
+    canWriteVisits,
+    async (req: Request, res: Response) => {
+      try {
+        const partner = await loadPartner(req, res)
+        if (!partner) return
 
-// Besuch löschen (Fehleingabe)
-router.delete('/:id/visits/:visitId', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
+        const visit = await loadVisit(partner.id, req, res)
+        if (!visit) return
 
-    const visit = await loadVisit(partner.id, req, res)
-    if (!visit) return
+        const body = (req.body || {}) as any
+        const updates: any = {}
 
-    const sequelize = getSequelize()
-    await sequelize.transaction(async (transaction) => {
-      await PartnerVisitItem.destroy({
-        where: { visitId: visit.id },
-        transaction,
+        if (body.visitAt !== undefined) {
+          const visitAt = new Date(body.visitAt)
+          if (Number.isNaN(visitAt.getTime())) {
+            return sendError(
+              res,
+              400,
+              'INVALID_VISIT_AT',
+              'Ungültiger Zeitpunkt - bitte Datum und Uhrzeit des Besuchs prüfen.'
+            )
+          }
+          updates.visitAt = visitAt
+        }
+
+        if (body.visitType !== undefined) {
+          if (!partnerStats.isVisitType(body.visitType)) {
+            return sendError(
+              res,
+              400,
+              'INVALID_VISIT_TYPE',
+              'Unbekannter Besuchstyp - erlaubt sind "initial" (Erstbestückung), "refill" (Nachlieferung) und "pickup" (Abholung).'
+            )
+          }
+          updates.visitType = body.visitType
+        }
+
+        // Der Geschäftstag bleibt bei einer Uhrzeit-Korrektur bewusst stehen -
+        // sonst würde eine Nacherfassung den Tag unter der Hand verschieben.
+        // (Bewusste Abweichung vom Mock; die Erfassungsmaske schickt den
+        // Geschäftstag ohnehin immer mit.)
+        if (body.businessDate !== undefined) {
+          if (!isBusinessDate(body.businessDate)) {
+            return sendError(
+              res,
+              400,
+              'INVALID_BUSINESS_DATE',
+              'Ungültiger Geschäftstag - erwartet wird das Format JJJJ-MM-TT.'
+            )
+          }
+          updates.businessDate = body.businessDate
+        }
+
+        if (body.note !== undefined) updates.note = optionalString(body.note)
+        if (body.staffName !== undefined) {
+          updates.staffName = optionalString(body.staffName)
+        }
+
+        let items: VisitItemInput[] | null = null
+        if (body.items !== undefined) {
+          const existingItems = partnerStats.toPlainVisit(visit).items
+          const parsedItems = normalizeVisitItems(
+            body.items,
+            catalogue(),
+            existingItems
+          )
+          if (parsedItems.ok === false) {
+            return sendError(
+              res,
+              parsedItems.status,
+              parsedItems.error,
+              parsedItems.message
+            )
+          }
+          items = parsedItems.items
+        }
+
+        const currentDate = String(visit.businessDate).slice(0, 10)
+        const targetType = updates.visitType || visit.visitType
+        const targetDate = updates.businessDate || currentDate
+
+        await getSequelize().transaction(async (transaction) => {
+          if (targetType === 'initial') {
+            await assertNoOtherInitial(
+              partner.id,
+              targetDate,
+              visit.id,
+              transaction,
+              'Es kann nur eine je Geschäftstag geben.'
+            )
+          }
+          // Wandert der Besuch auf einen anderen Tag, reiht er sich dort
+          // hinten ein - sonst gäbe es dieselbe laufende Nummer doppelt.
+          if (targetDate !== currentDate) {
+            updates.sequence = await nextSequence(
+              partner.id,
+              targetDate,
+              visit.id,
+              transaction
+            )
+          }
+          if (Object.keys(updates).length > 0) {
+            await visit.update(updates, { transaction })
+          }
+          if (items) {
+            // Positionen werden komplett ersetzt - Teil-Updates einzelner
+            // Zeilen wären beim Nachzählen im Markt fehleranfälliger.
+            await PartnerVisitItem.destroy({
+              where: { visitId: visit.id },
+              transaction,
+            })
+            if (items.length > 0) {
+              await PartnerVisitItem.bulkCreate(
+                items.map((item) => ({ ...item, visitId: visit.id })),
+                { transaction, validate: true }
+              )
+            }
+          }
+          await audit(
+            req,
+            'update',
+            'partner_visit',
+            visit.id,
+            {
+              partnerId: partner.id,
+              businessDate: targetDate,
+              visitType: targetType,
+              fields: [
+                ...Object.keys(updates),
+                ...(items ? ['items'] : []),
+              ].sort(),
+            },
+            { transaction }
+          )
+        })
+
+        logger.info(
+          `Partner visit updated: partner=${partner.id} visit=${visit.id}`
+        )
+        return res.json(await loadVisitWithItems(visit.id))
+      } catch (error) {
+        return answerError(res, error, {
+          code: 'VISIT_UPDATE_FAILED',
+          message: 'Der Besuch konnte nicht gespeichert werden.',
+          log: 'Failed to update partner visit',
+        })
+      }
+    }
+  )
+
+  // Besuch löschen (Fehleingabe; inhaber, verkauf, fahrer)
+  router.delete(
+    '/:id/visits/:visitId',
+    canWriteVisits,
+    async (req: Request, res: Response) => {
+      try {
+        const partner = await loadPartner(req, res)
+        if (!partner) return
+
+        const visit = await loadVisit(partner.id, req, res)
+        if (!visit) return
+
+        const plain = partnerStats.toPlainVisit(visit)
+        await getSequelize().transaction(async (transaction) => {
+          await PartnerVisitItem.destroy({
+            where: { visitId: visit.id },
+            transaction,
+          })
+          await visit.destroy({ transaction })
+          // Der gelöschte Besuch steht vollständig im Protokoll - eine
+          // versehentliche Löschung lässt sich so nachvollziehen.
+          await audit(
+            req,
+            'delete',
+            'partner_visit',
+            plain.id,
+            {
+              partnerId: partner.id,
+              businessDate: plain.businessDate,
+              visitType: plain.visitType,
+              visitAt: plain.visitAt,
+              sequence: plain.sequence,
+              items: plain.items.map((item) => ({
+                productSlug: item.productSlug,
+                productId: item.productId,
+                unitPrice: item.unitPrice,
+                countedQty: item.countedQty,
+                deliveredQty: item.deliveredQty,
+              })),
+            },
+            { transaction }
+          )
+        })
+
+        logger.info(
+          `Partner visit deleted: partner=${partner.id} visit=${visit.id}`
+        )
+        // Antwort wie im Mock (D3).
+        return res.json({
+          id: plain.id,
+          deleted: true,
+          message: 'Besuch gelöscht.',
+        })
+      } catch (error) {
+        return answerError(res, error, {
+          code: 'VISIT_DELETE_FAILED',
+          message: 'Der Besuch konnte nicht gelöscht werden.',
+          log: 'Failed to delete partner visit',
+        })
+      }
+    }
+  )
+
+  // ==========================================================================
+  // KENNZAHLEN UND REPORT
+  // ==========================================================================
+
+  router.get('/:id/stats', async (req: Request, res: Response) => {
+    try {
+      const partner = await loadPartner(req, res)
+      if (!partner) return
+
+      const range = parseRange(req, res)
+      if (!range) return
+
+      const visits = await loadVisits(partner.id, range)
+      return res.json(partnerStats.getStats(visits, range))
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'STATS_FAILED',
+        message: 'Die Kennzahlen konnten nicht berechnet werden.',
+        log: 'Failed to compute partner stats',
       })
-      await visit.destroy({ transaction })
-    })
+    }
+  })
 
-    logger.info(
-      `Partner visit deleted: partner=${partner.id} visit=${visit.id}`
-    )
-    return res.status(204).send()
-  } catch (error) {
-    logger.error('Failed to delete partner visit', error)
-    return fail(
-      res,
-      500,
-      'VISIT_DELETE_FAILED',
-      'Der Besuch konnte nicht gelöscht werden.'
-    )
-  }
-})
+  // CSV-Export - vor der JSON-Variante registriert, damit die Reihenfolge klar ist
+  router.get('/:id/report.csv', async (req: Request, res: Response) => {
+    try {
+      const partner = await loadPartner(req, res)
+      if (!partner) return
 
-// ============================================================================
-// KENNZAHLEN UND REPORT
-// ============================================================================
+      const range = parseRange(req, res)
+      if (!range) return
 
-router.get('/:id/stats', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
+      const visits = await loadVisits(partner.id, range)
+      const stats = partnerStats.getStats(visits, range)
+      const csv = partnerStats.toCsv(stats, {
+        name: partner.name,
+        settlementModel: partner.settlementModel,
+      })
 
-    const range = parseRange(req, res)
-    if (!range) return
+      const filename = `partner-report-${partner.slug || partner.id}-${
+        range.from || 'gesamt'
+      }-bis-${range.to || 'gesamt'}.csv`
 
-    const visits = await loadVisits(partner.id, range)
-    return res.json(partnerStats.getStats(visits, range))
-  } catch (error) {
-    logger.error('Failed to compute partner stats', error)
-    return fail(
-      res,
-      500,
-      'STATS_FAILED',
-      'Die Kennzahlen konnten nicht berechnet werden.'
-    )
-  }
-})
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
+      // BOM voran, sonst zeigt Excel die Umlaute als Buchstabensalat.
+      return res.send(`﻿${csv}`)
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'REPORT_CSV_FAILED',
+        message: 'Der CSV-Export konnte nicht erzeugt werden.',
+        log: 'Failed to export partner report as CSV',
+      })
+    }
+  })
 
-// CSV-Export - vor der JSON-Variante registriert, damit die Reihenfolge klar ist
-router.get('/:id/report.csv', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
+  router.get('/:id/report', async (req: Request, res: Response) => {
+    try {
+      const partner = await loadPartner(req, res)
+      if (!partner) return
 
-    const range = parseRange(req, res)
-    if (!range) return
+      const range = parseRange(req, res)
+      if (!range) return
 
-    const visits = await loadVisits(partner.id, range)
-    const stats = partnerStats.getStats(visits, range)
-    const csv = partnerStats.toCsv(stats, {
-      name: partner.name,
-      settlementModel: partner.settlementModel,
-    })
+      const visits = await loadVisits(partner.id, range)
+      const stats = partnerStats.getStats(visits, range)
 
-    const filename = `partner-report-${partner.slug || partner.id}-${
-      range.from || 'gesamt'
-    }-bis-${range.to || 'gesamt'}.csv`
+      return res.json({
+        partner: serializePartner(partner),
+        generatedAt: new Date().toISOString(),
+        stats,
+      })
+    } catch (error) {
+      return answerError(res, error, {
+        code: 'REPORT_FAILED',
+        message: 'Der Partner-Report konnte nicht erzeugt werden.',
+        log: 'Failed to build partner report',
+      })
+    }
+  })
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`)
-    // BOM voran, sonst zeigt Excel die Umlaute als Buchstabensalat.
-    return res.send(`\uFEFF${csv}`)
-  } catch (error) {
-    logger.error('Failed to export partner report as CSV', error)
-    return fail(
-      res,
-      500,
-      'REPORT_CSV_FAILED',
-      'Der CSV-Export konnte nicht erzeugt werden.'
-    )
-  }
-})
-
-router.get('/:id/report', async (req: Request, res: Response) => {
-  try {
-    const partner = await loadPartner(req, res)
-    if (!partner) return
-
-    const range = parseRange(req, res)
-    if (!range) return
-
-    const visits = await loadVisits(partner.id, range)
-    const stats = partnerStats.getStats(visits, range)
-
-    return res.json({
-      partner: serializePartner(partner),
-      generatedAt: new Date().toISOString(),
-      stats,
-    })
-  } catch (error) {
-    logger.error('Failed to build partner report', error)
-    return fail(
-      res,
-      500,
-      'REPORT_FAILED',
-      'Der Partner-Report konnte nicht erzeugt werden.'
-    )
-  }
-})
-
-export default router
+  return router
+}
