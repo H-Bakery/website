@@ -1,3 +1,8 @@
+/**
+ * @deprecated Legacy model, unused in the pilot: not initialised by
+ * `initializeModels()` and its table is not in the pilot baseline migration
+ * (B2). Kept only so unmounted legacy code compiles; removed in B12.
+ */
 import { DataTypes, Model, Sequelize } from 'sequelize'
 
 export interface NotificationCategoryAttributes {
@@ -92,14 +97,26 @@ class NotificationPreferences
           },
           validate: {
             isValidCategory(value: any) {
-              const required = ['staff', 'order', 'system', 'inventory', 'general']
-              const hasAllKeys = required.every(key => key in value)
+              const required = [
+                'staff',
+                'order',
+                'system',
+                'inventory',
+                'general',
+              ]
+              const hasAllKeys = required.every((key) => key in value)
               if (!hasAllKeys) {
-                throw new Error('categoryPreferences must contain all required categories')
+                throw new Error(
+                  'categoryPreferences must contain all required categories'
+                )
               }
-              const allBoolean = required.every(key => typeof value[key] === 'boolean')
+              const allBoolean = required.every(
+                (key) => typeof value[key] === 'boolean'
+              )
               if (!allBoolean) {
-                throw new Error('All category preference values must be boolean')
+                throw new Error(
+                  'All category preference values must be boolean'
+                )
               }
             },
           },
@@ -127,8 +144,13 @@ class NotificationPreferences
               }
               if (value.enabled) {
                 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/
-                if (!timeRegex.test(value.start) || !timeRegex.test(value.end)) {
-                  throw new Error('quietHours start and end must be in HH:MM format')
+                if (
+                  !timeRegex.test(value.start) ||
+                  !timeRegex.test(value.end)
+                ) {
+                  throw new Error(
+                    'quietHours start and end must be in HH:MM format'
+                  )
                 }
               }
             },

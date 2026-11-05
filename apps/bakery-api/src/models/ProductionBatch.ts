@@ -1,3 +1,8 @@
+/**
+ * @deprecated Legacy model, unused in the pilot: not initialised by
+ * `initializeModels()` and its table is not in the pilot baseline migration
+ * (B2). Kept only so unmounted legacy code compiles; removed in B12.
+ */
 import { DataTypes, Model, Sequelize } from 'sequelize'
 import type ProductionStep from './ProductionStep'
 

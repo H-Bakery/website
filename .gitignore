@@ -89,3 +89,6 @@ test-results/
 
 # Local store of the mock API server (apps/bakery-api/simple-server.js)
 apps/bakery-api/data/
+
+# SQLite of the TS API in development (DB_PATH default ./data/bakery.db, relative to cwd)
+/data/

@@ -1,4 +1,4 @@
-'use strict';
+'use strict'
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
@@ -7,70 +7,70 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       orderId: {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'Orders',
-          key: 'id'
+          key: 'id',
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE'
+        onDelete: 'CASCADE',
       },
       productId: {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'Products',
-          key: 'id'
+          key: 'id',
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE'
+        onDelete: 'CASCADE',
       },
       quantity: {
         type: Sequelize.INTEGER,
         allowNull: false,
         validate: {
-          min: 1
-        }
+          min: 1,
+        },
       },
       unitPrice: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       totalPrice: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       specialInstructions: {
         type: Sequelize.TEXT,
-        allowNull: true
+        allowNull: true,
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Add indexes for performance
-    await queryInterface.addIndex('OrderItems', ['orderId']);
-    await queryInterface.addIndex('OrderItems', ['productId']);
-    await queryInterface.addIndex('OrderItems', ['orderId', 'productId']);
+    await queryInterface.addIndex('OrderItems', ['orderId'])
+    await queryInterface.addIndex('OrderItems', ['productId'])
+    await queryInterface.addIndex('OrderItems', ['orderId', 'productId'])
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable('OrderItems');
-  }
-};
+    await queryInterface.dropTable('OrderItems')
+  },
+}

@@ -310,6 +310,21 @@ jobs:
           NODE_ENV: production
         run: npx nx build ${{ matrix.app }} --configuration=production
 
+      # Boot smoke of the pilot API (roadmap B1): the bundle from the step
+      # above starts in production mode on a fresh SQLite file, /health must
+      # answer with the database ok, login must work, and a restart must not
+      # re-run migrations.
+      # The login uses the in-memory default admin of libs/api/auth (public
+      # in the source, not a secret). B3 removes that seed: switch these to an
+      # account the smoke creates with `create-user` on the fresh database.
+      - name: Boot smoke bakery-api
+        if: matrix.app == 'bakery-api'
+        env:
+          SMOKE_SKIP_BUNDLE: '1'
+          SMOKE_LOGIN_USER: admin
+          SMOKE_LOGIN_PASSWORD: admin123
+        run: apps/bakery-api/scripts/boot-smoke.sh
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

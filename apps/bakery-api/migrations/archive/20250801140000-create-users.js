@@ -1,4 +1,4 @@
-'use strict';
+'use strict'
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
@@ -7,70 +7,70 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       username: {
         type: Sequelize.STRING,
         allowNull: false,
-        unique: true
+        unique: true,
       },
       password: {
         type: Sequelize.STRING,
-        allowNull: false
+        allowNull: false,
       },
       email: {
         type: Sequelize.STRING,
         allowNull: false,
         unique: true,
         validate: {
-          isEmail: true
-        }
+          isEmail: true,
+        },
       },
       firstName: {
         type: Sequelize.STRING,
-        allowNull: false
+        allowNull: false,
       },
       lastName: {
         type: Sequelize.STRING,
-        allowNull: false
+        allowNull: false,
       },
       role: {
         type: Sequelize.ENUM('admin', 'staff', 'user'),
         allowNull: false,
-        defaultValue: 'user'
+        defaultValue: 'user',
       },
       isActive: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: true
+        defaultValue: true,
       },
       lastLogin: {
         type: Sequelize.DATE,
-        allowNull: true
+        allowNull: true,
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       deletedAt: {
         allowNull: true,
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Add indexes for performance
-    await queryInterface.addIndex('Users', ['email']);
-    await queryInterface.addIndex('Users', ['username']);
-    await queryInterface.addIndex('Users', ['role']);
-    await queryInterface.addIndex('Users', ['isActive']);
-    await queryInterface.addIndex('Users', ['deletedAt']);
+    await queryInterface.addIndex('Users', ['email'])
+    await queryInterface.addIndex('Users', ['username'])
+    await queryInterface.addIndex('Users', ['role'])
+    await queryInterface.addIndex('Users', ['isActive'])
+    await queryInterface.addIndex('Users', ['deletedAt'])
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable('Users');
-  }
-};
+    await queryInterface.dropTable('Users')
+  },
+}

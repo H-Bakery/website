@@ -40,8 +40,9 @@ npm run serve:shop           # Shop app (port 4200) ✓
 npm run serve:management     # Management app (port 4201) ✓
 npm run serve:api:simple     # Simple API server with mock data (port 5000) ✓
 
-# API (TypeScript build - has compilation errors, see TASK-001)
-npm run serve:api            # Full TS API - currently broken due to migration issues
+# Real TS API (pilot, roadmap B0): esbuild bundle → node, SQLite at DB_PATH
+npm run serve:api            # bundles, migrates, listens on PORT (default 5000) ✓
+npm run build:api            # bundle only → dist/apps/bakery-api/bundle/main.js
 
 # Building
 nx build bakery-shop       # Build shop app
@@ -116,18 +117,27 @@ website/
 3. Lint code: `npm run lint`
 4. Build to verify: `npm run build`
 
-## Service Status (as of 2026-03-01)
+## Service Status (as of 2026-11-05)
 
-| Service       | Command                    | Port | Status                                       |
-| ------------- | -------------------------- | ---- | -------------------------------------------- |
-| Landing Page  | `npm run dev:landing`      | 3000 | Working                                      |
-| Shop          | `npm run serve:shop`       | 4200 | Working                                      |
-| Management    | `npm run serve:management` | 4201 | Working                                      |
-| Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                    |
-| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data)                          |
-| API (full TS) | `npm run serve:api`        | 5000 | Broken (TS compilation errors, see TASK-001) |
+| Service       | Command                    | Port | Status                                               |
+| ------------- | -------------------------- | ---- | ---------------------------------------------------- |
+| Landing Page  | `npm run dev:landing`      | 3000 | Working                                              |
+| Shop          | `npm run serve:shop`       | 4200 | Working                                              |
+| Management    | `npm run serve:management` | 4201 | Working                                              |
+| Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                            |
+| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data) - parity reference until cutover |
+| API (real TS) | `npm run serve:api`        | 5000 | Starts (B0): health, auth (in-memory), partners only |
 
-The full TypeScript API (`bakery-api`) has systemic compilation errors from an incomplete JS→TS migration. Use `serve:api:simple` for a working API with mock endpoints.
+The real TypeScript API (`bakery-api`, roadmap D2) is built by esbuild into one file,
+`dist/apps/bakery-api/bundle/main.js` (`apps/bakery-api/build.mjs`, target `bakery-api:bundle`), and
+runs against the root `node_modules`. On start it opens SQLite at `DB_PATH` (default
+`./data/bakery.db` relative to the working directory, gitignored; **absolute and required in
+production**), switches it to WAL with `busy_timeout`, runs the migrations in-process (Umzug, static
+list in `src/db/migrations.ts`), then `initializeModels()`, then listens. Mounted so far: `/health`
+(+ `/api/health`), `/api/auth`, `/api/partners`; every other path is a JSON 404 with `error` +
+`message`. The other pilot domains (products, reports, finance, targets, preorders, Backzettel) are
+added by their roadmap tasks; until then the frontend still talks to `serve:api:simple`. Details in
+`apps/bakery-api/CLAUDE.md`.
 
 ## Verkaufspartner (Backschrank CAP-Markt)
 
@@ -141,8 +151,8 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
   dependency-freies CommonJS. Es benutzen sie die echte API (`partner-stats.service.ts`, nur ein
   typisierter Wrapper), der Mock-Server (`simple-server.js`) und die Tests. Keine zweite
   Implementierung anlegen; die beiden Server würden sonst auseinanderlaufen.
-  Weil `@nx/js:tsc` ohne `allowJs` läuft, steht die Datei in `project.json` unter `assets` -
-  sonst fehlt sie in `dist/` und `require('./partner-stats.core')` greift ins Leere.
+  Seit B0 bündelt esbuild (`apps/bakery-api/build.mjs`) die `*.core.js`-Dateien mit ins Bundle;
+  der alte `assets`-Eintrag des `@nx/js:tsc`-Builds ist weg.
 - **Ein Geschäftstag ohne `pickup`-Besuch ist offen.** Verkauf und Umsatz sind dann vorläufig
   (`stats.isProvisional`, `openDates`). Ohne diese Kennzeichnung liest sich ein unvollständiger
   Tag im Report als 100 % Abverkauf. Detail-Seite und Report markieren das; nicht wegoptimieren.
@@ -179,9 +189,11 @@ verschobenen Datei). Der Liefer-Store benutzt dieselben Helfer. Nicht durch ein 
 `writeFileSync` ersetzen - genau so gingen früher nach einem Absturz mitten im Schreiben alle
 Besuche verloren.
 
-Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Achtung -
-`apps/bakery-api/jest.config.js` hat `testMatch: ["**/tests/**/*.test.js"]`, führt also **nur**
-plain-JS-Tests unter `tests/` aus. Die TypeScript-Specs unter `src/**/__tests__/` laufen nie mit.
+Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Seit B1 hat
+`apps/bakery-api/jest.config.js` zwei Projekte: `js` (`tests/**/*.test.js`) und `ts`
+(`src/**/*.spec.ts`, `tests/**/*.test.ts`, ts-jest). Die echte API wird über
+`tests/helpers/createTestApp.ts` (`createApp()` auf `:memory:` mit der Pilot-Baseline) getestet,
+der Abgleich mit `simple-server.js` über `tests/parity/` - Details in `apps/bakery-api/tests/README.md`.
 
 ## Liefertouren (Samstagsauslieferung)
 
@@ -206,8 +218,7 @@ Die Fahrer-App hat außerdem einen **Dunkelmodus** (System / Hell / Dunkel, CSS-
 Details stehen in `apps/bakery-delivery/CLAUDE.md`. Fünf Dinge, die man von außen wissen muss:
 
 - **Alle Server-Formeln stehen genau einmal**, in `apps/bakery-api/src/services/delivery-tours.core.js`
-  (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`, gleiche `*.core.js`-Glob
-  unter `assets`). Das Frontend hat in `@bakery/delivery/routing` eine zweite, TypeScript-Fassung
+  (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`). Das Frontend hat in `@bakery/delivery/routing` eine zweite, TypeScript-Fassung
   derselben Geometrie — die CommonJS/ESM-Grenze lässt sich nicht ohne Build-Umbau überbrücken. Wer
   Haversine, Umwegfaktor oder Standzeit ändert, muss **beide** Dateien anfassen;
   `libs/bakery-delivery-routing/src/lib/core-consistency.spec.ts` rechnet beide gegeneinander und
@@ -432,9 +443,9 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
 - `formatTrayInfo` ist ein **Duplikat** von `feature-daily-prep/.../utils/trayInfo.ts`; beide
   ändern.
 - CLI für das hq-CI (H2): `node apps/bakery-api/scripts/validate-backzettel.js <yaml> [productsDir]
-[--json]`, Exit 1 bei Fehlern. Der Loader braucht `js-yaml`, das im Root-`package.json` noch fehlt
-  (nur über `gray-matter` vorhanden) - B0 nimmt es auf, das hq-CI muss es selbst installieren. Nur Dateien mit `*.core.js`/`*.loader.js` in `src/services`
-  landen per `assets` in `dist/`.
+[--json]`, Exit 1 bei Fehlern. Der Loader braucht `js-yaml` ^4 (Root-`dependencies`); das hq-CI
+  muss es selbst installieren. Im API-Bundle landen die Dateien, sobald eine gemountete Route sie
+  `require`t (esbuild, B0) - `js-yaml` bleibt dann extern.
 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/backzettel` (117,
 synthetische Fixtures in `tests/fixtures/backzettel.synthetic.js`).
