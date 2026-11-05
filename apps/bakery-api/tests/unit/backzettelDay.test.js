@@ -477,3 +477,84 @@ describe('Varianten-Formen', () => {
     expect(day.parseNumber(null)).toBeNaN()
   })
 })
+
+describe('Erneute Freigabe und eingefrorene Berechnung', () => {
+  const stored = {
+    base: 30,
+    seasonal: 0,
+    preorders: 0,
+    cap: 0,
+    correction: 10,
+    total: 30,
+  }
+
+  it('frozenQtyChanged: jede Mengenänderung, nicht die Korrektur selbst', () => {
+    expect(day.frozenQtyChanged(stored, { ...stored })).toBe(false)
+    // Korrektur steht schon im Entwurf in der Zeile; zählt über total
+    expect(day.frozenQtyChanged(stored, { ...stored, total: 40 })).toBe(true)
+    expect(day.frozenQtyChanged(stored, { ...stored, preorders: 2 })).toBe(true)
+    expect(day.frozenQtyChanged(stored, { ...stored, cap: 1 })).toBe(true)
+    // SQLite liefert DECIMAL als Zahl, andere Dialekte als Text
+    expect(
+      day.frozenQtyChanged(
+        { ...stored, total: '4.50' },
+        { ...stored, total: 4.5 }
+      )
+    ).toBe(false)
+    expect(day.frozenQtyChanged(null, stored)).toBe(false)
+  })
+
+  it('computedSnapshot: Hefeteig, Füllungen, Vorbereitung und Hinweise als JSON', () => {
+    const result = core.computeDay({
+      config: cfg,
+      date: SAT,
+      preorderItems: day.toCorePreorderItems(
+        [{ preorderId: 1, productId: 'test-alt', variant: '', qty: 2 }],
+        SAT
+      ),
+      catalog: PRODUCTS,
+      recipes: {},
+    })
+    const snap = day.computedSnapshot(result)
+    expect(Object.keys(snap).sort()).toEqual([
+      'fillings',
+      'hefeteig',
+      'prep',
+      'warnings',
+    ])
+    expect(snap.hefeteig).toEqual(result.hefeteig)
+    expect(snap.prep).toEqual(result.prep)
+    expect(snap.warnings.map((w) => w.code)).toContain('unmapped_product')
+    expect(day.computedSnapshot(undefined)).toEqual({
+      hefeteig: null,
+      fillings: null,
+      prep: null,
+      warnings: [],
+    })
+  })
+
+  it('snapshotDiffers: nur Hefeteig, Füllungen und Vorbereitung zählen', () => {
+    const a = { hefeteig: { dough_g: 1 }, fillings: [], prep: [], warnings: [] }
+    expect(day.snapshotDiffers(a, { ...a, warnings: [{ code: 'x' }] })).toBe(
+      false
+    )
+    expect(day.snapshotDiffers(a, { ...a, hefeteig: { dough_g: 2 } })).toBe(
+      true
+    )
+    expect(day.snapshotDiffers(a, { ...a, prep: [{ id: 'p' }] })).toBe(true)
+    expect(day.snapshotDiffers(null, a)).toBe(false)
+  })
+
+  it('prepDateFor: Vortag, offen wenn der Vortag kein Produktionstag ist (Q-B2)', () => {
+    expect(day.prepDateFor(TUE, cfg.days)).toEqual({
+      prepDate: '2026-11-23',
+      prepDateProvisional: true,
+    })
+    expect(day.prepDateFor(SAT, cfg.days)).toEqual({
+      prepDate: '2026-11-27',
+      prepDateProvisional: false,
+    })
+    expect(day.prepDateFor('2026-03-01', cfg.days).prepDate).toBe('2026-02-28')
+    expect(day.prepDateFor(TUE, null).prepDateProvisional).toBeNull()
+  })
+})

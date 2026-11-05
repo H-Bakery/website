@@ -28,6 +28,17 @@ export interface PreorderSnapshotItem {
   qty: number
 }
 
+/**
+ * What the core computed besides the lines at confirmation; a confirmed day
+ * is served from it, never recomputed from the current YAML.
+ */
+export interface ComputedSnapshot {
+  hefeteig: unknown
+  fillings: unknown
+  prep: unknown
+  warnings: unknown[]
+}
+
 export class BackzettelDay extends Model<
   InferAttributes<BackzettelDay>,
   InferCreationAttributes<BackzettelDay>
@@ -40,6 +51,7 @@ export class BackzettelDay extends Model<
   declare confirmedBy: CreationOptional<number | null>
   declare confirmedAt: CreationOptional<Date | null>
   declare preorderSnapshot: CreationOptional<PreorderSnapshotItem[] | null>
+  declare computedSnapshot: CreationOptional<ComputedSnapshot | null>
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 
@@ -60,6 +72,7 @@ export class BackzettelDay extends Model<
         confirmedBy: { type: DataTypes.INTEGER, allowNull: true },
         confirmedAt: { type: DataTypes.DATE, allowNull: true },
         preorderSnapshot: { type: DataTypes.JSON, allowNull: true },
+        computedSnapshot: { type: DataTypes.JSON, allowNull: true },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
       },

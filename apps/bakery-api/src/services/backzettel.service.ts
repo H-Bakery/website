@@ -8,10 +8,13 @@
  * serialised write transactions of `db/database.ts`, and audits every write.
  *
  *   draft      computed live; only season factor and corrections are stored
- *   confirmed  lines frozen in backzettel_lines + preorder snapshot; reading
- *              the day records new preorder changes as backzettel_deltas
+ *   confirmed  lines frozen in backzettel_lines, Hefeteig/fillings/prep/
+ *              warnings frozen in computed_snapshot, preorder snapshot;
+ *              reading the day records new preorder changes as
+ *              backzettel_deltas (audited as a system action)
  *   reopen     (inhaber) back to draft; deltas are folded into the live
- *              draft and discarded, the audit log keeps them
+ *              draft and discarded, the audit log keeps them. A re-confirm
+ *              that changes a line's quantity clears its tick.
  */
 import type { Request } from 'express'
 import { Op, Transaction } from 'sequelize'
@@ -73,12 +76,6 @@ const CONFIRMED_MESSAGE =
 function toNumber(x: unknown): number {
   const n = Number(x)
   return Number.isFinite(n) ? n : 0
-}
-
-function previousDate(date: string): string {
-  const [y, m, d] = date.split('-').map(Number)
-  const t = new Date(Date.UTC(y, m - 1, d - 1))
-  return t.toISOString().slice(0, 10)
 }
 
 function assertDate(date: string): void {
@@ -245,6 +242,10 @@ export function createBackzettelService(source: BackzettelSource) {
     )
     const lineView = (line: any) => {
       const row = rowsByKey.get(line.key)
+      // After a reopen a tick only shows while the line still asks for the
+      // quantity it was ticked for; confirm clears it otherwise.
+      const ticked =
+        !!row && row.doneAt !== null && !dayCore.frozenQtyChanged(row, line)
       return {
         id: row ? row.id : null,
         ...line,
@@ -252,8 +253,8 @@ export function createBackzettelService(source: BackzettelSource) {
           row && toNumber(row.correction) !== 0
             ? userRef(users, row.correctionBy)
             : null,
-        doneAt: row ? row.doneAt : null,
-        doneBy: row ? userRef(users, row.doneBy) : null,
+        doneAt: ticked ? row.doneAt : null,
+        doneBy: ticked ? userRef(users, row.doneBy) : null,
         delta: null,
       }
     }
@@ -272,7 +273,7 @@ export function createBackzettelService(source: BackzettelSource) {
       hefeteig: result.hefeteig,
       fillings: result.fillings,
       prep: result.prep,
-      prepDate: previousDate(date),
+      ...dayCore.prepDateFor(date, loaded.config.days),
       deltas: [],
       warnings: result.warnings,
       configStatus: 'ok' as const,
@@ -373,12 +374,34 @@ export function createBackzettelService(source: BackzettelSource) {
       }),
     }))
 
-    const warnings: unknown[] = []
-    const hefeteig = config ? core.computeHefeteig(config, lines) : null
-    const fillings = config
-      ? core.computeFillings(config, lines, loaded.recipes || {}, warnings)
+    // Frozen at confirm; the current master data only says whether it would
+    // now compute something else (`configChangedSinceConfirm`). Days
+    // confirmed before the snapshot column existed fall back to recomputing.
+    const recomputed = config
+      ? (() => {
+          const w: unknown[] = []
+          return {
+            hefeteig: core.computeHefeteig(config, lines),
+            fillings: core.computeFillings(
+              config,
+              lines,
+              loaded.recipes || {},
+              w
+            ),
+            prep: core.computePrep(config, lines, weekday),
+            warnings: w,
+          }
+        })()
       : null
-    const prep = config ? core.computePrep(config, lines, weekday) : null
+    const snap = day.computedSnapshot
+    const frozen = snap ?? recomputed
+    const hefeteig = frozen ? frozen.hefeteig : null
+    const fillings = frozen ? frozen.fillings : null
+    const prep = frozen ? frozen.prep : null
+    const warnings =
+      frozen && Array.isArray(frozen.warnings) ? frozen.warnings : []
+    const configChangedSinceConfirm =
+      snap && recomputed ? dayCore.snapshotDiffers(snap, recomputed) : null
 
     return {
       date,
@@ -392,10 +415,11 @@ export function createBackzettelService(source: BackzettelSource) {
       hefeteig,
       fillings,
       prep,
-      prepDate: previousDate(date),
+      ...dayCore.prepDateFor(date, config ? config.days : null),
       deltas,
       warnings,
       configStatus: loaded.ok ? ('ok' as const) : ('no-config' as const),
+      configChangedSinceConfirm,
       ...(loaded.ok ? {} : { configReasons: loaded.reasons }),
     }
   }
@@ -450,13 +474,20 @@ export function createBackzettelService(source: BackzettelSource) {
         rows.map((r: any) => ({ date, ...r })),
         { transaction }
       )
+      // A system action: the reader only triggered the detection, the
+      // change itself came from the preorder. createdAt = detected at.
       await audit(
         req,
         'deltas_recorded',
         'backzettel_day',
         date,
-        { deltas: rows, ids: created.map((d) => d.id) },
-        { transaction }
+        {
+          via: 'read',
+          readerId: req?.user?.id ?? null,
+          deltas: rows,
+          ids: created.map((d) => d.id),
+        },
+        { transaction, userId: null }
       )
     })
   }
@@ -495,6 +526,7 @@ export function createBackzettelService(source: BackzettelSource) {
       weekdayName: day.weekdayName,
       status: day.status,
       prepDate: day.prepDate,
+      prepDateProvisional: day.prepDateProvisional,
       prep: day.prep,
       configStatus: day.configStatus,
     }
@@ -637,6 +669,7 @@ export function createBackzettelService(source: BackzettelSource) {
         ])
       )
       const keep = new Set<number>()
+      const clearedTicks: Record<string, unknown>[] = []
       for (const values of dayCore.linesForConfirm(result.lines)) {
         const key = core.lineKey(
           values.itemId,
@@ -644,10 +677,24 @@ export function createBackzettelService(source: BackzettelSource) {
         )
         const row = rowsByKey.get(key)
         if (row) {
+          // A tick from the previous confirmation only stands if the line
+          // still asks for the same quantity.
+          const untick =
+            row.doneAt !== null && dayCore.frozenQtyChanged(row, values)
+          if (untick) {
+            clearedTicks.push({
+              itemId: row.itemId,
+              variant: row.variant,
+              doneBy: row.doneBy,
+              from: toNumber(row.total),
+              to: values.total,
+            })
+          }
           await row.update(
             {
               ...values,
               correctionBy: values.correction === 0 ? null : row.correctionBy,
+              ...(untick ? { doneAt: null, doneBy: null } : {}),
             },
             { transaction }
           )
@@ -677,6 +724,7 @@ export function createBackzettelService(source: BackzettelSource) {
           confirmedBy: req.user?.id ?? null,
           confirmedAt: new Date(),
           preorderSnapshot: snapshot,
+          computedSnapshot: dayCore.computedSnapshot(result),
         },
         { transaction }
       )
@@ -698,6 +746,7 @@ export function createBackzettelService(source: BackzettelSource) {
             variant: r.variant,
           })),
           discardedDeltas: discarded,
+          clearedTicks,
           warnings: result.warnings.map((w: any) => w.code),
         },
         { transaction }
@@ -752,6 +801,7 @@ export function createBackzettelService(source: BackzettelSource) {
           confirmedBy: null,
           confirmedAt: null,
           preorderSnapshot: null,
+          computedSnapshot: null,
         },
         { transaction }
       )

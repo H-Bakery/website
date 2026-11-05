@@ -463,10 +463,17 @@ synthetische Fixtures in `tests/fixtures/backzettel.synthetic.js`).
 - **Entwurf wird live gerechnet** (Grundmenge × Saison + Vorbestellungen ohne `storniert` + CAP-Vorlage
   des Wochentags + Korrektur). Gespeichert werden nur Saisonfaktor und Korrekturen; eine Korrektur
   ≠ 0 braucht einen Grund. Montag (allgemein: Wochentag nicht in `days`) ist 409 `ruhetag`.
-- **Freigeben friert ein** (Zeilen + Vorbestellungs-Schnappschuss). Danach kommen spätere
+- **Freigeben friert ein**: Zeilen, Vorbestellungs-Schnappschuss und - in `computed_snapshot` -
+  Hefeteig, Füllungen, Vorbereitung und Hinweise. Eine spätere Änderung an YAML oder Rezepten
+  ändert einen freigegebenen Zettel nicht; `configChangedSinceConfirm: true` sagt nur, dass die
+  aktuellen Stammdaten jetzt etwas anderes ergäben. Danach kommen spätere
   Vorbestellungen als **Deltas** dazu - je Vorbestellung und Änderung eine Zeile, hervorgehoben,
   von der Backstube quittiert (`ack`), nie still in die Zeilen gemischt. Nur der Inhaber kann
-  wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen.
+  wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
+  Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
+  sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
+- `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
+  `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
 

@@ -420,6 +420,74 @@ function frozenSections(rows, config) {
     .filter((s) => s.lines.length > 0)
 }
 
+/** Mengenfelder einer freigegebenen Zeile, die der Baecker abarbeitet. */
+const FROZEN_QTY_FIELDS = ['base', 'seasonal', 'preorders', 'cap', 'total']
+
+/**
+ * Hat sich die Menge einer schon gespeicherten Zeile bei einer erneuten
+ * Freigabe geaendert? Dann gilt ein Haken aus der vorigen Freigabe nicht
+ * mehr (sonst sieht die Backstube eine erledigte Zeile und uebersieht die
+ * zusaetzlichen Stuecke). `correction` zaehlt nicht eigens: sie wird schon im
+ * Entwurf in die Zeile geschrieben und steckt in `total`.
+ */
+function frozenQtyChanged(row, values) {
+  if (!row || !values) return false
+  return FROZEN_QTY_FIELDS.some(
+    (f) => round2(Number(row[f]) || 0) !== round2(Number(values[f]) || 0)
+  )
+}
+
+/**
+ * Was der Core neben den Zeilen bei der Freigabe gerechnet hat; ein
+ * freigegebener Tag wird daraus gezeigt, nicht aus der aktuellen YAML.
+ */
+function computedSnapshot(result) {
+  const r = result || {}
+  return JSON.parse(
+    JSON.stringify({
+      hefeteig: r.hefeteig === undefined ? null : r.hefeteig,
+      fillings: r.fillings === undefined ? null : r.fillings,
+      prep: r.prep === undefined ? null : r.prep,
+      warnings: Array.isArray(r.warnings) ? r.warnings : [],
+    })
+  )
+}
+
+/**
+ * Wuerden die aktuellen Stammdaten fuer dieselben freigegebenen Mengen etwas
+ * anderes ergeben (Hefeteig, Fuellungen, Vorbereitung)? Nur ein Hinweis -
+ * der freigegebene Zettel bleibt, wie er ist.
+ */
+function snapshotDiffers(snapshot, recomputed) {
+  if (!snapshot || !recomputed) return false
+  const pick = (x) =>
+    JSON.stringify({
+      hefeteig: x.hefeteig === undefined ? null : x.hefeteig,
+      fillings: x.fillings === undefined ? null : x.fillings,
+      prep: x.prep === undefined ? null : x.prep,
+    })
+  return pick(snapshot) !== pick(recomputed)
+}
+
+function shiftDate(date, days) {
+  const [y, m, d] = String(date).split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10)
+}
+
+/**
+ * Vorbereitungstag fuer `date`: der Kalender-Vortag (roadmap §5.4, „d−1 um
+ * 14 Uhr“). Ist der Vortag selbst kein Produktionstag (Dienstag nach dem
+ * Ruhetag Montag), ist der Termin offen (Q-B2) - `prepDateProvisional`.
+ * Ohne Stammdaten (`days` unbekannt) `null`.
+ */
+function prepDateFor(date, days) {
+  const prepDate = shiftDate(date, -1)
+  const provisional = Array.isArray(days)
+    ? !days.includes(core.isoWeekday(prepDate))
+    : null
+  return { prepDate, prepDateProvisional: provisional }
+}
+
 module.exports = {
   MAX_CORRECTION,
   MAX_SEASON_FACTOR,
@@ -437,4 +505,9 @@ module.exports = {
   correctionsFromRows,
   frozenLine,
   frozenSections,
+  FROZEN_QTY_FIELDS,
+  frozenQtyChanged,
+  computedSnapshot,
+  snapshotDiffers,
+  prepDateFor,
 }

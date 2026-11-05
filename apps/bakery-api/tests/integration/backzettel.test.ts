@@ -5,7 +5,8 @@
  * parallel), synthetic users. Nothing here comes from the real hq.
  *
  * Dates: Mo 2026-11-23 (Ruhetag), Di 2026-11-24, Mi 2026-11-25,
- * Sa 2026-11-28 (Hefeteig), So 2026-11-29.
+ * Sa 2026-11-28 (Hefeteig), So 2026-11-29; for re-confirm and the frozen
+ * snapshot Mi 2026-12-02 and Sa 2026-12-05.
  */
 import * as fs from 'fs'
 import * as os from 'os'
@@ -35,14 +36,17 @@ const TUE = '2026-11-24'
 const WED = '2026-11-25'
 const SAT = '2026-11-28'
 const SUN = '2026-11-29'
+const WED2 = '2026-12-02'
+const SAT2 = '2026-12-05'
 
 let api: TestApp
 let hqDir: string
 let configFile: string
-const tokens: Record<'inhaber' | 'backstube' | 'verkauf', string> = {
+const tokens: Record<'inhaber' | 'backstube' | 'verkauf' | 'fahrer', string> = {
   inhaber: '',
   backstube: '',
   verkauf: '',
+  fahrer: '',
 }
 
 function writeHq(dir: string): void {
@@ -133,6 +137,7 @@ beforeAll(async () => {
   tokens.inhaber = await sessionFor(api.app, 'test.inhaber', 'inhaber')
   tokens.backstube = await sessionFor(api.app, 'test.backstube', 'backstube')
   tokens.verkauf = await sessionFor(api.app, 'test.verkauf', 'verkauf')
+  tokens.fahrer = await sessionFor(api.app, 'test.fahrer', 'fahrer')
 
   // CAP template Tuesday (partner 1 from the seeder): 12 Weck.
   await PartnerDeliveryTemplate.create({
@@ -154,25 +159,28 @@ describe('access', () => {
     expect(res.body).toMatchObject({ error: 'unauthorized' })
   })
 
-  it('verkauf may read but not plan, confirm or tick', async () => {
-    expect((await as('verkauf').get(`/api/backzettel/${TUE}`)).status).toBe(200)
-    for (const res of [
-      await as('verkauf')
-        .put(`/api/backzettel/${TUE}/season`)
-        .send({ factor: 1.2 }),
-      await as('verkauf')
-        .put(`/api/backzettel/${TUE}/lines/weck/correction`)
-        .send({ correction: 1, reason: 'x' }),
-      await as('verkauf').post(`/api/backzettel/${TUE}/confirm`),
-      await as('verkauf').post(`/api/backzettel/${TUE}/lines/1/done`),
-      await as('verkauf').post(`/api/backzettel/${TUE}/deltas/1/ack`),
-      await as('verkauf').post(`/api/backzettel/${TUE}/reopen`),
-    ]) {
-      expect(res.status).toBe(403)
-      expect(res.body).toMatchObject({ error: 'forbidden' })
-      expect(res.body.message).toEqual(expect.any(String))
+  it.each(['verkauf', 'fahrer'] as const)(
+    '%s may read but not plan, confirm or tick',
+    async (role) => {
+      expect((await as(role).get(`/api/backzettel/${TUE}`)).status).toBe(200)
+      for (const res of [
+        await as(role)
+          .put(`/api/backzettel/${TUE}/season`)
+          .send({ factor: 1.2 }),
+        await as(role)
+          .put(`/api/backzettel/${TUE}/lines/weck/correction`)
+          .send({ correction: 1, reason: 'x' }),
+        await as(role).post(`/api/backzettel/${TUE}/confirm`),
+        await as(role).post(`/api/backzettel/${TUE}/lines/1/done`),
+        await as(role).post(`/api/backzettel/${TUE}/deltas/1/ack`),
+        await as(role).post(`/api/backzettel/${TUE}/reopen`),
+      ]) {
+        expect(res.status).toBe(403)
+        expect(res.body).toMatchObject({ error: 'forbidden' })
+        expect(res.body.message).toEqual(expect.any(String))
+      }
     }
-  })
+  )
 })
 
 describe('GET /api/backzettel/config', () => {
@@ -334,6 +342,13 @@ describe('season factor and corrections (draft)', () => {
       .send({ correction: 1, reason: 'x' })
     expect(unknownVariant.status).toBe(404)
     expect(unknownVariant.body.error).toBe('unknown_variant')
+    // a variant segment on an item without variants
+    const noVariants = await as('backstube')
+      .put(`/api/backzettel/${SAT}/lines/weck/nuss/correction`)
+      .send({ correction: 1, reason: 'x' })
+    expect(noVariants.status).toBe(404)
+    expect(noVariants.body.error).toBe('unknown_variant')
+    expect(noVariants.body.message).toEqual(expect.any(String))
     const fraction = await as('backstube')
       .put(`/api/backzettel/${SAT}/lines/weck/correction`)
       .send({ correction: 1.5, reason: 'x' })
@@ -413,10 +428,23 @@ describe('confirm, deltas, ticks, reopen', () => {
 
     // parallel readers record the change once
     const reads = await Promise.all(
-      [1, 2, 3, 4].map(() => as('verkauf').get(`/api/backzettel/${TUE}`))
+      [1, 2, 3, 4].map(() => as('fahrer').get(`/api/backzettel/${TUE}`))
     )
     for (const r of reads) expect(r.status).toBe(200)
     expect(await BackzettelDelta.count({ where: { date: TUE } })).toBe(1)
+    // a system action: the reader only triggered the detection
+    const recorded = await AuditLog.findOne({
+      where: {
+        entity: 'backzettel_day',
+        entityId: TUE,
+        action: 'deltas_recorded',
+      },
+    })
+    expect(recorded?.userId).toBeNull()
+    expect(recorded?.data).toMatchObject({
+      via: 'read',
+      readerId: expect.any(Number),
+    })
 
     const d = (await as('verkauf').get(`/api/backzettel/${TUE}`)).body.data
     expect(d.deltas).toEqual([
@@ -543,12 +571,18 @@ describe('confirm, deltas, ticks, reopen', () => {
       date: TUE,
       status: 'confirmed',
       prepDate: '2026-11-23',
+      // Monday is Ruhetag: who preps Tuesday is open (Q-B2)
+      prepDateProvisional: true,
     })
     expect(tue.body.data.prep).toEqual([
       expect.objectContaining({ id: 'sauerteig', variant: 'misch' }),
       expect.objectContaining({ id: 'wagen' }),
     ])
     const wed = await as('verkauf').get(`/api/backzettel/${WED}/prep`)
+    expect(wed.body.data).toMatchObject({
+      prepDate: TUE,
+      prepDateProvisional: false,
+    })
     expect(wed.body.data.prep.map((p: any) => [p.id, p.variant])).toEqual([
       ['sauerteig', 'buttermilch'],
       ['bruehstueck', null],
@@ -603,6 +637,112 @@ describe('confirm, deltas, ticks, reopen', () => {
   })
 })
 
+describe('re-confirm and the frozen snapshot', () => {
+  afterAll(() => writeHq(hqDir))
+
+  it('a re-confirm that changes a line clears its tick, unchanged lines keep theirs', async () => {
+    const first = await as('backstube').post(`/api/backzettel/${WED2}/confirm`)
+    expect(first.status).toBe(200)
+    const weck = line(first.body.data, 'weck')
+    const plunder = line(first.body.data, 'plunder')
+    expect(weck.total).toBe(30)
+    for (const id of [weck.id, plunder.id]) {
+      const r = await as('backstube').post(
+        `/api/backzettel/${WED2}/lines/${id}/done`
+      )
+      expect(r.status).toBe(200)
+    }
+
+    const reopened = await as('inhaber').post(`/api/backzettel/${WED2}/reopen`)
+    expect(line(reopened.body.data, 'weck').doneAt).toEqual(expect.any(String))
+
+    const draft = await as('backstube')
+      .put(`/api/backzettel/${WED2}/lines/weck/correction`)
+      .send({ correction: 10, reason: 'Vereinsfest' })
+    // the draft no longer shows the stale tick
+    expect(line(draft.body.data, 'weck')).toMatchObject({
+      total: 40,
+      doneAt: null,
+      doneBy: null,
+    })
+    expect(line(draft.body.data, 'plunder').doneAt).toEqual(expect.any(String))
+
+    const again = await as('backstube').post(`/api/backzettel/${WED2}/confirm`)
+    expect(again.status).toBe(200)
+    expect(line(again.body.data, 'weck')).toMatchObject({
+      id: weck.id,
+      total: 40,
+      doneAt: null,
+      doneBy: null,
+    })
+    expect(line(again.body.data, 'plunder')).toMatchObject({
+      id: plunder.id,
+      total: 8,
+      doneBy: { displayName: 'Test test.backstube' },
+    })
+    const row = await BackzettelLine.findByPk(weck.id)
+    expect(row?.doneAt).toBeNull()
+    expect(row?.doneBy).toBeNull()
+
+    const confirms = await AuditLog.findAll({
+      where: { entity: 'backzettel_day', entityId: WED2, action: 'confirm' },
+      order: [['id', 'ASC']],
+    })
+    expect((confirms[0].data as any).clearedTicks).toEqual([])
+    expect((confirms[1].data as any).clearedTicks).toEqual([
+      expect.objectContaining({ itemId: 'weck', from: 30, to: 40 }),
+    ])
+  })
+
+  it('Hefeteig, fillings, prep and warnings stay as confirmed when the YAML changes', async () => {
+    // a preorder for a product that is on no Backzettel item -> warning
+    await preorder(SAT2, [
+      { productId: 'test-alt', quantity: 2 },
+      { productId: 'test-zopf-gefuellt', quantity: 1, variant: 'nuss' },
+    ])
+    const res = await as('inhaber').post(`/api/backzettel/${SAT2}/confirm`)
+    expect(res.status).toBe(200)
+    const confirmed = res.body.data
+    expect(confirmed.configChangedSinceConfirm).toBe(false)
+    expect(confirmed.warnings.map((w: any) => w.code)).toContain(
+      'unmapped_product'
+    )
+    expect(confirmed.hefeteig.dough_g).toBe(
+      // zopf nuss 4 + 1, mohn 2; kranz-gefuellt 4 × 2 pieces; kranz 2 × 3
+      (5 + 2) * 500 + 4 * 2 * 600 + 2 * 3 * 600
+    )
+    expect(confirmed.prep.map((p: any) => p.id)).toEqual(['samstag-only'])
+
+    // the owner doubles every piece weight and drops the Saturday prep
+    const changed = fixture.config()
+    for (const item of changed.items) {
+      if (item.dough) item.dough.piece_g *= 2
+    }
+    changed.prep = changed.prep.filter((p: any) => p.id !== 'samstag-only')
+    fs.writeFileSync(configFile, JSON.stringify(changed, null, 2))
+
+    const after = (await as('backstube').get(`/api/backzettel/${SAT2}`)).body
+      .data
+    expect(after.status).toBe('confirmed')
+    expect(after.hefeteig).toEqual(confirmed.hefeteig)
+    expect(after.fillings).toEqual(confirmed.fillings)
+    expect(after.prep).toEqual(confirmed.prep)
+    expect(after.warnings).toEqual(confirmed.warnings)
+    expect(after.configChangedSinceConfirm).toBe(true)
+    expect(line(after, 'kranz').total).toBe(line(confirmed, 'kranz').total)
+
+    // a reopen drops the snapshot; the next confirm uses the new YAML
+    await as('inhaber').post(`/api/backzettel/${SAT2}/reopen`)
+    expect((await BackzettelDay.findByPk(SAT2))?.computedSnapshot).toBeNull()
+    const reconfirmed = (
+      await as('inhaber').post(`/api/backzettel/${SAT2}/confirm`)
+    ).body.data
+    expect(reconfirmed.hefeteig.dough_g).toBe(2 * confirmed.hefeteig.dough_g)
+    expect(reconfirmed.prep).toEqual([])
+    expect(reconfirmed.configChangedSinceConfirm).toBe(false)
+  })
+})
+
 describe('missing or invalid config', () => {
   afterEach(() => writeHq(hqDir))
 
@@ -641,13 +781,18 @@ describe('missing or invalid config', () => {
     fs.writeFileSync(configFile, 'version: 1\nitems: [\n')
     const res = await as('backstube').get(`/api/backzettel/${TUE}`)
     expect(res.status).toBe(200)
+    // Hefeteig, fillings and prep are frozen at confirm, so they survive
     expect(res.body.data).toMatchObject({
       status: 'confirmed',
       configStatus: 'no-config',
-      hefeteig: null,
-      fillings: null,
-      prep: null,
+      configChangedSinceConfirm: null,
+      prepDateProvisional: null,
+      fillings: [],
     })
+    expect(res.body.data.prep.map((p: any) => p.id)).toEqual([
+      'sauerteig',
+      'wagen',
+    ])
     expect(line(res.body.data, 'weck')).toMatchObject({
       name: 'Weck',
       total: 60,

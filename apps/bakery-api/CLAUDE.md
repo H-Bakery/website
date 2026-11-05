@@ -233,7 +233,7 @@ preorder snapshot, delta reconciliation, frozen lines. Master data: `backzettel-
 | ------------------------------------------------ | ------------------ | -------------------------------------------------------------------------------------------- |
 | `GET /config`                                    | any session        | `{ status: ok \| no-config, source, config, errors, warnings, recipesMissing, catalogSize }` |
 | `GET /:date`                                     | any session        | day (below); `{ date, status: 'no-config', reasons }` without master data                    |
-| `GET /:date/prep`                                | any session        | `{ date, weekday, weekdayName, status, prepDate (d−1), prep[] }`                             |
+| `GET /:date/prep`                                | any session        | `{ date, weekday, weekdayName, status, prepDate (d−1), prepDateProvisional, prep[] }`        |
 | `PUT /:date/season`                              | inhaber, backstube | `{ factor }` (0 < f ≤ 5, 2 decimals, `"1,2"` ok) → day; draft only                           |
 | `PUT /:date/lines/:itemId[/:variant]/correction` | inhaber, backstube | `{ correction, reason }`, reason required ≠ 0, 0 clears → day; draft only                    |
 | `POST /:date/confirm`                            | inhaber, backstube | → confirmed day                                                                              |
@@ -243,7 +243,10 @@ preorder snapshot, delta reconciliation, frozen lines. Master data: `backzettel-
 
 Day: `{ date, weekday, weekdayName, status: draft|confirmed, seasonFactor, confirmedBy {id,
 displayName} | null, confirmedAt, sections[{ id, label, lines[] }], hefeteig, fillings, prep,
-prepDate, deltas[], warnings[], configStatus }`. A line is the core line plus `id` (row id or
+prepDate, prepDateProvisional, deltas[], warnings[], configStatus, configChangedSinceConfirm }`
+(the last only on confirmed days: `true`/`false`, `null` without valid master data).
+`prepDateProvisional` is `true` when d−1 is not a production day (Tuesday after the Monday
+Ruhetag, Q-B2 open), `null` without master data. A line is the core line plus `id` (row id or
 null in a draft without a stored row), `correctionBy`, `doneAt`, `doneBy`, `delta { qty, open,
 count } | null`. `variant` is `null` for "none" in JSON, `''` in the tables and in the URL (omit
 the segment). Errors: 400 `invalid_date` / `validation` / `reason_required`, 404 `unknown_item` /
@@ -264,23 +267,37 @@ What to know before changing it:
   the core; CAP = active `PartnerDeliveryTemplates` of active partners for the ISO weekday, into
   the `cap` column (the baseline comment "upper limit" predates the plan).
 - **Confirm** (serialised transaction): recomputes, upserts every line with a name/section/unit
-  snapshot (ticks kept), deletes rows no longer computed, stores `preorder_snapshot` (flat
-  `{preorderId, productId, variant, qty}`), discards old deltas. A confirmed day is read from the
-  rows; Hefeteig/fillings/prep are recomputed from the frozen totals. With broken master data it
-  stays readable (`configStatus: 'no-config'`, Hefeteig/fillings/prep `null`).
+  snapshot, deletes rows no longer computed, stores `preorder_snapshot` (flat
+  `{preorderId, productId, variant, qty}`) and `computed_snapshot`
+  (`{ hefeteig, fillings, prep, warnings }` exactly as the core computed them), discards old deltas. **Ticks** survive a
+  re-confirm only when the line's `base/seasonal/preorders/cap/total` are unchanged
+  (`frozenQtyChanged`); otherwise `doneAt`/`doneBy` are cleared and listed as `clearedTicks` in the
+  confirm audit row. A draft after reopen already hides such stale ticks.
+- **A confirmed day is served from what was stored**: lines from the rows, Hefeteig/fillings/prep/
+  warnings from `computed_snapshot` - a later YAML or recipe change does not alter it (test).
+  The current master data are only used for `configChangedSinceConfirm` (`snapshotDiffers`) and
+  display-only fields (tray, PLU). With broken master data it stays fully readable
+  (`configStatus: 'no-config'`). A day without `computed_snapshot` (confirmed before the column)
+  falls back to recomputing from the frozen totals. Reopen clears the snapshot.
 - **Deltas** are written by **reading** a confirmed day: `reconcileDeltas` compares snapshot, current
   preorders and already recorded rows per preorder × item × variant and adds one row per change
   (`qty` = increment, `kind` added/changed/cancelled). Quick check outside, real check inside the
   write queue - parallel readers record a change once (test). Never merged into the frozen lines.
-- **Reopen** (inhaber only): back to draft, snapshot cleared, deltas deleted (the audit row keeps
-  them), corrections and ticks stay.
+  The `deltas_recorded` audit row is a **system action** (`user_id` null, `data.via: 'read'`,
+  `data.readerId` = whoever's read triggered it); a delta's `createdAt` means _detected at_, not
+  when the preorder changed. `GET /prep` never records. Once B7 lands, recording from the preorder
+  write path is the cleaner trigger.
+- **Reopen** (inhaber only, station sessions included - owner decision open whether it should
+  need `requirePersonalSession` like user admin): back to draft, both snapshots cleared, deltas
+  deleted (the audit row keeps them), corrections and ticks stay (see Confirm for stale ticks).
 - **Audit** (`audit_log`): `season`, `correction`, `confirm`, `reopen`, `deltas_recorded` on
   `backzettel_day`/date; `line_done`/`line_undone` on `backzettel_line`; `delta_ack` on
   `backzettel_delta`. No-op writes (same value, already ticked/acked) are not audited.
 - Migration `20261112000000-backzettel-z3.js` (additive): `backzettel_days.preorder_snapshot`,
+  `backzettel_days.computed_snapshot`,
   `backzettel_lines.name/section/unit`, `backzettel_deltas.kind/acknowledged_at/acknowledged_by`.
 
-Tests: `tests/unit/backzettelDay.test.js` (42), `tests/integration/backzettel.test.ts` (21; synthetic
+Tests: `tests/unit/backzettelDay.test.js` (46), `tests/integration/backzettel.test.ts` (24; synthetic
 hq written to a temp dir from `tests/fixtures/backzettel.synthetic.js`, preorders inserted via the
 models). `tests/setup-ts.js` points `HQ_DIR`/`HQ_BACKZETTEL_CONFIG` nowhere, like the other hq paths.
 

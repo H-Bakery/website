@@ -9,6 +9,11 @@
  *                                       ([{preorderId, productId, variant, qty}]).
  *                                       Deltas are computed against it, per
  *                                       preorder (`computePreorderDeltas`).
+ *   backzettel_days.computed_snapshot   Hefeteig, fillings, prep and the core
+ *                                       warnings as computed at confirmation
+ *                                       ({hefeteig, fillings, prep, warnings}),
+ *                                       so the confirmed sheet does not follow
+ *                                       later YAML or recipe changes.
  *   backzettel_lines.name/section/unit  snapshot of the item at confirmation, so
  *                                       a confirmed sheet still reads the same
  *                                       after the YAML changes (like the price
@@ -37,6 +42,7 @@ function columnsToAdd(Sequelize) {
   return {
     backzettel_days: {
       preorder_snapshot: { type: Sequelize.JSON, allowNull: true },
+      computed_snapshot: { type: Sequelize.JSON, allowNull: true },
     },
     backzettel_lines: {
       name: { type: Sequelize.STRING, allowNull: true },
