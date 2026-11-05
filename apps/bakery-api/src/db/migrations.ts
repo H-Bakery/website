@@ -33,4 +33,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20261106000000-auth-sessions-stations.js',
     module: require('../../migrations/20261106000000-auth-sessions-stations.js'),
   },
+  {
+    // Z3: Backzettel snapshot columns, delta acknowledgement
+    name: '20261112000000-backzettel-z3.js',
+    module: require('../../migrations/20261112000000-backzettel-z3.js'),
+  },
 ]
