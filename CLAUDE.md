@@ -574,6 +574,32 @@ Parity-Suite `apps/bakery-api/tests/parity/hq-data.parity.test.ts` vergleicht be
 einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byte. Details:
 `apps/bakery-api/CLAUDE.md`, Abschnitt „hq data (B4)".
 
+## Backzettel-API (Z3, echte API)
+
+`/api/backzettel` auf der TypeScript-API; Endpunkte, Rollen und Antwortform in
+`apps/bakery-api/CLAUDE.md`, Abschnitt „Backzettel API (Z3)". Was man von außen wissen muss:
+
+- **Stammdaten:** `HQ_BACKZETTEL_CONFIG`, sonst `${HQ_DIR}/config/backzettel.yaml`. Fehlen sie oder
+  sind sie ungültig, antwortet `GET /api/backzettel/:datum` mit `status: 'no-config'` und `reasons`,
+  Schreibversuche mit 409 `no_config` - **nie** mit geschätzten Mengen. Ein schon freigegebener Tag
+  bleibt lesbar.
+- **Entwurf wird live gerechnet** (Grundmenge × Saison + Vorbestellungen ohne `storniert` + CAP-Vorlage
+  des Wochentags + Korrektur). Gespeichert werden nur Saisonfaktor und Korrekturen; eine Korrektur
+  ≠ 0 braucht einen Grund. Montag (allgemein: Wochentag nicht in `days`) ist 409 `ruhetag`.
+- **Freigeben friert ein**: Zeilen, Vorbestellungs-Schnappschuss und - in `computed_snapshot` -
+  Hefeteig, Füllungen, Vorbereitung und Hinweise. Eine spätere Änderung an YAML oder Rezepten
+  ändert einen freigegebenen Zettel nicht; `configChangedSinceConfirm: true` sagt nur, dass die
+  aktuellen Stammdaten jetzt etwas anderes ergäben. Danach kommen spätere
+  Vorbestellungen als **Deltas** dazu - je Vorbestellung und Änderung eine Zeile, hervorgehoben,
+  von der Backstube quittiert (`ack`), nie still in die Zeilen gemischt. Nur der Inhaber kann
+  wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
+  Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
+  sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
+- `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
+  `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
+- Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
+  Jede Änderung steht im `audit_log`.
+
 ## E2E-Suiten (Playwright)
 
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).

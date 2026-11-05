@@ -9,9 +9,8 @@
  *   Partner, PartnerDeliveryTemplate,
  *   PartnerVisit, PartnerVisitItem               Partners, PartnerDeliveryTemplates, ...
  *   PickupPoint, Preorder, PreorderItem          pickup_points, preorders, preorder_items
- *
- * The Backzettel tables (backzettel_days/_lines/_deltas) exist in the
- * baseline; their models come with Z3.
+ *   BackzettelDay, BackzettelLine,
+ *   BackzettelDelta                              backzettel_days/_lines/_deltas (Z3)
  *
  * Legacy models (Cash, Chat, Product, Order, OrderItem, Inventory, Recipe,
  * Notification*, Production*, StockAdjustment, UnsoldProduct) are still
@@ -33,6 +32,9 @@ import { default as PartnerVisitItem } from './PartnerVisitItem'
 import { default as PickupPoint } from './PickupPoint'
 import { default as Preorder } from './Preorder'
 import { default as PreorderItem } from './PreorderItem'
+import { default as BackzettelDay } from './BackzettelDay'
+import { default as BackzettelLine } from './BackzettelLine'
+import { default as BackzettelDelta } from './BackzettelDelta'
 
 // --- Legacy, unused in the pilot (not initialised, no table) --------------
 import { default as Cash } from './Cash'
@@ -77,6 +79,9 @@ export {
   PickupPoint,
   Preorder,
   PreorderItem,
+  BackzettelDay,
+  BackzettelLine,
+  BackzettelDelta,
 }
 
 /** @deprecated legacy alias, the pilot has staff users only. */
@@ -115,6 +120,9 @@ export const PILOT_MODELS = [
   PickupPoint,
   Preorder,
   PreorderItem,
+  BackzettelDay,
+  BackzettelLine,
+  BackzettelDelta,
 ] as const
 
 export async function initializeModels(seq: Sequelize): Promise<void> {
@@ -181,6 +189,12 @@ function setupAssociations(): void {
   })
   Preorder.belongsTo(User, { foreignKey: 'createdBy', as: 'creator' })
   Preorder.belongsTo(User, { foreignKey: 'updatedBy', as: 'updater' })
+
+  // Backzettel (Z3)
+  BackzettelDay.hasMany(BackzettelLine, { foreignKey: 'date', as: 'lines' })
+  BackzettelLine.belongsTo(BackzettelDay, { foreignKey: 'date', as: 'day' })
+  BackzettelDay.hasMany(BackzettelDelta, { foreignKey: 'date', as: 'deltas' })
+  BackzettelDelta.belongsTo(BackzettelDay, { foreignKey: 'date', as: 'day' })
 }
 
 /** Models with a table in the pilot schema (for tooling and tests). */

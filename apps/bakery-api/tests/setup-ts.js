@@ -12,6 +12,12 @@ const nowhere = path.join(__dirname, '__no-hq-in-tests__')
 
 process.env.NODE_ENV = 'test'
 process.env.JWT_SECRET = 'test-jwt-secret-for-unit-tests-minimum-32-characters'
+process.env.HQ_DIR = nowhere
+process.env.HQ_BACKZETTEL_CONFIG = path.join(
+  nowhere,
+  'config',
+  'backzettel.yaml'
+)
 process.env.HQ_PRODUCTS_DIR = path.join(nowhere, 'products')
 process.env.HQ_REPORTS_DIR = path.join(nowhere, 'reports')
 process.env.HQ_FINANCE_DIR = path.join(nowhere, 'finance')

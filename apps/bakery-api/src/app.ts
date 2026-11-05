@@ -6,9 +6,9 @@
  * and drive the result through supertest.
  *
  * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
- * data (B4: reports, analytics, finance, targets), products (B5) and
- * preorders (B7). The other pilot domains get their mount points below as
- * their tasks land.
+ * data (B4: reports, analytics, finance, targets), products (B5), preorders
+ * (B7) and the Backzettel (Z3). The other pilot domains get their mount
+ * points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
  * endpoints and health. That is structural, not an allow-list: the public
@@ -25,6 +25,7 @@ import { AuthServiceOptions, createAuthService } from './auth/auth.service'
 import { STATION_TOKEN_HEADER, requireAuth } from './auth/middleware'
 import { loggerMiddleware } from './middleware/logger.middleware'
 import {
+  createBackzettelRouter,
   createHealthRouter,
   createPublicAuthRouter,
   createSessionAuthRouter,
@@ -37,6 +38,7 @@ import { createHqProductsRouters } from './routes/hq-products.routes'
 import { HqProductsOptions } from './services/hq-products.service'
 import { createPreorderRouters } from './routes/preorders.routes'
 import { PreordersOptions } from './services/preorders.service'
+import { BackzettelRouterOptions } from './routes/backzettel.routes'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
 export interface CreateAppOptions {
@@ -71,6 +73,11 @@ export interface CreateAppOptions {
    * variants hook and the clock.
    */
   preorders?: PreordersOptions
+  /**
+   * Where the Backzettel master data lives (Z3). Default: `HQ_BACKZETTEL_CONFIG`,
+   * `HQ_DIR`, `HQ_PRODUCTS_DIR`, else `<cwd>/../hq`.
+   */
+  backzettel?: BackzettelRouterOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -133,7 +140,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api/preorders', preorders.preorders)
   app.use('/api/deliveries', preorders.deliveries)
   app.use('/api/orders', preorders.orders)
-  // Z*: /api/backzettel
+  app.use('/api/backzettel', createBackzettelRouter(options.backzettel)) // Z3
 
   app.use(notFoundHandler)
   app.use(createErrorHandler())

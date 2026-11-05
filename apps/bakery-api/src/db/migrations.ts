@@ -34,6 +34,11 @@ export const MIGRATIONS: MigrationEntry[] = [
     module: require('../../migrations/20261106000000-auth-sessions-stations.js'),
   },
   {
+    // Z3: Backzettel snapshot columns, delta acknowledgement
+    name: '20261112000000-backzettel-z3.js',
+    module: require('../../migrations/20261112000000-backzettel-z3.js'),
+  },
+  {
     // B7: preorders.not_collected_at, Sammelstelle Mörsbach seed
     name: '20261113000000-preorders-b7.js',
     module: require('../../migrations/20261113000000-preorders-b7.js'),

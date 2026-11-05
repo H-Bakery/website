@@ -75,10 +75,11 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('opens the static list, followed by B3 auth and B7 preorders', () => {
+  it('opens the static list, followed by B3 auth, Z3 Backzettel and B7 preorders', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
       '20261106000000-auth-sessions-stations.js',
+      '20261112000000-backzettel-z3.js',
       '20261113000000-preorders-b7.js',
     ])
   })
