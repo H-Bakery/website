@@ -600,6 +600,44 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
 
+## Backzettel-Tagesplanung und Druck (Z5/Z7, Management-App)
+
+`/admin/backzettel` (kommende Produktionstage) und `/admin/backzettel/[datum]` (ein Tag) gegen
+`/api/backzettel` der echten API. Der Navigationseintrag „Backzettel" ist `ready: true`. Fünf Dinge,
+die man wissen muss:
+
+- **Ein Client, kein Rechnen:** `src/lib/backzettelApi.ts` (Typen + alle Endpunkte, auch Abhaken für
+  Z6) und `src/lib/backzettelFormat.ts` (Kalender, deutsche Zahlen, Sortennamen aus
+  `config.fillings`). Jede Menge auf dem Bildschirm und im Druck kommt so vom Server; die Seite rechnet
+  nichts nach. Die 409 `ruhetag` liefert `fetchBackzettelDay` als Zustand `status: 'ruhetag'`, nicht
+  als Fehler; `no-config` zeigt eine Erklärung **ohne Zahlen**. Entwurfszeilen haben `id: null` -
+  Korrekturen gehen über `itemId`/`variant` (`correctionPath`), Zeilen werden über `key` gefunden.
+- **Rollen:** planen (Saisonfaktor, Korrektur mit Pflichtgrund ≠ 0, Freigeben mit Rückfrage)
+  `inhaber` + `backstube`; „Wieder öffnen" nur `inhaber`; alle anderen sehen „Nur Ansicht". Verkauf
+  darf die Seiten jetzt öffnen (`ROLE_ACCESS`, lesen) - im Laden sieht man, was gebacken wird. Wer
+  `grundmengen` (Z4) für Verkauf sperren will, braucht dafür eine eigene Regel, denn
+  `/admin/backzettel` gilt mit Unterseiten.
+- **Übersicht:** heute bis heute + 6 Tage, nur `config.days` (ohne Stammdaten Di–So); oben groß der
+  **nächste Produktionstag = der erste nach heute** (heute wird schon gebacken). Je Tag ein
+  `GET /api/backzettel/:datum` - das Lesen eines freigegebenen Tages schreibt dabei Deltas (so ist
+  Z3 gebaut).
+- **Bildschirm:** ab `md` eine Tabelle je Abschnitt (feste Spaltenbreiten), darunter Karten; beide
+  stehen im DOM und werden per CSS umgeschaltet (Specs greifen über `table-<abschnitt>` /
+  `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der
+  Freigabe" mit „Gesehen". `configChangedSinceConfirm` und `prepDateProvisional` stehen als Hinweise
+  da. Bedienelemente ≥ 44 px.
+- **Druck (Z7):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
+  Bildschirm unsichtbar; im Druck verschwinden `.bz-screen` und die App-Hülle. S. 1 Backzettel (alle
+  Abschnitte, Gesamt groß, Kästchen, Nachträge, Hinweise; Entwurf mit Banner), S. 2 nur mit
+  Hefeteig/Füllungen (Abwiegeliste + skalierte Rezepte), S. 3 nur mit Vorbereitungen. **Die
+  Druckregeln schalten Animationen ab** - `global.css` blendet `body` und jedes `<section>` ein;
+  ohne `animation: none` startete die beim Umschalten auf `display: block` neu und das Blatt kam
+  blass aus dem Drucker.
+
+Tests: `src/lib/backzettel{Api,Format}.spec.ts`, `admin/backzettel/BackzettelOverviewClient.spec.tsx`,
+`admin/backzettel/[datum]/BackzettelDayClient.spec.tsx` (Fixtures erfunden:
+`src/lib/backzettelFixtures.ts`).
+
 ## E2E-Suiten (Playwright)
 
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).
@@ -799,7 +837,7 @@ Sieben Dinge, die man wissen muss:
   Proxy (Server-Komponenten) und die API.
 - **Eine Tabelle Rolle → Routen + Startseite: `ROLE_ACCESS` in `src/lib/roles.ts`.** Inhaber alles;
   Verkauf Dashboard, `/admin/preorders` (M1), Sammelstelle Mörsbach, Produkte **nur die Liste**
-  (ohne Neu/Bearbeiten), Backschrank; Backstube Dashboard, `/admin/backzettel`, `/backstube`;
+  (ohne Neu/Bearbeiten), Backschrank, Backzettel nur lesen (Z5); Backstube Dashboard, `/admin/backzettel`, `/backstube`;
   Fahrer nur `/admin/delivery/preorders`; alle `/admin/settings`. Startseite = erste _gebaute_
   aus `start` (`ready` aus `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` → bis M1
   `/admin`, Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
