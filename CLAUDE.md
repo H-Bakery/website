@@ -458,7 +458,7 @@ Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
   Next.js nur eine Middleware erlaubt und die F1 gehört - F1 kann dort `isPilotPathAllowed()`
   aufrufen und umleiten. Durchgesetzt wird Zugriff von F1 und den Rollen-Guards der API.
 - **Kommende Bildschirme schalten sich über `ready` frei.** `PILOT_UPCOMING_NAVIGATION` in
-  `admin/navigation.ts` führt `/admin/preorders` (M1), `/admin/backzettel` und `/backstube` (M2) mit
+  `admin/navigation.ts` führt `/admin/preorders` (M1, seit P1/P3 `ready: true`), `/admin/backzettel` und `/backstube` (M2) mit
   `ready: false`; ein Eintrag erscheint (direkt unter dem Dashboard) erst mit `ready: true`.
   `src/lib/pilotMode.spec.ts` fällt um, wenn `ready` und die Existenz der `page.tsx` **genau unter
   `href`** auseinanderlaufen, und auch, wenn es Unterseiten ohne diese Index-Seite gibt - M2 braucht
@@ -738,6 +738,44 @@ anonymisation (P4)". Von außen wichtig:
 - **Umzug der Mock-Daten:** `cli.js import-preorders --file apps/bakery-api/data/delivery-store.json --dry-run`,
   idempotent (Runbook §3.9).
 
+## Vorbestellungen in der Management-App (P1/P3)
+
+Bildschirme auf dem B7-Vertrag (Abschnitt oben): `/admin/preorders` (Liste mit Suche `q`, Zeitraum,
+Status, Bestellweg, Abholort - alles in der URL), `/admin/preorders/neu` (Erfassung, P1),
+`/admin/preorders/[id]` (Ansicht, Bearbeiten, Status, Stornieren) und `/admin/preorders/tag?date=`
+(Summen je Produkt **und Sorte**, Abholliste, A4-Druck). Was man wissen muss:
+
+- **Ein Client für alle:** `src/lib/preordersApi.ts` (jeder `/api/preorders`-Endpunkt) und
+  `src/lib/preordersTypes.ts` (Typen, Labels, Produktionstage, `isEditable`/`isCancellable`,
+  `canWritePreorders`). P2 baut die Mörsbach-Maske darauf um - keinen zweiten Client anlegen.
+  Gerechnet wird auf dem Server (`/day`, `/sums`, Preise); die App zeigt nur an.
+- **Sorten** kommen aus `GET /api/preorders/variants` → `{ data: { [productId]: string[] }, configured }`
+  (aus `hq/config/backzettel.yaml`, `backzettel.core.js#variantsByProduct`). Hat ein Produkt
+  Sorten, ist die Wahl Pflicht; das Label ist der großgeschriebene Slug (`nuss` → „Nuss").
+- **Abholtag:** Vorschlag ist der nächste Produktionstag ab morgen; Montag ist Ruhetag und wird
+  abgelehnt. Eine Sammelstelle erzwingt ihren Wochentag (`weekday` wie `Date.getDay()`, 6 = Sa)
+  und hat keine Uhrzeit; der Kanal springt dann auf „Sammelstelle".
+- **Tastatur:** Die Maske ist kein `<form>` - Enter springt weiter (Name → Telefon → Suche →
+  Menge → Hinzufügen → Suche), **Strg/Cmd+Enter speichert**. Die Ziffernblock-Tasten haben
+  `tabIndex -1` und nehmen dem Mengenfeld den Fokus nicht.
+- **Preis-Snapshot:** Die Summe in der Maske ist eine Vorschau; beim Bearbeiten behalten
+  vorhandene Positionen ihren damaligen Preis (Server). Ändert sich Tag oder Ort, vergibt der
+  Server einen neuen Code - die Oberfläche sagt das an.
+- **Nie löschen:** Stornieren nur über die Rückfrage, `offen`/`bereit` sind bearbeitbar,
+  abgeholt nur zurück auf „Offen".
+- **Rollen:** `verkauf` und `inhaber` schreiben; `fahrer` sieht Liste, Ansicht und Tag nur lesend
+  (`/admin/preorders/neu` ist für ihn gesperrt - `RouteRule` mit `except` in `src/lib/roles.ts`).
+  Verkauf startet nach der Anmeldung in `/admin/preorders`.
+- **Gerätespeicher** (nur Bequemlichkeit): `bakery-management-preorder-channel` (zuletzt
+  gewählter Kanal), `bakery-management-preorder-recent` (zuletzt erfasste Produkte); „Häufig"
+  rechnet zusätzlich über die Vorbestellungen der letzten 28 Tage.
+- Der Navigationspunkt „Sammelstelle Mörsbach" bleibt, bis P2 ihn ablöst.
+
+Tests: `src/lib/preorders.spec.ts` (Formatierung, Produktionstage, Suche, Ziffernblock) und RTL-Specs
+neben den Seiten (`admin/preorders/**/*.spec.tsx`, Fixtures `src/lib/testing/preorderFixtures.ts`,
+erfunden); API: `tests/integration/preorders.test.ts` (`GET /variants`) und
+`tests/unit/backzettelCore.test.js`.
+
 ## Anmeldung, Stationen und Rollen in der Management-App (F1)
 
 Die Management-App spricht den B3-Vertrag (Abschnitt oben). Ohne Sitzung zeigt kein Bildschirm unter
@@ -800,9 +838,9 @@ Sieben Dinge, die man wissen muss:
 - **Eine Tabelle Rolle → Routen + Startseite: `ROLE_ACCESS` in `src/lib/roles.ts`.** Inhaber alles;
   Verkauf Dashboard, `/admin/preorders` (M1), Sammelstelle Mörsbach, Produkte **nur die Liste**
   (ohne Neu/Bearbeiten), Backschrank; Backstube Dashboard, `/admin/backzettel`, `/backstube`;
-  Fahrer nur `/admin/delivery/preorders`; alle `/admin/settings`. Startseite = erste _gebaute_
-  aus `start` (`ready` aus `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` → bis M1
-  `/admin`, Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
+  Fahrer `/admin/delivery/preorders` und `/admin/preorders` lesend (ohne `/neu`); alle `/admin/settings`. Startseite = erste _gebaute_
+  aus `start` (`ready` aus `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` (seit P1/P3 gebaut; vorher
+  `/admin`), Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
   `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
   Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
   eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
