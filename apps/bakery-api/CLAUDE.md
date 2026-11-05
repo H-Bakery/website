@@ -230,13 +230,18 @@ Code: rules in `src/services/hq-products.core.js` (dependency-free; field rules,
 cache in `src/services/hq-catalogue.ts`, file I/O + git in `src/services/hq-products.service.ts`,
 routes in `src/routes/hq-products.routes.ts`.
 
-| Endpoint                           | Who       | Answer                                                                                                                     |
-| ---------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/products[?category=]`    | session   | `{ success, data: HQProduct[], count }` - read clone only                                                                  |
-| `GET /api/hq-products[?category=]` | session   | same, plus products only in the write worktree (new, `pendingApproval`)                                                    |
-| `GET /api/hq-products/:id`         | session   | `{ success, data }`; read clone, else a pending new product; 404 `not_found`                                               |
-| `PUT /api/hq-products/:id`         | `inhaber` | `{ success, data, pending }`; 400 `validation`, 404, 500 `hq_commit_failed`, 503 `hq_unavailable` / `hq_write_unavailable` |
-| `POST /api/hq-products`            | `inhaber` | 201 `{ success, data, pending }`; 400 `validation` / `invalid_id`, 409 `product_exists`                                    |
+| Endpoint                           | Who       | Answer                                                                                                                |
+| ---------------------------------- | --------- | --------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/products[?category=]`    | session   | `{ success, data: HQProduct[], count }` - read clone only                                                             |
+| `GET /api/hq-products[?category=]` | session   | same envelope, **write-worktree version** (incl. new products); pending ones carry `approved`                         |
+| `GET /api/hq-products/:id`         | session   | `{ success, data }`; write-worktree version, else read clone; pending ones carry `approved`; 404 `not_found`          |
+| `PUT /api/hq-products/:id`         | `inhaber` | `{ success, data, pending }`; 400 `validation` / `invalid_product_file`, 404, 500 `hq_commit_failed`, 503 (see below) |
+| `POST /api/hq-products`            | `inhaber` | 201 `{ success, data, pending }`; 400 `validation` / `invalid_id` / `invalid_product_file`, 409 `product_exists`, 503 |
+
+503 codes: `hq_unavailable` (no read dir, development), `hq_write_unavailable` (write dir missing,
+not a git repo, or production without `HQ_WRITE_DIR`), `hq_write_wrong_branch` (worktree not on
+`HQ_WRITE_BRANCH`, default `app/edits`; also a detached HEAD). `?category=` given twice (an
+array) matches nothing, as in the mock.
 
 `HQProduct` = the mock's `loadHQProducts()` shape (`id, numeric_id, name, category, price, available,
 seasonal, image, short_description, allergens, allergens_source, allergen_recipe, description`)
@@ -252,22 +257,46 @@ seasonal, image, short_description, allergens, allergens_source, allergen_recipe
   are local. `HQ_WRITE_DIR` unset (development): written straight into `HQ_PRODUCTS_DIR`, no git,
   like the mock. The read clone is never written when `HQ_WRITE_DIR` is set.
 - **"wartet auf Freigabe"**: a product is `pendingApproval: true` when its file in the write worktree
-  differs byte-wise from the read clone's (or exists only there). GETs serve the **approved**
-  version (read clone) with the flag; a PUT builds on the write worktree's version, so edits
-  accumulate. Caveat: a write worktree that lags behind `origin/main` makes files look pending
-  until B5b rebases it.
+  differs byte-wise from the read clone's (or exists only there). **Two views, deliberately:**
+  `/api/products` (shop, and `getCatalogue()`) serves the **approved** version (read clone) with
+  the flag; `/api/hq-products[/:id]` (management) serves the **write-worktree** version - the one
+  a PUT builds on - plus `approved` (read-clone product, `null` for a new one) when pending. Do not
+  point the management GETs back at the read clone: the edit form sends every field, so its second
+  save would write the approved values over the pending edit (lost update, B5 review; regression
+  test "saving the full edit form of a pending product keeps the pending edit"). Caveat: a write
+  worktree that lags behind `origin/main` makes files look pending until B5b rebases it.
+- **Branch guard**: before writing, `git rev-parse --abbrev-ref HEAD` in `HQ_WRITE_DIR` must equal
+  `HQ_WRITE_BRANCH` (default `app/edits`), else 503 `hq_write_wrong_branch` and nothing is written.
+- **Round-trip check**: `serializeProductFile` quotes everything YAML 1.1 would read as something
+  else (leading quote/`?`/`:`, trailing `:`, numbers in hex/octal/binary/exponent/`_`/sexagesimal
+  form, `.inf`/`.nan`, dates, `y`/`n`/`null`, control characters). In addition the service parses
+  the finished file with gray-matter and compares it with the intended frontmatter + body
+  (`roundTripsAs` in `hq-products.core.js`); a mismatch is 400 `invalid_product_file` and nothing
+  is written. Without this a name like `Brot:` was committed as an unparseable file, vanished from
+  every list and would have blocked the rolling PR (H2).
 - **No-op saves write and commit nothing** (identical bytes) - tested for every sample file with the
-  body the edit form sends. A failed commit restores the file (or removes a new one), unstages it
-  and answers 500. Writes are serialised in-process (read-modify-write + git index).
+  body the edit form sends. A file that was dirty on disk and is saved back to the committed state
+  is also a no-op (nothing staged → no commit, 200). A failed commit (e.g. a rejecting pre-commit
+  hook) restores the file (or removes a new one), unstages it and answers 500. Writes are
+  serialised in-process (read-modify-write + git index).
 - **Catalogue for other domains** (B6 partners, B7 preorders): `getCatalogue()` / `getProduct(slug |
 numeric_id)` from `hq-catalogue.ts` - read clone only (approved prices for snapshots), frozen
   objects, one cache per directory, re-read when the directory mtime changes (git re-creates files
   on checkout/reset) or after 60 s (`CATALOGUE_TTL_MS`; an in-place edit does not touch the
   directory mtime), and invalidated by our own writes. Missing directory: empty catalogue, logged
   once (`HQ products directory not found`), writes 503.
-- `HQ_PRODUCTS_DIR` default: `<website>/../hq/products` (found via `nx.json` from cwd). The server
-  logs both directories at start. `createApp({ hqProducts: { productsDir, writeDir } })` overrides
-  them (tests). `tests/setup-ts.js` unsets `HQ_WRITE_DIR`.
+- **Configuration** (`loadHqConfig()` in `config/env.ts`, called by `startServer()` before the
+  database is opened): read dir = `HQ_PRODUCTS_DIR`, else `${HQ_DIR}/products`, else (development
+  only) `<website>/../hq/products` (found via `nx.json` from cwd; `defaultProductsDir()` uses the
+  same order, as Z3's Backzettel loader does). **Production refuses to start** without an absolute
+  read dir and an absolute `HQ_WRITE_DIR` - otherwise edits would go into the read clone, which
+  `hq-sync.sh` resets every 10 minutes, after a 200. In every environment `HQ_WRITE_DIR` must not
+  be inside or around the read clone (`HQ_DIR`, in production also the parent of the products
+  dir). The service additionally answers 503 to writes when `NODE_ENV=production` and no write dir
+  is set (`createApp` without config). The server logs both directories at start.
+  `createApp({ hqProducts: { productsDir, writeDir, writeBranch, production } })` overrides them
+  (tests). `tests/setup-ts.js` unsets `HQ_WRITE_DIR` and `HQ_WRITE_BRANCH`; `scripts/boot-smoke.sh`
+  passes (non-existent) temp dirs for both.
 
 Tests: `tests/unit/hqProductsCore.test.js`, `tests/unit/hqCatalogue.test.ts`,
 `tests/integration/hqProducts.test.ts` (temp copies of `tools/e2e/hq-products`, a temp git repo as
@@ -337,7 +366,7 @@ and `npx nx test bakery-api` (`--selectProjects js|ts`):
 The legacy suites that load `index.js` (`healthAPI`, `securityIntegration`) need
 `express-rate-limit` (root dependency, run `npm ci`) and reach `marked`@16, which is ESM-only; the
 `js` project maps `marked` to `tests/helpers/markedStub.js`. Both go with the legacy layer in B12.
-State on `feat/B3-auth` 2026-11-05: 64 suites pass (1314 tests), 6 skipped, 0 failing.
+State on `feat/B5-hq-products` 2026-11-05: 68 suites pass (1427 tests), 6 skipped, 0 failing.
 
 ## Known state
 
