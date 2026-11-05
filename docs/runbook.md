@@ -355,10 +355,12 @@ Jede Nacht um 23:30 (`bakery-backup.timer`; Backbeginn ist 02:00):
 Nicht gesichert, weil reproduzierbar: Code (`/opt/bakery`), hq-Lese-Klon (liegt auf GitHub).
 
 **Anonymisierung (P4, DSGVO).** Jede Nacht um 23:45 (`bakery-anonymize.timer`) setzt
-`cli.js anonymize-preorders` bei abgeschlossenen Vorbestellungen (abgeholt, storniert, nicht
-abgeholt), deren Abholtag mehr als 90 Tage zurückliegt, den Namen auf `anonymisiert` und löscht
-Telefon und Anmerkung; Positionen und Summen bleiben. Offene Bestellungen werden nicht angefasst,
-der Bericht zählt sie als `stillOpen` – dann in der App abschließen oder stornieren. Von Hand:
+`cli.js anonymize-preorders` bei **jeder** Vorbestellung, deren Abholtag mehr als 90 Tage
+zurückliegt – egal in welchem Status –, den Namen auf `anonymisiert` und löscht Telefon und
+Anmerkung; Positionen und Summen bleiben. Der Bericht zählt unter `unfinished`, wie viele davon nie
+abgeschlossen waren (offen/bereit) – wächst die Zahl, werden Übergaben nicht abgehakt. Der Lauf
+**migriert nie**: stehen nach einem Deploy Migrationen aus (API-Neustart fehlgeschlagen), bricht er
+mit Exit 1 ab und nennt sie – dann zuerst die API in Ordnung bringen (§4). Von Hand:
 `sudo systemctl start bakery-anonymize && journalctl -u bakery-anonymize -n 50` (Probelauf:
 `cli.js anonymize-preorders --dry-run`). Die Backups enthalten die Namen noch bis zu ihrem Ablauf
 (`--keep-weekly 8`, also höchstens etwa 8 Wochen länger).
@@ -509,7 +511,7 @@ Minute der Störung.
 | Box antwortet gar nicht (kein Ping, kein SSH)         | Strom, Kabel, LED                                             | Stromstecker ziehen und wieder einstecken; Papier-Fallback; Entwickler anrufen          |
 | Alarm „Backup"                                        | `journalctl -u bakery-backup -n 50`                           | Exit 10–13 siehe `backup.sh`; Ziel/Netz prüfen; `systemctl start bakery-backup`         |
 | Alarm „hq-Sync"                                       | `journalctl -u bakery-hq-sync -n 20`                          | §6; die App läuft mit dem letzten Stand weiter, kein Notfall                            |
-| Anonymisierung lief nicht / `stillOpen` wächst        | `journalctl -u bakery-anonymize -n 50`                        | `systemctl start bakery-anonymize`; alte offene Vorbestellungen in der App abschließen  |
+| Anonymisierung lief nicht / `unfinished` wächst       | `journalctl -u bakery-anonymize -n 50`                        | ausstehende Migration → API neu starten; dann `systemctl start bakery-anonymize`        |
 | Alarm „Speicherplatz"                                 | `df -h /var/lib/bakery`, `du -sh /opt/bakery/releases/*`      | `KEEP_RELEASES` senken, `journalctl --vacuum-time=14d`, alte `backup/snapshots` löschen |
 | Produkte/Preise geändert, App zeigt alten Stand       | `cat /var/lib/bakery/state/hq-sync.ok`                        | Änderung schon in hq `main` gemerged? Sonst „wartet auf Freigabe" (D6); Sync von Hand   |
 | Kein Telegram trotz Störung                           | `journalctl -u bakery-health -n 20`                           | Token/Chat-ID in `ops.env`; Telegram-Fehler werden beim nächsten Lauf erneut gesendet   |

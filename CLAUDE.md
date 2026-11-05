@@ -562,24 +562,30 @@ anonymisation (P4)". Von außen wichtig:
 - **Die Regeln stehen weiter genau einmal** in `apps/bakery-api/src/services/delivery-preorders.core.js`;
   Mock und echte API benutzen dieselbe Datei. Keine zweite Implementierung anlegen.
 - **Status** `offen → bereit → abgeholt | storniert`, `abgeholt ↔ storniert` gesperrt, storniert
-  wird statt gelöscht. „Nicht abgeholt" ist **kein eigener Status**, sondern `bereit` +
+  wird statt gelöscht. Eine abgeholte Bestellung behält Positionen, Abholtag und -ort (409
+  `already_picked_up`, erst auf „Offen" zurücksetzen). Mengen sind ganze Zahlen; `"abc"` oder
+  `2.7` sind 400 `invalid_quantity`, nur eine ausdrückliche `0` streicht eine Zeile. „Nicht abgeholt" ist **kein eigener Status**, sondern `bereit` +
   `notCollectedAt`; so übersetzt der Alias das `not_collected` des Mocks verlustfrei.
 - **Sorten:** `variant` ist `''` für „keine Sorte", nie `null`. Gibt es
   `hq/config/backzettel.yaml`, muss bei Produkten mit Sorten eine davon gewählt werden; ohne
   Config wird jede Sorte angenommen. Die alte Mörsbach-Maske kennt keine Sorten - ein Speichern
   der Positionen einer Bestellung mit Sorten über den Alias ist deshalb 409 `has_variants`
   (P2 stellt die Maske auf `/api/preorders` um).
-- **Kurzcode** für die Abholliste: `MO-2027-01-09-01` (Sammelstelle) bzw. `LA-…` (Laden); ein
-  stornierter Code wird nie neu vergeben.
+- **Kurzcode** für die Abholliste: `MO-2027-01-09-01` (Sammelstelle) bzw. `LA-…` (Laden). Jeder
+  Code wird **nur einmal** vergeben - auch nicht nach Storno oder wenn die Bestellung auf einen
+  anderen Tag/Ort umzieht (Register `preorder_codes`); ein alter Abholzettel zeigt nie auf eine
+  fremde Bestellung.
 - **Rollen:** `verkauf` (und `inhaber`) alles, `fahrer` lesen und nur übergeben bzw. „nicht
   abgeholt", `backstube` nur `/sums`.
 - **Shop:** `POST /api/orders` legt eine Vorbestellung mit Kanal `shop` an, **bleibt aber hinter
   der Anmeldung** - ein öffentlicher Bestellweg ist noch nicht entschieden. Die E-Mail wird nicht
   gespeichert.
-- **DSGVO (P4):** 90 Tage nach dem Abholtag werden Name, Telefon **und Anmerkung** abgeschlossener
-  Vorbestellungen gelöscht (Name `anonymisiert`) - nachts um 23:45 über
-  `deploy/systemd/bakery-anonymize.timer` (`cli.js anonymize-preorders`). Das Audit-Log enthält
-  nie Namen oder Telefonnummern.
+- **DSGVO (P4):** 90 Tage nach dem Abholtag werden Name, Telefon **und Anmerkung** jeder
+  Vorbestellung gelöscht, **egal in welchem Status** (Name `anonymisiert`) - nachts um 23:45 über
+  `deploy/systemd/bakery-anonymize.timer` (`cli.js anonymize-preorders`). Der Lauf migriert nie;
+  stehen Migrationen aus, bricht er ab. Das Audit-Log enthält nie Namen oder Telefonnummern.
+- **Mörsbach-Alias:** übergeben heißt bezahlt (wie beim Import); reines Abhaken (`{ status }`)
+  prüft den Liefertag nicht erneut.
 - **Umzug der Mock-Daten:** `cli.js import-preorders --file apps/bakery-api/data/delivery-store.json --dry-run`,
   idempotent (Runbook §3.9).
 

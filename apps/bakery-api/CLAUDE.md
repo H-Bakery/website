@@ -338,23 +338,34 @@ customerName, customerPhone, pickupDate, pickupTime, pickupPointId, pickupPoint
 name, variant, unit, unitPrice, quantity, lineTotal }], total, pickedUpAt, anonymizedAt,
 createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors via `sendError`:
 400 `invalid_*` / `unknown_product` / `unknown_pickup_point` / `variant_required` /
-`invalid_delivery_day`, 403 `forbidden`, 404 `not_found`, 409 `already_picked_up` / `cancelled` /
-`anonymized` / `has_variants`.
+`invalid_delivery_day` / `invalid_quantity`, 403 `forbidden`, 404 `not_found`, 409
+`already_picked_up` / `cancelled` / `anonymized` / `has_variants`.
 
 - **Channels** `laden | telefon | whatsapp | shop | sammelstelle`. Pickup is either the Laden
   (`pickupPointId: null`, date + optional `HH:MM`) or a pickup point (date must be its weekday, no
   time - the window applies; `sammelstelle` requires a point; inactive points are refused).
 - **Statuses** `offen → bereit → abgeholt | storniert`; `abgeholt ↔ storniert` is locked (409), so
   a paid handover cannot fall out of the accounts and a late handover from a dead spot cannot
-  revive a cancelled one. **"nicht abgeholt" is not a status**: it is `bereit` +
+  revive a cancelled one. **`abgeholt` is history**: while a preorder is `abgeholt`, a PATCH that
+  changes its items, pickup date or place is 409 `already_picked_up` (sums and day totals would
+  change after the fact); plain fields (note, paid, …) stay editable, and the same PATCH with
+  `status: 'offen'` goes through. **"nicht abgeholt" is not a status**: it is `bereit` +
   `not_collected_at` (migration `20261113000000-preorders-b7.js`, which also seeds the Mörsbach
   point), set with `{ notCollected: true }` (fahrer: target `nicht_abgeholt`), cleared by any
   other status.
 - **Mock mapping** (alias and import): `open → offen` (an incoming `open` on a `bereit` preorder
   keeps `bereit`), `handed_over → abgeholt`, `not_collected → bereit + notCollectedAt`,
   `cancelled → storniert`; back: `offen`/`bereit` → `open` unless `notCollectedAt` is set.
+  **Handover means paid** on both mock paths: the import and an alias `handed_over` (from any
+  other status) set `paid: true` - Mörsbach collects at the handover and the old form has no
+  paid switch. Reopening does not clear it.
 - **Items** carry a **price/name/unit snapshot** from the approved hq catalogue (`getProduct`);
-  duplicates of product + variant are merged; a product without a price is 400. **Variant** `''`
+  duplicates of product + variant are merged; a product without a price is 400. **Quantities**
+  are whole numbers (number or digit string, `core.parseQuantity`); `"abc"`, `2.7`, negatives,
+  `null` or a missing quantity are 400 `invalid_quantity` - nothing is truncated or dropped
+  silently, only an explicit `0` removes a line (same rule as the partner visits). The mock's
+  `normalizePreorderInput` still coerces; the alias therefore rejects what the mock would drop.
+  **Variant** `''`
   = none (never null). If `hq/config/backzettel.yaml` exists (found like Z3's loader:
   `HQ_BACKZETTEL_CONFIG`, `${HQ_DIR}/config/backzettel.yaml`, next to the products dir), a product
   of a Backzettel item with Sorten **must** name one of them (400 `variant_required` /
@@ -363,9 +374,12 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
   ignored. `createApp({ preorders: { variantsForProduct } })` overrides the hook (tests;
   `tests/setup-ts.js` points `HQ_BACKZETTEL_CONFIG` at a missing file).
 - **Codes** `<PREFIX>-<YYYY-MM-DD>-<nn>`: the pickup point's prefix (`MO` for Mörsbach, as in the
-  mock) or `LA` for the Laden; numbered over every code of that prefix + date **including
-  cancelled ones**, so a cancelled code is never handed out again. A change of date or place
-  renews the code (audited with `previousCode`).
+  mock) or `LA` for the Laden. **Single-use**: every code ever handed out is registered in
+  `preorder_codes` (B7 migration, backfilled from `preorders.code`) in the same transaction, and
+  `allocateCode()` numbers over the registry plus the table. So neither a cancelled code nor the
+  old code of a preorder that moved to another date or place (which renews its code, audited with
+  `previousCode`) ever goes to another customer - an Abholzettel or a printed list may still
+  carry it. Moving back gets a fresh number, too. The import registers the references it keeps.
 - **Audit**: every write (`create`, `update` with `changed`, `status`, `cancel`, `import`,
   `anonymize`, pickup point `update`) in the write's transaction; a no-op update writes nothing.
   Audit data never holds customer names, phones or notes - otherwise P4 would have to scrub
@@ -377,7 +391,11 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
   means "the point is served that weekday" (no tours, D11); the PUT does no geocoding (an address
   change clears the coordinates); Laden preorders are invisible there (404); a PATCH with `items`
   on a preorder that has variants is 409 `has_variants` (the old form cannot show them and would
-  drop them); fahrer may PATCH only `{ status: handed_over | not_collected }`. Answers carry
+  drop them); fahrer may PATCH only `{ status: handed_over | not_collected }`. A PATCH whose
+  body is **only** `{ status }` goes through `changeStatus` (no re-validation of weekday, items
+  …), so a preorder stays hand-over-able after the inhaber changed the point's weekday; a full
+  form save still re-validates. The alias guards (Laden → 404, legacy transition locks) run
+  inside the write's transaction, also for DELETE. Answers carry
   `code`, `channel`, `paid` (and `variant` per item) in addition.
 - **Shop `POST /api/orders`** (verkauf) validates with `shop-orders.core.js` and creates a `shop`
   preorder for the Laden; it answers in the mock's shape with `id` = code and `orderNumber` =
@@ -386,11 +404,13 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
   stored (no column, not needed for pickup).
 - **P4 anonymisation**: `anonymizePreorders({ today, days = 90, dryRun })` sets
   `customer_name = 'anonymisiert'`, clears phone **and note** (free text often holds personal
-  data), sets `anonymized_at` and writes one `anonymize` audit row each - for preorders whose
-  pickup date lies more than 90 days before `today` (Berlin) and that are `abgeholt`, `storniert`
-  or `bereit` + not collected. `offen` and plain `bereit` are left alone and counted in
-  `stillOpen`. An anonymised preorder can no longer be edited or change status (409
-  `anonymized`). Backups keep the names until they rotate out (runbook §5.1).
+  data), sets `anonymized_at` and writes one `anonymize` audit row each (code, date, status - no
+  names) - for **every** preorder whose pickup date lies more than 90 days before `today`
+  (Berlin), **whatever its status** (roadmap P4 has no status condition; a handover nobody ticked
+  off must not keep a name forever). The report lists `anonymized[{ id, code, pickupDate,
+status }]` and `unfinished` = how many of them were still `offen` / plain `bereit` (a hint that
+  handovers are not being ticked off). An anonymised preorder can no longer be edited or change
+  status (409 `anonymized`). Backups keep the names until they rotate out (runbook §5.1).
 
 CLI (`dist/apps/bakery-api/bundle/cli.js`, same `.env`/`DB_PATH` rules as `create-user`; JSON
 report on stdout, a summary on stderr):
@@ -405,7 +425,10 @@ missing points, maps statuses as above (`handed_over` ⇒ paid), keeps reference
 code gets the next free number) and `createdAt`. **Idempotent** through the audit rows
 (`action: 'import'`, `data.sourceReference`); `--dry-run` does the same work in a rolled-back
 transaction. `anonymize-preorders` runs nightly from `deploy/systemd/bakery-anonymize.timer`
-(23:45 Europe/Berlin, after the 23:30 backup).
+(23:45 Europe/Berlin, after the 23:30 backup). **It never migrates**: with pending migrations it
+exits 1 and names them (`pendingMigrations()` in `db/migrate.ts`), so a deploy whose API restart
+failed does not get its schema changed under the old process at night. `import-preorders` and
+`create-user` (run by hand) still migrate first.
 
 Tests: `tests/unit/preordersModel.test.js` (core), `tests/unit/preorderVariants.test.ts`,
 `tests/integration/preorders.test.ts` (every route incl. roles),
