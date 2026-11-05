@@ -2,6 +2,7 @@ import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import DashboardClient from './DashboardClient'
+import { fakeSession, WithSession } from '../../lib/testing/fakeSession'
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({ push: jest.fn() }),
@@ -101,6 +102,29 @@ describe('DashboardClient', () => {
       'Lieferungen',
       'Backliste',
     ].forEach((title) =>
+      expect(
+        screen.queryByRole('heading', { level: 2, name: title })
+      ).not.toBeInTheDocument()
+    )
+  })
+
+  it('zeigt Verkauf (Ausweich-Start) weder Kasse noch Tagesziel noch Berichte (F1)', async () => {
+    process.env.NEXT_PUBLIC_PILOT_MODE = '1'
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>
+        <DashboardClient latestReport={null} reportsAvailable={false} />
+      </WithSession>
+    )
+    await screen.findByText('API erreichbar')
+    expect(screen.getByText('Produkte gesamt')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('heading', { name: /^Kasse/ })
+    ).not.toBeInTheDocument()
+    expect(screen.queryByTestId('targets-tile')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Produkte' })
+    ).toBeInTheDocument()
+    ;['Kassenberichte', 'Analysen'].forEach((title) =>
       expect(
         screen.queryByRole('heading', { level: 2, name: title })
       ).not.toBeInTheDocument()

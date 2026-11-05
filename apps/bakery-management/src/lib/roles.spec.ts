@@ -86,6 +86,9 @@ describe('Startseite nach der Anmeldung', () => {
     expect(resolvePostLoginPath('inhaber', '//evil.example')).toBe('/admin')
     expect(resolvePostLoginPath('inhaber', '/admin/login')).toBe('/admin')
     expect(resolvePostLoginPath('inhaber', null)).toBe('/admin')
+    // Station einrichten: nach der Anmeldung zurück zu /station
+    expect(resolvePostLoginPath('inhaber', '/station')).toBe('/station')
+    expect(resolvePostLoginPath('inhaber', '/stationen')).toBe('/admin')
   })
 })
 

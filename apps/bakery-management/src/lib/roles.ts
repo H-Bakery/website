@@ -172,15 +172,12 @@ export function resolvePostLoginPath(
   role: PilotRole,
   next: string | null | undefined
 ): string {
-  if (
-    next &&
-    next.startsWith('/') &&
-    !next.startsWith('//') &&
-    isProtectedPath(next) &&
-    isPathAllowedForRole(next, role)
-  ) {
-    return next
+  if (!next || !next.startsWith('/') || next.startsWith('//')) {
+    return startPathForRole(role)
   }
+  // Der Inhaber meldet sich an, um ein Tablet als Station einzurichten.
+  if (normalizePath(next) === '/station') return '/station'
+  if (isProtectedPath(next) && isPathAllowedForRole(next, role)) return next
   return startPathForRole(role)
 }
 

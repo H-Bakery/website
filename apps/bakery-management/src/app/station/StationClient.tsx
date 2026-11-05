@@ -356,7 +356,10 @@ function StationLogin({
           )}
           <PinPad
             value={pin}
-            onChange={setPin}
+            onChange={(value) => {
+              setPin(value)
+              setPinError(null)
+            }}
             onSubmit={submitPin}
             disabled={busy}
           />

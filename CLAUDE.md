@@ -516,6 +516,74 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
   (Passwort-Spraying), bei der PIN zusätzlich 10 je Benutzer über alle IPs. `req.ip` kommt hinter Caddy aus
   `X-Forwarded-For` (`TRUST_PROXY`, Vorgabe `loopback`).
 
+## Anmeldung, Stationen und Rollen in der Management-App (F1)
+
+Die Management-App spricht den B3-Vertrag (Abschnitt oben). Ohne Sitzung zeigt kein Bildschirm unter
+`/admin` oder `/backstube` etwas außer der Anmeldung. Sechs Dinge, die man wissen muss:
+
+- **Die Sitzung gehört `src/lib/session.tsx`, nicht dem geteilten `AuthProvider`.** `SessionProvider`
+  (in `Providers.tsx`) ersetzt in dieser App den `AuthProvider` aus `@bakery/shared/contexts` - der
+  schickte alle 5 min einen leeren Refresh-Token und kannte weder PIN noch Pilot-Rollen. Seiten
+  lesen `useSession()` (wirft ohne Provider) oder `useOptionalSession()` (Layout, Chat, Produkte,
+  Dashboard - rendern auch ohne). `useAuth()` aus den Shared Contexts hat in dieser App **keinen
+  Provider** mehr; wer es neu benutzt, bekommt einen Fehler.
+- **Speicher: `src/lib/authSession.ts`** - `bakery-management-session` (Access- + Refresh-Token,
+  Benutzer, `sessionKind`, Anmeldezeit), `bakery-management-activity` (letzte Bedienung, von allen
+  Tabs gemeinsam), `bakery-management-station` (Stations-Token; bleibt beim Abmelden stehen). Der
+  Benutzer wird mit `normalizeUser()` gelesen: echte API `displayName`/`username`, der Mock
+  (`auth.mock.js`) `email`/`firstName` mit `admin` → `inhaber`, `staff` → `verkauf`.
+- **401 → genau ein Refresh → Wiederholung.** Der `ApiClient` (`libs/shared/data-access`) fragt bei
+  einer 401 auf eine Anfrage _mit_ Bearer einmal `setUnauthorizedHandler()`; die App erneuert dann
+  über `refreshSession()` (ein Refresh je Tab, gemeinsames Promise), speichert den rotierten
+  Refresh-Token sofort und wiederholt die Anfrage einmal. 409 `refresh_superseded` heißt, ein
+  anderer Tab war schneller - dessen Token wird aus dem Speicher übernommen. Scheitert der Refresh
+  mit 4xx, ist die Sitzung vorbei; bei Netz- oder Serverfehlern bleibt sie (WLAN-Aussetzer im
+  Laden). Login, Refresh, PIN und Logout laufen mit `retryOnUnauthorized: false` (`src/lib/authApi.ts`).
+  Zusätzliche Header je Anfrage (`X-Station-Token`) gehen über das neue dritte Argument
+  `RequestOptions` von `get/post/put/patch/delete`.
+- **Wache: `components/auth/RouteGuard.tsx`, client-seitig, in `Providers.tsx`.** Solange `status`
+  `loading` ist (Start, `GET /api/auth/me`) oder eine Weiterleitung läuft, steht nur
+  `SessionLoading` da - auch im Server-HTML, also kein Aufblitzen geschützter Inhalte. Ohne
+  Sitzung: `/admin/login?next=…`, auf einem Gerät mit Stations-Token `/station`. Sie sitzt nicht
+  im Admin-Layout, weil `/backstube` keins hat (und F2s `pilotMode.spec.ts` ein Verzeichnis
+  `app/backstube/` ohne `page.tsx` verbietet). Die Rolle prüft unter `/admin` das Admin-Layout
+  („Kein Zugriff" statt Inhalt), außerhalb die Wache. Das ist Bedienführung - Daten schützt die API.
+- **Eine Tabelle Rolle → Routen + Startseite: `ROLE_ACCESS` in `src/lib/roles.ts`.** Inhaber alles;
+  Verkauf Dashboard, `/admin/preorders` (M1), Sammelstelle Mörsbach, Produkte **nur die Liste**
+  (ohne Neu/Bearbeiten), Backschrank; Backstube Dashboard, `/admin/backzettel`, `/backstube`;
+  Fahrer nur `/admin/delivery/preorders`; alle `/admin/settings`. Startseite = erste _gebaute_
+  aus `start` (`ready` aus `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` → bis M1
+  `/admin`, Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
+  `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
+  Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
+  eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`).
+- **Station (`/station`, außerhalb `/admin`, ohne Seitenleiste).** Ohne Token richtet ein mit
+  Passwort angemeldeter Inhaber das Gerät ein (`POST /api/auth/stations`); danach wird seine
+  persönliche Sitzung auf dem Tablet beendet. Mit Token: Namenskacheln
+  (`GET /api/auth/station/users`) → Ziffernblock (`components/auth/PinPad.tsx`, PIN bleibt String,
+  `"0420"`) → `POST /api/auth/pin` → Startseite der Rolle. Eine widerrufene Station (403
+  `station_required`) vergisst ihr Token und zeigt wieder die Einrichtung. Leerlauf
+  (`src/lib/sessionPolicy.ts`): Station nach `NEXT_PUBLIC_STATION_IDLE_MINUTES` (10) zurück zu den
+  Kacheln, spätestens 12 h nach der PIN; persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h).
+  „Abmelden" (`components/auth/LogoutButton.tsx`) steht in der Kopfzeile, auf Stationen groß -
+  Z6 (`/backstube`, ohne Admin-Layout) muss ihn selbst einbinden.
+
+Dazu: `/admin/users` (nur Inhaber) verwaltet Konten, Rollen, Passwörter, PINs und Stationen
+(Widerrufen); Fehler wie `last_inhaber` kommen als deutsche API-Meldung in den Dialog.
+**`src/proxy.ts`** (Next 16, früher `middleware.ts`) schreibt im Pilotbetrieb gesperrte
+`/admin`-Routen auf `/admin/nicht-verfuegbar` um (`src/lib/pilotRewrite.ts`), sodass die
+Demo-Seiten serverseitig gar nicht mehr rendern; Anmeldung prüft der Proxy nicht (die Tokens liegen
+in `localStorage`). Die E2E-Smoke-Suite meldet sich an der Mock-API an
+(`apps/bakery-management-e2e/src/login.ts`, `admin`/`admin`).
+
+Tests: `src/lib/{authSession,roles,sessionPolicy}.spec.ts`, `src/lib/session.spec.tsx`,
+`src/lib/session.refresh.spec.tsx` (echter `ApiClient`, nachgebautes `fetch`),
+`components/auth/RouteGuard.spec.tsx`, `admin/login/page.spec.tsx`, `station/StationClient.spec.tsx`,
+`admin/users/UsersClient.spec.tsx`, `admin/layout.roles.spec.tsx`,
+`libs/shared/data-access/src/lib/api-client.spec.ts`. Specs nutzen `src/lib/testing/fakeSession.tsx`
+und `memoryStorage.ts`; nicht `jest.resetAllMocks()` in MUI-Specs - das nimmt `test-setup.ts` die
+`ResizeObserver`-Attrappe.
+
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 
 Pilot-Betrieb auf einem Rechner in der Bäckerei: systemd-Units, Caddy (LAN-HTTPS über DNS-01),
