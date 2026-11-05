@@ -359,6 +359,34 @@ und Routen, synthetische Fixtures in Temp-Verzeichnissen) und in der Management-
 `admin/finance/tagesziel/TagesZielClient.spec.tsx` (Fixtures: `src/lib/targetsFixtures.ts`, erfunden).
 Keine echten Beträge in Code, Tests, Fixtures oder Commit-Messages - das Repo ist öffentlich.
 
+## Backzettel (Kern, Z1/Z2)
+
+Stammdaten in `hq/config/backzettel.yaml` (privat), Tagesrechnung hier. Plan: `docs/roadmap.md` §5.
+
+- **Die Rechnung steht genau einmal**, in `apps/bakery-api/src/services/backzettel.core.js`
+  (dependency-freies CommonJS): `computeDay({config, date, preorderItems, capTemplate, corrections,
+seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt | CAP | Korrektur |
+  Gesamt) je Posten/Variante, die Hefeteig-Zusammenfassung (Teigstücke, Teig g, Chargen,
+  Abwiegeliste), den Füllungsbedarf mit skaliertem Rezept und die Vorbereitungen;
+  `computeDeltas` vergleicht einen freigegebenen mit einem neu gerechneten Zettel.
+  Schema-Prüfung: `backzettel-config.core.js` (`validateBackzettelConfig`, `normalizeConfig`),
+  Rezepte: `backzettel-recipes.core.js`, Datei-Lesen (js-yaml): `backzettel-config.loader.js`.
+- **Viertel erst summieren, dann aufrunden** - je Zeile (Posten × Variante). Aufgerundet wird mit
+  Toleranz (`roundUp`), sonst wird aus 10 × 1,1 = 11,000…02 eine 12. Stück/Blech ganzzahlig,
+  Liter/kg auf 0,01 (Haferbrot 1,24 l).
+- **Teigstücke und Füllungsgramm kommen aus der YAML**, nicht aus Code. Der gefüllte Kranz
+  (hq: 1 × 1200 g, alter Code: 3 × 600 g) ist offen (Q-B3) und nur dort einzustellen.
+- **Variante = Füllungs-ID.** Gefüllte Ware ohne Variante zählt im Teig, aber nicht in der Füllung
+  (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
+- `formatTrayInfo` ist ein **Duplikat** von `feature-daily-prep/.../utils/trayInfo.ts`; beide
+  ändern.
+- CLI für das hq-CI (H2): `node apps/bakery-api/scripts/validate-backzettel.js <yaml> [productsDir]
+[--json]`, Exit 1 bei Fehlern. Nur Dateien mit `*.core.js`/`*.loader.js` in `src/services`
+  landen per `assets` in `dist/`.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/backzettel` (99,
+synthetische Fixtures in `tests/fixtures/backzettel.synthetic.js`).
+
 ## E2E-Suiten (Playwright)
 
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).
