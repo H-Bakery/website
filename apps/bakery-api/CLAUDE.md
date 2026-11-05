@@ -62,7 +62,9 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
    `db/migrations.ts` (each file `require`d by literal, so esbuild bundles it). Bookkeeping in
    `SequelizeMeta` with the `.js` names, compatible with databases migrated by `sequelize-cli`.
    No glob, no shell-out, **no `sequelize.sync()` at runtime**. A new migration = one new line.
-   The 17 legacy migrations still run; B2 replaces them with a pilot baseline.
+   Since B2 the list holds **one pilot baseline**, `migrations/20261105000000-pilot-baseline.js`
+   (see "Schema" below); the 17 legacy migrations are archived in `migrations/archive/` and never
+   loaded (`sequelize-cli` does not read subdirectories either).
 5. `initializeModels(sequelize)` - after the migrations, never before.
 6. `runPartnerSeeder()` - idempotent (by slug), creates the first sales partner.
 7. `createApp({ sequelize, corsOrigins })` + `listen`. SIGTERM/SIGINT close the server (idle
@@ -102,14 +104,55 @@ validators). Until B3 rewrites it on `sendError`, `/api/auth` is mounted behind
 English text as `detail`. Its 401 text is the generic „Bitte melden Sie sich an." - also for a
 wrong password.
 
+## Schema (B2)
+
+One baseline migration creates the whole pilot schema: `users`, `refresh_tokens`, `audit_log`,
+the four partner tables (`Partners`, `PartnerDeliveryTemplates`, `PartnerVisits`,
+`PartnerVisitItems` - names and camelCase columns exactly as before, `staffId` → `users`),
+`pickup_points`, `preorders`, `preorder_items` and the Backzettel tables `backzettel_days`,
+`backzettel_lines`, `backzettel_deltas` (§5.3, models come with Z3). New tables are snake_case;
+their models use `underscored: true` and camelCase attributes.
+
+- **Idempotent.** Each table is created only if missing (case-insensitive - SQLite treats `Users`
+  and `users` as one table). A database that ran the legacy list keeps those names in
+  `SequelizeMeta`, runs the baseline once, keeps its partner data, and keeps the legacy tables it
+  no longer reads (Products, Orders, ...).
+- **Legacy users are rebuilt, not dropped.** A users table without `password_hash` is copied into
+  the pilot shape with its ids (so `PartnerVisits.staffId` stays valid): `display_name` from
+  first/last name, `admin` → `inhaber`, else `verkauf`, `active = 0`, password hash
+  `LEGACY_PASSWORD_HASH` (never a valid scrypt hash). Old bcrypt hashes are not carried over.
+- `backzettel_lines.variant` is `NOT NULL DEFAULT ''` (`''` = no variant) so the unique index
+  `(date, item_id, variant)` holds; an expression index would break Sequelize's `describeTable`.
+- Weekdays: partners ISO (1 = Monday); `pickup_points.weekday` / `order_deadline.weekday` are JS
+  (0 = Sunday), as in `delivery-preorders.core.js`.
+- `initializeModels()` initialises only the pilot models (`PILOT_MODELS`). The legacy models
+  (Cash, Chat, Product, Order, Inventory, Recipe, Notification\*, Production\*, ...) are still
+  exported so unmounted code compiles, carry `@deprecated`, are **not initialised** and have no
+  table. `User` hides `passwordHash`/`pinHash` in its default scope; login reads them through
+  `User.scope('withSecrets')`.
+
 ## Tests
 
-`jest.config.js` runs only plain-JS tests under `tests/**/*.test.js` (the `*.core.js` business
-rules): `npx jest -c apps/bakery-api/jest.config.js`. TS sources can be pulled into such a test
-with `tests/helpers/loadTs.js` (esbuild, same settings as `build.mjs`); `tests/unit/apiPlatform.test.js`
-uses it for `config/env.ts`, `utils/http-error.ts` and `db/database.ts`. Three legacy suites need `express-rate-limit`,
-which is declared in the root `package.json` but only present after `npm ci`. The TS specs under
-`src/**/__tests__/` never run; B1 adds a TS jest project and supertest tests against `createApp()`.
+Two jest projects in `jest.config.js`, both run by `npx jest -c apps/bakery-api/jest.config.js`
+and `npx nx test bakery-api` (`--selectProjects js|ts`):
+
+- `js`: plain-JS tests under `tests/**/*.test.js` (the `*.core.js` business rules, mock server).
+  TS sources can be pulled in with `tests/helpers/loadTs.js` (esbuild, same settings as
+  `build.mjs`); `tests/unit/apiPlatform.test.js` uses it.
+- `ts`: `src/**/*.spec.ts`, `src/**/__tests__/**/*.test.ts`, `tests/**/*.test.ts` through
+  ts-jest (transpile-only, `tsconfig.spec.json`, `@bakery/*` from the base paths). Integration
+  tests use `tests/helpers/createTestApp.ts` (`createApp()` on `:memory:` + baseline) with
+  supertest; `tests/parity/parity.ts` compares the real API with `simple-server.js` (its JSON
+  stores redirected to a temp dir). Type errors in tests are caught by
+  `nx run bakery-api:typecheck`, which also checks `tsconfig.spec.json`.
+- Three TS tests for unmounted domains (inventory, email) are excluded in `EXCLUDED_TS_TESTS`;
+  the rest of the roadmap's "31" are `libs/api/*` specs that run in their own nx projects. See
+  `tests/README.md`.
+- `scripts/boot-smoke.sh`: bundle → start (production mode, fresh SQLite) → `/health` → restart
+  without re-running migrations. Runs in CI in the `build (bakery-api)` job.
+
+Three legacy JS suites need `express-rate-limit`, which is declared in the root `package.json` but
+only present after `npm ci`.
 
 ## Known state
 
@@ -117,7 +160,7 @@ which is declared in the root `package.json` but only present after `npm ci`. Th
   `jsonwebtoken`, `bcrypt`) are root `dependencies`, so `npm ci --omit=dev` keeps them. Building
   still needs dev dependencies (esbuild, typescript).
 - Auth is still the in-memory `libs/api/auth` (users lost on restart, `/refresh` → 501). B3.
-- The 17 legacy migrations create many tables the pilot does not use; models and migrations drift
-  outside the partner tables. B2.
+- An old development database keeps the legacy tables after the baseline ran (harmless, unread);
+  delete the file for a clean schema.
 - The legacy JavaScript layer at the app root (`index.js`, `controllers/`, `models/`, `routes/`,
   `middleware/`) is not part of the bundle; useful only as domain reference.

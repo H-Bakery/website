@@ -190,9 +190,11 @@ verschobenen Datei). Der Liefer-Store benutzt dieselben Helfer. Nicht durch ein 
 `writeFileSync` ersetzen - genau so gingen früher nach einem Absturz mitten im Schreiben alle
 Besuche verloren.
 
-Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Achtung -
-`apps/bakery-api/jest.config.js` hat `testMatch: ["**/tests/**/*.test.js"]`, führt also **nur**
-plain-JS-Tests unter `tests/` aus. Die TypeScript-Specs unter `src/**/__tests__/` laufen nie mit.
+Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Seit B1 hat
+`apps/bakery-api/jest.config.js` zwei Projekte: `js` (`tests/**/*.test.js`) und `ts`
+(`src/**/*.spec.ts`, `tests/**/*.test.ts`, ts-jest). Die echte API wird über
+`tests/helpers/createTestApp.ts` (`createApp()` auf `:memory:` mit der Pilot-Baseline) getestet,
+der Abgleich mit `simple-server.js` über `tests/parity/` - Details in `apps/bakery-api/tests/README.md`.
 
 ## Liefertouren (Samstagsauslieferung)
 

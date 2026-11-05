@@ -517,9 +517,9 @@ Exit criteria:
       `initializeModels`; WAL + busy_timeout; `app.ts`/`server.ts` split; `sendError` (message +
       error) + global handler; trim `src/types/ambient.d.ts` to `express-validator`; install
       `express-rate-limit` only.
-- [ ] **B1** Test harness (M, → B0): TS jest project; `:memory:` integration with migrations; parity
+- [x] **B1** Test harness (M, → B0): TS jest project; `:memory:` integration with migrations; parity
       runner against `simple-server.js`; CI boot smoke.
-- [ ] **B2** Pilot baseline migration (S, → B0): users, refresh_tokens, audit_log, partners\*,
+- [x] **B2** Pilot baseline migration (S, → B0): users, refresh_tokens, audit_log, partners\*,
       preorders, preorder_items (with `variant`), pickup_points. The old 17 migrations are archived.
 - [ ] **B3** Auth (M, → B2): User/RefreshToken models; scrypt for password + PIN;
       `login/me/refresh/logout/pin`; role guards; rate limit 5 / 5 min; idempotent `create-user`
