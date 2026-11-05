@@ -8,7 +8,8 @@ Sequelize on SQLite. Built by esbuild into a single file and run with plain `nod
 - **Port:** `PORT`, default 5000
 - **Entry:** `src/main.ts` → `src/server.ts` → `src/app.ts`
 - **Bundle:** `dist/apps/bakery-api/bundle/main.js` (+ source map); operator CLI
-  `dist/apps/bakery-api/bundle/cli.js` (B3 `create-user`, B6 `import-partners`)
+  `dist/apps/bakery-api/bundle/cli.js` (B3 `create-user`, B6 `import-partners`, B7
+  `import-preorders`/`anonymize-preorders`, Z9 `snapshot-preorders`)
 
 `simple-server.js` (mock API, `npm run serve:api:simple`) is still what the frontends use; it stays as
 the parity reference until cutover (D3) and is then deleted. Its contracts win.
@@ -98,6 +99,7 @@ and for supertest (B1). Mounted for the pilot:
 | `/api/deliveries`                                | `routes/preorders.routes.ts` (alias)     | only the Mörsbach mock contract (pickup points, preorders)  |
 | `/api/orders` (POST only)                        | `routes/preorders.routes.ts` (shop)      | shop order → preorder with channel `shop`, behind auth      |
 | `/api/backzettel`                                | `routes/backzettel.routes.ts`            | Z3, see "Backzettel API (Z3)"                               |
+| `/api/hq-sync`                                   | `routes/hq-sync.routes.ts`               | B5b/Z9 status + retry, `inhaber` - see "hq write-back"      |
 
 New domains are mounted in `app.ts` **below the global guard** - mount them there and add
 `requireRole(...)`. `libs/api/auth` is no longer mounted (the lib stays until B12).
@@ -305,8 +307,8 @@ seasonal, image, short_description, allergens, allergens_source, allergen_recipe
   there, author and committer `Verwaltung (App) <verwaltung@bakery.local>`, message
   `products: <Name> (<id>) geändert|angelegt` + `Co-authored-by: <displayName> <username@bakery.local>`.
   git runs through `execFile` with argument arrays, never a shell string. Only the product path is
-  committed - whatever else sits in the index stays. Push + PR is **B5b**; until then the commits
-  are local. `HQ_WRITE_DIR` unset (development): written straight into `HQ_PRODUCTS_DIR`, no git,
+  committed - whatever else sits in the index stays. Push + PR is **B5b** (see "hq
+  write-back"; without a token the commits stay local). `HQ_WRITE_DIR` unset (development): written straight into `HQ_PRODUCTS_DIR`, no git,
   like the mock. The read clone is never written when `HQ_WRITE_DIR` is set.
 - **"wartet auf Freigabe"**: a product is `pendingApproval: true` when its file in the write worktree
   differs byte-wise from the read clone's (or exists only there). **Two views, deliberately:**
@@ -317,6 +319,8 @@ seasonal, image, short_description, allergens, allergens_source, allergen_recipe
   save would write the approved values over the pending edit (lost update, B5 review; regression
   test "saving the full edit form of a pending product keeps the pending edit"). Caveat: a write
   worktree that lags behind `origin/main` makes files look pending until B5b rebases it.
+  **Since B5b** "pending" is measured against `origin/main` of the write clone (see "hq
+  write-back"), the read clone is only the fallback before the first fetch.
 - **Branch guard**: before writing, `git rev-parse --abbrev-ref HEAD` in `HQ_WRITE_DIR` must equal
   `HQ_WRITE_BRANCH` (default `app/edits`), else 503 `hq_write_wrong_branch` and nothing is written.
 - **Round-trip check**: `serializeProductFile` quotes everything YAML 1.1 would read as something
@@ -354,6 +358,116 @@ Tests: `tests/unit/hqProductsCore.test.js`, `tests/unit/hqCatalogue.test.ts`,
 `tests/integration/hqProducts.test.ts` (temp copies of `tools/e2e/hq-products`, a temp git repo as
 `HQ_WRITE_DIR`), `tests/parity/hqProducts.parity.test.ts` (same answers **and the same bytes on
 disk** as `simple-server.js` for GET/PUT/POST).
+
+## hq write-back (B5b) and snapshots (Z9)
+
+Roadmap D6, D13, D14, §4a "How the app syncs". Three pieces, all git through
+`src/services/hq-git.ts`:
+
+| File                                                    | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `services/hq-git.ts`                                    | `runHqGit(cwd, args, { token, timeoutMs })`: `execFile` with an argument array, timeout (60 s; network calls 120 s, `SIGKILL`), identity `Verwaltung (App) <verwaltung@bakery.local>` as author **and** committer, `HqGitError.code` (`git_missing`, `git_timeout`, `not_a_repo`, `network`, `push_rejected`, `rebase_conflict`, `repo_locked`, `git_failed`; classification in `hq-writeback.core.js`). The token goes in only as an env var read by a one-call credential helper (like `hq-sync.sh`), never in args/URL/config. `withRepoLock(dir, job)`: one FIFO queue per **common git dir** - so the `app/edits` worktree and the `main` snapshot worktree of the same clone share it (they share refs; two fetches at once fail on the ref lock) - plus a lock file `bakery-app.lock` in that git dir against other processes (the CLI), stale when its pid is dead or after 10 min; never written into a non-repo. `readBlobs` (`cat-file --batch`) |
+| `services/hq-edits-sync.service.ts` (`HqEditsSync`)     | B5b: push `app/edits` + one rolling PR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `services/hq-snapshots.service.ts` (`HqSnapshotWriter`) | Z9: `data/production/**` to `main`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `services/github-pr.ts`                                 | find/open the PR via `fetch` (REST, `GITHUB_API_URL`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `services/hq-writeback.core.js`, `hq-snapshots.core.js` | pure rules: error classes, PR body, editors from trailers; snapshot whitelists + German Markdown                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+
+**B5b flow** (`HqEditsSync.sync()`, after every B5 commit via `afterCommit`, every
+`HQ_SYNC_RETRY_MS` = 15 min via an unref'd timer, `POST /api/hq-sync/retry`; concurrent calls
+coalesce into one rerun; never rejects - failures go to `lastError`), all under `withRepoLock`
+(the products service takes the same lock for its write + commit, so a rebase never meets a half
+commit):
+
+1. branch must be `app/edits` (`wrong_branch`); `fetch --prune origin main` + `app/*` (a glob, so a
+   missing remote `app/edits` is no error); re-read the approved products from `origin/main`.
+2. tracked changes in the worktree → `worktree_dirty`, stop.
+3. nothing of ours above `origin/main` → `merge --ff-only` (the PR was merged; `mergedSince` set,
+   `prUrl` cleared). Same tree as `origin/main` with other commits (a **squash** merge) →
+   `reset --keep origin/main`, also merged.
+4. else `rebase origin/main` (skipped when already on top). Conflict → `conflictedFiles`,
+   `rebase --abort`, `lastError { code: 'rebase_conflict', files }`; local commits stay, nothing is
+   pushed.
+5. `push --force-with-lease=refs/heads/app/edits:<remote value just fetched, '' = must not exist>
+origin HEAD:refs/heads/app/edits`. Rejected lease → fetch, rebase, push once more. A foreign
+   commit on `app/edits` is overwritten by design: the branch belongs to the app.
+6. `ensurePullRequest`: `GET /repos/{repo}/pulls?state=open&head={owner}:app/edits&base=main`,
+   `POST` only if none (a 422 "already exists" race looks again). Title "Stammdaten aus der
+   Verwaltung", German body with the changed files and the editors' **names** from the
+   `Co-authored-by` trailers (no mail). The body is written at opening only; later pushes update
+   the PR by themselves. Called after every push and while `prUrl` is unknown (a failed attempt
+   is retried; `github_failed` keeps the push).
+
+**Disabled** without `HQ_WRITE_DIR` or without a token (`HQ_GITHUB_TOKEN`, fallback
+`GITHUB_TOKEN` - the box's env already uses `HQ_GITHUB_TOKEN`): saves still commit locally (B5),
+the status says why. `createApp()` without `hqSync` builds disabled instances (tests stay
+hermetic); `server.ts` builds the real ones from `loadHqSyncConfig()` (`HQ_GITHUB_REPO` default
+`H-Bakery/hq`, `GITHUB_API_URL`, `HQ_SYNC_RETRY_MS` ≥ 1000), calls `edits.init()` (reads
+`origin/main` without fetching), starts both timers after `listen` and stops them on close.
+
+**pendingApproval against `origin/main`.** `HqProductsService` takes `approvedFiles()` (file name
+→ raw content of `products/*.md` on `origin/main`, refreshed after every fetch) and compares the
+write worktree with it; `approved` (the management view) is parsed from the same content. Only
+before the first read (no write dir, no `origin/main`) does it fall back to the read clone, which
+lags up to 10 min behind `main`. Rebase/fast-forward call `onWorktreeChanged` → the products
+cache is invalidated.
+
+**Status** `GET /api/hq-sync/status` (`inhaber`, any session kind) → `{ success, data: { enabled,
+reason, branch, baseBranch, repo, pendingCommits (not on GitHub: neither on origin/app/edits nor
+merged), unmergedCommits (waiting for approval), lastPushAt, lastAttemptAt, lastError { code,
+message (German), detail (git stderr ≤ 500 chars), files?, at }, prUrl, mergedSince (first time
+nothing waited; null while something waits), running, snapshots: { enabled, reason, branch,
+pendingCommits, lastCommitAt, lastPushAt, lastAttemptAt, lastError } } }`. `POST /retry` runs both
+syncs and answers the same. `lastError.code` adds `wrong_branch`, `worktree_dirty`,
+`github_failed`, `write_failed` to the git codes.
+
+**Z9 snapshots** (`HqSnapshotWriter`, `HQ_SNAPSHOT_DIR` = a second worktree of the write clone on
+`main`; must not be inside/around the read clone or `HQ_WRITE_DIR`, absolute in production;
+unset = off):
+
+- **Backzettel:** the Z3 service got a hook `createBackzettelService(source, { onConfirmed })`
+  (router option `onConfirmed`), called after the confirm transaction with the confirmed day view
+  and `req.user.role`; `app.ts` wires it to `snapshots.backzettelConfirmed()`, which runs in the
+  background (`idle()` for tests) - **a confirm never waits for or fails because of hq**. Writes
+  `data/production/backzettel/<date>.json` (schema 1: sections/lines with base, seasonal,
+  preorders, cap, correction, total, tray, plu; Hefeteig with weighing list; fillings with scaled
+  recipe; prep; warnings `{code, message}`; `confirmed { at, role }`) and `.md` (German:
+  "# Backzettel Samstag, 28.11.2026", "Freigegeben (Backstube) am … um … Uhr.", tables per
+  section, Hefeteig/Wiegeliste, Füllungen, Vorbereitung, Hinweise).
+- **Vorbestellungen:** `cli.js snapshot-preorders [--date YYYY-MM-DD]` (default today, Berlin -
+  the day that just ended at 22:15; never migrates; exit 0 also when the push is queued, 1 on
+  bad input / missing `HQ_SNAPSHOT_DIR` / a non-network failure) from
+  `deploy/systemd/bakery-snapshot-preorders.{service,timer}` (22:15). Uses
+  `PreordersService.day()`; writes `data/production/vorbestellungen/<date>.json` with
+  `preorderCount`, `items [{productId, variant, name, unit, quantity, preorders}]`, `channels`
+  (all five, zeros included), `pickupPoints [{id, name, count}]` (`laden` first). Cancelled ones
+  are not counted. **No timestamp**, so a rerun on unchanged data commits nothing.
+- **No personal data (D13), by whitelist** in `hq-snapshots.core.js`: no confirmer/corrector/
+  ticker names or ids (only the confirming role), no free-text correction reasons (they may name
+  a customer), no deltas, preorder ids or codes, no customer names, phones, notes, no money. A new
+  field in the day view stays out until added there on purpose.
+- git: write files atomically, `add -A -- data/production`, commit **with the pathspec
+  `data/production`** (a foreign file staged in the worktree stays staged, uncommitted - test),
+  message `chore(production): Backzettel <date> (App)` / `Vorbestellungen <date> (App)`, no
+  `Co-authored-by` (no names). Push `origin HEAD:refs/heads/main`; rejected → `pull --rebase
+--autostash origin main` + one retry; conflict → `rebase --abort`, `rebase_conflict` with files,
+  commit kept; offline → `network`, commit kept, pushed by the 15-min timer or `/retry`.
+
+Tests: `tests/unit/hqWritebackCore.test.js`, `tests/unit/hqSnapshotsCore.test.js` (planted
+"personal" markers must not come out), `tests/integration/hqGit.test.ts` (queue across worktrees,
+lock file across processes, timeout/error codes, token never in args),
+`tests/integration/hqEditsSync.test.ts` (push + one PR, merge and squash merge detected,
+pendingApproval vs. a stale read clone, rebase, conflict, rejected lease → retry, offline + timer,
+GitHub 500, parallel saves), `tests/integration/hqSnapshots.test.ts` (confirm → origin main,
+pathspec, rejected push → rebase → retry, offline, parallel, no-op, conflict, wrong branch),
+`tests/integration/hqSnapshotsCli.test.ts`. All against temp **bare repos as origin**
+(`tests/helpers/hqRemote.ts`) and a local fake of the GitHub pulls API (`startFakeGitHub`) -
+never GitHub. `tests/setup-ts.js` unsets `HQ_SNAPSHOT_DIR`, `HQ_GITHUB_TOKEN`, `GITHUB_TOKEN`,
+`GITHUB_API_URL`, `HQ_GITHUB_REPO`.
+
+Box: `install.sh` creates the write clone (`bakery.role=write-clone`, branch `app/edits`) and
+`git worktree add $HQ_SNAPSHOT_DIR main`; runbook §6.1. Before the first push H1 must be merged
+(the pipeline's push to `main` would otherwise commit without pathspec and get rejected by ours),
+H2 for the auto-merge.
 
 ## Partners (B6)
 
