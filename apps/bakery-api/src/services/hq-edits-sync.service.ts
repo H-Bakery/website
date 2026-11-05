@@ -9,17 +9,27 @@
  *   2. reads the approved product files from `origin/main` (for
  *      `pendingApproval`, see `approvedProductFiles()`)
  *   3. nothing of ours left on top of `origin/main` → fast-forward the
- *      worktree; the PR was merged (`mergedSince`)
+ *      worktree; the PR was merged (`mergedSince`). A squash merge is
+ *      recognised by content: the newest of our commits whose files all have
+ *      the same content on `origin/main` marks what was merged
+ *      (`mergedPrefix`) - those commits are dropped, the rest is replayed
  *   4. otherwise rebase `app/edits` onto `origin/main` (a conflict is aborted,
- *      the local commits stay, the error is recorded), then
- *      `push --force-with-lease origin app/edits` (lease = the remote value we
- *      just fetched; one retry after a rejected lease)
- *   5. makes sure exactly one PR `app/edits → main` is open (GitHub REST API)
+ *      the local commits stay, the error is recorded)
+ *   5. commits someone else pushed to `app/edits` (a fix for a failing check)
+ *      are cherry-picked on top instead of being overwritten
+ *      (`adoptForeignCommits`); if that conflicts nothing is pushed
+ *   6. `push --force-with-lease origin <sha>:app/edits` (lease = the remote
+ *      value we just fetched; one retry after a rejected lease)
+ *   7. makes sure exactly one PR `app/edits → main` is open (GitHub REST API)
  *
- * Every git step runs under `withRepoLock` (the same queue the product saves
- * use), so a rebase never meets a half-done commit. Offline: commits queue
- * locally, the timer retries. Without `HQ_WRITE_DIR` or a GitHub token the
- * sync is disabled and `status()` says why; saves still commit locally (B5).
+ * Locks (see `hq-git.ts`): fetch and push run under the **network** lock,
+ * the worktree steps (rebase, reset, cherry-pick, fast-forward) under the
+ * short **local** lock the product saves use - a save never waits for
+ * GitHub, and a rebase never meets a half-done commit. The GitHub API is
+ * called with no lock held. Offline: commits queue locally, the timer
+ * retries. Without `HQ_WRITE_DIR` or a GitHub token the sync is disabled and
+ * `status()` says why; saves still commit locally (B5), and `pendingApproval`
+ * is measured against the read clone as in B5.
  */
 import * as path from 'path'
 
@@ -28,11 +38,13 @@ import {
   currentBranch,
   HqGit,
   HqGitError,
+  APP_IDENTITY,
   NETWORK_GIT_TIMEOUT_MS,
   readBlobs,
   revParse,
   runHqGit,
   conflictedFiles,
+  withNetworkLock,
   withRepoLock,
 } from './hq-git'
 import { ensurePullRequest, FetchLike, GitHubError } from './github-pr'
@@ -193,7 +205,9 @@ export class HqEditsSync {
    * `pendingApproval` instead of the read clone, which can lag 10 minutes.
    */
   approvedProductFiles(): ReadonlyMap<string, string> | null {
-    return this.approved
+    // Disabled: `origin/main` of the write clone is never fetched and would
+    // go stale - B5 compares against the read clone instead.
+    return this.enabled ? this.approved : null
   }
 
   status(): EditsSyncStatus {
@@ -220,7 +234,7 @@ export class HqEditsSync {
     if (!dir) return
     try {
       await withRepoLock(dir, async () => {
-        await this.refreshApproved(dir)
+        if (this.enabled) await this.refreshApproved(dir)
         await this.updateCounts(dir)
       })
     } catch (error) {
@@ -264,9 +278,7 @@ export class HqEditsSync {
       try {
         do {
           this.again = false
-          await withRepoLock(dir, () => this.syncOnce(dir)).catch((error) =>
-            this.fail(error)
-          )
+          await this.syncOnce(dir).catch((error) => this.fail(error))
         } while (this.again)
       } finally {
         this.running = null
@@ -396,8 +408,17 @@ export class HqEditsSync {
     }
   }
 
-  private async syncOnce(dir: string): Promise<void> {
-    this.lastAttemptAt = this.iso()
+  /** Worktree steps: short, under the local lock (shared with saves). */
+  private local<T>(dir: string, job: () => Promise<T>): Promise<T> {
+    return withRepoLock(dir, job)
+  }
+
+  /** fetch / push / remote-tracking refs: under the network lock. */
+  private net<T>(dir: string, job: () => Promise<T>): Promise<T> {
+    return withNetworkLock(dir, job)
+  }
+
+  private async checkBranch(dir: string): Promise<void> {
     let branch: string
     try {
       branch = await currentBranch(this.git, dir)
@@ -412,71 +433,40 @@ export class HqEditsSync {
         `write worktree is on "${branch}", expected "${this.branch}"`
       )
     }
+  }
 
+  private async syncOnce(dir: string): Promise<void> {
+    this.lastAttemptAt = this.iso()
+    await this.checkBranch(dir)
     try {
-      await this.fetch(dir)
+      await this.net(dir, () => this.fetch(dir))
     } finally {
       // Offline: still report what is queued.
-      await this.updateCounts(dir)
-    }
-    await this.refreshApproved(dir)
-
-    const dirty = (
-      await this.git(dir, ['status', '--porcelain', '--untracked-files=no'])
-    ).trim()
-    if (dirty) {
-      throw new SyncStop(
-        'worktree_dirty',
-        dirty.split('\n').slice(0, 10).join('\n')
-      )
+      await this.local(dir, () => this.updateCounts(dir))
     }
 
     let pushedOnce = false
     for (let attempt = 1; attempt <= 2; attempt++) {
-      if (attempt > 1) {
-        await this.fetch(dir)
-        await this.refreshApproved(dir)
-      }
-      const head = await revParse(this.git, dir, 'HEAD')
-      const base = await revParse(this.git, dir, this.baseRef)
-      if (!head || !base) {
-        throw new SyncStop('git_failed', 'HEAD or origin/main missing')
-      }
+      if (attempt > 1) await this.net(dir, () => this.fetch(dir))
+      const plan = await this.local(dir, () => this.prepare(dir))
+      if (!plan) return // merged / nothing to push: fast-forwarded
 
-      if ((await countCommits(this.git, dir, `${this.baseRef}..HEAD`)) === 0) {
-        await this.fastForward(dir, head, base)
-        return
-      }
-      // Squash-merged: our content is all on main already, under other ids.
-      const [headTree, baseTree] = await Promise.all([
-        this.git(dir, ['rev-parse', 'HEAD^{tree}']),
-        this.git(dir, ['rev-parse', `${this.baseRef}^{tree}`]),
-      ])
-      if (headTree.trim() === baseTree.trim()) {
-        await this.git(dir, ['reset', '--quiet', '--keep', this.baseRef])
-        this.worktreeChanged()
-        await this.fastForward(dir, base, base)
-        return
-      }
-
-      await this.rebase(dir, base)
-
-      const expected =
-        (await revParse(this.git, dir, this.remoteEditsRef)) ?? ''
-      const now = await revParse(this.git, dir, 'HEAD')
-      if (expected !== now) {
+      if (plan.lease !== plan.head) {
         try {
-          await this.git(
-            dir,
-            [
-              'push',
-              '--porcelain',
-              `--force-with-lease=refs/heads/${this.branch}:${expected}`,
-              this.remote,
-              `HEAD:refs/heads/${this.branch}`,
-            ],
-            this.networkOptions()
-          )
+          await this.net(dir, async () => {
+            await this.git(
+              dir,
+              [
+                'push',
+                '--porcelain',
+                `--force-with-lease=refs/heads/${this.branch}:${plan.lease}`,
+                this.remote,
+                `${plan.head}:refs/heads/${this.branch}`,
+              ],
+              this.networkOptions()
+            )
+            await this.git(dir, ['update-ref', this.remoteEditsRef, plan.head])
+          })
         } catch (error) {
           if (
             attempt === 1 &&
@@ -488,23 +478,186 @@ export class HqEditsSync {
           }
           throw error
         }
-        await this.git(dir, ['update-ref', this.remoteEditsRef, 'HEAD'])
         this.lastPushAt = this.iso()
         pushedOnce = true
-        this.log.info(`pushed ${this.branch} (${now?.slice(0, 12)})`)
+        this.log.info(`pushed ${this.branch} (${plan.head.slice(0, 12)})`)
       }
-      await this.updateCounts(dir)
+      await this.local(dir, () => this.updateCounts(dir))
       this.mergedSince = null
-      await this.ensurePullRequest(dir, pushedOnce)
+      // GitHub with no lock held: a slow API never blocks git.
+      await this.ensurePullRequest(dir, pushedOnce, plan)
       this.lastError = null
       return
     }
   }
 
+  /**
+   * The local part of a sync (under the local lock): approved files, merge
+   * detection, rebase, adopting foreign commits. Returns what to push, or
+   * `null` when nothing of ours waits (fast-forwarded).
+   */
+  private async prepare(
+    dir: string
+  ): Promise<{ head: string; base: string; lease: string } | null> {
+    await this.checkBranch(dir)
+    await this.refreshApproved(dir)
+    const dirty = (
+      await this.git(dir, ['status', '--porcelain', '--untracked-files=no'])
+    ).trim()
+    if (dirty) {
+      throw new SyncStop(
+        'worktree_dirty',
+        dirty.split('\n').slice(0, 10).join('\n')
+      )
+    }
+    const head = await revParse(this.git, dir, 'HEAD')
+    const base = await revParse(this.git, dir, this.baseRef)
+    if (!head || !base) {
+      throw new SyncStop('git_failed', 'HEAD or origin/main missing')
+    }
+    if ((await countCommits(this.git, dir, `${base}..HEAD`)) === 0) {
+      await this.fastForward(dir, head, base)
+      return null
+    }
+
+    const mergeBase = (await this.git(dir, ['merge-base', 'HEAD', base])).trim()
+    if (mergeBase !== base) {
+      // main moved: maybe it took our commits (squash merge) - by content.
+      const commits = (
+        await this.git(dir, ['rev-list', '--reverse', `${base}..HEAD`])
+      )
+        .split('\n')
+        .map((l) => l.trim())
+        .filter(Boolean)
+      const merged = await this.mergedPrefix(dir, base, mergeBase, commits)
+      if (merged === commits.length - 1) {
+        this.log.info('app/edits was merged (by content) - following main')
+        await this.git(dir, ['reset', '--quiet', '--keep', base])
+        this.worktreeChanged()
+        await this.fastForward(dir, base, base)
+        return null
+      }
+      await this.rebase(dir, base, merged >= 0 ? commits[merged] : null)
+    }
+
+    const remoteEdits = await revParse(this.git, dir, this.remoteEditsRef)
+    if (remoteEdits) await this.adoptForeignCommits(dir, base, remoteEdits)
+    const now = (await revParse(this.git, dir, 'HEAD')) as string
+    return { head: now, base, lease: remoteEdits ?? '' }
+  }
+
+  /**
+   * Squash merge detection by content (D6; hq should merge with merge
+   * commits, but a squash in the GitHub UI must not wedge the sync). Our
+   * commits `commits` (oldest first, all not on `base`) fork at `mergeBase`.
+   * Returns the index of the newest commit C such that every file changed
+   * between `mergeBase` and C has the same content in C and on `base` - all
+   * commits up to C are on main already (their effect is), even when main
+   * has moved on with other paths (daily reports). `-1` when none.
+   */
+  private async mergedPrefix(
+    dir: string,
+    base: string,
+    mergeBase: string,
+    commits: string[]
+  ): Promise<number> {
+    const literal = { env: { GIT_LITERAL_PATHSPECS: '1' } }
+    for (let k = commits.length - 1; k >= 0; k--) {
+      const files = core.fileList(
+        await this.git(dir, [
+          'diff',
+          '--name-only',
+          '--no-renames',
+          mergeBase,
+          commits[k],
+        ])
+      )
+      if (files.length === 0) return k // no net change: nothing to lose
+      const differ = (
+        await this.git(
+          dir,
+          [
+            'diff',
+            '--name-only',
+            '--no-renames',
+            base,
+            commits[k],
+            '--',
+            ...files,
+          ],
+          literal
+        )
+      ).trim()
+      if (!differ) return k
+    }
+    return -1
+  }
+
+  /**
+   * Commits on `origin/app/edits` that are neither ours nor on main (someone
+   * fixed the PR by hand): cherry-picked onto HEAD so the next push keeps
+   * them. "Ours" = committed as the app, or the same patch as one of ours
+   * (`--cherry-pick`); merge commits (GitHub "Update branch") are skipped,
+   * main is rebased in anyway. A pick that is already applied is skipped; a
+   * conflict rolls the picks back and stops the sync (nothing is pushed, so
+   * nothing is overwritten).
+   */
+  private async adoptForeignCommits(
+    dir: string,
+    base: string,
+    remoteEdits: string
+  ): Promise<void> {
+    const out = await this.git(dir, [
+      'log',
+      '--no-merges',
+      '--cherry-pick',
+      '--right-only',
+      '--reverse',
+      '--format=%H %ce',
+      `HEAD...${remoteEdits}`,
+      '--not',
+      base,
+    ])
+    const foreign = out
+      .split('\n')
+      .map((l) => l.trim().split(' '))
+      .filter(
+        ([sha, mail]) =>
+          sha && mail?.toLowerCase() !== APP_IDENTITY.email.toLowerCase()
+      )
+      .map(([sha]) => sha)
+    if (foreign.length === 0) return
+    const before = (await revParse(this.git, dir, 'HEAD')) as string
+    for (const sha of foreign) {
+      try {
+        await this.git(dir, ['cherry-pick', sha])
+      } catch (error) {
+        const files = await conflictedFiles(this.git, dir)
+        if (files.length === 0) {
+          // Already in HEAD / on main: the pick is empty.
+          await this.git(dir, ['cherry-pick', '--skip']).catch(() =>
+            this.git(dir, ['cherry-pick', '--abort'])
+          )
+          continue
+        }
+        await this.git(dir, ['cherry-pick', '--abort']).catch(() => undefined)
+        await this.git(dir, ['reset', '--quiet', '--keep', before])
+        this.worktreeChanged()
+        throw new SyncStop(
+          'foreign_conflict',
+          error instanceof HqGitError ? error.stderr : String(error),
+          files
+        )
+      }
+      this.log.info(`adopted foreign commit ${sha.slice(0, 12)} on app/edits`)
+    }
+    this.worktreeChanged()
+  }
+
   /** Nothing of ours on top of main: follow main; record a merge. */
   private async fastForward(dir: string, head: string, base: string) {
     if (head !== base) {
-      await this.git(dir, ['merge', '--ff-only', '--quiet', this.baseRef])
+      await this.git(dir, ['merge', '--ff-only', '--quiet', base])
       this.worktreeChanged()
     }
     await this.updateCounts(dir)
@@ -514,13 +667,22 @@ export class HqEditsSync {
     this.lastError = null
   }
 
-  private async rebase(dir: string, base: string): Promise<void> {
-    const mergeBase = (
-      await this.git(dir, ['merge-base', 'HEAD', this.baseRef])
-    ).trim()
-    if (mergeBase === base) return // already on top of origin/main
+  /**
+   * Rebases our commits onto `base`; with `mergedUpTo`, only the commits
+   * after it (the ones before are on main already, see `mergedPrefix`).
+   */
+  private async rebase(
+    dir: string,
+    base: string,
+    mergedUpTo: string | null
+  ): Promise<void> {
     try {
-      await this.git(dir, ['rebase', '--quiet', this.baseRef])
+      await this.git(
+        dir,
+        mergedUpTo
+          ? ['rebase', '--quiet', '--onto', base, mergedUpTo]
+          : ['rebase', '--quiet', base]
+      )
     } catch (error) {
       const files = await conflictedFiles(this.git, dir)
       await this.git(dir, ['rebase', '--abort']).catch(() => undefined)
@@ -535,12 +697,16 @@ export class HqEditsSync {
     this.worktreeChanged()
   }
 
-  private async ensurePullRequest(dir: string, pushed: boolean): Promise<void> {
+  private async ensurePullRequest(
+    dir: string,
+    pushed: boolean,
+    plan: { head: string; base: string }
+  ): Promise<void> {
     // After a push, or while we do not know the PR yet (a failed attempt).
     if (!pushed && this.prUrl) return
     const [names, log] = await Promise.all([
-      this.git(dir, ['diff', '--name-only', `${this.baseRef}...HEAD`]),
-      this.git(dir, ['log', '--format=%B', `${this.baseRef}..HEAD`]),
+      this.git(dir, ['diff', '--name-only', `${plan.base}...${plan.head}`]),
+      this.git(dir, ['log', '--format=%B', `${plan.base}..${plan.head}`]),
     ])
     const body = core.pullRequestBody({
       files: core.fileList(names),

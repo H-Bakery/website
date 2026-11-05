@@ -217,6 +217,11 @@ export interface BackzettelHooks {
    * awaited, so a slow or offline hq never delays the confirm.
    */
   onConfirmed?: (day: unknown, context: { role: string | null }) => void
+  /**
+   * Z9: after a reopen committed (date, role of whoever reopened). Same
+   * rules as `onConfirmed`: must not throw, not awaited.
+   */
+  onReopened?: (date: string, context: { role: string | null }) => void
 }
 
 export function createBackzettelService(
@@ -846,6 +851,13 @@ export function createBackzettelService(
         { transaction }
       )
     })
+    if (hooks.onReopened) {
+      try {
+        hooks.onReopened(date, { role: req.user?.role ?? null })
+      } catch (error) {
+        console.error('[backzettel] onReopened hook failed:', error)
+      }
+    }
     return getDay(date, { recordDeltas: false })
   }
 

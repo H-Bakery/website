@@ -502,18 +502,26 @@ sudo -u bakery git -C /var/lib/bakery/hq-write log --oneline origin/main..app/ed
 sudo -u bakery git -C /var/lib/bakery/hq-write-main log --oneline origin/main..main   # Snapshots noch nicht oben
 ```
 
-| `lastError.code`                 | Bedeutung                                                           | Abhilfe                                                                                                                                                                                       |
-| -------------------------------- | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `network`                        | GitHub nicht erreichbar oder Token ungültig                         | Internet? Token (Q3)? Wiederholt sich selbst                                                                                                                                                  |
-| `push_rejected`                  | jemand hat parallel geschrieben, auch der zweite Versuch scheiterte | wiederholt sich selbst; bleibt es, Log ansehen                                                                                                                                                |
-| `rebase_conflict` (`files`)      | dieselbe Datei wurde in hq anders geändert                          | Commits bleiben auf der Box. In `files` nachsehen, Konflikt im Schreib-Klon von Hand auflösen (`git rebase origin/main`, Dateien richten, `git rebase --continue`), dann `/api/hq-sync/retry` |
-| `github_failed`                  | Push ok, PR ließ sich nicht anlegen                                 | wiederholt sich selbst; Token braucht „Pull requests: write“                                                                                                                                  |
-| `wrong_branch`, `worktree_dirty` | jemand hat im Schreib-Klon gearbeitet                               | `git status` im betroffenen Worktree, auf `app/edits` bzw. `main` zurück, nichts verwerfen ohne Rücksprache                                                                                   |
+| `lastError.code`                 | Bedeutung                                                                                                     | Abhilfe                                                                                                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `network`                        | GitHub nicht erreichbar oder Token ungültig                                                                   | Internet? Token (Q3)? Wiederholt sich selbst                                                                                                                                                  |
+| `push_rejected`                  | jemand hat parallel geschrieben, auch der zweite Versuch scheiterte                                           | wiederholt sich selbst; bleibt es, Log ansehen                                                                                                                                                |
+| `rebase_conflict` (`files`)      | dieselbe Datei wurde in hq anders geändert                                                                    | Commits bleiben auf der Box. In `files` nachsehen, Konflikt im Schreib-Klon von Hand auflösen (`git rebase origin/main`, Dateien richten, `git rebase --continue`), dann `/api/hq-sync/retry` |
+| `github_failed`                  | Push ok, PR ließ sich nicht anlegen                                                                           | wiederholt sich selbst; Token braucht „Pull requests: write“                                                                                                                                  |
+| `wrong_branch`, `worktree_dirty` | jemand hat im Schreib-Klon gearbeitet                                                                         | `git status` im betroffenen Worktree, auf `app/edits` bzw. `main` zurück, nichts verwerfen ohne Rücksprache                                                                                   |
+| `foreign_conflict` (`files`)     | auf `app/edits` liegt ein Commit von Hand (nicht aus der App), der sich nicht mit den App-Änderungen verträgt | Nichts wird überschrieben, nichts gepusht. Im Schreib-Klon `git cherry-pick <commit>` von Hand auflösen oder den fremden Commit in die PR auf GitHub übernehmen, dann `/api/hq-sync/retry`    |
+| `repo_locked`                    | ein anderer Vorgang (Server/CLI) hielt das Verzeichnis zu lange                                               | wiederholt sich selbst; ein Snapshot ist dann schon lokal committet                                                                                                                           |
 
 Eine PR, die jemand **ohne Merge schließt**, öffnet die App beim nächsten Speichern neu – die
 Commits liegen ja weiter auf `app/edits`. Änderungen wirklich verwerfen: im Schreib-Klon
 `git reset --hard origin/main` auf `app/edits` (vorher `git log origin/main..` ansehen), dann
 `git push --force-with-lease origin app/edits`.
+
+Ein **Squash-Merge** der PR wird am Inhalt erkannt (die Dateien der App stehen gleich auf `main`),
+auch wenn `main` inzwischen weitergelaufen ist; spätere Änderungen werden neu aufgesetzt. Trotzdem
+lieber mit Merge-Commit mergen (H2). Wer auf `app/edits` von Hand einen Commit pusht (z. B. um die
+Prüfung grün zu machen), dem überschreibt die App ihn nicht: sie übernimmt ihn per Cherry-Pick
+(Merge-Commits aus der GitHub-Oberfläche nicht – Konfliktlösungen dort gehen verloren).
 
 ## 7. Fernwartung (O4, wartet auf Q8)
 

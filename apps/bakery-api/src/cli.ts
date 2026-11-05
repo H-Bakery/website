@@ -71,6 +71,7 @@ import {
 } from './services/preorders-maintenance'
 import { defaultProductsDir } from './services/hq-catalogue'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
+import { createVariantsHook } from './services/preorder-variants'
 import { isFailure, PreordersService } from './services/preorders.service'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -411,6 +412,9 @@ async function snapshotPreorders(
   const writer = new HqSnapshotWriter({
     snapshotDir: hq.snapshotDir,
     token: sync.token,
+    // The server holds the local lock for seconds only; wait generously
+    // rather than lose the night's snapshot (the timer does not re-run).
+    lockWaitMs: 5 * 60_000,
     log: {
       info: (...a) => console.error('[hq-snapshots]', ...a),
       warn: (...a) => console.error('[hq-snapshots]', ...a),
@@ -418,21 +422,27 @@ async function snapshotPreorders(
     },
   })
   const productsDir = hq.productsDir ?? defaultProductsDir()
+  const variants = createVariantsHook()
   return withDatabase(
     async () => {
-      const day = await new PreordersService({ productsDir }).day({ date })
+      const day = await new PreordersService({
+        productsDir,
+        variantsForProduct: variants,
+      }).day({ date })
       if (isFailure(day)) throw new UserInputError(day.message)
-      const outcome = await writer.writePreorders(day.data)
+      const outcome = await writer.writePreorders(day.data, {
+        variantsOf: (productId) => variants(productId)?.variants ?? null,
+      })
       console.log(JSON.stringify(outcome, null, 2))
-      if (outcome.error && !outcome.committed && !outcome.pushed) {
-        const queued =
-          outcome.error.code === 'network' ||
-          outcome.error.code === 'push_rejected'
-        if (!queued) {
-          console.error(`Fehler: ${outcome.error.message}`)
-          return 1
-        }
+      if (!outcome.written) {
+        // Nothing on disk: the snapshot has to be made again.
+        console.error(
+          `Fehler: ${outcome.error?.message ?? 'Snapshot nicht geschrieben.'}`
+        )
+        return 1
       }
+      // Written and committed: a push that has to wait (offline, the server
+      // is pushing, a conflict) is the API's retry timer's job.
       console.error(
         `Vorbestellungen ${date}: ` +
           (outcome.committed ? 'neu geschrieben' : 'unverändert') +

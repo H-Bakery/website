@@ -12,8 +12,11 @@ import {
   commonGitDir,
   HqGitError,
   LOCK_FILE,
+  NETWORK_LOCK_FILE,
   readBlobs,
+  removeLockIfUnchanged,
   runHqGit,
+  withNetworkLock,
   withRepoLock,
 } from '../../src/services/hq-git'
 import { git, removeTempDirs, tempDir } from '../helpers/hqProducts'
@@ -83,6 +86,51 @@ describe('withRepoLock', () => {
       withRepoLock(a.write, async () => 'ok', { waitMs: 300 })
     ).resolves.toBe('ok')
     expect(fs.existsSync(lock)).toBe(false)
+  })
+
+  it('the network lock is a separate queue: a local job runs while a network job waits on the wire', async () => {
+    const a = makeHqRemote()
+    const log: string[] = []
+    const net = withNetworkLock(a.write, async () => {
+      log.push('net+')
+      await sleep(400)
+      log.push('net-')
+    })
+    await sleep(20)
+    const t0 = Date.now()
+    await withRepoLock(a.snapshot, async () => {
+      log.push('local')
+    })
+    expect(Date.now() - t0).toBeLessThan(200)
+    await net
+    expect(log).toEqual(['net+', 'local', 'net-'])
+    // a network job may take the local lock inside (never the other way round)
+    await expect(
+      withNetworkLock(a.write, () => withRepoLock(a.write, async () => 'ok'))
+    ).resolves.toBe('ok')
+    const gitDir = commonGitDir(a.write) as string
+    expect(fs.existsSync(path.join(gitDir, LOCK_FILE))).toBe(false)
+    expect(fs.existsSync(path.join(gitDir, NETWORK_LOCK_FILE))).toBe(false)
+  })
+
+  it('stale takeover removes the lock only if it is still the one judged stale', () => {
+    const dir = tempDir('lock-')
+    const file = path.join(dir, LOCK_FILE)
+    fs.writeFileSync(file, '999999 1\n')
+    // another waiter took over meanwhile: its fresh lock must survive
+    fs.writeFileSync(file, `${process.pid} ${Date.now()}\n`)
+    removeLockIfUnchanged(file, '999999 1\n')
+    expect(fs.existsSync(file)).toBe(true)
+    // a takeover in progress elsewhere: leave it alone
+    fs.writeFileSync(file, '999999 1\n')
+    fs.writeFileSync(`${file}.takeover`, `1 ${Date.now()}\n`)
+    removeLockIfUnchanged(file, '999999 1\n')
+    expect(fs.existsSync(file)).toBe(true)
+    fs.rmSync(`${file}.takeover`)
+    // unchanged: removed, guard cleaned up
+    removeLockIfUnchanged(file, '999999 1\n')
+    expect(fs.existsSync(file)).toBe(false)
+    expect(fs.existsSync(`${file}.takeover`)).toBe(false)
   })
 
   it('writes no lock file into a directory that is no repo', async () => {

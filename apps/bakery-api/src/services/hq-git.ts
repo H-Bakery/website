@@ -6,14 +6,16 @@
  *
  *   - `execFile` with an **argument array**, never a shell string; a timeout
  *     per call (default 60 s, network calls get their own).
- *   - **One queue per repository** (`withRepoLock`): every git operation on a
- *     repo - product commit, rebase + push, snapshot commit + pull --rebase -
- *     runs one at a time. The key is the *common* git dir, so the write
- *     worktree (`app/edits`) and the snapshot worktree (`main`) of the same
- *     clone share one queue: they share refs (`origin/main`), and two fetches
- *     at once fail on the ref lock. A lock file in that git dir extends the
- *     queue to other processes (the nightly `snapshot-preorders` CLI next to
- *     the running server).
+ *   - **Two queues per repository**, keyed on the *common* git dir, so the
+ *     write worktree (`app/edits`) and the snapshot worktree (`main`) of the
+ *     same clone share them. `withRepoLock` (local): commit, rebase, reset -
+ *     seconds, and what a product save waits for. `withNetworkLock`: fetch,
+ *     push and moving `refs/remotes/*` - may take minutes on bad Wi-Fi, and
+ *     two fetches at once fail on the ref lock. A save never queues behind
+ *     the network. A network job may take the local lock inside, never the
+ *     other way round (no deadlock). Lock files in the git dir extend both
+ *     queues to other processes (the nightly `snapshot-preorders` CLI next
+ *     to the running server); a stale one is taken over atomically.
  *   - The app identity `Verwaltung (App) <verwaltung@bakery.local>` for author
  *     and committer; editors go into `Co-authored-by` trailers (D6).
  *   - The GitHub token only ever as an environment variable read by a
@@ -224,12 +226,24 @@ export function repoKey(dir: string): string {
 
 const queues = new Map<string, Promise<unknown>>()
 
+/** Lock file of the local queue (commits, rebases, ref moves in a worktree). */
 export const LOCK_FILE = 'bakery-app.lock'
+/** Lock file of the network queue (fetch, push and the remote-tracking refs). */
+export const NETWORK_LOCK_FILE = 'bakery-app-net.lock'
 /** A lock older than this is considered left over from a crashed process. */
 export const STALE_LOCK_MS = 10 * 60_000
+/** Default wait for another process's local lock: local jobs take seconds. */
+export const LOCAL_LOCK_WAIT_MS = 60_000
+/**
+ * Default wait for another process's network lock: longer than the worst
+ * network job (fetch + push, retried once: 4 × `NETWORK_GIT_TIMEOUT_MS`).
+ */
+export const NETWORK_LOCK_WAIT_MS = 9 * 60_000
+/** A takeover guard older than this is left over from a crash. */
+const TAKEOVER_STALE_MS = 30_000
 
 export interface RepoLockOptions {
-  /** How long to wait for another process's lock (default 60 s). */
+  /** How long to wait for another process's lock. */
   waitMs?: number
   pollMs?: number
 }
@@ -246,14 +260,68 @@ function pidAlive(pid: number): boolean {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** Takes the cross-process lock file in `gitDir`; returns its path. */
+function readLock(file: string): string | null {
+  try {
+    return fs.readFileSync(file, 'utf8')
+  } catch {
+    return null
+  }
+}
+
+function isStale(content: string): boolean {
+  const [pidRaw, atRaw] = content.trim().split(/\s+/)
+  const pid = Number(pidRaw)
+  const at = Number(atRaw)
+  return (
+    pid === process.pid ||
+    !pidAlive(pid) ||
+    !Number.isFinite(at) ||
+    Date.now() - at > STALE_LOCK_MS
+  )
+}
+
+/**
+ * Removes the lock `file` only if it still holds `staleContent`. Two waiters
+ * that both judged the same lock stale must not both delete: the second
+ * would remove the lock the first has just taken. A takeover guard
+ * (`<file>.takeover`, `wx`) lets one waiter at a time re-read and remove.
+ */
+export function removeLockIfUnchanged(
+  file: string,
+  staleContent: string
+): void {
+  const guard = `${file}.takeover`
+  try {
+    fs.writeFileSync(guard, `${process.pid} ${Date.now()}\n`, { flag: 'wx' })
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return
+    // Another waiter is taking over; a guard left by a crash is cleared.
+    try {
+      if (Date.now() - fs.statSync(guard).mtimeMs > TAKEOVER_STALE_MS) {
+        fs.rmSync(guard, { force: true })
+      }
+    } catch {
+      /* gone meanwhile */
+    }
+    return
+  }
+  try {
+    if (readLock(file) === staleContent) fs.rmSync(file, { force: true })
+  } finally {
+    fs.rmSync(guard, { force: true })
+  }
+}
+
+/** Takes the cross-process lock file `name` in `gitDir`; returns its path. */
 async function acquireFileLock(
   gitDir: string | null,
-  options: RepoLockOptions
+  name: string,
+  waitMs: number,
+  pollMs: number
 ): Promise<string | null> {
   if (!gitDir) return null
-  const file = path.join(gitDir, LOCK_FILE)
-  const deadline = Date.now() + (options.waitMs ?? 60_000)
+  const file = path.join(gitDir, name)
+  const deadline = Date.now() + waitMs
   for (;;) {
     try {
       fs.writeFileSync(file, `${process.pid} ${Date.now()}\n`, { flag: 'wx' })
@@ -262,21 +330,11 @@ async function acquireFileLock(
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') return null
     }
     // Held: by a live process (wait) or left over (take over).
-    let stale = false
-    try {
-      const [pidRaw, atRaw] = fs.readFileSync(file, 'utf8').trim().split(/\s+/)
-      const pid = Number(pidRaw)
-      const at = Number(atRaw)
-      stale =
-        pid === process.pid ||
-        !pidAlive(pid) ||
-        !Number.isFinite(at) ||
-        Date.now() - at > STALE_LOCK_MS
-    } catch {
-      stale = true // vanished or unreadable between the two calls
-    }
-    if (stale) {
-      fs.rmSync(file, { force: true })
+    const content = readLock(file)
+    if (content === null) continue // released between the two calls
+    if (isStale(content)) {
+      removeLockIfUnchanged(file, content)
+      await sleep(Math.min(pollMs, 20))
       continue
     }
     if (Date.now() > deadline) {
@@ -285,26 +343,28 @@ async function acquireFileLock(
         'Das hq-Verzeichnis ist von einem anderen Vorgang belegt. Bitte später erneut versuchen.'
       )
     }
-    await sleep(options.pollMs ?? 200)
+    await sleep(pollMs)
   }
 }
 
-/**
- * Runs `job` while holding the repo's lock: in-process FIFO queue per common
- * git dir, plus a lock file in it against other processes. Jobs never run
- * concurrently on one repository; a failing job does not block the next.
- */
-export function withRepoLock<T>(
+function lockedQueue<T>(
   dir: string,
+  lockName: string,
+  defaultWaitMs: number,
   job: () => Promise<T>,
-  options: RepoLockOptions = {}
+  options: RepoLockOptions
 ): Promise<T> {
   const gitDir = commonGitDir(dir)
-  const key = gitDir ?? path.resolve(dir)
+  const key = `${gitDir ?? path.resolve(dir)}#${lockName}`
   const previous = queues.get(key) ?? Promise.resolve()
   const run = previous.then(async () => {
     // Only inside a real git dir - never a stray file in a work tree.
-    const lock = await acquireFileLock(gitDir, options)
+    const lock = await acquireFileLock(
+      gitDir,
+      lockName,
+      options.waitMs ?? defaultWaitMs,
+      options.pollMs ?? 200
+    )
     try {
       return await job()
     } finally {
@@ -318,6 +378,37 @@ export function withRepoLock<T>(
     if (queues.get(key) === tail) queues.delete(key)
   })
   return run
+}
+
+/**
+ * Runs `job` while holding the repo's **local** lock: in-process FIFO queue
+ * per common git dir, plus a lock file in it against other processes. For
+ * everything that changes a worktree, its index or a local branch (commit,
+ * rebase, reset, merge, cherry-pick) - short jobs, never network I/O, so a
+ * product save never waits for GitHub. Jobs never run concurrently on one
+ * repository; a failing job does not block the next.
+ */
+export function withRepoLock<T>(
+  dir: string,
+  job: () => Promise<T>,
+  options: RepoLockOptions = {}
+): Promise<T> {
+  return lockedQueue(dir, LOCK_FILE, LOCAL_LOCK_WAIT_MS, job, options)
+}
+
+/**
+ * Runs `job` while holding the repo's **network** lock (separate queue and
+ * lock file): `fetch`, `push` and the `update-ref` of remote-tracking refs
+ * after a push - the operations that write `refs/remotes/*` and may take
+ * minutes. Ordering rule against deadlocks: a network job may take the local
+ * lock inside (`withRepoLock`), a local job never takes the network lock.
+ */
+export function withNetworkLock<T>(
+  dir: string,
+  job: () => Promise<T>,
+  options: RepoLockOptions = {}
+): Promise<T> {
+  return lockedQueue(dir, NETWORK_LOCK_FILE, NETWORK_LOCK_WAIT_MS, job, options)
 }
 
 // ---------------------------------------------------------------- helpers

@@ -80,7 +80,7 @@ function classifyGitError(args, stderr) {
 /**
  * Editor names from commit messages (`git log --format=%B`): every
  * `Co-authored-by: Name <mail>` trailer, names only, in first-seen order,
- * each once. The mail (`username@bakery.local`) is left out of the PR body.
+ * each once. The mail (`user-<id>@bakery.local`) is left out of the PR body.
  */
 function editorsFromLog(log) {
   const names = []
@@ -165,6 +165,8 @@ const SYNC_ERROR_MESSAGES = {
     'GitHub hat die Übertragung abgelehnt (der Branch wurde inzwischen geändert). Nächster Versuch in 15 Minuten.',
   rebase_conflict:
     'Die Änderungen lassen sich nicht auf den aktuellen Stand von hq setzen (jemand hat dieselben Dateien geändert). Die Änderungen bleiben auf der Box; bitte den Entwickler informieren.',
+  foreign_conflict:
+    'Auf dem Branch app/edits liegen Änderungen, die nicht aus der App stammen und sich nicht mit den Änderungen der App vereinen lassen. Es wird nichts überschrieben; bitte den Entwickler informieren.',
   worktree_dirty:
     'Im Schreibverzeichnis liegen ungespeicherte Änderungen. Bitte den Entwickler informieren.',
   wrong_branch:

@@ -174,6 +174,8 @@ export function createApp(options: CreateAppOptions = {}): Application {
         ? {
             onConfirmed: (day, { role }) =>
               snapshots.backzettelConfirmed(day, role),
+            onReopened: (date, { role }) =>
+              snapshots.backzettelReopened(date, role),
           }
         : {}),
       ...options.backzettel,

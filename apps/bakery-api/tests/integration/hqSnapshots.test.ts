@@ -5,12 +5,14 @@
  * origin - with pull --rebase + one retry, an offline queue and a recorded
  * conflict. Synthetic master data (tests/fixtures), synthetic people.
  */
+import { spawn } from 'child_process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
 import request from 'supertest'
 
 import { Preorder, PreorderItem } from '../../src/models'
+import { commonGitDir, NETWORK_LOCK_FILE } from '../../src/services/hq-git'
 import { HqSnapshotWriter } from '../../src/services/hq-snapshots.service'
 import { bearer, createUser, login } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
@@ -342,5 +344,98 @@ describe('Backzettel confirm → hq', () => {
     expect(fs.existsSync(path.join(remote.write, 'data', 'production'))).toBe(
       false
     )
+  })
+})
+
+describe('reopen and locks', () => {
+  it('a reopen replaces the day in hq with a "wieder geöffnet" note (role only)', async () => {
+    // clear the conflict left by the test above
+    git(remote.snapshot, 'fetch', '-q', 'origin')
+    git(remote.snapshot, 'reset', '-q', '--hard', 'origin/main')
+    await writer.retry()
+    await createUser({
+      username: 'test.chefin',
+      role: 'inhaber',
+      displayName: 'Erika Chefin',
+    })
+    const chefin = bearer((await login(api.app, 'test.chefin')).token)
+    const res = await request(api.app)
+      .post(`/api/backzettel/${SAT}/reopen`)
+      .set(chefin)
+      .send({ reason: 'Frau Beispielkundin hat angerufen' })
+    expect(res.status).toBe(200)
+    await writer.idle()
+    const json = JSON.parse(
+      originFile(remote, 'main', rel(SAT, 'json')) as string
+    )
+    expect(json).toMatchObject({
+      kind: 'backzettel',
+      status: 'reopened',
+      date: SAT,
+      reopened: { role: 'inhaber' },
+    })
+    expect(json.sections).toBeUndefined()
+    const md = originFile(remote, 'main', rel(SAT, 'md')) as string
+    expect(md).toContain('wieder geöffnet')
+    expect(md).not.toContain('Freigegeben')
+    for (const text of [JSON.stringify(json), md]) {
+      expect(text).not.toContain('Chefin')
+      expect(text).not.toContain('Beispielkundin')
+    }
+    expect(git(remote.bare, 'log', '-1', '--format=%s', 'main')).toBe(
+      `chore(production): Backzettel ${SAT} wieder geöffnet (App)`
+    )
+    // confirming again writes the full Backzettel back
+    expect((await confirm(SAT)).status).toBe(200)
+    await writer.idle()
+    expect(
+      JSON.parse(originFile(remote, 'main', rel(SAT, 'json')) as string)
+    ).toMatchObject({ status: 'confirmed', confirmed: { role: 'backstube' } })
+  })
+
+  it('another process pushing (network lock held): the snapshot is still written and committed, the push waits for the retry', async () => {
+    const fresh = makeHqRemote()
+    const w = new HqSnapshotWriter({
+      snapshotDir: fresh.snapshot,
+      networkLockWaitMs: 300,
+      log: QUIET,
+    })
+    const lock = path.join(
+      commonGitDir(fresh.snapshot) as string,
+      NETWORK_LOCK_FILE
+    )
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 20000)'])
+    try {
+      fs.writeFileSync(lock, `${child.pid} ${Date.now()}\n`)
+      const t0 = Date.now()
+      const outcome = await w.writePreorders({
+        date: SAT,
+        sums: [],
+        pickupPoints: [],
+        preorders: [],
+      })
+      expect(Date.now() - t0).toBeLessThan(5000)
+      expect(outcome).toMatchObject({
+        written: true,
+        committed: true,
+        pushed: false,
+        error: { code: 'repo_locked' },
+      })
+      expect(git(fresh.snapshot, 'log', '-1', '--format=%s')).toBe(
+        `chore(production): Vorbestellungen ${SAT} (App)`
+      )
+      expect(
+        originFile(fresh, 'main', `data/production/vorbestellungen/${SAT}.json`)
+      ).toBeNull()
+      expect(w.status()).toMatchObject({ pendingCommits: 1 })
+    } finally {
+      child.kill('SIGKILL')
+      fs.rmSync(lock, { force: true })
+    }
+    const later = await w.retry()
+    expect(later).toMatchObject({ pushed: true, error: null })
+    expect(
+      originFile(fresh, 'main', `data/production/vorbestellungen/${SAT}.json`)
+    ).not.toBeNull()
   })
 })

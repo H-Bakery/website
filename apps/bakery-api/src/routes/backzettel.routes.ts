@@ -58,6 +58,7 @@ export function createBackzettelRouter(
 ): Router {
   const service = createBackzettelService(createBackzettelSource(options), {
     onConfirmed: options.onConfirmed,
+    onReopened: options.onReopened,
   })
   const router = Router()
   const planners = requireRole('backstube') // inhaber passes every check

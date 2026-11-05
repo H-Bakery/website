@@ -14,9 +14,13 @@
  * D13). git: `add` + `commit` **with the pathspec `data/production`** only
  * (whatever else sits in the index stays out), then `push origin HEAD:main`;
  * a rejected push gets `pull --rebase` and one retry. Offline, the commit
- * stays local and the retry timer (15 min) pushes it later. Every step runs
- * under `withRepoLock`, shared with the `app/edits` worktree of the same
- * clone and with the CLI process.
+ * stays local and the retry timer (15 min) pushes it later. Writing and
+ * committing run under the short local lock (`withRepoLock`), fetch and push
+ * under the network lock (`withNetworkLock`) - both shared with the
+ * `app/edits` worktree of the same clone and with the CLI process. The commit
+ * is made before the push waits for the network: whatever happens on the
+ * wire, the snapshot is on disk and in the local history (`written`), and
+ * the server's retry timer pushes it.
  */
 import * as fs from 'fs'
 import * as path from 'path'
@@ -30,6 +34,7 @@ import {
   revParse,
   runHqGit,
   conflictedFiles,
+  withNetworkLock,
   withRepoLock,
 } from './hq-git'
 import type { SyncError, SyncLog } from './hq-edits-sync.service'
@@ -46,6 +51,10 @@ export interface HqSnapshotsOptions {
   branch?: string
   remote?: string
   retryMs?: number
+  /** Wait for another process's local lock (default 60 s; the CLI waits longer). */
+  lockWaitMs?: number
+  /** Wait for another process's network lock (default `NETWORK_LOCK_WAIT_MS`). */
+  networkLockWaitMs?: number
   git?: HqGit
   now?: () => Date
   log?: SyncLog
@@ -54,6 +63,12 @@ export interface HqSnapshotsOptions {
 export interface SnapshotOutcome {
   /** Files written (relative to the hq root). */
   files: string[]
+  /**
+   * The files are on disk and committed locally (or were unchanged) - the
+   * push may still be pending. `false`: nothing was written (wrong branch,
+   * disk, lock) and the snapshot must be made again.
+   */
+  written: boolean
   /** A new commit was made (false = nothing changed). */
   committed: boolean
   /** Everything is on GitHub (false = queued for the retry timer). */
@@ -110,6 +125,8 @@ export class HqSnapshotWriter {
   private readonly git: HqGit
   private readonly now: () => Date
   private readonly log: SyncLog
+  private readonly lockWaitMs?: number
+  private readonly networkLockWaitMs?: number
   private timer: NodeJS.Timeout | null = null
   private inflight = new Set<Promise<unknown>>()
 
@@ -130,6 +147,8 @@ export class HqSnapshotWriter {
     this.git = options.git ?? runHqGit
     this.now = options.now ?? (() => new Date())
     this.log = options.log ?? DEFAULT_LOG
+    this.lockWaitMs = options.lockWaitMs
+    this.networkLockWaitMs = options.networkLockWaitMs
   }
 
   get enabled(): boolean {
@@ -194,6 +213,39 @@ export class HqSnapshotWriter {
     )
   }
 
+  /**
+   * Hook for the Backzettel reopen (Z3): the day's snapshot in hq is
+   * replaced by a "wieder geöffnet" note, so nobody reads a release that no
+   * longer holds. Background, never throws (like `backzettelConfirmed`).
+   */
+  backzettelReopened(date: string, role: string | null | undefined): void {
+    if (!this.enabled) return
+    void this.track(
+      this.writeBackzettelReopened(date, role).catch((error) => {
+        this.log.error('Backzettel reopen snapshot failed:', error)
+      })
+    )
+  }
+
+  async writeBackzettelReopened(
+    date: string,
+    role: string | null | undefined
+  ): Promise<SnapshotOutcome> {
+    const snapshot = core.backzettelReopenedSnapshot({
+      date,
+      at: this.now(),
+      role,
+    })
+    const paths = core.snapshotPaths(snapshot.date)
+    return this.commitFiles(
+      [
+        { rel: paths.backzettelJson, content: core.toJsonFile(snapshot) },
+        { rel: paths.backzettelMd, content: core.backzettelMarkdown(snapshot) },
+      ],
+      core.backzettelReopenedCommitMessage(snapshot.date)
+    )
+  }
+
   /** Writes and pushes the snapshot of a confirmed Backzettel day. */
   async writeBackzettel(
     day: unknown,
@@ -210,9 +262,18 @@ export class HqSnapshotWriter {
     )
   }
 
-  /** Writes and pushes the preorder sums of one pickup day. */
-  async writePreorders(dayData: unknown): Promise<SnapshotOutcome> {
-    const snapshot = core.preorderSnapshot(dayData)
+  /**
+   * Writes and pushes the preorder sums of one pickup day. `variantsOf`
+   * (product id → configured variants, `null` = none known) keeps only
+   * configured variant slugs - free-typed ones become `null` (D13).
+   */
+  async writePreorders(
+    dayData: unknown,
+    options: { variantsOf?: (productId: string) => string[] | null } = {}
+  ): Promise<SnapshotOutcome> {
+    const snapshot = core.preorderSnapshot(dayData, {
+      variantsOf: options.variantsOf,
+    })
     const paths = core.snapshotPaths(snapshot.date)
     return this.commitFiles(
       [{ rel: paths.preordersJson, content: core.toJsonFile(snapshot) }],
@@ -221,26 +282,20 @@ export class HqSnapshotWriter {
   }
 
   /** Pushes queued commits (retry timer). */
-  retry(): Promise<SnapshotOutcome> {
+  async retry(): Promise<SnapshotOutcome> {
     const dir = this.snapshotDir
     if (!dir) {
-      return Promise.resolve({
+      return {
         files: [],
+        written: false,
         committed: false,
         pushed: false,
         error: null,
-      })
+      }
     }
-    return withRepoLock(dir, async () => {
-      this.lastAttemptAt = this.iso()
-      const error = await this.push(dir)
-      return { files: [], committed: false, pushed: !error, error }
-    }).catch((error) => ({
-      files: [],
-      committed: false,
-      pushed: false,
-      error: this.record(error),
-    }))
+    this.lastAttemptAt = this.iso()
+    const error = await this.push(dir)
+    return { files: [], written: true, committed: false, pushed: !error, error }
   }
 
   // ------------------------------------------------------------ internals
@@ -278,130 +333,190 @@ export class HqSnapshotWriter {
     const dir = this.snapshotDir
     const rels = files.map((f) => f.rel)
     if (!dir) {
-      return { files: [], committed: false, pushed: false, error: null }
+      return {
+        files: [],
+        written: false,
+        committed: false,
+        pushed: false,
+        error: null,
+      }
     }
-    return withRepoLock(dir, async () => {
-      this.lastAttemptAt = this.iso()
-      const branch = await currentBranch(this.git, dir)
-      if (branch !== this.branch) throw new Error('wrong_branch')
-      try {
-        for (const f of files) writeFileAtomic(path.join(dir, f.rel), f.content)
-      } catch (error) {
-        this.log.error('writing snapshot files failed:', error)
-        throw new Error('write_failed')
+    let committed = false
+    try {
+      // Local lock only: write + commit take a moment, never the network.
+      committed = await withRepoLock(
+        dir,
+        async () => {
+          this.lastAttemptAt = this.iso()
+          const branch = await currentBranch(this.git, dir)
+          if (branch !== this.branch) throw new Error('wrong_branch')
+          try {
+            for (const f of files) {
+              writeFileAtomic(path.join(dir, f.rel), f.content)
+            }
+          } catch (error) {
+            this.log.error('writing snapshot files failed:', error)
+            throw new Error('write_failed')
+          }
+          // Only our path - ever. Also picks up an earlier write whose commit
+          // failed; a file staged by hand elsewhere is never committed.
+          await this.git(dir, ['add', '-A', '--', core.SNAPSHOT_ROOT])
+          const staged = (
+            await this.git(dir, [
+              'diff',
+              '--cached',
+              '--name-only',
+              '--',
+              core.SNAPSHOT_ROOT,
+            ])
+          ).trim()
+          if (!staged) return false
+          await this.git(dir, [
+            'commit',
+            '-q',
+            '-m',
+            message,
+            '--',
+            core.SNAPSHOT_ROOT,
+          ])
+          this.lastCommitAt = this.iso()
+          this.log.info(message.trim())
+          return true
+        },
+        { waitMs: this.lockWaitMs }
+      )
+    } catch (error) {
+      return {
+        files: rels,
+        written: false,
+        committed: false,
+        pushed: false,
+        error: this.record(error),
       }
-      // Only our path - ever. Also picks up an earlier write whose commit
-      // failed; a file staged by hand elsewhere is never committed.
-      await this.git(dir, ['add', '-A', '--', core.SNAPSHOT_ROOT])
-      const staged = (
-        await this.git(dir, [
-          'diff',
-          '--cached',
-          '--name-only',
-          '--',
-          core.SNAPSHOT_ROOT,
-        ])
-      ).trim()
-      let committed = false
-      if (staged) {
-        await this.git(dir, [
-          'commit',
-          '-q',
-          '-m',
-          message,
-          '--',
-          core.SNAPSHOT_ROOT,
-        ])
-        committed = true
-        this.lastCommitAt = this.iso()
-        this.log.info(message.trim())
-      }
-      const error = await this.push(dir)
-      return { files: rels, committed, pushed: !error, error }
-    }).catch((error) => ({
-      files: rels,
-      committed: false,
-      pushed: false,
-      error: this.record(error),
-    }))
+    }
+    const error = await this.push(dir)
+    return { files: rels, written: true, committed, pushed: !error, error }
   }
 
   /**
-   * Pushes local commits to `main`: rejected → `pull --rebase` + one retry;
-   * offline → stays queued. Returns the recorded error or `null`.
+   * Pushes local commits to `main` under the network lock: rejected → fetch,
+   * rebase onto `origin/main` (local lock, `--autostash`: a file staged by
+   * hand survives) + one retry; offline or locked → stays queued. Pushes the
+   * sha it read, so a commit made meanwhile simply waits for the next push.
+   * Returns the recorded error or `null`; never throws.
    */
   private async push(dir: string): Promise<SyncError | null> {
-    const branch = await currentBranch(this.git, dir)
-    if (branch !== this.branch) throw new Error('wrong_branch')
     const remoteRef = `refs/remotes/${this.remote}/${this.branch}`
     const net = { token: this.token, timeoutMs: NETWORK_GIT_TIMEOUT_MS }
     const count = async () =>
       (await revParse(this.git, dir, remoteRef))
         ? countCommits(this.git, dir, `${remoteRef}..HEAD`)
         : countCommits(this.git, dir, 'HEAD')
-
-    this.pendingCommits = await count()
-    if (this.pendingCommits === 0) {
-      this.lastError = null
-      return null
-    }
-    const pushOnce = () =>
+    const pushSha = (sha: string) =>
       this.git(
         dir,
-        ['push', '--porcelain', this.remote, `HEAD:refs/heads/${this.branch}`],
+        [
+          'push',
+          '--porcelain',
+          this.remote,
+          `${sha}:refs/heads/${this.branch}`,
+        ],
         net
       )
+
     try {
-      try {
-        await pushOnce()
-      } catch (error) {
-        if (!(error instanceof HqGitError) || error.code !== 'push_rejected') {
-          throw error
-        }
-        this.log.warn('push rejected, pull --rebase and one retry')
-        try {
-          await this.git(
-            dir,
-            [
-              'pull',
-              '--rebase',
-              '--autostash',
-              '--quiet',
-              this.remote,
-              this.branch,
-            ],
-            net
-          )
-        } catch (pullError) {
-          const files = await conflictedFiles(this.git, dir)
-          if (
-            files.length > 0 ||
-            (pullError as HqGitError).code === 'rebase_conflict'
-          ) {
-            await this.git(dir, ['rebase', '--abort']).catch(() => undefined)
-            this.pendingCommits = await count()
-            return this.record(
-              new HqGitError(
-                'rebase_conflict',
-                'rebase conflict',
-                ['pull'],
-                (pullError as HqGitError).stderr ?? String(pullError)
-              ),
-              files
-            )
+      return await withNetworkLock(
+        dir,
+        async () => {
+          const branch = await currentBranch(this.git, dir)
+          if (branch !== this.branch) throw new Error('wrong_branch')
+          this.pendingCommits = await count()
+          if (this.pendingCommits === 0) {
+            this.lastError = null
+            return null
           }
-          throw pullError
-        }
-        await pushOnce()
-      }
+          let head = (await revParse(this.git, dir, 'HEAD')) as string
+          try {
+            try {
+              await pushSha(head)
+            } catch (error) {
+              if (
+                !(error instanceof HqGitError) ||
+                error.code !== 'push_rejected'
+              ) {
+                throw error
+              }
+              this.log.warn('push rejected, fetch + rebase and one retry')
+              await this.git(
+                dir,
+                [
+                  'fetch',
+                  '--quiet',
+                  this.remote,
+                  `+refs/heads/${this.branch}:${remoteRef}`,
+                ],
+                net
+              )
+              const conflict = await withRepoLock(
+                dir,
+                () => this.rebaseOntoRemote(dir, remoteRef),
+                { waitMs: this.lockWaitMs }
+              )
+              if (conflict) {
+                this.pendingCommits = await count()
+                return this.record(
+                  new HqGitError(
+                    'rebase_conflict',
+                    'rebase conflict',
+                    ['rebase'],
+                    conflict.detail
+                  ),
+                  conflict.files
+                )
+              }
+              head = (await revParse(this.git, dir, 'HEAD')) as string
+              await pushSha(head)
+            }
+          } catch (error) {
+            this.pendingCommits = await count()
+            return this.record(error)
+          }
+          await this.git(dir, ['update-ref', remoteRef, head])
+          this.pendingCommits = await count()
+          this.lastPushAt = this.iso()
+          this.lastError = null
+          return null
+        },
+        { waitMs: this.networkLockWaitMs }
+      )
     } catch (error) {
-      this.pendingCommits = await count()
+      // wrong branch, repo_locked: the commit (if any) stays queued.
+      this.pendingCommits = await count().catch(() => this.pendingCommits)
       return this.record(error)
     }
-    await this.git(dir, ['update-ref', remoteRef, 'HEAD'])
-    this.pendingCommits = 0
-    this.lastPushAt = this.iso()
-    this.lastError = null
-    return null
+  }
+
+  /** `rebase --autostash` onto the fetched main; a conflict is aborted. */
+  private async rebaseOntoRemote(
+    dir: string,
+    remoteRef: string
+  ): Promise<{ files: string[]; detail: string } | null> {
+    try {
+      await this.git(dir, ['rebase', '--autostash', '--quiet', remoteRef])
+      return null
+    } catch (error) {
+      const files = await conflictedFiles(this.git, dir)
+      await this.git(dir, ['rebase', '--abort']).catch(() => undefined)
+      if (
+        files.length > 0 ||
+        (error instanceof HqGitError && error.code === 'rebase_conflict')
+      ) {
+        return {
+          files,
+          detail: error instanceof HqGitError ? error.stderr : String(error),
+        }
+      }
+      throw error
+    }
   }
 }

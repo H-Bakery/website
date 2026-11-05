@@ -15,7 +15,10 @@
  * here on purpose. Left out on purpose: who confirmed, corrected or ticked
  * (only the confirming *role* is written), the free-text correction reasons
  * (they may name a customer), deltas and preorder ids/codes, customer names,
- * phones, notes, money.
+ * phones, notes, money - and variant slugs nobody configured: a preorder for
+ * a product without Backzettel master data takes any slug, and a slug is
+ * free text (`fuer-lisa-mueller`). Only configured variants are written;
+ * warnings about the others carry a fixed text without the slug.
  */
 
 const SNAPSHOT_SCHEMA_VERSION = 1
@@ -170,11 +173,30 @@ function pickPrep(list) {
   }))
 }
 
+/**
+ * Warnings whose message quotes a raw variant slug (possibly typed by staff)
+ * get a fixed text instead; the item id comes from the master data.
+ */
+const SAFE_WARNING_TEXT = {
+  variant_ignored: (id) =>
+    `Vorbestellung mit Sorte für „${id}“, der Posten hat keine Sorten - ohne Sorte gezählt.`,
+  unknown_variant: (id) =>
+    `Vorbestellung mit unbekannter Sorte für „${id}“ - gezählt unter „ohne Angabe“.`,
+  unknown_correction: (id) =>
+    `Eine Korrektur${
+      id ? ` für „${id}“` : ''
+    } wird ignoriert - Posten oder Sorte gibt es nicht mehr.`,
+}
+
 function pickWarnings(list) {
-  return (Array.isArray(list) ? list : []).map((w) => ({
-    code: str(w && w.code),
-    message: str(w && w.message),
-  }))
+  return (Array.isArray(list) ? list : []).map((w) => {
+    const code = str(w && w.code)
+    const safe = SAFE_WARNING_TEXT[code]
+    return {
+      code,
+      message: safe ? safe(str(w && w.itemId) || '?') : str(w && w.message),
+    }
+  })
 }
 
 /**
@@ -198,6 +220,7 @@ function backzettelSnapshot(day, options) {
   return {
     schema_version: SNAPSHOT_SCHEMA_VERSION,
     kind: 'backzettel',
+    status: 'confirmed',
     date: day.date,
     weekday: num(day.weekday),
     weekdayName: str(day.weekdayName),
@@ -214,6 +237,30 @@ function backzettelSnapshot(day, options) {
     fillings: pickFillings(day.fillings),
     prep: pickPrep(day.prep),
     warnings: pickWarnings(day.warnings),
+    source: 'Verwaltung (App)',
+  }
+}
+
+/**
+ * What replaces a day's snapshot after a reopen (Z3 `reopen`): the released
+ * version no longer holds, so hq must not keep saying "Freigegeben". The
+ * next confirm writes the full Backzettel again. Role only (D13); the reopen
+ * reason (free text) stays out.
+ */
+function backzettelReopenedSnapshot(input) {
+  const i = input || {}
+  if (!isDate(i.date)) {
+    throw new Error('Ungültiges Datum für den Backzettel-Snapshot.')
+  }
+  return {
+    schema_version: SNAPSHOT_SCHEMA_VERSION,
+    kind: 'backzettel',
+    status: 'reopened',
+    date: i.date,
+    reopened: {
+      at: toIso(i.at),
+      role: ROLE_LABELS[i.role] ? i.role : null,
+    },
     source: 'Verwaltung (App)',
   }
 }
@@ -267,6 +314,7 @@ function signed(x) {
 /** German Markdown of a Backzettel snapshot (from `backzettelSnapshot`). */
 function backzettelMarkdown(snapshot) {
   const s = snapshot
+  if (s && s.status === 'reopened') return reopenedMarkdown(s)
   const out = []
   out.push(
     `# Backzettel ${s.weekdayName || ''}, ${deDate(s.date)}`.replace(' ,', ',')
@@ -445,6 +493,22 @@ function backzettelMarkdown(snapshot) {
   return out.join('\n')
 }
 
+function reopenedMarkdown(s) {
+  const when = berlinDateTime(s.reopened && s.reopened.at)
+  const who =
+    s.reopened && s.reopened.role ? roleLabel(s.reopened.role) : 'Verwaltung'
+  return [
+    `# Backzettel ${deDate(s.date)}: wieder geöffnet`,
+    '',
+    (when
+      ? `Wieder geöffnet (${who}) am ${when.date} um ${when.time} Uhr.`
+      : `Wieder geöffnet (${who}).`) +
+      ' Die zuvor freigegebene Fassung gilt nicht mehr; der Backzettel wird überarbeitet.',
+    'Nach der nächsten Freigabe steht hier wieder der vollständige Backzettel.',
+    '',
+  ].join('\n')
+}
+
 // ----------------------------------------------------------- Vorbestellungen
 
 const CHANNELS = ['laden', 'telefon', 'whatsapp', 'shop', 'sammelstelle']
@@ -458,6 +522,8 @@ const CHANNELS = ['laden', 'telefon', 'whatsapp', 'shop', 'sammelstelle']
  */
 function preorderSnapshot(dayData, options) {
   const opts = options || {}
+  const variantsOf =
+    typeof opts.variantsOf === 'function' ? opts.variantsOf : () => null
   const date = (dayData && dayData.date) || opts.date
   if (!isDate(date))
     throw new Error('Ungültiges Datum für den Vorbestellungs-Snapshot.')
@@ -489,16 +555,33 @@ function preorderSnapshot(dayData, options) {
     count,
   }))
 
-  const items = (
-    Array.isArray(dayData && dayData.sums) ? dayData.sums : []
-  ).map((i) => ({
-    productId: str(i.productId),
-    variant: i.variant ? String(i.variant) : null,
-    name: str(i.name),
-    unit: str(i.unit),
-    quantity: num(i.quantity),
-    preorders: num(i.preorders),
-  }))
+  // Only configured variants (D13); the rest is merged into "ohne Sorte".
+  const items = []
+  const byKey = new Map()
+  for (const i of Array.isArray(dayData && dayData.sums) ? dayData.sums : []) {
+    const productId = str(i.productId)
+    const raw = i.variant ? String(i.variant) : null
+    const allowed = raw ? variantsOf(productId) : null
+    const variant =
+      raw && Array.isArray(allowed) && allowed.includes(raw) ? raw : null
+    const key = `${productId}\u0000${variant || ''}`
+    const known = byKey.get(key)
+    if (known) {
+      known.quantity += num(i.quantity)
+      known.preorders += num(i.preorders)
+      continue
+    }
+    const item = {
+      productId,
+      variant,
+      name: str(i.name),
+      unit: str(i.unit),
+      quantity: num(i.quantity),
+      preorders: num(i.preorders),
+    }
+    byKey.set(key, item)
+    items.push(item)
+  }
 
   return {
     schema_version: SNAPSHOT_SCHEMA_VERSION,
@@ -515,6 +598,10 @@ function preorderSnapshot(dayData, options) {
 /** Commit messages (German, no names, D13). */
 function backzettelCommitMessage(date) {
   return `chore(production): Backzettel ${date} (App)\n`
+}
+
+function backzettelReopenedCommitMessage(date) {
+  return `chore(production): Backzettel ${date} wieder geöffnet (App)\n`
 }
 
 function preordersCommitMessage(date) {
@@ -534,6 +621,8 @@ module.exports = {
   SNAPSHOT_SCHEMA_VERSION,
   backzettelCommitMessage,
   backzettelMarkdown,
+  backzettelReopenedCommitMessage,
+  backzettelReopenedSnapshot,
   backzettelSnapshot,
   isDate,
   preorderSnapshot,

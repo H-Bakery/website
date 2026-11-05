@@ -389,8 +389,10 @@ describe('preorderSnapshot', () => {
     ],
   }
 
+  const variantsOf = (id) => (id === 'test-kranz' ? ['nuss', 'mohn'] : null)
+
   test('sums per product/variant and counts per channel and pickup point', () => {
-    const s = core.preorderSnapshot(dayData)
+    const s = core.preorderSnapshot(dayData, { variantsOf })
     expect(s).toEqual({
       schema_version: 1,
       kind: 'vorbestellungen',
@@ -441,6 +443,124 @@ describe('preorderSnapshot', () => {
 
   test('refuses a bad date', () => {
     expect(() => core.preorderSnapshot({ date: '28.11.2026' })).toThrow()
+  })
+
+  test('only configured variants are written; free slugs merge into "ohne Sorte" (D13)', () => {
+    const data = {
+      date: '2026-11-28',
+      sums: [
+        { productId: 'test-kranz', variant: 'nuss', quantity: 2, preorders: 1 },
+        {
+          productId: 'test-kranz',
+          variant: 'fuer-frau-beispielkundin',
+          quantity: 1,
+          preorders: 1,
+        },
+        { productId: 'test-kranz', variant: '', quantity: 3, preorders: 2 },
+        // no Backzettel master data: any slug was accepted by the preorder
+        {
+          productId: 'test-frei',
+          variant: 'erika-geheim',
+          quantity: 5,
+          preorders: 1,
+        },
+      ],
+    }
+    const s = core.preorderSnapshot(data, { variantsOf })
+    expect(
+      s.items.map(({ productId, variant, quantity, preorders }) => ({
+        productId,
+        variant,
+        quantity,
+        preorders,
+      }))
+    ).toEqual([
+      { productId: 'test-kranz', variant: 'nuss', quantity: 2, preorders: 1 },
+      { productId: 'test-kranz', variant: null, quantity: 4, preorders: 3 },
+      { productId: 'test-frei', variant: null, quantity: 5, preorders: 1 },
+    ])
+    const json = core.toJsonFile(s)
+    expect(json).not.toContain('beispielkundin')
+    expect(json).not.toContain('erika-geheim')
+    // without a lookup no slug is trusted
+    expect(
+      core.preorderSnapshot(data).items.every((i) => i.variant === null)
+    ).toBe(true)
+  })
+})
+
+describe('Backzettel warnings and reopen', () => {
+  test('warnings quoting a raw variant get a fixed text without the slug', () => {
+    const s = core.backzettelSnapshot(
+      day({
+        warnings: [
+          {
+            code: 'unknown_variant',
+            itemId: 'zopf',
+            variant: 'fuer-erika-geheim',
+            message:
+              '„Zopf“ kennt die Variante „fuer-erika-geheim“ nicht (Vorbestellung).',
+          },
+          {
+            code: 'variant_ignored',
+            itemId: 'weck',
+            variant: 'frau-beispielkundin',
+            message: '„Weck“ hat keine Varianten; „frau-beispielkundin“ ...',
+          },
+          {
+            code: 'unknown_correction',
+            itemId: 'weck',
+            message:
+              'Korrektur für „Weck“, Variante „erika-geheim“, wird ignoriert',
+          },
+          { code: 'base_unset', message: 'Grundmenge fehlt.' },
+        ],
+      }),
+      { role: 'backstube' }
+    )
+    expect(s.warnings.map((w) => w.code)).toEqual([
+      'unknown_variant',
+      'variant_ignored',
+      'unknown_correction',
+      'base_unset',
+    ])
+    expect(s.warnings[0].message).toContain('„zopf“')
+    expect(s.warnings[3].message).toBe('Grundmenge fehlt.')
+    const out = core.toJsonFile(s) + core.backzettelMarkdown(s)
+    expect(out).not.toMatch(/geheim|beispielkundin/i)
+  })
+
+  test('confirmed snapshots say so; a reopen replaces them with a note (role only)', () => {
+    expect(core.backzettelSnapshot(day(), { role: 'backstube' }).status).toBe(
+      'confirmed'
+    )
+    const s = core.backzettelReopenedSnapshot({
+      date: '2026-11-28',
+      at: '2026-11-27T15:00:00.000Z',
+      role: 'inhaber',
+    })
+    expect(s).toEqual({
+      schema_version: 1,
+      kind: 'backzettel',
+      status: 'reopened',
+      date: '2026-11-28',
+      reopened: { at: '2026-11-27T15:00:00.000Z', role: 'inhaber' },
+      source: 'Verwaltung (App)',
+    })
+    const md = core.backzettelMarkdown(s)
+    expect(md.split('\n')[0]).toBe('# Backzettel 28.11.2026: wieder geöffnet')
+    expect(md).toContain(
+      'Wieder geöffnet (Inhaber) am 27.11.2026 um 16:00 Uhr.'
+    )
+    expect(md).not.toContain('Freigegeben')
+    expect(
+      core.backzettelReopenedSnapshot({ date: '2026-11-28', role: 'x' })
+        .reopened
+    ).toEqual({ at: null, role: null })
+    expect(() => core.backzettelReopenedSnapshot({ date: 'gestern' })).toThrow()
+    expect(core.backzettelReopenedCommitMessage('2026-11-28')).toBe(
+      'chore(production): Backzettel 2026-11-28 wieder geöffnet (App)\n'
+    )
   })
 })
 

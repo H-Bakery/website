@@ -3,6 +3,7 @@
  * origin: sums per product/variant and counts only, no names; a rerun on
  * unchanged data commits nothing. Synthetic preorders.
  */
+import { spawn } from 'child_process'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as path from 'path'
@@ -11,6 +12,11 @@ import { main } from '../../src/cli'
 import { openDatabase } from '../../src/db/database'
 import { runMigrations } from '../../src/db/migrate'
 import { initializeModels, Preorder, PreorderItem } from '../../src/models'
+import {
+  commonGitDir,
+  LOCK_FILE,
+  NETWORK_LOCK_FILE,
+} from '../../src/services/hq-git'
 import { git, removeTempDirs } from '../helpers/hqProducts'
 import { HqRemote, makeHqRemote, originFile } from '../helpers/hqRemote'
 
@@ -122,6 +128,44 @@ describe('snapshot-preorders', () => {
       err.mockRestore()
     }
     expect(git(remote.bare, 'rev-list', '--count', 'main')).toBe(before)
+  })
+
+  it('the server holding the locks (another process): the CLI waits instead of losing the snapshot', async () => {
+    const OTHER = '2026-12-20'
+    const gitDir = commonGitDir(remote.snapshot) as string
+    const server = spawn(process.execPath, [
+      '-e',
+      'setTimeout(() => {}, 20000)',
+    ])
+    const local = path.join(gitDir, LOCK_FILE)
+    const net = path.join(gitDir, NETWORK_LOCK_FILE)
+    fs.writeFileSync(local, `${server.pid} ${Date.now()}\n`)
+    fs.writeFileSync(net, `${server.pid} ${Date.now()}\n`)
+    // the "server" finishes its commit after 1 s and its push after 2.5 s
+    const t1 = setTimeout(() => fs.rmSync(local, { force: true }), 1000)
+    const t2 = setTimeout(() => fs.rmSync(net, { force: true }), 2500)
+    const quiet = jest.spyOn(console, 'log').mockImplementation(() => undefined)
+    const err = jest.spyOn(console, 'error').mockImplementation(() => undefined)
+    const t0 = Date.now()
+    try {
+      expect(await main(['snapshot-preorders', '--date', OTHER])).toBe(0)
+    } finally {
+      quiet.mockRestore()
+      err.mockRestore()
+      clearTimeout(t1)
+      clearTimeout(t2)
+      server.kill('SIGKILL')
+      fs.rmSync(local, { force: true })
+      fs.rmSync(net, { force: true })
+    }
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(2400)
+    expect(
+      originFile(
+        remote,
+        'main',
+        `data/production/vorbestellungen/${OTHER}.json`
+      )
+    ).not.toBeNull()
   })
 
   it('refuses bad input and a missing HQ_SNAPSHOT_DIR (exit 1)', async () => {

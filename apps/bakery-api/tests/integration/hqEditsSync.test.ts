@@ -327,6 +327,8 @@ describe('push and the one rolling PR', () => {
     expect(git(remote.bare, 'rev-parse', 'app/edits')).toBe(
       git(remote.write, 'rev-parse', 'HEAD')
     )
+    // the foreign commit was adopted, not overwritten
+    expect(originFile(remote, 'app/edits', 'notes/x.md')).toBe('x')
   })
 
   it('offline: commits queue, status says so, the retry timer pushes them later', async () => {
@@ -431,5 +433,190 @@ describe('push and the one rolling PR', () => {
     const s = await edits.sync()
     expect(s.lastError).toMatchObject({ code: 'wrong_branch' })
     expect(git(remote.bare, 'branch', '--list', 'app/edits')).toBe('')
+  })
+})
+
+describe('squash merges (by content) and foreign commits on app/edits', () => {
+  const squash = (remote: HqRemote, files: string[]) => {
+    const content: Record<string, string> = {}
+    for (const f of files) {
+      content[`products/${f}`] = `${originFile(
+        remote,
+        'app/edits',
+        `products/${f}`
+      )}\n`
+    }
+    return pushForeign(remote, content, 'Stammdaten aus der Verwaltung (#1)')
+  }
+
+  it('a squash merge after which main moved on (pipeline) is detected; the same product edited twice does not conflict', async () => {
+    const { app, edits, remote } = setup()
+    await edits.init()
+    expect((await put(app, KORNBROT, { price: 3.1 })).status).toBe(200)
+    expect((await put(app, KORNBROT, { name: 'Kornbrot Neu' })).status).toBe(
+      200
+    )
+    expect((await edits.sync()).unmergedCommits).toBe(2)
+    squash(remote, [KORNBROT])
+    pushForeign(
+      remote,
+      { 'data/reports/converted/2026-11-24_test.json': '{}\n' },
+      'pipeline report'
+    )
+    const s = await edits.sync()
+    expect(s).toMatchObject({
+      unmergedCommits: 0,
+      pendingCommits: 0,
+      lastError: null,
+      prUrl: null,
+    })
+    expect(s.mergedSince).toEqual(expect.any(String))
+    expect(git(remote.write, 'rev-parse', 'HEAD')).toBe(
+      git(remote.bare, 'rev-parse', 'main')
+    )
+    expect(git(remote.write, 'status', '--porcelain')).toBe('')
+    const managed = (
+      await request(app).get('/api/hq-products/kornbrot-500g').set(owner)
+    ).body.data
+    expect(managed).toMatchObject({
+      name: 'Kornbrot Neu',
+      pendingApproval: false,
+    })
+  })
+
+  it('after a squash merge only the newer local edits are replayed', async () => {
+    const { app, edits, remote } = setup()
+    await edits.init()
+    await put(app, KORNBROT, { price: 3.2 })
+    await put(app, KORNBROT, { price: 3.3 })
+    await edits.sync()
+    squash(remote, [KORNBROT])
+    pushForeign(
+      remote,
+      { 'data/reports/converted/2026-11-25_test.json': '{}\n' },
+      'pipeline report'
+    )
+    // edited again before the sync noticed the merge
+    expect((await put(app, WECK, { price: 0.77 })).status).toBe(200)
+    const s = await edits.sync()
+    expect(s).toMatchObject({ unmergedCommits: 1, lastError: null })
+    expect(git(remote.bare, 'merge-base', 'main', 'app/edits')).toBe(
+      git(remote.bare, 'rev-parse', 'main')
+    )
+    expect(
+      git(remote.bare, 'log', '--format=%s', 'main..app/edits').split('\n')
+    ).toEqual(['products: Musterweck (musterweck) geändert'])
+    expect(originFile(remote, 'app/edits', `products/${WECK}`)).toContain(
+      'price: 0.77'
+    )
+  })
+
+  it('a commit someone pushed to app/edits is kept on the next push', async () => {
+    const { app, edits, remote } = setup()
+    await edits.init()
+    await put(app, KORNBROT, { price: 4.1 })
+    await edits.sync()
+    pushForeign(
+      remote,
+      { 'notes/fix.md': 'von Hand repariert\n' },
+      'fix: check grün',
+      'app/edits'
+    )
+    await put(app, WECK, { price: 0.81 })
+    const s = await edits.sync()
+    expect(s.lastError).toBeNull()
+    expect(originFile(remote, 'app/edits', 'notes/fix.md')).toBe(
+      'von Hand repariert'
+    )
+    expect(originFile(remote, 'app/edits', `products/${WECK}`)).toContain(
+      'price: 0.81'
+    )
+    // adopted once: a further sync does not pick it again
+    await put(app, WECK, { price: 0.82 })
+    await edits.sync()
+    expect(
+      git(remote.bare, 'log', '--format=%s', 'main..app/edits')
+        .split('\n')
+        .filter((l) => l === 'fix: check grün')
+    ).toHaveLength(1)
+  })
+
+  it('a foreign commit that conflicts is never overwritten: nothing is pushed, the error says so', async () => {
+    const { app, edits, remote } = setup()
+    await edits.init()
+    await put(app, KORNBROT, { price: 4.2 })
+    await edits.sync()
+    const foreign = pushForeign(
+      remote,
+      {
+        [`products/${KORNBROT}`]:
+          '---\nid: kornbrot-500g\nname: Von Hand\n---\n',
+      },
+      'hand fix',
+      'app/edits'
+    )
+    await put(app, KORNBROT, { price: 4.3 })
+    const before = git(remote.write, 'rev-parse', 'HEAD')
+    const s = await edits.sync()
+    expect(s.lastError).toMatchObject({
+      code: 'foreign_conflict',
+      message: expect.stringContaining('nichts überschrieben'),
+      files: [`products/${KORNBROT}`],
+    })
+    expect(git(remote.bare, 'rev-parse', 'app/edits')).toBe(foreign)
+    expect(git(remote.write, 'rev-parse', 'HEAD')).toBe(before)
+    expect(git(remote.write, 'status', '--porcelain')).toBe('')
+  })
+})
+
+describe('locks: the network never blocks a save', () => {
+  it('a product save does not wait for a slow fetch', async () => {
+    let fetching: (() => void) | null = null
+    const slow: HqGit = async (cwd, args, options) => {
+      if (args[0] === 'fetch') {
+        await new Promise<void>((r) => {
+          fetching = r
+          setTimeout(r, 3000)
+        })
+      }
+      return runHqGit(cwd, args, options)
+    }
+    const { app, edits } = setup({ git: slow })
+    await edits.init()
+    const syncing = edits.sync()
+    const deadline = Date.now() + 2000
+    while (!fetching && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 10))
+    }
+    expect(fetching).not.toBeNull() // the sync sits in its fetch
+    const t0 = Date.now()
+    expect((await put(app, KORNBROT, { price: 5.01 })).status).toBe(200)
+    expect(Date.now() - t0).toBeLessThan(1500)
+    const s = await syncing
+    expect(s.lastError).toBeNull()
+  })
+
+  it('disabled (no token) with a write dir: pendingApproval is measured against the read clone, not a stale origin/main', async () => {
+    const { app, edits, remote } = setup({ token: null })
+    await edits.init()
+    expect(edits.approvedProductFiles()).toBeNull()
+    await put(app, KORNBROT, { price: 6.01 })
+    // H2 merged something else upstream; the read clone (hq-sync) follows
+    pushForeign(
+      remote,
+      { [`products/${WECK}`]: '---\nid: musterweck\nname: Neu\n---\n' },
+      'upstream'
+    )
+    git(remote.read, 'pull', '-q', '--ff-only')
+    const managed = (
+      await request(app).get('/api/hq-products/kornbrot-500g').set(owner)
+    ).body.data
+    expect(managed).toMatchObject({ price: 6.01, pendingApproval: true })
+    // the upstream change is measured against the read clone (B5), not the
+    // write clone's origin/main from clone time
+    const weck = (
+      await request(app).get('/api/hq-products/musterweck').set(owner)
+    ).body.data
+    expect(weck.approved).toMatchObject({ name: 'Neu' })
   })
 })

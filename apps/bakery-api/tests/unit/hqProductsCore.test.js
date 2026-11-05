@@ -245,30 +245,48 @@ describe('commit message and co-author trailer', () => {
       core.commitMessage(
         'update',
         { id: 'testbrot-500g', name: 'Testbrot 500g' },
-        { username: 'test.inhaber', displayName: 'Test Inhaber' }
+        { id: 7, username: 'test.inhaber', displayName: 'Test Inhaber' }
       )
     ).toBe(
       'products: Testbrot 500g (testbrot-500g) geändert\n\n' +
-        'Co-authored-by: Test Inhaber <test.inhaber@bakery.local>\n'
+        'Co-authored-by: Test Inhaber <user-7@bakery.local>\n'
     )
     expect(
       core.commitMessage('create', { id: 'a', name: 'A' }, { username: 'x' })
     ).toMatch(
-      /^products: A \(a\) angelegt\n\nCo-authored-by: x <x@bakery.local>\n$/
+      /^products: A \(a\) angelegt\n\nCo-authored-by: unbekannt <unbekannt@bakery.local>\n$/
     )
   })
 
   it('cannot be broken by newlines or angle brackets in names', () => {
     const trailer = core.coAuthorTrailer({
+      id: 12,
       username: 'Böse User\n',
       displayName: 'Evil <x@y>\nCo-authored-by: Fake <f@f>',
     })
     expect(trailer.split('\n')).toHaveLength(1)
     expect(trailer).toBe(
-      'Co-authored-by: Evil x@y Co-authored-by: Fake f@f <b-se-user@bakery.local>'
+      'Co-authored-by: Evil x@y Co-authored-by: Fake f@f <user-12@bakery.local>'
     )
     expect(core.coAuthorTrailer({})).toBe(
       'Co-authored-by: unbekannt <unbekannt@bakery.local>'
+    )
+  })
+
+  it('never writes the login (D13): the mail carries the user id only', () => {
+    const trailer = core.coAuthorTrailer({
+      id: 3,
+      username: 'test.geheimlogin',
+      displayName: 'Test Person',
+    })
+    expect(trailer).toBe('Co-authored-by: Test Person <user-3@bakery.local>')
+    expect(trailer).not.toContain('geheimlogin')
+    // no display name: never fall back to the login
+    expect(core.coAuthorTrailer({ id: 4, username: 'test.login' })).toBe(
+      'Co-authored-by: unbekannt <user-4@bakery.local>'
+    )
+    expect(core.coAuthorTrailer({ id: 'x', username: 'a' })).toContain(
+      '<unbekannt@bakery.local>'
     )
   })
 

@@ -61,6 +61,9 @@ export const DEFAULT_WRITE_BRANCH = 'app/edits'
 
 /** Wer speichert (aus `req.user`). */
 export interface Editor {
+  /** Interne Benutzer-ID - steht als `user-<id>@bakery.local` im Trailer. */
+  id?: number | null
+  /** Login; geht nicht nach hq (D13), nur noch für Logs. */
   username: string
   displayName: string
 }

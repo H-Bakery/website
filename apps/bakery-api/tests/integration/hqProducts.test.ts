@@ -387,9 +387,9 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
     expect(git(writeRoot, 'log', '-1', '--format=%an <%ae>|%cn')).toBe(
       'Verwaltung (App) <verwaltung@bakery.local>|Verwaltung (App)'
     )
-    expect(git(writeRoot, 'log', '-1', '--format=%B')).toBe(
-      'products: Musterweck (musterweck) geändert\n\n' +
-        'Co-authored-by: Test test.inhaber <test.inhaber@bakery.local>'
+    // D13: the trailer carries the user id, never the login
+    expect(git(writeRoot, 'log', '-1', '--format=%B')).toMatch(
+      /^products: Musterweck \(musterweck\) geändert\n\nCo-authored-by: Test test\.inhaber <user-\d+@bakery\.local>$/
     )
     expect(git(writeRoot, 'show', '--name-only', '--format=', 'HEAD')).toBe(
       'products/13-musterweck.md'

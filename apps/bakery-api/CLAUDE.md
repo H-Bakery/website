@@ -305,7 +305,9 @@ seasonal, image, short_description, allergens, allergens_source, allergen_recipe
 - **Two write modes.** `HQ_WRITE_DIR` set (the box): the file goes to
   `${HQ_WRITE_DIR}/products` (worktree on `app/edits`), then `git add` + `git commit -- <file>`
   there, author and committer `Verwaltung (App) <verwaltung@bakery.local>`, message
-  `products: <Name> (<id>) geändert|angelegt` + `Co-authored-by: <displayName> <username@bakery.local>`.
+  `products: <Name> (<id>) geändert|angelegt` + `Co-authored-by: <displayName> <user-<id>@bakery.local>`
+  (the user **id**, never the login - since B5b these commits reach GitHub, and D13 keeps logins
+  out of hq; no display name → `unbekannt`, never the login).
   git runs through `execFile` with argument arrays, never a shell string. Only the product path is
   committed - whatever else sits in the index stays. Push + PR is **B5b** (see "hq
   write-back"; without a token the commits stay local). `HQ_WRITE_DIR` unset (development): written straight into `HQ_PRODUCTS_DIR`, no git,
@@ -320,7 +322,8 @@ seasonal, image, short_description, allergens, allergens_source, allergen_recipe
   test "saving the full edit form of a pending product keeps the pending edit"). Caveat: a write
   worktree that lags behind `origin/main` makes files look pending until B5b rebases it.
   **Since B5b** "pending" is measured against `origin/main` of the write clone (see "hq
-  write-back"), the read clone is only the fallback before the first fetch.
+  write-back"), the read clone is the fallback before the first fetch **and whenever the sync is
+  disabled** (no token: the write clone's `origin/main` is never fetched and would go stale).
 - **Branch guard**: before writing, `git rev-parse --abbrev-ref HEAD` in `HQ_WRITE_DIR` must equal
   `HQ_WRITE_BRANCH` (default `app/edits`), else 503 `hq_write_wrong_branch` and nothing is written.
 - **Round-trip check**: `serializeProductFile` quotes everything YAML 1.1 would read as something
@@ -364,33 +367,44 @@ disk** as `simple-server.js` for GET/PUT/POST).
 Roadmap D6, D13, D14, §4a "How the app syncs". Three pieces, all git through
 `src/services/hq-git.ts`:
 
-| File                                                    | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `services/hq-git.ts`                                    | `runHqGit(cwd, args, { token, timeoutMs })`: `execFile` with an argument array, timeout (60 s; network calls 120 s, `SIGKILL`), identity `Verwaltung (App) <verwaltung@bakery.local>` as author **and** committer, `HqGitError.code` (`git_missing`, `git_timeout`, `not_a_repo`, `network`, `push_rejected`, `rebase_conflict`, `repo_locked`, `git_failed`; classification in `hq-writeback.core.js`). The token goes in only as an env var read by a one-call credential helper (like `hq-sync.sh`), never in args/URL/config. `withRepoLock(dir, job)`: one FIFO queue per **common git dir** - so the `app/edits` worktree and the `main` snapshot worktree of the same clone share it (they share refs; two fetches at once fail on the ref lock) - plus a lock file `bakery-app.lock` in that git dir against other processes (the CLI), stale when its pid is dead or after 10 min; never written into a non-repo. `readBlobs` (`cat-file --batch`) |
-| `services/hq-edits-sync.service.ts` (`HqEditsSync`)     | B5b: push `app/edits` + one rolling PR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `services/hq-snapshots.service.ts` (`HqSnapshotWriter`) | Z9: `data/production/**` to `main`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `services/github-pr.ts`                                 | find/open the PR via `fetch` (REST, `GITHUB_API_URL`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `services/hq-writeback.core.js`, `hq-snapshots.core.js` | pure rules: error classes, PR body, editors from trailers; snapshot whitelists + German Markdown                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| File                                                    | What                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `services/hq-git.ts`                                    | `runHqGit(cwd, args, { token, timeoutMs })`: `execFile` with an argument array, timeout (60 s; network calls 120 s, `SIGKILL`), identity `Verwaltung (App) <verwaltung@bakery.local>` as author **and** committer, `HqGitError.code` (`git_missing`, `git_timeout`, `not_a_repo`, `network`, `push_rejected`, `rebase_conflict`, `repo_locked`, `git_failed`; classification in `hq-writeback.core.js`). The token goes in only as an env var read by a one-call credential helper (like `hq-sync.sh`), never in args/URL/config. **Two locks** per **common git dir** (so the `app/edits` worktree and the `main` snapshot worktree share them), each an in-process FIFO queue plus a lock file against other processes (the CLI): `withRepoLock` (`bakery-app.lock`, wait 60 s) for worktree steps - commit, rebase, reset, cherry-pick, fast-forward - seconds only, what a product save waits for; `withNetworkLock` (`bakery-app-net.lock`, wait 9 min > worst network job) for fetch, push and `update-ref refs/remotes/*` (two fetches at once fail on the ref lock). **Never do network I/O under the local lock**, and never take the network lock inside the local one (a network job may take the local lock inside - no deadlock). Stale lock (pid dead or > 10 min) is taken over via a `<lock>.takeover` guard that re-reads the file, so two waiters cannot both delete. Never written into a non-repo. `readBlobs` (`cat-file --batch`) |
+| `services/hq-edits-sync.service.ts` (`HqEditsSync`)     | B5b: push `app/edits` + one rolling PR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `services/hq-snapshots.service.ts` (`HqSnapshotWriter`) | Z9: `data/production/**` to `main`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `services/github-pr.ts`                                 | find/open the PR via `fetch` (REST, `GITHUB_API_URL`)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `services/hq-writeback.core.js`, `hq-snapshots.core.js` | pure rules: error classes, PR body, editors from trailers; snapshot whitelists + German Markdown                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 **B5b flow** (`HqEditsSync.sync()`, after every B5 commit via `afterCommit`, every
 `HQ_SYNC_RETRY_MS` = 15 min via an unref'd timer, `POST /api/hq-sync/retry`; concurrent calls
-coalesce into one rerun; never rejects - failures go to `lastError`), all under `withRepoLock`
-(the products service takes the same lock for its write + commit, so a rebase never meets a half
-commit):
+coalesce into one rerun; never rejects - failures go to `lastError`). fetch and push run under
+the network lock; steps 2-5 under the local lock (the products service takes that lock for its
+write + commit, so a rebase never meets a half commit, and a save never waits for GitHub -
+test "a product save does not wait for a slow fetch"); the GitHub API with no lock held:
 
 1. branch must be `app/edits` (`wrong_branch`); `fetch --prune origin main` + `app/*` (a glob, so a
    missing remote `app/edits` is no error); re-read the approved products from `origin/main`.
 2. tracked changes in the worktree → `worktree_dirty`, stop.
 3. nothing of ours above `origin/main` → `merge --ff-only` (the PR was merged; `mergedSince` set,
-   `prUrl` cleared). Same tree as `origin/main` with other commits (a **squash** merge) →
-   `reset --keep origin/main`, also merged.
+   `prUrl` cleared). **Squash merge, by content** (`mergedPrefix`, only when main moved past our
+   fork point): the newest of our commits C such that every file changed between the fork point
+   and C has the same content in C and on `origin/main` - commits up to C are merged. All of them
+   → `reset --keep origin/main`; some → `rebase --onto origin/main C` replays only the newer ones.
+   Works when main moved on with other paths (the daily reports) and when one product was edited
+   twice in the PR (a whole-tree compare would not, and the plain rebase would conflict forever).
 4. else `rebase origin/main` (skipped when already on top). Conflict → `conflictedFiles`,
    `rebase --abort`, `lastError { code: 'rebase_conflict', files }`; local commits stay, nothing is
    pushed.
-5. `push --force-with-lease=refs/heads/app/edits:<remote value just fetched, '' = must not exist>
-origin HEAD:refs/heads/app/edits`. Rejected lease → fetch, rebase, push once more. A foreign
-   commit on `app/edits` is overwritten by design: the branch belongs to the app.
-6. `ensurePullRequest`: `GET /repos/{repo}/pulls?state=open&head={owner}:app/edits&base=main`,
+5. **Foreign commits on `origin/app/edits`** (someone fixed the PR by hand: non-merge commits not
+   on main, not committed as the app, not patch-equal to ours) are cherry-picked onto HEAD, so the
+   force-push keeps them; an already-applied pick is skipped. A conflicting pick rolls all picks
+   back, `lastError { code: 'foreign_conflict', files }`, **nothing is pushed** (never overwrites
+   a person's commit). Merge commits ("Update branch", resolutions made in the GitHub UI) are not
+   adopted - main is rebased in anyway; a conflict resolved in a GitHub merge commit is lost.
+6. `push --force-with-lease=refs/heads/app/edits:<remote value just fetched, '' = must not exist>
+origin <sha>:refs/heads/app/edits` - the sha prepared under the local lock; a save committed
+   meanwhile goes with the next run. Rejected lease → fetch, prepare again, push once more.
+7. `ensurePullRequest`: `GET /repos/{repo}/pulls?state=open&head={owner}:app/edits&base=main`,
    `POST` only if none (a 422 "already exists" race looks again). Title "Stammdaten aus der
    Verwaltung", German body with the changed files and the editors' **names** from the
    `Co-authored-by` trailers (no mail). The body is written at opening only; later pushes update
@@ -424,33 +438,47 @@ syncs and answers the same. `lastError.code` adds `wrong_branch`, `worktree_dirt
 `main`; must not be inside/around the read clone or `HQ_WRITE_DIR`, absolute in production;
 unset = off):
 
-- **Backzettel:** the Z3 service got a hook `createBackzettelService(source, { onConfirmed })`
-  (router option `onConfirmed`), called after the confirm transaction with the confirmed day view
+- **Backzettel:** the Z3 service got hooks `createBackzettelService(source, { onConfirmed,
+onReopened })` (router options of the same name); `onConfirmed` is called after the confirm transaction with the confirmed day view
   and `req.user.role`; `app.ts` wires it to `snapshots.backzettelConfirmed()`, which runs in the
   background (`idle()` for tests) - **a confirm never waits for or fails because of hq**. Writes
   `data/production/backzettel/<date>.json` (schema 1: sections/lines with base, seasonal,
   preorders, cap, correction, total, tray, plu; Hefeteig with weighing list; fillings with scaled
   recipe; prep; warnings `{code, message}`; `confirmed { at, role }`) and `.md` (German:
   "# Backzettel Samstag, 28.11.2026", "Freigegeben (Backstube) am … um … Uhr.", tables per
-  section, Hefeteig/Wiegeliste, Füllungen, Vorbereitung, Hinweise).
+  section, Hefeteig/Wiegeliste, Füllungen, Vorbereitung, Hinweise). The JSON carries
+  `status: 'confirmed'`. **Reopen** (`onReopened(date, { role })` → `backzettelReopened()`)
+  replaces both files with a note: JSON `{ status: 'reopened', date, reopened: { at, role } }`
+  (no sections - the released version no longer holds), `.md` "# Backzettel 28.11.2026: wieder
+  geöffnet", commit `chore(production): Backzettel <date> wieder geöffnet (App)`; the reopen reason
+  (free text) stays out. The next confirm writes the full Backzettel again.
 - **Vorbestellungen:** `cli.js snapshot-preorders [--date YYYY-MM-DD]` (default today, Berlin -
-  the day that just ended at 22:15; never migrates; exit 0 also when the push is queued, 1 on
-  bad input / missing `HQ_SNAPSHOT_DIR` / a non-network failure) from
+  the day that just ended at 22:15; never migrates; waits up to 5 min for the local lock and 9 min
+  for the network lock if the server holds them; exit 0 whenever the file is written and committed
+  (`outcome.written`) even if the push must wait - the server's 15-min timer pushes it; 1 on bad
+  input / missing `HQ_SNAPSHOT_DIR` / nothing written) from
   `deploy/systemd/bakery-snapshot-preorders.{service,timer}` (22:15). Uses
   `PreordersService.day()`; writes `data/production/vorbestellungen/<date>.json` with
-  `preorderCount`, `items [{productId, variant, name, unit, quantity, preorders}]`, `channels`
+  `preorderCount`, `items [{productId, variant, name, unit, quantity, preorders}]` (`variant`
+  only if it is one of the product's variants in `backzettel.yaml` - a product without master data
+  takes any slug, and a slug is free text; others are merged into `variant: null`), `channels`
   (all five, zeros included), `pickupPoints [{id, name, count}]` (`laden` first). Cancelled ones
   are not counted. **No timestamp**, so a rerun on unchanged data commits nothing.
 - **No personal data (D13), by whitelist** in `hq-snapshots.core.js`: no confirmer/corrector/
   ticker names or ids (only the confirming role), no free-text correction reasons (they may name
-  a customer), no deltas, preorder ids or codes, no customer names, phones, notes, no money. A new
-  field in the day view stays out until added there on purpose.
+  a customer), no deltas, preorder ids or codes, no customer names, phones, notes, no money, no
+  unconfigured variant slugs; warnings that quote a raw slug (`variant_ignored`,
+  `unknown_variant`, `unknown_correction`) get a fixed text with the item id only. A new field in
+  the day view stays out until added there on purpose.
 - git: write files atomically, `add -A -- data/production`, commit **with the pathspec
   `data/production`** (a foreign file staged in the worktree stays staged, uncommitted - test),
   message `chore(production): Backzettel <date> (App)` / `Vorbestellungen <date> (App)`, no
-  `Co-authored-by` (no names). Push `origin HEAD:refs/heads/main`; rejected → `pull --rebase
---autostash origin main` + one retry; conflict → `rebase --abort`, `rebase_conflict` with files,
-  commit kept; offline → `network`, commit kept, pushed by the 15-min timer or `/retry`.
+  `Co-authored-by` (no names) - write + commit under the local lock, then, released, the push
+  under the network lock: `origin <sha>:refs/heads/main`; rejected → fetch, `rebase --autostash`
+  onto `origin/main` (local lock) + one retry; conflict → `rebase --abort`, `rebase_conflict` with
+  files, commit kept; offline or network lock busy (`network`, `repo_locked`) → commit kept,
+  pushed by the 15-min timer or `/retry`. `SnapshotOutcome.written` says the snapshot is on disk
+  and committed regardless of the push.
 
 Tests: `tests/unit/hqWritebackCore.test.js`, `tests/unit/hqSnapshotsCore.test.js` (planted
 "personal" markers must not come out), `tests/integration/hqGit.test.ts` (queue across worktrees,
@@ -460,7 +488,11 @@ pendingApproval vs. a stale read clone, rebase, conflict, rejected lease → ret
 GitHub 500, parallel saves), `tests/integration/hqSnapshots.test.ts` (confirm → origin main,
 pathspec, rejected push → rebase → retry, offline, parallel, no-op, conflict, wrong branch),
 `tests/integration/hqSnapshotsCli.test.ts`. All against temp **bare repos as origin**
-(`tests/helpers/hqRemote.ts`) and a local fake of the GitHub pulls API (`startFakeGitHub`) -
+(`tests/helpers/hqRemote.ts`). Fixup tests: squash merge after main moved (same product twice,
+and with a newer local edit), foreign commit adopted / conflicting foreign commit never
+overwritten, slow fetch does not block a save, disabled sync falls back to the read clone,
+network-lock queue + stale takeover guard (`hqGit`), reopen note and push waiting on another
+process's network lock (`hqSnapshots`), CLI waiting for the server's locks (`hqSnapshotsCli`) and a local fake of the GitHub pulls API (`startFakeGitHub`) -
 never GitHub. `tests/setup-ts.js` unsets `HQ_SNAPSHOT_DIR`, `HQ_GITHUB_TOKEN`, `GITHUB_TOKEN`,
 `GITHUB_API_URL`, `HQ_GITHUB_REPO`.
 
