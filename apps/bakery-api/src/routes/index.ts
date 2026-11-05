@@ -4,6 +4,7 @@
  */
 
 export { createPublicAuthRouter, createSessionAuthRouter } from './auth.routes'
+export { createBackzettelRouter } from './backzettel.routes'
 export { createHealthRouter } from './health.routes'
 export { default as partnerRoutes } from './partner.routes'
 export { createUsersRouter } from './users.routes'

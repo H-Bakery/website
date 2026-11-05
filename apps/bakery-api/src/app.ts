@@ -5,7 +5,7 @@
  * calls `createApp()`; integration tests (B1) do the same with `:memory:`
  * and drive the result through supertest.
  *
- * Mounted (roadmap §4): health, auth, users, partners. The other pilot
+ * Mounted (roadmap §4): health, auth, users, partners, backzettel. The other pilot
  * domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
@@ -23,6 +23,7 @@ import { AuthServiceOptions, createAuthService } from './auth/auth.service'
 import { STATION_TOKEN_HEADER, requireAuth } from './auth/middleware'
 import { loggerMiddleware } from './middleware/logger.middleware'
 import {
+  createBackzettelRouter,
   createHealthRouter,
   createPublicAuthRouter,
   createSessionAuthRouter,
@@ -30,6 +31,7 @@ import {
   partnerRoutes,
 } from './routes'
 import { AuthRouterOptions } from './routes/auth.routes'
+import { BackzettelRouterOptions } from './routes/backzettel.routes'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
 export interface CreateAppOptions {
@@ -48,6 +50,11 @@ export interface CreateAppOptions {
    * from 127.0.0.1, so `req.ip` - and the login rate limit - see the client).
    */
   trustProxy?: boolean | number | string
+  /**
+   * Where the Backzettel master data lives (Z3). Default: `HQ_BACKZETTEL_CONFIG`,
+   * `HQ_DIR`, `HQ_PRODUCTS_DIR`, else `<cwd>/../hq`.
+   */
+  backzettel?: BackzettelRouterOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -91,7 +98,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // B4: reports, analytics, finance, targets   (mock modules + auth adapter)
   // B5: /api/products, /api/hq-products        (hq markdown, worktree writes)
   // B7: /api/preorders (+ /api/deliveries/preorders alias, shop POST /api/orders)
-  // Z*: /api/backzettel
+  app.use('/api/backzettel', createBackzettelRouter(options.backzettel)) // Z3
 
   app.use(notFoundHandler)
   app.use(createErrorHandler())

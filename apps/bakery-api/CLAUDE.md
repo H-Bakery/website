@@ -92,6 +92,7 @@ and for supertest (B1). Mounted for the pilot:
 | `/api/auth` (session)    | `routes/auth.routes.ts` (session router) | me, logout, stations                          |
 | `/api/users`             | `routes/users.routes.ts`                 | user admin, `inhaber` only                    |
 | `/api/partners`          | `routes/partner.routes.ts`               | Backschrank; session required; B6: roles + hq |
+| `/api/backzettel`        | `routes/backzettel.routes.ts`            | Z3, see "Backzettel API (Z3)"                 |
 
 Mount points for B4 (reports/analytics/finance/targets), B5 (products/hq-products), B7 (preorders)
 and Z\* (Backzettel) are marked in `app.ts` **below the global guard** - mount new domains there
@@ -220,13 +221,76 @@ Tests: `tests/unit/authCrypto.test.js`, `tests/integration/{auth,stations,users,
 (helpers in `tests/helpers/auth.ts`); `scripts/boot-smoke.sh` creates its account with the
 bundled CLI.
 
+## Backzettel API (Z3)
+
+`/api/backzettel` (`src/routes/backzettel.routes.ts` → `src/services/backzettel.service.ts`),
+mounted below the global guard. Answers `{ success, data }`, errors via `sendError`. The day is
+computed only by `backzettel.core.js` (Z2); `src/services/backzettel-day.core.js` (dependency-free,
+`tests/unit/backzettelDay.test.js`) translates between stored rows and the core: input parsing,
+preorder snapshot, delta reconciliation, frozen lines. Master data: `backzettel-source.ts`.
+
+| Endpoint                                         | Who                | Body / answer                                                                                |
+| ------------------------------------------------ | ------------------ | -------------------------------------------------------------------------------------------- |
+| `GET /config`                                    | any session        | `{ status: ok \| no-config, source, config, errors, warnings, recipesMissing, catalogSize }` |
+| `GET /:date`                                     | any session        | day (below); `{ date, status: 'no-config', reasons }` without master data                    |
+| `GET /:date/prep`                                | any session        | `{ date, weekday, weekdayName, status, prepDate (d−1), prep[] }`                             |
+| `PUT /:date/season`                              | inhaber, backstube | `{ factor }` (0 < f ≤ 5, 2 decimals, `"1,2"` ok) → day; draft only                           |
+| `PUT /:date/lines/:itemId[/:variant]/correction` | inhaber, backstube | `{ correction, reason }`, reason required ≠ 0, 0 clears → day; draft only                    |
+| `POST /:date/confirm`                            | inhaber, backstube | → confirmed day                                                                              |
+| `POST /:date/reopen`                             | inhaber            | `{ reason? }` → draft day                                                                    |
+| `POST /:date/lines/:lineId/done` / `/undone`     | inhaber, backstube | → `{ id, date, itemId, variant, doneAt, doneBy }`; confirmed only                            |
+| `POST /:date/deltas/:id/ack`                     | inhaber, backstube | → `{ id, …, acknowledgedAt, acknowledgedBy }`, idempotent                                    |
+
+Day: `{ date, weekday, weekdayName, status: draft|confirmed, seasonFactor, confirmedBy {id,
+displayName} | null, confirmedAt, sections[{ id, label, lines[] }], hefeteig, fillings, prep,
+prepDate, deltas[], warnings[], configStatus }`. A line is the core line plus `id` (row id or
+null in a draft without a stored row), `correctionBy`, `doneAt`, `doneBy`, `delta { qty, open,
+count } | null`. `variant` is `null` for "none" in JSON, `''` in the tables and in the URL (omit
+the segment). Errors: 400 `invalid_date` / `validation` / `reason_required`, 404 `unknown_item` /
+`unknown_variant` / `not_found`, 409 `ruhetag` (weekday not in `config.days`), `no_config` (with
+`reasons`), `confirmed`, `not_confirmed`.
+
+What to know before changing it:
+
+- **Config path:** `HQ_BACKZETTEL_CONFIG`, else `${HQ_DIR}/config/backzettel.yaml`, `HQ_DIR`
+  default `<cwd>/../hq`; catalogue `HQ_PRODUCTS_DIR` else `${HQ_DIR}/products`; recipes relative to
+  `HQ_DIR`. `createApp({ backzettel: { hqDir, configPath, productsDir, cacheMs } })` overrides; an
+  explicit `hqDir` option beats the env for the derived paths. Cached until the YAML/products mtime
+  changes, at most 60 s. Missing/invalid → `no-config`, **never** invented numbers. The answer never
+  carries the server path except inside a loader read error message.
+- **Draft is live:** nothing is stored by reading a draft. Season factor lives in `backzettel_days`,
+  corrections in `backzettel_lines` rows (only `correction*` is read in a draft). Preorders =
+  `preorders.pickup_date = date`, status ≠ `storniert`, mapped through `item.products[]` factors by
+  the core; CAP = active `PartnerDeliveryTemplates` of active partners for the ISO weekday, into
+  the `cap` column (the baseline comment "upper limit" predates the plan).
+- **Confirm** (serialised transaction): recomputes, upserts every line with a name/section/unit
+  snapshot (ticks kept), deletes rows no longer computed, stores `preorder_snapshot` (flat
+  `{preorderId, productId, variant, qty}`), discards old deltas. A confirmed day is read from the
+  rows; Hefeteig/fillings/prep are recomputed from the frozen totals. With broken master data it
+  stays readable (`configStatus: 'no-config'`, Hefeteig/fillings/prep `null`).
+- **Deltas** are written by **reading** a confirmed day: `reconcileDeltas` compares snapshot, current
+  preorders and already recorded rows per preorder × item × variant and adds one row per change
+  (`qty` = increment, `kind` added/changed/cancelled). Quick check outside, real check inside the
+  write queue - parallel readers record a change once (test). Never merged into the frozen lines.
+- **Reopen** (inhaber only): back to draft, snapshot cleared, deltas deleted (the audit row keeps
+  them), corrections and ticks stay.
+- **Audit** (`audit_log`): `season`, `correction`, `confirm`, `reopen`, `deltas_recorded` on
+  `backzettel_day`/date; `line_done`/`line_undone` on `backzettel_line`; `delta_ack` on
+  `backzettel_delta`. No-op writes (same value, already ticked/acked) are not audited.
+- Migration `20261112000000-backzettel-z3.js` (additive): `backzettel_days.preorder_snapshot`,
+  `backzettel_lines.name/section/unit`, `backzettel_deltas.kind/acknowledged_at/acknowledged_by`.
+
+Tests: `tests/unit/backzettelDay.test.js` (42), `tests/integration/backzettel.test.ts` (21; synthetic
+hq written to a temp dir from `tests/fixtures/backzettel.synthetic.js`, preorders inserted via the
+models). `tests/setup-ts.js` points `HQ_DIR`/`HQ_BACKZETTEL_CONFIG` nowhere, like the other hq paths.
+
 ## Schema (B2)
 
 One baseline migration creates the whole pilot schema: `users`, `refresh_tokens`, `audit_log`,
 the four partner tables (`Partners`, `PartnerDeliveryTemplates`, `PartnerVisits`,
 `PartnerVisitItems` - names and camelCase columns exactly as before, `staffId` → `users`),
 `pickup_points`, `preorders`, `preorder_items` and the Backzettel tables `backzettel_days`,
-`backzettel_lines`, `backzettel_deltas` (§5.3, models come with Z3). New tables are snake_case;
+`backzettel_lines`, `backzettel_deltas` (§5.3; models and extra columns since Z3). New tables are snake_case;
 their models use `underscored: true` and camelCase attributes.
 
 - **Idempotent.** Each table is created only if missing (case-insensitive - SQLite treats `Users`
