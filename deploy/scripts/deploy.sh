@@ -29,6 +29,16 @@
 # zurückgeschaltet (die neue Version kann die DB schon migriert haben); das
 # Skript nennt den Rollback-Befehl und die DB-Kopie.
 #
+# Geheimnisse: npm ci, Build und alles andere, was als APP_USER läuft, sieht
+# nur eine geleerte Umgebung (env -i) mit PATH/HOME/Locale und den
+# Build-Schlüsseln aus bakery.env (DEPLOY_BUILD_ENV_KEYS) - kein JWT_SECRET,
+# kein HQ_GITHUB_TOKEN, keine Telegram-/restic-/AWS-Zugänge. Aus ops.env liest
+# deploy.sh selbst nur TELEGRAM_*, DEPLOY_*, KEEP_RELEASES und HEALTH_*.
+#
+# Units und Skripte (laufen als root) kommen nie aus dem Release, das
+# APP_USER gebaut hat, sondern aus dem root-eigenen Klon $BAKERY_ROOT/src,
+# der denselben Commit selbst von origin holt.
+#
 # Exit-Codes: 0 ok · 2 Aufruf/Konfiguration · 3 git · 4 npm ci · 5 Build
 #             6 sqlite3-Modul lädt nicht · 7 Health-Check nach Neustart fehlgeschlagen
 #             8 Sperre belegt
@@ -38,7 +48,7 @@ SCRIPT_NAME="deploy"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=deploy/scripts/lib.sh
 . "$SCRIPT_DIR/lib.sh"
-load_env_files
+load_env_files TELEGRAM_ DEPLOY_ KEEP_RELEASES HEALTH_
 
 BAKERY_ROOT="${BAKERY_ROOT:-/opt/bakery}"
 REPO="${DEPLOY_REPO:-$BAKERY_ROOT/repo.git}"
@@ -56,25 +66,74 @@ DEPLOY_NODE_OPTIONS="${DEPLOY_NODE_OPTIONS:---max-old-space-size=4096}"
 DEPLOY_INSTALL_CMD="${DEPLOY_INSTALL_CMD:-}"
 DEPLOY_BUILD_CMD="${DEPLOY_BUILD_CMD:-}"
 DEPLOY_SKIP_NATIVE_CHECK="${DEPLOY_SKIP_NATIVE_CHECK:-0}"
+# Root-eigener Klon, aus dem Units und Skripte übernommen werden.
+DEPLOY_SRC_DIR="${DEPLOY_SRC_DIR:-$BAKERY_ROOT/src}"
+# auto = nur als root; 1 = immer (Tests); 0 = nie
+DEPLOY_UPDATE_UNITS="${DEPLOY_UPDATE_UNITS:-auto}"
+# Variablen aus bakery.env, die der Build sehen darf (Namen; * am Ende = Präfix).
+DEPLOY_BUILD_ENV_KEYS="${DEPLOY_BUILD_ENV_KEYS:-NEXT_PUBLIC_* API_URL HQ_PRODUCTS_DIR HQ_REPORTS_DIR HQ_FINANCE_DIR TZ}"
 
 API_BUNDLE="dist/apps/bakery-api/bundle/main.js"
 MGMT_BUILD_ID="dist/apps/bakery-management/.next/BUILD_ID"
 MARKER=".bakery-release"
 
 usage() {
-  sed -n '2,36p' "$0"
+  sed -n '2,44p' "$0"
 }
 
-# Befehle, die Dateien im Release anlegen, laufen als APP_USER - nie als root.
+switches_user() {
+  [ "$(id -u)" -eq 0 ] && [ "$APP_USER" != "root" ]
+}
+
+# Grundumgebung jedes Befehls, der als APP_USER läuft: nur das Nötigste.
+# Bewusst eine Whitelist - npm-Lifecycle-Skripte und Build-Plugins sind
+# fremder Code und sollen keine Geheimnisse aus der Umgebung lesen können.
+APP_ENV=()
+init_app_env() {
+  local home="${HOME:-/}" v
+  if switches_user; then
+    home="$(getent passwd "$APP_USER" 2>/dev/null | cut -d: -f6)"
+    home="${home:-$BAKERY_VAR}"
+  fi
+  APP_ENV=(PATH="${PATH:-/usr/local/bin:/usr/bin:/bin}" HOME="$home" LANG="${LANG:-C.UTF-8}")
+  for v in LC_ALL TZ TMPDIR http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY GIT_CONFIG_NOSYSTEM; do
+    if [ -n "${!v+x}" ]; then APP_ENV+=("$v=${!v}"); fi
+  done
+}
+
+# Build-Schlüssel aus DEPLOY_BUILD_ENV_KEYS als NAME=wert-Liste.
+BUILD_KEYS_ENV=()
+init_build_keys_env() {
+  local pattern name
+  BUILD_KEYS_ENV=()
+  for pattern in $DEPLOY_BUILD_ENV_KEYS; do
+    case "$pattern" in
+    *'*')
+      for name in $(compgen -v "${pattern%\*}"); do
+        # nur exportierte Variablen (aus bakery.env oder der Umgebung)
+        if declare -p "$name" 2>/dev/null | grep -q '^declare -[a-zA-Z]*x'; then
+          BUILD_KEYS_ENV+=("$name=${!name}")
+        fi
+      done
+      ;;
+    *)
+      if [ -n "${!pattern+x}" ]; then BUILD_KEYS_ENV+=("$pattern=${!pattern}"); fi
+      ;;
+    esac
+  done
+}
+
+# Befehle, die Dateien im Release anlegen, laufen als APP_USER - nie als root -
+# und immer mit geleerter Umgebung. Führende NAME=wert-Argumente setzt env.
 as_app() {
-  if [ "$(id -u)" -eq 0 ] && [ "$APP_USER" != "root" ]; then
+  if switches_user; then
     if command -v runuser >/dev/null 2>&1; then
-      runuser -u "$APP_USER" -- "$@"
+      runuser -u "$APP_USER" -- env -i "${APP_ENV[@]}" "$@"
     else
-      sudo -E -u "$APP_USER" -- "$@"
+      sudo -u "$APP_USER" -- env -i "${APP_ENV[@]}" "$@"
     fi
   else
-    "$@"
+    env -i "${APP_ENV[@]}" "$@"
   fi
 }
 
@@ -114,15 +173,6 @@ read_state() {
 write_state() {
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$2" >"$STATE_DIR/$1"
-}
-
-maintenance_on() {
-  mkdir -p "$STATE_DIR"
-  touch "$STATE_DIR/maintenance"
-}
-
-maintenance_off() {
-  rm -f "$STATE_DIR/maintenance"
 }
 
 restart_services() {
@@ -232,18 +282,28 @@ activate() {
   write_state deploy-current "$name"
   restart_services
   if wait_healthy; then
+    rm -f "$STATE_DIR/deploy-failed"
     maintenance_off
     log "$what: $name läuft und ist gesund"
     notify "Bäckerei-Box: $what $name erfolgreich."
     return 0
   fi
+  # restore.sh --apply verweigert sich, solange dieses Release aktiv ist:
+  # es würde die eingespielte Kopie sofort wieder migrieren. (Nur beim Deploy -
+  # nach einem Rollback ist das Einspielen der Kopie gerade der nächste Schritt.)
+  if [ "$what" = "Deploy" ]; then
+    write_state deploy-failed "$name"
+  fi
   maintenance_off
   notify "Bäckerei-Box: $what $name - Health-Check fehlgeschlagen."
   log "Health-Check nach $DEPLOY_HEALTH_TIMEOUT s fehlgeschlagen. Logs: journalctl -u bakery-api -u bakery-management -n 200"
   if [ -n "$before" ] && [ "$before" != "$name" ]; then
-    log "Zurück auf die vorherige Version: sudo $BAKERY_ROOT/bin/deploy.sh --rollback   (Release $before)"
-    log "Hat die neue Version die Datenbank migriert, vorher die DB-Kopie einspielen:"
-    log "  sudo $BAKERY_ROOT/bin/restore.sh --from-file <Kopie aus $BAKERY_VAR/backup/snapshots/bakery-pre-deploy-*.db> --apply"
+    local pre_db
+    pre_db="$(read_state deploy-pre-db)"
+    log "Zurück auf die vorherige Version (Reihenfolge einhalten, docs/runbook.md §4.1):"
+    log "  1. sudo $BAKERY_ROOT/bin/deploy.sh --rollback      (Release $before)"
+    log "  2. nur wenn die neue Version die Datenbank migriert hat, DANACH die Kopie von vor dem Deploy:"
+    log "     sudo $BAKERY_ROOT/bin/restore.sh --from-file ${pre_db:-<neueste $BAKERY_VAR/backup/snapshots/bakery-pre-deploy-*.db>} --apply"
   fi
   exit 7
 }
@@ -286,6 +346,8 @@ if [ "$mode" = "status" ]; then
   exit 0
 fi
 
+init_app_env
+
 [ -d "$REPO" ] || die 2 "Code-Repository fehlt: $REPO (erst install.sh ausführen)"
 mkdir -p "$RELEASES"
 
@@ -308,6 +370,14 @@ fi
 # Box zeigt die App auf localhost:5000 - auf Handys und Tablets also ins Leere.
 [ -n "${NEXT_PUBLIC_API_URL:-}" ] ||
   die 2 "NEXT_PUBLIC_API_URL ist nicht gesetzt (/etc/bakery/bakery.env) - die Web-App würde localhost ansprechen"
+# Unveränderte Vorlage: der Build würde einen Host einbacken, den kein Gerät erreicht.
+for key in NEXT_PUBLIC_API_URL CORS_ORIGIN; do
+  case "${!key:-}" in
+  *example.*) die 2 "$key enthält noch den Platzhalter aus der Vorlage (${!key}) - echte Domain in /etc/bakery/bakery.env eintragen" ;;
+  esac
+done
+
+init_build_keys_env
 
 log "hole $ref"
 repo_git fetch --prune --tags --quiet origin || die 3 "git fetch fehlgeschlagen"
@@ -349,15 +419,15 @@ else
   if [ -n "$cur" ] && [ -f "$RELEASES/$cur/.bakery-lock-hash" ]; then
     cur_hash="$(cat "$RELEASES/$cur/.bakery-lock-hash")"
   fi
+  install_env=(HUSKY=0 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 CYPRESS_INSTALL_BINARY=0)
   if [ -n "$DEPLOY_INSTALL_CMD" ]; then
-    (cd "$dir" && as_app sh -c "$DEPLOY_INSTALL_CMD") || die 4 "Installation fehlgeschlagen"
+    (cd "$dir" && as_app "${install_env[@]}" sh -c "$DEPLOY_INSTALL_CMD") || die 4 "Installation fehlgeschlagen"
   elif [ "$force_install" -eq 0 ] && [ "$lock_hash" = "$cur_hash" ] && [ -d "$RELEASES/$cur/node_modules" ]; then
     log "package-lock.json unverändert - kopiere node_modules von $cur"
     as_app cp -a "$RELEASES/$cur/node_modules" "$dir/node_modules" || die 4 "Kopieren von node_modules fehlgeschlagen"
   else
     log "npm ci (dauert auf dem Pi einige Minuten)"
-    (cd "$dir" && as_app env HUSKY=0 PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 PUPPETEER_SKIP_DOWNLOAD=1 \
-      CYPRESS_INSTALL_BINARY=0 npm ci --no-audit --no-fund) || die 4 "npm ci fehlgeschlagen"
+    (cd "$dir" && as_app "${install_env[@]}" npm ci --no-audit --no-fund) || die 4 "npm ci fehlgeschlagen"
   fi
   as_app sh -c "printf '%s\n' '$lock_hash' > '$dir/.bakery-lock-hash'"
 
@@ -370,11 +440,11 @@ else
 
   # --- 5. Build ---
 
+  build_env=(${BUILD_KEYS_ENV[@]+"${BUILD_KEYS_ENV[@]}"} NX_DAEMON=false NX_ISOLATE_PLUGINS=false
+    NX_NO_CLOUD=true NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS="$DEPLOY_NODE_OPTIONS")
   if [ -n "$DEPLOY_BUILD_CMD" ]; then
-    (cd "$dir" && as_app sh -c "$DEPLOY_BUILD_CMD") || die 5 "Build fehlgeschlagen"
+    (cd "$dir" && as_app "${build_env[@]}" sh -c "$DEPLOY_BUILD_CMD") || die 5 "Build fehlgeschlagen"
   else
-    build_env=(env NX_DAEMON=false NX_ISOLATE_PLUGINS=false NX_NO_CLOUD=true NODE_ENV=production
-      NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS="$DEPLOY_NODE_OPTIONS")
     log "baue bakery-api:bundle"
     (cd "$dir" && as_app "${build_env[@]}" npx nx run bakery-api:bundle) ||
       die 5 "Build bakery-api:bundle fehlgeschlagen"
@@ -400,21 +470,44 @@ fi
 
 # --- 6. DB-Kopie vor dem Umschalten (Migrationen laufen beim Start) ---
 
+rm -f "$STATE_DIR/deploy-pre-db"
 if [ "$skip_backup" -eq 0 ]; then
   db="${DB_PATH:-$BAKERY_VAR/bakery.db}"
   if [ -f "$db" ]; then
-    as_app env APP_DIR="$dir" "$SCRIPT_DIR/backup.sh" --local-only --label pre-deploy >/dev/null ||
+    backup_env=(DB_PATH="$db" APP_DIR="$dir" BAKERY_ENV_LOADED=1 BAKERY_ETC="$BAKERY_ETC"
+      BAKERY_VAR="$BAKERY_VAR" STATE_DIR="$STATE_DIR")
+    for v in BACKUP_DIR BACKUP_KEEP_LOCAL BACKUP_SQLITE_METHOD LOCK_DIR; do
+      if [ -n "${!v+x}" ]; then backup_env+=("$v=${!v}"); fi
+    done
+    pre_db="$(as_app "${backup_env[@]}" "$SCRIPT_DIR/backup.sh" --local-only --label pre-deploy)" ||
       die 2 "DB-Kopie vor dem Deploy fehlgeschlagen - abgebrochen, nichts umgeschaltet (--skip-backup erzwingt)"
+    write_state deploy-pre-db "$pre_db"
+    log "DB-Kopie vor dem Umschalten: $pre_db"
   else
     log "noch keine Datenbank ($db) - keine Kopie nötig"
   fi
 fi
 
-# --- 7. Units und Skripte aus dem neuen Release übernehmen ---
+# --- 7. Units und Skripte übernehmen - aus dem root-eigenen Klon, nicht aus dem Release ---
 
-if [ "$(id -u)" -eq 0 ]; then
-  "$dir/deploy/scripts/install.sh" --units-only || die 2 "Aktualisieren der Units fehlgeschlagen"
-fi
+# Das Release gehört APP_USER (npm-Skripte liefen darin). Was root ausführt,
+# kommt deshalb aus $DEPLOY_SRC_DIR: root holt denselben Commit selbst von origin.
+# Fehlt der Commit dort, stammt er nicht von origin - dann wird nichts umgeschaltet.
+update_units() {
+  [ -d "$DEPLOY_SRC_DIR/.git" ] ||
+    die 2 "root-eigener Klon $DEPLOY_SRC_DIR fehlt (install.sh legt ihn an)"
+  git -C "$DEPLOY_SRC_DIR" fetch --quiet --prune --tags origin ||
+    die 3 "git fetch im Klon $DEPLOY_SRC_DIR fehlgeschlagen"
+  git -C "$DEPLOY_SRC_DIR" -c advice.detachedHead=false checkout --quiet --force --detach "$sha" 2>/dev/null ||
+    die 3 "Commit $short ist im Klon $DEPLOY_SRC_DIR (von origin) nicht vorhanden - stammt er wirklich von origin? Nichts umgeschaltet."
+  "$DEPLOY_SRC_DIR/deploy/scripts/install.sh" --units-only || die 2 "Aktualisieren der Units fehlgeschlagen"
+}
+
+case "$DEPLOY_UPDATE_UNITS" in
+1) update_units ;;
+0) ;;
+*) if [ "$(id -u)" -eq 0 ]; then update_units; fi ;;
+esac
 
 # --- 8. umschalten, neu starten, prüfen ---
 

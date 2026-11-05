@@ -32,20 +32,58 @@ die() {
 # Lädt /etc/bakery/bakery.env und ops.env, wenn das Skript von Hand (nicht
 # über systemd) gestartet wurde und die Dateien lesbar sind. systemd setzt die
 # Variablen selbst über EnvironmentFile=; dann ist BAKERY_ENV_LOADED gesetzt.
+#
+#   load_env_files                  beide Dateien vollständig
+#   load_env_files PRÄFIX...        bakery.env vollständig, aus ops.env nur
+#                                   Variablen, deren Name mit einem PRÄFIX
+#                                   beginnt (deploy.sh: kein restic/AWS)
 load_env_files() {
   if [ "${BAKERY_ENV_LOADED:-0}" = "1" ]; then
     return 0
   fi
-  local f
-  for f in "$BAKERY_ETC/bakery.env" "$BAKERY_ETC/ops.env"; do
-    if [ -r "$f" ]; then
+  if [ -r "$BAKERY_ETC/bakery.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "$BAKERY_ETC/bakery.env"
+    set +a
+  fi
+  if [ -r "$BAKERY_ETC/ops.env" ]; then
+    if [ $# -eq 0 ]; then
       set -a
-      # shellcheck disable=SC1090
-      . "$f"
+      # shellcheck disable=SC1091
+      . "$BAKERY_ETC/ops.env"
       set +a
+    else
+      # In einer Subshell laden und nur die erlaubten Namen herausreichen.
+      local picked
+      picked="$(
+        # shellcheck disable=SC1091
+        . "$BAKERY_ETC/ops.env" >/dev/null 2>&1
+        for name in $(compgen -v); do
+          for prefix in "$@"; do
+            case "$name" in
+            "$prefix"*)
+              printf 'export %s=%q\n' "$name" "${!name}"
+              break
+              ;;
+            esac
+          done
+        done
+      )"
+      eval "$picked"
     fi
-  done
+  fi
   export BAKERY_ENV_LOADED=1
+}
+
+# Wartungs-Markierung: health.sh meldet währenddessen nichts (max. 30 min).
+maintenance_on() {
+  mkdir -p "$STATE_DIR"
+  touch "$STATE_DIR/maintenance"
+}
+
+maintenance_off() {
+  rm -f "$STATE_DIR/maintenance"
 }
 
 # Einfache Sperre, damit sich zwei Läufe (Timer + Hand) nicht überholen.

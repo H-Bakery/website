@@ -12,7 +12,6 @@ Type=oneshot
 User=bakery
 Group=bakery
 EnvironmentFile=/etc/bakery/bakery.env
-EnvironmentFile=-/etc/bakery/ops.env
 Environment=BAKERY_ENV_LOADED=1
 ExecStart=/opt/bakery/bin/hq-sync.sh
 TimeoutStartSec=10min
@@ -23,6 +22,7 @@ UMask=0027
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/bakery
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/caddy
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

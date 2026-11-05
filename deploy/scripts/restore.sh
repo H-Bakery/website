@@ -14,7 +14,11 @@
 #   ... --apply
 #       zusätzlich einspielen: bakery-api stoppen, alte DB samt -wal/-shm nach
 #       DB_PATH.vor-restore-<Zeit> verschieben, Kopie einsetzen, API starten.
-#       Nur als root.
+#       Nur als root. Setzt währenddessen state/maintenance (kein Fehlalarm)
+#       und hält die Sperre des Backups (kein nächtliches Backup mittendrin).
+#       Verweigert, solange das Release aktiv ist, dessen Deploy fehlschlug
+#       (state/deploy-failed): erst deploy.sh --rollback, dann einspielen -
+#       sonst migriert die neue Version die Kopie sofort wieder. --force übergeht das.
 #
 # Umgebung wie backup.sh (DB_PATH, BACKUP_DIR, RESTIC_*). SYSTEMCTL und
 # HEALTH_API_URL lassen sich für Tests ersetzen.
@@ -33,6 +37,7 @@ DB_PATH="${DB_PATH:-$BAKERY_VAR/bakery.db}"
 BACKUP_DIR="${BACKUP_DIR:-$BAKERY_VAR/backup}"
 APP_DIR="${APP_DIR:-/opt/bakery/current}"
 APP_USER="${APP_USER:-bakery}"
+BAKERY_ROOT="${BAKERY_ROOT:-/opt/bakery}"
 SYSTEMCTL="${SYSTEMCTL:-systemctl}"
 HEALTH_API_URL="${HEALTH_API_URL:-http://127.0.0.1:5000/health}"
 
@@ -40,6 +45,7 @@ snapshot="latest"
 from_file=""
 target=""
 apply=0
+force=0
 while [ $# -gt 0 ]; do
   case "$1" in
   --snapshot)
@@ -58,8 +64,9 @@ while [ $# -gt 0 ]; do
     shift
     ;;
   --apply) apply=1 ;;
+  --force) force=1 ;;
   -h | --help)
-    sed -n '2,25p' "$0"
+    sed -n '2,27p' "$0"
     exit 0
     ;;
   *) die 2 "unbekanntes Argument: $1" ;;
@@ -116,6 +123,21 @@ fi
 if [ "$(id -u)" -ne 0 ] && [ "${RESTORE_ALLOW_NONROOT:-0}" != "1" ]; then
   die 2 "--apply nur als root (sudo)"
 fi
+
+failed="$( [ -f "$STATE_DIR/deploy-failed" ] && cat "$STATE_DIR/deploy-failed" || true)"
+active=""
+if [ -L "$BAKERY_ROOT/current" ]; then
+  active="$(basename "$(readlink "$BAKERY_ROOT/current")")"
+fi
+if [ -n "$failed" ] && [ "$failed" = "$active" ] && [ "$force" -eq 0 ]; then
+  die 2 "aktiv ist noch das fehlgeschlagene Release $failed - es würde die Kopie sofort wieder migrieren. Erst: sudo $BAKERY_ROOT/bin/deploy.sh --rollback, dann diesen Befehl wiederholen (--force übergeht die Prüfung)"
+fi
+
+if ! acquire_lock backup; then
+  die 2 "ein Backup läuft gerade - in ein paar Minuten erneut versuchen"
+fi
+maintenance_on
+trap 'maintenance_off; release_lock' EXIT
 
 stamp="$(date '+%Y%m%d-%H%M%S')"
 aside="$DB_PATH.vor-restore-$stamp"

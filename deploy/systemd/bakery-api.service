@@ -30,6 +30,9 @@ UMask=0027
 NoNewPrivileges=yes
 ProtectSystem=strict
 ReadWritePaths=/var/lib/bakery
+# Geheimnisse der Betriebs-Skripte (Telegram, restic, AWS, DNS-Token) sind ohnehin
+# root:root 0600; hier zusätzlich unsichtbar, falls jemand die Rechte lockert.
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/caddy
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

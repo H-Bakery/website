@@ -25,6 +25,13 @@
 #   BACKUP_HOST          restic --host (Vorgabe bakery-box)
 #   RESTIC_REPOSITORY, RESTIC_PASSWORD_FILE, ggf. AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY
 #   RESTIC_KEEP_DAILY (14), RESTIC_KEEP_WEEKLY (8)
+#   RESTIC_FORGET        1 (Vorgabe) = forget --prune hier; 0 bei Append-only-Zugang
+#                        (Aufräumen dann vom Entwickler-Rechner, docs/runbook.md §5.2)
+#
+# Unter systemd liegt das restic-Passwort als Credential vor
+# ($CREDENTIALS_DIRECTORY/restic-password, LoadCredential= in bakery-backup.service);
+# /etc/bakery/restic-password und ops.env sind root:root 0600 und für den
+# Benutzer bakery - also auch für die API - nicht lesbar.
 #
 # Exit-Codes:
 #   0 ok · 2 Datenbank fehlt / Aufruf falsch · 5 kein Backup-Werkzeug
@@ -49,6 +56,11 @@ APP_DIR="${APP_DIR:-/opt/bakery/current}"
 BACKUP_HOST="${BACKUP_HOST:-bakery-box}"
 RESTIC_KEEP_DAILY="${RESTIC_KEEP_DAILY:-14}"
 RESTIC_KEEP_WEEKLY="${RESTIC_KEEP_WEEKLY:-8}"
+RESTIC_FORGET="${RESTIC_FORGET:-1}"
+if [ -n "${CREDENTIALS_DIRECTORY:-}" ] && [ -r "$CREDENTIALS_DIRECTORY/restic-password" ]; then
+  RESTIC_PASSWORD_FILE="$CREDENTIALS_DIRECTORY/restic-password"
+  export RESTIC_PASSWORD_FILE
+fi
 
 local_only=0
 label="nightly"
@@ -61,7 +73,7 @@ while [ $# -gt 0 ]; do
     shift
     ;;
   -h | --help)
-    sed -n '2,36p' "$0"
+    sed -n '2,42p' "$0"
     exit 0
     ;;
   *) die 2 "unbekanntes Argument: $1" ;;
@@ -152,26 +164,34 @@ fi
 export RESTIC_REPOSITORY
 
 paths=("$BACKUP_DIR/current/bakery.db")
-if [ -d "$BAKERY_ETC" ] && [ -r "$BAKERY_ETC" ]; then
-  paths+=("$BAKERY_ETC")
-fi
+# Aus /etc/bakery nur lesbare Dateien (bakery.env). ops.env und das restic-
+# Passwort sind für bakery absichtlich unlesbar - sie öffnen das Backup selbst
+# und gehören in den Passwort-Safe, nicht ins Backup.
+for f in "$BAKERY_ETC"/*; do
+  [ -f "$f" ] || continue
+  case "$(basename "$f")" in restic-password | ops.env) continue ;; esac
+  [ "$f" != "${RESTIC_PASSWORD_FILE:-}" ] || continue
+  if [ -r "$f" ]; then
+    paths+=("$f")
+  else
+    log "nicht lesbar, nicht off-site gesichert: $f"
+  fi
+done
 for p in ${BACKUP_EXTRA_PATHS:-}; do
   if [ -e "$p" ]; then paths+=("$p"); else warn "BACKUP_EXTRA_PATHS: $p existiert nicht - übersprungen"; fi
 done
 
-excludes=()
-if [ -n "${RESTIC_PASSWORD_FILE:-}" ]; then
-  excludes+=(--exclude "$RESTIC_PASSWORD_FILE")
-fi
-
 log "restic backup -> $RESTIC_REPOSITORY (${#paths[@]} Pfad(e))"
-restic backup --quiet --host "$BACKUP_HOST" --tag bakery --tag "$label" \
-  ${excludes[@]+"${excludes[@]}"} "${paths[@]}" ||
+restic backup --quiet --host "$BACKUP_HOST" --tag bakery --tag "$label" "${paths[@]}" ||
   die 12 "restic backup fehlgeschlagen (Repository nicht initialisiert? -> restic init; Netz?). Lokal gesichert: $final"
 
-restic forget --quiet --host "$BACKUP_HOST" --tag bakery \
-  --keep-daily "$RESTIC_KEEP_DAILY" --keep-weekly "$RESTIC_KEEP_WEEKLY" --prune ||
-  die 13 "restic forget/prune fehlgeschlagen - das Backup selbst ist gespeichert"
+if [ "$RESTIC_FORGET" = "1" ]; then
+  restic forget --quiet --host "$BACKUP_HOST" --tag bakery \
+    --keep-daily "$RESTIC_KEEP_DAILY" --keep-weekly "$RESTIC_KEEP_WEEKLY" --prune ||
+    die 13 "restic forget/prune fehlgeschlagen - das Backup selbst ist gespeichert"
+else
+  log "RESTIC_FORGET=0: kein forget/prune (Append-only-Zugang) - Aufräumen vom Entwickler-Rechner"
+fi
 
 # Sonntags zusätzlich die Struktur des Repositorys prüfen (schnell, ohne alle Daten zu lesen).
 if [ "$(date +%u)" = "7" ]; then

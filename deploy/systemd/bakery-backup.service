@@ -12,8 +12,12 @@ Type=oneshot
 User=bakery
 Group=bakery
 EnvironmentFile=/etc/bakery/bakery.env
+# ops.env und restic-password sind root:root 0600: systemd (root) liest die
+# EnvironmentFile selbst, das Passwort reicht es als Credential nur an diese
+# Unit durch (backup.sh nimmt $CREDENTIALS_DIRECTORY/restic-password).
 EnvironmentFile=-/etc/bakery/ops.env
 Environment=BAKERY_ENV_LOADED=1
+LoadCredential=restic-password:/etc/bakery/restic-password
 # restic-Cache unter /var/cache/bakery-restic (legt systemd mit Besitzer bakery an)
 CacheDirectory=bakery-restic
 Environment=RESTIC_CACHE_DIR=/var/cache/bakery-restic

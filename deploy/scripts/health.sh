@@ -13,6 +13,11 @@
 #   backup      letztes erfolgreiches Off-site-Backup jünger als BACKUP_MAX_AGE_HOURS (36)
 #   hq-sync     letzter erfolgreicher hq-Sync jünger als HQ_SYNC_MAX_AGE_MIN (90)
 #   disk        Belegung von BAKERY_VAR unter DISK_MAX_PERCENT (90)
+#   tls         HTTPS über Caddy wie ein Gerät im WLAN: https://HEALTH_TLS_HOST/
+#               mit --resolve auf 127.0.0.1, Zertifikat gültig und noch mindestens
+#               HEALTH_TLS_MIN_DAYS (14) Tage - fällt die DNS-01-Erneuerung aus,
+#               kommt der Alarm Wochen vor dem Ablauf. Ohne HEALTH_TLS_HOST
+#               übersprungen (zählt als ok).
 #
 # Wartung: existiert $STATE_DIR/maintenance und ist jünger als 30 Minuten
 # (deploy.sh legt sie an), wird geprüft und geloggt, aber nichts gemeldet und
@@ -28,7 +33,12 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/lib.sh"
 load_env_files
 
-HEALTH_CHECKS="${HEALTH_CHECKS:-api management backup hq-sync disk}"
+HEALTH_CHECKS="${HEALTH_CHECKS:-api management backup hq-sync disk tls}"
+HEALTH_TLS_HOST="${HEALTH_TLS_HOST:-}"
+HEALTH_TLS_PORT="${HEALTH_TLS_PORT:-443}"
+HEALTH_TLS_MIN_DAYS="${HEALTH_TLS_MIN_DAYS:-14}"
+# Nur für Tests: CA-Datei für das selbst signierte Zertifikat des Stubs.
+HEALTH_TLS_CAFILE="${HEALTH_TLS_CAFILE:-}"
 HEALTH_API_URL="${HEALTH_API_URL:-http://127.0.0.1:5000/health}"
 HEALTH_MGMT_URL="${HEALTH_MGMT_URL:-http://127.0.0.1:4201/}"
 HEALTH_HTTP_TIMEOUT="${HEALTH_HTTP_TIMEOUT:-10}"
@@ -92,6 +102,42 @@ check_disk() {
   return 0
 }
 
+check_tls() {
+  if [ -z "$HEALTH_TLS_HOST" ]; then
+    log "TLS-Prüfung übersprungen (HEALTH_TLS_HOST leer)"
+    return 0
+  fi
+  local host="$HEALTH_TLS_HOST" port="$HEALTH_TLS_PORT" code
+  local ca=()
+  [ -z "$HEALTH_TLS_CAFILE" ] || ca=(--cacert "$HEALTH_TLS_CAFILE")
+  # Jede HTTP-Antwort zählt: hier geht es um Caddy + Zertifikat; dass API oder
+  # Verwaltung dahinter fehlen, melden die Prüfungen api/management.
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time "$HEALTH_HTTP_TIMEOUT" \
+    --resolve "$host:$port:127.0.0.1" ${ca[@]+"${ca[@]}"} "https://$host:$port/" 2>/dev/null)" || code="000"
+  if [ "$code" = "000" ]; then
+    echo "keine gültige HTTPS-Verbindung zu $host (Caddy aus oder Zertifikat ungültig/abgelaufen)"
+    return 1
+  fi
+  command -v openssl >/dev/null 2>&1 || {
+    echo "openssl fehlt - Restlaufzeit des Zertifikats nicht prüfbar"
+    return 1
+  }
+  local cert
+  cert="$(openssl s_client -connect "127.0.0.1:$port" -servername "$host" </dev/null 2>/dev/null |
+    openssl x509 2>/dev/null)" || cert=""
+  if [ -z "$cert" ]; then
+    echo "Zertifikat von $host nicht lesbar"
+    return 1
+  fi
+  if ! printf '%s\n' "$cert" | openssl x509 -noout -checkend $((HEALTH_TLS_MIN_DAYS * 86400)) >/dev/null 2>&1; then
+    local end
+    end="$(printf '%s\n' "$cert" | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+    echo "Zertifikat von $host läuft in weniger als $HEALTH_TLS_MIN_DAYS Tagen ab ($end) - DNS-01-Erneuerung prüfen (journalctl -u caddy -g acme)"
+    return 1
+  fi
+  return 0
+}
+
 run_check() {
   case "$1" in
   api) check_http "$HEALTH_API_URL" ;;
@@ -99,6 +145,7 @@ run_check() {
   backup) check_age "$BACKUP_DIR/last-success" $((BACKUP_MAX_AGE_HOURS * 3600)) "Backup" ;;
   hq-sync) check_age "$STATE_DIR/hq-sync.ok" $((HQ_SYNC_MAX_AGE_MIN * 60)) "hq-Sync" ;;
   disk) check_disk ;;
+  tls) check_tls ;;
   *)
     echo "unbekannte Prüfung"
     return 2
@@ -113,6 +160,7 @@ label_for() {
   backup) echo "Backup" ;;
   hq-sync) echo "hq-Sync" ;;
   disk) echo "Speicherplatz" ;;
+  tls) echo "HTTPS/Zertifikat" ;;
   *) echo "$1" ;;
   esac
 }

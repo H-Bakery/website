@@ -6,7 +6,8 @@
 #   deploy/tests/run-tests.sh
 #
 # Umgebung:
-#   TEST_TMP        Arbeitsverzeichnis (Vorgabe: mktemp -d)
+#   TEST_TMP        Arbeitsverzeichnis (Vorgabe: mktemp -d, wird am Ende gelöscht;
+#                   KEEP_TEST_TMP=1 behält es zur Fehlersuche)
 #   TEST_PORT_BASE  fünf Ports ab hier: API-Stub, Verwaltungs-Stub, Telegram-Stub,
 #                   zwei garantiert geschlossene (Vorgabe 5120)
 #   TEST_PID_DIR    wohin die PID-Dateien der Stubs geschrieben werden
@@ -19,7 +20,11 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS="$(cd "$HERE/../scripts" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
-TEST_TMP="${TEST_TMP:-$(mktemp -d "${TMPDIR:-/tmp}/bakery-deploy-tests.XXXXXX")}"
+CREATED_TMP=0
+if [ -z "${TEST_TMP:-}" ]; then
+  TEST_TMP="$(mktemp -d "${TMPDIR:-/tmp}/bakery-deploy-tests.XXXXXX")"
+  CREATED_TMP=1
+fi
 TEST_PID_DIR="${TEST_PID_DIR:-$TEST_TMP}"
 BASE="${TEST_PORT_BASE:-5120}"
 P_API=$BASE
@@ -27,6 +32,8 @@ P_MGMT=$((BASE + 1))
 P_TG=$((BASE + 2))
 P_CLOSED=$((BASE + 3))
 P_CLOSED2=$((BASE + 4))
+# Nach dem Test "Telegram nicht erreichbar" wird P_CLOSED2 zum HTTPS-Stub.
+P_TLS=$P_CLOSED2
 
 mkdir -p "$TEST_TMP" "$TEST_PID_DIR"
 pass=0
@@ -38,9 +45,18 @@ cleanup() {
   for pid in $STUB_PIDS; do
     kill "$pid" 2>/dev/null || true
   done
+  STUB_PIDS=""
   rm -f "$TEST_PID_DIR"/stub-*.pid
+  if [ "$CREATED_TMP" -eq 1 ] && [ "${KEEP_TEST_TMP:-0}" != "1" ] && [ -d "$TEST_TMP" ]; then
+    rm -rf "$TEST_TMP"
+  fi
 }
+# Auch bei Abbruch (Strg-C, SIGPIPE durch `| head`) Stubs beenden und aufräumen.
 trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
+trap 'exit 141' PIPE
 
 ok() {
   pass=$((pass + 1))
@@ -84,7 +100,8 @@ port_open() {
 
 start_stub() {
   local port="$1" logfile="$2"
-  python3 "$HERE/stub_server.py" "$port" "$logfile" &
+  shift 2
+  python3 "$HERE/stub_server.py" "$port" "$logfile" "$@" &
   local pid=$!
   STUB_PIDS="$STUB_PIDS $pid"
   echo "$pid" >"$TEST_PID_DIR/stub-$port.pid"
@@ -146,6 +163,35 @@ expect 0 "check der Kopie" node "$SCRIPTS/sqlite-tool.js" check "$TEST_TMP/copy.
 check "check zählt Zeilen" log_has "users .* 2"
 printf 'kein sqlite' >"$TEST_TMP/broken.db"
 expect 1 "check einer kaputten Datei" node "$SCRIPTS/sqlite-tool.js" check "$TEST_TMP/broken.db" "$REPO_ROOT"
+
+# ---------------------------------------------------------------------------
+echo "lib.sh"
+
+ETC2="$TEST_TMP/etc2"
+mkdir -p "$ETC2"
+cat >"$ETC2/bakery.env" <<'ENVFILE'
+NEXT_PUBLIC_API_URL=https://intern.baeckerei.test
+NEXT_PUBLIC_PILOT_MODE=1
+CORS_ORIGIN=https://intern.baeckerei.test
+API_URL=http://127.0.0.1:5000
+JWT_SECRET=sentinel-jwt-0815
+HQ_GITHUB_TOKEN=sentinel-hq-0815
+ENVFILE
+cat >"$ETC2/ops.env" <<'ENVFILE'
+TELEGRAM_CHAT_ID=7
+AWS_SECRET_ACCESS_KEY=sentinel-aws-0815
+RESTIC_PASSWORD_FILE=/nirgends
+DEPLOY_REF="mit Leer zeichen"
+ENVFILE
+# shellcheck disable=SC2016
+expect 0 "load_env_files mit Präfixen" env -u BAKERY_ENV_LOADED BAKERY_ETC="$ETC2" bash -c '
+  . "$1"; load_env_files TELEGRAM_ DEPLOY_
+  echo "chat=${TELEGRAM_CHAT_ID:-} aws=${AWS_SECRET_ACCESS_KEY:-leer} pw=${RESTIC_PASSWORD_FILE:-leer} ref=${DEPLOY_REF:-} api=${NEXT_PUBLIC_API_URL:-}"' _ "$SCRIPTS/lib.sh"
+check "ops.env: nur TELEGRAM_/DEPLOY_ übernommen" log_has "chat=7 aws=leer pw=leer ref=mit Leer zeichen api=https://intern.baeckerei.test"
+# shellcheck disable=SC2016
+expect 0 "load_env_files ohne Präfixe lädt alles" env -u BAKERY_ENV_LOADED BAKERY_ETC="$ETC2" bash -c '
+  . "$1"; load_env_files; echo "aws=${AWS_SECRET_ACCESS_KEY:-leer}"' _ "$SCRIPTS/lib.sh"
+check "ops.env vollständig" log_has "aws=sentinel-aws-0815"
 
 # ---------------------------------------------------------------------------
 echo "hq-sync.sh"
@@ -256,6 +302,22 @@ expect 0 "Platten-Prüfung" env HEALTH_CHECKS="disk" "$SCRIPTS/health.sh"
 expect 1 "Platten-Prüfung mit Grenze 0 %" env HEALTH_CHECKS="disk" DISK_MAX_PERCENT=0 "$SCRIPTS/health.sh"
 expect 2 "unbekannte Prüfung" env HEALTH_CHECKS="quatsch" "$SCRIPTS/health.sh"
 
+# HTTPS über "Caddy" (Stub mit selbst signiertem Zertifikat auf P_TLS)
+TLS_HOST="intern.baeckerei.test"
+openssl req -x509 -newkey rsa:2048 -nodes -days 200 -subj "/CN=$TLS_HOST" \
+  -addext "subjectAltName=DNS:$TLS_HOST" -keyout "$TEST_TMP/tls.key" -out "$TEST_TMP/tls.crt" >/dev/null 2>&1
+start_stub "$P_TLS" "$TEST_TMP/tls-stub.log" "$TEST_TMP/tls.crt" "$TEST_TMP/tls.key"
+TLS_ENV=(HEALTH_CHECKS=tls HEALTH_TLS_HOST="$TLS_HOST" HEALTH_TLS_PORT="$P_TLS" HEALTH_TLS_CAFILE="$TEST_TMP/tls.crt")
+expect 0 "TLS ohne HEALTH_TLS_HOST übersprungen" env HEALTH_CHECKS=tls HEALTH_TLS_HOST= "$SCRIPTS/health.sh"
+check "Log: übersprungen" log_has "TLS-Prüfung übersprungen"
+expect 0 "TLS gültig, Restlaufzeit reicht" env "${TLS_ENV[@]}" "$SCRIPTS/health.sh"
+expect 1 "TLS: Zertifikat läuft bald ab (Grenze 300 Tage)" env "${TLS_ENV[@]}" HEALTH_TLS_MIN_DAYS=300 "$SCRIPTS/health.sh"
+check "Meldung nennt Ablauf und acme" sh -c "grep -q 'weniger als 300 Tagen' '$TEST_TMP/last.log' && grep -q 'acme' '$TEST_TMP/last.log'"
+expect 1 "TLS: Zertifikat nicht vertrauenswürdig" env "${TLS_ENV[@]}" HEALTH_TLS_CAFILE= "$SCRIPTS/health.sh"
+check "Meldung: keine gültige HTTPS-Verbindung" log_has "keine gültige HTTPS-Verbindung"
+expect 1 "TLS: Caddy aus" env "${TLS_ENV[@]}" HEALTH_TLS_PORT="$P_CLOSED" "$SCRIPTS/health.sh"
+expect 0 "TLS wieder gut" env "${TLS_ENV[@]}" "$SCRIPTS/health.sh"
+
 # ---------------------------------------------------------------------------
 echo "backup.sh / restore.sh"
 
@@ -291,6 +353,8 @@ exit \${FAKE_RESTIC_EXIT:-0}
 EOF
 chmod +x "$FAKEBIN/restic"
 printf 'testpasswort\n' >"$BAKERY_ETC/restic-password"
+printf 'TELEGRAM_CHAT_ID=1\n' >"$BAKERY_ETC/ops.env"
+printf 'PORT=5000\n' >"$BAKERY_ETC/bakery.env"
 
 expect 11 "restic da, Ziel fehlt -> exit 11" env PATH="$FAKEBIN:$PATH" "$SCRIPTS/backup.sh"
 check "Meldung nennt Q4" log_has "Q4"
@@ -298,9 +362,16 @@ expect 11 "Passwortdatei fehlt -> exit 11" env PATH="$FAKEBIN:$PATH" RESTIC_REPO
 rm -f "$BACKUP_DIR/last-success" "$TEST_TMP/restic.log"
 expect 0 "voller Lauf mit restic-Attrappe" env PATH="$FAKEBIN:$PATH" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
 check "restic backup mit current/bakery.db" grep -q "restic backup .*backup/current/bakery.db" "$TEST_TMP/restic.log"
-check "Passwortdatei ausgeschlossen" grep -q -- "--exclude $BAKERY_ETC/restic-password" "$TEST_TMP/restic.log"
+check "Passwortdatei nicht im Backup" sh -c "! grep -q 'restic-password' '$TEST_TMP/restic.log'"
+check "ops.env nicht im Backup" sh -c "! grep -q 'ops.env' '$TEST_TMP/restic.log'"
+check "bakery.env im Backup" grep -q "restic backup .*$BAKERY_ETC/bakery.env" "$TEST_TMP/restic.log"
 check "forget --keep-daily 14 --keep-weekly 8 --prune" grep -q "restic forget .*--keep-daily 14 --keep-weekly 8 --prune" "$TEST_TMP/restic.log"
 check "last-success geschrieben" test -f "$BACKUP_DIR/last-success"
+: >"$TEST_TMP/restic.log"
+mkdir -p "$TEST_TMP/creds" && printf 'credpw\n' >"$TEST_TMP/creds/restic-password"
+expect 0 "RESTIC_FORGET=0 + Credential aus systemd" env PATH="$FAKEBIN:$PATH" RESTIC_FORGET=0 CREDENTIALS_DIRECTORY="$TEST_TMP/creds" RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$TEST_TMP/nix" "$SCRIPTS/backup.sh"
+check "kein forget bei RESTIC_FORGET=0" sh -c "! grep -q 'restic forget' '$TEST_TMP/restic.log'"
+check "Log: Append-only" log_has "RESTIC_FORGET=0"
 expect 12 "restic backup schlägt fehl -> exit 12" env PATH="$FAKEBIN:$PATH" FAKE_RESTIC_EXIT=1 RESTIC_REPOSITORY="$TEST_TMP/repo" RESTIC_PASSWORD_FILE="$BAKERY_ETC/restic-password" "$SCRIPTS/backup.sh"
 
 SNAP="$(find "$BACKUP_DIR/snapshots" -name 'bakery-nightly-*.db' | sort | tail -n 1)"
@@ -311,16 +382,37 @@ expect 6 "restore einer kaputten Datei" "$SCRIPTS/restore.sh" --from-file "$TEST
 STUB_SYSTEMCTL="$FAKEBIN/systemctl"
 cat >"$STUB_SYSTEMCTL" <<EOF
 #!/bin/sh
-echo "systemctl \$*" >>"$TEST_TMP/systemctl.log"
+if [ -e "$STATE_DIR/maintenance" ]; then m=ja; else m=nein; fi
+echo "systemctl \$* wartung=\$m" >>"$TEST_TMP/systemctl.log"
 EOF
 chmod +x "$STUB_SYSTEMCTL"
 printf 'wal' >"$DB_PATH-wal"
 printf 'shm' >"$DB_PATH-shm"
 expect 0 "restore --apply (Attrappe systemctl)" env RESTORE_ALLOW_NONROOT=1 SYSTEMCTL="$STUB_SYSTEMCTL" "$SCRIPTS/restore.sh" --from-file "$SNAP" --target "$TEST_TMP/restore3" --apply
 check "API gestoppt und gestartet" sh -c "grep -q 'stop bakery-api' '$TEST_TMP/systemctl.log' && grep -q 'start bakery-api' '$TEST_TMP/systemctl.log'"
+check "Wartung während stop/start gesetzt" sh -c "grep -q 'stop bakery-api.service wartung=ja' '$TEST_TMP/systemctl.log' && grep -q 'start bakery-api.service wartung=ja' '$TEST_TMP/systemctl.log'"
+check "Wartung danach entfernt" test ! -e "$STATE_DIR/maintenance"
 check "alte -wal/-shm beiseite gelegt" sh -c "test ! -e '$DB_PATH-wal' && test ! -e '$DB_PATH-shm' && ls '$DB_PATH'.vor-restore-*-wal >/dev/null"
 expect 0 "eingespielte DB ist gültig" node "$SCRIPTS/sqlite-tool.js" check "$DB_PATH" "$REPO_ROOT"
 expect 2 "--apply ohne root verweigert" "$SCRIPTS/restore.sh" --from-file "$SNAP" --apply
+# laufendes Backup hält die Sperre -> kein Einspielen
+if command -v flock >/dev/null 2>&1; then
+  (flock 9 && sleep 5) 9>"$STATE_DIR/backup.lock" &
+  holder=$!
+  sleep 0.5
+else
+  mkdir "$STATE_DIR/backup.lockdir"
+  holder=""
+fi
+: >"$TEST_TMP/systemctl.log"
+expect 2 "--apply während eines Backups verweigert" env RESTORE_ALLOW_NONROOT=1 SYSTEMCTL="$STUB_SYSTEMCTL" "$SCRIPTS/restore.sh" --from-file "$SNAP" --target "$TEST_TMP/restore4" --apply
+check "API nicht angefasst" test ! -s "$TEST_TMP/systemctl.log"
+if [ -n "$holder" ]; then
+  kill "$holder" 2>/dev/null
+  wait "$holder" 2>/dev/null
+else
+  rmdir "$STATE_DIR/backup.lockdir"
+fi
 
 # ---------------------------------------------------------------------------
 echo "deploy.sh"
@@ -331,18 +423,27 @@ export BAKERY_ROOT="$TEST_TMP/opt"
 git init --quiet --bare --initial-branch=main "$W_ORIGIN"
 git init --quiet --initial-branch=main "$W_SEED"
 printf '{"lockfileVersion": 3}\n' >"$W_SEED/package-lock.json"
+# Attrappe von install.sh: deploy.sh ruft sie aus dem root-eigenen Klon auf.
+mkdir -p "$W_SEED/deploy/scripts"
+cat >"$W_SEED/deploy/scripts/install.sh" <<STUB
+#!/bin/sh
+echo "units \$* \$(git -C "\$(dirname "\$0")/../.." rev-parse HEAD)" >>"$TEST_TMP/units.log"
+STUB
+chmod +x "$W_SEED/deploy/scripts/install.sh"
 git -C "$W_SEED" add -A && git -C "$W_SEED" commit --quiet -m "Release eins"
 git -C "$W_SEED" remote add origin "$W_ORIGIN" && git -C "$W_SEED" push --quiet origin main
 mkdir -p "$BAKERY_ROOT/releases"
 git clone --quiet --bare "$W_ORIGIN" "$BAKERY_ROOT/repo.git"
 git --git-dir="$BAKERY_ROOT/repo.git" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
 ln -s "$BAKERY_VAR/hq" "$BAKERY_ROOT/releases/hq"
+git clone --quiet "$W_ORIGIN" "$TEST_TMP/src"
 
 : >"$TEST_TMP/systemctl.log"
 DEPLOY_ENV=(APP_USER="$(id -un)" SYSTEMCTL="$STUB_SYSTEMCTL" DEPLOY_SKIP_NATIVE_CHECK=1
-  DEPLOY_HEALTH_TIMEOUT=3 DB_PATH="$TEST_TMP/keine.db" NEXT_PUBLIC_API_URL="https://intern.example.de"
-  DEPLOY_INSTALL_CMD='mkdir -p node_modules && echo installiert > node_modules/.marker'
-  DEPLOY_BUILD_CMD='mkdir -p dist/apps/bakery-api/bundle dist/apps/bakery-management/.next && echo "//" > dist/apps/bakery-api/bundle/main.js && echo test > dist/apps/bakery-management/.next/BUILD_ID')
+  DEPLOY_HEALTH_TIMEOUT=3 DB_PATH="$TEST_TMP/keine.db" NEXT_PUBLIC_API_URL="https://intern.baeckerei.test"
+  DEPLOY_UPDATE_UNITS=1 DEPLOY_SRC_DIR="$TEST_TMP/src"
+  DEPLOY_INSTALL_CMD="mkdir -p node_modules && echo installiert > node_modules/.marker && env > '$TEST_TMP/install-env.txt'"
+  DEPLOY_BUILD_CMD="mkdir -p dist/apps/bakery-api/bundle dist/apps/bakery-management/.next && echo '//' > dist/apps/bakery-api/bundle/main.js && echo test > dist/apps/bakery-management/.next/BUILD_ID && env > '$TEST_TMP/build-env.txt'")
 
 # Release-Verzeichnisse heißen <sha12>-<Zeit>; verglichen wird der Commit-Teil.
 rel() { basename "$(readlink "$BAKERY_ROOT/current")" | cut -c1-12; }
@@ -350,10 +451,21 @@ active_ok() { test -f "$(readlink "$BAKERY_ROOT/current")/.bakery-release" && te
 sha12() { git -C "$W_SEED" rev-parse HEAD | cut -c1-12; }
 
 expect 2 "ohne NEXT_PUBLIC_API_URL -> Abbruch" env "${DEPLOY_ENV[@]}" NEXT_PUBLIC_API_URL= "$SCRIPTS/deploy.sh" main
+expect 2 "NEXT_PUBLIC_API_URL aus der Vorlage -> Abbruch" env "${DEPLOY_ENV[@]}" NEXT_PUBLIC_API_URL=https://intern.example.de "$SCRIPTS/deploy.sh" main
+check "Meldung nennt den Platzhalter" log_has "Platzhalter aus der Vorlage"
+expect 2 "CORS_ORIGIN aus der Vorlage -> Abbruch" env "${DEPLOY_ENV[@]}" CORS_ORIGIN=https://intern.example.de "$SCRIPTS/deploy.sh" main
 expect 2 "ungültiger REF" env "${DEPLOY_ENV[@]}" "$SCRIPTS/deploy.sh" "main;rm"
 expect 3 "unbekannter REF" env "${DEPLOY_ENV[@]}" "$SCRIPTS/deploy.sh" gibtsnicht
-expect 0 "erstes Deploy" env "${DEPLOY_ENV[@]}" "$SCRIPTS/deploy.sh" main
+# Erstes Deploy liest bakery.env/ops.env aus ETC2 (mit Geheimnis-Attrappen)
+# und bekommt zusätzlich Geheimnisse aus der aufrufenden Umgebung.
+expect 0 "erstes Deploy" env -u BAKERY_ENV_LOADED "${DEPLOY_ENV[@]}" BAKERY_ETC="$ETC2" \
+  TELEGRAM_BOT_TOKEN=sentinel-tg-0815 RESTIC_PASSWORD=sentinel-restic-0815 "$SCRIPTS/deploy.sh" main
 FIRST="$(sha12)"
+check "npm ci sieht keine Geheimnisse" sh -c "test -s '$TEST_TMP/install-env.txt' && ! grep -q sentinel '$TEST_TMP/install-env.txt'"
+check "Build sieht keine Geheimnisse" sh -c "test -s '$TEST_TMP/build-env.txt' && ! grep -q sentinel '$TEST_TMP/build-env.txt'"
+check "Build sieht NEXT_PUBLIC_*/API_URL aus bakery.env" sh -c "grep -q '^NEXT_PUBLIC_API_URL=https://intern.baeckerei.test' '$TEST_TMP/build-env.txt' && grep -q '^NEXT_PUBLIC_PILOT_MODE=1' '$TEST_TMP/build-env.txt' && grep -q '^API_URL=' '$TEST_TMP/build-env.txt' && grep -q '^NODE_ENV=production' '$TEST_TMP/build-env.txt'"
+check "npm ci ohne Build-Schlüssel" sh -c "! grep -q '^NEXT_PUBLIC_' '$TEST_TMP/install-env.txt' && grep -q '^HUSKY=0' '$TEST_TMP/install-env.txt'"
+check "Units aus dem root-eigenen Klon, gleicher Commit" grep -q "units --units-only $(git -C "$W_SEED" rev-parse HEAD)" "$TEST_TMP/units.log"
 check "current zeigt auf Release eins" test "$(rel)" = "$FIRST"
 check "Dienste neu gestartet" grep -q "restart bakery-api.service" "$TEST_TMP/systemctl.log"
 check "Wartungsmarkierung wieder entfernt" test ! -e "$STATE_DIR/maintenance"
@@ -388,10 +500,16 @@ git -C "$W_SEED" add -A && git -C "$W_SEED" commit --quiet -m "Release drei" && 
 THIRD="$(sha12)"
 expect 7 "Health-Check schlägt fehl -> exit 7" env "${DEPLOY_ENV[@]}" HEALTH_API_URL="http://127.0.0.1:$P_CLOSED/health" "$SCRIPTS/deploy.sh" main
 check "Rollback-Hinweis" log_has "deploy.sh --rollback"
+check "Hinweis: erst Rollback, dann restore" awk '/1\. sudo .*deploy\.sh --rollback/ { r = NR } /restore\.sh --from-file/ { s = NR } END { exit !(r && s && r < s) }' "$TEST_TMP/last.log"
+check "fehlgeschlagenes Release vermerkt" test "$(cut -c1-12 "$STATE_DIR/deploy-failed")" = "$THIRD"
+expect 2 "restore --apply auf dem fehlgeschlagenen Release verweigert" env RESTORE_ALLOW_NONROOT=1 SYSTEMCTL="$STUB_SYSTEMCTL" "$SCRIPTS/restore.sh" --from-file "$SNAP" --target "$TEST_TMP/restore5" --apply
+check "Meldung: erst --rollback" log_has "Erst: sudo .*deploy.sh --rollback"
 check "kein automatisches Zurückschalten" test "$(rel)" = "$THIRD"
 check "Wartungsmarkierung entfernt" test ! -e "$STATE_DIR/maintenance"
 expect 0 "Rollback nach fehlgeschlagenem Deploy" env "${DEPLOY_ENV[@]}" "$SCRIPTS/deploy.sh" --rollback
 check "zurück auf Release zwei" test "$(rel)" = "$SECOND"
+check "deploy-failed nach Rollback entfernt" test ! -e "$STATE_DIR/deploy-failed"
+expect 0 "restore --apply nach dem Rollback erlaubt" env RESTORE_ALLOW_NONROOT=1 SYSTEMCTL="$STUB_SYSTEMCTL" "$SCRIPTS/restore.sh" --from-file "$SNAP" --target "$TEST_TMP/restore6" --apply
 
 sleep 1
 expect 5 "Build ohne API-Bundle -> exit 5" env "${DEPLOY_ENV[@]}" DEPLOY_BUILD_CMD='mkdir -p dist' "$SCRIPTS/deploy.sh" --rebuild main
@@ -413,6 +531,19 @@ check "Worktree-Liste aufgeräumt" sh -c "test \"\$(git --git-dir='$BAKERY_ROOT/
 cp "$DB" "$TEST_TMP/live.db"
 expect 0 "Deploy mit DB legt pre-deploy-Kopie an" env "${DEPLOY_ENV[@]}" DB_PATH="$TEST_TMP/live.db" APP_DIR="$REPO_ROOT" BACKUP_SQLITE_METHOD=cli "$SCRIPTS/deploy.sh" main
 check "pre-deploy-Kopie vorhanden" sh -c "ls '$BACKUP_DIR'/snapshots/bakery-pre-deploy-*.db >/dev/null"
+check "Pfad der Kopie vermerkt" sh -c "test -f \"\$(cat '$STATE_DIR/deploy-pre-db')\""
+
+# Ein Commit, den es nur im Code-Repository der Box gibt (nicht auf origin),
+# wird gebaut, aber nie aktiviert: der root-eigene Klon kennt ihn nicht.
+EVIL="$TEST_TMP/evil"
+git clone --quiet "$W_ORIGIN" "$EVIL"
+printf 'manipuliert\n' >"$EVIL/README.md"
+git -C "$EVIL" commit --quiet -am "nur lokal"
+git -C "$EVIL" push --quiet "$BAKERY_ROOT/repo.git" HEAD:refs/heads/lokal
+BEFORE_EVIL="$(readlink "$BAKERY_ROOT/current")"
+expect 3 "Commit nicht auf origin -> nicht umgeschaltet" env "${DEPLOY_ENV[@]}" "$SCRIPTS/deploy.sh" lokal
+check "current unverändert" test "$(readlink "$BAKERY_ROOT/current")" = "$BEFORE_EVIL"
+check "Meldung nennt origin" log_has "nicht vorhanden"
 
 # ---------------------------------------------------------------------------
 echo

@@ -10,6 +10,7 @@ Type=oneshot
 User=bakery
 Group=bakery
 EnvironmentFile=/etc/bakery/bakery.env
+# ops.env ist root:root 0600 - systemd liest sie als root und setzt nur die Variablen.
 EnvironmentFile=-/etc/bakery/ops.env
 Environment=BAKERY_ENV_LOADED=1
 ExecStart=/opt/bakery/bin/health.sh
