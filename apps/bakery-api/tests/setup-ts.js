@@ -17,3 +17,4 @@ process.env.HQ_REPORTS_DIR = path.join(nowhere, 'reports')
 process.env.HQ_FINANCE_DIR = path.join(nowhere, 'finance')
 // B5: never commit into a developer's hq write worktree from a test.
 delete process.env.HQ_WRITE_DIR
+delete process.env.HQ_WRITE_BRANCH

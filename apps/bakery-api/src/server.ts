@@ -9,7 +9,7 @@ import * as http from 'http'
 import { Sequelize } from 'sequelize'
 
 import { createApp } from './app'
-import { ServerConfig, loadConfig } from './config/env'
+import { ServerConfig, loadConfig, loadHqConfig } from './config/env'
 import { openDatabase } from './db/database'
 import { runMigrations } from './db/migrate'
 import { initializeModels } from './models'
@@ -31,6 +31,8 @@ export async function startServer(
   config: ServerConfig = loadConfig()
 ): Promise<RunningServer> {
   console.log(`[INFO] Starting bakery-api (${config.nodeEnv})`)
+  // Before the database: a misconfigured hq must not migrate anything.
+  const hq = loadHqConfig()
   console.log(`[INFO] Database: ${config.dbPath}`)
 
   const { sequelize, info } = await openDatabase({
@@ -53,8 +55,8 @@ export async function startServer(
   // come from the create-user CLI.
   await bootstrapAdmin()
 
-  const hqProductsDir = defaultProductsDir()
-  const hqWriteDir = process.env['HQ_WRITE_DIR'] || null
+  const hqProductsDir = hq.productsDir ?? defaultProductsDir()
+  const hqWriteDir = hq.writeDir
   console.log(`[INFO] hq products: ${hqProductsDir}`)
   console.log(
     hqWriteDir

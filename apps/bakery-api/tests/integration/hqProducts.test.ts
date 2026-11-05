@@ -26,11 +26,15 @@ let owner: Record<string, string>
 let seller: Record<string, string>
 
 /** Another app on the same database (sessions stay valid) with other hq dirs. */
-function appWith(productsDir: string, writeDir: string | null): Application {
+function appWith(
+  productsDir: string,
+  writeDir: string | null,
+  extra: { production?: boolean; writeBranch?: string } = {}
+): Application {
   return createApp({
     logRequests: false,
     sequelize: api.sequelize,
-    hqProducts: { productsDir, writeDir },
+    hqProducts: { productsDir, writeDir, ...extra },
   })
 }
 
@@ -148,6 +152,16 @@ describe('reading', () => {
       'mustersemmel',
     ])
     expect(res.body.count).toBe(2)
+  })
+
+  it('a repeated ?category= (array) matches nothing, like the mock', async () => {
+    for (const url of [
+      '/api/products?category=brot&category=broetchen',
+      '/api/hq-products?category=brot&category=broetchen',
+    ]) {
+      const res = await request(app).get(url).set(seller).expect(200)
+      expect(res.body).toEqual({ success: true, data: [], count: 0 })
+    }
   })
 
   it('GET /api/hq-products lists the same products', async () => {
@@ -383,7 +397,7 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
     expect(git(writeRoot, 'status', '--porcelain')).toBe('')
   })
 
-  it('GET serves the approved version and flags pending products', async () => {
+  it('the shop sees the approved version, the management the pending one', async () => {
     await request(app)
       .put('/api/hq-products/musterweck')
       .set(owner)
@@ -397,11 +411,67 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
       price: 0.45,
       pendingApproval: true,
     })
+    expect(byId['musterweck']).not.toHaveProperty('approved')
     expect(byId['kornbrot-500g'].pendingApproval).toBe(false)
+
     const one = await request(app)
       .get('/api/hq-products/musterweck')
       .set(seller)
-    expect(one.body.data).toMatchObject({ price: 0.45, pendingApproval: true })
+    expect(one.body.data).toMatchObject({
+      price: 0.6,
+      pendingApproval: true,
+      approved: { id: 'musterweck', price: 0.45 },
+    })
+    const mgmt = await request(app).get('/api/hq-products').set(seller)
+    const managed = Object.fromEntries(
+      mgmt.body.data.map((p: { id: string }) => [p.id, p])
+    )
+    expect(managed['musterweck']).toMatchObject({
+      price: 0.6,
+      pendingApproval: true,
+      approved: { price: 0.45 },
+    })
+    expect(managed['kornbrot-500g'].pendingApproval).toBe(false)
+    expect(managed['kornbrot-500g']).not.toHaveProperty('approved')
+  })
+
+  it('saving the full edit form of a pending product keeps the pending edit (no lost update)', async () => {
+    await request(app)
+      .put('/api/hq-products/musterweck')
+      .set(owner)
+      .send({ price: 9.99 })
+      .expect(200)
+    const got = await request(app)
+      .get('/api/hq-products/musterweck')
+      .set(owner)
+      .expect(200)
+    const res = await request(app)
+      .put('/api/hq-products/musterweck')
+      .set(owner)
+      .send({
+        ...editFormBody(got.body.data),
+        short_description: 'Zweite Änderung.',
+      })
+      .expect(200)
+    expect(res.body.data).toMatchObject({
+      price: 9.99,
+      short_description: 'Zweite Änderung.',
+    })
+    const file = read(path.join(writeRoot, 'products'), '13-musterweck.md')
+    expect(file).toContain('price: 9.99\n')
+    expect(file).toContain('short_description: "Zweite Änderung."\n')
+    expect(commits()).toBe('3')
+
+    // Saving the form of a pending product unchanged commits nothing.
+    const again = await request(app)
+      .get('/api/hq-products/musterweck')
+      .set(owner)
+    await request(app)
+      .put('/api/hq-products/musterweck')
+      .set(owner)
+      .send(editFormBody(again.body.data))
+      .expect(200)
+    expect(commits()).toBe('3')
   })
 
   it('a second edit builds on the pending one; reverting clears the flag', async () => {
@@ -497,7 +567,10 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
       .get('/api/hq-products/neues-testbrot')
       .set(seller)
       .expect(200)
-    expect(one.body.data.pendingApproval).toBe(true)
+    expect(one.body.data).toMatchObject({
+      pendingApproval: true,
+      approved: null,
+    })
 
     // Its id and number stay taken until the merge.
     const dup = await request(app)
@@ -525,8 +598,48 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
     expect(commits()).toBe('5')
   })
 
-  it('a failing commit answers 500 and restores the file', async () => {
-    // A write dir that is not a git repository: `git add` fails.
+  it('a rejected commit (pre-commit hook) answers 500 and restores the file', async () => {
+    const hook = path.join(writeRoot, '.git', 'hooks', 'pre-commit')
+    fs.writeFileSync(hook, '#!/bin/sh\necho "abgelehnt" >&2\nexit 1\n')
+    fs.chmodSync(hook, 0o755)
+    const dir = path.join(writeRoot, 'products')
+    const before = read(dir, '13-musterweck.md')
+    const error = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    try {
+      const res = await request(app)
+        .put('/api/hq-products/musterweck')
+        .set(owner)
+        .send({ price: 0.99 })
+      expect(res.status).toBe(500)
+      expect(res.body.error).toBe('hq_commit_failed')
+      expect(res.body.message).toMatch(/nicht in hq gespeichert/)
+      expect(read(dir, '13-musterweck.md')).toBe(before)
+
+      const created = await request(app)
+        .post('/api/hq-products')
+        .set(owner)
+        .send({ name: 'Wird nichts', category: 'brot', price: 1 })
+      expect(created.status).toBe(500)
+      expect(fs.existsSync(path.join(dir, '22-wird-nichts.md'))).toBe(false)
+
+      // Nothing left staged or modified, no commit.
+      expect(git(writeRoot, 'status', '--porcelain')).toBe('')
+      expect(commits()).toBe('1')
+      const got = await request(app)
+        .get('/api/hq-products/musterweck')
+        .set(owner)
+      expect(got.body.data).toMatchObject({
+        price: 0.45,
+        pendingApproval: false,
+      })
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('a write dir that is no git repo is 503 and nothing is written', async () => {
     const broken = tempDir('hq-broken-')
     fs.mkdirSync(path.join(broken, 'products'))
     fs.copyFileSync(
@@ -535,33 +648,74 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
     )
     fs.mkdirSync(path.join(broken, '.git')) // not a valid repo, stops git walking up
     const before = read(path.join(broken, 'products'), '13-musterweck.md')
-    const brokenApp = appWith(readDir, broken)
     const error = jest
       .spyOn(console, 'error')
       .mockImplementation(() => undefined)
     try {
-      const res = await request(brokenApp)
+      const res = await request(appWith(readDir, broken))
         .put('/api/hq-products/musterweck')
         .set(owner)
         .send({ price: 0.99 })
-      expect(res.status).toBe(500)
-      expect(res.body.error).toBe('hq_commit_failed')
-      expect(res.body.message).toMatch(/nicht in hq gespeichert/)
+      expect(res.status).toBe(503)
+      expect(res.body.error).toBe('hq_write_unavailable')
+      expect(res.body.message).toMatch(/git/)
       expect(read(path.join(broken, 'products'), '13-musterweck.md')).toBe(
         before
       )
-
-      const created = await request(brokenApp)
-        .post('/api/hq-products')
-        .set(owner)
-        .send({ name: 'Wird nichts', category: 'brot', price: 1 })
-      expect(created.status).toBe(500)
-      expect(fs.readdirSync(path.join(broken, 'products'))).toEqual([
-        '13-musterweck.md',
-      ])
     } finally {
       error.mockRestore()
     }
+  })
+
+  it('refuses to commit when the write worktree is not on app/edits (503)', async () => {
+    git(writeRoot, 'checkout', '-q', '-b', 'main')
+    const dir = path.join(writeRoot, 'products')
+    const before = read(dir, '13-musterweck.md')
+    const error = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    try {
+      const res = await request(app)
+        .put('/api/hq-products/musterweck')
+        .set(owner)
+        .send({ price: 0.99 })
+      expect(res.status).toBe(503)
+      expect(res.body.error).toBe('hq_write_wrong_branch')
+      expect(res.body.message).toContain('app/edits')
+      expect(res.body.message).toContain('main')
+      expect(read(dir, '13-musterweck.md')).toBe(before)
+      expect(commits()).toBe('1')
+
+      // Detached HEAD is refused as well.
+      git(writeRoot, 'checkout', '-q', '--detach')
+      const detached = await request(app)
+        .post('/api/hq-products')
+        .set(owner)
+        .send({ name: 'Losgelöst', category: 'brot', price: 1 })
+      expect(detached.status).toBe(503)
+      expect(detached.body.error).toBe('hq_write_wrong_branch')
+    } finally {
+      error.mockRestore()
+    }
+  })
+
+  it('a dirty file saved back to the committed state is a successful no-op', async () => {
+    const dir = path.join(writeRoot, 'products')
+    const committed = read(dir, '13-musterweck.md')
+    // Someone left the worktree dirty (not via the app).
+    fs.writeFileSync(
+      path.join(dir, '13-musterweck.md'),
+      committed.replace('price: 0.45\n', 'price: 0.7\n')
+    )
+    const res = await request(app)
+      .put('/api/hq-products/musterweck')
+      .set(owner)
+      .send({ price: 0.45 })
+    expect(res.status).toBe(200)
+    expect(res.body.pending).toBe(false)
+    expect(read(dir, '13-musterweck.md')).toBe(committed)
+    expect(commits()).toBe('1')
+    expect(git(writeRoot, 'status', '--porcelain')).toBe('')
   })
 
   it('a write dir without products/ is 503', async () => {
@@ -572,5 +726,102 @@ describe('writing with HQ_WRITE_DIR (git worktree on app/edits)', () => {
       .send({ price: 1 })
     expect(res.status).toBe(503)
     expect(res.body.error).toBe('hq_write_unavailable')
+  })
+})
+
+describe('production without HQ_WRITE_DIR', () => {
+  it('refuses writes with 503 instead of writing into the read clone', async () => {
+    const dir = makeProductsDir()
+    const before = read(dir, '13-musterweck.md')
+    const app = appWith(dir, null, { production: true })
+    await request(app).get('/api/products').set(seller).expect(200)
+    const put = await request(app)
+      .put('/api/hq-products/musterweck')
+      .set(owner)
+      .send({ price: 0.99 })
+    expect(put.status).toBe(503)
+    expect(put.body.error).toBe('hq_write_unavailable')
+    expect(put.body.message).toMatch(/HQ_WRITE_DIR/)
+    const post = await request(app)
+      .post('/api/hq-products')
+      .set(owner)
+      .send({ name: 'Neu', category: 'brot', price: 1 })
+    expect(post.status).toBe(503)
+    expect(read(dir, '13-musterweck.md')).toBe(before)
+    expect(fs.readdirSync(dir)).toHaveLength(SAMPLE_FILES.length)
+  })
+})
+
+describe('names YAML would misread', () => {
+  let readDir: string
+  let writeRoot: string
+  let app: Application
+  beforeEach(() => {
+    readDir = makeProductsDir()
+    writeRoot = makeWriteRepo(readDir)
+    app = appWith(readDir, writeRoot)
+  })
+
+  it.each([
+    'Brot:',
+    "'s Mustersemmel",
+    '"Brot" mit Kruste',
+    '? Brot',
+    '0x1F',
+    '1e3',
+  ])(
+    'POST and PUT with the name %j round-trip through the file',
+    async (name) => {
+      const created = await request(app)
+        .post('/api/hq-products')
+        .set(owner)
+        .send({ name, category: 'brot', price: 1 })
+      expect(created.status).toBe(201)
+      const id = created.body.data.id
+      const got = await request(app)
+        .get(`/api/hq-products/${id}`)
+        .set(owner)
+        .expect(200)
+      expect(got.body.data.name).toBe(name)
+      const mgmt = await request(app).get('/api/hq-products').set(owner)
+      expect(mgmt.body.data.map((p: { id: string }) => p.id)).toContain(id)
+
+      const renamed = await request(app)
+        .put('/api/hq-products/musterweck')
+        .set(owner)
+        .send({ name })
+        .expect(200)
+      expect(renamed.body.data.name).toBe(name)
+      const again = await request(app)
+        .get('/api/hq-products/musterweck')
+        .set(owner)
+        .expect(200)
+      expect(again.body.data.name).toBe(name)
+    }
+  )
+
+  it('refuses (400) a save that would not read back as written', async () => {
+    // A frontmatter field the serializer cannot reproduce: YAML reads the
+    // bare date as a Date, which would be written back as Date#toString().
+    const dir = path.join(writeRoot, 'products')
+    const file = path.join(dir, '13-musterweck.md')
+    fs.writeFileSync(
+      file,
+      read(dir, '13-musterweck.md').replace(
+        'seasonal: false\n',
+        'seasonal: false\ngeprueft: 2026-01-01\n'
+      )
+    )
+    git(writeRoot, 'commit', '-q', '-am', 'Datumsfeld')
+    const before = read(dir, '13-musterweck.md')
+    const res = await request(app)
+      .put('/api/hq-products/musterweck')
+      .set(owner)
+      .send({ price: 0.5 })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('invalid_product_file')
+    expect(res.body.message).toMatch(/Produktdatei/)
+    expect(read(dir, '13-musterweck.md')).toBe(before)
+    expect(git(writeRoot, 'rev-list', '--count', 'HEAD')).toBe('2')
   })
 })

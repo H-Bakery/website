@@ -81,11 +81,16 @@ function sortProducts(products) {
   return [...products].sort((a, b) => (a.numeric_id || 0) - (b.numeric_id || 0))
 }
 
-/** `?category=` wie im Mock: nur ein Text filtert. */
+/**
+ * `?category=` wie im Mock: fehlt oder leer -> alle; ein Text filtert; alles
+ * andere (`?category=a&category=b` ist ein Array) trifft keine Kategorie -
+ * der Mock vergleicht mit `===` und liefert dann eine leere Liste.
+ */
 function filterByCategory(products, category) {
   if (category === undefined || category === null || category === '') {
     return products
   }
+  if (typeof category !== 'string') return []
   return products.filter((p) => p.category === category)
 }
 
@@ -191,6 +196,53 @@ function buildNewProduct(input, existing, parsePrice) {
   return { ok: true, data, body: text, fileName: `${numericId}-${id}.md` }
 }
 
+/** Strukturgleichheit von YAML-Werten (Schlüsselreihenfolge egal). */
+function sameValue(a, b) {
+  if (a === b) return true
+  if (typeof a === 'number' && typeof b === 'number') {
+    return Number.isNaN(a) && Number.isNaN(b)
+  }
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, i) => sameValue(item, b[i]))
+    )
+  }
+  if (a instanceof Date || b instanceof Date) {
+    return a instanceof Date && b instanceof Date && a.getTime() === b.getTime()
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const keysA = Object.keys(a).filter((k) => a[k] !== undefined)
+    const keysB = Object.keys(b).filter((k) => b[k] !== undefined)
+    return (
+      keysA.length === keysB.length &&
+      keysA.every((k) => Object.prototype.hasOwnProperty.call(b, k)) &&
+      keysA.every((k) => sameValue(a[k], b[k]))
+    )
+  }
+  return false
+}
+
+/**
+ * Prüft eine serialisierte Datei, bevor sie geschrieben wird: liest der
+ * YAML-Parser genau die Frontmatter zurück, die gemeint war, und bleibt es ein
+ * Produkt? `parsed` ist das Ergebnis von gray-matter (oder `null`, wenn es
+ * geworfen hat). Sonst würde eine unlesbare Datei committet, die aus allen
+ * Listen fällt und die rollende PR blockiert (B5-Review).
+ *
+ * @returns {boolean}
+ */
+function roundTripsAs(parsed, data, body) {
+  if (!parsed || !parsed.data) return false
+  if (!sameValue(parsed.data, data)) return false
+  if (String(parsed.content ?? '').trim() !== String(body ?? '').trim()) {
+    return false
+  }
+  return toHqProduct(parsed.data, parsed.content) !== null
+}
+
 /** Eine Zeile ohne Zeilenumbrüche und spitze Klammern (git-Trailer). */
 function oneLine(value, fallback) {
   const text = String(value ?? '')
@@ -229,6 +281,8 @@ module.exports = {
   filterByCategory,
   findProduct,
   isProductFileName,
+  roundTripsAs,
+  sameValue,
   slugify,
   sortProducts,
   stripHeading,

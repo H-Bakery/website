@@ -1,7 +1,12 @@
 /**
  * hq-Produkte lesen und schreiben (B5, roadmap D6/D9/§4a).
  *
- * Lesen: aus dem Lese-Klon (`HQ_PRODUCTS_DIR`) über `hq-catalogue.ts`.
+ * Lesen: Shop (`/api/products`) nur aus dem Lese-Klon (`HQ_PRODUCTS_DIR`,
+ * freigegebener Stand). Verwaltung (`/api/hq-products`) sieht den Stand, auf
+ * dem ein PUT aufbaut: die Datei im Schreib-Worktree, falls vorhanden, mit
+ * `pendingApproval` und dem freigegebenen Stand als `approved`. Sonst würde
+ * das Bearbeiten-Formular (schickt alle Felder) beim zweiten Speichern die
+ * freigegebenen Werte über die wartende Änderung schreiben (B5-Review).
  *
  * Schreiben:
  *   - `HQ_WRITE_DIR` gesetzt (Box): die Datei landet in
@@ -21,6 +26,8 @@ import { execFile } from 'child_process'
 import * as fs from 'fs'
 import * as path from 'path'
 
+import matter from 'gray-matter'
+
 import {
   catalogueFor,
   defaultProductsDir,
@@ -38,17 +45,28 @@ const { parsePrice, validateProductInput } = require('./product-input.core')
 /** Ein Produkt der API-Antwort, mit Freigabestatus. */
 export type ListedProduct = HqProduct & { pendingApproval: boolean }
 
+/**
+ * Ein Produkt für die Verwaltung: der Stand im Schreib-Worktree. Wartet er
+ * auf Freigabe, steht der freigegebene Stand daneben (`null` = neu angelegt).
+ */
+export type ManagedProduct = ListedProduct & {
+  approved?: Readonly<HqProduct> | null
+}
+
+/** Branch des Schreib-Worktrees (D6). */
+export const DEFAULT_WRITE_BRANCH = 'app/edits'
+
 /** Wer speichert (aus `req.user`). */
 export interface Editor {
   username: string
   displayName: string
 }
 
-/** git im Schreib-Worktree: Argumente als Array, nie als Shell-String. */
+/** git im Schreib-Worktree: Argumente als Array, nie als Shell-String. Liefert stdout. */
 export type GitRunner = (
   args: string[],
   options: { cwd: string; env: NodeJS.ProcessEnv }
-) => Promise<void>
+) => Promise<string>
 
 export const runGit: GitRunner = (args, options) =>
   new Promise((resolve, reject) => {
@@ -56,7 +74,7 @@ export const runGit: GitRunner = (args, options) =>
       'git',
       args,
       { cwd: options.cwd, env: options.env, timeout: 30_000 },
-      (error, _stdout, stderr) => {
+      (error, stdout, stderr) => {
         if (error) {
           reject(
             new Error(
@@ -65,7 +83,7 @@ export const runGit: GitRunner = (args, options) =>
           )
           return
         }
-        resolve()
+        resolve(String(stdout))
       }
     )
   })
@@ -75,6 +93,14 @@ export interface HqProductsOptions {
   productsDir?: string
   /** Wurzel des Schreib-Worktrees (Default `HQ_WRITE_DIR`; leer = Entwicklung). */
   writeDir?: string | null
+  /** Branch, auf dem der Schreib-Worktree stehen muss (Default `HQ_WRITE_BRANCH` / `app/edits`). */
+  writeBranch?: string
+  /**
+   * Produktion: ohne Schreib-Worktree wird nicht geschrieben (503) - sonst
+   * landete die Änderung im Lese-Klon, den `hq-sync.sh` alle 10 min per
+   * `reset --hard` zurücksetzt (D6). Default `NODE_ENV === 'production'`.
+   */
+  production?: boolean
   /** Für Tests. */
   git?: GitRunner
 }
@@ -103,10 +129,35 @@ const fail = (status: number, error: string, message: string): WriteResult => ({
 const MSG = {
   readMissing: 'Das Produktverzeichnis aus hq wurde nicht gefunden.',
   writeMissing: 'Das Schreibverzeichnis für hq (HQ_WRITE_DIR) fehlt.',
+  writeNotRepo:
+    'Das Schreibverzeichnis für hq ist kein git-Arbeitsverzeichnis. Bitte die Einrichtung prüfen.',
+  wrongBranch: (branch: string, actual: string) =>
+    `Das Schreibverzeichnis für hq steht nicht auf dem Branch ${branch} (sondern auf ${actual}). Änderungen werden nicht gespeichert.`,
+  unsafeFile:
+    'Die Angaben lassen sich nicht unverändert in der Produktdatei speichern. Bitte Name und Texte prüfen (z. B. Sonderzeichen am Anfang oder Ende).',
   notFound: 'Produkt nicht gefunden.',
   fileExists: 'Eine Produktdatei mit diesem Namen existiert bereits.',
   commitFailed:
     'Die Änderung konnte nicht in hq gespeichert werden. Bitte später erneut versuchen.',
+}
+
+/**
+ * Liest gray-matter genau das zurück, was geschrieben werden soll? Sonst
+ * würde eine Datei committet, die aus allen Listen fällt (B5-Review).
+ */
+function roundTrips(
+  serialized: string,
+  data: Record<string, unknown>,
+  body: string
+): boolean {
+  let parsed: { data: unknown; content: string } | null = null
+  try {
+    // Mit Optionen-Objekt: kein gray-matter-Cache.
+    parsed = matter(serialized, {})
+  } catch {
+    parsed = null
+  }
+  return core.roundTripsAs(parsed, data, body)
 }
 
 /** Atomar schreiben: erst `.tmp`, dann `rename` - nie eine halbe Produktdatei. */
@@ -128,6 +179,8 @@ export class HqProductsService {
   readonly productsDir: string
   /** Wurzel des Schreib-Worktrees oder `null` (Entwicklung). */
   readonly writeDir: string | null
+  readonly writeBranch: string
+  readonly production: boolean
   private readonly git: GitRunner
   /** Schreibvorgänge nacheinander: lesen-ändern-schreiben + git-Index. */
   private queue: Promise<unknown> = Promise.resolve()
@@ -139,6 +192,12 @@ export class HqProductsService {
         ? process.env['HQ_WRITE_DIR'] || null
         : options.writeDir || null
     this.writeDir = writeDir ? path.resolve(writeDir) : null
+    this.writeBranch =
+      options.writeBranch ||
+      process.env['HQ_WRITE_BRANCH'] ||
+      DEFAULT_WRITE_BRANCH
+    this.production =
+      options.production ?? process.env['NODE_ENV'] === 'production'
     this.git = options.git ?? runGit
   }
 
@@ -177,42 +236,71 @@ export class HqProductsService {
   }
 
   /**
-   * Freigegebener Stand aus dem Lese-Klon, je Produkt mit `pendingApproval`.
-   * `includeNew`: auch Produkte, die nur im Schreib-Worktree liegen (neu
-   * angelegt, noch nicht gemergt) - für die Verwaltung, nicht für den Shop.
+   * Shop: freigegebener Stand aus dem Lese-Klon, je Produkt mit
+   * `pendingApproval`. Neue, noch nicht gemergte Produkte fehlen hier.
    */
-  list(
-    options: { category?: unknown; includeNew?: boolean } = {}
-  ): ListedProduct[] {
+  list(options: { category?: unknown } = {}): ListedProduct[] {
     const pending = this.pendingFiles()
     const products: ListedProduct[] = []
-    const seen = new Set<string>()
     for (const file of this.read.files()) {
       const product = this.withPending(file, pending)
-      if (product) {
-        products.push(product)
-        seen.add(product.id)
-      }
+      if (product) products.push(product)
     }
-    if (options.includeNew && this.write) {
-      for (const file of this.write.files()) {
-        if (!file.product || seen.has(file.product.id)) continue
-        if (this.read.fileNamed(file.file)) continue
-        products.push({ ...file.product, pendingApproval: true })
-      }
-    }
-    const category =
-      typeof options.category === 'string' ? options.category : undefined
-    return core.filterByCategory(core.sortProducts(products), category)
+    return core.filterByCategory(core.sortProducts(products), options.category)
   }
 
-  /** Ein Produkt per Slug: Lese-Klon, sonst (neu, wartend) Schreib-Worktree. */
+  /** Ein Produkt per Slug, freigegebener Stand (Lese-Klon). */
   get(id: string): ListedProduct | null {
-    const pending = this.pendingFiles()
     const file = this.read.fileOf(id)
-    if (file) return this.withPending(file, pending)
-    const fresh = this.write?.fileOf(id)
-    return fresh?.product ? { ...fresh.product, pendingApproval: true } : null
+    return file ? this.withPending(file, this.pendingFiles()) : null
+  }
+
+  /**
+   * Verwaltungssicht einer Datei: der Stand im Schreib-Worktree (falls es ihn
+   * gibt) - genau der, auf dem ein PUT aufbaut.
+   */
+  private managed(
+    readFile: ProductFile | null,
+    writeFile: ProductFile | null
+  ): ManagedProduct | null {
+    const current = writeFile ?? readFile
+    if (!current?.product) return null
+    const pending = writeFile !== null && writeFile.raw !== readFile?.raw
+    const product: ManagedProduct = {
+      ...current.product,
+      pendingApproval: pending,
+    }
+    if (pending) product.approved = readFile?.product ?? null
+    return product
+  }
+
+  /** Verwaltung: alle Produkte im Stand des Schreib-Worktrees, auch neue. */
+  listManaged(options: { category?: unknown } = {}): ManagedProduct[] {
+    const write = this.write
+    const products: ManagedProduct[] = []
+    const seenFiles = new Set<string>()
+    for (const file of this.read.files()) {
+      seenFiles.add(file.file)
+      const product = this.managed(file, write?.fileNamed(file.file) ?? null)
+      if (product) products.push(product)
+    }
+    if (write) {
+      for (const file of write.files()) {
+        if (seenFiles.has(file.file)) continue
+        const product = this.managed(null, file)
+        if (product) products.push(product)
+      }
+    }
+    return core.filterByCategory(core.sortProducts(products), options.category)
+  }
+
+  /** Verwaltung: ein Produkt per Slug im Stand des Schreib-Worktrees. */
+  getManaged(id: string): ManagedProduct | null {
+    const writeFile = this.write?.fileOf(id) ?? null
+    if (writeFile) {
+      return this.managed(this.read.fileNamed(writeFile.file), writeFile)
+    }
+    return this.managed(this.read.fileOf(id), null)
   }
 
   private enqueue<T>(job: () => Promise<T>): Promise<T> {
@@ -222,13 +310,32 @@ export class HqProductsService {
   }
 
   /** Zielverzeichnis für Schreibvorgänge, oder ein Fehler. */
-  private targetDir(): { dir: string } | { error: WriteResult } {
+  private async targetDir(): Promise<{ dir: string } | { error: WriteResult }> {
     const writeDir = this.writeProductsDir
     if (writeDir) {
       if (!fs.existsSync(writeDir)) {
         return { error: fail(503, 'hq_write_unavailable', MSG.writeMissing) }
       }
+      const branch = await this.currentBranch()
+      if (branch === null) {
+        return { error: fail(503, 'hq_write_unavailable', MSG.writeNotRepo) }
+      }
+      if (branch !== this.writeBranch) {
+        console.error(
+          `[hq-products] write worktree is on "${branch}", expected "${this.writeBranch}" - refusing to commit`
+        )
+        return {
+          error: fail(
+            503,
+            'hq_write_wrong_branch',
+            MSG.wrongBranch(this.writeBranch, branch)
+          ),
+        }
+      }
       return { dir: writeDir }
+    }
+    if (this.production) {
+      return { error: fail(503, 'hq_write_unavailable', MSG.writeMissing) }
     }
     if (!this.read.available()) {
       return { error: fail(503, 'hq_unavailable', MSG.readMissing) }
@@ -238,7 +345,7 @@ export class HqProductsService {
 
   update(id: string, input: unknown, editor: Editor): Promise<WriteResult> {
     return this.enqueue(async () => {
-      const target = this.targetDir()
+      const target = await this.targetDir()
       if ('error' in target) return target.error
 
       // Basis: der Stand im Schreib-Worktree (enthält frühere, noch nicht
@@ -256,6 +363,9 @@ export class HqProductsService {
         parsePrice
       )
       const serialized: string = serializeProductFile(data, body)
+      if (!roundTrips(serialized, data, body)) {
+        return fail(400, 'invalid_product_file', MSG.unsafeFile)
+      }
       const result = await this.persist(
         target.dir,
         base.file,
@@ -276,7 +386,7 @@ export class HqProductsService {
 
   create(input: unknown, editor: Editor): Promise<WriteResult> {
     return this.enqueue(async () => {
-      const target = this.targetDir()
+      const target = await this.targetDir()
       if ('error' in target) return target.error
 
       const invalid = validateProductInput(input, { partial: false })
@@ -298,6 +408,9 @@ export class HqProductsService {
       }
 
       const serialized: string = serializeProductFile(built.data, built.body)
+      if (!roundTrips(serialized, built.data, built.body)) {
+        return fail(400, 'invalid_product_file', MSG.unsafeFile)
+      }
       const result = await this.persist(
         target.dir,
         built.fileName,
@@ -379,6 +492,14 @@ export class HqProductsService {
     const env = this.gitEnv()
     const rel = `products/${file}`
     await this.git(['add', '--', rel], { cwd, env })
+    // Gleicht die Datei nach dem Schreiben wieder HEAD (ein schmutziger
+    // Worktree wurde auf den committeten Stand zurückgesetzt), gibt es nichts
+    // zu committen - `git commit -- path` schlüge dann fehl.
+    const staged = await this.git(
+      ['diff', '--cached', '--name-only', '--', rel],
+      { cwd, env }
+    )
+    if (staged.trim() === '') return
     // Pfadangabe beim Commit: nur diese Datei, nie was sonst im Index liegt.
     await this.git(
       [
@@ -393,6 +514,20 @@ export class HqProductsService {
       ],
       { cwd, env }
     )
+  }
+
+  /** Branch des Schreib-Worktrees (`HEAD` = losgelöst), `null` = kein Repo. */
+  private async currentBranch(): Promise<string | null> {
+    try {
+      const out = await this.git(['rev-parse', '--abbrev-ref', 'HEAD'], {
+        cwd: this.writeDir as string,
+        env: this.gitEnv(),
+      })
+      return out.trim()
+    } catch (error) {
+      console.error('[hq-products] write worktree unusable:', error)
+      return null
+    }
   }
 
   invalidate(): void {

@@ -4,6 +4,13 @@
  *   GET  /api/products[?category=]   { success, data: HQProduct[], count }
  *   GET  /api/hq-products            { success, data, count }   (neu, s. u.)
  *   GET  /api/hq-products/:id        { success, data: HQProduct }
+ *
+ * `/api/products` (Shop) liefert den freigegebenen Stand (Lese-Klon).
+ * `/api/hq-products` (Verwaltung) liefert den Stand im Schreib-Worktree - den,
+ * auf dem ein PUT aufbaut -, bei wartenden Produkten mit `approved` (dem
+ * freigegebenen Stand, `null` für neue). Sonst schriebe das Formular, das
+ * immer alle Felder schickt, die freigegebenen Werte über eine wartende
+ * Änderung.
  *   PUT  /api/hq-products/:id        { success, data, pending }   nur `inhaber`
  *   POST /api/hq-products            201 { success, data, pending } nur `inhaber`
  *
@@ -64,17 +71,14 @@ export function createHqProductsRouters(
 
   const hqProducts = Router()
   // Nicht im Mock (dort liest die Verwaltung die Dateien direkt). Wie
-  // /api/products, plus neu angelegte Produkte, die noch auf Freigabe warten.
+  // /api/products, aber im Stand des Schreib-Worktrees, inkl. neuer Produkte.
   hqProducts.get('/', (req, res) => {
-    const data = service.list({
-      category: req.query['category'],
-      includeNew: true,
-    })
+    const data = service.listManaged({ category: req.query['category'] })
     res.json({ success: true, data, count: data.length })
   })
 
   hqProducts.get('/:id', (req, res) => {
-    const product = service.get(req.params['id'])
+    const product = service.getManaged(req.params['id'])
     if (!product) {
       sendError(res, 404, 'not_found', 'Produkt nicht gefunden.')
       return

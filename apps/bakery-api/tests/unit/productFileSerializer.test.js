@@ -93,4 +93,53 @@ describe('serializeProductFile', () => {
     expect(out).toContain('tags: ["a,b", c]')
     expect(matter(out).data.tags).toEqual(['a,b', 'c'])
   })
+
+  // B5-Review: diese Namen ergaben unlesbare oder umgedeutete Frontmatter, und
+  // die echte API haette sie nach hq committet.
+  it.each([
+    "'s Mustersemmel",
+    '"Brot" mit Kruste',
+    'Brot:',
+    '? Brot',
+    ':Brot',
+    '0x1F',
+    '1e3',
+    '1_000',
+    '12:30',
+    '0o17',
+    '0b101',
+    '017',
+    '.inf',
+    '-.Inf',
+    '.NaN',
+    '2026-01-01',
+    'Null',
+    'Y',
+    'n',
+    'Brot: Roggen',
+    'Brot #1',
+    'Brot\tmit Tab',
+  ])('liest den Namen %j unveraendert zurueck', (name) => {
+    const out = serializeProductFile(
+      { id: 'x', name, category: 'brot', allergens: [name] },
+      '# X'
+    )
+    const data = matter(out, {}).data
+    expect(data.name).toBe(name)
+    expect(data.allergens).toEqual([name])
+  })
+
+  it('laesst gewoehnliche Namen ohne Anfuehrungszeichen', () => {
+    for (const name of [
+      'Kornbrot 500g',
+      '4-Korn-Brot',
+      '500g Brot',
+      "Brot's Bestes",
+      'Café frisch',
+    ]) {
+      expect(serializeProductFile({ id: 'x', name }, '# X')).toContain(
+        `name: ${name}\n`
+      )
+    }
+  })
 })

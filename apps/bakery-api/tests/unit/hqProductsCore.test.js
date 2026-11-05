@@ -121,6 +121,11 @@ describe('sortProducts / filterByCategory / findProduct', () => {
     expect(core.filterByCategory(list, undefined)).toBe(list)
   })
 
+  it('an array or object category matches nothing, like the mock', () => {
+    expect(core.filterByCategory(list, ['brot', 'kuchen'])).toEqual([])
+    expect(core.filterByCategory(list, { a: 'brot' })).toEqual([])
+  })
+
   it('finds by slug, numeric id or numeric string', () => {
     expect(core.findProduct(list, 'a').id).toBe('a')
     expect(core.findProduct(list, 3).id).toBe('c')
@@ -272,5 +277,62 @@ describe('commit message and co-author trailer', () => {
       name: 'Verwaltung (App)',
       email: 'verwaltung@bakery.local',
     })
+  })
+})
+
+describe('roundTripsAs / sameValue', () => {
+  const data = {
+    id: 'testbrot',
+    name: 'Testbrot',
+    price: 1.5,
+    allergens: ['gluten'],
+  }
+
+  it('accepts a parse that equals the intended frontmatter and body', () => {
+    expect(
+      core.roundTripsAs(
+        {
+          data: {
+            allergens: ['gluten'],
+            price: 1.5,
+            name: 'Testbrot',
+            id: 'testbrot',
+          },
+          content: '\n# Testbrot\n',
+        },
+        data,
+        '# Testbrot'
+      )
+    ).toBe(true)
+  })
+
+  it('rejects a failed parse, changed values, types, body or a non-product', () => {
+    expect(core.roundTripsAs(null, data, '# T')).toBe(false)
+    expect(
+      core.roundTripsAs(
+        { data: { ...data, name: 1000 }, content: '' },
+        { ...data, name: '1e3' },
+        ''
+      )
+    ).toBe(false)
+    expect(
+      core.roundTripsAs(
+        { data: { ...data, extra: 'x' }, content: '' },
+        data,
+        ''
+      )
+    ).toBe(false)
+    expect(core.roundTripsAs({ data, content: '# A' }, data, '# B')).toBe(false)
+    const noName = { id: 'x' }
+    expect(core.roundTripsAs({ data: noName, content: '' }, noName, '')).toBe(
+      false
+    )
+  })
+
+  it('compares dates by time and NaN with NaN', () => {
+    expect(core.sameValue(new Date(0), new Date(0))).toBe(true)
+    expect(core.sameValue(new Date(0), new Date(0).toString())).toBe(false)
+    expect(core.sameValue(NaN, NaN)).toBe(true)
+    expect(core.sameValue([1, 2], [1, 2, 3])).toBe(false)
   })
 })

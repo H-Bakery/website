@@ -68,11 +68,15 @@ function findMonorepoRoot(start: string): string | null {
 }
 
 /**
- * `HQ_PRODUCTS_DIR`, sonst `<website>/../hq/products` (wie Mock und
+ * `HQ_PRODUCTS_DIR`, sonst `${HQ_DIR}/products` (dieselbe Reihenfolge wie
+ * der Backzettel-Loader, Z3), sonst `<website>/../hq/products` (wie Mock und
  * Management-Loader). Wird bei jedem Aufruf neu gelesen.
  */
 export function defaultProductsDir(env: NodeJS.ProcessEnv = process.env) {
-  if (env['HQ_PRODUCTS_DIR']) return path.resolve(env['HQ_PRODUCTS_DIR'])
+  const products = env['HQ_PRODUCTS_DIR']?.trim()
+  if (products) return path.resolve(products)
+  const hq = env['HQ_DIR']?.trim()
+  if (hq) return path.resolve(hq, 'products')
   const root =
     findMonorepoRoot(process.cwd()) ?? findMonorepoRoot(__dirname) ?? '.'
   return path.resolve(root, '..', 'hq', 'products')
