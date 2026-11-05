@@ -93,13 +93,17 @@ and for supertest (B1). Mounted for the pilot:
 | `/api/users`                        | `routes/users.routes.ts`                 | user admin, `inhaber` only                                 |
 | `/api/partners`                     | `routes/partner.routes.ts`               | Backschrank; session required; B6: roles + hq              |
 | `/api/products`, `/api/hq-products` | `routes/hq-products.routes.ts`           | hq catalogue; reads any session, writes `inhaber` - see B5 |
+| `/api/preorders`                    | `routes/preorders.routes.ts`             | Vorbestellungen; verkauf, fahrer read + handover - see B7  |
+| `/api/deliveries`                   | `routes/preorders.routes.ts` (alias)     | only the Mörsbach mock contract (pickup points, preorders) |
+| `/api/orders` (POST only)           | `routes/preorders.routes.ts` (shop)      | shop order → preorder with channel `shop`, behind auth     |
 
-Mount points for B4 (reports/analytics/finance/targets), B7 (preorders)
-and Z\* (Backzettel) are marked in `app.ts` **below the global guard** - mount new domains there
-and add `requireRole(...)`. `libs/api/auth` is no longer mounted (the lib stays until B12).
+Mount points for B4 (reports/analytics/finance/targets) and Z\* (Backzettel) are marked in
+`app.ts` **below the global guard** - mount new domains there and add `requireRole(...)`.
+`libs/api/auth` is no longer mounted (the lib stays until B12).
 Everything else is unmounted: recipes, inventory, cash, chat, dashboard, staff, notifications,
-templates, preferences, import, sales-analytics, unsold, orders, production, baking-list,
-deliveries, workflows, email, monitoring/metrics, Swagger.
+templates, preferences, import, sales-analytics, unsold, the rest of orders (only the shop's
+`POST /api/orders` exists, B7), production, baking-list, the rest of deliveries (tours, stops,
+drivers - D11; only the Mörsbach alias exists), workflows, email, monitoring/metrics, Swagger.
 
 ## Errors
 
@@ -303,6 +307,112 @@ Tests: `tests/unit/hqProductsCore.test.js`, `tests/unit/hqCatalogue.test.ts`,
 `HQ_WRITE_DIR`), `tests/parity/hqProducts.parity.test.ts` (same answers **and the same bytes on
 disk** as `simple-server.js` for GET/PUT/POST).
 
+## Preorders (B7) and anonymisation (P4)
+
+Vorbestellungen for every channel in one table (`preorders` + `preorder_items`, baseline schema).
+Rules **once** in `src/services/delivery-preorders.core.js` (dependency-free CommonJS; the mock's
+Mörsbach routes keep using the same file): channels, statuses, transitions, input normalisation,
+codes, sums, day summary, the mapping to/from the mock shape and the anonymisation cutoff.
+DB + transactions + audit in `src/services/preorders.service.ts`, routes in
+`src/routes/preorders.routes.ts`, import/anonymise in `src/services/preorders-maintenance.ts`,
+the Backzettel-variant hook in `src/services/preorder-variants.ts`.
+
+| Endpoint                           | Who                                                | Answer                                                                |
+| ---------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------- |
+| `GET /api/preorders`               | verkauf, fahrer                                    | `{ success, data: Preorder[], count }`; filters below                 |
+| `GET /api/preorders/sums?date=`    | verkauf, fahrer, backstube                         | `{ success, data: { date, pickupPointId, preorderCount, items } }`    |
+| `GET /api/preorders/day?date=`     | verkauf, fahrer                                    | `{ success, data: { date, summary, sums, pickupPoints, preorders } }` |
+| `GET /api/preorders/pickup-points` | verkauf, fahrer                                    | `{ success, data: PickupPoint[] }`                                    |
+| `GET /api/preorders/:id`           | verkauf, fahrer                                    | `{ success, data }`; 404 `not_found`                                  |
+| `POST /api/preorders`              | verkauf                                            | 201 `{ success, data }`                                               |
+| `PATCH /api/preorders/:id`         | verkauf                                            | `{ success, data }`; partial; a date/place change renews the code     |
+| `POST /api/preorders/:id/status`   | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ status?, notCollected?, paid? }` → `{ success, data }`             |
+| `POST /api/preorders/:id/cancel`   | verkauf                                            | `{ success, data }` (status `storniert`; nothing is ever deleted)     |
+
+`inhaber` passes every check. `sums` items = `[{ productId, variant, name, unit, quantity,
+preorders }]`, everything except `storniert`, optionally `&pickupPointId=`. List filters: `date`
+or `from`/`to`, `status` (comma list), `channel`, `pickupPointId` (`laden` = no point), `q`
+(name/code; phone digits from 3 on; LIKE wildcards stripped). `Preorder` = `{ id, code, channel,
+customerName, customerPhone, pickupDate, pickupTime, pickupPointId, pickupPoint
+{ id, name, window } | null, status, notCollected, notCollectedAt, paid, note, items [{ productId,
+name, variant, unit, unitPrice, quantity, lineTotal }], total, pickedUpAt, anonymizedAt,
+createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors via `sendError`:
+400 `invalid_*` / `unknown_product` / `unknown_pickup_point` / `variant_required` /
+`invalid_delivery_day`, 403 `forbidden`, 404 `not_found`, 409 `already_picked_up` / `cancelled` /
+`anonymized` / `has_variants`.
+
+- **Channels** `laden | telefon | whatsapp | shop | sammelstelle`. Pickup is either the Laden
+  (`pickupPointId: null`, date + optional `HH:MM`) or a pickup point (date must be its weekday, no
+  time - the window applies; `sammelstelle` requires a point; inactive points are refused).
+- **Statuses** `offen → bereit → abgeholt | storniert`; `abgeholt ↔ storniert` is locked (409), so
+  a paid handover cannot fall out of the accounts and a late handover from a dead spot cannot
+  revive a cancelled one. **"nicht abgeholt" is not a status**: it is `bereit` +
+  `not_collected_at` (migration `20261113000000-preorders-b7.js`, which also seeds the Mörsbach
+  point), set with `{ notCollected: true }` (fahrer: target `nicht_abgeholt`), cleared by any
+  other status.
+- **Mock mapping** (alias and import): `open → offen` (an incoming `open` on a `bereit` preorder
+  keeps `bereit`), `handed_over → abgeholt`, `not_collected → bereit + notCollectedAt`,
+  `cancelled → storniert`; back: `offen`/`bereit` → `open` unless `notCollectedAt` is set.
+- **Items** carry a **price/name/unit snapshot** from the approved hq catalogue (`getProduct`);
+  duplicates of product + variant are merged; a product without a price is 400. **Variant** `''`
+  = none (never null). If `hq/config/backzettel.yaml` exists (found like Z3's loader:
+  `HQ_BACKZETTEL_CONFIG`, `${HQ_DIR}/config/backzettel.yaml`, next to the products dir), a product
+  of a Backzettel item with Sorten **must** name one of them (400 `variant_required` /
+  `invalid_variant`) and a product without Sorten must not; a product not in the config, or no
+  config at all, accepts any slug. Cached 60 s + mtime; an invalid config is warned once and
+  ignored. `createApp({ preorders: { variantsForProduct } })` overrides the hook (tests;
+  `tests/setup-ts.js` points `HQ_BACKZETTEL_CONFIG` at a missing file).
+- **Codes** `<PREFIX>-<YYYY-MM-DD>-<nn>`: the pickup point's prefix (`MO` for Mörsbach, as in the
+  mock) or `LA` for the Laden; numbered over every code of that prefix + date **including
+  cancelled ones**, so a cancelled code is never handed out again. A change of date or place
+  renews the code (audited with `previousCode`).
+- **Audit**: every write (`create`, `update` with `changed`, `status`, `cancel`, `import`,
+  `anonymize`, pickup point `update`) in the write's transaction; a no-op update writes nothing.
+  Audit data never holds customer names, phones or notes - otherwise P4 would have to scrub
+  `audit_log` as well.
+- **Mörsbach alias `/api/deliveries/*`** keeps the mock contract where the screens look (parity
+  test): `GET /pickup-points`, `PUT /pickup-points/:id` (inhaber),
+  `GET /preorders[?date&status&pickupPointId]`, `GET /preorders/summary?date=`,
+  `GET/PATCH/DELETE /preorders/:id`, `POST /preorders`. Deliberate differences: `hasPickupStop`
+  means "the point is served that weekday" (no tours, D11); the PUT does no geocoding (an address
+  change clears the coordinates); Laden preorders are invisible there (404); a PATCH with `items`
+  on a preorder that has variants is 409 `has_variants` (the old form cannot show them and would
+  drop them); fahrer may PATCH only `{ status: handed_over | not_collected }`. Answers carry
+  `code`, `channel`, `paid` (and `variant` per item) in addition.
+- **Shop `POST /api/orders`** (verkauf) validates with `shop-orders.core.js` and creates a `shop`
+  preorder for the Laden; it answers in the mock's shape with `id` = code and `orderNumber` =
+  preorder id. **It stays behind the global auth guard** - the public shop cannot order until a
+  public order endpoint is designed (rate limit, spam, owner decision). The e-mail address is not
+  stored (no column, not needed for pickup).
+- **P4 anonymisation**: `anonymizePreorders({ today, days = 90, dryRun })` sets
+  `customer_name = 'anonymisiert'`, clears phone **and note** (free text often holds personal
+  data), sets `anonymized_at` and writes one `anonymize` audit row each - for preorders whose
+  pickup date lies more than 90 days before `today` (Berlin) and that are `abgeholt`, `storniert`
+  or `bereit` + not collected. `offen` and plain `bereit` are left alone and counted in
+  `stillOpen`. An anonymised preorder can no longer be edited or change status (409
+  `anonymized`). Backups keep the names until they rotate out (runbook §5.1).
+
+CLI (`dist/apps/bakery-api/bundle/cli.js`, same `.env`/`DB_PATH` rules as `create-user`; JSON
+report on stdout, a summary on stderr):
+
+```bash
+node dist/apps/bakery-api/bundle/cli.js import-preorders --file apps/bakery-api/data/delivery-store.json --dry-run
+node dist/apps/bakery-api/bundle/cli.js anonymize-preorders [--dry-run] [--days 90] [--today YYYY-MM-DD]
+```
+
+`import-preorders` reads the mock's `delivery-store.json` (pickup points + preorders), creates
+missing points, maps statuses as above (`handed_over` ⇒ paid), keeps references as codes (a taken
+code gets the next free number) and `createdAt`. **Idempotent** through the audit rows
+(`action: 'import'`, `data.sourceReference`); `--dry-run` does the same work in a rolled-back
+transaction. `anonymize-preorders` runs nightly from `deploy/systemd/bakery-anonymize.timer`
+(23:45 Europe/Berlin, after the 23:30 backup).
+
+Tests: `tests/unit/preordersModel.test.js` (core), `tests/unit/preorderVariants.test.ts`,
+`tests/integration/preorders.test.ts` (every route incl. roles),
+`tests/integration/preordersMaintenance.test.ts` (import, anonymise, CLI),
+`tests/parity/preorders.parity.test.ts` (alias vs. `simple-server.js`), and the B7 migration in
+`tests/migrations/pilotBaseline.test.ts`.
+
 ## Schema (B2)
 
 One baseline migration creates the whole pilot schema: `users`, `refresh_tokens`, `audit_log`,
@@ -366,7 +476,7 @@ and `npx nx test bakery-api` (`--selectProjects js|ts`):
 The legacy suites that load `index.js` (`healthAPI`, `securityIntegration`) need
 `express-rate-limit` (root dependency, run `npm ci`) and reach `marked`@16, which is ESM-only; the
 `js` project maps `marked` to `tests/helpers/markedStub.js`. Both go with the legacy layer in B12.
-State on `feat/B5-hq-products` 2026-11-05: 68 suites pass (1427 tests), 6 skipped, 0 failing.
+State on `feat/B7-preorders` 2026-11-05: 73 suites pass (1583 tests), 6 skipped, 0 failing.
 
 ## Known state
 
