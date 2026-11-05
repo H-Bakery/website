@@ -180,6 +180,189 @@ describe('Backzettel-Tagesplanung', () => {
     )
   })
 
+  it('negative Korrektur: ±-Knopf (iOS-Ziffernblock ohne Minus) und U+2212', async () => {
+    mocked.setCorrection.mockResolvedValue(saturdayDraft())
+    renderDay()
+    await screen.findByTestId('section-broetchen')
+    fireEvent.click(
+      table('broetchen').getByRole('button', {
+        name: 'Korrektur Testweck bearbeiten',
+      })
+    )
+    const editor = within(
+      screen.getByTestId('table-correction-editor-test-weck|')
+    )
+    const input = editor.getByLabelText('Korrektur')
+    // inputMode bleibt numerisch (Ziffernblock), das Minus kommt vom Knopf
+    expect(input).toHaveAttribute('inputmode', 'numeric')
+    fireEvent.change(input, { target: { value: '3' } })
+    fireEvent.click(
+      editor.getByRole('button', { name: 'Vorzeichen wechseln (plus/minus)' })
+    )
+    expect(input).toHaveValue('-3')
+    fireEvent.change(editor.getByLabelText('Grund'), {
+      target: { value: 'Testmarkt zu' },
+    })
+    fireEvent.click(editor.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(mocked.setCorrection).toHaveBeenCalledWith(
+        SAT,
+        'test-weck',
+        null,
+        -3,
+        'Testmarkt zu'
+      )
+    )
+  })
+
+  it('negative Korrektur mit typografischem Minus (−) im Liter-Feld', async () => {
+    mocked.setCorrection.mockResolvedValue(saturdayDraft())
+    renderDay()
+    await screen.findByTestId('section-brot')
+    fireEvent.click(
+      table('brot').getByRole('button', {
+        name: 'Korrektur Testkornbrot bearbeiten',
+      })
+    )
+    const editor = within(
+      screen.getByTestId('table-correction-editor-test-kornbrot|')
+    )
+    expect(editor.getByLabelText('Korrektur')).toHaveAttribute(
+      'inputmode',
+      'decimal'
+    )
+    fireEvent.change(editor.getByLabelText('Korrektur'), {
+      target: { value: '\u22120,5' },
+    })
+    fireEvent.change(editor.getByLabelText('Grund'), {
+      target: { value: 'Testgrund' },
+    })
+    fireEvent.click(editor.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(mocked.setCorrection).toHaveBeenCalledWith(
+        SAT,
+        'test-kornbrot',
+        null,
+        -0.5,
+        'Testgrund'
+      )
+    )
+  })
+
+  it('409 confirmed (anderes Gerät hat freigegeben): Hinweis und neu laden', async () => {
+    const stale = Object.assign(
+      new Error('Der Backzettel ist schon freigegeben.'),
+      { status: 409, code: 'confirmed' }
+    )
+    mocked.confirmDay.mockRejectedValue(stale)
+    renderDay('backstube')
+    fireEvent.click(await screen.findByRole('button', { name: 'Freigeben' }))
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Jetzt freigeben',
+      })
+    )
+    expect(
+      await screen.findByText(
+        'Der Backzettel ist schon freigegeben. Der Backzettel wurde neu geladen.'
+      )
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Freigeben' })
+      ).not.toBeInTheDocument()
+    )
+    expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+    expect(
+      screen.queryByRole('button', { name: /Korrektur .* bearbeiten/ })
+    ).not.toBeInTheDocument()
+  })
+
+  it('409 confirmed beim Korrigieren: Editor zu, neu laden', async () => {
+    mocked.setCorrection.mockRejectedValue(
+      Object.assign(new Error('Der Backzettel ist schon freigegeben.'), {
+        status: 409,
+        code: 'confirmed',
+      })
+    )
+    renderDay()
+    await screen.findByTestId('section-broetchen')
+    fireEvent.click(
+      table('broetchen').getByRole('button', {
+        name: 'Korrektur Testweck bearbeiten',
+      })
+    )
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+    const editor = within(
+      screen.getByTestId('table-correction-editor-test-weck|')
+    )
+    fireEvent.change(editor.getByLabelText('Korrektur'), {
+      target: { value: '0' },
+    })
+    fireEvent.click(editor.getByRole('button', { name: 'Speichern' }))
+    expect(
+      await screen.findByText(
+        /schon freigegeben\. Der Backzettel wurde neu geladen/
+      )
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId('table-correction-editor-test-weck|')
+      ).not.toBeInTheDocument()
+    )
+    expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+  })
+
+  it('andere Fehler laden nicht neu', async () => {
+    mocked.confirmDay.mockRejectedValue(
+      Object.assign(new Error('Keine Berechtigung.'), {
+        status: 403,
+        code: 'forbidden',
+      })
+    )
+    renderDay('backstube')
+    fireEvent.click(await screen.findByRole('button', { name: 'Freigeben' }))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Jetzt freigeben',
+      })
+    )
+    expect(await screen.findByText('Keine Berechtigung.')).toBeInTheDocument()
+    expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(1)
+  })
+
+  it('Freigabe mit anderem Stand als angezeigt: Abweichungen werden genannt', async () => {
+    const confirmed = saturdayConfirmed()
+    const zopf = confirmed.sections[2].lines[0]
+    confirmed.sections[2].lines[0] = { ...zopf, preorders: 3, total: 7 }
+    mocked.confirmDay.mockResolvedValue(confirmed)
+    renderDay('backstube')
+    fireEvent.click(await screen.findByRole('button', { name: 'Freigeben' }))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Jetzt freigeben',
+      })
+    )
+    const notice = await screen.findByTestId('confirm-changes')
+    expect(notice).toHaveTextContent('Testzopf gefüllt – Testnussfüllung')
+    expect(notice).toHaveTextContent('6 → 7')
+  })
+
+  it('Freigabe ohne Abweichung: kein Hinweis', async () => {
+    mocked.confirmDay.mockResolvedValue(saturdayConfirmed())
+    renderDay('backstube')
+    fireEvent.click(await screen.findByRole('button', { name: 'Freigeben' }))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Jetzt freigeben',
+      })
+    )
+    await waitFor(() => expect(mocked.confirmDay).toHaveBeenCalled())
+    await screen.findAllByText(/Freigegeben von Test Backstube/)
+    expect(screen.queryByTestId('confirm-changes')).not.toBeInTheDocument()
+  })
+
   it('Saisonfaktor nur im Entwurf, mit Komma', async () => {
     mocked.setSeasonFactor.mockResolvedValue(
       saturdayDraft({ seasonFactor: 1.2 })
@@ -357,6 +540,22 @@ describe('Backzettel-Tagesplanung', () => {
 
       fireEvent.click(screen.getByRole('button', { name: 'Drucken' }))
       expect(print).toHaveBeenCalled()
+    })
+
+    it('abgehakte Zeilen sind auf dem Ausdruck abgehakt', async () => {
+      const confirmed = saturdayConfirmed()
+      confirmed.sections[1].lines[0] = {
+        ...confirmed.sections[1].lines[0],
+        doneAt: '2026-11-28T04:10:00.000Z',
+        doneBy: { id: 2, displayName: 'Test Backstube' },
+      }
+      mocked.fetchBackzettelDay.mockResolvedValue(confirmed)
+      renderDay()
+      const sheet = within(await screen.findByTestId('bz-print'))
+      expect(sheet.getByTestId('print-done-test-weck|')).toHaveTextContent('✓')
+      expect(
+        sheet.queryByTestId('print-done-test-kornbrot|')
+      ).not.toBeInTheDocument()
     })
 
     it('ohne Hefeteig und Vorbereitung nur eine Seite', async () => {

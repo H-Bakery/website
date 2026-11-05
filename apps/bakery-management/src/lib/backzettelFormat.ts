@@ -206,8 +206,24 @@ export function formatFactor(f: number): string {
  * Zahl aus einer Eingabe: Komma oder Punkt, Leerzeichen egal. `NaN`, wenn es
  * keine Zahl ist - der Server prüft trotzdem selbst.
  */
+/**
+ * Vorzeichen eines eingetippten Werts umdrehen (Knopf „±“ am Korrekturfeld:
+ * die Ziffernblöcke von iOS haben kein Minus). Leer → „-“ zum Weitertippen.
+ */
+export function toggleSign(value: string): string {
+  const trimmed = value.trim()
+  if (/^[-\u2212]/.test(trimmed)) return trimmed.slice(1)
+  if (trimmed.startsWith('+')) return `-${trimmed.slice(1)}`
+  return `-${trimmed}`
+}
+
 export function parseDecimal(value: string): number {
-  const cleaned = value.trim().replace(/\s+/g, '').replace(',', '.')
+  // U+2212 (−) ist das Minus der Beschriftung; manche Tastaturen setzen es ein.
+  const cleaned = value
+    .trim()
+    .replace(/\s+/g, '')
+    .replace(/\u2212/g, '-')
+    .replace(',', '.')
   if (!/^[+-]?(\d+(\.\d*)?|\.\d+)$/.test(cleaned)) return Number.NaN
   return Number(cleaned)
 }
@@ -273,11 +289,83 @@ export function allLines(
   return day.sections.flatMap((s) => s.lines)
 }
 
-/** Vorbestellte Stück über alle Zeilen in Stück (für die Übersicht). */
-export function preorderedPieces(day: Pick<BackzettelDay, 'sections'>): number {
-  return allLines(day)
-    .filter((l) => l.unit === 'Stück')
-    .reduce((sum, l) => sum + (l.preorders || 0), 0)
+export interface ChangedTotal {
+  line: BackzettelLine
+  /** Gesamt vor der Aktion; `null` = Zeile stand vorher nicht da. */
+  before: number | null
+  /** Gesamt danach; `null` = Zeile ist weggefallen. */
+  after: number | null
+}
+
+/**
+ * Zeilen, deren Gesamt sich zwischen zwei Ständen desselben Tages
+ * unterscheidet - z. B. Anzeige vor „Freigeben“ und freigegebener Zettel,
+ * wenn inzwischen eine Vorbestellung dazukam. Verglichen werden nur die
+ * Zahlen des Servers; gerechnet wird nichts.
+ */
+export function changedTotals(
+  before: Pick<BackzettelDay, 'sections'>,
+  after: Pick<BackzettelDay, 'sections'>
+): ChangedTotal[] {
+  const old = new Map(allLines(before).map((l) => [l.key, l]))
+  const out: ChangedTotal[] = []
+  for (const line of allLines(after)) {
+    const prev = old.get(line.key)
+    old.delete(line.key)
+    if (!prev) {
+      if (line.total !== 0) out.push({ line, before: null, after: line.total })
+    } else if (prev.total !== line.total) {
+      out.push({ line, before: prev.total, after: line.total })
+    }
+  }
+  for (const prev of Array.from(old.values())) {
+    if (prev.total !== 0)
+      out.push({ line: prev, before: prev.total, after: null })
+  }
+  return out
+}
+
+/**
+ * Zeilen des Zettels, in denen Vorbestellungen stecken (für die Übersicht).
+ * Bewusst keine Stücksumme: die Zeilen stehen in Produktionseinheiten
+ * (Viertel aufgerundet, Liter), eine Summe wäre weder „bestellte Stück" noch
+ * „gebackene Stück".
+ */
+export function linesWithPreorders(
+  day: Pick<BackzettelDay, 'sections'>
+): number {
+  return allLines(day).filter((l) => (l.preorders || 0) > 0).length
+}
+
+/** „Di–So" für zusammenhängende Tage, sonst „Di, Do, Sa". */
+function weekdayList(days: readonly number[]): string {
+  const sorted = [...days].sort((a, b) => a - b)
+  if (sorted.length === 0) return ''
+  const contiguous = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1)
+  if (contiguous && sorted.length > 2) {
+    return `${WEEKDAY_SHORT[sorted[0]]}–${
+      WEEKDAY_SHORT[sorted[sorted.length - 1]]
+    }`
+  }
+  return sorted.map((d) => WEEKDAY_SHORT[d]).join(', ')
+}
+
+/**
+ * Untertitel der Übersicht aus `config.days`: „Die kommenden Produktionstage
+ * (Di–So). Montag ist Ruhetag." Ohne Stammdaten ohne Wochentage.
+ */
+export function describeProductionDays(
+  days: readonly number[] | null | undefined
+): string {
+  if (!days || days.length === 0) return 'Die kommenden Produktionstage.'
+  const closed = [1, 2, 3, 4, 5, 6, 7].filter((d) => !days.includes(d))
+  const base = `Die kommenden Produktionstage (${weekdayList(days)}).`
+  if (closed.length === 0) return `${base} Kein Ruhetag.`
+  const names = closed.map((d) => WEEKDAY_NAMES[d])
+  if (names.length === 1) return `${base} ${names[0]} ist Ruhetag.`
+  return `${base} ${names.slice(0, -1).join(', ')} und ${
+    names[names.length - 1]
+  } sind Ruhetage.`
 }
 
 /** Ob der Tag eine Hefeteig- oder Füllungsseite hat (Druckseite 2, Karte). */

@@ -115,6 +115,12 @@ export const backzettelPrintStyles = (
           height: '5mm',
           border: '1pt solid #000',
         },
+        '.bz-print .box.done': {
+          textAlign: 'center',
+          lineHeight: '5mm',
+          fontSize: '11pt',
+          fontWeight: 700,
+        },
         '.bz-print .banner': {
           border: '2pt solid #000',
           padding: '1.5mm 3mm',
@@ -222,7 +228,23 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                       {formatQty(line.total, line.unit)}
                     </td>
                     <td className="num">
-                      <span className="box" />
+                      {line.doneAt ? (
+                        <>
+                          <span
+                            className="box done"
+                            data-testid={`print-done-${line.key}`}
+                          >
+                            ✓
+                          </span>
+                          {line.doneBy && (
+                            <div className="small">
+                              {line.doneBy.displayName}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span className="box" />
+                      )}
                     </td>
                   </tr>
                 ))}

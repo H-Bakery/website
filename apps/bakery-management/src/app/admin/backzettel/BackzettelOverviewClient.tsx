@@ -26,13 +26,13 @@ import {
   type BackzettelDayResult,
 } from '../../../lib/backzettelApi'
 import {
+  describeProductionDays,
   formatDateLong,
-  formatNumber,
   formatTimestamp,
   isIsoDate,
   nextProductionDay,
   openDeltas,
-  preorderedPieces,
+  linesWithPreorders,
   todayIso,
   upcomingProductionDays,
 } from '../../../lib/backzettelFormat'
@@ -73,7 +73,7 @@ function DaySummary({ entry }: { entry: DayEntry }) {
     return <Chip size="small" variant="outlined" label="Ruhetag" />
   }
   const open = openDeltas(result).length
-  const pieces = preorderedPieces(result)
+  const preorderLines = linesWithPreorders(result)
   return (
     <Stack spacing={0.5}>
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
@@ -100,8 +100,10 @@ function DaySummary({ entry }: { entry: DayEntry }) {
         )}
       </Stack>
       <Typography variant="body2" color="text.secondary">
-        {pieces > 0
-          ? `${formatNumber(pieces)} Stück vorbestellt`
+        {preorderLines > 0
+          ? `Vorbestellungen in ${preorderLines} ${
+              preorderLines === 1 ? 'Zeile' : 'Zeilen'
+            }`
           : 'keine Vorbestellungen'}
         {result.status === 'confirmed' && result.confirmedBy
           ? ` · freigegeben von ${result.confirmedBy.displayName}${
@@ -205,7 +207,7 @@ export default function BackzettelOverviewClient({
             Backzettel
           </Typography>
           <Typography color="text.secondary">
-            Die kommenden Produktionstage (Di–So). Montag ist Ruhetag.
+            {describeProductionDays(days)}
           </Typography>
         </Box>
         <Box
@@ -219,7 +221,6 @@ export default function BackzettelOverviewClient({
           <TextField
             type="date"
             label="Anderer Tag"
-            size="small"
             value={jump}
             onChange={(e) => setJump(e.target.value)}
             InputLabelProps={{ shrink: true }}

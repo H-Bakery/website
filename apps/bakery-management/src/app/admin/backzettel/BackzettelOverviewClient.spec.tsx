@@ -4,6 +4,7 @@ import BackzettelOverviewClient from './BackzettelOverviewClient'
 import * as api from '../../../lib/backzettelApi'
 import {
   CONFIG_RESPONSE,
+  TEST_CONFIG,
   saturdayConfirmed,
   saturdayDraft,
 } from '../../../lib/backzettelFixtures'
@@ -50,6 +51,24 @@ describe('Backzettel-Übersicht', () => {
     ])
     expect(mocked.fetchBackzettelDay).not.toHaveBeenCalledWith('2026-11-30')
     expect(within(list).getByText('heute')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Die kommenden Produktionstage (Di–So). Montag ist Ruhetag.'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('Untertitel folgt config.days', async () => {
+    mocked.fetchBackzettelConfig.mockResolvedValue({
+      ...CONFIG_RESPONSE,
+      config: { ...TEST_CONFIG, days: [3, 4, 5, 6] },
+    })
+    render(<BackzettelOverviewClient today={TODAY} />)
+    expect(
+      await screen.findByText(
+        'Die kommenden Produktionstage (Mi–Sa). Montag, Dienstag und Sonntag sind Ruhetage.'
+      )
+    ).toBeInTheDocument()
   })
 
   it('stellt den nächsten Produktionstag vorn heraus, mit Status und Nachträgen', async () => {
@@ -69,7 +88,7 @@ describe('Backzettel-Übersicht', () => {
     )
     const sat = within(screen.getByTestId('day-2026-11-28'))
     expect(await sat.findByText('Entwurf')).toBeInTheDocument()
-    expect(sat.getByText('2 Stück vorbestellt')).toBeInTheDocument()
+    expect(sat.getByText('Vorbestellungen in 1 Zeile')).toBeInTheDocument()
     expect(sat.getByText('Hefeteig')).toBeInTheDocument()
   })
 

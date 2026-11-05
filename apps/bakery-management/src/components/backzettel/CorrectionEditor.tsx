@@ -1,12 +1,20 @@
 'use client'
 
 import React from 'react'
-import { Alert, Box, Button, Stack, TextField } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Button,
+  InputAdornment,
+  Stack,
+  TextField,
+} from '@mui/material'
 import type { BackzettelLine } from '../../lib/backzettelApi'
 import {
   formatNumber,
   isIntegerUnit,
   parseDecimal,
+  toggleSign,
 } from '../../lib/backzettelFormat'
 
 export interface CorrectionEditorProps {
@@ -38,6 +46,7 @@ export function CorrectionEditor({
   const [reason, setReason] = React.useState(line.correctionReason ?? '')
   const [error, setError] = React.useState<string | null>(null)
   const [saving, setSaving] = React.useState(false)
+  const inputRef = React.useRef<HTMLInputElement | null>(null)
 
   const submit = async (event?: React.FormEvent) => {
     event?.preventDefault()
@@ -89,14 +98,42 @@ export function CorrectionEditor({
           label="Korrektur (+/−)"
           value={value}
           onChange={(e) => setValue(e.target.value)}
+          inputRef={inputRef}
           inputProps={{
             inputMode: isIntegerUnit(line.unit) ? 'numeric' : 'decimal',
             'aria-label': 'Korrektur',
           }}
+          InputProps={{
+            // Die Ziffernblöcke von iOS (numeric/decimal) haben kein Minus -
+            // ohne diesen Knopf ließe sich am iPhone nichts abziehen.
+            startAdornment: (
+              <InputAdornment position="start" sx={{ mr: 0.5 }}>
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    setValue((v) => toggleSign(v))
+                    inputRef.current?.focus()
+                  }}
+                  aria-label="Vorzeichen wechseln (plus/minus)"
+                  data-testid={`${idPrefix}-sign-${line.key}`}
+                  sx={{
+                    minWidth: 44,
+                    minHeight: 44,
+                    px: 0,
+                    ml: -0.75,
+                    fontSize: '1.2rem',
+                    fontWeight: 700,
+                  }}
+                >
+                  ±
+                </Button>
+              </InputAdornment>
+            ),
+          }}
           helperText={
             isIntegerUnit(line.unit) ? 'ganze Zahl, 0 löscht' : '0 löscht'
           }
-          sx={{ width: { xs: '100%', sm: 160 } }}
+          sx={{ width: { xs: '100%', sm: 190 } }}
           autoFocus
         />
         <TextField

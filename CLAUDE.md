@@ -603,8 +603,8 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
 ## Backzettel-Tagesplanung und Druck (Z5/Z7, Management-App)
 
 `/admin/backzettel` (kommende Produktionstage) und `/admin/backzettel/[datum]` (ein Tag) gegen
-`/api/backzettel` der echten API. Der Navigationseintrag „Backzettel" ist `ready: true`. Fünf Dinge,
-die man wissen muss:
+`/api/backzettel` der echten API. Der Navigationseintrag „Backzettel" ist `ready: true`. Was man
+wissen muss:
 
 - **Ein Client, kein Rechnen:** `src/lib/backzettelApi.ts` (Typen + alle Endpunkte, auch Abhaken für
   Z6) und `src/lib/backzettelFormat.ts` (Kalender, deutsche Zahlen, Sortennamen aus
@@ -614,9 +614,20 @@ die man wissen muss:
   Korrekturen gehen über `itemId`/`variant` (`correctionPath`), Zeilen werden über `key` gefunden.
 - **Rollen:** planen (Saisonfaktor, Korrektur mit Pflichtgrund ≠ 0, Freigeben mit Rückfrage)
   `inhaber` + `backstube`; „Wieder öffnen" nur `inhaber`; alle anderen sehen „Nur Ansicht". Verkauf
-  darf die Seiten jetzt öffnen (`ROLE_ACCESS`, lesen) - im Laden sieht man, was gebacken wird. Wer
-  `grundmengen` (Z4) für Verkauf sperren will, braucht dafür eine eigene Regel, denn
-  `/admin/backzettel` gilt mit Unterseiten.
+  darf die Seiten jetzt öffnen (`ROLE_ACCESS`, lesen) - im Laden sieht man, was gebacken wird -
+  **außer** `/admin/backzettel/grundmengen` (Z4, nur Inhaber/Backstube): die Regel ist
+  `{ path: '/admin/backzettel', except: ['/admin/backzettel/grundmengen'] }` (`RouteRule` kennt dafür
+  `except`, `roles.spec.ts` prüft es).
+- **Ein anderes Gerät war schneller:** antwortet Freigeben, Wieder öffnen, Saisonfaktor oder eine
+  Korrektur mit 409 `confirmed`/`not_confirmed`/`no_config`/`ruhetag`, lädt die Seite den Tag neu und
+  hängt „Der Backzettel wurde neu geladen." an die Meldung - kein Entwurf mit aktiven Knöpfen über
+  einem schon freigegebenen Tag. Freigegeben wird, was der Server **jetzt** rechnet; weicht ein Gesamt
+  von der Anzeige vor dem Klick ab (z. B. Vorbestellung inzwischen), nennt ein Hinweis die Zeilen
+  (`changedTotals`, vergleicht nur Server-Zahlen).
+- **Negative Korrekturen am iPhone:** die Ziffernblöcke (`inputMode` numeric/decimal) haben auf iOS
+  kein Minus. Darum hat das Feld einen ±-Knopf (44 px, `toggleSign`); `parseDecimal` nimmt auch das
+  typografische Minus (U+2212). Nicht auf `inputMode: 'text'` „vereinfachen" und den Knopf nicht
+  entfernen.
 - **Übersicht:** heute bis heute + 6 Tage, nur `config.days` (ohne Stammdaten Di–So); oben groß der
   **nächste Produktionstag = der erste nach heute** (heute wird schon gebacken). Je Tag ein
   `GET /api/backzettel/:datum` - das Lesen eines freigegebenen Tages schreibt dabei Deltas (so ist
@@ -632,7 +643,13 @@ die man wissen muss:
   Hefeteig/Füllungen (Abwiegeliste + skalierte Rezepte), S. 3 nur mit Vorbereitungen. **Die
   Druckregeln schalten Animationen ab** - `global.css` blendet `body` und jedes `<section>` ein;
   ohne `animation: none` startete die beim Umschalten auf `display: block` neu und das Blatt kam
-  blass aus dem Drucker.
+  blass aus dem Drucker. Abgehakte Zeilen (`doneAt`) stehen im Druck mit ✓ im Kästchen und Namen.
+- **Offene Grundmenge bleibt offen nach der Freigabe:** `computed_snapshot.unsetKeys` (Z3-Core,
+  `computedSnapshot`) hält die Zeilen mit `baseUnset`, `frozenSections(rows, config, unsetKeys)`
+  setzt sie wieder - sonst stünde auf dem freigegebenen Zettel „Basis 0" statt „offen". Ältere
+  Freigaben ohne das Feld zeigen wie bisher 0.
+- **Übersicht:** Untertitel aus `config.days` (`describeProductionDays`); je Tag „Vorbestellungen in
+  N Zeilen" statt einer Stücksumme (Zeilen stehen in Produktionseinheiten, Viertel aufgerundet).
 
 Tests: `src/lib/backzettel{Api,Format}.spec.ts`, `admin/backzettel/BackzettelOverviewClient.spec.tsx`,
 `admin/backzettel/[datum]/BackzettelDayClient.spec.tsx` (Fixtures erfunden:

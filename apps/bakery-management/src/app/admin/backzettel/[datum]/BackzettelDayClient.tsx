@@ -41,6 +41,10 @@ import {
   type BackzettelLine,
 } from '../../../../lib/backzettelApi'
 import {
+  changedTotals,
+  formatQty,
+  lineLabel,
+  type ChangedTotal,
   formatDateLong,
   formatDateShort,
   formatFactor,
@@ -66,6 +70,26 @@ const MIN_TOUCH = { minHeight: 44 }
 function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
 }
+
+/**
+ * 409-Codes der Backzettel-API, die heißen: Der Tag auf dem Server ist nicht
+ * mehr der, den diese Seite zeigt (anderes Gerät hat freigegeben/geöffnet,
+ * Stammdaten weg, Ruhetag). Dann wird neu geladen statt den alten Stand mit
+ * aktiven Knöpfen stehen zu lassen.
+ */
+const STALE_CODES = new Set([
+  'confirmed',
+  'not_confirmed',
+  'no_config',
+  'ruhetag',
+])
+
+function isStaleError(error: unknown): boolean {
+  const e = error as { status?: number; code?: string } | null
+  return !!e && e.status === 409 && !!e.code && STALE_CODES.has(e.code)
+}
+
+const STALE_SUFFIX = ' Der Backzettel wurde neu geladen.'
 
 export interface BackzettelDayClientProps {
   date: string
@@ -100,6 +124,9 @@ export default function BackzettelDayClient({
   const [confirmOpen, setConfirmOpen] = React.useState(false)
   const [reopenOpen, setReopenOpen] = React.useState(false)
   const [reopenReason, setReopenReason] = React.useState('')
+  const [confirmChanges, setConfirmChanges] = React.useState<
+    ChangedTotal[] | null
+  >(null)
 
   const applyDay = React.useCallback((day: BackzettelDayResult) => {
     setResult(day)
@@ -125,6 +152,7 @@ export default function BackzettelDayClient({
 
   React.useEffect(() => {
     setEditingKey(null)
+    setConfirmChanges(null)
     void load()
   }, [load])
 
@@ -142,7 +170,13 @@ export default function BackzettelDayClient({
     try {
       return await work()
     } catch (error) {
-      setActionError(messageOf(error, fallback))
+      if (isStaleError(error)) {
+        setEditingKey(null)
+        setActionError(messageOf(error, fallback) + STALE_SUFFIX)
+        void load()
+      } else {
+        setActionError(messageOf(error, fallback))
+      }
       return undefined
     } finally {
       setBusy(false)
@@ -154,14 +188,27 @@ export default function BackzettelDayClient({
     correction: number,
     reason: string | null
   ) => {
-    // Fehler wirft der Editor in die Zeile; hier kein globaler Hinweis.
-    const updated = await setCorrection(
-      date,
-      line.itemId,
-      line.variant,
-      correction,
-      reason
-    )
+    // Fehler wirft der Editor in die Zeile; hier kein globaler Hinweis -
+    // außer der Tag hat sich auf dem Server geändert: dann neu laden.
+    let updated: BackzettelDayResult
+    try {
+      updated = await setCorrection(
+        date,
+        line.itemId,
+        line.variant,
+        correction,
+        reason
+      )
+    } catch (error) {
+      if (!isStaleError(error)) throw error
+      setEditingKey(null)
+      setActionError(
+        messageOf(error, 'Die Korrektur konnte nicht gespeichert werden.') +
+          STALE_SUFFIX
+      )
+      void load()
+      return
+    }
     applyDay(updated)
     setEditingKey(null)
     setNotice(
@@ -189,6 +236,7 @@ export default function BackzettelDayClient({
 
   const doConfirm = async () => {
     setConfirmOpen(false)
+    const shown = day
     const updated = await run(
       () => confirmDay(date),
       'Der Backzettel konnte nicht freigegeben werden.'
@@ -197,6 +245,12 @@ export default function BackzettelDayClient({
       applyDay(updated)
       setEditingKey(null)
       setNotice('Backzettel freigegeben.')
+      // Freigegeben wird, was der Server JETZT rechnet. Kam seit dem Laden
+      // eine Vorbestellung dazu, steht sie im eingefrorenen Zettel - das soll
+      // man sehen, nicht erst beim Backen merken.
+      const changes =
+        shown && isBackzettelDay(updated) ? changedTotals(shown, updated) : []
+      setConfirmChanges(changes.length > 0 ? changes : null)
     }
   }
 
@@ -208,6 +262,7 @@ export default function BackzettelDayClient({
     )
     if (updated) {
       applyDay(updated)
+      setConfirmChanges(null)
       setReopenReason('')
       setNotice('Backzettel wieder geöffnet - jetzt ein Entwurf.')
     }
@@ -391,6 +446,31 @@ export default function BackzettelDayClient({
                     openCount === 1 ? 'Nachtrag ist' : 'Nachträge sind'
                   } noch offen.`
                 : '.'}
+            </Alert>
+          )}
+          {confirmChanges && day.status === 'confirmed' && (
+            <Alert
+              severity="warning"
+              data-testid="confirm-changes"
+              onClose={() => setConfirmChanges(null)}
+            >
+              <AlertTitle>
+                Freigegeben mit dem aktuellen Stand – abweichend von der Anzeige
+              </AlertTitle>
+              Seit dem Laden der Seite hat sich etwas geändert (z. B. eine neue
+              Vorbestellung). Eingefroren wurde:
+              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+                {confirmChanges.map((c) => (
+                  <li key={c.line.key}>
+                    {lineLabel(c.line, config)}:{' '}
+                    {c.before === null ? '–' : formatQty(c.before, c.line.unit)}{' '}
+                    →{' '}
+                    <strong>
+                      {c.after === null ? '–' : formatQty(c.after, c.line.unit)}
+                    </strong>
+                  </li>
+                ))}
+              </Box>
             </Alert>
           )}
           {day.configChangedSinceConfirm && (

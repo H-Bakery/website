@@ -14,7 +14,10 @@ import {
   nextProductionDay,
   openDeltas,
   parseDecimal,
-  preorderedPieces,
+  linesWithPreorders,
+  describeProductionDays,
+  changedTotals,
+  toggleSign,
   todayIso,
   upcomingProductionDays,
 } from './backzettelFormat'
@@ -88,6 +91,8 @@ describe('Backzettel-Zahlen', () => {
   it('liest Eingaben mit Komma oder Punkt, sonst NaN', () => {
     expect(parseDecimal('1,2')).toBe(1.2)
     expect(parseDecimal(' -3 ')).toBe(-3)
+    expect(parseDecimal('\u22123')).toBe(-3)
+    expect(parseDecimal('\u22121,5')).toBe(-1.5)
     expect(parseDecimal('abc')).toBeNaN()
     expect(parseDecimal('1,2,3')).toBeNaN()
   })
@@ -115,8 +120,43 @@ describe('Backzettel-Beschriftungen', () => {
   it('zählt offene Nachträge und vorbestellte Stück', () => {
     expect(openDeltas(saturdayConfirmed())).toHaveLength(1)
     expect(openDeltas(saturdayDraft())).toHaveLength(0)
-    expect(preorderedPieces(saturdayDraft())).toBe(2)
+    expect(linesWithPreorders(saturdayDraft())).toBe(1)
     expect(hasHefeteig(saturdayDraft())).toBe(true)
     expect(hasHefeteig({ hefeteig: null, fillings: [] })).toBe(false)
+  })
+})
+
+describe('Backzettel-Helfer (Fixup)', () => {
+  it('toggleSign dreht das Vorzeichen (iOS-Ziffernblock ohne Minus)', () => {
+    expect(toggleSign('')).toBe('-')
+    expect(toggleSign('3')).toBe('-3')
+    expect(toggleSign('-3')).toBe('3')
+    expect(toggleSign('\u22123')).toBe('3')
+    expect(toggleSign('+2,5')).toBe('-2,5')
+  })
+
+  it('describeProductionDays aus config.days', () => {
+    expect(describeProductionDays([2, 3, 4, 5, 6, 7])).toBe(
+      'Die kommenden Produktionstage (Di–So). Montag ist Ruhetag.'
+    )
+    expect(describeProductionDays([2, 4, 6])).toBe(
+      'Die kommenden Produktionstage (Di, Do, Sa). Montag, Mittwoch, Freitag und Sonntag sind Ruhetage.'
+    )
+    expect(describeProductionDays([1, 2, 3, 4, 5, 6, 7])).toBe(
+      'Die kommenden Produktionstage (Mo–So). Kein Ruhetag.'
+    )
+    expect(describeProductionDays(null)).toBe('Die kommenden Produktionstage.')
+  })
+
+  it('changedTotals vergleicht die Gesamtwerte zweier Stände', () => {
+    const before = saturdayDraft()
+    const after = saturdayDraft()
+    expect(changedTotals(before, after)).toEqual([])
+    const line = after.sections[0].lines[0]
+    line.total = line.total + 2
+    const changes = changedTotals(before, after)
+    expect(changes).toHaveLength(1)
+    expect(changes[0].line.key).toBe(line.key)
+    expect(changes[0].after).toBe((changes[0].before ?? 0) + 2)
   })
 })

@@ -56,11 +56,16 @@ export function normalizeRole(raw: unknown): PilotRole | null {
 }
 
 /**
- * Eine Route einer Rolle: ein Pfad mit allen Unterseiten, oder mit
+ * Eine Route einer Rolle: ein Pfad mit allen Unterseiten, mit
  * `exact: true` nur genau dieser Pfad (z. B. die Produktliste ohne
- * Bearbeiten/Neu). `/admin` (Dashboard) gilt immer nur exakt.
+ * Bearbeiten/Neu), oder mit `except` ein Pfad mit Unterseiten außer den
+ * genannten (samt deren Unterseiten). `/admin` (Dashboard) gilt immer nur
+ * exakt.
  */
-export type RouteRule = string | { path: string; exact: true }
+export type RouteRule =
+  | string
+  | { path: string; exact: true }
+  | { path: string; except: readonly string[] }
 
 export interface RoleAccess {
   /** `'all'` = jede Route; sonst die erlaubten Routen. */
@@ -97,8 +102,9 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
       '/admin/partners',
       // Z5: nur lesen (die API erlaubt jeder Sitzung GET /api/backzettel) -
       // im Laden sieht man, was gebacken wird. Planen/Freigeben verweigert
-      // die Seite (und die API) außer Inhaber und Backstube.
-      '/admin/backzettel',
+      // die Seite (und die API) außer Inhaber und Backstube. Die Grundmengen
+      // (Z4, roadmap §5.5: nur Inhaber/Backstube) bleiben gesperrt.
+      { path: '/admin/backzettel', except: ['/admin/backzettel/grundmengen'] },
       ...COMMON_ROUTES,
     ],
     start: ['/admin/preorders', '/admin'],
@@ -136,7 +142,15 @@ export function isProtectedPath(pathname: string): boolean {
 }
 
 function matchesRule(path: string, rule: RouteRule): boolean {
-  if (typeof rule !== 'string') return path === rule.path
+  if (typeof rule !== 'string') {
+    if ('except' in rule) {
+      return (
+        underPrefix(path, rule.path) &&
+        !rule.except.some((denied) => underPrefix(path, denied))
+      )
+    }
+    return path === rule.path
+  }
   if (rule === '/admin') return path === '/admin'
   return underPrefix(path, rule)
 }
