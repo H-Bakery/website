@@ -5,6 +5,7 @@
  * baseline migration creates (`migrations/20261105000000-pilot-baseline.js`):
  *
  *   User, RefreshToken, AuditLog                 users, refresh_tokens, audit_log
+ *   Station, AuthSession                         stations, auth_sessions (B3 migration)
  *   Partner, PartnerDeliveryTemplate,
  *   PartnerVisit, PartnerVisitItem               Partners, PartnerDeliveryTemplates, ...
  *   PickupPoint, Preorder, PreorderItem          pickup_points, preorders, preorder_items
@@ -23,6 +24,8 @@ import { Sequelize } from 'sequelize'
 import { default as User } from './User'
 import { default as RefreshToken } from './RefreshToken'
 import { default as AuditLog } from './AuditLog'
+import { default as Station } from './Station'
+import { default as AuthSession } from './AuthSession'
 import { default as Partner } from './Partner'
 import { default as PartnerDeliveryTemplate } from './PartnerDeliveryTemplate'
 import { default as PartnerVisit } from './PartnerVisit'
@@ -65,6 +68,8 @@ export {
   User,
   RefreshToken,
   AuditLog,
+  Station,
+  AuthSession,
   Partner,
   PartnerDeliveryTemplate,
   PartnerVisit,
@@ -99,6 +104,8 @@ export {
 /** The models `initializeModels()` sets up, in dependency order. */
 export const PILOT_MODELS = [
   User,
+  Station,
+  AuthSession,
   RefreshToken,
   AuditLog,
   Partner,
@@ -123,6 +130,17 @@ function setupAssociations(): void {
   User.hasMany(RefreshToken, { foreignKey: 'userId', as: 'refreshTokens' })
   RefreshToken.belongsTo(User, { foreignKey: 'userId', as: 'user' })
   AuditLog.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  User.hasMany(AuthSession, { foreignKey: 'userId', as: 'sessions' })
+  AuthSession.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  AuthSession.belongsTo(Station, { foreignKey: 'stationId', as: 'station' })
+  AuthSession.hasMany(RefreshToken, {
+    foreignKey: 'sessionId',
+    as: 'refreshTokens',
+  })
+  RefreshToken.belongsTo(AuthSession, {
+    foreignKey: 'sessionId',
+    as: 'session',
+  })
 
   // Sales partners (Backschrank, TASK-037)
   Partner.hasMany(PartnerDeliveryTemplate, {

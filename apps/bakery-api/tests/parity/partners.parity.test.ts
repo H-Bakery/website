@@ -7,10 +7,12 @@ import * as os from 'os'
 import * as path from 'path'
 import type { Application } from 'express'
 
+import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { compare, diffShapes, loadMockServer, shapeOf } from './parity'
 
 let real: TestApp
+let token: string
 let mock: Application
 let dataDir: string
 
@@ -18,6 +20,8 @@ beforeAll(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-parity-'))
   mock = loadMockServer(dataDir)
   real = await createTestApp({ seedPartners: true })
+  // The real API needs a session (B3); the mock ignores the header.
+  token = await sessionFor(real.app, 'test.inhaber', 'inhaber')
 })
 
 afterAll(async () => {
@@ -28,7 +32,7 @@ afterAll(async () => {
 describe('partners parity (mock vs. real API)', () => {
   it('GET /api/partners has the same status and shape', async () => {
     const result = await compare(
-      { method: 'get', path: '/api/partners' },
+      { method: 'get', path: '/api/partners', headers: bearer(token) },
       { mock, real: real.app }
     )
     expect(result.mock.status).toBe(200)
@@ -40,7 +44,7 @@ describe('partners parity (mock vs. real API)', () => {
 
   it('GET /api/partners/:id for an unknown id is a 404 with error + message on both', async () => {
     const result = await compare(
-      { method: 'get', path: '/api/partners/999' },
+      { method: 'get', path: '/api/partners/999', headers: bearer(token) },
       { mock, real: real.app }
     )
     expect(result.mock.status).toBe(404)

@@ -253,24 +253,4 @@ export class AuthService {
       expiresIn: '24h',
     })
   }
-
-  /**
-   * Seed initial admin user (for testing)
-   */
-  async seedAdminUser(): Promise<void> {
-    try {
-      await this.register({
-        username: 'admin',
-        email: 'admin@bakery.com',
-        password: 'admin123',
-        firstName: 'Admin',
-        lastName: 'User',
-        role: UserRole.Admin,
-      })
-      console.log('Admin user seeded successfully')
-    } catch (error) {
-      // User might already exist
-      console.log('Admin user already exists or error seeding:', error)
-    }
-  }
 }

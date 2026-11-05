@@ -16,6 +16,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "files": ["src/main.ts", "src/types/ambient.d.ts"],
+  "files": ["src/main.ts", "src/cli.ts", "src/types/ambient.d.ts"],
   "include": []
 }

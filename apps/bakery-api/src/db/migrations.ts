@@ -28,4 +28,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20261105000000-pilot-baseline.js',
     module: require('../../migrations/20261105000000-pilot-baseline.js'),
   },
+  {
+    // B3: stations, auth_sessions, refresh_tokens.session_id
+    name: '20261106000000-auth-sessions-stations.js',
+    module: require('../../migrations/20261106000000-auth-sessions-stations.js'),
+  },
 ]

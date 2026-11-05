@@ -2,17 +2,22 @@
  * Authentication controller
  */
 
-import { Request, Response, NextFunction } from 'express';
-import { AuthService } from '../services/auth.service';
-import { CreateUserInput, LoginInput, UpdateUserInput, ChangePasswordInput } from '../models/user.model';
+import { Request, Response, NextFunction } from 'express'
+import { AuthService } from '../services/auth.service'
+import {
+  CreateUserInput,
+  LoginInput,
+  UpdateUserInput,
+  ChangePasswordInput,
+} from '../models/user.model'
 
 export class AuthController {
-  private authService: AuthService;
+  private authService: AuthService
 
   constructor() {
-    this.authService = new AuthService();
-    // Seed admin user on initialization
-    this.authService.seedAdminUser();
+    // No default admin any more (pilot B3): this lib is unmounted; accounts of
+    // the real API come from apps/bakery-api (create-user CLI).
+    this.authService = new AuthService()
   }
 
   /**
@@ -21,41 +26,44 @@ export class AuthController {
    */
   register = async (req: Request, res: Response): Promise<void> => {
     try {
-      const input: CreateUserInput = req.body;
-      const result = await this.authService.register(input);
-      
+      const input: CreateUserInput = req.body
+      const result = await this.authService.register(input)
+
       res.status(201).json({
         success: true,
         message: 'User registered successfully',
-        data: result
-      });
+        data: result,
+      })
     } catch (error) {
-      console.error('Registration error:', error);
-      
+      console.error('Registration error:', error)
+
       if (error instanceof Error) {
         if (error.message.includes('already exists')) {
           res.status(400).json({
             success: false,
-            error: error.message
-          });
-          return;
+            error: error.message,
+          })
+          return
         }
-        
-        if (error.message.includes('required') || error.message.includes('Invalid')) {
+
+        if (
+          error.message.includes('required') ||
+          error.message.includes('Invalid')
+        ) {
           res.status(400).json({
             success: false,
-            error: error.message
-          });
-          return;
+            error: error.message,
+          })
+          return
         }
       }
-      
+
       res.status(500).json({
         success: false,
-        error: 'Failed to register user'
-      });
+        error: 'Failed to register user',
+      })
     }
-  };
+  }
 
   /**
    * Login user
@@ -63,33 +71,35 @@ export class AuthController {
    */
   login = async (req: Request, res: Response): Promise<void> => {
     try {
-      const input: LoginInput = req.body;
-      const result = await this.authService.login(input);
-      
+      const input: LoginInput = req.body
+      const result = await this.authService.login(input)
+
       res.json({
         success: true,
         message: 'Login successful',
-        data: result
-      });
+        data: result,
+      })
     } catch (error) {
-      console.error('Login error:', error);
-      
-      if (error instanceof Error && 
-          (error.message.includes('Invalid credentials') || 
-           error.message.includes('deactivated'))) {
+      console.error('Login error:', error)
+
+      if (
+        error instanceof Error &&
+        (error.message.includes('Invalid credentials') ||
+          error.message.includes('deactivated'))
+      ) {
         res.status(401).json({
           success: false,
-          error: error.message
-        });
-        return;
+          error: error.message,
+        })
+        return
       }
-      
+
       res.status(500).json({
         success: false,
-        error: 'Failed to login'
-      });
+        error: 'Failed to login',
+      })
     }
-  };
+  }
 
   /**
    * Get current user profile
@@ -98,38 +108,38 @@ export class AuthController {
   getProfile = async (req: Request, res: Response): Promise<void> => {
     try {
       // The user ID should be attached by auth middleware
-      const userId = (req as any).userId;
-      
+      const userId = (req as any).userId
+
       if (!userId) {
         res.status(401).json({
           success: false,
-          error: 'Unauthorized'
-        });
-        return;
+          error: 'Unauthorized',
+        })
+        return
       }
-      
-      const user = await this.authService.getUserById(userId);
-      
+
+      const user = await this.authService.getUserById(userId)
+
       if (!user) {
         res.status(404).json({
           success: false,
-          error: 'User not found'
-        });
-        return;
+          error: 'User not found',
+        })
+        return
       }
-      
+
       res.json({
         success: true,
-        data: user
-      });
+        data: user,
+      })
     } catch (error) {
-      console.error('Get profile error:', error);
+      console.error('Get profile error:', error)
       res.status(500).json({
         success: false,
-        error: 'Failed to get profile'
-      });
+        error: 'Failed to get profile',
+      })
     }
-  };
+  }
 
   /**
    * Update user profile
@@ -137,56 +147,56 @@ export class AuthController {
    */
   updateProfile = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as any).userId;
-      
+      const userId = (req as any).userId
+
       if (!userId) {
         res.status(401).json({
           success: false,
-          error: 'Unauthorized'
-        });
-        return;
+          error: 'Unauthorized',
+        })
+        return
       }
-      
-      const input: UpdateUserInput = req.body;
-      
+
+      const input: UpdateUserInput = req.body
+
       // Users can't change their own role unless they're admin
-      const userRole = (req as any).userRole;
+      const userRole = (req as any).userRole
       if (input.role && userRole !== 'admin') {
-        delete input.role;
+        delete input.role
       }
-      
-      const user = await this.authService.updateUser(userId, input);
-      
+
+      const user = await this.authService.updateUser(userId, input)
+
       res.json({
         success: true,
         message: 'Profile updated successfully',
-        data: user
-      });
+        data: user,
+      })
     } catch (error) {
-      console.error('Update profile error:', error);
-      
+      console.error('Update profile error:', error)
+
       if (error instanceof Error && error.message.includes('not found')) {
         res.status(404).json({
           success: false,
-          error: error.message
-        });
-        return;
+          error: error.message,
+        })
+        return
       }
-      
+
       if (error instanceof Error && error.message.includes('already exists')) {
         res.status(400).json({
           success: false,
-          error: error.message
-        });
-        return;
+          error: error.message,
+        })
+        return
       }
-      
+
       res.status(500).json({
         success: false,
-        error: 'Failed to update profile'
-      });
+        error: 'Failed to update profile',
+      })
     }
-  };
+  }
 
   /**
    * Change password
@@ -194,49 +204,49 @@ export class AuthController {
    */
   changePassword = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userId = (req as any).userId;
-      
+      const userId = (req as any).userId
+
       if (!userId) {
         res.status(401).json({
           success: false,
-          error: 'Unauthorized'
-        });
-        return;
+          error: 'Unauthorized',
+        })
+        return
       }
-      
-      const input: ChangePasswordInput = req.body;
-      
+
+      const input: ChangePasswordInput = req.body
+
       if (!input.currentPassword || !input.newPassword) {
         res.status(400).json({
           success: false,
-          error: 'Current password and new password are required'
-        });
-        return;
+          error: 'Current password and new password are required',
+        })
+        return
       }
-      
-      await this.authService.changePassword(userId, input);
-      
+
+      await this.authService.changePassword(userId, input)
+
       res.json({
         success: true,
-        message: 'Password changed successfully'
-      });
+        message: 'Password changed successfully',
+      })
     } catch (error) {
-      console.error('Change password error:', error);
-      
+      console.error('Change password error:', error)
+
       if (error instanceof Error && error.message.includes('incorrect')) {
         res.status(400).json({
           success: false,
-          error: error.message
-        });
-        return;
+          error: error.message,
+        })
+        return
       }
-      
+
       res.status(500).json({
         success: false,
-        error: 'Failed to change password'
-      });
+        error: 'Failed to change password',
+      })
     }
-  };
+  }
 
   /**
    * Get all users (admin only)
@@ -244,31 +254,31 @@ export class AuthController {
    */
   getAllUsers = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userRole = (req as any).userRole;
-      
+      const userRole = (req as any).userRole
+
       if (userRole !== 'admin') {
         res.status(403).json({
           success: false,
-          error: 'Forbidden'
-        });
-        return;
+          error: 'Forbidden',
+        })
+        return
       }
-      
-      const users = await this.authService.getAllUsers();
-      
+
+      const users = await this.authService.getAllUsers()
+
       res.json({
         success: true,
         count: users.length,
-        data: users
-      });
+        data: users,
+      })
     } catch (error) {
-      console.error('Get all users error:', error);
+      console.error('Get all users error:', error)
       res.status(500).json({
         success: false,
-        error: 'Failed to get users'
-      });
+        error: 'Failed to get users',
+      })
     }
-  };
+  }
 
   /**
    * Update user (admin only)
@@ -276,43 +286,43 @@ export class AuthController {
    */
   updateUser = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userRole = (req as any).userRole;
-      
+      const userRole = (req as any).userRole
+
       if (userRole !== 'admin') {
         res.status(403).json({
           success: false,
-          error: 'Forbidden'
-        });
-        return;
+          error: 'Forbidden',
+        })
+        return
       }
-      
-      const userId = parseInt(req.params['id']);
-      const input: UpdateUserInput = req.body;
-      
-      const user = await this.authService.updateUser(userId, input);
-      
+
+      const userId = parseInt(req.params['id'])
+      const input: UpdateUserInput = req.body
+
+      const user = await this.authService.updateUser(userId, input)
+
       res.json({
         success: true,
         message: 'User updated successfully',
-        data: user
-      });
+        data: user,
+      })
     } catch (error) {
-      console.error('Update user error:', error);
-      
+      console.error('Update user error:', error)
+
       if (error instanceof Error && error.message.includes('not found')) {
         res.status(404).json({
           success: false,
-          error: error.message
-        });
-        return;
+          error: error.message,
+        })
+        return
       }
-      
+
       res.status(500).json({
         success: false,
-        error: 'Failed to update user'
-      });
+        error: 'Failed to update user',
+      })
     }
-  };
+  }
 
   /**
    * Delete user (admin only)
@@ -320,40 +330,40 @@ export class AuthController {
    */
   deleteUser = async (req: Request, res: Response): Promise<void> => {
     try {
-      const userRole = (req as any).userRole;
-      
+      const userRole = (req as any).userRole
+
       if (userRole !== 'admin') {
         res.status(403).json({
           success: false,
-          error: 'Forbidden'
-        });
-        return;
+          error: 'Forbidden',
+        })
+        return
       }
-      
-      const userId = parseInt(req.params['id']);
-      await this.authService.deleteUser(userId);
-      
+
+      const userId = parseInt(req.params['id'])
+      await this.authService.deleteUser(userId)
+
       res.json({
         success: true,
-        message: 'User deactivated successfully'
-      });
+        message: 'User deactivated successfully',
+      })
     } catch (error) {
-      console.error('Delete user error:', error);
-      
+      console.error('Delete user error:', error)
+
       if (error instanceof Error && error.message.includes('not found')) {
         res.status(404).json({
           success: false,
-          error: error.message
-        });
-        return;
+          error: error.message,
+        })
+        return
       }
-      
+
       res.status(500).json({
         success: false,
-        error: 'Failed to delete user'
-      });
+        error: 'Failed to delete user',
+      })
     }
-  };
+  }
 
   /**
    * Refresh token
@@ -365,16 +375,16 @@ export class AuthController {
       // and issue a new access token
       res.status(501).json({
         success: false,
-        error: 'Not implemented'
-      });
+        error: 'Not implemented',
+      })
     } catch (error) {
-      console.error('Refresh token error:', error);
+      console.error('Refresh token error:', error)
       res.status(500).json({
         success: false,
-        error: 'Failed to refresh token'
-      });
+        error: 'Failed to refresh token',
+      })
     }
-  };
+  }
 
   /**
    * Logout
@@ -386,17 +396,17 @@ export class AuthController {
       // you would invalidate the refresh token here
       res.json({
         success: true,
-        message: 'Logout successful'
-      });
+        message: 'Logout successful',
+      })
     } catch (error) {
-      console.error('Logout error:', error);
+      console.error('Logout error:', error)
       res.status(500).json({
         success: false,
-        error: 'Failed to logout'
-      });
+        error: 'Failed to logout',
+      })
     }
-  };
+  }
 }
 
 // Export singleton instance
-export const authController = new AuthController();
+export const authController = new AuthController()

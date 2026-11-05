@@ -12,6 +12,7 @@ import { MIGRATIONS, MigrationEntry } from '../../src/db/migrations'
 import { initializeModels, PILOT_MODELS } from '../../src/models'
 
 const baseline = require('../../migrations/20261105000000-pilot-baseline.js')
+const authMigration = require('../../migrations/20261106000000-auth-sessions-stations.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -73,15 +74,16 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('is the only migration in the static list', () => {
+  it('opens the static list, followed only by B3 auth', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
+      '20261106000000-auth-sessions-stations.js',
     ])
   })
 
-  it('creates exactly the pilot tables', async () => {
+  it('creates exactly the pilot tables (with the B3 auth tables)', async () => {
     expect(await tableNames(sequelize)).toEqual(
-      [...baseline.TABLES, 'SequelizeMeta'].sort()
+      [...baseline.TABLES, ...authMigration.TABLES, 'SequelizeMeta'].sort()
     )
   })
 
@@ -604,11 +606,56 @@ describe('legacy users rebuild is atomic', () => {
 })
 
 describe('pilot baseline down()', () => {
-  it('drops every baseline table', async () => {
+  it('drops every baseline table (after the B3 auth migration is undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await authMigration.down(sequelize.getQueryInterface(), Sequelize)
+    expect(
+      Object.keys(
+        await sequelize.getQueryInterface().describeTable('refresh_tokens')
+      )
+    ).not.toContain('session_id')
     await baseline.down(sequelize.getQueryInterface(), Sequelize)
     expect(await tableNames(sequelize)).toEqual(['SequelizeMeta'])
+    await sequelize.close()
+  })
+})
+
+describe('B3 auth migration (stations, auth_sessions)', () => {
+  it('adds refresh_tokens.session_id and the two tables, idempotently', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    expect(await columns(sequelize, 'refresh_tokens')).toContain('session_id')
+    expect(await columns(sequelize, 'stations')).toEqual(
+      [
+        'created_at',
+        'created_by',
+        'id',
+        'last_used_at',
+        'name',
+        'revoked_at',
+        'token_hash',
+        'updated_at',
+      ].sort()
+    )
+    expect(await columns(sequelize, 'auth_sessions')).toEqual(
+      [
+        'created_at',
+        'expires_at',
+        'id',
+        'kind',
+        'revoke_reason',
+        'revoked_at',
+        'station_id',
+        'updated_at',
+        'user_agent',
+        'user_id',
+      ].sort()
+    )
+    const before = await tableNames(sequelize)
+    await authMigration.up(sequelize.getQueryInterface(), Sequelize)
+    expect(await tableNames(sequelize)).toEqual(before)
+    expect(await foreignKeyViolations(sequelize)).toEqual([])
     await sequelize.close()
   })
 })
