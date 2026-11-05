@@ -1,4 +1,4 @@
-'use strict';
+'use strict'
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
@@ -7,81 +7,81 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       date: {
         type: Sequelize.DATEONLY,
         allowNull: false,
-        unique: true
+        unique: true,
       },
       morningCash: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
-        defaultValue: 0.00,
+        defaultValue: 0.0,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       eveningCash: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
-        defaultValue: 0.00,
+        defaultValue: 0.0,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       totalSales: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
-        defaultValue: 0.00,
+        defaultValue: 0.0,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       expenses: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
-        defaultValue: 0.00,
+        defaultValue: 0.0,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       difference: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: false,
-        defaultValue: 0.00
+        defaultValue: 0.0,
       },
       notes: {
         type: Sequelize.TEXT,
-        allowNull: true
+        allowNull: true,
       },
       userId: {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'Users',
-          key: 'id'
+          key: 'id',
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE'
+        onDelete: 'CASCADE',
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Add indexes for performance
-    await queryInterface.addIndex('Cash', ['date']);
-    await queryInterface.addIndex('Cash', ['userId']);
-    await queryInterface.addIndex('Cash', ['date', 'userId']);
+    await queryInterface.addIndex('Cash', ['date'])
+    await queryInterface.addIndex('Cash', ['userId'])
+    await queryInterface.addIndex('Cash', ['date', 'userId'])
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable('Cash');
-  }
-};
+    await queryInterface.dropTable('Cash')
+  },
+}

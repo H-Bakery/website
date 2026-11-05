@@ -1,4 +1,4 @@
-'use strict';
+'use strict'
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
@@ -7,22 +7,22 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       emailEnabled: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: true
+        defaultValue: true,
       },
       browserEnabled: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: true
+        defaultValue: true,
       },
       soundEnabled: {
         type: Sequelize.BOOLEAN,
         allowNull: false,
-        defaultValue: true
+        defaultValue: true,
       },
       categoryPreferences: {
         type: Sequelize.JSON,
@@ -32,13 +32,13 @@ module.exports = {
           order: true,
           system: true,
           inventory: true,
-          general: true
-        }
+          general: true,
+        },
       },
       priorityThreshold: {
         type: Sequelize.ENUM('low', 'medium', 'high', 'urgent'),
         allowNull: false,
-        defaultValue: 'low'
+        defaultValue: 'low',
       },
       quietHours: {
         type: Sequelize.JSON,
@@ -46,8 +46,8 @@ module.exports = {
         defaultValue: {
           enabled: false,
           start: '22:00',
-          end: '07:00'
-        }
+          end: '07:00',
+        },
       },
       userId: {
         type: Sequelize.INTEGER,
@@ -55,26 +55,26 @@ module.exports = {
         unique: true,
         references: {
           model: 'Users',
-          key: 'id'
+          key: 'id',
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE'
+        onDelete: 'CASCADE',
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Add indexes for performance
-    await queryInterface.addIndex('notification_preferences', ['userId']);
+    await queryInterface.addIndex('notification_preferences', ['userId'])
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable('notification_preferences');
-  }
-};
+    await queryInterface.dropTable('notification_preferences')
+  },
+}

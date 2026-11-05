@@ -1,4 +1,4 @@
-'use strict';
+'use strict'
 
 module.exports = {
   up: async (queryInterface, Sequelize) => {
@@ -7,77 +7,83 @@ module.exports = {
         allowNull: false,
         autoIncrement: true,
         primaryKey: true,
-        type: Sequelize.INTEGER
+        type: Sequelize.INTEGER,
       },
       date: {
         type: Sequelize.DATEONLY,
-        allowNull: false
+        allowNull: false,
       },
       productId: {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'Products',
-          key: 'id'
+          key: 'id',
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE'
+        onDelete: 'CASCADE',
       },
       quantityUnsold: {
         type: Sequelize.INTEGER,
         allowNull: false,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       reason: {
-        type: Sequelize.ENUM('expired', 'damaged', 'overproduction', 'quality_issue', 'other'),
+        type: Sequelize.ENUM(
+          'expired',
+          'damaged',
+          'overproduction',
+          'quality_issue',
+          'other'
+        ),
         allowNull: true,
-        defaultValue: 'other'
+        defaultValue: 'other',
       },
       estimatedValue: {
         type: Sequelize.DECIMAL(10, 2),
         allowNull: true,
         validate: {
-          min: 0
-        }
+          min: 0,
+        },
       },
       notes: {
         type: Sequelize.TEXT,
-        allowNull: true
+        allowNull: true,
       },
       userId: {
         type: Sequelize.INTEGER,
         allowNull: false,
         references: {
           model: 'Users',
-          key: 'id'
+          key: 'id',
         },
         onUpdate: 'CASCADE',
-        onDelete: 'CASCADE'
+        onDelete: 'CASCADE',
       },
       createdAt: {
         allowNull: false,
-        type: Sequelize.DATE
+        type: Sequelize.DATE,
       },
       updatedAt: {
         allowNull: false,
-        type: Sequelize.DATE
-      }
-    });
+        type: Sequelize.DATE,
+      },
+    })
 
     // Add indexes for performance
-    await queryInterface.addIndex('UnsoldProducts', ['date']);
-    await queryInterface.addIndex('UnsoldProducts', ['productId']);
-    await queryInterface.addIndex('UnsoldProducts', ['userId']);
-    await queryInterface.addIndex('UnsoldProducts', ['reason']);
+    await queryInterface.addIndex('UnsoldProducts', ['date'])
+    await queryInterface.addIndex('UnsoldProducts', ['productId'])
+    await queryInterface.addIndex('UnsoldProducts', ['userId'])
+    await queryInterface.addIndex('UnsoldProducts', ['reason'])
     await queryInterface.addIndex('UnsoldProducts', ['date', 'productId'], {
       unique: true,
-      name: 'unique_daily_product_record'
-    });
+      name: 'unique_daily_product_record',
+    })
   },
 
   down: async (queryInterface, Sequelize) => {
-    await queryInterface.dropTable('UnsoldProducts');
-  }
-};
+    await queryInterface.dropTable('UnsoldProducts')
+  },
+}
