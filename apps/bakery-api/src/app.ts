@@ -5,7 +5,8 @@
  * calls `createApp()`; integration tests (B1) do the same with `:memory:`
  * and drive the result through supertest.
  *
- * Mounted (roadmap §4): health, auth, users, partners, products (B5). The other pilot
+ * Mounted (roadmap §4): health, auth, users, partners, products (B5),
+ * preorders (B7). The other pilot
  * domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
@@ -32,6 +33,8 @@ import {
 import { AuthRouterOptions } from './routes/auth.routes'
 import { createHqProductsRouters } from './routes/hq-products.routes'
 import { HqProductsOptions } from './services/hq-products.service'
+import { createPreorderRouters } from './routes/preorders.routes'
+import { PreordersOptions } from './services/preorders.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
 export interface CreateAppOptions {
@@ -55,6 +58,12 @@ export interface CreateAppOptions {
    * `HQ_PRODUCTS_DIR` / `HQ_WRITE_DIR` (unset = write to the read dir, dev).
    */
   hqProducts?: HqProductsOptions
+  /**
+   * Preorders (B7): hq read clone for price snapshots (default: the
+   * `hqProducts.productsDir`, else `HQ_PRODUCTS_DIR` …), the Backzettel
+   * variants hook and the clock.
+   */
+  preorders?: PreordersOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -100,7 +109,15 @@ export function createApp(options: CreateAppOptions = {}): Application {
   const hqProducts = createHqProductsRouters(options.hqProducts)
   app.use('/api/products', hqProducts.products)
   app.use('/api/hq-products', hqProducts.hqProducts)
-  // B7: /api/preorders (+ /api/deliveries/preorders alias, shop POST /api/orders)
+  // B7: /api/preorders (+ /api/deliveries alias, shop POST /api/orders);
+  // roles per route in routes/preorders.routes.ts
+  const preorders = createPreorderRouters({
+    productsDir: options.hqProducts?.productsDir,
+    ...options.preorders,
+  })
+  app.use('/api/preorders', preorders.preorders)
+  app.use('/api/deliveries', preorders.deliveries)
+  app.use('/api/orders', preorders.orders)
   // Z*: /api/backzettel
 
   app.use(notFoundHandler)

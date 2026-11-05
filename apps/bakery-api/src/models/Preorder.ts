@@ -54,6 +54,8 @@ export class Preorder extends Model<
   declare paid: CreationOptional<boolean>
   declare note: CreationOptional<string | null>
   declare pickedUpAt: CreationOptional<Date | null>
+  /** "nicht abgeholt" = status `bereit` + this timestamp (migration B7). */
+  declare notCollectedAt: CreationOptional<Date | null>
   declare createdBy: CreationOptional<number | null>
   declare updatedBy: CreationOptional<number | null>
   declare anonymizedAt: CreationOptional<Date | null>
@@ -88,6 +90,7 @@ export class Preorder extends Model<
         },
         note: { type: DataTypes.TEXT, allowNull: true },
         pickedUpAt: { type: DataTypes.DATE, allowNull: true },
+        notCollectedAt: { type: DataTypes.DATE, allowNull: true },
         createdBy: { type: DataTypes.INTEGER, allowNull: true },
         updatedBy: { type: DataTypes.INTEGER, allowNull: true },
         anonymizedAt: { type: DataTypes.DATE, allowNull: true },

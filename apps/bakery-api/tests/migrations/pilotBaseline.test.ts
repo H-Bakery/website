@@ -13,6 +13,7 @@ import { initializeModels, PILOT_MODELS } from '../../src/models'
 
 const baseline = require('../../migrations/20261105000000-pilot-baseline.js')
 const authMigration = require('../../migrations/20261106000000-auth-sessions-stations.js')
+const preordersMigration = require('../../migrations/20261113000000-preorders-b7.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -74,10 +75,11 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('opens the static list, followed only by B3 auth', () => {
+  it('opens the static list, followed by B3 auth and B7 preorders', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
       '20261106000000-auth-sessions-stations.js',
+      '20261113000000-preorders-b7.js',
     ])
   })
 
@@ -116,6 +118,7 @@ describe('pilot baseline on a fresh database', () => {
         'created_by',
         'updated_by',
         'anonymized_at',
+        'not_collected_at',
       ])
     )
     expect(await columns(sequelize, 'preorder_items')).toEqual(
@@ -606,9 +609,10 @@ describe('legacy users rebuild is atomic', () => {
 })
 
 describe('pilot baseline down()', () => {
-  it('drops every baseline table (after the B3 auth migration is undone)', async () => {
+  it('drops every baseline table (after B7 and B3 auth are undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await preordersMigration.down(sequelize.getQueryInterface(), Sequelize)
     await authMigration.down(sequelize.getQueryInterface(), Sequelize)
     expect(
       Object.keys(
@@ -617,6 +621,31 @@ describe('pilot baseline down()', () => {
     ).not.toContain('session_id')
     await baseline.down(sequelize.getQueryInterface(), Sequelize)
     expect(await tableNames(sequelize)).toEqual(['SequelizeMeta'])
+    await sequelize.close()
+  })
+})
+
+describe('B7 preorders migration', () => {
+  it('adds preorders.not_collected_at and the Mörsbach point, idempotently', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    expect(await columns(sequelize, 'preorders')).toContain('not_collected_at')
+    const points = () =>
+      sequelize.query<{ id: string; weekday: number; window: string }>(
+        'SELECT id, weekday, "window" FROM pickup_points',
+        { type: QueryTypes.SELECT }
+      )
+    expect(await points()).toEqual([
+      { id: 'kindergarten-moersbach', weekday: 6, window: '09:00-09:30' },
+    ])
+    await preordersMigration.up(sequelize.getQueryInterface(), Sequelize)
+    expect(await points()).toHaveLength(1)
+    await preordersMigration.down(sequelize.getQueryInterface(), Sequelize)
+    expect(await columns(sequelize, 'preorders')).not.toContain(
+      'not_collected_at'
+    )
+    // the point stays: preorders may reference it
+    expect(await points()).toHaveLength(1)
     await sequelize.close()
   })
 })

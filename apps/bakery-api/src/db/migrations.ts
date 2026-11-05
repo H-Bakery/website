@@ -33,4 +33,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20261106000000-auth-sessions-stations.js',
     module: require('../../migrations/20261106000000-auth-sessions-stations.js'),
   },
+  {
+    // B7: preorders.not_collected_at, Sammelstelle Mörsbach seed
+    name: '20261113000000-preorders-b7.js',
+    module: require('../../migrations/20261113000000-preorders-b7.js'),
+  },
 ]
