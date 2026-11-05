@@ -23,7 +23,11 @@
     "typecheck": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "tsc --noEmit -p apps/bakery-api/tsconfig.bundle.json"
+        "commands": [
+          "tsc --noEmit -p apps/bakery-api/tsconfig.bundle.json",
+          "tsc --noEmit -p apps/bakery-api/tsconfig.spec.json"
+        ],
+        "parallel": false
       }
     },
     "build": {

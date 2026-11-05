@@ -310,6 +310,15 @@ jobs:
           NODE_ENV: production
         run: npx nx build ${{ matrix.app }} --configuration=production
 
+      # Boot smoke of the pilot API (roadmap B1): the bundle from the step
+      # above starts in production mode on a fresh SQLite file, /health must
+      # answer with the database ok, and a restart must not re-run migrations.
+      - name: Boot smoke bakery-api
+        if: matrix.app == 'bakery-api'
+        env:
+          SMOKE_SKIP_BUNDLE: '1'
+        run: apps/bakery-api/scripts/boot-smoke.sh
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:

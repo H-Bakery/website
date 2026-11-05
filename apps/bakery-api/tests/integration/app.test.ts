@@ -1,0 +1,200 @@
+/**
+ * Integration tests against the real pilot API: `createApp()` on an
+ * in-memory SQLite with the baseline migration (roadmap B1).
+ * Synthetic data only.
+ */
+import request from 'supertest'
+
+import { createTestApp, TestApp } from '../helpers/createTestApp'
+
+let api: TestApp
+
+beforeAll(async () => {
+  api = await createTestApp({ seedPartners: true })
+})
+
+afterAll(async () => {
+  await api.close()
+})
+
+describe('createTestApp', () => {
+  it('runs the pilot baseline and nothing else', () => {
+    expect(api.migrations).toEqual(['20261105000000-pilot-baseline.js'])
+  })
+})
+
+describe('health', () => {
+  it.each(['/health', '/api/health'])(
+    '%s answers 200 with the database ok',
+    async (path) => {
+      const res = await request(api.app).get(path)
+      expect(res.status).toBe(200)
+      expect(res.body).toMatchObject({ status: 'ok', database: 'ok' })
+    }
+  )
+})
+
+describe('error shape', () => {
+  it('answers unknown routes with a JSON 404 carrying error and message', async () => {
+    const res = await request(api.app).get('/api/gibt-es-nicht')
+    expect(res.status).toBe(404)
+    expect(res.headers['content-type']).toMatch(/application\/json/)
+    expect(res.body).toMatchObject({ success: false, error: 'not_found' })
+    expect(typeof res.body.message).toBe('string')
+    expect(res.body.message.length).toBeGreaterThan(0)
+  })
+
+  it('answers broken JSON with 400 invalid_json', async () => {
+    const res = await request(api.app)
+      .post('/api/partners')
+      .set('Content-Type', 'application/json')
+      .send('{"name": ')
+    expect(res.status).toBe(400)
+    expect(res.body).toMatchObject({ error: 'invalid_json' })
+    expect(typeof res.body.message).toBe('string')
+  })
+
+  it('does not reveal the framework', async () => {
+    const res = await request(api.app).get('/health')
+    expect(res.headers['x-powered-by']).toBeUndefined()
+  })
+})
+
+describe('partners CRUD smoke', () => {
+  it('lists the seeded partner', async () => {
+    const res = await request(api.app).get('/api/partners')
+    expect(res.status).toBe(200)
+    expect(Array.isArray(res.body)).toBe(true)
+    expect(res.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 1, slug: 'cap-markt-homburg-kirrberg' }),
+      ])
+    )
+  })
+
+  it('creates, reads, updates a partner and rejects a duplicate slug', async () => {
+    const created = await request(api.app)
+      .post('/api/partners')
+      .send({
+        name: 'Testmarkt Musterstadt',
+        city: 'Musterstadt',
+        deliveryDays: [2, 4, 6],
+      })
+    expect(created.status).toBe(201)
+    expect(created.body).toMatchObject({
+      name: 'Testmarkt Musterstadt',
+      slug: 'testmarkt-musterstadt',
+      deliveryDays: [2, 4, 6],
+      settlementModel: 'commission',
+      active: true,
+    })
+    const id = created.body.id
+
+    const read = await request(api.app).get(`/api/partners/${id}`)
+    expect(read.status).toBe(200)
+    expect(read.body.city).toBe('Musterstadt')
+
+    const updated = await request(api.app)
+      .put(`/api/partners/${id}`)
+      .send({ active: false, notes: 'Nur zum Testen.' })
+    expect(updated.status).toBe(200)
+    expect(updated.body).toMatchObject({
+      active: false,
+      notes: 'Nur zum Testen.',
+    })
+
+    const duplicate = await request(api.app)
+      .post('/api/partners')
+      .send({ name: 'Testmarkt Musterstadt' })
+    expect(duplicate.status).toBe(409)
+    expect(duplicate.body).toEqual(
+      expect.objectContaining({
+        error: expect.any(String),
+        message: expect.any(String),
+      })
+    )
+  })
+
+  it('records visits and derives the day from them', async () => {
+    const item = {
+      productId: 9001,
+      productSlug: 'testbrot',
+      productName: 'Testbrot',
+      unitPrice: 2.5,
+    }
+    const initial = await request(api.app)
+      .post('/api/partners/1/visits')
+      .send({
+        businessDate: '2026-11-03',
+        visitType: 'initial',
+        items: [{ ...item, countedQty: null, deliveredQty: 10 }],
+      })
+    expect(initial.status).toBe(201)
+    expect(initial.body).toMatchObject({ sequence: 1, visitType: 'initial' })
+
+    const pickup = await request(api.app)
+      .post('/api/partners/1/visits')
+      .send({
+        businessDate: '2026-11-03',
+        visitType: 'pickup',
+        items: [{ ...item, countedQty: 4, deliveredQty: 0 }],
+      })
+    expect(pickup.status).toBe(201)
+    expect(pickup.body.sequence).toBe(2)
+
+    const list = await request(api.app).get(
+      '/api/partners/1/visits?from=2026-11-03&to=2026-11-03'
+    )
+    expect(list.status).toBe(200)
+    expect(JSON.stringify(list.body)).toContain('testbrot')
+  })
+
+  it('links a visit to a user of the pilot users table', async () => {
+    const { PartnerVisit, User } = await import('../../src/models')
+    const staff = await User.create({
+      username: 'test.verkauf',
+      displayName: 'Test Verkauf',
+      role: 'verkauf',
+      passwordHash: 'scrypt$synthetic',
+    })
+    // Loaded users never carry the hashes (default scope); login uses
+    // the `withSecrets` scope.
+    const loaded = await User.findByPk(staff.id)
+    expect(loaded?.toJSON()).not.toHaveProperty('passwordHash')
+    expect(loaded?.toJSON()).not.toHaveProperty('pinHash')
+    const withSecrets = await User.scope('withSecrets').findByPk(staff.id)
+    expect(withSecrets?.passwordHash).toBe('scrypt$synthetic')
+
+    const visit = await PartnerVisit.create({
+      partnerId: 1,
+      businessDate: '2026-11-04',
+      visitType: 'refill',
+      staffId: staff.id,
+    })
+    const withStaff = await PartnerVisit.findByPk(visit.id, {
+      include: [{ model: User, as: 'staff' }],
+    })
+    expect(withStaff?.staff?.displayName).toBe('Test Verkauf')
+
+    // The foreign key is enforced: no visit for a user that does not exist.
+    await expect(
+      PartnerVisit.create({
+        partnerId: 1,
+        businessDate: '2026-11-04',
+        visitType: 'refill',
+        staffId: 4242,
+      })
+    ).rejects.toThrow(/FOREIGN KEY/)
+  })
+
+  it('answers an unknown partner with 404 and a German message', async () => {
+    const res = await request(api.app).get('/api/partners/999')
+    expect(res.status).toBe(404)
+    expect(res.body).toEqual(
+      expect.objectContaining({
+        error: expect.any(String),
+        message: expect.any(String),
+      })
+    )
+  })
+})
