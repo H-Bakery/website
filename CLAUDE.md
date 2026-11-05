@@ -15,9 +15,8 @@ This is a full-stack bakery management system built with Next.js, Material UI, a
 **Deployment Targets:**
 
 - Landing Page → GitHub Pages (static export)
-- Shop System → Vercel (SSR for performance)
-- Management System → Vercel (CSR for interactivity)
-- Backend API → Google Cloud Run (containerized)
+- Pilot (docs/roadmap.md D4): API + Management laufen auf der **Bäckerei-Box** im LAN
+  (systemd + Caddy), siehe „Box-Betrieb" unten. Vercel/Cloud Run sind für den Pilot nicht im Einsatz.
 
 ## Quick Commands
 
@@ -380,6 +379,24 @@ Oberflächen (Schweizer Platzhalter, CHF, `data-testid`s ohne Gegenstück) und s
 Begründung übersprungen; geprüft wird die echte App in `landing-smoke.spec.ts` und
 `management-smoke.spec.ts`. Wer eine dieser Funktionen baut, zieht den Test um und gibt ihm
 echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
+
+## Box-Betrieb (`deploy/`, roadmap O1–O4)
+
+Pilot-Betrieb auf einem Rechner in der Bäckerei: systemd-Units, Caddy (LAN-HTTPS über DNS-01),
+Umgebungsvorlagen und Skripte (Einrichtung, Pull-Deploy, hq-Sync, Backup/Restore, Health-Check
+mit Telegram) in `deploy/`; Bedienung und Störungen in `docs/runbook.md`. Tests:
+`deploy/tests/run-tests.sh` (macOS/Linux, ohne root, Ports 5120–5124, nur synthetische Daten).
+Was man vor einer Änderung wissen muss:
+
+- **Node 22 LTS** auf der Box (Node 20 ist seit 30.04.2026 ohne Sicherheitsupdates).
+- **Zwei Env-Dateien:** `/etc/bakery/bakery.env` (API + Verwaltung, root:bakery 0640) und
+  `/etc/bakery/ops.env` (Telegram, restic, Deploy; root:root 0600, liest nur systemd). Neue
+  Geheimnisse der Betriebs-Skripte gehören in `ops.env`, nie in `bakery.env`.
+- **`NEXT_PUBLIC_*` werden beim Build eingebacken** – Änderung heißt `deploy.sh --rebuild`.
+  `npm ci` und Build laufen mit geleerter Umgebung (`env -i` + Whitelist `DEPLOY_BUILD_ENV_KEYS`);
+  braucht der Build eine neue Variable, dort freigeben, nicht die Whitelist aushebeln.
+- **Was root ausführt, kommt nie aus einem Release** (das gehört `bakery`, npm-Skripte liefen
+  darin), sondern aus dem root-eigenen Klon `/opt/bakery/src`.
 
 ## Important Notes
 
