@@ -44,6 +44,9 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['verkauf', '/admin/users', false],
     ['verkauf', '/admin/settings', true],
     ['backstube', '/admin/backzettel/2026-11-24', true],
+    ['verkauf', '/admin/backzettel', true],
+    ['verkauf', '/admin/backzettel/2026-11-28', true],
+    ['fahrer', '/admin/backzettel', false],
     ['backstube', '/backstube', true],
     ['backstube', '/admin/preorders', false],
     ['backstube', '/admin/reports', false],
@@ -122,10 +125,11 @@ describe('getNavigationForRole', () => {
     expect(items).not.toContain('/admin/login')
   })
 
-  it('Verkauf: Vorbestellungen/Mörsbach, Produkte, Backschrank, Einstellungen', () => {
+  it('Verkauf: Vorbestellungen/Mörsbach, Produkte, Backschrank, Backzettel (lesen), Einstellungen', () => {
     expect(hrefs(getNavigationForRole('verkauf', true)).sort()).toEqual(
       [
         '/admin',
+        '/admin/backzettel',
         '/admin/delivery/preorders',
         '/admin/products',
         '/admin/partners',
@@ -141,9 +145,10 @@ describe('getNavigationForRole', () => {
     ])
   })
 
-  it('Backstube ohne gebaute Backstube-Seiten: Dashboard und Einstellungen', () => {
+  it('Backstube (vor Z6): Dashboard, Backzettel und Einstellungen', () => {
     expect(hrefs(getNavigationForRole('backstube', true))).toEqual([
       '/admin',
+      '/admin/backzettel',
       '/admin/settings',
     ])
   })

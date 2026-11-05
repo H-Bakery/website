@@ -81,7 +81,7 @@ const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings']
  * - inhaber: alles, Start Dashboard.
  * - verkauf: Vorbestellungen (M1, inkl. Abholliste darunter), Sammelstelle
  *   Mörsbach (heute die einzige Vorbestell-Erfassung), Produkte nur lesen
- *   (Liste, ohne Bearbeiten/Neu), Backschrank. Dashboard als Ausweichstart,
+ *   (Liste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5). Dashboard als Ausweichstart,
  *   solange /admin/preorders nicht gebaut ist.
  * - backstube: Backzettel, Backstube-Tablet; Ausweichstart Dashboard.
  * - fahrer: Abholliste der Sammelstelle Mörsbach (Backliste, Lieferstelle).
@@ -95,6 +95,10 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
       '/admin/delivery/preorders',
       { path: '/admin/products', exact: true },
       '/admin/partners',
+      // Z5: nur lesen (die API erlaubt jeder Sitzung GET /api/backzettel) -
+      // im Laden sieht man, was gebacken wird. Planen/Freigeben verweigert
+      // die Seite (und die API) außer Inhaber und Backstube.
+      '/admin/backzettel',
       ...COMMON_ROUTES,
     ],
     start: ['/admin/preorders', '/admin'],
