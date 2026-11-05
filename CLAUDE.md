@@ -41,8 +41,9 @@ npm run serve:shop           # Shop app (port 4200) ✓
 npm run serve:management     # Management app (port 4201) ✓
 npm run serve:api:simple     # Simple API server with mock data (port 5000) ✓
 
-# API (TypeScript build - has compilation errors, see TASK-001)
-npm run serve:api            # Full TS API - currently broken due to migration issues
+# Real TS API (pilot, roadmap B0): esbuild bundle → node, SQLite at DB_PATH
+npm run serve:api            # bundles, migrates, listens on PORT (default 5000) ✓
+npm run build:api            # bundle only → dist/apps/bakery-api/bundle/main.js
 
 # Building
 nx build bakery-shop       # Build shop app
@@ -117,18 +118,27 @@ website/
 3. Lint code: `npm run lint`
 4. Build to verify: `npm run build`
 
-## Service Status (as of 2026-03-01)
+## Service Status (as of 2026-11-05)
 
-| Service       | Command                    | Port | Status                                       |
-| ------------- | -------------------------- | ---- | -------------------------------------------- |
-| Landing Page  | `npm run dev:landing`      | 3000 | Working                                      |
-| Shop          | `npm run serve:shop`       | 4200 | Working                                      |
-| Management    | `npm run serve:management` | 4201 | Working                                      |
-| Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                    |
-| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data)                          |
-| API (full TS) | `npm run serve:api`        | 5000 | Broken (TS compilation errors, see TASK-001) |
+| Service       | Command                    | Port | Status                                               |
+| ------------- | -------------------------- | ---- | ---------------------------------------------------- |
+| Landing Page  | `npm run dev:landing`      | 3000 | Working                                              |
+| Shop          | `npm run serve:shop`       | 4200 | Working                                              |
+| Management    | `npm run serve:management` | 4201 | Working                                              |
+| Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                            |
+| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data) - parity reference until cutover |
+| API (real TS) | `npm run serve:api`        | 5000 | Starts (B0): health, auth (in-memory), partners only |
 
-The full TypeScript API (`bakery-api`) has systemic compilation errors from an incomplete JS→TS migration. Use `serve:api:simple` for a working API with mock endpoints.
+The real TypeScript API (`bakery-api`, roadmap D2) is built by esbuild into one file,
+`dist/apps/bakery-api/bundle/main.js` (`apps/bakery-api/build.mjs`, target `bakery-api:bundle`), and
+runs against the root `node_modules`. On start it opens SQLite at `DB_PATH` (default
+`./data/bakery.db` relative to the working directory, gitignored; **absolute and required in
+production**), switches it to WAL with `busy_timeout`, runs the migrations in-process (Umzug, static
+list in `src/db/migrations.ts`), then `initializeModels()`, then listens. Mounted so far: `/health`
+(+ `/api/health`), `/api/auth`, `/api/partners`; every other path is a JSON 404 with `error` +
+`message`. The other pilot domains (products, reports, finance, targets, preorders, Backzettel) are
+added by their roadmap tasks; until then the frontend still talks to `serve:api:simple`. Details in
+`apps/bakery-api/CLAUDE.md`.
 
 ## Verkaufspartner (Backschrank CAP-Markt)
 
