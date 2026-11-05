@@ -544,9 +544,10 @@ Exit criteria:
 
 **Operations**
 
-- [ ] **O1** Box: hardware, OS, Node 20, check `sqlite3` prebuild, systemd units (api,
-      management), Caddy LAN HTTPS (DNS-01), fixed IP, hq read clone with fetch + `reset --hard`
-      every 10 min and at 14:50/17:50 (§4a), `.env` (S–M, → Q1, Q2).
+- [~] **O1** Box: hardware, OS, Node 20, check `sqlite3` prebuild, systemd units (api,
+  management), Caddy LAN HTTPS (DNS-01), fixed IP, hq read clone with fetch + `reset --hard`
+  every 10 min and at 14:50/17:50 (§4a), `.env` (S–M, → Q1, Q2).
+  `feat/O1-O4-ops`: software in `deploy/` + [runbook](runbook.md); hardware, Q1, Q2 open.
 
 **hq (minimal set, D15)**
 
@@ -555,10 +556,12 @@ Exit criteria:
   - `git commit -- "${DATA_PATHS[@]}"` (only its paths).
   - On a rejected push, `git pull --rebase` + one retry.
   - Tested on the Pi with a deliberately conflicting push.
-- [ ] **O2** Backup: nightly SQLite `.backup` + restic off-site, restore drill; health check every
-      5 min → Telegram alert (S, → O1, Q4).
-- [ ] **O3** Pull-based deploy script (`git pull`, `npm ci`, build, restart) + `docs/runbook.md` (S).
-- [ ] **O4** Remote maintenance path for the developer, e.g. Tailscale on the box only (S, → Q8).
+- [~] **O2** Backup: nightly SQLite `.backup` + restic off-site, restore drill; health check every
+  5 min → Telegram alert (S, → O1, Q4). `feat/O1-O4-ops`: scripts + timers; Q4, drill open.
+- [~] **O3** Pull-based deploy script (`git pull`, `npm ci`, build, restart) + `docs/runbook.md` (S).
+  `feat/O1-O4-ops`: first real run needs the box and B0's `bakery-api:bundle`.
+- [~] **O4** Remote maintenance path for the developer, e.g. Tailscale on the box only (S, → Q8).
+  `feat/O1-O4-ops`: Tailscale steps in runbook §7; Q8 open.
 
 ### M1 Vorbestellungen (build 09.–16.11., live Tue 17.11.)
 
@@ -784,6 +787,7 @@ PC width, in light and dark. It checks role filtering, 401s without a session, a
 | Blech formatting           | `libs/bakery-management/feature-daily-prep/.../utils/trayInfo.ts`                                                                      |
 | Backzettel seed data       | `hq/config/prep-tasks/standard-prep-config.yaml`, `hq/data/production/dough-specs/Teigstücke-Hefeteig.md`, `hq/data/recipes/fillings/` |
 | Opening days               | `hq/data/finance/config/targets.json` (`closed_weekdays: [1]`)                                                                         |
+| Box operations (O1–O4)     | [runbook.md](runbook.md); `deploy/` (systemd, Caddy, env templates, scripts, `deploy/tests/run-tests.sh`)                              |
 
 ---
 

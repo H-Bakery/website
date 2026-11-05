@@ -1,0 +1,57 @@
+# Bäckerei-Verwaltung (Next.js, `next start` auf dem Build) - roadmap §4, O1.
+# Lauscht nur auf 127.0.0.1:4201; von außen erreichbar über Caddy.
+# WorkingDirectory muss das Monorepo sein: die Loader für Berichte/Finanzen
+# suchen nx.json ab process.cwd() und laden apps/bakery-api/src/services/*.core.js.
+# NEXT_PUBLIC_* sind beim Build eingebacken (deploy.sh liest bakery.env vorher).
+
+[Unit]
+Description=Bäckerei Heusser - Verwaltung (bakery-management)
+Documentation=https://github.com/H-Bakery/website/blob/main/docs/runbook.md
+After=network-online.target bakery-api.service
+Wants=network-online.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=bakery
+Group=bakery
+WorkingDirectory=/opt/bakery/current
+EnvironmentFile=/etc/bakery/bakery.env
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+ExecStart=/usr/bin/node node_modules/next/dist/bin/next start dist/apps/bakery-management --hostname 127.0.0.1 --port 4201
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+# --- Härtung wie bakery-api ---
+UMask=0027
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Next schreibt seinen Cache (Bilder, ISR) unter .next/cache des aktiven Releases.
+# "-": fehlt das Verzeichnis, startet die Unit trotzdem.
+ReadWritePaths=-/opt/bakery/current/dist/apps/bakery-management/.next/cache
+# Geheimnisse der Betriebs-Skripte (Telegram, restic, AWS, DNS-Token) sind ohnehin
+# root:root 0600; hier zusätzlich unsichtbar, falls jemand die Rechte lockert.
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/caddy
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target
