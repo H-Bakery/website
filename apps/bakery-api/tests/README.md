@@ -31,7 +31,12 @@ type-check; `npx nx run bakery-api:typecheck` checks the pilot graph **and** `ts
   with its JSON stores redirected into a temp dir (the real `data/*.json` are never touched),
   `compare(request, { mock, real })` returns status + shape differences (missing keys and type
   changes count; extra keys on the real API and `null` are tolerated unless `strictKeys`).
-  Example: `parity/partners.parity.test.ts`.
+  `parity/partners.parity.test.ts` (B6) runs every partner route on both servers in lockstep,
+  with sessions, and compares values too where both hold the same data.
+- **`integration/partners.test.ts`** (B6) - role guards per route, hq catalogue lookup of visit
+  items (needs a synthetic catalogue: `app: { hqProducts: { productsDir: makeProductsDir(),
+writeDir: null } }` - a visit with items in any other test needs the same), the initial-visit
+  race, audit. `integration/partnerImport{,Cli}.test.ts` - the `partner-store.json` import.
 - **`../scripts/boot-smoke.sh`** - bundle → start in production mode on a fresh SQLite file →
   `/health` + JSON 404 (`message` and `error`) → restart on the same file (no migration may
   re-run). CI runs it in the `build (bakery-api)` job. Since B3 it also runs the bundled
