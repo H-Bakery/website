@@ -37,6 +37,8 @@ export interface ComputedSnapshot {
   fillings: unknown
   prep: unknown
   warnings: unknown[]
+  /** Zeilen ohne festgelegte Grundmenge bei der Freigabe (fehlt bei älteren Freigaben). */
+  unsetKeys?: string[]
 }
 
 export class BackzettelDay extends Model<

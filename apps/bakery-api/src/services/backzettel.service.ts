@@ -350,7 +350,8 @@ export function createBackzettelService(source: BackzettelSource) {
 
     const sections = dayCore.frozenSections(
       rows.map((r) => r.get({ plain: true })),
-      config
+      config,
+      day.computedSnapshot?.unsetKeys
     )
     const lines: any[] = []
     const viewSections = sections.map((s: any) => ({

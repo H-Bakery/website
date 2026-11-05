@@ -520,6 +520,7 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
       'fillings',
       'hefeteig',
       'prep',
+      'unsetKeys',
       'warnings',
     ])
     expect(snap.hefeteig).toEqual(result.hefeteig)
@@ -530,7 +531,40 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
       fillings: null,
       prep: null,
       warnings: [],
+      unsetKeys: [],
     })
+  })
+
+  it('offene Grundmenge bleibt nach der Freigabe offen (unsetKeys)', () => {
+    const raw = config()
+    raw.items.find((i) => i.id === 'weck').base[6] = null
+    const cfgUnset = configCore.normalizeConfig(raw)
+    const result = core.computeDay({
+      config: cfgUnset,
+      date: SAT,
+      preorderItems: [],
+      catalog: PRODUCTS,
+      recipes: {},
+    })
+    const weck = result.lines.find((l) => l.itemId === 'weck')
+    expect(weck.baseUnset).toBe(true)
+    const snap = day.computedSnapshot(result)
+    expect(snap.unsetKeys).toEqual([weck.key])
+    const rows = day
+      .linesForConfirm(result.lines)
+      .map((r, i) => ({ id: i + 1, ...r }))
+    const frozen = day
+      .frozenSections(rows, cfgUnset, snap.unsetKeys)
+      .flatMap((s) => s.lines.map((l) => l.line))
+    expect(frozen.find((l) => l.itemId === 'weck').baseUnset).toBe(true)
+    expect(frozen.filter((l) => l.baseUnset)).toHaveLength(1)
+    // ältere Freigaben ohne unsetKeys: wie bisher nicht offen
+    expect(
+      day
+        .frozenSections(rows, cfgUnset)
+        .flatMap((s) => s.lines)
+        .some((l) => l.line.baseUnset)
+    ).toBe(false)
   })
 
   it('snapshotDiffers: nur Hefeteig, Füllungen und Vorbereitung zählen', () => {

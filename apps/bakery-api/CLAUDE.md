@@ -607,7 +607,9 @@ What to know before changing it:
 - **Confirm** (serialised transaction): recomputes, upserts every line with a name/section/unit
   snapshot, deletes rows no longer computed, stores `preorder_snapshot` (flat
   `{preorderId, productId, variant, qty}`) and `computed_snapshot`
-  (`{ hefeteig, fillings, prep, warnings }` exactly as the core computed them), discards old deltas. **Ticks** survive a
+  (`{ hefeteig, fillings, prep, warnings, unsetKeys }` exactly as the core computed them;
+  `unsetKeys` = line keys with `baseUnset`, which `frozenSections` restores so a confirmed line with
+  an unset base still reads „offen", not 0), discards old deltas. **Ticks** survive a
   re-confirm only when the line's `base/seasonal/preorders/cap/total` are unchanged
   (`frozenQtyChanged`); otherwise `doneAt`/`doneBy` are cleared and listed as `clearedTicks` in the
   confirm audit row. A draft after reopen already hides such stale ticks.
