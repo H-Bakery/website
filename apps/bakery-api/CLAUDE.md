@@ -84,21 +84,69 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
 `createApp(options)` builds the Express app without `listen` and without DB setup, for the server
 and for supertest (B1). Mounted for the pilot:
 
-| Path                     | Router                                   | Note                                          |
-| ------------------------ | ---------------------------------------- | --------------------------------------------- |
-| `/health`, `/api/health` | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed     |
-| `/api/auth` (public)     | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users - see B3   |
-| `/api` (guard)           | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**    |
-| `/api/auth` (session)    | `routes/auth.routes.ts` (session router) | me, logout, stations                          |
-| `/api/users`             | `routes/users.routes.ts`                 | user admin, `inhaber` only                    |
-| `/api/partners`          | `routes/partner.routes.ts`               | Backschrank; session required; B6: roles + hq |
+| Path                                             | Router                                   | Note                                                        |
+| ------------------------------------------------ | ---------------------------------------- | ----------------------------------------------------------- |
+| `/health`, `/api/health`                         | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed                   |
+| `/api/auth` (public)                             | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users - see B3                 |
+| `/api` (guard)                                   | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**                  |
+| `/api/auth` (session)                            | `routes/auth.routes.ts` (session router) | me, logout, stations                                        |
+| `/api/users`                                     | `routes/users.routes.ts`                 | user admin, `inhaber` only                                  |
+| `/api/partners`                                  | `routes/partner.routes.ts`               | Backschrank; session required; B6: roles + hq               |
+| `/api/reports`, `/api/analytics`, `/api/finance` | `routes/hq-data.routes.ts` (B4)          | hq read-only data via the mock modules - see "hq data (B4)" |
 
-Mount points for B4 (reports/analytics/finance/targets), B5 (products/hq-products), B7 (preorders)
+Mount points for B5 (products/hq-products), B7 (preorders)
 and Z\* (Backzettel) are marked in `app.ts` **below the global guard** - mount new domains there
 and add `requireRole(...)`. `libs/api/auth` is no longer mounted (the lib stays until B12).
 Everything else is unmounted: recipes, inventory, cash, chat, dashboard, staff, notifications,
 templates, preferences, import, sales-analytics, unsold, orders, production, baking-list,
 deliveries, workflows, email, monitoring/metrics, Swagger.
+
+## hq data (B4): reports, analytics, finance, Tagesziel
+
+`routes/hq-data.routes.ts` → `createHqDataRouter(options.hq)`, mounted at the root **below** the
+global guard (its paths are absolute `/api/...`). It mounts the mock server's modules unchanged -
+one implementation for both servers until cutover (D3); B12 renames them, don't fork them:
+
+| Module                   | Endpoints                                                                                             | Access                               |
+| ------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `routes/reports.mock.js` | `GET /api/reports/daily?from=&to=`, `/daily/:date`, `/monthly/:month`                                 | `inhaber` (also at a PIN station)    |
+|                          | `GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}?startDate=&endDate=` | `inhaber` (also at a PIN station)    |
+| `routes/finance.mock.js` | `GET /api/finance/summary`, `/api/finance/months?from=&to=`                                           | `inhaber`, **personal session only** |
+| `routes/targets.mock.js` | `GET /api/finance/targets`, `/targets/status?date=`, `/targets/period?from=&to=`                      | `inhaber`, **personal session only** |
+
+Shapes are exactly the mock's (proven by `tests/parity/hq-data.parity.test.ts`, deep-equal bodies),
+including the module-local error bodies (`{ error, message }` for reports, `{ success: false,
+error, message }` for finance/targets); 401/403 come from the B3 guards via `sendError`.
+
+- **Auth adapter.** finance/targets call `auth.requireRole('admin')`. `createMockAuthAdapter()`
+  hands them the B3 `requireRole` with `MOCK_ROLE_MAP` (`admin` → `inhaber`) plus
+  `requirePersonalSession` (`FINANCE_PERSONAL_SESSION_ONLY = true`). An unmapped mock role throws
+  at mount time. reports.mock has no guard of its own; the router puts `requireRole('inhaber')` on
+  the prefixes `/api/reports` and `/api/analytics` only (so an unknown path there is 403 for a
+  non-owner, 404 for the owner, and other routes are untouched).
+- **Pilot decision (B4):** reports and analytics are **owner only** in the pilot (Verkauf has no
+  screen for them yet; widen `REPORTS_ROLES` when it does). Finance and Tagesziel additionally
+  need a **password session**: the targets are derived from staff costs, and a 4-digit PIN on a
+  shared tablet should not open them. This answers B3's open question conservatively - flip
+  `FINANCE_PERSONAL_SESSION_ONLY` if the owner wants them at the station (the dashboard tile then
+  shows its "Anmeldung erforderlich" state on the tablet).
+- **Paths.** `HQ_REPORTS_DIR` (holds `converted/`) and `HQ_FINANCE_DIR` (holds
+  `finance-summary.json`, `config/targets.json`) are read by `loadConfig()` (resolved against the
+  working directory) and passed through `createApp({ hq: { reportsDir, financeDir } })`. Unset,
+  the modules fall back to `<website>/../hq/data/...` via `__dirname` - which in the bundle is
+  `dist/apps/bakery-api/bundle/`, by luck the same depth as `src/routes/`. Don't rely on it: on the
+  box set both (see `deploy/bakery.env.example`); production logs a `[WARN]` when they are unset.
+  Missing data is never an error: reports answer gaps / `available: false`, finance `status:
+'no-data'`, targets `status: 'no-target'` (no sample data, by design).
+- **Bundling.** The modules are `require`d by literal from TS, so esbuild bundles them and the
+  `*.core.js` files they pull in; `scripts/boot-smoke.sh` checks `/api/reports/daily` and
+  `/api/finance/targets/status` from the bundle against `tests/fixtures/hq-data.synthetic.js`.
+- The old `routes/reports.routes.ts` (hardcoded fake numbers, never mounted since B0) is deleted.
+- Tests: `tests/integration/hqData.test.ts` (roles, station session, no-hq answers, mount scope),
+  `tests/parity/hq-data.parity.test.ts` (mock vs. real, mock login vs. B3 session - the parity
+  runner takes `mockHeaders`/`realHeaders` for that), the cores' own suites
+  (`reportsCore`, `financeCore`, `financeRoutes`, `targetsCore`, `targetsRoutes`).
+  `createTestApp()` silences the modules' startup log (`hq.log`).
 
 ## Errors
 
@@ -170,8 +218,8 @@ What to know before changing it:
   had its own counter and a PIN could be brute-forced without limit.
 - **Station sessions carry the user's full role but cannot administer** (`requirePersonalSession`
   on `/api/users` and `/api/auth/stations`, 403 `personal_session_required`): a 4-digit PIN on a
-  shared tablet must not unlock user/station admin. Open question for the owner whether finance
-  (B4) gets the same guard.
+  shared tablet must not unlock user/station admin. B4 gives finance and Tagesziel the same guard
+  (default chosen there; owner may still decide otherwise - see "hq data (B4)").
 - **Logout is public**: Bearer access token, else `{ refreshToken }` (also a rotated or expired
   one) names the session; it is revoked and audited (`via: 'access' | 'refresh'`). Nothing valid
   → still 200, as in the mock.
@@ -283,7 +331,7 @@ and `npx nx test bakery-api` (`--selectProjects js|ts`):
 The legacy suites that load `index.js` (`healthAPI`, `securityIntegration`) need
 `express-rate-limit` (root dependency, run `npm ci`) and reach `marked`@16, which is ESM-only; the
 `js` project maps `marked` to `tests/helpers/markedStub.js`. Both go with the legacy layer in B12.
-State on `feat/B3-auth` 2026-11-05: 64 suites pass (1314 tests), 6 skipped, 0 failing.
+State on `feat/B4-reports-finance-mount` 2026-11-05: 66 suites pass (1432 tests), 6 skipped, 0 failing.
 
 ## Known state
 

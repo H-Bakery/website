@@ -289,8 +289,8 @@ forbidden`) - wer die Datei verschiebt, muss `CORE_DIR` in `reports.ts` nachzieh
 
 Endpunkte des Mock-Servers: `GET /api/reports/daily?from=&to=`, `/api/reports/daily/:date`,
 `/api/reports/monthly/:month` sowie `/api/analytics/{revenue-trends,product-performance,payment-methods,summary}`.
-Fehler mit `message` **und** `error`. Die echte TypeScript-API hat unter `/api/reports/daily` einen
-älteren, DB-basierten Vertrag - der ist nicht angeglichen.
+Fehler mit `message` **und** `error`. Die echte TypeScript-API hängt seit B4 dieselben Module ein
+(siehe „Berichte und Finanzen auf der echten API (B4)"); der alte DB-basierte Vertrag ist gelöscht.
 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/reportsCore.test.js` (25)
 und in der Management-App `src/lib/reports.spec.ts`, `admin/reports/**/*.spec.tsx`,
@@ -450,6 +450,18 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/backzettel` (117,
 synthetische Fixtures in `tests/fixtures/backzettel.synthetic.js`).
+
+## Berichte und Finanzen auf der echten API (B4)
+
+Die echte API (`createApp()`) hängt `reports.mock.js`, `finance.mock.js` und `targets.mock.js`
+**unverändert** ein (`apps/bakery-api/src/routes/hq-data.routes.ts`) - dieselben Dateien wie
+`simple-server.js`, nicht kopieren; umbenannt wird in B12. Rechte im Pilot: Berichte und Analysen
+nur `inhaber` (auch an der PIN-Station), Finanzen und Tagesziel nur `inhaber` **mit Passwort-
+Sitzung** (an der Station 403 `personal_session_required`). Die Rolle `admin` der Mock-Module wird
+über einen Adapter auf `inhaber` abgebildet. Pfade aus `HQ_REPORTS_DIR` / `HQ_FINANCE_DIR`. Die
+Parity-Suite `apps/bakery-api/tests/parity/hq-data.parity.test.ts` vergleicht beide Server auf
+einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byte. Details:
+`apps/bakery-api/CLAUDE.md`, Abschnitt „hq data (B4)".
 
 ## E2E-Suiten (Playwright)
 
