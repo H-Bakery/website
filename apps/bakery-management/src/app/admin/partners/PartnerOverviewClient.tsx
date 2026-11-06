@@ -246,7 +246,13 @@ export default function PartnerOverviewClient() {
                           underline="hover"
                           color="inherit"
                           variant="h6"
-                          sx={{ display: 'inline-block' }}
+                          // Einziger Weg zur Detailseite: Touch-Ziel 44 px
+                          // statt 32 (W4-verify r4).
+                          sx={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            minHeight: 44,
+                          }}
                         >
                           {partner.name}
                         </Link>
