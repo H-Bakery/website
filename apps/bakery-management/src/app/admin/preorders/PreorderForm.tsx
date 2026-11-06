@@ -37,8 +37,17 @@ import {
   isPreorderConflict,
   listPreorders,
   preorderErrorMessage,
+  requestFailureKind,
   updatePreorder,
 } from '../../../lib/preordersApi'
+import {
+  clearPreorderDraft,
+  newRequestId,
+  readPreorderDraft,
+  savePreorderDraft,
+  type PreorderDraftFields,
+} from '../../../lib/preorderDraft'
+import { useOptionalSession } from '../../../lib/session'
 import {
   CHANNEL_LABELS,
   ENTRY_CHANNELS,
@@ -103,6 +112,14 @@ function lineKey(productId: string, variant: string): string {
 
 function roundCents(value: number): number {
   return Math.round(value * 100) / 100
+}
+
+function formatClock(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2, '0')}:${String(
+    d.getMinutes()
+  ).padStart(2, '0')}`
 }
 
 function readChannel(): PreorderChannel {
@@ -206,6 +223,7 @@ export default function PreorderForm({
   initialPickupPointId,
 }: PreorderFormProps) {
   const editing = Boolean(preorder)
+  const sessionUserId = useOptionalSession()?.user?.id ?? null
 
   const [catalogue, setCatalogue] = useState<CatalogueProduct[]>([])
   const [points, setPoints] = useState<PickupPoint[]>([])
@@ -260,6 +278,25 @@ export default function PreorderForm({
   const [error, setError] = useState<string | null>(null)
   const [showErrors, setShowErrors] = useState(false)
 
+  // W4-Verifikation Runde 4: Entwurf (nur Erfassen) und Kennung des
+  // Speicherns - siehe `lib/preorderDraft.ts`.
+  const requestIdRef = useRef<string | null>(null)
+  const [draftReady, setDraftReady] = useState(false)
+  const [restoredAt, setRestoredAt] = useState<string | null>(null)
+  const draftFields: PreorderDraftFields = {
+    customerName,
+    customerPhone,
+    channel,
+    pickupPointId,
+    pickupDate,
+    pickupTime,
+    paid,
+    note,
+    lines,
+  }
+  const draftFieldsRef = useRef(draftFields)
+  draftFieldsRef.current = draftFields
+
   const nameRef = useRef<HTMLInputElement>(null)
   const phoneRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -275,6 +312,23 @@ export default function PreorderForm({
     setRecentIds(readRecentProducts())
     if (!preorder) {
       setChannel(initialPickupPointId ? 'sammelstelle' : readChannel())
+      // Ein nicht gespeicherter Entwurf desselben Benutzers (Sitzung
+      // abgelaufen, Seite neu geladen) kommt zurück.
+      const draft = readPreorderDraft(sessionUserId)
+      if (draft) {
+        setCustomerName(draft.customerName)
+        setCustomerPhone(draft.customerPhone)
+        setChannel(draft.channel)
+        setPickupPointId(draft.pickupPointId)
+        setPickupDate(draft.pickupDate)
+        setPickupTime(draft.pickupTime)
+        setPaid(draft.paid)
+        setNote(draft.note)
+        setLines(draft.lines)
+        requestIdRef.current = draft.requestId
+        setRestoredAt(draft.savedAt)
+      }
+      setDraftReady(true)
     }
 
     let active = true
@@ -316,6 +370,45 @@ export default function PreorderForm({
     // Einmal beim Öffnen - die Maske bleibt bis „Nächste Bestellung“ stehen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Jede Änderung landet im Entwurf - erst nach dem Wiederherstellen, sonst
+  // überschriebe die leere Maske ihn.
+  useEffect(() => {
+    if (editing || !draftReady) return
+    savePreorderDraft(sessionUserId, draftFields, requestIdRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    editing,
+    draftReady,
+    sessionUserId,
+    customerName,
+    customerPhone,
+    channel,
+    pickupPointId,
+    pickupDate,
+    pickupTime,
+    paid,
+    note,
+    lines,
+  ])
+
+  const discardDraft = () => {
+    clearPreorderDraft(sessionUserId)
+    requestIdRef.current = null
+    setRestoredAt(null)
+    setCustomerName('')
+    setCustomerPhone('')
+    setPickupPointId(initialPickupPointId ?? '')
+    setChannel(initialPickupPointId ? 'sammelstelle' : readChannel())
+    setPickupDate(isBusinessDate(initialDate) ? initialDate : '')
+    setPickupTime('')
+    setPaid(false)
+    setNote('')
+    setLines([])
+    setPending(null)
+    setError(null)
+    setShowErrors(false)
+  }
 
   const point = useMemo(
     () => points.find((p) => p.id === pickupPointId) ?? null,
@@ -571,6 +664,18 @@ export default function PreorderForm({
       paid,
       note: note.trim() || null,
     }
+    if (!preorder) {
+      // Eine Kennung je Bestellung, über Wiederholungen gleich: kam die
+      // Antwort des ersten Versuchs nicht an, liefert der zweite dieselbe
+      // Bestellung statt einer zweiten (W4-Verifikation Runde 4).
+      if (!requestIdRef.current) requestIdRef.current = newRequestId()
+      savePreorderDraft(
+        sessionUserId,
+        draftFieldsRef.current,
+        requestIdRef.current
+      )
+      input.requestId = requestIdRef.current
+    }
     setSaving(true)
     setError(null)
     try {
@@ -586,6 +691,10 @@ export default function PreorderForm({
         : await createPreorder(input)
       rememberRecentProducts(lines.map((line) => line.productId))
       if (!point) rememberChannel(channel)
+      if (!preorder) {
+        clearPreorderDraft(sessionUserId)
+        requestIdRef.current = null
+      }
       onSaved(saved)
     } catch (err) {
       if (preorder && onConflict && isPreorderConflict(err)) {
@@ -597,11 +706,15 @@ export default function PreorderForm({
         )
         return
       }
+      const text = preorderErrorMessage(
+        err,
+        'Die Vorbestellung konnte nicht gespeichert werden.'
+      )
+      const kind = requestFailureKind(err)
       setError(
-        preorderErrorMessage(
-          err,
-          'Die Vorbestellung konnte nicht gespeichert werden.'
-        )
+        !preorder && kind !== 'refused'
+          ? `${text} Ob die Bestellung schon angekommen ist, ist unklar - einfach noch einmal „Vorbestellung speichern“ tippen: sie wird dabei nicht doppelt angelegt. Die Eingaben bleiben erhalten.`
+          : text
       )
     } finally {
       setSaving(false)
@@ -692,6 +805,25 @@ export default function PreorderForm({
       {loadError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {loadError}
+        </Alert>
+      )}
+      {restoredAt && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          data-testid="preorder-draft-restored"
+          action={
+            <Button
+              color="inherit"
+              onClick={discardDraft}
+              sx={{ minHeight: 44 }}
+            >
+              Verwerfen
+            </Button>
+          }
+        >
+          Nicht gespeicherte Eingaben von {formatClock(restoredAt)} Uhr
+          wiederhergestellt - bitte prüfen und speichern.
         </Alert>
       )}
 

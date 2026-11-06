@@ -175,6 +175,8 @@ export interface PreorderInput {
   paid?: boolean
   note?: string | null
   status?: PreorderStatus
+  /** Kennung des Speicherns; ein Wiederholen legt nichts doppelt an. */
+  requestId?: string
 }
 
 export interface PreorderStatusChange {
