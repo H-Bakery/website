@@ -449,6 +449,18 @@ function frozenQtyChanged(row, values) {
 }
 
 /**
+ * Bleibt der Haken einer Zeile bei einer erneuten Freigabe stehen? Ja, wenn
+ * die Menge gleich blieb - und auch, wenn sie kleiner wurde (W4-Verifikation
+ * Runde 3): wer 14 gebacken hat und jetzt nur 12 braucht, ist fertig. Nur
+ * wenn mehr nötig ist, fällt der Haken weg, sonst übersähe die Backstube die
+ * zusätzlichen Stücke.
+ */
+function tickStillValid(row, values) {
+  if (!frozenQtyChanged(row, values)) return true
+  return round2(Number(values.total) || 0) <= round2(Number(row.total) || 0)
+}
+
+/**
  * Was der Core neben den Zeilen bei der Freigabe gerechnet hat; ein
  * freigegebener Tag wird daraus gezeigt, nicht aus der aktuellen YAML.
  */
@@ -648,6 +660,7 @@ module.exports = {
   frozenSections,
   FROZEN_QTY_FIELDS,
   frozenQtyChanged,
+  tickStillValid,
   computedSnapshot,
   deltaBakeExtras,
   linesWithExtras,

@@ -652,9 +652,10 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
   Planungsseite zeigen `deltasPending` als Hinweis und laden nach 5 s nach (höchstens 6-mal);
   fehlen die Stammdaten an einem freigegebenen Tag, sagt das Tablet, dass Nachträge fehlen können
   - nie still. Nur der Inhaber kann
-    wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
-    Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
-    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke. Was damals schon
+    wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Braucht eine erneute
+    Freigabe mehr von einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
+    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke. Wird sie kleiner,
+    bleibt der Haken (`tickStillValid`, W4-Verifikation Runde 3: 14 gebacken, 12 nötig = fertig). Was damals schon
     gebacken war, steht danach als `previouslyDone: { qty, at, by }` an der offenen Zeile (aus dem
     `confirm`-Audit, bis sie wieder abgehakt ist); Tablet, Planung und Druck zeigen „bereits 30
     erledigt … - noch +10".

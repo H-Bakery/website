@@ -861,6 +861,44 @@ describe('re-confirm and the frozen snapshot', () => {
     ])
   })
 
+  it('a re-confirm that lowers a ticked line keeps the tick (W4-verify r3)', async () => {
+    // WED2 is confirmed by the test above (weck unticked again)
+    const first = await as('backstube').get(`/api/backzettel/${WED2}`)
+    expect(first.body.data.status).toBe('confirmed')
+    const weck = line(first.body.data, 'weck')
+    if (!weck.doneAt) {
+      expect(
+        (
+          await as('backstube').post(
+            `/api/backzettel/${WED2}/lines/${weck.id}/done`
+          )
+        ).status
+      ).toBe(200)
+    }
+    await as('inhaber').post(`/api/backzettel/${WED2}/reopen`)
+    const lowered = await as('backstube')
+      .put(`/api/backzettel/${WED2}/lines/weck/correction`)
+      .send({ correction: -2, reason: 'Markt zu' })
+    expect(lowered.status).toBe(200)
+    const draftWeck = line(lowered.body.data, 'weck')
+    expect(draftWeck.total).toBeLessThan(weck.total)
+    expect(draftWeck.doneAt).toEqual(expect.any(String))
+    const again = await as('backstube').post(`/api/backzettel/${WED2}/confirm`)
+    expect(again.status).toBe(200)
+    expect(line(again.body.data, 'weck')).toMatchObject({
+      id: weck.id,
+      total: draftWeck.total,
+      doneAt: expect.any(String),
+      previouslyDone: null,
+    })
+    const confirms = await AuditLog.findAll({
+      where: { entity: 'backzettel_day', entityId: WED2, action: 'confirm' },
+      order: [['id', 'DESC']],
+      limit: 1,
+    })
+    expect((confirms[0].data as any).clearedTicks).toEqual([])
+  })
+
   it('Hefeteig, fillings, prep and warnings stay as confirmed when the YAML changes', async () => {
     // a preorder for a product that is on no Backzettel item -> warning
     await preorder(SAT2, [

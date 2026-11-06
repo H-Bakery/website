@@ -875,8 +875,9 @@ What to know before changing it:
   (`{ hefeteig, fillings, prep, warnings, unsetKeys }` exactly as the core computed them;
   `unsetKeys` = line keys with `baseUnset`, which `frozenSections` restores so a confirmed line with
   an unset base still reads „offen", not 0), discards old deltas. **Ticks** survive a
-  re-confirm only when the line's `base/seasonal/preorders/cap/total` are unchanged
-  (`frozenQtyChanged`); otherwise `doneAt`/`doneBy` are cleared and listed as `clearedTicks` in the
+  re-confirm when the line's `base/seasonal/preorders/cap/total` are unchanged
+  (`frozenQtyChanged`) or the new total is not larger (`tickStillValid`, W4-verify r3: baked 14,
+  now 12 needed is done); otherwise `doneAt`/`doneBy` are cleared and listed as `clearedTicks` in the
   confirm audit row. A draft after reopen already hides such stale ticks.
 - **A confirmed day is served from what was stored**: lines from the rows, Hefeteig/fillings/prep/
   warnings from `computed_snapshot` - a later YAML or recipe change does not alter it (test).
