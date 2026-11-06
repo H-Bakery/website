@@ -1,16 +1,15 @@
 /**
  * hq read-only data on the real API (B4, roadmap §4, D9): cash-register
- * reports, analytics, finance and the Tagesziel. The routes are the mock
- * server's modules, mounted unchanged - one implementation for both servers
- * until cutover (D3); B12 renames them.
+ * reports, analytics, finance and the Tagesziel. The routes are plain
+ * CommonJS modules (until B12 they also ran in the mock server):
  *
- *   src/routes/reports.mock.js   register(app, { reportsDir })
+ *   src/routes/reports.routes.js   register(app, { reportsDir })
  *     GET /api/reports/daily?from=&to=, /api/reports/daily/:date,
  *         /api/reports/monthly/:month
  *     GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}
- *   src/routes/finance.mock.js   install(app, auth, { financeDir })
+ *   src/routes/finance.routes.js   install(app, auth, { financeDir })
  *     GET /api/finance/summary, /api/finance/months?from=&to=
- *   src/routes/targets.mock.js   install(app, auth, { financeDir, reportsDir })
+ *   src/routes/targets.routes.js   install(app, auth, { financeDir, reportsDir })
  *     GET /api/finance/targets, /targets/status?date=, /targets/period?from=&to=
  *
  * Access (pilot decision, see apps/bakery-api/CLAUDE.md "hq data (B4)"):
@@ -19,9 +18,9 @@
  *   - finance + targets: `inhaber` only **and a personal session** - a PIN on
  *     a shared tablet does not unlock figures derived from staff costs.
  *
- * The finance/targets modules ask for `auth.requireRole('admin')` (the mock's
- * role). `createMockAuthAdapter()` hands them the B3 guards instead and maps
- * mock roles to pilot roles; an unmapped role fails at mount time, never
+ * The finance/targets modules ask for `auth.requireRole('inhaber')`.
+ * `createRoleGuards()` hands them the B3 guards (plus the personal-session
+ * check); a role that is not a pilot role fails at mount time, never
  * silently open.
  */
 import { RequestHandler, Router } from 'express'
@@ -30,17 +29,20 @@ import { requirePersonalSession, requireRole } from '../auth/middleware'
 import type { UserRole } from '../auth/types'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
-// CommonJS modules shared with simple-server.js; literal requires so esbuild
-// bundles them (and the *.core.js files they require).
-const registerReportsRoutes = require('./reports.mock')
-const financeRoutes = require('./finance.mock')
-const targetsRoutes = require('./targets.mock')
+// CommonJS modules; literal requires so esbuild bundles them (and the
+// *.core.js files they require).
+const registerReportsRoutes = require('./reports.routes')
+const financeRoutes = require('./finance.routes')
+const targetsRoutes = require('./targets.routes')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
-/** Mock role → pilot role (D5). */
-export const MOCK_ROLE_MAP: Readonly<Record<string, UserRole>> = {
-  admin: 'inhaber',
-}
+/** The pilot roles (D5) a module may ask for. */
+const PILOT_ROLES: readonly UserRole[] = [
+  'inhaber',
+  'verkauf',
+  'backstube',
+  'fahrer',
+]
 
 /** Roles that may read reports and analytics. `inhaber` passes every check anyway. */
 export const REPORTS_ROLES: readonly UserRole[] = ['inhaber']
@@ -51,8 +53,8 @@ export const REPORTS_ROLES: readonly UserRole[] = ['inhaber']
  */
 export const FINANCE_PERSONAL_SESSION_ONLY = true
 
-export interface MockAuthAdapter {
-  requireRole: (...mockRoles: string[]) => RequestHandler
+export interface RoleGuards {
+  requireRole: (...roles: string[]) => RequestHandler
 }
 
 /** Chains handlers into one middleware (each must call `next()` to go on). */
@@ -74,23 +76,19 @@ function chain(handlers: RequestHandler[]): RequestHandler {
 }
 
 /**
- * The `auth` object the mock modules expect (`createAuth()` of
- * `auth.mock.js`), backed by the B3 guards. Only `requireRole` is used by
- * them; login etc. are B3's own routes.
+ * The `auth` object the route modules expect, backed by the B3 guards. Only
+ * `requireRole` is used by them; login etc. are B3's own routes.
  */
-export function createMockAuthAdapter(
+export function createRoleGuards(
   options: { personalSessionOnly?: boolean } = {}
-): MockAuthAdapter {
+): RoleGuards {
   return {
-    requireRole: (...mockRoles: string[]) => {
-      const roles = mockRoles.map((role) => {
-        const mapped = MOCK_ROLE_MAP[role]
-        if (!mapped) {
-          throw new Error(
-            `hq-data: mock role "${role}" has no pilot role mapping (MOCK_ROLE_MAP).`
-          )
+    requireRole: (...requested: string[]) => {
+      const roles = requested.map((role) => {
+        if (!PILOT_ROLES.includes(role as UserRole)) {
+          throw new Error(`hq-data: "${role}" is not a pilot role (D5).`)
         }
-        return mapped
+        return role as UserRole
       })
       const guards = [requireRole(...roles)]
       if (options.personalSessionOnly) guards.push(requirePersonalSession)
@@ -129,7 +127,7 @@ export function createHqDataRouter(options: HqDataOptions = {}): Router {
   router.use(['/api/reports', '/api/analytics'], requireRole(...REPORTS_ROLES))
   registerReportsRoutes(router, { reportsDir: options.reportsDir })
 
-  const auth = createMockAuthAdapter({
+  const auth = createRoleGuards({
     personalSessionOnly: FINANCE_PERSONAL_SESSION_ONLY,
   })
   financeRoutes.install(router, auth, {

@@ -2,7 +2,7 @@
  * Berechnungslogik für Verkaufspartner-Kennzahlen.
  *
  * Bewusst dependency-freies CommonJS: dieselbe Datei wird von der echten API
- * (`partner-stats.service.ts`), vom Mock-Server (`simple-server.js`) und von den
+ * (`partner-stats.service.ts`), vom Import (`partner-import.core.js`) und von den
  * Tests (`tests/unit/partnerStats.test.js`) benutzt. Es gibt damit genau *eine*
  * Implementierung der Formeln - keine Kopie, die auseinanderlaufen kann.
  *
@@ -162,7 +162,7 @@ function isBlank(value) {
  * @param {unknown} items Positionen aus dem Request (`undefined`/`null` = keine)
  * @param {(item: object) => ({id?: string, numeric_id?: number|string,
  *   name?: string, price?: number|string} | null | undefined)} [lookup]
- *   Katalogsuche, z. B. über den HQ-Index des Mock-Servers
+ *   Katalogsuche, z. B. über den hq-Katalog (`hq-catalogue.ts`)
  * @returns {{ ok: true, items: Array } | { ok: false, error: string, message: string }}
  */
 function validateVisitItems(items, lookup) {

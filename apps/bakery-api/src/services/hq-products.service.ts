@@ -18,7 +18,7 @@
  *     ohne B5b vom Lese-Klon): das Produkt trägt `pendingApproval: true`
  *     ("wartet auf Freigabe").
  *   - `HQ_WRITE_DIR` nicht gesetzt (Entwicklung): direkt nach
- *     `HQ_PRODUCTS_DIR`, wie der Mock-Server, ohne git.
+ *     `HQ_PRODUCTS_DIR`, ohne git.
  *
  * Die Regeln (Feldübernahme, Slug, numeric_id, Commit-Text) stehen in
  * `hq-products.core.js`, die Prüfung in `product-input.core.js`, die

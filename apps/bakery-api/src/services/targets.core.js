@@ -2,8 +2,8 @@
  * Tagesziel-Ampel (TASK-039): Break-even als täglicher Messwert.
  *
  * Bewusst dependency-freies CommonJS (Konvention wie `finance.core.js` und
- * `reports.core.js`): dieselbe Datei benutzen der Mock-Server
- * (`src/routes/targets.mock.js`) und die Tests (`tests/unit/targetsCore.test.js`).
+ * `reports.core.js`): dieselbe Datei benutzen die API
+ * (`src/routes/targets.routes.js`) und die Tests (`tests/unit/targetsCore.test.js`).
  * Die gesamte Rechnung steht genau hier - nicht im Controller, nicht im
  * Frontend. Wer eine Formel ändert, ändert sie an einer Stelle.
  *

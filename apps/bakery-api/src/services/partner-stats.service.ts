@@ -3,7 +3,7 @@
  *
  * Hier steht bewusst **keine** Formel. Die einzige Implementierung liegt in
  * `partner-stats.core.js` (dependency-freies CommonJS) und wird von dieser
- * Datei, vom Mock-Server (`simple-server.js`) und von den Tests gemeinsam
+ * Datei und von den Tests gemeinsam
  * benutzt - so kann keine Kopie auseinanderlaufen.
  *
  * Aufgabe dieser Datei:

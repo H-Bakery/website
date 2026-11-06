@@ -4,7 +4,7 @@
  * geschrieben werden.
  *
  * Dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`:
- * der Mock-Server (`simple-server.js`) und die Tests
+ * die API (`hq-products.service.ts`) und die Tests
  * (`tests/unit/productInputValidation.test.js`) benutzen dieselbe
  * Implementierung.
  *

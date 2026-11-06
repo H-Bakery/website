@@ -59,7 +59,7 @@ export interface CreateAppOptions {
   corsOrigins?: string[]
   /** Log every request (default true; tests turn it off). */
   logRequests?: boolean
-  /** Request body limit for JSON, as in the mock server. */
+  /** Request body limit for JSON (default 200 kB). */
   jsonLimit?: string
   /** JWT secret and clock (default `JWT_SECRET`, `Date.now`). */
   auth?: AuthServiceOptions & AuthRouterOptions
@@ -190,7 +190,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
     createPartnerRouter({ productsDir: hqProducts.service.productsDir })
   )
   // B4: /api/reports, /api/analytics (inhaber), /api/finance/* incl. targets
-  // (inhaber, personal session) - the mock modules behind the auth adapter.
+  // (inhaber, personal session) - the route modules behind the B3 guards.
   // Absolute paths, so mounted at the root.
   app.use(createHqDataRouter(options.hq))
   if (!options.publicCatalogue) app.use('/api/products', hqProducts.products)

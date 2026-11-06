@@ -3,7 +3,7 @@
  * `hq/data/finance/finance-summary.json`.
  *
  * Bewusst dependency-freies CommonJS (Konvention wie `partner-stats.core.js`):
- * dieselbe Datei benutzen der Mock-Server (`src/routes/finance.mock.js`), der
+ * dieselbe Datei benutzen die API (`src/routes/finance.routes.js`), der
  * Loader der Management-App (`apps/bakery-management/src/lib/finance.ts`) und
  * die Tests (`tests/unit/financeCore.test.js`). Es gibt damit genau *eine*
  * Implementierung - vor allem des Sanitizers, denn der entscheidet, was das

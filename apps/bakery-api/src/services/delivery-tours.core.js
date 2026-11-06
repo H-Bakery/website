@@ -2,7 +2,7 @@
  * Rechenkern der Liefertouren - dependency-freies CommonJS.
  *
  * Wie bei `partner-stats.core.js` steht jede Formel genau einmal hier und wird
- * vom Mock-Server (`simple-server.js`) und den Tests benutzt. Nichts in dieser
+ * von der API (`delivery-tours.service.ts`) und den Tests benutzt. Nichts in dieser
  * Datei macht Netzwerk oder Dateizugriffe, damit sie ueberall laeuft.
  *
  * Das Frontend hat seine eigene TypeScript-Fassung der Geometrie in
@@ -643,7 +643,7 @@ function normalizeStopInput(body, existing) {
 
   // Optionale Sammelstelle. Ist sie gesetzt, ist der Stopp eine Uebergabe-
   // stelle: der Server haengt beim Lesen die Vorbestellungen des Tourtags an
-  // (siehe `decorateTour` in `simple-server.js`).
+  // (siehe `delivery-tours.service.ts`).
   const pickupPointId =
     source.pickupPointId === undefined
       ? base.pickupPointId || null

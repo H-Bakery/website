@@ -2,8 +2,7 @@
  * Liefertouren auf der echten API (B8): Depot, Fahrer, Touren, Stopps.
  *
  * Gerechnet wird ausschließlich in `delivery-tours.core.js` (Reihenfolge,
- * Schätzformeln, Ankunftszeiten, Statusfolge, Eingabeprüfung) - derselben
- * Datei wie im Mock-Server. Adresssuche und Straßenrouting kommen aus
+ * Schätzformeln, Ankunftszeiten, Statusfolge, Eingabeprüfung). Adresssuche und Straßenrouting kommen aus
  * `delivery-geo.core.js` (Nominatim, OSRM), beide **optional**: fällt ein
  * Dienst aus, bleibt die Tour bei den Schätzwerten (`isEstimate: true`).
  * Die Sammelstelle (`pickupPointId`) holt ihre Übergabeliste aus den

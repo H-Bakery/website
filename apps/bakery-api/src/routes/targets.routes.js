@@ -1,5 +1,5 @@
 /**
- * Tagesziel-Ampel für den Mock-Server (`simple-server.js`, TASK-039):
+ * Tagesziel-Ampel (TASK-039, B4), eingehängt von `hq-data.routes.ts`:
  *
  *   GET /api/finance/targets                 Zielwerte je Wochentag, beide
  *                                            Stufen, Wochentagsfaktoren,
@@ -11,7 +11,7 @@
  *   GET /api/finance/targets/period?from=&to=  Tagesreihe mit Ampel je Tag
  *                                            und Summen je Stufe
  *
- * Alle drei nur mit Rolle `admin` - die Zielwerte sind aus Personalkosten
+ * Alle drei nur mit Rolle `inhaber` - die Zielwerte sind aus Personalkosten
  * abgeleitet und damit genauso vertraulich wie die Finanzdaten. Gerechnet
  * wird ausschließlich in `src/services/targets.core.js`; hier wird gelesen,
  * geprüft und geantwortet.
@@ -23,7 +23,7 @@
  * Fehlt oder stolpert etwas davon, antwortet der Server mit
  * `status: 'no-target'` und einem Grund - nie mit einem geschätzten Ziel.
  *
- * Fehlerantworten setzen `message` **und** `error` (siehe `auth.mock.js`).
+ * Fehlerantworten setzen `message` **und** `error`.
  */
 
 'use strict'
@@ -31,7 +31,7 @@
 const fs = require('fs')
 const path = require('path')
 const targets = require('../services/targets.core')
-const finance = require('./finance.mock')
+const finance = require('./finance.routes')
 const reportsCore = require('../services/reports.core')
 const reportsFiles = require('../services/reports-files.core')
 
@@ -108,7 +108,8 @@ function fail(res, status, error, message) {
 }
 
 /**
- * Hängt die Routen an `app`. `auth` ist das Ergebnis von `createAuth()`;
+ * Hängt die Routen an `app`. `auth.requireRole(...roles)` liefert die
+ * Rollen-Wache (echte API: `createRoleGuards()` in `hq-data.routes.ts`);
  * `options.financeDir`, `options.reportsDir`, `options.today` und
  * `options.log` sind für Tests.
  */
@@ -125,7 +126,7 @@ function install(app, auth, options = {}) {
     typeof options.today === 'function'
       ? options.today()
       : options.today || targets.todayIso()
-  const adminOnly = auth.requireRole('admin')
+  const ownerOnly = auth.requireRole('inhaber')
 
   /**
    * Alles, was jede Antwort braucht: Config, Kostenbasis, Faktoren, Ziele.
@@ -156,7 +157,7 @@ function install(app, auth, options = {}) {
     return { ok: true, config, days, built }
   }
 
-  app.get('/api/finance/targets', adminOnly, (req, res) => {
+  app.get('/api/finance/targets', ownerOnly, (req, res) => {
     const result = build()
     if (!result.ok) {
       // Mit Config, aber ohne Ziel (etwa: keine Berichte): Kostenbasis und
@@ -166,7 +167,7 @@ function install(app, auth, options = {}) {
     res.json({ success: true, status: 'ok', data: result.built })
   })
 
-  app.get('/api/finance/targets/status', adminOnly, (req, res) => {
+  app.get('/api/finance/targets/status', ownerOnly, (req, res) => {
     const requested = req.query.date
     if (requested !== undefined && !targets.isValidDate(String(requested))) {
       return fail(
@@ -218,7 +219,7 @@ function install(app, auth, options = {}) {
     })
   })
 
-  app.get('/api/finance/targets/period', adminOnly, (req, res) => {
+  app.get('/api/finance/targets/period', ownerOnly, (req, res) => {
     const from = String(req.query.from || '')
     const to = String(req.query.to || '')
     if (!targets.isValidDate(from) || !targets.isValidDate(to)) {

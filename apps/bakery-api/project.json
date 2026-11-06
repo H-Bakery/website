@@ -12,7 +12,6 @@
         "{projectRoot}/migrations/*.js",
         "{projectRoot}/build.mjs",
         "{projectRoot}/tsconfig.bundle.json",
-        "{workspaceRoot}/libs/api/**/*.ts",
         "{workspaceRoot}/tsconfig.base.json"
       ],
       "outputs": ["{workspaceRoot}/dist/apps/bakery-api/bundle"],
@@ -45,13 +44,6 @@
       "dependsOn": ["bundle"],
       "options": {
         "command": "node --enable-source-maps dist/apps/bakery-api/bundle/main.js"
-      }
-    },
-    "serve-legacy": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "node index.js",
-        "cwd": "apps/bakery-api"
       }
     },
     "test": {

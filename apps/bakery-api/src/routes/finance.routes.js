@@ -1,11 +1,11 @@
 /**
- * Finanz-Endpunkte des Mock-Servers (`simple-server.js`):
+ * Finanz-Endpunkte (B4, TASK-038), eingehängt von `hq-data.routes.ts`:
  *
  *   GET /api/finance/summary            bereinigtes finance-summary.json
  *                                       + abgeleitete Reihen (`derived`)
  *   GET /api/finance/months?from=&to=   Monatsreihe Einnahmen/Ausgaben/Ergebnis
  *
- * Beide nur mit Rolle `admin` (401 ohne Token, 403 mit anderer Rolle). Die
+ * Beide nur mit Rolle `inhaber` (401 ohne Sitzung, 403 mit anderer Rolle). Die
  * Rechen- und Bereinigungslogik steht ausschließlich in
  * `src/services/finance.core.js`; hier wird nur gelesen und geantwortet.
  *
@@ -16,7 +16,7 @@
  * `status: 'no-data'` und loggt das einmal - es gibt bewusst **keinen**
  * Rückfall auf Beispieldaten.
  *
- * Fehlerantworten setzen `message` **und** `error` (siehe `auth.mock.js`).
+ * Fehlerantworten setzen `message` **und** `error`.
  */
 
 'use strict'
@@ -84,17 +84,17 @@ function sendNoData(res, reason) {
 }
 
 /**
- * Hängt die Routen an `app`. `auth` ist das Ergebnis von
- * `createAuth()` aus `auth.mock.js`; `options.financeDir` und `options.log`
- * sind für Tests.
+ * Hängt die Routen an `app`. `auth.requireRole(...roles)` liefert die
+ * Rollen-Wache (echte API: `createRoleGuards()` in `hq-data.routes.ts`);
+ * `options.financeDir` und `options.log` sind für Tests.
  */
 function install(app, auth, options = {}) {
   const log = options.log || console
   const financeDir =
     options.financeDir || process.env.HQ_FINANCE_DIR || defaultFinanceDir()
-  const adminOnly = auth.requireRole('admin')
+  const ownerOnly = auth.requireRole('inhaber')
 
-  app.get('/api/finance/summary', adminOnly, (req, res) => {
+  app.get('/api/finance/summary', ownerOnly, (req, res) => {
     const loaded = loadSummary(financeDir, log)
     if (loaded.status !== 'ok') return sendNoData(res, loaded.reason)
     res.json({
@@ -104,7 +104,7 @@ function install(app, auth, options = {}) {
     })
   })
 
-  app.get('/api/finance/months', adminOnly, (req, res) => {
+  app.get('/api/finance/months', ownerOnly, (req, res) => {
     const { from, to } = req.query
     if (!finance.isValidMonthParam(from) || !finance.isValidMonthParam(to)) {
       return res.status(400).json({

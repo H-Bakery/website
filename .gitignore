@@ -87,7 +87,7 @@ tmp/
 tmp-nx-graph.html
 test-results/
 
-# Local store of the mock API server (apps/bakery-api/simple-server.js)
+# Old JSON stores of the deleted mock API (input of the import-* CLIs, may hold personal data)
 apps/bakery-api/data/
 
 # SQLite of the TS API in development (DB_PATH default ./data/bakery.db, relative to cwd)

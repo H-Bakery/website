@@ -5,8 +5,8 @@
  * fest, was noch dalag (`countedQty`) und was neu eingeräumt wurde
  * (`deliveredQty`). Verkauf und Umsatz werden daraus abgeleitet - sie werden
  * nie erfasst. Gerechnet wird ausschließlich im `partner-stats.service`
- * (der wiederum an `partner-stats.core.js` delegiert), damit die echte API,
- * der Mock-Server und die Tests dieselben Formeln benutzen.
+ * (der wiederum an `partner-stats.core.js` delegiert), damit API, Import
+ * und Tests dieselben Formeln benutzen.
  *
  * Rollen (B6, D5) - die Sitzung selbst prüft der globale Guard in `app.ts`:
  *   lesen (GET)                          jede Sitzung
@@ -116,7 +116,7 @@ function parseNumericId(value: unknown): number | null {
   return Number.isSafeInteger(id) && id > 0 ? id : null
 }
 
-/** Kalendarisch gültig - die Prüfung teilt sich die Route mit dem Mock-Server. */
+/** Kalendarisch gültig - die Prüfung steht im Core (`partner-stats.core.js`). */
 const isBusinessDate = partnerStats.isBusinessDate
 
 /**

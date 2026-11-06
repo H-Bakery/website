@@ -2,7 +2,7 @@
  * Datei-Lese-Schicht für die Kassenberichte in `hq/data/reports/converted`.
  *
  * Trennt das Dateisystem von der Rechenlogik in `reports.core.js`: hier wird
- * nur gelesen und geparst, gerechnet wird dort. Mock-Server und
+ * nur gelesen und geparst, gerechnet wird dort. API und
  * Management-Loader benutzen beides gemeinsam.
  *
  * Fehlt das Verzeichnis (in CI gibt es kein `hq`), wird einmal protokolliert

@@ -1,5 +1,6 @@
 /**
- * Kassenberichte für den Mock-Server (`simple-server.js`).
+ * Kassenberichte (B4): eingehängt von `hq-data.routes.ts` der API, hinter
+ * der Rolle `inhaber`.
  *
  * Liest die Tagesfiles aus `hq/data/reports/converted` (Pfad über
  * `HQ_REPORTS_DIR` oder `<website>/../hq/data/reports`) und rechnet mit
