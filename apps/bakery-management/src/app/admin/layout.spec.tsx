@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, within } from '@testing-library/react'
+import {
+  render,
+  screen,
+  fireEvent,
+  within,
+  cleanup,
+} from '@testing-library/react'
 import AdminLayout from './layout'
 
 let mockPathname = '/admin/orders'
@@ -137,6 +143,21 @@ describe('AdminLayout', () => {
     renderLayout('/admin/products/new')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
       'Dashboard › Produkte › Neues Produkt'
+    )
+  })
+
+  it('shows no raw product id or ISO date in the breadcrumb (W4-verify r2)', () => {
+    renderLayout('/admin/products/mustercroissant')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Produkte › Bearbeiten'
+    )
+    cleanup()
+    renderLayout('/admin/backzettel/2026-11-07')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Samstag, 07.11.2026'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toContain(
+      '2026-11-07'
     )
   })
 

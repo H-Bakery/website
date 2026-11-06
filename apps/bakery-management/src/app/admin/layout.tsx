@@ -66,6 +66,7 @@ import {
 } from '../../lib/roles'
 import NoAccess from '../../components/auth/NoAccess'
 import LogoutButton from '../../components/auth/LogoutButton'
+import { formatDateLong, isIsoDate } from '../../lib/backzettelFormat'
 
 const drawerWidth = 280
 
@@ -151,6 +152,11 @@ function getBreadcrumb(pathname: string): string[] {
       const pattern = href.replace(/\/\d+(?=\/|$)/g, '/[id]')
       if (pattern in DYNAMIC_BREADCRUMB_LABELS) {
         return DYNAMIC_BREADCRUMB_LABELS[pattern]
+      }
+      // W4-verify r2: Produkt-ID (Slug) und Backzettel-Datum nicht roh zeigen
+      if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
+      if (/^\/admin\/backzettel\/\d{4}-\d{2}-\d{2}$/.test(href)) {
+        return isIsoDate(segment) ? formatDateLong(segment) : segment
       }
       return segment
     })
