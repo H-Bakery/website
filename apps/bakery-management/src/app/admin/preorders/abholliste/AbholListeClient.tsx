@@ -130,8 +130,10 @@ const printStyles = (
         },
         '.abholliste-print h1': { fontSize: '15pt', margin: '0 0 2mm' },
         '.abholliste-print p': { margin: '0 0 3mm' },
+        // Bei `collapse` ragt die halbe Außenlinie über die Tabelle hinaus -
+        // auf voller Breite schnitt der Rand des Blatts sie rechts ab.
         '.abholliste-print table': {
-          width: '100%',
+          width: 'calc(100% - 1pt)',
           borderCollapse: 'collapse',
         },
         '.abholliste-print th, .abholliste-print td': {
@@ -154,6 +156,7 @@ const printStyles = (
         },
         '.abholliste-print .code': {
           fontFamily: 'monospace',
+          fontSize: '9pt',
           whiteSpace: 'nowrap',
         },
         '.abholliste-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
@@ -693,6 +696,10 @@ export default function AbholListeClient({
                 direction="row"
                 spacing={1}
                 justifyContent={{ xs: 'stretch', md: 'flex-end' }}
+                // Auf 320 px passen drei Knöpfe nicht nebeneinander - dann
+                // rutscht „⋮" in die nächste Zeile statt aus dem Bild.
+                flexWrap="wrap"
+                useFlexGap
               >
                 {actions.handover && (
                   <Button
@@ -705,9 +712,10 @@ export default function AbholListeClient({
                     aria-label={`${name} übergeben`}
                     sx={{
                       minHeight: 56,
-                      flex: { xs: 1, md: 'none' },
-                      minWidth: { md: 180 },
-                      fontSize: '1.05rem',
+                      flex: { xs: '1 1 150px', md: 'none' },
+                      minWidth: { xs: 0, md: 180 },
+                      px: { xs: 1.5, sm: 2.75 },
+                      fontSize: { xs: '1rem', sm: '1.05rem' },
                     }}
                   >
                     Übergeben
@@ -725,7 +733,15 @@ export default function AbholListeClient({
                     }
                     disabled={busy}
                     aria-label={`${name}: als bezahlt markieren`}
-                    sx={{ minHeight: 56, flex: { xs: 1, md: 'none' } }}
+                    sx={{
+                      minHeight: 56,
+                      flex: { xs: '1 1 90px', md: 'none' },
+                      minWidth: 0,
+                      px: { xs: 1.5, sm: 2.75 },
+                      '& .MuiButton-startIcon': {
+                        display: { xs: 'none', sm: 'inherit' },
+                      },
+                    }}
                   >
                     Bezahlt
                   </Button>
@@ -1339,7 +1355,7 @@ export default function AbholListeClient({
         open={handover !== null}
         onClose={() => setHandover(null)}
         fullWidth
-        maxWidth="xs"
+        maxWidth="sm"
       >
         <DialogTitle>
           An {handover?.customerName ?? handover?.code} übergeben?
