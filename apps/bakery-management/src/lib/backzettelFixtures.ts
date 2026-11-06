@@ -252,11 +252,18 @@ export function saturdayConfirmed(
     status: 'confirmed',
     confirmedBy: { id: 2, displayName: 'Test Backstube' },
     confirmedAt: '2026-11-27T13:00:00.000Z',
-    sections: draft.sections.map((s) => ({
+    // Eindeutige Zeilen-IDs ab 101 in Zettelreihenfolge (das Tablet hakt
+    // über die ID ab).
+    sections: draft.sections.map((s, si) => ({
       ...s,
       lines: s.lines.map((l, i) => ({
         ...l,
-        id: 100 + i + s.id.length,
+        id:
+          101 +
+          i +
+          draft.sections
+            .slice(0, si)
+            .reduce((n, prev) => n + prev.lines.length, 0),
         delta:
           l.key === 'test-zopf|nuss' ? { qty: 2, open: 1, count: 2 } : null,
       })),

@@ -250,8 +250,8 @@ export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
     label: 'Backstube',
     href: '/backstube',
     icon: 'production',
-    description: 'Tablet-Ansicht (M2)',
-    ready: false,
+    description: 'Tablet-Ansicht der Backstube',
+    ready: true,
   },
 ]
 

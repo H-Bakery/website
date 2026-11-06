@@ -75,6 +75,8 @@ describe('Startseite nach der Anmeldung', () => {
     const all = () => true
     expect(startPathForRole('inhaber')).toBe('/admin')
     expect(startPathForRole('fahrer')).toBe('/admin/delivery/preorders')
+    // Z6: das Tablet ist gebaut - die Backstube startet dort
+    expect(startPathForRole('backstube')).toBe('/backstube')
     expect(startPathForRole('verkauf', all)).toBe('/admin/preorders')
     expect(startPathForRole('backstube', all)).toBe('/backstube')
     // solange es /admin/preorders und /backstube nicht gibt: Dashboard
@@ -149,10 +151,11 @@ describe('getNavigationForRole', () => {
     ])
   })
 
-  it('Backstube (vor Z6): Dashboard, Backzettel und Einstellungen', () => {
+  it('Backstube: Dashboard, Backzettel, Tablet und Einstellungen', () => {
     expect(hrefs(getNavigationForRole('backstube', true))).toEqual([
       '/admin',
       '/admin/backzettel',
+      '/backstube',
       '/admin/settings',
     ])
   })
