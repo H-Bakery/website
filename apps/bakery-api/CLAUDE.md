@@ -230,11 +230,20 @@ What to know before changing it:
 - **Logout is public**: Bearer access token, else `{ refreshToken }` (also a rotated or expired
   one) names the session; it is revoked and audited (`via: 'access' | 'refresh'`). Nothing valid
   → still 200, as in the mock.
-- **Rate limit** (`loginRateLimit`, express-rate-limit, per `createApp()` in memory), **failed**
-  attempts per 5 min → 429: 5 per IP + username (login) or IP + userId (PIN); 30 per IP across all
-  accounts (`LOGIN_RATE_LIMIT_IP_MAX`, password spraying); for the PIN also 10 per user across all
-  IPs (`PIN_RATE_LIMIT_USER_MAX`; the side effect - anyone at a station can lock a user's PIN
-  login for 5 min - is accepted, password login still works). Successful logins do not count.
+- **Rate limit** (`loginRateLimit` in `auth/middleware.ts`, own in-memory limiter per
+  `createApp()`; only `ipKeyGenerator` comes from express-rate-limit), **failed** attempts per
+  5 min → 429 with `Retry-After`: 5 per IP + username (login) or IP + userId (PIN); 30 per IP
+  across all accounts (`LOGIN_RATE_LIMIT_IP_MAX`, password spraying); for the PIN also 10 per
+  user across all IPs (`PIN_RATE_LIMIT_USER_MAX`; the side effect - anyone at a station can lock
+  a user's PIN login for 5 min - is accepted, password login still works). **Only failures
+  count (W4)**: a request is settled on `finish`/`close` - status ≥ 400 except 429 is a failure,
+  anything else costs nothing, so any number of **parallel successful** logins pass (before W4
+  express-rate-limit counted every request on arrival and the sixth parallel login got a 429
+  that then counted as a failure). While requests are in flight they are reserved: a request
+  that could push `failures + pending` over the limit **waits** for one of them to settle instead
+  of being rejected or let through - so a burst of wrong guesses cannot get past the limit
+  either (test: 12 parallel wrong guesses → exactly 5 × 401, 7 × 429). The window starts at the
+  first failure; idle keys are swept above 10 000 entries.
   `req.ip` depends on `TRUST_PROXY` (default `loopback`, Caddy).
   Tests override via `createApp({ auth: { rateLimit: { max, ipMax, pinUserMax, windowMs } } })`.
 - **Usernames are lower-case.** Login and the CLI normalise (`trim().toLowerCase()`) and look up
@@ -592,22 +601,25 @@ DB + transactions + audit in `src/services/preorders.service.ts`, routes in
 `src/routes/preorders.routes.ts`, import/anonymise in `src/services/preorders-maintenance.ts`,
 the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 
-| Endpoint                               | Who                                                | Answer                                                                                                                |
-| -------------------------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/preorders`                   | verkauf, fahrer                                    | `{ success, data: Preorder[], count }`; filters below                                                                 |
-| `GET /api/preorders/sums?date=`        | verkauf, fahrer, backstube                         | `{ success, data: { date, pickupPointId, preorderCount, items } }`                                                    |
-| `GET /api/preorders/day?date=`         | verkauf, fahrer                                    | `{ success, data: { date, pickupPointId, summary, sums, pickupPoints, preorders } }`; optional `&pickupPointId=` (P2) |
-| `GET /api/preorders/pickup-points`     | verkauf, fahrer                                    | `{ success, data: PickupPoint[] }`                                                                                    |
-| `PUT /api/preorders/pickup-points/:id` | inhaber                                            | `{ success, data: PickupPoint }` (P2); 400 `invalid_window`, 404 `pickup_point_not_found`                             |
-| `GET /api/preorders/variants`          | verkauf, fahrer                                    | `{ success, data: { [productId]: string[] }, configured, count }` (P1)                                                |
-| `GET /api/preorders/:id`               | verkauf, fahrer                                    | `{ success, data }`; 404 `not_found`                                                                                  |
-| `POST /api/preorders`                  | verkauf                                            | 201 `{ success, data }`                                                                                               |
-| `PATCH /api/preorders/:id`             | verkauf                                            | `{ success, data }`; partial; a date/place change renews the code; optional `expectedUpdatedAt`                       |
-| `POST /api/preorders/:id/status`       | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data }`                                         |
-| `POST /api/preorders/:id/cancel`       | verkauf                                            | `{ expectedUpdatedAt? }` → `{ success, data }` (status `storniert`; nothing is ever deleted)                          |
+| Endpoint                               | Who                                                | Answer                                                                                                                   |
+| -------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/preorders`                   | verkauf, fahrer                                    | `{ success, data: Preorder[], count }`; filters below                                                                    |
+| `GET /api/preorders/sums?date=`        | verkauf, fahrer, backstube                         | `{ success, data: { date, pickupPointId, preorderCount, items, summary } }` (`summary` since W4)                         |
+| `GET /api/preorders/day?date=`         | verkauf, fahrer                                    | `{ success, data: { date, pickupPointId, summary, sums, pickupPoints, preorders } }`; optional `&pickupPointId=` (P2)    |
+| `GET /api/preorders/pickup-points`     | verkauf, fahrer                                    | `{ success, data: (PickupPoint + updatedAt)[] }`                                                                         |
+| `PUT /api/preorders/pickup-points/:id` | inhaber                                            | `{ success, data: PickupPoint + updatedAt }` (P2); 400 `invalid_window` / `Text too long`, 404, 409 `stale_pickup_point` |
+| `POST /api/preorders/bulk-status`      | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ ids, status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data: { counts, results } }` (W4)             |
+| `GET /api/preorders/variants`          | verkauf, fahrer                                    | `{ success, data: { [productId]: string[] }, configured, count }` (P1)                                                   |
+| `GET /api/preorders/:id`               | verkauf, fahrer                                    | `{ success, data }`; 404 `not_found`                                                                                     |
+| `POST /api/preorders`                  | verkauf                                            | 201 `{ success, data }`                                                                                                  |
+| `PATCH /api/preorders/:id`             | verkauf                                            | `{ success, data }`; partial; a date/place change renews the code; optional `expectedUpdatedAt`                          |
+| `POST /api/preorders/:id/status`       | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data }`                                            |
+| `POST /api/preorders/:id/cancel`       | verkauf                                            | `{ expectedUpdatedAt? }` → `{ success, data }` (status `storniert`; nothing is ever deleted)                             |
 
 `inhaber` passes every check. `sums` items = `[{ productId, variant, name, unit, quantity,
-preorders }]`, everything except `storniert`, optionally `&pickupPointId=`. List filters: `date`
+preorders }]`, everything except `storniert`, optionally `&pickupPointId=`; `summary` is the same
+`core.summarizeDay()` as `/day` (counts, totals, `byStatus` incl. `storniert`) - **no names or
+phones**, so the Backliste reads `/sums` instead of `/day` (W4). List filters: `date`
 or `from`/`to`, `status` (comma list), `channel`, `pickupPointId` (`laden` = no point), `q`
 (name/code; phone digits from 3 on; LIKE wildcards stripped). `Preorder` = `{ id, code, channel,
 customerName, customerPhone, pickupDate, pickupTime, pickupPointId, pickupPoint
@@ -617,7 +629,30 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
 400 `invalid_*` / `unknown_product` / `unknown_pickup_point` / `variant_required` /
 `invalid_delivery_day` / `invalid_quantity` / `invalid_expected_updated_at`, 403 `forbidden`,
 404 `not_found`, 409 `already_picked_up` / `cancelled` / `anonymized` / `has_variants` /
-`stale_preorder`.
+`stale_preorder` / `not_collected_too_early`.
+
+- **Bulk status (W4).** `POST /bulk-status` changes many preorders in **one** serialised write
+  transaction (Abholliste: „alle bereit", Tagesabschluss „nicht abgeholt"). Body: `ids` (1-200
+  positive integers, duplicates merged; else 400 `invalid_ids`), the same change fields as
+  `/:id/status` (at least one, else 400 `invalid_status`), optional `expectedUpdatedAt` as a map
+  `{ "<id>": "<ISO>" }` (not an object → 400 `invalid_expected_updated_at`; an id without entry
+  is not checked). Each id runs through the same `changeStatusIn()` as the single route - same
+  rules, same fahrer targets, same `not_collected_too_early` - and gets one result:
+  `ok` (with the new `data`), `conflict` (`stale_preorder`, `already_picked_up`, `cancelled`;
+  with the current `data`), `anonymized`, `not_found`, `refused` (any other rule, with `error` +
+  German `message`). `counts` per outcome. One failing id never rolls back the others; a thrown
+  error rolls back all. Audit rows as for single changes plus `bulk: true`.
+- **„Nicht abgeholt" only from the pickup day on (W4).** `/:id/status` and `/bulk-status` refuse
+  `notCollected: true` before the pickup date (Berlin today) with 409 `not_collected_too_early`
+  - until then the customer can still come. Core option `notCollectedFrom` of
+    `normalizeStatusChange`; the Mörsbach alias does not pass it (mock contract, parity).
+- **Pickup point texts are limited (W4)**, in `core.normalizePickupPointInput` and therefore on
+  both servers and the alias (`PICKUP_POINT_LIMITS`): name 100, street 200, zip 10, city 100,
+  notes 2000 characters (trimmed) → 400 `Text too long` with a German message. The `PUT` on
+  `/api/preorders` additionally takes `expectedUpdatedAt` (the `updatedAt` from
+  `GET /pickup-points`): changed meanwhile → 409 `stale_pickup_point` with the current
+  `updatedAt`, nothing written; malformed → 400 `invalid_expected_updated_at`. The alias answers
+  without `updatedAt` (deep-equal to the mock).
 
 - **Per-place day (P2).** `GET /day?date=&pickupPointId=` narrows `preorders`, `summary` and
   `sums` to one place (`laden` = no point, otherwise a point id; parsed like the list filter, an
@@ -802,14 +837,31 @@ What to know before changing it:
   display-only fields (tray, PLU). With broken master data it stays fully readable
   (`configStatus: 'no-config'`). A day without `computed_snapshot` (confirmed before the column)
   falls back to recomputing from the frozen totals. Reopen clears the snapshot.
-- **Deltas** are written by **reading** a confirmed day: `reconcileDeltas` compares snapshot, current
-  preorders and already recorded rows per preorder × item × variant and adds one row per change
-  (`qty` = increment, `kind` added/changed/cancelled). Quick check outside, real check inside the
-  write queue - parallel readers record a change once (test). Never merged into the frozen lines.
-  The `deltas_recorded` audit row is a **system action** (`user_id` null, `data.via: 'read'`,
-  `data.readerId` = whoever's read triggered it); a delta's `createdAt` means _detected at_, not
-  when the preorder changed. `GET /prep` never records. Once B7 lands, recording from the preorder
-  write path is the cleaner trigger.
+- **Deltas are recorded on the preorder write path (W4)**, not by reading. `app.ts` wires
+  `preorders.service.onWrite(...)` to `backzettel.service.recordPreorderDeltas(dates, ctx)`: every
+  preorder create, update (items, pickup date - old **and** new day -, status), status change,
+  cancel and bulk status calls it **inside the preorder's own write transaction** with the touched
+  pickup dates. For each date that is a confirmed Backzettel day, `reconcileDeltas` compares
+  snapshot, current preorders and already recorded rows per preorder × item × variant and adds
+  one row per change (`qty` = increment, `kind` added/changed/cancelled) - idempotent, so a no-op
+  write or a second call records nothing. Never merged into the frozen lines. Audit
+  `deltas_recorded` on `backzettel_day` with `data.via` = `preorder_create` / `preorder_update`
+  / `preorder_status` / `preorder_cancel` / `preorder_bulk_status` and the writing user as
+  `user_id`; a delta's `createdAt` is now the moment of the preorder change. A draft day records
+  nothing. **`GET /:date` and `GET /prep` are side-effect free**; the confirmed view carries
+  `deltasPending` (`true` = the current preorders differ from snapshot + recorded deltas, i.e. a
+  reconciliation is due; `null` without valid master data).
+- **Reconciliation for writes without master data.** If `backzettel.yaml` is missing or invalid
+  while a preorder changes, the hook cannot compute and records nothing (warned once per day and
+  process, the preorder write still succeeds). Those changes are caught up by
+  `reconcileConfirmedDays({ from? })` - every confirmed day from `from` (default: Berlin
+  yesterday) on, each in its own transaction, audit `via: 'reconcile'` with `user_id` null
+  (system). It runs **once at server start** (in the background after `listen`, logged as
+  `[INFO] Backzettel: Deltas nachgetragen für …`), **after every confirm and reopen**, and
+  implicitly with the next preorder write to that day. Tests call it through
+  `app.locals.reconcileBackzettelDeltas`. `createBackzettel(options)` (routes) returns
+  `{ router, service }` for this wiring; `createBackzettelRouter()` stays for callers that only
+  need the router.
 - **Reopen** (inhaber only, station sessions included - owner decision open whether it should
   need `requirePersonalSession` like user admin): back to draft, both snapshots cleared, deltas
   deleted (the audit row keeps them), corrections and ticks stay (see Confirm for stale ticks).
@@ -820,9 +872,11 @@ What to know before changing it:
   `backzettel_days.computed_snapshot`,
   `backzettel_lines.name/section/unit`, `backzettel_deltas.kind/acknowledged_at/acknowledged_by`.
 
-Tests: `tests/unit/backzettelDay.test.js` (46), `tests/integration/backzettel.test.ts` (24; synthetic
-hq written to a temp dir from `tests/fixtures/backzettel.synthetic.js`, preorders inserted via the
-models). `tests/setup-ts.js` points `HQ_DIR`/`HQ_BACKZETTEL_CONFIG` nowhere, like the other hq paths.
+Tests: `tests/unit/backzettelDay.test.js` (46), `tests/integration/backzettel.test.ts` (28; synthetic
+hq written to a temp dir from `tests/fixtures/backzettel.synthetic.js`; preorders inserted via the
+models or, for the W4 delta tests, written through `POST/PATCH /api/preorders`, cancel and
+bulk-status - create/edit/move/cancel after confirm, parallel GETs record nothing, idempotent
+reconcile, broken config → reconcile after repair). `tests/setup-ts.js` points `HQ_DIR`/`HQ_BACKZETTEL_CONFIG` nowhere, like the other hq paths.
 
 ## Grundmengen (Z4): base write + reference
 
@@ -883,10 +937,10 @@ edit)`): `yaml.parseDocument` only to find node ranges, then a **splice** of the
   item's `plu` list, cancelled receipts out, storno lines negative (as `reports.core`); median to
   one decimal. It counts **pieces sold at the register**, also for Liter/Blech items - the UI says
   "St.". Info only: nothing ever writes it into the config.
-- **Bundling:** `yaml` is in `BUNDLED_PACKAGES` in `build.mjs` - it is only a transitive dev
-  dependency at the root, so `npm ci --omit=dev` would not install it. Add it to root
-  `dependencies` to make it external again. `build.mjs` fails when the hoisted `yaml` is not 2.x
-  (several packages pin 1.x, which lacks `isScalar`/`isMap`/`isSeq`).
+- **Bundling:** `yaml` ^2 is a root `dependency` since W4 (before it was only transitive dev, so
+  `npm ci --omit=dev` would not have installed it and `build.mjs` bundled it). It is external now
+  like every other runtime package; `BUNDLED_PACKAGES` is empty. `build.mjs` still fails when the
+  hoisted `yaml` is not 2.x (several packages pin 1.x, which lacks `isScalar`/`isMap`/`isSeq`).
 - The Z1 validator formats a fractional quantity with a decimal comma in its message
   (`Menge 12,5 muss bei der Einheit Stück ganzzahlig sein.`) - the message reaches the screen.
 
@@ -964,7 +1018,8 @@ State on `pilot` after the wave-2 merges: see the integrator's log in `docs/road
 ## Known state
 
 - Runtime packages the bundle loads (`express`, `cors`, `helmet`, `sequelize`, `sqlite3`, `umzug`,
-  `jsonwebtoken`, `express-rate-limit`) are root `dependencies`, so `npm ci --omit=dev` keeps
+  `jsonwebtoken`, `express-rate-limit`, `gray-matter`, `js-yaml`, `yaml`) are root
+  `dependencies`, so `npm ci --omit=dev` keeps
   them. Since B3 the bundle no longer loads `bcrypt` (scrypt from `node:crypto`, D12). Building
   still needs dev dependencies (esbuild, typescript).
 - An old development database keeps the legacy tables after the baseline ran (harmless, unread);
