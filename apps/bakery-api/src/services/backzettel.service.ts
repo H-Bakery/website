@@ -583,7 +583,7 @@ export function createBackzettelService(
     const frozen = snap ?? recomputed
     const hefeteig = frozen ? frozen.hefeteig : null
     const fillings = frozen ? frozen.fillings : null
-    const prep = frozen ? frozen.prep : null
+    let prep = frozen ? frozen.prep : null
     const warnings =
       frozen && Array.isArray(frozen.warnings) ? frozen.warnings : []
     const configChangedSinceConfirm =
@@ -626,6 +626,15 @@ export function createBackzettelService(
       }
       if (config && recomputed) {
         const adjusted = dayCore.linesWithExtras(deltaLines, extras)
+        // W4-verify r6: a Nachtrag that brings an item onto the day brings
+        // its prep task (Brühstück for Vollkorn) - added, marked, never
+        // removed from the frozen list.
+        if (Array.isArray(prep)) {
+          prep = dayCore.prepWithDeltas(
+            prep,
+            core.computePrep(config, adjusted, weekday)
+          )
+        }
         deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {
           hefeteig: core.computeHefeteig(config, adjusted),
           fillings: core.computeFillings(

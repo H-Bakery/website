@@ -1148,6 +1148,41 @@ describe('Nachtrag für einen Posten ohne freigegebene Zeile (W4-verify r6)', ()
   })
 })
 
+describe('Nachtrag bringt eine Vorbereitung mit (W4-verify r6)', () => {
+  const SUN4 = '2026-12-20'
+  afterAll(() => writeHq(hqDir))
+
+  it('ein Posten, der erst per Nachtrag auf den Tag kommt, bringt seine Vorbereitung', async () => {
+    // Wie das Brühstück für Vollkorn: eine Aufgabe, die nur gilt, wenn der
+    // Posten am Tag gebacken wird (`when_item`).
+    const cfg = fixture.config()
+    cfg.prep.push({
+      id: 'kranz-vor',
+      name: 'Kranzfüllung ansetzen',
+      when_item: 'kranz-gefuellt',
+    })
+    fs.writeFileSync(configFile, JSON.stringify(cfg, null, 2))
+    const confirmed = await as('backstube').post(
+      `/api/backzettel/${SUN4}/confirm`
+    )
+    expect(confirmed.status).toBe(200)
+    const before = confirmed.body.data.prep.map((p: any) => p.id)
+    expect(before).not.toContain('kranz-vor')
+
+    await apiPreorder(SUN4, [
+      { productId: 'test-kranz-gefuellt', quantity: 1, variant: 'nuss' },
+    ])
+    const prep = (await as('backstube').get(`/api/backzettel/${SUN4}/prep`))
+      .body.data.prep
+    // die freigegebene Liste bleibt vorn, die neue Aufgabe kommt dazu
+    expect(prep.map((p: any) => p.id)).toEqual([...before, 'kranz-vor'])
+    expect(prep[prep.length - 1]).toMatchObject({
+      fromDelta: true,
+      note: 'Neu durch einen Nachtrag',
+    })
+  })
+})
+
 describe('Nachträge: entfernt, verschoben und der Code am Tag (W4-verify r5)', () => {
   const TUE5 = '2026-12-15'
   const WED5 = '2026-12-16'

@@ -207,6 +207,8 @@ export interface PrepTask {
   /** Anzeigename der Variante aus der YAML (`variant_labels`), sonst `null`. */
   variantLabel?: string | null
   note?: string | null
+  /** Kam erst durch einen Nachtrag dazu (W4-Verifikation Runde 6). */
+  fromDelta?: boolean
 }
 
 export interface BackzettelWarning {

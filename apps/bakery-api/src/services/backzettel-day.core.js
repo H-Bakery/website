@@ -605,6 +605,30 @@ function linesForDeltas(lines, deltas, config) {
   return out
 }
 
+/**
+ * Vorbereitung eines freigegebenen Tages plus die Aufgaben, die erst durch
+ * Nachtraege dazukommen (W4-Verifikation Runde 6): kommt per Nachtrag
+ * Vollkorn auf den Tag, braucht es am Vortag das Bruehstueck. Die
+ * freigegebene Liste bleibt, wie sie ist; neue Aufgaben stehen hinten,
+ * mit `fromDelta: true` und dem Hinweis „Neu durch einen Nachtrag“.
+ */
+function prepWithDeltas(frozen, live) {
+  const out = Array.isArray(frozen) ? [...frozen] : []
+  const id = (t) =>
+    `${t.id}|${t.variant === null || t.variant === undefined ? '' : t.variant}`
+  const have = new Set(out.map(id))
+  for (const task of Array.isArray(live) ? live : []) {
+    if (!task || have.has(id(task))) continue
+    have.add(id(task))
+    out.push({
+      ...task,
+      fromDelta: true,
+      note: [task.note, 'Neu durch einen Nachtrag'].filter(Boolean).join(' · '),
+    })
+  }
+  return out
+}
+
 /** Zeilen mit den Nachtraegen in `total` (fuer Hefeteig und Fuellungen). */
 function linesWithExtras(lines, extras) {
   return (Array.isArray(lines) ? lines : []).map((line) =>
@@ -745,6 +769,7 @@ module.exports = {
   deltaBakeExtras,
   linesForDeltas,
   linesWithExtras,
+  prepWithDeltas,
   hefeteigFillingsDiff,
   snapshotDiffers,
   prepDateFor,
