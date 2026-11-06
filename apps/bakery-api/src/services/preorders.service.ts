@@ -614,8 +614,14 @@ export class PreordersService {
     }
   }
 
-  /** Tagesübersicht: Kopfzahlen, Summen, Sammelstellen, Liste. */
-  async day(query: { date?: unknown }) {
+  /**
+   * Tagesübersicht: Kopfzahlen, Summen, Sammelstellen, Liste.
+   *
+   * Mit `pickupPointId` (eine Sammelstelle oder `laden`, P2 Abholliste)
+   * gelten Kopfzahlen, Summen und Liste nur für diesen Abholort; die
+   * Sammelstellen des Tages (Bestellschluss, Anzahl) bleiben vollständig.
+   */
+  async day(query: { date?: unknown; pickupPointId?: unknown }) {
     const date = singleString(query.date)
     if (!date || !tours.isBusinessDate(date)) {
       return failure(
@@ -624,16 +630,31 @@ export class PreordersService {
         'Für die Tagesübersicht wird ein Datum im Format JJJJ-MM-TT gebraucht.'
       )
     }
-    const [records, points] = await Promise.all([
+    const filters = this.parseFilters({
+      date,
+      pickupPointId: query.pickupPointId,
+    })
+    if (isFailure(filters)) return filters
+    const [all, points] = await Promise.all([
       this.findRecords({ pickupDate: date }),
       this.pickupPoints(),
     ])
+    const place = singleString(query.pickupPointId)
+    const records =
+      place === undefined || place === null
+        ? all
+        : all.filter((r) =>
+            place === core.LADEN_PICKUP
+              ? r.pickupPointId === null
+              : r.pickupPointId === place
+          )
     const now = this.now()
     return {
       ok: true as const,
       status: 200,
       data: {
         date,
+        pickupPointId: place ?? null,
         summary: core.summarizeDay(records),
         sums: core.sumByProductVariant(records),
         pickupPoints: core
@@ -641,7 +662,7 @@ export class PreordersService {
           .map((p: PickupPointDto) => ({
             ...p,
             deadline: core.deadlineFor(date, p.orderDeadline),
-            preorderCount: records.filter(
+            preorderCount: all.filter(
               (r) => r.pickupPointId === p.id && r.status !== 'storniert'
             ).length,
           })),

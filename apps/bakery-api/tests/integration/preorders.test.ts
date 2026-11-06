@@ -829,6 +829,51 @@ describe('list, sums, day', () => {
         deadline: expect.any(String),
       }),
     ])
+    expect(data.pickupPointId).toBeNull()
+  })
+
+  it('narrows the day to one place for the Abholliste (P2)', async () => {
+    const get = (query: string, role = 'fahrer') =>
+      request(api.app).get(`/api/preorders/day?${query}`).set(tokens[role])
+    const point = await get(`date=2026-11-28&pickupPointId=${MOERSBACH}`)
+    expect(point.status).toBe(200)
+    expect(point.body.data.pickupPointId).toBe(MOERSBACH)
+    expect(point.body.data.summary).toMatchObject({
+      count: 2,
+      byStatus: { offen: 2, storniert: 0 },
+      byChannel: { sammelstelle: 1, whatsapp: 1 },
+    })
+    expect(point.body.data.preorders.map((p: { id: number }) => p.id)).toEqual(
+      saturdayIds.slice(0, 2)
+    )
+    expect(point.body.data.sums).toHaveLength(3)
+    // Sammelstellen des Tages bleiben vollständig (Bestellschluss).
+    expect(point.body.data.pickupPoints).toEqual([
+      expect.objectContaining({ id: MOERSBACH, preorderCount: 2 }),
+    ])
+
+    const laden = await get('date=2026-11-28&pickupPointId=laden')
+    expect(laden.body.data.summary).toMatchObject({
+      count: 0,
+      byStatus: { storniert: 1 },
+    })
+    expect(laden.body.data.preorders.map((p: { id: number }) => p.id)).toEqual([
+      saturdayIds[2],
+    ])
+    expect(laden.body.data.sums).toEqual([])
+    expect(laden.body.data.pickupPoints[0].preorderCount).toBe(2)
+
+    const unknown = await get('date=2026-11-28&pickupPointId=nirgendwo')
+    expect(unknown.status).toBe(200)
+    expect(unknown.body.data.preorders).toEqual([])
+    const bad = await get('date=2026-11-28&pickupPointId=')
+    expect(bad.status).toBe(400)
+    expect(bad.body).toMatchObject({ error: 'invalid_pickup_point' })
+    expect(typeof bad.body.message).toBe('string')
+    expect(
+      (await get(`date=2026-11-28&pickupPointId=${MOERSBACH}`, 'backstube'))
+        .status
+    ).toBe(403)
   })
 })
 
@@ -1194,5 +1239,50 @@ describe('shop POST /api/orders', () => {
         ).status
       ).toBe(403)
     }
+  })
+})
+
+describe('PUT /api/preorders/pickup-points/:id (P2 Lieferstelle)', () => {
+  it('edits master data for the inhaber in the /api/preorders envelope', async () => {
+    const before = (
+      await request(api.app)
+        .get('/api/preorders/pickup-points')
+        .set(tokens['inhaber'])
+    ).body.data.find((p: { id: string }) => p.id === MOERSBACH)
+    for (const role of ['verkauf', 'fahrer', 'backstube']) {
+      const res = await request(api.app)
+        .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+        .set(tokens[role])
+        .send({ window: '09:00-10:00' })
+      expect(res.status).toBe(403)
+      expect(typeof res.body.message).toBe('string')
+    }
+    const res = await request(api.app)
+      .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+      .set(tokens['inhaber'])
+      .send({ notes: 'Klingel am Tor' })
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({
+      success: true,
+      data: { id: MOERSBACH, notes: 'Klingel am Tor', window: before.window },
+    })
+    const bad = await request(api.app)
+      .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+      .set(tokens['inhaber'])
+      .send({ window: '9 Uhr' })
+    expect(bad.status).toBe(400)
+    expect(bad.body).toMatchObject({ success: false, error: 'invalid_window' })
+    expect(bad.body.message).toMatch(/\S/)
+    const missing = await request(api.app)
+      .put('/api/preorders/pickup-points/nirgendwo')
+      .set(tokens['inhaber'])
+      .send({})
+    expect(missing.status).toBe(404)
+    expect(missing.body.error).toBe('pickup_point_not_found')
+    await request(api.app)
+      .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+      .set(tokens['inhaber'])
+      .send({ notes: before.notes })
+      .expect(200)
   })
 })

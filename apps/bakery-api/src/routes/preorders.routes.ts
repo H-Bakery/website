@@ -6,8 +6,10 @@
  *   GET    /                  ?date= &from= &to= &status=a,b &channel= &pickupPointId=<id>|laden &q=
  *                             { success, data: Preorder[], count }
  *   GET    /sums?date=[&pickupPointId=]   { success, data: { date, pickupPointId, preorderCount, items } }
- *   GET    /day?date=         { success, data: { date, summary, sums, pickupPoints, preorders } }
+ *   GET    /day?date=[&pickupPointId=<id>|laden]
+ *                             { success, data: { date, pickupPointId, summary, sums, pickupPoints, preorders } }
  *   GET    /pickup-points     { success, data: PickupPoint[] }
+ *   PUT    /pickup-points/:id { success, data: PickupPoint }  inhaber (P2)
  *   GET    /variants          { success, data: { [productId]: Sorten[] }, configured }
  *   GET    /:id               { success, data: Preorder }
  *   POST   /                  201 { success, data }          verkauf, inhaber
@@ -59,6 +61,17 @@ export interface PreorderRouters {
   deliveries: Router
   orders: Router
   service: PreordersService
+}
+
+/** „Invalid window“ (Mock-Code) → `invalid_window`. */
+function machineCode(error: string): string {
+  return (
+    String(error)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'bad_request'
+  )
 }
 
 function fail(res: Response, result: Result<unknown>): boolean {
@@ -127,6 +140,33 @@ function createPreordersRouter(service: PreordersService): Router {
     asyncHandler(async (_req, res) => {
       const data = await service.listPickupPoints()
       res.json({ success: true, data, count: data.length })
+    })
+  )
+
+  // Stammdaten einer Sammelstelle (P2: Mörsbach-Seite „Lieferstelle“).
+  // Dieselbe Prüfung wie der Alias, aber die Hülle und Fehler-Codes von
+  // `/api/preorders` (`invalid_window` statt „Invalid window“). Keine
+  // Adresssuche: eine geänderte Adresse verliert ihre Koordinaten.
+  router.put(
+    '/pickup-points/:id',
+    requireRole('inhaber'),
+    asyncHandler(async (req, res) => {
+      const result = await service.updatePickupPoint(
+        req.params['id'],
+        req.body,
+        req
+      )
+      if (isFailure(result)) {
+        sendError(
+          res,
+          result.status,
+          machineCode(result.error),
+          result.message,
+          result.extra
+        )
+        return
+      }
+      res.json({ success: true, data: result.data })
     })
   )
 
