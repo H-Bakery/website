@@ -214,7 +214,12 @@ What to know before changing it:
   (`revoke_reason = 'reuse'`, audited as `refresh_reuse`) - **except** within
   `REFRESH_REUSE_GRACE_MS` (10 s) of the rotation while the successor is unused: that is a
   parallel refresh (two tabs, a retry) and gets 409 `refresh_superseded` without ending the
-  session. A thief who wins such a race is caught on the client's next refresh. Personal sessions slide to 14 days on
+  session. A thief who wins such a race is caught on the client's next refresh. **Lost answer
+  (W4-verify r4):** later than that, but within `REFRESH_LOST_RESPONSE_MS` (15 min) and while the
+  successor has still never been presented, the predecessor is rotated once more (the unused
+  successor is revoked, audit `refresh_reissued`) - the client never got the successor (Wi-Fi
+  drop mid-refresh) and used to be logged out mid-shift. Trade-off: a stolen predecessor replayed
+  in that window is no longer caught at once, only when the chain is presented twice. Personal sessions slide to 14 days on
   each refresh; **station sessions end 12 h after the PIN** - neither refresh nor access token
   outlives that (`expiresIn` shrinks towards the end). Unlike the mock, a bare access token is
   **not** accepted at `/refresh`: the client must keep the refresh token (F1).

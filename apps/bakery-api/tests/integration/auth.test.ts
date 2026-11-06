@@ -247,8 +247,10 @@ describe('POST /api/auth/refresh', () => {
     expect(rotated.status).toBe(200)
     const current = rotated.body.data
 
-    // An attacker replays the old token, after the grace window.
-    clock += 11 * 1000
+    // An attacker replays the old token, after the grace window and after
+    // the lost-answer window (W4-verify r4: up to 15 min an unused successor
+    // means the client never got it).
+    clock += 16 * 60 * 1000
     const replay = await request(api.app)
       .post('/api/auth/refresh')
       .send({ refreshToken: first.refreshToken })
@@ -316,6 +318,64 @@ describe('POST /api/auth/refresh - parallel refreshes (grace window)', () => {
     expect(next.status).toBe(200)
     const sid = (jwt.decode(first.token) as { sid: number }).sid
     expect((await AuthSession.findByPk(sid))?.revokedAt).toBeNull()
+  })
+
+  it('a lost refresh answer: the predecessor is rotated again, no logout (W4-verify r4)', async () => {
+    const first = await login(api.app, 'test.verkauf')
+    // The server rotates, the answer never reaches the tablet (Wi-Fi drop).
+    const lost = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(lost.status).toBe(200)
+    // 15 s later the connection is back; the tablet still holds `first`.
+    clock += 15 * 1000
+    const retry = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(retry.status).toBe(200)
+    const sid = (jwt.decode(first.token) as { sid: number }).sid
+    expect((await AuthSession.findByPk(sid))?.revokedAt).toBeNull()
+    expect(
+      (
+        await request(api.app)
+          .get('/api/auth/me')
+          .set(bearer(retry.body.data.token))
+      ).status
+    ).toBe(200)
+    expect(
+      await AuditLog.findOne({
+        where: { action: 'refresh_reissued', entityId: String(sid) },
+      })
+    ).not.toBeNull()
+    // The new chain works on.
+    const next = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: retry.body.data.refreshToken })
+    expect(next.status).toBe(200)
+  })
+
+  it('a lost answer, then the new token is used: the old one is reuse again', async () => {
+    const first = await login(api.app, 'test.verkauf')
+    await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    clock += 15 * 1000
+    const retry = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(retry.status).toBe(200)
+    clock += 15 * 1000
+    const next = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: retry.body.data.refreshToken })
+    expect(next.status).toBe(200)
+    clock += 15 * 1000
+    const replay = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(replay.status).toBe(401)
+    const sid = (jwt.decode(first.token) as { sid: number }).sid
+    expect((await AuthSession.findByPk(sid))?.revokeReason).toBe('reuse')
   })
 
   it('within the window, but the successor was already used: reuse', async () => {

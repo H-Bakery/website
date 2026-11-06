@@ -901,7 +901,9 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
   wird an `/refresh` (anders als beim Mock) nicht angenommen. Wer ein bereits rotiertes Token
   erneut schickt, beendet die ganze Sitzung - außer innerhalb von 10 s nach der Rotation, solange
   das Nachfolge-Token unbenutzt ist: dann 409 `refresh_superseded` (zweiter Tab, wiederholter
-  Request), die Sitzung bleibt. Für F1: der `AuthProvider` schickt heute alle 5 min einen leeren
+  Request), die Sitzung bleibt. Bis 15 min danach, solange das Nachfolge-Token nie vorgezeigt
+  wurde, gilt die Antwort als verloren (WLAN-Aussetzer) und es wird noch einmal rotiert
+  (`refresh_reissued`, W4-verify r4). Für F1: der `AuthProvider` schickt heute alle 5 min einen leeren
   Refresh-Token und würde gegen die echte API abgemeldet; Refreshes über Tabs hinweg
   serialisieren und bei 409 das neue Token aus dem Speicher nehmen.
 - **Logout ist öffentlich** und nimmt das Access-Token (Bearer) _oder_ `{ refreshToken }` - ein
