@@ -5,22 +5,6 @@ html {
   scroll-behavior: smooth;
 }
 
-/* Optimize font loading */
-@font-face {
-  font-family: 'Playfair Display';
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Lora';
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Ubuntu';
-  font-display: swap;
-}
-
 /* Optimized transitions for interactive elements only */
 *:focus,
 *:hover,
