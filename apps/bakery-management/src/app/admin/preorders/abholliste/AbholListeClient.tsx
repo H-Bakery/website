@@ -117,82 +117,100 @@ import {
 const REFRESH_MS = 60_000
 
 /**
+ * Spaltenbreiten des Ausdrucks in mm (W4-verify r4). A4 hoch mit 12 mm Rand
+ * lässt 186 mm; die Tabelle hat `table-layout: fixed`, damit kein langer
+ * Name, Code oder „Rest …“ sie über den Rand schiebt - vorher maß sie
+ * 744 px statt 703 und die Unterschrift fiel vom Blatt. `null` = teilt sich
+ * den Rest (Name, Artikel); dort wird umbrochen, notfalls mitten im Wort.
+ */
+export const PRINT_PAGE_WIDTH_MM = 186
+export const PRINT_COLUMNS: ReadonlyArray<{
+  key: string
+  widthMm: number | null
+}> = [
+  { key: 'tick', widthMm: 8 },
+  { key: 'code', widthMm: 31 },
+  { key: 'name', widthMm: 28 },
+  { key: 'items', widthMm: null },
+  { key: 'sum', widthMm: 19 },
+  { key: 'paid', widthMm: 25 },
+  { key: 'na', widthMm: 11 },
+  { key: 'sign', widthMm: 30 },
+]
+
+export const ABHOL_PRINT_CSS = {
+  '.abholliste-print': { display: 'none' },
+  '@media print': {
+    '@page': { size: 'A4 portrait', margin: '12mm' },
+    'html, body': {
+      background: '#fff !important',
+      color: '#000 !important',
+    },
+    '.MuiAppBar-root, nav, .MuiDrawer-root, [aria-label="Pfad"]': {
+      display: 'none !important',
+    },
+    main: { padding: '0 !important', width: '100% !important' },
+    'main > .MuiToolbar-root': { display: 'none !important' },
+    '.abholliste-screen, .MuiSnackbar-root': {
+      display: 'none !important',
+    },
+    '.abholliste-print': {
+      display: 'block !important',
+      color: '#000',
+      fontFamily: 'Arial, Helvetica, sans-serif',
+      fontSize: '10pt',
+    },
+    '.abholliste-print h1': { fontSize: '15pt', margin: '0 0 2mm' },
+    '.abholliste-print p': { margin: '0 0 3mm' },
+    // Bei `collapse` ragt die halbe Außenlinie über die Tabelle hinaus -
+    // auf voller Breite schnitt der Rand des Blatts sie rechts ab.
+    '.abholliste-print table': {
+      width: 'calc(100% - 1pt)',
+      borderCollapse: 'collapse',
+      tableLayout: 'fixed',
+    },
+    '.abholliste-print th, .abholliste-print td': {
+      border: '0.5pt solid #555',
+      padding: '1.5mm',
+      verticalAlign: 'top',
+      textAlign: 'left',
+      overflowWrap: 'anywhere',
+    },
+    '.abholliste-print th': { background: '#eee', fontWeight: 700 },
+    '.abholliste-print thead': { display: 'table-header-group' },
+    '.abholliste-print tr': { pageBreakInside: 'avoid' },
+    '.abholliste-print .group td': {
+      background: '#f3f3f3',
+      fontWeight: 700,
+    },
+    '.abholliste-print .tick': { textAlign: 'center', fontSize: '13pt' },
+    // 16 Zeichen „MO-2026-11-07-03“ in 8 pt passen in 31 mm.
+    '.abholliste-print .code': {
+      fontFamily: 'monospace',
+      fontSize: '8pt',
+      whiteSpace: 'nowrap',
+      overflowWrap: 'normal',
+    },
+    '.abholliste-print .num': { textAlign: 'right' },
+    // Kästchen zum Ankreuzen so groß wie der Übergabe-Haken; der Text
+    // daneben („Rest 9,50 €“, „37,00 € zurück“) bricht um, statt die
+    // Tabelle zu verbreitern.
+    '.abholliste-print .paid': { overflowWrap: 'normal' },
+    '.abholliste-print .paid .box': { fontSize: '13pt' },
+    '.abholliste-print th.na': { textAlign: 'center' },
+    '.abholliste-print .legend': { fontSize: '9pt', marginTop: '2mm' },
+    '.abholliste-print ul': { margin: 0, paddingLeft: '3.5mm' },
+  },
+} as const
+
+/**
  * Druckbild A4 hoch, schwarz auf weiß. Gedruckt wird nicht der Bildschirm
  * (Karten mit großen Knöpfen), sondern eine eigene Tabelle `.abholliste-print`
  * - immer die ganze Liste des Tages, unabhängig von Suche und Filter: das
  * Blatt ist der Ersatz, wenn Tablet oder WLAN ausfallen. AppBar, Navigation
  * und Pfad fallen weg (wie in der Tagesübersicht).
  */
-const printStyles = (
-  <GlobalStyles
-    styles={{
-      '.abholliste-print': { display: 'none' },
-      '@media print': {
-        '@page': { size: 'A4 portrait', margin: '12mm' },
-        'html, body': {
-          background: '#fff !important',
-          color: '#000 !important',
-        },
-        '.MuiAppBar-root, nav, .MuiDrawer-root, [aria-label="Pfad"]': {
-          display: 'none !important',
-        },
-        main: { padding: '0 !important', width: '100% !important' },
-        'main > .MuiToolbar-root': { display: 'none !important' },
-        '.abholliste-screen, .MuiSnackbar-root': {
-          display: 'none !important',
-        },
-        '.abholliste-print': {
-          display: 'block !important',
-          color: '#000',
-          fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '10pt',
-        },
-        '.abholliste-print h1': { fontSize: '15pt', margin: '0 0 2mm' },
-        '.abholliste-print p': { margin: '0 0 3mm' },
-        // Bei `collapse` ragt die halbe Außenlinie über die Tabelle hinaus -
-        // auf voller Breite schnitt der Rand des Blatts sie rechts ab.
-        '.abholliste-print table': {
-          width: 'calc(100% - 1pt)',
-          borderCollapse: 'collapse',
-        },
-        '.abholliste-print th, .abholliste-print td': {
-          border: '0.5pt solid #555',
-          padding: '1.5mm 2mm',
-          verticalAlign: 'top',
-          textAlign: 'left',
-        },
-        '.abholliste-print th': { background: '#eee', fontWeight: 700 },
-        '.abholliste-print thead': { display: 'table-header-group' },
-        '.abholliste-print tr': { pageBreakInside: 'avoid' },
-        '.abholliste-print .group td': {
-          background: '#f3f3f3',
-          fontWeight: 700,
-        },
-        '.abholliste-print .tick': {
-          width: '7mm',
-          textAlign: 'center',
-          fontSize: '13pt',
-        },
-        '.abholliste-print .code': {
-          fontFamily: 'monospace',
-          fontSize: '9pt',
-          whiteSpace: 'nowrap',
-        },
-        '.abholliste-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
-        '.abholliste-print .sign': { width: '32mm' },
-        // Kästchen zum Ankreuzen so groß wie der Übergabe-Haken.
-        '.abholliste-print .paid': { whiteSpace: 'nowrap', fontSize: '13pt' },
-        '.abholliste-print th.na': {
-          width: '9mm',
-          textAlign: 'center',
-          whiteSpace: 'nowrap',
-        },
-        '.abholliste-print .legend': { fontSize: '9pt', marginTop: '2mm' },
-        '.abholliste-print ul': { margin: 0, paddingLeft: '3.5mm' },
-      },
-    }}
-  />
-)
+const printStyles = <GlobalStyles styles={ABHOL_PRINT_CSS} />
 
 /** Touch-Ziel: mindestens 48 px hoch (Tablet an der Theke). */
 const TOUCH = { minHeight: 48 } as const
@@ -299,13 +317,27 @@ function PaidChip({ preorder }: { preorder: Preorder }) {
 }
 
 /** Spalte „Bezahlt“ des Ausdrucks: Rest und Erstattung mit Betrag. */
-function printPaidText(preorder: Preorder): string {
+function printPaid(preorder: Preorder): { box: string; text: string } {
   const payment = paymentState(preorder)
-  if (payment.kind === 'rest') return `☐ Rest ${formatCurrency(payment.amount)}`
-  if (payment.kind === 'refund') {
-    return `☐ ${formatCurrency(payment.amount)} zurück`
+  if (payment.kind === 'rest') {
+    return { box: '☐', text: `Rest ${formatCurrency(payment.amount)}` }
   }
-  return payment.kind === 'paid' ? '☑ ja' : '☐'
+  if (payment.kind === 'refund') {
+    return { box: '☐', text: `${formatCurrency(payment.amount)} zurück` }
+  }
+  return payment.kind === 'paid'
+    ? { box: '☑', text: 'ja' }
+    : { box: '☐', text: '' }
+}
+
+function PrintPaidCell({ preorder }: { preorder: Preorder }) {
+  const { box, text } = printPaid(preorder)
+  return (
+    <td className="paid">
+      <span className="box">{box}</span>
+      {text ? ` ${text}` : null}
+    </td>
+  )
 }
 
 /** Ein Tipp ohne Antwort - offen, bis die Liste wieder lädt. */
@@ -1717,6 +1749,14 @@ export default function AbholListeClient({
             {printedAt ? ` · Stand ${printedAt} Uhr` : ''}
           </p>
           <table>
+            <colgroup>
+              {PRINT_COLUMNS.map((c) => (
+                <col
+                  key={c.key}
+                  style={c.widthMm ? { width: `${c.widthMm}mm` } : undefined}
+                />
+              ))}
+            </colgroup>
             <thead>
               <tr>
                 <th className="tick">✓</th>
@@ -1780,7 +1820,7 @@ export default function AbholListeClient({
                       <td className="num">{formatCurrency(p.total)}</td>
                       {/* Zum Ankreuzen auf Papier (Kurzanleitung Fahrer):
                           offen ☐, schon bezahlt ☑. */}
-                      <td className="paid">{printPaidText(p)}</td>
+                      <PrintPaidCell preorder={p} />
                       <td className="tick">
                         {p.notCollected
                           ? '☑'

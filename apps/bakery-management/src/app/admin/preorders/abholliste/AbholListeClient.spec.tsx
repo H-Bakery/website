@@ -3,7 +3,11 @@ import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import { ApiError } from '@bakery/shared/data-access'
-import AbholListeClient from './AbholListeClient'
+import AbholListeClient, {
+  ABHOL_PRINT_CSS,
+  PRINT_COLUMNS,
+  PRINT_PAGE_WIDTH_MM,
+} from './AbholListeClient'
 import {
   bulkPreorderStatus,
   changePreorderStatus,
@@ -986,6 +990,10 @@ describe('AbholListeClient (P2)', () => {
         ])
       )
       expect(paidCells).not.toContain('☑ ja')
+      // Eine Spalte je Kopfzelle, feste Breiten passen auf A4 (W4-verify r4).
+      expect(sheet.querySelectorAll('col')).toHaveLength(
+        sheet.querySelectorAll('thead th').length
+      )
       const text = sheet.textContent ?? ''
       expect(text).toContain('Storniert - Geld zurückgeben')
       expect(text).toContain('Stefan Storno')
@@ -1124,5 +1132,39 @@ describe('AbholListeClient (P2)', () => {
     expect(
       screen.getByRole('link', { name: 'Vorbestellung erfassen' })
     ).toHaveAttribute('href', `/admin/preorders/neu?date=${DATE}`)
+  })
+})
+
+describe('Ausdruck passt auf A4 (W4-verify r4)', () => {
+  const css = ABHOL_PRINT_CSS['@media print'] as Record<
+    string,
+    Record<string, unknown>
+  >
+
+  it('feste Spaltenbreiten lassen Name und Artikel mindestens 50 mm', () => {
+    expect(PRINT_COLUMNS.map((c) => c.key)).toEqual([
+      'tick',
+      'code',
+      'name',
+      'items',
+      'sum',
+      'paid',
+      'na',
+      'sign',
+    ])
+    const fixed = PRINT_COLUMNS.reduce((sum, c) => sum + (c.widthMm ?? 0), 0)
+    const flexible = PRINT_COLUMNS.filter((c) => c.widthMm === null)
+    expect(flexible.length).toBeGreaterThan(0)
+    expect(PRINT_PAGE_WIDTH_MM - fixed).toBeGreaterThanOrEqual(30)
+    const sign = PRINT_COLUMNS.find((c) => c.key === 'sign')
+    expect(sign?.widthMm).toBeGreaterThanOrEqual(30)
+  })
+
+  it('die Tabelle rechnet fest, nur der Code bricht nie um', () => {
+    expect(css['.abholliste-print table']['tableLayout']).toBe('fixed')
+    const nowrap = Object.entries(css)
+      .filter(([, rule]) => rule && rule['whiteSpace'] === 'nowrap')
+      .map(([selector]) => selector)
+    expect(nowrap).toEqual(['.abholliste-print .code'])
   })
 })
