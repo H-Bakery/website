@@ -275,6 +275,20 @@ describe('parsePort / loadConfig', () => {
     expect(unset.hqReportsDir).toBeUndefined()
     expect(unset.hqFinanceDir).toBeUndefined()
   })
+  test('PUBLIC_CATALOGUE (B12): off by default, 1/true on, garbage is an error', () => {
+    expect(api.loadConfig({}, '/srv/x').publicCatalogue).toBe(false)
+    expect(
+      api.loadConfig({ PUBLIC_CATALOGUE: '0' }, '/srv/x').publicCatalogue
+    ).toBe(false)
+    for (const on of ['1', 'true', ' TRUE ', 'yes']) {
+      expect(
+        api.loadConfig({ PUBLIC_CATALOGUE: on }, '/srv/x').publicCatalogue
+      ).toBe(true)
+    }
+    expect(() => api.loadConfig({ PUBLIC_CATALOGUE: 'vielleicht' })).toThrow(
+      api.ConfigError
+    )
+  })
 })
 
 describe('error responses', () => {

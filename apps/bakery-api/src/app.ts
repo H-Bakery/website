@@ -104,6 +104,12 @@ export interface CreateAppOptions {
    */
   deliveries?: Omit<DeliveryToursOptions, 'preorders'>
   /**
+   * B12: `GET /api/products` (approved hq catalogue, read-only) without a
+   * session, for the customer shop (`PUBLIC_CATALOGUE=1`). Default false: the
+   * route then sits below the global guard like everything else (D5).
+   */
+  publicCatalogue?: boolean
+  /**
    * „Rest am Abend“ (M4, after the pilot): clock and reports dir for tests.
    * Default: `hq.reportsDir` / `hq.today`, the Backzettel's master data.
    */
@@ -147,13 +153,8 @@ export function createApp(options: CreateAppOptions = {}): Application {
     createPublicAuthRouter(auth, { rateLimit: options.auth?.rateLimit })
   )
 
-  // --- Global guard: everything below needs a session (401) ---------------
-  app.use('/api', requireAuth(auth))
-
-  app.use('/api/auth', createSessionAuthRouter(auth)) // me, logout, stations
-  app.use('/api/users', createUsersRouter(auth)) // inhaber only
-
-  // --- Pilot domains -------------------------------------------------------
+  // hq products (B5) and the write-back (B5b/Z9) are built here, before the
+  // guard, so that the shop catalogue can be mounted publicly (B12).
   // B5b/Z9: write-back to hq; disabled unless server.ts passes configured ones
   const edits =
     options.hqSync?.edits ??
@@ -171,6 +172,17 @@ export function createApp(options: CreateAppOptions = {}): Application {
     ...options.hqProducts,
   })
   edits.onWorktreeChanged(() => hqProducts.service.invalidate())
+  // B12: the shop's catalogue without a session, only if switched on
+  // (PUBLIC_CATALOGUE). GET only - anything else falls through to the guard.
+  if (options.publicCatalogue) app.use('/api/products', hqProducts.products)
+
+  // --- Global guard: everything below needs a session (401) ---------------
+  app.use('/api', requireAuth(auth))
+
+  app.use('/api/auth', createSessionAuthRouter(auth)) // me, logout, stations
+  app.use('/api/users', createUsersRouter(auth)) // inhaber only
+
+  // --- Pilot domains -------------------------------------------------------
   // B6: reads any session, visits inhaber/verkauf/fahrer, master data
   // inhaber; products of a visit come from the same hq catalogue (read clone)
   app.use(
@@ -181,7 +193,7 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // (inhaber, personal session) - the mock modules behind the auth adapter.
   // Absolute paths, so mounted at the root.
   app.use(createHqDataRouter(options.hq))
-  app.use('/api/products', hqProducts.products)
+  if (!options.publicCatalogue) app.use('/api/products', hqProducts.products)
   app.use('/api/hq-products', hqProducts.hqProducts)
   // B7: /api/preorders (+ /api/deliveries alias, shop POST /api/orders);
   // roles per route in routes/preorders.routes.ts
