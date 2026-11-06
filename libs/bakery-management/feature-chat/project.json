@@ -1,8 +1,0 @@
-{
-  "name": "feature-chat",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/bakery-management/feature-chat/src",
-  "projectType": "library",
-  "tags": ["scope:management", "type:feature"],
-  "targets": {}
-}

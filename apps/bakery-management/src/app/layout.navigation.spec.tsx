@@ -29,12 +29,11 @@ describe('management navigation model', () => {
     expect(labels).toEqual(
       expect.arrayContaining([
         'Dashboard',
-        'Bestellungen',
-        'Bäckerei',
         'Produkte',
+        'Sammelstelle Mörsbach',
+        'Verkaufspartner',
         'Kassenberichte',
         'Analysen',
-        'Team-Chat',
         'Einstellungen',
       ])
     )
@@ -51,7 +50,7 @@ describe('management navigation model', () => {
 describe('isNavItemActive', () => {
   it('matches the dashboard only exactly', () => {
     expect(isNavItemActive('/admin', '/admin')).toBe(true)
-    expect(isNavItemActive('/admin/orders', '/admin')).toBe(false)
+    expect(isNavItemActive('/admin/reports', '/admin')).toBe(false)
   })
 
   it('matches nested routes for other items', () => {
@@ -64,7 +63,7 @@ describe('isNavItemActive', () => {
     expect(isNavItemActive('/admin/products-archive', '/admin/products')).toBe(
       false
     )
-    expect(isNavItemActive('/admin/orders', '/admin/products')).toBe(false)
+    expect(isNavItemActive('/admin/reports', '/admin/products')).toBe(false)
   })
 
   it('handles missing hrefs', () => {

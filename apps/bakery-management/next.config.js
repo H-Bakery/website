@@ -14,6 +14,20 @@ process.env.SW_VERSION = process.env.SW_VERSION || Date.now().toString(36)
 const SW_VERSION = process.env.SW_VERSION
 
 /**
+ * Gelöschte Seiten (B12) → ihr Nachfolger, damit alte Lesezeichen auf dem
+ * Laden-Tablet nicht ins Leere führen. Jedes Ziel ist eine Pilot-Seite.
+ * @type {Array<[string, string]>}
+ */
+const OLD_PAGE_REDIRECTS = [
+  ['/admin/baking-list', '/admin/backzettel'],
+  ['/admin/bakery/daily-prep', '/admin/backzettel'],
+  ['/admin/bakery/saturday-production', '/admin/backzettel'],
+  ['/admin/production', '/admin/backzettel'],
+  ['/admin/orders', '/admin/preorders'],
+  ['/admin/delivery', '/admin/delivery/preorders'],
+]
+
+/**
  * @type {import('@nx/next/plugins/with-nx').WithNxOptions}
  **/
 const nextConfig = {
@@ -42,6 +56,16 @@ const nextConfig = {
         headers: [{ key: 'Cache-Control', value: 'no-cache' }],
       },
     ]
+  },
+  // B12: alte Seiten, die durch Backzettel und Sammelstelle ersetzt sind
+  // (roadmap §5.1). Redirects laufen vor src/proxy.ts, gelten also auch im
+  // Pilotbetrieb; Ziel und Rollenprüfung übernimmt dann die neue Seite.
+  async redirects() {
+    return OLD_PAGE_REDIRECTS.map(([source, destination]) => ({
+      source,
+      destination,
+      permanent: false,
+    }))
   },
   // Kein `rewrites()` für /api mehr (F4): `next build` schreibt Rewrites ins
   // Routen-Manifest, ein erst bei `next start` gesetztes API_URL wirkte nie.

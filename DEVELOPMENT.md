@@ -84,8 +84,8 @@ The applications link to each other using environment-aware URLs:
 
 - `@bakery/shop/feature-cart` - Shopping cart functionality
 - `@bakery/shop/feature-catalog` - Product browsing
-- `@bakery/management/feature-orders` - Order management
-- `@bakery/management/feature-inventory` - Inventory management
+- `@bakery/management/feature-analytics` - Analytics charts
+- `@bakery/management/feature-settings` - Settings panels
 
 ## Development Workflow
 
@@ -204,12 +204,14 @@ npm run build:landing:static
 ```
 
 **Deployment Options:**
+
 - **GitHub Pages**: Upload `out/` contents or use GitHub Actions
 - **Vercel**: Connect repository with auto-deployment
 - **CDN (CloudFlare/AWS)**: Upload `out/` directory
 - **Traditional hosting**: Upload `out/` to web server
 
 **Troubleshooting:**
+
 - If Nx build fails with shared library errors, use standalone build
 - Ensure all environment variables are properly configured
 - Check that all imports resolve correctly in static build

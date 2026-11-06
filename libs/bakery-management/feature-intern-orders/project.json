@@ -1,8 +1,0 @@
-{
-  "name": "feature-intern-orders",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/bakery-management/feature-intern-orders/src",
-  "projectType": "library",
-  "tags": ["scope:management", "type:feature"],
-  "targets": {}
-}

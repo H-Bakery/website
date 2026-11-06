@@ -5,7 +5,7 @@
  * node_modules nicht, deshalb bricht schon der Import des Barrels
  * `@bakery/shared/ui` ab (es zieht `display/markdown-display.tsx` mit).
  * Keine Spec prüft gerendertes Markdown — ein Platzhalter genügt. Geteilt von
- * bakery-shop, bakery-landing und feature-orders.
+ * bakery-shop und bakery-landing.
  */
 const React = require('react')
 

@@ -15,47 +15,8 @@
       "@bakery/management/feature-analytics": [
         "libs/bakery-management/feature-analytics/src/index.ts"
       ],
-      "@bakery/management/feature-cash": [
-        "libs/bakery-management/feature-cash/src/index.ts"
-      ],
-      "@bakery/management/feature-chat": [
-        "libs/bakery-management/feature-chat/src/index.ts"
-      ],
-      "@bakery/management/feature-daily-prep": [
-        "libs/bakery-management/feature-daily-prep/src/index.ts"
-      ],
-      "@bakery/management/feature-dashboard": [
-        "libs/bakery-management/feature-dashboard/src/index.ts"
-      ],
-      "@bakery/management/feature-delivery": [
-        "libs/bakery-management/feature-delivery/src/index.ts"
-      ],
-      "@bakery/management/feature-intern-orders": [
-        "libs/bakery-management/feature-intern-orders/src/index.ts"
-      ],
-      "@bakery/management/feature-inventory": [
-        "libs/bakery-management/feature-inventory/src/index.ts"
-      ],
-      "@bakery/management/feature-orders": [
-        "libs/bakery-management/feature-orders/src/index.ts"
-      ],
-      "@bakery/management/feature-processes": [
-        "libs/bakery-management/feature-processes/src/index.ts"
-      ],
-      "@bakery/management/feature-recipes": [
-        "libs/bakery-management/feature-recipes/src/index.ts"
-      ],
-      "@bakery/management/feature-saturday-production": [
-        "libs/bakery-management/feature-saturday-production/src/index.ts"
-      ],
-      "@bakery/management/feature-staff": [
-        "libs/bakery-management/feature-staff/src/index.ts"
-      ],
       "@bakery/management/feature-settings": [
         "libs/bakery-management/feature-settings/src/index.ts"
-      ],
-      "@bakery/management/feature-unsold-products": [
-        "libs/bakery-management/feature-unsold-products/src/index.ts"
       ],
       "@bakery/shared/contexts": ["libs/shared/contexts/src/index.ts"],
       "@bakery/shared/data-access": ["libs/shared/data-access/src/index.ts"],

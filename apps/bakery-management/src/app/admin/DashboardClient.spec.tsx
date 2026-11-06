@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import DashboardClient from './DashboardClient'
 import { fakeSession, WithSession } from '../../lib/testing/fakeSession'
@@ -10,10 +10,6 @@ jest.mock('next/navigation', () => ({
 
 jest.mock('@bakery/shared/data-access', () => ({
   apiClient: { get: jest.fn() },
-}))
-
-jest.mock('@bakery/shared/contexts', () => ({
-  useNotifications: () => ({ notifications: [], isLoading: false }),
 }))
 
 jest.mock('../../components/targets/TargetsTile', () => ({
@@ -57,20 +53,27 @@ describe('DashboardClient', () => {
     else process.env.NEXT_PUBLIC_PILOT_MODE = original
   })
 
-  it('zeigt ohne Pilotbetrieb alle Kacheln und Schnellzugriffe', async () => {
+  it('fragt auch ohne Pilotbetrieb nur den Produktkatalog (B12)', async () => {
     delete process.env.NEXT_PUBLIC_PILOT_MODE
     renderDashboard()
-    await waitFor(() =>
-      expect(apiClient.get).toHaveBeenCalledWith('/api/orders')
+    expect(await screen.findByText('API erreichbar')).toBeInTheDocument()
+    expect(apiClient.get).toHaveBeenCalledTimes(1)
+    expect(apiClient.get).toHaveBeenCalledWith('/api/products')
+    expect(screen.getByText('Produkte gesamt')).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Vorbestellungen' })
+    ).toBeInTheDocument()
+    ;['Bestellungen', 'Inventar', 'Produktion', 'Lieferungen'].forEach(
+      (title) =>
+        expect(
+          screen.queryByRole('heading', { level: 2, name: title })
+        ).not.toBeInTheDocument()
     )
-    expect(apiClient.get).toHaveBeenCalledWith('/api/production')
-    expect(screen.getByText('Offene Bestellungen')).toBeInTheDocument()
-    expect(screen.getByText('Produktionsübersicht')).toBeInTheDocument()
-    expect(screen.getByText('Letzte Aktivitäten')).toBeInTheDocument()
-    expect(screen.getByText('Inventar')).toBeInTheDocument()
+    expect(screen.queryByText('Offene Bestellungen')).not.toBeInTheDocument()
+    expect(screen.queryByText('Letzte Aktivitäten')).not.toBeInTheDocument()
   })
 
-  it('blendet im Pilotbetrieb die Mock-Kacheln aus', async () => {
+  it('zeigt im Pilotbetrieb nur echte Daten', async () => {
     process.env.NEXT_PUBLIC_PILOT_MODE = '1'
     renderDashboard()
     expect(await screen.findByText('API erreichbar')).toBeInTheDocument()

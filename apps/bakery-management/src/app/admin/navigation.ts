@@ -62,72 +62,10 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Übersicht',
   },
   {
-    label: 'Bestellungen',
-    href: '/admin/orders',
-    icon: 'orders',
-    description: 'Bestellverwaltung',
-  },
-  {
-    label: 'Bäckerei',
-    icon: 'bakery',
-    description: 'Produktionsprozesse',
-    submenu: [
-      {
-        label: 'Produktion',
-        href: '/admin/production',
-        icon: 'production',
-        description: 'Produktionsplanung',
-      },
-      {
-        label: 'Backliste',
-        href: '/admin/baking-list',
-        icon: 'baking',
-        description: 'Tägliche Backliste',
-      },
-      {
-        label: 'Tägliche Vorbereitung',
-        href: '/admin/bakery/daily-prep',
-        description: 'Vorbereitungsliste',
-      },
-      {
-        label: 'Samstag Produktion',
-        href: '/admin/bakery/saturday-production',
-        description: 'Wochenend-Produktion',
-      },
-      {
-        label: 'Interne Bestellungen',
-        href: '/admin/bakery/intern-orders',
-        description: 'Mitarbeiterbestellungen',
-      },
-      {
-        label: 'Rezepte',
-        href: '/admin/bakery/recipes',
-        description: 'Rezeptverwaltung',
-      },
-      {
-        label: 'Prozesse',
-        href: '/admin/bakery/processes',
-        description: 'Arbeitsabläufe',
-      },
-    ],
-  },
-  {
-    label: 'Lagerbestand',
-    href: '/admin/inventory',
-    icon: 'inventory',
-    description: 'Lagerverwaltung',
-  },
-  {
     label: 'Produkte',
     href: '/admin/products',
     icon: 'products',
     description: 'Produktverwaltung',
-  },
-  {
-    label: 'Unverkaufte Produkte',
-    href: '/admin/unsold-products',
-    icon: 'unsold',
-    description: 'Rückläufer & Reste',
   },
   {
     // M4: Zählung bei Ladenschluss (Verkauf, Laden-Tablet). Nicht in
@@ -145,12 +83,6 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Gebacken, verkauft, übrig',
   },
   {
-    label: 'Lieferung',
-    href: '/admin/delivery',
-    icon: 'delivery',
-    description: 'Lieferverwaltung',
-  },
-  {
     // Nicht „Vorbestellungen“: so heißt der kommende allgemeine Bildschirm
     // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
     label: 'Sammelstelle Mörsbach',
@@ -165,18 +97,6 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     href: '/admin/partners',
     icon: 'partners',
     description: 'Backschrank & Lieferpartner',
-  },
-  {
-    label: 'Kasse',
-    href: '/admin/cash',
-    icon: 'cash',
-    description: 'Kassenverwaltung',
-  },
-  {
-    label: 'Personal',
-    href: '/admin/staff',
-    icon: 'staff',
-    description: 'Mitarbeiterverwaltung',
   },
   {
     label: 'Kassenberichte',
@@ -201,18 +121,6 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     href: '/admin/finance/tagesziel',
     icon: 'target',
     description: 'Break-even-Ampel (nur Inhaber)',
-  },
-  {
-    label: 'Benachrichtigungen',
-    href: '/admin/notifications',
-    icon: 'notifications',
-    description: 'Mitteilungen',
-  },
-  {
-    label: 'Team-Chat',
-    href: '/admin/chat',
-    icon: 'chat',
-    description: 'Interne Nachrichten',
   },
   {
     label: 'Social Media',

@@ -1,8 +1,9 @@
 /**
  * Backzettel-Tagesrechnung (Z2, roadmap §5.4).
  *
- * Portiert die Faelle aus apps/bakery-management/src/features/production/
- * (productionCalculator.spec.ts / HefezopfCalculator, FillingPreparation) und
+ * Portiert die Faelle aus den frueheren (B12 geloeschten)
+ * apps/bakery-management/src/features/production/ (productionCalculator.spec.ts
+ * / HefezopfCalculator, FillingPreparation) und
  * feature-daily-prep/utils/trayInfo.spec.ts. Alle Zahlen sind erfunden.
  *
  * Kalender: Di 24.11.2026, Mi 25.11., Sa 28.11., So 29.11., Mo 30.11. (Ruhetag).
@@ -1087,7 +1088,7 @@ describe('computeDeltas', () => {
   })
 })
 
-describe('formatTrayInfo (Duplikat von feature-daily-prep/utils/trayInfo.ts)', () => {
+describe('formatTrayInfo (aus dem früheren feature-daily-prep/utils/trayInfo.ts)', () => {
   it('formatiert wie das Original', () => {
     expect(core.formatTrayInfo({ tray_number: 5 })).toBe('Blech 5')
     expect(core.formatTrayInfo({ tray_number: 0 })).toBe('Blech 0')

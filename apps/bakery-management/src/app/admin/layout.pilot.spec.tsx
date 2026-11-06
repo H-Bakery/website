@@ -69,23 +69,19 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
     expect(screen.queryByText('Entwicklung')).not.toBeInTheDocument()
   })
 
-  it.each([
-    '/admin/cash',
-    '/admin/orders',
-    '/admin/baking-list',
-    '/admin/bakery/daily-prep',
-    '/admin/delivery',
-  ])('sperrt %s mit einem deutschen Hinweis', (route) => {
-    renderLayout(route)
-    expect(screen.queryByTestId('page-content')).not.toBeInTheDocument()
-    expect(
-      screen.getByRole('heading', { name: 'Im Pilotbetrieb nicht verfügbar' })
-    ).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Zum Dashboard' })).toHaveAttribute(
-      'href',
-      '/admin'
-    )
-  })
+  it.each(['/admin/rest', '/admin/rest/auswertung'])(
+    'sperrt %s mit einem deutschen Hinweis',
+    (route) => {
+      renderLayout(route)
+      expect(screen.queryByTestId('page-content')).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('heading', { name: 'Im Pilotbetrieb nicht verfügbar' })
+      ).toBeInTheDocument()
+      expect(
+        screen.getByRole('link', { name: 'Zum Dashboard' })
+      ).toHaveAttribute('href', '/admin')
+    }
+  )
 
   it.each([
     '/admin',
@@ -112,9 +108,9 @@ describe('AdminLayout ohne Pilotbetrieb', () => {
   })
 
   it('sperrt nichts und zeigt alle Einträge', () => {
-    renderLayout('/admin/cash')
+    renderLayout('/admin/rest')
     expect(screen.getByTestId('page-content')).toBeInTheDocument()
-    expect(getDesktopNav().getByText('Kasse')).toBeInTheDocument()
+    expect(getDesktopNav().getByText('Rest am Abend')).toBeInTheDocument()
     expect(screen.queryByText('Pilotbetrieb')).not.toBeInTheDocument()
   })
 })
