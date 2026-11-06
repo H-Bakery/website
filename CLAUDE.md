@@ -240,7 +240,9 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (ein ausdrücklicher `visitAt` muss
   aber höchstens einen Tag neben dem Geschäftstag liegen, sonst 400 `INVALID_VISIT_AT`; Steuer- und
   Bidi-Zeichen in Stammdaten, `staffName` und Notiz sind 400 `INVALID_TEXT` - Regel einmal in
-  `src/services/control-chars.core.js`, auch für Vorbestellungen, hq-Produkte und Anzeigenamen) (die Erfassungsmaske schickt
+  `src/services/control-chars.core.js`, auch für Vorbestellungen, Sammelstellen, Stationsnamen,
+  Backzettel-Gründe, hq-Produkte und Anzeigenamen; seit W4-Verifikation Runde 3 zählen auch BOM und
+  U+2028/U+2029) (die Erfassungsmaske schickt
   `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
   `commission`; seit der W4-Verifikation prüft die Vorlage ihre Positionen wie ein Besuch (Menge
   ganzzahlig 0…10000, Produkt im Katalog oder schon in der Vorlage, sonst 400 `INVALID_ITEMS`),
@@ -981,7 +983,13 @@ anonymisation (P4)". Von außen wichtig:
 - **Rollen:** `verkauf` (und `inhaber`) alles, `fahrer` lesen und nur übergeben bzw. „nicht
   abgeholt", `backstube` nur `/sums` (und dort ohne `summary`, also ohne Beträge und
   Bezahlstand). Der Fahrer darf „bezahlt" setzen, aber nie zurücknehmen (403
-  `paid_undo_forbidden`, auch über `bulk-status`).
+  `paid_undo_forbidden`, auch über `bulk-status`), und eine **Übergabe nicht zurücknehmen**:
+  eine `abgeholt`e Bestellung auf `offen`/`bereit`/„nicht abgeholt" setzen ist für ihn 403
+  `handover_undo_forbidden` (Status-Endpunkt, `bulk-status` und Mörsbach-Alias; W4-Verifikation
+  Runde 3). Das kann nur der Verkauf.
+- **Suche `?q=`** über Name und Code ist ein `GLOB` mit Groß/klein-Klassen je Buchstabe
+  (`caseInsensitiveGlob()` in `preorders.service.ts`) - SQLites `LIKE` faltet nur ASCII, „öztürk"
+  fand „Öztürk" nicht. `%`, `_`, `*`, `?`, `[` sind wörtliche Zeichen.
 - **Bezahlter Betrag** (`paid_amount`, Migration 20261114, W4-Verifikation Runde 2): wird beim
   Erfassen der Zahlung auf die Summe gesetzt (Anlegen mit `paid`, `paid` false → true, ein
   ausdrückliches `paid: true` am Status-Endpunkt = „Rest kassiert"), bleibt beim Bearbeiten stehen
@@ -1093,6 +1101,21 @@ Was man wissen muss:
   scheitert → „ob das gespeichert wurde, ist unklar" (`singleRequestFailedMessage`), und das
   Ereignis `online` lädt nach. Ein 409 auf einen zweiten Versuch, der schon so gespeichert ist,
   heißt „Das ist bereits gespeichert - nichts zu tun."
+  **Mehrere unklare Tipps** (Funkloch, mehrere Übergaben hintereinander) werden je Bestellung
+  gemerkt und nach dem Neuladen einzeln aufgelöst (`data-testid="open-actions"`); ein späterer
+  erfolgreicher Tipp auf dieselbe Bestellung streicht ihren Eintrag. Die Snackbar bekommt einen
+  Platzhalter unter der Liste, damit sie die letzten Knöpfe nicht verdeckt.
+- **Rest und Erstattung** (`paymentState()` in `preordersTypes.ts`, aus `paymentBalance`:
+  `unpaid`, `paid`, `rest`, `refund`): Chip „Rest X offen" bzw. „Erstattung X offen" - auch an
+  stornierten, schon bezahlten Bestellungen. Ein Tipp-Übergeben gibt es nur bei `paid`; sonst
+  nennt der Dialog den Rest bzw. „X an die Kundschaft zurückgeben" und bietet „Erstattet und
+  übergeben" / „Ohne Erstattung übergeben". „Erstattet" je Zeile schickt `paid: true` (offen,
+  abgeholt: Betrag = Summe) bzw. an einer stornierten `paid: false`; der Fahrer darf das an
+  stornierten nicht (`paid_undo_forbidden`) und sieht stattdessen „Erfassen kann das der
+  Verkauf.". Kachel „Zu erstatten"; der Druck hat eine Gruppe „Storniert - Geld zurückgeben"
+  und schreibt „☐ Rest X" / „☐ X zurück". Listen, Tagesansicht und Sammelstelle zeigen dasselbe
+  über `components/preorders/PaymentNote.tsx`; Sammelstelle und Backliste nennen
+  `handedOverUnpaidTotal` neben der Summe.
 - **Stilles Nachladen** alle 60 s und beim Zurückkehren ins Fenster (`focus`,
   `visibilitychange`) - aber nie, solange ein Dialog, ein Menü oder eine Aktion offen ist. Dabei
   wird auch **„heute" neu bestimmt** (ein Tablet, das über Nacht offen bleibt). Scheitert es,
@@ -1112,7 +1135,9 @@ Mörsbach" bleibt): Liste, Backliste und Lieferstelle lesen und schreiben über
 `savePickupPoint`); der eigene `preorderApi.ts`-Client ist gelöscht. Erfassen und Bearbeiten
 sind die P1-Maske bzw. die P3-Ansicht mit vorbelegter Sammelstelle und Rückweg auf den Liefertag
 (`MoersbachPreorderClients.tsx`) - die alte Maske kannte keine Sorten. Die Liste zeigt Sorten,
-Code und bezahlt, verlinkt auf die Abholliste und storniert mit `expectedUpdatedAt`. Die Warnung
+Code und bezahlt, verlinkt auf die Abholliste und storniert mit `expectedUpdatedAt`. Unter
+`md` (Handy, Tablet hochkant) steht je Bestellung eine Karte statt der Tabelle (W4-Verifikation
+Runde 3: Summe, Status und Aktion lagen sonst seitlich außer Sicht). Die Warnung
 „kein Tourstopp angelegt" ist weg (die Fahrer-App ist nicht im Pilot, D11).
 `PUT /api/preorders/pickup-points/:id` (neu in P2, nur `inhaber`) ändert die Sammelstelle; die
 Seite zeigt allen anderen die Felder **schreibgeschützt** (W4: `readOnly`, Schalter gesperrt, kein

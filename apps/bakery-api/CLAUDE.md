@@ -188,6 +188,8 @@ PIN/stations; the `user` object deliberately deviates (see below the table):
 | `GET/POST /api/auth/stations`, `DELETE /api/auth/stations/:id`                                           | `inhaber`, personal session     | register `{ name }` → 201 `{ station, token }` (token shown once); revoke ends its sessions                    |
 | `GET/POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/password`, `POST /api/users/:id/pin` | `inhaber`, personal session     | `AdminUser` = user + `hasPin`, never a hash                                                                    |
 
+A station `name` with control characters (also BOM, U+2028/U+2029) is 400 `INVALID_TEXT` (W4-verify r3).
+
 `user` = `{ id, username, displayName, role, active, isActive, createdAt, updatedAt, sessionKind }`.
 Roles `inhaber | verkauf | backstube | fahrer`. **D3 deviation, deliberate:** the mock's `email`,
 `firstName`, `lastName`, `lastLogin` do not exist (the pilot `users` table has no such columns and
@@ -650,13 +652,17 @@ phones**, so the Backliste reads `/sums` instead of `/day` (W4). The role `backs
 **without `summary`** (no amounts, no paid state - it may not read `/day` either; its screens do
 not use it). List filters: `date`
 or `from`/`to`, `status` (comma list), `channel`, `pickupPointId` (`laden` = no point), `q`
-(name/code; phone digits from 3 on; LIKE wildcards stripped). `Preorder` = `{ id, code, channel,
+(name/code as a case-insensitive `GLOB` - `caseInsensitiveGlob()`, because SQLite `LIKE` folds ASCII only, so `%`/`_`/`*`/`?`/`[` match literally; phone digits from 3 on). `Preorder` = `{ id, code, channel,
 customerName, customerPhone, pickupDate, pickupTime, pickupPointId, pickupPoint
 { id, name, window } | null, status, notCollected, notCollectedAt, paid, note, items [{ productId,
 name, variant, unit, unitPrice, quantity, lineTotal }], total, pickedUpAt, anonymizedAt,
 createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors via `sendError`:
 400 `invalid_*` / `unknown_product` / `unknown_pickup_point` / `variant_required` /
-`invalid_delivery_day` / `invalid_quantity` / `invalid_expected_updated_at`, 403 `forbidden`,
+`invalid_delivery_day` / `invalid_quantity` / `invalid_expected_updated_at` (the pickup-point
+`PUT` keeps the mock's codes: control characters in name, address or window are 400
+`Invalid text`, notes keep newlines), 403 `forbidden` /
+`paid_undo_forbidden` / `handover_undo_forbidden` (fahrer moving an `abgeholt` order anywhere else -
+status, bulk and the Mörsbach alias; W4-verify r3),
 404 `not_found`, 409 `already_picked_up` / `cancelled` / `anonymized` / `has_variants` /
 `stale_preorder` / `not_collected_too_early`.
 
@@ -775,7 +781,8 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
   means "the point is served that weekday" (no tours, D11); the PUT does no geocoding (an address
   change clears the coordinates); Laden preorders are invisible there (404); a PATCH with `items`
   on a preorder that has variants is 409 `has_variants` (the old form cannot show them and would
-  drop them); fahrer may PATCH only `{ status: handed_over | not_collected }`. A PATCH whose
+  drop them); fahrer may PATCH only `{ status: handed_over | not_collected }`, and not at all
+  away from a handed-over order (403 `handover_undo_forbidden`). A PATCH whose
   body is **only** `{ status }` goes through `changeStatus` (no re-validation of weekday, items
   …), so a preorder stays hand-over-able after the inhaber changed the point's weekday; a full
   form save still re-validates. The alias guards (Laden → 404, legacy transition locks) run
@@ -839,6 +846,8 @@ preorder snapshot, delta reconciliation, frozen lines. Master data: `backzettel-
 | `POST /:date/reopen`                             | inhaber            | `{ reason? }` → draft day                                                                    |
 | `POST /:date/lines/:lineId/done` / `/undone`     | inhaber, backstube | → `{ id, date, itemId, variant, doneAt, doneBy }`; confirmed only                            |
 | `POST /:date/deltas/:id/ack`                     | inhaber, backstube | → `{ id, …, acknowledgedAt, acknowledgedBy }`, idempotent                                    |
+
+A correction `reason` or reopen `reason` with control characters is 400 `INVALID_TEXT` (W4-verify r3).
 
 Day: `{ date, weekday, weekdayName, status: draft|confirmed, seasonFactor, confirmedBy {id,
 displayName} | null, confirmedAt, sections[{ id, label, lines[] }], hefeteig, fillings, prep,
