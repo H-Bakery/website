@@ -29,13 +29,16 @@ import {
 } from '@mui/icons-material'
 import { ApiError } from '@bakery/shared/data-access'
 import { useOptionalSession } from '../../../lib/session'
+import { describeBackstubeError } from '../../../lib/backstubeErrors'
 import {
   addDaysIso,
   draftChanges,
   draftConflicts,
   fetchRestDay,
+  formatDayShort,
   formatNumber,
   formatQtyUnit,
+  listDraftDates,
   loadDraft,
   parsePadInput,
   pruneDraft,
@@ -69,9 +72,22 @@ const ALERT_TOUCH = {
   '& .MuiAlert-action .MuiButtonBase-root': { minHeight: 44, minWidth: 44 },
 } as const
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  return 'Unbekannter Fehler.'
+/**
+ * Deutsch statt „Failed to fetch“ / „HTTP 502“ (Abschluss-Verifikation
+ * next): kein Server → WLAN prüfen, 4xx → die deutsche API-Meldung, 5xx →
+ * Serverfehler mit Code. Dieselbe Regel wie am Backstube-Tablet.
+ */
+function errorMessage(error: unknown, fallback: string): string {
+  return describeBackstubeError(error, fallback).text
+}
+
+function conflictKey(
+  c: Pick<RestConflict, 'itemId' | 'variant' | 'productId'>
+) {
+  return rowKey(
+    { itemId: c.itemId, variant: c.variant },
+    { productId: c.productId }
+  )
 }
 
 function longDate(iso: string, weekdayName: string | null): string {
@@ -278,7 +294,7 @@ function CountLine({
   draft: RestDraft
   confirmed: boolean
   writable: boolean
-  conflictKeys: Set<string>
+  conflictKeys: Map<string, RestConflict>
   onChange: (line: RestLine, row: RestCountRow, value: number | null) => void
   onPad: (target: PadTarget) => void
 }) {
@@ -323,6 +339,26 @@ function CountLine({
               ? ` · Rest ${formatQtyUnit(line.rest, line.unit)}`
               : ''}
           </Typography>
+          {line.rows.map((row) => {
+            // Was das andere Gerät gespeichert hat, direkt an der Zeile -
+            // die Meldung oben liegt am Tablet oft außer Sicht.
+            const other = conflictKeys.get(rowKey(line, row))
+            if (!other) return null
+            return (
+              <Typography
+                key={`conflict-${row.productId || 'item'}`}
+                variant="body2"
+                color="error"
+                fontWeight={600}
+                data-testid={`rest-conflict-${line.key}`}
+              >
+                {line.rows.length > 1 ? `${row.label}: ` : ''}
+                Inzwischen gespeichert: {formatNumber(other.qty)}
+                {other.countedBy ? ` von ${other.countedBy.displayName}` : ''}
+                {' · '}deine Eingabe: {formatNumber(shownQty(draft, line, row))}
+              </Typography>
+            )
+          })}
           {line.restExceedsShop && (
             <Typography
               variant="body2"
@@ -480,6 +516,11 @@ export default function RestClient({ initialDate }: RestClientProps) {
           return
         }
         const stored = pruneDraft(result, loadDraft(draftOwner, result.date))
+        // Mit Zählliste ist ein Eintrag ohne passende Zeile nicht mehr zu
+        // speichern - aufräumen, sonst meldete der Hinweis „Ungespeicherte
+        // Zählung an anderen Tagen“ ihn für immer. Ohne Zählliste (hq kurz
+        // weg) bleibt der Entwurf unangetastet.
+        if (result.status === 'ok') storeDraft(draftOwner, result.date, stored)
         const stale = draftConflicts(result, stored)
         if (stale.length > 0) {
           // Ein anderes Tablet hat gezählt, seit die Eingaben gemacht wurden:
@@ -492,7 +533,9 @@ export default function RestClient({ initialDate }: RestClientProps) {
         }
       } catch (error) {
         if (id !== requestId.current) return
-        setLoadError(errorMessage(error))
+        setLoadError(
+          errorMessage(error, 'Die Zählliste konnte nicht geladen werden.')
+        )
       } finally {
         if (id === requestId.current) setLoading(false)
       }
@@ -505,6 +548,9 @@ export default function RestClient({ initialDate }: RestClientProps) {
   }, [date, load])
 
   const writable = !!day && day.editable && mayCount && !saving
+  // Außerhalb des Zählfensters (oder ohne Zählliste) nimmt die API nichts an:
+  // dann kein „Speichern“, das immer scheitert - nur „Verwerfen“.
+  const savable = !!day && day.editable && mayCount
 
   const changes = useMemo(
     () => (day ? draftChanges(day, draft) : []),
@@ -523,17 +569,19 @@ export default function RestClient({ initialDate }: RestClientProps) {
   }, [day, draft])
 
   const conflictKeys = useMemo(
-    () =>
-      new Set(
-        conflicts.map((c) =>
-          rowKey(
-            { itemId: c.itemId, variant: c.variant },
-            { productId: c.productId }
-          )
-        )
-      ),
+    () => new Map(conflicts.map((c) => [conflictKey(c), c] as const)),
     [conflicts]
   )
+
+  // Ungespeicherte Eingaben an anderen Tagen (auf diesem Gerät, dieser Person).
+  const [otherDraftDates, setOtherDraftDates] = useState<string[]>([])
+  useEffect(() => {
+    if (draftOwner === null || !day) {
+      setOtherDraftDates([])
+      return
+    }
+    setOtherDraftDates(listDraftDates(draftOwner).filter((d) => d !== day.date))
+  }, [draftOwner, day, draft])
 
   const sections = useMemo(() => {
     const out: { label: string; lines: RestLine[] }[] = []
@@ -608,7 +656,12 @@ export default function RestClient({ initialDate }: RestClientProps) {
           // Bleibt beim alten Stand; der Hinweis oben sagt, was los ist.
         }
       } else {
-        setSaveError(errorMessage(error))
+        setSaveError(
+          errorMessage(
+            error,
+            'Nicht gespeichert - deine Eingaben stehen noch da.'
+          )
+        )
       }
     } finally {
       setSaving(false)
@@ -753,6 +806,29 @@ export default function RestClient({ initialDate }: RestClientProps) {
               Nur ansehen - gezählt wird vom Verkauf.
             </Alert>
           )}
+          {otherDraftDates.length > 0 && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 2 }}
+              data-testid="rest-other-drafts"
+            >
+              <AlertTitle>Ungespeicherte Zählung an anderen Tagen</AlertTitle>
+              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+                {otherDraftDates.map((d) => (
+                  <Button
+                    key={d}
+                    size="small"
+                    variant="outlined"
+                    color="inherit"
+                    onClick={() => goTo(d)}
+                    sx={{ minHeight: 44 }}
+                  >
+                    {formatDayShort(d)} öffnen
+                  </Button>
+                ))}
+              </Stack>
+            </Alert>
+          )}
           {saveError && (
             <Alert
               severity={conflicts.length > 0 ? 'warning' : 'error'}
@@ -863,11 +939,37 @@ export default function RestClient({ initialDate }: RestClientProps) {
             zIndex: (t) => t.zIndex.appBar - 1,
           }}
         >
-          <Typography variant="body2" sx={{ flex: 1 }}>
-            {changes.length === 1
-              ? '1 Änderung'
-              : `${changes.length} Änderungen`}
-          </Typography>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body2">
+              {changes.length === 1
+                ? '1 Änderung'
+                : `${changes.length} Änderungen`}
+            </Typography>
+            {/* Die Meldung auch hier: oben liegt sie am Tablet außer Sicht. */}
+            {!savable ? (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                role="status"
+                data-testid="rest-save-bar-message"
+              >
+                {day.editIssue ||
+                  'Dieser Tag kann nicht mehr gespeichert werden.'}
+              </Typography>
+            ) : saveError ? (
+              <Typography
+                variant="body2"
+                color="error"
+                fontWeight={600}
+                role="alert"
+                data-testid="rest-save-bar-message"
+              >
+                {conflicts.length > 0
+                  ? `Inzwischen anders gezählt (${conflicts.length}) - an den rot markierten Zeilen prüfen.`
+                  : saveError}
+              </Typography>
+            ) : null}
+          </Box>
           <Button
             onClick={discard}
             disabled={saving}
@@ -876,14 +978,20 @@ export default function RestClient({ initialDate }: RestClientProps) {
           >
             Verwerfen
           </Button>
-          <Button
-            variant="contained"
-            onClick={() => void save()}
-            disabled={saving || changes.length === 0}
-            sx={{ minHeight: 48, minWidth: 140 }}
-          >
-            {saving ? 'Speichert …' : 'Speichern'}
-          </Button>
+          {savable && (
+            <Button
+              variant="contained"
+              onClick={() => void save()}
+              disabled={saving || changes.length === 0}
+              sx={{ minHeight: 48, minWidth: 140 }}
+            >
+              {saving
+                ? 'Speichert …'
+                : conflicts.length > 0
+                ? 'Meine Zahlen speichern'
+                : 'Speichern'}
+            </Button>
+          )}
         </Paper>
       )}
 

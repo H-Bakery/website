@@ -20,5 +20,15 @@ export function useMemoryStorage(): Map<string, string> {
     data.delete(key)
   })
   store.clear.mockImplementation(() => data.clear())
+  // Aufzählen (`key(i)`, `length`) wie ein echter Storage.
+  Object.defineProperty(store, 'key', {
+    configurable: true,
+    writable: true,
+    value: (index: number) => Array.from(data.keys())[index] ?? null,
+  })
+  Object.defineProperty(store, 'length', {
+    configurable: true,
+    get: () => data.size,
+  })
   return data
 }

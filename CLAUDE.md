@@ -1482,7 +1482,18 @@ weder die Zahlen der vorigen noch speichert sie sie unter eigenem Namen; wer nur
 (Backstube), sieht immer den Server-Stand. 28 Posten = 61 Fingertipps im Smoke (≈ 1,5 min).
 Ein Posten mit Sorten wird je Sorte gezählt (400 `variant_required`, wie bei Vorbestellungen).
 Mehr Rest als für den Laden gebacken (`restExceedsShop`) steht an der Zeile als „bitte
-nachzählen", in der Auswertung je Posten mit den Tagen (`restExceedsDates`).
+nachzählen", in der Auswertung je Posten mit den Tagen (`restExceedsDates`), an der
+Einheiten-Kachel als Zahl der Posten (`restExceedsItems`), im CSV als Spalte „Zählung prüfen"; in
+den Rest Ø der Grundmengen gehen solche Tage nicht ein (`excludedDates`).
+**Zählzeilen von damals:** jede gespeicherte Zählung hält in `rest_counts.line_rows` fest, welche
+Produkte die Zeile da hatte - ein später in `backzettel.yaml` ergänztes Produkt macht alte Tage
+nicht „teilweise gezählt".
+**Abschluss-Verifikation next (Tablet):** Fehler deutsch (`describeBackstubeError`: kein Server →
+„Keine Verbindung zum Server – bitte WLAN prüfen."), Meldungen zusätzlich in der festen Leiste
+unten; nach einer 409 steht an der Zeile „Inzwischen gespeichert: X von Y · deine Eingabe: Z", und
+der Knopf heißt „Meine Zahlen speichern". An einem Tag, der nicht mehr speicherbar ist, bietet die
+Leiste nur „Verwerfen". Entwürfe anderer Tage nennt ein Hinweis mit Sprung dorthin
+(`listDraftDates`), und „Abmelden" fragt bei ungespeicherter Zählung nach.
 In den Grundmengen (Z4) steht „Rest am Abend Ø" zusätzlich im Hinweis der Referenz
 (`GET /api/rest/averages`, nur Information). Nach jeder Zählung schreibt Z9 (falls
 `HQ_SNAPSHOT_DIR` gesetzt) `hq/data/production/rest/<datum>.json` - ohne Namen und Uhrzeiten.
