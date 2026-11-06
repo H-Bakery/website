@@ -547,6 +547,15 @@ check "current unverändert" test "$(readlink "$BAKERY_ROOT/current")" = "$BEFOR
 check "Meldung nennt origin" log_has "nicht vorhanden"
 
 # ---------------------------------------------------------------------------
+# bakery-management.service (W4-Verifikation Runde 5): mit
+# `--hostname 127.0.0.1` hielt Next die Rewrites des Proxys für externe URLs
+# (es schreibt Loopback-Ziele auf `localhost` um) - 500 auf jeder Seite ohne
+# gültiges Cookie. Gebunden wird über `localhost`, IPv4 zuerst.
+UNIT_MGMT="$REPO_ROOT/deploy/systemd/bakery-management.service"
+check "Verwaltung bindet über localhost, nicht 127.0.0.1" sh -c "grep '^ExecStart=' '$UNIT_MGMT' | grep -q -- '--hostname localhost ' && ! grep '^ExecStart=' '$UNIT_MGMT' | grep -q -- '--hostname 127.0.0.1'"
+check "Verwaltung: localhost wird 127.0.0.1 (ipv4first)" sh -c "grep '^ExecStart=' '$UNIT_MGMT' | grep -q -- '/usr/bin/node --dns-result-order=ipv4first '"
+
+# ---------------------------------------------------------------------------
 echo
 echo "Ergebnis: $pass ok, $fail fehlgeschlagen"
 [ "$fail" -eq 0 ]

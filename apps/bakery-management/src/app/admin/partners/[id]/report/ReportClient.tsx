@@ -639,7 +639,13 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   - dort wurde noch keine Abholung erfasst. Verkauf, Retoure und
                   Umsatz sind an diesen Tagen deshalb vorläufig und können sich
                   noch ändern:{' '}
-                  <strong>{stats.openDates.map(formatDate).join(', ')}</strong>
+                  <strong>{stats.openDates.map(formatDate).join(', ')}</strong>.
+                  Die Abverkaufsquote rechnet nur Tage mit Abholung
+                  {(stats.totals.openQty ?? 0) > 0 &&
+                    `; ${formatQty(
+                      stats.totals.openQty ?? 0
+                    )} Stück aus diesen Tagen liegen noch im Schrank (Kachel „Offen“)`}
+                  .
                 </Box>
               )}
               {(stats.incompleteDates ?? []).length > 0 && (
@@ -718,8 +724,22 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     label: 'Retoure',
                     value: `${formatQty(stats.totals.returnedQty)} Stück`,
                   },
+                  // W4-verify r5: Geliefert = Verkauft + Retoure + Offen.
+                  ...((stats.totals.openQty ?? 0) > 0
+                    ? [
+                        {
+                          label: 'Offen (ohne Abholung)',
+                          value: `${formatQty(
+                            stats.totals.openQty ?? 0
+                          )} Stück`,
+                        },
+                      ]
+                    : []),
                   {
-                    label: 'Abverkaufsquote',
+                    label:
+                      stats.openDates.length > 0
+                        ? 'Abverkaufsquote (Tage mit Abholung)'
+                        : 'Abverkaufsquote',
                     value: formatPercent(stats.totals.sellThroughRate),
                   },
                   {
@@ -811,6 +831,17 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                                 sx={{ display: 'block' }}
                               >
                                 {product.uncountedQty} Stück ungezählt
+                              </Typography>
+                            )}
+                            {(product.openQty ?? 0) > 0 && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block' }}
+                              >
+                                {product.openQty} Stück noch offen (Tag ohne
+                                Abholung)
                               </Typography>
                             )}
                             {(product.discrepancyQty ?? 0) > 0 && (

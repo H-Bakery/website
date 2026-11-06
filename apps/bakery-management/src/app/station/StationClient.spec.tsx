@@ -222,6 +222,25 @@ describe('Station', () => {
         expect(stationReturnPath({ id: 3, role: 'verkauf' }, [])).toBe(
           '/admin/preorders'
         )
+        // tippt sie selbst etwas an, bleibt der Entwurf von 2 (W4-verify r5)
+        savePreorderDraft(
+          3,
+          {
+            customerName: 'Testkunde Kollege',
+            customerPhone: '',
+            channel: 'telefon',
+            pickupPointId: '',
+            pickupDate: '',
+            pickupTime: '',
+            paid: false,
+            note: '',
+            lines: [],
+          },
+          null
+        )
+        expect(stationReturnPath({ id: 2, role: 'verkauf' }, [])).toBe(
+          '/admin/preorders/neu'
+        )
       })
     })
 

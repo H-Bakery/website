@@ -196,6 +196,23 @@ async function loadPreorderSnapshot(
   )
 }
 
+/**
+ * Status of every preorder that is on `date` now, cancelled ones included -
+ * tells a cancelled order from a removed line or an order moved to another
+ * day (`reconcileDeltas`, W4-verify r5).
+ */
+async function loadDayOrderStates(
+  date: string,
+  transaction?: Transaction
+): Promise<Record<string, string>> {
+  const rows = await Preorder.findAll({
+    where: { pickupDate: date },
+    attributes: ['id', 'status'],
+    transaction,
+  })
+  return Object.fromEntries(rows.map((p) => [String(p.id), p.status]))
+}
+
 /** Active delivery templates of active sales partners for an ISO weekday. */
 async function loadCapTemplates(
   weekday: number,
@@ -440,9 +457,9 @@ export function createBackzettelService(
         ? (
             await Preorder.findAll({
               where: { id: preorderIds },
-              attributes: ['id', 'code'],
+              attributes: ['id', 'code', 'pickupDate'],
             })
-          ).map((p) => [p.id, p.code])
+          ).map((p) => [p.id, { code: p.code, pickupDate: p.pickupDate }])
         : []
     )
 
@@ -462,7 +479,15 @@ export function createBackzettelService(
         kind: d.kind,
         preorderId: d.preorderId,
         preorderCode:
-          d.preorderId === null ? null : codes.get(d.preorderId) ?? null,
+          d.preorderId === null ? null : codes.get(d.preorderId)?.code ?? null,
+        // Codes are not kept per day: an order moved on carries its new
+        // code. Say so, instead of a Tuesday code on Sunday's sheet as if
+        // it were still here (W4-verify r5).
+        preorderMovedTo: (() => {
+          const now =
+            d.preorderId === null ? null : codes.get(d.preorderId) ?? null
+          return now && now.pickupDate !== date ? now.pickupDate : null
+        })(),
         createdAt: d.createdAt,
         acknowledgedAt: d.acknowledgedAt,
         acknowledgedBy: userRef(users, d.acknowledgedBy),
@@ -470,13 +495,30 @@ export function createBackzettelService(
     })
     const deltaByKey = new Map<
       string,
-      { qty: number; open: number; count: number; bake?: number }
+      {
+        qty: number
+        open: number
+        count: number
+        bake?: number
+        /** Summe der noch nicht quittierten Nachträge. */
+        openQty: number
+        /** Was die noch nicht quittierten zusätzlich zu backen heißen. */
+        bakeOpen?: number
+      }
     >()
     for (const d of deltas) {
-      const e = deltaByKey.get(d.key) || { qty: 0, open: 0, count: 0 }
+      const e = deltaByKey.get(d.key) || {
+        qty: 0,
+        open: 0,
+        count: 0,
+        openQty: 0,
+      }
       e.qty = Math.round((e.qty + d.qty) * 100) / 100
       e.count += 1
-      if (!d.acknowledgedAt) e.open += 1
+      if (!d.acknowledgedAt) {
+        e.open += 1
+        e.openQty = Math.round((e.openQty + d.qty) * 100) / 100
+      }
       deltaByKey.set(d.key, e)
     }
 
@@ -559,6 +601,25 @@ export function createBackzettelService(
         snap?.subtotalExact ?? null
       )
       for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
+      // W4-verify r5: the Backstube panel lists only the open Nachträge and
+      // needs *their* oven figure, not the raw quarter sum (+6,5 Kranz is 7
+      // to bake). Open = all − already acknowledged, both after rounding.
+      const ackedByKey = Object.fromEntries(
+        [...deltaByKey].map(([key, e]) => [
+          key,
+          { qty: Math.round((e.qty - e.openQty) * 100) / 100 },
+        ])
+      )
+      const ackedExtras = dayCore.deltaBakeExtras(
+        lines,
+        ackedByKey,
+        snap?.preordersExact ?? null,
+        snap?.subtotalExact ?? null
+      )
+      for (const [key, entry] of deltaByKey) {
+        entry.bakeOpen =
+          Math.round(((entry.bake ?? 0) - (ackedExtras[key] ?? 0)) * 100) / 100
+      }
       if (config && recomputed) {
         const adjusted = dayCore.linesWithExtras(lines, extras)
         deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {
@@ -601,13 +662,15 @@ export function createBackzettelService(
     date: string,
     current: PreorderSnapshotItem[],
     recorded: BackzettelDelta[],
-    snapshot: unknown
+    snapshot: unknown,
+    orders?: Record<string, string>
   ) {
     return dayCore.reconcileDeltas({
       config: loaded.config,
       date,
       snapshot,
       current,
+      orders,
       recorded: recorded.map((r) => ({
         itemId: r.itemId,
         variant: r.variant,
@@ -665,7 +728,8 @@ export function createBackzettelService(
       date,
       await loadPreorderSnapshot(date, transaction),
       await BackzettelDelta.findAll({ where: { date }, transaction }),
-      day.preorderSnapshot || []
+      day.preorderSnapshot || [],
+      await loadDayOrderStates(date, transaction)
     )
     if (rows.length === 0) return 0
     const created = await BackzettelDelta.bulkCreate(

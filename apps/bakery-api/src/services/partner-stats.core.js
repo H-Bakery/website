@@ -594,6 +594,11 @@ function computeDay(dayVisits) {
   }
 }
 
+/** Was an einem offenen Tag (noch) im Schrank liegt: weder verkauft noch Retoure. */
+function openRemainder(bucket) {
+  return Math.max(0, bucket.deliveredQty - bucket.soldQty - bucket.returnedQty)
+}
+
 function rate(numerator, denominator) {
   if (!denominator) return null
   return Math.round((numerator / denominator) * 10000) / 10000
@@ -629,8 +634,10 @@ function computeStats(visits, range = {}) {
     let uncountedQty = 0
     let revenueCents = 0
     let returnValueCents = 0
+    let openQty = 0
 
     for (const [key, bucket] of day.products) {
+      if (day.isOpen) openQty += openRemainder(bucket)
       deliveredQty += bucket.deliveredQty
       soldQty += bucket.soldQty
       returnedQty += bucket.returnedQty
@@ -654,6 +661,9 @@ function computeStats(visits, range = {}) {
           uncountedQty: 0,
           revenueCents: 0,
           returnValueCents: 0,
+          openQty: 0,
+          closedDeliveredQty: 0,
+          closedSoldQty: 0,
         })
       }
       const total = productTotals.get(key)
@@ -667,6 +677,12 @@ function computeStats(visits, range = {}) {
       total.uncountedQty += bucket.uncountedQty
       total.revenueCents += bucket.revenueCents
       total.returnValueCents += bucket.returnedQty * bucket.unitPriceCents
+      if (day.isOpen) {
+        total.openQty += openRemainder(bucket)
+      } else {
+        total.closedDeliveredQty += bucket.deliveredQty
+        total.closedSoldQty += bucket.soldQty
+      }
     }
 
     byDay.push({
@@ -683,7 +699,10 @@ function computeStats(visits, range = {}) {
       uncountedQty,
       revenue: fromCents(revenueCents),
       returnValue: fromCents(returnValueCents),
-      sellThroughRate: rate(soldQty, deliveredQty),
+      // Ein offener Tag hat noch keine Quote: der Schrankinhalt ist weder
+      // verkauft noch Retoure (W4-verify r5).
+      openQty: day.isOpen ? openQty : 0,
+      sellThroughRate: day.isOpen ? null : rate(soldQty, deliveredQty),
     })
   }
 
@@ -706,7 +725,9 @@ function computeStats(visits, range = {}) {
       uncountedQty: p.uncountedQty,
       revenue: fromCents(p.revenueCents),
       returnValue: fromCents(p.returnValueCents),
-      sellThroughRate: rate(p.soldQty, p.deliveredQty),
+      openQty: p.openQty,
+      // Nur abgeschlossene Tage, wie `byWeekday` (W4-verify r5).
+      sellThroughRate: rate(p.closedSoldQty, p.closedDeliveredQty),
     }))
     .sort(
       (a, b) =>
@@ -763,6 +784,12 @@ function computeStats(visits, range = {}) {
     Math.round(byDay.reduce((s, d) => s + d.returnValue, 0) * 100) / 100
   const openDays = byDay.filter((d) => d.isOpen)
   const incompleteDays = byDay.filter((d) => !d.isOpen && !d.isComplete)
+  // Quoten nur über abgeschlossene Tage (W4-verify r5): die Lieferung eines
+  // Tags ohne Abholung zählte sonst ganz, sein Verkauf aber nicht - die
+  // Quote fiel (Kornbrot 37,5 % statt 75 %), und Geliefert ging nicht in
+  // Verkauft + Retoure auf. Was dort noch liegt, steht als `openQty`.
+  const closedDays = byDay.filter((d) => !d.isOpen)
+  const closedDelivered = closedDays.reduce((s, d) => s + d.deliveredQty, 0)
 
   return {
     range: { from, to },
@@ -779,8 +806,15 @@ function computeStats(visits, range = {}) {
       uncountedQty: byDay.reduce((s, d) => s + d.uncountedQty, 0),
       revenue,
       returnValue,
-      sellThroughRate: rate(soldQty, deliveredQty),
-      returnRate: rate(returnedQty, deliveredQty),
+      openQty: byDay.reduce((s, d) => s + d.openQty, 0),
+      sellThroughRate: rate(
+        closedDays.reduce((s, d) => s + d.soldQty, 0),
+        closedDelivered
+      ),
+      returnRate: rate(
+        closedDays.reduce((s, d) => s + d.returnedQty, 0),
+        closedDelivered
+      ),
     },
     /**
      * Vorläufig, solange ein Tag ohne Abholung dabei ist - oder eine Abholung
@@ -863,6 +897,12 @@ function statsToCsv(stats, partner = {}) {
     }
     push(['Hinweis', `Vorläufig - ${reasons.join(', ')}`])
   }
+  if (stats.openDates.length > 0) {
+    push([
+      'Hinweis',
+      'Abverkaufsquote nur über Tage mit Abholung; was an offenen Tagen noch im Schrank liegt, steht unter „Offen“',
+    ])
+  }
   push([])
 
   push(['Je Produkt'])
@@ -872,6 +912,7 @@ function statsToCsv(stats, partner = {}) {
     'Geliefert',
     'Verkauft',
     'Retoure',
+    'Offen',
     'Abverkaufsquote',
     'Umsatz',
     'Ungezählt',
@@ -886,6 +927,7 @@ function statsToCsv(stats, partner = {}) {
       p.deliveredQty,
       p.soldQty,
       p.returnedQty,
+      p.openQty || 0,
       p.sellThroughRate == null
         ? ''
         : `${deNumber(p.sellThroughRate * 100, 1)}%`,
@@ -905,6 +947,7 @@ function statsToCsv(stats, partner = {}) {
     'Geliefert',
     'Verkauft',
     'Retoure',
+    'Offen',
     'Abverkaufsquote',
     'Umsatz',
     'Ungezählt',
@@ -923,6 +966,7 @@ function statsToCsv(stats, partner = {}) {
       d.deliveredQty,
       d.soldQty,
       d.returnedQty,
+      d.openQty || 0,
       d.sellThroughRate == null
         ? ''
         : `${deNumber(d.sellThroughRate * 100, 1)}%`,
@@ -937,6 +981,7 @@ function statsToCsv(stats, partner = {}) {
   push(['Geliefert', stats.totals.deliveredQty])
   push(['Verkauft', stats.totals.soldQty])
   push(['Retoure', stats.totals.returnedQty])
+  push(['Offen (ohne Abholung)', stats.totals.openQty || 0])
   push([
     'Abverkaufsquote',
     stats.totals.sellThroughRate == null

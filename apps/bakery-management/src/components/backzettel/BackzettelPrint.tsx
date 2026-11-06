@@ -5,9 +5,12 @@ import { GlobalStyles } from '@mui/material'
 import type {
   BackzettelConfigData,
   BackzettelDay,
+  BackzettelDeltaEntry,
+  BackzettelLineDelta,
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
+  deltaCodeText,
   deltaBadgeText,
   deltaExtrasLines,
   formatDateLong,
@@ -190,6 +193,85 @@ export interface BackzettelPrintProps {
   config: BackzettelConfigData | null
 }
 
+export interface PrintDeltaGroup {
+  key: string
+  first: BackzettelDeltaEntry
+  deltas: BackzettelDeltaEntry[]
+  /** Summe der Nachträge (Viertel möglich). */
+  qty: number
+  /** Was zusätzlich zu backen ist (aufgerundet); fehlt bei älteren Servern. */
+  bake: number | undefined
+  open: number
+}
+
+/**
+ * Nachträge im Ausdruck je Backzettel-Zeile zusammengefasst (W4-verify r5):
+ * vorher eine Zeile je Vorbestellung - am vollen Samstag zwei zusätzliche
+ * Blätter, Viertel wie „+0,75 Kranz“ mit eigenem Kästchen, die die Backstube
+ * von Hand zusammenzählen musste. Jetzt wie am Tablet eine Zeile je Posten
+ * mit der Menge, die zu backen ist; die Codes stehen klein daneben.
+ */
+export function groupDeltasForPrint(
+  deltas: BackzettelDeltaEntry[],
+  lineDeltas: Record<string, BackzettelLineDelta | null | undefined>
+): PrintDeltaGroup[] {
+  const groups = new Map<string, PrintDeltaGroup>()
+  for (const d of deltas) {
+    const g = groups.get(d.key) ?? {
+      key: d.key,
+      first: d,
+      deltas: [],
+      qty: 0,
+      bake: undefined,
+      open: 0,
+    }
+    g.deltas.push(d)
+    g.qty = Math.round((g.qty + (Number(d.qty) || 0)) * 100) / 100
+    if (!d.acknowledgedAt) g.open += 1
+    groups.set(d.key, g)
+  }
+  for (const g of Array.from(groups.values())) {
+    const line = lineDeltas[g.key]
+    // Nur wenn die Zeile dieselben Nachträge meint, ihr `bake` übernehmen.
+    if (line && line.qty === g.qty && typeof line.bake === 'number') {
+      g.bake = line.bake
+    }
+  }
+  return Array.from(groups.values())
+}
+
+function printDeltaDetail(
+  group: PrintDeltaGroup,
+  unit: BackzettelDeltaEntry['unit']
+): string {
+  const parts: string[] = []
+  if (group.bake !== undefined && group.bake !== group.qty) {
+    parts.push(
+      deltaBadgeText(
+        { qty: group.qty, bake: group.bake, open: 0, count: 0 },
+        unit
+      )
+    )
+  }
+  if (group.deltas.length === 1) {
+    parts.push(DELTA_KIND_LABELS[group.first.kind] ?? group.first.kind)
+  } else {
+    parts.push(`${group.deltas.length} Nachträge`)
+  }
+  const codes = Array.from(
+    new Set(group.deltas.map((d) => deltaCodeText(d)).filter(Boolean))
+  )
+  if (codes.length) parts.push(codes.join(', '))
+  parts.push(
+    group.open === 0
+      ? 'quittiert'
+      : group.open === group.deltas.length
+      ? 'offen'
+      : `${group.open} offen`
+  )
+  return parts.join(' · ')
+}
+
 export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
   const confirmed = day.status === 'confirmed'
   const doughs = day.hefeteig?.doughs ?? []
@@ -198,6 +280,14 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
   const withPage2 = hasHefeteig(day)
   const withPage3 = prep.length > 0
   const deltas = day.deltas ?? []
+  const deltaGroups = groupDeltasForPrint(
+    deltas,
+    Object.fromEntries(
+      day.sections.flatMap((section) =>
+        section.lines.map((l) => [l.key, l.delta])
+      )
+    )
+  )
 
   return (
     <div className="bz-print" data-testid="bz-print" aria-hidden="true">
@@ -328,38 +418,36 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                 </tr>
               </thead>
               <tbody>
-                {deltas.map((d) => (
-                  <tr key={d.id}>
-                    <td className="num total">
-                      {formatSignedQty(d.qty, d.unit)}
-                    </td>
-                    <td>
-                      <strong>
-                        {lineLabel(
-                          {
-                            name: d.name,
-                            variant: d.variant,
-                            itemId: d.itemId,
-                          },
-                          config
-                        )}
-                      </strong>{' '}
-                      {/* eine Zeile je Nachtrag: hält die Liste auf Seite 1 */}
-                      <span className="small">
-                        {[
-                          DELTA_KIND_LABELS[d.kind] ?? d.kind,
-                          d.preorderCode,
-                          d.acknowledgedAt ? 'quittiert' : 'offen',
-                        ]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </span>
-                    </td>
-                    <td className="num">
-                      <span className="box" />
-                    </td>
-                  </tr>
-                ))}
+                {deltaGroups.map((g) => {
+                  const shown = g.bake ?? g.qty
+                  return (
+                    <tr key={g.key} data-testid={`print-delta-${g.key}`}>
+                      <td className="num total">
+                        {shown === 0
+                          ? '±0'
+                          : formatSignedQty(shown, g.first.unit)}
+                      </td>
+                      <td>
+                        <strong>
+                          {lineLabel(
+                            {
+                              name: g.first.name,
+                              variant: g.first.variant,
+                              itemId: g.first.itemId,
+                            },
+                            config
+                          )}
+                        </strong>{' '}
+                        <span className="small">
+                          {printDeltaDetail(g, g.first.unit)}
+                        </span>
+                      </td>
+                      <td className="num">
+                        <span className="box" />
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
@@ -514,6 +602,11 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
               ? ' – der Vortag ist Ruhetag, wer vorbereitet ist noch offen'
               : ''}
           </p>
+          {/* Wird abgerissen und am Vortag abgearbeitet - auch hier muss
+              ein Entwurf als Entwurf erkennbar sein (W4-verify r5). */}
+          {!confirmed && (
+            <p className="banner">ENTWURF – noch nicht freigegeben</p>
+          )}
           <table>
             <tbody>
               {prep.map((t) => (

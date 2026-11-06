@@ -73,6 +73,35 @@ export function notfallSections(
 
 /** Nutzbare Höhe einer Spalte in mm (mit Reserve für Spaltenumbrüche). */
 const COLUMN_HEIGHT_MM = 190
+/** Breite des Blatts (A4 hoch, 10 mm Rand) und Abstand der Spalten in mm. */
+const PAGE_WIDTH_MM = 190
+const COLUMN_GAP_MM = 5
+/**
+ * Breiten der Zahlenspalten in mm, als `<colgroup>` gesetzt: bei
+ * `table-layout: fixed` bestimmt sonst die erste Zeile die Breiten - und
+ * das ist seit Runde 4 die Abschnitts-Überschrift über alle fünf Spalten,
+ * also fünf gleich breite Spalten und „Kranz gef…“ (W4-Verifikation r5).
+ */
+export const NOTFALL_COLS_MM = { basis: 12, vorb: 12, gesamt: 14, tick: 5 }
+/** Ungefähre Breite eines Zeichens der Postenspalte (9 pt Arial) in mm. */
+const CHAR_MM = 1.75
+
+/** Breite der Postenspalte in mm bei `columns` Spalten. */
+export function notfallPostenWidthMm(columns: number): number {
+  const column = (PAGE_WIDTH_MM - COLUMN_GAP_MM * (columns - 1)) / columns
+  const numbers = Object.values(NOTFALL_COLS_MM).reduce((a, b) => a + b, 0)
+  return Math.round((column - numbers) * 10) / 10
+}
+
+/** Zeilen, die ein Posten braucht (lange Namen brechen um statt „…“). */
+function rowLines(row: string, columns: number): number {
+  if (!row) return 1
+  const perLine = Math.max(
+    1,
+    Math.floor(notfallPostenWidthMm(columns) / CHAR_MM)
+  )
+  return Math.max(1, Math.ceil(row.length / perLine))
+}
 /** Überschrift + Kopfzeile eines Abschnitts in mm. */
 const SECTION_OVERHEAD_MM = 10
 const MIN_ROW_MM = 4
@@ -87,8 +116,12 @@ export function notfallLayout(sections: NotfallSection[]): {
   columns: 2 | 3
   rowHeightMm: number
 } {
-  const rows = sections.reduce((sum, s) => sum + s.rows.length, 0)
   const height = (columns: number) => {
+    const rows = sections.reduce(
+      (sum, s) =>
+        sum + s.rows.reduce((n, row) => n + rowLines(row, columns), 0),
+      0
+    )
     const available =
       columns * COLUMN_HEIGHT_MM - sections.length * SECTION_OVERHEAD_MM
     return rows > 0 ? available / rows : MAX_ROW_MM
@@ -178,10 +211,18 @@ const styles = (
         whiteSpace: 'nowrap',
         textOverflow: 'ellipsis',
       },
+      // Der Posten ganz, notfalls auf zwei Zeilen - die Sorte steht hinten
+      // und ist genau das, was „…“ abschnitt (W4-Verifikation Runde 5).
+      '.nfb td.posten': {
+        fontSize: '9pt',
+        lineHeight: 1.1,
+        whiteSpace: 'normal',
+        textOverflow: 'clip',
+        overflowWrap: 'break-word',
+      },
       '.nfb th': { height: '4.2mm', fontWeight: 700 },
-      '.nfb .num': { width: '15mm' },
-      '.nfb .gesamt': { width: '16mm', borderLeft: '1.2pt solid #000' },
-      '.nfb .tick': { width: '5mm', textAlign: 'center' },
+      '.nfb .gesamt': { borderLeft: '1.2pt solid #000' },
+      '.nfb .tick': { textAlign: 'center' },
       '.nfb-foot': { display: 'flex', gap: '4mm' },
       '.nfb-box': {
         flex: 1,
@@ -244,6 +285,13 @@ export default function BackzettelNotfallblatt({
             {sections.map((section) => (
               <div className="nfb-section" key={section.id}>
                 <table>
+                  <colgroup>
+                    <col />
+                    <col style={{ width: `${NOTFALL_COLS_MM.basis}mm` }} />
+                    <col style={{ width: `${NOTFALL_COLS_MM.vorb}mm` }} />
+                    <col style={{ width: `${NOTFALL_COLS_MM.gesamt}mm` }} />
+                    <col style={{ width: `${NOTFALL_COLS_MM.tick}mm` }} />
+                  </colgroup>
                   <thead>
                     <tr>
                       <th className="nfb-title" colSpan={5} scope="colgroup">
@@ -264,7 +312,7 @@ export default function BackzettelNotfallblatt({
                         key={`${row}-${index}`}
                         style={{ height: `${rowHeight}mm` }}
                       >
-                        <td>{row}</td>
+                        <td className="posten">{row}</td>
                         <td />
                         <td />
                         <td className="gesamt" />

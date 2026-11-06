@@ -17,6 +17,7 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
+  deltaCodeText,
   formatSignedQty,
   formatTimestamp,
   lineLabel,
@@ -106,7 +107,9 @@ export function DeltasCard({
                   <Typography variant="caption" color="text.secondary">
                     {[
                       DELTA_KIND_LABELS[d.kind] ?? d.kind,
-                      d.preorderCode ? `Vorbestellung ${d.preorderCode}` : null,
+                      d.preorderCode
+                        ? `Vorbestellung ${deltaCodeText(d)}`
+                        : null,
                       `bemerkt ${formatTimestamp(d.createdAt)}`,
                       d.acknowledgedAt
                         ? `quittiert ${formatTimestamp(d.acknowledgedAt)}${

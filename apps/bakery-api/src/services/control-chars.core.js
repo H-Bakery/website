@@ -17,36 +17,58 @@
  */
 
 /**
- * Unsichtbare Format- und Füllzeichen (W4-Verifikation Runde 4): U+061C
- * (Arabic Letter Mark) ist wie LRM/RLM ein Bidi-Steuerzeichen und drehte
- * „10-20“ in einem Namen zu „20-10“; weiches Trennzeichen, Null-Breiten-
- * Leerzeichen/-Nichtverbinder, Wortverbinder, unsichtbare Operatoren,
- * veraltete Formatzeichen, Hangul-Füller, Annotationszeichen und die
- * Tag-Zeichen U+E0000-E007F lassen zwei gleich aussehende Namen
- * verschieden gespeichert werden. Erlaubt bleibt U+200D (ZWJ) - ohne ihn
- * zerfallen Emoji wie 👨‍🍳.
+ * Unsichtbare Format- und Füllzeichen. Runde 4 führte sie als Liste
+ * einzelner Codepunkte - Runde 5 fand die nächsten (U+17B4, U+180B, U+FE00,
+ * U+1D173 …). Deshalb jetzt über Unicode-Eigenschaften statt Liste:
+ * `\p{Cf}` (alle Formatzeichen: Bidi, ALM, weiches Trennzeichen, Null-Breite,
+ * Tag-Zeichen, …) und `\p{Default_Ignorable_Code_Point}` (Füller wie
+ * Hangul/Khmer, Variantenselektoren, Mongolische FVS), dazu U+FFFC
+ * (Objekt-Ersatzzeichen, zeichnet je nach Schrift nichts oder ein Kästchen)
+ * und die Zeilen-/Absatztrenner U+2028/U+2029 (Kategorie Zl/Zp, nicht Cf).
+ * Zwei gleich aussehende Namen werden so nicht verschieden gespeichert, ein
+ * RLO/ALM dreht nichts mehr um.
+ *
+ * Erlaubt bleiben, weil Emoji sonst zerfallen: U+200D (ZWJ, 👨‍🍳) und die
+ * Darstellungsselektoren U+FE0E/U+FE0F (☕️, ❤️). Zusätzlich abgelehnt:
+ * mehr als vier Kombinationszeichen am Stück („Zalgo“-Text, der über die
+ * Nachbarzeilen von Abholliste und Stationskacheln wächst); echte Schrift
+ * braucht höchstens zwei, drei (Vietnamesisch, Devanagari).
  */
-const INVISIBLE =
-  '\\u00ad\\u034f\\u061c\\u115f\\u1160\\u180e\\u200b\\u200c\\u200e\\u200f' +
-  '\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\u2028\\u2029\\u3164' +
-  '\\ufeff\\uffa0\\ufff9-\\ufffb'
-const TAG_CHARS = '|\\udb40[\\udc00-\\udc7f]'
+const ALLOWED_INVISIBLE = new Set(['\u200d', '\ufe0e', '\ufe0f'])
+const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029\ufffc]/gu
+const STACKED_MARKS = /\p{M}{5,}/u
+const NAME_ASCII_CONTROL = /[\u0000-\u001f\u007f-\u009f]/
+const TEXT_ASCII_CONTROL =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
 
-const NAME_CONTROL_CHARS = new RegExp(
-  `[\\u0000-\\u001f\\u007f-\\u009f${INVISIBLE}]${TAG_CHARS}`
-)
-const TEXT_CONTROL_CHARS = new RegExp(
-  `[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u009f${INVISIBLE}]${TAG_CHARS}`
-)
+function hasInvisible(value) {
+  for (const m of value.matchAll(INVISIBLE)) {
+    if (!ALLOWED_INVISIBLE.has(m[0])) return true
+  }
+  return false
+}
+
+function makeChecker(asciiControl) {
+  const test = (value) =>
+    typeof value === 'string' &&
+    (asciiControl.test(value) ||
+      hasInvisible(value) ||
+      STACKED_MARKS.test(value))
+  // Aufrufer benutzen `NAME_CONTROL_CHARS.test(x)` wie eine RegExp.
+  return { test, source: asciiControl.source }
+}
+
+const NAME_CONTROL_CHARS = makeChecker(NAME_ASCII_CONTROL)
+const TEXT_CONTROL_CHARS = makeChecker(TEXT_ASCII_CONTROL)
 
 /** `true`, wenn ein einzeiliger Name unzulässige Steuerzeichen enthält. */
 function hasNameControlChars(value) {
-  return typeof value === 'string' && NAME_CONTROL_CHARS.test(value)
+  return NAME_CONTROL_CHARS.test(value)
 }
 
 /** `true`, wenn ein Freitext unzulässige Steuerzeichen enthält. */
 function hasTextControlChars(value) {
-  return typeof value === 'string' && TEXT_CONTROL_CHARS.test(value)
+  return TEXT_CONTROL_CHARS.test(value)
 }
 
 module.exports = {

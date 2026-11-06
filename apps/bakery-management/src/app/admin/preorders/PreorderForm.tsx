@@ -38,7 +38,9 @@ import {
   listPreorders,
   preorderErrorMessage,
   requestFailureKind,
+  requestIdChangedTarget,
   updatePreorder,
+  type EarlierPreorderRef,
 } from '../../../lib/preordersApi'
 import {
   clearPreorderDraft,
@@ -87,6 +89,8 @@ const DEFAULT_CHANNEL: PreorderChannel = 'telefon'
 
 /** Wie weit „häufig vorbestellt“ zurückschaut. */
 const FREQUENT_DAYS = 28
+/** Nachladen, solange Sortiment/Sammelstellen fehlen (W4-Verifikation r5). */
+export const LOAD_RETRY_MS = 15_000
 
 interface DraftLine {
   key: string
@@ -276,6 +280,10 @@ export default function PreorderForm({
 
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // W4-Verifikation Runde 5: der erste, unklare Versuch hat die Bestellung
+  // schon angelegt, die Maske wurde danach geändert - nichts ist gespeichert,
+  // die Verkäuferin entscheidet: in die Bestellung übernehmen oder neu.
+  const [earlier, setEarlier] = useState<EarlierPreorderRef | null>(null)
   const [showErrors, setShowErrors] = useState(false)
 
   // W4-Verifikation Runde 4: Entwurf (nur Erfassen) und Kennung des
@@ -283,6 +291,7 @@ export default function PreorderForm({
   const requestIdRef = useRef<string | null>(null)
   const [draftReady, setDraftReady] = useState(false)
   const [restoredAt, setRestoredAt] = useState<string | null>(null)
+  const [restoredAfterAttempt, setRestoredAfterAttempt] = useState(false)
   const draftFields: PreorderDraftFields = {
     customerName,
     customerPhone,
@@ -306,6 +315,54 @@ export default function PreorderForm({
   /* ---------------------------------------------------------------- *
    * Laden: Sortiment, Sammelstellen, Sorten; „häufig“ nebenher
    * ---------------------------------------------------------------- */
+  const activeRef = useRef(true)
+  const loadingDataRef = useRef(false)
+  const loadData = useCallback(() => {
+    // Erst „aktiv“, dann die Sperre: ein zweites Einhängen (Strict Mode)
+    // übernimmt so das noch laufende Laden.
+    activeRef.current = true
+    if (loadingDataRef.current) return
+    loadingDataRef.current = true
+    Promise.all([
+      fetchCatalogue(),
+      fetchPickupPoints(),
+      fetchPreorderVariants(),
+    ])
+      .then(([products, pointList, variantInfo]) => {
+        if (!activeRef.current) return
+        setCatalogue(products)
+        setPoints(pointList)
+        setVariants(variantInfo.products)
+        setLoadError(null)
+        // „Häufig“ ist Beiwerk: scheitert es, fehlen nur die Knöpfe.
+        if (!preorder) {
+          listPreorders({
+            from: shiftDate(toBusinessDate(new Date()), -FREQUENT_DAYS),
+          })
+            .then((list) => {
+              if (activeRef.current) {
+                setFrequent(frequentProducts(list, products))
+              }
+            })
+            .catch(() => undefined)
+        }
+      })
+      .catch((err) => {
+        if (activeRef.current) {
+          setLoadError(
+            preorderErrorMessage(
+              err,
+              'Sortiment und Sammelstellen konnten nicht geladen werden.'
+            )
+          )
+        }
+      })
+      .finally(() => {
+        loadingDataRef.current = false
+        if (activeRef.current) setLoading(false)
+      })
+  }, [preorder])
+
   useEffect(() => {
     const now = toBusinessDate(new Date())
     setToday(now)
@@ -327,49 +384,33 @@ export default function PreorderForm({
         setLines(draft.lines)
         requestIdRef.current = draft.requestId
         setRestoredAt(draft.savedAt)
+        setRestoredAfterAttempt(Boolean(draft.requestId))
       }
       setDraftReady(true)
     }
 
-    let active = true
-    Promise.all([
-      fetchCatalogue(),
-      fetchPickupPoints(),
-      fetchPreorderVariants(),
-    ])
-      .then(([products, pointList, variantInfo]) => {
-        if (!active) return
-        setCatalogue(products)
-        setPoints(pointList)
-        setVariants(variantInfo.products)
-        // „Häufig“ ist Beiwerk: scheitert es, fehlen nur die Knöpfe.
-        if (!preorder) {
-          listPreorders({ from: shiftDate(now, -FREQUENT_DAYS) })
-            .then((list) => {
-              if (active) setFrequent(frequentProducts(list, products))
-            })
-            .catch(() => undefined)
-        }
-      })
-      .catch((err) => {
-        if (active) {
-          setLoadError(
-            preorderErrorMessage(
-              err,
-              'Sortiment und Sammelstellen konnten nicht geladen werden.'
-            )
-          )
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    loadData()
     return () => {
-      active = false
+      activeRef.current = false
     }
     // Einmal beim Öffnen - die Maske bleibt bis „Nächste Bestellung“ stehen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // War der Server beim Öffnen kurz weg (Neustart, Deploy, WLAN), lädt die
+  // Maske nach - von selbst alle LOAD_RETRY_MS, sobald das WLAN zurück ist,
+  // und mit „Erneut laden“. Die installierte App hat keinen Neu-laden-Knopf
+  // (W4-Verifikation Runde 5). Die Eingaben bleiben dabei stehen.
+  useEffect(() => {
+    if (!loadError) return
+    const retry = () => loadData()
+    const timer = window.setInterval(retry, LOAD_RETRY_MS)
+    window.addEventListener('online', retry)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('online', retry)
+    }
+  }, [loadError, loadData])
 
   // Jede Änderung landet im Entwurf - erst nach dem Wiederherstellen, sonst
   // überschriebe die leere Maske ihn.
@@ -396,6 +437,7 @@ export default function PreorderForm({
     clearPreorderDraft(sessionUserId)
     requestIdRef.current = null
     setRestoredAt(null)
+    setEarlier(null)
     setCustomerName('')
     setCustomerPhone('')
     setPickupPointId(initialPickupPointId ?? '')
@@ -649,25 +691,13 @@ export default function PreorderForm({
       )
       return
     }
-    const input: PreorderInput = {
-      channel,
-      customerName: customerName.trim(),
-      customerPhone: customerPhone.trim() || null,
-      pickupDate,
-      pickupPointId: point ? point.id : null,
-      pickupTime: point ? null : pickupTime || null,
-      items: lines.map((line) => ({
-        productId: line.productId,
-        variant: line.variant,
-        quantity: line.quantity,
-      })),
-      paid,
-      note: note.trim() || null,
-    }
+    const input = currentInput()
     if (!preorder) {
       // Eine Kennung je Bestellung, über Wiederholungen gleich: kam die
       // Antwort des ersten Versuchs nicht an, liefert der zweite dieselbe
-      // Bestellung statt einer zweiten (W4-Verifikation Runde 4).
+      // Bestellung statt einer zweiten (W4-Verifikation Runde 4). Wurde die
+      // Maske inzwischen geändert, lehnt der Server ab (`request_id_changed`,
+      // Runde 5) statt die alte Fassung als „gespeichert“ zu melden.
       if (!requestIdRef.current) requestIdRef.current = newRequestId()
       savePreorderDraft(
         sessionUserId,
@@ -678,6 +708,7 @@ export default function PreorderForm({
     }
     setSaving(true)
     setError(null)
+    setEarlier(null)
     let attemptedPatch: Partial<PreorderInput> | null = null
     try {
       // Beim Bearbeiten nur Geändertes, mit der geladenen Version - so
@@ -689,13 +720,7 @@ export default function PreorderForm({
         preorder && patch
           ? await updatePreorder(preorder.id, patch, preorder.updatedAt)
           : await createPreorder(input)
-      rememberRecentProducts(lines.map((line) => line.productId))
-      if (!point) rememberChannel(channel)
-      if (!preorder) {
-        clearPreorderDraft(sessionUserId)
-        requestIdRef.current = null
-      }
-      onSaved(saved)
+      finishSaved(saved)
     } catch (err) {
       if (preorder && onConflict && isPreorderConflict(err)) {
         // Was getippt wurde, geht mit - die Seite sagt, dass es NICHT
@@ -713,6 +738,8 @@ export default function PreorderForm({
         err,
         'Die Vorbestellung konnte nicht gespeichert werden.'
       )
+      const target = preorder ? null : requestIdChangedTarget(err)
+      if (target) setEarlier(target)
       const kind = requestFailureKind(err)
       setError(
         !preorder && kind !== 'refused'
@@ -721,6 +748,67 @@ export default function PreorderForm({
       )
     } finally {
       setSaving(false)
+    }
+  }
+
+  const finishSaved = (saved: Preorder) => {
+    rememberRecentProducts(lines.map((line) => line.productId))
+    if (!point) rememberChannel(channel)
+    if (!preorder) {
+      clearPreorderDraft(sessionUserId)
+      requestIdRef.current = null
+    }
+    setEarlier(null)
+    onSaved(saved)
+  }
+
+  /** Die jetzige Maske in die schon angelegte Bestellung übernehmen. */
+  const applyToEarlier = async () => {
+    if (!earlier || saving) return
+    const { requestId: _unused, ...fields } = currentInput()
+    void _unused
+    setSaving(true)
+    setError(null)
+    try {
+      const saved = await updatePreorder(earlier.id, fields, earlier.updatedAt)
+      finishSaved(saved)
+    } catch (err) {
+      setError(
+        isPreorderConflict(err)
+          ? `${earlier.code} wurde inzwischen an anderer Stelle geändert - nichts überschrieben. Bitte unter „Alle Vorbestellungen“ öffnen und dort ändern.`
+          : preorderErrorMessage(
+              err,
+              `Die Änderungen konnten nicht in ${earlier.code} übernommen werden.`
+            )
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  /** Die Maske ist eine andere Bestellung (nächste Kundin): neu anlegen. */
+  const saveAsNew = () => {
+    requestIdRef.current = newRequestId()
+    setEarlier(null)
+    setError(null)
+    void submit()
+  }
+
+  function currentInput(): PreorderInput {
+    return {
+      channel,
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim() || null,
+      pickupDate,
+      pickupPointId: point ? point.id : null,
+      pickupTime: point ? null : pickupTime || null,
+      items: lines.map((line) => ({
+        productId: line.productId,
+        variant: line.variant,
+        quantity: line.quantity,
+      })),
+      paid,
+      note: note.trim() || null,
     }
   }
 
@@ -806,8 +894,22 @@ export default function PreorderForm({
       aria-label={editing ? 'Vorbestellung bearbeiten' : 'Neue Vorbestellung'}
     >
       {loadError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {loadError}
+        <Alert
+          severity="error"
+          sx={{ mb: 2 }}
+          data-testid="preorder-load-error"
+          action={
+            <Button
+              color="inherit"
+              onClick={() => loadData()}
+              sx={{ minHeight: 44 }}
+            >
+              Erneut laden
+            </Button>
+          }
+        >
+          {loadError} Ohne Sortiment lässt sich nichts erfassen - die Maske
+          versucht es von selbst weiter; die Eingaben bleiben stehen.
         </Alert>
       )}
       {restoredAt && (
@@ -825,8 +927,19 @@ export default function PreorderForm({
             </Button>
           }
         >
-          Nicht gespeicherte Eingaben von {formatClock(restoredAt)} Uhr
-          wiederhergestellt - bitte prüfen und speichern.
+          {restoredAfterAttempt ? (
+            <>
+              Eingaben von {formatClock(restoredAt)} Uhr wiederhergestellt. Ein
+              Speicherversuch blieb ohne Antwort - die Bestellung ist vielleicht
+              schon angekommen. Beim Speichern wird das geprüft; nichts wird
+              doppelt angelegt.
+            </>
+          ) : (
+            <>
+              Nicht gespeicherte Eingaben von {formatClock(restoredAt)} Uhr
+              wiederhergestellt - bitte prüfen und speichern.
+            </>
+          )}
         </Alert>
       )}
 
@@ -1414,8 +1527,34 @@ export default function PreorderForm({
       >
         <Box sx={{ flex: 1, minWidth: 0 }}>
           {error ? (
-            <Alert severity="error" sx={{ py: 0 }}>
+            <Alert
+              severity="error"
+              sx={{ py: 0 }}
+              data-testid={earlier ? 'preorder-earlier' : undefined}
+            >
               {error}
+              {earlier && (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                  <Button
+                    variant="contained"
+                    color="error"
+                    onClick={applyToEarlier}
+                    disabled={saving}
+                    sx={{ minHeight: 44 }}
+                  >
+                    Änderungen in {earlier.code} übernehmen
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="inherit"
+                    onClick={saveAsNew}
+                    disabled={saving}
+                    sx={{ minHeight: 44 }}
+                  >
+                    Als neue Vorbestellung speichern
+                  </Button>
+                </Box>
+              )}
             </Alert>
           ) : (
             <Typography color="text.secondary">

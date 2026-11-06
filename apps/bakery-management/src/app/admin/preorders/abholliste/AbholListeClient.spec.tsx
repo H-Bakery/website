@@ -735,6 +735,95 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.queryByText(/erneut speichern/)).toBeNull()
   })
 
+  it('Übergabe einer inzwischen stornierten Bestellung: sagt „STORNIERT – nicht übergeben, Geld zurück“ und bleibt stehen (W4-verify r5)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(stale())
+    mockDay.mockResolvedValue(
+      ladenDay([erika, { ...max, status: 'storniert' }, paula, storno])
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    const top = await screen.findByTestId('open-actions')
+    expect(top).toHaveTextContent(
+      'LA-2026-11-12-02: Wurde inzwischen STORNIERT - bitte NICHT übergeben. Gerade kassiertes Geld zurückgeben.'
+    )
+    expect(screen.queryByText(/erneut speichern/)).toBeNull()
+    await act(async () => {
+      jest.advanceTimersByTime(20_000)
+    })
+    expect(screen.getByTestId('open-actions')).toHaveTextContent('STORNIERT')
+  })
+
+  it('Übergabe, aber der Betrag ist inzwischen gestiegen: nennt den neuen Betrag und den Rest (W4-verify r5)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(stale())
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        {
+          ...max,
+          items: [{ ...max.items[0], quantity: 10, lineTotal: 6 }],
+          total: 6,
+        },
+        paula,
+        storno,
+      ])
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    const top = await screen.findByTestId('open-actions')
+    expect(top.textContent).toMatch(
+      /LA-2026-11-12-02: Die Bestellung wurde inzwischen geändert: Betrag jetzt 6,00\s€ statt 3,60\s€ \(\+2,40\s€\)\. Es wurde nichts gespeichert - Artikel prüfen, noch 2,40\s€ kassieren \(zusammen 6,00\s€\), dann erneut übergeben\./
+    )
+  })
+
+  it('mehrere gescheiterte Übergaben bei erreichbarer Liste: jede bleibt mit eigener Zeile stehen (W4-verify r5)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus
+      .mockRejectedValueOnce(new ApiError('HTTP 500: x', 500))
+      .mockRejectedValueOnce(new Error('Failed to fetch'))
+    for (const name of ['Max Muster', 'Paula Probe']) {
+      await user.click(
+        screen.getByRole('button', { name: `${name} übergeben` })
+      )
+      const dialog = screen.queryByRole('dialog')
+      if (dialog) {
+        await user.click(
+          within(dialog).getByRole('button', {
+            name: 'Bezahlt und übergeben',
+          })
+        )
+      }
+      await waitFor(() =>
+        expect(screen.getByTestId('open-actions')).toHaveTextContent(
+          name === 'Max Muster' ? 'LA-2026-11-12-02' : 'LA-2026-11-12-03'
+        )
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    }
+    const top = screen.getByTestId('open-actions')
+    expect(top).toHaveTextContent('LA-2026-11-12-02')
+    expect(top).toHaveTextContent('LA-2026-11-12-03')
+  })
+
   it('Übergabe ohne Antwort, aber am Server gespeichert: sagt das statt „nichts gespeichert“ (W4-Verifikation)', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
     renderAs('verkauf')
@@ -1078,8 +1167,7 @@ describe('AbholListeClient (P2)', () => {
     )
     expect(headers).toEqual([
       '✓',
-      'Code',
-      'Name',
+      'Code / Name',
       'Artikel',
       'Summe',
       'Bezahlt',
@@ -1145,8 +1233,7 @@ describe('Ausdruck passt auf A4 (W4-verify r4)', () => {
   it('feste Spaltenbreiten lassen Name und Artikel mindestens 50 mm', () => {
     expect(PRINT_COLUMNS.map((c) => c.key)).toEqual([
       'tick',
-      'code',
-      'name',
+      'who',
       'items',
       'sum',
       'paid',
@@ -1159,6 +1246,18 @@ describe('Ausdruck passt auf A4 (W4-verify r4)', () => {
     expect(PRINT_PAGE_WIDTH_MM - fixed).toBeGreaterThanOrEqual(30)
     const sign = PRINT_COLUMNS.find((c) => c.key === 'sign')
     expect(sign?.widthMm).toBeGreaterThanOrEqual(30)
+  })
+
+  it('der Artikel bekommt den Platz, Wörter brechen mit Trennstrich (W4-verify r5)', () => {
+    // Vorher 34 mm: 42 Samstagsbestellungen brauchten 10 Blätter.
+    const fixed = PRINT_COLUMNS.reduce((sum, c) => sum + (c.widthMm ?? 0), 0)
+    expect(PRINT_COLUMNS.filter((c) => c.widthMm === null)).toEqual([
+      { key: 'items', widthMm: null },
+    ])
+    expect(PRINT_PAGE_WIDTH_MM - fixed).toBeGreaterThanOrEqual(55)
+    const cell = css['.abholliste-print th, .abholliste-print td']
+    expect(cell['overflowWrap']).not.toBe('anywhere')
+    expect(cell['hyphens']).toBe('auto')
   })
 
   it('die Tabelle rechnet fest, nur der Code bricht nie um', () => {
@@ -1199,5 +1298,28 @@ describe('deaktivierte Sammelstelle (W4-verify r4)', () => {
       'Kita Teststraße',
       'Gemeindehaus Test (inaktiv)',
     ])
+  })
+
+  it('Überschrift und Ausdruck sagen „(inaktiv)“ (W4-verify r5)', async () => {
+    const OLD = {
+      ...POINT,
+      id: 'alt-stelle',
+      name: 'Gemeindehaus Test',
+      active: false,
+    }
+    ;(fetchPickupPoints as jest.Mock).mockResolvedValue([POINT, OLD])
+    mockDay.mockResolvedValue({
+      ...ladenDay(),
+      pickupPoints: [{ ...OLD, deadline: null, preorderCount: 1 }],
+    })
+    const { container } = renderAs('verkauf', {
+      initialDate: DATE,
+      initialPlace: 'alt-stelle',
+    })
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    const sheet = container.querySelector('.abholliste-print') as HTMLElement
+    expect(sheet.querySelector('h1')?.textContent).toMatch(
+      /^Abholliste Gemeindehaus Test \(inaktiv\) · /
+    )
   })
 })

@@ -120,8 +120,13 @@ const REFRESH_MS = 60_000
  * Spaltenbreiten des Ausdrucks in mm (W4-verify r4). A4 hoch mit 12 mm Rand
  * lässt 186 mm; die Tabelle hat `table-layout: fixed`, damit kein langer
  * Name, Code oder „Rest …“ sie über den Rand schiebt - vorher maß sie
- * 744 px statt 703 und die Unterschrift fiel vom Blatt. `null` = teilt sich
- * den Rest (Name, Artikel); dort wird umbrochen, notfalls mitten im Wort.
+ * 744 px statt 703 und die Unterschrift fiel vom Blatt. `null` = bekommt
+ * den Rest (Artikel).
+ *
+ * W4-verify r5: Code und Name stehen untereinander in EINER Spalte - vorher
+ * blieben dem Artikel 34 mm, jede Position brach über zwei, drei Zeilen und
+ * 42 Samstagsbestellungen brauchten 10 Blätter. Jetzt ~59 mm; umbrochen wird
+ * an Wortgrenzen, lange Wörter mit Trennstrich (`hyphens`, `lang="de"`).
  */
 export const PRINT_PAGE_WIDTH_MM = 186
 export const PRINT_COLUMNS: ReadonlyArray<{
@@ -129,8 +134,7 @@ export const PRINT_COLUMNS: ReadonlyArray<{
   widthMm: number | null
 }> = [
   { key: 'tick', widthMm: 8 },
-  { key: 'code', widthMm: 31 },
-  { key: 'name', widthMm: 28 },
+  { key: 'who', widthMm: 34 },
   { key: 'items', widthMm: null },
   { key: 'sum', widthMm: 19 },
   { key: 'paid', widthMm: 25 },
@@ -174,7 +178,8 @@ export const ABHOL_PRINT_CSS = {
       padding: '1.5mm',
       verticalAlign: 'top',
       textAlign: 'left',
-      overflowWrap: 'anywhere',
+      overflowWrap: 'break-word',
+      hyphens: 'auto',
     },
     '.abholliste-print th': { background: '#eee', fontWeight: 700 },
     '.abholliste-print thead': { display: 'table-header-group' },
@@ -184,12 +189,14 @@ export const ABHOL_PRINT_CSS = {
       fontWeight: 700,
     },
     '.abholliste-print .tick': { textAlign: 'center', fontSize: '13pt' },
-    // 16 Zeichen „MO-2026-11-07-03“ in 8 pt passen in 31 mm.
+    // 16 Zeichen „MO-2026-11-07-03“ in 8 pt passen in 31 mm (Spalte 34 mm
+    // abzüglich Innenabstand); der Name steht darunter.
     '.abholliste-print .code': {
       fontFamily: 'monospace',
       fontSize: '8pt',
       whiteSpace: 'nowrap',
       overflowWrap: 'normal',
+      hyphens: 'manual',
     },
     '.abholliste-print .num': { textAlign: 'right' },
     // Kästchen zum Ankreuzen so groß wie der Übergabe-Haken; der Text
@@ -252,6 +259,64 @@ function describeChange(change: PreorderStatusChange): string {
     return 'Die Zahlung'
   }
   return 'Die Änderung'
+}
+
+/**
+ * Eine Übergabe scheiterte am Versionsabgleich, weil die Bestellung
+ * inzwischen storniert oder ihr Betrag geändert wurde (W4-Verifikation
+ * Runde 5): was ist passiert, und was ist jetzt mit dem Geld zu tun? `null`
+ * für jede andere Änderung - dann gilt der allgemeine Hinweis.
+ */
+export function handoverConflictAdvice(
+  before: Pick<Preorder, 'total'>,
+  fresh: Preorder,
+  change: PreorderStatusChange
+): string | null {
+  const tookMoney = change.paid === true
+  const cents = (n: number) => Math.round(n * 100)
+  if (fresh.status === 'storniert') {
+    const pay = paymentState(fresh)
+    const refund =
+      pay.kind === 'refund'
+        ? ` Schon bezahlte ${formatCurrency(pay.amount)} zurückgeben.`
+        : ''
+    return `Wurde inzwischen STORNIERT - bitte NICHT übergeben.${
+      tookMoney ? ' Gerade kassiertes Geld zurückgeben.' : ''
+    }${refund} Bei Fragen im Laden anrufen. Es wurde nichts gespeichert.`
+  }
+  if (
+    fresh.status === 'abgeholt' ||
+    cents(fresh.total) === cents(before.total)
+  ) {
+    return null
+  }
+  const diff = (cents(fresh.total) - cents(before.total)) / 100
+  const pay = paymentState(fresh)
+  let money: string
+  if (pay.kind === 'unpaid') {
+    money = !tookMoney
+      ? `${formatCurrency(fresh.total)} kassieren`
+      : diff > 0
+      ? `noch ${formatCurrency(diff)} kassieren (zusammen ${formatCurrency(
+          fresh.total
+        )})`
+      : `${formatCurrency(-diff)} zurückgeben (zusammen ${formatCurrency(
+          fresh.total
+        )})`
+  } else if (pay.kind === 'rest') {
+    money = `noch ${formatCurrency(pay.amount)} kassieren`
+  } else if (pay.kind === 'refund') {
+    money = `${formatCurrency(pay.amount)} zurückgeben`
+  } else {
+    money = 'schon bezahlt'
+  }
+  return `Die Bestellung wurde inzwischen geändert: Betrag jetzt ${formatCurrency(
+    fresh.total
+  )} statt ${formatCurrency(before.total)} (${
+    diff > 0 ? '+' : '−'
+  }${formatCurrency(
+    Math.abs(diff)
+  )}). Es wurde nichts gespeichert - Artikel prüfen, ${money}, dann erneut übergeben.`
 }
 
 function handedOverUnpaidNote(
@@ -692,6 +757,17 @@ export default function AbholListeClient({
   const freshOf = (id: number) =>
     loadedDayRef.current?.preorders.find((p) => p.id === id) ?? null
 
+  /**
+   * Eine Meldung je Bestellung, die stehen bleibt, bis sie weggeklickt oder
+   * der Tipp wiederholt wird (W4-Verifikation Runde 5): mehrere gescheiterte
+   * Übergaben hintereinander verdrängten sich vorher gegenseitig.
+   */
+  const keepFailure = (code: string, text: string) =>
+    setOpenActions((current) => [
+      ...current.filter((t) => !t.startsWith(`${code}: `)),
+      text,
+    ])
+
   const onConflict = async (
     preorder: Preorder,
     err: unknown,
@@ -723,6 +799,18 @@ export default function AbholListeClient({
       setActionError(text)
       setToast({ text, severity: 'warning' })
       return
+    }
+    // W4-verify r5: Übergabe, aber die Bestellung wurde inzwischen storniert
+    // oder ihr Betrag geändert - sagen, was passiert ist und was jetzt mit
+    // dem Geld zu tun ist, statt „erneut speichern“.
+    if (fresh && change?.status === 'abgeholt') {
+      const advice = handoverConflictAdvice(preorder, fresh, change)
+      if (advice) {
+        const text = `${preorder.code}: ${advice}`
+        keepFailure(preorder.code, text)
+        setToast({ text, severity: 'warning' })
+        return
+      }
     }
     const text = `${preorder.code}: ${preorderErrorMessage(
       err,
@@ -791,7 +879,7 @@ export default function AbholListeClient({
             err,
             'Das hat nicht geklappt. Bitte erneut versuchen.'
           )}`
-          setActionError(text)
+          keepFailure(preorder.code, text)
           setToast({ text, severity: 'error' })
         } else {
           // Keine oder eine 5xx-Antwort: die Anfrage kann trotzdem
@@ -826,7 +914,7 @@ export default function AbholListeClient({
                 severity: 'error',
               })
             } else {
-              setActionError(text)
+              keepFailure(preorder.code, text)
               setToast({ text, severity: 'error' })
             }
           }
@@ -987,7 +1075,11 @@ export default function AbholListeClient({
   const summary = day?.summary
   const refundTotal = summary?.refundTotal ?? 0
   const weekdayNotice = wrongWeekdayNotice(date, point)
-  const title = `Abholliste ${placeLabel(place, points)}`
+  // Auch auf Papier: eine deaktivierte Sammelstelle wird nicht mehr
+  // angefahren - die gebuchten Kunden müssen verständigt werden (W4-verify r5).
+  const title = `Abholliste ${placeLabel(place, points)}${
+    point?.active === false ? ' (inaktiv)' : ''
+  }`
   const dateLabel = isBusinessDate(date) ? formatDateWithWeekday(date) : ''
   const newHref = `/admin/preorders/neu?date=${date}${
     point ? `&pickupPointId=${encodeURIComponent(point.id)}` : ''
@@ -1743,7 +1835,7 @@ export default function AbholListeClient({
 
       {/* ------------------------------ Druck ------------------------------ */}
       {day && (
-        <Box className="abholliste-print" aria-hidden="true">
+        <Box className="abholliste-print" aria-hidden="true" lang="de">
           <h1>
             {title} · {dateLabel}
           </h1>
@@ -1779,8 +1871,7 @@ export default function AbholListeClient({
             <thead>
               <tr>
                 <th className="tick">✓</th>
-                <th>Code</th>
-                <th>Name</th>
+                <th>Code / Name</th>
                 <th>Artikel</th>
                 <th className="num">Summe</th>
                 <th>Bezahlt</th>
@@ -1796,7 +1887,7 @@ export default function AbholListeClient({
                   {(printGroups.length > 1 ||
                     group.key === CANCELLED_GROUP) && (
                     <tr className="group">
-                      <td colSpan={8}>
+                      <td colSpan={PRINT_COLUMNS.length}>
                         {group.label} ({group.preorders.length})
                       </td>
                     </tr>
@@ -1810,8 +1901,8 @@ export default function AbholListeClient({
                           ? '☑'
                           : '☐'}
                       </td>
-                      <td className="code">{p.code}</td>
                       <td>
+                        <div className="code">{p.code}</div>
                         {p.customerName}
                         {p.customerPhone ? (
                           <>

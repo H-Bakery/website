@@ -327,6 +327,29 @@ describe('ReportClient', () => {
     expect(screen.getByText('02.09.2026, 03.09.2026')).toBeInTheDocument()
   })
 
+  it('zeigt die Liefermenge offener Tage als „Offen“, die Quote nur über Tage mit Abholung (W4-verify r5)', async () => {
+    mockFetchStats.mockResolvedValue({
+      ...STATS_PROVISIONAL,
+      totals: { ...STATS_PROVISIONAL.totals, openQty: 24 },
+      byProduct: STATS_PROVISIONAL.byProduct.map((p, i) =>
+        i === 0 ? { ...p, openQty: 4 } : p
+      ),
+    })
+    await renderReport()
+
+    const tile = screen.getByText('Offen (ohne Abholung)')
+    expect(tile.parentElement).toHaveTextContent('24 Stück')
+    expect(
+      screen.getByText('Abverkaufsquote (Tage mit Abholung)')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('4 Stück noch offen (Tag ohne Abholung)')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/Die Abverkaufsquote rechnet nur Tage mit Abholung/)
+    ).toBeInTheDocument()
+  })
+
   it('does not warn about provisional figures for a completed period', async () => {
     mockFetchStats.mockResolvedValue(STATS_COMPLETE)
     await renderReport()

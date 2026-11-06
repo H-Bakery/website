@@ -412,6 +412,55 @@ describe('idempotent create with requestId (W4-verify r4)', () => {
     expect(a.body.data.id).not.toBe(b.body.data.id)
   })
 
+  it('a retry whose form was edited in between is refused, not answered with the old order (W4-verify r5)', async () => {
+    const body = laden({
+      pickupDate: DAY,
+      customerName: 'Testkunde Funkloch',
+      requestId: 'r5-changed-retry-01',
+    })
+    const first = await create(body)
+    expect(first.status).toBe(201)
+    const variants: Array<Record<string, unknown>> = [
+      { items: [{ productId: 'kornbrot-500g', quantity: 5 }] },
+      {
+        items: [
+          { productId: 'kornbrot-500g', quantity: 2 },
+          { productId: 'mustersemmel', variant: 'nuss', quantity: 3 },
+        ],
+      },
+      { customerName: 'Testkunde Funkloch-Meier' },
+      { note: 'Bitte schneiden' },
+      { paid: true },
+      { pickupDate: '2026-12-04' },
+    ]
+    for (const change of variants) {
+      const res = await create({ ...body, ...change })
+      expect(res.status).toBe(409)
+      expect(res.body).toMatchObject({
+        success: false,
+        error: 'request_id_changed',
+        preorder: { id: first.body.data.id, code: first.body.data.code },
+      })
+      expect(res.body.message).toContain(first.body.data.code)
+      expect(res.body.message).toContain('NICHT gespeichert')
+    }
+    // nothing was written over the first order
+    const stored = await request(api.app)
+      .get(`/api/preorders/${first.body.data.id}`)
+      .set(tokens['verkauf'])
+    expect(stored.body.data).toMatchObject({
+      customerName: 'Testkunde Funkloch',
+      paid: false,
+      note: null,
+      pickupDate: DAY,
+    })
+    expect(stored.body.data.items).toHaveLength(1)
+    // the unchanged retry (whitespace aside) still gets the order back
+    const same = await create({ ...body, customerName: ' Testkunde Funkloch ' })
+    expect(same.status).toBe(200)
+    expect(same.body.data.id).toBe(first.body.data.id)
+  })
+
   it('rejects a malformed requestId', async () => {
     for (const requestId of [
       'kurz',

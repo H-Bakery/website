@@ -21,6 +21,8 @@ export class ApiError extends Error {
   readonly code?: string
   /** Whether the failed request carried a bearer token. */
   withAuth = false
+  /** The JSON error body, for fields beyond `error`/`message`. */
+  details?: Record<string, unknown>
 
   constructor(message: string, status: number, code?: string) {
     super(message)
@@ -237,6 +239,7 @@ export class ApiClient {
           typeof data?.error === 'string' ? data.error : undefined
         )
         apiError.withAuth = withAuth
+        if (data && typeof data === 'object') apiError.details = data
         throw apiError
       }
 
@@ -341,6 +344,7 @@ export class ApiClient {
           typeof data?.error === 'string' ? data.error : undefined
         )
         apiError.withAuth = withAuth
+        if (data && typeof data === 'object') apiError.details = data
         throw apiError
       }
       const blob = await response.blob()

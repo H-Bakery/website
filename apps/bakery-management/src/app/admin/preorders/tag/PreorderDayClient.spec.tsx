@@ -42,6 +42,12 @@ describe('PreorderDayClient (P3)', () => {
     expect(
       screen.getByText(/Kita Teststraße: 1 Bestellung/)
     ).toBeInTheDocument()
+    // Bestellweg und Abholort stehen getrennt - "Laden" im Bestellweg ist
+    // keine Abholzahl (W4-verify r5).
+    expect(screen.getByTestId('preorder-day-places')).toHaveTextContent(
+      /^Abholung: Laden: 1 Bestellung · Kita Teststraße: 1 Bestellung/
+    )
+    expect(screen.getByText(/Bestellweg:/)).toBeInTheDocument()
   })
 
   it('startet ohne Datum am nächsten Backtag und überspringt den Montag', async () => {

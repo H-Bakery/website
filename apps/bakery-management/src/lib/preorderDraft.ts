@@ -4,9 +4,9 @@
  * ohne Bedienung, 12 h nach der PIN, widerrufen) oder jemand nach einem
  * WLAN-Fehler die Seite neu lud - der Kunde hatte da schon aufgelegt.
  *
- * Der Entwurf liegt in `sessionStorage` (nur dieser Tab, endet mit ihm) und
- * gehört **einem Benutzer**: an einer gemeinsamen Station sieht ihn nur, wer
- * ihn angefangen hat. Nach `DRAFT_MAX_AGE_MS` verfällt er. Mit ihm wandert
+ * Der Entwurf liegt in `sessionStorage` (nur dieser Tab, endet mit ihm),
+ * **einer je Benutzer** (`draftKey`): an einer gemeinsamen Station sieht ihn
+ * nur, wer ihn angefangen hat, und ein Kollege überschreibt ihn nicht. Nach `DRAFT_MAX_AGE_MS` verfällt er. Mit ihm wandert
  * die `requestId` des Speicherns, damit ein Wiederholen nach verlorener
  * Antwort keine zweite Bestellung anlegt.
  */
@@ -15,6 +15,15 @@ import type { PreorderChannel } from './preordersTypes'
 const KEY = 'bakery-management-preorder-draft'
 /** Wie die PIN-Sitzung: danach ist ein Entwurf sicher überholt. */
 export const DRAFT_MAX_AGE_MS = 12 * 60 * 60 * 1000
+
+/**
+ * Ein Schlüssel je Benutzer (W4-Verifikation Runde 5): an der gemeinsamen
+ * Laden-Station überschrieb sonst die Eingabe eines Kollegen den halb
+ * erfassten Entwurf der Verkäuferin, die gerade abgemeldet wurde.
+ */
+export function draftKey(userId: string | number): string {
+  return `${KEY}:${String(userId)}`
+}
 
 export interface PreorderDraftLine {
   key: string
@@ -41,6 +50,7 @@ export interface PreorderDraftFields {
 export interface PreorderDraft extends PreorderDraftFields {
   userId: string
   savedAt: string
+  /** Gesetzt, sobald gespeichert werden sollte (Antwort evtl. verloren). */
   requestId: string | null
 }
 
@@ -50,6 +60,10 @@ function storage(): Storage | null {
   } catch {
     return null
   }
+}
+
+function noUser(userId: string | number | null | undefined): boolean {
+  return userId === null || userId === undefined || userId === ''
 }
 
 /** Steht überhaupt etwas drin, das man vermissen würde? */
@@ -62,23 +76,37 @@ export function draftHasContent(fields: PreorderDraftFields): boolean {
   )
 }
 
+function parseDraft(
+  raw: string | null | undefined,
+  userId: string | number,
+  now: Date
+): PreorderDraft | null {
+  if (!raw) return null
+  const draft = JSON.parse(raw) as PreorderDraft
+  if (!draft || typeof draft !== 'object') return null
+  if (String(draft.userId) !== String(userId)) return null
+  const at = Date.parse(draft.savedAt)
+  if (!Number.isFinite(at) || now.getTime() - at > DRAFT_MAX_AGE_MS) {
+    return null
+  }
+  if (!Array.isArray(draft.lines)) return null
+  return draft
+}
+
 export function readPreorderDraft(
   userId: string | number | null | undefined,
   now: Date = new Date()
 ): PreorderDraft | null {
-  if (userId === null || userId === undefined || userId === '') return null
+  if (noUser(userId)) return null
+  const id = userId as string | number
   try {
-    const raw = storage()?.getItem(KEY)
-    if (!raw) return null
-    const draft = JSON.parse(raw) as PreorderDraft
-    if (!draft || typeof draft !== 'object') return null
-    if (String(draft.userId) !== String(userId)) return null
-    const at = Date.parse(draft.savedAt)
-    if (!Number.isFinite(at) || now.getTime() - at > DRAFT_MAX_AGE_MS) {
-      return null
-    }
-    if (!Array.isArray(draft.lines)) return null
-    return draft
+    const store = storage()
+    // Der gemeinsame Schlüssel bis Runde 4 - ein Entwurf von vor dem Update
+    // geht so nicht verloren.
+    return (
+      parseDraft(store?.getItem(draftKey(id)), id, now) ??
+      parseDraft(store?.getItem(KEY), id, now)
+    )
   } catch {
     return null
   }
@@ -90,37 +118,41 @@ export function savePreorderDraft(
   requestId: string | null,
   now: Date = new Date()
 ): void {
-  if (userId === null || userId === undefined || userId === '') return
+  if (noUser(userId)) return
+  const id = userId as string | number
   try {
     if (!draftHasContent(fields)) {
-      // Nichts Eigenes - aber den Entwurf eines anderen nicht löschen.
-      const raw = storage()?.getItem(KEY)
-      const other = raw ? (JSON.parse(raw) as PreorderDraft) : null
-      if (!other || String(other.userId) === String(userId)) {
-        storage()?.removeItem(KEY)
-      }
+      clearPreorderDraft(id)
       return
     }
     const draft: PreorderDraft = {
       ...fields,
-      userId: String(userId),
+      userId: String(id),
       savedAt: now.toISOString(),
       requestId,
     }
-    storage()?.setItem(KEY, JSON.stringify(draft))
+    storage()?.setItem(draftKey(id), JSON.stringify(draft))
+    removeLegacy(id)
   } catch {
     // ohne Speicher bleibt nur die Maske selbst
   }
 }
 
-export function clearPreorderDraft(userId?: string | number | null): void {
-  try {
-    if (userId !== undefined && userId !== null) {
-      const raw = storage()?.getItem(KEY)
-      const draft = raw ? (JSON.parse(raw) as PreorderDraft) : null
-      if (draft && String(draft.userId) !== String(userId)) return
-    }
+/** Den alten gemeinsamen Eintrag entfernen, wenn er diesem Benutzer gehört. */
+function removeLegacy(userId: string | number): void {
+  const raw = storage()?.getItem(KEY)
+  const legacy = raw ? (JSON.parse(raw) as PreorderDraft) : null
+  if (legacy && String(legacy.userId) === String(userId)) {
     storage()?.removeItem(KEY)
+  }
+}
+
+export function clearPreorderDraft(userId?: string | number | null): void {
+  if (noUser(userId)) return
+  const id = userId as string | number
+  try {
+    storage()?.removeItem(draftKey(id))
+    removeLegacy(id)
   } catch {
     // nichts zu tun
   }
