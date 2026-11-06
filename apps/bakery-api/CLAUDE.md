@@ -100,6 +100,7 @@ and for supertest (B1). Mounted for the pilot:
 | `/api/orders` (POST only)                        | `routes/preorders.routes.ts` (shop)      | shop order → preorder with channel `shop`, behind auth      |
 | `/api/backzettel`                                | `routes/backzettel.routes.ts`            | Z3, see "Backzettel API (Z3)"                               |
 | `/api/hq-sync`                                   | `routes/hq-sync.routes.ts`               | B5b/Z9 status + retry, `inhaber` - see "hq write-back"      |
+| `/api/rest`                                      | `routes/rest.routes.ts`                  | M4 Rest am Abend, see "Rest am Abend (M4)"                  |
 
 New domains are mounted in `app.ts` **below the global guard** - mount them there and add
 `requireRole(...)`. `libs/api/auth` is no longer mounted (the lib stays until B12).
@@ -505,6 +506,9 @@ onReopened })` (router options of the same name); `onConfirmed` is called after 
   takes any slug, and a slug is free text; others are merged into `variant: null`), `channels`
   (all five, zeros included), `pickupPoints [{id, name, count}]` (`laden` first). Cancelled ones
   are not counted. **No timestamp**, so a rerun on unchanged data commits nothing.
+- **Rest am Abend (M4):** after every count save with changes, `restCounted(view)` writes
+  `data/production/rest/<date>.json` (see "Rest am Abend (M4)"), commit
+  `chore(production): Rest am Abend <date> (App)`, same write path as the Backzettel.
 - **No personal data (D13), by whitelist** in `hq-snapshots.core.js`: no confirmer/corrector/
   ticker names or ids (only the confirming role), no free-text correction reasons (they may name
   a customer), no deltas, preorder ids or codes, no customer names, phones, notes, no money, no
@@ -1047,6 +1051,67 @@ maps, no-op zero diff), `tests/unit/backzettelReference.test.js` (synthetic conv
 `tests/integration/backzettelGrundmengen.test.ts` (dev mode, write worktree with temp git repo,
 B5b push + PR against a bare remote and the fake GitHub, merge clears `pendingApproval`, roles,
 reference route). Fixture: `tests/fixtures/backzettel-grundmengen.synthetic.js`.
+
+## Rest am Abend (M4)
+
+Roadmap §6 M4 (after the pilot). Verkauf counts what is left at closing; the owner sees baked /
+sold / rest / waste rate. Rules **once** in `src/services/rest-am-abend.core.js` (dependency-free,
+`tests/unit/restAmAbend.test.js`); DB + transaction + audit in `rest-am-abend.service.ts`; routes
+in `routes/rest.routes.ts` (`createRestRouter(source, backzettel, options)`, mounted by `app.ts`
+after `/api/backzettel` with the Backzettel source and service from `createBackzettel()`).
+
+| Endpoint                          | Who                | Answer                                                                                                                                       |
+| --------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/rest?date=`             | verkauf, backstube | day view (default today, Berlin): `{ date, status ok\|no-config\|ruhetag, backzettelStatus, window, editable, editIssue, lines[], summary }` |
+| `PUT /api/rest/:date`             | verkauf            | `{ items: [{ itemId, variant?, productId?, qty \| null, expected? }] }` → day view + `changed`                                               |
+| `GET /api/rest/summary?from=&to=` | inhaber            | `{ counts, totals[] per unit, items[] (baked, cap, shopBaked, sold, rest, rate, variants, weeks), days[] }`                                  |
+| `GET /api/rest/summary.csv`       | inhaber            | same as CSV (`;`, decimal comma, `csvCell`, BOM, `rest-am-abend-<from>-bis-<to>.csv`)                                                        |
+| `GET /api/rest/averages?weeks=6`  | backstube          | Rest Ø per weekday and item (Grundmengen, info only); `weeks` 1-26                                                                           |
+
+`inhaber` passes every check, `fahrer` gets 403. Station (PIN) sessions are fine - the shop tablet
+is where Verkauf counts. Errors via `sendError`: 400 `invalid_date` / `date_out_of_range` /
+`validation` / `unknown_item` / `not_countable` / `unknown_variant` / `unknown_product` /
+`duplicate_item` / `invalid_quantity` / `invalid_range` / `range_too_large`, 409 `ruhetag` /
+`no_config` / `rest_changed` (with `current`).
+
+- **Table `rest_counts`** (migration `20261201000000-rest-am-abend.js`, additive, model
+  `RestCount`): one row per `business_date` × `item_id` × `variant` (`''` = none) × `product_id`
+  (`''` = counted in the item's own unit), unique index. Snapshots of `name`, `item_name`,
+  `unit`, `item_unit`, `factor` (conversion into the item unit, as it was when counted), `qty`,
+  `revision`, `counted_by` → users. `qty: null` in a PUT deletes the row.
+- **Count lines** come from `backzettel.yaml` (`countRowsForItem`): an item with `products` is
+  counted per product in Stück with that product's `factor`; a Liter item without products but
+  with `pieces_per_liter` in Stück with factor 1/ppl; otherwise in its own unit (`Liter`/`kg`
+  allow 2 decimals, step 0.5). Section `vorbereitung` is not countable. Quantities 0…10000,
+  ≤ 500 entries per PUT, an item twice is 400.
+- **All or nothing.** The PUT runs in one serialised write transaction; each entry may carry
+  `expected` (the value the screen showed, `null` = not counted). Any mismatch → 409
+  `rest_changed`, `current` lists the stored values with `countedBy`, nothing is written. A save
+  of unchanged values writes and audits nothing. One `audit_log` row per save (`rest_count` on
+  `rest_day`/date, `data.changes [{ itemId, variant, productId, from, to, correction? }]`).
+- **Window:** writes only today − 7 … today (Berlin, `COUNT_DAYS_BACK`), never on a weekday not
+  in `config.days` (409 `ruhetag`), never without valid master data (409 `no_config`). Reads are
+  not limited. `createApp({ hq: { today } })` / `rest: { today, now }` pin the clock in tests.
+- **Baked** = the confirmed Backzettel's frozen `total` plus acknowledged deltas (`bake −
+bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not counted as baked. A
+  draft day gives `planned` only, `baked: null`. **Rate** = rest ÷ (baked − cap), because CAP
+  goods leave the shop. The summary evaluates only confirmed days whose item is counted
+  completely (every count line of every variant); others are listed as gaps
+  (`uncountedDates`, day status `partial` / `not_counted` / `no_backzettel` /
+  `counted_without_backzettel`), never as 0. **Sold** = Z4's `soldOnDay` over the item's PLUs on
+  the same evaluated days, from `HQ_REPORTS_DIR` (`soldStatus ok|partial|no_plu|no_report`).
+  Range default the last 28 days, at most 400.
+- **Z9 snapshot:** with `HQ_SNAPSHOT_DIR` set, every save with changes calls
+  `snapshots.restCounted(view)` in the background → `data/production/rest/<date>.json`
+  (`restSnapshot` in `hq-snapshots.core.js`: baked, cap, rest and counts per line - no user, no
+  times; commit `chore(production): Rest am Abend <date> (App)`).
+- The management screens (`/admin/rest`, `/admin/rest/auswertung`) are not in the pilot's route
+  list (see the website `CLAUDE.md`).
+
+Tests: `tests/unit/restAmAbend.test.js` (core), `tests/integration/rest.test.ts` (roles incl.
+PIN station, PUT rules, window, 409, audit, summary with a synthetic cash report, CSV, averages),
+`tests/unit/hqSnapshotsCore.test.js` (snapshot whitelist), migration in
+`tests/migrations/pilotBaseline.test.ts`.
 
 ## Schema (B2)
 
