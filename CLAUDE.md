@@ -354,6 +354,15 @@ Abschnitt „Delivery tours (B8)". Von außen wichtig:
 - **Rollen:** `inhaber` plant (Touren, Stopps, Fahrer, Depot); `fahrer` sieht **nur eigene
   Touren** (Fahrer ↔ Konto über `driver.userId`), hakt ab (nur `status`, Grund, Verbleib,
   `completedAt`), meldet die Position und darf „Route berechnen"; `verkauf` liest; `backstube` 403. Jeder Schreibzugriff steht im `audit_log` - ohne Namen, Adressen oder Telefonnummern.
+  Ein Fahrer bekommt von `GET /drivers` nur sich selbst; zuordnen lässt sich nur ein Konto mit der
+  Rolle `fahrer` (sonst 400 `Driver user not fahrer`).
+- **DSGVO wie P4:** 90 Tage nach dem Tourtag verlieren Lieferstopps Name, Telefon, Hinweis,
+  Fehlergrund, Straße und Koordinaten (PLZ, Ort, Positionen, Status bleiben; Sammelstellen-Stopps
+  nicht betroffen), dazu der Adress-Cache-Eintrag, wenn ihn keine andere Adresse mehr braucht -
+  im **selben nächtlichen Lauf** wie die Vorbestellungen (`cli.js anonymize-preorders`, Bericht
+  `deliveryStops`) und gleich beim `import-deliveries`. Regel: `src/services/delivery-anonymize.ts`.
+- **CORS:** die echte API lässt in der Entwicklung `http://localhost:4300` (Fahrer-App) wie 4200,
+  4201 und 3000 ohne `CORS_ORIGIN` zu (`DEFAULT_CORS_ORIGINS`).
 - **Dieselben Core-Dateien** (`delivery-tours.core.js`, `delivery-geo.core.js`), dieselben
   Schutzregeln: Lesen wartet höchstens 2,5 s auf Nominatim, Fehlversuche 5 min Pause,
   `hasCoordinates()`/`validateCoordinates()`.
@@ -363,7 +372,9 @@ Abschnitt „Delivery tours (B8)". Von außen wichtig:
   Anfrage, Refresh mit Rotation, Abmelden löscht Warteschlange und Offline-Kopien des Geräts
   (`apps/bakery-delivery/CLAUDE.md`, „Anmeldung und Rollen (B8)").
 - **Umzug:** `cli.js import-deliveries --file apps/bakery-api/data/delivery-store.json --dry-run`
-  (idempotent, `--update-depot` übernimmt das Depot), danach `import-preorders`.
+  (idempotent, `--update-depot` übernimmt das Depot), danach `import-preorders`. Eine Tour mit
+  abgelehntem Stopp wird ganz zurückgehalten (Exit 2, „zurückgehalten"), damit ein Lauf mit
+  berichtigter Datei sie samt Stopp nachholt.
 - **Offen (Q8):** Erreichbarkeit von unterwegs - Tailscale oder schmaler öffentlicher Endpunkt,
   Entscheidungsvorlage `docs/fernzugriff-fahrer.md`.
 

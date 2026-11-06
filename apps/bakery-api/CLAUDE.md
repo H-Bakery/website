@@ -44,7 +44,7 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
    ≥ 32 chars; development: fixed default with a warning).
 2. `config/env.ts` → `loadConfig()`: `PORT`, `HOST` (interface for `listen`; unset = all, the box
    sets `127.0.0.1`), `DB_PATH`, `DB_BUSY_TIMEOUT_MS` (5000), `DB_LOG_SQL`,
-   `CORS_ORIGIN` (comma-separated; default the local dev ports), `TRUST_PROXY` (B3; default
+   `CORS_ORIGIN` (comma-separated; default the local dev ports 4201, 4200, 3000 and - since B8 - 4300), `TRUST_PROXY` (B3; default
    `loopback` = Caddy on the same box; `false`/`0`, a hop count or an Express trust list; `true`
    is refused because every client could then fake its IP and dodge the login rate limit).
    `JWT_SECRET` must be at least 32 characters in every environment (B3).
@@ -1064,7 +1064,7 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
 
 | Endpoint                                                   | Who                                                             |
 | ---------------------------------------------------------- | --------------------------------------------------------------- |
-| `GET /depot`, `GET /drivers[?active=]`                     | verkauf, fahrer                                                 |
+| `GET /depot`, `GET /drivers[?active=]`                     | verkauf, fahrer (`/drivers`: only his own row)                  |
 | `PUT /depot`, `POST /drivers`, `PUT /drivers/:id`          | inhaber                                                         |
 | `GET /tours?date=&driverId=`                               | verkauf; **fahrer silently gets only his own tours**            |
 | `GET /tours/:id`                                           | verkauf; fahrer own only, else 403 `not_own_tour`               |
@@ -1090,7 +1090,9 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
   `createTestApp()` passes `OFFLINE_GEO` (no network) and `tests/setup-ts.js` points
   `NOMINATIM_URL`/`OSRM_URL` at a closed port.
 - **Fahrer = own tours.** A driver row may name its account (`delivery_drivers.user_id`, unique:
-  409 `Driver user taken`; unknown user 400 `User not found`). A fahrer sees and touches only
+  409 `Driver user taken`; unknown user 400 `User not found`; an account whose role is not
+  `fahrer` 400 `Driver user not fahrer` - the link restricts only fahrer, so it would do nothing).
+  `GET /drivers` answers a fahrer with his own row only (no colleagues' phones or accounts). A fahrer sees and touches only
   tours whose `driver_id` is one of his driver rows (`ownDriverIds`); a fahrer without a row sees
   no tours. On a stop he may send only `status`, `failureReason`, `goodsDisposition`,
   `completedAt` - anything else is 403 `forbidden_fields` with `fields`. He may run
@@ -1111,9 +1113,13 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
   (`PUT /api/deliveries/preorders/pickup-points/:id`, `PUT /api/preorders/pickup-points/:id`)
   copies the new address onto every stop of that point and clears its coordinates, so the next
   read searches it again (`pickupPointChanged`, inside the pickup point's transaction).
+- **Depot `PUT`** applies only the fields the request names, onto the row read **inside** the
+  transaction (two overlapping changes keep both). The address search runs before, outside the
+  transaction; if the address changed meanwhile, its hit does not apply: 409 `Depot changed`.
 - **Deliberate deviations from the mock:** text limits (`DELIVERY_LIMITS`: customer/street 200,
-  city 120, zip 16, time window 64, notes 2000, ≤ 100 items) → 400 `Text too long`; control and
-  bidi characters → 400 `Invalid text`; an unknown `pickupPointId` on a stop is 400
+  city 120, zip 16, time window 64, notes 2000, ≤ 100 items, phone 40 after `normalizePhone` -
+  stops, drivers, depot) → 400 `Text too long`; control and bidi characters (stops, drivers,
+  depot, tour names on POST and PATCH) → 400 `Invalid text`; an unknown `pickupPointId` on a stop is 400
   `Pickup point not found` (the mock stores it); an invalid `completedAt` is 400 (the mock stores
   it); errors carry `success: false`; drivers carry `userId`; a depot with manual coordinates
   answers `geocodeSource: 'manual'`; the fahrer restriction above. The alias' `hasPickupStop`
@@ -1137,14 +1143,34 @@ Copies drivers, tours with stops and the geocache of the mock's `delivery-store.
 `mock:tour:<id>:<date>`, `…:stop:<id>`; coordinates scrubbed like the mock's loader), writes in
 `delivery-import.service.ts`: **one** transaction, idempotent through `import_key` columns
 (existing rows are skipped, never changed). A stop whose pickup point is unknown, or already
-served by another tour that day, is imported without the link and listed. The depot stays
+served by another tour that day, is imported without the link and listed. A stop that fails the
+text rules (`checkStopText`) holds back its **whole tour** (listed, `tours.skipped`, exit 2):
+created, the tour would carry its `import_key` and a re-run with a corrected file could never add
+the stop. Stops older than the P4 period (tour date before today − 90 days, `--today` pins the
+date) are anonymised in the same transaction (`anonymized`, `geocache.removed` in the report), so
+history from the mock store never lands in clear text. The depot stays
 unless `--update-depot` (the report says `unchanged`/`differs`/`updated`). One `audit_log` row
 (`import`, `delivery_store`, counts only). Exit 0 clean, 2 entries listed, 1 unusable file
 (checked before the database is opened) or error. Tests:
 `tests/integration/deliveryImport.test.ts`; fixture `tests/fixtures/delivery-store.synthetic.json`.
 
+- **DSGVO (P4 rule) for stops.** `anonymizeDeliveryStops(transaction, { cutoff })` in
+  `services/delivery-anonymize.ts`: stops of tours dated before the P4 cutoff
+  (`delivery-preorders.core.js` `anonymizeCutoff`, 90 days) and without `pickup_point_id` get
+  `customer = 'anonymisiert'`, phone, notes, failure reason, street, coordinates and geocode
+  source cleared, `anonymized_at` set (column in the B8 migration); zip, city, time window, items,
+  status, `completed_at` and goods disposition stay for statistics. Sammelstelle stops carry only
+  the public address and stay. Cache entries of the cleared addresses are deleted unless a
+  not-anonymised stop, a pickup point or the depot still has that address. One `anonymize` audit
+  row per run on `delivery_stop` (ids only), none when nothing changed. Runs **inside**
+  `anonymizePreorders()` (the nightly `cli.js anonymize-preorders`, report field
+  `deliveryStops { stops, geocacheRemoved }`) and at the end of `import-deliveries`. An
+  anonymised stop is not locked against edits (a 90-day-old tour has no screen); backups keep the
+  data until they rotate out, as for preorders.
+
 Tests: `tests/integration/deliveryTours.test.ts` (roles, own tours, fahrer fields, budget and
-negative cache with a stub geo, optimize race, Mörsbach first tour, audit, limits),
+negative cache with a stub geo, optimize race, Mörsbach first tour, audit, limits, depot partial
+update, nightly anonymisation),
 `tests/parity/deliveries.parity.test.ts`, the B8 block in `tests/migrations/pilotBaseline.test.ts`.
 
 ## Schema (B2)

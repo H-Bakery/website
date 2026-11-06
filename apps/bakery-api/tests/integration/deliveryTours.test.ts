@@ -14,6 +14,7 @@ import type {
   GeoServices,
   RoutedTour,
 } from '../../src/services/delivery-tours.service'
+import { anonymizePreorders } from '../../src/services/preorders-maintenance'
 import { bearer, createUser, login } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { makeProductsDir, removeTempDirs } from '../helpers/hqProducts'
@@ -186,6 +187,28 @@ describe('drivers', () => {
       error: 'Name is required',
       message: 'Der Name des Fahrers ist erforderlich.',
     })
+    // only a fahrer account is restricted by the link - anything else
+    // would look done and do nothing
+    const notFahrer = await as('inhaber').post('/api/deliveries/drivers', {
+      name: 'X',
+      userId: userIds['verkauf'],
+    })
+    expect(notFahrer.status).toBe(400)
+    expect(notFahrer.body).toMatchObject({
+      error: 'Driver user not fahrer',
+      message: expect.stringContaining('Fahrer'),
+    })
+    const longPhone = await as('inhaber').post('/api/deliveries/drivers', {
+      name: 'X',
+      phone: '1'.repeat(41),
+    })
+    expect(longPhone.status).toBe(400)
+    expect(longPhone.body.error).toBe('Text too long')
+    const longPhonePut = await as('inhaber').put(
+      `/api/deliveries/drivers/${driverB}`,
+      { phone: '1'.repeat(300) }
+    )
+    expect(longPhonePut.status).toBe(400)
     const missing = await as('inhaber').put('/api/deliveries/drivers/999', {
       name: 'Y',
     })
@@ -197,12 +220,21 @@ describe('drivers', () => {
     await as('inhaber').put(`/api/deliveries/drivers/${driverB}`, {
       active: false,
     })
-    const all = await as('fahrer').get('/api/deliveries/drivers')
+    const all = await as('verkauf').get('/api/deliveries/drivers')
     expect(all.status).toBe(200)
     expect(all.body.map((d: { id: number }) => d.id)).toEqual([
       driverA,
       driverB,
     ])
+    // a fahrer sees only himself - not his colleagues' phones and accounts
+    const own = await as('fahrer').get('/api/deliveries/drivers')
+    expect(own.status).toBe(200)
+    expect(own.body.map((d: { id: number }) => d.id)).toEqual([driverA])
+    expect(
+      (await as('fahrer2').get('/api/deliveries/drivers')).body.map(
+        (d: { id: number }) => d.id
+      )
+    ).toEqual([driverB])
     const active = await as('verkauf').get(
       '/api/deliveries/drivers?active=true'
     )
@@ -267,6 +299,58 @@ describe('depot', () => {
       403
     )
   })
+
+  it('changes only the fields a request names, limits the phone', async () => {
+    const before = (await as('inhaber').get('/api/deliveries/depot')).body
+    const phone = await as('inhaber').put('/api/deliveries/depot', {
+      phone: '06841 000 000',
+    })
+    expect(phone.status).toBe(200)
+    expect(phone.body).toEqual({ ...before, phone: '06841000000' })
+    const name = await as('inhaber').put('/api/deliveries/depot', {
+      name: 'Backstube Test',
+    })
+    // the phone of the first request survives the second
+    expect(name.body).toEqual({
+      ...before,
+      name: 'Backstube Test',
+      phone: '06841000000',
+    })
+    const long = await as('inhaber').put('/api/deliveries/depot', {
+      phone: '1'.repeat(41),
+    })
+    expect(long.status).toBe(400)
+    expect(long.body.error).toBe('Text too long')
+    const control = await as('inhaber').put('/api/deliveries/depot', {
+      city: 'Ort\u0007',
+    })
+    expect(control.status).toBe(400)
+    expect(control.body.error).toBe('Invalid text')
+    await as('inhaber').put('/api/deliveries/depot', {
+      name: before.name,
+      phone: before.phone,
+    })
+    // a phone that is sent is normalised (digits and +), like the mock
+    expect((await as('inhaber').get('/api/deliveries/depot')).body).toEqual({
+      ...before,
+      phone: String(before.phone).replace(/[^\d+]/g, ''),
+    })
+  })
+
+  it('two overlapping changes keep both (read inside the transaction)', async () => {
+    const before = (await as('inhaber').get('/api/deliveries/depot')).body
+    const [a, b] = await Promise.all([
+      as('inhaber').put('/api/deliveries/depot', { name: 'Parallel A' }),
+      as('inhaber').put('/api/deliveries/depot', { phone: '0000 12345' }),
+    ])
+    expect([a.status, b.status]).toEqual([200, 200])
+    const after = (await as('inhaber').get('/api/deliveries/depot')).body
+    expect(after).toMatchObject({ name: 'Parallel A', phone: '000012345' })
+    await as('inhaber').put('/api/deliveries/depot', {
+      name: before.name,
+      phone: before.phone,
+    })
+  })
 })
 
 // ------------------------------------------------------------------ tours
@@ -314,12 +398,21 @@ describe('tours', () => {
       [{ date: SATURDAY, plannedStart: '25:61' }, 'Invalid plannedStart'],
       [{ date: SATURDAY, driverId: 999 }, 'Driver not found'],
       [{ date: SATURDAY, name: 'x'.repeat(121) }, 'Text too long'],
+      [{ date: SATURDAY, name: 'Tour\u202eX\u0007' }, 'Invalid text'],
     ]
     for (const [body, error] of cases) {
       const res = await as('inhaber').post('/api/deliveries/tours', body)
       expect(res.status).toBe(400)
       expect(res.body).toMatchObject({ error, message: expect.any(String) })
     }
+    const tour = await newTour({ date: FRIDAY })
+    const renamed = await as('inhaber').patch(
+      `/api/deliveries/tours/${tour.id}`,
+      { name: 'Tour\u202eX' }
+    )
+    expect(renamed.status).toBe(400)
+    expect(renamed.body.error).toBe('Invalid text')
+    await as('inhaber').delete(`/api/deliveries/tours/${tour.id}`)
     const query = await as('verkauf').get('/api/deliveries/tours?date=morgen')
     expect(query.status).toBe(400)
     expect(query.body.error).toBe('Invalid date')
@@ -401,6 +494,12 @@ describe('tours', () => {
     })
     expect(control.status).toBe(400)
     expect(control.body.error).toBe('Invalid text')
+    const phone = await as('inhaber').post(path, {
+      ...stopAt('A', 49.3, 7.3),
+      phone: '1'.repeat(41),
+    })
+    expect(phone.status).toBe(400)
+    expect(phone.body.error).toBe('Text too long')
     const point = await as('inhaber').post(path, {
       ...stopAt('A', 49.3, 7.3),
       pickupPointId: 'gibt-es-nicht',
@@ -864,5 +963,100 @@ describe('audit', () => {
     const text = JSON.stringify(rows.map((r) => r.data))
     expect(text).not.toContain('Geheime')
     expect(text).not.toContain('Musterweg')
+  })
+})
+
+// ------------------------------------------------------------- DSGVO (P4)
+
+describe('anonymisation 90 days after the tour (P4 rule, nightly run)', () => {
+  it('clears name, phone, notes, street and coordinates of old stops only', async () => {
+    const OLD = '2026-07-04' // Saturday: gets the Mörsbach stop
+    const old = await newTour({ date: OLD, driverId: driverA })
+    const oldStop = await as('inhaber').post(
+      `/api/deliveries/tours/${old.id}/stops`,
+      {
+        ...stopAt('Testkundin Alt', 49.31, 7.31),
+        street: 'Altweg 3',
+        phone: '0000 55555',
+        notes: 'Hund im Hof',
+      }
+    )
+    expect(oldStop.status).toBe(201)
+    const shared = await as('inhaber').post(
+      `/api/deliveries/tours/${old.id}/stops`,
+      { ...stopAt('Testkunde Geteilt', 49.32, 7.32), street: 'Neuweg 9' }
+    )
+    expect(shared.status).toBe(201)
+    // a newer tour still drives to Neuweg 9: its cache entry must stay
+    const recent = await newTour({ date: FRIDAY })
+    await as('inhaber').post(`/api/deliveries/tours/${recent.id}/stops`, {
+      ...stopAt('Testkunde Neu', 49.32, 7.32),
+      street: 'Neuweg 9',
+    })
+    const keyOf = (street: string) =>
+      `${street} 66424 homburg`.toLowerCase().replace(/[^a-z0-9]+/g, ' ')
+    await DeliveryGeocache.bulkCreate([
+      { key: keyOf('Altweg 3'), lat: 49.31, lon: 7.31 },
+      { key: keyOf('Neuweg 9'), lat: 49.32, lon: 7.32 },
+    ])
+
+    // today 2026-11-12 → cutoff 2026-08-14
+    const dry = await anonymizePreorders({ today: '2026-11-12', dryRun: true })
+    expect(dry.deliveryStops.stops).toHaveLength(2)
+    expect(
+      await DeliveryStop.count({ where: { customer: 'Testkundin Alt' } })
+    ).toBe(1)
+
+    const report = await anonymizePreorders({ today: '2026-11-12' })
+    expect(report.deliveryStops).toMatchObject({ geocacheRemoved: 1 })
+    expect(report.deliveryStops.stops.map((s) => s.date)).toEqual([OLD, OLD])
+
+    const tour = (await as('inhaber').get(`/api/deliveries/tours/${old.id}`))
+      .body
+    const customers = tour.stops.filter(
+      (s: { pickupPointId?: string }) => !s.pickupPointId
+    )
+    for (const stop of customers) {
+      expect(stop).toMatchObject({
+        customer: 'anonymisiert',
+        phone: null,
+        notes: null,
+        street: '',
+        zip: '66424',
+        city: 'Homburg',
+        lat: null,
+        lon: null,
+        items: [{ name: 'Testbrot', qty: 2, unit: 'Stk' }],
+      })
+    }
+    // the Sammelstelle stop holds only the public address
+    expect(
+      tour.stops.find((s: { pickupPointId?: string }) => s.pickupPointId)
+    ).toMatchObject({ customer: expect.stringContaining('Mörsbach') })
+    // the newer tour is untouched, and so is its cache entry
+    const fresh = (
+      await as('inhaber').get(`/api/deliveries/tours/${recent.id}`)
+    ).body
+    expect(fresh.stops[0]).toMatchObject({
+      customer: 'Testkunde Neu',
+      street: 'Neuweg 9',
+    })
+    expect(await DeliveryGeocache.findByPk(keyOf('Altweg 3'))).toBeNull()
+    expect(await DeliveryGeocache.findByPk(keyOf('Neuweg 9'))).not.toBeNull()
+
+    const rows = await AuditLog.findAll({
+      where: { action: 'anonymize', entity: 'delivery_stop' },
+    })
+    expect(rows).toHaveLength(1)
+    expect(JSON.stringify(rows[0].data)).not.toMatch(/Testkund|Altweg|55555/)
+
+    // idempotent: a second night finds nothing and writes no audit row
+    const again = await anonymizePreorders({ today: '2026-11-12' })
+    expect(again.deliveryStops).toEqual({ stops: [], geocacheRemoved: 0 })
+    expect(
+      await AuditLog.count({
+        where: { action: 'anonymize', entity: 'delivery_stop' },
+      })
+    ).toBe(1)
   })
 })

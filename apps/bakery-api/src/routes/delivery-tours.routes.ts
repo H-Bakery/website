@@ -6,7 +6,7 @@
  *
  *   GET    /depot                         verkauf, fahrer
  *   PUT    /depot                         inhaber
- *   GET    /drivers[?active=true|false]   verkauf, fahrer
+ *   GET    /drivers[?active=true|false]   verkauf; fahrer nur sich selbst
  *   POST   /drivers                       inhaber      (+ `userId`, B8)
  *   PUT    /drivers/:id                   inhaber
  *   GET    /tours[?date&driverId&status]  verkauf, fahrer (nur eigene Touren)
@@ -120,10 +120,16 @@ export function createDeliveryToursRouter(
     requireRole(...READ_ROLES),
     asyncHandler(async (req, res) => {
       const { active } = req.query
+      const drivers = await service.drivers(
+        active === undefined ? undefined : active === 'true'
+      )
+      // Ein Fahrer braucht nur sich selbst (die App legt ihn darauf fest) -
+      // Telefonnummern und Konten der Kollegen gehen ihn nichts an.
+      const { driverIds } = await accessFor(service, req)
       res.json(
-        await service.drivers(
-          active === undefined ? undefined : active === 'true'
-        )
+        driverIds === null
+          ? drivers
+          : drivers.filter((d) => driverIds.includes(d.id))
       )
     })
   )

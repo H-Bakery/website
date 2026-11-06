@@ -189,6 +189,38 @@ export const DELIVERY_LIMITS = {
   driverName: 120,
   tourName: 120,
   depotName: 120,
+  /** Nach `normalizePhone` (nur Ziffern und `+`); Spalte `STRING(40)`. */
+  phone: 40,
+}
+
+/**
+ * Telefonnummer von Stopp, Fahrer oder Depot: `normalizePhone` des Cores,
+ * dann höchstens `DELIVERY_LIMITS.phone` Zeichen (sonst 400 `Text too long`).
+ */
+export function checkPhone(
+  value: unknown
+): { phone: string | null } | { error: string; message: string } {
+  const phone = core.normalizePhone(value) as string | null
+  if (phone && phone.length > DELIVERY_LIMITS.phone) {
+    return tooLong('Die Telefonnummer', DELIVERY_LIMITS.phone)
+  }
+  return { phone }
+}
+
+/** Name einer Tour: Länge und Steuerzeichen wie bei Stopps und Fahrern. */
+function checkTourName(
+  name: string
+): { error: string; message: string } | null {
+  if (name.length > DELIVERY_LIMITS.tourName) {
+    return tooLong('Der Name der Tour', DELIVERY_LIMITS.tourName)
+  }
+  if (controlChars.hasNameControlChars(name)) {
+    return {
+      error: 'Invalid text',
+      message: 'Der Name der Tour enthält unzulässige Steuerzeichen.',
+    }
+  }
+  return null
 }
 
 /** Felder, die ein Fahrer an einem Stopp setzen darf: abhaken. */
@@ -401,6 +433,9 @@ export function checkStopText(
         message: `${label} enthält unzulässige Steuerzeichen.`,
       }
     }
+  }
+  if (String(stop.phone ?? '').length > L.phone) {
+    return tooLong('Die Telefonnummer', L.phone)
   }
   const notes = stop.notes ?? ''
   if (notes.length > L.notes) return tooLong('Der Hinweis', L.notes)
@@ -846,27 +881,38 @@ export class DeliveryToursService {
 
   // ---- depot
 
+  /**
+   * Depot ändern. Nur die Felder, die der Request nennt, ändern sich; der
+   * Rest kommt aus der Zeile, die **in** der Transaktion gelesen wird -
+   * zwei überlappende Änderungen nehmen einander so nichts zurück. Die
+   * Adresssuche läuft vorher, außerhalb der Transaktion; hat sich die
+   * Adresse derweil geändert, gilt ihr Treffer nicht (409, neu laden).
+   */
   async updateDepot(body: unknown, req: Request): Promise<Result<PlainDepot>> {
     const input = (body ?? {}) as Record<string, unknown>
-    const current = await this.depot()
-    const depot: PlainDepot = {
-      ...current,
-      name: String(input['name'] || current.name).trim(),
-      street: String(input['street'] || current.street).trim(),
-      zip: String(
-        input['zip'] === undefined ? current.zip : input['zip'] ?? ''
-      ).trim(),
-      city: String(input['city'] || current.city).trim(),
-      phone: core.normalizePhone(
-        input['phone'] === undefined ? current.phone : input['phone']
-      ),
+    const given = (key: string) =>
+      input[key] !== undefined && input[key] !== null && input[key] !== ''
+    // Wie im Mock: ein leerer Name/Straße/Ort lässt den alten Wert stehen,
+    // eine leere PLZ oder Telefonnummer löscht sie.
+    const patch: Partial<PlainDepot> = {}
+    if (given('name')) patch.name = String(input['name']).trim()
+    if (given('street')) patch.street = String(input['street']).trim()
+    if (input['zip'] !== undefined) {
+      patch.zip = String(input['zip'] ?? '').trim()
+    }
+    if (given('city')) patch.city = String(input['city']).trim()
+    if (input['phone'] !== undefined) {
+      const phone = checkPhone(input['phone'])
+      if ('error' in phone) return fail(400, phone.error, phone.message)
+      patch.phone = phone.phone
     }
     for (const [label, value, max] of [
-      ['Der Name', depot.name, DELIVERY_LIMITS.depotName],
-      ['Die Straße', depot.street, DELIVERY_LIMITS.street],
-      ['Die Postleitzahl', depot.zip, DELIVERY_LIMITS.zip],
-      ['Der Ort', depot.city, DELIVERY_LIMITS.city],
-    ] as Array<[string, string, number]>) {
+      ['Der Name', patch.name, DELIVERY_LIMITS.depotName],
+      ['Die Straße', patch.street, DELIVERY_LIMITS.street],
+      ['Die Postleitzahl', patch.zip, DELIVERY_LIMITS.zip],
+      ['Der Ort', patch.city, DELIVERY_LIMITS.city],
+    ] as Array<[string, string | undefined, number]>) {
+      if (value === undefined) continue
       if (value.length > max) {
         const e = tooLong(label, max)
         return fail(400, e.error, e.message)
@@ -880,54 +926,84 @@ export class DeliveryToursService {
       }
     }
 
+    let coordinates: Partial<PlainDepot> | null = null
+    let searchedAddress: string | null = null
     if (input['lat'] !== undefined || input['lon'] !== undefined) {
       const coords = core.validateCoordinates(input['lat'], input['lon'])
       if (coords.error) return fail(400, coords.error, coords.message)
-      depot.lat = coords.lat
-      depot.lon = coords.lon
-      depot.geocodeSource = 'manual'
-      depot.geocodePrecision = null
-    } else if (core.formatAddress(depot) !== core.formatAddress(current)) {
-      // Ohne Koordinaten gibt es kein Depot - jede Tour begänne im Atlantik.
-      depot.lat = null
-      depot.lon = null
-      const found = await this.locate(depot, true)
-      if (!found) {
-        return fail(
-          422,
-          'Address not found',
-          'Die neue Adresse der Backstube wurde nicht gefunden; die alte bleibt bestehen. Koordinaten können auch direkt als lat/lon angegeben werden.'
-        )
+      coordinates = {
+        lat: coords.lat,
+        lon: coords.lon,
+        geocodeSource: 'manual',
+        geocodePrecision: null,
       }
-      Object.assign(depot, found)
+    } else {
+      const current = await this.depot()
+      const target = { ...current, ...patch }
+      if (core.formatAddress(target) !== core.formatAddress(current)) {
+        // Ohne Koordinaten gibt es kein Depot - jede Tour begänne im Atlantik.
+        const found = await this.locate(
+          { ...target, lat: null, lon: null },
+          true
+        )
+        if (!found) {
+          return fail(
+            422,
+            'Address not found',
+            'Die neue Adresse der Backstube wurde nicht gefunden; die alte bleibt bestehen. Koordinaten können auch direkt als lat/lon angegeben werden.'
+          )
+        }
+        coordinates = { ...found }
+        searchedAddress = core.formatAddress(target)
+      }
     }
 
-    return getSequelize().transaction(async (transaction) => {
-      const row = await DeliveryDepot.findByPk(DEPOT_ID, { transaction })
-      if (!row) throw new Error('delivery_depot row 1 is missing')
-      const before = toPlainDepot(row)
-      await row.update(
-        { ...depot, updatedBy: req.user?.id ?? null },
-        { transaction }
-      )
-      const after = toPlainDepot(row)
-      const changed = (Object.keys(after) as Array<keyof PlainDepot>).filter(
-        (k) => after[k] !== before[k]
-      )
-      if (changed.length > 0) {
-        await audit(
-          req,
-          'update',
-          'delivery_depot',
-          DEPOT_ID,
-          { changed },
-          {
-            transaction,
+    try {
+      return await getSequelize().transaction(async (transaction) => {
+        const row = await DeliveryDepot.findByPk(DEPOT_ID, { transaction })
+        if (!row) throw new Error('delivery_depot row 1 is missing')
+        const before = toPlainDepot(row)
+        const depot: PlainDepot = { ...before, ...patch }
+        const addressChanged =
+          core.formatAddress(depot) !== core.formatAddress(before)
+        if (coordinates && searchedAddress === null) {
+          Object.assign(depot, coordinates) // lat/lon aus dem Request
+        } else if (addressChanged) {
+          if (searchedAddress !== core.formatAddress(depot)) {
+            throw new DeliveryRouteError(
+              409,
+              'Depot changed',
+              'Die Backstube wurde inzwischen geändert. Bitte neu laden und noch einmal speichern.'
+            )
           }
+          Object.assign(depot, coordinates)
+        }
+        await row.update(
+          { ...depot, updatedBy: req.user?.id ?? null },
+          { transaction }
         )
-      }
-      return ok(after)
-    })
+        const after = toPlainDepot(row)
+        const changed = (Object.keys(after) as Array<keyof PlainDepot>).filter(
+          (k) => after[k] !== before[k]
+        )
+        if (changed.length > 0) {
+          await audit(
+            req,
+            'update',
+            'delivery_depot',
+            DEPOT_ID,
+            { changed },
+            {
+              transaction,
+            }
+          )
+        }
+        return ok(after)
+      })
+    } catch (error) {
+      if (error instanceof DeliveryRouteError) return error.toResult()
+      throw error
+    }
   }
 
   // ---- drivers
@@ -959,6 +1035,18 @@ export class DeliveryToursService {
         status: 400,
         error: 'User not found',
         message: 'Dieses Benutzerkonto existiert nicht.',
+      }
+    }
+    // Nur ein `fahrer` wird über die Zuordnung auf seine Touren beschränkt;
+    // ein anderes Konto zuzuordnen hätte keine Wirkung (Inhaber sieht alles,
+    // Verkauf liest alles) - das soll niemand still für erledigt halten.
+    if (user.role !== 'fahrer') {
+      return {
+        ok: false,
+        status: 400,
+        error: 'Driver user not fahrer',
+        message:
+          'Einem Fahrer kann nur ein Konto mit der Rolle „Fahrer“ zugeordnet werden.',
       }
     }
     const taken = await DeliveryDriver.findOne({
@@ -1011,6 +1099,8 @@ export class DeliveryToursService {
     const input = (body ?? {}) as Record<string, unknown>
     const named = this.driverName(input['name'])
     if ('ok' in named) return named
+    const phone = checkPhone(input['phone'])
+    if ('error' in phone) return fail(400, phone.error, phone.message)
     return getSequelize().transaction(async (transaction) => {
       let userId: number | null = null
       if (input['userId'] !== undefined) {
@@ -1025,7 +1115,7 @@ export class DeliveryToursService {
       const row = await DeliveryDriver.create(
         {
           name: named.name,
-          phone: core.normalizePhone(input['phone']),
+          phone: phone.phone,
           vehicle: VEHICLES.includes(input['vehicle'] as string)
             ? (input['vehicle'] as string)
             : 'car',
@@ -1071,7 +1161,9 @@ export class DeliveryToursService {
         patch.name = named.name
       }
       if (input['phone'] !== undefined) {
-        patch.phone = core.normalizePhone(input['phone'])
+        const phone = checkPhone(input['phone'])
+        if ('error' in phone) return fail(400, phone.error, phone.message)
+        patch.phone = phone.phone
       }
       if (VEHICLES.includes(input['vehicle'] as string)) {
         patch.vehicle = input['vehicle'] as string
@@ -1127,10 +1219,8 @@ export class DeliveryToursService {
       return fail(400, 'Invalid plannedStart', PLANNED_START_MESSAGE)
     }
     const name = String(input['name'] || 'Tour').trim() || 'Tour'
-    if (name.length > DELIVERY_LIMITS.tourName) {
-      const e = tooLong('Der Name der Tour', DELIVERY_LIMITS.tourName)
-      return fail(400, e.error, e.message)
-    }
+    const nameProblem = checkTourName(name)
+    if (nameProblem) return fail(400, nameProblem.error, nameProblem.message)
     const driverId = core.wholeNumber(input['driverId'], 0)
 
     try {
@@ -1228,11 +1318,8 @@ export class DeliveryToursService {
       return fail(400, 'Invalid plannedStart', PLANNED_START_MESSAGE)
     }
     if (input['name'] !== undefined) {
-      const name = String(input['name']).trim()
-      if (name.length > DELIVERY_LIMITS.tourName) {
-        const e = tooLong('Der Name der Tour', DELIVERY_LIMITS.tourName)
-        return fail(400, e.error, e.message)
-      }
+      const nameProblem = checkTourName(String(input['name']).trim())
+      if (nameProblem) return fail(400, nameProblem.error, nameProblem.message)
     }
     return this.mutateTour(id, req, async (tour, transaction) => {
       const changed: string[] = []
