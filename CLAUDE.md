@@ -170,6 +170,11 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
   sind ganzzahlig und auf 0…10000 begrenzt, negative Preise und Produkte außerhalb des Katalogs
   fliegen raus, Name und Kennungen kommen aus dem Katalog. Beide Server rufen diese eine Funktion;
   `isBusinessDate()` daneben lehnt kalendarisch unmögliche Tage (`2026-02-30`) ab.
+- **Die Wochentags-Vorlage füllt „Neu“ nur bei der Erstbestückung.** Die Erfassungsmaske merkt
+  sich, welche Mengen aus der Vorlage stammen, und nimmt die unveränderten wieder heraus, sobald
+  die Art auf Nachlieferung oder Abholung wechselt; hat der Tag schon eine Erstbestückung, startet
+  die Maske als Nachlieferung. Sonst bucht eine Abholung die Vorlage ein zweites Mal als geliefert
+  (W4-Verifikation: Geliefert 160 statt 80).
 - **`csvCell()` maskiert Formelzellen.** Partner- und Produktnamen landen im CSV-Report; eine
   Zelle, die mit `=`, `+`, `-`, `@`, Tab oder CR beginnt, bekommt ein Apostroph voran und wird
   eingefasst, sonst führt Excel sie aus. Schlichte Zahlen (`-5`) bleiben Zahlen.
