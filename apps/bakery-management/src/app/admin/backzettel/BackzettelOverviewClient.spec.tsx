@@ -99,7 +99,11 @@ describe('Backzettel-Übersicht', () => {
         ? saturdayConfirmed({ date })
         : saturdayDraft({ date, warnings: [] })
     )
-    render(<BackzettelOverviewClient today={TODAY} />)
+    render(
+      <WithSession value={fakeSession({ role: 'backstube' })}>
+        <BackzettelOverviewClient today={TODAY} />
+      </WithSession>
+    )
     const next = within(await screen.findByTestId('next-day'))
     expect(next.getByText('Freitag, 27.11.2026')).toBeInTheDocument()
     expect(await next.findByText('Freigegeben')).toBeInTheDocument()
@@ -112,6 +116,27 @@ describe('Backzettel-Übersicht', () => {
     expect(await sat.findByText('Entwurf')).toBeInTheDocument()
     expect(sat.getByText('Vorbestellungen in 1 Zeile')).toBeInTheDocument()
     expect(sat.getByText('Hefeteig')).toBeInTheDocument()
+  })
+
+  it('Entwurf: „Planen" nur für Inhaber/Backstube, Verkauf bekommt „Ansehen" (W4-verify r3)', async () => {
+    const { unmount } = render(
+      <WithSession value={fakeSession({ role: 'backstube' })}>
+        <BackzettelOverviewClient today={TODAY} />
+      </WithSession>
+    )
+    const next = within(await screen.findByTestId('next-day'))
+    expect(await next.findByRole('link', { name: /Planen/ })).toBeVisible()
+    unmount()
+    render(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>
+        <BackzettelOverviewClient today={TODAY} />
+      </WithSession>
+    )
+    const asVerkauf = within(await screen.findByTestId('next-day'))
+    expect(
+      await asVerkauf.findByRole('link', { name: /Ansehen/ })
+    ).toBeVisible()
+    expect(asVerkauf.queryByRole('link', { name: /Planen/ })).toBeNull()
   })
 
   it('ohne Stammdaten: Hinweis und Tage als „Keine Stammdaten"', async () => {
