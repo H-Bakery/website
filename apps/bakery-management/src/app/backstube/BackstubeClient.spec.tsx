@@ -227,14 +227,17 @@ describe('Backstube-Tablet', () => {
   })
 
   it('nimmt den Haken zurück, wenn der Server ablehnt', async () => {
-    mocked.setLineDone.mockRejectedValue(new Error('Netzwerkfehler'))
+    mocked.setLineDone.mockRejectedValue(new TypeError('Failed to fetch'))
     renderTablet()
     fireEvent.click(
       await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
     )
     expect(
-      await screen.findByText('Nicht gespeichert: Netzwerkfehler')
+      await screen.findByText(
+        'Nicht gespeichert: Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
     ).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
     expect(screen.getByTestId(`bs-tick-${WECK}`)).toHaveAttribute(
       'aria-checked',
       'false'
@@ -379,14 +382,124 @@ describe('Backstube-Tablet', () => {
   it('behält den Zettel, wenn ein Neuladen scheitert', async () => {
     renderTablet()
     await screen.findByTestId('bs-progress')
-    mocked.fetchBackzettelDay.mockRejectedValueOnce(new Error('Offline'))
+    mocked.fetchBackzettelDay.mockRejectedValueOnce(
+      new TypeError('Failed to fetch')
+    )
     await act(async () => {
       window.dispatchEvent(new Event('focus'))
     })
     expect(
-      await screen.findByText(/Keine Verbindung zum Server/)
+      await screen.findByText(/Keine Verbindung zum Server – bitte WLAN prüfen/)
     ).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
     expect(screen.getByTestId(`bs-total-${WECK}`)).toHaveTextContent('65')
+  })
+
+  it('Proxy-Fehler und Serverfehler erscheinen deutsch, nie als HTTP-Text', async () => {
+    renderTablet()
+    await screen.findByTestId('bs-progress')
+    mocked.fetchBackzettelDay.mockRejectedValueOnce(
+      Object.assign(new Error('HTTP 502: Bad Gateway'), { status: 502 })
+    )
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    expect(
+      await screen.findByText(/Keine Verbindung zum Server – bitte WLAN prüfen/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Bad Gateway/)).not.toBeInTheDocument()
+
+    mocked.fetchBackzettelDay.mockRejectedValueOnce(
+      apiError(403, 'forbidden', 'Keine Berechtigung für diese Aktion.')
+    )
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'))
+    })
+    expect(
+      await screen.findByText(
+        /Neu laden fehlgeschlagen: Keine Berechtigung für diese Aktion\./
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Keine Verbindung/)).not.toBeInTheDocument()
+  })
+
+  describe('folgt der Tagesregel wieder, wenn sie umspringt', () => {
+    function renderWithClock(start: Date) {
+      const clock = { now: start }
+      render(
+        <WithSession
+          value={fakeSession({ role: 'backstube', sessionKind: 'station' })}
+        >
+          <BackstubeClient clock={() => clock.now} />
+        </WithSession>
+      )
+      return clock
+    }
+
+    async function nextMinute() {
+      await act(async () => {
+        jest.advanceTimersByTime(60 * 1000)
+      })
+    }
+
+    beforeEach(() => {
+      mocked.fetchBackzettelDay.mockImplementation(async (date) =>
+        date === '2026-11-30'
+          ? { date, status: 'ruhetag', weekday: null, message: 'Ruhetag' }
+          : saturdayConfirmed({ date })
+      )
+    })
+
+    it('12 Uhr: eine Wahl „Heute" vom Vormittag weicht dem nächsten Backtag', async () => {
+      jest.useFakeTimers()
+      try {
+        const clock = renderWithClock(at('2026-11-27', 11))
+        await screen.findByTestId('bs-progress')
+        expect(screen.getByTestId('bs-date')).toHaveTextContent('27.11.2026')
+        fireEvent.click(screen.getByTestId('bs-choice-morgen'))
+        fireEvent.click(screen.getByTestId('bs-choice-heute'))
+        await waitFor(() =>
+          expect(screen.getByTestId('bs-date')).toHaveTextContent('27.11.2026')
+        )
+
+        clock.now = new Date(2026, 10, 27, 12, 1)
+        await nextMinute()
+        await waitFor(() =>
+          expect(screen.getByTestId('bs-date')).toHaveTextContent(
+            'Samstag, 28.11.2026'
+          )
+        )
+        expect(screen.getByTestId('bs-choice-morgen')).toHaveAttribute(
+          'aria-pressed',
+          'true'
+        )
+        expect(mocked.fetchBackzettelDay).toHaveBeenLastCalledWith(SAT)
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('Mitternacht: „Heute" vom Sonntag zeigt am Montag nicht den Ruhetag', async () => {
+      jest.useFakeTimers()
+      try {
+        const clock = renderWithClock(at('2026-11-29', 15))
+        await screen.findByTestId('bs-progress')
+        fireEvent.click(screen.getByTestId('bs-choice-heute'))
+        await waitFor(() =>
+          expect(screen.getByTestId('bs-date')).toHaveTextContent('29.11.2026')
+        )
+
+        clock.now = new Date(2026, 10, 30, 0, 30)
+        await nextMinute()
+        await waitFor(() =>
+          expect(screen.getByTestId('bs-date')).toHaveTextContent('01.12.2026')
+        )
+        expect(screen.queryByTestId('bs-ruhetag')).not.toBeInTheDocument()
+        expect(mocked.fetchBackzettelDay).not.toHaveBeenCalledWith('2026-11-30')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
   })
 
   it('Vorbereitung heute: für den nächsten Backtag', async () => {
@@ -477,6 +590,23 @@ describe('Backstube-Tablet', () => {
     expect(
       screen.getByRole('link', { name: 'Planung & Druck' })
     ).toHaveAttribute('href', `/admin/backzettel/${SAT}`)
+  })
+
+  it('„Zur Verwaltung" nur mit persönlicher Sitzung, nicht an der Station', async () => {
+    const { unmount } = renderTablet()
+    await screen.findByTestId('bs-progress')
+    expect(
+      screen.queryByRole('link', { name: 'Zur Verwaltung' })
+    ).not.toBeInTheDocument()
+    unmount()
+
+    renderTablet({
+      session: fakeSession({ role: 'inhaber', sessionKind: 'personal' }),
+    })
+    await screen.findByTestId('bs-progress')
+    expect(
+      screen.getByRole('link', { name: 'Zur Verwaltung' })
+    ).toHaveAttribute('href', '/admin')
   })
 
   it('Verkauf (nur lesen) bekommt weder Haken noch „Gesehen"', async () => {

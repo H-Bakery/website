@@ -45,6 +45,7 @@ import {
   nextLabel,
   type BackstubeChoice,
 } from '../../lib/backstubeDay'
+import { describeBackstubeError } from '../../lib/backstubeErrors'
 import { useSession } from '../../lib/session'
 import { isPathAllowedForRole } from '../../lib/roles'
 import LogoutButton from '../../components/auth/LogoutButton'
@@ -69,7 +70,7 @@ const STALE_CODES = new Set([
 ])
 
 function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return describeBackstubeError(error, fallback).text
 }
 
 function isStale(error: unknown): boolean {
@@ -126,12 +127,19 @@ export default function BackstubeClient({
   const [now, setNow] = React.useState<Date>(() => clock())
   const [config, setConfig] = React.useState<BackzettelConfigData | null>(null)
   const [configTried, setConfigTried] = React.useState(false)
-  const [choice, setChoice] = React.useState<BackstubeChoice | null>(null)
+  /** Die Wahl gilt nur für die Regel-Lage, in der sie getroffen wurde. */
+  const [choice, setChoice] = React.useState<{
+    value: BackstubeChoice
+    rule: string
+  } | null>(null)
   const [tab, setTab] = React.useState<TabId>('zettel')
 
   const [result, setResult] = React.useState<BackzettelDayResult | null>(null)
   const [loadedAt, setLoadedAt] = React.useState<Date | null>(null)
-  const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [loadError, setLoadError] = React.useState<{
+    text: string
+    offline: boolean
+  } | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
   const [pendingIds, setPendingIds] = React.useState<Set<number>>(new Set())
@@ -144,12 +152,10 @@ export default function BackstubeClient({
     () => backstubeDates(now, config?.days),
     [now, config]
   )
-  // Springt die Regel um (12 Uhr, Mitternacht), folgt das Tablet ihr wieder.
-  React.useEffect(() => {
-    setChoice(null)
-  }, [dates.auto, dates.today])
-
-  const effective = choice ?? dates.auto
+  // Springt die Regel um (12 Uhr, Mitternacht), folgt das Tablet ihr wieder -
+  // schon im selben Render, damit nicht erst der alte Tag geladen wird.
+  const rule = `${dates.today}|${dates.auto}`
+  const effective = choice && choice.rule === rule ? choice.value : dates.auto
   const date = dateForChoice(dates, effective)
   const prepDate = dates.next
 
@@ -194,7 +200,10 @@ export default function BackstubeClient({
     } catch (error) {
       if (dateRef.current !== target) return
       setLoadError(
-        messageOf(error, 'Der Backzettel konnte nicht geladen werden.')
+        describeBackstubeError(
+          error,
+          'Der Backzettel konnte nicht geladen werden.'
+        )
       )
     } finally {
       loadingRef.current = false
@@ -404,6 +413,12 @@ export default function BackstubeClient({
   const planPath = `/admin/backzettel/${date}`
   const mayPlan =
     !!role && isPathAllowedForRole(planPath, role, session.sessionKind)
+  // Wer mit Passwort aus der Verwaltung hierher kommt (Inhaber über die
+  // Seitenleiste), braucht einen Weg zurück; das Tablet an der Station nicht.
+  const mayAdmin =
+    session.sessionKind === 'personal' &&
+    !!role &&
+    isPathAllowedForRole('/admin', role, session.sessionKind)
 
   const lines = day ? allLines(day) : []
   const doneCount = lines.filter((l) => l.doneAt).length
@@ -428,6 +443,24 @@ export default function BackstubeClient({
         // global.css blendet jedes <section> beim Einhängen 0,8 s ein. Auf
         // dem Tablet (Tag wechseln, Neuladen) stünde der Zettel dann blass da.
         '& section, & .MuiChip-root': { animation: 'none' },
+        // Gedruckt wird über „Planung & Druck" (Z7); Strg+P hier soll
+        // wenigstens keine Bedienelemente und keinen dunklen Grund drucken.
+        '@media print': {
+          minHeight: 0,
+          pb: 0,
+          bgcolor: '#fff',
+          color: '#000',
+          '& [data-print="hide"]': { display: 'none !important' },
+          '& header': { position: 'static' },
+          // Dunkle Karten und farbige Banner würden mit schwarzer Schrift
+          // unlesbar - im Druck alles schwarz auf weiß, Rahmen bleiben.
+          '& *': {
+            backgroundColor: 'transparent !important',
+            color: '#000 !important',
+            boxShadow: 'none !important',
+            opacity: '1 !important',
+          },
+        },
       }}
     >
       <Box
@@ -477,10 +510,11 @@ export default function BackstubeClient({
           {/* Die Vorbereitung gilt immer dem nächsten Backtag - dort kein Umschalter. */}
           {tab === 'zettel' && (
             <ToggleButtonGroup
+              data-print="hide"
               exclusive
               value={effective}
               onChange={(_, value: BackstubeChoice | null) => {
-                if (value) setChoice(value)
+                if (value) setChoice({ value, rule })
               }}
               aria-label="Tag wählen"
               sx={{
@@ -528,7 +562,30 @@ export default function BackstubeClient({
               </ToggleButton>
             </ToggleButtonGroup>
           )}
-          <Stack direction="row" alignItems="center" sx={{ gap: 1 }}>
+          <Stack
+            direction="row"
+            alignItems="center"
+            flexWrap="wrap"
+            data-print="hide"
+            sx={{ gap: 1 }}
+          >
+            {mayAdmin && (
+              <Button
+                component={Link}
+                href="/admin"
+                variant="outlined"
+                color="inherit"
+                size="large"
+                sx={{
+                  minHeight: 56,
+                  fontSize: '1.05rem',
+                  fontWeight: 700,
+                  textTransform: 'none',
+                }}
+              >
+                Zur Verwaltung
+              </Button>
+            )}
             <IconButton
               onClick={refresh}
               aria-label="Neu laden"
@@ -560,6 +617,7 @@ export default function BackstubeClient({
             setActionError(null)
           }}
           aria-label="Ansicht"
+          data-print="hide"
           textColor="inherit"
           TabIndicatorProps={{ sx: { height: 4, bgcolor: 'text.primary' } }}
           sx={{
@@ -592,8 +650,11 @@ export default function BackstubeClient({
           <Stack spacing={2}>
             {loadError && shown && (
               <Alert severity="warning" sx={{ fontSize: '1.1rem' }}>
-                Keine Verbindung zum Server ({loadError}) – angezeigt wird der
-                Stand von {loadedAt ? timeOf(loadedAt) : '–'}.
+                {loadError.offline
+                  ? loadError.text
+                  : `Neu laden fehlgeschlagen: ${loadError.text}`}{' '}
+                Angezeigt wird der Stand von {loadedAt ? timeOf(loadedAt) : '–'}
+                .
               </Alert>
             )}
             {!shown && loadError && (
@@ -610,7 +671,7 @@ export default function BackstubeClient({
                   </Button>
                 }
               >
-                {loadError}
+                {loadError.text}
               </Alert>
             )}
             {!shown && !loadError && (
@@ -783,6 +844,7 @@ export default function BackstubeClient({
               direction="row"
               flexWrap="wrap"
               alignItems="center"
+              data-print="hide"
               sx={{ gap: 2, pt: 1 }}
             >
               <Typography sx={{ fontSize: '1rem', color: 'text.secondary' }}>

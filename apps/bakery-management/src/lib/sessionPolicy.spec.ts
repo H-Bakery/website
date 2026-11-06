@@ -2,6 +2,7 @@ import {
   SESSION_END_MESSAGES,
   STATION_MAX_SESSION_MS,
   idleLimitMs,
+  isBackstubePath,
   nextClockTimeAfter,
   parseClockTime,
   sessionEndReason,
@@ -23,6 +24,54 @@ describe('idleLimitMs', () => {
     expect(idleLimitMs('personal', { personalHours: '0.5' })).toBe(30 * MIN)
     expect(idleLimitMs('station', { stationMinutes: 'abc' })).toBe(10 * MIN)
     expect(idleLimitMs('station', { stationMinutes: '-1' })).toBe(10 * MIN)
+  })
+})
+
+describe('Backstube-Tablet (Z6): eigene Leerlauf-Grenze', () => {
+  const backstube = { role: 'backstube', path: '/backstube' }
+
+  it('isBackstubePath: /backstube und darunter, sonst nicht', () => {
+    expect(isBackstubePath('/backstube')).toBe(true)
+    expect(isBackstubePath('/backstube/x')).toBe(true)
+    expect(isBackstubePath('/backstubeX')).toBe(false)
+    expect(isBackstubePath('/admin/backzettel')).toBe(false)
+    expect(isBackstubePath(null)).toBe(false)
+  })
+
+  it('Station + Rolle backstube + /backstube: Vorgabe 12 h statt 10 min', () => {
+    expect(idleLimitMs('station', {}, backstube)).toBe(12 * HOUR)
+    expect(idleLimitMs('station', { backstubeMinutes: '90' }, backstube)).toBe(
+      90 * MIN
+    )
+    expect(idleLimitMs('station', { backstubeMinutes: '0' }, backstube)).toBe(
+      12 * HOUR
+    )
+  })
+
+  it('andere Seite, andere Rolle oder persönliche Sitzung: unverändert', () => {
+    expect(
+      idleLimitMs('station', {}, { role: 'backstube', path: '/admin' })
+    ).toBe(10 * MIN)
+    expect(
+      idleLimitMs('station', {}, { role: 'inhaber', path: '/backstube' })
+    ).toBe(10 * MIN)
+    expect(
+      idleLimitMs('station', {}, { role: 'verkauf', path: '/backstube' })
+    ).toBe(10 * MIN)
+    expect(idleLimitMs('personal', {}, backstube)).toBe(12 * HOUR)
+  })
+
+  it('die 12-h-Grenze nach der PIN und das Tagesende gelten weiter', () => {
+    const start = new Date(2026, 10, 6, 1, 30).getTime()
+    const limit = idleLimitMs('station', {}, backstube)
+    const s = { sessionKind: 'station' as const, startedAt: start }
+    expect(sessionEndReason(s, start + 3 * HOUR, limit, null)).toBeNull()
+    expect(
+      sessionEndReason(s, start + STATION_MAX_SESSION_MS, limit, null)
+    ).toBe('max_age')
+    expect(
+      sessionEndReason(s, start + 11 * HOUR, limit, parseClockTime('11:00'))
+    ).toBe('closing')
   })
 })
 

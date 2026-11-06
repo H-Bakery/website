@@ -666,7 +666,16 @@ Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube). Was man 
   `BACKSTUBE_SWITCH_HOUR`) heute - die Schicht ab 2 Uhr läuft -, ab 12 Uhr der nächste
   Produktionstag; ist heute kein Produktionstag (`config.days`), immer der nächste. Der Umschalter
   „Heute"/„Morgen" zeigt den anderen; liegt der nächste Backtag nicht auf morgen (So → Di), heißt
-  der Knopf wie der Tag. Springt die Regel um (12 Uhr, Mitternacht), folgt die Ansicht ihr wieder.
+  der Knopf wie der Tag. Springt die Regel um (12 Uhr, Mitternacht), folgt die Ansicht ihr wieder:
+  eine Wahl gilt nur für die Regel-Lage (`today|auto`), in der sie getroffen wurde - abgeleitet im
+  Render, nicht per Effekt, damit nicht erst der alte Tag (am Montag der Ruhetag) geladen wird.
+- **Leerlauf: das Tablet bleibt angemeldet.** Eine Stationssitzung der Rolle `backstube` auf
+  `/backstube` endet nicht nach den 10 min der Station (mit Teig an den Händen tippt niemand), sondern
+  nach `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (Vorgabe 720 = 12 h, `idleLimitMs(kind, env, { role,
+path })` in `sessionPolicy.ts`, gelesen bei jeder Prüfung aus `window.location.pathname`) -
+  praktisch also mit der 12-h-Grenze nach der PIN oder `NEXT_PUBLIC_STATION_LOGOUT_AT`. Andere
+  Seiten und Rollen an der Station behalten 10 min; auch ein **Inhaber per PIN** auf `/backstube`
+  (er trägt mehr Rechte). Wer am Backstube-Tablet bäckt, meldet sich mit einem `backstube`-Konto an.
 - **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube` (sonst kein Haken; die API
   sagt dasselbe): ein 72-px-Haken je Zeile, sofort gesetzt (`POST …/lines/:id/done|undone`), bei
   einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409 `not_confirmed`/`confirmed`/… lädt
@@ -681,15 +690,24 @@ Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube). Was man 
   (vorbereitet am Kalender-Vortag ab 14 Uhr); ist der Vortag Ruhetag, steht der Hinweis aus
   `prepDateProvisional` da. Dort kein Umschalter - die Vorbereitung gilt immer dem nächsten Backtag.
 - **Neu geladen** wird alle 60 s (`BACKSTUBE_REFRESH_MS`), bei `focus` und `visibilitychange`.
-  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit „Keine Verbindung zum Server … Stand von
-  HH:MM" (WLAN in der Backstube). Das Lesen eines freigegebenen Tages schreibt Deltas (Z3).
+  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit Hinweis und „Stand von HH:MM".
+  **Fehlertexte** über `src/lib/backstubeErrors.ts` (`describeBackstubeError`): kein Server erreicht
+  (fetch-Fehler, Zeitüberschreitung, 502-504 ohne JSON-Kennung von Caddy) → „Keine Verbindung zum
+  Server – bitte WLAN prüfen."; 4xx mit deutscher API-`message` → diese („Neu laden fehlgeschlagen: …"
+  bzw. „Nicht gespeichert: …"); sonst ein deutscher Text mit Statuscode. `Failed to fetch` oder
+  `HTTP 502: Bad Gateway` erscheinen nie. Das Lesen eines freigegebenen Tages schreibt Deltas (Z3).
 - **Kontrast:** feste Farbpaare je Modus in `components/backstube/backstubeColors.ts` (Banner,
   Nachtrag, Haken ≥ 7:1, geprüft in `backstubeColors.spec.ts`), keine MUI-`*.main`-Texte. Die Seite
   schaltet das `section`-Einblenden aus `global.css` ab, sonst stünde der Zettel nach jedem
   Tageswechsel 0,8 s blass da.
 - **Kein eigener Druck:** gedruckt wird über „Planung & Druck" (`/admin/backzettel/[datum]`, Z7).
+  Strg+P blendet Umschalter, Knöpfe und Reiter (`data-print="hide"`) aus und druckt schwarz auf weiß.
+- **„Zur Verwaltung"** (→ `/admin`) nur mit persönlicher Sitzung (Inhaber über die Seitenleiste);
+  das Tablet an der Station braucht ihn nicht.
 
-Tests: `src/lib/backstubeDay.spec.ts`, `src/app/backstube/BackstubeClient.spec.tsx`,
+Tests: `src/lib/backstubeDay.spec.ts`, `src/lib/backstubeErrors.spec.ts`,
+`src/lib/sessionPolicy.spec.ts` + `src/lib/session.spec.tsx` (Leerlauf am Tablet),
+`src/app/backstube/BackstubeClient.spec.tsx`,
 `src/components/backstube/backstubeColors.spec.ts`. Die Fixtures in `backzettelFixtures.ts` haben
 seit Z6 eindeutige Zeilen-IDs (vorher teilten sich zwei Zeilen eine).
 
@@ -911,7 +929,9 @@ Sieben Dinge, die man wissen muss:
   (`src/lib/sessionPolicy.ts`): Station nach `NEXT_PUBLIC_STATION_IDLE_MINUTES` (10) zurück zu den
   Kacheln, spätestens 12 h nach der PIN; optional zur Uhrzeit `NEXT_PUBLIC_STATION_LOGOUT_AT`
   (`HH:MM`, Ortszeit, z. B. Ladenschluss - ohne Wert keine feste Uhrzeit, weil die Backstube
-  nachmittags vorbereitet); persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h).
+  nachmittags vorbereitet); persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h). Ausnahme
+  Backstube-Tablet (Z6): Rolle `backstube` auf `/backstube` nach
+  `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (720), siehe dort.
   „Abmelden" (`components/auth/LogoutButton.tsx`) steht in der Kopfzeile, auf Stationen groß -
   Z6 (`/backstube`, ohne Admin-Layout) muss ihn selbst einbinden.
 

@@ -43,6 +43,7 @@ import {
 } from './authSession'
 import {
   SESSION_END_MESSAGES,
+  idleLimitMs,
   sessionEndReason,
   type SessionEndReason,
 } from './sessionPolicy'
@@ -81,6 +82,12 @@ const IDLE_CHECK_MS = 15 * 1000
 /** Höchstens so oft wird die letzte Bedienung gespeichert. */
 const ACTIVITY_WRITE_MS = 5 * 1000
 const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'wheel']
+
+/** Leerlauf-Grenze für die Seite, die gerade offen ist (Backstube-Tablet). */
+function currentIdleLimit(kind: SessionKind, role: string | null | undefined) {
+  const path = typeof window === 'undefined' ? null : window.location.pathname
+  return idleLimitMs(kind, undefined, { role, path })
+}
 
 function statusOf(error: unknown): number | undefined {
   const status = (error as Partial<ApiError> | null)?.status
@@ -220,7 +227,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     } else {
       const reason = sessionEndReason(
         { ...stored, lastActivityAt: loadLastActivity() },
-        Date.now()
+        Date.now(),
+        currentIdleLimit(stored.sessionKind, stored.user?.role)
       )
       if (reason) {
         void endSession(reason)
@@ -278,6 +286,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // Leerlauf: Bedienung merken, regelmäßig prüfen.
   const kind = session?.sessionKind
   const startedAt = session?.startedAt
+  const role = session?.user?.role
   React.useEffect(() => {
     if (status !== 'authenticated' || !kind || startedAt === undefined) return
     let lastWrite = Date.now()
@@ -295,7 +304,10 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     const timer = window.setInterval(() => {
       const reason = sessionEndReason(
         { sessionKind: kind, startedAt, lastActivityAt: loadLastActivity() },
-        Date.now()
+        Date.now(),
+        // Je Prüfung neu: wer vom Backstube-Tablet weg navigiert, bekommt
+        // wieder die kurze Grenze.
+        currentIdleLimit(kind, role)
       )
       if (reason) void endSession(reason)
     }, IDLE_CHECK_MS)
@@ -305,7 +317,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       )
       window.clearInterval(timer)
     }
-  }, [status, kind, startedAt, endSession])
+  }, [status, kind, startedAt, role, endSession])
 
   const establish = React.useCallback((next: StoredSession) => {
     saveSession(next)

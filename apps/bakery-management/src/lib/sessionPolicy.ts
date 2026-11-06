@@ -11,6 +11,14 @@
  *   Uhrzeit erreicht ist ("Abmeldung bei Ladenschluss", roadmap F1). Ohne
  *   Wert gibt es keine feste Uhrzeit - die Backstube arbeitet nachmittags
  *   (Vorbereitung 14-15 Uhr), ein Ladenschluss passt nicht für jede Station.
+ * - **Backstube-Tablet** (Z6): eine Stationssitzung der Rolle `backstube`
+ *   auf `/backstube` steht dauerhaft offen - mit Teig an den Händen tippt
+ *   niemand alle 10 min aufs Tablet, und der Zettel lädt von selbst neu.
+ *   Dort gilt `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (Vorgabe 720 = 12 h, also
+ *   praktisch nur die 12-h-Grenze nach der PIN und ein gesetztes
+ *   `NEXT_PUBLIC_STATION_LOGOUT_AT`). Jede andere Rolle oder Seite an der
+ *   Station behält die 10 min: ein Inhaber, der per PIN am Backstube-Tablet
+ *   steht, trägt mehr Rechte als die Backstube.
  * - **Persönlich** (Benutzername + Passwort): nach
  *   `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (Vorgabe 12) Stunden ohne Bedienung.
  *
@@ -24,6 +32,8 @@ const HOUR = 60 * MINUTE
 
 export const DEFAULT_STATION_IDLE_MINUTES = 10
 export const DEFAULT_PERSONAL_IDLE_HOURS = 12
+/** Backstube-Tablet: so lange wie die Stationssitzung selbst. */
+export const DEFAULT_BACKSTUBE_IDLE_MINUTES = 12 * 60
 /** Wie `STATION_SESSION_TTL_SECONDS` der API. */
 export const STATION_MAX_SESSION_MS = 12 * HOUR
 
@@ -32,20 +42,37 @@ function positive(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
-/** Leerlauf-Grenze je Sitzungsart in ms. */
+/** `/backstube` und darunter - die Seite, die in der Backstube offen steht. */
+export function isBackstubePath(path: string | null | undefined): boolean {
+  return path === '/backstube' || !!path?.startsWith('/backstube/')
+}
+
+/**
+ * Leerlauf-Grenze in ms - je Sitzungsart, und für die Backstube-Rolle an der
+ * Station auf `/backstube` die eigene, lange Grenze (siehe oben).
+ */
 export function idleLimitMs(
   kind: SessionKind,
   env: {
     stationMinutes?: string
     personalHours?: string
+    backstubeMinutes?: string
   } = {
     stationMinutes: process.env.NEXT_PUBLIC_STATION_IDLE_MINUTES,
     personalHours: process.env.NEXT_PUBLIC_IDLE_LOGOUT_HOURS,
-  }
+    backstubeMinutes: process.env.NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES,
+  },
+  where: { role?: string | null; path?: string | null } = {}
 ): number {
-  return kind === 'station'
-    ? positive(env.stationMinutes, DEFAULT_STATION_IDLE_MINUTES) * MINUTE
-    : positive(env.personalHours, DEFAULT_PERSONAL_IDLE_HOURS) * HOUR
+  if (kind !== 'station') {
+    return positive(env.personalHours, DEFAULT_PERSONAL_IDLE_HOURS) * HOUR
+  }
+  if (where.role === 'backstube' && isBackstubePath(where.path)) {
+    return (
+      positive(env.backstubeMinutes, DEFAULT_BACKSTUBE_IDLE_MINUTES) * MINUTE
+    )
+  }
+  return positive(env.stationMinutes, DEFAULT_STATION_IDLE_MINUTES) * MINUTE
 }
 
 export type SessionEndReason = 'idle' | 'max_age' | 'closing'
