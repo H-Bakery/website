@@ -46,6 +46,8 @@ export class DeliveryStop extends Model<
   declare geocodeSource: CreationOptional<string | null>
   declare geocodePrecision: CreationOptional<string | null>
   declare importKey: CreationOptional<string | null>
+  /** Set by the DSGVO run (P4 rule, 90 days after the tour date). */
+  declare anonymizedAt: CreationOptional<Date | null>
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 
@@ -89,6 +91,7 @@ export class DeliveryStop extends Model<
           allowNull: true,
           unique: true,
         },
+        anonymizedAt: { type: DataTypes.DATE, allowNull: true },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
       },

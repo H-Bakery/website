@@ -789,6 +789,7 @@ describe('B8 delivery tours migration', () => {
         'position',
         'pickup_point_id',
         'import_key',
+        'anonymized_at',
       ])
     )
     const depot = () =>

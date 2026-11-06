@@ -368,7 +368,9 @@ Nicht gesichert, weil reproduzierbar: Code (`/opt/bakery`), hq-Lese-Klon (liegt 
 **Anonymisierung (P4, DSGVO).** Jede Nacht um 23:45 (`bakery-anonymize.timer`) setzt
 `cli.js anonymize-preorders` bei **jeder** Vorbestellung, deren Abholtag mehr als 90 Tage
 zurückliegt – egal in welchem Status –, den Namen auf `anonymisiert` und löscht Telefon und
-Anmerkung; Positionen und Summen bleiben. Der Bericht zählt unter `unfinished`, wie viele davon nie
+Anmerkung; Positionen und Summen bleiben. Im selben Lauf (seit B8) verlieren Lieferstopps, deren
+Tourtag mehr als 90 Tage zurückliegt, Name, Telefon, Hinweis, Straße und Koordinaten (Bericht
+`deliveryStops`). Der Bericht zählt unter `unfinished`, wie viele davon nie
 abgeschlossen waren (offen/bereit) – wächst die Zahl, werden Übergaben nicht abgehakt. Der Lauf
 **migriert nie**: stehen nach einem Deploy Migrationen aus (API-Neustart fehlgeschlagen), bricht er
 mit Exit 1 ab und nennt sie – dann zuerst die API in Ordnung bringen (§4). Von Hand:

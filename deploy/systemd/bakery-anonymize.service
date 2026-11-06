@@ -1,5 +1,7 @@
 # DSGVO (roadmap P4): Name, Telefon und Anmerkung jeder Vorbestellung
-# 90 Tage nach dem Abholtag löschen (egal in welchem Status).
+# 90 Tage nach dem Abholtag löschen (egal in welchem Status). Seit B8 im selben
+# Lauf: Name, Telefon, Hinweis, Straße und Koordinaten der Lieferstopps 90 Tage
+# nach dem Tourtag (Bericht `deliveryStops`).
 # Migriert nie: stehen Migrationen aus (Deploy ohne erfolgreichen API-Neustart),
 # endet der Lauf mit Exit 1, statt das Schema unter dem alten Prozess zu ändern.
 # Gestartet von bakery-anonymize.timer (23:45). Idempotent; ein Lauf, der

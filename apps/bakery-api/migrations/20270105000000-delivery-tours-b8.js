@@ -243,6 +243,9 @@ module.exports = {
           allowNull: true,
           unique: true,
         },
+        // DSGVO wie P4: 90 Tage nach dem Tourtag Name, Telefon, Hinweis,
+        // Straße und Koordinaten gelöscht (`cli.js anonymize-preorders`).
+        anonymized_at: { type: Sequelize.DATE, allowNull: true },
         ...timestamps,
       })
       await queryInterface.addIndex('delivery_stops', ['tour_id', 'position'])

@@ -28,10 +28,13 @@ import {
   getSequelize,
 } from '../models'
 import { DEPOT_ID } from '../models/DeliveryDepot'
+import { anonymizeDeliveryStops } from './delivery-anonymize'
 import { PlainStop, checkStopText } from './delivery-tours.service'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./delivery-import.core')
+const preordersCore = require('./delivery-preorders.core')
+const shopOrders = require('./shop-orders.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 export const DeliveryImportInputError: new (message: string) => Error =
@@ -41,6 +44,9 @@ export interface DeliveryImportOptions {
   dryRun?: boolean
   /** Depot (Adresse, Koordinaten) aus der Datei übernehmen. */
   updateDepot?: boolean
+  /** Heute (Berlin) für die DSGVO-Frist; Vorgabe: jetzt. Tests. */
+  today?: string
+  now?: Date
 }
 
 export interface DeliveryImportProblem {
@@ -55,9 +61,17 @@ export interface DeliveryImportReport {
   tours: {
     created: Array<{ key: string; date: string; stops: number }>
     existing: Array<{ key: string; date: string }>
+    /** Nicht angelegt (abgelehnte Stopps) - ein späterer Lauf holt sie nach. */
+    skipped: Array<{ key: string; date: string }>
   }
   stops: number
-  geocache: { created: number; existing: number }
+  /**
+   * Davon gleich anonymisiert (P4-Frist, 90 Tage nach dem Tourtag) - ein
+   * alter Stopp aus dem Mock-Store landet nie im Klartext in der Datenbank.
+   */
+  anonymized: number
+  /** `removed`: Einträge, die die Anonymisierung danach wieder gelöscht hat. */
+  geocache: { created: number; existing: number; removed: number }
   depot: 'updated' | 'unchanged' | 'differs' | 'missing'
   problems: DeliveryImportProblem[]
 }
@@ -73,12 +87,18 @@ export async function importDeliveryTours(
   options: DeliveryImportOptions = {}
 ): Promise<DeliveryImportReport> {
   const plan = core.planDeliveryImport(store)
+  const now = options.now ?? new Date()
+  const cutoff = preordersCore.anonymizeCutoff(
+    options.today ?? shopOrders.berlinToday(now)
+  )
+  if (!cutoff) throw new Error('Ungültiger Stichtag für die Anonymisierung.')
   const report: DeliveryImportReport = {
     dryRun: !!options.dryRun,
     drivers: { created: 0, existing: 0 },
-    tours: { created: [], existing: [] },
+    tours: { created: [], existing: [], skipped: [] },
     stops: 0,
-    geocache: { created: 0, existing: 0 },
+    anonymized: 0,
+    geocache: { created: 0, existing: 0, removed: 0 },
     depot: plan.depot ? 'unchanged' : 'missing',
     problems: [...plan.problems],
   }
@@ -136,17 +156,33 @@ export async function importDeliveryTours(
           report.tours.existing.push({ key: tour.key, date: tour.date })
           continue
         }
-        const stops = []
-        for (const stop of tour.stops) {
-          const problem = checkStopText({ id: 0, ...stop.data } as PlainStop)
-          if (problem) {
+        // Ein abgelehnter Stopp hält die ganze Tour zurück: angelegt, trüge
+        // sie ihren `import_key`, und ein zweiter Lauf mit berichtigter Datei
+        // hielte sie für vorhanden - der Stopp käme nie mehr dazu.
+        const rejected = tour.stops
+          .map((stop: { key: string; data: PlainStop }) => ({
+            stop,
+            problem: checkStopText({ id: 0, ...stop.data } as PlainStop),
+          }))
+          .filter((r: { problem: unknown }) => r.problem)
+        if (rejected.length > 0) {
+          for (const { stop, problem } of rejected) {
             report.problems.push({
               entity: 'stop',
               key: stop.key,
-              message: `${stop.key}: ${problem.message}`,
+              message: `${stop.key}: ${problem?.message ?? ''}`,
             })
-            continue
           }
+          report.problems.push({
+            entity: 'tour',
+            key: tour.key,
+            message: `${tour.key}: Tour vom ${tour.date} nicht übernommen, weil ${rejected.length} Stopp(s) abgelehnt wurden - Datei berichtigen und noch einmal importieren.`,
+          })
+          report.tours.skipped.push({ key: tour.key, date: tour.date })
+          continue
+        }
+        const stops = []
+        for (const stop of tour.stops) {
           if (stop.data.pickupPointId && !points.has(stop.data.pickupPointId)) {
             report.problems.push({
               entity: 'stop',
@@ -239,6 +275,23 @@ export async function importDeliveryTours(
         report.geocache.created++
       }
 
+      // DSGVO: was schon älter als die Frist ist, gleich anonymisieren -
+      // dieselbe Funktion wie der nächtliche Lauf (auch ältere Stopps, die
+      // ein früherer Import angelegt hat).
+      const anonymized = await anonymizeDeliveryStops(transaction, {
+        cutoff,
+        now,
+        extraAddresses: plan.tours
+          .filter((t: { date: string }) => t.date < cutoff)
+          .flatMap((t: { stops: Array<{ data: PlainStop }> }) =>
+            t.stops
+              .map((stop) => stop.data)
+              .filter((stop) => !stop.pickupPointId)
+          ),
+      })
+      report.anonymized = anonymized.stops.length
+      report.geocache.removed = anonymized.geocacheRemoved
+
       // Keine Namen, Adressen oder Telefonnummern im Protokoll.
       await audit(
         null,
@@ -250,6 +303,7 @@ export async function importDeliveryTours(
           drivers: report.drivers,
           tours: report.tours.created.map((t) => t.key),
           stops: report.stops,
+          anonymized: report.anonymized,
           geocache: report.geocache.created,
           depot: report.depot,
           problems: report.problems.length,
@@ -277,8 +331,15 @@ export function formatDeliveryImportReport(
       ? 'Probelauf (--dry-run): es wurde nichts gespeichert. Ein echter Lauf würde:'
       : 'Import abgeschlossen:',
     `  Fahrer:  ${report.drivers.created} neu, ${report.drivers.existing} vorhanden`,
-    `  Touren:  ${report.tours.created.length} neu (${report.stops} Stopps), ${report.tours.existing.length} vorhanden`,
+    `  Touren:  ${report.tours.created.length} neu (${report.stops} Stopps), ${
+      report.tours.existing.length
+    } vorhanden${
+      report.tours.skipped.length > 0
+        ? `, ${report.tours.skipped.length} zurückgehalten`
+        : ''
+    }`,
     `  Adress-Cache: ${report.geocache.created} neu, ${report.geocache.existing} vorhanden`,
+    `  DSGVO:   ${report.anonymized} Stopp(s) älter als 90 Tage gleich anonymisiert, ${report.geocache.removed} Adress-Cache-Eintrag/-Einträge gelöscht`,
     `  Depot:   ${
       {
         updated: 'aus der Datei übernommen',

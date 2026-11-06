@@ -27,13 +27,16 @@
  *   cli.js anonymize-preorders [--dry-run] [--days 90] [--today YYYY-MM-DD]
  *
  * Both are idempotent and print a JSON report on stdout; `anonymize-preorders`
- * runs nightly from `deploy/systemd/bakery-anonymize.timer` (23:45). It never
+ * (since B8 also the delivery stops, `deliveryStops` in the report) runs nightly from `deploy/systemd/bakery-anonymize.timer` (23:45). It never
  * migrates: with pending migrations it stops (exit 1), so a deploy whose API
  * restart failed does not get its schema changed under the old process.
  *
  * B8 (Liefertouren):
  *
- *   cli.js import-deliveries --file apps/bakery-api/data/delivery-store.json [--dry-run] [--update-depot]
+ *   cli.js import-deliveries --file apps/bakery-api/data/delivery-store.json [--dry-run] [--update-depot] [--today YYYY-MM-DD]
+ *
+ * Stops whose tour date is older than the P4 period (90 days) are anonymised
+ * in the same transaction (`--today` pins the date, for tests).
  *
  * copies drivers, tours with stops and the address cache (pickup points and
  * preorders come from `import-preorders`, run it first). Idempotent, one
@@ -118,7 +121,7 @@ const USAGE = `Aufruf:
     Übernimmt Sammelstellen und Vorbestellungen aus dem Store des
     Mock-Servers. Idempotent (schon importierte werden übersprungen).
 
-  cli.js import-deliveries --file <delivery-store.json> [--dry-run] [--update-depot]
+  cli.js import-deliveries --file <delivery-store.json> [--dry-run] [--update-depot] [--today JJJJ-MM-TT]
     Übernimmt Fahrer, Touren mit Stopps und den Adress-Cache aus dem Store
     des Mock-Servers (vorher import-preorders für die Sammelstellen).
     Idempotent. --update-depot übernimmt auch die Adresse der Backstube.
@@ -383,9 +386,13 @@ async function importPreorders(flags: Record<string, string>): Promise<void> {
 async function importDeliveries(
   flags: Record<string, string>
 ): Promise<number> {
-  onlyFlags(flags, ['file', 'dry-run', 'update-depot'])
+  onlyFlags(flags, ['file', 'dry-run', 'update-depot', 'today'])
   const file = flags['file']
   if (!file) throw new UserInputError(`--file fehlt.\n\n${USAGE}`)
+  const today = flags['today']
+  if (today !== undefined && !snapshotsCore.isDate(today)) {
+    throw new UserInputError('--today muss ein gültiges Datum JJJJ-MM-TT sein.')
+  }
   // Read and check before the database is opened: a bad file migrates nothing.
   let store: unknown
   try {
@@ -409,6 +416,7 @@ async function importDeliveries(
     const report = await importDeliveryTours(store, {
       dryRun: flags['dry-run'] === 'true',
       updateDepot: flags['update-depot'] === 'true',
+      today,
     })
     console.log(`${formatDeliveryImportReport(report)}\nDatenbank: ${dbPath}`)
     return report.problems.length > 0 ? 2 : 0
@@ -443,7 +451,9 @@ async function anonymize(flags: Record<string, string>): Promise<void> {
           report.anonymized.length
         } Vorbestellung(en) ` +
           `mit Abholtag vor ${report.cutoff} anonymisiert; davon ${report.unfinished} ` +
-          `nie abgeschlossen (offen/bereit).`
+          `nie abgeschlossen (offen/bereit). ${report.deliveryStops.stops.length} ` +
+          `Lieferstopp(s) anonymisiert, ${report.deliveryStops.geocacheRemoved} ` +
+          `Adress-Cache-Einträge gelöscht.`
       )
     },
     { migrate: false }

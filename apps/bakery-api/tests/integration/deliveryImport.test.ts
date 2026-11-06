@@ -30,6 +30,11 @@ const FIXTURE = path.resolve(
   '../fixtures/delivery-store.synthetic.json'
 )
 const fixture = () => JSON.parse(fs.readFileSync(FIXTURE, 'utf-8'))
+/**
+ * The fixture's tours are from September 2026; without a pinned date the
+ * P4 period (90 days) would anonymise them as soon as the calendar passes.
+ */
+const TODAY = ['--today', '2026-11-06']
 
 let dir: string
 let out: string[]
@@ -155,6 +160,7 @@ describe('import-deliveries CLI', () => {
       '--file',
       FIXTURE,
       '--dry-run',
+      ...TODAY,
     ])
     expect(code).toBe(2)
     expect(out.join('\n')).toContain('Probelauf')
@@ -167,7 +173,9 @@ describe('import-deliveries CLI', () => {
   })
 
   it('imports once; a second run adds nothing', async () => {
-    expect(await main(['import-deliveries', '--file', FIXTURE])).toBe(2)
+    expect(await main(['import-deliveries', '--file', FIXTURE, ...TODAY])).toBe(
+      2
+    )
     const report = out.join('\n')
     expect(report).toContain('Touren:  2 neu (4 Stopps)')
     expect(report).toContain('gibt-es-nicht')
@@ -209,7 +217,9 @@ describe('import-deliveries CLI', () => {
     })
 
     out = []
-    expect(await main(['import-deliveries', '--file', FIXTURE])).toBe(2)
+    expect(await main(['import-deliveries', '--file', FIXTURE, ...TODAY])).toBe(
+      2
+    )
     expect(out.join('\n')).toContain('Touren:  0 neu (0 Stopps), 2 vorhanden')
     expect(await counts()).toEqual({
       drivers: 2,
@@ -219,9 +229,94 @@ describe('import-deliveries CLI', () => {
     })
   })
 
+  it('anonymises stops older than 90 days in the same run (P4), also on a re-run', async () => {
+    // today 2026-12-31: cutoff 2026-10-02, both fixture tours are older
+    const late = ['--today', '2026-12-31']
+    expect(await main(['import-deliveries', '--file', FIXTURE, ...late])).toBe(
+      2
+    )
+    // 3 customer stops (one lost its unknown pickup point); Mörsbach stays
+    expect(out.join('\n')).toContain(
+      '3 Stopp(s) älter als 90 Tage gleich anonymisiert, 1 Adress-Cache'
+    )
+    const check = () =>
+      withDb(async () => {
+        const stops = await DeliveryStop.findAll({ order: [['id', 'ASC']] })
+        const customers = stops.filter((s) => !s.pickupPointId)
+        expect(customers.length).toBeGreaterThan(0)
+        for (const stop of customers) {
+          expect(stop).toMatchObject({
+            customer: 'anonymisiert',
+            phone: null,
+            notes: null,
+            failureReason: null,
+            street: '',
+            lat: null,
+            lon: null,
+            geocodeSource: null,
+          })
+          expect(stop.anonymizedAt).toBeInstanceOf(Date)
+        }
+        // the Sammelstelle stop carries only the public address
+        const point = stops.find((s) => s.pickupPointId)
+        expect(point?.customer).toBe('Kindergarten Mörsbach')
+        expect(point?.anonymizedAt).toBeNull()
+        // the address cache of the anonymised addresses is gone
+        expect(await DeliveryGeocache.count()).toBe(0)
+        const rows = await AuditLog.findAll({
+          where: { action: 'anonymize', entity: 'delivery_stop' },
+        })
+        expect(JSON.stringify(rows.map((r) => r.data))).not.toMatch(
+          /Testkund|Erfundene|0000 111/
+        )
+      })
+    await check()
+    // a second run must not bring the cache entry back
+    out = []
+    expect(await main(['import-deliveries', '--file', FIXTURE, ...late])).toBe(
+      2
+    )
+    await check()
+  })
+
+  it('holds back a tour with a rejected stop, so a corrected file imports it later', async () => {
+    const file = path.join(dir, 'bad-stop.json')
+    const store = fixture()
+    store.tours[0].stops[0].customer = 'Testkundin\u202eA'
+    fs.writeFileSync(file, JSON.stringify(store))
+    expect(await main(['import-deliveries', '--file', file, ...TODAY])).toBe(2)
+    expect(out.join('\n')).toContain('nicht übernommen')
+    expect(out.join('\n')).toContain('1 zurückgehalten')
+    await withDb(async () => {
+      expect(
+        await DeliveryTour.findOne({
+          where: { importKey: 'mock:tour:1:2026-09-12' },
+        })
+      ).toBeNull()
+    })
+
+    out = []
+    expect(await main(['import-deliveries', '--file', FIXTURE, ...TODAY])).toBe(
+      2
+    )
+    await withDb(async () => {
+      const tour = await DeliveryTour.findOne({
+        where: { importKey: 'mock:tour:1:2026-09-12' },
+      })
+      expect(tour).not.toBeNull()
+      expect(await DeliveryStop.count({ where: { tourId: tour!.id } })).toBe(3)
+    })
+  })
+
   it('--update-depot takes the depot from the file', async () => {
     expect(
-      await main(['import-deliveries', '--file', FIXTURE, '--update-depot'])
+      await main([
+        'import-deliveries',
+        '--file',
+        FIXTURE,
+        '--update-depot',
+        ...TODAY,
+      ])
     ).toBe(2)
     await withDb(async () => {
       expect((await DeliveryDepot.findByPk(1))?.street).toBe('Probeweg 1')
@@ -234,7 +329,7 @@ describe('import-deliveries CLI', () => {
     store.drivers = store.drivers.slice(0, 2)
     store.tours = [store.tours[0]]
     fs.writeFileSync(clean, JSON.stringify(store))
-    expect(await main(['import-deliveries', '--file', clean])).toBe(0)
+    expect(await main(['import-deliveries', '--file', clean, ...TODAY])).toBe(0)
 
     const broken = path.join(dir, 'broken.json')
     fs.writeFileSync(broken, '{"tours": 5}')
