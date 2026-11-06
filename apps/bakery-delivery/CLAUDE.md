@@ -46,6 +46,9 @@ Ein `simple-server.js`, der schon vor den Liefer-Endpunkten gestartet wurde, ant
 `/api/deliveries/*` mit 404 — dann hilft nur ein Neustart des Servers.
 `NEXT_PUBLIC_API_URL` überschreibt die Adresse (Default `http://localhost:5000`); der Wert wird beim
 Build eingebacken, ein Wechsel braucht also einen Neustart des Dev-Servers.
+Die echte API erlaubt `http://localhost:4300` ohne weiteres (`DEFAULT_CORS_ORIGINS` in
+`apps/bakery-api/src/config/env.ts`); läuft die App auf einem anderen Port, braucht die API
+`CORS_ORIGIN=http://localhost:<Port>` - sonst scheitert schon die Anmeldung am Preflight.
 
 ## Anmeldung und Rollen (B8)
 

@@ -231,6 +231,15 @@ describe('parsePort / loadConfig', () => {
     }
   })
 
+  test('default CORS origins include every dev app, also the driver app (B8)', () => {
+    expect(api.loadConfig({}, '/srv/x').corsOrigins).toEqual([
+      'http://localhost:4201',
+      'http://localhost:4200',
+      'http://localhost:3000',
+      'http://localhost:4300',
+    ])
+  })
+
   test('CORS_ORIGIN list and busy timeout', () => {
     const config = api.loadConfig(
       {
