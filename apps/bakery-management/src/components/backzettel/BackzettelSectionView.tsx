@@ -27,6 +27,7 @@ import type {
 import {
   formatNumber,
   formatOrDash,
+  deltaBadgeText,
   formatQty,
   formatSigned,
   lineLabel,
@@ -64,7 +65,7 @@ function DeltaChip({ line }: { line: BackzettelLine }) {
       size="small"
       color={open ? 'warning' : 'default'}
       variant={open ? 'filled' : 'outlined'}
-      label={`Nachtrag ${formatSigned(line.delta.qty)}${
+      label={`${deltaBadgeText(line.delta, line.unit)}${
         open ? '' : ' · quittiert'
       }`}
       data-testid={`delta-chip-${line.key}`}

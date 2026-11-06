@@ -179,13 +179,13 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     label: 'Finanzen',
     href: '/admin/finance',
     icon: 'finance',
-    description: 'Kontobewegungen (nur Admin)',
+    description: 'Kontobewegungen (nur Inhaber)',
   },
   {
     label: 'Tagesziel',
     href: '/admin/finance/tagesziel',
     icon: 'target',
-    description: 'Break-even-Ampel (nur Admin)',
+    description: 'Break-even-Ampel (nur Inhaber)',
   },
   {
     label: 'Benachrichtigungen',
@@ -203,7 +203,7 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     label: 'Social Media',
     href: '/admin/social-media',
     icon: 'socialmedia',
-    description: 'Content Creator',
+    description: 'Beiträge gestalten',
   },
   {
     // F1: Konten, Rollen, Passwörter, PINs und Stationen - nur Inhaber

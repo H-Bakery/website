@@ -737,9 +737,9 @@ describe('Grundmenge noch nicht festgelegt (null)', () => {
     expect(line(r, 'plunder')).toBeUndefined() // 0 = wird nicht gebacken
     const w = r.warnings.find((x) => x.code === 'base_unset')
     expect(w.items).toEqual([
-      'Zopf gefüllt (nuss)',
-      'Zopf gefüllt (mohn)',
-      'Kranz gefüllt (nuss)',
+      'Zopf gefüllt – Nussfüllung',
+      'Zopf gefüllt – Mohnfüllung',
+      'Kranz gefüllt – Nussfüllung',
       'Kranz',
     ])
     expect(w.message).toMatch(/Samstag noch nicht festgelegt/)

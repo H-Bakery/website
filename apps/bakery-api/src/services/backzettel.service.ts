@@ -206,6 +206,39 @@ function computeDraft(
   return result
 }
 
+/** `YYYY-MM-DD` shifted by `days` calendar days. */
+function shiftDay(date: string, days: number): string {
+  const d = new Date(`${date}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+/**
+ * W4 verification: planning writes (season, correction, confirm) only for a
+ * plausible production window around today (Berlin). A typo in the URL
+ * (`9999-12-31`, `1970-01-03`) otherwise confirmed a day and committed its
+ * snapshot to hq `main`. Reads, reopen, ticks and acks are not limited -
+ * they only touch days that already exist.
+ */
+export const PLANNING_DAYS_BACK = 7
+export const PLANNING_DAYS_AHEAD = 90
+
+function assertPlanningWindow(date: string, now: Date): void {
+  const today: string = shopOrders.berlinToday(now)
+  const earliest = shiftDay(today, -PLANNING_DAYS_BACK)
+  const latest = shiftDay(today, PLANNING_DAYS_AHEAD)
+  if (date < earliest || date > latest) {
+    const de = (d: string) => d.split('-').reverse().join('.')
+    throw new BackzettelError(
+      400,
+      'date_out_of_range',
+      `Der ${de(date)} liegt außerhalb des Planungszeitraums (${de(
+        earliest
+      )} bis ${de(latest)}) - bitte das Datum prüfen.`
+    )
+  }
+}
+
 /** Berlin calendar day before today (`YYYY-MM-DD`). */
 function berlinYesterday(now: Date): string {
   const today: string = shopOrders.berlinToday(now)
@@ -226,6 +259,8 @@ export interface BackzettelHooks {
    * rules as `onConfirmed`: must not throw, not awaited.
    */
   onReopened?: (date: string, context: { role: string | null }) => void
+  /** Clock for the planning window (tests pin it); default `new Date()`. */
+  now?: () => Date
 }
 
 export function createBackzettelService(
@@ -359,7 +394,7 @@ export function createBackzettelService(
     })
     const deltaByKey = new Map<
       string,
-      { qty: number; open: number; count: number }
+      { qty: number; open: number; count: number; bake?: number }
     >()
     for (const d of deltas) {
       const e = deltaByKey.get(d.key) || { qty: 0, open: 0, count: 0 }
@@ -425,6 +460,31 @@ export function createBackzettelService(
     const configChangedSinceConfirm =
       snap && recomputed ? dayCore.snapshotDiffers(snap, recomputed) : null
 
+    // W4 verification: what the Nachträge mean for the oven, the dough and
+    // the fillings. `delta.bake` per line (after rounding), `deltaExtras`
+    // the change in Hefeteig/Füllungen - the frozen figures stay as they are.
+    let deltaExtras: unknown = null
+    if (deltaByKey.size > 0) {
+      const extras = dayCore.deltaBakeExtras(
+        lines,
+        Object.fromEntries(deltaByKey),
+        snap?.preordersExact ?? null
+      )
+      for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
+      if (config && recomputed) {
+        const adjusted = dayCore.linesWithExtras(lines, extras)
+        deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {
+          hefeteig: core.computeHefeteig(config, adjusted),
+          fillings: core.computeFillings(
+            config,
+            adjusted,
+            loaded.recipes || {},
+            []
+          ),
+        })
+      }
+    }
+
     return {
       date,
       weekday,
@@ -439,6 +499,7 @@ export function createBackzettelService(
       prep,
       ...dayCore.prepDateFor(date, config ? config.days : null),
       deltas,
+      deltaExtras,
       warnings,
       configStatus: loaded.ok ? ('ok' as const) : ('no-config' as const),
       configChangedSinceConfirm,
@@ -719,6 +780,7 @@ export function createBackzettelService(
     ) => Promise<T>
   ): Promise<T> {
     assertDate(date)
+    assertPlanningWindow(date, hooks.now ? hooks.now() : new Date())
     const loaded = source.load()
     requireConfig(loaded)
     assertProductionDay(loaded, date)

@@ -356,6 +356,50 @@ describe('Backstube-Tablet', () => {
     )
   })
 
+  it('Nachträge: Hinweis auf zusätzlichen Teig und Füllung, Viertel als ganze Backmenge (W4-Verifikation)', async () => {
+    const base = saturdayConfirmed()
+    mocked.fetchBackzettelDay.mockResolvedValue({
+      ...base,
+      sections: base.sections.map((s) => ({
+        ...s,
+        lines: s.lines.map((l) =>
+          l.key === ZOPF_NUSS
+            ? { ...l, delta: { qty: 0.25, open: 1, count: 1, bake: 1 } }
+            : l
+        ),
+      })),
+      deltaExtras: {
+        doughs: [
+          {
+            id: 'hefeteig-test',
+            name: 'Testhefeteig',
+            pieces: 1,
+            totalPieces: 9,
+            dough_g: 500,
+            totalDough_g: 4500,
+            batches: 1,
+            weighing: [{ piece_g: 500, pieces: 1, total: 9 }],
+          },
+        ],
+        fillings: [
+          {
+            id: 'nuss',
+            name: 'Testnussfüllung',
+            grams: 400,
+            totalGrams: 2000,
+          },
+        ],
+      },
+    })
+    renderTablet()
+    const badge = await screen.findByTestId(`bs-delta-badge-${ZOPF_NUSS}`)
+    expect(badge).toHaveTextContent('Nachtrag +0,25 · 1 mehr backen')
+    const extras = screen.getByTestId('delta-extras')
+    expect(extras).toHaveTextContent('Nachträge seit der Freigabe')
+    expect(extras).toHaveTextContent('+1 × 500 g abwiegen')
+    expect(extras).toHaveTextContent('Testnussfüllung: +400 g')
+  })
+
   it('lädt alle 60 s und beim Zurückkommen neu', async () => {
     jest.useFakeTimers()
     try {
@@ -374,6 +418,30 @@ describe('Backstube-Tablet', () => {
         document.dispatchEvent(new Event('visibilitychange'))
       })
       expect(mocked.fetchBackzettelDay.mock.calls.length).toBe(calls + 2)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('holt die Stammdaten nach, wenn der erste Abruf scheiterte (W4-Verifikation)', async () => {
+    jest.useFakeTimers()
+    try {
+      mocked.fetchBackzettelConfig
+        .mockReset()
+        .mockRejectedValueOnce(new Error('Netzwerkfehler'))
+        .mockResolvedValue(CONFIG_RESPONSE)
+      renderTablet()
+      await screen.findByTestId('bs-progress')
+      expect(mocked.fetchBackzettelConfig).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        jest.advanceTimersByTime(60 * 1000)
+      })
+      expect(mocked.fetchBackzettelConfig).toHaveBeenCalledTimes(2)
+      // Einmal geladen, wird nicht bei jedem Lauf erneut gefragt.
+      await act(async () => {
+        jest.advanceTimersByTime(60 * 1000)
+      })
+      expect(mocked.fetchBackzettelConfig).toHaveBeenCalledTimes(2)
     } finally {
       jest.useRealTimers()
     }
@@ -555,7 +623,7 @@ describe('Backstube-Tablet', () => {
     )
     expect(prep).toHaveTextContent('Für Sonntag, 29.11.2026')
     expect(prep).toHaveTextContent('Heute ab 14 Uhr vorbereiten.')
-    expect(prep).toHaveTextContent('Testsauerteig (misch)')
+    expect(prep).toHaveTextContent('Testsauerteig (Misch)')
     expect(prep).toHaveTextContent('Testbrühstück')
     expect(prep).toHaveTextContent('noch nicht freigegeben')
   })

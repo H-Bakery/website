@@ -11,7 +11,7 @@ import {
 } from '../lib/pwa'
 
 export const metadata: Metadata = {
-  title: 'Bäckerei Heusser - Management System',
+  title: 'Bäckerei Heusser - Verwaltung',
   description:
     'Verwaltungssystem für die Bäckerei Heusser - Bestellungen, Produktion und Verwaltung',
   keywords: 'Bäckerei, Management, Admin, Bestellungen, Produktion',

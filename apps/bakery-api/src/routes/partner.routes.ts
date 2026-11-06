@@ -132,6 +132,68 @@ function partnerName(value: unknown): string | null {
   return name === '' ? null : name
 }
 
+/**
+ * Längengrenzen der Freitextfelder (W4-Verifikation: vorher nahm die API
+ * 100.000 Zeichen als Name an). Wie bei Vorbestellungen und Benutzern.
+ */
+const PARTNER_TEXT_LIMITS: ReadonlyArray<[string, string, number]> = [
+  ['name', 'Der Name', 120],
+  ['slug', 'Das Kürzel', 80],
+  ['street', 'Die Straße', 120],
+  ['zip', 'Die Postleitzahl', 16],
+  ['city', 'Der Ort', 120],
+  ['contactName', 'Der Ansprechpartner', 120],
+  ['phone', 'Die Telefonnummer', 40],
+  ['email', 'Die E-Mail-Adresse', 200],
+  ['notes', 'Die Notiz', 2000],
+]
+const VISIT_TEXT_LIMITS: ReadonlyArray<[string, string, number]> = [
+  ['staffName', 'Der Name der erfassenden Person', 120],
+  ['note', 'Die Notiz', 2000],
+]
+
+/** Erstes zu langes Feld als deutsche Meldung, sonst `null`. */
+function textTooLong(
+  body: Record<string, unknown>,
+  limits: ReadonlyArray<[string, string, number]>
+): string | null {
+  for (const [field, label, max] of limits) {
+    const value = body[field]
+    if (value === undefined || value === null) continue
+    if (String(value).trim().length > max) {
+      return `${label} ist zu lang - höchstens ${max} Zeichen.`
+    }
+  }
+  return null
+}
+
+/** Frühester und spätester Geschäftstag eines Besuchs (relativ zu heute). */
+const EARLIEST_VISIT_DATE = '2020-01-01'
+const MAX_VISIT_DAYS_AHEAD = 7
+
+/**
+ * Ein Besuch liegt in der Vergangenheit oder ganz nahe Zukunft - 9999-12-31
+ * ist ein Tippfehler, keine Erstbestückung (W4-Verifikation).
+ */
+function visitDateOutOfRange(businessDate: string): string | null {
+  const today = partnerStats.businessDateOf(new Date()) || ''
+  const latest = shiftDate(today, MAX_VISIT_DAYS_AHEAD)
+  if (businessDate < EARLIEST_VISIT_DATE || businessDate > latest) {
+    return `Der Geschäftstag ${formatDe(
+      businessDate
+    )} liegt außerhalb des erlaubten Zeitraums (${formatDe(
+      EARLIEST_VISIT_DATE
+    )} bis ${formatDe(latest)}).`
+  }
+  return null
+}
+
+function shiftDate(date: string, days: number): string {
+  const [y, m, d] = date.split('-').map(Number)
+  const shifted = new Date(Date.UTC(y, m - 1, d + days))
+  return shifted.toISOString().slice(0, 10)
+}
+
 /** `2026-08-30` → `30.08.2026` für Meldungen an das Team. */
 function formatDe(businessDate: string): string {
   const [year, month, day] = businessDate.split('-')
@@ -186,32 +248,49 @@ function findCatalogueProduct(
   return null
 }
 
+type TemplateItemsResult =
+  | { ok: true; items: TemplateItemInput[] }
+  | { ok: false; status: number; error: string; message: string }
+
 /**
- * Positionen der Standard-Bestückung - Regeln des Mocks: Kennungen aus dem
- * hq-Katalog ergänzen, Positionen ohne Produkt oder mit Menge 0 entfallen.
+ * Positionen der Standard-Bestückung - Kennungen aus dem hq-Katalog,
+ * Positionen ohne Produkt oder mit Menge 0 entfallen (Regeln des Mocks).
+ * Seit der W4-Verifikation zusätzlich wie bei Besuchen geprüft
+ * (`validateTemplateItems` im Core): Menge ganzzahlig 0…10000, Produkt im
+ * Katalog - oder schon in der gespeicherten Vorlage, damit ein aus hq
+ * verschwundenes Produkt das Speichern nicht blockiert. Fehlt hq ganz: 503.
  */
 function normalizeTemplateInput(
-  items: unknown[],
-  catalogue: HqCatalogue
-): TemplateItemInput[] {
-  return items
-    .map((raw) => {
-      const item = (raw && typeof raw === 'object' ? raw : {}) as Record<
-        string,
-        unknown
-      >
-      const hq = findCatalogueProduct(catalogue, item)
-      const fallbackId = hq ? toInt(hq.numeric_id, 0) : 0
+  items: unknown,
+  catalogue: HqCatalogue,
+  existingItems: TemplateItemInput[]
+): TemplateItemsResult {
+  const fromExisting = partnerStats.snapshotLookup(existingItems)
+  let unresolved = false
+  const result = partnerStats.validateTemplateItems(items, (item) => {
+    const product =
+      findCatalogueProduct(catalogue, item) ?? fromExisting(item) ?? null
+    if (!product) unresolved = true
+    return product
+  })
+  if (result.ok === false) {
+    if (unresolved && !catalogue.available()) {
       return {
-        productId: toInt(item['productId'], fallbackId),
-        productSlug:
-          (typeof item['productSlug'] === 'string'
-            ? item['productSlug'].trim()
-            : '') || (hq ? hq.id : ''),
-        quantity: Math.max(0, toInt(item['quantity'], 0)),
+        ok: false,
+        status: 503,
+        error: 'hq_unavailable',
+        message:
+          'Der Produktkatalog aus hq ist gerade nicht erreichbar - die Vorlage kann nicht gespeichert werden. Bitte später erneut versuchen.',
       }
-    })
-    .filter((item) => item.productSlug !== '' && item.quantity > 0)
+    }
+    return {
+      ok: false,
+      status: 400,
+      error: result.error,
+      message: result.message,
+    }
+  }
+  return { ok: true, items: result.items }
 }
 
 type ItemsResult =
@@ -552,6 +631,8 @@ export function createPartnerRouter(
           'Der Name des Verkaufspartners fehlt.'
         )
       }
+      const tooLong = textTooLong(body, PARTNER_TEXT_LIMITS)
+      if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
 
       const slug = slugify(body.slug ? String(body.slug) : name)
       if (!slug) {
@@ -639,6 +720,8 @@ export function createPartnerRouter(
 
         const body = (req.body || {}) as any
         const updates: any = {}
+        const tooLong = textTooLong(body, PARTNER_TEXT_LIMITS)
+        if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
 
         if (body.name !== undefined) {
           const name = partnerName(body.name)
@@ -787,7 +870,18 @@ export function createPartnerRouter(
           }
         }
 
-        const items = normalizeTemplateInput(body.items || [], catalogue())
+        const stored = await PartnerDeliveryTemplate.findOne({
+          where: { partnerId: partner.id, weekday },
+        })
+        const checked = normalizeTemplateInput(
+          body.items || [],
+          catalogue(),
+          stored ? storedTemplateItems(stored.items) : []
+        )
+        if (checked.ok === false) {
+          return sendError(res, checked.status, checked.error, checked.message)
+        }
+        const items = checked.items
 
         const template = await getSequelize().transaction(
           async (transaction) => {
@@ -944,6 +1038,12 @@ export function createPartnerRouter(
             'Ungültiger Geschäftstag - erwartet wird das Format JJJJ-MM-TT.'
           )
         }
+        const outOfRange = visitDateOutOfRange(businessDate)
+        if (outOfRange) {
+          return sendError(res, 400, 'INVALID_BUSINESS_DATE', outOfRange)
+        }
+        const tooLong = textTooLong(body, VISIT_TEXT_LIMITS)
+        if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
 
         const parsedItems = normalizeVisitItems(body.items, catalogue())
         if (parsedItems.ok === false) {
@@ -1083,9 +1183,15 @@ export function createPartnerRouter(
               'Ungültiger Geschäftstag - erwartet wird das Format JJJJ-MM-TT.'
             )
           }
+          const outOfRange = visitDateOutOfRange(body.businessDate)
+          if (outOfRange) {
+            return sendError(res, 400, 'INVALID_BUSINESS_DATE', outOfRange)
+          }
           updates.businessDate = body.businessDate
         }
 
+        const tooLong = textTooLong(body, VISIT_TEXT_LIMITS)
+        if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
         if (body.note !== undefined) updates.note = optionalString(body.note)
         if (body.staffName !== undefined) {
           updates.staffName = optionalString(body.staffName)

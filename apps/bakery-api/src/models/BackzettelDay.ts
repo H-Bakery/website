@@ -39,6 +39,8 @@ export interface ComputedSnapshot {
   warnings: unknown[]
   /** Zeilen ohne festgelegte Grundmenge bei der Freigabe (fehlt bei älteren Freigaben). */
   unsetKeys?: string[]
+  /** Vorbestellungen je Zeile vor dem Aufrunden (fehlt bei Freigaben vor der W4-Verifikation). */
+  preordersExact?: Record<string, number>
 }
 
 export class BackzettelDay extends Model<

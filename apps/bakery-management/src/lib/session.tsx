@@ -36,6 +36,8 @@ import {
   normalizeUser,
   restoreSession,
   saveLastActivity,
+  loadUnattended,
+  saveUnattended,
   saveSession,
   type SessionKind,
   type SessionUser,
@@ -303,24 +305,38 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const role = session?.user?.role
   React.useEffect(() => {
     if (status !== 'authenticated' || !kind || startedAt === undefined) return
-    let lastWrite = Date.now()
-    saveLastActivity(lastWrite)
+    const mountedAt = Date.now()
+    // Die gespeicherte letzte Bedienung gilt weiter - ein Neuladen (Wischen
+    // zum Aktualisieren, Tab nach dem Ruhezustand) ist keine Bedienung
+    // (W4-Verifikation: sonst umging ein Neuladen auf /backstube die Sperre).
+    const storedActivity = loadLastActivity()
+    let lastWrite = Math.min(storedActivity ?? mountedAt, mountedAt)
+    if (storedActivity === null) saveLastActivity(mountedAt)
     // Genaue letzte Bedienung in diesem Tab (der Speicher ist gedrosselt).
     let lastSeen = lastWrite
     // Grenze außerhalb von /backstube (an der Station: 10 min).
     const shortLimit = idleLimitMs(kind, undefined, { role, path: null })
-    const onActivity = () => {
-      const now = Date.now()
+    const mayBeUnattended = kind === 'station' && role !== 'backstube'
+    const markIfUnattended = (now: number) => {
       if (
-        kind === 'station' &&
-        role !== 'backstube' &&
+        mayBeUnattended &&
         now - lastSeen >= shortLimit &&
         isBackstubePath(window.location.pathname)
       ) {
         // Vor dieser Berührung lag das Tablet länger als die Stations-Grenze
         // unberührt - wer jetzt tippt, ist nicht sicher dieselbe Person.
+        // Gespeichert, damit ein Neuladen die Markierung nicht verliert.
+        saveUnattended(startedAt)
         setUnattendedAtBackstube(true)
       }
+    }
+    if (mayBeUnattended && loadUnattended(startedAt)) {
+      setUnattendedAtBackstube(true)
+    }
+    markIfUnattended(mountedAt)
+    const onActivity = () => {
+      const now = Date.now()
+      markIfUnattended(now)
       lastSeen = now
       if (now - lastWrite >= ACTIVITY_WRITE_MS) {
         lastWrite = now
@@ -354,6 +370,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
 
   const establish = React.useCallback((next: StoredSession) => {
     setUnattendedAtBackstube(false)
+    saveUnattended(null)
     saveSession(next)
     saveLastActivity(Date.now())
     apiClient.setAuthToken(next.token)

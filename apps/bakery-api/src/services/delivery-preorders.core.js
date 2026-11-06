@@ -107,6 +107,28 @@ function formatGermanDate(iso) {
   return `${d}.${m}.${y}`
 }
 
+/** Tage zwischen zwei Geschaeftsdaten (b - a), kalendarisch. */
+function daysBetween(a, b) {
+  const [ya, ma, da] = a.split('-').map(Number)
+  const [yb, mb, db] = b.split('-').map(Number)
+  return Math.round(
+    (Date.UTC(yb, mb - 1, db) - Date.UTC(ya, ma - 1, da)) / 86400000
+  )
+}
+
+/**
+ * Steuerzeichen, die in einem Namen nichts verloren haben: C0/C1 (auch NUL),
+ * DEL und die Bidi-Steuerzeichen (LRM/RLM, LRE…RLO, LRI…PDI), mit denen sich
+ * ein Name in der Abholliste optisch umdrehen liesse. Die Anmerkung darf
+ * Zeilenumbrueche und Tabs behalten.
+ */
+// eslint-disable-next-line no-control-regex
+const NAME_CONTROL_CHARS =
+  /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+// eslint-disable-next-line no-control-regex
+const NOTE_CONTROL_CHARS =
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+
 /** Wochentag eines Geschaeftsdatums nach `Date.getDay()`, sonst `null`. */
 function weekdayOf(iso) {
   if (!tours.isBusinessDate(iso)) return null
@@ -1099,6 +1121,12 @@ function normalizeOrderInput(body, existing, options) {
   if (customerName.length > MAX_TEXT_LENGTH) {
     return fail('customer_too_long', 'Der Name des Kunden ist zu lang.')
   }
+  if (NAME_CONTROL_CHARS.test(customerName)) {
+    return fail(
+      'invalid_customer',
+      'Der Name des Kunden enthält unzulässige Steuerzeichen.'
+    )
+  }
   const rawPhone = pick('customerPhone')
   if (
     rawPhone !== undefined &&
@@ -1108,6 +1136,20 @@ function normalizeOrderInput(body, existing, options) {
     return fail('invalid_phone', 'Die Telefonnummer ist ungültig.')
   }
   const customerPhone = tours.normalizePhone(rawPhone)
+  // Eine eingegebene, aber unbrauchbare Nummer (keine 5 Ziffern) nicht
+  // stillschweigend verwerfen - die Kundschaft waere sonst nicht erreichbar,
+  // ohne dass es jemand merkt (W4-Verifikation).
+  if (
+    !customerPhone &&
+    typeof rawPhone === 'string' &&
+    rawPhone.trim() !== '' &&
+    source.customerPhone !== undefined
+  ) {
+    return fail(
+      'invalid_phone',
+      'Die Telefonnummer ist ungültig - bitte mindestens 5 Ziffern angeben oder das Feld leeren.'
+    )
+  }
   if (customerPhone && customerPhone.length > MAX_PHONE_LENGTH) {
     return fail('invalid_phone', 'Die Telefonnummer ist zu lang.')
   }
@@ -1120,7 +1162,6 @@ function normalizeOrderInput(body, existing, options) {
       'Das Abholdatum muss im Format JJJJ-MM-TT angegeben werden.'
     )
   }
-
   const rawPoint =
     source.pickupPointId === undefined
       ? base.pickupPointId
@@ -1155,7 +1196,6 @@ function normalizeOrderInput(body, existing, options) {
       'Für eine Sammelstellen-Bestellung bitte die Sammelstelle wählen.'
     )
   }
-
   let pickupTime = null
   const rawTime = source.pickupTime
   if (pickupPoint) {
@@ -1208,6 +1248,12 @@ function normalizeOrderInput(body, existing, options) {
   if (note && note.length > MAX_TEXT_LENGTH) {
     return fail('note_too_long', 'Bitte fassen Sie die Anmerkung kürzer.')
   }
+  if (note && source.note !== undefined && NOTE_CONTROL_CHARS.test(note)) {
+    return fail(
+      'invalid_note',
+      'Die Anmerkung enthält unzulässige Steuerzeichen.'
+    )
+  }
   if (source.paid !== undefined && typeof source.paid !== 'boolean') {
     return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
   }
@@ -1215,12 +1261,14 @@ function normalizeOrderInput(body, existing, options) {
 
   // --- Status
   const statusResult = normalizeStatusChange(
-    { ...base, status: base.status || 'offen' },
+    { ...base, status: base.status || 'offen', pickupDate },
     {
       status: source.status === undefined ? undefined : source.status,
       notCollected: source.notCollected,
     },
-    { now: opts.now }
+    // `notCollectedFrom` (heute): „nicht abgeholt“ auch beim Anlegen und
+    // Bearbeiten erst ab dem Abholtag - wie bei `POST /:id/status`.
+    { now: opts.now, notCollectedFrom: opts.notCollectedFrom }
   )
   if (statusResult.error) return statusResult
   // Neu angelegt: kein Uebergang, aber ein Status ausser `offen` ist erlaubt
@@ -1404,6 +1452,57 @@ function normalizeOrderInput(body, existing, options) {
     }
   }
 
+  // Abholtag plausibel (nur `/api/preorders`, `opts.pickupRules`; der
+  // Moersbach-Alias haelt den Mock-Vertrag). Geprueft nur, wenn der Tag neu
+  // ist - eine alte Bestellung bleibt bearbeitbar - und erst nach den
+  // Sperren oben (abgeholt/storniert antworten 409, nicht 400).
+  const rules = opts.pickupRules
+  if (
+    rules &&
+    typeof rules.today === 'string' &&
+    tours.isBusinessDate(rules.today) &&
+    pickupDate !== base.pickupDate
+  ) {
+    const offset = daysBetween(rules.today, pickupDate)
+    if (tours.isNumber(rules.maxDaysAhead) && offset > rules.maxDaysAhead) {
+      return fail(
+        'date_out_of_range',
+        `Der ${formatGermanDate(
+          pickupDate
+        )} liegt zu weit in der Zukunft - Vorbestellungen gehen höchstens ${
+          rules.maxDaysAhead
+        } Tage im Voraus.`
+      )
+    }
+    if (tours.isNumber(rules.maxDaysBack) && -offset > rules.maxDaysBack) {
+      return fail(
+        'date_out_of_range',
+        `Der ${formatGermanDate(
+          pickupDate
+        )} liegt zu weit zurück - nachtragen lassen sich höchstens ${
+          rules.maxDaysBack
+        } Tage.`
+      )
+    }
+  }
+
+  // Abholung im Laden nicht an einem Ruhetag (Sammelstellen haben ihren
+  // eigenen Liefertag, der oben geprueft wird).
+  if (
+    rules &&
+    !pickupPoint &&
+    Array.isArray(rules.closedWeekdays) &&
+    pickupDate !== base.pickupDate &&
+    rules.closedWeekdays.includes(weekdayOf(pickupDate))
+  ) {
+    return fail(
+      'ruhetag',
+      `Am ${WEEKDAY_LABELS[weekdayOf(pickupDate)]}, ${formatGermanDate(
+        pickupDate
+      )}, ist Ruhetag - bitte einen anderen Abholtag wählen.`
+    )
+  }
+
   return {
     preorder: {
       channel,
@@ -1492,6 +1591,15 @@ function summarizeDay(list) {
     unpaidTotal: roundCents(
       active
         .filter((p) => !p.paid && p.status !== 'abgeholt')
+        .reduce((sum, p) => sum + roundCents(p.total), 0)
+    ),
+    // „Ohne Zahlung übergeben“: die Ware ist weg, das Geld fehlt. Steht für
+    // sich, damit es nicht aus jeder Summe verschwindet (W4-Verifikation).
+    handedOverUnpaid: active.filter((p) => !p.paid && p.status === 'abgeholt')
+      .length,
+    handedOverUnpaidTotal: roundCents(
+      active
+        .filter((p) => !p.paid && p.status === 'abgeholt')
         .reduce((sum, p) => sum + roundCents(p.total), 0)
     ),
     byChannel,

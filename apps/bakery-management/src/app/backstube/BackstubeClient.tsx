@@ -170,20 +170,38 @@ export default function BackstubeClient({
   const pendingRef = React.useRef(0)
   const loadingRef = React.useRef(false)
 
-  React.useEffect(() => {
-    let cancelled = false
-    fetchBackzettelConfig()
-      .then((res) => {
-        if (!cancelled) setConfig(res?.config ?? null)
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (!cancelled) setConfigTried(true)
-      })
-    return () => {
-      cancelled = true
+  /**
+   * Hat die API die Stammdaten schon einmal beantwortet? Scheitert der erste
+   * Abruf (API weg beim Neuladen), holt jeder spätere Lauf von `refresh`
+   * (60 s, Fokus, „Erneut versuchen“) sie nach - sonst blieben die
+   * Füllungsnamen bis zum nächsten vollen Neuladen gekürzt.
+   */
+  const configLoadedRef = React.useRef(false)
+  const configLoadingRef = React.useRef(false)
+  const mountedRef = React.useRef(true)
+  const loadConfig = React.useCallback(async () => {
+    if (configLoadedRef.current || configLoadingRef.current) return
+    configLoadingRef.current = true
+    try {
+      const res = await fetchBackzettelConfig()
+      if (!mountedRef.current) return
+      configLoadedRef.current = true
+      setConfig(res?.config ?? null)
+    } catch {
+      // Nächster Lauf von refresh versucht es wieder.
+    } finally {
+      configLoadingRef.current = false
+      if (mountedRef.current) setConfigTried(true)
     }
   }, [])
+
+  React.useEffect(() => {
+    mountedRef.current = true
+    void loadConfig()
+    return () => {
+      mountedRef.current = false
+    }
+  }, [loadConfig])
 
   const loadDay = React.useCallback(async () => {
     const target = dateRef.current
@@ -254,9 +272,10 @@ export default function BackstubeClient({
   tabRef.current = tab
   const refresh = React.useCallback(() => {
     setNow(clockRef.current())
+    if (!configLoadedRef.current) void loadConfig()
     if (!loadingRef.current) void loadDay()
     if (tabRef.current === 'vorbereitung') void loadPrep()
-  }, [loadDay, loadPrep])
+  }, [loadConfig, loadDay, loadPrep])
 
   // Alle 60 s und beim Zurückkommen ins Bild neu laden.
   React.useEffect(() => {
@@ -454,6 +473,7 @@ export default function BackstubeClient({
       hefeteig={day.hefeteig}
       fillings={day.fillings}
       draft={draft}
+      deltaExtras={day.deltaExtras}
     />
   ) : null
 

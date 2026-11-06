@@ -154,5 +154,33 @@ describe('DashboardClient', () => {
         screen.queryByRole('heading', { level: 2, name: title })
       ).not.toBeInTheDocument()
     )
+    // W4-Verifikation: der Verkauf bekommt seine Pilot-Bildschirme als
+    // Schnellzugriff und liest die Produkte nur.
+    ;['Vorbestellungen', 'Abholliste', 'Backschrank'].forEach((title) =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: title })
+      ).toBeInTheDocument()
+    )
+    expect(
+      screen.getByRole('button', { name: 'Produkte ansehen' })
+    ).toBeInTheDocument()
+  })
+
+  it('Backstube: Schnellzugriff auf Backzettel und Backstube (W4-Verifikation)', async () => {
+    process.env.NEXT_PUBLIC_PILOT_MODE = '1'
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'backstube' })}>
+        <DashboardClient latestReport={null} reportsAvailable={false} />
+      </WithSession>
+    )
+    await screen.findByText('API erreichbar')
+    ;['Backzettel', 'Backstube'].forEach((title) =>
+      expect(
+        screen.getByRole('heading', { level: 2, name: title })
+      ).toBeInTheDocument()
+    )
+    expect(
+      screen.queryByRole('heading', { level: 2, name: 'Vorbestellungen' })
+    ).not.toBeInTheDocument()
   })
 })

@@ -395,7 +395,10 @@ export default function ReportsArchiveClient({
                     </TableCell>
                   </TableRow>
                 ) : (
-                  <TableRow key={day.date} sx={{ opacity: 0.6 }}>
+                  <TableRow
+                    key={day.date}
+                    sx={{ '& td': { color: 'text.secondary' } }}
+                  >
                     <TableCell>
                       {formatReportDate(day.date)}
                       <Typography

@@ -10,7 +10,9 @@ import type {
   BackzettelDay,
   BackzettelDeltaEntry,
   BackzettelLine,
+  BackzettelLineDelta,
   BackzettelUnit,
+  DeltaExtras,
 } from './backzettelApi'
 
 /** ISO-Wochentage, an denen gebacken wird, solange keine Stammdaten da sind (Di–So). */
@@ -181,6 +183,76 @@ export function formatQty(n: number, unit: BackzettelUnit | null): string {
 export function formatSigned(n: number): string {
   if (!n) return '–'
   return n > 0 ? `+${formatNumber(n)}` : `−${formatNumber(Math.abs(n))}`
+}
+
+/** Zu- und Abschläge mit Einheit: „+1 l", „−2", „+0,5 kg"; „–" für 0. */
+export function formatSignedQty(
+  n: number,
+  unit: BackzettelUnit | null
+): string {
+  if (!n) return '–'
+  return `${n > 0 ? '+' : '−'}${formatQty(Math.abs(n), unit)}`
+}
+
+/**
+ * Text des Nachtrag-Abzeichens einer Zeile (W4-Verifikation): mit Einheit
+ * („Nachtrag +1 l") und - wenn das Aufrunden etwas anderes ergibt als der
+ * Nachtrag selbst (Viertel) - was zusätzlich zu backen ist
+ * („Nachtrag +0,25 · 1 mehr backen", „… · nichts mehr backen").
+ */
+export function deltaBadgeText(
+  delta: BackzettelLineDelta,
+  unit: BackzettelUnit | null
+): string {
+  const base = `Nachtrag ${formatSignedQty(delta.qty, unit)}`
+  const bake = delta.bake
+  if (bake === undefined || bake === null || bake === delta.qty) return base
+  if (bake === 0) {
+    return `${base} · ${
+      delta.qty > 0 ? 'nichts mehr backen' : 'nicht weniger backen'
+    }`
+  }
+  return `${base} · ${formatQty(Math.abs(bake), unit)} ${
+    bake > 0 ? 'mehr' : 'weniger'
+  } backen`
+}
+
+/**
+ * Was die Nachträge an Hefeteig und Füllung zusätzlich brauchen, je eine
+ * Zeile Text (W4-Verifikation: die Abwiegeliste bleibt der freigegebene
+ * Stand, die Nachträge kommen hier dazu).
+ */
+export function deltaExtrasLines(
+  extras: DeltaExtras | null | undefined
+): string[] {
+  if (!extras) return []
+  const out: string[] = []
+  for (const d of extras.doughs) {
+    const weighing = d.weighing
+      .map(
+        (w) =>
+          `${formatSigned(w.pieces)} × ${formatNumber(w.piece_g)} g abwiegen`
+      )
+      .join(', ')
+    const dough = `${d.dough_g < 0 ? '−' : '+'}${formatGrams(
+      Math.abs(d.dough_g)
+    )} Teig`
+    out.push(
+      `${d.name}: ${formatSigned(d.pieces)} Teigstücke (${dough})${
+        weighing ? ` - ${weighing}` : ''
+      }; mit Nachträgen ${formatNumber(
+        d.totalPieces
+      )} Teigstücke, ${formatGrams(d.totalDough_g)}`
+    )
+  }
+  for (const f of extras.fillings) {
+    out.push(
+      `${f.name}: ${f.grams > 0 ? '+' : '−'}${formatGrams(
+        Math.abs(f.grams)
+      )}; mit Nachträgen ${formatGrams(f.totalGrams)}`
+    )
+  }
+  return out
 }
 
 /** Spaltenwert ohne Vorzeichen; 0 als „–", damit die Zahlen hervortreten. */

@@ -457,8 +457,109 @@ function computedSnapshot(result) {
       unsetKeys: (Array.isArray(r.lines) ? r.lines : [])
         .filter((l) => l && l.baseUnset)
         .map((l) => l.key),
+      // Vorbestellungen je Zeile vor dem Aufrunden (Viertel): nur damit
+      // spaetere Nachtraege genau sagen koennen, was zusaetzlich zu backen
+      // ist (`deltaBakeExtras`). Die Zeilentabelle speichert nur gerundet.
+      preordersExact: Object.fromEntries(
+        (Array.isArray(r.lines) ? r.lines : [])
+          .filter(
+            (l) => l && Number.isFinite(Number(l.preordersExact)) && l.preorders
+          )
+          .map((l) => [l.key, round2(Number(l.preordersExact))])
+      ),
     })
   )
+}
+
+/**
+ * Was die Nachtraege einer freigegebenen Zeile zusaetzlich zu backen
+ * bedeuten (W4-Verifikation): ein Nachtrag von +0,25 Kranz ist nicht
+ * „0,25 mehr“, sondern - nach dem Aufrunden - ein ganzer Kranz oder keiner.
+ *
+ *   extra = roundUp(exakt + Nachtrag) − roundUp(exakt)
+ *
+ * `exactByKey` kommt aus dem Freigabe-Schnappschuss (`preordersExact`); fuer
+ * Tage, die vor dieser Angabe freigegeben wurden, gilt die gerundete
+ * Vorbestellmenge der Zeile - das kann um hoechstens eine Einheit zu viel
+ * ergeben, nie zu wenig.
+ *
+ * @param {Array<{key: string, unit: string, preorders: number}>} lines
+ * @param {Record<string, {qty: number}>} deltaByKey
+ * @param {Record<string, number> | null | undefined} exactByKey
+ * @returns {Record<string, number>} Zeilen-Schluessel -> zusaetzlich (Einheit der Zeile)
+ */
+function deltaBakeExtras(lines, deltaByKey, exactByKey) {
+  const out = {}
+  for (const line of Array.isArray(lines) ? lines : []) {
+    const d = deltaByKey ? deltaByKey[line.key] : null
+    if (!d || !Number(d.qty)) continue
+    const known =
+      exactByKey && Number.isFinite(Number(exactByKey[line.key]))
+        ? Number(exactByKey[line.key])
+        : null
+    const exact = known === null ? Number(line.preorders) || 0 : known
+    const before = core.roundUp(exact, line.unit)
+    const after = core.roundUp(Math.max(0, exact + Number(d.qty)), line.unit)
+    out[line.key] = round2(after - before)
+  }
+  return out
+}
+
+/** Zeilen mit den Nachtraegen in `total` (fuer Hefeteig und Fuellungen). */
+function linesWithExtras(lines, extras) {
+  return (Array.isArray(lines) ? lines : []).map((line) =>
+    extras && extras[line.key]
+      ? { ...line, total: Math.max(0, round2(line.total + extras[line.key])) }
+      : line
+  )
+}
+
+/**
+ * Unterschied Hefeteig/Fuellungen ohne und mit Nachtraegen - nur, was sich
+ * aendert. `null`, wenn sich nichts aendert.
+ */
+function hefeteigFillingsDiff(before, after) {
+  const doughs = []
+  const beforeDoughs = new Map(
+    ((before && before.hefeteig && before.hefeteig.doughs) || []).map((d) => [
+      d.id,
+      d,
+    ])
+  )
+  for (const d of (after && after.hefeteig && after.hefeteig.doughs) || []) {
+    const b = beforeDoughs.get(d.id) || { pieces: 0, dough_g: 0, weighing: [] }
+    const bw = new Map((b.weighing || []).map((w) => [w.piece_g, w.pieces]))
+    const weighing = (d.weighing || [])
+      .map((w) => ({
+        piece_g: w.piece_g,
+        pieces: round2(w.pieces - (bw.get(w.piece_g) || 0)),
+        total: w.pieces,
+      }))
+      .filter((w) => w.pieces !== 0)
+    const pieces = round2(d.pieces - (b.pieces || 0))
+    if (pieces === 0 && weighing.length === 0) continue
+    doughs.push({
+      id: d.id,
+      name: d.name,
+      pieces,
+      totalPieces: d.pieces,
+      dough_g: round2(d.dough_g - (b.dough_g || 0)),
+      totalDough_g: d.dough_g,
+      batches: d.batches,
+      weighing,
+    })
+  }
+  const fillings = []
+  const beforeFillings = new Map(
+    ((before && before.fillings) || []).map((f) => [f.id, f])
+  )
+  for (const f of (after && after.fillings) || []) {
+    const b = beforeFillings.get(f.id)
+    const grams = round2((f.grams || 0) - ((b && b.grams) || 0))
+    if (grams === 0) continue
+    fillings.push({ id: f.id, name: f.name, grams, totalGrams: f.grams })
+  }
+  return doughs.length || fillings.length ? { doughs, fillings } : null
 }
 
 /**
@@ -516,6 +617,9 @@ module.exports = {
   FROZEN_QTY_FIELDS,
   frozenQtyChanged,
   computedSnapshot,
+  deltaBakeExtras,
+  linesWithExtras,
+  hefeteigFillingsDiff,
   snapshotDiffers,
   prepDateFor,
 }

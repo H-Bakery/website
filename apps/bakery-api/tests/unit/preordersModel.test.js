@@ -950,8 +950,22 @@ describe('sums and day summary', () => {
       notCollected: 1,
       paid: 2,
       unpaidTotal: 9.1,
+      handedOverUnpaid: 0,
+      handedOverUnpaidTotal: 0,
       byChannel: { telefon: 1, sammelstelle: 1, laden: 1 },
     })
+  })
+
+  it('keeps an order handed over without payment in its own total (W4-verify)', () => {
+    const s = core.summarizeDay([
+      { status: 'abgeholt', paid: false, total: 6.4, channel: 'laden' },
+      { status: 'abgeholt', paid: true, total: 2, channel: 'laden' },
+      { status: 'bereit', paid: false, total: 4.6, channel: 'laden' },
+      { status: 'storniert', paid: false, total: 9, channel: 'laden' },
+    ])
+    expect(s.unpaidTotal).toBe(4.6)
+    expect(s.handedOverUnpaid).toBe(1)
+    expect(s.handedOverUnpaidTotal).toBe(6.4)
   })
 
   it('sorts the Abholliste by day, place, time (none last) and code', () => {

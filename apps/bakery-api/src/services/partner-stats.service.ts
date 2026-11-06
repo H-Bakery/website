@@ -246,6 +246,24 @@ export function validateVisitItems(
   return core.validateVisitItems(items, lookup)
 }
 
+export type TemplateItemsResult =
+  | {
+      ok: true
+      items: Array<{ productId: number; productSlug: string; quantity: number }>
+    }
+  | { ok: false; error: string; message: string }
+
+/**
+ * Positionen einer Standard-Bestückung prüfen (Menge ganzzahlig 0…10000,
+ * Produkt bekannt, keine Duplikate) - Regeln im Core.
+ */
+export function validateTemplateItems(
+  items: unknown,
+  lookup?: (item: Record<string, unknown>) => CatalogueProduct | null
+): TemplateItemsResult {
+  return core.validateTemplateItems(items, lookup)
+}
+
 /**
  * Lookup über den Snapshot eines gespeicherten Besuchs - für Korrekturen, damit
  * ein inzwischen aus dem Katalog verschwundenes Produkt korrigierbar bleibt.
@@ -366,6 +384,7 @@ export default {
   isBusinessDate,
   isVisitType,
   validateVisitItems,
+  validateTemplateItems,
   snapshotLookup,
   toPlainVisitItem,
   toPlainVisit,

@@ -465,7 +465,8 @@ export default function PreorderListClient({
                     cursor: 'pointer',
                     ...(p.status === 'storniert' && {
                       '& td': {
-                        color: 'text.disabled',
+                        // W4-Verifikation: text.disabled lag bei 2,7:1.
+                        color: 'text.secondary',
                         textDecoration: 'line-through',
                       },
                       '& td:last-of-type': { textDecoration: 'none' },
@@ -528,7 +529,11 @@ export default function PreorderListClient({
               key={p.id}
               variant="outlined"
               component="li"
-              sx={p.status === 'storniert' ? { opacity: 0.6 } : undefined}
+              sx={
+                p.status === 'storniert'
+                  ? { color: 'text.secondary', borderStyle: 'dashed' }
+                  : undefined
+              }
             >
               <CardActionArea
                 component={NextLink}

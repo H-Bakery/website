@@ -170,6 +170,11 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
   sind ganzzahlig und auf 0…10000 begrenzt, negative Preise und Produkte außerhalb des Katalogs
   fliegen raus, Name und Kennungen kommen aus dem Katalog. Beide Server rufen diese eine Funktion;
   `isBusinessDate()` daneben lehnt kalendarisch unmögliche Tage (`2026-02-30`) ab.
+- **Die Wochentags-Vorlage füllt „Neu“ nur bei der Erstbestückung.** Die Erfassungsmaske merkt
+  sich, welche Mengen aus der Vorlage stammen, und nimmt die unveränderten wieder heraus, sobald
+  die Art auf Nachlieferung oder Abholung wechselt; hat der Tag schon eine Erstbestückung, startet
+  die Maske als Nachlieferung. Sonst bucht eine Abholung die Vorlage ein zweites Mal als geliefert
+  (W4-Verifikation: Geliefert 160 statt 80).
 - **`csvCell()` maskiert Formelzellen.** Partner- und Produktnamen landen im CSV-Report; eine
   Zelle, die mit `=`, `+`, `-`, `@`, Tab oder CR beginnt, bekommt ein Apostroph voran und wird
   eingefasst, sonst führt Excel sie aus. Schlichte Zahlen (`-5`) bleiben Zahlen.
@@ -227,7 +232,11 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   nur `message`), `GET …/templates` legt beim Lesen keine leeren Vorlagen an, `from > to` ist 400,
   ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (die Erfassungsmaske schickt
   `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
-  `commission`.
+  `commission`; seit der W4-Verifikation prüft die Vorlage ihre Positionen wie ein Besuch (Menge
+  ganzzahlig 0…10000, Produkt im Katalog oder schon in der Vorlage, sonst 400 `INVALID_ITEMS`),
+  Freitexte haben Längengrenzen (400 `TEXT_TOO_LONG`) und der Geschäftstag eines Besuchs liegt
+  zwischen 2020-01-01 und heute + 7 Tage. Die Vorlagen-Seite sperrt die Felder für alle außer dem
+  Inhaber und lehnt mehr als 10.000 Stück je Position schon vor dem Speichern ab.
 - **Parity:** `apps/bakery-api/tests/parity/partners.parity.test.ts` spielt dasselbe Szenario
   (Partner, Vorlage, Besuche, Korrektur, Tageswechsel, Löschen, Kennzahlen, Report, CSV) auf
   Mock und echter API durch und vergleicht Status, Form und - wo beide dieselben Daten halten -
@@ -506,6 +515,15 @@ Metadaten/Viewport (`src/app/layout.tsx`) und Registrierung lesen von dort. Fün
   Worker löscht beim Aktivieren die Caches der alten. `/sw.js` geht mit `Cache-Control: no-cache,
 no-store` raus. Das Cache-Präfix steht in `sw.js` und `pwa.ts` - `pwa.spec.ts` prüft, dass beide
   gleich sind.
+- **Theme: `createManagementTheme(mode)` in `src/lib/muiTheme.ts`** (W4-Verifikation, Kontrast):
+  `contrastThreshold: 4.5` (Schrift auf `*.main` erst ab 4,5:1 weiß, sonst schwarz) und hell
+  `warning.main` #a14a00 / `info.main` #0277bd - das MUI-Orange #ed6c02 lag als Text und unter
+  weißer Schrift bei 3,1:1. `primary` und Hintergründe bleiben Standard. Gestrichene Zeilen
+  (storniert, Lücken im Kassenarchiv) mit `text.secondary`, nicht `text.disabled`/`opacity`.
+  Die AppBar heißt „Verwaltung", der Seitentitel „Bäckerei Heusser - Verwaltung".
+  **Touch-Ziele:** dasselbe Theme gibt `MuiButton`/`MuiIconButton`/`MuiToggleButton` unter
+  `TOUCH_MEDIA` (`pointer: coarse` oder schmaler als 1200 px) mindestens 44 px; Inline-Links
+  (Telefon, Kurzcode) bekommen `TOUCH_LINK_STYLE`. Am Büro-PC mit Maus bleibt MUI kompakt.
 - **Statusleistenfarbe = AppBar-Farbe.** Hell `#1976d2` (`primary.main`), dunkel `#272727`
   (`background.paper` + Elevation-4-Overlay). `pwa.spec.ts` rechnet beides aus `createTheme` nach;
   wer das Theme ändert, zieht `PWA_THEME_COLORS` nach. Die Metadaten liefern je
@@ -612,8 +630,20 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
     sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
 - `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
   `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
+- **Was Nachträge für Ofen, Teig und Füllung heißen** (W4-Verifikation): je Zeile
+  `delta.bake` = `roundUp(exakt + Nachtrag) − roundUp(exakt)` (`deltaBakeExtras` in
+  `backzettel-day.core.js`; `exakt` = Vorbestellungen vor dem Aufrunden, seit dieser Änderung im
+  `computed_snapshot` als `preordersExact`; ältere Freigaben rechnen mit der gerundeten Menge - eher
+  eine Einheit zu viel als zu wenig). Abzeichen sagen das mit Einheit („Nachtrag +1 l",
+  „Nachtrag +0,25 · 1 mehr backen"). `deltaExtras` am Tag nennt, was Hefeteig und Füllungen
+  dadurch zusätzlich brauchen; Hefeteig-Karte, Backstube-Tablet und Druckseite 2 zeigen es über
+  dem freigegebenen Stand (der bleibt eingefroren). Druckseite 1 ist knapper gesetzt und bricht
+  nur zwischen Abschnitten um (`.bz-section`).
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
+- **Planen und Freigeben nur von heute − 7 bis heute + 90 Tage** (400 `date_out_of_range`,
+  W4-Verifikation) - ein Tippfehler in der URL committete sonst einen Backzettel für 9999-12-31
+  nach hq `main`.
 
 ## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
 
@@ -738,7 +768,12 @@ path })` in `sessionPolicy.ts`, gelesen bei jeder Prüfung aus `window.location.
   `backstube` gehört, länger als die Stations-Grenze unberührt, markiert die nächste Berührung die
   Sitzung (`unattendedAtBackstube` in `session.tsx`); auf `/backstube` geht es weiter, beim
   Verlassen meldet der `RouteGuard` wegen Inaktivität ab (`endUnattended`), statt die nächste Seite
-  zu zeigen. Ob der Inhaber am Tablet überhaupt die lange Grenze bekommt, bleibt Owner-Entscheidung.
+  zu zeigen. **Ein Neuladen ist keine Bedienung** (W4-Verifikation): der Leerlauf-Effekt übernimmt
+  die gespeicherte letzte Bedienung, statt sie auf „jetzt" zu setzen, ein Neuladen nach langer Ruhe
+  markiert selbst, und die Markierung steht in `localStorage` (`bakery-management-unattended`,
+  Wert = `startedAt` der Sitzung; `clearSession()`/neue Anmeldung löschen sie) - sonst setzte ein
+  Wischen zum Aktualisieren alles zurück. Ob der Inhaber am Tablet überhaupt die lange Grenze
+  bekommt, bleibt Owner-Entscheidung.
 - **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube` (sonst kein Haken; die API
   sagt dasselbe): ein 72-px-Haken je Zeile, sofort gesetzt (`POST …/lines/:id/done|undone`), bei
   einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409 `not_confirmed`/`confirmed`/… lädt
@@ -875,6 +910,8 @@ Sitzung, Schreiben nur `inhaber`; kein DELETE. Details: `apps/bakery-api/CLAUDE.
 - **Namen werden vor dem Schreiben gegengelesen.** `product-file.core.js` quotet alles, was YAML
   umdeuten würde (`Brot:`, `'s Weck`, `1e3`, `0x1F`, ...); die API parst die fertige Datei noch einmal
   und antwortet 400 `invalid_product_file`, statt eine unlesbare Datei nach hq zu committen.
+  Davor prüft `product-input.core.js` Grenzen (Name ≤ 120 Zeichen ohne Steuerzeichen, Preis
+  0…10000 € mit höchstens zwei Nachkommastellen, Texte begrenzt) - 400 `validation` statt 500.
 - **Katalog für andere Domänen:** Partner (B6) und Vorbestellungen (B7) holen Name und Preis für
   ihre Snapshots aus `getCatalogue()` / `getProduct()` in
   `apps/bakery-api/src/services/hq-catalogue.ts` - freigegebener Stand, gecacht, nie eigene
@@ -896,7 +933,10 @@ anonymisation (P4)". Von außen wichtig:
 - **Status** `offen → bereit → abgeholt | storniert`, `abgeholt ↔ storniert` gesperrt, storniert
   wird statt gelöscht. Eine abgeholte Bestellung behält Positionen, Abholtag und -ort (409
   `already_picked_up`, erst auf „Offen" zurücksetzen). Mengen sind ganze Zahlen; `"abc"` oder
-  `2.7` sind 400 `invalid_quantity`, nur eine ausdrückliche `0` streicht eine Zeile. „Nicht abgeholt" ist **kein eigener Status**, sondern `bereit` +
+  `2.7` sind 400 `invalid_quantity`, nur eine ausdrückliche `0` streicht eine Zeile. Ein neuer
+  Abholtag muss bei `/api/preorders` zwischen 30 Tagen zurück und 366 Tagen voraus liegen und im
+  Laden kein Montag sein (400 `date_out_of_range` / `ruhetag`); Steuerzeichen im Namen und eine
+  Telefonnummer mit weniger als 5 Ziffern sind 400, statt still gespeichert oder verworfen zu werden. „Nicht abgeholt" ist **kein eigener Status**, sondern `bereit` +
   `notCollectedAt`; so übersetzt der Alias das `not_collected` des Mocks verlustfrei.
 - **Sorten:** `variant` ist `''` für „keine Sorte", nie `null`. Gibt es
   `hq/config/backzettel.yaml`, muss bei Produkten mit Sorten eine davon gewählt werden; ohne
@@ -1006,6 +1046,14 @@ Was man wissen muss:
   abgelehnt (mit API-Text). Scheitert der Aufruf als Ganzes, ist nichts gespeichert - „Keine
   Verbindung …" bzw. „Der Server hat einen Fehler gemeldet …" im offenen Dialog
   (`requestFailureKind`: keine Antwort / 5xx / 4xx).
+- **Einzelne Tipps (Übergeben, bereit, …) melden Fehler auch unten** als Snackbar, die stehen
+  bleibt (W4-Verifikation: die Meldung über der Liste lag am Handy außer Sicht). Bleibt die
+  Antwort aus oder kommt 5xx, ist **unklar**, ob gespeichert wurde - die Seite lädt sofort neu
+  und vergleicht (`changeAlreadyApplied`): schon so am Server → „Die Antwort ging verloren,
+  gespeichert ist es trotzdem."; frisch geladen und nicht so → „nichts gespeichert"; Neuladen
+  scheitert → „ob das gespeichert wurde, ist unklar" (`singleRequestFailedMessage`), und das
+  Ereignis `online` lädt nach. Ein 409 auf einen zweiten Versuch, der schon so gespeichert ist,
+  heißt „Das ist bereits gespeichert - nichts zu tun."
 - **Stilles Nachladen** alle 60 s und beim Zurückkehren ins Fenster (`focus`,
   `visibilitychange`) - aber nie, solange ein Dialog, ein Menü oder eine Aktion offen ist. Dabei
   wird auch **„heute" neu bestimmt** (ein Tablet, das über Nacht offen bleibt). Scheitert es,

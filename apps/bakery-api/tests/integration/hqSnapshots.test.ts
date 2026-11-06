@@ -37,6 +37,8 @@ const QUIET = {
 }
 // Tue-Sun production days (Monday 2026-11-23 is Ruhetag in the fixture)
 const TUE = '2026-11-24'
+/** "Today" for the planning window - the fixed dates above stay inside it. */
+const PINNED_NOW = new Date('2026-11-20T09:00:00Z')
 const WED = '2026-11-25'
 const THU = '2026-11-26'
 const FRI = '2026-11-27'
@@ -86,7 +88,10 @@ beforeAll(async () => {
   writer = new HqSnapshotWriter({ snapshotDir: remote.snapshot, log: QUIET })
   api = await createTestApp({
     seedPartners: true,
-    app: { backzettel: { hqDir, cacheMs: 0 }, hqSync: { snapshots: writer } },
+    app: {
+      backzettel: { hqDir, cacheMs: 0, now: () => PINNED_NOW },
+      hqSync: { snapshots: writer },
+    },
   })
   await createUser({
     username: 'test.geheim',

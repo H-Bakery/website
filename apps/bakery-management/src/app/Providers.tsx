@@ -1,10 +1,7 @@
 'use client'
 
 import React from 'react'
-import {
-  ThemeProvider as MuiThemeProvider,
-  createTheme,
-} from '@mui/material/styles'
+import { ThemeProvider as MuiThemeProvider } from '@mui/material/styles'
 import CssBaseline from '@mui/material/CssBaseline'
 import {
   NotificationProvider,
@@ -17,6 +14,7 @@ import { isPilotMode } from '../lib/pilotMode'
 import ThemeColorSync from '../components/pwa/ThemeColorSync'
 import { apiClient } from '@bakery/shared/data-access'
 import { resolveBrowserApiBase } from '../lib/apiBase'
+import { createManagementTheme } from '../lib/muiTheme'
 
 // F4: der Browser spricht die API über die eigene Origin an (`/api/...`) -
 // Caddy auf der Box bzw. src/proxy.ts leiten weiter. Gesetzt, bevor eine
@@ -30,10 +28,7 @@ apiClient.setBaseUrl(resolveBrowserApiBase())
 function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme()
   const theme = React.useMemo(
-    () =>
-      createTheme({
-        palette: { mode: colorScheme },
-      }),
+    () => createManagementTheme(colorScheme),
     [colorScheme]
   )
 

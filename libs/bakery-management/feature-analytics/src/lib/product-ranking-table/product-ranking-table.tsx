@@ -1,5 +1,6 @@
 import React from 'react'
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid'
+import { deDE } from '@mui/x-data-grid/locales'
 import { Box, Paper, Typography, Chip, Skeleton } from '@mui/material'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
@@ -125,6 +126,7 @@ export function ProductRankingTable({
           <DataGrid
             rows={rows}
             columns={columns}
+            localeText={deDE.components.MuiDataGrid.defaultProps.localeText}
             pageSizeOptions={[5, 10, 20, 25, 50]}
             checkboxSelection={false}
             disableRowSelectionOnClick

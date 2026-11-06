@@ -585,13 +585,99 @@ describe('AbholListeClient (P2)', () => {
     await user.click(
       screen.getByRole('button', { name: 'Erika Beispiel übergeben' })
     )
+    // Oben über der Liste und unten als Hinweis, wo getippt wurde.
     expect(
-      await screen.findByText(
+      await screen.findAllByText(
         /LA-2026-11-12-01: Die Vorbestellung wurde inzwischen geändert\. Es wurde nichts überschrieben\. Die Liste ist neu geladen/
       )
-    ).toBeInTheDocument()
+    ).toHaveLength(2)
     expect(mockDay.mock.calls.length).toBeGreaterThan(loadsBefore)
     expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull()
+  })
+
+  it('Übergabe ohne Antwort und ohne frische Liste: „unklar", unten am Bildschirm, bleibt stehen (W4-Verifikation)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(new Error('Failed to fetch'))
+    mockDay.mockRejectedValueOnce(new Error('Failed to fetch'))
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    const messages = await screen.findAllByText(
+      /LA-2026-11-12-02: Keine Verbindung zum Server - ob das gespeichert wurde, ist unklar/
+    )
+    expect(messages).toHaveLength(2)
+    // Die Snackbar (unten) verschwindet nicht von selbst.
+    await act(async () => {
+      jest.advanceTimersByTime(20_000)
+    })
+    expect(
+      screen.getAllByText(/ob das gespeichert wurde, ist unklar/)
+    ).toHaveLength(2)
+  })
+
+  it('Übergabe ohne Antwort, aber am Server gespeichert: sagt das statt „nichts gespeichert" (W4-Verifikation)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(new Error('Failed to fetch'))
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        { ...max, status: 'abgeholt', paid: true },
+        paula,
+        storno,
+      ])
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    expect(
+      await screen.findByText(
+        'LA-2026-11-12-02: Die Antwort ging verloren, gespeichert ist es trotzdem.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/nichts gespeichert/)).toBeNull()
+  })
+
+  it('zweiter Versuch nach verlorener Antwort: 409, aber schon so gespeichert - „nichts zu tun" (W4-Verifikation)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(stale())
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        { ...max, status: 'abgeholt', paid: true },
+        paula,
+        storno,
+      ])
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    expect(
+      await screen.findAllByText(
+        'LA-2026-11-12-02: Das ist bereits gespeichert - nichts zu tun.'
+      )
+    ).toHaveLength(2)
+    expect(screen.queryByText(/erneut speichern/)).toBeNull()
   })
 
   it('Fahrer: startet an der Sammelstelle, bestätigt jede Übergabe, kein „bereit"', async () => {
@@ -672,8 +758,18 @@ describe('AbholListeClient (P2)', () => {
       'Artikel',
       'Summe',
       'Bezahlt',
+      'n.\u00a0a.',
       'Unterschrift',
     ])
+    // W4-Verifikation: auf Papier lässt sich „bezahlt“ und „nicht abgeholt“
+    // ankreuzen, wie es die Kurzanleitung Fahrer sagt.
+    const paidCells = Array.from(sheet.querySelectorAll('td.paid')).map(
+      (td) => td.textContent
+    )
+    expect(paidCells).toEqual(expect.arrayContaining(['☑ ja', '☐']))
+    expect(sheet.querySelector('.legend')?.textContent).toContain(
+      'n. a. = nicht'
+    )
     const text = sheet.textContent ?? ''
     expect(text).toContain('Erika Beispiel')
     expect(text).toContain('Max Muster')
@@ -682,6 +778,25 @@ describe('AbholListeClient (P2)', () => {
     expect(text).toContain('1 storniert (nicht aufgeführt)')
     await user.click(screen.getByRole('button', { name: 'Drucken' }))
     expect(print).toHaveBeenCalled()
+  })
+
+  it('ohne Zahlung übergeben: Betrag bleibt sichtbar, auf dem Bildschirm und im Druck (W4-Verifikation)', async () => {
+    const base = ladenDay()
+    mockDay.mockResolvedValue({
+      ...base,
+      summary: {
+        ...base.summary,
+        handedOverUnpaid: 1,
+        handedOverUnpaidTotal: 6.4,
+      },
+    })
+    const { container } = renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    expect(
+      screen.getByText('+ 6,40 € ohne Zahlung übergeben')
+    ).toBeInTheDocument()
+    const sheet = container.querySelector('.abholliste-print') as HTMLElement
+    expect(sheet.textContent).toMatch(/\(\+ 6,40\s€ ohne Zahlung übergeben\)/)
   })
 
   it('ohne Bestellungen: Hinweis und für den Verkauf „Vorbestellung erfassen"', async () => {

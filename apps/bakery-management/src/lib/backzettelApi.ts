@@ -30,6 +30,32 @@ export interface BackzettelLineDelta {
   /** Davon noch nicht quittiert (Anzahl Einträge). */
   open: number
   count: number
+  /**
+   * W4-Verifikation: was das nach dem Aufrunden zusätzlich zu backen heißt
+   * (Einheit der Zeile; +0,25 Kranz → 1 oder 0). Fehlt bei älteren Servern.
+   */
+  bake?: number
+}
+
+/** Hefeteig/Füllungen: was die Nachträge zusätzlich brauchen (nur Änderungen). */
+export interface DeltaExtras {
+  doughs: Array<{
+    id: string
+    name: string
+    /** Zusätzliche Teigstücke; `totalPieces` = mit Nachträgen. */
+    pieces: number
+    totalPieces: number
+    dough_g: number
+    totalDough_g: number
+    batches: number | null
+    weighing: Array<{ piece_g: number; pieces: number; total: number }>
+  }>
+  fillings: Array<{
+    id: string
+    name: string
+    grams: number
+    totalGrams: number
+  }>
 }
 
 export interface BackzettelLine {
@@ -197,6 +223,8 @@ export interface BackzettelDay {
   /** Vortag ist selbst Ruhetag - wer vorbereitet, ist offen (Q-B2). */
   prepDateProvisional: boolean | null
   deltas: BackzettelDeltaEntry[]
+  /** Nur freigegebene Tage mit Nachträgen, die Teig oder Füllung ändern. */
+  deltaExtras?: DeltaExtras | null
   warnings: BackzettelWarning[]
   configStatus: 'ok' | 'no-config'
   /** Nur freigegeben: aktuelle Stammdaten ergäben jetzt etwas anderes. */

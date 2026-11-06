@@ -1,5 +1,8 @@
 import {
   addDays,
+  deltaBadgeText,
+  deltaExtrasLines,
+  formatSignedQty,
   formatDateLong,
   formatDateShort,
   formatFactor,
@@ -158,5 +161,59 @@ describe('Backzettel-Helfer (Fixup)', () => {
     expect(changes).toHaveLength(1)
     expect(changes[0].line.key).toBe(line.key)
     expect(changes[0].after).toBe((changes[0].before ?? 0) + 2)
+  })
+})
+
+describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
+  it('formatSignedQty hängt die Einheit an', () => {
+    expect(formatSignedQty(1, 'Liter')).toBe('+1 l')
+    expect(formatSignedQty(-2, 'Stück')).toBe('−2')
+    expect(formatSignedQty(0.5, 'kg')).toBe('+0,5 kg')
+    expect(formatSignedQty(0, 'Liter')).toBe('–')
+  })
+
+  it('deltaBadgeText sagt, was nach dem Aufrunden zu backen ist', () => {
+    expect(
+      deltaBadgeText({ qty: 1, open: 1, count: 1, bake: 1 }, 'Liter')
+    ).toBe('Nachtrag +1 l')
+    expect(
+      deltaBadgeText({ qty: 0.25, open: 1, count: 1, bake: 1 }, 'Stück')
+    ).toBe('Nachtrag +0,25 · 1 mehr backen')
+    expect(
+      deltaBadgeText({ qty: 0.25, open: 1, count: 1, bake: 0 }, 'Stück')
+    ).toBe('Nachtrag +0,25 · nichts mehr backen')
+    expect(
+      deltaBadgeText({ qty: -0.5, open: 1, count: 1, bake: -1 }, 'Stück')
+    ).toBe('Nachtrag −0,5 · 1 weniger backen')
+    // älterer Server ohne `bake`
+    expect(deltaBadgeText({ qty: 2, open: 1, count: 1 }, 'Stück')).toBe(
+      'Nachtrag +2'
+    )
+  })
+
+  it('deltaExtrasLines beschreibt Teig und Füllung zusätzlich', () => {
+    expect(deltaExtrasLines(null)).toEqual([])
+    expect(
+      deltaExtrasLines({
+        doughs: [
+          {
+            id: 'h',
+            name: 'Hefeteig',
+            pieces: 4,
+            totalPieces: 51,
+            dough_g: 2400,
+            totalDough_g: 30600,
+            batches: 4,
+            weighing: [{ piece_g: 600, pieces: 4, total: 20 }],
+          },
+        ],
+        fillings: [
+          { id: 'mohn', name: 'Mohnfüllung', grams: 1600, totalGrams: 5200 },
+        ],
+      })
+    ).toEqual([
+      'Hefeteig: +4 Teigstücke (+2,4 kg Teig) - +4 × 600 g abwiegen; mit Nachträgen 51 Teigstücke, 30,6 kg',
+      'Mohnfüllung: +1,6 kg; mit Nachträgen 5,2 kg',
+    ])
   })
 })

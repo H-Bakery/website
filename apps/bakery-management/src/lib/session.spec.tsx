@@ -13,6 +13,9 @@ import {
   saveSession,
   saveStation,
   currentToken,
+  loadLastActivity,
+  loadUnattended,
+  saveLastActivity,
   type SessionUser,
   type StoredSession,
 } from './authSession'
@@ -351,6 +354,64 @@ describe('SessionProvider', () => {
       } finally {
         jest.useRealTimers()
       }
+    })
+
+    it('Inhaber per PIN: ein Neuladen auf /backstube nach > 10 min Ruhe ist „unbeaufsichtigt" und bleibt es (W4-Verifikation)', async () => {
+      window.history.replaceState({}, '', '/backstube')
+      const pinAt = Date.now() - 30 * 60 * 1000
+      saveSession(
+        stored({
+          sessionKind: 'station',
+          user: { ...INHABER, id: 1 } as SessionUser,
+          startedAt: pinAt,
+        })
+      )
+      saveLastActivity(Date.now() - 11 * 60 * 1000)
+      api.fetchMe.mockResolvedValue(INHABER)
+      const first = renderProvider()
+      await waitFor(() =>
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+      )
+      // Das Neuladen selbst ist keine Bedienung: die alte Zeit bleibt stehen.
+      expect(loadLastActivity()).toBeLessThan(Date.now() - 10 * 60 * 1000)
+      expect(screen.getByTestId('unattended')).toHaveTextContent('true')
+
+      // Jemand tippt, dann wird noch einmal neu geladen: die Markierung bleibt.
+      await act(async () => {
+        window.dispatchEvent(new Event('pointerdown'))
+      })
+      first.unmount()
+      renderProvider()
+      await waitFor(() =>
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+      )
+      expect(screen.getByTestId('unattended')).toHaveTextContent('true')
+
+      // Abmelden vergisst sie.
+      await act(async () => {
+        ctx.endUnattended?.()
+      })
+      await waitFor(() =>
+        expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+      )
+      expect(loadUnattended(pinAt)).toBe(false)
+    })
+
+    it('Inhaber per PIN: ein Neuladen auf /backstube nach kurzer Ruhe ist nicht „unbeaufsichtigt"', async () => {
+      window.history.replaceState({}, '', '/backstube')
+      saveSession(
+        stored({
+          sessionKind: 'station',
+          user: { ...INHABER, id: 1 } as SessionUser,
+        })
+      )
+      saveLastActivity(Date.now() - 2 * 60 * 1000)
+      api.fetchMe.mockResolvedValue(INHABER)
+      renderProvider()
+      await waitFor(() =>
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+      )
+      expect(screen.getByTestId('unattended')).toHaveTextContent('false')
     })
 
     it('die Rolle Backstube wird nach langer Ruhe nicht „unbeaufsichtigt"', async () => {

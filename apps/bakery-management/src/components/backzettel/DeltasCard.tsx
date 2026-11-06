@@ -17,7 +17,7 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
-  formatSigned,
+  formatSignedQty,
   formatTimestamp,
   lineLabel,
 } from '../../lib/backzettelFormat'
@@ -94,7 +94,7 @@ export function DeltasCard({
                   fontWeight={700}
                   sx={{ minWidth: 56 }}
                 >
-                  {formatSigned(d.qty)}
+                  {formatSignedQty(d.qty, d.unit)}
                 </Typography>
                 <Box sx={{ flex: 1, minWidth: 160 }}>
                   <Typography fontWeight={600}>

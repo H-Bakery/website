@@ -15,6 +15,7 @@ import {
   shiftDate,
   type PickupPoint,
   type Preorder,
+  type PreorderStatusChange,
 } from './preordersTypes'
 
 export const ABHOLLISTE_PATH = '/admin/preorders/abholliste'
@@ -429,4 +430,49 @@ export function staleListMessage(
     return `Der Server hat beim Neuladen einen Fehler gemeldet.${stand}`
   }
   return `Die Liste konnte nicht neu geladen werden.${stand}`
+}
+
+/**
+ * Steht die gewünschte Änderung schon so am Server? Dann war ein scheinbar
+ * gescheiterter Tipp (verlorene Antwort im WLAN-Loch) oder ein 409 auf den
+ * zweiten Versuch in Wahrheit erfolgreich (W4-Verifikation).
+ */
+export function changeAlreadyApplied(
+  preorder: Preorder,
+  change: PreorderStatusChange
+): boolean {
+  if (change.status !== undefined && preorder.status !== change.status) {
+    return false
+  }
+  if (change.paid !== undefined && Boolean(preorder.paid) !== change.paid) {
+    return false
+  }
+  if (
+    change.notCollected !== undefined &&
+    Boolean(preorder.notCollected) !== change.notCollected
+  ) {
+    return false
+  }
+  return true
+}
+
+/**
+ * Meldung, wenn ein einzelner Tipp ohne Antwort blieb (`offline`) oder der
+ * Server 5xx meldete. `reloaded`: ob die Liste danach frisch geladen werden
+ * konnte - nur dann ist sicher, dass nichts gespeichert wurde. Ohne frische
+ * Liste ist es **unklar**: die Anfrage kann den Server erreicht haben, bevor
+ * die Verbindung abriss.
+ */
+export function singleRequestFailedMessage(
+  kind: 'offline' | 'server',
+  reloaded: boolean
+): string {
+  if (reloaded) {
+    return kind === 'offline'
+      ? 'Keine Verbindung zum Server - es wurde nichts gespeichert. Bitte erneut versuchen.'
+      : 'Der Server hat einen Fehler gemeldet - es wurde nichts gespeichert. Bitte gleich noch einmal versuchen.'
+  }
+  return kind === 'offline'
+    ? 'Keine Verbindung zum Server - ob das gespeichert wurde, ist unklar. Die Liste lädt neu, sobald das WLAN wieder da ist; bitte dann prüfen, bevor erneut getippt wird.'
+    : 'Der Server hat einen Fehler gemeldet - ob das gespeichert wurde, ist unklar. Bitte die Liste neu laden und prüfen, bevor erneut getippt wird.'
 }

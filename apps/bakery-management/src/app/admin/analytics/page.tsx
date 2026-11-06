@@ -238,7 +238,7 @@ export default function AnalyticsPage() {
                 value={`${summary.cashPercentage.toLocaleString('de-DE', {
                   maximumFractionDigits: 1,
                 })} %`}
-                subtitle="des Umsatzes (Rest: Karte)"
+                subtitle="des Umsatzes, Rest: Karte und ohne Zahlung"
                 loading={loading}
                 color="warning"
               />
@@ -267,7 +267,7 @@ export default function AnalyticsPage() {
               />
             </Grid>
             <Grid item xs={12} lg={4}>
-              <Paper elevation={3} sx={{ p: 3, height: 500 }}>
+              <Paper elevation={3} sx={{ p: 3, minHeight: 500 }}>
                 <Typography variant="h6" component="h2" gutterBottom>
                   Schwache Produkte
                 </Typography>

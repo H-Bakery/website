@@ -313,6 +313,80 @@ function snapshotLookup(existingItems) {
 }
 
 /**
+ * Positionen einer Standard-Bestückung (Wochentags-Vorlage) prüfen - gleiche
+ * Grenzen wie bei Besuchen (W4-Verifikation: vorher nahm die Vorlage 1e9
+ * Stück und unbekannte Produkte an, und der Backzettel rechnete damit).
+ *
+ * - Positionen ganz ohne Produktangabe und Menge leer/0 entfallen (Regel des
+ *   Mocks; die Maske schickt alle Zeilen).
+ * - Menge: ganze Zahl 0 … `MAX_ITEM_QTY`, sonst Fehler - `2.5` oder `-3`
+ *   werden nicht mehr stillschweigend zu 2 bzw. gestrichen.
+ * - Mit `lookup` muss das Produkt bekannt sein; Kennungen kommen dann aus dem
+ *   Katalog.
+ * - Jedes Produkt nur einmal.
+ *
+ * @returns {{ ok: true, items: Array<{productId: number, productSlug: string,
+ *   quantity: number}> } | { ok: false, error: string, message: string }}
+ */
+function validateTemplateItems(items, lookup) {
+  const fail = (message) => ({ ok: false, error: 'INVALID_ITEMS', message })
+  if (isBlank(items)) return { ok: true, items: [] }
+  if (!Array.isArray(items)) {
+    return fail('Die Vorlage braucht eine Liste von Positionen (items).')
+  }
+  const out = []
+  const seen = new Set()
+  for (let i = 0; i < items.length; i += 1) {
+    const raw = items[i]
+    const pos = `Position ${i + 1}`
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+      return fail(`${pos}: Die Position muss ein Objekt sein.`)
+    }
+    const requestedSlug =
+      typeof raw.productSlug === 'string' ? raw.productSlug.trim() : ''
+    const requestedId = strictInt(raw.productId)
+    const hasId = requestedId != null && requestedId > 0
+    if (!requestedSlug && !hasId) continue
+    const label = requestedSlug || `#${requestedId}`
+
+    let quantity = 0
+    if (!isBlank(raw.quantity)) {
+      quantity = strictInt(raw.quantity)
+      if (quantity == null || quantity < 0 || quantity > MAX_ITEM_QTY) {
+        return fail(
+          `${pos} (${label}): Die Menge muss eine ganze Zahl zwischen 0 und ${MAX_ITEM_QTY} sein.`
+        )
+      }
+    }
+    if (quantity === 0) continue
+
+    let productSlug = requestedSlug
+    let productId = hasId ? requestedId : 0
+    if (typeof lookup === 'function') {
+      const product = lookup(raw) || null
+      if (!product) {
+        return fail(
+          `${pos} (${label}): Unbekanntes Produkt - es steht nicht im Katalog.`
+        )
+      }
+      productSlug = String(product.id || productSlug)
+      productId = strictInt(product.numeric_id) ?? productId
+    }
+    if (!productSlug) {
+      return fail(`${pos}: Die Position braucht ein Produkt (productSlug).`)
+    }
+    if (seen.has(productSlug)) {
+      return fail(
+        `${pos} (${productSlug}): Das Produkt ist doppelt aufgeführt - jedes Produkt nur einmal je Vorlage.`
+      )
+    }
+    seen.add(productSlug)
+    out.push({ productId, productSlug, quantity })
+  }
+  return { ok: true, items: out }
+}
+
+/**
  * Chronologische Reihenfolge: Geschäftstag, dann `sequence`, dann Zeitpunkt.
  * `sequence` gewinnt vor `visitAt`, damit eine korrigierte Uhrzeit die
  * Reihenfolge der Erfassung nicht durcheinanderbringt.
@@ -834,6 +908,7 @@ module.exports = {
   weekdayOf,
   isBusinessDate,
   validateVisitItems,
+  validateTemplateItems,
   snapshotLookup,
   csvCell,
   sortVisits,

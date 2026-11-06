@@ -35,6 +35,8 @@ jest.setTimeout(30000)
 
 const MON = '2026-11-23'
 const TUE = '2026-11-24'
+/** "Today" for the planning window - the fixed dates above stay inside it. */
+const PINNED_NOW = new Date('2026-11-20T09:00:00Z')
 const WED = '2026-11-25'
 const THU = '2026-11-26'
 const FRI = '2026-11-27'
@@ -162,7 +164,8 @@ beforeAll(async () => {
   api = await createTestApp({
     seedPartners: true,
     app: {
-      backzettel: { hqDir, cacheMs: 0 },
+      // Pinned clock for the planning window (today − 7 … today + 90).
+      backzettel: { hqDir, cacheMs: 0, now: () => PINNED_NOW },
       // W4: deltas come from the preorder write path, so the tests write
       // preorders through the API (prices from the synthetic catalogue).
       preorders: {
@@ -444,6 +447,30 @@ describe('confirm, deltas, ticks, reopen', () => {
     expect(await auditActions(TUE)).toEqual(['confirm'])
   })
 
+  it('planning writes outside today − 7 … today + 90 are 400 date_out_of_range (W4-verify)', async () => {
+    for (const date of [
+      '9999-12-31',
+      '1970-01-03',
+      '2026-11-12',
+      '2027-02-19',
+    ]) {
+      const res = await as('backstube').post(`/api/backzettel/${date}/confirm`)
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'date_out_of_range' })
+      expect(res.body.message).toMatch(/außerhalb des Planungszeitraums/)
+      const season = await as('backstube')
+        .put(`/api/backzettel/${date}/season`)
+        .send({ factor: 1.2 })
+      expect(season.status).toBe(400)
+      expect(await BackzettelDay.findByPk(date)).toBeNull()
+    }
+    // The edges are inside: today − 7 (Fri 13.11.) and today + 90 (Thu 18.02.).
+    const edge = await as('backstube')
+      .put('/api/backzettel/2026-11-13/season')
+      .send({ factor: 1 })
+    expect(edge.status).not.toBe(400)
+  })
+
   it('a confirmed day is final for corrections, season and confirm', async () => {
     for (const res of [
       await as('backstube')
@@ -503,7 +530,7 @@ describe('confirm, deltas, ticks, reopen', () => {
     // frozen line unchanged, highlighted
     expect(line(d, 'weck')).toMatchObject({
       total: 59,
-      delta: { qty: 4, open: 1, count: 1 },
+      delta: { qty: 4, open: 1, count: 1, bake: 4 },
     })
 
     // edit, then cancel through the API: one row each
@@ -544,7 +571,12 @@ describe('confirm, deltas, ticks, reopen', () => {
       [2, 'changed'],
       [-6, 'cancelled'],
     ])
-    expect(line(after, 'weck').delta).toEqual({ qty: 0, open: 3, count: 3 })
+    expect(line(after, 'weck').delta).toEqual({
+      qty: 0,
+      open: 3,
+      count: 3,
+      bake: 0,
+    })
     expect(await auditActions(TUE)).toEqual([
       'confirm',
       'deltas_recorded',
@@ -880,6 +912,56 @@ describe('deltas on the preorder write path (W4)', () => {
   it('a preorder for a draft day records nothing (the draft is live)', async () => {
     await apiPreorder(SUN, [{ productId: 'test-weck', quantity: 1 }])
     expect(await BackzettelDelta.count({ where: { date: SUN } })).toBe(0)
+  })
+})
+
+describe('what Nachträge mean for oven, dough and filling (W4-verify)', () => {
+  const SAT3 = '2026-12-12'
+
+  it('a quarter Kranz after confirm: bake one more, plus dough and filling', async () => {
+    const confirmed = await as('backstube').post(
+      `/api/backzettel/${SAT3}/confirm`
+    )
+    expect(confirmed.status).toBe(200)
+    expect(confirmed.body.data.deltaExtras).toBeNull()
+
+    await apiPreorder(SAT3, [
+      {
+        productId: 'test-kranz-gefuellt-viertel',
+        quantity: 1,
+        variant: 'nuss',
+      },
+    ])
+    const d = (await as('backstube').get(`/api/backzettel/${SAT3}`)).body.data
+    const kranz = line(d, 'kranz-gefuellt', 'nuss')
+    // +0,25 Kranz in the preorders, one whole Kranz more to bake
+    expect(kranz.delta).toMatchObject({ qty: 0.25, bake: 1, open: 1 })
+    // frozen figures stay; the difference is reported next to them
+    expect(d.deltaExtras).toEqual({
+      doughs: [
+        expect.objectContaining({
+          id: 'hefeteig-test',
+          pieces: 2,
+          dough_g: 1200,
+          weighing: [{ piece_g: 600, pieces: 2, total: expect.any(Number) }],
+        }),
+      ],
+      fillings: [expect.objectContaining({ id: 'nuss', grams: 1000 })],
+    })
+
+    // a second quarter needs no further Kranz (0,5 rounds up to the same 1)
+    await apiPreorder(SAT3, [
+      {
+        productId: 'test-kranz-gefuellt-viertel',
+        quantity: 1,
+        variant: 'nuss',
+      },
+    ])
+    const d2 = (await as('backstube').get(`/api/backzettel/${SAT3}`)).body.data
+    expect(line(d2, 'kranz-gefuellt', 'nuss').delta).toMatchObject({
+      qty: 0.5,
+      bake: 1,
+    })
   })
 })
 

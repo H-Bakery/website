@@ -1,8 +1,12 @@
 import React from 'react'
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import TemplatesClient from './TemplatesClient'
-import { fetchPartner, fetchTemplates } from '../../../../../lib/partnerApi'
+import {
+  fetchPartner,
+  fetchTemplates,
+  saveTemplate,
+} from '../../../../../lib/partnerApi'
 import {
   fakeSession,
   WithSession,
@@ -86,5 +90,24 @@ describe('TemplatesClient - Rollen (F4)', () => {
       await screen.findByText(/Standard-Bestückung ändert nur der Inhaber/)
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Speichern/ })).toBeNull()
+    // W4-Verifikation: nichts eintippen, was nie gespeichert werden kann.
+    expect(screen.getByLabelText('Menge Musterbrot')).toBeDisabled()
+  })
+
+  it('Inhaber: mehr als 10.000 Stück je Position werden nicht gespeichert (W4-Verifikation)', async () => {
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        {renderTemplates()}
+      </WithSession>
+    )
+    const input = await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.change(input, { target: { value: '250000' } })
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+    expect(
+      await screen.findByText(/250\.000 Stück sind zu viel - höchstens 10\.000/)
+    ).toBeInTheDocument()
+    expect(saveTemplate).not.toHaveBeenCalled()
+    // Gruppenkopf in richtiger Einzahl.
+    expect(screen.getByText('1 Position · 250000 Stück')).toBeInTheDocument()
   })
 })

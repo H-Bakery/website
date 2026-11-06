@@ -71,6 +71,7 @@ import {
   nextDeliveryDate,
   shiftDate,
 } from './preorderTypes'
+import { TOUCH_LINK_STYLE } from '../../../../lib/muiTheme'
 
 /** Samstag - der Liefertag, solange keine Sammelstelle geladen ist. */
 const DEFAULT_WEEKDAY = 6
@@ -621,6 +622,7 @@ export default function PreorderListClient({
                             ''
                           )}`}
                           underline="hover"
+                          sx={TOUCH_LINK_STYLE}
                         >
                           {preorder.customerPhone}
                         </Link>

@@ -127,6 +127,7 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/preorders/[id]': null,
   '/admin/preorders/neu': 'Neue Vorbestellung',
   '/admin/preorders/tag': 'Tagesübersicht',
+  '/admin/products/new': 'Neues Produkt',
 }
 
 /** Human readable breadcrumb segments for the current path. */
@@ -244,7 +245,7 @@ function AdminShell({
     <Box>
       <Toolbar>
         <Typography variant="h6" noWrap component="div">
-          Bäckerei Management
+          Bäckerei Heusser
         </Typography>
       </Toolbar>
       <Divider />
@@ -312,7 +313,6 @@ function AdminShell({
                               },
                               '& .MuiListItemText-secondary': {
                                 color: 'inherit',
-                                opacity: 0.75,
                               },
                             },
                           }}
@@ -378,7 +378,6 @@ function AdminShell({
                     },
                     '& .MuiListItemText-secondary': {
                       color: 'inherit',
-                      opacity: 0.75,
                     },
                   },
                 }}
@@ -412,12 +411,13 @@ function AdminShell({
             aria-label="Navigation öffnen"
             edge="start"
             onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { md: 'none' } }}
+            // W4-Verifikation: 48 px statt 40 px - Touch-Ziel am Handy/Tablet.
+            sx={{ mr: 2, display: { md: 'none' }, width: 48, height: 48 }}
           >
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            Management System
+            Verwaltung
           </Typography>
           {/* Auf Handys (xs) ist das Kennzeichen ausgeblendet - dort brauchen
               Name und Abmelden den Platz (F1). Ab sm kürzt sich der Titel, das
@@ -464,7 +464,7 @@ function AdminShell({
                   variant="caption"
                   color="inherit"
                   noWrap
-                  sx={{ opacity: 0.8, display: 'block' }}
+                  sx={{ display: 'block' }}
                 >
                   {ROLE_LABELS[user.role]}
                   {isStation ? ' · Station' : ''}

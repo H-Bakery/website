@@ -109,3 +109,32 @@ describe('parsePrice', () => {
     expect(Number.isNaN(parsePrice(null))).toBe(true)
   })
 })
+
+describe('Obergrenzen und Steuerzeichen (W4-Verifikation)', () => {
+  it('lehnt Steuerzeichen und überlange Namen ab, Umlaute und Emoji bleiben', () => {
+    expect(partial({ name: 'Zoë 🥨\u0000' })).toBe(MESSAGES.nameControl)
+    expect(partial({ name: 'Brot ‮otorB' })).toBe(MESSAGES.nameControl)
+    expect(partial({ name: 'x'.repeat(5000) })).toBe(MESSAGES.nameTooLong)
+    expect(partial({ name: 'Zoës Brezel 🥨' })).toBeNull()
+    expect(partial({ name: 'N'.repeat(120) })).toBeNull()
+  })
+
+  it('Preis höchstens 10000 € und mit zwei Nachkommastellen', () => {
+    expect(partial({ price: 1e12 })).toBe(MESSAGES.priceRange)
+    expect(partial({ price: 0.001 })).toBe(MESSAGES.priceCents)
+    expect(partial({ price: '2.345' })).toBe(MESSAGES.priceCents)
+    expect(partial({ price: 2.3 })).toBeNull()
+    expect(partial({ price: '10000' })).toBeNull()
+  })
+
+  it('Texte: Längen und Steuerzeichen, Zeilenumbrüche im Langtext erlaubt', () => {
+    expect(partial({ description: 'Zeile 1\nZeile 2\tmit Tab' })).toBeNull()
+    expect(partial({ description: 'a\u0000b' })).toBe(MESSAGES.textControl)
+    expect(partial({ short_description: 's'.repeat(501) })).toBe(
+      MESSAGES.textTooLong
+    )
+    expect(partial({ description: 'd'.repeat(20001) })).toBe(
+      MESSAGES.textTooLong
+    )
+  })
+})

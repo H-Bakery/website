@@ -449,6 +449,15 @@ function computeDay(args) {
     }
   }
 
+  // Sortenname wie in der Oberfläche („Zopf gefüllt – Nussfüllung“): der
+  // Füllungsname aus den Stammdaten, sonst die ID mit grossem Anfang - nie die
+  // rohe YAML-ID in Klammern.
+  const variantDisplayName = (c, v) => {
+    const f = (c.fillings || []).find((x) => x.id === v)
+    if (f && f.name) return f.name
+    return v.charAt(0).toUpperCase() + v.slice(1)
+  }
+
   // Zeilen. `null` als Grundmenge heisst „noch nicht festgelegt“ (anders als
   // 0 = „wird nicht gebacken“): die Zeile erscheint mit `baseUnset: true`,
   // auch ohne Menge, und es gibt eine Warnung `base_unset`.
@@ -478,7 +487,11 @@ function computeDay(args) {
           }
         }
         if (baseUnset)
-          unset.push(variant ? `${item.name} (${variant})` : item.name)
+          unset.push(
+            variant
+              ? `${item.name} – ${variantDisplayName(cfg, variant)}`
+              : item.name
+          )
         const b = acc.get(lineKey(item.id, variant)) || {
           preorders: 0,
           cap: 0,

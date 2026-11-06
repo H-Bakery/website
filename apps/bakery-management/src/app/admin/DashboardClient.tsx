@@ -32,6 +32,10 @@ import {
   Circle as CircleIcon,
   Refresh as RefreshIcon,
   PointOfSale as CashRegisterIcon,
+  EventNote as PreordersIcon,
+  FactCheck as AbhollisteIcon,
+  Assignment as BackzettelIcon,
+  Storefront as PartnerIcon,
 } from '@mui/icons-material'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
@@ -65,6 +69,43 @@ interface Props {
 }
 
 const quickLinks = [
+  // Pilot-Bildschirme zuerst (W4-Verifikation: Verkauf und Backstube hatten
+  // keinen einzigen Schnellzugriff); `allowed()` filtert nach Rolle.
+  {
+    title: 'Vorbestellungen',
+    description: 'Erfassen, Liste und Tagesübersicht',
+    icon: <PreordersIcon fontSize="large" />,
+    href: '/admin/preorders',
+    color: '#3F51B5',
+  },
+  {
+    title: 'Abholliste',
+    description: 'Übergeben und kassieren',
+    icon: <AbhollisteIcon fontSize="large" />,
+    href: '/admin/preorders/abholliste',
+    color: '#009688',
+  },
+  {
+    title: 'Backzettel',
+    description: 'Planen, freigeben, drucken',
+    icon: <BackzettelIcon fontSize="large" />,
+    href: '/admin/backzettel',
+    color: '#8D6E63',
+  },
+  {
+    title: 'Backstube',
+    description: 'Tablet-Ansicht zum Abhaken',
+    icon: <BakingListIcon fontSize="large" />,
+    href: '/backstube',
+    color: '#FF7043',
+  },
+  {
+    title: 'Backschrank',
+    description: 'Besuche beim Verkaufspartner',
+    icon: <PartnerIcon fontSize="large" />,
+    href: '/admin/partners',
+    color: '#7CB342',
+  },
   {
     title: 'Bestellungen',
     description: 'Bestellungen verwalten und bearbeiten',
@@ -102,7 +143,7 @@ const quickLinks = [
   },
   {
     title: 'Produkte',
-    description: 'Produktkatalog verwalten',
+    description: 'Produktkatalog',
     icon: <ProductsIcon fontSize="large" />,
     href: '/admin/products',
     color: '#E91E63',
@@ -332,7 +373,9 @@ export default function DashboardClient({
                 size="small"
                 onClick={() => router.push('/admin/products')}
               >
-                Produkte verwalten
+                {role === null || role === 'inhaber'
+                  ? 'Produkte verwalten'
+                  : 'Produkte ansehen'}
               </Button>
             ) : (
               <Typography variant="body2" color="text.secondary">

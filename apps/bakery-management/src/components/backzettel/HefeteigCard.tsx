@@ -22,6 +22,8 @@ import type {
   HefeteigDough,
 } from '../../lib/backzettelApi'
 import { formatGrams, formatNumber } from '../../lib/backzettelFormat'
+import type { DeltaExtras } from '../../lib/backzettelApi'
+import { DeltaExtrasNote } from './DeltaExtrasNote'
 
 const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
 
@@ -194,6 +196,8 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
 export interface HefeteigCardProps {
   hefeteig: Hefeteig | null
   fillings: FillingNeed[] | null
+  /** Was die Nachträge seit der Freigabe zusätzlich brauchen. */
+  deltaExtras?: DeltaExtras | null
 }
 
 /**
@@ -201,17 +205,22 @@ export interface HefeteigCardProps {
  * Abwiegeliste und Füllungsbedarf mit skaliertem Rezept - genau so, wie der
  * Server sie gerechnet hat (Entwurf live, freigegeben eingefroren).
  */
-export function HefeteigCard({ hefeteig, fillings }: HefeteigCardProps) {
+export function HefeteigCard({
+  hefeteig,
+  fillings,
+  deltaExtras,
+}: HefeteigCardProps) {
   const doughs = hefeteig?.doughs ?? []
   const list = fillings ?? []
-  if (doughs.length === 0 && list.length === 0) return null
+  if (doughs.length === 0 && list.length === 0 && !deltaExtras) return null
   return (
     <Card variant="outlined" sx={{ mb: 2 }} data-testid="hefeteig-card">
       <CardContent>
         <Typography variant="h6" component="h2" gutterBottom>
           Hefeteig &amp; Füllungen
         </Typography>
-        <Stack spacing={3} divider={<Divider flexItem />}>
+        <DeltaExtrasNote extras={deltaExtras} />
+        <Stack spacing={3} divider={<Divider flexItem />} sx={{ mt: 1 }}>
           {doughs.map((d) => (
             <DoughBlock key={d.id} dough={d} />
           ))}

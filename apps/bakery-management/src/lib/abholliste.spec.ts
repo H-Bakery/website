@@ -3,6 +3,8 @@ import {
   abholActions,
   abhollisteHref,
   bulkRequestFailedMessage,
+  changeAlreadyApplied,
+  singleRequestFailedMessage,
   defaultPickupDate,
   defaultPickupPlace,
   describeBulkResults,
@@ -304,6 +306,40 @@ describe('Sammelaktionen: Meldungen (W4)', () => {
     )
     expect(staleListMessage('server', '')).toBe(
       'Der Server hat beim Neuladen einen Fehler gemeldet.'
+    )
+  })
+})
+
+describe('verlorene Antworten (W4-Verifikation)', () => {
+  const base = preorder({ id: 1, status: 'offen', paid: false })
+
+  it('changeAlreadyApplied vergleicht nur die angefragten Felder', () => {
+    expect(
+      changeAlreadyApplied(
+        { ...base, status: 'abgeholt', paid: true },
+        { status: 'abgeholt', paid: true }
+      )
+    ).toBe(true)
+    expect(
+      changeAlreadyApplied(
+        { ...base, status: 'abgeholt', paid: false },
+        { status: 'abgeholt', paid: true }
+      )
+    ).toBe(false)
+    expect(changeAlreadyApplied(base, { status: 'abgeholt' })).toBe(false)
+    expect(
+      changeAlreadyApplied(
+        { ...base, status: 'bereit', notCollected: true },
+        { notCollected: true }
+      )
+    ).toBe(true)
+  })
+
+  it('singleRequestFailedMessage: ohne frische Liste „unklar", mit frischer Liste „nichts gespeichert"', () => {
+    expect(singleRequestFailedMessage('offline', false)).toMatch(/unklar/)
+    expect(singleRequestFailedMessage('server', false)).toMatch(/unklar/)
+    expect(singleRequestFailedMessage('offline', true)).toMatch(
+      /nichts gespeichert/
     )
   })
 })

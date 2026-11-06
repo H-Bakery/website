@@ -84,6 +84,8 @@ import {
   abholActions,
   abhollisteHref,
   bulkRequestFailedMessage,
+  changeAlreadyApplied,
+  singleRequestFailedMessage,
   defaultPickupDate,
   defaultPickupPlace,
   describeBulkResults,
@@ -168,6 +170,14 @@ const printStyles = (
         },
         '.abholliste-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
         '.abholliste-print .sign': { width: '32mm' },
+        // Kästchen zum Ankreuzen so groß wie der Übergabe-Haken.
+        '.abholliste-print .paid': { whiteSpace: 'nowrap', fontSize: '13pt' },
+        '.abholliste-print th.na': {
+          width: '9mm',
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+        },
+        '.abholliste-print .legend': { fontSize: '9pt', marginTop: '2mm' },
         '.abholliste-print ul': { margin: 0, paddingLeft: '3.5mm' },
       },
     }}
@@ -177,7 +187,15 @@ const printStyles = (
 /** Touch-Ziel: mindestens 48 px hoch (Tablet an der Theke). */
 const TOUCH = { minHeight: 48 } as const
 
-function Tile({ label, value }: { label: string; value: string }) {
+function Tile({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note?: string | null
+}) {
   return (
     <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
       <Typography variant="caption" color="text.secondary" display="block">
@@ -186,8 +204,23 @@ function Tile({ label, value }: { label: string; value: string }) {
       <Typography variant="h6" component="p" sx={{ fontSize: '1.15rem' }}>
         {value}
       </Typography>
+      {note ? (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {note}
+        </Typography>
+      ) : null}
     </Box>
   )
+}
+
+/** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
+function handedOverUnpaidNote(
+  summary: { handedOverUnpaidTotal?: number } | null | undefined
+): string | null {
+  const amount = summary?.handedOverUnpaidTotal ?? 0
+  return amount > 0
+    ? `+ ${formatCurrency(amount)} ohne Zahlung übergeben`
+    : null
 }
 
 function PaidChip({ preorder }: { preorder: Preorder }) {
@@ -212,6 +245,13 @@ function PaidChip({ preorder }: { preorder: Preorder }) {
 interface Toast {
   text: string
   undo?: () => void
+  /**
+   * W4-Verifikation: auch Fehler und Konflikte erscheinen unten am
+   * Bildschirm - die Meldung über der Liste liegt am Handy weit außer Sicht,
+   * wenn weiter unten getippt wurde. Fehler bleiben stehen, bis man sie
+   * schließt.
+   */
+  severity?: 'success' | 'info' | 'error'
 }
 
 type BulkKind = AbholBulkKind
@@ -334,6 +374,8 @@ export default function AbholListeClient({
   const requestRef = useRef(0)
   const dayRef = useRef<PreorderDay | null>(null)
   dayRef.current = day
+  /** Zuletzt erfolgreich geladener Tag - sofort nach `await load()` lesbar. */
+  const loadedDayRef = useRef<PreorderDay | null>(null)
   /**
    * Lädt den Tag. `silent`: ohne Ladeanzeige und **ohne die Liste zu
    * leeren** - scheitert es, bleibt der letzte Stand stehen und ein Hinweis
@@ -350,6 +392,7 @@ export default function AbholListeClient({
       try {
         const next = await fetchPreorderDay(date, place)
         if (request !== requestRef.current) return false
+        loadedDayRef.current = next
         setDay(next)
         setLoadError(null)
         setStaleNotice(null)
@@ -424,10 +467,14 @@ export default function AbholListeClient({
     }
     const timer = window.setInterval(refresh, REFRESH_MS)
     window.addEventListener('focus', refresh)
+    // WLAN wieder da: sofort nachladen - nach einem Tipp ohne Antwort zeigt
+    // erst die frische Liste, ob er gespeichert wurde.
+    window.addEventListener('online', refresh)
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.clearInterval(timer)
       window.removeEventListener('focus', refresh)
+      window.removeEventListener('online', refresh)
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [load])
@@ -454,14 +501,27 @@ export default function AbholListeClient({
       ? 'Die Liste ist neu geladen.'
       : 'Die Liste konnte nicht neu geladen werden - bitte gleich erneut versuchen.'
 
-  const onConflict = async (preorder: Preorder, err: unknown) => {
+  /** Frischer Stand einer Bestellung nach `await load(true)`. */
+  const freshOf = (id: number) =>
+    loadedDayRef.current?.preorders.find((p) => p.id === id) ?? null
+
+  const onConflict = async (
+    preorder: Preorder,
+    err: unknown,
+    change?: PreorderStatusChange
+  ) => {
     const reloaded = await load(true)
-    setConflict(
-      `${preorder.code}: ${preorderErrorMessage(
-        err,
-        'Die Bestellung wurde inzwischen geändert.'
-      )} Es wurde nichts überschrieben. ${afterReload(reloaded)}`
-    )
+    const fresh = reloaded ? freshOf(preorder.id) : null
+    // Der zweite Versuch nach einer verlorenen Antwort: schon erledigt.
+    const text =
+      fresh && change && changeAlreadyApplied(fresh, change)
+        ? `${preorder.code}: Das ist bereits gespeichert - nichts zu tun.`
+        : `${preorder.code}: ${preorderErrorMessage(
+            err,
+            'Die Bestellung wurde inzwischen geändert.'
+          )} Es wurde nichts überschrieben. ${afterReload(reloaded)}`
+    setConflict(text)
+    setToast({ text, severity: 'info' })
   }
 
   const act = async (
@@ -491,19 +551,35 @@ export default function AbholListeClient({
       })
       await load(true)
     } catch (err) {
-      if (isPreorderConflict(err)) await onConflict(preorder, err)
+      if (isPreorderConflict(err)) await onConflict(preorder, err, change)
       else {
         const kind = requestFailureKind(err)
-        setActionError(
-          `${preorder.code}: ${
-            kind === 'refused'
-              ? preorderErrorMessage(
-                  err,
-                  'Das hat nicht geklappt. Bitte erneut versuchen.'
-                )
-              : bulkRequestFailedMessage(kind)
-          }`
-        )
+        if (kind === 'refused') {
+          const text = `${preorder.code}: ${preorderErrorMessage(
+            err,
+            'Das hat nicht geklappt. Bitte erneut versuchen.'
+          )}`
+          setActionError(text)
+          setToast({ text, severity: 'error' })
+        } else {
+          // Keine oder eine 5xx-Antwort: die Anfrage kann trotzdem
+          // angekommen sein. Erst die frische Liste sagt, was gilt.
+          const reloaded = await load(true)
+          const fresh = reloaded ? freshOf(preorder.id) : null
+          if (fresh && changeAlreadyApplied(fresh, change)) {
+            setToast({
+              text: `${preorder.code}: Die Antwort ging verloren, gespeichert ist es trotzdem.`,
+              severity: 'success',
+            })
+          } else {
+            const text = `${preorder.code}: ${singleRequestFailedMessage(
+              kind,
+              reloaded
+            )}`
+            setActionError(text)
+            setToast({ text, severity: 'error' })
+          }
+        }
       }
     } finally {
       setBusyId(null)
@@ -1146,6 +1222,7 @@ export default function AbholListeClient({
             <Tile
               label="Noch zu kassieren"
               value={formatCurrency(summary.unpaidTotal)}
+              note={handedOverUnpaidNote(summary)}
             />
           </Box>
         )}
@@ -1277,6 +1354,9 @@ export default function AbholListeClient({
             {summary
               ? ` · noch zu kassieren ${formatCurrency(summary.unpaidTotal)}`
               : ''}
+            {handedOverUnpaidNote(summary)
+              ? ` (${handedOverUnpaidNote(summary)})`
+              : ''}
             {cancelledCount > 0
               ? ` · ${cancelledCount} storniert (nicht aufgeführt)`
               : ''}
@@ -1291,6 +1371,9 @@ export default function AbholListeClient({
                 <th>Artikel</th>
                 <th className="num">Summe</th>
                 <th>Bezahlt</th>
+                <th className="na" title="nicht abgeholt">
+                  n.&nbsp;a.
+                </th>
                 <th className="sign">Unterschrift</th>
               </tr>
             </thead>
@@ -1299,7 +1382,7 @@ export default function AbholListeClient({
                 <React.Fragment key={group.key}>
                   {printGroups.length > 1 && (
                     <tr className="group">
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         {group.label} ({group.preorders.length})
                       </td>
                     </tr>
@@ -1336,7 +1419,16 @@ export default function AbholListeClient({
                         {p.note ? <em>{p.note}</em> : null}
                       </td>
                       <td className="num">{formatCurrency(p.total)}</td>
-                      <td>{p.paid ? 'ja' : 'nein'}</td>
+                      {/* Zum Ankreuzen auf Papier (Kurzanleitung Fahrer):
+                          offen ☐, schon bezahlt ☑. */}
+                      <td className="paid">{p.paid ? '☑ ja' : '☐'}</td>
+                      <td className="tick">
+                        {p.notCollected
+                          ? '☑'
+                          : p.status === 'abgeholt'
+                          ? ''
+                          : '☐'}
+                      </td>
                       <td className="sign" />
                     </tr>
                   ))}
@@ -1344,6 +1436,10 @@ export default function AbholListeClient({
               ))}
             </tbody>
           </table>
+          <p className="legend">
+            Ankreuzen: ✓ = übergeben, Bezahlt ☐ = Geld erhalten, n. a. = nicht
+            abgeholt.
+          </p>
         </Box>
       )}
 
@@ -1616,14 +1712,14 @@ export default function AbholListeClient({
 
       <Snackbar
         open={toast !== null}
-        autoHideDuration={6000}
+        autoHideDuration={toast?.severity === 'error' ? null : 6000}
         onClose={(_event, reason) => {
           if (reason !== 'clickaway') setToast(null)
         }}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
         <Alert
-          severity="success"
+          severity={toast?.severity ?? 'success'}
           variant="filled"
           onClose={() => setToast(null)}
           action={

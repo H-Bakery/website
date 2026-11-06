@@ -356,6 +356,12 @@ on both servers; parity-tested).
   (`roundTripsAs` in `hq-products.core.js`); a mismatch is 400 `invalid_product_file` and nothing
   is written. Without this a name like `Brot:` was committed as an unparseable file, vanished from
   every list and would have blocked the rolling PR (H2).
+- **Limits before any write (W4-verify)**, in `product-input.core.js` (`PRODUCT_LIMITS`, shared
+  with the mock): name ≤ 120 characters and free of C0/C1/bidi control characters (a NUL used to
+  break the git commit → 500 `hq_commit_failed`, a 5000-character name the file name →
+  `ENAMETOOLONG`), price 0…10000 € with at most two decimals, `short_description`/`image` ≤ 500,
+  body ≤ 20000 (newline/tab allowed, other control characters not). All 400 `validation` with a
+  German `message`.
 - **No-op saves write and commit nothing** (identical bytes) - tested for every sample file with the
   body the edit form sends. A file that was dirty on disk and is saved back to the committed state
   is also a no-op (nothing staged → no commit, 200). A failed commit (e.g. a rejecting pre-commit
@@ -544,7 +550,7 @@ and template objects as before, visits as `PlainVisit`, `DELETE` → 200
 Errors via `sendError` (`success: false`, `error`, German `message`): 400 `INVALID_NAME` /
 `INVALID_SLUG` / `INVALID_ACTIVE` / `INVALID_SETTLEMENT_MODEL` / `INVALID_WEEKDAY` /
 `INVALID_ITEMS` / `INVALID_VISIT_TYPE` / `INVALID_VISIT_AT` / `INVALID_BUSINESS_DATE` /
-`INVALID_RANGE`, 401 `unauthorized`, 403 `forbidden` (the role check runs before the 404), 404
+`INVALID_RANGE` / `TEXT_TOO_LONG`, 401 `unauthorized`, 403 `forbidden` (the role check runs before the 404), 404
 `PARTNER_NOT_FOUND` / `VISIT_NOT_FOUND`, 409 `PARTNER_SLUG_TAKEN` / `DUPLICATE_INITIAL_VISIT`,
 503 `hq_unavailable`, 500 `*_FAILED`.
 
@@ -569,10 +575,20 @@ What to know before changing it:
   `partner_visit` create/update/delete (delete stores the whole visit, so a mistaken delete can be
   reconstructed).
 - **Template `PUT`** fills `productId`/`productSlug` from hq, drops quantity 0, keeps `active`
-  when the body does not name it (before B6 every save re-activated the template).
+  when the body does not name it (before B6 every save re-activated the template). Since the W4
+  verification it validates like visits (`validateTemplateItems` in the core): quantity an integer
+  0…10000 (`2.5`, `-3`, `1e9` are 400 `INVALID_ITEMS`, no longer truncated or dropped), the
+  product must be in hq **or already in the stored template** (so a product removed from hq does
+  not block saving), no duplicates; hq missing → 503. The quantity flows unchecked into the
+  Backzettel CAP column, so this is the only gate.
+- **Limits (W4 verification):** partner text fields (`name` 120, `slug` 80, `street`/`city`/
+  `contactName` 120, `zip` 16, `phone` 40, `email` 200, `notes` 2000) and visit `staffName` 120 /
+  `note` 2000 → 400 `TEXT_TOO_LONG`; a visit's business day must lie between 2020-01-01 and
+  today + 7 days (POST and PATCH) → 400 `INVALID_BUSINESS_DATE`.
 - Deliberate deviations from the mock: error codes; `GET …/templates` does not create empty
   templates on read; `from > to` is 400; PATCH with `visitAt` alone keeps the business day;
-  an unknown `settlementModel` is 400.
+  an unknown `settlementModel` is 400; the template item checks and the limits above (the mock
+  truncates/drops and has no limits - the parity suite only sends valid input there).
 - The management app downloads the CSV through `apiClient.getBlob()` with the Bearer token
   (`downloadReportCsv()` in `partnerApi.ts`, F4); the old plain link is gone.
 
@@ -626,7 +642,9 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 
 `inhaber` passes every check. `sums` items = `[{ productId, variant, name, unit, quantity,
 preorders }]`, everything except `storniert`, optionally `&pickupPointId=`; `summary` is the same
-`core.summarizeDay()` as `/day` (counts, totals, `byStatus` incl. `storniert`) - **no names or
+`core.summarizeDay()` as `/day` (counts, totals, `byStatus` incl. `storniert`; `unpaidTotal` =
+unpaid and not yet handed over, `handedOverUnpaid`/`handedOverUnpaidTotal` = handed over "Ohne
+Zahlung" - kept apart so that money never drops out of every total, W4-verify) - **no names or
 phones**, so the Backliste reads `/sums` instead of `/day` (W4). The role `backstube` gets `/sums`
 **without `summary`** (no amounts, no paid state - it may not read `/day` either; its screens do
 not use it). List filters: `date`
@@ -659,6 +677,17 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
   `notCollected: true` before the pickup date (Berlin today) with 409 `not_collected_too_early`
   - until then the customer can still come. Core option `notCollectedFrom` of
     `normalizeStatusChange`; the Mörsbach alias does not pass it (mock contract, parity).
+- **Plausible input on `POST`/`PATCH /api/preorders` (W4-verify).** Option `strictPickup` of
+  `create()`/`update()` passes `pickupRules` + `notCollectedFrom` to `core.normalizeOrderInput`:
+  a **new** pickup day must lie within 30 days back and 366 ahead of Berlin today (400
+  `date_out_of_range`), a shop pickup (no pickup point) not on a closed weekday
+  (`PREORDER_CLOSED_WEEKDAYS` = Monday, 400 `ruhetag`), and `notCollected: true` on create/edit
+  before the day is 409 `not_collected_too_early`. An unchanged day is never re-checked, and the
+  lock errors (`already_picked_up`, `cancelled`) win. For **every** caller (alias and shop too):
+  `customerName` with C0/C1, DEL or bidi control characters is 400 `invalid_customer`, a note
+  with them (newline/tab allowed) 400 `invalid_note`, and a non-empty `customerPhone` that
+  `normalizePhone` cannot keep (fewer than 5 digits) is 400 `invalid_phone` instead of being
+  dropped silently. The Mörsbach alias does not get the day rules (mock contract).
 - **Pickup point texts are limited (W4)**, in `core.normalizePickupPointInput` and therefore on
   both servers and the alias (`PICKUP_POINT_LIMITS`): name 100, street 200, zip 10, city 100,
   notes 2000 characters (trimmed) → 400 `Text too long` with a German message. The `PUT` on
@@ -820,7 +849,11 @@ null in a draft without a stored row), `correctionBy`, `doneAt`, `doneBy`, `delt
 count } | null`. `variant` is `null` for "none" in JSON, `''` in the tables and in the URL (omit
 the segment). Errors: 400 `invalid_date` / `validation` / `reason_required`, 404 `unknown_item` /
 `unknown_variant` / `not_found`, 409 `ruhetag` (weekday not in `config.days`), `no_config` (with
-`reasons`), `confirmed`, `not_confirmed`.
+`reasons`), `confirmed`, `not_confirmed`. **Planning window (W4 verification):** season,
+correction and confirm only for today − 7 … today + 90 days (Berlin, `PLANNING_DAYS_BACK` /
+`PLANNING_DAYS_AHEAD` in `backzettel.service.ts`), otherwise 400 `date_out_of_range` - a URL typo
+(`9999-12-31`) used to confirm a day and commit its snapshot to hq `main`. Reads, reopen, ticks and
+acks are not limited. Tests pin the clock with `createApp({ backzettel: { now: () => … } })`.
 
 What to know before changing it:
 

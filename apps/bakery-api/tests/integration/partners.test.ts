@@ -543,6 +543,113 @@ describe('mock contract details (D3)', () => {
     expect(again.body.id).toBe(created.body.id)
   })
 
+  it('template PUT rejects huge, fractional, negative quantities and unknown products (W4-verify)', async () => {
+    const partner = await as('inhaber')
+      .post('/api/partners')
+      .send({ name: 'Testmarkt Vorlagengrenzen' })
+    const url = `/api/partners/${partner.body.id}/templates/4`
+    for (const quantity of [1_000_000_000, 10001, 2.5, -3, 'viele']) {
+      const res = await as('inhaber')
+        .put(url)
+        .send({ items: [{ ...KORNBROT, quantity }] })
+      expectError(res, 400, 'INVALID_ITEMS')
+      expect(res.body.message).toMatch(/ganze Zahl zwischen 0 und 10000/)
+    }
+    const unknown = await as('inhaber')
+      .put(url)
+      .send({ items: [{ productSlug: 'nope', quantity: 1 }] })
+    expectError(unknown, 400, 'INVALID_ITEMS')
+    expect(unknown.body.message).toMatch(/Unbekanntes Produkt/)
+    expectError(
+      await as('inhaber')
+        .put(url)
+        .send({
+          items: [
+            { ...KORNBROT, quantity: 1 },
+            { productSlug: 'kornbrot-500g', quantity: 2 },
+          ],
+        }),
+      400,
+      'INVALID_ITEMS'
+    )
+    // Nothing was stored by the refused requests.
+    const list = await as('inhaber').get(
+      `/api/partners/${partner.body.id}/templates`
+    )
+    expect(list.body).toEqual([])
+    // The upper bound itself is fine.
+    const max = await as('inhaber')
+      .put(url)
+      .send({ items: [{ ...KORNBROT, quantity: 10000 }] })
+    expect(max.status).toBe(200)
+  })
+
+  it('text limits and the business-day window (W4-verify)', async () => {
+    const huge = await as('inhaber')
+      .post('/api/partners')
+      .send({ name: 'P'.repeat(121) })
+    expectError(huge, 400, 'TEXT_TOO_LONG')
+    expect(huge.body.message).toMatch(/höchstens 120 Zeichen/)
+    expectError(
+      await as('inhaber')
+        .put('/api/partners/1')
+        .send({ notes: 'N'.repeat(2001) }),
+      400,
+      'TEXT_TOO_LONG'
+    )
+    expectError(
+      await as('verkauf')
+        .post('/api/partners/1/visits')
+        .send({
+          businessDate: freshDay(),
+          visitType: 'refill',
+          staffName: 'S'.repeat(121),
+          items: [{ ...KORNBROT, countedQty: 1 }],
+        }),
+      400,
+      'TEXT_TOO_LONG'
+    )
+    expectError(
+      await as('verkauf')
+        .post('/api/partners/1/visits')
+        .send({
+          businessDate: freshDay(),
+          visitType: 'refill',
+          note: 'N'.repeat(2001),
+          items: [{ ...KORNBROT, countedQty: 1 }],
+        }),
+      400,
+      'TEXT_TOO_LONG'
+    )
+    for (const businessDate of ['9999-12-31', '1970-01-03']) {
+      const res = await as('verkauf')
+        .post('/api/partners/1/visits')
+        .send({
+          businessDate,
+          visitType: 'initial',
+          items: [{ ...KORNBROT, deliveredQty: 1 }],
+        })
+      expectError(res, 400, 'INVALID_BUSINESS_DATE')
+      expect(res.body.message).toMatch(/außerhalb des erlaubten Zeitraums/)
+    }
+    const ok = await as('verkauf')
+      .post('/api/partners/1/visits')
+      .send({
+        businessDate: freshDay(),
+        visitType: 'refill',
+        staffName: 'S'.repeat(120),
+        items: [{ ...KORNBROT, countedQty: 1 }],
+      })
+    expect(ok.status).toBe(201)
+    expectError(
+      await as('verkauf')
+        .patch(`/api/partners/1/visits/${ok.body.id}`)
+        .send({ businessDate: '9999-12-31' }),
+      400,
+      'INVALID_BUSINESS_DATE'
+    )
+  })
+
   it('DELETE answers 200 { id, deleted, message } like the mock', async () => {
     const v = await as('verkauf')
       .post('/api/partners/1/visits')

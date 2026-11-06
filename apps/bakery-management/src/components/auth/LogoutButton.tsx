@@ -31,6 +31,15 @@ export default function LogoutButton(props: ButtonProps) {
       onClick={handleClick}
       disabled={busy}
       {...props}
+      // Touch-Ziel mindestens 44 px (W4-Verifikation: 37/42 px in der AppBar).
+      sx={[
+        { minHeight: 44 },
+        ...(props.sx === undefined
+          ? []
+          : Array.isArray(props.sx)
+          ? props.sx
+          : [props.sx]),
+      ]}
     >
       Abmelden
     </Button>

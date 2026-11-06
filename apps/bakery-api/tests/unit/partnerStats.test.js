@@ -1425,3 +1425,53 @@ describe('csvCell', () => {
     expect(csvCell('=DATE(2026;8;25)')).toBe('"\'=DATE(2026;8;25)"')
   })
 })
+
+describe('validateTemplateItems (W4-verify)', () => {
+  const core = require('../../src/services/partner-stats.core.js')
+  const lookup = (item) =>
+    item.productSlug === 'brot' || item.productId === 7
+      ? { id: 'brot', numeric_id: 7 }
+      : null
+
+  it('takes ids from the catalogue and drops empty and zero rows', () => {
+    expect(
+      core.validateTemplateItems(
+        [
+          { productId: 7, quantity: '3' },
+          { productSlug: '', quantity: 5 },
+          { productSlug: 'brot', quantity: 0 },
+        ],
+        lookup
+      )
+    ).toEqual({
+      ok: true,
+      items: [{ productId: 7, productSlug: 'brot', quantity: 3 }],
+    })
+  })
+
+  it.each([1e9, 10001, 2.5, -1, 'x', true])('rejects quantity %p', (q) => {
+    const result = core.validateTemplateItems(
+      [{ productSlug: 'brot', quantity: q }],
+      lookup
+    )
+    expect(result.ok).toBe(false)
+    expect(result.error).toBe('INVALID_ITEMS')
+  })
+
+  it('rejects unknown products, duplicates and a non-list', () => {
+    expect(
+      core.validateTemplateItems([{ productSlug: 'nope', quantity: 1 }], lookup)
+        .message
+    ).toMatch(/Unbekanntes Produkt/)
+    expect(
+      core.validateTemplateItems(
+        [
+          { productSlug: 'brot', quantity: 1 },
+          { productId: 7, quantity: 1 },
+        ],
+        lookup
+      ).message
+    ).toMatch(/doppelt/)
+    expect(core.validateTemplateItems('brot', lookup).ok).toBe(false)
+  })
+})
