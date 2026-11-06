@@ -112,6 +112,81 @@ describe('PreorderDetailClient (P3)', () => {
     ).toBeInTheDocument()
   })
 
+  it('Sitzung endet beim Bearbeiten: nach neuer Anmeldung sind die Änderungen wieder da und werden auf der alten Version gespeichert (W4-verify r6)', async () => {
+    const store = window.sessionStorage as unknown as Record<string, jest.Mock>
+    const data = new Map<string, string>()
+    store.getItem.mockImplementation((k: string) => data.get(k) ?? null)
+    store.setItem.mockImplementation((k: string, v: string) => {
+      data.set(k, String(v))
+    })
+    store.removeItem.mockImplementation((k: string) => {
+      data.delete(k)
+    })
+    const user = userEvent.setup()
+    const first = renderAs('verkauf')
+    await user.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    const name = await screen.findByLabelText(/^Name/)
+    await user.clear(name)
+    await user.type(name, 'Erika Geändert')
+    await user.click(
+      screen.getByRole('button', { name: 'Kornbrot 500g eins mehr' })
+    )
+    // Sitzung endet: die Seite verschwindet ohne Speichern.
+    first.unmount()
+
+    // Inzwischen hat ein anderes Gerät die Bestellung neu gespeichert.
+    mockGet.mockResolvedValue(
+      preorder({ updatedAt: '2026-11-12T09:30:00.000Z' })
+    )
+    renderAs('verkauf')
+    expect(
+      await screen.findByTestId('preorder-draft-restored')
+    ).toHaveTextContent('Nicht gespeicherte Eingaben')
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Erika Geändert')
+    mockUpdate.mockResolvedValue(preorder({ customerName: 'Erika Geändert' }))
+    await user.click(
+      screen.getByRole('button', { name: 'Änderungen speichern' })
+    )
+    // gespeichert wird auf der Fassung, auf der die Änderungen beruhen - der
+    // Server sagt 409, statt das andere Gerät still zu überschreiben.
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(
+        7,
+        {
+          customerName: 'Erika Geändert',
+          items: [{ productId: 'kornbrot-500g', variant: '', quantity: 3 }],
+        },
+        '2026-11-12T09:00:00.000Z'
+      )
+    )
+    await waitFor(() =>
+      expect(
+        [...data.keys()].some((k) =>
+          k.startsWith('bakery-management-preorder-edit')
+        )
+      ).toBe(false)
+    )
+  })
+
+  it('„Abbrechen“ verwirft die Änderungen - beim nächsten Öffnen nichts wiederhergestellt (W4-verify r6)', async () => {
+    const store = window.sessionStorage as unknown as Record<string, jest.Mock>
+    const data = new Map<string, string>()
+    store.getItem.mockImplementation((k: string) => data.get(k) ?? null)
+    store.setItem.mockImplementation((k: string, v: string) => {
+      data.set(k, String(v))
+    })
+    store.removeItem.mockImplementation((k: string) => {
+      data.delete(k)
+    })
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await user.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    await user.type(await screen.findByLabelText(/^Name/), 'x')
+    expect(data.size).toBe(1)
+    await user.click(screen.getByRole('button', { name: 'Abbrechen' }))
+    expect(data.size).toBe(0)
+  })
+
   it('storniert erst nach Rückfrage - nichts wird gelöscht', async () => {
     const user = userEvent.setup()
     mockCancel.mockResolvedValue(preorder({ status: 'storniert' }))

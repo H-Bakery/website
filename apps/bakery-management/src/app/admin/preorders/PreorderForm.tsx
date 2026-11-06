@@ -45,9 +45,12 @@ import {
 } from '../../../lib/preordersApi'
 import {
   clearPreorderDraft,
+  clearPreorderEditDraft,
   newRequestId,
   readPreorderDraft,
+  readPreorderEditDraft,
   savePreorderDraft,
+  savePreorderEditDraft,
   type PreorderDraftFields,
 } from '../../../lib/preorderDraft'
 import { useOptionalSession } from '../../../lib/session'
@@ -210,6 +213,29 @@ export interface PreorderFormProps {
   initialPickupPointId?: string
 }
 
+/** Die Maskenfelder einer gespeicherten Bestellung (Ausgangsstand beim Bearbeiten). */
+function fieldsOf(preorder: Preorder): PreorderDraftFields {
+  return {
+    customerName: preorder.customerName ?? '',
+    customerPhone: preorder.customerPhone ?? '',
+    channel: preorder.channel,
+    pickupPointId: preorder.pickupPointId ?? '',
+    pickupDate: preorder.pickupDate,
+    pickupTime: preorder.pickupTime ?? '',
+    paid: preorder.paid,
+    note: preorder.note ?? '',
+    lines: preorder.items.map((item) => ({
+      key: lineKey(item.productId, item.variant),
+      productId: item.productId,
+      name: item.name,
+      variant: item.variant,
+      unit: item.unit,
+      unitPrice: item.unitPrice,
+      quantity: item.quantity,
+    })),
+  }
+}
+
 /**
  * Die Vorbestell-Maske (P1): schnell, per Touch und per Tastatur.
  *
@@ -290,6 +316,10 @@ export default function PreorderForm({
   // W4-Verifikation Runde 4: Entwurf (nur Erfassen) und Kennung des
   // Speicherns - siehe `lib/preorderDraft.ts`.
   const requestIdRef = useRef<string | null>(null)
+  // W4-Verifikation Runde 6: auch Änderungen an einer gespeicherten
+  // Bestellung überstehen das Ende der Sitzung - mit der Version, auf der
+  // sie beruhen (`baseVersionRef`), damit nichts still überschrieben wird.
+  const baseVersionRef = useRef<string | null>(preorder?.updatedAt ?? null)
   const [draftReady, setDraftReady] = useState(false)
   const [restoredAt, setRestoredAt] = useState<string | null>(null)
   const [restoredAfterAttempt, setRestoredAfterAttempt] = useState(false)
@@ -388,6 +418,24 @@ export default function PreorderForm({
         setRestoredAfterAttempt(Boolean(draft.requestId))
       }
       setDraftReady(true)
+    } else {
+      const draft = readPreorderEditDraft(sessionUserId, preorder.id)
+      if (draft) {
+        const f = draft.fields
+        setCustomerName(f.customerName)
+        setCustomerPhone(f.customerPhone)
+        setChannel(f.channel)
+        setPickupPointId(f.pickupPointId)
+        setPickupDate(f.pickupDate)
+        setPickupTime(f.pickupTime)
+        setPaid(f.paid)
+        setNote(f.note)
+        setLines(f.lines)
+        baseVersionRef.current = draft.baseUpdatedAt
+        setRestoredAt(draft.savedAt)
+        setRestoredAfterAttempt(false)
+      }
+      setDraftReady(true)
     }
 
     loadData()
@@ -416,7 +464,20 @@ export default function PreorderForm({
   // Jede Änderung landet im Entwurf - erst nach dem Wiederherstellen, sonst
   // überschriebe die leere Maske ihn.
   useEffect(() => {
-    if (editing || !draftReady) return
+    if (!draftReady) return
+    if (preorder) {
+      if (JSON.stringify(draftFields) === JSON.stringify(fieldsOf(preorder))) {
+        clearPreorderEditDraft(sessionUserId, preorder.id)
+      } else {
+        savePreorderEditDraft(
+          sessionUserId,
+          preorder.id,
+          baseVersionRef.current,
+          draftFields
+        )
+      }
+      return
+    }
     savePreorderDraft(sessionUserId, draftFields, requestIdRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -435,6 +496,26 @@ export default function PreorderForm({
   ])
 
   const discardDraft = () => {
+    if (preorder) {
+      // Bearbeiten: zurück auf den gespeicherten Stand.
+      clearPreorderEditDraft(sessionUserId, preorder.id)
+      baseVersionRef.current = preorder.updatedAt
+      const f = fieldsOf(preorder)
+      setRestoredAt(null)
+      setCustomerName(f.customerName)
+      setCustomerPhone(f.customerPhone)
+      setChannel(f.channel)
+      setPickupPointId(f.pickupPointId)
+      setPickupDate(f.pickupDate)
+      setPickupTime(f.pickupTime)
+      setPaid(f.paid)
+      setNote(f.note)
+      setLines(f.lines)
+      setPending(null)
+      setError(null)
+      setShowErrors(false)
+      return
+    }
     clearPreorderDraft(sessionUserId)
     requestIdRef.current = null
     setRestoredAt(null)
@@ -719,13 +800,19 @@ export default function PreorderForm({
       attemptedPatch = patch
       const saved =
         preorder && patch
-          ? await updatePreorder(preorder.id, patch, preorder.updatedAt)
+          ? await updatePreorder(
+              preorder.id,
+              patch,
+              baseVersionRef.current ?? preorder.updatedAt
+            )
           : await createPreorder(input)
       finishSaved(saved)
     } catch (err) {
       if (preorder && onConflict && isPreorderConflict(err)) {
         // Was getippt wurde, geht mit - die Seite sagt, dass es NICHT
-        // gespeichert ist, und zeigt es (W4-verify r4).
+        // gespeichert ist, und zeigt es (W4-verify r4). Der Entwurf beruht
+        // auf der überholten Fassung und gilt nicht mehr.
+        clearPreorderEditDraft(sessionUserId, preorder.id)
         onConflict(
           preorderErrorMessage(
             err,
@@ -758,6 +845,8 @@ export default function PreorderForm({
     if (!preorder) {
       clearPreorderDraft(sessionUserId)
       requestIdRef.current = null
+    } else {
+      clearPreorderEditDraft(sessionUserId, preorder.id)
     }
     setEarlier(null)
     onSaved(saved)
@@ -1596,7 +1685,15 @@ export default function PreorderForm({
           )}
         </Box>
         {onCancel && (
-          <Button onClick={onCancel} sx={{ minHeight: 48 }} disabled={saving}>
+          <Button
+            onClick={() => {
+              // „Abbrechen“ verwirft die Änderungen bewusst.
+              if (preorder) clearPreorderEditDraft(sessionUserId, preorder.id)
+              onCancel()
+            }}
+            sx={{ minHeight: 48 }}
+            disabled={saving}
+          >
             Abbrechen
           </Button>
         )}

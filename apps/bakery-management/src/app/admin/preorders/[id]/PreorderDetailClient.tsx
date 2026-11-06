@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import NextLink from 'next/link'
 import {
   Alert,
@@ -37,6 +37,7 @@ import {
 import PreorderForm from '../PreorderForm'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../../lib/session'
+import { readPreorderEditDraft } from '../../../../lib/preorderDraft'
 import {
   cancelPreorder,
   changePreorderStatus,
@@ -182,6 +183,19 @@ export default function PreorderDetailClient({
   useEffect(() => {
     load()
   }, [load])
+
+  // W4-Verifikation Runde 6: Sitzung mitten im Bearbeiten beendet - nach der
+  // neuen Anmeldung geht die Maske mit den nicht gespeicherten Änderungen
+  // wieder auf (einmal, nicht nach jedem Neuladen).
+  const userId = session?.user?.id ?? null
+  const resumedRef = useRef(false)
+  useEffect(() => {
+    if (resumedRef.current || !preorder || !canWrite) return
+    resumedRef.current = true
+    if (isEditable(preorder) && readPreorderEditDraft(userId, preorder.id)) {
+      setEditing(true)
+    }
+  }, [preorder, canWrite, userId])
 
   const onConflict = async (message: string, lost?: Partial<PreorderInput>) => {
     setEditing(false)

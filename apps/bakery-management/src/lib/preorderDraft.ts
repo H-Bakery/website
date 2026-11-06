@@ -172,3 +172,99 @@ export function newRequestId(): string {
   }
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`
 }
+
+/* ------------------------------------------------------------------ *
+ * Bearbeiten einer gespeicherten Bestellung (W4-Verifikation Runde 6)
+ * ------------------------------------------------------------------ */
+
+const EDIT_KEY = 'bakery-management-preorder-edit'
+
+/**
+ * Nicht gespeicherte Änderungen an einer schon gespeicherten Bestellung -
+ * eine je Benutzer (bearbeitet wird immer nur eine). `baseUpdatedAt` ist die
+ * Fassung, auf der die Änderungen beruhen: gespeichert wird später mit genau
+ * dieser Version, damit ein inzwischen von anderer Stelle Geändertes nicht
+ * still überschrieben wird (409 statt Überschreiben).
+ */
+export interface PreorderEditDraft {
+  userId: string
+  preorderId: number
+  baseUpdatedAt: string | null
+  savedAt: string
+  fields: PreorderDraftFields
+}
+
+export function editDraftKey(userId: string | number): string {
+  return `${EDIT_KEY}:${String(userId)}`
+}
+
+export function readPreorderEditDraft(
+  userId: string | number | null | undefined,
+  preorderId?: number,
+  now: Date = new Date()
+): PreorderEditDraft | null {
+  if (noUser(userId)) return null
+  try {
+    const raw = storage()?.getItem(editDraftKey(userId as string | number))
+    if (!raw) return null
+    const draft = JSON.parse(raw) as PreorderEditDraft
+    if (!draft || typeof draft !== 'object') return null
+    if (String(draft.userId) !== String(userId)) return null
+    if (!Number.isSafeInteger(draft.preorderId)) return null
+    if (preorderId !== undefined && draft.preorderId !== preorderId) {
+      return null
+    }
+    const at = Date.parse(draft.savedAt)
+    if (!Number.isFinite(at) || now.getTime() - at > DRAFT_MAX_AGE_MS) {
+      return null
+    }
+    if (!draft.fields || !Array.isArray(draft.fields.lines)) return null
+    return draft
+  } catch {
+    return null
+  }
+}
+
+export function savePreorderEditDraft(
+  userId: string | number | null | undefined,
+  preorderId: number,
+  baseUpdatedAt: string | null,
+  fields: PreorderDraftFields,
+  now: Date = new Date()
+): void {
+  if (noUser(userId)) return
+  const id = userId as string | number
+  try {
+    const draft: PreorderEditDraft = {
+      userId: String(id),
+      preorderId,
+      baseUpdatedAt,
+      savedAt: now.toISOString(),
+      fields,
+    }
+    storage()?.setItem(editDraftKey(id), JSON.stringify(draft))
+  } catch {
+    // ohne Speicher bleibt nur die Maske selbst
+  }
+}
+
+/** Ohne `preorderId`: jede; mit: nur, wenn er zu dieser Bestellung gehört. */
+export function clearPreorderEditDraft(
+  userId: string | number | null | undefined,
+  preorderId?: number
+): void {
+  if (noUser(userId)) return
+  const id = userId as string | number
+  try {
+    const key = editDraftKey(id)
+    if (preorderId !== undefined) {
+      // Ein Entwurf zu einer anderen Bestellung bleibt stehen.
+      const raw = storage()?.getItem(key)
+      const other = raw ? (JSON.parse(raw) as PreorderEditDraft) : null
+      if (other && other.preorderId !== preorderId) return
+    }
+    storage()?.removeItem(key)
+  } catch {
+    // nichts zu tun
+  }
+}

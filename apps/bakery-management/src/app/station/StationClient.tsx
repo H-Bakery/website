@@ -42,7 +42,10 @@ import {
   readLostActions,
   type LostAction,
 } from '../../lib/lostActions'
-import { readPreorderDraft } from '../../lib/preorderDraft'
+import {
+  readPreorderDraft,
+  readPreorderEditDraft,
+} from '../../lib/preorderDraft'
 import PinPad from '../../components/auth/PinPad'
 import LogoutButton from '../../components/auth/LogoutButton'
 
@@ -226,8 +229,9 @@ const PREORDER_ENTRY_PATH = '/admin/preorders/neu'
 
 /**
  * Wohin nach der PIN (W4-Verifikation Runde 4): zur Seite einer verlorenen
- * Aktion (Übergabe NICHT gespeichert), sonst zu einem nicht gespeicherten
- * Vorbestell-Entwurf dieser Person, sonst zur Startseite der Rolle.
+ * Aktion (Übergabe NICHT gespeichert), sonst zu nicht gespeicherten
+ * Änderungen an einer Bestellung (Runde 6), sonst zu einem nicht
+ * gespeicherten Vorbestell-Entwurf dieser Person, sonst zur Startseite.
  */
 export function stationReturnPath(
   user: { id: number | string; role: PilotRole },
@@ -237,6 +241,12 @@ export function stationReturnPath(
     isPathAllowedForRole(pathname, user.role, 'station')
   const back = lostActionReturnPath(lost, allowed)
   if (back) return back
+  // W4-verify r6: nicht gespeicherte Änderungen an einer Bestellung - zurück
+  // zu ihr, die Maske geht dort mit den Änderungen wieder auf.
+  const edit = readPreorderEditDraft(user.id)
+  if (edit && allowed(`/admin/preorders/${edit.preorderId}`)) {
+    return `/admin/preorders/${edit.preorderId}`
+  }
   if (readPreorderDraft(user.id) && allowed(PREORDER_ENTRY_PATH)) {
     return PREORDER_ENTRY_PATH
   }
