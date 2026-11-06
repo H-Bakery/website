@@ -660,13 +660,15 @@ export class PreordersService {
 
   private normalizeOptions(
     points: Map<string, PickupPointDto>,
-    requireVariant: boolean
+    requireVariant: boolean,
+    lockCancelled = false
   ) {
     return {
       lookupProduct: this.lookupProduct,
       findPickupPoint: (id: string) => points.get(id) ?? null,
       variantsForProduct: this.variants,
       requireVariant,
+      lockCancelled,
       now: this.now(),
     }
   }
@@ -769,6 +771,8 @@ export class PreordersService {
     req: Request | null,
     options: {
       requireVariant?: boolean
+      /** Stornierte Bestellungen: Positionen/Tag/Ort gesperrt (409 `cancelled`). */
+      lockCancelled?: boolean
       guard?: (current: PreorderRecord) => Result<never> | null
       mapBody?: (current: PreorderRecord) => unknown
     } = {}
@@ -783,7 +787,11 @@ export class PreordersService {
       const result = core.normalizeOrderInput(
         input,
         current,
-        this.normalizeOptions(points, options.requireVariant !== false)
+        this.normalizeOptions(
+          points,
+          options.requireVariant !== false,
+          options.lockCancelled === true
+        )
       )
       if (result.error) {
         return failure<PreorderRecord>(
@@ -982,6 +990,47 @@ export class PreordersService {
       }
       return { ok: true as const, status: 200, data: after }
     })
+  }
+}
+
+/**
+ * Optimistische Sperre (P1/P3): Schickt der Client `expectedUpdatedAt` - den
+ * `updatedAt` der Fassung, die er geladen hat -, wird nur geschrieben, wenn
+ * die Bestellung seither unverändert ist. Sonst 409 `stale_preorder`: ein
+ * anderes Gerät hat sie inzwischen übergeben, storniert oder geändert, und
+ * ein Speichern aus der alten Fassung würde das still überschreiben (z. B.
+ * `paid` wieder auf `false`). Ohne das Feld keine Prüfung (Alias, Altclients).
+ * Läuft als `guard` in der Schreib-Transaktion - kein Fenster zwischen
+ * Prüfen und Schreiben.
+ */
+export function expectedVersionGuard(
+  body: unknown
+): (current: PreorderRecord) => Result<never> | null {
+  const expected =
+    body && typeof body === 'object'
+      ? (body as Record<string, unknown>)['expectedUpdatedAt']
+      : undefined
+  return (current) => {
+    if (expected === undefined || expected === null) return null
+    const wanted =
+      typeof expected === 'string' ? new Date(expected).getTime() : NaN
+    if (!Number.isFinite(wanted)) {
+      return failure<never>(
+        400,
+        'invalid_expected_updated_at',
+        '„expectedUpdatedAt" muss ein Zeitstempel (ISO 8601) sein.'
+      )
+    }
+    const actual = new Date(current.updatedAt as Date | string).getTime()
+    if (actual !== wanted) {
+      return failure<never>(
+        409,
+        'stale_preorder',
+        'Diese Vorbestellung wurde inzwischen an anderer Stelle geändert. Bitte die aktuelle Fassung prüfen und dann erneut speichern.',
+        { updatedAt: iso(current.updatedAt) }
+      )
+    }
+    return null
   }
 }
 

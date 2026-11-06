@@ -552,6 +552,136 @@ describe('/api/preorders CRUD', () => {
   })
 })
 
+describe('stale writes (P1/P3 expectedUpdatedAt) and cancelled lock', () => {
+  // updatedAt has millisecond resolution - keep consecutive writes apart.
+  const tick = () => new Promise((resolve) => setTimeout(resolve, 5))
+
+  it('refuses a stale edit after a handover on another device (409 stale_preorder)', async () => {
+    const p = (await create(laden({ pickupDate: '2026-12-15' }))).body.data
+    const loaded = p.updatedAt
+    await tick()
+    // the driver hands it over and takes the money
+    const handover = await request(api.app)
+      .post(`/api/preorders/${p.id}/status`)
+      .set(tokens['fahrer'])
+      .send({ status: 'abgeholt', paid: true, expectedUpdatedAt: loaded })
+    expect(handover.status).toBe(200)
+    await tick()
+
+    // the shop still has the old copy open and adds a note
+    const stale = await request(api.app)
+      .patch(`/api/preorders/${p.id}`)
+      .set(tokens['verkauf'])
+      .send({ note: 'Bitte schneiden', paid: false, expectedUpdatedAt: loaded })
+    expect(stale.status).toBe(409)
+    expect(stale.body).toMatchObject({
+      success: false,
+      error: 'stale_preorder',
+      message: expect.stringContaining('inzwischen'),
+      updatedAt: handover.body.data.updatedAt,
+    })
+    const after = (
+      await request(api.app)
+        .get(`/api/preorders/${p.id}`)
+        .set(tokens['verkauf'])
+    ).body.data
+    expect(after).toMatchObject({ status: 'abgeholt', paid: true, note: null })
+
+    // with the current version the same edit goes through
+    const fresh = await request(api.app)
+      .patch(`/api/preorders/${p.id}`)
+      .set(tokens['verkauf'])
+      .send({ note: 'Bitte schneiden', expectedUpdatedAt: after.updatedAt })
+    expect(fresh.status).toBe(200)
+    expect(fresh.body.data).toMatchObject({
+      status: 'abgeholt',
+      paid: true,
+      note: 'Bitte schneiden',
+    })
+  })
+
+  it('checks status and cancel too, and only when the field is sent', async () => {
+    const p = (await create(laden({ pickupDate: '2026-12-16' }))).body.data
+    await tick()
+    await request(api.app)
+      .patch(`/api/preorders/${p.id}`)
+      .set(tokens['verkauf'])
+      .send({ note: 'geändert' })
+      .expect(200)
+
+    const status = await request(api.app)
+      .post(`/api/preorders/${p.id}/status`)
+      .set(tokens['verkauf'])
+      .send({ paid: true, expectedUpdatedAt: p.updatedAt })
+    expect(status.status).toBe(409)
+    expect(status.body.error).toBe('stale_preorder')
+
+    const cancel = await request(api.app)
+      .post(`/api/preorders/${p.id}/cancel`)
+      .set(tokens['verkauf'])
+      .send({ expectedUpdatedAt: p.updatedAt })
+    expect(cancel.status).toBe(409)
+    expect(cancel.body.error).toBe('stale_preorder')
+
+    const bad = await request(api.app)
+      .patch(`/api/preorders/${p.id}`)
+      .set(tokens['verkauf'])
+      .send({ note: 'x', expectedUpdatedAt: 'gestern' })
+    expect(bad.status).toBe(400)
+    expect(bad.body).toMatchObject({
+      error: 'invalid_expected_updated_at',
+      message: expect.any(String),
+    })
+
+    // without the field: last writer wins, as before (alias, old clients)
+    const unchecked = await request(api.app)
+      .post(`/api/preorders/${p.id}/cancel`)
+      .set(tokens['verkauf'])
+    expect(unchecked.status).toBe(200)
+    expect(unchecked.body.data.status).toBe('storniert')
+  })
+
+  it('locks items, day and place of a cancelled preorder until it is reopened', async () => {
+    const p = (await create(laden({ pickupDate: '2026-12-17' }))).body.data
+    await request(api.app)
+      .post(`/api/preorders/${p.id}/cancel`)
+      .set(tokens['verkauf'])
+      .expect(200)
+    const patch = (b: Record<string, unknown>) =>
+      request(api.app)
+        .patch(`/api/preorders/${p.id}`)
+        .set(tokens['verkauf'])
+        .send(b)
+    for (const change of [
+      { pickupDate: '2026-12-18' },
+      { pickupTime: '11:00' },
+      { channel: 'laden' },
+      { items: [{ productId: 'kornbrot-500g', quantity: 4 }] },
+    ]) {
+      const res = await patch(change)
+      expect(res.status).toBe(409)
+      expect(res.body).toMatchObject({
+        error: 'cancelled',
+        message: expect.stringContaining('storniert'),
+      })
+    }
+    // note and the same items are fine
+    expect((await patch({ note: 'Kunde hat abgesagt' })).status).toBe(200)
+    expect(
+      (await patch({ items: [{ productId: 'kornbrot-500g', quantity: 2 }] }))
+        .status
+    ).toBe(200)
+    // reopening in the same request lets the change through
+    const reopened = await patch({
+      status: 'offen',
+      items: [{ productId: 'kornbrot-500g', quantity: 4 }],
+    })
+    expect(reopened.status).toBe(200)
+    expect(reopened.body.data).toMatchObject({ status: 'offen' })
+    expect(reopened.body.data.items[0].quantity).toBe(4)
+  })
+})
+
 describe('list, sums, day', () => {
   let saturdayIds: number[] = []
 

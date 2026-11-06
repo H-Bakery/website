@@ -421,6 +421,59 @@ describe('price snapshots on update', () => {
   })
 })
 
+describe('storniert is locked with lockCancelled (P1/P3, /api/preorders only)', () => {
+  const cancelled = () =>
+    ok(
+      core.normalizeOrderInput({ ...LADEN, status: 'storniert' }, null, opts())
+    )
+  const locked = () => ({ ...opts(), lockCancelled: true })
+
+  it.each([
+    [{ pickupDate: '2026-11-18' }],
+    [{ pickupTime: '11:00' }],
+    [{ channel: 'whatsapp' }],
+    [{ items: [{ productId: 'kornbrot-500g', quantity: 3 }] }],
+  ])('refuses %j with 409 cancelled', (change) => {
+    const result = core.normalizeOrderInput(change, cancelled(), locked())
+    expect(result).toMatchObject({ error: 'cancelled', status: 409 })
+    expect(result.message).toContain('Offen')
+  })
+
+  it('allows name, note, paid, the same items and a change together with a reopen', () => {
+    const base = cancelled()
+    expect(
+      ok(
+        core.normalizeOrderInput(
+          { note: 'abgesagt', paid: true, customerName: 'Erika B.' },
+          base,
+          locked()
+        )
+      )
+    ).toMatchObject({ note: 'abgesagt', paid: true, status: 'storniert' })
+    expect(
+      ok(
+        core.normalizeOrderInput(
+          { status: 'offen', pickupDate: '2026-11-18' },
+          base,
+          locked()
+        )
+      )
+    ).toMatchObject({ status: 'offen', pickupDate: '2026-11-18' })
+  })
+
+  it('stays unlocked without the option (Mörsbach alias, mock contract)', () => {
+    expect(
+      ok(
+        core.normalizeOrderInput(
+          { pickupDate: '2026-11-18' },
+          cancelled(),
+          opts()
+        )
+      )
+    ).toMatchObject({ status: 'storniert', pickupDate: '2026-11-18' })
+  })
+})
+
 describe('abgeholt is history', () => {
   const picked = () => ({
     ...ok(

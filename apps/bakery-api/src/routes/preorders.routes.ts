@@ -37,6 +37,7 @@ import {
   PreordersOptions,
   PreordersService,
   Result,
+  expectedVersionGuard,
   isFailure,
   toDto,
 } from '../services/preorders.service'
@@ -167,7 +168,10 @@ function createPreordersRouter(service: PreordersService): Router {
     '/:id',
     requireRole(...WRITE_ROLES),
     asyncHandler(async (req, res) => {
-      const result = await service.update(req.params['id'], req.body, req)
+      const result = await service.update(req.params['id'], req.body, req, {
+        lockCancelled: true,
+        guard: expectedVersionGuard(req.body),
+      })
       if (fail(res, result) || !result.ok) return
       res.json({ success: true, data: await dtoOf(service, result.data) })
     })
@@ -184,6 +188,7 @@ function createPreordersRouter(service: PreordersService): Router {
         {
           allowedTargets:
             req.user?.role === 'fahrer' ? FAHRER_TARGETS : undefined,
+          guard: expectedVersionGuard(req.body),
         }
       )
       if (fail(res, result) || !result.ok) return
@@ -195,7 +200,11 @@ function createPreordersRouter(service: PreordersService): Router {
     '/:id/cancel',
     requireRole(...WRITE_ROLES),
     asyncHandler(async (req, res) => {
-      const result = await service.cancel(req.params['id'], req)
+      const result = await service.cancel(
+        req.params['id'],
+        req,
+        expectedVersionGuard(req.body)
+      )
       if (fail(res, result) || !result.ok) return
       res.json({ success: true, data: await dtoOf(service, result.data) })
     })

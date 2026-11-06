@@ -440,18 +440,18 @@ DB + transactions + audit in `src/services/preorders.service.ts`, routes in
 `src/routes/preorders.routes.ts`, import/anonymise in `src/services/preorders-maintenance.ts`,
 the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 
-| Endpoint                           | Who                                                | Answer                                                                 |
-| ---------------------------------- | -------------------------------------------------- | ---------------------------------------------------------------------- |
-| `GET /api/preorders`               | verkauf, fahrer                                    | `{ success, data: Preorder[], count }`; filters below                  |
-| `GET /api/preorders/sums?date=`    | verkauf, fahrer, backstube                         | `{ success, data: { date, pickupPointId, preorderCount, items } }`     |
-| `GET /api/preorders/day?date=`     | verkauf, fahrer                                    | `{ success, data: { date, summary, sums, pickupPoints, preorders } }`  |
-| `GET /api/preorders/pickup-points` | verkauf, fahrer                                    | `{ success, data: PickupPoint[] }`                                     |
-| `GET /api/preorders/variants`      | verkauf, fahrer                                    | `{ success, data: { [productId]: string[] }, configured, count }` (P1) |
-| `GET /api/preorders/:id`           | verkauf, fahrer                                    | `{ success, data }`; 404 `not_found`                                   |
-| `POST /api/preorders`              | verkauf                                            | 201 `{ success, data }`                                                |
-| `PATCH /api/preorders/:id`         | verkauf                                            | `{ success, data }`; partial; a date/place change renews the code      |
-| `POST /api/preorders/:id/status`   | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ status?, notCollected?, paid? }` → `{ success, data }`              |
-| `POST /api/preorders/:id/cancel`   | verkauf                                            | `{ success, data }` (status `storniert`; nothing is ever deleted)      |
+| Endpoint                           | Who                                                | Answer                                                                                          |
+| ---------------------------------- | -------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `GET /api/preorders`               | verkauf, fahrer                                    | `{ success, data: Preorder[], count }`; filters below                                           |
+| `GET /api/preorders/sums?date=`    | verkauf, fahrer, backstube                         | `{ success, data: { date, pickupPointId, preorderCount, items } }`                              |
+| `GET /api/preorders/day?date=`     | verkauf, fahrer                                    | `{ success, data: { date, summary, sums, pickupPoints, preorders } }`                           |
+| `GET /api/preorders/pickup-points` | verkauf, fahrer                                    | `{ success, data: PickupPoint[] }`                                                              |
+| `GET /api/preorders/variants`      | verkauf, fahrer                                    | `{ success, data: { [productId]: string[] }, configured, count }` (P1)                          |
+| `GET /api/preorders/:id`           | verkauf, fahrer                                    | `{ success, data }`; 404 `not_found`                                                            |
+| `POST /api/preorders`              | verkauf                                            | 201 `{ success, data }`                                                                         |
+| `PATCH /api/preorders/:id`         | verkauf                                            | `{ success, data }`; partial; a date/place change renews the code; optional `expectedUpdatedAt` |
+| `POST /api/preorders/:id/status`   | verkauf; fahrer only `abgeholt` / `nicht_abgeholt` | `{ status?, notCollected?, paid?, expectedUpdatedAt? }` → `{ success, data }`                   |
+| `POST /api/preorders/:id/cancel`   | verkauf                                            | `{ expectedUpdatedAt? }` → `{ success, data }` (status `storniert`; nothing is ever deleted)    |
 
 `inhaber` passes every check. `sums` items = `[{ productId, variant, name, unit, quantity,
 preorders }]`, everything except `storniert`, optionally `&pickupPointId=`. List filters: `date`
@@ -462,8 +462,22 @@ customerName, customerPhone, pickupDate, pickupTime, pickupPointId, pickupPoint
 name, variant, unit, unitPrice, quantity, lineTotal }], total, pickedUpAt, anonymizedAt,
 createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors via `sendError`:
 400 `invalid_*` / `unknown_product` / `unknown_pickup_point` / `variant_required` /
-`invalid_delivery_day` / `invalid_quantity`, 403 `forbidden`, 404 `not_found`, 409
-`already_picked_up` / `cancelled` / `anonymized` / `has_variants`.
+`invalid_delivery_day` / `invalid_quantity` / `invalid_expected_updated_at`, 403 `forbidden`,
+404 `not_found`, 409 `already_picked_up` / `cancelled` / `anonymized` / `has_variants` /
+`stale_preorder`.
+
+- **Stale writes (P1/P3 fixup).** `PATCH /:id`, `POST /:id/status` and `POST /:id/cancel` take an
+  optional `expectedUpdatedAt` (the `updatedAt` of the copy the client loaded, ISO). If the
+  preorder changed since, the answer is 409 `stale_preorder` with `message` and the current
+  `updatedAt`, and nothing is written - checked by `expectedVersionGuard()` inside the write
+  transaction. Without the field there is no check (alias, import, old clients: last writer
+  wins). The management app always sends it and its edit form PATCHes only changed fields, so an
+  open edit form cannot reset `paid` after a driver handed the order over elsewhere.
+- **`storniert` is locked on `/api/preorders` (not on the alias).** A PATCH that keeps the status
+  `storniert` but changes items, pickup date, place, time or channel is 409 `cancelled`; name,
+  phone, note and paid stay editable, and the same PATCH with `status: 'offen'` goes through
+  (core option `lockCancelled`, mirrors the `abgeholt` lock). The Mörsbach alias does not pass the
+  option - the mock lets a cancelled preorder be edited and the parity test keeps that.
 
 - **Channels** `laden | telefon | whatsapp | shop | sammelstelle`. Pickup is either the Laden
   (`pickupPointId: null`, date + optional `HH:MM`) or a pickup point (date must be its weekday, no
