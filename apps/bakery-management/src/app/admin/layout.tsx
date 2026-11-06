@@ -129,6 +129,13 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/preorders/neu': 'Neue Vorbestellung',
   '/admin/preorders/tag': 'Tagesübersicht',
   '/admin/products/new': 'Neues Produkt',
+  // W4-verify r3: Unterseiten ohne eigenen Navigationseintrag
+  '/admin/analytics/products': 'Produkte',
+  '/admin/analytics/revenue': 'Umsatz',
+  '/admin/notifications/archive': 'Archiv',
+  '/admin/notifications/archival': 'Archivierung',
+  '/admin/nicht-verfuegbar': 'Nicht verfügbar',
+  '/admin/sitzung-pruefen': 'Anmeldung prüfen',
 }
 
 /** Human readable breadcrumb segments for the current path. */
@@ -155,9 +162,8 @@ function getBreadcrumb(pathname: string): string[] {
       }
       // W4-verify r2: Produkt-ID (Slug) und Backzettel-Datum nicht roh zeigen
       if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
-      if (/^\/admin\/backzettel\/\d{4}-\d{2}-\d{2}$/.test(href)) {
-        return isIsoDate(segment) ? formatDateLong(segment) : segment
-      }
+      // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026"
+      if (isIsoDate(segment)) return formatDateLong(segment)
       return segment
     })
     .filter((label): label is string => label !== null)
