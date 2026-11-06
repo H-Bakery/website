@@ -123,6 +123,10 @@ function round4(value) {
   return Math.round(value * 10000) / 10000
 }
 
+function round6(value) {
+  return Math.round(value * 1e6) / 1e6
+}
+
 function isValidDate(value) {
   if (typeof value !== 'string' || !DATE_RE.test(value)) return false
   const d = new Date(`${value}T00:00:00Z`)
@@ -927,7 +931,9 @@ function evaluateDay(actual, target, thresholds, openReason) {
     reason: null,
     actual: round2(actual),
     target: round2(target),
-    ratio: round4(ratio),
+    // 6 Stellen: die Oberfläche rundet auf ganze Prozent; auf 4 Stellen
+    // vorgerundet wurde aus 1,06495 erst 1,065 und dann 107 % (W4-verify r4).
+    ratio: round6(ratio),
     diff: round2(actual - target),
   }
 }

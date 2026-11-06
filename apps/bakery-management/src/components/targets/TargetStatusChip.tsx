@@ -34,9 +34,16 @@ const percent = new Intl.NumberFormat('de-DE', {
   maximumFractionDigits: 0,
 })
 
-/** `0.934` → `93 %`; ohne Verhältnis leer. */
+/**
+ * `0.934` → `93 %`; ohne Verhältnis leer. Auf ganze Prozent gerundet - aber
+ * unter 1 nie `100 %` (W4-verify r4): sonst stand bei 99,96 % „Knapp unter
+ * Ziel · 100 %“ auf dem Chip. Der Server liefert das Verhältnis auf 6
+ * Stellen, damit hier nicht doppelt gerundet wird (1,06495 → 106 %).
+ */
 export function formatRatio(ratio: number | null | undefined): string {
-  return ratio === null || ratio === undefined ? '' : percent.format(ratio)
+  if (ratio === null || ratio === undefined) return ''
+  const rounded = Math.round(ratio * 100) / 100
+  return percent.format(ratio < 1 && rounded >= 1 ? 0.99 : rounded)
 }
 
 interface Props {
