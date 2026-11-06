@@ -56,6 +56,7 @@ import {
   type Preorder,
   type PreorderStatusChange,
 } from '../../../../lib/preordersTypes'
+import { TOUCH_LINK_STYLE } from '../../../../lib/muiTheme'
 
 function formatTimestamp(iso: string | null): string {
   if (!iso) return '–'
@@ -467,6 +468,7 @@ export default function PreorderDetailClient({
               {preorder.customerPhone ? (
                 <Link
                   href={`tel:${preorder.customerPhone.replace(/[^\d+]/g, '')}`}
+                  sx={TOUCH_LINK_STYLE}
                 >
                   {preorder.customerPhone}
                 </Link>

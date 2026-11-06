@@ -1,4 +1,4 @@
-import { createManagementTheme } from './muiTheme'
+import { TOUCH_MEDIA, createManagementTheme } from './muiTheme'
 
 function expand(hex: string): string {
   const h = hex.replace('#', '')
@@ -76,5 +76,15 @@ describe('createManagementTheme (W4-Verifikation: Kontrast)', () => {
     expect(createManagementTheme('dark').palette.background.paper).toBe(
       '#121212'
     )
+  })
+
+  it('Knöpfe auf Touch-Geräten mindestens 44 px', () => {
+    const theme = createManagementTheme('light')
+    expect(theme.components?.MuiButton?.styleOverrides?.root).toEqual({
+      [TOUCH_MEDIA]: { minHeight: 44 },
+    })
+    expect(theme.components?.MuiIconButton?.styleOverrides?.root).toEqual({
+      [TOUCH_MEDIA]: { minWidth: 44, minHeight: 44 },
+    })
   })
 })

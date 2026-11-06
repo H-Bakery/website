@@ -521,6 +521,9 @@ no-store` raus. Das Cache-Präfix steht in `sw.js` und `pwa.ts` - `pwa.spec.ts` 
   weißer Schrift bei 3,1:1. `primary` und Hintergründe bleiben Standard. Gestrichene Zeilen
   (storniert, Lücken im Kassenarchiv) mit `text.secondary`, nicht `text.disabled`/`opacity`.
   Die AppBar heißt „Verwaltung", der Seitentitel „Bäckerei Heusser - Verwaltung".
+  **Touch-Ziele:** dasselbe Theme gibt `MuiButton`/`MuiIconButton`/`MuiToggleButton` unter
+  `TOUCH_MEDIA` (`pointer: coarse` oder schmaler als 1200 px) mindestens 44 px; Inline-Links
+  (Telefon, Kurzcode) bekommen `TOUCH_LINK_STYLE`. Am Büro-PC mit Maus bleibt MUI kompakt.
 - **Statusleistenfarbe = AppBar-Farbe.** Hell `#1976d2` (`primary.main`), dunkel `#272727`
   (`background.paper` + Elevation-4-Overlay). `pwa.spec.ts` rechnet beides aus `createTheme` nach;
   wer das Theme ändert, zieht `PWA_THEME_COLORS` nach. Die Metadaten liefern je

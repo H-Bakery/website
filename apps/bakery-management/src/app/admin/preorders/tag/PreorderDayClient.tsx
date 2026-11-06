@@ -48,6 +48,7 @@ import {
   type PreorderChannel,
   type PreorderDay,
 } from '../../../../lib/preordersTypes'
+import { TOUCH_LINK_STYLE } from '../../../../lib/muiTheme'
 
 /**
  * Druckbild A4, schwarz auf weiß - der Admin-Bereich ist dunkel. Die Farben
@@ -419,7 +420,7 @@ export default function PreorderDayClient({
                         >
                           <NextLink
                             href={`/admin/preorders/${p.id}`}
-                            style={{ color: 'inherit' }}
+                            style={{ color: 'inherit', ...TOUCH_LINK_STYLE }}
                           >
                             {p.code}
                           </NextLink>

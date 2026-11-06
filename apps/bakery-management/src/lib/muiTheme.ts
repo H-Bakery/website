@@ -1,6 +1,22 @@
 import { createTheme, type Theme } from '@mui/material/styles'
 
 /**
+ * Touch-Geräte (Handy, Laden-Tablet, Backstube) und schmale Fenster: Knöpfe
+ * mindestens 44 × 44 px (W4-Verifikation: 31-40 px auf Backschrank,
+ * Dashboard, Backliste und in der AppBar). Am Büro-PC mit Maus bleibt MUI
+ * kompakt.
+ */
+export const TOUCH_MEDIA = '@media (pointer: coarse), (max-width: 1199.95px)'
+
+/** Inline-Links (Telefonnummer, Kurzcode) als 44-px-Touch-Ziel. */
+export const TOUCH_LINK_STYLE = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 44,
+  minWidth: 44,
+} as const
+
+/**
  * MUI-Theme der Verwaltung (W4-Verifikation: Kontrast).
  *
  * Zwei Abweichungen vom MUI-Standard, beide wegen 4,5:1 für kleine Schrift:
@@ -27,6 +43,19 @@ export function createManagementTheme(mode: 'light' | 'dark'): Theme {
             info: { main: '#0277bd' },
           }
         : {}),
+    },
+    components: {
+      MuiButton: {
+        styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
+      },
+      MuiIconButton: {
+        styleOverrides: {
+          root: { [TOUCH_MEDIA]: { minWidth: 44, minHeight: 44 } },
+        },
+      },
+      MuiToggleButton: {
+        styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
+      },
     },
   })
 }
