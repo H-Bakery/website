@@ -20,20 +20,23 @@ import {
   ArrowBack as ArrowBackIcon,
   Save as SaveIcon,
 } from '@mui/icons-material'
-import { fetchPickupPoints, savePickupPoint } from '../preorderApi'
+import { useOptionalSession } from '../../../../../lib/session'
+import {
+  fetchPickupPoints,
+  preorderErrorMessage,
+  savePickupPoint,
+} from '../../../../../lib/preordersApi'
+import type { PickupPointInput } from '../../../../../lib/preordersTypes'
 import {
   DELIVERY_WEEKDAY_LABELS,
   PickupPoint,
-  PickupPointPayload,
   formatPickupAddress,
   hasPickupAddress,
 } from '../preorderTypes'
 
 const LIST_HREF = '/admin/delivery/preorders'
 
-function messageOf(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
-}
+const messageOf = preorderErrorMessage
 
 export interface PickupPointFormClientProps {
   /** Sammelstelle aus der URL - sonst die erste aktive. */
@@ -44,15 +47,17 @@ export interface PickupPointFormClientProps {
  * Stammdaten einer Sammelstelle: Adresse, Liefertag, Übergabefenster,
  * Bestellschluss.
  *
- * Die Adresse des Kindergartens ist noch nicht bekannt und deshalb bewusst
- * leer angelegt - hier trägt das Team sie nach. Ändert sich die Adresse, sucht
- * der Server die Koordinaten neu und schreibt sie auf alle Stopps mit dieser
- * Sammelstelle.
+ * Seit P2 über `PUT /api/preorders/pickup-points/:id` - ändern darf nur der
+ * Inhaber (API: 403), alle anderen sehen die Stammdaten. Die echte API sucht
+ * keine Koordinaten (kein Nominatim auf der Box): eine geänderte Adresse
+ * verliert ihre Koordinaten, die Abholliste druckt die Adresse als Text.
  */
 export default function PickupPointFormClient({
   initialPickupPointId,
 }: PickupPointFormClientProps) {
   const router = useRouter()
+  const session = useOptionalSession()
+  const canEdit = session?.user?.role === 'inhaber'
 
   const [points, setPoints] = useState<PickupPoint[]>([])
   const [pointId, setPointId] = useState(initialPickupPointId ?? '')
@@ -127,7 +132,7 @@ export default function PickupPointFormClient({
     // Bestellschluss ist entweder ganz gesetzt oder gar nicht - ein halber
     // Eintrag ergäbe eine Uhrzeit ohne Tag.
     const hasDeadline = deadlineWeekday !== '' && deadlineTime !== ''
-    const payload: PickupPointPayload = {
+    const payload: PickupPointInput = {
       name: name.trim(),
       street: street.trim(),
       zip: zip.trim(),
@@ -227,8 +232,12 @@ export default function PickupPointFormClient({
           sx={{ mb: 2 }}
           onClose={() => setSaved(false)}
         >
-          Die Sammelstelle wurde gespeichert. Der Server sucht die Koordinaten
-          zur neuen Adresse und überträgt sie auf die Stopps der Tour.
+          Die Sammelstelle wurde gespeichert.
+        </Alert>
+      )}
+      {!canEdit && point && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Nur der Inhaber kann die Sammelstelle ändern.
         </Alert>
       )}
       {saveError && (
@@ -278,7 +287,7 @@ export default function PickupPointFormClient({
                   onChange={(event) => setStreet(event.target.value)}
                   fullWidth
                   size="small"
-                  helperText="Ohne Straße findet die Fahrer-App keinen Kartenpunkt."
+                  helperText="Steht auf der Abholliste."
                 />
               </Grid>
               <Grid item xs={6} sm={4}>
@@ -391,7 +400,7 @@ export default function PickupPointFormClient({
               variant="contained"
               startIcon={<SaveIcon />}
               onClick={handleSubmit}
-              disabled={saving}
+              disabled={saving || !canEdit}
             >
               Speichern
             </Button>

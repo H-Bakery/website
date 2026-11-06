@@ -44,6 +44,20 @@ describe('createVariantsHook', () => {
     expect(hook('nicht-im-backzettel')).toBeNull()
   })
 
+  it('lists every product with Sorten at once (P1 variant chips)', () => {
+    fs.writeFileSync(file, yaml.dump(fixture.config()))
+    const hook = createVariantsHook({ configPath: file })
+    expect(hook.all()).toEqual({
+      'test-zopf-gefuellt': ['nuss', 'mohn'],
+      'test-kranz-gefuellt': ['nuss', 'mohn'],
+      'test-kranz-gefuellt-viertel': ['nuss', 'mohn'],
+    })
+  })
+
+  it('lists nothing (null) without a file', () => {
+    expect(createVariantsHook({ configPath: file }).all()).toBeNull()
+  })
+
   it('answers null without a file (nothing to check)', () => {
     const hook = createVariantsHook({ configPath: file })
     expect(hook('test-zopf-gefuellt')).toBeNull()

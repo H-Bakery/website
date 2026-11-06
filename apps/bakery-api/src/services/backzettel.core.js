@@ -206,6 +206,23 @@ function variantsForProduct(config, productId, catalog) {
   }
 }
 
+/**
+ * Alle Produkte mit Sorten, fuer die Erfassungsmaske der Vorbestellungen
+ * (P1, `GET /api/preorders/variants`): `{ [productId]: ['nuss', ...] }`.
+ * Produkte ohne Sorten fehlen - wie bei `variantsForProduct` gewinnt der
+ * letzte Posten, falls ein Produkt in mehreren steht.
+ * @returns {Record<string, string[]>}
+ */
+function variantsByProduct(config) {
+  const cfg = ensureNormalized(config)
+  const index = productIndex(cfg)
+  const out = {}
+  for (const [productId, hit] of index) {
+    if (hit.item.variants.length > 0) out[productId] = [...hit.item.variants]
+  }
+  return out
+}
+
 /** `null`/`''`/unbekannt -> `null`; sonst die Variante. Ohne Warnungen. */
 function cleanVariant(item, variant) {
   const v = variant === undefined || variant === '' ? null : variant
@@ -877,6 +894,7 @@ module.exports = {
   computePreorderDeltas,
   createProductResolver,
   variantsForProduct,
+  variantsByProduct,
   computeHefeteig,
   computeFillings,
   computePrep,

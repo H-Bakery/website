@@ -60,7 +60,11 @@ export function normalizeRole(raw: unknown): PilotRole | null {
  * `exact: true` nur genau dieser Pfad (z. B. die Produktliste ohne
  * Bearbeiten/Neu). `/admin` (Dashboard) gilt immer nur exakt.
  */
-export type RouteRule = string | { path: string; exact: true }
+export type RouteRule =
+  | string
+  | { path: string; exact: true }
+  /** Pfad mit Unterseiten, außer den genannten (und deren Unterseiten). */
+  | { path: string; except: readonly string[] }
 
 export interface RoleAccess {
   /** `'all'` = jede Route; sonst die erlaubten Routen. */
@@ -81,10 +85,13 @@ const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings']
  * - inhaber: alles, Start Dashboard.
  * - verkauf: Vorbestellungen (M1, inkl. Abholliste darunter), Sammelstelle
  *   Mörsbach (heute die einzige Vorbestell-Erfassung), Produkte nur lesen
- *   (Liste, ohne Bearbeiten/Neu), Backschrank. Dashboard als Ausweichstart,
- *   solange /admin/preorders nicht gebaut ist.
+ *   (Liste, ohne Bearbeiten/Neu), Backschrank. Start: /admin/preorders (P3);
+ *   das Dashboard bleibt Ausweichstart.
  * - backstube: Backzettel, Backstube-Tablet; Ausweichstart Dashboard.
- * - fahrer: Abholliste der Sammelstelle Mörsbach (Backliste, Lieferstelle).
+ * - fahrer: Abholliste (P2, Start: übergeben, bezahlt, „nicht abgeholt");
+ *   Sammelstelle Mörsbach lesen (Liste, Bestellung, Backliste - ohne Erfassen
+ *   und Lieferstelle); Vorbestellungen nur lesen (ohne die Erfassung
+ *   `/admin/preorders/neu`; die API lässt Fahrer nur übergeben).
  */
 export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
   inhaber: { routes: 'all', start: ['/admin'] },
@@ -104,8 +111,18 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
     start: ['/backstube', '/admin'],
   },
   fahrer: {
-    routes: ['/admin/delivery/preorders', ...COMMON_ROUTES],
-    start: ['/admin/delivery/preorders'],
+    routes: [
+      {
+        path: '/admin/delivery/preorders',
+        except: [
+          '/admin/delivery/preorders/new',
+          '/admin/delivery/preorders/lieferstelle',
+        ],
+      },
+      { path: '/admin/preorders', except: ['/admin/preorders/neu'] },
+      ...COMMON_ROUTES,
+    ],
+    start: ['/admin/preorders/abholliste', '/admin/delivery/preorders'],
   },
 }
 
@@ -132,7 +149,15 @@ export function isProtectedPath(pathname: string): boolean {
 }
 
 function matchesRule(path: string, rule: RouteRule): boolean {
-  if (typeof rule !== 'string') return path === rule.path
+  if (typeof rule !== 'string') {
+    if ('except' in rule) {
+      return (
+        underPrefix(path, rule.path) &&
+        !rule.except.some((excluded) => underPrefix(path, excluded))
+      )
+    }
+    return path === rule.path
+  }
   if (rule === '/admin') return path === '/admin'
   return underPrefix(path, rule)
 }

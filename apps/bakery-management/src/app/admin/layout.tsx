@@ -41,6 +41,7 @@ import {
   Flag as TargetIcon,
   Login as LoginIcon,
   ManageAccounts as UsersIcon,
+  Checklist as PickupIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -50,6 +51,7 @@ import {
   getNavigation,
   type NavItem,
   isNavItemActive,
+  navHrefs,
 } from './navigation'
 import { isPilotMode, isPilotPathAllowed } from '../../lib/pilotMode'
 import PilotUnavailable from '../../components/pilot/PilotUnavailable'
@@ -97,6 +99,7 @@ const iconMap: Record<string, React.ReactElement> = {
   target: <TargetIcon />,
   login: <LoginIcon />,
   users: <UsersIcon />,
+  pickup: <PickupIcon />,
 }
 
 /**
@@ -118,6 +121,10 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/delivery/preorders/backliste': 'Backliste',
   '/admin/delivery/preorders/lieferstelle': 'Lieferstelle',
   '/admin/backzettel/grundmengen': 'Grundmengen',
+  // Vorbestellungen (P1/P3): der Code steht auf der Seite selbst.
+  '/admin/preorders/[id]': null,
+  '/admin/preorders/neu': 'Neue Vorbestellung',
+  '/admin/preorders/tag': 'Tagesübersicht',
 }
 
 /** Human readable breadcrumb segments for the current path. */
@@ -196,6 +203,7 @@ function AdminShell({
         : getNavigation(pilot),
     [pilot, role, sessionKind]
   )
+  const allHrefs = React.useMemo(() => navHrefs(navigation), [navigation])
   const blocked = !isPilotPathAllowed(pathname, pilot)
   const forbidden =
     role !== null && !isPathAllowedForRole(pathname, role, sessionKind)
@@ -206,7 +214,9 @@ function AdminShell({
     Object.fromEntries(
       getNavigation(pilot)
         .filter((item) =>
-          item.submenu?.some((sub) => isNavItemActive(pathname, sub.href))
+          item.submenu?.some((sub) =>
+            isNavItemActive(pathname, sub.href, allHrefs)
+          )
         )
         .map((item) => [item.label, true])
     )
@@ -244,7 +254,7 @@ function AdminShell({
           if (item.submenu) {
             const isSubmenuOpen = openSubmenus[item.label] || false
             const hasActiveChild = item.submenu.some((subItem) =>
-              isNavItemActive(pathname, subItem.href)
+              isNavItemActive(pathname, subItem.href, allHrefs)
             )
 
             return (
@@ -274,7 +284,11 @@ function AdminShell({
                 >
                   {item.submenu.map((subItem) => {
                     if (!subItem.href) return null
-                    const isActive = isNavItemActive(pathname, subItem.href)
+                    const isActive = isNavItemActive(
+                      pathname,
+                      subItem.href,
+                      allHrefs
+                    )
                     const subIcon = subItem.icon ? iconMap[subItem.icon] : null
 
                     return (
@@ -343,7 +357,7 @@ function AdminShell({
 
           // Handle regular items
           if (!item.href) return null
-          const isActive = isNavItemActive(pathname, item.href)
+          const isActive = isNavItemActive(pathname, item.href, allHrefs)
           return (
             <ListItem key={item.href} disablePadding>
               <ListItemButton

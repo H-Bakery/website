@@ -3,8 +3,14 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import BackingListClient from './BackingListClient'
-import { fetchPickupPoints, fetchPreorderSummary } from '../preorderApi'
-import type { PickupPoint, PreorderSummary } from '../preorderTypes'
+import {
+  fetchPickupPoints,
+  fetchPreorderDay,
+} from '../../../../../lib/preordersApi'
+import type {
+  PickupPoint,
+  PreorderDay,
+} from '../../../../../lib/preordersTypes'
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -17,16 +23,17 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/admin/delivery/preorders/backliste',
 }))
 
-jest.mock('../preorderApi', () => ({
+jest.mock('../../../../../lib/preordersApi', () => ({
+  ...jest.requireActual('../../../../../lib/preordersApi'),
   fetchPickupPoints: jest.fn(),
-  fetchPreorderSummary: jest.fn(),
+  fetchPreorderDay: jest.fn(),
 }))
 
 const mockFetchPickupPoints = fetchPickupPoints as jest.MockedFunction<
   typeof fetchPickupPoints
 >
-const mockFetchSummary = fetchPreorderSummary as jest.MockedFunction<
-  typeof fetchPreorderSummary
+const mockFetchSummary = fetchPreorderDay as jest.MockedFunction<
+  typeof fetchPreorderDay
 >
 
 /** Der 12.09.2026 ist ein Samstag. */
@@ -43,27 +50,41 @@ const POINT: PickupPoint = {
   orderDeadline: { weekday: 5, time: '12:00' },
   notes: null,
   active: true,
-  lat: null,
-  lon: null,
-  geocodeSource: null,
-  geocodePrecision: null,
 }
 
-const SUMMARY: PreorderSummary = {
+/** `GET /api/preorders/day?date=&pickupPointId=` (P2): Summen je Produkt und Sorte. */
+const SUMMARY: PreorderDay = {
   date: DATE,
   pickupPointId: POINT.id,
-  deadline: '2026-09-11T10:00:00.000Z',
-  hasPickupStop: true,
-  count: 3,
-  total: 24.6,
-  open: 3,
-  handedOver: 0,
-  notCollected: 0,
-  cancelled: 1,
-  byProduct: [
-    { productId: 'bauernbrot', name: 'Bauernbrot', unit: 'Stück', qty: 6 },
-    { productId: 'kaisersemmel', name: 'Kaisersemmel', unit: 'Stück', qty: 24 },
+  summary: {
+    count: 3,
+    total: 24.6,
+    byStatus: { offen: 3, bereit: 0, abgeholt: 0, storniert: 1 },
+    notCollected: 0,
+    paid: 1,
+    unpaidTotal: 16.4,
+    byChannel: { sammelstelle: 3 },
+  },
+  sums: [
+    {
+      productId: 'bauernbrot',
+      variant: '',
+      name: 'Bauernbrot',
+      unit: 'Stück',
+      quantity: 6,
+      preorders: 2,
+    },
+    {
+      productId: 'zopf-gefuellt',
+      variant: 'nuss',
+      name: 'Zopf gefüllt',
+      unit: 'Stück',
+      quantity: 24,
+      preorders: 3,
+    },
   ],
+  pickupPoints: [],
+  preorders: [],
 }
 
 describe('BackingListClient', () => {
@@ -88,8 +109,12 @@ describe('BackingListClient', () => {
     expect(screen.getByText('24')).toBeInTheDocument()
     // Fuß der Liste: Anzahl, Stückzahl, Betrag und die stornierten daneben.
     expect(
-      screen.getByText(/3 Vorbestellungen · 30 Stück · 24,60 € zu kassieren/)
+      screen.getByText(
+        /3 Vorbestellungen · 30 Stück · 24,60 € Summe · 16,40 € noch zu kassieren/
+      )
     ).toBeInTheDocument()
+    // Sorten stehen am Produkt (Füllung = Sorte).
+    expect(screen.getByText('Zopf gefüllt (Nuss)')).toBeInTheDocument()
     expect(
       screen.getByText(/1 storniert \(nicht enthalten\)/)
     ).toBeInTheDocument()
@@ -151,11 +176,13 @@ describe('BackingListClient', () => {
   it('sagt es, wenn für den Tag nichts vorbestellt ist', async () => {
     mockFetchSummary.mockResolvedValue({
       ...SUMMARY,
-      count: 0,
-      total: 0,
-      open: 0,
-      cancelled: 0,
-      byProduct: [],
+      summary: {
+        ...SUMMARY.summary,
+        count: 0,
+        total: 0,
+        byStatus: { offen: 0, bereit: 0, abgeholt: 0, storniert: 0 },
+      },
+      sums: [],
     })
     renderWithTheme(
       <BackingListClient initialDate={DATE} initialPickupPointId={POINT.id} />

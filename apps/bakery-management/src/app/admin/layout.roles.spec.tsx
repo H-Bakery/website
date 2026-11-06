@@ -75,7 +75,7 @@ describe('AdminLayout mit Rollen (F1)', () => {
     expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Zur Startseite' })
-    ).toHaveAttribute('href', '/admin/delivery/preorders')
+    ).toHaveAttribute('href', '/admin/preorders/abholliste')
   })
 
   it('zeigt Name, Rolle und Abmelden; Abmelden führt zum Ziel der Sitzung', async () => {

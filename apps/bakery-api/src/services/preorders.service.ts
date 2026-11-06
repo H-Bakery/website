@@ -19,7 +19,11 @@ import type { Request } from 'express'
 import { audit } from '../auth/audit'
 import { getSequelize, PickupPoint, Preorder, PreorderItem } from '../models'
 import { catalogueFor, defaultProductsDir } from './hq-catalogue'
-import { createVariantsHook, VariantsForProduct } from './preorder-variants'
+import {
+  createVariantsHook,
+  VariantsForProduct,
+  VariantsMap,
+} from './preorder-variants'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./delivery-preorders.core')
@@ -32,6 +36,12 @@ export interface PreordersOptions {
   productsDir?: string
   /** Varianten-Haken (default: `hq/config/backzettel.yaml`, s. preorder-variants.ts). */
   variantsForProduct?: VariantsForProduct
+  /**
+   * Alle Produkte mit Sorten (`GET /variants`); default: `all()` des
+   * Standard-Hakens. Wer nur `variantsForProduct` übergibt, bekommt `null`
+   * (keine Liste, Sorten-Chips bleiben aus).
+   */
+  variantsMap?: () => VariantsMap | null
   /** Uhr (Tests). */
   now?: () => Date
 }
@@ -358,12 +368,32 @@ export async function registerCode(
 export class PreordersService {
   private readonly productsDir: string
   private readonly variants: VariantsForProduct
+  private readonly allVariants: () => VariantsMap | null
   private readonly clock: () => Date
 
   constructor(options: PreordersOptions = {}) {
     this.productsDir = options.productsDir ?? defaultProductsDir()
-    this.variants = options.variantsForProduct ?? createVariantsHook()
+    if (options.variantsForProduct) {
+      this.variants = options.variantsForProduct
+      this.allVariants = options.variantsMap ?? (() => null)
+    } else {
+      const hook = createVariantsHook()
+      this.variants = hook
+      this.allVariants = options.variantsMap ?? hook.all
+    }
     this.clock = options.now ?? (() => new Date())
+  }
+
+  /**
+   * Sorten je Produkt aus den Backzettel-Stammdaten (P1). `configured: false`
+   * heißt: keine gültige `backzettel.yaml` - dann nimmt die API jede Sorte an
+   * und die Maske bietet keine an.
+   */
+  variantsByProduct(): { configured: boolean; products: VariantsMap } {
+    const map = this.allVariants()
+    return map
+      ? { configured: true, products: map }
+      : { configured: false, products: {} }
   }
 
   now(): Date {
@@ -584,8 +614,14 @@ export class PreordersService {
     }
   }
 
-  /** Tagesübersicht: Kopfzahlen, Summen, Sammelstellen, Liste. */
-  async day(query: { date?: unknown }) {
+  /**
+   * Tagesübersicht: Kopfzahlen, Summen, Sammelstellen, Liste.
+   *
+   * Mit `pickupPointId` (eine Sammelstelle oder `laden`, P2 Abholliste)
+   * gelten Kopfzahlen, Summen und Liste nur für diesen Abholort; die
+   * Sammelstellen des Tages (Bestellschluss, Anzahl) bleiben vollständig.
+   */
+  async day(query: { date?: unknown; pickupPointId?: unknown }) {
     const date = singleString(query.date)
     if (!date || !tours.isBusinessDate(date)) {
       return failure(
@@ -594,16 +630,31 @@ export class PreordersService {
         'Für die Tagesübersicht wird ein Datum im Format JJJJ-MM-TT gebraucht.'
       )
     }
-    const [records, points] = await Promise.all([
+    const filters = this.parseFilters({
+      date,
+      pickupPointId: query.pickupPointId,
+    })
+    if (isFailure(filters)) return filters
+    const [all, points] = await Promise.all([
       this.findRecords({ pickupDate: date }),
       this.pickupPoints(),
     ])
+    const place = singleString(query.pickupPointId)
+    const records =
+      place === undefined || place === null
+        ? all
+        : all.filter((r) =>
+            place === core.LADEN_PICKUP
+              ? r.pickupPointId === null
+              : r.pickupPointId === place
+          )
     const now = this.now()
     return {
       ok: true as const,
       status: 200,
       data: {
         date,
+        pickupPointId: place ?? null,
         summary: core.summarizeDay(records),
         sums: core.sumByProductVariant(records),
         pickupPoints: core
@@ -611,7 +662,7 @@ export class PreordersService {
           .map((p: PickupPointDto) => ({
             ...p,
             deadline: core.deadlineFor(date, p.orderDeadline),
-            preorderCount: records.filter(
+            preorderCount: all.filter(
               (r) => r.pickupPointId === p.id && r.status !== 'storniert'
             ).length,
           })),
@@ -630,13 +681,15 @@ export class PreordersService {
 
   private normalizeOptions(
     points: Map<string, PickupPointDto>,
-    requireVariant: boolean
+    requireVariant: boolean,
+    lockCancelled = false
   ) {
     return {
       lookupProduct: this.lookupProduct,
       findPickupPoint: (id: string) => points.get(id) ?? null,
       variantsForProduct: this.variants,
       requireVariant,
+      lockCancelled,
       now: this.now(),
     }
   }
@@ -739,6 +792,8 @@ export class PreordersService {
     req: Request | null,
     options: {
       requireVariant?: boolean
+      /** Stornierte Bestellungen: Positionen/Tag/Ort gesperrt (409 `cancelled`). */
+      lockCancelled?: boolean
       guard?: (current: PreorderRecord) => Result<never> | null
       mapBody?: (current: PreorderRecord) => unknown
     } = {}
@@ -753,7 +808,11 @@ export class PreordersService {
       const result = core.normalizeOrderInput(
         input,
         current,
-        this.normalizeOptions(points, options.requireVariant !== false)
+        this.normalizeOptions(
+          points,
+          options.requireVariant !== false,
+          options.lockCancelled === true
+        )
       )
       if (result.error) {
         return failure<PreorderRecord>(
@@ -952,6 +1011,47 @@ export class PreordersService {
       }
       return { ok: true as const, status: 200, data: after }
     })
+  }
+}
+
+/**
+ * Optimistische Sperre (P1/P3): Schickt der Client `expectedUpdatedAt` - den
+ * `updatedAt` der Fassung, die er geladen hat -, wird nur geschrieben, wenn
+ * die Bestellung seither unverändert ist. Sonst 409 `stale_preorder`: ein
+ * anderes Gerät hat sie inzwischen übergeben, storniert oder geändert, und
+ * ein Speichern aus der alten Fassung würde das still überschreiben (z. B.
+ * `paid` wieder auf `false`). Ohne das Feld keine Prüfung (Alias, Altclients).
+ * Läuft als `guard` in der Schreib-Transaktion - kein Fenster zwischen
+ * Prüfen und Schreiben.
+ */
+export function expectedVersionGuard(
+  body: unknown
+): (current: PreorderRecord) => Result<never> | null {
+  const expected =
+    body && typeof body === 'object'
+      ? (body as Record<string, unknown>)['expectedUpdatedAt']
+      : undefined
+  return (current) => {
+    if (expected === undefined || expected === null) return null
+    const wanted =
+      typeof expected === 'string' ? new Date(expected).getTime() : NaN
+    if (!Number.isFinite(wanted)) {
+      return failure<never>(
+        400,
+        'invalid_expected_updated_at',
+        '„expectedUpdatedAt" muss ein Zeitstempel (ISO 8601) sein.'
+      )
+    }
+    const actual = new Date(current.updatedAt as Date | string).getTime()
+    if (actual !== wanted) {
+      return failure<never>(
+        409,
+        'stale_preorder',
+        'Diese Vorbestellung wurde inzwischen an anderer Stelle geändert. Bitte die aktuelle Fassung prüfen und dann erneut speichern.',
+        { updatedAt: iso(current.updatedAt) }
+      )
+    }
+    return null
   }
 }
 

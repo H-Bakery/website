@@ -3,8 +3,16 @@ import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PickupPointFormClient from './PickupPointFormClient'
-import { fetchPickupPoints, savePickupPoint } from '../preorderApi'
-import type { PickupPoint } from '../preorderTypes'
+import {
+  fetchPickupPoints,
+  savePickupPoint,
+} from '../../../../../lib/preordersApi'
+import type { PickupPoint } from '../../../../../lib/preordersTypes'
+import {
+  WithSession,
+  fakeSession,
+} from '../../../../../lib/testing/fakeSession'
+import type { PilotRole } from '../../../../../lib/roles'
 
 jest.mock('next/navigation', () => ({
   useRouter: () => ({
@@ -17,10 +25,19 @@ jest.mock('next/navigation', () => ({
   usePathname: () => '/admin/delivery/preorders/lieferstelle',
 }))
 
-jest.mock('../preorderApi', () => ({
+jest.mock('../../../../../lib/preordersApi', () => ({
+  ...jest.requireActual('../../../../../lib/preordersApi'),
   fetchPickupPoints: jest.fn(),
   savePickupPoint: jest.fn(),
 }))
+
+function renderAs(role: PilotRole = 'inhaber') {
+  return renderWithTheme(
+    <WithSession value={fakeSession({ role })}>
+      <PickupPointFormClient />
+    </WithSession>
+  )
+}
 
 const mockFetchPickupPoints = fetchPickupPoints as jest.MockedFunction<
   typeof fetchPickupPoints
@@ -39,10 +56,6 @@ const POINT: PickupPoint = {
   orderDeadline: { weekday: 5, time: '12:00' },
   notes: null,
   active: true,
-  lat: null,
-  lon: null,
-  geocodeSource: null,
-  geocodePrecision: null,
 }
 
 describe('PickupPointFormClient', () => {
@@ -55,7 +68,7 @@ describe('PickupPointFormClient', () => {
   })
 
   it('zeigt die vorhandenen Stammdaten und die noch fehlende Adresse', async () => {
-    renderWithTheme(<PickupPointFormClient />)
+    renderAs()
 
     expect(
       await screen.findByDisplayValue('Kindergarten Mörsbach')
@@ -67,7 +80,7 @@ describe('PickupPointFormClient', () => {
 
   it('speichert die nachgetragene Adresse mit Liefertag und Bestellschluss', async () => {
     const user = userEvent.setup()
-    renderWithTheme(<PickupPointFormClient />)
+    renderAs()
 
     const street = await screen.findByLabelText(/Straße und Hausnummer/)
     await user.type(street, 'Hauptstraße 1')
@@ -98,7 +111,7 @@ describe('PickupPointFormClient', () => {
     mockSave.mockRejectedValue(
       new Error('Der Name der Lieferstelle ist erforderlich.')
     )
-    renderWithTheme(<PickupPointFormClient />)
+    renderAs()
 
     await screen.findByDisplayValue('Kindergarten Mörsbach')
     await user.click(screen.getByRole('button', { name: 'Speichern' }))
@@ -108,11 +121,20 @@ describe('PickupPointFormClient', () => {
     ).toBeInTheDocument()
   })
 
+  it('nur der Inhaber speichert (API: 403), alle anderen sehen die Stammdaten', async () => {
+    renderAs('verkauf')
+    await screen.findByDisplayValue('Kindergarten Mörsbach')
+    expect(
+      screen.getByText('Nur der Inhaber kann die Sammelstelle ändern.')
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled()
+  })
+
   it('meldet, wenn die Sammelstellen nicht geladen werden können', async () => {
     mockFetchPickupPoints.mockRejectedValue(
       new Error('Keine Verbindung zur Bäckerei-API.')
     )
-    renderWithTheme(<PickupPointFormClient />)
+    renderAs()
 
     expect(
       await screen.findByText('Keine Verbindung zur Bäckerei-API.')

@@ -1008,6 +1008,11 @@ function itemsSignature(items) {
  * @param {(id: string) => object|null} options.findPickupPoint Sammelstelle
  * @param {(productId: string) => ({variants: string[]}|null)} [options.variantsForProduct]
  * @param {boolean} [options.requireVariant=true]
+ * @param {boolean} [options.lockCancelled=false] `true` sperrt bei einer
+ *   stornierten Bestellung Positionen, Abholtag, -ort und -zeit sowie den
+ *   Bestellweg (409 `cancelled`), solange der Request sie nicht im selben
+ *   Zug auf „Offen" zuruecksetzt. `/api/preorders` setzt es; der
+ *   Moersbach-Alias nicht (Mock-Vertrag).
  * @param {Date|string} [options.now]
  * @returns {{ preorder: object } | { error, message, status }}
  */
@@ -1322,6 +1327,29 @@ function normalizeOrderInput(body, existing, options) {
       return fail(
         'already_picked_up',
         'Diese Vorbestellung wurde bereits abgeholt — Positionen, Abholtag und Abholort lassen sich nicht mehr ändern. Bitte zuerst auf „Offen" zurücksetzen.',
+        409
+      )
+    }
+  }
+
+  // Storniert: zaehlt fuer niemanden mehr - eine Aenderung an Positionen,
+  // Tag oder Ort waere unsichtbar und kaeme beim Zuruecksetzen ueberraschend
+  // in die Backstuben-Summen. Erst auf „Offen" zuruecksetzen (im selben
+  // Request erlaubt). Name, Telefon, Anmerkung und bezahlt bleiben aenderbar.
+  if (
+    opts.lockCancelled === true &&
+    base.status === 'storniert' &&
+    statusResult.changes.status === 'storniert'
+  ) {
+    const moved =
+      channel !== base.channel ||
+      pickupDate !== base.pickupDate ||
+      (pickupPoint ? pickupPoint.id : null) !== (base.pickupPointId || null) ||
+      (pickupTime || null) !== (base.pickupTime || null)
+    if (moved || itemsSignature(items) !== itemsSignature(base.items)) {
+      return fail(
+        'cancelled',
+        'Diese Vorbestellung ist storniert — Positionen, Abholtag und Abholort lassen sich nicht mehr ändern. Bitte zuerst auf „Offen" zurücksetzen.',
         409
       )
     }

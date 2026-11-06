@@ -52,6 +52,7 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   '/admin/users', // Benutzer & Stationen (F1, nur Inhaber)
   // Kommende Pilot-Bildschirme (M1/M2):
   '/admin/preorders',
+  '/admin/preorders/abholliste', // P2 (liegt unter /admin/preorders)
   '/admin/backzettel',
   '/backstube',
 ]

@@ -48,7 +48,7 @@ describe('Anmeldeseite', () => {
     fill('  Test.Fahrer ', 'geheim123')
     fireEvent.click(screen.getByRole('button', { name: 'Anmelden' }))
     await waitFor(() =>
-      expect(mockReplace).toHaveBeenCalledWith('/admin/delivery/preorders')
+      expect(mockReplace).toHaveBeenCalledWith('/admin/preorders/abholliste')
     )
     expect(login).toHaveBeenCalledWith('Test.Fahrer', 'geheim123')
   })

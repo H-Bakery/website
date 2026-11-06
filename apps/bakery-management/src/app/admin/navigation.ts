@@ -23,10 +23,34 @@ export interface NavItem {
  * The dashboard (`/admin`) only matches exactly, every other item also matches
  * nested routes (e.g. `/admin/products/new` highlights "Produkte").
  */
-export function isNavItemActive(pathname: string, href?: string): boolean {
+export function isNavItemActive(
+  pathname: string,
+  href?: string,
+  siblings: readonly (string | undefined)[] = []
+): boolean {
   if (!href) return false
   if (href === '/admin') return pathname === '/admin'
-  return pathname === href || pathname.startsWith(`${href}/`)
+  const matches = (candidate: string) =>
+    pathname === candidate || pathname.startsWith(`${candidate}/`)
+  if (!matches(href)) return false
+  // Ein genauerer Eintrag gewinnt: auf /admin/preorders/abholliste ist
+  // „Abholliste" markiert, nicht zusätzlich „Vorbestellungen".
+  return !siblings.some(
+    (other) =>
+      !!other &&
+      other !== href &&
+      other.length > href.length &&
+      other.startsWith(`${href}/`) &&
+      matches(other)
+  )
+}
+
+/** Alle `href` einer Navigation (inkl. Untermenüs) - für `isNavItemActive`. */
+export function navHrefs(items: readonly NavItem[]): string[] {
+  return items.flatMap((item) => [
+    ...(item.href ? [item.href] : []),
+    ...navHrefs(item.submenu ?? []),
+  ])
 }
 
 // Navigation items with submenu support
@@ -222,8 +246,11 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
  * nur `/admin/backzettel/grundmengen` und `/admin/backzettel/[datum]` - es
  * braucht zusätzlich `admin/backzettel/page.tsx` (z. B. Weiterleitung auf den
  * nächsten Produktionstag), sonst führte der Menüeintrag ins Leere.
- * M1 entscheidet beim Freischalten von `/admin/preorders`, ob „Sammelstelle
- * Mörsbach" (/admin/delivery/preorders) darin aufgeht.
+ * `/admin/preorders` (P1/P3) und `/admin/preorders/abholliste` (P2) sind seit
+ * M1 gebaut. „Sammelstelle Mörsbach" (/admin/delivery/preorders) bleibt
+ * daneben stehen: die Seiten laufen seit P2 auf `/api/preorders` (Liste,
+ * Backliste, Lieferstelle); erfasst und bearbeitet wird mit der allgemeinen
+ * Maske, übergeben in der Abholliste.
  */
 export interface UpcomingNavItem extends NavItem {
   href: string
@@ -236,8 +263,15 @@ export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
     label: 'Vorbestellungen',
     href: '/admin/preorders',
     icon: 'orders',
-    description: 'Telefon, WhatsApp & Shop (M1)',
-    ready: false,
+    description: 'Laden, Telefon, WhatsApp & Sammelstelle',
+    ready: true,
+  },
+  {
+    label: 'Abholliste',
+    href: '/admin/preorders/abholliste',
+    icon: 'pickup',
+    description: 'Übergabe abhaken, drucken',
+    ready: true,
   },
   {
     label: 'Backzettel',
