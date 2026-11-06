@@ -274,6 +274,41 @@ function toDate(value: string | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
+/**
+ * `driverId` aus dem Body: leer/`null`/`0` = ohne Fahrer, sonst eine positive
+ * ganze Zahl (auch als Text `"7"`). `"1abc"` war vorher still „ohne Fahrer“.
+ */
+function parseDriverId(value: unknown): { id: number | null } | null {
+  if (value === undefined || value === null || value === '' || value === 0) {
+    return { id: null }
+  }
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? { id: value } : null
+  }
+  if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+    const id = Number(value.trim())
+    if (id === 0) return { id: null }
+    return Number.isSafeInteger(id) ? { id } : null
+  }
+  return null
+}
+
+const INVALID_DRIVER_MESSAGE =
+  'Der Fahrer muss als Nummer angegeben werden (oder leer für „ohne Fahrer“).'
+
+/** Frühester Tourtag; spätestens ein Jahr voraus (`TOUR_DAYS_AHEAD`). */
+const TOUR_DATE_MIN = '2020-01-01'
+const TOUR_DAYS_AHEAD = 366
+
+/**
+ * Ein ausdrücklicher `completedAt` (Fahrer-App: Zeitpunkt des Antippens, auch
+ * aus der Offline-Warteschlange, die erst Tage später nachsenden kann) muss
+ * zum Tourtag passen: vom Vortag bis zwei Tage danach (Zeitzonen-Spielraum
+ * eingerechnet). Vorher ging jedes Datum (9999-12-31, 1970-01-01) durch.
+ */
+const COMPLETED_AT_DAYS_BEFORE = 1
+const COMPLETED_AT_DAYS_AFTER = 3
+
 /** `:id` / `:stopId` - positive whole numbers, else not found. */
 export function parseId(value: unknown): number | null {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) return null
@@ -451,6 +486,15 @@ export function checkStopText(
       message: 'Der Hinweis enthält unzulässige Steuerzeichen.',
     }
   }
+  // Grund bei „Nicht angetroffen“ (Fahrer, auch aus der Warteschlange):
+  // dieselbe Regel wie der Hinweis - sonst dreht ein Bidi-Zeichen den Text
+  // auf der Stoppkarte um.
+  if (controlChars.hasTextControlChars(stop.failureReason ?? '')) {
+    return {
+      error: 'Invalid text',
+      message: 'Der Grund enthält unzulässige Steuerzeichen.',
+    }
+  }
   if (stop.items.length > L.items) {
     return {
       error: 'Too many items',
@@ -621,14 +665,20 @@ export class DeliveryToursService {
         if (!stop.pickupPointId) continue
         const key = `${stop.pickupPointId}|${tour.date}`
         if (handover.has(key)) continue
-        // Stornierte stehen nicht auf der Übergabeliste (wie im Mock).
+        // Stornierte stehen nicht auf der Übergabeliste (wie im Mock) -
+        // außer, es ist noch Geld zurückzugeben: dann sieht der Fahrer sie
+        // als „Storniert - X zurückgeben“ (wie die Abholliste), statt dass
+        // vorab Bezahltes in keiner Liste vor Ort steht.
         const list = await this.preorders.legacyList({
           date: tour.date,
           pickupPointId: stop.pickupPointId,
         })
         handover.set(
           key,
-          list.filter((p) => p['status'] !== 'cancelled')
+          list.filter(
+            (p) =>
+              p['status'] !== 'cancelled' || Number(p['paymentBalance']) < 0
+          )
         )
       }
     }
@@ -1230,10 +1280,24 @@ export class DeliveryToursService {
     if (plannedStartGiven && !core.isClockTime(input['plannedStart'])) {
       return fail(400, 'Invalid plannedStart', PLANNED_START_MESSAGE)
     }
+    const latest = core.toBusinessDate(
+      new Date(this.now().getTime() + TOUR_DAYS_AHEAD * 86_400_000)
+    )
+    if (date < TOUR_DATE_MIN || date > latest) {
+      return fail(
+        400,
+        'Invalid date',
+        `Der Tourtag muss zwischen dem 01.01.2020 und höchstens ${TOUR_DAYS_AHEAD} Tage voraus liegen.`
+      )
+    }
     const name = String(input['name'] || 'Tour').trim() || 'Tour'
     const nameProblem = checkTourName(name)
     if (nameProblem) return fail(400, nameProblem.error, nameProblem.message)
-    const driverId = core.wholeNumber(input['driverId'], 0)
+    const parsedDriver = parseDriverId(input['driverId'])
+    if (!parsedDriver) {
+      return fail(400, 'Invalid driverId', INVALID_DRIVER_MESSAGE)
+    }
+    const driverId = parsedDriver.id ?? 0
 
     try {
       const id = await getSequelize().transaction(async (transaction) => {
@@ -1348,7 +1412,15 @@ export class DeliveryToursService {
         tour.status = status
       }
       if (input['driverId'] !== undefined) {
-        const driverId = core.wholeNumber(input['driverId'], 0)
+        const parsedDriver = parseDriverId(input['driverId'])
+        if (!parsedDriver) {
+          throw new DeliveryRouteError(
+            400,
+            'Invalid driverId',
+            INVALID_DRIVER_MESSAGE
+          )
+        }
+        const driverId = parsedDriver.id ?? 0
         if (
           driverId &&
           !(await DeliveryDriver.findByPk(driverId, { transaction }))
@@ -1554,6 +1626,22 @@ export class DeliveryToursService {
       async (tour) => {
         const stop = tour.stops.find((s) => s.id === stopId)
         if (!stop) throw stopNotFound()
+        if (
+          input['completedAt'] !== undefined &&
+          input['completedAt'] !== null
+        ) {
+          const at = (toDate(String(input['completedAt'])) as Date).getTime()
+          const day = Date.parse(`${tour.date}T00:00:00Z`)
+          const earliest = day - COMPLETED_AT_DAYS_BEFORE * 86_400_000
+          const latest = day + COMPLETED_AT_DAYS_AFTER * 86_400_000
+          if (at < earliest || at >= latest) {
+            throw new DeliveryRouteError(
+              400,
+              'Invalid completedAt',
+              'Der Zeitpunkt muss zum Tourtag passen.'
+            )
+          }
+        }
         const result = core.normalizeStopInput(input, stop, this.nowIso())
         if (result.error) {
           throw new DeliveryRouteError(400, result.error, result.message)

@@ -776,6 +776,281 @@ describe('Sammelstelle: handover list from /api/preorders', () => {
   })
 })
 
+describe('Sammelstelle: payment on the handover list (Abschluss-Verifikation next)', () => {
+  const DAY = '2026-12-12' // Saturday
+  let tourId = 0
+
+  beforeAll(async () => {
+    tourId = (await newTour({ date: DAY, driverId: driverA })).id
+  })
+
+  const order = async (name: string, quantity: number, paid: boolean) => {
+    const res = await as('verkauf').post('/api/preorders', {
+      channel: 'sammelstelle',
+      customerName: name,
+      pickupDate: DAY,
+      pickupPointId: MOERSBACH,
+      paid,
+      items: [{ productId: 'kornbrot-500g', quantity }],
+    })
+    expect(res.status).toBe(201)
+    return res.body.data as { id: number; total: number }
+  }
+  const setQty = (id: number, quantity: number) =>
+    as('verkauf').patch(`/api/preorders/${id}`, {
+      items: [{ productId: 'kornbrot-500g', quantity }],
+    })
+  const handover = async () => {
+    const res = await as('fahrer').get(`/api/deliveries/tours/${tourId}`)
+    expect(res.status).toBe(200)
+    return res.body.stops.find(
+      (s: { pickupPointId?: string }) => s.pickupPointId === MOERSBACH
+    ) as {
+      preorders: Array<Record<string, unknown> & { id: number }>
+      preorderSummary: { count: number; cancelled: number }
+    }
+  }
+  const stored = async (id: number) =>
+    (await as('verkauf').get(`/api/preorders/${id}`)).body.data as {
+      paid: boolean
+      paidAmount: number | null
+      paymentBalance: number
+      total: number
+      status: string
+    }
+
+  it('carries paidAmount and paymentBalance, and a paid cancelled order as a refund', async () => {
+    const prepaid = await order('Testkundin Vorkasse', 2, true)
+    const topUp = await order('Testkunde Nachzahlung', 2, true)
+    expect((await setQty(topUp.id, 4)).status).toBe(200)
+    const refund = await order('Testkundin Erstattung', 4, true)
+    expect((await setQty(refund.id, 1)).status).toBe(200)
+    const cancelled = await order('Testkunde Storno bezahlt', 2, true)
+    await as('verkauf').post(`/api/preorders/${cancelled.id}/cancel`)
+    const unpaidCancelled = await order('Testkunde Storno offen', 1, false)
+    await as('verkauf').post(`/api/preorders/${unpaidCancelled.id}/cancel`)
+
+    const stop = await handover()
+    const byId = new Map(stop.preorders.map((p) => [p.id, p]))
+    expect(byId.get(prepaid.id)).toMatchObject({
+      paid: true,
+      paidAmount: prepaid.total,
+      paymentBalance: 0,
+    })
+    expect(Number(byId.get(topUp.id)?.['paymentBalance'])).toBeGreaterThan(0)
+    expect(Number(byId.get(refund.id)?.['paymentBalance'])).toBeLessThan(0)
+    expect(byId.get(cancelled.id)).toMatchObject({
+      status: 'cancelled',
+      paymentBalance: -cancelled.total,
+    })
+    // A cancelled order without money to give back stays off the list.
+    expect(byId.has(unpaidCancelled.id)).toBe(false)
+    expect(stop.preorderSummary.count).toBe(3)
+  })
+
+  it('a handover keeps an open rest or refund unless the driver confirms it', async () => {
+    const topUp = await order('Testkunde Rest', 1, true)
+    expect((await setQty(topUp.id, 3)).status).toBe(200)
+    const refund = await order('Testkundin Zurück', 3, true)
+    expect((await setQty(refund.id, 1)).status).toBe(200)
+    const restBefore = await stored(topUp.id)
+    const refundBefore = await stored(refund.id)
+    expect(restBefore.paymentBalance).toBeGreaterThan(0)
+    expect(refundBefore.paymentBalance).toBeLessThan(0)
+
+    for (const id of [topUp.id, refund.id]) {
+      const res = await as('fahrer').patch(`/api/deliveries/preorders/${id}`, {
+        status: 'handed_over',
+      })
+      expect(res.status).toBe(200)
+    }
+    expect(await stored(topUp.id)).toMatchObject({
+      status: 'abgeholt',
+      paid: true,
+      paidAmount: restBefore.paidAmount,
+      paymentBalance: restBefore.paymentBalance,
+    })
+    expect(await stored(refund.id)).toMatchObject({
+      status: 'abgeholt',
+      paidAmount: refundBefore.paidAmount,
+      paymentBalance: refundBefore.paymentBalance,
+    })
+
+    // "Rest kassiert": the driver confirms with paid: true.
+    const confirmed = await as('fahrer').patch(
+      `/api/deliveries/preorders/${topUp.id}`,
+      { status: 'handed_over', paid: true }
+    )
+    expect(confirmed.status).toBe(200)
+    expect(confirmed.body).toMatchObject({ paymentBalance: 0 })
+    expect(await stored(topUp.id)).toMatchObject({ paymentBalance: 0 })
+    // He never takes a payment back.
+    const undo = await as('fahrer').patch(
+      `/api/deliveries/preorders/${refund.id}`,
+      { status: 'handed_over', paid: false }
+    )
+    expect(undo.status).toBe(403)
+  })
+
+  it('an unpaid order is still paid in full at the handover (Mörsbach collects there)', async () => {
+    const unpaid = await order('Testkunde bar', 2, false)
+    const res = await as('fahrer').patch(
+      `/api/deliveries/preorders/${unpaid.id}`,
+      { status: 'handed_over' }
+    )
+    expect(res.status).toBe(200)
+    expect(await stored(unpaid.id)).toMatchObject({
+      paid: true,
+      paidAmount: unpaid.total,
+      paymentBalance: 0,
+    })
+  })
+
+  it('names a Sorte like the management screens', () => {
+    const core = require('../../src/services/delivery-preorders.core')
+    const legacy = core.toLegacyPreorder(
+      {
+        id: 1,
+        code: 'MO-1',
+        items: [
+          {
+            productId: 'x',
+            name: 'Probekuchen',
+            variant: 'schoko-kirsch',
+            quantity: 1,
+            unitPrice: 1,
+          },
+        ],
+        total: 1,
+      },
+      null,
+      new Date()
+    )
+    expect(legacy.items[0].name).toBe('Probekuchen (Schoko-Kirsch)')
+  })
+})
+
+describe('stop and tour input checks (Abschluss-Verifikation next)', () => {
+  let tourId = 0
+  let stopId = 0
+
+  beforeAll(async () => {
+    const tour = await newTour({ date: '2026-12-15', driverId: driverA })
+    tourId = tour.id
+    const added = await as('inhaber').post(
+      `/api/deliveries/tours/${tourId}/stops`,
+      stopAt('Testkundin Prüfung', 49.31, 7.35)
+    )
+    expect(added.status).toBe(201)
+    stopId = added.body.stops[added.body.stops.length - 1].id
+  })
+
+  it('refuses control, bidi and invisible characters in failureReason', async () => {
+    for (const reason of [
+      'Kunde nicht da ‮redot‬',
+      'a\u0000b',
+      'a\u0007c',
+      'x​y',
+    ]) {
+      const res = await as('fahrer').patch(
+        `/api/deliveries/tours/${tourId}/stops/${stopId}`,
+        {
+          status: 'failed',
+          failureReason: reason,
+          goodsDisposition: 'taken_back',
+        }
+      )
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'Invalid text' })
+    }
+    const ok = await as('fahrer').patch(
+      `/api/deliveries/tours/${tourId}/stops/${stopId}`,
+      {
+        status: 'failed',
+        failureReason: 'Annahme verweigert',
+        goodsDisposition: 'taken_back',
+      }
+    )
+    expect(ok.status).toBe(200)
+  })
+
+  it('takes a completedAt only around the tour date', async () => {
+    for (const at of ['9999-12-31T00:00:00Z', '1970-01-01T00:00:00Z']) {
+      const res = await as('fahrer').patch(
+        `/api/deliveries/tours/${tourId}/stops/${stopId}`,
+        { status: 'done', completedAt: at }
+      )
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'Invalid completedAt' })
+    }
+    const res = await as('fahrer').patch(
+      `/api/deliveries/tours/${tourId}/stops/${stopId}`,
+      { status: 'done', completedAt: '2026-12-15T08:12:00.000Z' }
+    )
+    expect(res.status).toBe(200)
+    expect(
+      res.body.stops.find((s: { id: number }) => s.id === stopId).completedAt
+    ).toBe('2026-12-15T08:12:00.000Z')
+  })
+
+  it('refuses invented item quantities instead of coercing them', async () => {
+    for (const qty of ['abc', -5, 1.5, '1e3x']) {
+      const res = await as('inhaber').post(
+        `/api/deliveries/tours/${tourId}/stops`,
+        {
+          ...stopAt('Testkunde Menge', 49.31, 7.35),
+          items: [{ name: 'W', qty, unit: 'St' }],
+        }
+      )
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'Invalid quantity' })
+    }
+    const raw = await request(api.app)
+      .post(`/api/deliveries/tours/${tourId}/stops`)
+      .set(tokens['inhaber'])
+      .set('Content-Type', 'application/json')
+      .send(
+        '{"customer":"Testkunde Riesig","street":"Musterweg 1","items":[{"name":"W","qty":1e309}]}'
+      )
+    expect(raw.status).toBe(400)
+    const ok = await as('inhaber').post(
+      `/api/deliveries/tours/${tourId}/stops`,
+      {
+        ...stopAt('Testkunde Ohne Menge', 49.31, 7.35),
+        items: [{ name: 'W' }, { name: 'V', qty: '3' }],
+      }
+    )
+    expect(ok.status).toBe(201)
+    expect(ok.body.stops[ok.body.stops.length - 1].items).toEqual([
+      { name: 'W', qty: 1, unit: 'Stück' },
+      { name: 'V', qty: 3, unit: 'Stück' },
+    ])
+  })
+
+  it('refuses a malformed driverId and a tour date far in the future', async () => {
+    const bad = await as('inhaber').post('/api/deliveries/tours', {
+      date: '2026-12-16',
+      driverId: '1abc',
+    })
+    expect(bad.status).toBe(400)
+    expect(bad.body).toMatchObject({ error: 'Invalid driverId' })
+    const far = await as('inhaber').post('/api/deliveries/tours', {
+      date: '9999-12-31',
+    })
+    expect(far.status).toBe(400)
+    expect(far.body).toMatchObject({ error: 'Invalid date' })
+    const patch = await as('inhaber').patch(`/api/deliveries/tours/${tourId}`, {
+      driverId: 'x',
+    })
+    expect(patch.status).toBe(400)
+    const text = await as('inhaber').patch(`/api/deliveries/tours/${tourId}`, {
+      driverId: String(driverB),
+    })
+    expect(text.status).toBe(200)
+    expect(text.body.driverId).toBe(driverB)
+  })
+})
+
 // ------------------------------------------------------------ geo services
 
 describe('address search and routing', () => {
