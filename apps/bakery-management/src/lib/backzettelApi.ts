@@ -406,28 +406,42 @@ export async function fetchPrep(
   )
 }
 
-/** Saisonfaktor (0 < f ≤ 5) - nur im Entwurf. */
+/**
+ * Saisonfaktor (0 < f ≤ 5) - nur im Entwurf. `expectedFactor` ist der Wert,
+ * den die Seite angezeigt hat: hat ein anderes Gerät inzwischen etwas anderes
+ * gespeichert, antwortet die API 409 `season_changed` statt zu überschreiben.
+ */
 export async function setSeasonFactor(
   date: string,
-  factor: number | string
+  factor: number | string,
+  expectedFactor?: number
 ): Promise<BackzettelDay> {
   return unwrap(
-    await apiClient.put<BackzettelDay>(`${datePath(date)}/season`, { factor })
+    await apiClient.put<BackzettelDay>(`${datePath(date)}/season`, {
+      factor,
+      ...(expectedFactor !== undefined ? { expectedFactor } : {}),
+    })
   )
 }
 
-/** Korrektur einer Zeile; ≠ 0 braucht einen Grund, 0 löscht sie. Nur im Entwurf. */
+/**
+ * Korrektur einer Zeile; ≠ 0 braucht einen Grund, 0 löscht sie. Nur im
+ * Entwurf. `expected` ist der Stand, auf dem der Editor geöffnet wurde -
+ * weicht der gespeicherte ab, 409 `correction_changed` (W4-verify r4).
+ */
 export async function setCorrection(
   date: string,
   itemId: string,
   variant: string | null,
   correction: number,
-  reason: string | null
+  reason: string | null,
+  expected?: { correction: number; reason: string | null }
 ): Promise<BackzettelDay> {
   return unwrap(
     await apiClient.put<BackzettelDay>(correctionPath(date, itemId, variant), {
       correction,
       reason: correction === 0 ? null : reason,
+      ...(expected ? { expected } : {}),
     })
   )
 }
@@ -449,16 +463,21 @@ export async function reopenDay(
   )
 }
 
-/** Abhaken (nur freigegebene Tage; Zeilen-ID, nicht `key`). */
+/**
+ * Abhaken (nur freigegebene Tage; Zeilen-ID, nicht `key`). `expectedTotal`
+ * ist die Menge, die das Gerät angezeigt hat: ist auf dem Server inzwischen
+ * mehr zu backen, antwortet die API 409 `line_changed` (W4-verify r4).
+ */
 export async function setLineDone(
   date: string,
   lineId: number,
-  done: boolean
+  done: boolean,
+  expectedTotal?: number
 ): Promise<LineDoneResult> {
   return unwrap(
     await apiClient.post<LineDoneResult>(
       `${datePath(date)}/lines/${lineId}/${done ? 'done' : 'undone'}`,
-      {}
+      done && expectedTotal !== undefined ? { expectedTotal } : {}
     )
   )
 }
@@ -471,6 +490,19 @@ export async function acknowledgeDelta(
     await apiClient.post<BackzettelDeltaEntry>(
       `${datePath(date)}/deltas/${deltaId}/ack`,
       {}
+    )
+  )
+}
+
+/** Mehrere Nachträge auf einmal quittieren (alles oder nichts). */
+export async function acknowledgeDeltas(
+  date: string,
+  deltaIds: number[]
+): Promise<BackzettelDeltaEntry[]> {
+  return unwrap(
+    await apiClient.post<BackzettelDeltaEntry[]>(
+      `${datePath(date)}/deltas/ack`,
+      { ids: deltaIds }
     )
   )
 }

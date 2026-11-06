@@ -30,6 +30,7 @@ jest.mock('../../lib/backzettelApi', () => {
     fetchPrep: jest.fn(),
     setLineDone: jest.fn(),
     acknowledgeDelta: jest.fn(),
+    acknowledgeDeltas: jest.fn(),
   }
 })
 const mocked = api as jest.Mocked<typeof api>
@@ -206,7 +207,12 @@ describe('Backstube-Tablet', () => {
       '1 von 4 erledigt'
     )
     const weckId = mocked.setLineDone.mock.calls[0][1]
-    expect(mocked.setLineDone).toHaveBeenCalledWith(SAT, weckId, true)
+    expect(mocked.setLineDone).toHaveBeenCalledWith(
+      SAT,
+      weckId,
+      true,
+      expect.any(Number)
+    )
 
     await act(async () => {
       pending.resolve({
@@ -289,7 +295,12 @@ describe('Backstube-Tablet', () => {
       await screen.findByRole('checkbox', { name: 'Testweck erledigt' })
     )
     await waitFor(() =>
-      expect(mocked.setLineDone).toHaveBeenCalledWith(SAT, weck.id, false)
+      expect(mocked.setLineDone).toHaveBeenCalledWith(
+        SAT,
+        weck.id,
+        false,
+        expect.any(Number)
+      )
     )
     await waitFor(() =>
       expect(screen.getByTestId(`bs-tick-${WECK}`)).toHaveAttribute(
@@ -314,6 +325,161 @@ describe('Backstube-Tablet', () => {
         'Der Backzettel ist nicht freigegeben. Der Backzettel wird neu geladen.'
       )
     ).toBeInTheDocument()
+  })
+
+  it('Haken aus veralteter Ansicht: Menge geändert → nicht abgehakt, neu geladen, Hinweis (W4-verify r4)', async () => {
+    const shown = saturdayConfirmed()
+    const weck = shown.sections
+      .flatMap((sec) => sec.lines)
+      .find((l) => l.key === WECK)!
+    mocked.setLineDone.mockRejectedValue(
+      apiError(
+        409,
+        'line_changed',
+        `Menge geändert: jetzt ${weck.total + 6} statt ${
+          weck.total
+        }. Der Haken wurde nicht gesetzt.`
+      )
+    )
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    await waitFor(() =>
+      expect(mocked.setLineDone).toHaveBeenCalledWith(
+        SAT,
+        weck.id,
+        true,
+        weck.total
+      )
+    )
+    const bigger = {
+      ...shown,
+      sections: shown.sections.map((sec) => ({
+        ...sec,
+        lines: sec.lines.map((l) =>
+          l.key === WECK ? { ...l, correction: 6, total: l.total + 6 } : l
+        ),
+      })),
+    }
+    mocked.fetchBackzettelDay.mockResolvedValue(bigger)
+    expect(
+      await screen.findByText(
+        `Menge geändert: jetzt ${weck.total + 6} statt ${
+          weck.total
+        }. Der Haken wurde nicht gesetzt. Der Backzettel wird neu geladen.`
+      )
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+    )
+    expect(screen.getByTestId(`bs-tick-${WECK}`)).toHaveAttribute(
+      'aria-checked',
+      'false'
+    )
+  })
+
+  it('„Gesehen“ auf einen schon eingerechneten Nachtrag (404) lädt neu (W4-verify r4)', async () => {
+    mocked.acknowledgeDelta.mockRejectedValue(
+      apiError(
+        404,
+        'not_found',
+        'Dieser Nachtrag ist nicht mehr offen - der Backzettel wurde inzwischen neu freigegeben.'
+      )
+    )
+    renderTablet()
+    const card = await screen.findByTestId('bs-deltas')
+    mocked.fetchBackzettelDay.mockResolvedValue(
+      saturdayConfirmed({ deltas: [] })
+    )
+    fireEvent.click(within(card).getByRole('button', { name: /gesehen/ }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('bs-deltas')).not.toBeInTheDocument()
+    )
+    expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+    expect(
+      screen.getByText(/nicht mehr offen.*Der Backzettel wird neu geladen\./)
+    ).toBeInTheDocument()
+  })
+
+  it('Nachträge je Zeile zusammengefasst, ein „Gesehen“ je Zeile und „Alle gesehen“ (W4-verify r4)', async () => {
+    const base = saturdayConfirmed()
+    const zopf = base.deltas[0]
+    const deltas = [
+      zopf,
+      { ...zopf, id: 9, qty: 3, preorderCode: 'MO-2026-11-28-01' },
+      { ...zopf, id: 10, qty: -1, kind: 'changed', preorderCode: null },
+      {
+        ...zopf,
+        id: 11,
+        key: WECK,
+        itemId: 'test-weck',
+        name: 'Testweck',
+        variant: null,
+        qty: 4,
+      },
+    ]
+    mocked.fetchBackzettelDay.mockResolvedValue({ ...base, deltas })
+    mocked.acknowledgeDeltas.mockImplementation(async (_d, ids) =>
+      ids.map((id) => ({
+        ...deltas.find((x) => x.id === id)!,
+        acknowledgedAt: '2026-11-28T03:05:00.000Z',
+        acknowledgedBy: { id: 3, displayName: 'Test Bäcker' },
+      }))
+    )
+    renderTablet()
+    const card = await screen.findByTestId('bs-deltas')
+    expect(card).toHaveTextContent('4 Nachträge seit der Freigabe · 2 Zeilen')
+    const group = within(card).getByTestId(`bs-delta-group-${ZOPF_NUSS}`)
+    expect(group).toHaveTextContent('+3')
+    expect(group).toHaveTextContent('3 Änderungen')
+    expect(
+      within(card).getAllByRole('button', { name: /gesehen/ })
+    ).toHaveLength(3)
+    fireEvent.click(
+      within(group).getByRole('button', {
+        name: '3 Nachträge Testzopf gefüllt – Testnussfüllung gesehen',
+      })
+    )
+    await waitFor(() =>
+      expect(mocked.acknowledgeDeltas).toHaveBeenCalledWith(SAT, [7, 9, 10])
+    )
+    await waitFor(() =>
+      expect(
+        screen.queryByTestId(`bs-delta-group-${ZOPF_NUSS}`)
+      ).not.toBeInTheDocument()
+    )
+    expect(screen.getByTestId('bs-deltas')).toHaveTextContent(
+      '1 Nachtrag seit der Freigabe'
+    )
+    expect(screen.queryByTestId('bs-deltas-ack-all')).not.toBeInTheDocument()
+  })
+
+  it('„Alle gesehen“ quittiert alle offenen Nachträge auf einmal', async () => {
+    const base = saturdayConfirmed()
+    const zopf = base.deltas[0]
+    const deltas = [
+      zopf,
+      {
+        ...zopf,
+        id: 11,
+        key: WECK,
+        itemId: 'test-weck',
+        name: 'Testweck',
+        variant: null,
+        qty: 4,
+      },
+    ]
+    mocked.fetchBackzettelDay.mockResolvedValue({ ...base, deltas })
+    mocked.acknowledgeDeltas.mockResolvedValue([])
+    renderTablet()
+    fireEvent.click(await screen.findByTestId('bs-deltas-ack-all'))
+    await waitFor(() =>
+      expect(mocked.acknowledgeDeltas).toHaveBeenCalledWith(SAT, [7, 11])
+    )
+    await waitFor(() =>
+      expect(screen.queryByTestId('bs-deltas')).not.toBeInTheDocument()
+    )
   })
 
   it('Netz wieder da: das Neuladen ersetzt den alten Fehler durch den nächsten Schritt (W4-verify r3)', async () => {

@@ -850,6 +850,24 @@ preorder snapshot, delta reconciliation, frozen lines. Master data: `backzettel-
 
 A correction `reason` or reopen `reason` with control characters is 400 `INVALID_TEXT` (W4-verify r3).
 
+**Two devices at once (W4-verify r4).** Every write that a stale screen could make wrong carries
+the value that screen showed, and the server refuses instead of overwriting:
+
+- `PUT …/season` takes `expectedFactor`, `PUT …/correction` takes `expected: { correction, reason }`
+  (what the editor opened on). A different stored value is 409 `season_changed` /
+  `correction_changed` with `current` (`{ correction, reason, by }`) and a German message naming
+  the value and who set it; a save identical to the stored value is a no-op, not a conflict.
+- `POST …/lines/:lineId/done` takes `{ expectedTotal }`: if the line now asks for **more** (owner
+  re-confirmed with a correction), 409 `line_changed` with `total`/`expectedTotal`; fewer is fine
+  (same rule as `tickStillValid`). The `line_done` audit row stores `total`.
+- `POST /:date/deltas/ack` with `{ ids: [...] }` (1-500) acknowledges several Nachträge in one
+  transaction, all or nothing - 404 `not_found` if one is gone (re-confirmed). The tablet groups
+  open Nachträge per line (one „Gesehen“ per line plus „Alle gesehen“).
+- The fields are optional (older clients, scripts); the management app always sends them. A
+  404 `not_found` on a tick or ack means the day was re-confirmed - the tablet reloads.
+- Quarters are pooled across all sources of a line before rounding up (base × season +
+  preorders + CAP); see `quartersPooled` / `subtotalExact` in `backzettel.core.js`.
+
 Day: `{ date, weekday, weekdayName, status: draft|confirmed, seasonFactor, confirmedBy {id,
 displayName} | null, confirmedAt, sections[{ id, label, lines[] }], hefeteig, fillings, prep,
 prepDate, prepDateProvisional, deltas[], warnings[], configStatus, configChangedSinceConfirm }`
