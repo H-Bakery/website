@@ -170,7 +170,13 @@ const printStyles = (
         },
         '.abholliste-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
         '.abholliste-print .sign': { width: '32mm' },
-        '.abholliste-print .paid': { whiteSpace: 'nowrap' },
+        // Kästchen zum Ankreuzen so groß wie der Übergabe-Haken.
+        '.abholliste-print .paid': { whiteSpace: 'nowrap', fontSize: '13pt' },
+        '.abholliste-print th.na': {
+          width: '9mm',
+          textAlign: 'center',
+          whiteSpace: 'nowrap',
+        },
         '.abholliste-print .legend': { fontSize: '9pt', marginTop: '2mm' },
         '.abholliste-print ul': { margin: 0, paddingLeft: '3.5mm' },
       },
@@ -1365,7 +1371,7 @@ export default function AbholListeClient({
                 <th>Artikel</th>
                 <th className="num">Summe</th>
                 <th>Bezahlt</th>
-                <th className="tick" title="nicht abgeholt">
+                <th className="na" title="nicht abgeholt">
                   n.&nbsp;a.
                 </th>
                 <th className="sign">Unterschrift</th>
