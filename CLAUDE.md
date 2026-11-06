@@ -1016,6 +1016,14 @@ Was man wissen muss:
   abgelehnt (mit API-Text). Scheitert der Aufruf als Ganzes, ist nichts gespeichert - „Keine
   Verbindung …" bzw. „Der Server hat einen Fehler gemeldet …" im offenen Dialog
   (`requestFailureKind`: keine Antwort / 5xx / 4xx).
+- **Einzelne Tipps (Übergeben, bereit, …) melden Fehler auch unten** als Snackbar, die stehen
+  bleibt (W4-Verifikation: die Meldung über der Liste lag am Handy außer Sicht). Bleibt die
+  Antwort aus oder kommt 5xx, ist **unklar**, ob gespeichert wurde - die Seite lädt sofort neu
+  und vergleicht (`changeAlreadyApplied`): schon so am Server → „Die Antwort ging verloren,
+  gespeichert ist es trotzdem."; frisch geladen und nicht so → „nichts gespeichert"; Neuladen
+  scheitert → „ob das gespeichert wurde, ist unklar" (`singleRequestFailedMessage`), und das
+  Ereignis `online` lädt nach. Ein 409 auf einen zweiten Versuch, der schon so gespeichert ist,
+  heißt „Das ist bereits gespeichert - nichts zu tun."
 - **Stilles Nachladen** alle 60 s und beim Zurückkehren ins Fenster (`focus`,
   `visibilitychange`) - aber nie, solange ein Dialog, ein Menü oder eine Aktion offen ist. Dabei
   wird auch **„heute" neu bestimmt** (ein Tablet, das über Nacht offen bleibt). Scheitert es,
