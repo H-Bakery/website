@@ -170,6 +170,8 @@ const printStyles = (
         },
         '.abholliste-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
         '.abholliste-print .sign': { width: '32mm' },
+        '.abholliste-print .paid': { whiteSpace: 'nowrap' },
+        '.abholliste-print .legend': { fontSize: '9pt', marginTop: '2mm' },
         '.abholliste-print ul': { margin: 0, paddingLeft: '3.5mm' },
       },
     }}
@@ -179,7 +181,15 @@ const printStyles = (
 /** Touch-Ziel: mindestens 48 px hoch (Tablet an der Theke). */
 const TOUCH = { minHeight: 48 } as const
 
-function Tile({ label, value }: { label: string; value: string }) {
+function Tile({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note?: string | null
+}) {
   return (
     <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
       <Typography variant="caption" color="text.secondary" display="block">
@@ -188,8 +198,23 @@ function Tile({ label, value }: { label: string; value: string }) {
       <Typography variant="h6" component="p" sx={{ fontSize: '1.15rem' }}>
         {value}
       </Typography>
+      {note ? (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {note}
+        </Typography>
+      ) : null}
     </Box>
   )
+}
+
+/** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
+function handedOverUnpaidNote(
+  summary: { handedOverUnpaidTotal?: number } | null | undefined
+): string | null {
+  const amount = summary?.handedOverUnpaidTotal ?? 0
+  return amount > 0
+    ? `+ ${formatCurrency(amount)} ohne Zahlung übergeben`
+    : null
 }
 
 function PaidChip({ preorder }: { preorder: Preorder }) {
@@ -1191,6 +1216,7 @@ export default function AbholListeClient({
             <Tile
               label="Noch zu kassieren"
               value={formatCurrency(summary.unpaidTotal)}
+              note={handedOverUnpaidNote(summary)}
             />
           </Box>
         )}
@@ -1322,6 +1348,9 @@ export default function AbholListeClient({
             {summary
               ? ` · noch zu kassieren ${formatCurrency(summary.unpaidTotal)}`
               : ''}
+            {handedOverUnpaidNote(summary)
+              ? ` (${handedOverUnpaidNote(summary)})`
+              : ''}
             {cancelledCount > 0
               ? ` · ${cancelledCount} storniert (nicht aufgeführt)`
               : ''}
@@ -1336,6 +1365,9 @@ export default function AbholListeClient({
                 <th>Artikel</th>
                 <th className="num">Summe</th>
                 <th>Bezahlt</th>
+                <th className="tick" title="nicht abgeholt">
+                  n.&nbsp;a.
+                </th>
                 <th className="sign">Unterschrift</th>
               </tr>
             </thead>
@@ -1344,7 +1376,7 @@ export default function AbholListeClient({
                 <React.Fragment key={group.key}>
                   {printGroups.length > 1 && (
                     <tr className="group">
-                      <td colSpan={7}>
+                      <td colSpan={8}>
                         {group.label} ({group.preorders.length})
                       </td>
                     </tr>
@@ -1381,7 +1413,16 @@ export default function AbholListeClient({
                         {p.note ? <em>{p.note}</em> : null}
                       </td>
                       <td className="num">{formatCurrency(p.total)}</td>
-                      <td>{p.paid ? 'ja' : 'nein'}</td>
+                      {/* Zum Ankreuzen auf Papier (Kurzanleitung Fahrer):
+                          offen ☐, schon bezahlt ☑. */}
+                      <td className="paid">{p.paid ? '☑ ja' : '☐'}</td>
+                      <td className="tick">
+                        {p.notCollected
+                          ? '☑'
+                          : p.status === 'abgeholt'
+                          ? ''
+                          : '☐'}
+                      </td>
                       <td className="sign" />
                     </tr>
                   ))}
@@ -1389,6 +1430,10 @@ export default function AbholListeClient({
               ))}
             </tbody>
           </table>
+          <p className="legend">
+            Ankreuzen: ✓ = übergeben, Bezahlt ☐ = Geld erhalten, n. a. = nicht
+            abgeholt.
+          </p>
         </Box>
       )}
 

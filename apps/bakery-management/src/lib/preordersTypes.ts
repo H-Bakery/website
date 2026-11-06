@@ -217,6 +217,9 @@ export interface PreorderDaySummary {
   paid: number
   /** Noch nicht bezahlt und noch nicht abgeholt. */
   unpaidTotal: number
+  /** Übergeben, aber nicht bezahlt („Ohne Zahlung übergeben“). Ältere Server: fehlt. */
+  handedOverUnpaid?: number
+  handedOverUnpaidTotal?: number
   byChannel: Partial<Record<PreorderChannel, number>>
 }
 

@@ -758,8 +758,18 @@ describe('AbholListeClient (P2)', () => {
       'Artikel',
       'Summe',
       'Bezahlt',
+      'n.\u00a0a.',
       'Unterschrift',
     ])
+    // W4-Verifikation: auf Papier lässt sich „bezahlt“ und „nicht abgeholt“
+    // ankreuzen, wie es die Kurzanleitung Fahrer sagt.
+    const paidCells = Array.from(sheet.querySelectorAll('td.paid')).map(
+      (td) => td.textContent
+    )
+    expect(paidCells).toEqual(expect.arrayContaining(['☑ ja', '☐']))
+    expect(sheet.querySelector('.legend')?.textContent).toContain(
+      'n. a. = nicht'
+    )
     const text = sheet.textContent ?? ''
     expect(text).toContain('Erika Beispiel')
     expect(text).toContain('Max Muster')
@@ -768,6 +778,25 @@ describe('AbholListeClient (P2)', () => {
     expect(text).toContain('1 storniert (nicht aufgeführt)')
     await user.click(screen.getByRole('button', { name: 'Drucken' }))
     expect(print).toHaveBeenCalled()
+  })
+
+  it('ohne Zahlung übergeben: Betrag bleibt sichtbar, auf dem Bildschirm und im Druck (W4-Verifikation)', async () => {
+    const base = ladenDay()
+    mockDay.mockResolvedValue({
+      ...base,
+      summary: {
+        ...base.summary,
+        handedOverUnpaid: 1,
+        handedOverUnpaidTotal: 6.4,
+      },
+    })
+    const { container } = renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    expect(
+      screen.getByText('+ 6,40 € ohne Zahlung übergeben')
+    ).toBeInTheDocument()
+    const sheet = container.querySelector('.abholliste-print') as HTMLElement
+    expect(sheet.textContent).toMatch(/\(\+ 6,40\s€ ohne Zahlung übergeben\)/)
   })
 
   it('ohne Bestellungen: Hinweis und für den Verkauf „Vorbestellung erfassen"', async () => {

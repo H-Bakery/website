@@ -94,7 +94,15 @@ const printStyles = (
 /** Schmalere Zellen am Telefon; die Summen-Tabelle passt so auf 390 px. */
 const COMPACT_TABLE = { '& td, & th': { px: { xs: 1, sm: 2 } } } as const
 
-function Tile({ label, value }: { label: string; value: string }) {
+function Tile({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note?: string | null
+}) {
   return (
     <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
       <Typography variant="caption" color="text.secondary" display="block">
@@ -103,6 +111,11 @@ function Tile({ label, value }: { label: string; value: string }) {
       <Typography variant="h6" component="p" sx={{ fontSize: '1.15rem' }}>
         {value}
       </Typography>
+      {note ? (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {note}
+        </Typography>
+      ) : null}
     </Box>
   )
 }
@@ -314,6 +327,13 @@ export default function PreorderDayClient({
               <Tile
                 label="Noch zu kassieren"
                 value={formatCurrency(summary.unpaidTotal)}
+                note={
+                  (summary.handedOverUnpaidTotal ?? 0) > 0
+                    ? `+ ${formatCurrency(
+                        summary.handedOverUnpaidTotal ?? 0
+                      )} ohne Zahlung übergeben`
+                    : null
+                }
               />
             </Box>
 

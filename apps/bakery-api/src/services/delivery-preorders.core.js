@@ -1494,6 +1494,15 @@ function summarizeDay(list) {
         .filter((p) => !p.paid && p.status !== 'abgeholt')
         .reduce((sum, p) => sum + roundCents(p.total), 0)
     ),
+    // „Ohne Zahlung übergeben“: die Ware ist weg, das Geld fehlt. Steht für
+    // sich, damit es nicht aus jeder Summe verschwindet (W4-Verifikation).
+    handedOverUnpaid: active.filter((p) => !p.paid && p.status === 'abgeholt')
+      .length,
+    handedOverUnpaidTotal: roundCents(
+      active
+        .filter((p) => !p.paid && p.status === 'abgeholt')
+        .reduce((sum, p) => sum + roundCents(p.total), 0)
+    ),
     byChannel,
   }
 }

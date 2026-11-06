@@ -636,7 +636,9 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 
 `inhaber` passes every check. `sums` items = `[{ productId, variant, name, unit, quantity,
 preorders }]`, everything except `storniert`, optionally `&pickupPointId=`; `summary` is the same
-`core.summarizeDay()` as `/day` (counts, totals, `byStatus` incl. `storniert`) - **no names or
+`core.summarizeDay()` as `/day` (counts, totals, `byStatus` incl. `storniert`; `unpaidTotal` =
+unpaid and not yet handed over, `handedOverUnpaid`/`handedOverUnpaidTotal` = handed over "Ohne
+Zahlung" - kept apart so that money never drops out of every total, W4-verify) - **no names or
 phones**, so the Backliste reads `/sums` instead of `/day` (W4). The role `backstube` gets `/sums`
 **without `summary`** (no amounts, no paid state - it may not read `/day` either; its screens do
 not use it). List filters: `date`
