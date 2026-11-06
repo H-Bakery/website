@@ -243,8 +243,8 @@ export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
     label: 'Backzettel',
     href: '/admin/backzettel',
     icon: 'baking',
-    description: 'Tagesplan der Backstube (M2)',
-    ready: false,
+    description: 'Tagesplan der Backstube',
+    ready: true,
   },
   {
     label: 'Backstube',
