@@ -714,8 +714,11 @@ erweitertes `GET /api/backzettel/config` - Details in `apps/bakery-api/CLAUDE.md
 - **Referenzwert grau neben jeder Zelle:** Median der verkauften Stück an den letzten 6 gleichen
   Wochentagen **mit Kassenbericht** (Tooltip „Median verkauft, letzte 6 gleiche Wochentage"),
   über die `plu`-Liste des Postens. Tage ohne Bericht sind Lücken, nicht 0. Er wird **nie**
-  übernommen - nur Information. Bei Liter-/Blech-Posten steht „St." dahinter (Kasse zählt Stück);
-  mehrere PLUs (Größen) werden ohne Umrechnung zusammengezählt, der Tooltip sagt das.
+  übernommen - nur Information. Seit W4-verify r6 mit **demselben Faktor wie der Backzettel**
+  (`products[].factor`, Kassennummer = `numeric_id` des hq-Produkts): 1 Stück Marmorkuchen = ¼
+  Kuchen, ein 500-g-Laib = 0,5 l - dann `converted: true` und der Wert steht in der Einheit des
+  Postens. Ist eine Kassennummer keinem Produkt des Postens zugeordnet, bleibt es „St." (Stück laut
+  Kasse, ohne Umrechnung), der Tooltip sagt das.
 - **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage
   Di–So, geänderte Werte mit `*` und dem freigegebenen in Klammern); das Bildschirm-Raster
   (`grundmengen-screen-only`) und die App-Hülle fallen im Druck weg. Mit `page.pdf()` prüfen, nicht

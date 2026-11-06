@@ -18,11 +18,18 @@
 //     Lücke und wird übersprungen - er zählt nie als 0. Ein Tag **mit**
 //     Bericht, an dem ein Posten nicht verkauft wurde, zählt als 0.
 //
-// Die Kassennummern zählen Stück, nicht die Einheit des Postens: bei einem
-// Liter-Brot ist der Referenzwert „verkaufte Laibe", nicht Liter. Die
-// Oberfläche sagt das dazu.
+// Die Kassennummern zählen Stück, nicht die Einheit des Postens. Seit der
+// W4-Verifikation Runde 6 rechnet der Referenzwert mit **demselben Faktor
+// wie der Backzettel** (`products[].factor`, über die Kassennummer =
+// `numeric_id` des hq-Produkts): ein Stück Marmorkuchen ist 0,25 Kuchen,
+// ein 500-g-Laib 0,5 l. Nur wenn jede Kassennummer eines Postens so einem
+// Produkt zugeordnet ist (`converted: true`), steht der Wert in der Einheit
+// des Postens; sonst bleiben es Stück laut Kasse (`converted: false`), und
+// die Oberfläche sagt das dazu.
 
 'use strict'
+
+const core = require('./backzettel.core')
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
@@ -169,6 +176,31 @@ function round1(value) {
   return Math.round(value * 10) / 10
 }
 
+function round2(value) {
+  return Math.round(value * 100) / 100
+}
+
+/**
+ * Faktor je Kassennummer eines Postens: aus `products[].factor` des
+ * Postens, wenn die Kassennummer die `numeric_id` eines dieser Produkte
+ * ist. `null` für eine Kassennummer ohne solches Produkt.
+ */
+function pluFactors(item, resolve) {
+  const out = new Map()
+  for (const raw of Array.isArray(item.plu) ? item.plu : []) {
+    const key = String(raw).trim()
+    if (!key) continue
+    const hit = resolve ? resolve(key) : null
+    out.set(
+      key,
+      hit && hit.item && hit.item.id === item.id && Number(hit.factor) > 0
+        ? Number(hit.factor)
+        : null
+    )
+  }
+  return out
+}
+
 /**
  * Netto verkaufte Stück je Kassennummer an einem Tag, aus einem
  * aggregierten Tagesbericht (`products[].productId`, `quantity` - Stornos
@@ -206,10 +238,22 @@ function computeWeekdayReference(a) {
     dates.push(date)
     sold.push(map)
   }
+  let resolve = null
+  try {
+    resolve =
+      Array.isArray(cfg.items) && cfg.items.length > 0
+        ? core.createProductResolver(cfg, a.catalog)
+        : null
+  } catch {
+    resolve = null
+  }
   const items = (Array.isArray(cfg.items) ? cfg.items : []).map((item) => {
     const plu = (Array.isArray(item.plu) ? item.plu : [])
       .map((p) => String(p).trim())
       .filter(Boolean)
+    const factors = pluFactors(item, resolve)
+    const converted =
+      plu.length > 0 && plu.every((key) => factors.get(key) !== null)
     if (plu.length === 0) {
       return {
         itemId: item.id,
@@ -217,6 +261,7 @@ function computeWeekdayReference(a) {
         median: null,
         samples: [],
         status: 'no_plu',
+        converted: false,
       }
     }
     if (dates.length === 0) {
@@ -226,18 +271,27 @@ function computeWeekdayReference(a) {
         median: null,
         samples: [],
         status: 'no_data',
+        converted,
       }
     }
+    const round = converted ? round2 : round1
     const samples = sold.map((map) =>
-      round1(plu.reduce((sum, key) => sum + (map.get(key) || 0), 0))
+      round(
+        plu.reduce(
+          (sum, key) =>
+            sum + (map.get(key) || 0) * (converted ? factors.get(key) : 1),
+          0
+        )
+      )
     )
     const m = median(samples)
     return {
       itemId: item.id,
       plu: plu.map(Number),
-      median: m === null ? null : round1(m),
+      median: m === null ? null : round(m),
       samples,
       status: 'ok',
+      converted,
     }
   })
   return {

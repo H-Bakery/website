@@ -135,7 +135,7 @@ export default function GrundmengenPrint({
           {ref && ref.median !== null && (
             <div style={{ fontSize: '7.5pt' }}>
               ≈ {displayValue(ref.median)}
-              {item.unit === 'Stück' ? '' : ' St.'}
+              {item.unit === 'Stück' || ref.converted ? '' : ' St.'}
             </div>
           )}
         </td>
@@ -226,7 +226,7 @@ export default function GrundmengenPrint({
         {anyChanged &&
           '* geändert, wartet auf Freigabe in hq - in Klammern der freigegebene Wert, mit dem der Backzettel bis dahin rechnet. '}
         {showReference &&
-          '≈ Median verkauft, letzte 6 gleiche Wochentage (Stück laut Kasse) - nur zur Information.'}
+          '≈ Median verkauft, letzte 6 gleiche Wochentage (in der Einheit des Postens, sonst „St.“ = Stück laut Kasse) - nur zur Information.'}
       </div>
     </div>
   )

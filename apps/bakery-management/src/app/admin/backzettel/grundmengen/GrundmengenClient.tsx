@@ -97,15 +97,16 @@ function ReferenceHint({
   unit: string
 }) {
   if (!reference || reference.status === 'no_plu') return null
+  const pieces = !reference.converted && unit !== 'Stück'
   const text =
     reference.median === null
       ? '–'
-      : `${formatQty(reference.median)}${unit === 'Stück' ? '' : ' St.'}`
+      : `${formatQty(reference.median)}${pieces ? ' St.' : ''}`
   const detail =
     reference.status === 'no_data'
       ? 'Kein Kassenbericht für diesen Wochentag.'
       : `Verkauft: ${reference.samples.map(formatQty).join(' · ')}${
-          unit === 'Stück' ? '' : ' (Stück laut Kasse, nicht ' + unit + ')'
+          pieces ? ' (Stück laut Kasse, nicht ' + unit + ')' : ''
         }`
   return (
     <Tooltip
@@ -114,12 +115,20 @@ function ReferenceHint({
           {REFERENCE_TOOLTIP}
           <br />
           {detail}
-          {reference.plu.length > 1 && (
+          {reference.converted ? (
             <>
               <br />
-              PLU {reference.plu.join(', ')} zusammengezählt (verschiedene
-              Größen, ohne Umrechnung).
+              PLU {reference.plu.join(', ')} mit dem Faktor des Backzettels
+              umgerechnet (z. B. 1 Stück Kuchen = ¼).
             </>
+          ) : (
+            reference.plu.length > 1 && (
+              <>
+                <br />
+                PLU {reference.plu.join(', ')} zusammengezählt (verschiedene
+                Größen, ohne Umrechnung).
+              </>
+            )
           )}
           <br />
           Nur zur Information - wird nie übernommen.

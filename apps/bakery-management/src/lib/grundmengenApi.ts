@@ -81,6 +81,12 @@ export interface ReferenceItem {
   median: number | null
   samples: number[]
   status: 'ok' | 'no_plu' | 'no_data'
+  /**
+   * W4-Verifikation Runde 6: `true` = mit dem Faktor des Backzettels in die
+   * Einheit des Postens umgerechnet (Stück Kuchen → Kuchen, 500-g-Laib →
+   * 0,5 l); sonst Stück laut Kasse. Ältere Server: fehlt.
+   */
+  converted?: boolean
 }
 
 export interface ReferenceWeekday {
