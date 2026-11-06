@@ -36,6 +36,9 @@ export const TOUCH_LINK_STYLE = {
  * Sprache: MUI-Locale `deDE` - sonst heißt das X einer Meldung „Close“
  * (W4-Verifikation Runde 3), ebenso Autocomplete und Tabellen-Blättern.
  */
+/** Schrift von Text-/Umriss-Knöpfen im hellen Modus (MUI `primary.dark`). */
+export const LIGHT_PRIMARY_TEXT = '#1565c0'
+
 export function createManagementTheme(mode: 'light' | 'dark'): Theme {
   return createTheme(
     {
@@ -51,7 +54,19 @@ export function createManagementTheme(mode: 'light' | 'dark'): Theme {
       },
       components: {
         MuiButton: {
-          styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
+          styleOverrides: {
+            root: { [TOUCH_MEDIA]: { minHeight: 44 } },
+            // W4-verify r4: blaue Schrift auf hellem Grund (Hover-Tönung,
+            // grauer Kartengrund #f4f4f4) fiel mit `primary.main` #1976d2
+            // auf 4,2-4,4:1. Hell deshalb `primary.dark` für Text- und
+            // Umriss-Knöpfe; der Rahmen und gefüllte Knöpfe bleiben.
+            ...(mode === 'light'
+              ? {
+                  textPrimary: { color: LIGHT_PRIMARY_TEXT },
+                  outlinedPrimary: { color: LIGHT_PRIMARY_TEXT },
+                }
+              : {}),
+          },
         },
         MuiIconButton: {
           styleOverrides: {

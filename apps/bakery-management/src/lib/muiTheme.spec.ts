@@ -1,4 +1,8 @@
-import { TOUCH_MEDIA, createManagementTheme } from './muiTheme'
+import {
+  LIGHT_PRIMARY_TEXT,
+  TOUCH_MEDIA,
+  createManagementTheme,
+} from './muiTheme'
 
 function expand(hex: string): string {
   const h = hex.replace('#', '')
@@ -112,5 +116,35 @@ describe('createManagementTheme (W4-Verifikation: Kontrast)', () => {
     expect(theme.components?.MuiButton?.styleOverrides?.root).toEqual({
       [TOUCH_MEDIA]: { minHeight: 44 },
     })
+  })
+})
+
+describe('Text- und Umriss-Knöpfe im hellen Modus (W4-verify r4)', () => {
+  const theme = createManagementTheme('light')
+  const overrides = theme.components?.MuiButton?.styleOverrides as Record<
+    string,
+    { color?: string }
+  >
+
+  it('nutzen primary.dark statt primary.main', () => {
+    expect(LIGHT_PRIMARY_TEXT).toBe(theme.palette.primary.dark)
+    expect(overrides['textPrimary']?.color).toBe(LIGHT_PRIMARY_TEXT)
+    expect(overrides['outlinedPrimary']?.color).toBe(LIGHT_PRIMARY_TEXT)
+  })
+
+  it('mindestens 4,5:1 auf Hover-Tönung und grauem Kartengrund', () => {
+    // Hover: 4 % der Knopffarbe über Weiß; Karten-/Zeilengrund #f4f4f4.
+    const hover = solid('rgba(21, 101, 192, 0.04)', 'ffffff')
+    for (const bg of [hover, '#f4f4f4', '#f6fafd', '#ffffff']) {
+      expect(contrast(LIGHT_PRIMARY_TEXT, bg)).toBeGreaterThanOrEqual(4.5)
+    }
+    // Vorher: primary.main auf denselben Flächen darunter.
+    expect(contrast(theme.palette.primary.main, '#f4f4f4')).toBeLessThan(4.5)
+  })
+
+  it('dunkel bleibt MUI-Standard', () => {
+    const dark = createManagementTheme('dark').components?.MuiButton
+      ?.styleOverrides as Record<string, unknown>
+    expect(dark['textPrimary']).toBeUndefined()
   })
 })

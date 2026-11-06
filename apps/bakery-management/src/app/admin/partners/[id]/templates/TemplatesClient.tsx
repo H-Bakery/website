@@ -721,7 +721,9 @@ export default function TemplatesClient({
                       />
                       <Typography
                         variant="body2"
-                        color={quantity > 0 ? 'text.primary' : 'text.disabled'}
+                        // „–“ ist Inhalt (kein Betrag), keine deaktivierte
+                        // Schrift: text.disabled stand bei 2,7:1 (W4-verify r4).
+                        color={quantity > 0 ? 'text.primary' : 'text.secondary'}
                         sx={{
                           width: { xs: 72, md: 96 },
                           flexShrink: 0,
