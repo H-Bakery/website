@@ -113,8 +113,11 @@ export interface ProductStat {
   discrepancyQty: number
   /** Bei der Abholung nicht gezählt - weder verkauft noch Retoure. */
   uncountedQty?: number
+  /** An Tagen ohne Abholung noch im Schrank (W4-verify r5). */
+  openQty?: number
   revenue: number
   returnValue: number
+  /** Nur über Tage mit Abholung; ältere Server rechneten alle Tage. */
   sellThroughRate: number | null
 }
 
@@ -132,6 +135,8 @@ export interface DayStat {
   returnedQty: number
   discrepancyQty: number
   uncountedQty?: number
+  /** Offener Tag: was noch im Schrank liegt; die Quote ist dann `null`. */
+  openQty?: number
   revenue: number
   returnValue: number
   sellThroughRate: number | null
@@ -163,8 +168,11 @@ export interface PartnerStats {
     returnedQty: number
     discrepancyQty: number
     uncountedQty?: number
+    /** Lieferungen offener Tage, die noch im Schrank liegen. */
+    openQty?: number
     revenue: number
     returnValue: number
+    /** Quoten nur über Tage mit Abholung (W4-verify r5). */
     sellThroughRate: number | null
     returnRate: number | null
   }

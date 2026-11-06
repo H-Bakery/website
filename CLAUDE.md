@@ -158,6 +158,9 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
 - **Ein Geschäftstag ohne `pickup`-Besuch ist offen.** Verkauf und Umsatz sind dann vorläufig
   (`stats.isProvisional`, `openDates`). Ohne diese Kennzeichnung liest sich ein unvollständiger
   Tag im Report als 100 % Abverkauf. Detail-Seite und Report markieren das; nicht wegoptimieren.
+  Abverkaufs- und Retourenquote rechnen (seit W4-Verifikation Runde 5) nur über Tage mit
+  Abholung, wie die Wochentagstabelle; was an offenen Tagen noch im Schrank liegt, steht als
+  `openQty` („Offen“, Spalte im CSV), sodass Geliefert = Verkauft + Retoure + Offen aufgeht.
 - **Eine Abholung, die nicht jedes Produkt mit Bestand zählt, ist unvollständig.** Der Tag
   ist dann zwar nicht mehr offen, aber `day.isComplete` ist `false`, die ungezählten Stücke
   stehen in `uncountedQty`/`uncountedProducts`, und `stats.isProvisional` bleibt gesetzt

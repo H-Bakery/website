@@ -72,6 +72,9 @@ export interface ProductStat {
   uncountedQty: number
   revenue: number
   returnValue: number
+  /** An Tagen ohne Abholung noch im Schrank (W4-verify r5). */
+  openQty: number
+  /** Nur über Tage mit Abholung; an einem offenen Tag `null`. */
   sellThroughRate: number | null
 }
 
@@ -91,6 +94,9 @@ export interface DayStat {
   uncountedQty: number
   revenue: number
   returnValue: number
+  /** An Tagen ohne Abholung noch im Schrank (W4-verify r5). */
+  openQty: number
+  /** Nur über Tage mit Abholung; an einem offenen Tag `null`. */
   sellThroughRate: number | null
 }
 
@@ -120,6 +126,8 @@ export interface StatsTotals {
   uncountedQty: number
   revenue: number
   returnValue: number
+  openQty: number
+  /** Quoten nur über Tage mit Abholung (W4-verify r5). */
   sellThroughRate: number | null
   returnRate: number | null
 }

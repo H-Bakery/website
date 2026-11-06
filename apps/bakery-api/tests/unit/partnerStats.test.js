@@ -782,7 +782,44 @@ describe('offener Geschäftstag (ohne Abholung)', () => {
     expect(stats.totals.soldQty).toBe(14)
     expect(stats.totals.returnedQty).toBe(0)
     expect(stats.totals.revenue).toBe(49)
-    expect(stats.totals.sellThroughRate).toBe(0.56)
+    // W4-verify r5: kein abgeschlossener Tag - keine Quote; die 11 Stück
+    // stehen als „offen“, Geliefert = Verkauft + Retoure + offen.
+    expect(stats.totals.sellThroughRate).toBeNull()
+    expect(stats.totals.returnRate).toBeNull()
+    expect(stats.totals.openQty).toBe(11)
+    expect(stats.byDay[0].sellThroughRate).toBeNull()
+    expect(stats.byDay[0].openQty).toBe(11)
+    expect(stats.byProduct[0]).toMatchObject({
+      openQty: 11,
+      sellThroughRate: null,
+    })
+  })
+
+  it('rechnet Quoten nur über abgeschlossene Tage, Liefermengen offener Tage stehen als „offen“ (W4-verify r5)', () => {
+    // Mi offen (nur Erstbestückung), Do + Fr abgeschlossen.
+    const stats = computeStats([
+      visit('2026-11-04', 'initial', 1, [item(BROT, 0, 4)]),
+      visit('2026-11-05', 'initial', 1, [item(BROT, 0, 2)]),
+      visit('2026-11-05', 'pickup', 2, [item(BROT, 1, 0)]),
+      visit('2026-11-06', 'initial', 1, [item(BROT, 0, 2)]),
+      visit('2026-11-06', 'pickup', 2, [item(BROT, 0, 0)]),
+    ])
+    expect(stats.totals).toMatchObject({
+      deliveredQty: 8,
+      soldQty: 3,
+      returnedQty: 1,
+      openQty: 4,
+      sellThroughRate: 0.75,
+      returnRate: 0.25,
+    })
+    const brot = stats.byProduct[0]
+    expect(brot.deliveredQty).toBe(
+      brot.soldQty + brot.returnedQty + brot.openQty
+    )
+    expect(brot.sellThroughRate).toBe(0.75)
+    // dieselbe Quote wie die Wochentagstabelle (nur Tage mit Abholung)
+    const closed = stats.byWeekday.filter((w) => w.sellThroughRate !== null)
+    expect(closed.map((w) => w.sellThroughRate)).toEqual([0.5, 1])
   })
 
   it('zeigt den offenen Tag auch in computeDayDetail als offen', () => {
@@ -1079,9 +1116,9 @@ describe('unvollständige Abholung (nicht jedes Produkt gezählt)', () => {
     expect(lines).toContain(
       'Hinweis;Vorläufig - 1 Tag(e) mit ungezählten Produkten bei der Abholung'
     )
-    expect(lines).toContain('Kaiserbrötchen;0,60;6;0;0;0,0%;0,00;6;0')
+    expect(lines).toContain('Kaiserbrötchen;0,60;6;0;0;0;0,0%;0,00;6;0')
     expect(lines).toContain(
-      '2026-08-25;Di;unvollständig;2;16;8;2;50,0%;28,00;6;0'
+      '2026-08-25;Di;unvollständig;2;16;8;2;0;50,0%;28,00;6;0'
     )
     expect(lines).toContain('Ungezählt;6')
   })
@@ -1330,29 +1367,32 @@ describe('statsToCsv', () => {
     const csv = reportCsv()
     const lines = csv.split('\r\n')
     expect(lines).toContain(
-      'Produkt;Einzelpreis;Geliefert;Verkauft;Retoure;Abverkaufsquote;Umsatz;Ungezählt;Abweichung'
+      'Produkt;Einzelpreis;Geliefert;Verkauft;Retoure;Offen;Abverkaufsquote;Umsatz;Ungezählt;Abweichung'
     )
-    // 40 geliefert, 28 verkauft, 8 zurück -> 98,00 EUR, Quote 70,0 %
-    expect(lines).toContain('Bauernbrot;3,50;40;28;8;70,0%;98,00;0;0')
+    // 40 geliefert, 28 verkauft, 8 zurück, 4 noch im Schrank (Mi offen)
+    // -> 98,00 EUR; Quote nur über den abgeschlossenen Di: 22/30 = 73,3 %
+    expect(lines).toContain('Bauernbrot;3,50;40;28;8;4;73,3%;98,00;0;0')
     expect(lines.filter((line) => /\d\.\d/.test(line))).toEqual([])
   })
 
   it('listet jeden Geschäftstag mit Wochentagskürzel und Status', () => {
     const lines = reportCsv().split('\r\n')
     expect(lines).toContain(
-      '2026-08-25;Di;abgeschlossen;3;30;22;8;73,3%;77,00;0;0'
+      '2026-08-25;Di;abgeschlossen;3;30;22;8;0;73,3%;77,00;0;0'
     )
-    expect(lines).toContain('2026-08-26;Mi;offen;2;10;6;0;60,0%;21,00;0;0')
+    // offener Tag: keine Quote, 4 Stück noch im Schrank (W4-verify r5)
+    expect(lines).toContain('2026-08-26;Mi;offen;2;10;6;0;4;;21,00;0;0')
   })
 
   it('schließt mit dem Gesamtblock ab', () => {
     const lines = reportCsv().split('\r\n')
-    expect(lines.slice(-9)).toEqual([
+    expect(lines.slice(-10)).toEqual([
       'Gesamt',
       'Geliefert;40',
       'Verkauft;28',
       'Retoure;8',
-      'Abverkaufsquote;70,0%',
+      'Offen (ohne Abholung);4',
+      'Abverkaufsquote;73,3%',
       'Umsatz;98,00',
       'Retourenwert;28,00',
       'Ungezählt;0',
@@ -1387,7 +1427,7 @@ describe('statsToCsv', () => {
     const lines = csv.split('\r\n')
     expect(lines).toContain('Partner;"\'@SUM(A1:A9)"')
     expect(lines).toContain(
-      '"\'=HYPERLINK(""http://x.example"";""Klick"")";3,50;10;6;4;60,0%;21,00;0;0'
+      '"\'=HYPERLINK(""http://x.example"";""Klick"")";3,50;10;6;4;0;60,0%;21,00;0;0'
     )
     expect(lines.some((line) => /^=|;=/.test(line))).toBe(false)
   })
@@ -1539,7 +1579,7 @@ describe('W4-Verifikation Runde 2', () => {
     })
     const lines = statsToCsv(stats, PARTNER).split('\r\n')
     expect(
-      lines.some((l) => l.includes(';1,60–1,80;12;12;0;100,0%;20,40;0;0'))
+      lines.some((l) => l.includes(';1,60–1,80;12;12;0;0;100,0%;20,40;0;0'))
     ).toBe(true)
   })
 })
