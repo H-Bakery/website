@@ -142,6 +142,9 @@ function realApiServer(apiURL, hqEnv) {
     reuseExistingServer: reuseExistingServer(),
     cwd: ROOT,
     timeout: 120_000,
+    // Ohne diese Angabe beendet Playwright den Server mit SIGKILL, und
+    // real-api.js kann seine Temp-Datenbank nicht mehr löschen.
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 15_000 },
   }
 }
 
