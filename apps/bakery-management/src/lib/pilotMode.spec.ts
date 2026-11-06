@@ -2,6 +2,8 @@ import fs from 'fs'
 import path from 'path'
 import {
   PILOT_ALLOWED_ROUTES,
+  PILOT_HIDDEN_ROUTES,
+  isPilotHiddenPath,
   isPilotMode,
   isPilotPathAllowed,
   matchesRoute,
@@ -268,6 +270,36 @@ describe('kommende Pilot-Bildschirme', () => {
     PILOT_UPCOMING_NAVIGATION.forEach((item) => {
       const shown = hrefs(getNavigation(true)).includes(item.href)
       expect(shown).toBe(item.ready)
+    })
+  })
+})
+
+describe('vorhandene Seiten im Pilotbetrieb (B12)', () => {
+  const adminDir = path.resolve(__dirname, '../app/admin')
+
+  /** `/admin/...` jeder `page.tsx`, dynamische Segmente als `x`. */
+  function adminPages(dir = adminDir, prefix = '/admin'): string[] {
+    return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      if (entry.isFile() && entry.name === 'page.tsx') return [prefix]
+      if (!entry.isDirectory()) return []
+      const segment = entry.name.startsWith('[') ? 'x' : entry.name
+      return adminPages(path.join(dir, entry.name), `${prefix}/${segment}`)
+    })
+  }
+
+  it.each(adminPages().map((p) => [p] as const))(
+    '%s ist freigegeben oder ausdrücklich gesperrt',
+    (page) => {
+      // Sonst gäbe der Proxy einer vorhandenen Seite im Pilotbetrieb die
+      // 404 statt „Im Pilotbetrieb nicht verfügbar“.
+      if (page === '/admin/nicht-verfuegbar') return
+      expect(matchesRoute(page) || isPilotHiddenPath(page)).toBe(true)
+    }
+  )
+
+  it('sperrt nur, was nicht ohnehin freigegeben ist', () => {
+    PILOT_HIDDEN_ROUTES.forEach((route) => {
+      expect(isPilotPathAllowed(route, true)).toBe(false)
     })
   })
 })

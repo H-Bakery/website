@@ -10,15 +10,24 @@
  * (`lib/serverSession.ts`).
  */
 
-import { isPilotMode, isPilotPathAllowed } from './pilotMode'
+import { isPilotHiddenPath, isPilotMode, isPilotPathAllowed } from './pilotMode'
 
 export const PILOT_UNAVAILABLE_PATH = '/admin/nicht-verfuegbar'
 
-/** Ziel der Umschreibung oder `null` (Anfrage unverändert durchlassen). */
+/**
+ * Ziel der Umschreibung oder `null` (Anfrage unverändert durchlassen).
+ *
+ * Umgeschrieben werden nur vorhandene, gesperrte Seiten
+ * (`PILOT_HIDDEN_ROUTES`). Eine gesperrte Adresse ohne Seite - etwa ein
+ * Lesezeichen auf eine seit B12 gelöschte Demo-Seite - geht unverändert
+ * weiter und endet in der deutschen 404 (`app/not-found.tsx`), statt
+ * „arbeitet noch mit Beispieldaten“ zu behaupten.
+ */
 export function pilotRewriteTarget(
   pathname: string,
   pilot: boolean = isPilotMode()
 ): string | null {
   if (!pilot || pathname === PILOT_UNAVAILABLE_PATH) return null
-  return isPilotPathAllowed(pathname, true) ? null : PILOT_UNAVAILABLE_PATH
+  if (isPilotPathAllowed(pathname, true)) return null
+  return isPilotHiddenPath(pathname) ? PILOT_UNAVAILABLE_PATH : null
 }

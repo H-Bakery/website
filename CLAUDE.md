@@ -494,7 +494,8 @@ Keine echten Beträge in Code, Tests, Fixtures oder Commit-Messages - das Repo i
 
 Mit `NEXT_PUBLIC_PILOT_MODE=1` zeigt die Management-App nur die Seiten mit echten Daten (Spalte
 „Keep" in `docs/roadmap.md` §3) plus Anmeldung und die kommenden Pilot-Bildschirme; alles andere
-fehlt in der Navigation und zeigt beim direkten Aufruf „Im Pilotbetrieb nicht verfügbar". Ohne die
+fehlt in der Navigation und zeigt beim direkten Aufruf „Im Pilotbetrieb nicht verfügbar" (seit B12
+nur noch vorhandene Seiten aus `PILOT_HIDDEN_ROUTES`, siehe „Aufräumen nach dem Umstieg"). Ohne die
 Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
 
 - **Der Schalter wirkt beim Build, nicht beim Start.** `NEXT_PUBLIC_*` setzt Next.js bei
@@ -1293,9 +1294,10 @@ Sieben Dinge, die man wissen muss:
 
 Dazu: `/admin/users` (nur Inhaber) verwaltet Konten, Rollen, Passwörter, PINs und Stationen
 (Widerrufen); Fehler wie `last_inhaber` kommen als deutsche API-Meldung in den Dialog.
-**`src/proxy.ts`** (Next 16, früher `middleware.ts`) schreibt außerdem im Pilotbetrieb gesperrte
-`/admin`-Routen auf `/admin/nicht-verfuegbar` um (`src/lib/pilotRewrite.ts`), sodass die
-Demo-Seiten serverseitig gar nicht mehr rendern. Die E2E-Smoke-Suite meldet sich seit F4 an der
+**`src/proxy.ts`** (Next 16, früher `middleware.ts`) schreibt außerdem im Pilotbetrieb gesperrte,
+aber vorhandene `/admin`-Seiten (`PILOT_HIDDEN_ROUTES` in `pilotMode.ts`) auf
+`/admin/nicht-verfuegbar` um (`src/lib/pilotRewrite.ts`), sodass sie serverseitig gar nicht erst
+rendern; eine gesperrte Adresse ohne Seite geht zur deutschen 404. Die E2E-Smoke-Suite meldet sich seit F4 an der
 **echten API** an (`apps/bakery-management-e2e/src/global-setup.ts` + `login.ts`: Inhaber,
 Verkauf und Inhaber an einer PIN-Station, einmal vor allen Tests), legt die Sitzung in
 `localStorage` **und** das Sitzungs-Cookie, meldet sich einmal über die Oberfläche an und prüft,
@@ -1381,10 +1383,20 @@ Verwaltung, die nicht auf der „Keep"-Liste standen (`bakery/*`, `baking-list`,
   `apps/bakery-management/next.config.js`, vorübergehend, `redirects()` läuft vor `src/proxy.ts`
   und gilt damit auch im Pilotbetrieb): Backliste, Tagesvorbereitung, Samstagsproduktion und
   Produktion → `/admin/backzettel`, Bestellungen → `/admin/preorders`, Lieferung →
-  `/admin/delivery/preorders`. Die übrigen gelöschten Seiten sind 404.
+  `/admin/delivery/preorders`. Die übrigen gelöschten Seiten sind 404 - **auch im Pilotbetrieb**:
+  der Proxy schreibt nur noch vorhandene, gesperrte Seiten auf „Im Pilotbetrieb nicht verfügbar"
+  um (`PILOT_HIDDEN_ROUTES` in `src/lib/pilotMode.ts`, heute `/admin/rest` und
+  `/admin/sitzung-pruefen`); jede andere gesperrte Adresse hat keine Seite mehr und bekommt
+  `app/not-found.tsx`. `pilotMode.spec.ts` fällt um, wenn eine `page.tsx` unter `app/admin` weder
+  freigegeben noch dort gesperrt ist; `nextConfig.spec.ts` prüft die Weiterleitungen (Ziele im
+  Pilotbetrieb erlaubt, keine fängt eine vorhandene Seite).
 - **Die `*.mock.js`-Module heißen jetzt `*.routes.js`** (`reports`, `finance`, `targets`); die
   Mock-Verträge stehen als aufgezeichnete Antworten in `apps/bakery-api/tests/contract/recorded/`.
-  Ein geändertes Szenario heißt: Aufzeichnung von Hand ändern, im Commit sagen.
+  Ein geändertes Szenario heißt: Aufzeichnung von Hand ändern, im Commit sagen. **Die Uhr der
+  echten API ist je Suite auf den Aufnahmezeitpunkt gepinnt** (`now`-Option von Vorbestellungen
+  und Liefertouren, `RECORDED_AT`); das Jest-Projekt `contract-later` spielt alle Suiten ein
+  zweites Mal mit der Uhr im Jahr 2028 (`tests/helpers/shiftedClock.js`) - eine Suite, die an der
+  Wanduhr hängt, fällt dadurch sofort um statt an dem Tag, an dem ihre Szenario-Daten vorbei sind.
 - **Shop und Fahrer-App** laufen gegen die echte API; der Shop braucht `PUBLIC_CATALOGUE=1`
   (öffentliches `GET /api/products`, sonst alles hinter der Anmeldung). Bestellen geht aus dem
   Shop erst mit einem öffentlichen Bestellweg (Owner-Entscheidung offen).

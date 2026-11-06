@@ -58,6 +58,24 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   '/backstube',
 ]
 
+/**
+ * Seiten, die es gibt, die der Pilotbetrieb aber sperrt (B12). Nur diese
+ * schreibt der Proxy auf „Im Pilotbetrieb nicht verfügbar“ um; jede andere
+ * gesperrte `/admin`-Adresse hat keine Seite mehr (die Demo-Seiten sind seit
+ * B12 gelöscht) und bekommt die deutsche 404 statt eines Pilot-Hinweises.
+ * `pilotMode.spec.ts` prüft, dass jede `page.tsx` unter `app/admin` entweder
+ * in `PILOT_ALLOWED_ROUTES` oder hier steht.
+ */
+export const PILOT_HIDDEN_ROUTES: readonly string[] = [
+  '/admin/rest', // Rest am Abend (M4, nach dem Pilot)
+  '/admin/sitzung-pruefen', // Ziel des Proxys, nicht zum direkten Aufruf
+]
+
+/** Ob `pathname` eine vorhandene, im Pilotbetrieb gesperrte Seite ist. */
+export function isPilotHiddenPath(pathname: string): boolean {
+  return matchesRoute(pathname, PILOT_HIDDEN_ROUTES)
+}
+
 /** `pathname` ohne Query, Hash und abschließenden Schrägstrich. */
 function normalizePath(pathname: string): string {
   const path = pathname.split(/[?#]/)[0] || '/'

@@ -317,7 +317,8 @@ export default function DashboardClient({
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={4}>
+        {/* Dritte Kachel: unter md volle Breite, sonst stünde sie allein in einer halben Zeile. */}
+        <Grid item xs={12} sm={12} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{

@@ -28,8 +28,7 @@ export default function PilotUnavailable() {
         </Typography>
       </Box>
       <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Diese Seite arbeitet noch mit Beispieldaten und ist während des
-        Pilotbetriebs ausgeblendet.
+        Diese Seite ist während des Pilotbetriebs noch nicht freigegeben.
       </Typography>
       <Button variant="contained" component={Link} href="/admin">
         Zum Dashboard
