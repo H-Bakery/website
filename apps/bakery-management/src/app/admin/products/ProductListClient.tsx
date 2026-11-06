@@ -27,6 +27,7 @@ import { useRouter } from 'next/navigation'
 import type { ManagementProduct } from '../../../lib/products'
 import { PENDING_APPROVAL_LABEL } from '../../../lib/products'
 import { useOptionalSession } from '../../../lib/session'
+import { formatCurrency } from '../../../lib/partnerTypes'
 
 const categoryColors: Record<
   string,
@@ -94,7 +95,9 @@ export default function ProductListClient({
             color="text.secondary"
             sx={{ display: { xs: 'none', sm: 'block' } }}
           >
-            Verwaltung und Bearbeitung aller Backwaren und Produkte
+            {canEdit
+              ? 'Verwaltung und Bearbeitung aller Backwaren und Produkte'
+              : 'Freigegebener Produktkatalog zum Nachschlagen'}
           </Typography>
         </Box>
         {canEdit && (
@@ -322,7 +325,7 @@ export default function ProductListClient({
                     </TableCell>
                     <TableCell align="right">
                       <Typography variant="body2" fontWeight={500} noWrap>
-                        {product.price.toFixed(2)} €
+                        {formatCurrency(product.price)}
                       </Typography>
                     </TableCell>
                     <TableCell
