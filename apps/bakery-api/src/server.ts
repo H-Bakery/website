@@ -134,6 +134,25 @@ export async function startServer(
   )
   edits.start()
   snapshots.start()
+  // W4: catch up Backzettel deltas missed while no master data was loadable
+  // (or written by the CLI import) - in the background, never fatal.
+  const reconcile = app.locals['reconcileBackzettelDeltas'] as
+    | (() => Promise<{ date: string; recorded: number | null }[]>)
+    | undefined
+  reconcile?.()
+    .then((days) => {
+      const recorded = days.filter((d) => d.recorded)
+      if (recorded.length > 0) {
+        console.log(
+          `[INFO] Backzettel: Deltas nachgetragen für ${recorded
+            .map((d) => `${d.date} (${d.recorded})`)
+            .join(', ')}`
+        )
+      }
+    })
+    .catch((error) =>
+      console.error('[WARN] Backzettel-Delta-Abgleich beim Start:', error)
+    )
 
   let closing: Promise<void> | null = null
   const close = (deadlineMs = SHUTDOWN_DEADLINE_MS) => {

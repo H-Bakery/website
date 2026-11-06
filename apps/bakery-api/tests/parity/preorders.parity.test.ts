@@ -388,6 +388,15 @@ describe('Mörsbach alias parity (mock vs. real API)', () => {
       },
       400,
     ],
+    [
+      'notes too long (W4)',
+      {
+        method: 'put',
+        path: '/api/deliveries/pickup-points/kindergarten-moersbach',
+        body: { notes: 'x'.repeat(2001) },
+      },
+      400,
+    ],
   ])('%s: same status and German message', async (_label, req, status) => {
     const result = await send(req)
     expect(result.mock.status).toBe(status)

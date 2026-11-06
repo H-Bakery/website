@@ -25,7 +25,6 @@ import { AuthServiceOptions, createAuthService } from './auth/auth.service'
 import { STATION_TOKEN_HEADER, requireAuth } from './auth/middleware'
 import { loggerMiddleware } from './middleware/logger.middleware'
 import {
-  createBackzettelRouter,
   createHealthRouter,
   createPublicAuthRouter,
   createSessionAuthRouter,
@@ -38,7 +37,10 @@ import { createHqProductsRouters } from './routes/hq-products.routes'
 import { HqProductsOptions } from './services/hq-products.service'
 import { createPreorderRouters } from './routes/preorders.routes'
 import { PreordersOptions } from './services/preorders.service'
-import { BackzettelRouterOptions } from './routes/backzettel.routes'
+import {
+  BackzettelRouterOptions,
+  createBackzettel,
+} from './routes/backzettel.routes'
 import { createHqSyncRouter } from './routes/hq-sync.routes'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
@@ -169,32 +171,39 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // Z3; Z9 writes the confirmed day to hq data/production/backzettel/;
   // Z4 writes Grundmengen like the products (write worktree, B5b PR) and
   // reads the cash reports for the reference column
-  app.use(
-    '/api/backzettel',
-    createBackzettelRouter({
-      write: {
-        writeDir: hqProducts.service.writeDir,
-        writeBranch: hqProducts.service.writeBranch,
-        production: hqProducts.service.production,
-        afterCommit: () => edits.notifyCommitted(),
-        approvedFile: (rel) => edits.approvedTextFile(rel),
-      },
-      reference: {
-        reportsDir: options.hq?.reportsDir,
-        today: options.hq?.today,
-        log: options.hq?.log?.warn,
-      },
-      ...(snapshots.enabled
-        ? {
-            onConfirmed: (day, { role }) =>
-              snapshots.backzettelConfirmed(day, role),
-            onReopened: (date, { role }) =>
-              snapshots.backzettelReopened(date, role),
-          }
-        : {}),
-      ...options.backzettel,
-    })
+  const backzettel = createBackzettel({
+    write: {
+      writeDir: hqProducts.service.writeDir,
+      writeBranch: hqProducts.service.writeBranch,
+      production: hqProducts.service.production,
+      afterCommit: () => edits.notifyCommitted(),
+      approvedFile: (rel) => edits.approvedTextFile(rel),
+    },
+    reference: {
+      reportsDir: options.hq?.reportsDir,
+      today: options.hq?.today,
+      log: options.hq?.log?.warn,
+    },
+    ...(snapshots.enabled
+      ? {
+          onConfirmed: (day, { role }) =>
+            snapshots.backzettelConfirmed(day, role),
+          onReopened: (date, { role }) =>
+            snapshots.backzettelReopened(date, role),
+        }
+      : {}),
+    ...options.backzettel,
+  })
+  app.use('/api/backzettel', backzettel.router)
+  // W4: deltas of a confirmed Backzettel day are recorded on the preorder
+  // write path (same transaction), not by reading the day.
+  preorders.service.onWrite((dates, context) =>
+    backzettel.service.recordPreorderDeltas(dates, context)
   )
+  // One-shot catch-up for server.ts (after listen) - preorders written while
+  // no master data could be loaded, or by the CLI import.
+  app.locals['reconcileBackzettelDeltas'] = (reconcile?: { from?: string }) =>
+    backzettel.service.reconcileConfirmedDays(reconcile)
   // B5b/Z9 status + retry, inhaber only
   app.use('/api/hq-sync', createHqSyncRouter({ edits, snapshots }))
 

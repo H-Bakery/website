@@ -5,11 +5,16 @@
  *
  *   GET    /                  ?date= &from= &to= &status=a,b &channel= &pickupPointId=<id>|laden &q=
  *                             { success, data: Preorder[], count }
- *   GET    /sums?date=[&pickupPointId=]   { success, data: { date, pickupPointId, preorderCount, items } }
+ *   GET    /sums?date=[&pickupPointId=]   { success, data: { date, pickupPointId, preorderCount, items, summary } }
+ *                             (`summary` seit W4 - Kopfzahlen ohne Namen, für die Backliste)
  *   GET    /day?date=[&pickupPointId=<id>|laden]
  *                             { success, data: { date, pickupPointId, summary, sums, pickupPoints, preorders } }
- *   GET    /pickup-points     { success, data: PickupPoint[] }
- *   PUT    /pickup-points/:id { success, data: PickupPoint }  inhaber (P2)
+ *   GET    /pickup-points     { success, data: (PickupPoint + updatedAt)[] }
+ *   PUT    /pickup-points/:id { success, data: PickupPoint + updatedAt }  inhaber (P2);
+ *                             optional `expectedUpdatedAt` → 409 stale_pickup_point (W4)
+ *   POST   /bulk-status       { ids, status?, notCollected?, paid?, expectedUpdatedAt?: { [id]: ISO } }
+ *                             { success, data: { counts, results: [{ id, result, error?, message?, data? }] } }
+ *                             eine Transaktion, Ergebnis je id (W4); Rollen wie /:id/status
  *   GET    /variants          { success, data: { [productId]: Sorten[] }, configured }
  *   GET    /:id               { success, data: Preorder }
  *   POST   /                  201 { success, data }          verkauf, inhaber
@@ -19,6 +24,7 @@
  *
  *   Lesen: verkauf, inhaber, fahrer; `/sums` zusätzlich backstube (keine Namen).
  *   *fahrer: nur `abgeholt` und „nicht abgeholt“ (+ bezahlt) - Übergabe.
+ *   „Nicht abgeholt“ erst ab dem Abholtag (409 not_collected_too_early, W4).
  *
  * `/api/deliveries` - Alias im Mock-Vertrag der Mörsbach-Maske (D3), siehe
  * `simple-server.js`: rohe Objekte ohne Hülle, Mock-Status
@@ -138,7 +144,9 @@ function createPreordersRouter(service: PreordersService): Router {
     '/pickup-points',
     requireRole(...READ_ROLES),
     asyncHandler(async (_req, res) => {
-      const data = await service.listPickupPoints()
+      // Mit `updatedAt` (W4) - das Formular schickt es als
+      // `expectedUpdatedAt` zurück.
+      const data = await service.listPickupPointsVersioned()
       res.json({ success: true, data, count: data.length })
     })
   )
@@ -147,6 +155,7 @@ function createPreordersRouter(service: PreordersService): Router {
   // Dieselbe Prüfung wie der Alias, aber die Hülle und Fehler-Codes von
   // `/api/preorders` (`invalid_window` statt „Invalid window“). Keine
   // Adresssuche: eine geänderte Adresse verliert ihre Koordinaten.
+  // Optional `expectedUpdatedAt` → 409 `stale_pickup_point` (W4).
   router.put(
     '/pickup-points/:id',
     requireRole('inhaber'),
@@ -166,7 +175,51 @@ function createPreordersRouter(service: PreordersService): Router {
         )
         return
       }
-      res.json({ success: true, data: result.data })
+      res.json({
+        success: true,
+        data: {
+          ...result.data,
+          updatedAt: await service.pickupPointVersion(req.params['id']),
+        },
+      })
+    })
+  )
+
+  // Sammel-Statuswechsel der Abholliste (W4): „alle bereit“, Tagesabschluss.
+  // Eine Transaktion, ein Ergebnis je Bestellung; dieselben Rollen wie
+  // `POST /:id/status` (Fahrer nur übergeben / nicht abgeholt).
+  router.post(
+    '/bulk-status',
+    requireRole(...WRITE_ROLES, 'fahrer'),
+    asyncHandler(async (req, res) => {
+      const result = await service.bulkStatus(req.body, req, {
+        allowedTargets:
+          req.user?.role === 'fahrer' ? FAHRER_TARGETS : undefined,
+        notCollectedFrom: service.today(),
+      })
+      if (fail(res, result) || !result.ok) return
+      const points = await service.pickupPoints()
+      const now = service.now()
+      res.json({
+        success: true,
+        data: {
+          counts: result.data.counts,
+          results: result.data.results.map((r) => ({
+            ...r,
+            ...(r.data
+              ? {
+                  data: toDto(
+                    r.data,
+                    r.data.pickupPointId
+                      ? points.get(r.data.pickupPointId) ?? null
+                      : null,
+                    now
+                  ),
+                }
+              : {}),
+          })),
+        },
+      })
     })
   )
 
@@ -228,6 +281,7 @@ function createPreordersRouter(service: PreordersService): Router {
         {
           allowedTargets:
             req.user?.role === 'fahrer' ? FAHRER_TARGETS : undefined,
+          notCollectedFrom: service.today(),
           guard: expectedVersionGuard(req.body),
         }
       )

@@ -31,6 +31,7 @@ import {
 import {
   BackzettelError,
   BackzettelHooks,
+  BackzettelService,
   createBackzettelService,
 } from '../services/backzettel.service'
 import {
@@ -73,6 +74,18 @@ function handle(
 export function createBackzettelRouter(
   options: BackzettelRouterOptions = {}
 ): Router {
+  return createBackzettel(options).router
+}
+
+/**
+ * Router plus service: `app.ts` hands `service.recordPreorderDeltas` to the
+ * preorders (W4: deltas are recorded on the preorder write path) and runs
+ * `service.reconcileConfirmedDays` once at start.
+ */
+export function createBackzettel(options: BackzettelRouterOptions = {}): {
+  router: Router
+  service: BackzettelService
+} {
   const source = createBackzettelSource(options)
   const service = createBackzettelService(source, {
     onConfirmed: options.onConfirmed,
@@ -110,7 +123,7 @@ export function createBackzettelRouter(
 
   router.get(
     '/:date',
-    handle(async (req) => service.getDay(req.params['date'], { req }))
+    handle(async (req) => service.getDay(req.params['date']))
   )
 
   router.get(
@@ -190,5 +203,5 @@ export function createBackzettelRouter(
     )
   )
 
-  return router
+  return { router, service }
 }

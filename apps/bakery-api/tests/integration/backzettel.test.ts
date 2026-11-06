@@ -1,11 +1,13 @@
 /**
  * Z3 `/api/backzettel` against the real app (in-memory SQLite, baseline +
  * Z3 migration). Synthetic master data from tests/fixtures (written to a
- * temp "hq"), synthetic preorders inserted through the models (B7 runs in
- * parallel), synthetic users. Nothing here comes from the real hq.
+ * temp "hq"), synthetic preorders inserted through the models (draft inputs)
+ * or through `POST /api/preorders` (W4: deltas come from the write path),
+ * synthetic users. Nothing here comes from the real hq.
  *
  * Dates: Mo 2026-11-23 (Ruhetag), Di 2026-11-24, Mi 2026-11-25,
- * Sa 2026-11-28 (Hefeteig), So 2026-11-29; for re-confirm and the frozen
+ * Do 2026-11-26 + Fr 2026-11-27 (write path), Sa 2026-11-28 (Hefeteig),
+ * So 2026-11-29; for re-confirm and the frozen
  * snapshot Mi 2026-12-02 and Sa 2026-12-05.
  */
 import * as fs from 'fs'
@@ -34,6 +36,8 @@ jest.setTimeout(30000)
 const MON = '2026-11-23'
 const TUE = '2026-11-24'
 const WED = '2026-11-25'
+const THU = '2026-11-26'
+const FRI = '2026-11-27'
 const SAT = '2026-11-28'
 const SUN = '2026-11-29'
 const WED2 = '2026-12-02'
@@ -64,7 +68,7 @@ function writeHq(dir: string): void {
       path.join(dir, 'products', `${p.numeric_id}-${p.id}.md`),
       `---\nid: ${p.id}\nnumeric_id: ${p.numeric_id}\nname: Test ${
         p.id
-      }\navailable: ${p.available !== false}\n---\n\nText\n`
+      }\nprice: 1.5\navailable: ${p.available !== false}\n---\n\nText\n`
     )
   }
   // JSON is valid YAML.
@@ -102,7 +106,30 @@ const as = (role: keyof typeof tokens) => ({
   get: (p: string) => request(api.app).get(p).set(bearer(tokens[role])),
   put: (p: string) => request(api.app).put(p).set(bearer(tokens[role])),
   post: (p: string) => request(api.app).post(p).set(bearer(tokens[role])),
+  patch: (p: string) => request(api.app).patch(p).set(bearer(tokens[role])),
 })
+
+/** A preorder through `POST /api/preorders` - the write path (W4). */
+async function apiPreorder(
+  date: string,
+  items: { productId: string; quantity: number; variant?: string }[]
+): Promise<{ id: number; code: string; updatedAt: string }> {
+  const res = await as('verkauf').post('/api/preorders').send({
+    channel: 'telefon',
+    customerName: 'Testkunde',
+    pickupDate: date,
+    items,
+  })
+  expect(res.status).toBe(201)
+  return res.body.data
+}
+
+const reconcile = (from = '2026-01-01') =>
+  (
+    api.app.locals['reconcileBackzettelDeltas'] as (o: {
+      from: string
+    }) => Promise<{ date: string; recorded: number | null }[]>
+  )({ from })
 
 function line(
   dayData: any,
@@ -132,7 +159,15 @@ beforeAll(async () => {
   writeHq(hqDir)
   api = await createTestApp({
     seedPartners: true,
-    app: { backzettel: { hqDir, cacheMs: 0 } },
+    app: {
+      backzettel: { hqDir, cacheMs: 0 },
+      // W4: deltas come from the preorder write path, so the tests write
+      // preorders through the API (prices from the synthetic catalogue).
+      preorders: {
+        productsDir: path.join(hqDir, 'products'),
+        variantsForProduct: () => null,
+      },
+    },
   })
   tokens.inhaber = await sessionFor(api.app, 'test.inhaber', 'inhaber')
   tokens.backstube = await sessionFor(api.app, 'test.backstube', 'backstube')
@@ -423,16 +458,12 @@ describe('confirm, deltas, ticks, reopen', () => {
     }
   })
 
-  it('later preorders become deltas: one row per change, idempotent, never merged', async () => {
-    const late = await preorder(TUE, [{ productId: 'test-weck', quantity: 4 }])
-
-    // parallel readers record the change once
-    const reads = await Promise.all(
-      [1, 2, 3, 4].map(() => as('fahrer').get(`/api/backzettel/${TUE}`))
-    )
-    for (const r of reads) expect(r.status).toBe(200)
+  it('a preorder created after confirm is a delta at once, written by the preorder write (W4)', async () => {
+    const late = await apiPreorder(TUE, [
+      { productId: 'test-weck', quantity: 4 },
+    ])
+    // recorded in the preorder's own transaction - before anyone reads
     expect(await BackzettelDelta.count({ where: { date: TUE } })).toBe(1)
-    // a system action: the reader only triggered the detection
     const recorded = await AuditLog.findOne({
       where: {
         entity: 'backzettel_day',
@@ -440,11 +471,20 @@ describe('confirm, deltas, ticks, reopen', () => {
         action: 'deltas_recorded',
       },
     })
-    expect(recorded?.userId).toBeNull()
-    expect(recorded?.data).toMatchObject({
-      via: 'read',
-      readerId: expect.any(Number),
-    })
+    // attributed to whoever wrote the preorder
+    expect(recorded?.userId).toEqual(expect.any(Number))
+    expect(recorded?.data).toMatchObject({ via: 'preorder_create' })
+
+    // reading is side-effect free: parallel reads add nothing
+    const reads = await Promise.all(
+      [1, 2, 3, 4].map(() => as('fahrer').get(`/api/backzettel/${TUE}`))
+    )
+    for (const r of reads) {
+      expect(r.status).toBe(200)
+      expect(r.body.data.deltasPending).toBe(false)
+    }
+    expect(await BackzettelDelta.count({ where: { date: TUE } })).toBe(1)
+    expect(await auditActions(TUE)).toEqual(['confirm', 'deltas_recorded'])
 
     const d = (await as('verkauf').get(`/api/backzettel/${TUE}`)).body.data
     expect(d.deltas).toEqual([
@@ -464,13 +504,38 @@ describe('confirm, deltas, ticks, reopen', () => {
       delta: { qty: 4, open: 1, count: 1 },
     })
 
-    // change, then cancel: one row each
-    await PreorderItem.update(
-      { quantity: 6 },
-      { where: { preorderId: late.id } }
+    // edit, then cancel through the API: one row each
+    const edited = await as('verkauf')
+      .patch(`/api/preorders/${late.id}`)
+      .send({ items: [{ productId: 'test-weck', quantity: 6 }] })
+    expect(edited.status).toBe(200)
+    expect(await BackzettelDelta.count({ where: { date: TUE } })).toBe(2)
+
+    // idempotent: a no-op edit, a status change without new quantities and
+    // the reconciliation sweep record nothing
+    expect(
+      (
+        await as('verkauf')
+          .patch(`/api/preorders/${late.id}`)
+          .send({ items: [{ productId: 'test-weck', quantity: 6 }] })
+      ).status
+    ).toBe(200)
+    expect(
+      (
+        await as('verkauf')
+          .post(`/api/preorders/${late.id}/status`)
+          .send({ status: 'bereit' })
+      ).status
+    ).toBe(200)
+    expect(await reconcile()).toEqual(
+      expect.arrayContaining([{ date: TUE, recorded: 0 }])
     )
-    await as('verkauf').get(`/api/backzettel/${TUE}`)
-    await late.update({ status: 'storniert' })
+    expect(await BackzettelDelta.count({ where: { date: TUE } })).toBe(2)
+
+    const cancelled = await as('verkauf').post(
+      `/api/preorders/${late.id}/cancel`
+    )
+    expect(cancelled.status).toBe(200)
     const after = (await as('verkauf').get(`/api/backzettel/${TUE}`)).body.data
     expect(after.deltas.map((x: any) => [x.qty, x.kind])).toEqual([
       [4, 'added'],
@@ -483,6 +548,17 @@ describe('confirm, deltas, ticks, reopen', () => {
       'deltas_recorded',
       'deltas_recorded',
       'deltas_recorded',
+    ])
+    const vias = (
+      await AuditLog.findAll({
+        where: { entityId: TUE, action: 'deltas_recorded' },
+        order: [['id', 'ASC']],
+      })
+    ).map((a) => (a.data as any).via)
+    expect(vias).toEqual([
+      'preorder_create',
+      'preorder_update',
+      'preorder_cancel',
     ])
   })
 
@@ -743,6 +819,68 @@ describe('re-confirm and the frozen snapshot', () => {
   })
 })
 
+describe('deltas on the preorder write path (W4)', () => {
+  it('moving a preorder between two confirmed days records both days', async () => {
+    for (const date of [THU, FRI]) {
+      expect(
+        (await as('backstube').post(`/api/backzettel/${date}/confirm`)).status
+      ).toBe(200)
+    }
+    const p = await apiPreorder(THU, [{ productId: 'test-weck', quantity: 3 }])
+    const moved = await as('verkauf')
+      .patch(`/api/preorders/${p.id}`)
+      .send({ pickupDate: FRI })
+    expect(moved.status).toBe(200)
+    const kinds = async (date: string) =>
+      (
+        await BackzettelDelta.findAll({
+          where: { date, preorderId: p.id },
+          order: [['id', 'ASC']],
+        })
+      ).map((r) => [Number(r.qty), r.kind])
+    expect(await kinds(THU)).toEqual([
+      [3, 'added'],
+      [-3, 'cancelled'],
+    ])
+    expect(await kinds(FRI)).toEqual([[3, 'added']])
+  })
+
+  it('bulk status: cancelling records a delta, a plain status change none', async () => {
+    const a = await apiPreorder(FRI, [{ productId: 'test-weck', quantity: 2 }])
+    const b = await apiPreorder(FRI, [{ productId: 'test-weck', quantity: 1 }])
+    const count = await BackzettelDelta.count({ where: { date: FRI } })
+    const ready = await as('verkauf')
+      .post('/api/preorders/bulk-status')
+      .send({ ids: [a.id, b.id], status: 'bereit' })
+    expect(ready.status).toBe(200)
+    expect(ready.body.data.counts).toMatchObject({ ok: 2 })
+    expect(await BackzettelDelta.count({ where: { date: FRI } })).toBe(count)
+
+    const cancel = await as('verkauf')
+      .post('/api/preorders/bulk-status')
+      .send({ ids: [a.id], status: 'storniert' })
+    expect(cancel.status).toBe(200)
+    const rows = await BackzettelDelta.findAll({
+      where: { date: FRI, preorderId: a.id },
+      order: [['id', 'ASC']],
+    })
+    expect(rows.map((r) => [Number(r.qty), r.kind])).toEqual([
+      [2, 'added'],
+      [-2, 'cancelled'],
+    ])
+    const via = await AuditLog.findOne({
+      where: { entityId: FRI, action: 'deltas_recorded' },
+      order: [['id', 'DESC']],
+    })
+    expect(via?.data).toMatchObject({ via: 'preorder_bulk_status' })
+  })
+
+  it('a preorder for a draft day records nothing (the draft is live)', async () => {
+    await apiPreorder(SUN, [{ productId: 'test-weck', quantity: 1 }])
+    expect(await BackzettelDelta.count({ where: { date: SUN } })).toBe(0)
+  })
+})
+
 describe('missing or invalid config', () => {
   afterEach(() => writeHq(hqDir))
 
@@ -797,6 +935,51 @@ describe('missing or invalid config', () => {
       name: 'Weck',
       total: 60,
     })
+  })
+
+  it('a preorder written without loadable master data is caught up once (W4)', async () => {
+    expect(
+      (await as('backstube').post(`/api/backzettel/${THU}/confirm`)).status
+    ).toBe(409) // already confirmed in the write-path block
+    const count = await BackzettelDelta.count({ where: { date: THU } })
+    fs.writeFileSync(configFile, 'version: 1\nitems: [\n')
+    // the preorder write is never blocked by the Backzettel
+    const p = await apiPreorder(THU, [{ productId: 'test-weck', quantity: 5 }])
+    expect(await BackzettelDelta.count({ where: { date: THU } })).toBe(count)
+    const blind = (await as('backstube').get(`/api/backzettel/${THU}`)).body
+      .data
+    expect(blind).toMatchObject({
+      configStatus: 'no-config',
+      deltasPending: null,
+    })
+
+    writeHq(hqDir)
+    const seen = (await as('backstube').get(`/api/backzettel/${THU}`)).body.data
+    expect(seen.deltasPending).toBe(true)
+    // still only read: nothing recorded by the GET
+    expect(await BackzettelDelta.count({ where: { date: THU } })).toBe(count)
+
+    expect(await reconcile()).toEqual(
+      expect.arrayContaining([{ date: THU, recorded: 1 }])
+    )
+    const rows = await BackzettelDelta.findAll({
+      where: { date: THU, preorderId: p.id },
+    })
+    expect(rows.map((r) => [Number(r.qty), r.kind])).toEqual([[5, 'added']])
+    const sweep = await AuditLog.findOne({
+      where: { entityId: THU, action: 'deltas_recorded' },
+      order: [['id', 'DESC']],
+    })
+    expect(sweep?.userId).toBeNull()
+    expect(sweep?.data).toMatchObject({ via: 'reconcile' })
+    // a second sweep finds nothing
+    expect(await reconcile()).toEqual(
+      expect.arrayContaining([{ date: THU, recorded: 0 }])
+    )
+    expect(
+      (await as('backstube').get(`/api/backzettel/${THU}`)).body.data
+        .deltasPending
+    ).toBe(false)
   })
 })
 
