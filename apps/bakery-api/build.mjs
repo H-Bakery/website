@@ -30,12 +30,21 @@ const watch = process.argv.includes('--watch')
  * split is done here: tsconfig aliases (`@bakery/...`) are bundled, every
  * other bare import stays external.
  */
+/**
+ * Pure-JS packages without dependencies that are bundled anyway: `yaml` (Z4,
+ * comment-preserving Backzettel edits) is only a transitive *dev* dependency
+ * in the root lockfile (via nx/lint-staged), so `npm ci --omit=dev` on the
+ * box would not install it. Bundled, the server does not need it at runtime.
+ */
+const BUNDLED_PACKAGES = new Set(['yaml'])
+
 const externalPackages = {
   name: 'external-packages',
   setup(build) {
     // Bare specifiers only: not relative ("./", "../") and not absolute.
     build.onResolve({ filter: /^[^./]/ }, (args) => {
       if (args.path.startsWith('@bakery/')) return undefined
+      if (BUNDLED_PACKAGES.has(args.path.split('/')[0])) return undefined
       if (path.isAbsolute(args.path)) return undefined
       return { path: args.path, external: true }
     })

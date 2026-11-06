@@ -54,6 +54,12 @@ const core = require('./hq-writeback.core')
 const productsCore = require('./hq-products.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
+/**
+ * Master-data files besides `products/` whose `origin/main` content is kept
+ * for "wartet auf Freigabe" (Z4: the Backzettel Grundmengen).
+ */
+export const APPROVED_TEXT_FILES: readonly string[] = ['config/backzettel.yaml']
+
 export interface SyncLog {
   info: (...args: unknown[]) => void
   warn: (...args: unknown[]) => void
@@ -140,6 +146,8 @@ export class HqEditsSync {
   private readonly log: SyncLog
 
   private approved: Map<string, string> | null = null
+  /** Other master-data files on `origin/main` (`APPROVED_TEXT_FILES`). */
+  private approvedText = new Map<string, string>()
   private timer: NodeJS.Timeout | null = null
   private running: Promise<EditsSyncStatus> | null = null
   private again = false
@@ -208,6 +216,18 @@ export class HqEditsSync {
     // Disabled: `origin/main` of the write clone is never fetched and would
     // go stale - B5 compares against the read clone instead.
     return this.enabled ? this.approved : null
+  }
+
+  /**
+   * Content of a master-data file (`APPROVED_TEXT_FILES`, e.g. the Backzettel
+   * YAML, Z4) on `origin/main` as fetched last: `null` = not on main,
+   * `undefined` = unknown (sync disabled or not read yet) - the caller then
+   * compares with the read clone, as for the products.
+   */
+  approvedTextFile(rel: string): string | null | undefined {
+    if (!this.enabled || this.approved === null) return undefined
+    if (!APPROVED_TEXT_FILES.includes(rel)) return undefined
+    return this.approvedText.get(rel) ?? null
   }
 
   status(): EditsSyncStatus {
@@ -363,23 +383,37 @@ export class HqEditsSync {
       base,
       '--',
       'products/',
+      ...APPROVED_TEXT_FILES,
     ])
     const entries: { id: string; file: string }[] = []
+    const texts: { id: string; rel: string }[] = []
     for (const record of out.split('\0')) {
       const match = /^\d+ blob ([0-9a-f]+)\t(.+)$/.exec(record)
       if (!match) continue
       const rel = match[2]
+      if (APPROVED_TEXT_FILES.includes(rel)) {
+        texts.push({ id: match[1], rel })
+        continue
+      }
       if (path.posix.dirname(rel) !== 'products') continue
       const file = path.posix.basename(rel)
       if (!productsCore.isProductFileName(file)) continue
       entries.push({ id: match[1], file })
     }
-    const blobs = await readBlobs(dir, [...new Set(entries.map((e) => e.id))])
+    const blobs = await readBlobs(dir, [
+      ...new Set([...entries, ...texts].map((e) => e.id)),
+    ])
     const approved = new Map<string, string>()
     for (const e of entries) {
       const raw = blobs.get(e.id)
       if (raw !== undefined) approved.set(e.file, raw)
     }
+    const approvedText = new Map<string, string>()
+    for (const t of texts) {
+      const raw = blobs.get(t.id)
+      if (raw !== undefined) approvedText.set(t.rel, raw)
+    }
+    this.approvedText = approvedText
     this.approved = approved
   }
 

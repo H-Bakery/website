@@ -166,10 +166,24 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api/preorders', preorders.preorders)
   app.use('/api/deliveries', preorders.deliveries)
   app.use('/api/orders', preorders.orders)
-  // Z3; Z9 writes the confirmed day to hq data/production/backzettel/
+  // Z3; Z9 writes the confirmed day to hq data/production/backzettel/;
+  // Z4 writes Grundmengen like the products (write worktree, B5b PR) and
+  // reads the cash reports for the reference column
   app.use(
     '/api/backzettel',
     createBackzettelRouter({
+      write: {
+        writeDir: hqProducts.service.writeDir,
+        writeBranch: hqProducts.service.writeBranch,
+        production: hqProducts.service.production,
+        afterCommit: () => edits.notifyCommitted(),
+        approvedFile: (rel) => edits.approvedTextFile(rel),
+      },
+      reference: {
+        reportsDir: options.hq?.reportsDir,
+        today: options.hq?.today,
+        log: options.hq?.log?.warn,
+      },
       ...(snapshots.enabled
         ? {
             onConfirmed: (day, { role }) =>
