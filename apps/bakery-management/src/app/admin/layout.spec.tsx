@@ -136,7 +136,7 @@ describe('AdminLayout', () => {
   it('renders a readable breadcrumb', () => {
     renderLayout('/admin/products/new')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
-      'Dashboard › Produkte › new'
+      'Dashboard › Produkte › Neues Produkt'
     )
   })
 
