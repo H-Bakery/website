@@ -17,13 +17,24 @@ of real order submission.
 Run from `website/` (not from this directory).
 
 ```bash
-npm run serve:api:simple              # REQUIRED — the shop is useless without it (port 5000)
+PUBLIC_CATALOGUE=1 npm run serve:api  # REQUIRED — real API with an anonymous catalogue (port 5000)
 npm run serve:shop                    # dev server → http://localhost:4200
 npx nx build bakery-shop              # → dist/apps/bakery-shop
 npx nx test bakery-shop               # jest, jsdom
 npx nx test bakery-shop -- -t "cart"  # single test case
 npm run test:e2e:shop                 # Playwright (starts both servers itself)
 ```
+
+**Which API (B12).** The mock server `simple-server.js` is deleted; the shop talks to the real
+TypeScript API. Every `/api` route there needs a session (D5) - only with `PUBLIC_CATALOGUE=1`
+does `GET /api/products` answer anonymously (`publicCatalogue` in `apps/bakery-api/src/app.ts`;
+the browser asks the API directly, so the shop's origin must be in `CORS_ORIGIN` - 4200 is in the
+default list). **Ordering does not work against the real API yet:** `POST /api/orders` creates a
+`shop` preorder but stays behind the session guard, and there is no `GET /api/orders/:id` - a public
+order path (rate limit, spam, confirmation) is an open owner decision. Until then the checkout ends
+in `checkout-error` with the API's German 401 message. The E2E suite checks the success path
+against a stubbed endpoint in the browser (`stubOrderEndpoint()` in
+`apps/bakery-shop-e2e/src/support/shop.ts`).
 
 Also run when you touch the shop's libs: `npx nx test feature-catalog`, `npx nx test feature-cart`,
 `npx nx test shared-data-access` (note the Nx name is `shared-data-access`, not `data-access`).
@@ -104,7 +115,7 @@ on submit** (`readClientNow()`) and validates against _those_ slots — a page l
 must not be able to book a slot that has meanwhile passed; a passed slot inside the opening window
 is reported as „nicht mehr möglich“, not as „nicht geöffnet“.
 
-The mock server does not trust the body. `POST /api/orders` runs it through
+The API does not trust the body. `POST /api/orders` runs it through
 `apps/bakery-api/src/services/shop-orders.core.js` (dependency-free CommonJS, same convention as
 `partner-stats.core.js`, tests in `apps/bakery-api/tests/unit/shopOrders.test.js`): only the known
 fields are kept, every `productId` (slug or numeric id) is resolved against `hq` and **price and
@@ -258,13 +269,14 @@ Bestell-IDs waren fortlaufend (`1`, `2`, `3`), und `GET /api/orders/:id` ist una
 wer `/bestellung/2` aufrief, las Name, Telefonnummer und Abholzeit fremder Kundschaft (IDOR,
 Art. 32 DSGVO). Die ID ist jetzt ein zufälliger Code aus Crockford-Base32 (`8QMZ-QXS5-HM0W`,
 60 Bit, ohne I/L/O/U, damit er am Telefon vorlesbar bleibt). Die fortlaufende Nummer lebt als
-`orderNumber` weiter — intern, nie in der URL. `createOrderId()` in `simple-server.js`.
+`orderNumber` weiter — intern, nie in der URL.
 
-Offen und bewusst nicht angefasst: `GET /api/orders` (die Liste) gibt weiterhin alle Bestellungen
-inklusive Telefonnummern ohne Authentifizierung heraus. Daran hängt die Verwaltungs-App; das gehört
-in die echte API mit echter Rollenprüfung, nicht in den Mock-Server.
-
-`apps/bakery-shop-e2e/src/shop-safety.spec.ts` sichert die drei Zusagen dieses Abschnitts ab.
+Seit B12 (Mock-Server gelöscht) gilt auf der echten API noch mehr: `POST /api/orders` legt eine
+Vorbestellung mit Kanal `shop` an und antwortet mit dem Code `LA-…` als `id`; `GET /api/orders`
+und `GET /api/orders/:id` gibt es dort nicht, und jede `/api`-Route außer dem öffentlichen Katalog
+verlangt eine Sitzung. `apps/bakery-shop-e2e/src/shop-safety.spec.ts` prüft, dass weder Liste noch
+Einzelabruf noch eine anonyme Bestellung durchkommt und Verwaltung, Vorbestellungen und Partner
+401 bleiben, während der Katalog antwortet.
 
 ## Voice
 
@@ -303,8 +315,8 @@ Merriweather body, then diverges toward store density. It is **light-only**, lik
 ## Known state
 
 - `nx build bakery-shop` passes. `nx test bakery-shop` passes (73 tests); feature-cart 130,
-  feature-catalog 95, shared-data-access 74, shared-utils 43; the order validation of the mock
-  server has 41 more in `apps/bakery-api/tests/unit/shopOrders.test.js` (run with
+  feature-catalog 95, shared-data-access 74, shared-utils 43; the API's order validation has 41
+  more in `apps/bakery-api/tests/unit/shopOrders.test.js` (run with
   `npx jest -c apps/bakery-api/jest.config.js --rootDir apps/bakery-api tests/unit/shopOrders.test.js`).
 - The allergen frontmatter (`allergens`, `allergens_source`, `allergen_recipe`) that the shop
   renders lives in **`hq/products/*.md`** — a different repo. It is produced by
@@ -316,9 +328,9 @@ Merriweather body, then diverges toward store density. It is **light-only**, lik
 - The `hq` data currently contains **zero** seasonal and **zero** unavailable products, so the
   "Saisonal" chip, the "Zur Zeit nicht verfügbar" state and the disabled add button are defensive
   paths exercised only by unit tests.
-- Orders are stored **in memory** by `simple-server.js` and are lost when the API restarts.
-  `OrderConfirmation` therefore degrades to a friendly confirmation with just the order number when
-  `GET /api/orders/:id` misses.
+- The real API has no `GET /api/orders/:id`, so `OrderConfirmation` always degrades to the
+  friendly confirmation with just the order number (and the API refuses anonymous orders, see
+  "Which API").
 - Opening hours: `apps/bakery-landing/src/config/openingHours.ts` is the source of truth, mirrored
   into `libs/shared/ui/.../footer-openings.tsx` and into `feature-cart/src/lib/pickup.ts` because an
   Nx lib may not import from an app. **Inside the shop there is only the `pickup.ts` copy** — the

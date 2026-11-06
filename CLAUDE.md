@@ -10,7 +10,7 @@ This is a full-stack bakery management system built with Next.js, Material UI, a
 - Backend: TypeScript with domain-driven design (Express + Sequelize)
 - Testing: Jest + React Testing Library
 - State Management: React Context (Theme, Cart, Authentication)
-- API Integration: bakeryAPI service with mock data fallback
+- API Integration: `ApiClient` against the real TypeScript API (the mock server is gone since B12)
 
 **Deployment Targets:**
 
@@ -38,7 +38,6 @@ npm run lint               # Run ESLint
 npm run dev:landing          # Landing page (port 3000) ✓
 npm run serve:shop           # Shop app (port 4200) ✓
 npm run serve:management     # Management app (port 4201) ✓
-npm run serve:api:simple     # Simple API server with mock data (port 5000) ✓
 
 # Real TS API (pilot, roadmap B0): esbuild bundle → node, SQLite at DB_PATH
 npm run serve:api            # bundles, migrates, listens on PORT (default 5000) ✓
@@ -125,7 +124,6 @@ website/
 | Shop          | `npm run serve:shop`       | 4200 | Working                                                               |
 | Management    | `npm run serve:management` | 4201 | Working                                                               |
 | Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                                             |
-| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data) - parity reference until cutover                  |
 | API (real TS) | `npm run serve:api`        | 5000 | Starts: health, auth (B3, SQLite), users, partners, … deliveries (B8) |
 
 The real TypeScript API (`bakery-api`, roadmap D2) is built by esbuild into one file,
@@ -140,7 +138,10 @@ JSON 404 with `error` + `message`. See "Anmeldung (B3)" below. The other pilot d
 reports, finance, targets, preorders, Backzettel) are added by their roadmap tasks. Since F4 the
 management app's pilot screens run against this API (see „Verwaltung auf der echten API (F4)");
 since B8 the delivery tours are there too (`/api/deliveries`, see „Liefertouren auf der echten API
-(B8)"); the shop still talks to `serve:api:simple`. Details in `apps/bakery-api/CLAUDE.md`.
+(B8)"). **Since B12 there is no other API:** `simple-server.js` and `serve:api:simple` are
+deleted, the shop reads its catalogue from this API (`PUBLIC_CATALOGUE=1`, see the shop's
+`CLAUDE.md`), and the mock's contracts live on as recorded contract tests
+(`apps/bakery-api/tests/contract/`). Details in `apps/bakery-api/CLAUDE.md`.
 
 ## Verkaufspartner (Backschrank CAP-Markt)
 
@@ -152,8 +153,8 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
 
 - **Alle Formeln stehen genau einmal**, in `apps/bakery-api/src/services/partner-stats.core.js` -
   dependency-freies CommonJS. Es benutzen sie die echte API (`partner-stats.service.ts`, nur ein
-  typisierter Wrapper), der Mock-Server (`simple-server.js`) und die Tests. Keine zweite
-  Implementierung anlegen; die beiden Server würden sonst auseinanderlaufen.
+  typisierter Wrapper) und die Tests (bis B12 auch der Mock-Server). Keine zweite
+  Implementierung anlegen.
   Seit B0 bündelt esbuild (`apps/bakery-api/build.mjs`) die `*.core.js`-Dateien mit ins Bundle;
   der alte `assets`-Eintrag des `@nx/js:tsc`-Builds ist weg.
 - **Ein Geschäftstag ohne `pickup`-Besuch ist offen.** Verkauf und Umsatz sind dann vorläufig
@@ -198,20 +199,17 @@ abgeschlossenen Tagen dasselbe und bleibt auf offenen Tagen richtig.
 Preise und Produktnamen werden **als Snapshot** auf `PartnerVisitItem` gespeichert, damit eine
 spätere HQ-Preisänderung alte Abrechnungen nicht rückwirkend verändert.
 
-Der Mock-Server hält die Besuche in `apps/bakery-api/data/partner-store.json` (gitignored) - beim
-`serve:api:simple` ist das die **einzige** Aufzeichnung. Gelesen und geschrieben wird über
-`src/services/json-store.core.js`: erst `.tmp`, dann `rename`, und eine Datei, die sich nicht mehr
-parsen lässt, wandert nach `partner-store.json.corrupt-<Zeit>` statt vom nächsten Speichern mit dem
-Seed überschrieben zu werden (der Server loggt das als Fehler; die Besuche stehen dann in der
-verschobenen Datei). Der Liefer-Store benutzt dieselben Helfer. Nicht durch ein bloßes
-`writeFileSync` ersetzen - genau so gingen früher nach einem Absturz mitten im Schreiben alle
-Besuche verloren.
+Der frühere Mock-Server hielt die Besuche in `apps/bakery-api/data/partner-store.json`
+(gitignored). Mock-Server und `json-store.core.js` sind seit B12 gelöscht; eine solche Datei ist
+nur noch Eingabe für `import-partners` (unten), ebenso `delivery-store.json` für
+`import-preorders` / `import-deliveries`.
 
 Tests der Rechenlogik: `apps/bakery-api/tests/unit/partnerStats.test.js`. Seit B1 hat
 `apps/bakery-api/jest.config.js` zwei Projekte: `js` (`tests/**/*.test.js`) und `ts`
 (`src/**/*.spec.ts`, `tests/**/*.test.ts`, ts-jest). Die echte API wird über
 `tests/helpers/createTestApp.ts` (`createApp()` auf `:memory:` mit der Pilot-Baseline) getestet,
-der Abgleich mit `simple-server.js` über `tests/parity/` - Details in `apps/bakery-api/tests/README.md`.
+der Vertrag des gelöschten Mocks über `tests/contract/` (aufgezeichnete Antworten) - Details in
+`apps/bakery-api/tests/README.md`.
 
 ### Verkaufspartner auf der echten API (B6)
 
@@ -255,10 +253,10 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   Freitexte haben Längengrenzen (400 `TEXT_TOO_LONG`) und der Geschäftstag eines Besuchs liegt
   zwischen 2020-01-01 und heute + 7 Tage. Die Vorlagen-Seite sperrt die Felder für alle außer dem
   Inhaber und lehnt mehr als 10.000 Stück je Position schon vor dem Speichern ab.
-- **Parity:** `apps/bakery-api/tests/parity/partners.parity.test.ts` spielt dasselbe Szenario
-  (Partner, Vorlage, Besuche, Korrektur, Tageswechsel, Löschen, Kennzahlen, Report, CSV) auf
-  Mock und echter API durch und vergleicht Status, Form und - wo beide dieselben Daten halten -
-  die Werte; das CSV byte-genau. Die Abweichungen oben sind dort als Erwartung festgeschrieben.
+- **Vertrag:** `apps/bakery-api/tests/contract/partners.contract.test.ts` spielt dasselbe
+  Szenario (Partner, Vorlage, Besuche, Korrektur, Tageswechsel, Löschen, Kennzahlen, Report, CSV)
+  gegen die aufgezeichneten Antworten des Mocks und die echte API und vergleicht Status, Form und -
+  wo beide dieselben Daten halten - die Werte; das CSV byte-genau. Die Abweichungen oben sind dort als Erwartung festgeschrieben.
 - **CSV-Export (F4):** `downloadReportCsv()` in `partnerApi.ts` holt den Report über
   `apiClient.getBlob()` (Bearer, 401 → Refresh) und speichert ihn als Blob; der frühere
   schlichte Link (`reportCsvUrl()`, ohne Token → 401) ist entfernt.
@@ -322,12 +320,9 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Fünf Dinge, die man von au�
   wie eine gemessene Strecke. Samstags früh muss die Liste auch ohne fremde Server da sein: das
   Lesen einer Tour wartet höchstens 2,5 s auf Nominatim, Fehlversuche werden 5 min lang nicht
   wiederholt.
-- **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*` - und seit B8 auch in
-  der echten API (Abschnitt unten). Der Store des Mocks lebt im
-  Speicher des Servers und wird nach jeder Änderung atomar nach
-  `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored, über `json-store.core.js`,
-  siehe Verkaufspartner). Ein Server, der vor diesen
-  Routen gestartet wurde, antwortet mit 404 — neu starten.
+- **Die Endpunkte liegen in der echten API** unter `/api/deliveries/*` (Abschnitt unten); der
+  Mock-Server mit seinem `delivery-store.json` ist seit B12 gelöscht, die Datei nur noch Eingabe
+  der Import-CLIs.
 - **`Number(null)` ist `0`.** Ein Stopp ohne gefundene Adresse galt dadurch als Punkt (0, 0) und zog
   die ganze Tour in den Atlantik. Koordinaten deshalb immer mit `hasCoordinates()` prüfen (Server:
   `delivery-tours.core.js`, Frontend: `@bakery/delivery/routing`), nie mit
@@ -347,8 +342,8 @@ Tests: `npx nx test delivery-routing` (61), `npx nx test delivery-tracking` (7) 
 ### Liefertouren auf der echten API (B8)
 
 `/api/deliveries` (Depot, Fahrer, Touren, Stopps, Route, Position, Adresssuche) gibt es jetzt in
-der TypeScript-API, mit dem Vertrag des Mocks (D3; Parity-Suite
-`apps/bakery-api/tests/parity/deliveries.parity.test.ts`). Details: `apps/bakery-api/CLAUDE.md`,
+der TypeScript-API, mit dem Vertrag des Mocks (D3; Vertrags-Suite
+`apps/bakery-api/tests/contract/deliveries.contract.test.ts`). Details: `apps/bakery-api/CLAUDE.md`,
 Abschnitt „Delivery tours (B8)". Von außen wichtig:
 
 - **Rollen:** `inhaber` plant (Touren, Stopps, Fahrer, Depot); `fahrer` sieht **nur eigene
@@ -390,8 +385,8 @@ Fünf Dinge, die man wissen muss:
 
 - **Die Formeln stehen genau einmal**, in `apps/bakery-api/src/services/reports.core.js`
   (dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`); die Datei-Lese-Schicht
-  daneben in `reports-files.core.js`. Der Mock-Server (`src/routes/reports.mock.js`, eine Zeile in
-  `simple-server.js`) und der Loader der Management-App (`apps/bakery-management/src/lib/reports.ts`)
+  daneben in `reports-files.core.js`. Die API (`src/routes/reports.routes.js`, bis B12
+  `reports.mock.js`) und der Loader der Management-App (`apps/bakery-management/src/lib/reports.ts`)
   benutzen beide. Der Loader lädt den Core zur Laufzeit über Nodes `createRequire` aus dem Monorepo,
   weil ein statischer Import einer App vom Modul-Grenzen-Lint verboten ist (`Imports of apps are
 forbidden`) - wer die Datei verschiebt, muss `CORE_DIR` in `reports.ts` nachziehen.
@@ -409,15 +404,15 @@ forbidden`) - wer die Datei verschiebt, muss `CORE_DIR` in `reports.ts` nachzieh
   Buchungszahl inkl. Stornos und Abbrüche steht nur in `closings[].transactionCount`. Positionsmengen
   einzelner Tage können durch Storno-Paare über die Tagesgrenze negativ sein - die Detailseite warnt
   dann, statt die Zeile zu verstecken.
-- **Ein Zeitraum ist höchstens `MAX_RANGE_DAYS` (400) Tage lang.** Die Zahl steht im Core; der
-  Mock-Server lehnt längere Anfragen mit `range_too_large` ab, die Archivseite kürzt
+- **Ein Zeitraum ist höchstens `MAX_RANGE_DAYS` (400) Tage lang.** Die Zahl steht im Core; die
+  API lehnt längere Anfragen mit `range_too_large` ab, die Archivseite kürzt
   `?from=&to=` mit `clampRange` (das Ende bleibt, der Anfang rückt nach) und sagt es an. Ohne die
   Kappung liefert `?from=2000-01-01` jede Tagesdatei als HTML - ein Tippfehler im Jahr genügt.
 
-Endpunkte des Mock-Servers: `GET /api/reports/daily?from=&to=`, `/api/reports/daily/:date`,
+Endpunkte: `GET /api/reports/daily?from=&to=`, `/api/reports/daily/:date`,
 `/api/reports/monthly/:month` sowie `/api/analytics/{revenue-trends,product-performance,payment-methods,summary}`.
-Fehler mit `message` **und** `error`. Die echte TypeScript-API hängt seit B4 dieselben Module ein
-(siehe „Berichte und Finanzen auf der echten API (B4)"); der alte DB-basierte Vertrag ist gelöscht.
+Fehler mit `message` **und** `error`. Eingehängt in die TypeScript-API seit B4 (siehe
+„Berichte und Finanzen auf der echten API (B4)"); der alte DB-basierte Vertrag ist gelöscht.
 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/reportsCore.test.js` (25)
 und in der Management-App `src/lib/reports.spec.ts`, `admin/reports/**/*.spec.tsx`,
@@ -437,12 +432,10 @@ Dieses Repo ist öffentlich, `hq` nicht - deshalb gelten hier vier Regeln:
   (`src/lib/finance.ts`) lädt denselben Core per `require` mit `// nx-ignore-next-line` und
   `eslint-disable-line`; beide Marker müssen an genau dieser Stelle bleiben, sonst hängt
   `bakery-management` im Nx-Graph an `bakery-api` und `nx build` baut erst die API.
-- **Endpunkte nur mit Rolle `admin`.** `GET /api/finance/summary` und `/api/finance/months?from=&to=`
-  liegen in `apps/bakery-api/src/routes/finance.mock.js`, geschützt durch `requireRole('admin')` aus
-  `src/routes/auth.mock.js` - der Mock-Server hat seit TASK-038 ein echtes JWT-Login
-  (`POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/refresh`, `POST /api/auth/logout`;
-  Benutzer aus `MOCK_ADMIN_USER`/`MOCK_ADMIN_PASSWORD`, optional `MOCK_STAFF_*`; `JWT_SECRET` sonst
-  pro Start zufällig). Ohne Token 401, mit falscher Rolle 403, beides als JSON mit `message` und
+- **Endpunkte nur für den Inhaber.** `GET /api/finance/summary` und `/api/finance/months?from=&to=`
+  liegen in `apps/bakery-api/src/routes/finance.routes.js` (bis B12 `finance.mock.js`), geschützt
+  durch `requireRole('inhaber')` und eine Passwort-Sitzung (B3-Anmeldung, siehe B4). Ohne Token
+  401, mit falscher Rolle oder an der PIN-Station 403, beides als JSON mit `message` und
   `error`. Die Management-App hat dafür `/admin/login`; das Token wird in `localStorage` gehalten
   (`src/lib/authSession.ts`), weil `ApiClient` und `AuthProvider` es sonst beim Neuladen verlieren.
 - **Kein Fallback auf Beispieldaten.** Fehlt `hq` (CI), fehlt die Datei oder stimmt die
@@ -470,7 +463,7 @@ Break-even als Tagesziel je Wochentag, rückblickend aus den Tagesabschlüssen d
   normiert auf Mittelwert 1 über die geöffneten Wochentage), Zielstufen (`computeTargets`), Ampel
   (`evaluateDay`) und Zeiträume (`aggregatePeriod`, `aggregateToDate` mit Hochrechnung). Die
   Management-App rechnet **nichts** selbst - sie zeigt, was `/api/finance/targets*` liefert
-  (`src/routes/targets.mock.js`, Rolle `admin`, Fehler mit `message` + `error`). Das gilt auch für
+  (`src/routes/targets.routes.js`, Rolle `inhaber`, Fehler mit `message` + `error`). Das gilt auch für
   die Wochentagstabelle: `deviation` (Ø Ist − Ziel) kommt je Zeile vom Server, und das Verhältnis
   Ø Ist / Ziel steht **einmal je Stufe** (`average_ratio`) - es ist per Konstruktion an allen
   Wochentagen gleich (Faktoren sind auf die Wochentagsmittel normiert) und steht deshalb als Fußnote
@@ -530,9 +523,9 @@ Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
   (z. B. Weiterleitung auf den nächsten Produktionstag). `/backstube` liegt außerhalb `/admin` und
   bekommt weder Seitenleiste noch Sperre. Der Mörsbach-Eintrag heißt deshalb „Sammelstelle
   Mörsbach", nicht „Vorbestellungen"; ob er in `/admin/preorders` aufgeht, entscheidet M1.
-- **Keine Mock-Abfragen im Pilotbetrieb.** Das Dashboard blendet „Offene Bestellungen",
-  „Produktionsübersicht" und „Letzte Aktivitäten" aus und fragt `/api/orders` und `/api/production`
-  nicht an. Der `NotificationProvider` bleibt (das Dashboard ruft `useNotifications()`), lädt aber
+- **Keine Mock-Abfragen.** Seit B12 fragt das Dashboard nur `GET /api/products` (zugleich
+  API-Statusprüfung); „Offene Bestellungen", „Produktionsübersicht" und „Letzte Aktivitäten" sind
+  mit den Demo-Seiten gelöscht. Der `NotificationProvider` bleibt (Einstellungen), lädt aber
   dank `loadOnMount={false}` nichts, pollt nicht und fragt nicht nach Browser-Mitteilungen - die
   echte API hat kein `/api/notifications`. **Ohne Pilotbetrieb gegen die echte API** (W4) fragt er
   einmal; ein 404/501 setzt `available: false` im Kontext, beendet das Pollen ohne
@@ -646,8 +639,8 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
   Warnung `correction_exceeds_line` da - nie still auf 0.
 - **Variante = Füllungs-ID.** Gefüllte Ware ohne Variante zählt im Teig, aber nicht in der Füllung
   (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
-- `formatTrayInfo` ist ein **Duplikat** von `feature-daily-prep/.../utils/trayInfo.ts`; beide
-  ändern.
+- `formatTrayInfo` gibt es seit B12 nur noch hier (die Kopie in `feature-daily-prep` ist mit der
+  Lib gelöscht, ihre Tests stehen in `backzettelCore.test.js`).
 - **Bleche zählen nach der Menge der Zeile** (`trayText(tray, total, unit)`, W4-Verifikation
   Runde 3): `per_tray` ist Stück je Blech, die Angabe heißt also bei 40 Croissants à 12
   „4 Bleche à 12 (Bleche 1, 2 + 2 weitere)“, nicht „2 Bleche à 12“. Ohne `per_tray`, ohne
@@ -662,14 +655,15 @@ synthetische Fixtures in `tests/fixtures/backzettel.synthetic.js`).
 
 ## Berichte und Finanzen auf der echten API (B4)
 
-Die echte API (`createApp()`) hängt `reports.mock.js`, `finance.mock.js` und `targets.mock.js`
-**unverändert** ein (`apps/bakery-api/src/routes/hq-data.routes.ts`) - dieselben Dateien wie
-`simple-server.js`, nicht kopieren; umbenannt wird in B12. Rechte im Pilot: Berichte und Analysen
+Die echte API (`createApp()`) hängt `reports.routes.js`, `finance.routes.js` und
+`targets.routes.js` ein (`apps/bakery-api/src/routes/hq-data.routes.ts`) - bis B12 hießen sie
+`*.mock.js` und dienten auch dem Mock-Server; nicht kopieren. Rechte im Pilot: Berichte und Analysen
 nur `inhaber` (auch an der PIN-Station), Finanzen und Tagesziel nur `inhaber` **mit Passwort-
-Sitzung** (an der Station 403 `personal_session_required`). Die Rolle `admin` der Mock-Module wird
-über einen Adapter auf `inhaber` abgebildet. Pfade aus `HQ_REPORTS_DIR` / `HQ_FINANCE_DIR`. Die
-Parity-Suite `apps/bakery-api/tests/parity/hq-data.parity.test.ts` vergleicht beide Server auf
-einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byte. Details:
+Sitzung** (an der Station 403 `personal_session_required`). Die Module fragen `requireRole('inhaber')`;
+`createRoleGuards()` lehnt beim Einhängen jede Rolle außerhalb der Pilot-Rollen ab. Pfade aus
+`HQ_REPORTS_DIR` / `HQ_FINANCE_DIR`. Die Vertrags-Suite
+`apps/bakery-api/tests/contract/hq-data.contract.test.ts` vergleicht die aufgezeichneten
+Mock-Antworten mit der echten API auf einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byte. Details:
 `apps/bakery-api/CLAUDE.md`, Abschnitt „hq data (B4)".
 
 ## Backzettel-API (Z3, echte API)
@@ -893,14 +887,18 @@ seit Z6 eindeutige Zeilen-IDs (vorher teilten sich zwei Zeilen eine).
 
 ## E2E-Suiten (Playwright)
 
-Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).
+Drei Suiten in CI, `apps/bakery-{shop,management,landing}-e2e`, dazu lokal
+`apps/bakery-delivery-e2e`; nur Chromium (Desktop + Pixel 5).
 Was sie starten, steht **einmal** in `tools/e2e/servers.js`: in Entwicklung `nx serve` plus ein
 laufender Server, in CI (`CI=true` oder `E2E_BUILT=1`) `next start` auf dem Build in `dist/apps/`
 bzw. der statische Landing-Export hinter `tools/e2e/serve-static.js`, dazu eine API auf dem
 **synthetischen Produktkatalog** `tools/e2e/hq-products` (56 Markdown-Produkte im `hq`-Format):
-für den Shop die Mock-API, für die **Verwaltung seit F4 die echte API** (Bundle über
-`tools/e2e/real-api.js`, frische SQLite-Datenbank im Temp-Verzeichnis, Inhaber aus
-`BOOTSTRAP_ADMIN_*`, dazu erfundene Kassenberichte und Finanzen aus `prepareE2eHq()`).
+immer die **echte API** (Bundle über `tools/e2e/real-api.js`, frische SQLite-Datenbank im
+Temp-Verzeichnis, Inhaber aus `BOOTSTRAP_ADMIN_*`, dazu erfundene Kassenberichte und Finanzen aus
+`prepareE2eHq()`) - für die Verwaltung seit F4, für Shop und Fahrer-App seit B12. Der Shop bekommt
+sie mit `PUBLIC_CATALOGUE=1` und seinem Origin in `CORS_ORIGIN`; einen öffentlichen Bestellweg gibt
+es nicht, die Kasse prüft ihren Erfolgsweg gegen einen im Browser nachgestellten Endpunkt
+(`stubOrderEndpoint()`).
 So laufen die Jobs `test-e2e-*` in `.github/workflows/ci.yml` ohne das private `hq` und ohne
 vorhandene Datenbank. Details, Ports und die Bedingungen, die der Katalog erfüllen muss:
 `tools/e2e/README.md`.
@@ -920,7 +918,7 @@ echte Selektoren - nicht die Skip-Markierung entfernen und hoffen.
 ## Anmeldung (B3, echte API)
 
 Persönliche Konten plus PIN-Stationen (D5) in SQLite, Passwort und PIN als scrypt-Hash aus
-`node:crypto` (D12). Endpunkte und Antworthülle wie `auth.mock.js` (`login`, `me`, `refresh`,
+`node:crypto` (D12). Endpunkte und Antworthülle wie das frühere `auth.mock.js` (`login`, `me`, `refresh`,
 `logout`, `{ success, data: { user, token, refreshToken, expiresIn } }`) plus
 `POST /api/auth/pin`, `GET /api/auth/station/users`, `/api/auth/stations` und `/api/users`
 (nur `inhaber`, nur aus einer persönlichen Sitzung). Details, Tabelle der Endpunkte und Fehlercodes: `apps/bakery-api/CLAUDE.md`,
@@ -970,7 +968,7 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
 
 `GET /api/products`, `GET /api/hq-products[/:id]`, `PUT /api/hq-products/:id` und
 `POST /api/hq-products` gibt es jetzt auch in der TypeScript-API, mit dem Vertrag des Mock-Servers
-(D3; eine Parity-Suite vergleicht Antworten **und** die geschriebenen Bytes). Lesen darf jede
+(D3; eine Vertrags-Suite vergleicht Antworten **und** die geschriebenen Bytes). Lesen darf jede
 Sitzung, Schreiben nur `inhaber`; kein DELETE. Details: `apps/bakery-api/CLAUDE.md`, Abschnitt
 „hq products (B5)". Von außen wichtig:
 
@@ -1008,7 +1006,7 @@ TypeScript-API in **einer** Tabelle (`preorders` + `preorder_items`) unter `/api
 (Liste mit Filtern, Einzelabruf, Anlegen, Ändern, Status, Stornieren, `/sums?date=` für die
 Backstube, `/day?date=[&pickupPointId=]` für die Abholliste). Die Mörsbach-Seiten der Verwaltung
 laufen seit P2 direkt auf `/api/preorders`; der Alias `/api/deliveries/preorders*` mit dem Vertrag
-des Mock-Servers bleibt für alte Clients stehen (eine Parity-Suite vergleicht). Details: `apps/bakery-api/CLAUDE.md`, Abschnitt „Preorders (B7) and
+des Mock-Servers bleibt für alte Clients stehen (eine Vertrags-Suite vergleicht). Details: `apps/bakery-api/CLAUDE.md`, Abschnitt „Preorders (B7) and
 anonymisation (P4)". Von außen wichtig:
 
 - **Die Regeln stehen weiter genau einmal** in `apps/bakery-api/src/services/delivery-preorders.core.js`;
@@ -1219,8 +1217,9 @@ Sieben Dinge, die man wissen muss:
 - **Speicher: `src/lib/authSession.ts`** - `bakery-management-session` (Access- + Refresh-Token,
   Benutzer, `sessionKind`, Anmeldezeit), `bakery-management-activity` (letzte Bedienung, von allen
   Tabs gemeinsam), `bakery-management-station` (Stations-Token; bleibt beim Abmelden stehen). Der
-  Benutzer wird mit `normalizeUser()` gelesen: echte API `displayName`/`username`, der Mock
-  (`auth.mock.js`) `email`/`firstName` mit `admin` → `inhaber`, `staff` → `verkauf`.
+  Benutzer wird mit `normalizeUser()` gelesen: echte API `displayName`/`username`; die Form des
+  gelöschten Mocks (`email`/`firstName`, `admin` → `inhaber`, `staff` → `verkauf`) versteht er
+  noch, damit eine alte gespeicherte Sitzung nicht wirft.
 - **401 → genau ein Refresh → Wiederholung.** Der `ApiClient` (`libs/shared/data-access`) fragt bei
   einer 401 auf eine Anfrage _mit_ Bearer einmal `setUnauthorizedHandler()`; die App erneuert dann
   über `refreshSession()` (ein Refresh je Tab, gemeinsames Promise), speichert den rotierten
@@ -1367,6 +1366,28 @@ Tests: `src/lib/apiBase.spec.ts`, `src/proxy.spec.ts` (Weiterleitung `/api`),
 `admin/partners/**/{Report,PartnerDetail,Templates}Client.spec.tsx`, `src/lib/financeApi.spec.ts`,
 `admin/finance/**/*.spec.tsx`, `admin/analytics/revenue/page.spec.tsx`, `admin/settings/page.spec.tsx`,
 `libs/shared/data-access/src/lib/{api-client,services/analytics.service}.spec.ts`.
+
+## Aufräumen nach dem Umstieg (B12)
+
+Seit B12 gibt es **eine** API. Gelöscht sind: `simple-server.js` mit `serve:api:simple`, die alte
+JS-Schicht der API (`index.js`, `controllers/`, `models/`, `routes/`, `middleware/`, Dockerfiles),
+die nie eingehängten `libs/api/*`, die Legacy-Modelle und -Tests sowie die Demo-Seiten der
+Verwaltung, die nicht auf der „Keep"-Liste standen (`bakery/*`, `baking-list`, `cash`, `chat`,
+`inventory`, `notifications`, `orders`, `production`, `staff`, `unsold-products`,
+`delivery` (Übersicht)) mit 15 Feature-Libs unter `libs/bakery-management/` - übrig sind
+`feature-analytics` und `feature-settings`. Was man wissen muss:
+
+- **Alte Lesezeichen leiten weiter** (`OLD_PAGE_REDIRECTS` in
+  `apps/bakery-management/next.config.js`, vorübergehend, `redirects()` läuft vor `src/proxy.ts`
+  und gilt damit auch im Pilotbetrieb): Backliste, Tagesvorbereitung, Samstagsproduktion und
+  Produktion → `/admin/backzettel`, Bestellungen → `/admin/preorders`, Lieferung →
+  `/admin/delivery/preorders`. Die übrigen gelöschten Seiten sind 404.
+- **Die `*.mock.js`-Module heißen jetzt `*.routes.js`** (`reports`, `finance`, `targets`); die
+  Mock-Verträge stehen als aufgezeichnete Antworten in `apps/bakery-api/tests/contract/recorded/`.
+  Ein geändertes Szenario heißt: Aufzeichnung von Hand ändern, im Commit sagen.
+- **Shop und Fahrer-App** laufen gegen die echte API; der Shop braucht `PUBLIC_CATALOGUE=1`
+  (öffentliches `GET /api/products`, sonst alles hinter der Anmeldung). Bestellen geht aus dem
+  Shop erst mit einem öffentlichen Bestellweg (Owner-Entscheidung offen).
 
 ## Hilfe und Papierbetrieb (`/admin/hilfe`, P6)
 

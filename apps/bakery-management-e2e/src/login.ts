@@ -121,10 +121,9 @@ async function expectOk(response: APIResponse, what: string, ok = [200]) {
 
 /**
  * In Entwicklung verwendet Playwright einen schon laufenden Server auf dem
- * API-Port wieder (`reuseExistingServer`). Läuft dort der Mock
- * (`serve:api:simple`), scheiterte die Anmeldung sonst mit einer
- * rätselhaften 401. Die echte API meldet in `/health` die Datenbank
- * (`database: 'ok'`), der Mock nicht (`status: 'healthy'`).
+ * API-Port wieder (`reuseExistingServer`). Läuft dort ein anderer Server
+ * (früher der Mock), scheiterte die Anmeldung sonst mit einer rätselhaften
+ * 401. Die echte API meldet in `/health` die Datenbank (`database: 'ok'`).
  */
 async function expectRealApi(api: APIRequestContext): Promise<void> {
   let body: Record<string, unknown> | null = null
@@ -137,7 +136,7 @@ async function expectRealApi(api: APIRequestContext): Promise<void> {
     throw new Error(
       `Auf ${API_BASE} läuft nicht die echte API (GET /health ohne database: 'ok'` +
         `${body ? `, Antwort: ${JSON.stringify(body)}` : ''}). ` +
-        'Den Server auf diesem Port beenden (z. B. serve:api:simple) - die ' +
+        'Den Server auf diesem Port beenden - die ' +
         'Suite startet die echte API selbst (tools/e2e/real-api.js).'
     )
   }

@@ -26,7 +26,6 @@ Es gibt jetzt npm-Skripte; der Rest läuft über Nx, von `website/` aus:
 ```bash
 npm run serve:delivery                 # Fahrer-App auf Port 4300
 npm run serve:api                      # echte API (B8, Anmeldung nötig), Port 5000
-npm run serve:api:simple               # oder der Mock (Login admin/admin), Port 5000
 npm run test:e2e:delivery              # Playwright (Desktop + Pixel 5), startet beide Server selbst
 
 npx nx build bakery-delivery
@@ -41,9 +40,10 @@ npx tsc --noEmit -p apps/bakery-delivery/tsconfig.json   # laeuft auch in `npm r
 **Der Port steht jetzt in `project.json` (4300).** Ohne ihn fiel `@nx/next:server` auf 4200 zurück —
 den Port des Shops. Landing 3000, Shop 4200, Management 4201, Lieferung 4300.
 
-**Die API muss laufen und aktuell sein.** Ohne sie zeigt die App „Keine Verbindung zur Bäckerei-API".
-Ein `simple-server.js`, der schon vor den Liefer-Endpunkten gestartet wurde, antwortet auf
-`/api/deliveries/*` mit 404 — dann hilft nur ein Neustart des Servers.
+**Die API muss laufen.** Ohne sie zeigt die App „Keine Verbindung zur Bäckerei-API". Den Mock
+(`simple-server.js`) gibt es seit B12 nicht mehr; Konten legt `npm run api:create-user` an, in der
+Entwicklung auch `BOOTSTRAP_ADMIN_USER`/`BOOTSTRAP_ADMIN_PASSWORD`. Fahrer seedet die echte API
+nicht - `POST /api/deliveries/drivers` (Inhaber) legt sie an.
 `NEXT_PUBLIC_API_URL` überschreibt die Adresse (Default `http://localhost:5000`); der Wert wird beim
 Build eingebacken, ein Wechsel braucht also einen Neustart des Dev-Servers.
 Die echte API erlaubt `http://localhost:4300` ohne weiteres (`DEFAULT_CORS_ORIGINS` in
@@ -89,9 +89,9 @@ steht.
 - **Abgelehnte Änderungen bleiben sichtbar.** Lehnt die API ein Abhaken oder eine Übergabe mit
   4xx ab, lädt die Seite die Tour neu und zeigt **danach** die `message` - `loadTours()` leert
   die Fehlermeldung, vorher gesetzt verschwand sie sofort.
-- **Der Mock wird verstanden** (`normalizeUser()`): `email`/`firstName` statt `displayName`,
-  `admin` → `inhaber`, `staff` → `verkauf`; sein Refresh rotiert nicht, der alte Refresh-Token
-  bleibt dann stehen. Die E2E-Suite meldet sich dort mit `admin`/`admin` an.
+- **Die Form des früheren Mocks wird weiter gelesen** (`normalizeUser()`), falls eine alte
+  Sitzung im Speicher liegt: `email`/`firstName` statt `displayName`, `admin` → `inhaber`,
+  `staff` → `verkauf`. Die E2E-Suite meldet sich seit B12 als E2E-Inhaber an der echten API an.
 
 Erreichbar ist die API nur im LAN der Bäckerei. Wie der Fahrer sie unterwegs erreicht (Tailscale
 oder ein schmaler öffentlicher Endpunkt), entscheidet der Inhaber: `docs/fernzugriff-fahrer.md` (Q8).
@@ -104,9 +104,8 @@ an (`signIn()` in `page.spec.tsx`).
 ## Wo was gerechnet wird
 
 **Alle Formeln des Servers stehen genau einmal**, in `apps/bakery-api/src/services/delivery-tours.core.js`
-— dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`. Der Mock-Server und die
-Tests benutzen es. Weil `@nx/js:tsc` ohne `allowJs` läuft, greift die `*.core.js`-Glob unter `assets`
-in `apps/bakery-api/project.json`; neue Core-Dateien landen dadurch automatisch in `dist/`.
+— dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`. Die API
+(`delivery-tours.service.ts`) und die Tests benutzen es; esbuild bündelt es mit (B0).
 
 Das Frontend hat in `@bakery/delivery/routing` eine **zweite, TypeScript-Fassung derselben Geometrie**
 (Haversine, Umwegfaktor 1.35, Standzeit 180 s). Die Grenze CommonJS ↔ ESM lässt sich nicht ohne
@@ -163,14 +162,15 @@ suchen mit `force` trotzdem. Gleichzeitige Anfragen nach derselben Adresse teile
 
 ## Datenhaltung
 
-**Seit B8 gibt es die Endpunkte auch in der echten TypeScript-API** - SQLite, Rollen, Audit,
-dieselben Core-Dateien; Vertrag, Rollen und bewusste Abweichungen stehen in
-`apps/bakery-api/CLAUDE.md`, Abschnitt „Delivery tours (B8)". Umzug der Mock-Daten:
-`cli.js import-deliveries` (Touren, Fahrer, Geocache) und `import-preorders` (Sammelstellen,
-Vorbestellungen). Der Rest dieses Abschnitts beschreibt den Mock, der bis zur Umstellung die
-Referenz bleibt.
+**Die Endpunkte liegen in der echten TypeScript-API** (B8) - SQLite, Rollen, Audit, dieselben
+Core-Dateien; Vertrag, Rollen und bewusste Abweichungen stehen in `apps/bakery-api/CLAUDE.md`,
+Abschnitt „Delivery tours (B8)". Der Mock-Server ist seit B12 gelöscht; seine Antworten sind in
+`apps/bakery-api/tests/contract/recorded/deliveries.json` festgehalten (Vertragstest). Umzug alter
+Mock-Daten: `cli.js import-deliveries` (Touren, Fahrer, Geocache) und `import-preorders`
+(Sammelstellen, Vorbestellungen). **Der Rest dieses Abschnitts beschreibt den früheren Mock** und
+bleibt als Begründung der Regeln stehen, die die API übernommen hat.
 
-Der Store des Mock-Servers lebt **im Speicher des Servers** (`getDeliveryStore()`, einmal geladen) und wird nach
+Der Store des früheren Mock-Servers lebt **im Speicher des Servers** (`getDeliveryStore()`, einmal geladen) und wird nach
 jeder Änderung als JSON neben den Server geschrieben: **`apps/bakery-api/data/delivery-store.json`**
 (gitignored, überlebt Neustarts). Geschrieben wird atomar — erst `.tmp`, dann `rename` —, damit ein
 Absturz mitten im Schreiben nicht eine halbe Datei hinterlässt, die beim nächsten Start den Seed
@@ -379,9 +379,8 @@ Specified module format (CommonJs) is not matching the module format of the sour
 ```
 
 `nx build` scheiterte daran, `nx serve` startete und lieferte auf jede Anfrage **HTTP 500**. Die Zeile
-ist entfernt. Sie waren die einzigen _vom Frontend konsumierten_ Libs mit einem `type`-Feld — die
-~30 anderen `"type": "commonjs"` liegen unter `libs/api/*` und werden nur von Express kompiliert, nie
-von Turbopack. Falls ein `git checkout` die Zeile zurückbringt, ist das die erste Stelle zum Nachsehen.
+ist entfernt. Sie waren die einzigen _vom Frontend konsumierten_ Libs mit einem `type`-Feld (die
+~30 anderen lagen unter `libs/api/*`, seit B12 gelöscht). Falls ein `git checkout` die Zeile zurückbringt, ist das die erste Stelle zum Nachsehen.
 Nicht „lösen", indem man die Libs auf CommonJS umschreibt — das bricht ihren `@nx/js:tsc`-Build.
 
 ## Naming traps
@@ -392,10 +391,9 @@ Nicht „lösen", indem man die Libs auf CommonJS umschreibt — das bricht ihre
 - `libs/bakery-delivery-tracking/package.json` heißt `@bakery/delivery-libs/tracking` und passt zu
   keinem Alias. Auflösung läuft über `tsconfig.base.json`; der Name ist wirkungslos — nicht darüber
   importieren.
-- `delivery` ist ein _anderes_ Projekt: `libs/api/delivery` (Express-Domäne mit Model, Controller,
-  Service — vollständig getippt, aber **an keine laufende API angeschlossen**, weil `serve:api`
-  nicht startet). `bakery-management-feature-delivery` ist die Admin-Ansicht. Diese App spricht mit
-  keinem von beiden, sondern mit `/api/deliveries` - im Mock (`simple-server.js`) oder seit B8 in der echten API (`routes/delivery-tours.routes.ts`).
+- Die früheren Projekte `delivery` (`libs/api/delivery`) und `bakery-management-feature-delivery`
+  sind seit B12 gelöscht. Diese App spricht mit `/api/deliveries` der echten API
+  (`routes/delivery-tours.routes.ts`).
 
 ## Architektur
 
@@ -545,11 +543,13 @@ WebSocket-Client ohne Server — die App benutzt ihn nicht, Positionen gehen per
 anlegen, Route berechnen, abhaken. `sammelstelle.spec.ts` daneben die Übergabe in Mörsbach:
 Vorbestellungen am Stopp, Abhaken samt Neuladen, die Rückfrage vor dem Abschließen, Nichtabholung
 und Zurücksetzen, dazu der Dunkelmodus über das Neuladen hinweg. Ein dritter Block „Anmeldung"
-prüft Formular, falsches Passwort, Neuladen und Abmelden. 14 Tests je Projekt, also 28. Alle
-anderen Tests starten angemeldet: `src/login.ts` holt eine Sitzung am Mock (`admin`/`admin`) und
-legt sie per `addInitScript` in den `localStorage`; die Liefer-Endpunkte des Mocks selbst
-brauchen keine Sitzung, die Tests legen ihre Touren weiter direkt an. Die Konfiguration startet **beide** Server selbst (API auf 5000,
-App auf 4300) und setzt Locale `de-DE` sowie eine Position in Homburg. Der zweite Test legt sich seine
+prüft Formular, falsches Passwort, Neuladen und Abmelden. Alle anderen Tests starten angemeldet:
+`src/login.ts` meldet seit B12 den E2E-Inhaber an der **echten API** an (`E2E_ADMIN` aus
+`tools/e2e/servers.js`, `deliveryApiServer()`: Bundle, frische SQLite-Datenbank, App-Origin in
+`CORS_ORIGIN`), legt die Sitzung per `addInitScript` in den `localStorage` und gibt den Specs einen
+`request`-Kontext mit Bearer - die Tests legen ihre Touren weiter direkt an. Den Fahrer
+„E2E-Fahrer“ legt `driverId()` beim ersten Aufruf an. Die Konfiguration startet **beide** Server
+selbst (API auf 5000, App auf 4300) und setzt Locale `de-DE` sowie eine Position in Homburg. Der zweite Test legt sich seine
 eigene Tour per API an und löscht sie im `finally` wieder, damit er den Store nicht vollmüllt.
 
 Andere Ports: `API_PORT` und `DELIVERY_PORT` (dazu `HQ_PRODUCTS_DIR`, wenn `hq/` nicht neben dem
