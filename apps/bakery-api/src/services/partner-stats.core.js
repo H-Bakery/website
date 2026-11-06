@@ -724,19 +724,32 @@ function computeStats(visits, range = {}) {
   const byWeekday = [...weekdayGroups.entries()]
     .sort((a, b) => a[0] - b[0])
     .map(([weekday, dayList]) => {
-      const n = dayList.length
-      const sum = (pick) => dayList.reduce((acc, d) => acc + pick(d), 0)
+      // Mittelwerte nur über abgeschlossene Tage (mit Abholung): auf einem
+      // offenen Tag ist der Schrankinhalt weder verkauft noch Retoure, er
+      // zöge Ø Verkauft und Quote nach unten (W4-verify r4). Offene Tage
+      // stehen in `openDayCount`; sind alle offen, gibt es keinen Mittelwert.
+      const closed = dayList.filter((d) => !d.isOpen)
+      const n = closed.length
+      const sum = (pick) => closed.reduce((acc, d) => acc + pick(d), 0)
       const delivered = sum((d) => d.deliveredQty)
       const sold = sum((d) => d.soldQty)
+      const avg = (value, factor) =>
+        n === 0 ? null : Math.round((value / n) * factor) / factor
       return {
         weekday,
         weekdayLabel: WEEKDAY_LABELS[weekday] || String(weekday),
-        dayCount: n,
-        openDayCount: dayList.filter((d) => d.isOpen).length,
-        avgDeliveredQty: Math.round((delivered / n) * 10) / 10,
-        avgSoldQty: Math.round((sold / n) * 10) / 10,
-        avgReturnedQty: Math.round((sum((d) => d.returnedQty) / n) * 10) / 10,
-        avgRevenue: Math.round((sum((d) => d.revenue) / n) * 100) / 100,
+        dayCount: dayList.length,
+        openDayCount: dayList.length - n,
+        avgDeliveredQty: avg(delivered, 10),
+        avgSoldQty: avg(sold, 10),
+        avgReturnedQty: avg(
+          sum((d) => d.returnedQty),
+          10
+        ),
+        avgRevenue: avg(
+          sum((d) => d.revenue),
+          100
+        ),
         sellThroughRate: rate(sold, delivered),
       }
     })

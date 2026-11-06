@@ -41,6 +41,7 @@ export interface ComputedSnapshot {
   unsetKeys?: string[]
   /** Vorbestellungen je Zeile vor dem Aufrunden (fehlt bei Freigaben vor der W4-Verifikation). */
   preordersExact?: Record<string, number>
+  subtotalExact?: Record<string, number>
 }
 
 export class BackzettelDay extends Model<

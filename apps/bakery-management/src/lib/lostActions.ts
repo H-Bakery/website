@@ -12,6 +12,11 @@ const MAX = 10
 export interface LostAction {
   text: string
   at: string
+  /**
+   * Seite, auf der es passierte (Pfad + Query) - die Station führt nach der
+   * PIN dorthin zurück (W4-Verifikation Runde 4).
+   */
+  path?: string
 }
 
 function storage(): Storage | null {
@@ -37,9 +42,17 @@ export function readLostActions(): LostAction[] {
   }
 }
 
-export function rememberLostAction(text: string, now = new Date()): void {
+export function rememberLostAction(
+  text: string,
+  now = new Date(),
+  path?: string
+): void {
   try {
-    const list = [...readLostActions(), { text, at: now.toISOString() }]
+    const entry: LostAction = { text, at: now.toISOString() }
+    if (path && path.startsWith('/') && !path.startsWith('//')) {
+      entry.path = path
+    }
+    const list = [...readLostActions(), entry]
     storage()?.setItem(KEY, JSON.stringify(list.slice(-MAX)))
   } catch {
     // ohne Speicher bleibt die Meldung auf der Seite selbst
@@ -52,4 +65,18 @@ export function clearLostActions(): void {
   } catch {
     // nichts zu tun
   }
+}
+
+/** Die Seite der jüngsten verlorenen Aktion, die `allowed` zulässt. */
+export function lostActionReturnPath(
+  actions: LostAction[],
+  allowed: (pathname: string) => boolean
+): string | null {
+  for (let i = actions.length - 1; i >= 0; i--) {
+    const path = actions[i].path
+    if (!path || !path.startsWith('/') || path.startsWith('//')) continue
+    const pathname = path.split(/[?#]/)[0]
+    if (allowed(pathname)) return path
+  }
+  return null
 }

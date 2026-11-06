@@ -246,7 +246,13 @@ export default function PartnerOverviewClient() {
                           underline="hover"
                           color="inherit"
                           variant="h6"
-                          sx={{ display: 'inline-block' }}
+                          // Einziger Weg zur Detailseite: Touch-Ziel 44 px
+                          // statt 32 (W4-verify r4).
+                          sx={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            minHeight: 44,
+                          }}
                         >
                           {partner.name}
                         </Link>
@@ -428,7 +434,7 @@ export default function PartnerOverviewClient() {
                             sx={{ display: 'block', mt: 1.5 }}
                           >
                             {isOpen
-                              ? 'Vorläufige Zahlen: ohne erfasste Abholung gilt alles Gelieferte als verkauft.'
+                              ? 'Vorläufige Zahlen: ohne erfasste Abholung ist der Schrankinhalt noch weder verkauft noch Retoure.'
                               : 'Vorläufige Zahlen: bei der Abholung wurde nicht jedes Produkt gezählt.'}
                           </Typography>
                         )}

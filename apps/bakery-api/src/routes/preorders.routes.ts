@@ -18,6 +18,7 @@
  *   GET    /variants          { success, data: { [productId]: Sorten[] }, configured }
  *   GET    /:id               { success, data: Preorder }
  *   POST   /                  201 { success, data }          verkauf, inhaber
+ *                             (optional `requestId`: a repeat returns the earlier order, 200)
  *   PATCH  /:id               { success, data }              verkauf, inhaber
  *   POST   /:id/status        { status, notCollected?, paid? } verkauf, inhaber, fahrer*
  *   POST   /:id/cancel        { success, data }              verkauf, inhaber
@@ -264,8 +265,10 @@ function createPreordersRouter(service: PreordersService): Router {
         strictPickup: true,
       })
       if (fail(res, result) || !result.ok) return
+      // 200 (not 201) when `requestId` matched an order created before: the
+      // retried save of a lost answer (W4-verify r4).
       res
-        .status(201)
+        .status(result.status === 200 ? 200 : 201)
         .json({ success: true, data: await dtoOf(service, result.data) })
     })
   )
@@ -592,6 +595,7 @@ function createDeliveriesRouter(service: PreordersService): Router {
         ? await service.changeStatus(req.params['id'], body, req, {
             guard,
             mapBody,
+            keepPaymentOnUndo: true,
           })
         : await service.update(req.params['id'], body, req, {
             requireVariant: false,

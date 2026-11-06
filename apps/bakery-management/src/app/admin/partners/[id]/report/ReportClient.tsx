@@ -1069,10 +1069,11 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     Durchschnitt je Wochentag
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Mittelwerte über alle Geschäftstage des Zeitraums - die
-                    Grundlage für spätere Mengenempfehlungen (&bdquo;dienstags
-                    werden im Schnitt 12 von 20 Broten verkauft, also 14
-                    liefern&ldquo;).
+                    Mittelwerte über die abgeschlossenen Geschäftstage des
+                    Zeitraums (mit Abholung) - die Grundlage für spätere
+                    Mengenempfehlungen (&bdquo;dienstags werden im Schnitt 12
+                    von 20 Broten verkauft, also 14 liefern&ldquo;). Offene Tage
+                    zählen erst nach der Abholung mit.
                   </Typography>
                 </Box>
                 <TableContainer>
@@ -1144,7 +1145,9 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                             {formatPercent(day.sellThroughRate)}
                           </TableCell>
                           <TableCell align="right">
-                            {formatCurrency(day.avgRevenue)}
+                            {day.avgRevenue == null
+                              ? '–'
+                              : formatCurrency(day.avgRevenue)}
                           </TableCell>
                         </TableRow>
                       ))}

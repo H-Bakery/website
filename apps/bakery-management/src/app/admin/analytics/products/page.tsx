@@ -246,7 +246,7 @@ export default function ProductAnalyticsPage() {
                     color="text.secondary"
                     gutterBottom
                   >
-                    Bestseller
+                    Umsatzstärkstes Produkt
                   </Typography>
                   <Typography variant="h5" noWrap>
                     {topProducts[0]?.productName ?? '–'}

@@ -16,12 +16,28 @@
  * Dependency-freies CommonJS wie die übrigen `*.core.js`.
  */
 
-// eslint-disable-next-line no-control-regex
-const NAME_CONTROL_CHARS =
-  /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩\u2028\u2029\ufeff]/
-// eslint-disable-next-line no-control-regex
-const TEXT_CONTROL_CHARS =
-  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩\u2028\u2029\ufeff]/
+/**
+ * Unsichtbare Format- und Füllzeichen (W4-Verifikation Runde 4): U+061C
+ * (Arabic Letter Mark) ist wie LRM/RLM ein Bidi-Steuerzeichen und drehte
+ * „10-20“ in einem Namen zu „20-10“; weiches Trennzeichen, Null-Breiten-
+ * Leerzeichen/-Nichtverbinder, Wortverbinder, unsichtbare Operatoren,
+ * veraltete Formatzeichen, Hangul-Füller, Annotationszeichen und die
+ * Tag-Zeichen U+E0000-E007F lassen zwei gleich aussehende Namen
+ * verschieden gespeichert werden. Erlaubt bleibt U+200D (ZWJ) - ohne ihn
+ * zerfallen Emoji wie 👨‍🍳.
+ */
+const INVISIBLE =
+  '\\u00ad\\u034f\\u061c\\u115f\\u1160\\u180e\\u200b\\u200c\\u200e\\u200f' +
+  '\\u202a-\\u202e\\u2060-\\u2064\\u2066-\\u206f\\u2028\\u2029\\u3164' +
+  '\\ufeff\\uffa0\\ufff9-\\ufffb'
+const TAG_CHARS = '|\\udb40[\\udc00-\\udc7f]'
+
+const NAME_CONTROL_CHARS = new RegExp(
+  `[\\u0000-\\u001f\\u007f-\\u009f${INVISIBLE}]${TAG_CHARS}`
+)
+const TEXT_CONTROL_CHARS = new RegExp(
+  `[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f-\\u009f${INVISIBLE}]${TAG_CHARS}`
+)
 
 /** `true`, wenn ein einzeiliger Name unzulässige Steuerzeichen enthält. */
 function hasNameControlChars(value) {

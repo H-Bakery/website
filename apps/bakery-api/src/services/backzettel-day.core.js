@@ -487,6 +487,14 @@ function computedSnapshot(result) {
           )
           .map((l) => [l.key, round2(Number(l.preordersExact))])
       ),
+      // W4-Verifikation Runde 4: Summe aller Quellen vor dem Aufrunden
+      // (Basis × Saison + Vorbestellt + CAP) - aufgerundet wird erst die
+      // Summe, also rechnen auch die Nachtraege darauf.
+      subtotalExact: Object.fromEntries(
+        (Array.isArray(r.lines) ? r.lines : [])
+          .filter((l) => l && Number.isFinite(Number(l.subtotalExact)))
+          .map((l) => [l.key, round2(Number(l.subtotalExact))])
+      ),
     })
   )
 }
@@ -506,13 +514,27 @@ function computedSnapshot(result) {
  * @param {Array<{key: string, unit: string, preorders: number}>} lines
  * @param {Record<string, {qty: number}>} deltaByKey
  * @param {Record<string, number> | null | undefined} exactByKey
+ * @param {Record<string, number> | null | undefined} [subtotalByKey] Summe
+ *   aller Quellen vor dem Aufrunden (Freigabe-Schnappschuss ab Runde 4)
  * @returns {Record<string, number>} Zeilen-Schluessel -> zusaetzlich (Einheit der Zeile)
  */
-function deltaBakeExtras(lines, deltaByKey, exactByKey) {
+function deltaBakeExtras(lines, deltaByKey, exactByKey, subtotalByKey) {
   const out = {}
   for (const line of Array.isArray(lines) ? lines : []) {
     const d = deltaByKey ? deltaByKey[line.key] : null
     if (!d || !Number(d.qty)) continue
+    // Freigaben ab Runde 4: die ganze Zeile vor dem Aufrunden.
+    const subtotal =
+      subtotalByKey && Number.isFinite(Number(subtotalByKey[line.key]))
+        ? Number(subtotalByKey[line.key])
+        : null
+    if (subtotal !== null) {
+      out[line.key] = round2(
+        core.roundUp(Math.max(0, subtotal + Number(d.qty)), line.unit) -
+          core.roundUp(subtotal, line.unit)
+      )
+      continue
+    }
     const known =
       exactByKey && Number.isFinite(Number(exactByKey[line.key]))
         ? Number(exactByKey[line.key])

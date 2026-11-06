@@ -1,4 +1,6 @@
-import {
+import React from 'react'
+import { render } from '@testing-library/react'
+import BackzettelNotfallblatt, {
   FALLBACK_SECTIONS,
   notfallLayout,
   notfallSections,
@@ -64,5 +66,21 @@ describe('Backzettel-Notfallblatt (P6)', () => {
     const layout = notfallLayout(sectionsWith(100))
     expect(layout.columns).toBe(3)
     expect(layout.rowHeightMm).toBeGreaterThanOrEqual(4)
+  })
+})
+
+describe('Notfallblatt: Abschnittsname wiederholt sich beim Spaltenumbruch (W4-verify r4)', () => {
+  it('steht in der Tabellenkopfzeile jedes Abschnitts', () => {
+    const { container } = render(
+      <BackzettelNotfallblatt config={TEST_CONFIG} />
+    )
+    const tables = Array.from(container.querySelectorAll('.nfb-section table'))
+    expect(tables.length).toBe(notfallSections(TEST_CONFIG).length)
+    tables.forEach((table, i) => {
+      const firstHeadRow = table.querySelector('thead tr')
+      expect(firstHeadRow?.textContent).toBe(
+        notfallSections(TEST_CONFIG)[i].label
+      )
+    })
   })
 })

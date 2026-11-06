@@ -64,6 +64,8 @@ export class Preorder extends Model<
   declare createdBy: CreationOptional<number | null>
   declare updatedBy: CreationOptional<number | null>
   declare anonymizedAt: CreationOptional<Date | null>
+  /** Client id of the save that created it (idempotent retry, W4-verify r4). */
+  declare requestId: CreationOptional<string | null>
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 
@@ -100,6 +102,7 @@ export class Preorder extends Model<
         createdBy: { type: DataTypes.INTEGER, allowNull: true },
         updatedBy: { type: DataTypes.INTEGER, allowNull: true },
         anonymizedAt: { type: DataTypes.DATE, allowNull: true },
+        requestId: { type: DataTypes.STRING(64), allowNull: true },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
       },

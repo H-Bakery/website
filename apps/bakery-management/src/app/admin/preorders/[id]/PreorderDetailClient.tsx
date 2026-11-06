@@ -54,8 +54,43 @@ import {
   isEditable,
   variantLabel,
   type Preorder,
+  type PreorderInput,
   type PreorderStatusChange,
 } from '../../../../lib/preordersTypes'
+
+/**
+ * Was beim Bearbeiten getippt, aber wegen eines Konflikts NICHT gespeichert
+ * wurde - in Worten, damit man es auf dem neuen Stand nachtragen kann
+ * (W4-verify r4: vorher verschwand die Eingabe mit „nichts überschrieben“).
+ */
+export function describeLostEdit(
+  lost: Partial<PreorderInput> | undefined
+): string[] {
+  if (!lost) return []
+  const out: string[] = []
+  if (lost.customerName !== undefined) out.push(`Name „${lost.customerName}“`)
+  if (lost.customerPhone !== undefined) {
+    out.push(
+      lost.customerPhone ? `Telefon ${lost.customerPhone}` : 'Telefon gelöscht'
+    )
+  }
+  if (lost.pickupDate !== undefined) {
+    out.push(`Abholtag ${formatDateWithWeekday(lost.pickupDate)}`)
+  }
+  if (lost.pickupTime !== undefined) {
+    out.push(lost.pickupTime ? `Uhrzeit ${lost.pickupTime}` : 'ohne Uhrzeit')
+  }
+  if (lost.pickupPointId !== undefined) out.push('Abholort geändert')
+  if (lost.channel !== undefined) out.push('Kanal geändert')
+  if (lost.items !== undefined) out.push('Artikel geändert')
+  if (lost.paid !== undefined) {
+    out.push(lost.paid ? 'als bezahlt markiert' : 'als unbezahlt markiert')
+  }
+  if (lost.note !== undefined) {
+    out.push(lost.note ? `Notiz „${lost.note}“` : 'Notiz gelöscht')
+  }
+  return out
+}
 import { TOUCH_LINK_STYLE } from '../../../../lib/muiTheme'
 
 function formatTimestamp(iso: string | null): string {
@@ -148,12 +183,17 @@ export default function PreorderDetailClient({
     load()
   }, [load])
 
-  const onConflict = async (message: string) => {
+  const onConflict = async (message: string, lost?: Partial<PreorderInput>) => {
     setEditing(false)
     setConfirmCancel(false)
     setConfirmUncancel(false)
+    const typed = describeLostEdit(lost)
     setConflict(
-      `${message} Es wurde nichts überschrieben - unten steht jetzt der aktuelle Stand.`
+      typed.length > 0
+        ? `${message} Ihre Änderung wurde NICHT gespeichert: ${typed.join(
+            '; '
+          )}. Unten steht jetzt der aktuelle Stand - bitte prüfen und über „Bearbeiten“ erneut eintragen.`
+        : `${message} Es wurde nichts überschrieben - unten steht jetzt der aktuelle Stand.`
     )
     await load()
   }

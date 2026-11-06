@@ -5,7 +5,7 @@
  */
 import request from 'supertest'
 
-import { AuditLog, Preorder } from '../../src/models'
+import { AuditLog, PickupPoint, Preorder } from '../../src/models'
 import { PreordersService } from '../../src/services/preorders.service'
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
@@ -262,6 +262,168 @@ describe('paid amount and balance (W4-verify r2)', () => {
       refundCount: 1,
       refundTotal: edited.body.data.total,
     })
+  })
+})
+
+describe('undoing a handover restores the payment (W4-verify r4)', () => {
+  const DAY = '2026-12-04'
+  const status = (id: number, body: Record<string, unknown>) =>
+    request(api.app)
+      .post(`/api/preorders/${id}/status`)
+      .set(tokens['verkauf'])
+      .send(body)
+
+  it('"Bezahlt und übergeben", then ⋮ › Übergabe zurücknehmen: unpaid again', async () => {
+    const created = (await create(laden({ pickupDate: DAY }))).body.data
+    expect(created.paid).toBe(false)
+    const handed = await status(created.id, { status: 'abgeholt', paid: true })
+    expect(handed.status).toBe(200)
+    expect(handed.body.data).toMatchObject({ status: 'abgeholt', paid: true })
+
+    const undone = await status(created.id, { status: 'bereit' })
+    expect(undone.status).toBe(200)
+    expect(undone.body.data).toMatchObject({
+      status: 'bereit',
+      paid: false,
+      paidAmount: null,
+    })
+    const row = await Preorder.findByPk(created.id)
+    expect(row?.paid).toBe(false)
+  })
+
+  it('"Rest kassiert und übergeben", then undo (menu or toast): the earlier part payment is back', async () => {
+    const created = (
+      await create(
+        laden({
+          pickupDate: DAY,
+          paid: true,
+          items: [{ productId: 'kornbrot-500g', quantity: 2 }],
+        })
+      )
+    ).body.data
+    const edited = (
+      await request(api.app)
+        .patch(`/api/preorders/${created.id}`)
+        .set(tokens['verkauf'])
+        .send({ items: [{ productId: 'kornbrot-500g', quantity: 3 }] })
+    ).body.data
+    expect(edited.paidAmount).toBe(created.total)
+    expect(edited.paymentBalance).toBeGreaterThan(0)
+
+    await status(created.id, { status: 'abgeholt', paid: true })
+    const menu = await status(created.id, { status: 'bereit' })
+    expect(menu.body.data).toMatchObject({
+      paid: true,
+      paidAmount: created.total,
+      paymentBalance: edited.paymentBalance,
+    })
+
+    // The toast sends the earlier state including `paid: true`.
+    await status(created.id, { status: 'abgeholt', paid: true })
+    const toast = await status(created.id, {
+      status: 'bereit',
+      paid: true,
+      notCollected: false,
+    })
+    expect(toast.body.data).toMatchObject({
+      paid: true,
+      paidAmount: created.total,
+      paymentBalance: edited.paymentBalance,
+    })
+  })
+
+  it('keeps a payment that was changed after the handover', async () => {
+    const created = (await create(laden({ pickupDate: DAY }))).body.data
+    await status(created.id, { status: 'abgeholt' })
+    await status(created.id, { paid: true })
+    const undone = await status(created.id, { status: 'bereit' })
+    expect(undone.body.data).toMatchObject({ status: 'bereit', paid: true })
+  })
+})
+
+describe('deactivated pickup point keeps its booked days (W4-verify r4)', () => {
+  it('stays in /day pickupPoints while it still has orders that day', async () => {
+    const DAY = '2026-12-12'
+    const booked = await create(
+      laden({
+        channel: 'sammelstelle',
+        pickupDate: DAY,
+        pickupTime: null,
+        pickupPointId: MOERSBACH,
+      })
+    )
+    expect(booked.status).toBe(201)
+    await PickupPoint.update({ active: false }, { where: { id: MOERSBACH } })
+    try {
+      const res = await request(api.app)
+        .get(`/api/preorders/day?date=${DAY}&pickupPointId=laden`)
+        .set(tokens['fahrer'])
+      expect(res.status).toBe(200)
+      expect(res.body.data.pickupPoints).toEqual([
+        expect.objectContaining({
+          id: MOERSBACH,
+          active: false,
+          preorderCount: 1,
+        }),
+      ])
+      // A day without orders there does not list the inactive point.
+      const empty = await request(api.app)
+        .get('/api/preorders/day?date=2026-12-19')
+        .set(tokens['fahrer'])
+      expect(empty.body.data.pickupPoints).toEqual([])
+    } finally {
+      await PickupPoint.update({ active: true }, { where: { id: MOERSBACH } })
+    }
+  })
+})
+
+describe('idempotent create with requestId (W4-verify r4)', () => {
+  const DAY = '2026-12-03'
+  it('a retried save after a lost answer returns the first order, not a second one', async () => {
+    const body = laden({
+      pickupDate: DAY,
+      customerName: 'Testkundin Wiederholung',
+      requestId: 'r4-0a1b2c3d-4e5f',
+    })
+    const first = await create(body)
+    expect(first.status).toBe(201)
+    const again = await create(body)
+    expect(again.status).toBe(200)
+    expect(again.body.data).toMatchObject({
+      id: first.body.data.id,
+      code: first.body.data.code,
+    })
+    const list = await request(api.app)
+      .get(`/api/preorders?from=${DAY}&to=${DAY}`)
+      .set(tokens['verkauf'])
+    expect(
+      list.body.data.filter(
+        (p: { customerName: string }) =>
+          p.customerName === 'Testkundin Wiederholung'
+      )
+    ).toHaveLength(1)
+    // another user cannot replay someone else's id
+    const other = await create(body, 'inhaber')
+    expect(other.status).toBe(409)
+    expect(other.body).toMatchObject({ error: 'request_id_conflict' })
+    // without requestId nothing changes: two saves, two orders
+    const a = await create(laden({ pickupDate: DAY }))
+    const b = await create(laden({ pickupDate: DAY }))
+    expect(a.body.data.id).not.toBe(b.body.data.id)
+  })
+
+  it('rejects a malformed requestId', async () => {
+    for (const requestId of [
+      'kurz',
+      'mit leerzeichen 123',
+      42,
+      'x'.repeat(65),
+    ]) {
+      const res = await create(laden({ pickupDate: DAY, requestId }))
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'invalid_request_id' })
+      expect(res.body.message).toEqual(expect.any(String))
+    }
   })
 })
 

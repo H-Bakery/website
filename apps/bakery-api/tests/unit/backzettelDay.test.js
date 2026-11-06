@@ -534,6 +534,7 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
       'hefeteig',
       'preordersExact',
       'prep',
+      'subtotalExact',
       'unsetKeys',
       'warnings',
     ])
@@ -547,6 +548,7 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
       warnings: [],
       unsetKeys: [],
       preordersExact: {},
+      subtotalExact: {},
     })
   })
 
@@ -650,6 +652,28 @@ describe('Nachträge in Backmengen (W4-Verifikation)', () => {
     expect(day.deltaBakeExtras([brot], { brot: { qty: 1 } }, {})).toEqual({
       brot: 1,
     })
+  })
+
+  it('deltaBakeExtras rechnet auf der ganzen Zeile vor dem Aufrunden (W4-verify r4)', () => {
+    // Freigabe: 2 + 0,75 Vorbestellt + 0,25 CAP = genau 3. Ein Viertel mehr
+    // ist ein vierter Kranz - mit nur den Vorbestellungen (1,0) sähe es nach
+    // „nichts zusätzlich“ aus.
+    expect(
+      day.deltaBakeExtras(
+        [kranz],
+        { 'kranz|nuss': { qty: 0.25 } },
+        { 'kranz|nuss': 1 },
+        { 'kranz|nuss': 3 }
+      )
+    ).toEqual({ 'kranz|nuss': 1 })
+    expect(
+      day.deltaBakeExtras(
+        [kranz],
+        { 'kranz|nuss': { qty: 0.25 } },
+        { 'kranz|nuss': 1 },
+        { 'kranz|nuss': 2.7 }
+      )
+    ).toEqual({ 'kranz|nuss': 0 })
   })
 
   it('linesWithExtras und hefeteigFillingsDiff melden nur Änderungen', () => {

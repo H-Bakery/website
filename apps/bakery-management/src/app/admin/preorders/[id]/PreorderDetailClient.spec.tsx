@@ -286,7 +286,13 @@ describe('PreorderDetailClient (P3)', () => {
         '2026-11-12T09:00:00.000Z'
       )
     )
-    expect(await screen.findByTestId('preorder-conflict')).toBeInTheDocument()
+    // Die eigene Eingabe ist NICHT gespeichert und steht da (W4-verify r4).
+    expect(await screen.findByTestId('preorder-conflict')).toHaveTextContent(
+      /Ihre Änderung wurde NICHT gespeichert: Notiz „Bitte schneiden“/
+    )
+    expect(screen.getByTestId('preorder-conflict')).not.toHaveTextContent(
+      /nichts überschrieben/
+    )
     expect(screen.queryByRole('heading', { name: /bearbeiten/ })).toBeNull()
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()

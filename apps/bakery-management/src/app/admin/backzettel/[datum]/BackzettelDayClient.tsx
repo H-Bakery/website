@@ -84,6 +84,8 @@ const STALE_CODES = new Set([
   'not_confirmed',
   'no_config',
   'ruhetag',
+  // W4-verify r4: ein anderes Gerät hat den Saisonfaktor inzwischen geändert
+  'season_changed',
 ])
 
 function isStaleError(error: unknown): boolean {
@@ -217,9 +219,19 @@ export default function BackzettelDayClient({
         line.itemId,
         line.variant,
         correction,
-        reason
+        reason,
+        // der Stand, auf dem der Editor geöffnet wurde (W4-verify r4)
+        { correction: line.correction, reason: line.correctionReason }
       )
     } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code
+      if (code === 'correction_changed') {
+        // Ein anderes Gerät hat gespeichert: den aktuellen Stand laden, der
+        // Editor bleibt mit der eigenen Eingabe offen und nennt den neuen
+        // Wert - erst ein zweites Speichern ersetzt ihn.
+        void load()
+        throw error
+      }
       if (!isStaleError(error)) throw error
       setEditingKey(null)
       setActionError(
@@ -244,10 +256,22 @@ export default function BackzettelDayClient({
       return
     }
     setSeasonError(null)
-    const updated = await run(
-      () => setSeasonFactor(date, factor),
-      'Der Saisonfaktor konnte nicht gespeichert werden.'
-    )
+    const typed = seasonInput.trim()
+    const updated = await run(async () => {
+      try {
+        return await setSeasonFactor(date, factor, day?.seasonFactor)
+      } catch (error) {
+        const e = error as { code?: unknown; message?: unknown } | null
+        if (e && e.code === 'season_changed') {
+          // Die eigene Eingabe nennen - das Neuladen ersetzt das Feld.
+          throw Object.assign(
+            new Error(`${String(e.message)} (Deine Eingabe: ${typed}.)`),
+            { status: 409, code: 'season_changed' }
+          )
+        }
+        throw error
+      }
+    }, 'Der Saisonfaktor konnte nicht gespeichert werden.')
     if (updated) {
       applyDay(updated)
       setNotice('Saisonfaktor gespeichert.')

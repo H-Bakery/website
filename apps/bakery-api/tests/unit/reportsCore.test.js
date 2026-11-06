@@ -567,3 +567,25 @@ describe('reports-files.core', () => {
     expect(log.mock.calls[0][0]).toContain('2026-03-13_4711.json')
   })
 })
+
+describe('bottomProducts (W4-verify r4: Schwache Produkte)', () => {
+  it('orders by pieces sold, not by revenue, and drops net quantities <= 0', () => {
+    const products = [
+      { productName: 'Muster A', quantity: 111, revenue: 100 },
+      { productName: 'Muster B', quantity: 64, revenue: 300 },
+      { productName: 'Muster C', quantity: 104, revenue: 90 },
+      { productName: 'Muster D', quantity: 100, revenue: 120 },
+      { productName: 'Muster E', quantity: 0, revenue: 0 },
+      { productName: 'Muster F', quantity: -2, revenue: -5 },
+      { productName: 'Muster G', quantity: 64, revenue: 200 },
+    ]
+    expect(core.bottomProducts(products).map((p) => p.productName)).toEqual([
+      'Muster G',
+      'Muster B',
+      'Muster D',
+      'Muster C',
+      'Muster A',
+    ])
+    expect(products[0].productName).toBe('Muster A')
+  })
+})

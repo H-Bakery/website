@@ -325,7 +325,36 @@ export function preorderErrorCode(error: unknown): string | undefined {
   return typeof code === 'string' ? code : undefined
 }
 
-/** Deutsche Meldung eines Fehlers, sonst `fallback`. */
+/** Was der Browser bei abgerissener Verbindung meldet (Chrome, Firefox, Safari). */
+const NETWORK_FAILURE =
+  /^(Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|Network request failed|Request timeout)$/i
+const RAW_HTTP = /^HTTP \d{3}\b/
+
+/** Text, wenn der Server nicht erreicht wurde (wie Abholliste und Backstube). */
+export const PREORDER_OFFLINE_TEXT =
+  'Keine Verbindung zum Server – bitte WLAN prüfen.'
+
+/**
+ * Deutsche Meldung eines Fehlers, sonst `fallback`. Was der Browser oder ein
+ * Proxy meldet („Failed to fetch“, „Request timeout“, „HTTP 502: Bad
+ * Gateway“), gehört nicht in die Oberfläche (W4-Verifikation Runde 4): ohne
+ * Antwort des Servers heißt es „Keine Verbindung …“, bei einem rohen
+ * Serverfehler der `fallback` mit Statuscode.
+ */
 export function preorderErrorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  if (!(error instanceof Error) || !error.message) return fallback
+  const status = (error as { status?: unknown }).status
+  if (
+    (typeof status !== 'number' && NETWORK_FAILURE.test(error.message)) ||
+    (error.name === 'TypeError' && typeof status !== 'number') ||
+    status === 0
+  ) {
+    return PREORDER_OFFLINE_TEXT
+  }
+  if (typeof status === 'number' && RAW_HTTP.test(error.message)) {
+    return status >= 502 && status <= 504
+      ? PREORDER_OFFLINE_TEXT
+      : `${fallback} (Fehler ${status})`
+  }
+  return error.message
 }

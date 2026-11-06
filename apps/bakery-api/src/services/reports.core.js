@@ -554,6 +554,26 @@ function groupByPeriod(reports, granularity) {
   }))
 }
 
+/**
+ * „Schwache Produkte" (W4-verify r4): die wenigsten verkauften Stück zuerst,
+ * bei gleicher Menge der kleinere Umsatz, dann der Name - so, wie es die
+ * Analyse-Seite beschriftet („Nur X Stück verkauft"). Früher die Umsatz-
+ * Rangliste rückwärts; dann stand 104 Stück vor 100 und 92 fehlte ganz.
+ * Nur Produkte mit Nettomenge > 0 - eine Menge <= 0 ist ein Storno-Rest,
+ * kein Ladenhüter.
+ */
+function bottomProducts(products) {
+  return (Array.isArray(products) ? products : [])
+    .filter((p) => p && p.quantity > 0)
+    .slice()
+    .sort(
+      (a, b) =>
+        a.quantity - b.quantity ||
+        a.revenue - b.revenue ||
+        String(a.productName).localeCompare(String(b.productName), 'de')
+    )
+}
+
 module.exports = {
   TRANSACTION_TYPES,
   PAYMENT_LABELS,
@@ -581,4 +601,5 @@ module.exports = {
   aggregateRange,
   aggregateMonth,
   groupByPeriod,
+  bottomProducts,
 }

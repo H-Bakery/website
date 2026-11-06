@@ -142,10 +142,11 @@ export interface WeekdayStat {
   weekdayLabel: string
   dayCount: number
   openDayCount: number
-  avgDeliveredQty: number
-  avgSoldQty: number
-  avgReturnedQty: number
-  avgRevenue: number
+  /** `null`, wenn alle Tage dieses Wochentags noch offen sind. */
+  avgDeliveredQty: number | null
+  avgSoldQty: number | null
+  avgReturnedQty: number | null
+  avgRevenue: number | null
   sellThroughRate: number | null
 }
 

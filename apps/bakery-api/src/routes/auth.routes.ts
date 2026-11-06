@@ -8,7 +8,9 @@
  *   POST /login           { username | email, password }
  *                         -> { success, data: { user, token, refreshToken, expiresIn, sessionKind } }
  *   POST /refresh         { refreshToken } -> { success, data: { user, token, refreshToken, expiresIn, sessionKind } }
- *                         409 refresh_superseded: a parallel refresh won (< 10 s ago)
+ *                         409 refresh_superseded: a parallel refresh won (< 10 s ago);
+ *                         a predecessor whose successor was never presented (lost answer)
+ *                         is rotated again up to 15 min later (audit refresh_reissued)
  *   POST /pin             X-Station-Token, { userId, pin } -> as /login, sessionKind 'station'
  *   GET  /station/users   X-Station-Token -> { success, data: [{ id, displayName, role }] }
  *   POST /logout          Bearer access token and/or { refreshToken }
@@ -189,6 +191,17 @@ export function createPublicAuthRouter(
         }
         sendError(res, 401, 'unauthorized', SESSION_EXPIRED)
         return
+      }
+      if (result.reissued) {
+        // W4-verify r4: the client lost the answer of its last refresh.
+        await auditQuietly(
+          req,
+          'refresh_reissued',
+          'auth_session',
+          result.sessionId,
+          { ip: req.ip },
+          { userId: result.userId ?? null }
+        )
       }
       res.json({ success: true, data: result.issued })
     })

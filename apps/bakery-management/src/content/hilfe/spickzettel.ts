@@ -87,7 +87,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
           'Menü › **Abholliste**. Tag und **Abholort** prüfen.',
           'Name oder Code ins Suchfeld tippen.',
           '**Übergeben** tippen. Noch nicht bezahlt: kassieren, dann **Bezahlt und übergeben**.',
-          'Vertippt? **⋮** › **Übergabe zurücknehmen**.',
+          'Vertippt? **⋮** › **Übergabe zurücknehmen** – die Zahlung steht dann wieder wie vorher.',
           'Nachmittags die Liste für morgen **drucken** – falls morgen die Technik streikt.',
         ],
       },
@@ -164,7 +164,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         title: 'Drucken',
         steps: [
           'Unten **Planung & Druck**, dann **Drucken**.',
-          'Seite 1 Backzettel, Samstag Seite 2 Abwiegen und Füllungen, dann die Vorbereitung.',
+          'Zuerst der Backzettel (mit vielen Nachträgen auch zwei Blätter), samstags dann Abwiegen und Füllungen, zuletzt die Vorbereitung.',
           'Den Ausdruck des freigegebenen Zettels aufheben – er ist der Ersatz bei einem Ausfall.',
         ],
       },

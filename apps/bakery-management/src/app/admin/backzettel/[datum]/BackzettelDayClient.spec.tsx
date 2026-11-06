@@ -141,7 +141,8 @@ describe('Backzettel-Tagesplanung', () => {
         'test-zopf',
         'nuss',
         3,
-        'Testmarkt'
+        'Testmarkt',
+        expect.objectContaining({ correction: expect.any(Number) })
       )
     )
     await waitFor(() =>
@@ -177,8 +178,58 @@ describe('Backzettel-Tagesplanung', () => {
       'test-weck',
       null,
       0,
-      null
+      null,
+      expect.objectContaining({ correction: expect.any(Number) })
     )
+  })
+
+  it('Korrektur von einem anderen Gerät: nicht überschreiben, Editor behält die Eingabe (W4-verify r4)', async () => {
+    const message =
+      'Die Korrektur dieser Zeile wurde inzwischen auf +5 („Verein“) gesetzt von Test Bäcker. Deine Eingabe wurde nicht gespeichert - bitte prüfen und erneut speichern.'
+    mocked.setCorrection.mockRejectedValueOnce(
+      Object.assign(new Error(message), {
+        status: 409,
+        code: 'correction_changed',
+      })
+    )
+    renderDay()
+    await screen.findByTestId('section-broetchen')
+    expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(1)
+    fireEvent.click(
+      table('broetchen').getByRole('button', {
+        name: 'Korrektur Testweck bearbeiten',
+      })
+    )
+    const editor = within(
+      screen.getByTestId('table-correction-editor-test-weck|')
+    )
+    fireEvent.change(editor.getByLabelText('Korrektur'), {
+      target: { value: '2' },
+    })
+    fireEvent.change(editor.getByLabelText('Grund'), {
+      target: { value: 'Testkita' },
+    })
+    fireEvent.click(editor.getByRole('button', { name: 'Speichern' }))
+    expect(await editor.findByText(message)).toBeInTheDocument()
+    expect(mocked.setCorrection).toHaveBeenCalledWith(
+      SAT,
+      'test-weck',
+      null,
+      2,
+      'Testkita',
+      // der Stand, den der Editor beim Öffnen zeigte
+      { correction: -5, reason: 'Testgrund' }
+    )
+    // neu geladen, Eingabe steht noch da
+    await waitFor(() =>
+      expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+    )
+    expect(
+      screen.getByTestId('table-correction-editor-test-weck|')
+    ).toBeInTheDocument()
+    expect(editor.getByLabelText('Korrektur')).toHaveValue('2')
+    expect(editor.getByLabelText('Grund')).toHaveValue('Testkita')
+    expect(screen.queryByText('Korrektur gespeichert.')).not.toBeInTheDocument()
   })
 
   it('negative Korrektur: ±-Knopf (iOS-Ziffernblock ohne Minus) und U+2212', async () => {
@@ -211,7 +262,8 @@ describe('Backzettel-Tagesplanung', () => {
         'test-weck',
         null,
         -3,
-        'Testmarkt zu'
+        'Testmarkt zu',
+        expect.objectContaining({ correction: expect.any(Number) })
       )
     )
   })
@@ -245,7 +297,8 @@ describe('Backzettel-Tagesplanung', () => {
         'test-kornbrot',
         null,
         -0.5,
-        'Testgrund'
+        'Testgrund',
+        expect.objectContaining({ correction: expect.any(Number) })
       )
     )
   })
@@ -379,7 +432,11 @@ describe('Backzettel-Tagesplanung', () => {
     fireEvent.change(input, { target: { value: '1,2' } })
     fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }))
     await waitFor(() =>
-      expect(mocked.setSeasonFactor).toHaveBeenCalledWith(SAT, 1.2)
+      expect(mocked.setSeasonFactor).toHaveBeenCalledWith(
+        SAT,
+        1.2,
+        expect.any(Number)
+      )
     )
   })
 
@@ -610,6 +667,12 @@ describe('Backzettel-Tagesplanung', () => {
         if (i > 0) expect(t.classList.contains('follow')).toBe(true)
         expect(t.querySelectorAll('colgroup col')).toHaveLength(8)
       })
+      // Die Überschrift der Nachträge steht im Tabellenkopf und wiederholt
+      // sich beim Seitenumbruch (W4-verify r4).
+      const deltaHead = sheet.querySelector(
+        '[data-testid="print-deltas"] thead'
+      )
+      expect(deltaHead).toHaveTextContent('Nachträge seit der Freigabe')
       expect(p1).toHaveTextContent('(Liste unten)')
       expect(p1).not.toHaveTextContent('siehe unten')
       expect(p1).toHaveTextContent(/bereits 50 erledigt - noch \+\d+/)

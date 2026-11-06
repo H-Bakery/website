@@ -16,6 +16,7 @@ import {
   POINT,
   preorder,
 } from '../../../../lib/testing/preorderFixtures'
+import { WithSession, fakeSession } from '../../../../lib/testing/fakeSession'
 
 jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
@@ -65,6 +66,42 @@ afterEach(() => {
   jest.useRealTimers()
 })
 
+/** `sessionStorage` als echter Speicher (Entwurf, W4-verify r4). */
+function memorySessionStorage(): Map<string, string> {
+  const data = new Map<string, string>()
+  const store = window.sessionStorage as unknown as Record<string, jest.Mock>
+  store.getItem.mockImplementation((key: string) =>
+    data.has(key) ? data.get(key) : null
+  )
+  store.setItem.mockImplementation((key: string, value: string) => {
+    data.set(key, String(value))
+  })
+  store.removeItem.mockImplementation((key: string) => {
+    data.delete(key)
+  })
+  return data
+}
+
+async function readyAs(userId: number) {
+  const view = renderWithTheme(
+    <WithSession
+      value={fakeSession({
+        user: {
+          id: userId,
+          username: 'test.verkauf',
+          displayName: 'Test Verkauf',
+          role: 'verkauf',
+        },
+      })}
+    >
+      <PreorderEntryClient />
+    </WithSession>
+  )
+  const name = await screen.findByLabelText(/^Name/)
+  await waitFor(() => expect(name).toHaveFocus())
+  return view
+}
+
 async function ready() {
   renderWithTheme(<PreorderEntryClient />)
   const name = await screen.findByLabelText(/^Name/)
@@ -104,6 +141,7 @@ describe('PreorderEntryClient (P1)', () => {
       items: [{ productId: 'kornbrot-500g', variant: '', quantity: 3 }],
       paid: false,
       note: null,
+      requestId: expect.any(String),
     })
 
     expect(await screen.findByTestId('preorder-saved')).toHaveTextContent(
@@ -234,6 +272,7 @@ describe('PreorderEntryClient (P1)', () => {
     const user = userEvent.setup()
     mockCreate.mockRejectedValue(
       Object.assign(new Error('„Mustersemmel“ gibt es nicht in Sorten.'), {
+        status: 400,
         code: 'invalid_variant',
       })
     )
@@ -282,5 +321,79 @@ describe('PreorderEntryClient (P1)', () => {
     expect(mockCreate.mock.calls[0][0]).toMatchObject({
       pickupDate: '2026-11-07',
     })
+  })
+})
+
+describe('Entwurf und Wiederholen (W4-verify r4)', () => {
+  let stored: Map<string, string>
+  beforeEach(() => {
+    stored = memorySessionStorage()
+  })
+
+  it('eine halb erfasste Bestellung überlebt Abmelden und Neuladen - nur für denselben Benutzer', async () => {
+    const user = userEvent.setup()
+    const first = await readyAs(7)
+    await user.keyboard('Erika Beispiel{Enter}0170 1234567{Enter}')
+    await user.keyboard('korn{Enter}3{Enter}')
+    await waitFor(() =>
+      expect(stored.get('bakery-management-preorder-draft')).toContain(
+        'kornbrot-500g'
+      )
+    )
+    first.unmount()
+
+    // ein anderer Benutzer an derselben Station sieht nichts davon
+    const other = await readyAs(8)
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('')
+    expect(screen.queryByTestId('preorder-draft-restored')).toBeNull()
+    other.unmount()
+    expect(stored.get('bakery-management-preorder-draft')).toContain(
+      'Erika Beispiel'
+    )
+
+    await readyAs(7)
+    expect(
+      await screen.findByTestId('preorder-draft-restored')
+    ).toHaveTextContent('Nicht gespeicherte Eingaben von 10:00 Uhr')
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('Erika Beispiel')
+    const lines = screen.getByRole('list', { name: 'Positionen' })
+    expect(within(lines).getByText('Kornbrot 500g')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Verwerfen' }))
+    expect(screen.getByLabelText(/^Name/)).toHaveValue('')
+    expect(screen.queryByTestId('preorder-draft-restored')).toBeNull()
+    expect(stored.has('bakery-management-preorder-draft')).toBe(false)
+  })
+
+  it('verlorene Antwort: deutsche Meldung, nochmal Speichern schickt dieselbe Kennung', async () => {
+    const user = userEvent.setup()
+    mockCreate
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(
+        preorder({ code: 'LA-2026-11-13-04', customerName: 'Erika' })
+      )
+    await readyAs(7)
+    await user.keyboard('Erika{Enter}{Enter}korn{Enter}{Enter}')
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    const message = await screen.findByText(
+      /Keine Verbindung zum Server – bitte WLAN prüfen\. Ob die Bestellung schon angekommen ist, ist unklar/
+    )
+    expect(message).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).toBeNull()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    expect(await screen.findByTestId('preorder-saved')).toBeInTheDocument()
+    expect(mockCreate).toHaveBeenCalledTimes(2)
+    const [firstCall, secondCall] = mockCreate.mock.calls.map(
+      (c) => c[0].requestId
+    )
+    expect(firstCall).toEqual(expect.any(String))
+    expect(secondCall).toBe(firstCall)
+    // gespeichert: der Entwurf ist weg
+    expect(stored.has('bakery-management-preorder-draft')).toBe(false)
   })
 })

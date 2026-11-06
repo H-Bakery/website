@@ -242,7 +242,9 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   Bidi-Zeichen in Stammdaten, `staffName` und Notiz sind 400 `INVALID_TEXT` - Regel einmal in
   `src/services/control-chars.core.js`, auch für Vorbestellungen, Sammelstellen, Stationsnamen,
   Backzettel-Gründe, hq-Produkte und Anzeigenamen; seit W4-Verifikation Runde 3 zählen auch BOM und
-  U+2028/U+2029) (die Erfassungsmaske schickt
+  U+2028/U+2029, seit Runde 4 auch U+061C und unsichtbare Format-/Füllzeichen wie weiches
+  Trennzeichen, Null-Breiten-Leerzeichen, Hangul-Füller und Tag-Zeichen - ZWJ bleibt für Emoji
+  erlaubt) (die Erfassungsmaske schickt
   `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
   `commission`; seit der W4-Verifikation prüft die Vorlage ihre Positionen wie ein Besuch (Menge
   ganzzahlig 0…10000, Produkt im Katalog oder schon in der Vorlage, sonst 400 `INVALID_ITEMS`),
@@ -575,7 +577,11 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
   `variantsForProduct` sagt, welche Varianten ein Produkt annimmt (für B7).
   Schema-Prüfung: `backzettel-config.core.js` (`validateBackzettelConfig`, `normalizeConfig`),
   Rezepte: `backzettel-recipes.core.js`, Datei-Lesen (js-yaml): `backzettel-config.loader.js`.
-- **Viertel erst summieren, dann aufrunden** - je Zeile (Posten × Variante). Aufgerundet wird mit
+- **Viertel erst summieren, dann aufrunden** - je Zeile (Posten × Variante), und zwar über alle
+  Quellen: Basis × Saison + Vorbestellt + CAP (W4-verify r4; 2 + 0,75 + 0,25 = 3, nicht 2 + 1 + 1).
+  Haben mehrere Quellen Bruchteile, stehen Saison/Vorbestellt/CAP genau da (`quartersPooled`), damit
+  sich die Spalten zur Summe vor dem Aufrunden addieren; der Schnappschuss hält `subtotalExact` für
+  die Nachträge fest. Aufgerundet wird mit
   Toleranz (`roundUp`), sonst wird aus 10 × 1,1 = 11,000…02 eine 12. Stück/Blech ganzzahlig,
   Liter/kg auf 0,01 (Haferbrot 1,24 l).
 - **Teigstücke und Füllungsgramm kommen aus der YAML**, nicht aus Code. Der gefüllte Kranz
@@ -897,7 +903,9 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
   wird an `/refresh` (anders als beim Mock) nicht angenommen. Wer ein bereits rotiertes Token
   erneut schickt, beendet die ganze Sitzung - außer innerhalb von 10 s nach der Rotation, solange
   das Nachfolge-Token unbenutzt ist: dann 409 `refresh_superseded` (zweiter Tab, wiederholter
-  Request), die Sitzung bleibt. Für F1: der `AuthProvider` schickt heute alle 5 min einen leeren
+  Request), die Sitzung bleibt. Bis 15 min danach, solange das Nachfolge-Token nie vorgezeigt
+  wurde, gilt die Antwort als verloren (WLAN-Aussetzer) und es wird noch einmal rotiert
+  (`refresh_reissued`, W4-verify r4). Für F1: der `AuthProvider` schickt heute alle 5 min einen leeren
   Refresh-Token und würde gegen die echte API abgemeldet; Refreshes über Tabs hinweg
   serialisieren und bei 409 das neue Token aus dem Speicher nehmen.
 - **Logout ist öffentlich** und nimmt das Access-Token (Bearer) _oder_ `{ refreshToken }` - ein

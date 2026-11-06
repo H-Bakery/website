@@ -9,7 +9,9 @@
  * - Refresh token: 32 random bytes (`rt_…`), only its SHA-256 is stored in
  *   `refresh_tokens`. Rotated on every refresh; presenting a rotated token
  *   again revokes its whole session (reuse = theft) - except within 10 s of
- *   the rotation while the successor is unused (parallel refresh, 409).
+ *   the rotation while the successor is unused (parallel refresh, 409), and
+ *   up to 15 min after it while the successor was never presented (the
+ *   client lost the answer: rotated again, W4-verify r4).
  *   14 days, sliding.
  * - Station session: PIN at a registered station, ends hard 12 hours after the
  *   PIN; neither refresh nor access token outlives that.
@@ -43,6 +45,15 @@ export const MIN_JWT_SECRET_LENGTH = 32
  * a 409 and the session survives.
  */
 export const REFRESH_REUSE_GRACE_MS = 10 * 1000
+/**
+ * W4-verify r4: a token rotated longer ago than the grace window, whose
+ * successor has still never been presented, belongs to a client that lost
+ * the refresh answer (Wi-Fi drop in the shop) - nobody else ever had the
+ * successor. Up to this long after the rotation it is rotated once more (the
+ * unused successor is revoked) instead of ending the session as theft. A
+ * successor that was used, or a later presentation, is still reuse.
+ */
+export const REFRESH_LOST_RESPONSE_MS = 15 * 60 * 1000
 
 export const REFRESH_TOKEN_PREFIX = 'rt_'
 export const STATION_TOKEN_PREFIX = 'st_'
@@ -330,7 +341,14 @@ export function createAuthService(options: AuthServiceOptions = {}) {
     raw: unknown,
     userAgent: string | null
   ): Promise<
-    | { ok: true; issued: IssuedSession; userId: number; sessionId: number }
+    | {
+        ok: true
+        issued: IssuedSession
+        userId: number
+        sessionId: number
+        /** Rotated again from a predecessor whose answer was lost. */
+        reissued?: boolean
+      }
     | {
         ok: false
         reuse: boolean
@@ -346,29 +364,30 @@ export function createAuthService(options: AuthServiceOptions = {}) {
     const tokenHash = authCrypto.hashToken(raw) as string
     return getSequelize().transaction(async (transaction) => {
       const nowMs = now()
-      const row = await RefreshToken.findOne({
+      const presented = await RefreshToken.findOne({
         where: { tokenHash },
         transaction,
       })
-      if (!row || !row.sessionId) return { ok: false as const, reuse: false }
+      if (!presented || !presented.sessionId) {
+        return { ok: false as const, reuse: false }
+      }
+      let row = presented
+      let reissued = false
       const session = await AuthSession.findByPk(row.sessionId, {
         transaction,
       })
       if (!session) return { ok: false as const, reuse: false }
 
-      if (row.revokedAt) {
-        // Rotated moments ago and the new token not used yet: a parallel
-        // refresh of the same client, not a stolen copy. Refuse without
-        // ending the session; the client picks up the winner's token.
-        if (row.replacedBy && !session.revokedAt) {
-          const successor = await RefreshToken.findByPk(row.replacedBy, {
-            transaction,
-          })
-          if (
-            successor &&
-            !successor.revokedAt &&
-            nowMs - row.revokedAt.getTime() < REFRESH_REUSE_GRACE_MS
-          ) {
+      if (row.revokedAt && row.replacedBy && !session.revokedAt) {
+        const successor = await RefreshToken.findByPk(row.replacedBy, {
+          transaction,
+        })
+        const sinceRotation = nowMs - row.revokedAt.getTime()
+        if (successor && !successor.revokedAt) {
+          // Rotated moments ago and the new token not used yet: a parallel
+          // refresh of the same client, not a stolen copy. Refuse without
+          // ending the session; the client picks up the winner's token.
+          if (sinceRotation < REFRESH_REUSE_GRACE_MS) {
             return {
               ok: false as const,
               reuse: false,
@@ -377,7 +396,16 @@ export function createAuthService(options: AuthServiceOptions = {}) {
               sessionId: session.id,
             }
           }
+          // The successor was never presented: the client lost the answer
+          // (W4-verify r4). Rotate the unused successor instead.
+          if (sinceRotation < REFRESH_LOST_RESPONSE_MS) {
+            row = successor
+            reissued = true
+          }
         }
+      }
+
+      if (row.revokedAt) {
         // A rotated token came back: someone holds a copy. End the chain.
         const wasOpen = !session.revokedAt
         await revokeSession(session, 'reuse', transaction)
@@ -419,6 +447,7 @@ export function createAuthService(options: AuthServiceOptions = {}) {
         ok: true as const,
         userId: user.id,
         sessionId: session.id,
+        ...(reissued ? { reissued: true } : {}),
         issued: {
           user: publicUser(user, session.kind),
           token: access.token,

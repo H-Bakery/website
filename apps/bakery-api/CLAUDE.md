@@ -214,7 +214,12 @@ What to know before changing it:
   (`revoke_reason = 'reuse'`, audited as `refresh_reuse`) - **except** within
   `REFRESH_REUSE_GRACE_MS` (10 s) of the rotation while the successor is unused: that is a
   parallel refresh (two tabs, a retry) and gets 409 `refresh_superseded` without ending the
-  session. A thief who wins such a race is caught on the client's next refresh. Personal sessions slide to 14 days on
+  session. A thief who wins such a race is caught on the client's next refresh. **Lost answer
+  (W4-verify r4):** later than that, but within `REFRESH_LOST_RESPONSE_MS` (15 min) and while the
+  successor has still never been presented, the predecessor is rotated once more (the unused
+  successor is revoked, audit `refresh_reissued`) - the client never got the successor (Wi-Fi
+  drop mid-refresh) and used to be logged out mid-shift. Trade-off: a stolen predecessor replayed
+  in that window is no longer caught at once, only when the chain is presented twice. Personal sessions slide to 14 days on
   each refresh; **station sessions end 12 h after the PIN** - neither refresh nor access token
   outlives that (`expiresIn` shrinks towards the end). Unlike the mock, a bare access token is
   **not** accepted at `/refresh`: the client must keep the refresh token (F1).
@@ -667,6 +672,13 @@ status, bulk and the Mörsbach alias; W4-verify r3),
 404 `not_found`, 409 `already_picked_up` / `cancelled` / `anonymized` / `has_variants` /
 `stale_preorder` / `not_collected_too_early`.
 
+- **Undoing a handover restores the payment (W4-verify r4).** A status change _into_ `abgeholt`
+  writes `payment: { before, after }` (paid + paidAmount) into its `audit_log` row. Leaving
+  `abgeholt` again (menu „Übergabe zurücknehmen", toast „Rückgängig", bulk) puts `before` back -
+  „Bezahlt und übergeben" on an unpaid order is unpaid again, a part payment keeps its amount -
+  unless the payment changed since the handover or the request asks for a different `paid`.
+  The Mörsbach alias keeps the payment (mock contract, `keepPaymentOnUndo`).
+
 - **Bulk status (W4).** `POST /bulk-status` changes many preorders in **one** serialised write
   transaction (Abholliste: „alle bereit", Tagesabschluss „nicht abgeholt"). Body: `ids` (1-200
   positive integers or canonical digit strings like `"7"`, duplicates merged; else 400
@@ -849,6 +861,24 @@ preorder snapshot, delta reconciliation, frozen lines. Master data: `backzettel-
 | `POST /:date/deltas/:id/ack`                     | inhaber, backstube | → `{ id, …, acknowledgedAt, acknowledgedBy }`, idempotent                                    |
 
 A correction `reason` or reopen `reason` with control characters is 400 `INVALID_TEXT` (W4-verify r3).
+
+**Two devices at once (W4-verify r4).** Every write that a stale screen could make wrong carries
+the value that screen showed, and the server refuses instead of overwriting:
+
+- `PUT …/season` takes `expectedFactor`, `PUT …/correction` takes `expected: { correction, reason }`
+  (what the editor opened on). A different stored value is 409 `season_changed` /
+  `correction_changed` with `current` (`{ correction, reason, by }`) and a German message naming
+  the value and who set it; a save identical to the stored value is a no-op, not a conflict.
+- `POST …/lines/:lineId/done` takes `{ expectedTotal }`: if the line now asks for **more** (owner
+  re-confirmed with a correction), 409 `line_changed` with `total`/`expectedTotal`; fewer is fine
+  (same rule as `tickStillValid`). The `line_done` audit row stores `total`.
+- `POST /:date/deltas/ack` with `{ ids: [...] }` (1-500) acknowledges several Nachträge in one
+  transaction, all or nothing - 404 `not_found` if one is gone (re-confirmed). The tablet groups
+  open Nachträge per line (one „Gesehen“ per line plus „Alle gesehen“).
+- The fields are optional (older clients, scripts); the management app always sends them. A
+  404 `not_found` on a tick or ack means the day was re-confirmed - the tablet reloads.
+- Quarters are pooled across all sources of a line before rounding up (base × season +
+  preorders + CAP); see `quartersPooled` / `subtotalExact` in `backzettel.core.js`.
 
 Day: `{ date, weekday, weekdayName, status: draft|confirmed, seasonFactor, confirmedBy {id,
 displayName} | null, confirmedAt, sections[{ id, label, lines[] }], hefeteig, fillings, prep,

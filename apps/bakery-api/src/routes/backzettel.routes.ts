@@ -14,8 +14,14 @@
  *   PUT  /:date/lines/:itemId/:variant/correction   same, for one variant
  *   POST /:date/confirm                           inhaber, backstube: freeze lines + preorder snapshot
  *   POST /:date/reopen                            inhaber: back to draft { reason? }
- *   POST /:date/lines/:lineId/done | /undone      inhaber, backstube: tick (confirmed only)
+ *   POST /:date/lines/:lineId/done | /undone      inhaber, backstube: tick (confirmed only);
+ *                                                 done takes { expectedTotal } → 409 line_changed if more is due now
  *   POST /:date/deltas/:id/ack                    inhaber, backstube: mark a delta as seen
+ *   POST /:date/deltas/ack                        same for { ids: [...] } at once (all or nothing)
+ *
+ * Season and correction PUTs take the value the editor started from
+ * (`expectedFactor`, `expected: { correction, reason }`); a different stored
+ * value is 409 `season_changed` / `correction_changed` (W4-verify r4).
  *
  * Missing or invalid master data: GET answers `status: 'no-config'` with
  * `reasons` (a confirmed day stays readable, with `configStatus: 'no-config'`);
@@ -186,7 +192,13 @@ export function createBackzettel(options: BackzettelRouterOptions = {}): {
     '/:date/lines/:lineId/done',
     planners,
     handle(async (req) =>
-      service.setDone(req.params['date'], req.params['lineId'], true, req)
+      service.setDone(
+        req.params['date'],
+        req.params['lineId'],
+        true,
+        req,
+        req.body
+      )
     )
   )
 
@@ -195,6 +207,14 @@ export function createBackzettel(options: BackzettelRouterOptions = {}): {
     planners,
     handle(async (req) =>
       service.setDone(req.params['date'], req.params['lineId'], false, req)
+    )
+  )
+
+  router.post(
+    '/:date/deltas/ack',
+    planners,
+    handle(async (req) =>
+      service.acknowledgeDeltas(req.params['date'], req.body, req)
     )
   )
 

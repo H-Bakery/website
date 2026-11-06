@@ -24,12 +24,15 @@ import { useOptionalSession } from '../../../../../lib/session'
 import {
   STALE_PICKUP_POINT,
   fetchPickupPoints,
+  listPreorders,
   preorderErrorCode,
   preorderErrorMessage,
   savePickupPoint,
 } from '../../../../../lib/preordersApi'
+import { toBusinessDate } from '../../../../../lib/partnerTypes'
 import {
   PICKUP_POINT_MAX_LENGTH,
+  formatShortDate,
   type PickupPointInput,
 } from '../../../../../lib/preordersTypes'
 import {
@@ -91,6 +94,11 @@ export default function PickupPointFormClient({
   const [staleSave, setStaleSave] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  /** Deaktiviert, aber noch offene Bestellungen (W4-verify r4). */
+  const [openAfterDeactivate, setOpenAfterDeactivate] = useState<{
+    count: number
+    dates: string[]
+  } | null>(null)
 
   const point = useMemo(
     () => points.find((p) => p.id === pointId) ?? null,
@@ -179,6 +187,26 @@ export default function PickupPointFormClient({
       )
       apply(updated)
       setSaved(true)
+      setOpenAfterDeactivate(null)
+      if (point?.active !== false && updated.active === false) {
+        // Schon gebuchte Bestellungen bleiben bestehen und in der Abholliste
+        // ihres Tages wählbar - aber das muss jemand wissen (W4-verify r4).
+        listPreorders({
+          from: toBusinessDate(new Date()),
+          pickupPointId: updated.id,
+          status: ['offen', 'bereit'],
+        })
+          .then((open) => {
+            if (open.length === 0) return
+            const dates = Array.from(
+              new Set(open.map((p) => p.pickupDate))
+            ).sort()
+            setOpenAfterDeactivate({ count: open.length, dates })
+          })
+          .catch(() => {
+            setOpenAfterDeactivate({ count: -1, dates: [] })
+          })
+      }
       router.refresh()
     } catch (err) {
       setStaleSave(preorderErrorCode(err) === STALE_PICKUP_POINT)
@@ -259,6 +287,29 @@ export default function PickupPointFormClient({
           onClose={() => setSaved(false)}
         >
           Die Sammelstelle wurde gespeichert.
+        </Alert>
+      )}
+      {openAfterDeactivate && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          data-testid="pickup-point-open-after-deactivate"
+          onClose={() => setOpenAfterDeactivate(null)}
+        >
+          {openAfterDeactivate.count > 0
+            ? `Die Sammelstelle ist jetzt inaktiv, hat aber noch ${
+                openAfterDeactivate.count
+              } offene ${
+                openAfterDeactivate.count === 1
+                  ? 'Vorbestellung'
+                  : 'Vorbestellungen'
+              } (${openAfterDeactivate.dates
+                .map(formatShortDate)
+                .join(', ')}). `
+            : 'Die Sammelstelle ist jetzt inaktiv. Ob dort noch Vorbestellungen offen sind, ließ sich nicht prüfen. '}
+          Gebuchte Bestellungen bleiben bestehen und stehen in der Abholliste
+          ihres Tages unter „{name.trim() || point?.name} (inaktiv)“ - bitte die
+          Kundschaft benachrichtigen oder die Bestellungen umbuchen.
         </Alert>
       )}
       {!canEdit && point && (

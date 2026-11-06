@@ -17,7 +17,13 @@ import { Op, QueryTypes, Transaction, WhereOptions } from 'sequelize'
 import type { Request } from 'express'
 
 import { audit } from '../auth/audit'
-import { getSequelize, PickupPoint, Preorder, PreorderItem } from '../models'
+import {
+  AuditLog,
+  getSequelize,
+  PickupPoint,
+  Preorder,
+  PreorderItem,
+} from '../models'
 import { catalogueFor, defaultProductsDir } from './hq-catalogue'
 import {
   createVariantsHook,
@@ -74,6 +80,9 @@ function failure<T>(
 }
 
 /** Plain record as the core sees it. */
+/** Client id of one save (`requestId`), e.g. a UUID. */
+const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/
+
 export interface PreorderRecord {
   id: number
   code: string
@@ -324,6 +333,34 @@ function auditData(
   }
 }
 
+/**
+ * Sammelstellen eines Tages: die, die an diesem Wochentag aktiv beliefert
+ * werden, plus jede Stelle, die an dem Tag noch Bestellungen hat - auch wenn
+ * sie inzwischen deaktiviert ist oder den Wochentag gewechselt hat
+ * (W4-verify r4). Sonst verschwänden schon gebuchte Bestellungen aus der
+ * Abholliste.
+ */
+function dayPickupPoints(
+  points: Map<string, PickupPointDto>,
+  records: readonly PreorderRecord[],
+  date: string
+): PickupPointDto[] {
+  const served: PickupPointDto[] = core.pickupPointsForDate(
+    [...points.values()],
+    date
+  )
+  const ids = new Set(served.map((p) => p.id))
+  const booked = new Set(
+    records
+      .filter((r) => r.pickupPointId && r.status !== 'storniert')
+      .map((r) => r.pickupPointId as string)
+  )
+  const extra = [...points.values()].filter(
+    (p) => booked.has(p.id) && !ids.has(p.id)
+  )
+  return [...served, ...extra]
+}
+
 function singleString(value: unknown): string | undefined | null {
   if (value === undefined) return undefined
   if (typeof value !== 'string') return null
@@ -417,6 +454,11 @@ export interface StatusChangeOptions {
   action?: string
   guard?: (current: PreorderRecord) => Result<never> | null
   mapBody?: (current: PreorderRecord) => unknown
+  /**
+   * Mörsbach alias (D3): leaving „abgeholt" keeps the payment, as the mock
+   * does. `/api/preorders` restores the payment from before the handover.
+   */
+  keepPaymentOnUndo?: boolean
 }
 
 /** Codes that mean "the copy the client loaded is out of date". */
@@ -781,15 +823,15 @@ export class PreordersService {
         pickupPointId: place ?? null,
         summary: core.summarizeDay(records),
         sums: core.sumByProductVariant(records),
-        pickupPoints: core
-          .pickupPointsForDate([...points.values()], date)
-          .map((p: PickupPointDto) => ({
+        pickupPoints: dayPickupPoints(points, all, date).map(
+          (p: PickupPointDto) => ({
             ...p,
             deadline: core.deadlineFor(date, p.orderDeadline),
             preorderCount: all.filter(
               (r) => r.pickupPointId === p.id && r.status !== 'storniert'
             ).length,
-          })),
+          })
+        ),
         preorders: records.map((r) =>
           toDto(
             r,
@@ -867,7 +909,46 @@ export class PreordersService {
       strictPickup?: boolean
     } = {}
   ): Promise<Result<PreorderRecord>> {
+    // W4-verify r4: the entry form's id for this save, kept across retries.
+    const rawRequestId =
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['requestId']
+        : undefined
+    if (
+      rawRequestId !== undefined &&
+      rawRequestId !== null &&
+      (typeof rawRequestId !== 'string' || !REQUEST_ID.test(rawRequestId))
+    ) {
+      return failure<PreorderRecord>(
+        400,
+        'invalid_request_id',
+        'requestId muss 8 bis 64 Zeichen aus Buchstaben, Ziffern, „-“ und „_“ sein.'
+      )
+    }
+    const requestId = typeof rawRequestId === 'string' ? rawRequestId : null
     return getSequelize().transaction(async (transaction) => {
+      if (requestId) {
+        // Same save again (its answer was lost): the order it created, not
+        // a second one with a second code.
+        const earlier = await Preorder.findOne({
+          where: { requestId },
+          transaction,
+        })
+        if (earlier) {
+          if (earlier.createdBy !== (req?.user?.id ?? null)) {
+            return failure<PreorderRecord>(
+              409,
+              'request_id_conflict',
+              'Diese Anfrage-ID gehört zu einer anderen Vorbestellung.'
+            )
+          }
+          const record = (await this.findRecord(
+            earlier.id,
+            transaction
+          )) as PreorderRecord
+          return { ok: true as const, status: 200, data: record }
+        }
+      }
       const points = await this.pickupPoints(transaction)
       const result = core.normalizeOrderInput(
         body,
@@ -912,6 +993,7 @@ export class PreordersService {
             : null,
           createdBy: userId,
           updatedBy: userId,
+          requestId,
         },
         { transaction }
       )
@@ -1113,13 +1195,33 @@ export class PreordersService {
       input && typeof input === 'object'
         ? (input as Record<string, unknown>)['paid']
         : undefined
-    const paidAfter =
+    let paidAfter =
       changes['paid'] !== undefined ? !!changes['paid'] : current.paid
-    const paidAmount = !paidAfter
+    let paidAmount = !paidAfter
       ? null
       : explicitPaid === true || !current.paid
       ? current.total
       : current.paidAmount
+    // Übergabe zurücknehmen (W4-verify r4): die Zahlung von vor der Übergabe
+    // kommt zurück - sonst stünde „Bezahlt und übergeben“ als kassiert da,
+    // obwohl das Geld nie genommen wurde, und die nächste Übergabe fragte
+    // nicht mehr danach. Nur wenn seit der Übergabe niemand die Zahlung
+    // geändert hat und der Request keine andere Zahlung verlangt.
+    const leavesHandover =
+      current.status === 'abgeholt' && changes['status'] !== 'abgeholt'
+    if (leavesHandover && !options.keepPaymentOnUndo) {
+      const before = await this.paymentBeforeHandover(current, transaction)
+      if (
+        before &&
+        (explicitPaid === undefined || explicitPaid === before.paid)
+      ) {
+        changes['paid'] = before.paid
+        paidAfter = before.paid
+        paidAmount = before.paid ? before.paidAmount : null
+      }
+    }
+    const handover =
+      current.status !== 'abgeholt' && changes['status'] === 'abgeholt'
     const changed = changedFields(current, {
       ...current,
       ...changes,
@@ -1157,6 +1259,14 @@ export class PreordersService {
       auditData(record, {
         changed,
         from: current.status,
+        ...(handover
+          ? {
+              payment: {
+                before: { paid: current.paid, paidAmount: current.paidAmount },
+                after: { paid: record.paid, paidAmount: record.paidAmount },
+              },
+            }
+          : {}),
         ...(options.auditExtra ?? {}),
       }),
       { transaction }
@@ -1167,6 +1277,55 @@ export class PreordersService {
       data: record,
       changed: changed.includes('status'),
     }
+  }
+
+  /**
+   * Zahlung vor der letzten Übergabe, aus deren Audit-Zeile (`payment`).
+   * `null`, wenn es keine solche Zeile gibt oder die Zahlung seither
+   * geändert wurde (dann gilt, was jetzt gespeichert ist).
+   */
+  private async paymentBeforeHandover(
+    current: PreorderRecord,
+    transaction: Transaction
+  ): Promise<{ paid: boolean; paidAmount: number | null } | null> {
+    const rows = await AuditLog.findAll({
+      where: { entity: 'preorder', entityId: String(current.id) },
+      order: [['id', 'DESC']],
+      limit: 20,
+      transaction,
+    })
+    for (const row of rows) {
+      const data = (
+        typeof row.data === 'string' ? JSON.parse(row.data) : row.data
+      ) as Record<string, unknown> | null
+      const payment = data?.['payment'] as
+        | {
+            before?: { paid?: unknown; paidAmount?: unknown }
+            after?: { paid?: unknown; paidAmount?: unknown }
+          }
+        | undefined
+      if (!payment || !payment.before || !payment.after) continue
+      const amount = (v: unknown) =>
+        v === null || v === undefined || v === '' ? null : Number(v)
+      const after = {
+        paid: !!payment.after.paid,
+        paidAmount: payment.after.paid
+          ? amount(payment.after.paidAmount)
+          : null,
+      }
+      if (
+        after.paid !== current.paid ||
+        (after.paid && after.paidAmount !== current.paidAmount)
+      ) {
+        return null
+      }
+      const paid = !!payment.before.paid
+      return {
+        paid,
+        paidAmount: paid ? amount(payment.before.paidAmount) : null,
+      }
+    }
+    return null
   }
 
   /**

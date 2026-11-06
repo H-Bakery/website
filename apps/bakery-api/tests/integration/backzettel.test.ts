@@ -1060,6 +1060,186 @@ describe('what Nachträge mean for oven, dough and filling (W4-verify)', () => {
   })
 })
 
+describe('two devices at once (W4-verify r4)', () => {
+  const TUE3 = '2026-12-08'
+  const WED3 = '2026-12-09'
+  const SAT4 = '2026-12-19'
+
+  it('a tick from a stale view does not mark a larger total as baked', async () => {
+    const first = await as('inhaber').post(`/api/backzettel/${TUE3}/confirm`)
+    expect(first.status).toBe(200)
+    const weck = line(first.body.data, 'weck')
+    const shown = weck.total
+    // owner reopens, adds 6, confirms again - the tablet still shows `shown`
+    await as('inhaber').post(`/api/backzettel/${TUE3}/reopen`)
+    await as('inhaber')
+      .put(`/api/backzettel/${TUE3}/lines/weck/correction`)
+      .send({ correction: 6, reason: 'Verein bestellt 6 mehr' })
+    const again = await as('inhaber').post(`/api/backzettel/${TUE3}/confirm`)
+    expect(line(again.body.data, 'weck').total).toBe(shown + 6)
+
+    const stale = await as('backstube')
+      .post(`/api/backzettel/${TUE3}/lines/${weck.id}/done`)
+      .send({ expectedTotal: shown })
+    expect(stale.status).toBe(409)
+    expect(stale.body).toMatchObject({
+      error: 'line_changed',
+      total: shown + 6,
+      expectedTotal: shown,
+    })
+    expect(stale.body.message).toContain(`jetzt ${shown + 6} statt ${shown}`)
+    expect((await BackzettelLine.findByPk(weck.id))?.doneAt).toBeNull()
+
+    const fresh = await as('backstube')
+      .post(`/api/backzettel/${TUE3}/lines/${weck.id}/done`)
+      .send({ expectedTotal: shown + 6 })
+    expect(fresh.status).toBe(200)
+    const audit = await AuditLog.findOne({
+      where: { action: 'line_done', entityId: String(weck.id) },
+    })
+    expect(audit?.data).toMatchObject({ itemId: 'weck', total: shown + 6 })
+
+    const bad = await as('backstube')
+      .post(`/api/backzettel/${TUE3}/lines/${weck.id}/done`)
+      .send({ expectedTotal: 'viele' })
+    expect(bad.status).toBe(400)
+  })
+
+  it('a correction saved on another device is not overwritten silently', async () => {
+    const url = `/api/backzettel/${WED3}/lines/weck/correction`
+    const tablet = await as('backstube')
+      .put(url)
+      .send({
+        correction: 5,
+        reason: 'Verein holt 5 extra',
+        expected: { correction: 0, reason: null },
+      })
+    expect(tablet.status).toBe(200)
+
+    // the PC opened its editor on „–“ before the tablet saved
+    const pc = await as('inhaber')
+      .put(url)
+      .send({
+        correction: 2,
+        reason: 'Kita',
+        expected: { correction: 0, reason: null },
+      })
+    expect(pc.status).toBe(409)
+    expect(pc.body).toMatchObject({
+      success: false,
+      error: 'correction_changed',
+      current: {
+        correction: 5,
+        reason: 'Verein holt 5 extra',
+        by: { displayName: 'Test test.backstube' },
+      },
+    })
+    expect(pc.body.message).toMatch(/\+5 \(„Verein holt 5 extra“\)/)
+    expect(pc.body.message).toMatch(/nicht gespeichert/)
+    const day = (await as('inhaber').get(`/api/backzettel/${WED3}`)).body.data
+    expect(line(day, 'weck').correction).toBe(5)
+
+    // same input again is a no-op, not a conflict
+    const same = await as('inhaber')
+      .put(url)
+      .send({
+        correction: 5,
+        reason: 'Verein holt 5 extra',
+        expected: { correction: 0, reason: null },
+      })
+    expect(same.status).toBe(200)
+
+    // after reloading, the PC saves on top of the current value
+    const ok = await as('inhaber')
+      .put(url)
+      .send({
+        correction: 7,
+        reason: 'Verein + Kita',
+        expected: { correction: 5, reason: 'Verein holt 5 extra' },
+      })
+    expect(ok.status).toBe(200)
+    expect(line(ok.body.data, 'weck').correction).toBe(7)
+
+    // the season factor likewise
+    const s1 = await as('backstube')
+      .put(`/api/backzettel/${WED3}/season`)
+      .send({ factor: 1.2, expectedFactor: 1 })
+    expect(s1.status).toBe(200)
+    const s2 = await as('inhaber')
+      .put(`/api/backzettel/${WED3}/season`)
+      .send({ factor: 1.3, expectedFactor: 1 })
+    expect(s2.status).toBe(409)
+    expect(s2.body).toMatchObject({ error: 'season_changed', current: 1.2 })
+    expect(s2.body.message).toContain('1,2')
+    // clients without the field keep working
+    const legacy = await as('inhaber')
+      .put(`/api/backzettel/${WED3}/season`)
+      .send({ factor: 1.3 })
+    expect(legacy.status).toBe(200)
+  })
+
+  it('POST deltas/ack quittiert mehrere Nachträge auf einmal, alles oder nichts', async () => {
+    expect(
+      (await as('backstube').post(`/api/backzettel/${SAT4}/confirm`)).status
+    ).toBe(200)
+    await apiPreorder(SAT4, [{ productId: 'test-weck', quantity: 2 }])
+    await apiPreorder(SAT4, [{ productId: 'test-weck', quantity: 3 }])
+    await apiPreorder(SAT4, [{ productId: 'test-plunder', quantity: 1 }])
+    const deltas = await BackzettelDelta.findAll({
+      where: { date: SAT4 },
+      order: [['id', 'ASC']],
+    })
+    expect(deltas).toHaveLength(3)
+    const [a, b, c] = deltas.map((d) => d.id)
+
+    const missing = await as('backstube')
+      .post(`/api/backzettel/${SAT4}/deltas/ack`)
+      .send({ ids: [a, 999999] })
+    expect(missing.status).toBe(404)
+    expect(missing.body.message).toMatch(/neu freigegeben/)
+    expect(
+      await BackzettelDelta.count({
+        where: { date: SAT4, acknowledgedAt: null },
+      })
+    ).toBe(3)
+
+    const res = await as('backstube')
+      .post(`/api/backzettel/${SAT4}/deltas/ack`)
+      .send({ ids: [a, b] })
+    expect(res.status).toBe(200)
+    expect(res.body.data).toHaveLength(2)
+    expect(res.body.data[0]).toMatchObject({
+      acknowledgedBy: { displayName: 'Test test.backstube' },
+    })
+    const d = (await as('backstube').get(`/api/backzettel/${SAT4}`)).body.data
+    expect(
+      d.deltas.filter((x: any) => !x.acknowledgedAt).map((x: any) => x.id)
+    ).toEqual([c])
+
+    // idempotent
+    const again = await as('backstube')
+      .post(`/api/backzettel/${SAT4}/deltas/ack`)
+      .send({ ids: [a, b, c] })
+    expect(again.status).toBe(200)
+    expect(
+      await AuditLog.count({
+        where: { action: 'delta_ack', entityId: [a, b, c].map(String) },
+      })
+    ).toBe(3)
+
+    for (const body of [{}, { ids: [] }, { ids: ['x'] }, { ids: [0] }]) {
+      const bad = await as('backstube')
+        .post(`/api/backzettel/${SAT4}/deltas/ack`)
+        .send(body)
+      expect(bad.status).toBe(400)
+    }
+    const verkauf = await as('verkauf')
+      .post(`/api/backzettel/${SAT4}/deltas/ack`)
+      .send({ ids: [c] })
+    expect(verkauf.status).toBe(403)
+  })
+})
+
 describe('missing or invalid config', () => {
   afterEach(() => writeHq(hqDir))
 

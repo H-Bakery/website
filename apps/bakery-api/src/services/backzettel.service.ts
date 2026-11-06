@@ -73,12 +73,49 @@ export interface UserRef {
 
 type Loaded = LoadedBackzettelConfig
 
+const DELTA_GONE_MESSAGE =
+  'Dieser Nachtrag ist nicht mehr offen - der Backzettel wurde inzwischen neu freigegeben (oder wieder geöffnet) und rechnet ihn schon mit ein.'
+
+/** Höchstens so viele Nachträge in einem „Gesehen“ (Sammel-Quittung). */
+const MAX_ACK_IDS = 500
+
 const CONFIRMED_MESSAGE =
   'Der Backzettel ist schon freigegeben. Änderungen nur nach „Wieder öffnen“ durch den Inhaber.'
 
 function toNumber(x: unknown): number {
   const n = Number(x)
   return Number.isFinite(n) ? n : 0
+}
+
+/** Deutsche Zahl für Meldungen: 1.5 -> „1,5“, Vorzeichen mit „+“/„−“. */
+function fmtSigned(n: number): string {
+  const text = String(Math.abs(n)).replace('.', ',')
+  return n > 0 ? `+${text}` : n < 0 ? `−${text}` : '0'
+}
+
+/**
+ * W4-verify r4: the value the client showed when it started editing
+ * (`expected` in the body). Absent = no check (older clients, scripts).
+ * Present but malformed is a 400 - a client that sends it wants the check.
+ */
+function optionalExpectedNumber(
+  raw: unknown,
+  field: string
+): number | undefined {
+  if (raw === undefined || raw === null) return undefined
+  const n = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : raw
+  if (typeof n !== 'number' || !Number.isFinite(n)) {
+    throw new BackzettelError(
+      400,
+      'validation',
+      `${field} muss eine Zahl sein.`
+    )
+  }
+  return n
+}
+
+function sameQty(a: number, b: number): boolean {
+  return Math.abs(a - b) < 1e-9
 }
 
 function assertDate(date: string): void {
@@ -114,7 +151,10 @@ function assertProductionDay(loaded: Loaded, date: string): void {
   }
 }
 
-async function usersById(ids: unknown[]): Promise<Map<number, UserRef>> {
+async function usersById(
+  ids: unknown[],
+  transaction?: Transaction
+): Promise<Map<number, UserRef>> {
   const wanted = [
     ...new Set(ids.filter((id): id is number => Number.isInteger(id))),
   ]
@@ -122,6 +162,7 @@ async function usersById(ids: unknown[]): Promise<Map<number, UserRef>> {
   const rows = await User.findAll({
     where: { id: wanted },
     attributes: ['id', 'displayName'],
+    transaction,
   })
   return new Map(
     rows.map((u) => [u.id, { id: u.id, displayName: u.displayName }])
@@ -514,7 +555,8 @@ export function createBackzettelService(
       const extras = dayCore.deltaBakeExtras(
         lines,
         Object.fromEntries(deltaByKey),
-        snap?.preordersExact ?? null
+        snap?.preordersExact ?? null,
+        snap?.subtotalExact ?? null
       )
       for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
       if (config && recomputed) {
@@ -844,9 +886,27 @@ export function createBackzettelService(
   async function setSeasonFactor(date: string, body: unknown, req: Request) {
     const parsed = dayCore.parseSeasonFactor(body)
     if (!parsed.ok) throw new BackzettelError(400, parsed.error, parsed.message)
+    const expected = optionalExpectedNumber(
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['expectedFactor']
+        : undefined,
+      'expectedFactor'
+    )
     await writeDraft(date, async (day, _loaded, transaction) => {
       const from = toNumber(day.seasonFactor) || 1
       if (from === parsed.value) return
+      // W4-verify r4: a second device saved in between - no silent overwrite.
+      if (expected !== undefined && !sameQty(expected, from)) {
+        throw new BackzettelError(
+          409,
+          'season_changed',
+          `Der Saisonfaktor wurde inzwischen auf ${String(from).replace(
+            '.',
+            ','
+          )} geändert. Deine Eingabe wurde nicht gespeichert - bitte prüfen und erneut speichern.`,
+          { current: from }
+        )
+      }
       await day.update({ seasonFactor: parsed.value }, { transaction })
       await audit(
         req,
@@ -909,14 +969,8 @@ export function createBackzettelService(
       (l) => l.key === key
     )
     if (hit && hit.correctionClamped) {
-      const without = Number(
-        (
-          (Number(hit.preorders) || 0) +
-          (Number(hit.cap) || 0) +
-          (Number(hit.base) || 0) +
-          (Number(hit.seasonal) || 0)
-        ).toFixed(2)
-      )
+      // Viertel aller Quellen erst summiert, dann aufgerundet (Runde 4).
+      const without = core.roundUp(Number(hit.subtotalExact) || 0, hit.unit)
       const fmt = (n: number) => String(n).replace('.', ',')
       throw new BackzettelError(
         400,
@@ -933,6 +987,83 @@ export function createBackzettelService(
     }
   }
 
+  /** `expected: { correction, reason }` - what the editor was opened on. */
+  function parseExpectedCorrection(
+    body: unknown
+  ): { correction: number; reason: string | null } | null {
+    const raw =
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['expected']
+        : undefined
+    if (raw === undefined || raw === null) return null
+    if (typeof raw !== 'object') {
+      throw new BackzettelError(
+        400,
+        'validation',
+        'expected muss { correction, reason } sein.'
+      )
+    }
+    const e = raw as Record<string, unknown>
+    const correction =
+      optionalExpectedNumber(e['correction'], 'expected.correction') ?? 0
+    if (
+      e['reason'] !== undefined &&
+      e['reason'] !== null &&
+      typeof e['reason'] !== 'string'
+    ) {
+      throw new BackzettelError(
+        400,
+        'validation',
+        'expected.reason muss ein Text sein.'
+      )
+    }
+    const reason =
+      typeof e['reason'] === 'string' && e['reason'].trim()
+        ? e['reason'].trim()
+        : null
+    return { correction, reason }
+  }
+
+  /**
+   * W4-verify r4 (lost update): the PC opened the editor on „–“, the tablet
+   * saved +5 meanwhile; the PC's +2 replaced it without a word. Now the
+   * stored value must still be what the editor showed, else 409 with the
+   * current value and who set it.
+   */
+  async function assertCorrectionUnchanged(
+    row: BackzettelLine | null,
+    expected: { correction: number; reason: string | null },
+    transaction: Transaction
+  ) {
+    const current = row ? toNumber(row.correction) : 0
+    const currentReason =
+      row && current !== 0 && row.correctionReason ? row.correctionReason : null
+    const same =
+      sameQty(current, expected.correction) &&
+      (current === 0 || currentReason === expected.reason)
+    if (same) return
+    const users = await usersById([row?.correctionBy], transaction)
+    const by = row ? userRef(users, row.correctionBy) : null
+    const now =
+      current === 0
+        ? 'inzwischen entfernt'
+        : `inzwischen auf ${fmtSigned(current)}${
+            currentReason ? ` („${currentReason}“)` : ''
+          } gesetzt${by ? ` von ${by.displayName}` : ''}`
+    throw new BackzettelError(
+      409,
+      'correction_changed',
+      `Die Korrektur dieser Zeile wurde ${now}. Deine Eingabe wurde nicht gespeichert - bitte prüfen und erneut speichern.`,
+      {
+        current: {
+          correction: current,
+          reason: currentReason,
+          by,
+        },
+      }
+    )
+  }
+
   async function setCorrection(
     date: string,
     itemId: string,
@@ -947,6 +1078,7 @@ export function createBackzettelService(
     if (!line.ok) throw new BackzettelError(404, line.error, line.message)
     const parsed = dayCore.parseCorrection(body, line.item)
     if (!parsed.ok) throw new BackzettelError(400, parsed.error, parsed.message)
+    const expected = parseExpectedCorrection(body)
     await writeDraft(date, async (day, loadedNow, transaction) => {
       const where = { date, itemId, variant: line.variant }
       const row = await BackzettelLine.findOne({ where, transaction })
@@ -970,6 +1102,7 @@ export function createBackzettelService(
         reason: parsed.value.reason,
       }
       if (from.correction === to.correction && from.reason === to.reason) return
+      if (expected) await assertCorrectionUnchanged(row, expected, transaction)
       const values = {
         correction: to.correction,
         correctionReason: to.reason,
@@ -1215,13 +1348,23 @@ export function createBackzettelService(
     date: string,
     lineIdRaw: string,
     done: boolean,
-    req: Request
+    req: Request,
+    body: unknown = undefined
   ) {
     assertDate(date)
     const lineId = Number(lineIdRaw)
     if (!/^[1-9]\d*$/.test(lineIdRaw) || !Number.isSafeInteger(lineId)) {
       throw new BackzettelError(400, 'validation', 'Ungültige Zeilen-ID.')
     }
+    // W4-verify r4: the total the tablet showed. A tick from a stale view
+    // (owner re-confirmed with more pieces meanwhile) must not mark the new,
+    // larger total as baked.
+    const expectedTotal = optionalExpectedNumber(
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['expectedTotal']
+        : undefined,
+      'expectedTotal'
+    )
     const row = await getSequelize().transaction(async (transaction) => {
       const day = await BackzettelDay.findByPk(date, { transaction })
       if (!day || day.status !== 'confirmed') {
@@ -1236,7 +1379,26 @@ export function createBackzettelService(
         transaction,
       })
       if (!line) {
-        throw new BackzettelError(404, 'not_found', 'Zeile nicht gefunden.')
+        throw new BackzettelError(
+          404,
+          'not_found',
+          'Diese Zeile gibt es so nicht mehr - der Backzettel wurde inzwischen neu freigegeben.'
+        )
+      }
+      const total = toNumber(line.total)
+      if (done && expectedTotal !== undefined && total > expectedTotal + 1e-9) {
+        throw new BackzettelError(
+          409,
+          'line_changed',
+          `Menge geändert: jetzt ${String(total).replace(
+            '.',
+            ','
+          )} statt ${String(expectedTotal).replace(
+            '.',
+            ','
+          )}. Der Haken wurde nicht gesetzt.`,
+          { total, expectedTotal }
+        )
       }
       const isDone = line.doneAt !== null
       if (isDone === done) return line
@@ -1251,7 +1413,7 @@ export function createBackzettelService(
         done ? 'line_done' : 'line_undone',
         'backzettel_line',
         line.id,
-        { date, itemId: line.itemId, variant: line.variant },
+        { date, itemId: line.itemId, variant: line.variant, total },
         { transaction }
       )
       return line
@@ -1279,7 +1441,7 @@ export function createBackzettelService(
         transaction,
       })
       if (!delta) {
-        throw new BackzettelError(404, 'not_found', 'Änderung nicht gefunden.')
+        throw new BackzettelError(404, 'not_found', DELTA_GONE_MESSAGE)
       }
       if (delta.acknowledgedAt !== null) return delta
       await delta.update(
@@ -1315,6 +1477,75 @@ export function createBackzettelService(
     }
   }
 
+  /**
+   * W4-verify r4: „Gesehen“ for several Nachträge at once (one tap per
+   * Backzettel line on the tablet instead of one per preorder item). All or
+   * nothing: if one of them is gone (re-confirmed), 404 and nothing changes.
+   */
+  async function acknowledgeDeltas(date: string, body: unknown, req: Request) {
+    assertDate(date)
+    const raw =
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['ids']
+        : undefined
+    if (
+      !Array.isArray(raw) ||
+      raw.length === 0 ||
+      raw.length > MAX_ACK_IDS ||
+      !raw.every((x) => Number.isSafeInteger(x) && (x as number) > 0)
+    ) {
+      throw new BackzettelError(
+        400,
+        'validation',
+        `ids muss eine Liste von 1 bis ${MAX_ACK_IDS} Nachtrag-IDs sein.`
+      )
+    }
+    const ids = [...new Set(raw as number[])]
+    const rows = await getSequelize().transaction(async (transaction) => {
+      const deltas = await BackzettelDelta.findAll({
+        where: { id: ids, date },
+        transaction,
+      })
+      if (deltas.length !== ids.length) {
+        throw new BackzettelError(404, 'not_found', DELTA_GONE_MESSAGE)
+      }
+      const at = new Date()
+      for (const delta of deltas) {
+        if (delta.acknowledgedAt !== null) continue
+        await delta.update(
+          { acknowledgedAt: at, acknowledgedBy: req.user?.id ?? null },
+          { transaction }
+        )
+        await audit(
+          req,
+          'delta_ack',
+          'backzettel_delta',
+          delta.id,
+          {
+            date,
+            itemId: delta.itemId,
+            variant: delta.variant,
+            qty: toNumber(delta.qty),
+          },
+          { transaction }
+        )
+      }
+      return deltas
+    })
+    const users = await usersById(rows.map((r) => r.acknowledgedBy))
+    return rows.map((row) => ({
+      id: row.id,
+      date: row.date,
+      itemId: row.itemId,
+      variant: dayCore.apiVariant(row.variant),
+      qty: toNumber(row.qty),
+      kind: row.kind,
+      preorderId: row.preorderId,
+      acknowledgedAt: row.acknowledgedAt,
+      acknowledgedBy: userRef(users, row.acknowledgedBy),
+    }))
+  }
+
   return {
     getDay,
     getPrep,
@@ -1325,6 +1556,7 @@ export function createBackzettelService(
     reopen,
     setDone,
     acknowledgeDelta,
+    acknowledgeDeltas,
     recordPreorderDeltas,
     reconcileConfirmedDays,
     idle,

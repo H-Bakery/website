@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   ButtonBase,
@@ -29,7 +30,19 @@ import {
   registerStation,
   type StationUser,
 } from '../../lib/authApi'
-import { ROLE_LABELS, startPathForRole } from '../../lib/roles'
+import {
+  ROLE_LABELS,
+  isPathAllowedForRole,
+  startPathForRole,
+  type PilotRole,
+} from '../../lib/roles'
+import {
+  clearLostActions,
+  lostActionReturnPath,
+  readLostActions,
+  type LostAction,
+} from '../../lib/lostActions'
+import { readPreorderDraft } from '../../lib/preorderDraft'
 import PinPad from '../../components/auth/PinPad'
 import LogoutButton from '../../components/auth/LogoutButton'
 
@@ -209,6 +222,27 @@ function StationSetup({
   )
 }
 
+const PREORDER_ENTRY_PATH = '/admin/preorders/neu'
+
+/**
+ * Wohin nach der PIN (W4-Verifikation Runde 4): zur Seite einer verlorenen
+ * Aktion (Übergabe NICHT gespeichert), sonst zu einem nicht gespeicherten
+ * Vorbestell-Entwurf dieser Person, sonst zur Startseite der Rolle.
+ */
+export function stationReturnPath(
+  user: { id: number | string; role: PilotRole },
+  lost: LostAction[]
+): string {
+  const allowed = (pathname: string) =>
+    isPathAllowedForRole(pathname, user.role, 'station')
+  const back = lostActionReturnPath(lost, allowed)
+  if (back) return back
+  if (readPreorderDraft(user.id) && allowed(PREORDER_ENTRY_PATH)) {
+    return PREORDER_ENTRY_PATH
+  }
+  return startPathForRole(user.role)
+}
+
 function StationLogin({
   station,
   notice,
@@ -228,6 +262,10 @@ function StationLogin({
   const [pin, setPin] = React.useState('')
   const [pinError, setPinError] = React.useState<string | null>(null)
   const [busy, setBusy] = React.useState(false)
+  // Was beim letzten Abmelden NICHT gespeichert wurde - hier steht die
+  // Person, die es wiederholen muss (W4-Verifikation Runde 4).
+  const [lostActions, setLostActions] = React.useState<LostAction[]>([])
+  React.useEffect(() => setLostActions(readLostActions()), [])
 
   React.useEffect(() => {
     let cancelled = false
@@ -272,7 +310,7 @@ function StationLogin({
     setPinError(null)
     try {
       const user = await session.pinLogin(station.token, selected.id, pin)
-      onDone(startPathForRole(user.role))
+      onDone(stationReturnPath(user, readLostActions()))
     } catch (error) {
       if (isStationRejected(error)) {
         onRevoked()
@@ -339,6 +377,27 @@ function StationLogin({
       {notice && (
         <Alert severity="success" sx={{ mb: 3 }}>
           {notice}
+        </Alert>
+      )}
+      {lostActions.length > 0 && (
+        <Alert
+          severity="error"
+          sx={{ mb: 3 }}
+          data-testid="station-lost-actions"
+          onClose={() => {
+            clearLostActions()
+            setLostActions([])
+          }}
+        >
+          <AlertTitle>Nicht gespeichert</AlertTitle>
+          {lostActions.map((a) => (
+            <Box key={a.at + a.text} component="span" sx={{ display: 'block' }}>
+              {a.text}
+            </Box>
+          ))}
+          <Box component="span" sx={{ display: 'block', mt: 0.5 }}>
+            Nach der PIN öffnet sich die Seite wieder - bitte dort wiederholen.
+          </Box>
         </Alert>
       )}
       {session.endReason && !selected && (

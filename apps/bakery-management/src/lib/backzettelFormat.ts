@@ -323,6 +323,56 @@ export function deltaExtrasLines(
   return out
 }
 
+/**
+ * Die Mengen eines Nachtrags zum Abwiegen, groß fürs Backstube-Tablet
+ * (W4-verify r4): „+26 × 600 g“, „+25,1 kg Teig“, „15 Chargen statt 13“,
+ * „Nussfüllung +9,8 kg“ - je Teig bzw. Füllung eine Gruppe. Der ganze Satz
+ * steht weiter darunter (`deltaExtrasLines`).
+ */
+export function deltaExtrasHighlights(
+  extras: DeltaExtras | null | undefined
+): Array<{ key: string; label: string; amounts: string[] }> {
+  if (!extras) return []
+  const sign = (n: number) => (n < 0 ? '−' : '+')
+  const out: Array<{ key: string; label: string; amounts: string[] }> = []
+  for (const d of extras.doughs) {
+    const amounts = d.weighing
+      .filter((w) => w.pieces)
+      .map(
+        (w) =>
+          `${sign(w.pieces)}${formatNumber(
+            Math.abs(w.pieces)
+          )} × ${formatNumber(w.piece_g)} g`
+      )
+    if (d.dough_g) {
+      amounts.push(`${sign(d.dough_g)}${formatGrams(Math.abs(d.dough_g))} Teig`)
+    }
+    if (
+      d.batches != null &&
+      d.batchesBefore != null &&
+      d.batches !== d.batchesBefore
+    ) {
+      amounts.push(
+        `${formatNumber(d.batches)} Chargen statt ${formatNumber(
+          d.batchesBefore
+        )}`
+      )
+    }
+    if (amounts.length > 0) {
+      out.push({ key: `dough-${d.id}`, label: d.name, amounts })
+    }
+  }
+  for (const f of extras.fillings) {
+    if (!f.grams) continue
+    out.push({
+      key: `filling-${f.id}`,
+      label: f.name,
+      amounts: [`${sign(f.grams)}${formatGrams(Math.abs(f.grams))}`],
+    })
+  }
+  return out
+}
+
 /** Spaltenwert ohne Vorzeichen; 0 als „–“, damit die Zahlen hervortreten. */
 export function formatOrDash(n: number): string {
   return n ? formatNumber(n) : '–'

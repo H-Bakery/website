@@ -154,12 +154,15 @@ const styles = (
       '.nfb-section': { marginBottom: '2mm' },
       '.nfb tr': { breakInside: 'avoid' },
       '.nfb thead': { display: 'table-header-group' },
-      '.nfb-section h3': {
+      // Die Überschrift steht als erste Kopfzeile in der Tabelle: bricht ein
+      // Abschnitt in die nächste Spalte um, steht sie dort noch einmal
+      // (W4-verify r4 - vorher hing die Fortsetzung ohne Namen oben rechts).
+      '.nfb th.nfb-title': {
         fontSize: '9.5pt',
-        margin: '0 0 0.8mm',
         textTransform: 'uppercase',
         letterSpacing: '0.03em',
-        breakAfter: 'avoid',
+        border: 'none',
+        padding: '0 0 0.8mm',
       },
       '.nfb table': {
         width: '100%',
@@ -240,9 +243,13 @@ export default function BackzettelNotfallblatt({
           <div className="nfb-cols" style={{ columnCount: columns }}>
             {sections.map((section) => (
               <div className="nfb-section" key={section.id}>
-                <h3>{section.label}</h3>
                 <table>
                   <thead>
+                    <tr>
+                      <th className="nfb-title" colSpan={5} scope="colgroup">
+                        {section.label}
+                      </th>
+                    </tr>
                     <tr>
                       <th className="hilfe-shade">Posten</th>
                       <th className="hilfe-shade num">Basis</th>

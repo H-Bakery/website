@@ -21,6 +21,7 @@ import {
   DELTAS_PENDING_MAX_RELOADS,
   DELTAS_PENDING_RELOAD_MS,
   acknowledgeDelta,
+  acknowledgeDeltas,
   fetchBackzettelConfig,
   fetchBackzettelDay,
   fetchPrep,
@@ -69,6 +70,8 @@ const STALE_CODES = new Set([
   'not_confirmed',
   'no_config',
   'ruhetag',
+  // W4-verify r4: die Zeile hat auf dem Server inzwischen eine größere Menge
+  'line_changed',
 ])
 
 function codeOf(error: unknown): string | null {
@@ -129,7 +132,11 @@ function messageOf(error: unknown, fallback: string): string {
 
 function isStale(error: unknown): boolean {
   const e = error as { status?: number; code?: string } | null
-  return !!e && e.status === 409 && !!e.code && STALE_CODES.has(e.code)
+  if (!e) return false
+  // W4-verify r4: Zeile oder Nachtrag gibt es nach einer erneuten Freigabe
+  // nicht mehr - neu laden statt den alten Stand mit Knöpfen stehen lassen.
+  if (e.status === 404 && e.code === 'not_found') return true
+  return e.status === 409 && !!e.code && STALE_CODES.has(e.code)
 }
 
 function patchLines(
@@ -208,7 +215,7 @@ export default function BackstubeClient({
     []
   )
   const [pendingIds, setPendingIds] = React.useState<Set<number>>(new Set())
-  const [ackingId, setAckingId] = React.useState<number | null>(null)
+  const [ackingKey, setAckingKey] = React.useState<string | null>(null)
 
   const [prep, setPrep] = React.useState<PrepResult | null>(null)
   const [prepError, setPrepError] = React.useState<string | null>(null)
@@ -428,7 +435,7 @@ export default function BackstubeClient({
     )
     let stale = false
     try {
-      const res = await setLineDone(target, lineId, done)
+      const res = await setLineDone(target, lineId, done, line.total)
       updateDay(target, (d) =>
         patchLines(
           d,
@@ -470,39 +477,56 @@ export default function BackstubeClient({
     }
   }
 
-  const ack = async (delta: BackzettelDeltaEntry) => {
-    if (!day) return
+  /** „Gesehen“ für eine Zeile (alle ihre offenen Nachträge) oder alle. */
+  const ack = async (group: BackzettelDeltaEntry[], groupKey: string) => {
+    if (!day || group.length === 0) return
     const target = day.date
     mutationSeq.current += 1
-    setAckingId(delta.id)
+    setAckingKey(groupKey)
     showActionError(null)
     try {
-      const res = await acknowledgeDelta(target, delta.id)
+      const results =
+        group.length === 1
+          ? [await acknowledgeDelta(target, group[0].id)]
+          : await acknowledgeDeltas(
+              target,
+              group.map((x) => x.id)
+            )
+      const byId = new Map(
+        (results ?? []).filter(Boolean).map((r) => [r.id, r])
+      )
+      const ids = new Set(group.map((x) => x.id))
       updateDay(target, (d) => {
-        const wasOpen = d.deltas.some(
-          (x) => x.id === delta.id && !x.acknowledgedAt
-        )
+        const closed = new Map<string, number>()
+        for (const x of d.deltas) {
+          if (ids.has(x.id) && !x.acknowledgedAt) {
+            closed.set(x.key, (closed.get(x.key) ?? 0) + 1)
+          }
+        }
         const next = patchLines(
           d,
-          (l) => wasOpen && l.key === delta.key && !!l.delta,
+          (l) => closed.has(l.key) && !!l.delta,
           (l) => ({
             delta: l.delta
-              ? { ...l.delta, open: Math.max(0, l.delta.open - 1) }
+              ? {
+                  ...l.delta,
+                  open: Math.max(0, l.delta.open - (closed.get(l.key) ?? 0)),
+                }
               : null,
           })
         )
         return {
           ...next,
-          deltas: d.deltas.map((x) =>
-            x.id === delta.id
-              ? {
-                  ...x,
-                  acknowledgedAt:
-                    res?.acknowledgedAt ?? clockRef.current().toISOString(),
-                  acknowledgedBy: res?.acknowledgedBy ?? null,
-                }
-              : x
-          ),
+          deltas: d.deltas.map((x) => {
+            if (!ids.has(x.id) || x.acknowledgedAt) return x
+            const res = byId.get(x.id)
+            return {
+              ...x,
+              acknowledgedAt:
+                res?.acknowledgedAt ?? clockRef.current().toISOString(),
+              acknowledgedBy: res?.acknowledgedBy ?? null,
+            }
+          }),
         }
       })
     } catch (error) {
@@ -523,7 +547,7 @@ export default function BackstubeClient({
         void loadDay()
       }
     } finally {
-      setAckingId(null)
+      setAckingKey(null)
     }
   }
 
@@ -917,7 +941,7 @@ export default function BackstubeClient({
                   deltas={day.deltas}
                   config={config}
                   canAck={canWork && !draft}
-                  ackingId={ackingId}
+                  ackingKey={ackingKey}
                   onAck={ack}
                 />
 
