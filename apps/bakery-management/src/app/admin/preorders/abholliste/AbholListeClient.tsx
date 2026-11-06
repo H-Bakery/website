@@ -730,7 +730,13 @@ export default function AbholListeClient({
         }: ${describeChange(
           change
         )} wurde NICHT gespeichert - die Sitzung war abgelaufen. Bitte wiederholen.`
-        rememberLostAction(text)
+        rememberLostAction(
+          text,
+          new Date(),
+          typeof window !== 'undefined'
+            ? `${window.location.pathname}${window.location.search}`
+            : undefined
+        )
         setActionError(text)
       } else {
         const kind = requestFailureKind(err)

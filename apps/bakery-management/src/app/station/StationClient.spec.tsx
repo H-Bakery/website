@@ -1,6 +1,8 @@
 import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import StationClient from './StationClient'
+import StationClient, { stationReturnPath } from './StationClient'
+import { rememberLostAction } from '../../lib/lostActions'
+import { savePreorderDraft } from '../../lib/preorderDraft'
 import { fakeSession, WithSession } from '../../lib/testing/fakeSession'
 import { useMemoryStorage } from '../../lib/testing/memoryStorage'
 import { loadStation, saveStation } from '../../lib/authSession'
@@ -140,6 +142,87 @@ describe('Station', () => {
       )
       // führende Null bleibt: die PIN ist ein String
       expect(pinLogin).toHaveBeenCalledWith('st_x', 2, '0420')
+    })
+
+    describe('nach abgelaufener Sitzung (W4-verify r4)', () => {
+      let session: Map<string, string>
+      beforeEach(() => {
+        session = new Map()
+        const store = window.sessionStorage as unknown as Record<
+          string,
+          jest.Mock
+        >
+        store.getItem.mockImplementation((k: string) =>
+          session.has(k) ? session.get(k) : null
+        )
+        store.setItem.mockImplementation((k: string, v: string) => {
+          session.set(k, String(v))
+        })
+        store.removeItem.mockImplementation((k: string) => {
+          session.delete(k)
+        })
+      })
+      const verkauf = () =>
+        jest.fn(async () => ({
+          id: 2,
+          username: 'test.verkauf',
+          displayName: 'Test Verkauf',
+          role: 'verkauf' as const,
+        }))
+
+      it('nennt die verlorene Übergabe und führt nach der PIN zur Abholliste zurück', async () => {
+        const path =
+          '/admin/preorders/abholliste?date=2026-11-07&point=gemeindehaus-oberdorf'
+        rememberLostAction(
+          'OB-2026-11-07-07 (Testfamilie U.): Übergabe mit Zahlung wurde NICHT gespeichert - die Sitzung war abgelaufen. Bitte wiederholen.',
+          new Date(),
+          path
+        )
+        api.fetchStationUsers.mockResolvedValue(USERS)
+        const pinLogin = verkauf()
+        renderStation(fakeSession({ pinLogin }))
+        expect(
+          await screen.findByTestId('station-lost-actions')
+        ).toHaveTextContent('OB-2026-11-07-07 (Testfamilie U.)')
+        fireEvent.click(await screen.findByText('Test Verkauf'))
+        pressPin('0420')
+        fireEvent.click(screen.getByRole('button', { name: 'Anmelden' }))
+        await waitFor(() => expect(mockReplace).toHaveBeenCalledWith(path))
+      })
+
+      it('eine Seite, die die Rolle nicht öffnen darf, zählt nicht', async () => {
+        rememberLostAction('x', new Date(), '/admin/finance')
+        expect(
+          stationReturnPath({ id: 2, role: 'verkauf' }, [
+            { text: 'x', at: '', path: '/admin/finance' },
+          ])
+        ).toBe('/admin/preorders')
+      })
+
+      it('ein nicht gespeicherter Vorbestell-Entwurf derselben Person öffnet die Maske', async () => {
+        savePreorderDraft(
+          2,
+          {
+            customerName: 'Testkundin Entwurf',
+            customerPhone: '',
+            channel: 'telefon',
+            pickupPointId: '',
+            pickupDate: '',
+            pickupTime: '',
+            paid: false,
+            note: '',
+            lines: [],
+          },
+          null
+        )
+        expect(stationReturnPath({ id: 2, role: 'verkauf' }, [])).toBe(
+          '/admin/preorders/neu'
+        )
+        // eine andere Person landet auf ihrer Startseite
+        expect(stationReturnPath({ id: 3, role: 'verkauf' }, [])).toBe(
+          '/admin/preorders'
+        )
+      })
     })
 
     it('falsche PIN: deutsche Meldung, Eingabe geleert, keine Weiterleitung', async () => {

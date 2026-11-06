@@ -42,7 +42,7 @@ export function groupOpenDeltas(
     g.qty = Math.round((g.qty + (Number(d.qty) || 0)) * 100) / 100
     groups.set(d.key, g)
   }
-  return [...groups.values()]
+  return Array.from(groups.values())
 }
 
 export interface BackstubeDeltasProps {
@@ -65,9 +65,9 @@ function groupDetail(group: BackstubeDeltaGroup): string {
       .filter(Boolean)
       .join(' · ')
   }
-  const codes = [
-    ...new Set(group.deltas.map((d) => d.preorderCode).filter(Boolean)),
-  ] as string[]
+  const codes = Array.from(
+    new Set(group.deltas.map((d) => d.preorderCode).filter(Boolean))
+  ) as string[]
   const shownCodes =
     codes.length > MAX_CODES
       ? `${codes.slice(0, MAX_CODES).join(', ')} +${codes.length - MAX_CODES}`
