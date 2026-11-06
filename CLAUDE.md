@@ -458,7 +458,7 @@ Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
   Next.js nur eine Middleware erlaubt und die F1 gehört - F1 kann dort `isPilotPathAllowed()`
   aufrufen und umleiten. Durchgesetzt wird Zugriff von F1 und den Rollen-Guards der API.
 - **Kommende Bildschirme schalten sich über `ready` frei.** `PILOT_UPCOMING_NAVIGATION` in
-  `admin/navigation.ts` führt `/admin/preorders` (M1, seit P1/P3 `ready: true`), `/admin/backzettel` und `/backstube` (M2) mit
+  `admin/navigation.ts` führt `/admin/preorders` (M1, seit P1/P3 `ready: true`), `/admin/preorders/abholliste` (seit P2 `ready: true`), `/admin/backzettel` und `/backstube` (M2) mit
   `ready: false`; ein Eintrag erscheint (direkt unter dem Dashboard) erst mit `ready: true`.
   `src/lib/pilotMode.spec.ts` fällt um, wenn `ready` und die Existenz der `page.tsx` **genau unter
   `href`** auseinanderlaufen, und auch, wenn es Unterseiten ohne diese Index-Seite gibt - M2 braucht
@@ -703,9 +703,9 @@ Sitzung, Schreiben nur `inhaber`; kein DELETE. Details: `apps/bakery-api/CLAUDE.
 Alle Vorbestellungen - Laden, Telefon, WhatsApp, Shop, Sammelstelle - liegen in der
 TypeScript-API in **einer** Tabelle (`preorders` + `preorder_items`) unter `/api/preorders`
 (Liste mit Filtern, Einzelabruf, Anlegen, Ändern, Status, Stornieren, `/sums?date=` für die
-Backstube, `/day?date=` für die Abholliste). Die Mörsbach-Seiten der Verwaltung laufen
-unverändert über den Alias `/api/deliveries/preorders*` mit dem Vertrag des Mock-Servers (eine
-Parity-Suite vergleicht). Details: `apps/bakery-api/CLAUDE.md`, Abschnitt „Preorders (B7) and
+Backstube, `/day?date=[&pickupPointId=]` für die Abholliste). Die Mörsbach-Seiten der Verwaltung
+laufen seit P2 direkt auf `/api/preorders`; der Alias `/api/deliveries/preorders*` mit dem Vertrag
+des Mock-Servers bleibt für alte Clients stehen (eine Parity-Suite vergleicht). Details: `apps/bakery-api/CLAUDE.md`, Abschnitt „Preorders (B7) and
 anonymisation (P4)". Von außen wichtig:
 
 - **Die Regeln stehen weiter genau einmal** in `apps/bakery-api/src/services/delivery-preorders.core.js`;
@@ -782,13 +782,64 @@ Status, Bestellweg, Abholort - alles in der URL), `/admin/preorders/neu` (Erfass
 - **Gerätespeicher** (nur Bequemlichkeit): `bakery-management-preorder-channel` (zuletzt
   gewählter Kanal), `bakery-management-preorder-recent` (zuletzt erfasste Produkte); „Häufig"
   rechnet zusätzlich über die Vorbestellungen der letzten 28 Tage.
-- Der Navigationspunkt „Sammelstelle Mörsbach" bleibt, bis P2 ihn ablöst.
+- Der Navigationspunkt „Sammelstelle Mörsbach" bleibt auch nach P2 (eigene Liste mit
+  Bestellschluss, Backliste und Lieferstelle); siehe nächster Abschnitt.
 
 Tests: `src/lib/preorders.spec.ts` (Formatierung, Produktionstage, Suche, Ziffernblock) und RTL-Specs
 neben den Seiten (`admin/preorders/**/*.spec.tsx`, Fixtures `src/lib/testing/preorderFixtures.ts`,
 erfunden); API: `tests/integration/preorders.test.ts` (`GET /variants`, veraltete Schreibzugriffe,
 Storno-Sperre), `tests/unit/preordersModel.test.js` (`lockCancelled`) und
 `tests/unit/backzettelCore.test.js`.
+
+## Abholliste und Mörsbach auf `/api/preorders` (P2)
+
+`/admin/preorders/abholliste?date=&point=` ist die Übergabeliste je Tag und Abholort (`point` =
+`laden` oder die id einer Sammelstelle) - am Tablet an der Theke, am Handy des Fahrers an der
+Sammelstelle, auf Papier, wenn beides ausfällt. Logik ohne React in `src/lib/abholliste.ts`.
+Was man wissen muss:
+
+- **Eine Anfrage je Liste:** `GET /api/preorders/day?date=&pickupPointId=` (neu in P2;
+  `laden` = ohne Sammelstelle). Kacheln und Summen rechnet der Server für genau diesen Ort;
+  `pickupPoints[].preorderCount` zählt weiter den ganzen Tag. Ohne `pickupPointId` bleibt `/day`
+  wie in B7.
+- **Gruppiert** nach Uhrzeit (Laden-Vorgabe; ohne Uhrzeit ans Ende, an der Sammelstelle als
+  „Übergabe {Fenster} Uhr") oder nach Name (Sammelstelle-Vorgabe; Anfangsbuchstabe, Umlaute
+  auf den Grundbuchstaben). Stornierte stehen immer zuletzt, durchgestrichen, und fehlen im Druck.
+- **Suche** im Client: ein- bis zweistellige Zahl = laufende Nummer am Ende des Codes (sonst
+  träfe „4" jedes Datum), sonst Name oder Code, ab drei Ziffern auch die Telefonnummer.
+- **Übergeben** setzt `abgeholt` über `POST /:id/status` mit `expectedUpdatedAt` (409 → Liste neu
+  laden, Hinweis, nichts überschrieben). Bezahlt + Verkauf/Inhaber: ein Tipp mit „Rückgängig"
+  (stellt Status, `paid` und `notCollected` von vorher wieder her). Sonst ein Dialog:
+  „Bezahlt und übergeben" / „Ohne Zahlung übergeben". Fahrer bekommen immer den Dialog und kein
+  Rückgängig - die API lässt sie nur `abgeholt`/`nicht_abgeholt` setzen; Zurücknehmen kann der
+  Verkauf. Welche Aktion wer sieht, steht einmal in `abholActions(preorder, role)` und spiegelt
+  die Rollenregeln der API.
+- **Tagesabschluss** („Rest nicht abgeholt") erst ab dem Abholtag (`isDayEndAllowed`), „Alle
+  offenen als bereit" nur für Verkauf/Inhaber; beide mit Rückfrage, je Bestellung ein Aufruf.
+- **Stilles Nachladen** alle 60 s und beim Zurückkehren ins Fenster - aber nie, solange ein
+  Dialog, ein Menü oder eine Aktion offen ist.
+- **Druck (A4 hoch):** gedruckt wird eine eigene Tabelle `.abholliste-print`, nicht die Karten -
+  immer der ganze Tag ohne Stornierte, unabhängig von Suche und Filter, mit ☐/☑, Code, Name
+  (+ Telefon), Artikel mit Sorte, Summe, Bezahlt ja/nein, Unterschrift; Kopf mit „Stand … Uhr".
+  `border-collapse` + `width: 100%` schnitt rechts die Außenlinie ab - deshalb `calc(100% - 1pt)`.
+- **Navigation:** „Abholliste" steht direkt unter „Vorbestellungen"; `isNavItemActive()` bekommt
+  die Geschwister-Pfade und lässt den spezifischeren Eintrag gewinnen, sonst wären beide markiert.
+
+**Mörsbach-Seiten seit P2** (`/admin/delivery/preorders*`, Navigationspunkt „Sammelstelle
+Mörsbach" bleibt): Liste, Backliste und Lieferstelle lesen und schreiben über
+`src/lib/preordersApi.ts` (`fetchPreorderDay(date, pointId)`, `cancelPreorder`,
+`savePickupPoint`); der eigene `preorderApi.ts`-Client ist gelöscht. Erfassen und Bearbeiten
+sind die P1-Maske bzw. die P3-Ansicht mit vorbelegter Sammelstelle und Rückweg auf den Liefertag
+(`MoersbachPreorderClients.tsx`) - die alte Maske kannte keine Sorten. Die Liste zeigt Sorten,
+Code und bezahlt, verlinkt auf die Abholliste und storniert mit `expectedUpdatedAt`. Die Warnung
+„kein Tourstopp angelegt" ist weg (die Fahrer-App ist nicht im Pilot, D11).
+`PUT /api/preorders/pickup-points/:id` (neu in P2, nur `inhaber`) ändert die Sammelstelle; die
+Seite zeigt Verkauf und Fahrer die Daten nur lesend.
+
+Tests: `src/lib/abholliste.spec.ts`, `admin/preorders/abholliste/AbholListeClient.spec.tsx`,
+`admin/delivery/preorders/**/*.spec.tsx`, `admin/layout.navigation.spec.tsx`; API:
+`tests/integration/preorders.test.ts` („narrows the day to one place", „PUT
+/api/preorders/pickup-points/:id").
 
 ## Anmeldung, Stationen und Rollen in der Management-App (F1)
 
@@ -852,9 +903,10 @@ Sieben Dinge, die man wissen muss:
 - **Eine Tabelle Rolle → Routen + Startseite: `ROLE_ACCESS` in `src/lib/roles.ts`.** Inhaber alles;
   Verkauf Dashboard, `/admin/preorders` (M1), Sammelstelle Mörsbach, Produkte **nur die Liste**
   (ohne Neu/Bearbeiten), Backschrank; Backstube Dashboard, `/admin/backzettel`, `/backstube`;
-  Fahrer `/admin/delivery/preorders` und `/admin/preorders` lesend (ohne `/neu`); alle `/admin/settings`. Startseite = erste _gebaute_
+  Fahrer `/admin/delivery/preorders` (ohne `/new` und `/lieferstelle`) und `/admin/preorders` lesend (ohne `/neu`), dort
+  die Abholliste mit Übergeben; alle `/admin/settings`. Startseite = erste _gebaute_
   aus `start` (`ready` aus `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` (seit P1/P3 gebaut; vorher
-  `/admin`), Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
+  `/admin`), Fahrer `/admin/preorders/abholliste` (seit P2), Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
   `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
   Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
   eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
