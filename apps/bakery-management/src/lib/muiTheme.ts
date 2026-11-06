@@ -56,6 +56,25 @@ export function createManagementTheme(mode: 'light' | 'dark'): Theme {
       MuiToggleButton: {
         styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
       },
+      // W4-verify r2: auch Eingabefelder (Datum, Ort, Suche - `size="small"`
+      // waren 40 px) und Schalter (38 px) auf dem Handy mindestens 44 px.
+      MuiInputBase: {
+        styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
+      },
+      MuiSwitch: {
+        styleOverrides: {
+          root: {
+            [TOUCH_MEDIA]: {
+              '&.MuiSwitch-sizeMedium': {
+                width: 64,
+                height: 44,
+                padding: 15,
+                '& .MuiSwitch-switchBase': { padding: 12 },
+              },
+            },
+          },
+        },
+      },
     },
   })
 }
