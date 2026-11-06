@@ -569,6 +569,42 @@ function deltaBakeExtras(lines, deltaByKey, exactByKey, subtotalByKey) {
   return out
 }
 
+/**
+ * Die freigegebenen Zeilen plus je eine leere Zeile (alles 0) fuer jeden
+ * Nachtrag, dessen Posten/Variante bei der Freigabe gar nicht gebacken
+ * wurde (W4-Verifikation Runde 6): sonst bekam so ein Nachtrag keine
+ * Backmenge (`+0,5 Kranz` statt `+1`) und fiel aus Hefeteig und Fuellungen.
+ *
+ * @param {Array<{key: string}>} lines freigegebene Zeilen (`frozenLine`)
+ * @param {Array<{key: string, itemId: string, variant: string|null}>} deltas
+ * @param {object|null} config
+ */
+function linesForDeltas(lines, deltas, config) {
+  const out = Array.isArray(lines) ? [...lines] : []
+  const known = new Set(out.map((l) => l.key))
+  for (const d of Array.isArray(deltas) ? deltas : []) {
+    if (!d || known.has(d.key)) continue
+    known.add(d.key)
+    out.push(
+      frozenLine(
+        {
+          itemId: d.itemId,
+          variant: storedVariant(d.variant),
+          base: 0,
+          seasonal: 0,
+          preorders: 0,
+          cap: 0,
+          correction: 0,
+          total: 0,
+        },
+        config,
+        []
+      )
+    )
+  }
+  return out
+}
+
 /** Zeilen mit den Nachtraegen in `total` (fuer Hefeteig und Fuellungen). */
 function linesWithExtras(lines, extras) {
   return (Array.isArray(lines) ? lines : []).map((line) =>
@@ -707,6 +743,7 @@ module.exports = {
   tickStillValid,
   computedSnapshot,
   deltaBakeExtras,
+  linesForDeltas,
   linesWithExtras,
   hefeteigFillingsDiff,
   snapshotDiffers,

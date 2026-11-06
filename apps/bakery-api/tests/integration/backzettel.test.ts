@@ -1103,6 +1103,51 @@ describe('what Nachträge mean for oven, dough and filling (W4-verify)', () => {
   })
 })
 
+describe('Nachtrag für einen Posten ohne freigegebene Zeile (W4-verify r6)', () => {
+  const SUN3 = '2026-12-13'
+
+  it('bekommt die Backmenge und landet in Hefeteig und Füllungen', async () => {
+    expect(
+      (await as('backstube').post(`/api/backzettel/${SUN3}/confirm`)).status
+    ).toBe(200)
+    // Sonntag: nur Weck freigegeben - kein Kranz, kein Zopf.
+    await apiPreorder(SUN3, [
+      {
+        productId: 'test-kranz-gefuellt-viertel',
+        quantity: 2,
+        variant: 'mohn',
+      },
+      { productId: 'test-zopf-gefuellt', quantity: 2, variant: 'nuss' },
+    ])
+    const d = (await as('backstube').get(`/api/backzettel/${SUN3}`)).body.data
+    expect(line(d, 'kranz-gefuellt', 'mohn')).toBeUndefined()
+    // 0,5 Kranz ist ein ganzer Kranz zu backen, nicht „+0,5“.
+    expect(d.deltaTotals['kranz-gefuellt|mohn']).toMatchObject({
+      qty: 0.5,
+      bake: 1,
+      bakeOpen: 1,
+    })
+    expect(d.deltaTotals['zopf-gefuellt|nuss']).toMatchObject({
+      qty: 2,
+      bake: 2,
+    })
+    expect(d.deltaExtras).toEqual({
+      doughs: [
+        expect.objectContaining({
+          id: 'hefeteig-test',
+          // 1 Kranz × 2 × 600 g + 2 Zopf × 1 × 500 g
+          pieces: 4,
+          dough_g: 2200,
+        }),
+      ],
+      fillings: expect.arrayContaining([
+        expect.objectContaining({ id: 'mohn', grams: 800 }),
+        expect.objectContaining({ id: 'nuss', grams: 800 }),
+      ]),
+    })
+  })
+})
+
 describe('Nachträge: entfernt, verschoben und der Code am Tag (W4-verify r5)', () => {
   const TUE5 = '2026-12-15'
   const WED5 = '2026-12-16'

@@ -25,6 +25,7 @@ import {
   fetchBackzettelConfig,
   fetchBackzettelDay,
   fetchPrep,
+  deltaTotalsByKey,
   isBackzettelDay,
   setLineDone,
   type BackzettelConfigData,
@@ -940,9 +941,10 @@ export default function BackstubeClient({
                 <BackstubeDeltas
                   deltas={day.deltas}
                   bakeByKey={Object.fromEntries(
-                    day.sections.flatMap((section) =>
-                      section.lines.map((l) => [l.key, l.delta?.bakeOpen])
-                    )
+                    Object.entries(deltaTotalsByKey(day)).map(([key, d]) => [
+                      key,
+                      d?.bakeOpen,
+                    ])
                   )}
                   config={config}
                   canAck={canWork && !draft}

@@ -594,8 +594,12 @@ export function createBackzettelService(
     // the change in Hefeteig/Füllungen - the frozen figures stay as they are.
     let deltaExtras: unknown = null
     if (deltaByKey.size > 0) {
+      // W4-verify r6: a Nachtrag for an item/variant not baked at confirm
+      // time has no frozen line - give it an empty one, so it gets an oven
+      // figure and reaches Hefeteig and Füllungen.
+      const deltaLines = dayCore.linesForDeltas(lines, deltas, config)
       const extras = dayCore.deltaBakeExtras(
-        lines,
+        deltaLines,
         Object.fromEntries(deltaByKey),
         snap?.preordersExact ?? null,
         snap?.subtotalExact ?? null
@@ -611,7 +615,7 @@ export function createBackzettelService(
         ])
       )
       const ackedExtras = dayCore.deltaBakeExtras(
-        lines,
+        deltaLines,
         ackedByKey,
         snap?.preordersExact ?? null,
         snap?.subtotalExact ?? null
@@ -621,7 +625,7 @@ export function createBackzettelService(
           Math.round(((entry.bake ?? 0) - (ackedExtras[key] ?? 0)) * 100) / 100
       }
       if (config && recomputed) {
-        const adjusted = dayCore.linesWithExtras(lines, extras)
+        const adjusted = dayCore.linesWithExtras(deltaLines, extras)
         deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {
           hefeteig: core.computeHefeteig(config, adjusted),
           fillings: core.computeFillings(
@@ -649,6 +653,8 @@ export function createBackzettelService(
       ...dayCore.prepDateFor(date, config ? config.days : null),
       deltas,
       deltaExtras,
+      // W4-verify r6: per key incl. items without a frozen line.
+      deltaTotals: Object.fromEntries(deltaByKey),
       warnings,
       configStatus: loaded.ok ? ('ok' as const) : ('no-config' as const),
       configChangedSinceConfirm,
