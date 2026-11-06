@@ -7,7 +7,7 @@ import {
   within,
 } from '@testing-library/react'
 import { ApiError } from '@bakery/shared/data-access'
-import RestClient from './RestClient'
+import RestClient, { DRAFT_STALE_MESSAGE } from './RestClient'
 import * as api from '../../../lib/restApi'
 import type { RestCountRow, RestDay, RestLine } from '../../../lib/restApi'
 import { fakeSession, WithSession } from '../../../lib/testing/fakeSession'
@@ -182,6 +182,117 @@ describe('Rest am Abend - Zählung', () => {
     expect(screen.queryByTestId('rest-save-bar')).toBeNull()
   })
 
+  it('a reload after another tablet counted shows the conflict instead of overwriting silently', async () => {
+    const { unmount } = renderAs('verkauf')
+    await screen.findByTestId('rest-line-weck|')
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: mehr' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: mehr' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: mehr' }))
+    unmount()
+    // Tablet B saved 40 meanwhile.
+    mocked.fetchRestDay.mockResolvedValue(
+      makeDay({
+        lines: [
+          line({
+            rows: [
+              row({
+                qty: 40,
+                revision: 1,
+                countedBy: { id: 9, displayName: 'Test verkauf B' },
+              }),
+            ],
+            counted: true,
+            rest: 40,
+          }),
+        ],
+      })
+    )
+    mocked.saveRestDay.mockImplementation(async (date, items) =>
+      makeDay({ changed: items.length })
+    )
+    renderAs('verkauf')
+    const alert = await screen.findByTestId('save-error')
+    expect(within(alert).getByText('Inzwischen anders gezählt')).toBeTruthy()
+    expect(within(alert).getByText(DRAFT_STALE_MESSAGE)).toBeTruthy()
+    expect(within(alert).getByText('Weck: 40 (Test verkauf B)')).toBeTruthy()
+    expect(mocked.saveRestDay).not.toHaveBeenCalled()
+    // The input (3) is still there; saving now is a conscious overwrite of 40.
+    expect(screen.getByText('1 Änderung')).toBeTruthy()
+    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(mocked.saveRestDay).toHaveBeenCalledWith('2026-12-01', [
+        { itemId: 'weck', productId: 'test-weck', qty: 3, expected: 40 },
+      ])
+    )
+  })
+
+  it('switching day and back keeps the base of the input', async () => {
+    renderAs('verkauf')
+    await screen.findByTestId('rest-line-weck|')
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: nichts übrig' }))
+    mocked.fetchRestDay.mockImplementation(async (date) =>
+      date === '2026-11-30'
+        ? makeDay({ date: '2026-11-30', lines: [] })
+        : makeDay({
+            lines: [
+              line({
+                rows: [row({ qty: 6, revision: 1 })],
+                counted: true,
+                rest: 6,
+              }),
+            ],
+          })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Tag davor' }))
+    await waitFor(() =>
+      expect(mocked.fetchRestDay).toHaveBeenCalledWith('2026-11-30')
+    )
+    await screen.findByText('Für diesen Tag steht nichts auf dem Backzettel.')
+    fireEvent.click(screen.getByRole('button', { name: 'Tag danach' }))
+    const alert = await screen.findByTestId('save-error')
+    expect(within(alert).getByText('Weck: 6')).toBeTruthy()
+  })
+
+  it('a draft belongs to the person: the next PIN user does not inherit it', async () => {
+    const { unmount } = renderAs('verkauf')
+    await screen.findByTestId('rest-line-weck|')
+    fireEvent.click(screen.getByRole('button', { name: 'Weck: nichts übrig' }))
+    expect(screen.getByText('1 Änderung')).toBeTruthy()
+    unmount()
+    render(
+      <WithSession
+        value={fakeSession({
+          user: {
+            id: 2,
+            username: 'test.anna',
+            displayName: 'Anna',
+            role: 'verkauf',
+          },
+        })}
+      >
+        <RestClient />
+      </WithSession>
+    )
+    await screen.findByTestId('rest-line-weck|')
+    expect(screen.queryByTestId('rest-save-bar')).toBeNull()
+    expect(screen.getByTestId('rest-progress').textContent).toBe(
+      '0 von 2 gezählt'
+    )
+  })
+
+  it('read-only roles see server values, never a stored draft', async () => {
+    window.localStorage.setItem(
+      'bakery-rest-draft:1:2026-12-01',
+      JSON.stringify({ 'weck||test-weck': { qty: 9, base: null } })
+    )
+    renderAs('backstube')
+    await screen.findByTestId('rest-line-weck|')
+    expect(screen.getByTestId('rest-progress').textContent).toBe(
+      '0 von 2 gezählt'
+    )
+    expect(screen.queryByTestId('rest-save-bar')).toBeNull()
+  })
+
   it('shows who counted meanwhile on 409 and keeps the input', async () => {
     const error = new ApiError(
       'Weck wurde inzwischen von Test inhaber gezählt (6). Nichts wurde gespeichert.',
@@ -222,6 +333,25 @@ describe('Rest am Abend - Zählung', () => {
     await waitFor(() => expect(mocked.fetchRestDay).toHaveBeenCalledTimes(2))
     // Draft (0) still differs from the new server value (6): still to save.
     expect(screen.getByText('1 Änderung')).toBeTruthy()
+  })
+
+  it('says when more is left than was baked for the shop', async () => {
+    mocked.fetchRestDay.mockResolvedValueOnce(
+      makeDay({
+        lines: [
+          line({
+            rows: [row({ qty: 41, revision: 1 })],
+            counted: true,
+            rest: 41,
+            restExceedsShop: true,
+          }),
+        ],
+      })
+    )
+    renderAs('verkauf')
+    expect((await screen.findByTestId('rest-exceeds-weck|')).textContent).toBe(
+      'Mehr übrig als für den Laden gebacken - bitte nachzählen.'
+    )
   })
 
   it('Backstube only looks', async () => {

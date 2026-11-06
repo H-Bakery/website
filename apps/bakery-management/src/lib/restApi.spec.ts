@@ -1,12 +1,15 @@
 import {
   draftChanges,
+  draftConflicts,
   formatRate,
   isIsoDate,
   loadDraft,
   parsePadInput,
   pruneDraft,
+  rebaseDraft,
   restCsvFileName,
   rowKey,
+  setDraftEntry,
   stepQty,
   storeDraft,
   type RestDay,
@@ -88,18 +91,55 @@ describe('restApi helpers', () => {
     const kranz = rowKey(day.lines[1], day.lines[1].rows[0])
     expect(weck).toBe('weck||test-weck')
     expect(kranz).toBe('kranz|nuss|')
-    expect(draftChanges(day, { [weck]: 3, [kranz]: 0 })).toEqual([
-      { itemId: 'kranz', variant: 'nuss', qty: 0, expected: null },
-    ])
-    expect(draftChanges(day, { [weck]: null })).toEqual([
+    expect(
+      draftChanges(day, {
+        [weck]: { qty: 3, base: 3 },
+        [kranz]: { qty: 0, base: null },
+      })
+    ).toEqual([{ itemId: 'kranz', variant: 'nuss', qty: 0, expected: null }])
+    expect(draftChanges(day, { [weck]: { qty: null, base: 3 } })).toEqual([
       { itemId: 'weck', productId: 'test-weck', qty: null, expected: 3 },
     ])
   })
 
+  it('sends the value the input was based on, not the freshly loaded one', () => {
+    // Entered 5 when the row was uncounted; another tablet saved 3 since.
+    const weck = 'weck||test-weck'
+    const draft = { [weck]: { qty: 5, base: null } }
+    expect(draftChanges(day, draft)).toEqual([
+      { itemId: 'weck', productId: 'test-weck', qty: 5, expected: null },
+    ])
+    expect(draftConflicts(day, draft)).toEqual([
+      expect.objectContaining({
+        itemId: 'weck',
+        productId: 'test-weck',
+        name: 'Weck',
+        qty: 3,
+      }),
+    ])
+    const rebased = rebaseDraft(day, draft)
+    expect(rebased[weck]).toEqual({ qty: 5, base: 3 })
+    expect(draftConflicts(day, rebased)).toEqual([])
+    expect(draftChanges(day, rebased)[0].expected).toBe(3)
+  })
+
+  it('keeps the base of the first tap and drops entries equal to the server', () => {
+    const key = 'weck||test-weck'
+    let draft = setDraftEntry({}, key, 3, 4)
+    expect(draft).toEqual({ [key]: { qty: 4, base: 3 } })
+    draft = setDraftEntry(draft, key, 7, 5)
+    expect(draft).toEqual({ [key]: { qty: 5, base: 3 } })
+    expect(setDraftEntry(draft, key, 5, 5)).toEqual({})
+  })
+
   it('drops draft entries the server already has or no longer knows', () => {
     expect(
-      pruneDraft(day, { 'weck||test-weck': 3, 'kranz|nuss|': 1, 'alt||x': 2 })
-    ).toEqual({ 'kranz|nuss|': 1 })
+      pruneDraft(day, {
+        'weck||test-weck': { qty: 3, base: null },
+        'kranz|nuss|': { qty: 1, base: null },
+        'alt||x': { qty: 2, base: null },
+      })
+    ).toEqual({ 'kranz|nuss|': { qty: 1, base: null } })
   })
 
   it('steps never below 0; „−“ on an uncounted row means 0', () => {
@@ -129,18 +169,29 @@ describe('restApi helpers', () => {
     )
   })
 
-  it('keeps the draft per day in localStorage and survives a broken store', () => {
+  it('keeps the draft per user and day in localStorage and survives a broken store', () => {
     useMemoryStorage()
-    storeDraft('2026-12-01', { 'weck||test-weck': 4 })
-    expect(loadDraft('2026-12-01')).toEqual({ 'weck||test-weck': 4 })
-    expect(loadDraft('2026-12-02')).toEqual({})
-    storeDraft('2026-12-01', {})
-    expect(loadDraft('2026-12-01')).toEqual({})
-    window.localStorage.setItem('bakery-rest-draft:2026-12-03', '{kaputt')
-    expect(loadDraft('2026-12-03')).toEqual({})
+    const entry = { 'weck||test-weck': { qty: 4, base: null } }
+    storeDraft(1, '2026-12-01', entry)
+    expect(loadDraft(1, '2026-12-01')).toEqual(entry)
+    expect(loadDraft(1, '2026-12-02')).toEqual({})
+    expect(loadDraft(2, '2026-12-01')).toEqual({})
+    storeDraft(1, '2026-12-01', {})
+    expect(loadDraft(1, '2026-12-01')).toEqual({})
+    window.localStorage.setItem('bakery-rest-draft:1:2026-12-03', '{kaputt')
+    expect(loadDraft(1, '2026-12-03')).toEqual({})
+    // Old format (plain numbers, no base) is not trusted.
+    window.localStorage.setItem(
+      'bakery-rest-draft:1:2026-12-04',
+      JSON.stringify({
+        'weck||test-weck': 4,
+        'kranz|nuss|': { qty: -1, base: 0 },
+      })
+    )
+    expect(loadDraft(1, '2026-12-04')).toEqual({})
     ;(window.localStorage.getItem as jest.Mock).mockImplementationOnce(() => {
       throw new Error('gesperrt')
     })
-    expect(loadDraft('2026-12-01')).toEqual({})
+    expect(loadDraft(1, '2026-12-01')).toEqual({})
   })
 })

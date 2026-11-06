@@ -1391,7 +1391,13 @@ Fünf Dinge, die man wissen muss:
   Zählung wie „alles verkauft".
 - **Zwei Tablets, ein Tag:** `PUT /api/rest/:date` nimmt je Zeile `expected` (was der Bildschirm
   kannte); weicht der Server ab, kommt 409 `rest_changed` mit `current` und **nichts** wird
-  gespeichert. Die Seite zeigt, wer was gezählt hat, lädt neu und behält die Eingaben. Korrekturen
+  gespeichert. Die Seite zeigt, wer was gezählt hat, lädt neu und behält die Eingaben.
+  **`expected` ist die Grundlage der Eingabe, nicht der gerade geladene Stand:** jeder
+  Entwurfs-Eintrag hält `{ qty, base }` (`base` = Server-Wert beim ersten Tipp,
+  `setDraftEntry`). Findet ein Neuladen oder Tageswechsel einen anderen Server-Wert
+  (`draftConflicts`), zeigt die Seite den Konflikt wie bei einer 409 und setzt die Grundlage erst
+  dann neu (`rebaseDraft`) - sonst überschriebe ein aufgehobener Entwurf still die Zählung eines
+  anderen Tablets. Korrekturen
   stehen mit altem und neuem Wert im `audit_log` (`rest_count`), `revision` zählt mit. Gezählt und
   korrigiert wird nur heute bis 7 Tage zurück (Berlin), nie am Ruhetag.
 - **Nicht im Pilotbetrieb.** `/admin/rest` steht in `ROLE_ACCESS` (Verkauf zählt, Backstube liest,
@@ -1401,8 +1407,13 @@ Fünf Dinge, die man wissen muss:
 
 Bedienung: große −/+ (56 px), Zahl antippen öffnet einen Ziffernblock (Komma nur bei Liter/kg),
 „Nichts übrig" je Zeile setzt alle Produkte der Zeile auf 0, eine feste Leiste unten speichert alle
-Änderungen auf einmal. Ungespeicherte Eingaben liegen je Tag im `localStorage`
-(`bakery-rest-draft:<datum>`, nur Komfort). 28 Posten = 61 Fingertipps im Smoke (≈ 1,5 min).
+Änderungen auf einmal. Ungespeicherte Eingaben liegen je **Benutzer** und Tag im `localStorage`
+(`bakery-rest-draft:<userId>:<datum>`, nur Komfort) - an der PIN-Station erbt die nächste Person
+weder die Zahlen der vorigen noch speichert sie sie unter eigenem Namen; wer nur lesen darf
+(Backstube), sieht immer den Server-Stand. 28 Posten = 61 Fingertipps im Smoke (≈ 1,5 min).
+Ein Posten mit Sorten wird je Sorte gezählt (400 `variant_required`, wie bei Vorbestellungen).
+Mehr Rest als für den Laden gebacken (`restExceedsShop`) steht an der Zeile als „bitte
+nachzählen", in der Auswertung je Posten mit den Tagen (`restExceedsDates`).
 In den Grundmengen (Z4) steht „Rest am Abend Ø" zusätzlich im Hinweis der Referenz
 (`GET /api/rest/averages`, nur Information). Nach jeder Zählung schreibt Z9 (falls
 `HQ_SNAPSHOT_DIR` gesetzt) `hq/data/production/rest/<datum>.json` - ohne Namen und Uhrzeiten.

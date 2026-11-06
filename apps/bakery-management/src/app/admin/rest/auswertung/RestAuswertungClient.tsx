@@ -569,6 +569,21 @@ export default function RestAuswertungClient() {
                             vollständig gezählt
                           </Typography>
                         )}
+                        {(item.restExceedsDates?.length ?? 0) > 0 && (
+                          <Typography
+                            variant="caption"
+                            color="text.primary"
+                            fontWeight={600}
+                            component="div"
+                            data-testid={`rest-exceeds-${item.itemId}`}
+                          >
+                            Mehr Rest als für den Laden gebacken am{' '}
+                            {(item.restExceedsDates ?? [])
+                              .map((d) => formatDayShort(d))
+                              .join(', ')}{' '}
+                            - Zählung prüfen
+                          </Typography>
+                        )}
                       </TableCell>
                       <TableCell align="right">{item.days}</TableCell>
                       <TableCell align="right">

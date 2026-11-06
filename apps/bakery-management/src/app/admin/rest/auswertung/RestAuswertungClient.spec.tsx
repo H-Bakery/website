@@ -77,6 +77,7 @@ function summary(overrides: Partial<RestSummary> = {}): RestSummary {
         soldStatus: 'no_plu',
         uncountedDays: 0,
         uncountedDates: [],
+        restExceedsDates: ['2026-12-01'],
         variants: [],
         weeks: [
           { week: '2026-W48', days: 0, shopBaked: 0, rest: 0, rate: null },
@@ -160,6 +161,10 @@ describe('Rest-Auswertung', () => {
     expect(
       within(plunder).getByText('1 Tag nicht vollständig gezählt')
     ).toBeTruthy()
+    expect(screen.getByTestId('rest-exceeds-weck').textContent).toBe(
+      'Mehr Rest als für den Laden gebacken am 01.12. - Zählung prüfen'
+    )
+    expect(screen.queryByTestId('rest-exceeds-plunder')).toBeNull()
     expect(screen.getByText('12,0 %')).toBeTruthy()
     expect(screen.getByText('25,0 %')).toBeTruthy()
     expect(screen.getByTestId('day-counts').textContent).toContain(

@@ -64,6 +64,8 @@ export interface RestLine {
   /** Rest in der Einheit des Postens; `null`, solange nicht alles gezählt ist. */
   rest: number | null
   restSoFar: number | null
+  /** Mehr übrig als für den Laden gebacken (Gebacken − CAP): fast immer verzählt. */
+  restExceedsShop?: boolean
 }
 
 export interface RestDay {
@@ -148,6 +150,8 @@ export interface RestSummaryItem {
   soldStatus: 'ok' | 'partial' | 'no_plu' | 'no_report' | 'no_config'
   uncountedDays: number
   uncountedDates: string[]
+  /** Tage, an denen mehr übrig war als für den Laden gebacken. */
+  restExceedsDates?: string[]
   variants: {
     variant: string
     label: string
@@ -280,8 +284,21 @@ export function rowKey(
   return `${line.itemId}|${line.variant || ''}|${row.productId}`
 }
 
-/** Entwurf: Zählzeile → eingegebene Menge (`null` = Zählung löschen). */
-export type RestDraft = Record<string, number | null>
+/**
+ * Ein Entwurfs-Eintrag: die eingegebene Menge (`null` = Zählung löschen) und
+ * der Server-Wert, auf dem die Eingabe beruht (`base`). `base` wird beim
+ * Speichern als `expected` geschickt - nicht der Wert, den der Server nach
+ * einem Neuladen gerade liefert. Sonst überschriebe ein im Browser
+ * aufgehobener Entwurf nach Neuladen oder Tageswechsel still die Zählung
+ * eines anderen Tablets (kein 409).
+ */
+export interface RestDraftEntry {
+  qty: number | null
+  base: number | null
+}
+
+/** Entwurf: Zählzeile (`rowKey`) → Eingabe samt Grundlage. */
+export type RestDraft = Record<string, RestDraftEntry>
 
 /** Wert, den eine Zählzeile gerade zeigt: Entwurf vor Server. */
 export function shownQty(
@@ -290,7 +307,27 @@ export function shownQty(
   row: Pick<RestCountRow, 'productId' | 'qty'>
 ): number | null {
   const key = rowKey(line, row)
-  return key in draft ? draft[key] : row.qty
+  return key in draft ? draft[key].qty : row.qty
+}
+
+/**
+ * Eine Eingabe in den Entwurf übernehmen. Die Grundlage bleibt die des
+ * ersten Tipps auf diese Zeile; entspricht die Eingabe dem Server, fällt der
+ * Eintrag weg.
+ */
+export function setDraftEntry(
+  draft: RestDraft,
+  key: string,
+  serverQty: number | null,
+  qty: number | null
+): RestDraft {
+  const next = { ...draft }
+  if (qty === serverQty) {
+    delete next[key]
+  } else {
+    next[key] = { qty, base: key in draft ? draft[key].base : serverQty }
+  }
+  return next
 }
 
 /** Entwurfs-Einträge, die sich wirklich vom Server unterscheiden. */
@@ -303,14 +340,14 @@ export function draftChanges(
     for (const row of line.rows) {
       const key = rowKey(line, row)
       if (!(key in draft)) continue
-      const qty = draft[key]
+      const { qty, base } = draft[key]
       if (qty === row.qty) continue
       out.push({
         itemId: line.itemId,
         ...(line.variant ? { variant: line.variant } : {}),
         ...(row.productId ? { productId: row.productId } : {}),
         qty,
-        expected: row.qty,
+        expected: base,
       })
     }
   }
@@ -327,8 +364,66 @@ export function pruneDraft(
     for (const row of line.rows) known.set(rowKey(line, row), row.qty)
   }
   const out: RestDraft = {}
-  for (const [key, qty] of Object.entries(draft)) {
-    if (known.has(key) && known.get(key) !== qty) out[key] = qty
+  for (const [key, entry] of Object.entries(draft)) {
+    if (known.has(key) && known.get(key) !== entry.qty) out[key] = entry
+  }
+  return out
+}
+
+/**
+ * Zeilen, deren Server-Wert sich seit der Eingabe geändert hat (anderes
+ * Tablet) - in der Form der 409 `rest_changed`, damit der Bildschirm sie
+ * genauso zeigt.
+ */
+export function draftConflicts(
+  day: Pick<RestDay, 'lines'>,
+  draft: RestDraft
+): RestConflict[] {
+  const out: RestConflict[] = []
+  for (const line of day.lines) {
+    for (const row of line.rows) {
+      const entry = draft[rowKey(line, row)]
+      if (!entry || entry.base === row.qty || entry.qty === row.qty) continue
+      out.push({
+        itemId: line.itemId,
+        variant: line.variant,
+        productId: row.productId,
+        name: rowConflictName(line, row),
+        qty: row.qty,
+        countedBy: row.countedBy,
+        countedAt: row.countedAt,
+      })
+    }
+  }
+  return out
+}
+
+function rowConflictName(
+  line: Pick<RestLine, 'name' | 'variantLabel' | 'rows'>,
+  row: Pick<RestCountRow, 'label'>
+): string {
+  const base = line.variantLabel
+    ? `${line.name} ${line.variantLabel}`
+    : line.name
+  return line.rows.length > 1 && row.label && row.label !== line.name
+    ? `${base} (${row.label})`
+    : base
+}
+
+/**
+ * Nachdem die Person die Abweichung gesehen hat: die Grundlage auf den
+ * jetzigen Server-Stand setzen - ein erneutes Speichern gilt dann bewusst.
+ */
+export function rebaseDraft(
+  day: Pick<RestDay, 'lines'>,
+  draft: RestDraft
+): RestDraft {
+  const out: RestDraft = { ...draft }
+  for (const line of day.lines) {
+    for (const row of line.rows) {
+      const key = rowKey(line, row)
+      if (key in out) out[key] = { qty: out[key].qty, base: row.qty }
+    }
   }
   return out
 }
@@ -422,23 +517,34 @@ export function isIsoDate(value: unknown): value is string {
 
 const DRAFT_PREFIX = 'bakery-rest-draft:'
 
+function draftStorageKey(userId: number | string, date: string): string {
+  return `${DRAFT_PREFIX}${userId}:${date}`
+}
+
+function isQty(value: unknown): value is number | null {
+  return value === null || (typeof value === 'number' && value >= 0)
+}
+
 /**
- * Ungespeicherte Eingaben je Tag im `localStorage` - ein Neuladen oder ein
- * leerer Akku am Tablet soll die halbe Zählung nicht kosten. Jeder Zugriff
- * in try/catch (privates Fenster, gesperrter Speicher).
+ * Ungespeicherte Eingaben je Benutzer und Tag im `localStorage` - ein
+ * Neuladen oder ein leerer Akku am Tablet soll die halbe Zählung nicht
+ * kosten. Je Benutzer, weil sich an der PIN-Station mehrere Personen ein
+ * Gerät teilen: die nächste soll weder die Zahlen der vorigen sehen noch sie
+ * unter eigenem Namen speichern. Jeder Zugriff in try/catch (privates
+ * Fenster, gesperrter Speicher).
  */
-export function loadDraft(date: string): RestDraft {
+export function loadDraft(userId: number | string, date: string): RestDraft {
   try {
-    const raw = window.localStorage.getItem(DRAFT_PREFIX + date)
+    const raw = window.localStorage.getItem(draftStorageKey(userId, date))
     if (!raw) return {}
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
       return {}
     const out: RestDraft = {}
     for (const [key, value] of Object.entries(parsed)) {
-      if (value === null || (typeof value === 'number' && value >= 0)) {
-        out[key] = value as number | null
-      }
+      if (!value || typeof value !== 'object') continue
+      const { qty, base } = value as { qty?: unknown; base?: unknown }
+      if (isQty(qty) && isQty(base)) out[key] = { qty, base }
     }
     return out
   } catch {
@@ -446,12 +552,17 @@ export function loadDraft(date: string): RestDraft {
   }
 }
 
-export function storeDraft(date: string, draft: RestDraft): void {
+export function storeDraft(
+  userId: number | string,
+  date: string,
+  draft: RestDraft
+): void {
   try {
+    const key = draftStorageKey(userId, date)
     if (Object.keys(draft).length === 0) {
-      window.localStorage.removeItem(DRAFT_PREFIX + date)
+      window.localStorage.removeItem(key)
     } else {
-      window.localStorage.setItem(DRAFT_PREFIX + date, JSON.stringify(draft))
+      window.localStorage.setItem(key, JSON.stringify(draft))
     }
   } catch {
     // Speicher gesperrt - die Eingaben leben dann nur bis zum Neuladen.

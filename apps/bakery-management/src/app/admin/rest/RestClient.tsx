@@ -32,14 +32,17 @@ import { useOptionalSession } from '../../../lib/session'
 import {
   addDaysIso,
   draftChanges,
+  draftConflicts,
   fetchRestDay,
   formatNumber,
   formatQtyUnit,
   loadDraft,
   parsePadInput,
   pruneDraft,
+  rebaseDraft,
   rowKey,
   saveRestDay,
+  setDraftEntry,
   shownQty,
   stepQty,
   storeDraft,
@@ -52,6 +55,10 @@ import {
 
 /** Wer zählen darf (wie `PUT /api/rest/:date`). */
 export const COUNT_ROLES = ['inhaber', 'verkauf']
+
+/** Hinweis, wenn ein aufgehobener Entwurf auf einem alten Stand beruht. */
+export const DRAFT_STALE_MESSAGE =
+  'Seit deiner Eingabe wurde auf einem anderen Gerät gezählt. Nichts wurde überschrieben.'
 
 /** Breite der festen Seitenleiste ab `md` (admin/layout.tsx `drawerWidth`). */
 const SIDEBAR_WIDTH = 280
@@ -316,6 +323,16 @@ function CountLine({
               ? ` · Rest ${formatQtyUnit(line.rest, line.unit)}`
               : ''}
           </Typography>
+          {line.restExceedsShop && (
+            <Typography
+              variant="body2"
+              color="text.primary"
+              fontWeight={600}
+              data-testid={`rest-exceeds-${line.key}`}
+            >
+              Mehr übrig als für den Laden gebacken - bitte nachzählen.
+            </Typography>
+          )}
         </Box>
         <Stack spacing={1} sx={{ flexShrink: 0 }}>
           {line.rows.map((row, i) => {
@@ -431,6 +448,11 @@ export default function RestClient({ initialDate }: RestClientProps) {
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
   const mayCount = role !== null && COUNT_ROLES.includes(role)
+  // Entwürfe nur für Rollen, die zählen, und je Person: Wer nur liest, sieht
+  // immer den Server-Stand; an der PIN-Station erbt niemand die Zahlen der
+  // vorigen Person.
+  const userId = session?.user?.id ?? null
+  const draftOwner = mayCount && userId !== null ? userId : null
 
   const [date, setDate] = useState<string | undefined>(initialDate)
   const [day, setDay] = useState<RestDay | null>(null)
@@ -444,22 +466,39 @@ export default function RestClient({ initialDate }: RestClientProps) {
   const [toast, setToast] = useState<string | null>(null)
   const requestId = useRef(0)
 
-  const load = useCallback(async (target?: string) => {
-    const id = ++requestId.current
-    setLoading(true)
-    setLoadError(null)
-    try {
-      const result = await fetchRestDay(target)
-      if (id !== requestId.current) return
-      setDay(result)
-      setDraft(pruneDraft(result, loadDraft(result.date)))
-    } catch (error) {
-      if (id !== requestId.current) return
-      setLoadError(errorMessage(error))
-    } finally {
-      if (id === requestId.current) setLoading(false)
-    }
-  }, [])
+  const load = useCallback(
+    async (target?: string) => {
+      const id = ++requestId.current
+      setLoading(true)
+      setLoadError(null)
+      try {
+        const result = await fetchRestDay(target)
+        if (id !== requestId.current) return
+        setDay(result)
+        if (draftOwner === null) {
+          setDraft({})
+          return
+        }
+        const stored = pruneDraft(result, loadDraft(draftOwner, result.date))
+        const stale = draftConflicts(result, stored)
+        if (stale.length > 0) {
+          // Ein anderes Tablet hat gezählt, seit die Eingaben gemacht wurden:
+          // zeigen wie eine 409 - erst ein erneutes Speichern überschreibt.
+          setConflicts(stale)
+          setSaveError(DRAFT_STALE_MESSAGE)
+          setDraft(rebaseDraft(result, stored))
+        } else {
+          setDraft(stored)
+        }
+      } catch (error) {
+        if (id !== requestId.current) return
+        setLoadError(errorMessage(error))
+      } finally {
+        if (id === requestId.current) setLoading(false)
+      }
+    },
+    [draftOwner]
+  )
 
   useEffect(() => {
     void load(date)
@@ -509,17 +548,14 @@ export default function RestClient({ initialDate }: RestClientProps) {
 
   const change = useCallback(
     (line: RestLine, row: RestCountRow, value: number | null) => {
-      if (!day) return
+      if (!day || draftOwner === null) return
       setDraft((prev) => {
-        const key = rowKey(line, row)
-        const next = { ...prev }
-        if (value === row.qty) delete next[key]
-        else next[key] = value
-        storeDraft(day.date, next)
+        const next = setDraftEntry(prev, rowKey(line, row), row.qty, value)
+        storeDraft(draftOwner, day.date, next)
         return next
       })
     },
-    [day]
+    [day, draftOwner]
   )
 
   const goTo = (target: string) => {
@@ -531,7 +567,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
 
   const discard = () => {
     if (!day) return
-    storeDraft(day.date, {})
+    if (draftOwner !== null) storeDraft(draftOwner, day.date, {})
     setDraft({})
     setConflicts([])
     setSaveError(null)
@@ -545,7 +581,7 @@ export default function RestClient({ initialDate }: RestClientProps) {
       const result = await saveRestDay(day.date, changes)
       setDay(result)
       const rest = pruneDraft(result, draft)
-      storeDraft(result.date, rest)
+      if (draftOwner !== null) storeDraft(draftOwner, result.date, rest)
       setDraft(rest)
       setConflicts([])
       setToast(
@@ -560,10 +596,14 @@ export default function RestClient({ initialDate }: RestClientProps) {
           : []
         setConflicts(current)
         setSaveError(error.message)
-        // Neu laden: der Entwurf bleibt, „vorher“ ist jetzt der neue Stand.
+        // Neu laden: der Entwurf bleibt, seine Grundlage ist jetzt der neue
+        // Stand - die Person hat die Abweichung gesehen, ein erneutes
+        // Speichern gilt. Gespeichert im Browser wird die neue Grundlage erst
+        // mit der nächsten Eingabe; ein Neuladen zeigt den Hinweis wieder.
         try {
           const fresh = await fetchRestDay(day.date)
           setDay(fresh)
+          setDraft((prev) => rebaseDraft(fresh, prev))
         } catch {
           // Bleibt beim alten Stand; der Hinweis oben sagt, was los ist.
         }
