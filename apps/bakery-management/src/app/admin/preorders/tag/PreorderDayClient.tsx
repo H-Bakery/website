@@ -211,6 +211,10 @@ export default function PreorderDayClient({
   }
 
   const summary = day?.summary
+  const ladenCount = day
+    ? day.preorders.filter((p) => !p.pickupPointId && p.status !== 'storniert')
+        .length
+    : 0
   const channels = summary
     ? (Object.entries(summary.byChannel) as Array<[PreorderChannel, number]>)
         .filter(([, n]) => n > 0)
@@ -328,7 +332,7 @@ export default function PreorderDayClient({
             <Typography color="text.secondary" sx={{ mb: 2 }}>
               {summary.count}{' '}
               {summary.count === 1 ? 'Bestellung' : 'Bestellungen'}
-              {channels ? ` · ${channels}` : ''}
+              {channels ? ` · Bestellweg: ${channels}` : ''}
             </Typography>
 
             <Box
@@ -431,15 +435,31 @@ export default function PreorderDayClient({
             )}
 
             {day.pickupPoints.length > 0 && (
-              <Typography color="text.secondary" sx={{ mb: 2 }}>
-                {day.pickupPoints
-                  .map(
+              <Typography
+                color="text.secondary"
+                sx={{ mb: 2 }}
+                data-testid="preorder-day-places"
+              >
+                {/* W4-Verifikation Runde 5: Abholorte samt Laden - „Laden 18“
+                    oben ist der Bestellweg, nicht die Zahl an der Theke. */}
+                Abholung:{' '}
+                {[
+                  ...(ladenCount > 0 || !day.pickupPointId
+                    ? [
+                        `Laden: ${ladenCount} ${
+                          ladenCount === 1 ? 'Bestellung' : 'Bestellungen'
+                        }`,
+                      ]
+                    : []),
+                  ...day.pickupPoints.map(
                     (p) =>
-                      `${p.name}: ${p.preorderCount} ${
+                      `${p.name}${p.active === false ? ' (inaktiv)' : ''}: ${
+                        p.preorderCount
+                      } ${
                         p.preorderCount === 1 ? 'Bestellung' : 'Bestellungen'
                       }${p.window ? ` (Übergabe ${p.window})` : ''}`
-                  )
-                  .join(' · ')}
+                  ),
+                ].join(' · ')}
               </Typography>
             )}
 
