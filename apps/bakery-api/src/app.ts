@@ -109,6 +109,13 @@ export function createApp(options: CreateAppOptions = {}): Application {
     })
   )
   app.use(express.json({ limit: options.jsonLimit ?? '200kb' }))
+  // W4 verification round 2: API answers carry names, phone numbers and
+  // money. Without this, Chrome kept them in its disk cache on the shared
+  // shop tablet after "Abmelden". A route may still override it.
+  app.use('/api', (_req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store')
+    next()
+  })
   if (options.logRequests !== false) {
     app.use(loggerMiddleware)
   }

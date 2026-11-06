@@ -90,6 +90,21 @@ describe('error shape', () => {
   })
 })
 
+describe('no HTTP caching of API answers (W4-verify r2)', () => {
+  it('sends Cache-Control: no-store on /api, also on 401 and with a session', async () => {
+    const anon = await request(api.app).get('/api/partners')
+    expect(anon.status).toBe(401)
+    expect(anon.headers['cache-control']).toBe('no-store')
+    const res = await authed().get('/api/partners')
+    expect(res.status).toBe(200)
+    expect(res.headers['cache-control']).toBe('no-store')
+    const login = await request(api.app)
+      .post('/api/auth/login')
+      .send({ username: 'x', password: 'y' })
+    expect(login.headers['cache-control']).toBe('no-store')
+  })
+})
+
 describe('partners CRUD smoke', () => {
   it('lists the seeded partner', async () => {
     const res = await authed().get('/api/partners')
