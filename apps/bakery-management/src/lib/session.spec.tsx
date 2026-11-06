@@ -13,6 +13,7 @@ import {
   saveSession,
   saveStation,
   currentToken,
+  type SessionUser,
   type StoredSession,
 } from './authSession'
 import { useMemoryStorage } from './testing/memoryStorage'
@@ -217,6 +218,94 @@ describe('SessionProvider', () => {
     } finally {
       jest.useRealTimers()
     }
+  })
+
+  describe('Backstube-Tablet (Z6)', () => {
+    const BACKSTUBE: SessionUser = {
+      id: 3,
+      username: 'test.backstube',
+      displayName: 'Test Backstube',
+      role: 'backstube',
+    }
+
+    afterEach(() => window.history.replaceState({}, '', '/'))
+
+    async function idleFor(ms: number) {
+      await act(async () => {
+        jest.advanceTimersByTime(ms)
+      })
+      await act(async () => {
+        await Promise.resolve()
+      })
+    }
+
+    async function startStation(user: SessionUser, path: string) {
+      window.history.replaceState({}, '', path)
+      saveSession(stored({ sessionKind: 'station', user }))
+      api.fetchMe.mockResolvedValue(user)
+      renderProvider()
+      await act(async () => {
+        await Promise.resolve()
+      })
+      expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+    }
+
+    it('bleibt auf /backstube ohne Bedienung angemeldet, bis 12 h nach der PIN', async () => {
+      jest.useFakeTimers()
+      try {
+        await startStation(BACKSTUBE, '/backstube')
+        await idleFor(3 * 3600 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+        expect(api.logout).not.toHaveBeenCalled()
+        await idleFor(9 * 3600 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+        expect(screen.getByTestId('reason')).toHaveTextContent('12 Stunden')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('verlässt die Backstube die Seite, gelten wieder 10 min', async () => {
+      jest.useFakeTimers()
+      try {
+        await startStation(BACKSTUBE, '/backstube')
+        await idleFor(5 * 60 * 1000)
+        window.history.replaceState({}, '', '/admin/backzettel')
+        await idleFor(5 * 60 * 1000 + 20 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+        expect(screen.getByTestId('reason')).toHaveTextContent('Inaktivität')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('ein Inhaber per PIN auf /backstube wird nach 10 min abgemeldet', async () => {
+      jest.useFakeTimers()
+      try {
+        await startStation(
+          { ...INHABER, id: 1 } as typeof BACKSTUBE,
+          '/backstube'
+        )
+        await idleFor(10 * 60 * 1000 + 20 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('ein Neuladen nach einer Stunde Ruhe auf /backstube meldet nicht ab', async () => {
+      window.history.replaceState({}, '', '/backstube')
+      const hourAgo = Date.now() - 3600 * 1000
+      saveSession(
+        stored({ sessionKind: 'station', user: BACKSTUBE, startedAt: hourAgo })
+      )
+      api.fetchMe.mockResolvedValue(BACKSTUBE)
+      renderProvider()
+      await waitFor(() =>
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+      )
+      expect(api.fetchMe).toHaveBeenCalled()
+    })
   })
 
   it('beendet eine beim Start schon zu lange ruhende Sitzung ohne /me', async () => {

@@ -56,9 +56,11 @@ export function normalizeRole(raw: unknown): PilotRole | null {
 }
 
 /**
- * Eine Route einer Rolle: ein Pfad mit allen Unterseiten, oder mit
+ * Eine Route einer Rolle: ein Pfad mit allen Unterseiten, mit
  * `exact: true` nur genau dieser Pfad (z. B. die Produktliste ohne
- * Bearbeiten/Neu). `/admin` (Dashboard) gilt immer nur exakt.
+ * Bearbeiten/Neu), oder mit `except` ein Pfad mit Unterseiten außer den
+ * genannten (samt deren Unterseiten). `/admin` (Dashboard) gilt immer nur
+ * exakt.
  */
 export type RouteRule =
   | string
@@ -85,8 +87,9 @@ const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings']
  * - inhaber: alles, Start Dashboard.
  * - verkauf: Vorbestellungen (M1, inkl. Abholliste darunter), Sammelstelle
  *   Mörsbach (heute die einzige Vorbestell-Erfassung), Produkte nur lesen
- *   (Liste, ohne Bearbeiten/Neu), Backschrank. Start: /admin/preorders (P3);
- *   das Dashboard bleibt Ausweichstart.
+ *   (Liste, ohne Bearbeiten/Neu), Backschrank, Backzettel nur lesen (Z5, ohne
+ *   Grundmengen). Start: /admin/preorders (P3); das Dashboard bleibt
+ *   Ausweichstart.
  * - backstube: Backzettel, Backstube-Tablet; Ausweichstart Dashboard.
  * - fahrer: Abholliste (P2, Start: übergeben, bezahlt, „nicht abgeholt");
  *   Sammelstelle Mörsbach lesen (Liste, Bestellung, Backliste - ohne Erfassen
@@ -102,6 +105,11 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
       '/admin/delivery/preorders',
       { path: '/admin/products', exact: true },
       '/admin/partners',
+      // Z5: nur lesen (die API erlaubt jeder Sitzung GET /api/backzettel) -
+      // im Laden sieht man, was gebacken wird. Planen/Freigeben verweigert
+      // die Seite (und die API) außer Inhaber und Backstube. Die Grundmengen
+      // (Z4, roadmap §5.5: nur Inhaber/Backstube) bleiben gesperrt.
+      { path: '/admin/backzettel', except: ['/admin/backzettel/grundmengen'] },
       ...COMMON_ROUTES,
     ],
     start: ['/admin/preorders', '/admin'],

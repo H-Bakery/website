@@ -1,9 +1,10 @@
-import { redirect } from 'next/navigation'
+import BackzettelOverviewClient from './BackzettelOverviewClient'
 
-/**
- * Platzhalter, bis die Tagesplanung (Z5) die Übersicht unter
- * `/admin/backzettel` liefert - beim Zusammenführen gilt deren `page.tsx`.
- */
+export const metadata = {
+  title: 'Backzettel - Bäckerei Heusser',
+}
+
+/** Die kommenden Produktionstage (Z5); der nächste steht vorn. */
 export default function BackzettelPage() {
-  redirect('/admin/backzettel/grundmengen')
+  return <BackzettelOverviewClient />
 }

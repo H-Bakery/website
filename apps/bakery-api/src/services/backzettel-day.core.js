@@ -337,24 +337,27 @@ function correctionsFromRows(rows) {
  * Eine freigegebene Zeile in der Form des Cores (`computeDay().lines[]`).
  * Name, Abschnitt und Einheit kommen aus dem Schnappschuss der Zeile; Blech
  * und PLU (reine Anzeige) aus den aktuellen Stammdaten, wenn der Posten dort
- * noch steht.
+ * noch steht. `unsetKeys` (aus `computedSnapshot().unsetKeys`) sagt, welche
+ * Zeilen bei der Freigabe keine Grundmenge hatten - sonst laese sich eine
+ * offene Grundmenge auf dem freigegebenen Zettel als „0, nicht backen".
  */
-function frozenLine(row, config) {
+function frozenLine(row, config, unsetKeys) {
   const item =
     config && Array.isArray(config.items)
       ? config.items.find((i) => i.id === row.itemId)
       : null
   const unit = row.unit || (item ? item.unit : 'Stück')
   const total = Number(row.total) || 0
+  const key = core.lineKey(row.itemId, apiVariant(row.variant))
   const line = {
-    key: core.lineKey(row.itemId, apiVariant(row.variant)),
+    key,
     itemId: row.itemId,
     name: row.name || (item ? item.name : row.itemId),
     section: row.section || (item ? item.section : null),
     unit,
     variant: apiVariant(row.variant),
     base: Number(row.base) || 0,
-    baseUnset: false,
+    baseUnset: Array.isArray(unsetKeys) ? unsetKeys.includes(key) : false,
     seasonal: Number(row.seasonal) || 0,
     preorders: Number(row.preorders) || 0,
     cap: Number(row.cap) || 0,
@@ -376,10 +379,10 @@ function frozenLine(row, config) {
  * Reihenfolge der Posten). Geht auch ohne gueltige Stammdaten (`config`
  * null), damit ein freigegebener Zettel lesbar bleibt, wenn die YAML kaputt ist.
  */
-function frozenSections(rows, config) {
+function frozenSections(rows, config, unsetKeys) {
   const lines = (Array.isArray(rows) ? rows : []).map((r) => ({
     row: r,
-    line: frozenLine(r, config),
+    line: frozenLine(r, config, unsetKeys),
   }))
   const sectionOrder = config && config.sections ? [...config.sections] : []
   for (const { line } of lines) {
@@ -449,6 +452,11 @@ function computedSnapshot(result) {
       fillings: r.fillings === undefined ? null : r.fillings,
       prep: r.prep === undefined ? null : r.prep,
       warnings: Array.isArray(r.warnings) ? r.warnings : [],
+      // Zeilen ohne festgelegte Grundmenge (`baseUnset`): die Tabelle der
+      // Zeilen hat dafuer keine Spalte.
+      unsetKeys: (Array.isArray(r.lines) ? r.lines : [])
+        .filter((l) => l && l.baseUnset)
+        .map((l) => l.key),
     })
   )
 }

@@ -459,8 +459,9 @@ Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
   Next.js nur eine Middleware erlaubt und die F1 gehört - F1 kann dort `isPilotPathAllowed()`
   aufrufen und umleiten. Durchgesetzt wird Zugriff von F1 und den Rollen-Guards der API.
 - **Kommende Bildschirme schalten sich über `ready` frei.** `PILOT_UPCOMING_NAVIGATION` in
-  `admin/navigation.ts` führt `/admin/preorders` (M1, seit P1/P3 `ready: true`), `/admin/preorders/abholliste` (seit P2 `ready: true`), `/admin/backzettel` und `/backstube` (M2) mit
-  `ready: false`; ein Eintrag erscheint (direkt unter dem Dashboard) erst mit `ready: true`.
+  `admin/navigation.ts` führt `/admin/preorders` (M1), `/admin/preorders/abholliste`, `/admin/backzettel`
+  und `/backstube` (M2) mit einem `ready`-Schalter - seit Welle 3 sind alle vier `ready: true` (P1/P3,
+  P2, Z4/Z5, Z6); ein Eintrag erscheint (direkt unter dem Dashboard) erst mit `ready: true`.
   `src/lib/pilotMode.spec.ts` fällt um, wenn `ready` und die Existenz der `page.tsx` **genau unter
   `href`** auseinanderlaufen, und auch, wenn es Unterseiten ohne diese Index-Seite gibt - M2 braucht
   also neben `backzettel/grundmengen` und `backzettel/[datum]` eine `admin/backzettel/page.tsx`
@@ -635,14 +636,124 @@ erweitertes `GET /api/backzettel/config` - Details in `apps/bakery-api/CLAUDE.md
   (`grundmengen-screen-only`) und die App-Hülle fallen im Druck weg. Mit `page.pdf()` prüfen, nicht
   mit einem Screenshot.
 - **Client:** `src/lib/grundmengenApi.ts` (getrennt von `backzettelApi.ts`, das gehört Z5),
-  Fixtures `grundmengenFixtures.ts` (erfunden). `admin/backzettel/page.tsx` leitet bis Z5 auf die
-  Grundmengen weiter - beim Zusammenführen gilt die Übersichtsseite aus Z5, die dann auf
-  Grundmengen verlinken sollte.
+  Fixtures `grundmengenFixtures.ts` (erfunden). `admin/backzettel/page.tsx` ist die Übersicht aus Z5;
+  sie verlinkt „Grundmengen" für Rollen, die die Seite öffnen dürfen (Inhaber, Backstube).
 - `yaml` wird ins API-Bundle gepackt (nur transitive Dev-Abhängigkeit im Root); `build.mjs`
   bricht ab, wenn im Root nicht `yaml@2` liegt.
 
 Tests: `src/lib/grundmengenApi.spec.ts`, `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`
 und die API-Suites (`backzettelBaseEdit`, `backzettelReference`, `backzettelGrundmengen`).
+
+## Backzettel-Tagesplanung und Druck (Z5/Z7, Management-App)
+
+`/admin/backzettel` (kommende Produktionstage) und `/admin/backzettel/[datum]` (ein Tag) gegen
+`/api/backzettel` der echten API. Der Navigationseintrag „Backzettel" ist `ready: true`. Was man
+wissen muss:
+
+- **Ein Client, kein Rechnen:** `src/lib/backzettelApi.ts` (Typen + alle Endpunkte, auch Abhaken für
+  Z6) und `src/lib/backzettelFormat.ts` (Kalender, deutsche Zahlen, Sortennamen aus
+  `config.fillings`). Jede Menge auf dem Bildschirm und im Druck kommt so vom Server; die Seite rechnet
+  nichts nach. Die 409 `ruhetag` liefert `fetchBackzettelDay` als Zustand `status: 'ruhetag'`, nicht
+  als Fehler; `no-config` zeigt eine Erklärung **ohne Zahlen**. Entwurfszeilen haben `id: null` -
+  Korrekturen gehen über `itemId`/`variant` (`correctionPath`), Zeilen werden über `key` gefunden.
+- **Rollen:** planen (Saisonfaktor, Korrektur mit Pflichtgrund ≠ 0, Freigeben mit Rückfrage)
+  `inhaber` + `backstube`; „Wieder öffnen" nur `inhaber`; alle anderen sehen „Nur Ansicht". Verkauf
+  darf die Seiten jetzt öffnen (`ROLE_ACCESS`, lesen) - im Laden sieht man, was gebacken wird -
+  **außer** `/admin/backzettel/grundmengen` (Z4, nur Inhaber/Backstube): die Regel ist
+  `{ path: '/admin/backzettel', except: ['/admin/backzettel/grundmengen'] }` (`RouteRule` kennt dafür
+  `except`, `roles.spec.ts` prüft es).
+- **Ein anderes Gerät war schneller:** antwortet Freigeben, Wieder öffnen, Saisonfaktor oder eine
+  Korrektur mit 409 `confirmed`/`not_confirmed`/`no_config`/`ruhetag`, lädt die Seite den Tag neu und
+  hängt „Der Backzettel wurde neu geladen." an die Meldung - kein Entwurf mit aktiven Knöpfen über
+  einem schon freigegebenen Tag. Freigegeben wird, was der Server **jetzt** rechnet; weicht ein Gesamt
+  von der Anzeige vor dem Klick ab (z. B. Vorbestellung inzwischen), nennt ein Hinweis die Zeilen
+  (`changedTotals`, vergleicht nur Server-Zahlen).
+- **Negative Korrekturen am iPhone:** die Ziffernblöcke (`inputMode` numeric/decimal) haben auf iOS
+  kein Minus. Darum hat das Feld einen ±-Knopf (44 px, `toggleSign`); `parseDecimal` nimmt auch das
+  typografische Minus (U+2212). Nicht auf `inputMode: 'text'` „vereinfachen" und den Knopf nicht
+  entfernen.
+- **Übersicht:** heute bis heute + 6 Tage, nur `config.days` (ohne Stammdaten Di–So); oben groß der
+  **nächste Produktionstag = der erste nach heute** (heute wird schon gebacken). Je Tag ein
+  `GET /api/backzettel/:datum` - das Lesen eines freigegebenen Tages schreibt dabei Deltas (so ist
+  Z3 gebaut).
+- **Bildschirm:** ab `md` eine Tabelle je Abschnitt (feste Spaltenbreiten), darunter Karten; beide
+  stehen im DOM und werden per CSS umgeschaltet (Specs greifen über `table-<abschnitt>` /
+  `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der
+  Freigabe" mit „Gesehen". `configChangedSinceConfirm` und `prepDateProvisional` stehen als Hinweise
+  da. Bedienelemente ≥ 44 px.
+- **Druck (Z7):** `components/backzettel/BackzettelPrint.tsx`, eigenes schlichtes HTML, auf dem
+  Bildschirm unsichtbar; im Druck verschwinden `.bz-screen` und die App-Hülle. S. 1 Backzettel (alle
+  Abschnitte, Gesamt groß, Kästchen, Nachträge, Hinweise; Entwurf mit Banner), S. 2 nur mit
+  Hefeteig/Füllungen (Abwiegeliste + skalierte Rezepte), S. 3 nur mit Vorbereitungen. **Die
+  Druckregeln schalten Animationen ab** - `global.css` blendet `body` und jedes `<section>` ein;
+  ohne `animation: none` startete die beim Umschalten auf `display: block` neu und das Blatt kam
+  blass aus dem Drucker. Abgehakte Zeilen (`doneAt`) stehen im Druck mit ✓ im Kästchen und Namen.
+- **Offene Grundmenge bleibt offen nach der Freigabe:** `computed_snapshot.unsetKeys` (Z3-Core,
+  `computedSnapshot`) hält die Zeilen mit `baseUnset`, `frozenSections(rows, config, unsetKeys)`
+  setzt sie wieder - sonst stünde auf dem freigegebenen Zettel „Basis 0" statt „offen". Ältere
+  Freigaben ohne das Feld zeigen wie bisher 0.
+- **Übersicht:** Untertitel aus `config.days` (`describeProductionDays`); je Tag „Vorbestellungen in
+  N Zeilen" statt einer Stücksumme (Zeilen stehen in Produktionseinheiten, Viertel aufgerundet).
+
+Tests: `src/lib/backzettel{Api,Format}.spec.ts`, `admin/backzettel/BackzettelOverviewClient.spec.tsx`,
+`admin/backzettel/[datum]/BackzettelDayClient.spec.tsx` (Fixtures erfunden:
+`src/lib/backzettelFixtures.ts`).
+
+## Backstube-Tablet (`/backstube`, Z6, Management-App)
+
+Die Stationsansicht der Backstube: Startseite der Rolle `backstube` nach der PIN (der Eintrag in
+`PILOT_UPCOMING_NAVIGATION` ist `ready: true`). Liegt außerhalb `/admin` - keine Seitenleiste,
+deshalb mit eigenem „Abmelden" (`LogoutButton`, auf der Station zurück zu den Namenskacheln).
+Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube). Was man wissen muss:
+
+- **Welcher Tag:** `src/lib/backstubeDay.ts` (rein, getestet). Vor **12 Uhr** (Ortszeit des Tablets,
+  `BACKSTUBE_SWITCH_HOUR`) heute - die Schicht ab 2 Uhr läuft -, ab 12 Uhr der nächste
+  Produktionstag; ist heute kein Produktionstag (`config.days`), immer der nächste. Der Umschalter
+  „Heute"/„Morgen" zeigt den anderen; liegt der nächste Backtag nicht auf morgen (So → Di), heißt
+  der Knopf wie der Tag. Springt die Regel um (12 Uhr, Mitternacht), folgt die Ansicht ihr wieder:
+  eine Wahl gilt nur für die Regel-Lage (`today|auto`), in der sie getroffen wurde - abgeleitet im
+  Render, nicht per Effekt, damit nicht erst der alte Tag (am Montag der Ruhetag) geladen wird.
+- **Leerlauf: das Tablet bleibt angemeldet.** Eine Stationssitzung der Rolle `backstube` auf
+  `/backstube` endet nicht nach den 10 min der Station (mit Teig an den Händen tippt niemand), sondern
+  nach `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (Vorgabe 720 = 12 h, `idleLimitMs(kind, env, { role,
+path })` in `sessionPolicy.ts`, gelesen bei jeder Prüfung aus `window.location.pathname`) -
+  praktisch also mit der 12-h-Grenze nach der PIN oder `NEXT_PUBLIC_STATION_LOGOUT_AT`. Andere
+  Seiten und Rollen an der Station behalten 10 min; auch ein **Inhaber per PIN** auf `/backstube`
+  (er trägt mehr Rechte). Wer am Backstube-Tablet bäckt, meldet sich mit einem `backstube`-Konto an.
+- **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube` (sonst kein Haken; die API
+  sagt dasselbe): ein 72-px-Haken je Zeile, sofort gesetzt (`POST …/lines/:id/done|undone`), bei
+  einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409 `not_confirmed`/`confirmed`/… lädt
+  den Tag neu. Ein Neuladen, das während eines laufenden Hakens zurückkommt, wird verworfen
+  (`mutationSeq`) - sonst spränge der Haken kurz zurück.
+- **Entwurf:** großes Banner „Noch nicht freigegeben", Zahlen grau, gestrichelte Zeilen, keine Haken.
+- **Nachträge:** Karte oben mit je einem großen „Gesehen" (`POST …/deltas/:id/ack`), an der Zeile ein
+  Badge „Nachtrag +N" (offen farbig, quittiert „· gesehen"). Nachträge stehen nie im Gesamt.
+- **Samstag:** Hefeteig & Füllungen (`components/backstube/BackstubeHefeteig.tsx`) **vor** den Zeilen,
+  sonst danach. Dieselben Server-Zahlen wie die Tagesplanung, nur groß.
+- **„Vorbereitung heute":** `GET /api/backzettel/:datum/prep` für den nächsten Produktionstag nach heute
+  (vorbereitet am Kalender-Vortag ab 14 Uhr); ist der Vortag Ruhetag, steht der Hinweis aus
+  `prepDateProvisional` da. Dort kein Umschalter - die Vorbereitung gilt immer dem nächsten Backtag.
+- **Neu geladen** wird alle 60 s (`BACKSTUBE_REFRESH_MS`), bei `focus` und `visibilitychange`.
+  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit Hinweis und „Stand von HH:MM".
+  **Fehlertexte** über `src/lib/backstubeErrors.ts` (`describeBackstubeError`): kein Server erreicht
+  (fetch-Fehler, Zeitüberschreitung, 502-504 ohne JSON-Kennung von Caddy) → „Keine Verbindung zum
+  Server – bitte WLAN prüfen."; 4xx mit deutscher API-`message` → diese („Neu laden fehlgeschlagen: …"
+  bzw. „Nicht gespeichert: …"); sonst ein deutscher Text mit Statuscode. `Failed to fetch` oder
+  `HTTP 502: Bad Gateway` erscheinen nie. Das Lesen eines freigegebenen Tages schreibt Deltas (Z3).
+- **Kontrast:** feste Farbpaare je Modus in `components/backstube/backstubeColors.ts` (Banner,
+  Nachtrag, Haken ≥ 7:1, geprüft in `backstubeColors.spec.ts`), keine MUI-`*.main`-Texte. Die Seite
+  schaltet das `section`-Einblenden aus `global.css` ab, sonst stünde der Zettel nach jedem
+  Tageswechsel 0,8 s blass da.
+- **Kein eigener Druck:** gedruckt wird über „Planung & Druck" (`/admin/backzettel/[datum]`, Z7).
+  Strg+P blendet Umschalter, Knöpfe und Reiter (`data-print="hide"`) aus und druckt schwarz auf weiß.
+- **„Zur Verwaltung"** (→ `/admin`) nur mit persönlicher Sitzung (Inhaber über die Seitenleiste);
+  das Tablet an der Station braucht ihn nicht.
+
+Tests: `src/lib/backstubeDay.spec.ts`, `src/lib/backstubeErrors.spec.ts`,
+`src/lib/sessionPolicy.spec.ts` + `src/lib/session.spec.tsx` (Leerlauf am Tablet),
+`src/app/backstube/BackstubeClient.spec.tsx`,
+`src/components/backstube/backstubeColors.spec.ts`. Die Fixtures in `backzettelFixtures.ts` haben
+seit Z6 eindeutige Zeilen-IDs (vorher teilten sich zwei Zeilen eine).
 
 ## E2E-Suiten (Playwright)
 
@@ -950,11 +1061,13 @@ Sieben Dinge, die man wissen muss:
   Proxy (Server-Komponenten) und die API.
 - **Eine Tabelle Rolle → Routen + Startseite: `ROLE_ACCESS` in `src/lib/roles.ts`.** Inhaber alles;
   Verkauf Dashboard, `/admin/preorders` (M1), Sammelstelle Mörsbach, Produkte **nur die Liste**
-  (ohne Neu/Bearbeiten), Backschrank; Backstube Dashboard, `/admin/backzettel`, `/backstube`;
-  Fahrer `/admin/delivery/preorders` (ohne `/new` und `/lieferstelle`) und `/admin/preorders` lesend (ohne `/neu`), dort
-  die Abholliste mit Übergeben; alle `/admin/settings`. Startseite = erste _gebaute_
-  aus `start` (`ready` aus `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` (seit P1/P3 gebaut; vorher
-  `/admin`), Fahrer `/admin/preorders/abholliste` (seit P2), Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
+  (ohne Neu/Bearbeiten), Backschrank, Backzettel nur lesen (Z5, ohne `/admin/backzettel/grundmengen`);
+  Backstube Dashboard, `/admin/backzettel`, `/backstube`; Fahrer `/admin/delivery/preorders` (ohne
+  `/new` und `/lieferstelle`) und `/admin/preorders` lesend (ohne `/neu`), dort die Abholliste mit
+  Übergeben; alle `/admin/settings`. Startseite = erste _gebaute_ aus `start` (`ready` aus
+  `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` (seit P1/P3), Fahrer
+  `/admin/preorders/abholliste` (seit P2), Backstube `/backstube` (seit Z6, also Start nach der PIN).
+  `getNavigationForRole()` filtert
   `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
   Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
   eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
@@ -970,7 +1083,9 @@ Sieben Dinge, die man wissen muss:
   (`src/lib/sessionPolicy.ts`): Station nach `NEXT_PUBLIC_STATION_IDLE_MINUTES` (10) zurück zu den
   Kacheln, spätestens 12 h nach der PIN; optional zur Uhrzeit `NEXT_PUBLIC_STATION_LOGOUT_AT`
   (`HH:MM`, Ortszeit, z. B. Ladenschluss - ohne Wert keine feste Uhrzeit, weil die Backstube
-  nachmittags vorbereitet); persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h).
+  nachmittags vorbereitet); persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h). Ausnahme
+  Backstube-Tablet (Z6): Rolle `backstube` auf `/backstube` nach
+  `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (720), siehe dort.
   „Abmelden" (`components/auth/LogoutButton.tsx`) steht in der Kopfzeile, auf Stationen groß -
   Z6 (`/backstube`, ohne Admin-Layout) muss ihn selbst einbinden.
 

@@ -44,6 +44,13 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['verkauf', '/admin/users', false],
     ['verkauf', '/admin/settings', true],
     ['backstube', '/admin/backzettel/2026-11-24', true],
+    ['verkauf', '/admin/backzettel', true],
+    ['verkauf', '/admin/backzettel/2026-11-28', true],
+    ['verkauf', '/admin/backzettel/grundmengen', false],
+    ['verkauf', '/admin/backzettel/grundmengen/brot', false],
+    ['verkauf', '/admin/backzettel/grundmengenx', true],
+    ['backstube', '/admin/backzettel/grundmengen', true],
+    ['fahrer', '/admin/backzettel', false],
     ['backstube', '/backstube', true],
     ['backstube', '/admin/preorders', false],
     ['backstube', '/admin/reports', false],
@@ -87,6 +94,8 @@ describe('Startseite nach der Anmeldung', () => {
     expect(
       startPathForRole('fahrer', (h) => h !== '/admin/preorders/abholliste')
     ).toBe('/admin/delivery/preorders')
+    // Z6: das Tablet ist gebaut - die Backstube startet dort
+    expect(startPathForRole('backstube')).toBe('/backstube')
     expect(startPathForRole('verkauf', all)).toBe('/admin/preorders')
     expect(startPathForRole('backstube', all)).toBe('/backstube')
     // solange es /admin/preorders und /backstube nicht gibt: Dashboard
@@ -141,12 +150,13 @@ describe('getNavigationForRole', () => {
     expect(items).not.toContain('/admin/login')
   })
 
-  it('Verkauf: Vorbestellungen/Mörsbach, Produkte, Backschrank, Einstellungen', () => {
+  it('Verkauf: Vorbestellungen/Mörsbach, Produkte, Backschrank, Backzettel (lesen), Einstellungen', () => {
     expect(hrefs(getNavigationForRole('verkauf', true)).sort()).toEqual(
       [
         '/admin',
         '/admin/preorders',
         '/admin/preorders/abholliste',
+        '/admin/backzettel',
         '/admin/delivery/preorders',
         '/admin/products',
         '/admin/partners',
@@ -164,10 +174,11 @@ describe('getNavigationForRole', () => {
     ])
   })
 
-  it('Backstube (vor Z6): Dashboard, Backzettel und Einstellungen', () => {
+  it('Backstube: Dashboard, Backzettel, Tablet und Einstellungen', () => {
     expect(hrefs(getNavigationForRole('backstube', true))).toEqual([
       '/admin',
       '/admin/backzettel',
+      '/backstube',
       '/admin/settings',
     ])
   })
