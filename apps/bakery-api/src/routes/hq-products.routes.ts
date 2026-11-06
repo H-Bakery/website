@@ -1,5 +1,6 @@
 /**
- * hq-Produkte (B5) - Vertrag des Mock-Servers (D3), aus `simple-server.js`:
+ * hq-Produkte (B5) - Vertrag des früheren Mock-Servers (D3), festgehalten in
+ * `tests/contract/recorded/hqProducts.json`:
  *
  *   GET  /api/products[?category=]   { success, data: HQProduct[], count }
  *   GET  /api/hq-products            { success, data, count }   (neu, s. u.)

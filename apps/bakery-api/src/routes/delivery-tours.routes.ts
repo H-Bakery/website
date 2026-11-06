@@ -1,5 +1,6 @@
 /**
- * Liefertouren (B8) im Mock-Vertrag von `simple-server.js` (D3): rohe
+ * Liefertouren (B8) im Vertrag des früheren Mock-Servers (D3, festgehalten
+ * in `tests/contract/recorded/deliveries.json`): rohe
  * Objekte ohne Hülle, Mock-Fehlercodes (`Tour not found`, …) plus deutsche
  * `message` - über `sendError`, also zusätzlich `success: false`. Die
  * Fahrer-App (`apps/bakery-delivery`) läuft damit unverändert.
