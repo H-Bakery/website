@@ -569,6 +569,7 @@ test('paths and commit messages', () => {
     backzettelJson: 'data/production/backzettel/2026-11-28.json',
     backzettelMd: 'data/production/backzettel/2026-11-28.md',
     preordersJson: 'data/production/vorbestellungen/2026-11-28.json',
+    restJson: 'data/production/rest/2026-11-28.json',
   })
   expect(core.backzettelCommitMessage('2026-11-28')).toBe(
     'chore(production): Backzettel 2026-11-28 (App)\n'
@@ -576,4 +577,140 @@ test('paths and commit messages', () => {
   expect(core.preordersCommitMessage('2026-11-28')).toBe(
     'chore(production): Vorbestellungen 2026-11-28 (App)\n'
   )
+})
+
+describe('restSnapshot (M4 Rest am Abend)', () => {
+  const view = {
+    date: '2026-12-01',
+    weekday: 2,
+    status: 'ok',
+    backzettelStatus: 'confirmed',
+    summary: {
+      lastCountedAt: '2026-12-01T17:00:00.000Z',
+      lastCountedBy: { id: 3, displayName: 'Erika Geheim' },
+    },
+    lines: [
+      {
+        key: 'kranz|',
+        itemId: 'kranz',
+        variant: null,
+        name: 'Kranz',
+        section: 'hefeteig',
+        unit: 'Stück',
+        baked: 4,
+        cap: 1,
+        counted: true,
+        rest: 1.5,
+        rows: [
+          {
+            productId: 'test-kranz',
+            label: 'Kranz',
+            unit: 'Stück',
+            factor: 1,
+            qty: 1,
+            countedAt: '2026-12-01T17:00:00.000Z',
+            countedBy: { id: 3, displayName: 'Erika Geheim' },
+            revision: 2,
+          },
+          {
+            productId: 'test-kranz-viertel',
+            label: 'Kranz Viertel',
+            unit: 'Stück',
+            factor: 0.25,
+            qty: 2,
+            countedBy: { id: 3, displayName: 'erika.geheim' },
+          },
+        ],
+      },
+      {
+        key: 'weck|',
+        itemId: 'weck',
+        variant: null,
+        name: 'Weck',
+        section: 'broetchen',
+        unit: 'Stück',
+        baked: 40,
+        cap: 0,
+        counted: false,
+        rest: null,
+        restSoFar: null,
+        rows: [
+          {
+            productId: 'test-weck',
+            label: 'Weck',
+            unit: 'Stück',
+            factor: 1,
+            qty: null,
+          },
+        ],
+      },
+    ],
+  }
+
+  it('writes baked, rest and counts per line - never who counted or when', () => {
+    const s = core.restSnapshot(view)
+    expect(s).toEqual({
+      schema_version: 1,
+      kind: 'rest',
+      date: '2026-12-01',
+      backzettel: 'confirmed',
+      countedLines: 1,
+      lines: 2,
+      items: [
+        {
+          itemId: 'kranz',
+          variant: null,
+          name: 'Kranz',
+          section: 'hefeteig',
+          unit: 'Stück',
+          baked: 4,
+          cap: 1,
+          counted: true,
+          rest: 1.5,
+          counts: [
+            {
+              productId: 'test-kranz',
+              name: 'Kranz',
+              unit: 'Stück',
+              qty: 1,
+              factor: 1,
+            },
+            {
+              productId: 'test-kranz-viertel',
+              name: 'Kranz Viertel',
+              unit: 'Stück',
+              qty: 2,
+              factor: 0.25,
+            },
+          ],
+        },
+        {
+          itemId: 'weck',
+          variant: null,
+          name: 'Weck',
+          section: 'broetchen',
+          unit: 'Stück',
+          baked: 40,
+          cap: 0,
+          counted: false,
+          rest: null,
+          counts: [],
+        },
+      ],
+      source: 'Verwaltung (App)',
+    })
+    const text = core.toJsonFile(s)
+    for (const marker of MARKERS) expect(text).not.toContain(marker)
+    expect(text).not.toContain('2026-12-01T17')
+    expect(core.snapshotPaths('2026-12-01').restJson).toBe(
+      'data/production/rest/2026-12-01.json'
+    )
+    expect(core.restCommitMessage('2026-12-01')).toBe(
+      'chore(production): Rest am Abend 2026-12-01 (App)\n'
+    )
+  })
+
+  it('refuses a view without a valid date', () => {
+    expect(() => core.restSnapshot({ date: '2026-02-30', lines: [] })).toThrow()
+  })
 })

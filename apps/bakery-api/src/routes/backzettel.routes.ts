@@ -33,6 +33,7 @@ import { NextFunction, Request, Response, Router } from 'express'
 
 import { requireRole } from '../auth/middleware'
 import {
+  BackzettelSource,
   BackzettelSourceOptions,
   createBackzettelSource,
 } from '../services/backzettel-source'
@@ -93,6 +94,8 @@ export function createBackzettelRouter(
 export function createBackzettel(options: BackzettelRouterOptions = {}): {
   router: Router
   service: BackzettelService
+  /** The master-data source, shared with „Rest am Abend“ (M4). */
+  source: BackzettelSource
 } {
   const source = createBackzettelSource(options)
   const service = createBackzettelService(source, {
@@ -226,5 +229,5 @@ export function createBackzettel(options: BackzettelRouterOptions = {}): {
     )
   )
 
-  return { router, service }
+  return { router, service, source }
 }

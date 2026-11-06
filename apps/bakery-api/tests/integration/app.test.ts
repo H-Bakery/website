@@ -50,6 +50,7 @@ describe('createTestApp', () => {
       '20261113000000-preorders-b7.js',
       '20261114000000-preorders-paid-amount.js',
       '20261116000000-preorders-request-id.js',
+      '20261201000000-rest-am-abend.js',
     ])
   })
 })

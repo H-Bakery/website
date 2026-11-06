@@ -42,6 +42,7 @@ import {
   createBackzettel,
 } from './routes/backzettel.routes'
 import { createHqSyncRouter } from './routes/hq-sync.routes'
+import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
@@ -91,6 +92,11 @@ export interface CreateAppOptions {
    * locally (B5).
    */
   hqSync?: { edits?: HqEditsSync; snapshots?: HqSnapshotWriter }
+  /**
+   * „Rest am Abend“ (M4, after the pilot): clock and reports dir for tests.
+   * Default: `hq.reportsDir` / `hq.today`, the Backzettel's master data.
+   */
+  rest?: RestRouterOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -202,6 +208,23 @@ export function createApp(options: CreateAppOptions = {}): Application {
     ...options.backzettel,
   })
   app.use('/api/backzettel', backzettel.router)
+  // M4 „Rest am Abend“: counts at closing (verkauf), evaluation (inhaber);
+  // „gebacken“ comes from the Backzettel service, sold from the cash reports.
+  // The daily rest goes to hq data/production/rest/ like the Z9 snapshots.
+  app.use(
+    '/api/rest',
+    createRestRouter(backzettel.source, backzettel.service, {
+      reportsDir: options.hq?.reportsDir,
+      today: options.hq?.today,
+      log: options.hq?.log?.warn,
+      ...(snapshots.enabled
+        ? {
+            onCounted: (view: unknown) => snapshots.restCounted(view),
+          }
+        : {}),
+      ...options.rest,
+    })
+  )
   // W4: deltas of a confirmed Backzettel day are recorded on the preorder
   // write path (same transaction), not by reading the day.
   preorders.service.onWrite((dates, context) =>

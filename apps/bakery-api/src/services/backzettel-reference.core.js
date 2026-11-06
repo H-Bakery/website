@@ -219,6 +219,52 @@ function soldByPlu(report) {
 }
 
 /**
+ * Kassennummern eines Postens samt Umrechnung (W4-Verifikation Runde 6):
+ * `converted` = jede Kassennummer ist einem Produkt des Postens mit Faktor
+ * zugeordnet, die Mengen stehen dann in der Einheit des Postens.
+ * Geteilt mit „Rest am Abend“ (`rest-am-abend.core.js`, M4) - eine Regel.
+ *
+ * @returns {{plu: string[], factors: Map<string, number|null>, converted: boolean}}
+ */
+function itemSoldInfo(item, resolve) {
+  const plu = (Array.isArray(item.plu) ? item.plu : [])
+    .map((p) => String(p).trim())
+    .filter(Boolean)
+  const factors = pluFactors(item, resolve)
+  const converted =
+    plu.length > 0 && plu.every((key) => factors.get(key) !== null)
+  return { plu, factors, converted }
+}
+
+/**
+ * Verkauft an einem Tag (`soldByPlu` des Tagesberichts): Σ über die
+ * Kassennummern, umgerechnet nur bei `converted` (dann auf 0,01, sonst auf
+ * 0,1 Stück gerundet).
+ */
+function soldOnDay(info, map) {
+  const round = info.converted ? round2 : round1
+  return round(
+    info.plu.reduce(
+      (sum, key) =>
+        sum +
+        (map.get(key) || 0) * (info.converted ? info.factors.get(key) : 1),
+      0
+    )
+  )
+}
+
+/** Produkt-Auflöser für die Umrechnung; `null`, wenn er nicht zu bauen ist. */
+function soldResolver(cfg, catalog) {
+  try {
+    return Array.isArray(cfg.items) && cfg.items.length > 0
+      ? core.createProductResolver(cfg, catalog)
+      : null
+  } catch {
+    return null
+  }
+}
+
+/**
  * Referenzwerte eines Wochentags.
  *
  * @param {{config: object, weekday: number, weeks: number, dates: string[], skipped?: string[], reports: Object<string, object>}} a
@@ -238,22 +284,10 @@ function computeWeekdayReference(a) {
     dates.push(date)
     sold.push(map)
   }
-  let resolve = null
-  try {
-    resolve =
-      Array.isArray(cfg.items) && cfg.items.length > 0
-        ? core.createProductResolver(cfg, a.catalog)
-        : null
-  } catch {
-    resolve = null
-  }
+  const resolve = soldResolver(cfg, a.catalog)
   const items = (Array.isArray(cfg.items) ? cfg.items : []).map((item) => {
-    const plu = (Array.isArray(item.plu) ? item.plu : [])
-      .map((p) => String(p).trim())
-      .filter(Boolean)
-    const factors = pluFactors(item, resolve)
-    const converted =
-      plu.length > 0 && plu.every((key) => factors.get(key) !== null)
+    const info = itemSoldInfo(item, resolve)
+    const { plu, converted } = info
     if (plu.length === 0) {
       return {
         itemId: item.id,
@@ -275,15 +309,7 @@ function computeWeekdayReference(a) {
       }
     }
     const round = converted ? round2 : round1
-    const samples = sold.map((map) =>
-      round(
-        plu.reduce(
-          (sum, key) =>
-            sum + (map.get(key) || 0) * (converted ? factors.get(key) : 1),
-          0
-        )
-      )
-    )
+    const samples = sold.map((map) => soldOnDay(info, map))
     const m = median(samples)
     return {
       itemId: item.id,
@@ -318,5 +344,8 @@ module.exports = {
   referenceDates,
   median,
   soldByPlu,
+  itemSoldInfo,
+  soldOnDay,
+  soldResolver,
   computeWeekdayReference,
 }
