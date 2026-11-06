@@ -822,6 +822,22 @@ describe('re-confirm and the frozen snapshot', () => {
       total: 8,
       doneBy: { displayName: 'Test test.backstube' },
     })
+    // W4 verification round 2: the Backstube sees what was already baked
+    expect(line(again.body.data, 'weck').previouslyDone).toEqual({
+      qty: 30,
+      at: expect.any(String),
+      by: expect.objectContaining({ displayName: 'Test test.backstube' }),
+    })
+    expect(line(again.body.data, 'plunder').previouslyDone).toBeNull()
+    const reticked = await as('backstube').post(
+      `/api/backzettel/${WED2}/lines/${weck.id}/done`
+    )
+    expect(reticked.status).toBe(200)
+    const after = await as('backstube').get(`/api/backzettel/${WED2}`)
+    expect(line(after.body.data, 'weck').previouslyDone).toBeNull()
+    await as('backstube').post(
+      `/api/backzettel/${WED2}/lines/${weck.id}/undone`
+    )
     const row = await BackzettelLine.findByPk(weck.id)
     expect(row?.doneAt).toBeNull()
     expect(row?.doneBy).toBeNull()
@@ -832,7 +848,12 @@ describe('re-confirm and the frozen snapshot', () => {
     })
     expect((confirms[0].data as any).clearedTicks).toEqual([])
     expect((confirms[1].data as any).clearedTicks).toEqual([
-      expect.objectContaining({ itemId: 'weck', from: 30, to: 40 }),
+      expect.objectContaining({
+        itemId: 'weck',
+        from: 30,
+        to: 40,
+        doneAt: expect.any(String),
+      }),
     ])
   })
 

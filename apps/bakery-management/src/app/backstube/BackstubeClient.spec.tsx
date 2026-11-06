@@ -11,6 +11,7 @@ import BackstubeClient from './BackstubeClient'
 import { fakeSession, WithSession } from '../../lib/testing/fakeSession'
 import type { SessionContextValue } from '../../lib/session'
 import * as api from '../../lib/backzettelApi'
+import { formatTimestamp } from '../../lib/backzettelFormat'
 import {
   CONFIG_RESPONSE,
   SAT,
@@ -244,6 +245,28 @@ describe('Backstube-Tablet', () => {
     )
     expect(screen.getByTestId('bs-progress')).toHaveTextContent(
       '0 von 4 erledigt'
+    )
+  })
+
+  it('zeigt nach erneuter Freigabe, was schon gebacken war (W4-verify r2)', async () => {
+    const confirmed = saturdayConfirmed()
+    const weck = confirmed.sections[1].lines[0]
+    weck.previouslyDone = {
+      qty: weck.total - 8,
+      at: '2026-11-28T03:00:00.000Z',
+      by: { id: 3, displayName: 'Test Bäcker' },
+    }
+    mocked.fetchBackzettelDay.mockResolvedValue(confirmed)
+    renderTablet()
+    const hint = await screen.findByTestId(`bs-previously-done-${WECK}`)
+    expect(hint).toHaveTextContent(
+      `bereits ${weck.total - 8} erledigt (${formatTimestamp(
+        '2026-11-28T03:00:00.000Z'
+      )} · Test Bäcker) - noch +8`
+    )
+    expect(screen.getByTestId(`bs-tick-${WECK}`)).toHaveAttribute(
+      'aria-checked',
+      'false'
     )
   })
 

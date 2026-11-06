@@ -22,6 +22,7 @@ import {
   hasHefeteig,
   ingredientAmount,
   lineLabel,
+  previouslyDoneText,
   recipeHeading,
   recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
@@ -212,6 +213,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                       {(line.tray ||
                         line.correctionReason ||
                         line.loavesEstimate ||
+                        previouslyDoneText(line) ||
                         (line.delta && line.delta.count > 0)) && (
                         <div className="small">
                           {[
@@ -222,6 +224,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                             line.correctionReason
                               ? `Korrektur: ${line.correctionReason}`
                               : null,
+                            previouslyDoneText(line),
                             line.delta && line.delta.count > 0
                               ? `${deltaBadgeText(
                                   line.delta,

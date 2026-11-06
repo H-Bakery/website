@@ -22,6 +22,7 @@ import { Op, Transaction } from 'sequelize'
 
 import { audit } from '../auth/audit'
 import {
+  AuditLog,
   BackzettelDay,
   BackzettelDelta,
   BackzettelLine,
@@ -345,14 +346,46 @@ export function createBackzettelService(
   ) {
     const weekday = core.isoWeekday(date)
     const config = loaded.ok ? loaded.config : null
-    const [rows, deltaRows] = await Promise.all([
+    const [rows, deltaRows, confirmAudits] = await Promise.all([
       BackzettelLine.findAll({ where: { date }, order: [['id', 'ASC']] }),
       BackzettelDelta.findAll({ where: { date }, order: [['id', 'ASC']] }),
+      AuditLog.findAll({
+        where: { action: 'confirm', entity: 'backzettel_day', entityId: date },
+        order: [['id', 'ASC']],
+        attributes: ['data'],
+      }),
     ])
+    // W4 verification round 2: a re-confirm that changed a line dropped its
+    // tick (`clearedTicks` in the audit). Without a trace the Backstube saw
+    // "78, open" after baking 70 - so the latest cleared tick per line comes
+    // back as `previouslyDone` while the line is still unticked.
+    const cleared = new Map<
+      string,
+      { qty: number; doneBy: number | null; doneAt: string | null }
+    >()
+    for (const a of confirmAudits) {
+      const list = (a.data as { clearedTicks?: unknown } | null)?.clearedTicks
+      for (const t of Array.isArray(list) ? list : []) {
+        const tick = t as Record<string, unknown>
+        if (typeof tick['itemId'] !== 'string') continue
+        cleared.set(
+          core.lineKey(
+            tick['itemId'],
+            dayCore.apiVariant(tick['variant'] as string | null)
+          ),
+          {
+            qty: toNumber(tick['from'] as number),
+            doneBy: typeof tick['doneBy'] === 'number' ? tick['doneBy'] : null,
+            doneAt: typeof tick['doneAt'] === 'string' ? tick['doneAt'] : null,
+          }
+        )
+      }
+    }
     const users = await usersById([
       day.confirmedBy,
       ...rows.flatMap((r) => [r.correctionBy, r.doneBy]),
       ...deltaRows.map((d) => d.acknowledgedBy),
+      ...[...cleared.values()].map((c) => c.doneBy),
     ])
     const preorderIds = [
       ...new Set(
@@ -428,6 +461,17 @@ export function createBackzettelService(
               : null,
           doneAt: row.doneAt,
           doneBy: userRef(users, row.doneBy),
+          previouslyDone:
+            row.doneAt === null && cleared.has(line.key)
+              ? (() => {
+                  const c = cleared.get(line.key)!
+                  return {
+                    qty: c.qty,
+                    at: c.doneAt,
+                    by: userRef(users, c.doneBy),
+                  }
+                })()
+              : null,
           delta: deltaByKey.get(line.key) ?? null,
         }
       }),
@@ -993,6 +1037,10 @@ export function createBackzettelService(
               itemId: row.itemId,
               variant: row.variant,
               doneBy: row.doneBy,
+              doneAt:
+                row.doneAt instanceof Date
+                  ? row.doneAt.toISOString()
+                  : row.doneAt ?? null,
               from: toNumber(row.total),
               to: values.total,
             })

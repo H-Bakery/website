@@ -181,6 +181,30 @@ export function formatQty(n: number, unit: BackzettelUnit | null): string {
   return suffix ? `${formatNumber(n)} ${suffix}` : formatNumber(n)
 }
 
+/**
+ * Eine erneute Freigabe hat die Menge einer schon abgehakten Zeile geändert
+ * (W4-Verifikation Runde 2): „bereits 30 erledigt (06.11. 05:10 · Bernd) -
+ * noch +10". `null`, wenn die Zeile keinen entfernten Haken hat oder wieder
+ * abgehakt ist.
+ */
+export function previouslyDoneText(line: BackzettelLine): string | null {
+  const prev = line.previouslyDone
+  if (!prev || line.doneAt) return null
+  const who = [formatTimestamp(prev.at), prev.by?.displayName]
+    .filter(Boolean)
+    .join(' · ')
+  const rest = Math.round((line.total - prev.qty) * 100) / 100
+  const tail =
+    rest > 0
+      ? `noch ${formatSignedQty(rest, line.unit)}`
+      : rest < 0
+      ? `jetzt ${formatQty(-rest, line.unit)} weniger nötig`
+      : 'Menge unverändert'
+  return `bereits ${formatQty(prev.qty, line.unit)} erledigt${
+    who ? ` (${who})` : ''
+  } - ${tail}`
+}
+
 /** Zu- und Abschläge: „+2", „−1", „–" für 0. */
 export function formatSigned(n: number): string {
   if (!n) return '–'

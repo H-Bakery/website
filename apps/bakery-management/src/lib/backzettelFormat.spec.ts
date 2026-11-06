@@ -20,6 +20,7 @@ import {
   nextProductionDay,
   openDeltas,
   parseDecimal,
+  previouslyDoneText,
   linesWithPreorders,
   describeProductionDays,
   changedTotals,
@@ -294,5 +295,22 @@ describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
     expect(ingredientAmount(recipe.ingredients[0], recipe).text).toBe(
       '1 Dose (ca. 2 kg)'
     )
+  })
+})
+
+describe('erneute Freigabe nach dem Abhaken (W4-verify r2)', () => {
+  it('previouslyDoneText nennt Gebackenes und den Rest', () => {
+    const line = saturdayConfirmed().sections[1].lines[0]
+    line.total = 78
+    line.doneAt = null
+    expect(previouslyDoneText(line)).toBeNull()
+    line.previouslyDone = { qty: 70, at: null, by: { id: 1, displayName: 'B' } }
+    expect(previouslyDoneText(line)).toBe('bereits 70 erledigt (B) - noch +8')
+    line.previouslyDone = { qty: 80, at: null, by: null }
+    expect(previouslyDoneText(line)).toBe(
+      'bereits 80 erledigt - jetzt 2 weniger nötig'
+    )
+    line.doneAt = '2026-11-28T04:00:00.000Z'
+    expect(previouslyDoneText(line)).toBeNull()
   })
 })

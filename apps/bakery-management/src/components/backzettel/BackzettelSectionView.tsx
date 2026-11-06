@@ -31,6 +31,7 @@ import {
   formatQty,
   formatSigned,
   lineLabel,
+  previouslyDoneText,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
 
@@ -116,6 +117,16 @@ function LineName({
         )}
         <DeltaChip line={line} />
       </Stack>
+      {previouslyDoneText(line) && (
+        <Typography
+          variant="caption"
+          component="div"
+          data-testid={`previously-done-${line.key}`}
+          sx={{ fontWeight: 600, whiteSpace: 'normal' }}
+        >
+          {previouslyDoneText(line)}
+        </Typography>
+      )}
       <Typography variant="caption" color="text.secondary" component="div">
         {[
           line.unit && line.unit !== 'Stück' ? `in ${line.unit}` : null,

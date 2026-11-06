@@ -100,6 +100,15 @@ export interface BackzettelLine {
   loavesEstimate?: number
   doneAt: string | null
   doneBy: BackzettelUserRef | null
+  /**
+   * Nur freigegeben, nur offene Zeilen: der Haken, den eine erneute Freigabe
+   * wegen geänderter Menge entfernt hat - `qty` war damals schon gebacken.
+   */
+  previouslyDone?: {
+    qty: number
+    at: string | null
+    by: BackzettelUserRef | null
+  } | null
   delta: BackzettelLineDelta | null
 }
 

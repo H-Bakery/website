@@ -644,7 +644,10 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
   - nie still. Nur der Inhaber kann
     wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
     Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
-    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
+    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke. Was damals schon
+    gebacken war, steht danach als `previouslyDone: { qty, at, by }` an der offenen Zeile (aus dem
+    `confirm`-Audit, bis sie wieder abgehakt ist); Tablet, Planung und Druck zeigen „bereits 30
+    erledigt … - noch +10".
 - `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
   `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
 - **Was Nachträge für Ofen, Teig und Füllung heißen** (W4-Verifikation): je Zeile
