@@ -355,6 +355,35 @@ describe('ReportClient', () => {
     expect(row(/Bauernbrot/).getByText('6 Stück ungezählt')).toBeInTheDocument()
   })
 
+  it('shows a price range after a price change and flags a miscount (W4-verify r2)', async () => {
+    mockFetchStats.mockResolvedValue({
+      ...STATS_COMPLETE,
+      totals: { ...STATS_COMPLETE.totals, discrepancyQty: 3, visitCount: 1 },
+      byDay: STATS_COMPLETE.byDay.map((day, index) =>
+        index === 0 ? { ...day, discrepancyQty: 3 } : day
+      ),
+      byProduct: STATS_COMPLETE.byProduct.map((product, index) =>
+        index === 0
+          ? {
+              ...product,
+              unitPriceMin: 3.2,
+              unitPriceMax: 3.4,
+              discrepancyQty: 3,
+            }
+          : product
+      ),
+    })
+    await renderReport()
+
+    const bread = row(/Bauernbrot/)
+    expect(bread.getByText('3,20–3,40 €')).toBeInTheDocument()
+    expect(bread.getByText(/3 Stück Abweichung/)).toBeInTheDocument()
+    expect(screen.getByTestId('report-discrepancy')).toHaveTextContent(
+      'Abweichung: 3 Stück mehr gezählt, als im Schrank sein konnten'
+    )
+    expect(screen.getByText(/1 Besuch ·/)).toBeInTheDocument()
+  })
+
   it('reloads the report for a different range when a quick filter is used', async () => {
     const user = userEvent.setup()
     await renderReport()

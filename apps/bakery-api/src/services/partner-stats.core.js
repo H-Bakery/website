@@ -421,6 +421,11 @@ function emptyProductBucket(item) {
     productSlug: item.productSlug || '',
     productName: item.productName || item.productSlug || 'Unbekannt',
     unitPriceCents: toCents(item.unitPrice),
+    // Kleinster/groesster Preis-Snapshot im Zeitraum: ein Preiswechsel wird
+    // im Report als Spanne gezeigt, sonst ergaebe Einzelpreis × Verkauft
+    // nicht den Umsatz (W4-Verifikation Runde 2).
+    priceMinCents: item.unitPrice == null ? null : toCents(item.unitPrice),
+    priceMaxCents: item.unitPrice == null ? null : toCents(item.unitPrice),
     deliveredQty: 0,
     returnedQty: 0,
     soldQty: 0,
@@ -428,6 +433,19 @@ function emptyProductBucket(item) {
     revenueCents: 0,
     uncountedQty: 0,
   }
+}
+
+function widenPriceRange(target, minCents, maxCents) {
+  if (minCents != null)
+    target.priceMinCents =
+      target.priceMinCents == null
+        ? minCents
+        : Math.min(target.priceMinCents, minCents)
+  if (maxCents != null)
+    target.priceMaxCents =
+      target.priceMaxCents == null
+        ? maxCents
+        : Math.max(target.priceMaxCents, maxCents)
 }
 
 /**
@@ -477,8 +495,10 @@ function computeDay(dayVisits) {
       const bucket = products.get(key)
       // Der Preis-Snapshot des jüngsten Besuchs gewinnt - er ist der, zu dem
       // die zuletzt gezählten Stücke verkauft wurden.
-      if (item.unitPrice != null)
+      if (item.unitPrice != null) {
         bucket.unitPriceCents = toCents(item.unitPrice)
+        widenPriceRange(bucket, bucket.unitPriceCents, bucket.unitPriceCents)
+      }
       if (item.productName) bucket.productName = item.productName
 
       const counted = item.countedQty == null ? null : toInt(item.countedQty, 0)
@@ -486,6 +506,7 @@ function computeDay(dayVisits) {
       const before = stock.get(key) || 0
 
       let soldHere = 0
+      let excess = 0
       if (counted !== null) {
         const diff = before - counted
         if (diff >= 0) {
@@ -493,7 +514,8 @@ function computeDay(dayVisits) {
         } else {
           // Mehr vorgefunden als erwartet - eine Fehlzählung, kein Negativ-Verkauf.
           // Wird sichtbar gemacht statt still in den Summen zu verschwinden.
-          bucket.discrepancyQty += -diff
+          excess = -diff
+          bucket.discrepancyQty += excess
         }
         stock.set(key, counted + delivered)
       } else {
@@ -504,7 +526,10 @@ function computeDay(dayVisits) {
       bucket.deliveredQty += delivered
       bucket.revenueCents += soldHere * bucket.unitPriceCents
       if (visit.visitType === 'pickup' && counted !== null) {
-        bucket.returnedQty += counted
+        // Retoure ist hoechstens, was im Schrank sein konnte. Der Ueberschuss
+        // ist Abweichung (`discrepancyQty`), keine zurueckgenommene Ware -
+        // sonst laege die Retoure ueber der Lieferung (W4-Verifikation Runde 2).
+        bucket.returnedQty += counted - excess
       }
 
       soldCents += soldHere * bucket.unitPriceCents
@@ -620,6 +645,8 @@ function computeStats(visits, range = {}) {
           productSlug: bucket.productSlug,
           productName: bucket.productName,
           unitPriceCents: bucket.unitPriceCents,
+          priceMinCents: null,
+          priceMaxCents: null,
           deliveredQty: 0,
           returnedQty: 0,
           soldQty: 0,
@@ -632,6 +659,7 @@ function computeStats(visits, range = {}) {
       const total = productTotals.get(key)
       total.productName = bucket.productName
       total.unitPriceCents = bucket.unitPriceCents
+      widenPriceRange(total, bucket.priceMinCents, bucket.priceMaxCents)
       total.deliveredQty += bucket.deliveredQty
       total.returnedQty += bucket.returnedQty
       total.soldQty += bucket.soldQty
@@ -665,6 +693,12 @@ function computeStats(visits, range = {}) {
       productSlug: p.productSlug,
       productName: p.productName,
       unitPrice: fromCents(p.unitPriceCents),
+      unitPriceMin: fromCents(
+        p.priceMinCents == null ? p.unitPriceCents : p.priceMinCents
+      ),
+      unitPriceMax: fromCents(
+        p.priceMaxCents == null ? p.unitPriceCents : p.priceMaxCents
+      ),
       deliveredQty: p.deliveredQty,
       soldQty: p.soldQty,
       returnedQty: p.returnedQty,
@@ -828,11 +862,14 @@ function statsToCsv(stats, partner = {}) {
     'Abverkaufsquote',
     'Umsatz',
     'Ungezählt',
+    'Abweichung',
   ])
   for (const p of stats.byProduct) {
+    const min = p.unitPriceMin == null ? p.unitPrice : p.unitPriceMin
+    const max = p.unitPriceMax == null ? p.unitPrice : p.unitPriceMax
     push([
       p.productName,
-      deNumber(p.unitPrice),
+      min === max ? deNumber(p.unitPrice) : `${deNumber(min)}–${deNumber(max)}`,
       p.deliveredQty,
       p.soldQty,
       p.returnedQty,
@@ -841,6 +878,7 @@ function statsToCsv(stats, partner = {}) {
         : `${deNumber(p.sellThroughRate * 100, 1)}%`,
       deNumber(p.revenue),
       p.uncountedQty || 0,
+      p.discrepancyQty || 0,
     ])
   }
   push([])
@@ -857,6 +895,7 @@ function statsToCsv(stats, partner = {}) {
     'Abverkaufsquote',
     'Umsatz',
     'Ungezählt',
+    'Abweichung',
   ])
   for (const d of stats.byDay) {
     push([
@@ -876,6 +915,7 @@ function statsToCsv(stats, partner = {}) {
         : `${deNumber(d.sellThroughRate * 100, 1)}%`,
       deNumber(d.revenue),
       d.uncountedQty || 0,
+      d.discrepancyQty || 0,
     ])
   }
   push([])
@@ -893,6 +933,7 @@ function statsToCsv(stats, partner = {}) {
   push(['Umsatz', deNumber(stats.totals.revenue)])
   push(['Retourenwert', deNumber(stats.totals.returnValue)])
   push(['Ungezählt', stats.totals.uncountedQty || 0])
+  push(['Abweichung', stats.totals.discrepancyQty || 0])
 
   return rows.join('\r\n')
 }

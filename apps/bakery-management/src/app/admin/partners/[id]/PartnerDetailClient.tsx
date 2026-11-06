@@ -65,6 +65,7 @@ import {
   formatCurrency,
   formatDate,
   formatPercent,
+  plural,
   formatTime,
   shiftDate,
   toBusinessDate,
@@ -691,6 +692,31 @@ export default function PartnerDetailClient({
               </Alert>
             )}
 
+            {/* Mehr gezählt als möglich: eine Fehlzählung oder eine nicht
+                erfasste Lieferung - nie Retoure (W4-Verifikation Runde 2) */}
+            {(totals?.discrepancyQty ?? 0) > 0 && (
+              <Alert
+                severity="warning"
+                sx={{ mb: 3 }}
+                data-testid="day-discrepancy"
+              >
+                <AlertTitle>
+                  Abweichung: {totals?.discrepancyQty} Stück mehr gezählt, als
+                  im Schrank sein konnten
+                </AlertTitle>
+                Diese Stücke sind weder als verkauft noch als Retoure gebucht.
+                Meist fehlt eine Lieferung (Erstbestückung oder Nachlieferung),
+                oder es wurde verzählt - bitte die Besuche prüfen und
+                korrigieren:{' '}
+                <strong>
+                  {(day?.byProduct ?? [])
+                    .filter((p) => p.discrepancyQty > 0)
+                    .map((p) => `${p.productName}: ${p.discrepancyQty}`)
+                    .join(', ')}
+                </strong>
+              </Alert>
+            )}
+
             {/* Kennzahlen des gewählten Geschäftstags */}
             <Grid container spacing={{ xs: 1.5, md: 2 }} sx={{ mb: 4 }}>
               <Grid item xs={6} md={4} lg={2.4}>
@@ -754,8 +780,17 @@ export default function PartnerDetailClient({
                 Besuche am {formatDate(selectedDate)}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                {totals?.visitCount ?? timeline.length} Besuche ·{' '}
-                {totals?.refillCount ?? 0} Nachlieferungen
+                {plural(
+                  totals?.visitCount ?? timeline.length,
+                  'Besuch',
+                  'Besuche'
+                )}{' '}
+                ·{' '}
+                {plural(
+                  totals?.refillCount ?? 0,
+                  'Nachlieferung',
+                  'Nachlieferungen'
+                )}
               </Typography>
             </Box>
 

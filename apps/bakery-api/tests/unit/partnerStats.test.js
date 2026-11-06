@@ -1079,9 +1079,9 @@ describe('unvollständige Abholung (nicht jedes Produkt gezählt)', () => {
     expect(lines).toContain(
       'Hinweis;Vorläufig - 1 Tag(e) mit ungezählten Produkten bei der Abholung'
     )
-    expect(lines).toContain('Kaiserbrötchen;0,60;6;0;0;0,0%;0,00;6')
+    expect(lines).toContain('Kaiserbrötchen;0,60;6;0;0;0,0%;0,00;6;0')
     expect(lines).toContain(
-      '2026-08-25;Di;unvollständig;2;16;8;2;50,0%;28,00;6'
+      '2026-08-25;Di;unvollständig;2;16;8;2;50,0%;28,00;6;0'
     )
     expect(lines).toContain('Ungezählt;6')
   })
@@ -1316,24 +1316,24 @@ describe('statsToCsv', () => {
     const csv = reportCsv()
     const lines = csv.split('\r\n')
     expect(lines).toContain(
-      'Produkt;Einzelpreis;Geliefert;Verkauft;Retoure;Abverkaufsquote;Umsatz;Ungezählt'
+      'Produkt;Einzelpreis;Geliefert;Verkauft;Retoure;Abverkaufsquote;Umsatz;Ungezählt;Abweichung'
     )
     // 40 geliefert, 28 verkauft, 8 zurück -> 98,00 EUR, Quote 70,0 %
-    expect(lines).toContain('Bauernbrot;3,50;40;28;8;70,0%;98,00;0')
+    expect(lines).toContain('Bauernbrot;3,50;40;28;8;70,0%;98,00;0;0')
     expect(lines.filter((line) => /\d\.\d/.test(line))).toEqual([])
   })
 
   it('listet jeden Geschäftstag mit Wochentagskürzel und Status', () => {
     const lines = reportCsv().split('\r\n')
     expect(lines).toContain(
-      '2026-08-25;Di;abgeschlossen;3;30;22;8;73,3%;77,00;0'
+      '2026-08-25;Di;abgeschlossen;3;30;22;8;73,3%;77,00;0;0'
     )
-    expect(lines).toContain('2026-08-26;Mi;offen;2;10;6;0;60,0%;21,00;0')
+    expect(lines).toContain('2026-08-26;Mi;offen;2;10;6;0;60,0%;21,00;0;0')
   })
 
   it('schließt mit dem Gesamtblock ab', () => {
     const lines = reportCsv().split('\r\n')
-    expect(lines.slice(-8)).toEqual([
+    expect(lines.slice(-9)).toEqual([
       'Gesamt',
       'Geliefert;40',
       'Verkauft;28',
@@ -1342,6 +1342,7 @@ describe('statsToCsv', () => {
       'Umsatz;98,00',
       'Retourenwert;28,00',
       'Ungezählt;0',
+      'Abweichung;0',
     ])
   })
 
@@ -1372,7 +1373,7 @@ describe('statsToCsv', () => {
     const lines = csv.split('\r\n')
     expect(lines).toContain('Partner;"\'@SUM(A1:A9)"')
     expect(lines).toContain(
-      '"\'=HYPERLINK(""http://x.example"";""Klick"")";3,50;10;6;4;60,0%;21,00;0'
+      '"\'=HYPERLINK(""http://x.example"";""Klick"")";3,50;10;6;4;60,0%;21,00;0;0'
     )
     expect(lines.some((line) => /^=|;=/.test(line))).toBe(false)
   })
@@ -1473,5 +1474,58 @@ describe('validateTemplateItems (W4-verify)', () => {
       ).message
     ).toMatch(/doppelt/)
     expect(core.validateTemplateItems('brot', lookup).ok).toBe(false)
+  })
+})
+
+describe('W4-Verifikation Runde 2', () => {
+  it('bucht mehr gezählte als mögliche Stücke als Abweichung, nicht als Retoure', () => {
+    // Abholung ohne vorherige Lieferung: 5 gezählt, 0 können da sein
+    const stats = computeStats([
+      visit('2026-11-07', 'pickup', 1, [item(BROT, 5, 0)]),
+    ])
+    expect(stats.totals).toMatchObject({
+      deliveredQty: 0,
+      soldQty: 0,
+      returnedQty: 0,
+      discrepancyQty: 5,
+      returnValue: 0,
+    })
+    // 10 geliefert, 12 gezählt: Retoure 10, Abweichung 2, nie Retoure > Geliefert
+    const s2 = computeStats([
+      visit('2026-11-07', 'initial', 1, [item(BROT, null, 10)]),
+      visit('2026-11-07', 'pickup', 2, [item(BROT, 12, 0)]),
+    ])
+    expect(s2.byProduct[0]).toMatchObject({
+      deliveredQty: 10,
+      soldQty: 0,
+      returnedQty: 10,
+      discrepancyQty: 2,
+    })
+  })
+
+  it('zeigt einen Preiswechsel als Spanne, im CSV als „von–bis“', () => {
+    const cheap = { ...item(BROT, null, 6), unitPrice: 1.6 }
+    const dear = { ...item(BROT, null, 6), unitPrice: 1.8 }
+    const stats = computeStats([
+      visit('2026-11-05', 'initial', 1, [cheap]),
+      visit('2026-11-05', 'pickup', 2, [
+        { ...item(BROT, 0, 0), unitPrice: 1.6 },
+      ]),
+      visit('2026-11-06', 'initial', 1, [dear]),
+      visit('2026-11-06', 'pickup', 2, [
+        { ...item(BROT, 0, 0), unitPrice: 1.8 },
+      ]),
+    ])
+    expect(stats.byProduct[0]).toMatchObject({
+      unitPrice: 1.8,
+      unitPriceMin: 1.6,
+      unitPriceMax: 1.8,
+      soldQty: 12,
+      revenue: 20.4,
+    })
+    const lines = statsToCsv(stats, PARTNER).split('\r\n')
+    expect(
+      lines.some((l) => l.includes(';1,60–1,80;12;12;0;100,0%;20,40;0;0'))
+    ).toBe(true)
   })
 })

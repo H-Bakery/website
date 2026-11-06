@@ -178,6 +178,13 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
 - **`csvCell()` maskiert Formelzellen.** Partner- und Produktnamen landen im CSV-Report; eine
   Zelle, die mit `=`, `+`, `-`, `@`, Tab oder CR beginnt, bekommt ein Apostroph voran und wird
   eingefasst, sonst führt Excel sie aus. Schlichte Zahlen (`-5`) bleiben Zahlen.
+- **Mehr gezählt als möglich ist Abweichung, nie Retoure** (seit W4-Verifikation Runde 2). Liegt
+  ein gezählter Rest über dem errechneten Bestand, bucht der Core den Überschuss als
+  `discrepancyQty`; die Retoure einer Abholung ist höchstens der Bestand. Tageskarte und Report
+  zeigen die Abweichung, die Erfassungsmaske fragt vorher nach, das CSV hat eine Spalte
+  `Abweichung`. Ändert sich ein Preis im Zeitraum, trägt `byProduct` `unitPriceMin`/`unitPriceMax`
+  und der Report zeigt die Spanne (`1,60–1,80 €`) - sonst ergäbe Einzelpreis × Verkauft nicht den
+  Umsatz.
 
 Die Tagesformel aus der Aufgabe (`Σ Geliefert − Rest bei der Abholung`) stimmt nur, wenn der
 letzte Besuch eine Abholung ohne Lieferung ist. Der Core rechnet stattdessen je Produkt einen
