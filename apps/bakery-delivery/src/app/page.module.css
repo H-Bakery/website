@@ -254,6 +254,12 @@
   flex: 0 1 8.5rem;
 }
 
+/* Direkt in der (senkrechten) Form - etwa die Anmeldung - waechst ein Feld
+   sonst um seine 12rem-Basis in die Hoehe. */
+.form > .field {
+  flex: none;
+}
+
 .field > label,
 .fieldNarrow > label {
   font-size: 0.8rem;
@@ -579,4 +585,37 @@
   .card {
     padding: 1.25rem 1.5rem;
   }
+}
+
+/* B8: angemeldeter Benutzer + Abmelden (AccountBar.tsx) */
+.account {
+  width: 100%;
+  max-width: 720px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 0.75rem;
+  padding: 0 0.25rem;
+}
+
+.accountName {
+  margin: 0;
+  font-weight: 600;
+  color: var(--color-text);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.accountConfirm {
+  width: 100%;
+  background: var(--color-warning-surface);
+  border: 1px solid var(--color-warning-border);
+  color: var(--color-warning-text);
+  border-radius: 8px;
+  padding: 0.75rem;
+}
+
+.accountConfirm p {
+  margin: 0 0 0.5rem;
 }

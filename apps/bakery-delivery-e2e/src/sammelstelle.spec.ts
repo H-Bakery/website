@@ -1,5 +1,7 @@
 import { expect, test, type APIRequestContext } from '@playwright/test'
 
+import { useSession } from './login'
+
 /**
  * Sammelstelle Kindergarten Mörsbach.
  *
@@ -132,6 +134,9 @@ async function openTour(
 }
 
 test.describe('Sammelstelle', () => {
+  // B8: die App zeigt ohne Anmeldung nur das Formular.
+  test.beforeEach(({ page, request }) => useSession(page, request))
+
   test('haengt die Vorbestellungen des Tages an den Stopp', async ({
     page,
     request,
@@ -273,6 +278,9 @@ test.describe('Sammelstelle', () => {
 })
 
 test.describe('Farbschema', () => {
+  // B8: die App zeigt ohne Anmeldung nur das Formular.
+  test.beforeEach(({ page, request }) => useSession(page, request))
+
   test('merkt sich Dunkel ueber das Neuladen hinweg, ohne Flash', async ({
     page,
   }) => {

@@ -1,6 +1,9 @@
 import {
   API_BASE_URL,
   ApiError,
+  SessionExpiredError,
+  clearDeviceData,
+  deliveryApi,
   describeError,
   flushQueue,
   pendingUpdates,
@@ -13,6 +16,12 @@ import {
   type Driver,
   type Tour,
 } from './delivery-api'
+import {
+  currentSession,
+  resetSessionCache,
+  saveSession,
+  type DeliverySession,
+} from './session'
 
 describe('describeError', () => {
   const fallback = 'Stopp konnte nicht angelegt werden.'
@@ -229,5 +238,106 @@ describe('Warteschlange', () => {
     expect(result.offline).toBe(false)
     expect(result.rejected).toHaveLength(1)
     expect(pendingUpdates()).toEqual([])
+  })
+})
+
+describe('Anmeldung in request() (B8)', () => {
+  const session: DeliverySession = {
+    token: 'at_1',
+    refreshToken: 'rt_1',
+    user: { id: 42, username: 'f', displayName: 'F', role: 'fahrer' },
+  }
+  const respond = (body: unknown, status = 200) => ({
+    ok: status >= 200 && status < 300,
+    status,
+    text: async () => JSON.stringify(body),
+    json: async () => body,
+  })
+  const refreshed = {
+    success: true,
+    data: { user: session.user, token: 'at_2', refreshToken: 'rt_2' },
+  }
+  let fetchMock: jest.Mock
+
+  beforeEach(() => {
+    window.localStorage.clear()
+    resetSessionCache()
+    saveSession(session)
+    fetchMock = jest.fn()
+    ;(global as { fetch?: unknown }).fetch = fetchMock
+  })
+
+  afterEach(() => {
+    delete (global as { fetch?: unknown }).fetch
+  })
+
+  it('schickt das Access-Token als Bearer', async () => {
+    fetchMock.mockResolvedValue(respond([]))
+
+    await deliveryApi.drivers()
+
+    expect(fetchMock.mock.calls[0][1].headers.Authorization).toBe('Bearer at_1')
+  })
+
+  it('erneuert bei 401 einmal und wiederholt die Anfrage mit dem neuen Token', async () => {
+    fetchMock
+      .mockResolvedValueOnce(respond({ error: 'unauthorized' }, 401))
+      .mockResolvedValueOnce(respond(refreshed))
+      .mockResolvedValueOnce(respond([{ id: 1 }]))
+
+    expect(await deliveryApi.drivers()).toEqual([{ id: 1 }])
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/api\/auth\/refresh$/)
+    expect(fetchMock.mock.calls[2][1].headers.Authorization).toBe('Bearer at_2')
+    expect(currentSession()?.refreshToken).toBe('rt_2')
+  })
+
+  it('meldet ab, wenn der Refresh abgelehnt wird - keine ApiError', async () => {
+    fetchMock
+      .mockResolvedValueOnce(respond({ error: 'unauthorized' }, 401))
+      .mockResolvedValueOnce(respond({ error: 'unauthorized' }, 401))
+
+    const error = await deliveryApi.drivers().catch((e: unknown) => e)
+
+    expect(error).toBeInstanceOf(SessionExpiredError)
+    expect(error).not.toBeInstanceOf(ApiError)
+    expect(currentSession()).toBeNull()
+  })
+
+  it('behält ein Abhaken in der Schlange, wenn die Sitzung abgelaufen ist', async () => {
+    fetchMock
+      .mockResolvedValueOnce(respond({ error: 'unauthorized' }, 401))
+      .mockResolvedValueOnce(respond({ error: 'unauthorized' }, 401))
+    queueStopUpdate(7, 1, { status: 'done' })
+
+    const result = await flushQueue()
+
+    expect(result.rejected).toEqual([])
+    expect(pendingUpdates()).toHaveLength(1)
+  })
+
+  it('bleibt angemeldet, wenn nur der Refresh im Funkloch scheitert', async () => {
+    fetchMock
+      .mockResolvedValueOnce(respond({ error: 'unauthorized' }, 401))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+
+    const error = await deliveryApi.drivers().catch((e: unknown) => e)
+
+    expect(error).not.toBeInstanceOf(SessionExpiredError)
+    expect(error).not.toBeInstanceOf(ApiError)
+    expect(currentSession()).toEqual(session)
+  })
+
+  it('löscht beim Abmelden Warteschlange, Kopien und gewählten Fahrer', () => {
+    queueStopUpdate(7, 1, { status: 'done' })
+    rememberDrivers([])
+    window.localStorage.setItem('bakery-delivery-driver', '1')
+
+    clearDeviceData()
+
+    expect(pendingUpdates()).toEqual([])
+    expect(rememberedDrivers()).toBeNull()
+    expect(window.localStorage.getItem('bakery-delivery-driver')).toBeNull()
+    // die Sitzung selbst beendet `logout()`, nicht diese Funktion
+    expect(currentSession()).toEqual(session)
   })
 })

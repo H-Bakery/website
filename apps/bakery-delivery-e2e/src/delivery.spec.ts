@@ -1,5 +1,7 @@
 import { expect, test, type Route } from '@playwright/test'
 
+import { E2E_LOGIN, useSession } from './login'
+
 /**
  * Fahrer-App der Samstagsauslieferung.
  *
@@ -32,6 +34,9 @@ async function resetTours(
 }
 
 test.describe('Liefertour', () => {
+  // B8: die App zeigt ohne Anmeldung nur das Formular.
+  test.beforeEach(({ page, request }) => useSession(page, request))
+
   test('zeigt Kopf und Bedienelemente der Tour', async ({ page }) => {
     await page.goto('/')
 
@@ -328,5 +333,40 @@ test.describe('Liefertour', () => {
     await expect(
       page.getByRole('alert').filter({ hasText: 'Keine Verbindung' })
     ).toHaveCount(0)
+  })
+})
+
+test.describe('Anmeldung', () => {
+  test('zeigt ohne Sitzung nur das Formular, meldet an und wieder ab', async ({
+    page,
+  }) => {
+    await page.goto('/')
+
+    await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+    await expect(page.getByLabel('Fahrer', { exact: true })).toHaveCount(0)
+
+    await page.getByLabel('Benutzername').fill(E2E_LOGIN.username)
+    await page.getByLabel('Passwort').fill('falsch-falsch')
+    await page.getByRole('button', { name: 'Anmelden' }).click()
+    await expect(page.getByRole('alert')).toBeVisible()
+
+    await page.getByLabel('Passwort').fill(E2E_LOGIN.password)
+    await page.getByRole('button', { name: 'Anmelden' }).click()
+    await expect(page.getByLabel('Fahrer', { exact: true })).toBeVisible()
+    await expect(page.getByRole('region', { name: 'Anmeldung' })).toContainText(
+      'Inhaber'
+    )
+
+    // Die Sitzung überlebt das Neuladen.
+    await page.reload()
+    await expect(page.getByLabel('Fahrer', { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Abmelden' }).click()
+    await expect(page.getByRole('heading', { name: 'Anmelden' })).toBeVisible()
+    expect(
+      await page.evaluate(() =>
+        window.localStorage.getItem('bakery-delivery-session')
+      )
+    ).toBeNull()
   })
 })

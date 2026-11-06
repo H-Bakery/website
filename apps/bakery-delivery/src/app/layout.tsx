@@ -1,5 +1,6 @@
 import './global.css'
 import { THEME_COLOR, THEME_INIT_SCRIPT } from '../lib/theme'
+import { AuthGate } from '../components/AuthGate'
 
 export const metadata = {
   title: 'Bäckerei Heusser – Liefertour',
@@ -30,7 +31,10 @@ export default function RootLayout({
         {/* Vor dem ersten Paint, sonst blitzt die helle Seite auf. */}
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>
-      <body>{children}</body>
+      <body>
+        {/* B8: ohne Anmeldung nur das Anmeldeformular. */}
+        <AuthGate>{children}</AuthGate>
+      </body>
     </html>
   )
 }
