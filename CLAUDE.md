@@ -232,7 +232,11 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   nur `message`), `GET …/templates` legt beim Lesen keine leeren Vorlagen an, `from > to` ist 400,
   ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (die Erfassungsmaske schickt
   `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
-  `commission`.
+  `commission`; seit der W4-Verifikation prüft die Vorlage ihre Positionen wie ein Besuch (Menge
+  ganzzahlig 0…10000, Produkt im Katalog oder schon in der Vorlage, sonst 400 `INVALID_ITEMS`),
+  Freitexte haben Längengrenzen (400 `TEXT_TOO_LONG`) und der Geschäftstag eines Besuchs liegt
+  zwischen 2020-01-01 und heute + 7 Tage. Die Vorlagen-Seite sperrt die Felder für alle außer dem
+  Inhaber und lehnt mehr als 10.000 Stück je Position schon vor dem Speichern ab.
 - **Parity:** `apps/bakery-api/tests/parity/partners.parity.test.ts` spielt dasselbe Szenario
   (Partner, Vorlage, Besuche, Korrektur, Tageswechsel, Löschen, Kennzahlen, Report, CSV) auf
   Mock und echter API durch und vergleicht Status, Form und - wo beide dieselben Daten halten -

@@ -59,6 +59,14 @@ type QuantityMap = Record<number, Quantities>
 
 const ALL_WEEKDAYS = [1, 2, 3, 4, 5, 6, 7]
 
+/** Obergrenze je Position - dieselbe wie bei Besuchen (`MAX_ITEM_QTY` der API). */
+const MAX_TEMPLATE_QTY = 10000
+
+/** „1 Position“, „3 Positionen“. */
+function positionsLabel(count: number): string {
+  return `${count} ${count === 1 ? 'Position' : 'Positionen'}`
+}
+
 /** Nur Positionen mit Menge > 0 - `0` heißt „nicht Teil der Bestückung“. */
 function withoutEmpty(quantities: Quantities): Quantities {
   const result: Quantities = {}
@@ -282,6 +290,21 @@ export default function TemplatesClient({
         quantity: day[product.productSlug] ?? 0,
       }))
       .filter((item) => item.quantity > 0)
+
+    const tooMany = items.find((item) => item.quantity > MAX_TEMPLATE_QTY)
+    if (tooMany) {
+      const name =
+        catalogue.find((p) => p.productSlug === tooMany.productSlug)
+          ?.productName ?? tooMany.productSlug
+      setSaveError(
+        `${name}: ${tooMany.quantity.toLocaleString(
+          'de-DE'
+        )} Stück sind zu viel - höchstens ${MAX_TEMPLATE_QTY.toLocaleString(
+          'de-DE'
+        )} je Position. Bitte die Menge prüfen.`
+      )
+      return
+    }
 
     setSaving(true)
     setSaveError(null)
@@ -559,7 +582,7 @@ export default function TemplatesClient({
             label="Von anderem Wochentag übernehmen"
             value={copySource}
             onChange={(event) => handleCopySelect(event.target.value)}
-            disabled={weekdays.length < 2 || saving}
+            disabled={!canEdit || weekdays.length < 2 || saving}
             sx={{ minWidth: 260 }}
             InputProps={{
               startAdornment: (
@@ -573,7 +596,7 @@ export default function TemplatesClient({
               .filter((day) => day !== weekday)
               .map((day) => (
                 <MenuItem key={day} value={String(day)}>
-                  {WEEKDAY_LABELS[day]} ({positionsOf(day)} Positionen)
+                  {WEEKDAY_LABELS[day]} ({positionsLabel(positionsOf(day))})
                 </MenuItem>
               ))}
           </TextField>
@@ -643,7 +666,7 @@ export default function TemplatesClient({
                     {group.label}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    {groupPositions} Positionen · {groupUnits} Stück
+                    {positionsLabel(groupPositions)} · {groupUnits} Stück
                   </Typography>
                 </Box>
 
@@ -676,6 +699,8 @@ export default function TemplatesClient({
                         size="small"
                         value={quantity > 0 ? String(quantity) : ''}
                         placeholder="0"
+                        disabled={!canEdit}
+                        error={quantity > MAX_TEMPLATE_QTY}
                         onChange={(event) => {
                           const parsed = parseInt(event.target.value, 10)
                           setQuantity(
@@ -685,8 +710,10 @@ export default function TemplatesClient({
                         }}
                         inputProps={{
                           min: 0,
+                          max: MAX_TEMPLATE_QTY,
                           step: 1,
                           inputMode: 'numeric',
+                          readOnly: !canEdit,
                           'aria-label': `Menge ${product.productName}`,
                           style: { textAlign: 'right' },
                         }}
@@ -723,7 +750,13 @@ export default function TemplatesClient({
         <DialogContent>
           <DialogContentText>
             {pendingCopy != null && weekday != null
-              ? `Die aktuellen Mengen für ${WEEKDAY_LABELS[weekday]} (${summary.positions} Positionen) werden durch die Mengen von ${WEEKDAY_LABELS[pendingCopy]} ersetzt. Gespeichert wird erst mit „Speichern“.`
+              ? `Die aktuellen Mengen für ${
+                  WEEKDAY_LABELS[weekday]
+                } (${positionsLabel(
+                  summary.positions
+                )}) werden durch die Mengen von ${
+                  WEEKDAY_LABELS[pendingCopy]
+                } ersetzt. Gespeichert wird erst mit „Speichern“.`
               : ''}
           </DialogContentText>
         </DialogContent>

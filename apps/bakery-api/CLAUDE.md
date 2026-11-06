@@ -544,7 +544,7 @@ and template objects as before, visits as `PlainVisit`, `DELETE` → 200
 Errors via `sendError` (`success: false`, `error`, German `message`): 400 `INVALID_NAME` /
 `INVALID_SLUG` / `INVALID_ACTIVE` / `INVALID_SETTLEMENT_MODEL` / `INVALID_WEEKDAY` /
 `INVALID_ITEMS` / `INVALID_VISIT_TYPE` / `INVALID_VISIT_AT` / `INVALID_BUSINESS_DATE` /
-`INVALID_RANGE`, 401 `unauthorized`, 403 `forbidden` (the role check runs before the 404), 404
+`INVALID_RANGE` / `TEXT_TOO_LONG`, 401 `unauthorized`, 403 `forbidden` (the role check runs before the 404), 404
 `PARTNER_NOT_FOUND` / `VISIT_NOT_FOUND`, 409 `PARTNER_SLUG_TAKEN` / `DUPLICATE_INITIAL_VISIT`,
 503 `hq_unavailable`, 500 `*_FAILED`.
 
@@ -569,10 +569,20 @@ What to know before changing it:
   `partner_visit` create/update/delete (delete stores the whole visit, so a mistaken delete can be
   reconstructed).
 - **Template `PUT`** fills `productId`/`productSlug` from hq, drops quantity 0, keeps `active`
-  when the body does not name it (before B6 every save re-activated the template).
+  when the body does not name it (before B6 every save re-activated the template). Since the W4
+  verification it validates like visits (`validateTemplateItems` in the core): quantity an integer
+  0…10000 (`2.5`, `-3`, `1e9` are 400 `INVALID_ITEMS`, no longer truncated or dropped), the
+  product must be in hq **or already in the stored template** (so a product removed from hq does
+  not block saving), no duplicates; hq missing → 503. The quantity flows unchecked into the
+  Backzettel CAP column, so this is the only gate.
+- **Limits (W4 verification):** partner text fields (`name` 120, `slug` 80, `street`/`city`/
+  `contactName` 120, `zip` 16, `phone` 40, `email` 200, `notes` 2000) and visit `staffName` 120 /
+  `note` 2000 → 400 `TEXT_TOO_LONG`; a visit's business day must lie between 2020-01-01 and
+  today + 7 days (POST and PATCH) → 400 `INVALID_BUSINESS_DATE`.
 - Deliberate deviations from the mock: error codes; `GET …/templates` does not create empty
   templates on read; `from > to` is 400; PATCH with `visitAt` alone keeps the business day;
-  an unknown `settlementModel` is 400.
+  an unknown `settlementModel` is 400; the template item checks and the limits above (the mock
+  truncates/drops and has no limits - the parity suite only sends valid input there).
 - The management app downloads the CSV through `apiClient.getBlob()` with the Bearer token
   (`downloadReportCsv()` in `partnerApi.ts`, F4); the old plain link is gone.
 
