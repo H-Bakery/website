@@ -53,6 +53,7 @@ export const DEFAULT_CORS_ORIGINS = [
   'http://localhost:4201', // bakery-management
   'http://localhost:4200', // bakery-shop
   'http://localhost:3000', // bakery-landing
+  'http://localhost:4300', // bakery-delivery (B8: Fahrer-App gegen serve:api)
 ]
 
 const DEV_JWT_SECRET =

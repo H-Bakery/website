@@ -20,6 +20,7 @@ import {
   type Tour,
 } from '../lib/delivery-api'
 import { nextSaturdayIso } from '../lib/format'
+import { saveSession, type DeliveryRole } from '../lib/session'
 
 /**
  * Regression: ohne erreichbare API zeigte die Seite "Für diesen Tag ist noch
@@ -44,6 +45,15 @@ jest.mock('../lib/delivery-api', () => ({
 jest.mock('../components/Map', () => ({ Map: () => null }))
 
 const api = deliveryApi as jest.Mocked<typeof deliveryApi>
+
+/** Die Seite steht hinter `AuthGate` (Layout); hier genügt eine Sitzung im Speicher. */
+function signIn(role: DeliveryRole, id = 1) {
+  saveSession({
+    token: 'test-token',
+    refreshToken: 'rt_test',
+    user: { id, username: `test.${role}`, displayName: `Test ${role}`, role },
+  })
+}
 
 const driver: Driver = {
   id: 1,
@@ -91,6 +101,7 @@ describe('DeliveryDashboard ohne erreichbare API', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     // Keine Fahrerliste: sonst wechselt der Fahrer nach dem Laden und die
     // Touren würden ein zweites Mal geholt - das würde die Zählung verwischen.
     api.drivers.mockResolvedValue([])
@@ -204,6 +215,7 @@ describe('DeliveryDashboard mit Offline-Kopie', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     // So sieht der Speicher nach dem letzten Besuch mit Netz aus.
     rememberDrivers([driver])
     window.localStorage.setItem('bakery-delivery-driver', '1')
@@ -416,6 +428,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     api.drivers.mockResolvedValue([])
     api.tours.mockResolvedValue([twoStops])
   })
@@ -763,6 +776,7 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     window.localStorage.clear()
+    signIn('inhaber')
     api.drivers.mockResolvedValue([])
     api.tours.mockResolvedValue([pickupTour])
   })
@@ -965,5 +979,123 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     expect(pendingUpdates()).toEqual([])
     expect(screen.queryByText(/Kein Netz/)).toBeNull()
     expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
+    // B8: auch die Warteschlange geht mit Bearer raus.
+    expect(fetchMock.mock.calls[0][1].headers).toMatchObject({
+      Authorization: 'Bearer test-token',
+    })
+  })
+})
+
+/**
+ * B8: was die Oberfläche anbietet, hängt an der Rolle. Durchgesetzt wird in
+ * der API; hier geht es darum, dass niemand Knöpfe sieht, die mit 403 enden.
+ */
+describe('DeliveryDashboard nach Rolle', () => {
+  const date = nextSaturdayIso()
+  const openStop: Stop = {
+    id: 1,
+    customer: 'Kunde A',
+    street: 'Talstraße 5',
+    zip: '66424',
+    city: 'Homburg',
+    address: 'Talstraße 5, 66424 Homburg',
+    phone: null,
+    timeWindow: null,
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    goodsDisposition: null,
+    lat: 49.3226,
+    lon: 7.3389,
+    geocodeSource: null,
+    geocodePrecision: null,
+    estimatedArrival: null,
+  }
+  const oneStop: Tour = {
+    ...tour,
+    date,
+    stops: [openStop],
+    progress: { total: 1, done: 0, failed: 0, open: 1, isComplete: false },
+    nextStopId: 1,
+  }
+  const own: Driver = { ...driver, id: 2, name: 'Fahrer 2', userId: 42 }
+  const other: Driver = { ...driver, id: 1, name: 'Fahrer 1', userId: 7 }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+  })
+
+  it('Verkauf liest nur: kein Planen, Abhaken, Routen oder Standort', async () => {
+    signIn('verkauf')
+    api.drivers.mockResolvedValue([])
+    api.tours.mockResolvedValue([oneStop])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      await screen.findByRole('heading', { name: 'Samstagstour' })
+    ).toBeTruthy()
+    expect(screen.getAllByRole('heading', { name: 'Kunde A' }).length).toBe(2)
+    expect(screen.queryByRole('button', { name: 'Tour planen' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Route berechnen' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Geliefert' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Standort verfolgen' })
+    ).toBeNull()
+    expect(screen.getByRole('button', { name: 'Abmelden' })).toBeTruthy()
+    expect(screen.getByText(/· Verkauf/)).toBeTruthy()
+  })
+
+  it('Verkauf bekommt an einem leeren Tag kein "Tour anlegen"', async () => {
+    signIn('verkauf')
+    api.drivers.mockResolvedValue([])
+    api.tours.mockResolvedValue([])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      await screen.findByText('Für diesen Tag ist noch nichts geplant.')
+    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Tour anlegen' })).toBeNull()
+  })
+
+  it('ein Fahrer ist auf den eigenen Fahrer festgelegt und kann abhaken', async () => {
+    signIn('fahrer', 42)
+    // Ein gemerkter fremder Fahrer zählt nicht.
+    window.localStorage.setItem('bakery-delivery-driver', '1')
+    api.drivers.mockResolvedValue([other, own])
+    api.tours.mockResolvedValue([{ ...oneStop, driverId: 2, driver: own }])
+
+    render(<DeliveryDashboard />)
+
+    await waitFor(() =>
+      expect(api.tours).toHaveBeenLastCalledWith(
+        expect.objectContaining({ date, driverId: 2 })
+      )
+    )
+    const select = screen.getByLabelText('Fahrer') as HTMLSelectElement
+    expect(select.value).toBe('2')
+    expect(select.disabled).toBe(true)
+    expect(
+      (await screen.findAllByRole('button', { name: 'Geliefert' })).length
+    ).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Route berechnen' })).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Tour planen' })).toBeNull()
+  })
+
+  it('ein Fahrer ohne zugeordneten Fahrer bekommt einen Hinweis statt fremder Touren', async () => {
+    signIn('fahrer', 99)
+    api.drivers.mockResolvedValue([other, own])
+    api.tours.mockResolvedValue([])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      await screen.findByText(/Ihrem Konto ist noch kein Fahrer zugeordnet/)
+    ).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Tour anlegen' })).toBeNull()
   })
 })

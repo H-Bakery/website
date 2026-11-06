@@ -11,6 +11,8 @@
  *   PickupPoint, Preorder, PreorderItem          pickup_points, preorders, preorder_items
  *   BackzettelDay, BackzettelLine,
  *   BackzettelDelta                              backzettel_days/_lines/_deltas (Z3)
+ *   DeliveryDepot, DeliveryDriver, DeliveryTour,
+ *   DeliveryStop, DeliveryGeocache               delivery_* (B8 migration)
  *
  * Legacy models (Cash, Chat, Product, Order, OrderItem, Inventory, Recipe,
  * Notification*, Production*, StockAdjustment, UnsoldProduct) are still
@@ -35,6 +37,11 @@ import { default as PreorderItem } from './PreorderItem'
 import { default as BackzettelDay } from './BackzettelDay'
 import { default as BackzettelLine } from './BackzettelLine'
 import { default as BackzettelDelta } from './BackzettelDelta'
+import { default as DeliveryDepot } from './DeliveryDepot'
+import { default as DeliveryDriver } from './DeliveryDriver'
+import { default as DeliveryTour } from './DeliveryTour'
+import { default as DeliveryStop } from './DeliveryStop'
+import { default as DeliveryGeocache } from './DeliveryGeocache'
 
 // --- Legacy, unused in the pilot (not initialised, no table) --------------
 import { default as Cash } from './Cash'
@@ -82,6 +89,11 @@ export {
   BackzettelDay,
   BackzettelLine,
   BackzettelDelta,
+  DeliveryDepot,
+  DeliveryDriver,
+  DeliveryTour,
+  DeliveryStop,
+  DeliveryGeocache,
 }
 
 /** @deprecated legacy alias, the pilot has staff users only. */
@@ -123,6 +135,11 @@ export const PILOT_MODELS = [
   BackzettelDay,
   BackzettelLine,
   BackzettelDelta,
+  DeliveryDepot,
+  DeliveryDriver,
+  DeliveryTour,
+  DeliveryStop,
+  DeliveryGeocache,
 ] as const
 
 export async function initializeModels(seq: Sequelize): Promise<void> {
@@ -195,6 +212,23 @@ function setupAssociations(): void {
   BackzettelLine.belongsTo(BackzettelDay, { foreignKey: 'date', as: 'day' })
   BackzettelDay.hasMany(BackzettelDelta, { foreignKey: 'date', as: 'deltas' })
   BackzettelDelta.belongsTo(BackzettelDay, { foreignKey: 'date', as: 'day' })
+
+  // Delivery tours (B8)
+  DeliveryTour.hasMany(DeliveryStop, {
+    foreignKey: 'tourId',
+    as: 'stops',
+    onDelete: 'CASCADE',
+  })
+  DeliveryStop.belongsTo(DeliveryTour, { foreignKey: 'tourId', as: 'tour' })
+  DeliveryTour.belongsTo(DeliveryDriver, {
+    foreignKey: 'driverId',
+    as: 'driver',
+  })
+  DeliveryDriver.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  DeliveryStop.belongsTo(PickupPoint, {
+    foreignKey: 'pickupPointId',
+    as: 'pickupPoint',
+  })
 }
 
 /** Models with a table in the pilot schema (for tooling and tests). */

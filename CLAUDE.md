@@ -119,14 +119,14 @@ website/
 
 ## Service Status (as of 2026-11-05)
 
-| Service       | Command                    | Port | Status                                               |
-| ------------- | -------------------------- | ---- | ---------------------------------------------------- |
-| Landing Page  | `npm run dev:landing`      | 3000 | Working                                              |
-| Shop          | `npm run serve:shop`       | 4200 | Working                                              |
-| Management    | `npm run serve:management` | 4201 | Working                                              |
-| Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                            |
-| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data) - parity reference until cutover |
-| API (real TS) | `npm run serve:api`        | 5000 | Starts: health, auth (B3, SQLite), users, partners   |
+| Service       | Command                    | Port | Status                                                                |
+| ------------- | -------------------------- | ---- | --------------------------------------------------------------------- |
+| Landing Page  | `npm run dev:landing`      | 3000 | Working                                                               |
+| Shop          | `npm run serve:shop`       | 4200 | Working                                                               |
+| Management    | `npm run serve:management` | 4201 | Working                                                               |
+| Delivery      | `npm run serve:delivery`   | 4300 | Working (braucht die API)                                             |
+| API (simple)  | `npm run serve:api:simple` | 5000 | Working (mock data) - parity reference until cutover                  |
+| API (real TS) | `npm run serve:api`        | 5000 | Starts: health, auth (B3, SQLite), users, partners, … deliveries (B8) |
 
 The real TypeScript API (`bakery-api`, roadmap D2) is built by esbuild into one file,
 `dist/apps/bakery-api/bundle/main.js` (`apps/bakery-api/build.mjs`, target `bakery-api:bundle`), and
@@ -139,7 +139,8 @@ refresh, PIN and the station user list needs a session (401); with a session an 
 JSON 404 with `error` + `message`. See "Anmeldung (B3)" below. The other pilot domains (products,
 reports, finance, targets, preorders, Backzettel) are added by their roadmap tasks. Since F4 the
 management app's pilot screens run against this API (see „Verwaltung auf der echten API (F4)");
-shop and delivery still talk to `serve:api:simple`. Details in `apps/bakery-api/CLAUDE.md`.
+since B8 the delivery tours are there too (`/api/deliveries`, see „Liefertouren auf der echten API
+(B8)"); the shop still talks to `serve:api:simple`. Details in `apps/bakery-api/CLAUDE.md`.
 
 ## Verkaufspartner (Backschrank CAP-Markt)
 
@@ -321,7 +322,8 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Fünf Dinge, die man von au�
   wie eine gemessene Strecke. Samstags früh muss die Liste auch ohne fremde Server da sein: das
   Lesen einer Tour wartet höchstens 2,5 s auf Nominatim, Fehlversuche werden 5 min lang nicht
   wiederholt.
-- **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*`. Der Store lebt im
+- **Die Endpunkte liegen in `simple-server.js`** unter `/api/deliveries/*` - und seit B8 auch in
+  der echten API (Abschnitt unten). Der Store des Mocks lebt im
   Speicher des Servers und wird nach jeder Änderung atomar nach
   `apps/bakery-api/data/delivery-store.json` geschrieben (gitignored, über `json-store.core.js`,
   siehe Verkaufspartner). Ein Server, der vor diesen
@@ -341,6 +343,40 @@ Details stehen in `apps/bakery-delivery/CLAUDE.md`. Fünf Dinge, die man von au�
 
 Tests: `npx nx test delivery-routing` (61), `npx nx test delivery-tracking` (7) und
 `apps/bakery-api/tests/unit/deliveryTours.test.js` (83) für die Rechenlogik des Servers.
+
+### Liefertouren auf der echten API (B8)
+
+`/api/deliveries` (Depot, Fahrer, Touren, Stopps, Route, Position, Adresssuche) gibt es jetzt in
+der TypeScript-API, mit dem Vertrag des Mocks (D3; Parity-Suite
+`apps/bakery-api/tests/parity/deliveries.parity.test.ts`). Details: `apps/bakery-api/CLAUDE.md`,
+Abschnitt „Delivery tours (B8)". Von außen wichtig:
+
+- **Rollen:** `inhaber` plant (Touren, Stopps, Fahrer, Depot); `fahrer` sieht **nur eigene
+  Touren** (Fahrer ↔ Konto über `driver.userId`), hakt ab (nur `status`, Grund, Verbleib,
+  `completedAt`), meldet die Position und darf „Route berechnen"; `verkauf` liest; `backstube` 403. Jeder Schreibzugriff steht im `audit_log` - ohne Namen, Adressen oder Telefonnummern.
+  Ein Fahrer bekommt von `GET /drivers` nur sich selbst; zuordnen lässt sich nur ein Konto mit der
+  Rolle `fahrer` (sonst 400 `Driver user not fahrer`).
+- **DSGVO wie P4:** 90 Tage nach dem Tourtag verlieren Lieferstopps Name, Telefon, Hinweis,
+  Fehlergrund, Straße und Koordinaten (PLZ, Ort, Positionen, Status bleiben; Sammelstellen-Stopps
+  nicht betroffen), dazu der Adress-Cache-Eintrag, wenn ihn keine andere Adresse mehr braucht -
+  im **selben nächtlichen Lauf** wie die Vorbestellungen (`cli.js anonymize-preorders`, Bericht
+  `deliveryStops`) und gleich beim `import-deliveries`. Regel: `src/services/delivery-anonymize.ts`.
+- **CORS:** die echte API lässt in der Entwicklung `http://localhost:4300` (Fahrer-App) wie 4200,
+  4201 und 3000 ohne `CORS_ORIGIN` zu (`DEFAULT_CORS_ORIGINS`).
+- **Dieselben Core-Dateien** (`delivery-tours.core.js`, `delivery-geo.core.js`), dieselben
+  Schutzregeln: Lesen wartet höchstens 2,5 s auf Nominatim, Fehlversuche 5 min Pause,
+  `hasCoordinates()`/`validateCoordinates()`.
+- **Mörsbach:** der Sammelstellen-Stopp hängt sich nur an die erste Tour des Tages; seine
+  Übergabeliste kommt aus `/api/preorders` (B7), nicht aus einer Kopie.
+- **Fahrer-App:** meldet sich mit Benutzername + Passwort an (Rolle `fahrer`), Bearer auf jeder
+  Anfrage, Refresh mit Rotation, Abmelden löscht Warteschlange und Offline-Kopien des Geräts
+  (`apps/bakery-delivery/CLAUDE.md`, „Anmeldung und Rollen (B8)").
+- **Umzug:** `cli.js import-deliveries --file apps/bakery-api/data/delivery-store.json --dry-run`
+  (idempotent, `--update-depot` übernimmt das Depot), danach `import-preorders`. Eine Tour mit
+  abgelehntem Stopp wird ganz zurückgehalten (Exit 2, „zurückgehalten"), damit ein Lauf mit
+  berichtigter Datei sie samt Stopp nachholt.
+- **Offen (Q8):** Erreichbarkeit von unterwegs - Tailscale oder schmaler öffentlicher Endpunkt,
+  Entscheidungsvorlage `docs/fernzugriff-fahrer.md`.
 
 ## Kassenberichte (hq/data/reports)
 

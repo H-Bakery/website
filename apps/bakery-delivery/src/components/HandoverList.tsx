@@ -75,6 +75,8 @@ interface HandoverListProps {
    */
   busyIds?: ReadonlySet<number>
   onStatusChange: (preorderId: number, status: PreorderStatus) => void
+  /** Nur ansehen (Rolle `verkauf`, B8): keine Statusknöpfe. */
+  readOnly?: boolean
 }
 
 export function HandoverList({
@@ -82,6 +84,7 @@ export function HandoverList({
   busy,
   busyIds,
   onStatusChange,
+  readOnly = false,
 }: HandoverListProps) {
   if (preorders.length === 0) {
     return (
@@ -148,7 +151,7 @@ export function HandoverList({
                   Anrufen
                 </a>
               )}
-              {preorder.status === 'open' ? (
+              {readOnly ? null : preorder.status === 'open' ? (
                 <>
                   <button
                     type="button"

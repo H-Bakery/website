@@ -14,6 +14,7 @@ import { initializeModels, PILOT_MODELS } from '../../src/models'
 const baseline = require('../../migrations/20261105000000-pilot-baseline.js')
 const authMigration = require('../../migrations/20261106000000-auth-sessions-stations.js')
 const preordersMigration = require('../../migrations/20261113000000-preorders-b7.js')
+const deliveriesMigration = require('../../migrations/20270105000000-delivery-tours-b8.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -75,7 +76,7 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('opens the static list, followed by B3 auth, Z3 Backzettel and B7 preorders', () => {
+  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders and B8 tours', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
       '20261106000000-auth-sessions-stations.js',
@@ -83,15 +84,17 @@ describe('pilot baseline on a fresh database', () => {
       '20261113000000-preorders-b7.js',
       '20261114000000-preorders-paid-amount.js',
       '20261116000000-preorders-request-id.js',
+      '20270105000000-delivery-tours-b8.js',
     ])
   })
 
-  it('creates exactly the pilot tables (with the B3 auth and B7 tables)', async () => {
+  it('creates exactly the pilot tables (with the B3 auth, B7 and B8 tables)', async () => {
     expect(await tableNames(sequelize)).toEqual(
       [
         ...baseline.TABLES,
         ...authMigration.TABLES,
         ...preordersMigration.TABLES,
+        ...deliveriesMigration.TABLES,
         'SequelizeMeta',
       ].sort()
     )
@@ -620,6 +623,7 @@ describe('pilot baseline down()', () => {
   it('drops every baseline table (after B7 and B3 auth are undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await preordersMigration.down(sequelize.getQueryInterface(), Sequelize)
     await authMigration.down(sequelize.getQueryInterface(), Sequelize)
     expect(
@@ -768,6 +772,40 @@ describe('B3 auth migration: usernames', () => {
     // Only the collision is reported, on each run.
     expect(warnings.length).toBeGreaterThan(0)
     expect(warnings.every((w) => w.includes('users.id 3'))).toBe(true)
+    await sequelize.close()
+  })
+})
+
+describe('B8 delivery tours migration', () => {
+  it('creates the tour tables and the depot row, idempotently, and drops them again', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    for (const table of deliveriesMigration.TABLES) {
+      expect(await tableNames(sequelize)).toContain(table)
+    }
+    expect(await columns(sequelize, 'delivery_stops')).toEqual(
+      expect.arrayContaining([
+        'tour_id',
+        'position',
+        'pickup_point_id',
+        'import_key',
+        'anonymized_at',
+      ])
+    )
+    const depot = () =>
+      sequelize.query<{ id: number; city: string }>(
+        'SELECT id, city FROM delivery_depot',
+        { type: QueryTypes.SELECT }
+      )
+    expect(await depot()).toEqual([
+      { id: 1, city: deliveriesMigration.DEPOT.city },
+    ])
+    await deliveriesMigration.up(sequelize.getQueryInterface(), Sequelize)
+    expect(await depot()).toHaveLength(1)
+    await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)
+    for (const table of deliveriesMigration.TABLES) {
+      expect(await tableNames(sequelize)).not.toContain(table)
+    }
     await sequelize.close()
   })
 })

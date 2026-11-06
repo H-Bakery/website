@@ -191,6 +191,16 @@ export interface ParityRequest {
    */
   mockHeaders?: Record<string, string>
   realHeaders?: Record<string, string>
+  /**
+   * Path for one side only, instead of `path` - for ids the two servers hand
+   * out differently (B8: the mock numbers stops per tour, the real API
+   * globally).
+   */
+  mockPath?: string
+  realPath?: string
+  /** Body for one side only, instead of `body` (same reason). */
+  mockBody?: unknown
+  realBody?: unknown
 }
 
 export interface ParitySide {
@@ -209,17 +219,19 @@ export interface ParityResult {
 async function send(
   app: Application,
   req: ParityRequest,
-  sideHeaders: Record<string, string> | undefined
+  sideHeaders: Record<string, string> | undefined,
+  sidePath: string | undefined,
+  sideBody: unknown
 ): Promise<ParitySide> {
-  let call = request(app)[req.method](req.path)
+  let call = request(app)[req.method](sidePath ?? req.path)
   for (const [name, value] of Object.entries({
     ...req.headers,
     ...sideHeaders,
   })) {
     call = call.set(name, value)
   }
-  const res =
-    req.body === undefined ? await call : await call.send(req.body as object)
+  const body = sideBody === undefined ? req.body : sideBody
+  const res = body === undefined ? await call : await call.send(body as object)
   return { status: res.status, body: res.body, shape: shapeOf(res.body) }
 }
 
@@ -228,8 +240,20 @@ export async function compare(
   apps: { mock: Application; real: Application },
   options: DiffOptions = {}
 ): Promise<ParityResult> {
-  const mock = await send(apps.mock, req, req.mockHeaders)
-  const real = await send(apps.real, req, req.realHeaders)
+  const mock = await send(
+    apps.mock,
+    req,
+    req.mockHeaders,
+    req.mockPath,
+    req.mockBody
+  )
+  const real = await send(
+    apps.real,
+    req,
+    req.realHeaders,
+    req.realPath,
+    req.realBody
+  )
   const differences: string[] = []
   if (mock.status !== real.status) {
     differences.push(`status: mock ${mock.status}, real ${real.status}`)

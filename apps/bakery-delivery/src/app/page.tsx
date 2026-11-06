@@ -44,6 +44,8 @@ import {
   todayIso,
   TOUR_STATUS_LABEL,
 } from '../lib/format'
+import { permissionsFor, useDeliverySession } from '../lib/session'
+import { AccountBar } from '../components/AccountBar'
 import { AddStopForm, type NewStopInput } from '../components/AddStopForm'
 import { StopCard } from '../components/StopCard'
 import { ThemeToggle } from '../components/ThemeToggle'
@@ -65,6 +67,16 @@ const POSITION_INTERVAL_MS = 30_000
 const RETRY_INTERVAL_MS = 30_000
 
 export default function DeliveryDashboard() {
+  // B8: wer angemeldet ist, bestimmt, was die Oberflaeche anbietet. Die API
+  // setzt dasselbe durch; hier geht es um Bedienfuehrung. `AuthGate` (Layout)
+  // laesst die Seite nur mit Sitzung rendern.
+  const session = useDeliverySession()
+  const can = permissionsFor(session?.user.role)
+  // Ein Fahrer ist auf seinen eigenen Fahrer festgelegt (`driver.userId`).
+  const ownUserRef = useRef<string | null>(null)
+  ownUserRef.current =
+    can.ownToursOnly && session ? String(session.user.id) : null
+
   const [drivers, setDrivers] = useState<Driver[]>([])
   const [driverId, setDriverId] = useState<number | null>(null)
   const [date, setDate] = useState(() => nextSaturdayIso())
@@ -215,6 +227,17 @@ export default function DeliveryDashboard() {
   > => {
     const apply = (list: Driver[]) => {
       setDrivers(list)
+      const own = ownUserRef.current
+      if (own !== null) {
+        // Fahrer: nur der eigene. Ohne Zuordnung keiner - die API liefert
+        // dann ohnehin keine Tour.
+        const mine = list.find(
+          (d) => d.userId != null && String(d.userId) === own
+        )
+        const chosen = mine?.id ?? null
+        setDriverId(chosen)
+        return chosen
+      }
       const stored = readStoredDriver()
       const known = list.find((d) => d.id === stored)
       const chosen = known ? known.id : list[0]?.id ?? null
@@ -328,7 +351,7 @@ export default function DeliveryDashboard() {
   /** Meldet die Position an die Backstube - gedrosselt und ohne Fehleranzeige. */
   const reportPosition = (location: Location) => {
     const targetTour = tourIdRef.current
-    if (!targetTour) return
+    if (!targetTour || !can.drive) return
     const now = Date.now()
     if (now - lastReportRef.current < POSITION_INTERVAL_MS) return
     lastReportRef.current = now
@@ -656,6 +679,10 @@ export default function DeliveryDashboard() {
         <ThemeToggle />
       </header>
 
+      {session && (
+        <AccountBar session={session} pendingCount={pending.length} />
+      )}
+
       {offlineNotice && (
         <div className={styles.offline} role="status">
           {offlineNotice}
@@ -669,13 +696,16 @@ export default function DeliveryDashboard() {
             <select
               id="driver-select"
               value={driverId ?? ''}
+              disabled={can.ownToursOnly}
               onChange={(event) =>
                 chooseDriver(
                   event.target.value ? Number(event.target.value) : null
                 )
               }
             >
-              <option value="">Alle</option>
+              <option value="">
+                {can.ownToursOnly ? 'Kein Fahrer zugeordnet' : 'Alle'}
+              </option>
               {drivers.map((driver) => (
                 <option key={driver.id} value={driver.id}>
                   {driver.name}
@@ -749,16 +779,22 @@ export default function DeliveryDashboard() {
         <section className={styles.card}>
           <h2>Keine Tour für {formatDate(date)}</h2>
           <p className={styles.placeholder}>
-            Für diesen Tag ist noch nichts geplant.
+            {can.ownToursOnly && driverId === null
+              ? 'Ihrem Konto ist noch kein Fahrer zugeordnet. Bitte im Büro melden.'
+              : can.ownToursOnly
+              ? 'Für Sie ist an diesem Tag keine Tour eingeplant.'
+              : 'Für diesen Tag ist noch nichts geplant.'}
           </p>
-          <button
-            type="button"
-            className={styles.button}
-            onClick={createTour}
-            disabled={busy}
-          >
-            Tour anlegen
-          </button>
+          {can.plan && (
+            <button
+              type="button"
+              className={styles.button}
+              onClick={createTour}
+              disabled={busy}
+            >
+              Tour anlegen
+            </button>
+          )}
         </section>
       )}
 
@@ -832,14 +868,16 @@ export default function DeliveryDashboard() {
             </dl>
 
             <div className={styles.buttonGroup}>
-              <button
-                type="button"
-                className={styles.button}
-                onClick={runOptimize}
-                disabled={anyInFlight || tour.stops.length === 0}
-              >
-                Route berechnen
-              </button>
+              {can.drive && (
+                <button
+                  type="button"
+                  className={styles.button}
+                  onClick={runOptimize}
+                  disabled={anyInFlight || tour.stops.length === 0}
+                >
+                  Route berechnen
+                </button>
+              )}
               {navigateAllUrl && (
                 <a
                   className={styles.buttonLink}
@@ -850,13 +888,15 @@ export default function DeliveryDashboard() {
                   Ganze Tour navigieren
                 </a>
               )}
-              <button
-                type="button"
-                className={styles.buttonGhost}
-                onClick={() => setPlanning((value) => !value)}
-              >
-                {planning ? 'Planung schließen' : 'Tour planen'}
-              </button>
+              {can.plan && (
+                <button
+                  type="button"
+                  className={styles.buttonGhost}
+                  onClick={() => setPlanning((value) => !value)}
+                >
+                  {planning ? 'Planung schließen' : 'Tour planen'}
+                </button>
+              )}
             </div>
           </section>
 
@@ -873,6 +913,7 @@ export default function DeliveryDashboard() {
                   busyPreorderIds={busyPreorders}
                   onStatusChange={changeStopStatus}
                   onPreorderStatusChange={changePreorderStatus}
+                  readOnly={!can.drive}
                 />
               </ul>
             </section>
@@ -890,25 +931,27 @@ export default function DeliveryDashboard() {
               />
             </div>
 
-            <div className={styles.buttonGroup}>
-              {!isTracking ? (
-                <button
-                  type="button"
-                  className={styles.buttonGhost}
-                  onClick={startTracking}
-                >
-                  Standort verfolgen
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className={styles.buttonGhost}
-                  onClick={stopTracking}
-                >
-                  Verfolgung stoppen
-                </button>
-              )}
-            </div>
+            {can.drive && (
+              <div className={styles.buttonGroup}>
+                {!isTracking ? (
+                  <button
+                    type="button"
+                    className={styles.buttonGhost}
+                    onClick={startTracking}
+                  >
+                    Standort verfolgen
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className={styles.buttonGhost}
+                    onClick={stopTracking}
+                  >
+                    Verfolgung stoppen
+                  </button>
+                )}
+              </div>
+            )}
 
             {currentLocation && (
               <p className={styles.coords}>
@@ -927,7 +970,9 @@ export default function DeliveryDashboard() {
             <h2>Alle Stopps ({tour.stops.length})</h2>
             {tour.stops.length === 0 ? (
               <p className={styles.placeholder}>
-                Noch keine Stopps. Über „Tour planen“ hinzufügen.
+                {can.plan
+                  ? 'Noch keine Stopps. Über „Tour planen“ hinzufügen.'
+                  : 'Noch keine Stopps.'}
               </p>
             ) : (
               <ul className={styles.stopList}>
@@ -942,14 +987,15 @@ export default function DeliveryDashboard() {
                     busyPreorderIds={busyPreorders}
                     onStatusChange={changeStopStatus}
                     onPreorderStatusChange={changePreorderStatus}
-                    onRemove={planning ? removeStop : undefined}
+                    onRemove={planning && can.plan ? removeStop : undefined}
+                    readOnly={!can.drive}
                   />
                 ))}
               </ul>
             )}
           </section>
 
-          {planning && (
+          {planning && can.plan && (
             <section className={styles.card}>
               <h2>Stopp hinzufügen</h2>
               <p className={styles.placeholder}>

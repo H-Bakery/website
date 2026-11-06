@@ -18,6 +18,10 @@ import {
   Preorder,
   PreorderItem,
 } from '../models'
+import {
+  DeliveryAnonymizeReport,
+  anonymizeDeliveryStops,
+} from './delivery-anonymize'
 import { allocateCode, registerCode } from './preorders.service'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
@@ -296,6 +300,11 @@ export interface AnonymizeReport {
    * anonymised all the same (P4: 90 days after pickup, whatever the status).
    */
   unfinished: number
+  /**
+   * B8: Stopps der Liefertouren mit Tourtag vor demselben Stichtag, im
+   * selben Lauf und in derselben Transaktion (`delivery-anonymize.ts`).
+   */
+  deliveryStops: DeliveryAnonymizeReport
 }
 
 /**
@@ -331,6 +340,7 @@ export async function anonymizePreorders(
       cutoff,
       anonymized: [],
       unfinished: 0,
+      deliveryStops: { stops: [], geocacheRemoved: 0 },
     }
     for (const row of candidates) {
       const plain = row.get({ plain: true })
@@ -365,6 +375,10 @@ export async function anonymizePreorders(
         status: row.status,
       })
     }
+    report.deliveryStops = await anonymizeDeliveryStops(transaction, {
+      cutoff,
+      now,
+    })
     return report
   })
 }

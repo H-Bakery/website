@@ -5,8 +5,10 @@
 // gelegt, die beim naechsten Funkloch-Ende automatisch nachlaeuft. Solange
 // nichts gesendet werden konnte, sagt die Oberflaeche das auch.
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || 'http://localhost:5000'
+import { API_BASE_URL } from './api-base'
+import { currentSession, refreshSession, saveSession } from './session'
+
+export { API_BASE_URL }
 
 export interface Depot {
   name: string
@@ -24,6 +26,11 @@ export interface Driver {
   phone: string | null
   vehicle: 'bike' | 'car' | 'van'
   active: boolean
+  /**
+   * Das `fahrer`-Konto dieses Fahrers (echte API, B8). Der Mock kennt es
+   * nicht; ältere Offline-Kopien haben das Feld nicht.
+   */
+  userId?: number | null
 }
 
 export interface StopItem {
@@ -230,6 +237,19 @@ export class ApiError extends Error {
 }
 
 /**
+ * Die Anmeldung ist vorbei (Refresh abgelehnt, abgemeldet). Bewusst **keine**
+ * ApiError: `flushQueue` wirft 4xx aus der Warteschlange - ein Abhaken darf
+ * aber nicht verloren gehen, nur weil die Sitzung ablief. Es wird nach der
+ * nächsten Anmeldung nachgesendet.
+ */
+export class SessionExpiredError extends Error {
+  constructor() {
+    super('Die Anmeldung ist abgelaufen. Bitte neu anmelden.')
+    this.name = 'SessionExpiredError'
+  }
+}
+
+/**
  * Macht aus einem Fehler der API-Schicht einen deutschen Satz für die
  * Oberfläche. Netzfehler bleiben absichtlich keine ApiError (flushQueue
  * unterscheidet daran, ob ein Update wiederholt werden darf) - deshalb
@@ -237,6 +257,7 @@ export class ApiError extends Error {
  */
 export function describeError(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message
+  if (error instanceof SessionExpiredError) return error.message
   if (
     error instanceof Error &&
     (error.name === 'AbortError' || error.name === 'TimeoutError')
@@ -266,12 +287,47 @@ function timeoutSignal(): AbortSignal | undefined {
   return AbortSignal.timeout(REQUEST_TIMEOUT_MS)
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+function send(
+  path: string,
+  init: RequestInit | undefined,
+  token: string | null
+) {
+  return fetch(`${API_BASE_URL}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
     signal: init?.signal ?? timeoutSignal(),
   })
+}
+
+/**
+ * Jede Anfrage trägt das Access-Token. Eine 401 erneuert die Sitzung einmal
+ * (Refresh mit Rotation, `session.ts`) und wiederholt die Anfrage; ist die
+ * Sitzung vorbei, wirft sie `SessionExpiredError`. Scheitert nur der
+ * Refresh (Funkloch), bleibt die Sitzung, und die Anfrage gilt als
+ * Netzfehler - ein Abhaken bleibt in der Warteschlange.
+ */
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = currentSession()?.token ?? null
+  let response = await send(path, init, token)
+  if (response.status === 401) {
+    if (!token) throw new SessionExpiredError()
+    const outcome = await refreshSession()
+    if (!outcome.ok) {
+      if (outcome.ended) throw new SessionExpiredError()
+      throw new Error(
+        'Die Anmeldung konnte gerade nicht erneuert werden. Bitte gleich noch einmal versuchen.'
+      )
+    }
+    response = await send(path, init, outcome.session.token)
+    if (response.status === 401) {
+      saveSession(null)
+      throw new SessionExpiredError()
+    }
+  }
 
   const text = await response.text()
   let body: { message?: string; error?: string } | null = null
@@ -366,6 +422,29 @@ export const deliveryApi = {
       method: 'POST',
       body: JSON.stringify(position),
     }),
+}
+
+/**
+ * Vergisst alles, was dieses Gerät für den bisherigen Benutzer gespeichert
+ * hat: Warteschlange, Offline-Kopien, gewählter Fahrer. Beim Abmelden und
+ * wenn sich ein anderer Benutzer anmeldet - sonst sähe die nächste Person
+ * die Tour des vorigen Fahrers oder schickte dessen Abhaken unter eigenem
+ * Namen ab.
+ */
+export function clearDeviceData(): void {
+  if (typeof window === 'undefined') return
+  for (const key of [
+    QUEUE_KEY,
+    DRIVERS_COPY_KEY,
+    TOURS_COPY_KEY,
+    'bakery-delivery-driver',
+  ]) {
+    try {
+      window.localStorage.removeItem(key)
+    } catch {
+      // egal
+    }
+  }
 }
 
 // --- Warteschlange fuer Funkloecher ---

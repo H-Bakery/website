@@ -1,0 +1,160 @@
+{
+  "_comment": "Synthetic delivery store (B8 import tests). Invented names, addresses and coordinates - not real customers.",
+  "depot": {
+    "name": "Testbackstube",
+    "street": "Probeweg 1",
+    "zip": "00000",
+    "city": "Teststadt",
+    "phone": "+49 000 0000",
+    "lat": 49.31,
+    "lon": 7.31
+  },
+  "pickupPoints": [
+    {
+      "id": "kindergarten-moersbach",
+      "name": "Kindergarten Mörsbach",
+      "street": "Höhenstraße 24",
+      "zip": "66482",
+      "city": "Zweibrücken-Mörsbach",
+      "weekday": 6,
+      "window": "09:00-09:30",
+      "orderDeadline": { "weekday": 5, "time": "12:00" },
+      "notes": null,
+      "active": true,
+      "lat": 49.302619,
+      "lon": 7.3937453
+    }
+  ],
+  "preorders": [],
+  "drivers": [
+    {
+      "id": 1,
+      "name": "Testfahrer Eins",
+      "phone": "0170 0000001",
+      "vehicle": "van",
+      "active": true
+    },
+    {
+      "id": 2,
+      "name": "Testfahrer Zwei",
+      "phone": null,
+      "vehicle": "car",
+      "active": false
+    },
+    { "id": 3, "name": "   ", "phone": null, "vehicle": "car", "active": true }
+  ],
+  "tours": [
+    {
+      "id": 1,
+      "date": "2026-09-12",
+      "driverId": 1,
+      "name": "Samstagstour",
+      "status": "done",
+      "vehicleType": "van",
+      "plannedStart": "06:30",
+      "startedAt": "2026-09-12T04:35:00.000Z",
+      "finishedAt": "2026-09-12T08:10:00.000Z",
+      "distance": 42100,
+      "duration": 5400,
+      "isEstimate": false,
+      "geometry": [
+        [7.31, 49.31],
+        [7.39, 49.3]
+      ],
+      "routedAt": "2026-09-11T18:00:00.000Z",
+      "lastPosition": {
+        "lat": 49.3,
+        "lon": 7.39,
+        "accuracy": 9,
+        "speed": null,
+        "at": "2026-09-12T08:05:00.000Z"
+      },
+      "stops": [
+        {
+          "id": 1,
+          "customer": "Testkundin A",
+          "street": "Erfundene Straße 5",
+          "zip": "00000",
+          "city": "Teststadt",
+          "phone": "0000 111",
+          "timeWindow": "07:00-08:00",
+          "notes": "Klingel defekt",
+          "items": [{ "name": "Testbrot", "qty": 2, "unit": "Stk" }],
+          "status": "done",
+          "completedAt": "2026-09-12T05:10:00.000Z",
+          "failureReason": null,
+          "goodsDisposition": null,
+          "lat": 49.32,
+          "lon": 7.32,
+          "geocodeSource": "nominatim",
+          "geocodePrecision": "house"
+        },
+        {
+          "id": 2,
+          "customer": "Kindergarten Mörsbach",
+          "street": "Höhenstraße 24",
+          "zip": "66482",
+          "city": "Zweibrücken-Mörsbach",
+          "phone": null,
+          "timeWindow": "09:00-09:30",
+          "notes": "Sammelstelle: Vorbestellungen übergeben.",
+          "items": [],
+          "pickupPointId": "kindergarten-moersbach",
+          "status": "done",
+          "completedAt": "2026-09-12T07:20:00.000Z",
+          "failureReason": null,
+          "goodsDisposition": null,
+          "lat": 49.302619,
+          "lon": 7.3937453,
+          "geocodeSource": "nominatim",
+          "geocodePrecision": "house"
+        },
+        {
+          "id": 3,
+          "customer": "Testkunde B",
+          "street": "Ausgedachtweg 9",
+          "zip": "00000",
+          "city": "Teststadt",
+          "items": [{ "name": "Testkuchen", "qty": 1, "unit": "Blech" }],
+          "status": "failed",
+          "completedAt": "2026-09-12T06:00:00.000Z",
+          "failureReason": "Nicht angetroffen",
+          "goodsDisposition": "taken_back",
+          "lat": 0,
+          "lon": 0,
+          "geocodeSource": "nominatim",
+          "geocodePrecision": "street"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "date": "2026-09-19",
+      "driverId": 7,
+      "name": "Ohne bekannten Fahrer",
+      "status": "planned",
+      "plannedStart": "99:99",
+      "stops": [
+        { "id": 1, "customer": "", "street": "Leerweg 1", "status": "open" },
+        {
+          "id": 2,
+          "customer": "Testkundin C",
+          "street": "Probegasse 2",
+          "city": "Teststadt",
+          "status": "open",
+          "pickupPointId": "gibt-es-nicht"
+        }
+      ]
+    },
+    { "id": 3, "date": "2026-02-30", "status": "planned", "stops": [] }
+  ],
+  "geocache": {
+    "erfundene strasse 5, 00000 teststadt": {
+      "lat": 49.32,
+      "lon": 7.32,
+      "precision": "house",
+      "displayName": "Erfundene Straße 5"
+    },
+    "kaputt": { "lat": 0, "lon": 0 }
+  }
+}

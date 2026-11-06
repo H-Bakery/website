@@ -36,3 +36,10 @@ delete process.env.HQ_GITHUB_TOKEN
 delete process.env.GITHUB_TOKEN
 delete process.env.GITHUB_API_URL
 delete process.env.HQ_GITHUB_REPO
+// B8: address search and routing never leave the machine. Port 9 (discard)
+// refuses at once, so the geo core answers `null` (estimate path) quickly -
+// for the mock server in the parity suites as well. Integration tests of the
+// real API pass an offline `geo` stub through createTestApp() anyway.
+process.env.NOMINATIM_URL = 'http://127.0.0.1:9/search'
+process.env.OSRM_URL = 'http://127.0.0.1:9'
+process.env.GEO_TIMEOUT_MS = '500'

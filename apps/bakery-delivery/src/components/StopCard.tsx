@@ -48,6 +48,11 @@ interface StopCardProps {
   onPreorderStatusChange?: (preorderId: number, status: PreorderStatus) => void
   /** Vorbestellungen, deren eigener Statuswechsel gerade unterwegs ist. */
   busyPreorderIds?: ReadonlySet<number>
+  /**
+   * Nur ansehen (Rolle `verkauf`, B8): keine Statusknöpfe. Navigation und
+   * Anrufen bleiben. Die API lehnt das Abhaken ohnehin ab (403).
+   */
+  readOnly?: boolean
 }
 
 export function StopCard({
@@ -60,6 +65,7 @@ export function StopCard({
   onRemove,
   onPreorderStatusChange,
   busyPreorderIds,
+  readOnly = false,
 }: StopCardProps) {
   // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
   // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
@@ -221,6 +227,7 @@ export function StopCard({
             busy={busy}
             busyIds={busyPreorderIds}
             onStatusChange={onPreorderStatusChange}
+            readOnly={readOnly}
           />
         </>
       )}
@@ -283,7 +290,7 @@ export function StopCard({
           </a>
         )}
 
-        {stop.status === 'open' ? (
+        {readOnly ? null : stop.status === 'open' ? (
           // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
           // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
           isPickupPoint ? (
