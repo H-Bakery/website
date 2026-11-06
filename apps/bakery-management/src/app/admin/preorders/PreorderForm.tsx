@@ -198,7 +198,7 @@ export interface PreorderFormProps {
    * an anderer Stelle geändert wurde (409 `stale_preorder`). Die Seite lädt
    * dann neu; ohne Handler steht die Meldung in der Maske.
    */
-  onConflict?: (message: string) => void
+  onConflict?: (message: string, lost?: Partial<PreorderInput>) => void
   /** Vorbelegter Abholtag (z. B. aus der Tagesübersicht). */
   initialDate?: string
   /** Vorbelegte Sammelstelle. */
@@ -678,17 +678,17 @@ export default function PreorderForm({
     }
     setSaving(true)
     setError(null)
+    let attemptedPatch: Partial<PreorderInput> | null = null
     try {
       // Beim Bearbeiten nur Geändertes, mit der geladenen Version - so
       // überschreibt eine offene Maske nie, was ein anderes Gerät inzwischen
       // gesetzt hat (übergeben, bezahlt, storniert).
-      const saved = preorder
-        ? await updatePreorder(
-            preorder.id,
-            preorderPatch(preorder, input),
-            preorder.updatedAt
-          )
-        : await createPreorder(input)
+      const patch = preorder ? preorderPatch(preorder, input) : null
+      attemptedPatch = patch
+      const saved =
+        preorder && patch
+          ? await updatePreorder(preorder.id, patch, preorder.updatedAt)
+          : await createPreorder(input)
       rememberRecentProducts(lines.map((line) => line.productId))
       if (!point) rememberChannel(channel)
       if (!preorder) {
@@ -698,11 +698,14 @@ export default function PreorderForm({
       onSaved(saved)
     } catch (err) {
       if (preorder && onConflict && isPreorderConflict(err)) {
+        // Was getippt wurde, geht mit - die Seite sagt, dass es NICHT
+        // gespeichert ist, und zeigt es (W4-verify r4).
         onConflict(
           preorderErrorMessage(
             err,
             'Diese Vorbestellung wurde inzwischen an anderer Stelle geändert.'
-          )
+          ),
+          attemptedPatch ?? undefined
         )
         return
       }
