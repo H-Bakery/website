@@ -8,9 +8,9 @@
 // Zustand lebt in diesem Modul, Komponenten lesen ihn mit
 // `useDeliverySession()` (useSyncExternalStore).
 //
-// Der Mock-Server (`auth.mock.js`) wird ebenfalls verstanden - die E2E-Suite
-// läuft gegen ihn: `email`/`firstName` statt `displayName`, Rolle `admin` →
-// `inhaber`, `staff` → `verkauf`; sein Refresh rotiert nicht.
+// Die Form des früheren Mock-Servers (B12 gelöscht) wird weiter gelesen, falls
+// eine alte Sitzung im Speicher liegt: `email`/`firstName` statt
+// `displayName`, Rolle `admin` → `inhaber`, `staff` → `verkauf`.
 
 import { useSyncExternalStore } from 'react'
 

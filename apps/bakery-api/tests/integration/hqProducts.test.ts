@@ -215,6 +215,54 @@ describe('reading', () => {
   })
 })
 
+describe('public catalogue for the shop (B12, PUBLIC_CATALOGUE)', () => {
+  function publicApp(publicCatalogue: boolean): Application {
+    return createApp({
+      logRequests: false,
+      sequelize: api.sequelize,
+      hqProducts: { productsDir: makeProductsDir(), writeDir: null },
+      publicCatalogue,
+    })
+  }
+
+  it('off (default): GET /api/products needs a session', async () => {
+    const res = await request(publicApp(false)).get('/api/products')
+    expect(res.status).toBe(401)
+    expect(res.body).toMatchObject({ error: 'unauthorized' })
+  })
+
+  it('on: the approved catalogue without a session, same body as with one', async () => {
+    const app = publicApp(true)
+    const anonymous = await request(app).get('/api/products').expect(200)
+    expect(anonymous.body.count).toBeGreaterThan(0)
+    expect(anonymous.headers['cache-control']).toBe('no-store')
+    const withSession = await request(app)
+      .get('/api/products')
+      .set(seller)
+      .expect(200)
+    expect(anonymous.body).toEqual(withSession.body)
+    const brot = await request(app).get('/api/products?category=brot')
+    expect(brot.status).toBe(200)
+  })
+
+  it('on: everything else stays behind the guard', async () => {
+    const app = publicApp(true)
+    for (const [method, url] of [
+      ['post', '/api/products'],
+      ['get', '/api/products/kornbrot-500g'],
+      ['get', '/api/hq-products'],
+      ['get', '/api/hq-products/kornbrot-500g'],
+      ['post', '/api/orders'],
+      ['get', '/api/preorders'],
+      ['get', '/api/partners'],
+    ] as const) {
+      const res = await request(app)[method](url)
+      expect([method, url, res.status]).toEqual([method, url, 401])
+      expect(res.body.message).toEqual(expect.any(String))
+    }
+  })
+})
+
 describe('writing without HQ_WRITE_DIR (development)', () => {
   let dir: string
   let app: Application

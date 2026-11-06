@@ -12,7 +12,7 @@ import request from 'supertest'
 
 import {
   createHqDataRouter,
-  createMockAuthAdapter,
+  createRoleGuards,
 } from '../../src/routes/hq-data.routes'
 import { bearer, createUser, login, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
@@ -253,11 +253,12 @@ describe('the mount stays in its lane', () => {
   })
 })
 
-describe('createMockAuthAdapter', () => {
-  it('maps admin to inhaber and refuses unmapped mock roles', () => {
-    const adapter = createMockAuthAdapter()
-    expect(typeof adapter.requireRole('admin')).toBe('function')
-    expect(() => adapter.requireRole('staff')).toThrow(/no pilot role mapping/)
+describe('createRoleGuards', () => {
+  it('accepts pilot roles and refuses anything else at mount time', () => {
+    const guards = createRoleGuards()
+    expect(typeof guards.requireRole('inhaber')).toBe('function')
+    expect(() => guards.requireRole('admin')).toThrow(/not a pilot role/)
+    expect(() => guards.requireRole('staff')).toThrow(/not a pilot role/)
   })
 
   it('createHqDataRouter builds without options (env defaults)', () => {

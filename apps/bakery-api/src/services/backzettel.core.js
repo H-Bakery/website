@@ -30,11 +30,10 @@ const { SECTION_LABELS, INTEGER_UNITS, WEEKDAY_NAMES } = configCore
 const EPSILON = 1e-9
 
 // ---------------------------------------------------------------------------
-// Blech-Angabe. DUPLIKAT von
-// libs/bakery-management/feature-daily-prep/src/lib/utils/trayInfo.ts
-// (TypeScript/ESM; die CommonJS-Grenze laesst sich ohne Build-Umbau nicht
-// ueberbruecken - gleiche Konvention wie delivery-tours.core.js und
-// @bakery/delivery/routing). Wer die Formatierung aendert, aendert beide.
+// Blech-Angabe. Uebernommen aus dem frueheren
+// feature-daily-prep/utils/trayInfo.ts (roadmap §5.1, „keep“); das Original ist
+// mit der alten Vorbereitungsseite in B12 geloescht, die Faelle seiner Spec
+// stehen in tests/unit/backzettelCore.test.js. Einzige Fassung.
 // ---------------------------------------------------------------------------
 
 const isTrayNumber = (value) =>

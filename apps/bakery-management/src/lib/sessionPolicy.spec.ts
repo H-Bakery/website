@@ -219,14 +219,23 @@ describe('pilotRewriteTarget (Proxy im Pilotbetrieb)', () => {
     expect(pilotRewriteTarget('/admin/cash', false)).toBeNull()
   })
 
-  it('schreibt gesperrte Routen um, erlaubte nicht', () => {
-    expect(pilotRewriteTarget('/admin/cash', true)).toBe(PILOT_UNAVAILABLE_PATH)
-    expect(pilotRewriteTarget('/admin/delivery', true)).toBe(
+  it('schreibt vorhandene gesperrte Seiten um, erlaubte nicht', () => {
+    expect(pilotRewriteTarget('/admin/rest', true)).toBe(PILOT_UNAVAILABLE_PATH)
+    expect(pilotRewriteTarget('/admin/rest/auswertung', true)).toBe(
       PILOT_UNAVAILABLE_PATH
     )
     expect(pilotRewriteTarget('/admin/delivery/preorders', true)).toBeNull()
     expect(pilotRewriteTarget('/admin/users', true)).toBeNull()
     expect(pilotRewriteTarget('/admin/login', true)).toBeNull()
+  })
+
+  it('lässt gelöschte Seiten (B12) zur deutschen 404 durch', () => {
+    // Keine Seite mehr dahinter - „arbeitet noch mit Beispieldaten“ stimmte
+    // nicht mehr, und die Brotkrume zeigte den rohen Slug.
+    expect(pilotRewriteTarget('/admin/cash', true)).toBeNull()
+    expect(pilotRewriteTarget('/admin/inventory', true)).toBeNull()
+    expect(pilotRewriteTarget('/admin/chat', true)).toBeNull()
+    expect(pilotRewriteTarget('/admin/orders/5', true)).toBeNull()
   })
 
   it('schreibt die Ersatzseite nicht noch einmal um', () => {

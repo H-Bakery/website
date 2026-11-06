@@ -1,5 +1,5 @@
 /**
- * Endpunkte der Tagesziel-Ampel (`targets.mock.js`) gegen eine eigene
+ * Endpunkte der Tagesziel-Ampel (`targets.routes.js`) gegen eine eigene
  * Express-Instanz. Config, Finanz-Zusammenfassung und Kassenberichte liegen
  * als synthetische Dateien in einem Temp-Verzeichnis - es wird nichts aus
  * `hq` gelesen, und kein Wert hier ist echt.
@@ -10,36 +10,13 @@ const path = require('path')
 const express = require('express')
 const request = require('supertest')
 
-const { createAuth } = require('../../src/routes/auth.mock')
-const financeRoutes = require('../../src/routes/finance.mock')
-const targetsRoutes = require('../../src/routes/targets.mock')
+const financeRoutes = require('../../src/routes/finance.routes')
+const targetsRoutes = require('../../src/routes/targets.routes')
+const { testRoleGuards } = require('../helpers/roleGuards')
 const core = require('../../src/services/targets.core')
 const {
   buildSyntheticSummary,
 } = require('../fixtures/finance-summary.synthetic')
-
-const USERS = [
-  {
-    id: 1,
-    username: 'chefin',
-    email: 'chefin@test.local',
-    password: 'geheim-1',
-    firstName: 'Test',
-    lastName: 'Inhaberin',
-    role: 'admin',
-    createdAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    id: 2,
-    username: 'verkauf',
-    email: 'verkauf@test.local',
-    password: 'geheim-2',
-    firstName: 'Test',
-    lastName: 'Verkauf',
-    role: 'staff',
-    createdAt: '2026-01-01T00:00:00.000Z',
-  },
-]
 
 const silentLog = { log() {}, warn: jest.fn(), error() {} }
 
@@ -135,12 +112,7 @@ function buildApp({
 
   const app = express()
   app.use(express.json())
-  const auth = createAuth({
-    users: USERS,
-    secret: 'test-secret',
-    log: silentLog,
-  })
-  auth.install(app)
+  const auth = testRoleGuards()
   financeRoutes.install(app, auth, { financeDir, log: silentLog })
   targetsRoutes.install(app, auth, {
     financeDir,
@@ -151,11 +123,10 @@ function buildApp({
   return { app, financeDir, reportsDir }
 }
 
-async function tokenFor(app, username, password) {
-  const res = await request(app)
-    .post('/api/auth/login')
-    .send({ email: username, password })
-  return res.body.data.token
+/** Das „Token“ der Test-Wache ist die Rolle (tests/helpers/roleGuards.js). */
+const ROLE_OF = { chefin: 'inhaber', verkauf: 'verkauf' }
+async function tokenFor(_app, username) {
+  return ROLE_OF[username]
 }
 
 async function get(app, url, token) {
@@ -164,7 +135,7 @@ async function get(app, url, token) {
   return req
 }
 
-describe('targets.mock - Zugriffsschutz', () => {
+describe('targets.routes - Zugriffsschutz', () => {
   let app
   beforeAll(() => {
     ;({ app } = buildApp())
@@ -194,7 +165,7 @@ describe('targets.mock - Zugriffsschutz', () => {
   })
 })
 
-describe('targets.mock - GET /api/finance/targets', () => {
+describe('targets.routes - GET /api/finance/targets', () => {
   it('liefert Zielwerte je Wochentag, beide Stufen, Faktoren und Stand', async () => {
     const { app } = buildApp()
     const res = await get(
@@ -343,7 +314,7 @@ describe('targets.mock - GET /api/finance/targets', () => {
   })
 })
 
-describe('targets.mock - GET /api/finance/targets/status', () => {
+describe('targets.routes - GET /api/finance/targets/status', () => {
   let app
   let token
   beforeAll(async () => {
@@ -450,7 +421,7 @@ describe('targets.mock - GET /api/finance/targets/status', () => {
   })
 })
 
-describe('targets.mock - GET /api/finance/targets/period', () => {
+describe('targets.routes - GET /api/finance/targets/period', () => {
   let app
   let token
   beforeAll(async () => {
@@ -511,7 +482,7 @@ describe('targets.mock - GET /api/finance/targets/period', () => {
   })
 })
 
-describe('targets.mock - Datenschutz', () => {
+describe('targets.routes - Datenschutz', () => {
   it('die Antworten enthalten keine Kontonummern oder Klarnamen', async () => {
     const { app } = buildApp()
     const token = await tokenFor(app, 'chefin', 'geheim-1')

@@ -10,18 +10,10 @@ import {
   Button,
   LinearProgress,
   Chip,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
   Alert,
 } from '@mui/material'
 import {
   Dashboard as DashboardIcon,
-  ShoppingBasket as OrdersIcon,
-  Inventory as InventoryIcon,
-  LocalShipping as DeliveryIcon,
-  Factory as ProductionIcon,
   ListAlt as BakingListIcon,
   Store as ProductsIcon,
   Assessment as ReportsIcon,
@@ -29,7 +21,6 @@ import {
   Category as CategoryIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
-  Circle as CircleIcon,
   Refresh as RefreshIcon,
   PointOfSale as CashRegisterIcon,
   EventNote as PreordersIcon,
@@ -40,7 +31,6 @@ import {
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { apiClient } from '@bakery/shared/data-access'
-import { useNotifications } from '@bakery/shared/contexts'
 import {
   formatEuro,
   formatPercent,
@@ -118,41 +108,6 @@ const quickLinks: QuickLink[] = [
     color: '#7CB342',
   },
   {
-    title: 'Bestellungen',
-    description: 'Bestellungen verwalten und bearbeiten',
-    icon: <OrdersIcon fontSize="large" />,
-    href: '/admin/orders',
-    color: '#4CAF50',
-  },
-  {
-    title: 'Inventar',
-    description: 'Lagerbestände und Rohstoffe verwalten',
-    icon: <InventoryIcon fontSize="large" />,
-    href: '/admin/inventory',
-    color: '#FF9800',
-  },
-  {
-    title: 'Produktion',
-    description: 'Produktionsplanung und -steuerung',
-    icon: <ProductionIcon fontSize="large" />,
-    href: '/admin/production',
-    color: '#2196F3',
-  },
-  {
-    title: 'Lieferungen',
-    description: 'Lieferstatus und Routen verwalten',
-    icon: <DeliveryIcon fontSize="large" />,
-    href: '/admin/delivery',
-    color: '#9C27B0',
-  },
-  {
-    title: 'Backliste',
-    description: 'Tägliche Produktion planen',
-    icon: <BakingListIcon fontSize="large" />,
-    href: '/admin/baking-list',
-    color: '#00BCD4',
-  },
-  {
     title: 'Produkte',
     description: 'Produktkatalog',
     icon: <ProductsIcon fontSize="large" />,
@@ -179,55 +134,18 @@ interface ProductSummary {
   available?: boolean
 }
 
-interface OrderSummary {
-  status?: string
-}
-
-interface ProductionSummary {
-  status?: string
-}
-
 interface DashboardStats {
-  ordersTotal: number
-  ordersOpen: number
   productsTotal: number
   productsAvailable: number
   productsUnavailable: number
-  productionTotal: number
-  productionCompleted: number
 }
 
 type ApiStatus = 'checking' | 'online' | 'offline'
 
 const EMPTY_STATS: DashboardStats = {
-  ordersTotal: 0,
-  ordersOpen: 0,
   productsTotal: 0,
   productsAvailable: 0,
   productsUnavailable: 0,
-  productionTotal: 0,
-  productionCompleted: 0,
-}
-
-const OPEN_ORDER_STATES = new Set(['pending', 'confirmed', 'processing'])
-
-const notificationColor: Record<string, string> = {
-  success: 'success.main',
-  warning: 'warning.main',
-  error: 'error.main',
-  info: 'info.main',
-}
-
-function formatRelativeTime(value: Date | string): string {
-  const date = new Date(value)
-  const diffMs = Date.now() - date.getTime()
-  const minutes = Math.round(diffMs / 60000)
-  if (Number.isNaN(minutes)) return ''
-  if (minutes < 1) return 'gerade eben'
-  if (minutes < 60) return `vor ${minutes} Min.`
-  const hours = Math.round(minutes / 60)
-  if (hours < 24) return `vor ${hours} Std.`
-  return date.toLocaleDateString('de-DE')
 }
 
 export default function DashboardClient({
@@ -235,8 +153,7 @@ export default function DashboardClient({
   reportsAvailable,
 }: Props) {
   const router = useRouter()
-  // Pilotbetrieb (F2): Kacheln aus Mock-Daten (Bestellungen, Produktion,
-  // Benachrichtigungen) und Schnellzugriffe auf gesperrte Seiten entfallen.
+  // Pilotbetrieb (F2): Schnellzugriffe auf gesperrte Seiten entfallen.
   const pilot = isPilotMode()
   // F1: das Dashboard ist auch Ausweich-Startseite für Verkauf und Backstube
   // - Kasse, Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite
@@ -250,7 +167,6 @@ export default function DashboardClient({
   const visibleQuickLinks = quickLinks.filter((link) => allowed(link.href))
   const showCash = allowed('/admin/reports')
   const showTargets = allowed('/admin/finance/tagesziel')
-  const { notifications, isLoading: notificationsLoading } = useNotifications()
 
   const [stats, setStats] = React.useState<DashboardStats>(EMPTY_STATS)
   const [loading, setLoading] = React.useState(true)
@@ -261,63 +177,29 @@ export default function DashboardClient({
     setLoading(true)
     setApiStatus('checking')
 
-    const safe = <T,>(request: Promise<T>) => request.catch(() => null)
-    // Im Pilotbetrieb sind /api/orders und /api/production nicht gemountet.
-    const [orders, products, production] = await Promise.all([
-      pilot ? null : safe(apiClient.get<OrderSummary[]>('/api/orders')),
-      safe(apiClient.get<ProductSummary[]>('/api/products')),
-      pilot
-        ? null
-        : safe(apiClient.get<ProductionSummary[]>('/api/production')),
-    ])
-
-    // If none of the requests came back, the API is unreachable.
-    const anySuccess = [orders, products, production].some((r) => r?.success)
-    setApiStatus(anySuccess ? 'online' : 'offline')
+    // B12: Bestellungen und Produktion (Mock-Daten) gibt es nicht mehr; der
+    // Produktkatalog ist zugleich die Erreichbarkeitsprüfung der API.
+    const products = await apiClient
+      .get<ProductSummary[]>('/api/products')
+      .catch(() => null)
+    setApiStatus(products?.success ? 'online' : 'offline')
     setLastCheck(new Date())
 
-    const ordersData = Array.isArray(orders?.data) ? orders.data : []
     const productsData = Array.isArray(products?.data) ? products.data : []
-    const productionData = Array.isArray(production?.data)
-      ? production.data
-      : []
 
     setStats({
-      ordersTotal: ordersData.length,
-      ordersOpen: ordersData.filter((o) =>
-        OPEN_ORDER_STATES.has(o.status ?? '')
-      ).length,
       productsTotal: productsData.length,
       productsAvailable: productsData.filter((p) => p.available === true)
         .length,
       productsUnavailable: productsData.filter((p) => p.available === false)
         .length,
-      productionTotal: productionData.length,
-      productionCompleted: productionData.filter(
-        (p) => p.status === 'completed'
-      ).length,
     })
     setLoading(false)
-  }, [pilot])
+  }, [])
 
   React.useEffect(() => {
     loadDashboard()
   }, [loadDashboard])
-
-  // Drei statt vier Kacheln im Pilotbetrieb - die Zeile bleibt trotzdem voll.
-  const statsColumns = pilot ? 4 : 3
-
-  const productionProgress =
-    stats.productionTotal > 0
-      ? Math.round((stats.productionCompleted / stats.productionTotal) * 100)
-      : 0
-
-  const recentNotifications = [...notifications]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )
-    .slice(0, 5)
 
   return (
     <Box>
@@ -343,13 +225,13 @@ export default function DashboardClient({
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
-      {/* Statistics Cards (im Pilotbetrieb ohne „Offene Bestellungen“) */}
+      {/* Produktkatalog: drei Kacheln */}
       <Grid
         container
         spacing={{ xs: 1.5, md: 3 }}
         sx={{ mb: { xs: 2, md: 4 } }}
       >
-        <Grid item xs={6} sm={6} md={statsColumns}>
+        <Grid item xs={6} sm={6} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -396,7 +278,7 @@ export default function DashboardClient({
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={statsColumns}>
+        <Grid item xs={6} sm={6} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -435,7 +317,8 @@ export default function DashboardClient({
           </Paper>
         </Grid>
 
-        <Grid item xs={6} sm={6} md={statsColumns}>
+        {/* Dritte Kachel: unter md volle Breite, sonst stünde sie allein in einer halben Zeile. */}
+        <Grid item xs={12} sm={12} md={4}>
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Box
               sx={{
@@ -473,42 +356,6 @@ export default function DashboardClient({
             </Typography>
           </Paper>
         </Grid>
-
-        {!pilot && (
-          <Grid item xs={6} sm={6} md={statsColumns}>
-            <Paper sx={{ p: { xs: 2, md: 3 } }}>
-              <Box
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  mb: 2,
-                }}
-              >
-                <Box>
-                  <Typography color="text.secondary" variant="body2">
-                    Offene Bestellungen
-                  </Typography>
-                  <Typography
-                    variant="h4"
-                    sx={{ fontSize: { xs: '1.75rem', md: '2.125rem' } }}
-                  >
-                    {stats.ordersOpen}
-                  </Typography>
-                </Box>
-                <OrdersIcon
-                  sx={{
-                    color: 'primary.main',
-                    fontSize: { xs: 28, md: 40 },
-                  }}
-                />
-              </Box>
-              <Button size="small" onClick={() => router.push('/admin/orders')}>
-                {stats.ordersTotal} Bestellungen gesamt
-              </Button>
-            </Paper>
-          </Grid>
-        )}
       </Grid>
 
       {showCash && (
@@ -722,123 +569,7 @@ export default function DashboardClient({
         ))}
       </Grid>
 
-      {/* Production overview & recent activity (Mock-Daten: nicht im Pilot) */}
       <Grid container spacing={3}>
-        {!pilot && (
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3, height: '100%' }}>
-              <Typography variant="h6" gutterBottom>
-                Produktionsübersicht
-              </Typography>
-              {stats.productionTotal === 0 && !loading ? (
-                <Typography variant="body2" color="text.secondary">
-                  Keine Produktionsaufträge vorhanden.
-                </Typography>
-              ) : (
-                <>
-                  <Box sx={{ mb: 3 }}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        mb: 1,
-                      }}
-                    >
-                      <Typography variant="body2">
-                        Abgeschlossene Aufträge
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold">
-                        {productionProgress}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress
-                      variant="determinate"
-                      value={productionProgress}
-                      sx={{ height: 10, borderRadius: 5 }}
-                      color="success"
-                      aria-label="Produktionsfortschritt"
-                    />
-                  </Box>
-                  <Grid container spacing={2}>
-                    <Grid item xs={6}>
-                      <Typography variant="body2" color="text.secondary">
-                        Aufträge gesamt
-                      </Typography>
-                      <Typography variant="h6">
-                        {stats.productionTotal}
-                      </Typography>
-                    </Grid>
-                    <Grid item xs={6}>
-                      <Typography variant="body2" color="text.secondary">
-                        Abgeschlossen
-                      </Typography>
-                      <Typography variant="h6">
-                        {stats.productionCompleted}
-                      </Typography>
-                    </Grid>
-                  </Grid>
-                </>
-              )}
-              <Button
-                size="small"
-                sx={{ mt: 2 }}
-                onClick={() => router.push('/admin/production')}
-              >
-                Zur Produktion
-              </Button>
-            </Paper>
-          </Grid>
-        )}
-
-        {!pilot && (
-          <Grid item xs={12} md={6}>
-            <Paper sx={{ p: 3, height: '100%' }}>
-              <Typography variant="h6" gutterBottom>
-                Letzte Aktivitäten
-              </Typography>
-              {notificationsLoading && recentNotifications.length === 0 ? (
-                <LinearProgress sx={{ my: 2 }} />
-              ) : recentNotifications.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Keine aktuellen Benachrichtigungen.
-                </Typography>
-              ) : (
-                <List dense disablePadding>
-                  {recentNotifications.map((n) => (
-                    <ListItem key={n.id} disableGutters>
-                      <ListItemIcon sx={{ minWidth: 28 }}>
-                        <CircleIcon
-                          sx={{
-                            fontSize: 12,
-                            color: notificationColor[n.type] ?? 'text.disabled',
-                          }}
-                        />
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={n.title}
-                        secondary={`${n.message} · ${formatRelativeTime(
-                          n.createdAt
-                        )}`}
-                        primaryTypographyProps={{
-                          fontWeight: n.read ? 'normal' : 'bold',
-                        }}
-                      />
-                    </ListItem>
-                  ))}
-                </List>
-              )}
-              <Button
-                size="small"
-                sx={{ mt: 2 }}
-                component={Link}
-                href="/admin/notifications"
-              >
-                Alle Benachrichtigungen
-              </Button>
-            </Paper>
-          </Grid>
-        )}
-
         {/* System status – real reachability check of the API */}
         <Grid item xs={12}>
           <Paper sx={{ p: 3 }}>

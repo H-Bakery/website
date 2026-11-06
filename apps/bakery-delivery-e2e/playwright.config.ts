@@ -2,6 +2,9 @@ import { defineConfig, devices } from '@playwright/test'
 import { nxE2EPreset } from '@nx/playwright/preset'
 import { workspaceRoot } from '@nx/devkit'
 
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { deliveryApiServer } = require('../../tools/e2e/servers')
+
 // 4300 ist der Port der App (siehe apps/bakery-delivery/project.json). 3000
 // gehoert der Landing Page, 4200 dem Shop.
 const PORT = process.env['DELIVERY_PORT'] || '4300'
@@ -23,15 +26,10 @@ export default defineConfig({
     geolocation: { latitude: 49.3226, longitude: 7.3389 },
   },
   webServer: [
-    // Die Tour-Daten kommen aus der API. Ohne sie zeigt die App nur ihre
-    // Fehlermeldung - genau das prueft der erste Test.
-    {
-      command: `node apps/bakery-api/simple-server.js`,
-      url: `http://localhost:${API_PORT}/health`,
-      reuseExistingServer: true,
-      cwd: workspaceRoot,
-      env: { PORT: API_PORT },
-    },
+    // Die Tour-Daten kommen aus der echten API (B8, seit B12 auch hier):
+    // Bundle mit frischer Datenbank und dem E2E-Inhaber, der Origin der App
+    // in CORS_ORIGIN - siehe tools/e2e/servers.js.
+    deliveryApiServer(apiURL, baseURL),
     {
       command: `npx nx run bakery-delivery:serve --port=${PORT}`,
       url: baseURL,

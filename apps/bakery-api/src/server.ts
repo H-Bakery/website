@@ -112,7 +112,11 @@ export async function startServer(
     corsOrigins: config.corsOrigins,
     trustProxy: config.trustProxy,
     hq: { reportsDir: config.hqReportsDir, financeDir: config.hqFinanceDir },
+    publicCatalogue: config.publicCatalogue,
   })
+  if (config.publicCatalogue) {
+    console.log('[INFO] PUBLIC_CATALOGUE: GET /api/products without a session')
+  }
   const server = http.createServer(app)
 
   try {

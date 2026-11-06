@@ -28,7 +28,6 @@
     "api:create-user": "node dist/apps/bakery-api/bundle/cli.js create-user",
     "api:import-partners": "node dist/apps/bakery-api/bundle/cli.js import-partners",
     "api:import-deliveries": "node dist/apps/bakery-api/bundle/cli.js import-deliveries",
-    "serve:api:simple": "node apps/bakery-api/simple-server.js",
     "serve:shop": "nx serve bakery-shop",
     "serve:management": "nx serve bakery-management",
     "serve:delivery": "nx serve bakery-delivery",

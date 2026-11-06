@@ -70,50 +70,6 @@ export const STATUS_ERRORS: Record<number, { error: string; message: string }> =
     },
   }
 
-function defaultsFor(status: number): { error: string; message: string } {
-  return (
-    STATUS_ERRORS[status] ??
-    (status >= 500 ? STATUS_ERRORS[500] : STATUS_ERRORS[400])
-  )
-}
-
-/**
- * Safety net for routers that do not use `sendError` yet (the in-memory
- * `libs/api/auth`, until B3 rewrites it): a JSON error response (status
- * >= 400) without a string `error` and `message` gets them filled in from
- * the status, with German text. An existing English `error`/`message` from
- * the lib is replaced by the German text and kept as `detail`.
- */
-export const ensureErrorShape: RequestHandler = (_req, res, next) => {
-  const json = res.json.bind(res)
-  res.json = (body?: unknown) => {
-    if (
-      res.statusCode >= 400 &&
-      body !== null &&
-      typeof body === 'object' &&
-      !Array.isArray(body)
-    ) {
-      const b = body as Record<string, unknown>
-      if (typeof b['error'] !== 'string' || typeof b['message'] !== 'string') {
-        const known = defaultsFor(res.statusCode)
-        const detail =
-          (typeof b['message'] === 'string' && b['message']) ||
-          (typeof b['error'] === 'string' && b['error']) ||
-          undefined
-        return json({
-          ...b,
-          success: false,
-          error: known.error,
-          message: known.message,
-          ...(detail ? { detail } : {}),
-        })
-      }
-    }
-    return json(body)
-  }
-  next()
-}
-
 /** JSON 404 for every route that is not mounted. */
 export const notFoundHandler: RequestHandler = (req, res) => {
   sendError(

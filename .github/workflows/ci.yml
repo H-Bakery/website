@@ -43,7 +43,8 @@ jobs:
               - 'apps/bakery-shop-e2e/**'
               - 'libs/bakery-shop/**'
               - 'libs/shared/**'
-              - 'apps/bakery-api/simple-server.js'
+              # Seit B12 faehrt auch die Shop-Suite gegen die echte API.
+              - 'apps/bakery-api/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
             management:
@@ -53,7 +54,6 @@ jobs:
               - 'libs/shared/**'
               # Die Management-Suite faehrt seit F4 gegen die echte API.
               - 'apps/bakery-api/**'
-              - 'libs/api/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
             landing:
@@ -167,12 +167,16 @@ jobs:
           NODE_ENV: production
         run: npx nx build bakery-shop --configuration=production
 
+      # Die echte API (esbuild-Bundle) - tools/e2e/real-api.js startet es (B12).
+      - name: Build API bundle
+        run: npx nx run bakery-api:bundle
+
       # Playwright startet die Server selbst (tools/e2e/servers.js, CI=true):
-      # `next start` auf dem Build oben und die Mock-API
-      # (apps/bakery-api/simple-server.js) auf dem synthetischen
-      # Produktkatalog tools/e2e/hq-products. Das private hq-Repo ist hier
-      # nicht ausgecheckt; ohne den Katalog haette der Shop 0 Produkte und
-      # jede Zaehl-Assertion waere rot.
+      # `next start` auf dem Build oben und die echte API mit oeffentlichem
+      # Katalog (PUBLIC_CATALOGUE=1, frische SQLite-Datenbank) auf dem
+      # synthetischen Produktkatalog tools/e2e/hq-products. Das private
+      # hq-Repo ist hier nicht ausgecheckt; ohne den Katalog haette der Shop
+      # 0 Produkte und jede Zaehl-Assertion waere rot.
       - name: Run E2E tests
         run: npx nx e2e bakery-shop-e2e
 

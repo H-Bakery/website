@@ -41,9 +41,10 @@ export const ROLE_LABELS: Record<PilotRole, string> = {
 }
 
 /**
- * Rolle aus einer API-Antwort. Die echte API (B3) liefert die vier
- * Pilot-Rollen; der Mock-Server (`auth.mock.js`) noch `admin`/`staff` -
- * `admin` ist dort der Inhaber, alles andere Verkauf. Unbekanntes → `null`.
+ * Rolle aus einer API-Antwort. Die API (B3) liefert die vier Pilot-Rollen.
+ * `admin`/`staff` stammen vom früheren Mock-Server (B12 gelöscht) und stehen
+ * höchstens noch in einer alten gespeicherten Sitzung: `admin` → Inhaber,
+ * sonst Verkauf. Unbekanntes → `null`.
  */
 export function normalizeRole(raw: unknown): PilotRole | null {
   if (typeof raw !== 'string') return null

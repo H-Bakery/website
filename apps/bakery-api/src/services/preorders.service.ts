@@ -1,8 +1,8 @@
 /**
  * Vorbestellungen (B7) - Datenbank-Schicht über `delivery-preorders.core.js`.
  *
- * Gerechnet und geprüft wird ausschließlich im Core (einzige Formelquelle,
- * auch für den Mock-Server); hier stehen Laden, Speichern, Code-Vergabe,
+ * Gerechnet und geprüft wird ausschließlich im Core (einzige
+ * Formelquelle); hier stehen Laden, Speichern, Code-Vergabe,
  * Audit und die Übersetzung in die drei Verträge:
  *
  *   - `/api/preorders`              neues Modell (`PreorderDto`)

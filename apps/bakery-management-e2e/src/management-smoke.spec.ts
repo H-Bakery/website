@@ -215,9 +215,12 @@ test.describe('Rollen', () => {
   }) => {
     await signIn(page, 'station')
     await page.goto('/admin/finance')
+    // Seit W4-verify r2 steht /admin/finance in PERSONAL_ONLY_ROUTES: das
+    // Layout sperrt die Seite an der Station, bevor sie selbst lädt.
+    await expect(page.getByText(/Kein Zugriff/).first()).toBeVisible()
     await expect(
       page.getByText(
-        'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
+        'Diese Seite ist an einer Station nicht verfügbar. Bitte an einem eigenen Gerät mit Benutzername und Passwort anmelden.'
       )
     ).toBeVisible()
     // kein Weg zur Passwort-Anmeldung am Stationsgerät (F4-Review)

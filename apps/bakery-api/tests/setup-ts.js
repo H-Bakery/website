@@ -2,7 +2,7 @@
  * Environment for the TS jest project (runs before each test file).
  *
  * Tests are hermetic: the hq paths point at a directory that does not exist,
- * so neither the real API nor the mock server ever reads the private `hq`
+ * so the API never reads the private `hq`
  * repo (real prices, revenue) - even in the main checkout, where `../hq`
  * exists. A test that needs a catalogue sets its own synthetic fixture dir.
  */
@@ -37,9 +37,8 @@ delete process.env.GITHUB_TOKEN
 delete process.env.GITHUB_API_URL
 delete process.env.HQ_GITHUB_REPO
 // B8: address search and routing never leave the machine. Port 9 (discard)
-// refuses at once, so the geo core answers `null` (estimate path) quickly -
-// for the mock server in the parity suites as well. Integration tests of the
-// real API pass an offline `geo` stub through createTestApp() anyway.
+// refuses at once, so the geo core answers `null` (estimate path) quickly.
+// Integration tests of the API pass an offline `geo` stub through createTestApp() anyway.
 process.env.NOMINATIM_URL = 'http://127.0.0.1:9/search'
 process.env.OSRM_URL = 'http://127.0.0.1:9'
 process.env.GEO_TIMEOUT_MS = '500'

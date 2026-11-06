@@ -1,6 +1,6 @@
 /**
- * Anmeldung (`auth.mock.js`) und Finanz-Endpunkte (`finance.mock.js`) des
- * Mock-Servers, gegen eine eigene Express-Instanz mit synthetischen Daten.
+ * Finanz-Endpunkte (`finance.routes.js`) gegen eine eigene Express-Instanz
+ * mit synthetischen Daten, hinter der Test-Wache (`tests/helpers/roleGuards.js`).
  * Es wird nichts aus `hq` gelesen: die Datei liegt in einem Temp-Verzeichnis.
  */
 const fs = require('fs')
@@ -9,36 +9,13 @@ const path = require('path')
 const express = require('express')
 const request = require('supertest')
 
-const { createAuth } = require('../../src/routes/auth.mock')
-const financeRoutes = require('../../src/routes/finance.mock')
+const financeRoutes = require('../../src/routes/finance.routes')
+const { testRoleGuards } = require('../helpers/roleGuards')
 const {
   buildSyntheticSummary,
   FAKE_IBANS,
   FAKE_NAMES,
 } = require('../fixtures/finance-summary.synthetic')
-
-const USERS = [
-  {
-    id: 1,
-    username: 'chefin',
-    email: 'chefin@test.local',
-    password: 'geheim-1',
-    firstName: 'Test',
-    lastName: 'Inhaberin',
-    role: 'admin',
-    createdAt: '2026-01-01T00:00:00.000Z',
-  },
-  {
-    id: 2,
-    username: 'verkauf',
-    email: 'verkauf@test.local',
-    password: 'geheim-2',
-    firstName: 'Test',
-    lastName: 'Verkauf',
-    role: 'staff',
-    createdAt: '2026-01-01T00:00:00.000Z',
-  },
-]
 
 const silentLog = { log() {}, warn: jest.fn(), error() {} }
 
@@ -53,177 +30,18 @@ function buildApp({ financeDir, summary } = {}) {
   }
   const app = express()
   app.use(express.json())
-  const auth = createAuth({
-    users: USERS,
-    secret: 'test-secret',
-    log: silentLog,
-  })
-  auth.install(app)
+  const auth = testRoleGuards()
   financeRoutes.install(app, auth, { financeDir: dir, log: silentLog })
   return { app, dir, auth }
 }
 
-async function login(app, username, password) {
-  const res = await request(app)
-    .post('/api/auth/login')
-    .send({ email: username, password })
-  return res
+/** Das „Token“ der Test-Wache ist die Rolle (tests/helpers/roleGuards.js). */
+const ROLE_OF = { chefin: 'inhaber', verkauf: 'verkauf' }
+async function login(_app, username) {
+  return { body: { data: { token: ROLE_OF[username] } } }
 }
 
-describe('auth.mock - Anmeldung', () => {
-  let app
-  beforeAll(() => {
-    ;({ app } = buildApp())
-  })
-
-  it('meldet den Admin an und liefert User, Token und Refresh-Token', async () => {
-    const res = await login(app, 'chefin', 'geheim-1')
-    expect(res.status).toBe(200)
-    expect(res.body.success).toBe(true)
-    expect(res.body.data.user).toMatchObject({
-      id: 1,
-      email: 'chefin@test.local',
-      role: 'admin',
-      isActive: true,
-    })
-    expect(res.body.data.user).not.toHaveProperty('password')
-    expect(typeof res.body.data.token).toBe('string')
-    expect(typeof res.body.data.refreshToken).toBe('string')
-    expect(res.body.data.expiresIn).toBeGreaterThan(0)
-  })
-
-  it('akzeptiert auch `username` und Groß-/Kleinschreibung', async () => {
-    const res = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'CHEFIN', password: 'geheim-1' })
-    expect(res.status).toBe(200)
-  })
-
-  it('lehnt falsches Passwort und unbekannten Benutzer mit 401 ab', async () => {
-    const wrong = await login(app, 'chefin', 'falsch')
-    expect(wrong.status).toBe(401)
-    expect(wrong.body).toMatchObject({
-      success: false,
-      error: 'invalid_credentials',
-    })
-    expect(wrong.body.message).toMatch(/falsch/)
-
-    const unknown = await login(app, 'niemand', 'geheim-1')
-    expect(unknown.status).toBe(401)
-  })
-
-  it('verlangt Benutzername und Passwort (400)', async () => {
-    const res = await request(app).post('/api/auth/login').send({})
-    expect(res.status).toBe(400)
-    expect(res.body.message).toBeTruthy()
-    expect(res.body.error).toBeTruthy()
-  })
-
-  it('GET /me liefert den Benutzer zum Token und 401 ohne Token', async () => {
-    const { body } = await login(app, 'verkauf', 'geheim-2')
-    const me = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${body.data.token}`)
-    expect(me.status).toBe(200)
-    expect(me.body.data).toMatchObject({ id: 2, role: 'staff' })
-
-    const anonymous = await request(app).get('/api/auth/me')
-    expect(anonymous.status).toBe(401)
-    expect(anonymous.body).toMatchObject({
-      success: false,
-      error: 'unauthorized',
-    })
-    expect(anonymous.body.message).toMatch(/Anmeldung/)
-
-    const garbage = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', 'Bearer nicht.ein.token')
-    expect(garbage.status).toBe(401)
-  })
-
-  it('refresh: mit Refresh-Token oder gültigem Access-Token, sonst 401', async () => {
-    const { body } = await login(app, 'chefin', 'geheim-1')
-
-    const viaRefresh = await request(app)
-      .post('/api/auth/refresh')
-      .send({ refreshToken: body.data.refreshToken })
-    expect(viaRefresh.status).toBe(200)
-    expect(typeof viaRefresh.body.data.token).toBe('string')
-
-    const viaBearer = await request(app)
-      .post('/api/auth/refresh')
-      .set('Authorization', `Bearer ${body.data.token}`)
-      .send({ refreshToken: '' })
-    expect(viaBearer.status).toBe(200)
-
-    const none = await request(app).post('/api/auth/refresh').send({})
-    expect(none.status).toBe(401)
-
-    // Ein Refresh-Token ist kein Access-Token.
-    const swapped = await request(app)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${body.data.refreshToken}`)
-    expect(swapped.status).toBe(401)
-  })
-
-  it('logout antwortet mit success', async () => {
-    const res = await request(app).post('/api/auth/logout')
-    expect(res.status).toBe(200)
-    expect(res.body.success).toBe(true)
-  })
-
-  it('Tokens eines anderen Geheimnisses gelten nicht', async () => {
-    const other = buildApp()
-    const { body } = await login(other.app, 'chefin', 'geheim-1')
-    const foreign = createAuth({
-      users: USERS,
-      secret: 'anderes',
-      log: silentLog,
-    })
-    const app2 = express()
-    foreign.install(app2)
-    const res = await request(app2)
-      .get('/api/auth/me')
-      .set('Authorization', `Bearer ${body.data.token}`)
-    expect(res.status).toBe(401)
-  })
-
-  it('warnt beim Standardzugang aus der Umgebung', () => {
-    const log = { log() {}, warn: jest.fn(), error() {} }
-    const auth = createAuth({ env: {}, log })
-    expect(auth.users).toHaveLength(1)
-    expect(auth.users[0].role).toBe('admin')
-    const warnings = log.warn.mock.calls.map((c) => c[0]).join('\n')
-    expect(warnings).toMatch(/admin\/admin/)
-    expect(warnings).toMatch(/JWT_SECRET/)
-  })
-
-  it('legt den Staff-Benutzer nur mit beiden Variablen an', () => {
-    const log = { log() {}, warn() {}, error() {} }
-    const withStaff = createAuth({
-      env: {
-        MOCK_ADMIN_USER: 'a',
-        MOCK_ADMIN_PASSWORD: 'b',
-        MOCK_STAFF_USER: 's',
-        MOCK_STAFF_PASSWORD: 't',
-        JWT_SECRET: 'x',
-      },
-      log,
-    })
-    expect(withStaff.users.map((u) => u.role)).toEqual(['admin', 'staff'])
-    const withoutStaff = createAuth({
-      env: {
-        MOCK_ADMIN_USER: 'a',
-        MOCK_ADMIN_PASSWORD: 'b',
-        MOCK_STAFF_USER: 's',
-      },
-      log,
-    })
-    expect(withoutStaff.users).toHaveLength(1)
-  })
-})
-
-describe('finance.mock - Rollenschutz', () => {
+describe('finance.routes - Rollenschutz', () => {
   let app
   beforeAll(() => {
     ;({ app } = buildApp())
@@ -239,7 +57,7 @@ describe('finance.mock - Rollenschutz', () => {
     }
   })
 
-  it('als staff 403', async () => {
+  it('als verkauf 403', async () => {
     const { body } = await login(app, 'verkauf', 'geheim-2')
     for (const url of ['/api/finance/summary', '/api/finance/months']) {
       const res = await request(app)
@@ -252,7 +70,7 @@ describe('finance.mock - Rollenschutz', () => {
     }
   })
 
-  it('als admin 200', async () => {
+  it('als inhaber 200', async () => {
     const { body } = await login(app, 'chefin', 'geheim-1')
     const res = await request(app)
       .get('/api/finance/summary')
@@ -263,7 +81,7 @@ describe('finance.mock - Rollenschutz', () => {
   })
 })
 
-describe('finance.mock - Inhalt', () => {
+describe('finance.routes - Inhalt', () => {
   let app
   let token
   beforeAll(async () => {
@@ -331,7 +149,7 @@ describe('finance.mock - Inhalt', () => {
   })
 })
 
-describe('finance.mock - fehlende oder kaputte Daten', () => {
+describe('finance.routes - fehlende oder kaputte Daten', () => {
   it('fehlendes Verzeichnis: no-data ohne Absturz, mit Hinweis im Log', async () => {
     const missing = path.join(
       os.tmpdir(),
@@ -340,8 +158,7 @@ describe('finance.mock - fehlende oder kaputte Daten', () => {
     const app = express()
     app.use(express.json())
     const log = { log() {}, warn: jest.fn(), error() {} }
-    const auth = createAuth({ users: USERS, secret: 's', log })
-    auth.install(app)
+    const auth = testRoleGuards()
     financeRoutes.install(app, auth, { financeDir: missing, log })
     const { body } = await login(app, 'chefin', 'geheim-1')
 

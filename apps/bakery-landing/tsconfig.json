@@ -37,7 +37,6 @@
     "**/*.spec.ts",
     "**/*.test.ts",
     "../bakery-api/**/*",
-    "../../libs/api/**/*",
     "src/components-archive/**/*"
   ]
 }

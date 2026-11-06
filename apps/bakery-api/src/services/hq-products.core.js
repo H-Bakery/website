@@ -1,6 +1,7 @@
 /**
  * hq-Produkte (B5): Regeln für Lesen und Schreiben von `hq/products/*.md`,
- * aus `simple-server.js` herausgelöst (D3: der Vertrag des Mock-Servers gilt).
+ * aus dem früheren Mock-Server herausgelöst (D3: sein Vertrag gilt, festgehalten
+ * in `tests/contract/recorded/hqProducts.json`).
  *
  * Dependency-freies CommonJS, gleiche Konvention wie `partner-stats.core.js`:
  * hier stehen nur reine Funktionen. Dateien lesen, YAML parsen (gray-matter)

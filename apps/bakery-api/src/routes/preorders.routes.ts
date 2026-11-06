@@ -28,8 +28,8 @@
  *   *fahrer: nur `abgeholt` und „nicht abgeholt“ (+ bezahlt) - Übergabe.
  *   „Nicht abgeholt“ erst ab dem Abholtag (409 not_collected_too_early, W4).
  *
- * `/api/deliveries` - Alias im Mock-Vertrag der Mörsbach-Maske (D3), siehe
- * `simple-server.js`: rohe Objekte ohne Hülle, Mock-Status
+ * `/api/deliveries` - Alias im Mock-Vertrag der Mörsbach-Maske (D3, festgehalten
+ * in `tests/contract/recorded/preorders.json`): rohe Objekte ohne Hülle, Mock-Status
  * (open/handed_over/not_collected/cancelled), nur Sammelstellen-Bestellungen.
  *
  * `/api/orders` - nur `POST`, der Shop-Vertrag (`shop-orders.core.js`) →
@@ -648,7 +648,7 @@ function createOrdersRouter(service: PreordersService): Router {
         return
       }
       const p = result.data
-      // Mock-Form (`simple-server.js`): `id` = Code (für die URL, nicht
+      // Form des früheren Mock-Servers (D3): `id` = Code (für die URL, nicht
       // fortlaufend), `orderNumber` = laufende Nummer. E-Mail wird nicht
       // gespeichert (keine Spalte, Datensparsamkeit).
       res.status(201).json({

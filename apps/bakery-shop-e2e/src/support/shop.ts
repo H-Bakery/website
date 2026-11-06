@@ -14,7 +14,11 @@ import {
   type Page,
 } from '@playwright/test'
 
-/** Where the shop's data comes from (`GET /api/products`, `POST /api/orders`). */
+/**
+ * Where the shop's data comes from: the real API (`GET /api/products`, public
+ * with `PUBLIC_CATALOGUE=1`, see tools/e2e/servers.js). Orders are not public
+ * there - see `stubOrderEndpoint()`.
+ */
 export const API_BASE = process.env['API_URL'] || 'http://localhost:5000'
 
 /** localStorage key of the persisted cart (`CartProvider`'s `storageKey`). */
@@ -295,3 +299,90 @@ export function pastDate(from: Date = new Date()): string {
  * all other open days start at 05:30, so 09:00 is always offered.
  */
 export const SAFE_PICKUP_TIME = '09:00'
+
+/* -------------------------------------------------------------------------- */
+/* Orders                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Crockford base32 without I, L, O and U - the shop's order code alphabet. */
+const ORDER_CODE_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'
+
+function orderCode(): string {
+  let code = ''
+  for (let i = 0; i < 12; i += 1) {
+    code += ORDER_CODE_ALPHABET[Math.floor(Math.random() * 32)]
+  }
+  return `${code.slice(0, 4)}-${code.slice(4, 8)}-${code.slice(8, 12)}`
+}
+
+/**
+ * Stands in for the public order endpoint in the browser.
+ *
+ * The real API has no public order path (B7/B12): `POST /api/orders` sits
+ * behind the session guard and there is no `GET /api/orders/:id` - how
+ * customers may order from the internet is an open owner decision (rate
+ * limit, spam, pickup confirmation). Until then the checkout's success path
+ * is tested against the contract the shop was built for (the former mock
+ * server's: `201 { success, data: { ...order, id: code, orderNumber } }`,
+ * `GET /api/orders/:code` → `{ success, data }` or 404), answered here in the
+ * browser. Nothing is stored anywhere; the tests that the API itself refuses
+ * anonymous orders are in shop-safety.spec.ts.
+ */
+export async function stubOrderEndpoint(page: Page): Promise<void> {
+  const orders = new Map<string, Record<string, unknown>>()
+  let counter = 0
+  const cors = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Access-Control-Allow-Headers': 'content-type,accept',
+  }
+  // Ein Prädikat statt '**/api/orders**': in Playwrights Glob wirkt `**`
+  // direkt hinter Text wie `*` und trifft `/api/orders/<code>` nicht - die
+  // Bestätigungsseite fragte dann die echte API (401).
+  const isOrderUrl = (url: URL) =>
+    url.pathname === '/api/orders' || url.pathname.startsWith('/api/orders/')
+  await page.route(isOrderUrl, async (route) => {
+    const req = route.request()
+    if (req.method() === 'OPTIONS') {
+      await route.fulfill({ status: 204, headers: cors })
+      return
+    }
+    if (req.method() === 'POST') {
+      const input = req.postDataJSON() as Record<string, unknown>
+      counter += 1
+      const order = {
+        ...input,
+        id: orderCode(),
+        orderNumber: counter,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      }
+      orders.set(order.id, order)
+      await route.fulfill({
+        status: 201,
+        contentType: 'application/json',
+        headers: cors,
+        body: JSON.stringify({ success: true, data: order }),
+      })
+      return
+    }
+    const code = decodeURIComponent(
+      new URL(req.url()).pathname.split('/').pop() ?? ''
+    )
+    const order = orders.get(code)
+    await route.fulfill({
+      status: order ? 200 : 404,
+      contentType: 'application/json',
+      headers: cors,
+      body: JSON.stringify(
+        order
+          ? { success: true, data: order }
+          : {
+              success: false,
+              error: 'not_found',
+              message: 'Bestellung nicht gefunden.',
+            }
+      ),
+    })
+  })
+}

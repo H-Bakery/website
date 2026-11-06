@@ -1,8 +1,0 @@
-{
-  "name": "feature-processes",
-  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "libs/bakery-management/feature-processes/src",
-  "projectType": "library",
-  "tags": ["scope:management", "type:feature"],
-  "targets": {}
-}

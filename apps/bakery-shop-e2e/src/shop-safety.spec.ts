@@ -88,44 +88,51 @@ test.describe('Vorbestellfrist', () => {
   })
 })
 
-test.describe('Bestellungen sind nicht aufzählbar', () => {
-  test('fortlaufende IDs führen ins Leere', async ({ request }) => {
-    // Früher gab /api/orders/1 Name und Telefonnummer fremder Kundschaft heraus.
-    for (const id of ['1', '2', '3', '10']) {
+test.describe('Bestellungen bleiben hinter der Anmeldung', () => {
+  // B12: Die echte API hat keinen öffentlichen Bestellweg (Owner-Entscheidung
+  // offen, siehe stubOrderEndpoint in support/shop.ts). Früher gab der
+  // Mock-Server unter /api/orders/1 Name und Telefonnummer fremder Kundschaft
+  // heraus - ohne Sitzung darf hier nichts davon ankommen.
+  test('fremde Bestellungen lassen sich ohne Sitzung nicht lesen', async ({
+    request,
+  }) => {
+    for (const id of ['1', '2', '3', '10', 'LA-2026-01-01-01']) {
       const response = await request.get(`${API_BASE}/api/orders/${id}`)
-      expect(response.status()).toBe(404)
+      expect(response.status()).toBe(401)
+      const body = await response.json()
+      expect(body.error).toBe('unauthorized')
+      expect(typeof body.message).toBe('string')
+      expect(JSON.stringify(body)).not.toMatch(/customer|phone|telefon/i)
     }
   })
 
-  test('eine neue Bestellung bekommt einen zufälligen, vorlesbaren Code', async ({
+  test('ohne Sitzung nimmt die API keine Bestellung an', async ({
     request,
   }) => {
     const response = await request.post(`${API_BASE}/api/orders`, {
       data: {
         customerName: 'E2E Prüfung',
         phone: '06841 000000',
-        // Gerechnet, nie fest: der Server lehnt ein vergangenes Datum ab.
         pickupDate: nextOpenDate(),
         pickupTime: '08:00',
-        items: [
-          {
-            productId: 'kornbrot-500g',
-            name: 'Kornbrot 500g',
-            quantity: 1,
-            price: 2.5,
-          },
-        ],
+        items: [{ productId: 'kornbrot-500g', quantity: 1 }],
         total: 2.5,
       },
     })
-    expect(response.status()).toBe(201)
+    expect(response.status()).toBe(401)
+    expect((await response.json()).error).toBe('unauthorized')
+  })
 
-    const { data } = await response.json()
-    // Vier-Zeichen-Gruppen aus Crockford-Base32: ohne I, L, O und U.
-    expect(data.id).toMatch(
-      /^[0-9A-HJKMNP-TV-Z]{4}(-[0-9A-HJKMNP-TV-Z]{4}){2}$/
-    )
-    // Und nicht die fortlaufende Nummer — die bleibt intern.
-    expect(data.id).not.toBe(String(data.orderNumber))
+  test('der Katalog ist ohne Sitzung lesbar, sonst nichts', async ({
+    request,
+  }) => {
+    expect((await request.get(`${API_BASE}/api/products`)).status()).toBe(200)
+    for (const path of [
+      '/api/hq-products',
+      '/api/preorders',
+      '/api/partners',
+    ]) {
+      expect((await request.get(`${API_BASE}${path}`)).status()).toBe(401)
+    }
   })
 })

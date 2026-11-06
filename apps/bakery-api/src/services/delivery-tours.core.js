@@ -2,7 +2,7 @@
  * Rechenkern der Liefertouren - dependency-freies CommonJS.
  *
  * Wie bei `partner-stats.core.js` steht jede Formel genau einmal hier und wird
- * vom Mock-Server (`simple-server.js`) und den Tests benutzt. Nichts in dieser
+ * von der API (`delivery-tours.service.ts`) und den Tests benutzt. Nichts in dieser
  * Datei macht Netzwerk oder Dateizugriffe, damit sie ueberall laeuft.
  *
  * Das Frontend hat seine eigene TypeScript-Fassung der Geometrie in
@@ -626,10 +626,13 @@ function toBusinessDate(date) {
 /**
  * Prueft und normalisiert einen Stopp aus dem Request-Body.
  * Rueckgabe: `{ stop }` oder `{ error, message }` mit deutschem Text.
+ * `nowIso` (optional) ist die Uhr fuer `completedAt` ohne Angabe im Body -
+ * die echte API reicht ihre injizierbare Uhr durch, sonst gilt jetzt.
  */
-function normalizeStopInput(body, existing) {
+function normalizeStopInput(body, existing, nowIso) {
   const source = body || {}
   const base = existing || {}
+  const completedNow = () => nowIso || new Date().toISOString()
 
   const customer = String(
     source.customer === undefined ? base.customer || '' : source.customer
@@ -643,7 +646,7 @@ function normalizeStopInput(body, existing) {
 
   // Optionale Sammelstelle. Ist sie gesetzt, ist der Stopp eine Uebergabe-
   // stelle: der Server haengt beim Lesen die Vorbestellungen des Tourtags an
-  // (siehe `decorateTour` in `simple-server.js`).
+  // (siehe `delivery-tours.service.ts`).
   const pickupPointId =
     source.pickupPointId === undefined
       ? base.pickupPointId || null
@@ -761,12 +764,12 @@ function normalizeStopInput(body, existing) {
   }
 
   if (status === 'done' && base.status !== 'done') {
-    stop.completedAt = source.completedAt || new Date().toISOString()
+    stop.completedAt = source.completedAt || completedNow()
     stop.failureReason = null
     stop.goodsDisposition = null
   }
   if (status === 'failed') {
-    stop.completedAt = source.completedAt || new Date().toISOString()
+    stop.completedAt = source.completedAt || completedNow()
     stop.failureReason =
       String(source.failureReason || base.failureReason || '').trim() ||
       'Nicht angetroffen'

@@ -2,8 +2,8 @@
 // with matter.stringify() reorders keys and strips the quotes the files use,
 // which turns every save into a noisy git diff. Write them by hand instead.
 //
-// Dependency-free CommonJS: der Mock-Server und die Tests benutzen dieselbe
-// Implementierung, damit beide nicht auseinanderlaufen.
+// Dependency-free CommonJS: die API (`hq-products.service.ts`) und die Tests
+// benutzen dieselbe Implementierung.
 
 const FRONTMATTER_ORDER = [
   'id',

@@ -1,0 +1,456 @@
+{
+  "suite": "deliveries",
+  "exchanges": [
+    {
+      "method": "GET",
+      "url": "/api/deliveries/depot",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/drivers",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},{\"id\":2,\"name\":\"Fahrer 2\",\"phone\":null,\"vehicle\":\"car\",\"active\":true}]"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/drivers",
+      "body": "{\"name\":\" Fahrer 3 \",\"phone\":\"0170 / 123 45\",\"vehicle\":\"bike\"}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"name\":\"Fahrer 3\",\"phone\":\"017012345\",\"vehicle\":\"bike\",\"active\":true}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/drivers/3",
+      "body": "{\"active\":false,\"vehicle\":\"boat\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"name\":\"Fahrer 3\",\"phone\":\"017012345\",\"vehicle\":\"bike\",\"active\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/drivers?active=true",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},{\"id\":2,\"name\":\"Fahrer 2\",\"phone\":null,\"vehicle\":\"car\",\"active\":true}]"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/drivers",
+      "body": "{\"name\":\"\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Name is required\",\"message\":\"Der Name des Fahrers ist erforderlich.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/drivers/99",
+      "body": "{\"name\":\"X\"}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Driver not found\",\"message\":\"Dieser Fahrer existiert nicht.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"0170 1112223\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3}]}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours",
+      "body": "{\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Samstagstour\"}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Samstagstour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":8713.758053466798,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":1,\"done\":0,\"failed\":0,\"open\":1,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours",
+      "body": "{\"date\":\"2027-01-09\",\"driverId\":2,\"plannedStart\":\"07:00\"}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"date\":\"2027-01-09\",\"driverId\":2,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"07:00\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":2,\"name\":\"Fahrer 2\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":0,\"done\":0,\"failed\":0,\"open\":0,\"isComplete\":false},\"nextStopId\":null}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours",
+      "body": "{\"date\":\"2027-02-30\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid date\",\"message\":\"Das Datum muss im Format JJJJ-MM-TT angegeben werden.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours",
+      "body": "{\"date\":\"2027-01-09\",\"plannedStart\":\"24:00\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid plannedStart\",\"message\":\"Die geplante Abfahrt muss eine Uhrzeit im Format HH:MM sein (00:00 bis 23:59).\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours",
+      "body": "{\"date\":\"2027-01-09\",\"driverId\":42}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Driver not found\",\"message\":\"Dieser Fahrer existiert nicht.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/stops",
+      "body": "{\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841 000\",\"items\":[{\"name\":\"Testbrot\",\"qty\":\"2\",\"unit\":\"Stk\"}],\"lat\":49.33,\"lon\":7.33}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Samstagstour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":8713.758053466798,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"open\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":\"2027-01-09T08:18:00.034Z\",\"waitSeconds\":0,\"missesTimeWindow\":false}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":2,\"done\":0,\"failed\":0,\"open\":2,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/stops",
+      "body": "{\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"city\":\"Homburg\",\"timeWindow\":\"bis 08:00\",\"notes\":\"Hintereingang\",\"lat\":49.31,\"lon\":7.36}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Samstagstour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":8713.758053466798,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"open\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":\"2027-01-09T08:18:00.034Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"open\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":\"2027-01-09T08:29:25.922Z\",\"waitSeconds\":0,\"missesTimeWindow\":true}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":0,\"failed\":0,\"open\":3,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/stops",
+      "body": "{\"street\":\"Ohne Namen 1\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Customer is required\",\"message\":\"Der Name des Kunden ist erforderlich.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1",
+      "body": "{\"stopOrder\":[3,2,1]}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Samstagstour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"open\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":\"2027-01-09T05:33:10.205Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"open\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":\"2027-01-09T05:44:36.093Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":7043.8718081054685,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":0,\"failed\":0,\"open\":3,\"isComplete\":false},\"nextStopId\":3}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1",
+      "body": "{\"name\":\"Tour Nord\",\"vehicleType\":\"van\",\"plannedStart\":\"06:45\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"planned\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"open\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":\"2027-01-09T05:48:30.494Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"open\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":\"2027-01-09T06:00:50.343Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":5973.618134033203,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":0,\"failed\":0,\"open\":3,\"isComplete\":false},\"nextStopId\":3}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1",
+      "body": "{\"status\":\"gone\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid status\",\"message\":\"Status muss \\\"planned\\\", \\\"active\\\" oder \\\"done\\\" sein.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1",
+      "body": "{\"plannedStart\":\"früh\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid plannedStart\",\"message\":\"Die geplante Abfahrt muss eine Uhrzeit im Format HH:MM sein (00:00 bis 23:59).\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/optimize",
+      "body": "{\"optimize\":true}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"planned\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":null,\"finishedAt\":null,\"distance\":13247.863993262526,\"duration\":2306.381865768337,\"isEstimate\":true,\"geometry\":null,\"routedAt\":\"2026-11-06T12:47:47.744Z\",\"lastPosition\":null,\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"open\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":\"2027-01-09T05:48:30.494Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"open\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":\"2027-01-09T06:00:50.343Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":5973.618134033203,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":0,\"failed\":0,\"open\":3,\"isComplete\":false},\"nextStopId\":3}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1/stops/2",
+      "body": "{\"status\":\"done\",\"completedAt\":\"2027-01-09T06:40:00.000Z\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"active\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":\"2026-11-06T12:47:47.764Z\",\"finishedAt\":null,\"distance\":13247.863993262526,\"duration\":2306.381865768337,\"isEstimate\":true,\"geometry\":null,\"routedAt\":\"2026-11-06T12:47:47.744Z\",\"lastPosition\":null,\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"open\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":\"2027-01-09T06:49:19.849Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"done\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":3595.6508317871094,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":1,\"failed\":0,\"open\":2,\"isComplete\":false},\"nextStopId\":3}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1/stops/3",
+      "body": "{\"status\":\"failed\",\"failureReason\":\"Nicht angetroffen\",\"goodsDisposition\":\"taken_back\",\"completedAt\":\"2027-01-09T06:40:00.000Z\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"active\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":\"2026-11-06T12:47:47.764Z\",\"finishedAt\":null,\"distance\":13247.863993262526,\"duration\":2306.381865768337,\"isEstimate\":true,\"geometry\":null,\"routedAt\":\"2026-11-06T12:47:47.744Z\",\"lastPosition\":null,\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":\"Nicht angetroffen\",\"goodsDisposition\":\"taken_back\",\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"failed\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"done\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"open\",\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":\"2027-01-09T08:00:00.000Z\",\"waitSeconds\":3803.9620783691407,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":1,\"failed\":1,\"open\":1,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1/stops/1",
+      "body": "{\"status\":\"done\",\"completedAt\":\"2027-01-09T06:40:00.000Z\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"done\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":\"2026-11-06T12:47:47.764Z\",\"finishedAt\":\"2026-11-06T12:47:47.795Z\",\"distance\":13247.863993262526,\"duration\":2306.381865768337,\"isEstimate\":true,\"geometry\":null,\"routedAt\":\"2026-11-06T12:47:47.744Z\",\"lastPosition\":null,\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":\"Nicht angetroffen\",\"goodsDisposition\":\"taken_back\",\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"failed\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"done\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"done\",\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":2,\"failed\":1,\"open\":0,\"isComplete\":true},\"nextStopId\":null}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1/stops/999999",
+      "body": "{\"status\":\"done\"}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Stop not found\",\"message\":\"Dieser Stopp existiert nicht.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/1/stops/1",
+      "body": "{\"status\":\"lost\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid status\",\"message\":\"Status muss \\\"open\\\", \\\"done\\\" oder \\\"failed\\\" sein.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/position",
+      "body": "{\"lat\":49.31,\"lon\":7.35,\"accuracy\":8,\"speed\":\"fast\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"lat\":49.31,\"lon\":7.35,\"accuracy\":8,\"speed\":null,\"at\":\"2026-11-06T12:47:47.830Z\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/position",
+      "body": "{\"lat\":null,\"lon\":7}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid coordinates\",\"message\":\"Koordinaten müssen als Zahlen (lat und lon) angegeben werden.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/position",
+      "body": "{\"lat\":91,\"lon\":7}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Coordinates out of range\",\"message\":\"Koordinaten außerhalb des gültigen Bereichs: Breite -90 bis 90, Länge -180 bis 180.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/1/position",
+      "body": "{\"lat\":0,\"lon\":0}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Coordinates out of range\",\"message\":\"Die Koordinate (0, 0) liegt im Atlantik und ist keine Adresse. Koordinaten weglassen oder auf null setzen, damit die Adresse gesucht wird.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/tours?date=2027-01-09",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"done\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":\"2026-11-06T12:47:47.764Z\",\"finishedAt\":\"2026-11-06T12:47:47.795Z\",\"distance\":13247.863993262526,\"duration\":2306.381865768337,\"isEstimate\":true,\"geometry\":null,\"routedAt\":\"2026-11-06T12:47:47.744Z\",\"lastPosition\":{\"lat\":49.31,\"lon\":7.35,\"accuracy\":8,\"speed\":null,\"at\":\"2026-11-06T12:47:47.830Z\"},\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":\"Nicht angetroffen\",\"goodsDisposition\":\"taken_back\",\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"failed\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"done\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"done\",\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":2,\"failed\":1,\"open\":0,\"isComplete\":true},\"nextStopId\":null},{\"id\":2,\"date\":\"2027-01-09\",\"driverId\":2,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"07:00\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":2,\"name\":\"Fahrer 2\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":0,\"done\":0,\"failed\":0,\"open\":0,\"isComplete\":false},\"nextStopId\":null}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/tours?date=2027-01-09&driverId=2&status=planned",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":2,\"date\":\"2027-01-09\",\"driverId\":2,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"07:00\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":2,\"name\":\"Fahrer 2\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":0,\"done\":0,\"failed\":0,\"open\":0,\"isComplete\":false},\"nextStopId\":null}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/tours?date=heute",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid date\",\"message\":\"Das Datum muss im Format JJJJ-MM-TT angegeben werden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/tours/1",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"done\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":\"2026-11-06T12:47:47.764Z\",\"finishedAt\":\"2026-11-06T12:47:47.795Z\",\"distance\":13247.863993262526,\"duration\":2306.381865768337,\"isEstimate\":true,\"geometry\":null,\"routedAt\":\"2026-11-06T12:47:47.744Z\",\"lastPosition\":{\"lat\":49.31,\"lon\":7.35,\"accuracy\":8,\"speed\":null,\"at\":\"2026-11-06T12:47:47.830Z\"},\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":\"Nicht angetroffen\",\"goodsDisposition\":\"taken_back\",\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"failed\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.33,\"lon\":7.33,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin Eins\",\"street\":\"Musterweg 1\",\"zip\":\"66424\",\"city\":\"Homburg\",\"phone\":\"06841000\",\"notes\":null,\"timeWindow\":null,\"items\":[{\"name\":\"Testbrot\",\"qty\":2,\"unit\":\"Stk\"}],\"status\":\"done\",\"address\":\"Musterweg 1, 66424 Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"done\",\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":3,\"done\":2,\"failed\":1,\"open\":0,\"isComplete\":true},\"nextStopId\":null}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/tours/404",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Tour not found\",\"message\":\"Diese Tour existiert nicht.\"}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/deliveries/tours/1/stops/2",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"date\":\"2027-01-09\",\"driverId\":1,\"name\":\"Tour Nord\",\"status\":\"done\",\"plannedStart\":\"06:45\",\"vehicleType\":\"van\",\"startedAt\":\"2026-11-06T12:47:47.764Z\",\"finishedAt\":\"2026-11-06T12:47:47.795Z\",\"distance\":13247.863993262526,\"duration\":2306.381865768337,\"isEstimate\":true,\"geometry\":null,\"routedAt\":\"2026-11-06T12:47:47.744Z\",\"lastPosition\":{\"lat\":49.31,\"lon\":7.35,\"accuracy\":8,\"speed\":null,\"at\":\"2026-11-06T12:47:47.830Z\"},\"stops\":[{\"id\":3,\"lat\":49.31,\"lon\":7.36,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":\"Nicht angetroffen\",\"goodsDisposition\":\"taken_back\",\"customer\":\"Kunde Zwei\",\"street\":\"Beispielgasse 7\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":\"Hintereingang\",\"timeWindow\":\"bis 08:00\",\"items\":[],\"status\":\"failed\",\"address\":\"Beispielgasse 7, Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false},{\"id\":1,\"customer\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"phone\":null,\"timeWindow\":\"09:00-09:30\",\"notes\":\"Sammelstelle: Vorbestellungen übergeben.\",\"items\":[],\"pickupPointId\":\"kindergarten-moersbach\",\"status\":\"done\",\"completedAt\":\"2027-01-09T06:40:00.000Z\",\"failureReason\":null,\"goodsDisposition\":null,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\",\"address\":\"Höhenstraße 24, 66482 Zweibrücken-Mörsbach\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false,\"pickupPoint\":{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"},\"preorders\":[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35}],\"total\":1.35,\"note\":null,\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:47.562Z\",\"createdAt\":\"2026-11-06T12:47:47.562Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}],\"preorderSummary\":{\"count\":1,\"total\":1.35,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"+49 6841 2229\",\"lat\":49.3015165,\"lon\":7.3695327},\"driver\":{\"id\":1,\"name\":\"Fahrer 1\",\"phone\":null,\"vehicle\":\"car\",\"active\":true},\"progress\":{\"total\":2,\"done\":1,\"failed\":1,\"open\":0,\"isComplete\":true},\"nextStopId\":null}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/deliveries/tours/1",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"success\":true,\"message\":\"Tour gelöscht.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/tours/1",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Tour not found\",\"message\":\"Diese Tour existiert nicht.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/depot",
+      "body": "{\"phone\":\"06841 2229\",\"lat\":49.3016,\"lon\":7.3696}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"068412229\",\"lat\":49.3016,\"lon\":7.3696}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/depot",
+      "body": "{\"lat\":\"x\",\"lon\":7}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid coordinates\",\"message\":\"Koordinaten müssen als Zahlen (lat und lon) angegeben werden.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/depot",
+      "body": "{\"street\":\"Unbekannte Straße 1\"}",
+      "status": 422,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Address not found\",\"message\":\"Die neue Adresse der Backstube wurde nicht gefunden; die alte bleibt bestehen. Koordinaten können auch direkt als lat/lon angegeben werden.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/geocode",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Address is required\",\"message\":\"Es fehlt eine Adresse.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/geocode",
+      "body": "{\"address\":\"Nirgendwo 1, 99999 Irgendwo\"}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Address not found\",\"message\":\"Zu dieser Adresse wurde kein Ort gefunden.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours",
+      "body": "{\"date\":\"2027-01-15\"}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"date\":\"2027-01-15\",\"driverId\":null,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"068412229\",\"lat\":49.3016,\"lon\":7.3696},\"driver\":null,\"progress\":{\"total\":0,\"done\":0,\"failed\":0,\"open\":0,\"isComplete\":false},\"nextStopId\":null}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/3/stops",
+      "body": "{\"customer\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"street\":\"Musterweg 1\",\"city\":\"Homburg\",\"lat\":49.3,\"lon\":7.3}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"date\":\"2027-01-15\",\"driverId\":null,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:43:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"068412229\",\"lat\":49.3016,\"lon\":7.3696},\"driver\":null,\"progress\":{\"total\":1,\"done\":0,\"failed\":0,\"open\":1,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/3/stops",
+      "body": "{\"customer\":\"Kundin‮\",\"street\":\"Musterweg 1\",\"city\":\"Homburg\",\"lat\":49.3,\"lon\":7.3}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"date\":\"2027-01-15\",\"driverId\":null,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:43:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin‮\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:46:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"068412229\",\"lat\":49.3016,\"lon\":7.3696},\"driver\":null,\"progress\":{\"total\":2,\"done\":0,\"failed\":0,\"open\":2,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/3/stops",
+      "body": "{\"customer\":\"Kundin\",\"street\":\"Musterweg 1\",\"city\":\"Homburg\",\"lat\":49.3,\"lon\":7.3,\"pickupPointId\":\"gibt-es-nicht\"}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"date\":\"2027-01-15\",\"driverId\":null,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:43:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin‮\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:46:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":3,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"pickupPointId\":\"gibt-es-nicht\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:49:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false,\"pickupPoint\":null,\"preorders\":[],\"preorderSummary\":{\"count\":0,\"total\":0,\"open\":0,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[]}}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"068412229\",\"lat\":49.3016,\"lon\":7.3696},\"driver\":null,\"progress\":{\"total\":3,\"done\":0,\"failed\":0,\"open\":3,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/tours/3/stops",
+      "body": "{\"customer\":\"Kundin\",\"street\":\"Musterweg 1\",\"city\":\"Homburg\",\"lat\":49.3,\"lon\":7.3}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"date\":\"2027-01-15\",\"driverId\":null,\"name\":\"Tour\",\"status\":\"planned\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":null,\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:43:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin‮\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:46:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":3,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"pickupPointId\":\"gibt-es-nicht\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:49:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false,\"pickupPoint\":null,\"preorders\":[],\"preorderSummary\":{\"count\":0,\"total\":0,\"open\":0,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[]}},{\"id\":4,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2027-01-15T05:52:41.345Z\",\"waitSeconds\":0,\"missesTimeWindow\":false}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"068412229\",\"lat\":49.3016,\"lon\":7.3696},\"driver\":null,\"progress\":{\"total\":4,\"done\":0,\"failed\":0,\"open\":4,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/tours/3/stops/4",
+      "body": "{\"status\":\"done\",\"completedAt\":\"gestern\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"date\":\"2027-01-15\",\"driverId\":null,\"name\":\"Tour\",\"status\":\"active\",\"plannedStart\":\"06:30\",\"vehicleType\":\"car\",\"startedAt\":\"2026-11-06T12:47:51.361Z\",\"finishedAt\":null,\"distance\":null,\"duration\":null,\"isEstimate\":true,\"geometry\":null,\"routedAt\":null,\"lastPosition\":null,\"stops\":[{\"id\":1,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2026-11-06T13:01:32.706Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":2,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin‮\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2026-11-06T13:04:32.706Z\",\"waitSeconds\":0,\"missesTimeWindow\":false},{\"id\":3,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":null,\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"open\",\"pickupPointId\":\"gibt-es-nicht\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":\"2026-11-06T13:07:32.706Z\",\"waitSeconds\":0,\"missesTimeWindow\":false,\"pickupPoint\":null,\"preorders\":[],\"preorderSummary\":{\"count\":0,\"total\":0,\"open\":0,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[]}},{\"id\":4,\"lat\":49.3,\"lon\":7.3,\"geocodeSource\":\"manual\",\"geocodePrecision\":null,\"completedAt\":\"gestern\",\"failureReason\":null,\"goodsDisposition\":null,\"customer\":\"Kundin\",\"street\":\"Musterweg 1\",\"zip\":\"\",\"city\":\"Homburg\",\"phone\":null,\"notes\":null,\"timeWindow\":null,\"items\":[],\"status\":\"done\",\"address\":\"Musterweg 1, Homburg\",\"estimatedArrival\":null,\"waitSeconds\":null,\"missesTimeWindow\":false}],\"depot\":{\"name\":\"Bäckerei Heusser\",\"street\":\"Eckstraße 3\",\"zip\":\"66424\",\"city\":\"Homburg-Kirrberg\",\"phone\":\"068412229\",\"lat\":49.3016,\"lon\":7.3696},\"driver\":null,\"progress\":{\"total\":4,\"done\":1,\"failed\":0,\"open\":3,\"isComplete\":false},\"nextStopId\":1}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/tours/987654",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Tour not found\",\"message\":\"Diese Tour existiert nicht.\"}"
+    }
+  ],
+  "values": {}
+}

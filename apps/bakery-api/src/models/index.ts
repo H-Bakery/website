@@ -15,11 +15,9 @@
  *   DeliveryStop, DeliveryGeocache               delivery_* (B8 migration)
  *   RestCount                                    rest_counts (M4 „Rest am Abend“ migration)
  *
- * Legacy models (Cash, Chat, Product, Order, OrderItem, Inventory, Recipe,
- * Notification*, Production*, StockAdjustment, UnsoldProduct) are still
- * exported so the unmounted legacy code keeps compiling, but they are
- * **not initialised** and their tables are not in the baseline. Using one
- * throws "Model not initialized". B12 deletes them with the legacy routes.
+ * The legacy models (Cash, Chat, Product, Order, Inventory, Recipe, ...) were
+ * deleted with the unmounted code in B12; their tables may still sit in an old
+ * development database (harmless, unread).
  */
 import { Sequelize } from 'sequelize'
 
@@ -44,23 +42,6 @@ import { default as DeliveryTour } from './DeliveryTour'
 import { default as DeliveryStop } from './DeliveryStop'
 import { default as DeliveryGeocache } from './DeliveryGeocache'
 import { default as RestCount } from './RestCount'
-
-// --- Legacy, unused in the pilot (not initialised, no table) --------------
-import { default as Cash } from './Cash'
-import { default as Chat } from './Chat'
-import { default as Product } from './Product'
-import { default as UnsoldProduct } from './UnsoldProduct'
-import { default as Order } from './Order'
-import { default as OrderItem } from './OrderItem'
-import { default as Inventory } from './Inventory'
-import { default as Recipe } from './Recipe'
-import { default as Notification } from './Notification'
-import { default as StockAdjustment } from './StockAdjustment'
-import { default as NotificationPreferences } from './NotificationPreferences'
-import { default as NotificationTemplate } from './NotificationTemplate'
-import { default as ProductionBatch } from './ProductionBatch'
-import { default as ProductionSchedule } from './ProductionSchedule'
-import { default as ProductionStep } from './ProductionStep'
 
 // Sequelize instance - set during initializeModels
 let _sequelize: Sequelize | undefined
@@ -97,28 +78,6 @@ export {
   DeliveryStop,
   DeliveryGeocache,
   RestCount,
-}
-
-/** @deprecated legacy alias, the pilot has staff users only. */
-export const Customer = User
-
-/** @deprecated legacy models: not initialised in the pilot, see header. */
-export {
-  Cash,
-  Chat,
-  Product,
-  UnsoldProduct,
-  Order,
-  OrderItem,
-  Inventory,
-  Recipe,
-  Notification,
-  StockAdjustment,
-  NotificationPreferences,
-  NotificationTemplate,
-  ProductionBatch,
-  ProductionSchedule,
-  ProductionStep,
 }
 
 /** The models `initializeModels()` sets up, in dependency order. */

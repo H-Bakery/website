@@ -36,6 +36,13 @@ export interface ServerConfig {
    */
   hqReportsDir: string | undefined
   hqFinanceDir: string | undefined
+  /**
+   * `PUBLIC_CATALOGUE=1` (B12): `GET /api/products` (the approved hq
+   * catalogue, the same data the public landing page shows) answers without
+   * a session, for the customer shop. Default off - then every `/api` route
+   * except login and health needs a session (D5).
+   */
+  publicCatalogue: boolean
 }
 
 export class ConfigError extends Error {
@@ -385,5 +392,14 @@ export function loadConfig(
     trustProxy: parseTrustProxy(env['TRUST_PROXY']),
     hqReportsDir: resolveOptionalDir(env['HQ_REPORTS_DIR'], cwd),
     hqFinanceDir: resolveOptionalDir(env['HQ_FINANCE_DIR'], cwd),
+    publicCatalogue: parseFlag('PUBLIC_CATALOGUE', env['PUBLIC_CATALOGUE']),
   }
+}
+
+/** `1`/`true`/`on`/`yes` → true, unset/`0`/`false`/`off`/`no` → false, else an error. */
+function parseFlag(name: string, value: string | undefined): boolean {
+  const v = value?.trim().toLowerCase()
+  if (!v || ['0', 'false', 'off', 'no'].includes(v)) return false
+  if (['1', 'true', 'on', 'yes'].includes(v)) return true
+  throw new ConfigError(`${name} must be 1/true or 0/false, got "${value}".`)
 }

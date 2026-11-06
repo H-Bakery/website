@@ -7,20 +7,10 @@ import {
 } from '@testing-library/react'
 import AdminLayout from './layout'
 
-let mockPathname = '/admin/orders'
+let mockPathname = '/admin/reports'
 jest.mock('next/navigation', () => ({
   usePathname: () => mockPathname,
 }))
-
-/**
- * jsdom evaluates responsive `display` rules at the smallest breakpoint, so
- * the permanent drawer itself is `display: none`. Check the submenu list's own
- * computed display instead of `toBeVisible()`.
- */
-function isSubmenuShown(item: HTMLElement) {
-  const list = item.closest('.MuiList-root') as HTMLElement
-  return window.getComputedStyle(list).display !== 'none'
-}
 
 /** The nav is rendered twice (mobile + desktop drawer); use the desktop one. */
 function getDesktopNav() {
@@ -28,7 +18,7 @@ function getDesktopNav() {
   return within(drawers[drawers.length - 1] as HTMLElement)
 }
 
-function renderLayout(pathname = '/admin/orders') {
+function renderLayout(pathname = '/admin/reports') {
   mockPathname = pathname
   return render(
     <AdminLayout>
@@ -49,14 +39,11 @@ describe('AdminLayout', () => {
     const nav = getDesktopNav()
     ;[
       'Dashboard',
-      'Bestellungen',
-      'Bäckerei',
       'Produkte',
-      'Kasse',
-      'Personal',
+      'Sammelstelle Mörsbach',
+      'Verkaufspartner',
       'Kassenberichte',
       'Analysen',
-      'Team-Chat',
       'Einstellungen',
     ].forEach((label) => {
       expect(nav.getByText(label)).toBeInTheDocument()
@@ -75,44 +62,38 @@ describe('AdminLayout', () => {
     renderLayout('/admin/products/new')
     const nav = getDesktopNav()
     expect(nav.getByText('Produkte').closest('a')).toHaveClass('Mui-selected')
-    expect(nav.getByText('Bestellungen').closest('a')).not.toHaveClass(
+    expect(nav.getByText('Kassenberichte').closest('a')).not.toHaveClass(
       'Mui-selected'
     )
   })
 
   it('does not highlight the dashboard on sub pages', () => {
-    renderLayout('/admin/orders')
+    renderLayout('/admin/reports')
     const nav = getDesktopNav()
     expect(nav.getByText('Dashboard').closest('a')).not.toHaveClass(
       'Mui-selected'
     )
-    expect(nav.getByText('Bestellungen').closest('a')).toHaveClass(
+    expect(nav.getByText('Kassenberichte').closest('a')).toHaveClass(
       'Mui-selected'
     )
   })
 
-  it('toggles the Bäckerei submenu', () => {
-    renderLayout('/admin/orders')
+  it('lists none of the pages deleted in B12', () => {
+    renderLayout()
     const nav = getDesktopNav()
-    const toggle = nav
-      .getByText('Bäckerei')
-      .closest('[role="button"]') as HTMLElement
-    expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(false)
-
-    fireEvent.click(toggle)
-    expect(toggle).toHaveAttribute('aria-expanded', 'true')
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(true)
-
-    fireEvent.click(toggle)
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(false)
-  })
-
-  it('opens the submenu automatically when a child route is active', () => {
-    renderLayout('/admin/bakery/recipes')
-    const nav = getDesktopNav()
-    expect(isSubmenuShown(nav.getByText('Rezepte'))).toBe(true)
-    expect(nav.getByText('Rezepte').closest('a')).toHaveClass('Mui-selected')
+    ;[
+      'Bestellungen',
+      'Bäckerei',
+      'Lagerbestand',
+      'Kasse',
+      'Personal',
+      'Team-Chat',
+      'Benachrichtigungen',
+      'Lieferung',
+      'Unverkaufte Produkte',
+    ].forEach((label) => {
+      expect(nav.queryByText(label)).not.toBeInTheDocument()
+    })
   })
 
   it('opens the mobile drawer via the menu button', () => {
@@ -181,10 +162,11 @@ describe('AdminLayout', () => {
     )
   })
 
-  it('names submenu parents in the breadcrumb instead of the raw segment', () => {
-    renderLayout('/admin/bakery/intern-orders')
+  it('drops the bare /admin/delivery segment (B12: no page of its own)', () => {
+    renderLayout('/admin/delivery/preorders/backliste')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
-      'Dashboard › Bäckerei › Interne Bestellungen'
+      'Dashboard › Sammelstelle Mörsbach › Backliste'
     )
+    expect(screen.getByLabelText('Pfad').textContent).not.toContain('delivery')
   })
 })

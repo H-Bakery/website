@@ -1,6 +1,6 @@
 /**
- * `/api/auth` of the pilot API (B3). Shapes follow the mock contract
- * (`auth.mock.js`, D3) plus the PIN/station additions.
+ * `/api/auth` of the pilot API (B3). Shapes follow the former mock contract
+ * (D3) plus the PIN/station additions.
  *
  * Two routers, because the global guard sits between them (app.ts):
  *

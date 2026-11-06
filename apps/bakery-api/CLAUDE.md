@@ -11,8 +11,9 @@ Sequelize on SQLite. Built by esbuild into a single file and run with plain `nod
   `dist/apps/bakery-api/bundle/cli.js` (B3 `create-user`, B6 `import-partners`, B7
   `import-preorders`/`anonymize-preorders`, Z9 `snapshot-preorders`, B8 `import-deliveries`)
 
-`simple-server.js` (mock API, `npm run serve:api:simple`) is still what the frontends use; it stays as
-the parity reference until cutover (D3) and is then deleted. Its contracts win.
+This is the only API. The mock server `simple-server.js` (and `npm run serve:api:simple`) was deleted
+at the cutover (B12); its contracts still win (D3) and are pinned by the recorded-mock contract tests
+in `tests/contract/` (see "Tests"). Every frontend - management, shop, delivery - talks to this API.
 
 ## Build and run
 
@@ -33,8 +34,9 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
   `winston`, `prom-client` or `swagger-*`.
 - `tsconfig.bundle.json`: `useDefineForClassFields: false` + `experimentalDecorators`. With define
   semantics, class fields would shadow the attribute getters Sequelize installs on models.
-- `typecheck` checks exactly the graph reachable from `main.ts`. The unmounted legacy code under
-  `src/` and `libs/api/*` is not checked (and not in the bundle); B12 deletes it.
+- `typecheck` checks exactly the graph reachable from `main.ts` and `cli.ts` (plus the tests via
+  `tsconfig.spec.json`). Since B12 that is all of `src/`: the unmounted legacy code under `src/`,
+  the legacy JS layer at the app root and `libs/api/*` are deleted.
 - The old `@nx/js:tsc` build is gone: its `dist/.../src/main.js` could never resolve `@bakery/*`.
 
 ## Startup (`src/server.ts`)
@@ -85,52 +87,58 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
 `createApp(options)` builds the Express app without `listen` and without DB setup, for the server
 and for supertest (B1). Mounted for the pilot:
 
-| Path                                             | Router                                   | Note                                                        |
-| ------------------------------------------------ | ---------------------------------------- | ----------------------------------------------------------- |
-| `/health`, `/api/health`                         | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed                   |
-| `/api/auth` (public)                             | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users - see B3                 |
-| `/api` (guard)                                   | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**                  |
-| `/api/auth` (session)                            | `routes/auth.routes.ts` (session router) | me, logout, stations                                        |
-| `/api/users`                                     | `routes/users.routes.ts`                 | user admin, `inhaber` only                                  |
-| `/api/partners`                                  | `routes/partner.routes.ts`               | Backschrank; reads any session, roles per write - see B6    |
-| `/api/reports`, `/api/analytics`, `/api/finance` | `routes/hq-data.routes.ts` (B4)          | hq read-only data via the mock modules - see "hq data (B4)" |
-| `/api/products`, `/api/hq-products`              | `routes/hq-products.routes.ts`           | hq catalogue; reads any session, writes `inhaber` - see B5  |
-| `/api/preorders`                                 | `routes/preorders.routes.ts`             | Vorbestellungen; verkauf, fahrer read + handover - see B7   |
-| `/api/deliveries`                                | `routes/preorders.routes.ts` (alias)     | the Mörsbach mock contract (pickup points, preorders)       |
-| `/api/deliveries`                                | `routes/delivery-tours.routes.ts`        | B8 tours, stops, drivers, depot - see "Delivery tours (B8)" |
-| `/api/orders` (POST only)                        | `routes/preorders.routes.ts` (shop)      | shop order → preorder with channel `shop`, behind auth      |
-| `/api/backzettel`                                | `routes/backzettel.routes.ts`            | Z3, see "Backzettel API (Z3)"                               |
-| `/api/hq-sync`                                   | `routes/hq-sync.routes.ts`               | B5b/Z9 status + retry, `inhaber` - see "hq write-back"      |
-| `/api/rest`                                      | `routes/rest.routes.ts`                  | M4 Rest am Abend, see "Rest am Abend (M4)"                  |
+| Path                                             | Router                                   | Note                                                                 |
+| ------------------------------------------------ | ---------------------------------------- | -------------------------------------------------------------------- |
+| `/health`, `/api/health`                         | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed                            |
+| `/api/auth` (public)                             | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users - see B3                          |
+| `/api` (guard)                                   | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**                           |
+| `/api/auth` (session)                            | `routes/auth.routes.ts` (session router) | me, logout, stations                                                 |
+| `/api/users`                                     | `routes/users.routes.ts`                 | user admin, `inhaber` only                                           |
+| `/api/partners`                                  | `routes/partner.routes.ts`               | Backschrank; reads any session, roles per write - see B6             |
+| `/api/reports`, `/api/analytics`, `/api/finance` | `routes/hq-data.routes.ts` (B4)          | hq read-only data via the `*.routes.js` modules - see "hq data (B4)" |
+| `/api/products`, `/api/hq-products`              | `routes/hq-products.routes.ts`           | hq catalogue; reads any session, writes `inhaber` - see B5           |
+| `/api/preorders`                                 | `routes/preorders.routes.ts`             | Vorbestellungen; verkauf, fahrer read + handover - see B7            |
+| `/api/deliveries`                                | `routes/preorders.routes.ts` (alias)     | the Mörsbach mock contract (pickup points, preorders)                |
+| `/api/deliveries`                                | `routes/delivery-tours.routes.ts`        | B8 tours, stops, drivers, depot - see "Delivery tours (B8)"          |
+| `/api/orders` (POST only)                        | `routes/preorders.routes.ts` (shop)      | shop order → preorder with channel `shop`, behind auth               |
+| `/api/backzettel`                                | `routes/backzettel.routes.ts`            | Z3, see "Backzettel API (Z3)"                                        |
+| `/api/hq-sync`                                   | `routes/hq-sync.routes.ts`               | B5b/Z9 status + retry, `inhaber` - see "hq write-back"               |
+| `/api/rest`                                      | `routes/rest.routes.ts`                  | M4 Rest am Abend, see "Rest am Abend (M4)"                           |
 
 New domains are mounted in `app.ts` **below the global guard** - mount them there and add
-`requireRole(...)`. `libs/api/auth` is no longer mounted (the lib stays until B12).
-Everything else is unmounted: recipes, inventory, cash, chat, dashboard, staff, notifications,
-templates, preferences, import, sales-analytics, unsold, the rest of orders (only the shop's
-`POST /api/orders` exists, B7), production, baking-list, workflows, email, monitoring/metrics, Swagger. (Deliveries are complete
-since B8: the Mörsbach alias plus tours, stops, drivers and depot.)
+`requireRole(...)`. **One exception, B12:** with `PUBLIC_CATALOGUE=1` (`createApp({ publicCatalogue:
+true })`, logged at start) `GET /api/products` is mounted **above** the guard, so the customer shop
+can read the approved catalogue without a session; every other route still answers 401. Default
+off - whether the box turns it on is the owner's call, together with a public order path.
+`libs/api/*` is deleted (B12).
+Nothing else exists: recipes, inventory, cash, chat, dashboard, staff, notifications, templates,
+preferences, import, sales-analytics, unsold, the rest of orders (only the shop's
+`POST /api/orders`, B7), production, baking-list, workflows, email, monitoring/metrics and Swagger
+were deleted with the legacy code in B12. (Deliveries are complete since B8: the Mörsbach alias
+plus tours, stops, drivers and depot.)
 
 ## hq data (B4): reports, analytics, finance, Tagesziel
 
 `routes/hq-data.routes.ts` → `createHqDataRouter(options.hq)`, mounted at the root **below** the
-global guard (its paths are absolute `/api/...`). It mounts the mock server's modules unchanged -
-one implementation for both servers until cutover (D3); B12 renames them, don't fork them:
+global guard (its paths are absolute `/api/...`). It mounts three CommonJS route modules that
+until B12 also served the mock server (`*.mock.js` then, renamed at the cutover); don't fork them:
 
-| Module                   | Endpoints                                                                                             | Access                               |
-| ------------------------ | ----------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `routes/reports.mock.js` | `GET /api/reports/daily?from=&to=`, `/daily/:date`, `/monthly/:month`                                 | `inhaber` (also at a PIN station)    |
-|                          | `GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}?startDate=&endDate=` | `inhaber` (also at a PIN station)    |
-| `routes/finance.mock.js` | `GET /api/finance/summary`, `/api/finance/months?from=&to=`                                           | `inhaber`, **personal session only** |
-| `routes/targets.mock.js` | `GET /api/finance/targets`, `/targets/status?date=`, `/targets/period?from=&to=`                      | `inhaber`, **personal session only** |
+| Module                     | Endpoints                                                                                             | Access                               |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `routes/reports.routes.js` | `GET /api/reports/daily?from=&to=`, `/daily/:date`, `/monthly/:month`                                 | `inhaber` (also at a PIN station)    |
+|                            | `GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}?startDate=&endDate=` | `inhaber` (also at a PIN station)    |
+| `routes/finance.routes.js` | `GET /api/finance/summary`, `/api/finance/months?from=&to=`                                           | `inhaber`, **personal session only** |
+| `routes/targets.routes.js` | `GET /api/finance/targets`, `/targets/status?date=`, `/targets/period?from=&to=`                      | `inhaber`, **personal session only** |
 
-Shapes are exactly the mock's (proven by `tests/parity/hq-data.parity.test.ts`, deep-equal bodies),
+Shapes are exactly the mock's (pinned by `tests/contract/hq-data.contract.test.ts`, deep-equal bodies),
 including the module-local error bodies (`{ error, message }` for reports, `{ success: false,
 error, message }` for finance/targets); 401/403 come from the B3 guards via `sendError`.
 
-- **Auth adapter.** finance/targets call `auth.requireRole('admin')`. `createMockAuthAdapter()`
-  hands them the B3 `requireRole` with `MOCK_ROLE_MAP` (`admin` → `inhaber`) plus
-  `requirePersonalSession` (`FINANCE_PERSONAL_SESSION_ONLY = true`). An unmapped mock role throws
-  at mount time. reports.mock has no guard of its own; the router puts `requireRole('inhaber')` on
+- **Role guards.** finance/targets call `auth.requireRole('inhaber')` (`ownerOnly`).
+  `createRoleGuards()` hands them the B3 `requireRole` plus `requirePersonalSession`
+  (`FINANCE_PERSONAL_SESSION_ONLY = true`); a role outside `PILOT_ROLES` throws at mount time.
+  Their unit tests use `tests/helpers/roleGuards.js` (the Bearer token is the role).
+  reports.routes has no guard of its own; the router puts `requireRole('inhaber')` on
   the prefixes `/api/reports` and `/api/analytics` only (so an unknown path there is 403 for a
   non-owner, 404 for the owner, and other routes are untouched).
 - **Pilot decision (B4):** reports and analytics are **owner only** in the pilot (Verkauf has no
@@ -150,10 +158,11 @@ error, message }` for finance/targets); 401/403 come from the B3 guards via `sen
 - **Bundling.** The modules are `require`d by literal from TS, so esbuild bundles them and the
   `*.core.js` files they pull in; `scripts/boot-smoke.sh` checks `/api/reports/daily` and
   `/api/finance/targets/status` from the bundle against `tests/fixtures/hq-data.synthetic.js`.
-- The old `routes/reports.routes.ts` (hardcoded fake numbers, never mounted since B0) is deleted.
+- The old `routes/reports.routes.ts` (hardcoded fake numbers, never mounted since B0) was deleted
+  before `reports.mock.js` took over its name in B12.
 - Tests: `tests/integration/hqData.test.ts` (roles, station session, no-hq answers, mount scope),
-  `tests/parity/hq-data.parity.test.ts` (mock vs. real, mock login vs. B3 session - the parity
-  runner takes `mockHeaders`/`realHeaders` for that), the cores' own suites
+  `tests/contract/hq-data.contract.test.ts` (recorded mock vs. real, recorded mock login vs. B3
+  session - the runner takes `mockHeaders`/`realHeaders` for that), the cores' own suites
   (`reportsCore`, `financeCore`, `financeRoutes`, `targetsCore`, `targetsRoutes`).
   `createTestApp()` silences the modules' startup log (`hq.log`).
 
@@ -167,16 +176,15 @@ Every error body carries `error` (code) **and** `message` (German) - `ApiClient`
 `next()` with a 4xx `status` keeps its meaning: code and German text come from `STATUS_ERRORS`
 (401 `unauthorized`, 403 `forbidden`, 429 `too_many_requests`, …; unknown 4xx → `bad_request`).
 
-`ensureErrorShape` (fills in `error` + German `message` for routers that answer otherwise) is no
-longer mounted: B3's auth routes use `sendError` directly. It stays exported for a legacy router
-that has to be mounted before it is rewritten.
+Every router answers through `sendError`; the old safety net `ensureErrorShape` went with the
+legacy routers in B12.
 
 ## Auth (B3)
 
 Personal accounts plus PIN stations (roadmap D5, D12). Code in `src/auth/` (service, middleware,
 `audit()`, users service), routes in `src/routes/auth.routes.ts` and `users.routes.ts`, hashing
 and validation in `src/services/auth-crypto.core.js` (dependency-free CommonJS, tested in
-`tests/unit/authCrypto.test.js`). Endpoints and envelope = the mock's `auth.mock.js`, plus
+`tests/unit/authCrypto.test.js`). Endpoints and envelope = the former mock's `auth.mock.js` (deleted in B12), plus
 PIN/stations; the `user` object deliberately deviates (see below the table):
 
 | Endpoint                                                                                                 | Who                             | Body / answer                                                                                                  |
@@ -283,8 +291,8 @@ What to know before changing it:
   deactivate themselves; the last active `inhaber` cannot be demoted or deactivated (409, checked
   inside the serialised transaction). A new password ends the user's other sessions (the admin's
   own stays); a new PIN ends their station sessions.
-- **No default account.** `admin`/`admin123` is gone (user seeder deleted, `libs/api/auth` seed
-  removed and the lib unmounted). Accounts: `create-user` CLI, in development optionally
+- **No default account.** `admin`/`admin123` is gone (user seeder deleted, `libs/api/auth`
+  deleted in B12). Accounts: `create-user` CLI, in development optionally
   `BOOTSTRAP_ADMIN_USER`/`BOOTSTRAP_ADMIN_PASSWORD` (ignored in production).
 
 ### `create-user` CLI
@@ -337,7 +345,7 @@ body without its heading and **without** the `short_description` fallback that `
 for the shop (`managedFields()` in `hq-products.core.js`). The edit form must send that back, or an
 unchanged save of a file without description writes the teaser into its body. `stripHeading()`
 also empties a body that is only the heading (POST without description answers `description: ''`
-on both servers; parity-tested).
+on both servers; contract-tested).
 
 - **Two write modes.** `HQ_WRITE_DIR` set (the box): the file goes to
   `${HQ_WRITE_DIR}/products` (worktree on `app/edits`), then `git add` + `git commit -- <file>`
@@ -402,8 +410,8 @@ numeric_id)` from `hq-catalogue.ts` - read clone only (approved prices for snaps
 
 Tests: `tests/unit/hqProductsCore.test.js`, `tests/unit/hqCatalogue.test.ts`,
 `tests/integration/hqProducts.test.ts` (temp copies of `tools/e2e/hq-products`, a temp git repo as
-`HQ_WRITE_DIR`), `tests/parity/hqProducts.parity.test.ts` (same answers **and the same bytes on
-disk** as `simple-server.js` for GET/PUT/POST).
+`HQ_WRITE_DIR`; also `PUBLIC_CATALOGUE`), `tests/contract/hqProducts.contract.test.ts` (same
+answers **and the same bytes on disk** as the recorded mock for GET/PUT/POST).
 
 ## hq write-back (B5b) and snapshots (Z9)
 
@@ -561,7 +569,7 @@ shared by the routes and the import.
 | `POST /:id/visits`, `PATCH /:id/visits/:visitId`, `DELETE /:id/visits/:visitId`                                                                                  | `inhaber`, `verkauf`, `fahrer` |
 | `POST /api/partners`, `PUT /:id`, `PUT /:id/templates/:weekday`                                                                                                  | `inhaber`                      |
 
-Shapes are the mock's (D3; `tests/parity/partners.parity.test.ts` covers all 14 routes): partner
+Shapes are the mock's (D3; `tests/contract/partners.contract.test.ts` covers all 14 routes): partner
 and template objects as before, visits as `PlainVisit`, `DELETE` → 200
 `{ id, deleted: true, message: 'Besuch gelöscht.' }`, template `PUT` → 200 (also on create).
 Errors via `sendError` (`success: false`, `error`, German `message`): 400 `INVALID_NAME` /
@@ -605,7 +613,7 @@ What to know before changing it:
 - Deliberate deviations from the mock: error codes; `GET …/templates` does not create empty
   templates on read; `from > to` is 400; PATCH with `visitAt` alone keeps the business day;
   an unknown `settlementModel` is 400; the template item checks and the limits above (the mock
-  truncates/drops and has no limits - the parity suite only sends valid input there).
+  truncates/drops and has no limits - the contract suite only sends valid input there).
 - The management app downloads the CSV through `apiClient.getBlob()` with the Bearer token
   (`downloadReportCsv()` in `partnerApi.ts`, F4); the old plain link is gone.
 
@@ -635,8 +643,8 @@ skipped (listed), 1 = unusable file (checked before the database is opened) or e
 ## Preorders (B7) and anonymisation (P4)
 
 Vorbestellungen for every channel in one table (`preorders` + `preorder_items`, baseline schema).
-Rules **once** in `src/services/delivery-preorders.core.js` (dependency-free CommonJS; the mock's
-Mörsbach routes keep using the same file): channels, statuses, transitions, input normalisation,
+Rules **once** in `src/services/delivery-preorders.core.js` (dependency-free CommonJS; until B12 the
+mock's Mörsbach routes used the same file): channels, statuses, transitions, input normalisation,
 codes, sums, day summary, the mapping to/from the mock shape and the anonymisation cutoff.
 DB + transactions + audit in `src/services/preorders.service.ts`, routes in
 `src/routes/preorders.routes.ts`, import/anonymise in `src/services/preorders-maintenance.ts`,
@@ -704,7 +712,7 @@ status, bulk and the Mörsbach alias; W4-verify r3),
 - **„Nicht abgeholt" only from the pickup day on (W4).** `/:id/status` and `/bulk-status` refuse
   `notCollected: true` before the pickup date (Berlin today) with 409 `not_collected_too_early`
   - until then the customer can still come. Core option `notCollectedFrom` of
-    `normalizeStatusChange`; the Mörsbach alias does not pass it (mock contract, parity).
+    `normalizeStatusChange`; the Mörsbach alias does not pass it (mock contract, contract test).
 - **Plausible input on `POST`/`PATCH /api/preorders` (W4-verify).** Option `strictPickup` of
   `create()`/`update()` passes `pickupRules` + `notCollectedFrom` to `core.normalizeOrderInput`:
   a **new** pickup day must lie within 30 days back and 366 ahead of Berlin today (400
@@ -744,7 +752,7 @@ status, bulk and the Mörsbach alias; W4-verify r3),
   `storniert` but changes items, pickup date, place, time or channel is 409 `cancelled`; name,
   phone, note and paid stay editable, and the same PATCH with `status: 'offen'` goes through
   (core option `lockCancelled`, mirrors the `abgeholt` lock). The Mörsbach alias does not pass the
-  option - the mock lets a cancelled preorder be edited and the parity test keeps that.
+  option - the mock let a cancelled preorder be edited and the contract test keeps that.
 
 - **Channels** `laden | telefon | whatsapp | shop | sammelstelle`. Pickup is either the Laden
   (`pickupPointId: null`, date + optional `HH:MM`) or a pickup point (date must be its weekday, no
@@ -795,7 +803,7 @@ status, bulk and the Mörsbach alias; W4-verify r3),
   `anonymize`, pickup point `update`) in the write's transaction; a no-op update writes nothing.
   Audit data never holds customer names, phones or notes - otherwise P4 would have to scrub
   `audit_log` as well.
-- **Mörsbach alias `/api/deliveries/*`** keeps the mock contract where the screens look (parity
+- **Mörsbach alias `/api/deliveries/*`** keeps the mock contract where the screens look (contract
   test): `GET /pickup-points`, `PUT /pickup-points/:id` (inhaber),
   `GET /preorders[?date&status&pickupPointId]`, `GET /preorders/summary?date=`,
   `GET/PATCH/DELETE /preorders/:id`, `POST /preorders`. Deliberate differences: `hasPickupStop`
@@ -845,7 +853,7 @@ failed does not get its schema changed under the old process at night. `import-p
 Tests: `tests/unit/preordersModel.test.js` (core), `tests/unit/preorderVariants.test.ts`,
 `tests/integration/preorders.test.ts` (every route incl. roles),
 `tests/integration/preordersMaintenance.test.ts` (import, anonymise, CLI),
-`tests/parity/preorders.parity.test.ts` (alias vs. `simple-server.js`), and the B7 migration in
+`tests/contract/preorders.contract.test.ts` (alias vs. the recorded mock), and the B7 migration in
 `tests/migrations/pilotBaseline.test.ts`.
 
 ## Backzettel API (Z3)
@@ -1090,7 +1098,10 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
   (results land in `delivery_geocache` and on the stop); misses are not retried for
   `GEOCODE_RETRY_MS` (5 min); concurrent searches for one address share one lookup. Explicit
   actions (create stop, address change, optimize, depot change, `/geocode`) search with `force`.
-  Options `createApp({ deliveries: { geo, hydrateBudgetMs, geocodeRetryMs, log } })`;
+  Options `createApp({ deliveries: { geo, hydrateBudgetMs, geocodeRetryMs, log, now } })`
+  (`now`: the clock for ETAs, time windows, the default tour date and the
+  `startedAt`/`finishedAt`/`completedAt`/`routedAt`/position stamps - tests pin it; the geocode
+  negative cache keeps the wall clock);
   `createTestApp()` passes `OFFLINE_GEO` (no network) and `tests/setup-ts.js` points
   `NOMINATIM_URL`/`OSRM_URL` at a closed port.
 - **Fahrer = own tours.** A driver row may name its account (`delivery_drivers.user_id`, unique:
@@ -1128,9 +1139,9 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
   it); errors carry `success: false`; drivers carry `userId`; a depot with manual coordinates
   answers `geocodeSource: 'manual'`; the fahrer restriction above. The alias' `hasPickupStop`
   still means "the point is served that weekday" (follow-up: read it from the tours).
-- **Parity:** `tests/parity/deliveries.parity.test.ts` plays depot, drivers, tours, stops,
-  optimize, position, status sync, Mörsbach stop and deletion on both servers (offline geo on
-  both) and compares status, shape and values after normalising ids and clock fields; the
+- **Contract:** `tests/contract/deliveries.contract.test.ts` plays depot, drivers, tours, stops,
+  optimize, position, status sync, Mörsbach stop and deletion against the recorded mock (recorded
+  with offline geo) and compares status, shape and values after normalising ids and clock fields; the
   deviations are pinned there as expectations.
 
 ### `import-deliveries` CLI
@@ -1175,7 +1186,7 @@ unless `--update-depot` (the report says `unchanged`/`differs`/`updated`). One `
 Tests: `tests/integration/deliveryTours.test.ts` (roles, own tours, fahrer fields, budget and
 negative cache with a stub geo, optimize race, Mörsbach first tour, audit, limits, depot partial
 update, nightly anonymisation),
-`tests/parity/deliveries.parity.test.ts`, the B8 block in `tests/migrations/pilotBaseline.test.ts`.
+`tests/contract/deliveries.contract.test.ts`, the B8 block in `tests/migrations/pilotBaseline.test.ts`.
 
 ## Rest am Abend (M4)
 
@@ -1285,31 +1296,35 @@ their models use `underscored: true` and camelCase attributes.
   (B7) join and group the three tables without `COALESCE`. Write `''`, not null.
 - Weekdays: partners ISO (1 = Monday); `pickup_points.weekday` / `order_deadline.weekday` are JS
   (0 = Sunday), as in `delivery-preorders.core.js`.
-- `initializeModels()` initialises only the pilot models (`PILOT_MODELS`). The legacy models
-  (Cash, Chat, Product, Order, Inventory, Recipe, Notification\*, Production\*, ...) are still
-  exported so unmounted code compiles, carry `@deprecated`, are **not initialised** and have no
-  table. `User` keeps `passwordHash`/`pinHash` out twice: the default scope drops them from finder
+- `initializeModels()` initialises the pilot models (`PILOT_MODELS`). The legacy models (Cash,
+  Chat, Product, Order, Inventory, Recipe, Notification\*, Production\*, ...) were deleted in
+  B12. `User` keeps `passwordHash`/`pinHash` out twice: the default scope drops them from finder
   queries (login reads them through `User.scope('withSecrets')`), and `toJSON()` always deletes
   them - the scope alone does not cover the instance `User.create()` returns or
   `findAll({ attributes: [...] })`. Never serialise a user by hand around `toJSON()`.
 
 ## Tests
 
-Two jest projects in `jest.config.js`, both run by `npx jest -c apps/bakery-api/jest.config.js`
-and `npx nx test bakery-api` (`--selectProjects js|ts`):
+Three jest projects in `jest.config.js`, all run by `npx jest -c apps/bakery-api/jest.config.js`
+and `npx nx test bakery-api` (`--selectProjects js|ts|contract-later`):
 
-- `js`: plain-JS tests under `tests/**/*.test.js` (the `*.core.js` business rules, mock server).
+- `js`: plain-JS tests under `tests/**/*.test.js` (the `*.core.js` business rules, the `*.routes.js` modules).
   TS sources can be pulled in with `tests/helpers/loadTs.js` (esbuild, same settings as
   `build.mjs`); `tests/unit/apiPlatform.test.js` uses it.
-- `ts`: `src/**/*.spec.ts`, `src/**/__tests__/**/*.test.ts`, `tests/**/*.test.ts` through
-  ts-jest (transpile-only, `tsconfig.spec.json`, `@bakery/*` from the base paths). Integration
-  tests use `tests/helpers/createTestApp.ts` (`createApp()` on `:memory:` + baseline) with
-  supertest; `tests/parity/parity.ts` compares the real API with `simple-server.js` (its JSON
-  stores redirected to a temp dir). Type errors in tests are caught by
-  `nx run bakery-api:typecheck`, which also checks `tsconfig.spec.json`.
-- Three TS tests for unmounted domains (inventory, email) are excluded in `EXCLUDED_TS_TESTS`;
-  the rest of the roadmap's "31" are `libs/api/*` specs that run in their own nx projects. See
-  `tests/README.md`.
+- `ts`: `src/**/*.spec.ts`, `tests/**/*.test.ts` through ts-jest (transpile-only,
+  `tsconfig.spec.json`, `@bakery/*` from the base paths). Integration tests use
+  `tests/helpers/createTestApp.ts` (`createApp()` on `:memory:` + baseline) with supertest. Type
+  errors in tests are caught by `nx run bakery-api:typecheck`, which also checks
+  `tsconfig.spec.json`.
+- **Contract tests (B12, formerly `tests/parity/`).** The mock server is deleted; its answers to
+  five scenarios (partners, hq products, hq data, preorders + Mörsbach alias, deliveries) are
+  recorded in `tests/contract/recorded/<suite>.json`. `loadRecordedMock(suite)` replays them,
+  `compare()` checks status, shape and mostly values against the real API; an unrecorded request
+  answers 599 `not_recorded`. Changing a scenario means editing the recording by hand - there is
+  no mock left to re-record from. The real side's clocks are pinned to the recording moment
+  (`now` of preorders and deliveries, `today` of hq data); the third jest project
+  `contract-later` reruns all five suites with the wall clock in 2028 so a forgotten pin fails
+  today. See `tests/README.md`.
 - `scripts/boot-smoke.sh`: bundle → `cli.js create-user` twice (create, idempotent reset) on a
   fresh SQLite → start (production mode) → `/health` → 401 without session → login → `/me`,
   `/api/partners`, JSON 404 → restart without re-running migrations → login. Runs in CI in the
@@ -1317,10 +1332,8 @@ and `npx nx test bakery-api` (`--selectProjects js|ts`):
 - Integration tests of other domains need a session: `sessionFor(app, 'test.x', 'inhaber')` and
   `bearer(token)` from `tests/helpers/auth.ts`.
 
-The legacy suites that load `index.js` (`healthAPI`, `securityIntegration`) need
-`express-rate-limit` (root dependency, run `npm ci`) and reach `marked`@16, which is ESM-only; the
-`js` project maps `marked` to `tests/helpers/markedStub.js`. Both go with the legacy layer in B12.
-State on `pilot` after the wave-2 merges: see the integrator's log in `docs/roadmap.md` §11.
+The legacy suites (controllers, legacy integration and security suites, the mock-server
+hardening tests) were deleted with their code in B12. State on `pilot` after the wave-2 merges: see the integrator's log in `docs/roadmap.md` §11.
 
 ## Known state
 
@@ -1331,5 +1344,8 @@ State on `pilot` after the wave-2 merges: see the integrator's log in `docs/road
   still needs dev dependencies (esbuild, typescript).
 - An old development database keeps the legacy tables after the baseline ran (harmless, unread);
   delete the file for a clean schema.
-- The legacy JavaScript layer at the app root (`index.js`, `controllers/`, `models/`, `routes/`,
-  `middleware/`) is not part of the bundle; useful only as domain reference.
+- The legacy JavaScript layer at the app root (`index.js`, `simple-server.js`, `controllers/`,
+  `models/`, `routes/`, `middleware/`, Dockerfiles, its own `package.json`) is deleted (B12); the
+  archived migrations in `migrations/archive/` stay for the baseline upgrade test.
+  `docker-compose*.yml`, `.github/workflows/deploy-old.yml` and `deployment/` still name the
+  deleted Dockerfiles - the pilot runs on the box (`deploy/`), not in Docker.

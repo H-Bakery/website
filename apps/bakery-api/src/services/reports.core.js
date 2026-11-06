@@ -1,8 +1,8 @@
 /**
  * Rechenlogik für die Kassenberichte aus `hq/data/reports/converted`.
  *
- * Bewusst dependency-freies CommonJS: dieselbe Datei wird vom Mock-Server
- * (`src/routes/reports.mock.js`), vom Loader der Management-App
+ * Bewusst dependency-freies CommonJS: dieselbe Datei wird von der API
+ * (`src/routes/reports.routes.js`), vom Loader der Management-App
  * (`apps/bakery-management/src/lib/reports.ts`) und von den Tests
  * (`tests/unit/reportsCore.test.js`) benutzt. Es gibt damit genau *eine*
  * Implementierung der Formeln - keine Kopie, die auseinanderlaufen kann.
@@ -88,7 +88,7 @@ const MONTH_LABELS = [
 /**
  * Obergrenze für einen Zeitraum in Tagen. Eine Anfrage über Jahre liest sonst
  * hunderte Dateien und rendert tausende Zeilen - ein Tippfehler im Jahr genügt.
- * Der Mock-Server lehnt größere Zeiträume ab, die Management-App kürzt sie
+ * Die API lehnt größere Zeiträume ab, die Management-App kürzt sie
  * (`clampRange`). Beide benutzen dieselbe Zahl.
  */
 const MAX_RANGE_DAYS = 400
