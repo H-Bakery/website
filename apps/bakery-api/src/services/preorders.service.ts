@@ -333,6 +333,34 @@ function auditData(
   }
 }
 
+/**
+ * Sammelstellen eines Tages: die, die an diesem Wochentag aktiv beliefert
+ * werden, plus jede Stelle, die an dem Tag noch Bestellungen hat - auch wenn
+ * sie inzwischen deaktiviert ist oder den Wochentag gewechselt hat
+ * (W4-verify r4). Sonst verschwänden schon gebuchte Bestellungen aus der
+ * Abholliste.
+ */
+function dayPickupPoints(
+  points: Map<string, PickupPointDto>,
+  records: readonly PreorderRecord[],
+  date: string
+): PickupPointDto[] {
+  const served: PickupPointDto[] = core.pickupPointsForDate(
+    [...points.values()],
+    date
+  )
+  const ids = new Set(served.map((p) => p.id))
+  const booked = new Set(
+    records
+      .filter((r) => r.pickupPointId && r.status !== 'storniert')
+      .map((r) => r.pickupPointId as string)
+  )
+  const extra = [...points.values()].filter(
+    (p) => booked.has(p.id) && !ids.has(p.id)
+  )
+  return [...served, ...extra]
+}
+
 function singleString(value: unknown): string | undefined | null {
   if (value === undefined) return undefined
   if (typeof value !== 'string') return null
@@ -795,15 +823,15 @@ export class PreordersService {
         pickupPointId: place ?? null,
         summary: core.summarizeDay(records),
         sums: core.sumByProductVariant(records),
-        pickupPoints: core
-          .pickupPointsForDate([...points.values()], date)
-          .map((p: PickupPointDto) => ({
+        pickupPoints: dayPickupPoints(points, all, date).map(
+          (p: PickupPointDto) => ({
             ...p,
             deadline: core.deadlineFor(date, p.orderDeadline),
             preorderCount: all.filter(
               (r) => r.pickupPointId === p.id && r.status !== 'storniert'
             ).length,
-          })),
+          })
+        ),
         preorders: records.map((r) =>
           toDto(
             r,

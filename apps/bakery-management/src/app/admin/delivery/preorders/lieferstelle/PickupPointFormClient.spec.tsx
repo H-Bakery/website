@@ -5,6 +5,7 @@ import { renderWithTheme } from '@bakery/shared/test-utils'
 import PickupPointFormClient from './PickupPointFormClient'
 import {
   fetchPickupPoints,
+  listPreorders,
   savePickupPoint,
 } from '../../../../../lib/preordersApi'
 import type { PickupPoint } from '../../../../../lib/preordersTypes'
@@ -28,6 +29,7 @@ jest.mock('next/navigation', () => ({
 jest.mock('../../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../../lib/preordersApi'),
   fetchPickupPoints: jest.fn(),
+  listPreorders: jest.fn(),
   savePickupPoint: jest.fn(),
 }))
 
@@ -218,5 +220,52 @@ describe('PickupPointFormClient', () => {
     expect(
       await screen.findByText('Keine Verbindung zur Bäckerei-API.')
     ).toBeInTheDocument()
+  })
+})
+
+describe('Sammelstelle deaktivieren (W4-verify r4)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    mockFetchPickupPoints.mockResolvedValue([POINT])
+    mockSave.mockImplementation((id, payload) =>
+      Promise.resolve({ ...POINT, ...payload, id })
+    )
+  })
+
+  it('warnt beim Speichern, wenn noch Vorbestellungen offen sind', async () => {
+    const user = userEvent.setup()
+    ;(listPreorders as jest.Mock).mockResolvedValue([
+      { id: 1, pickupDate: '2026-11-21' },
+      { id: 2, pickupDate: '2026-11-21' },
+      { id: 3, pickupDate: '2026-11-28' },
+    ])
+    renderAs()
+    await user.click(await screen.findByRole('checkbox', { name: 'Aktiv' }))
+    await user.click(screen.getByRole('button', { name: 'Speichern' }))
+    const warning = await screen.findByTestId(
+      'pickup-point-open-after-deactivate'
+    )
+    expect(warning).toHaveTextContent(/3 offene Vorbestellungen/)
+    expect(warning).toHaveTextContent(/Sa 21\.11\., Sa 28\.11\./)
+    expect(warning).toHaveTextContent(/Kindergarten Mörsbach \(inaktiv\)/)
+    expect(listPreorders).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pickupPointId: 'kindergarten-moersbach',
+        status: ['offen', 'bereit'],
+      })
+    )
+  })
+
+  it('ohne offene Bestellungen: keine Warnung', async () => {
+    const user = userEvent.setup()
+    ;(listPreorders as jest.Mock).mockResolvedValue([])
+    renderAs()
+    await user.click(await screen.findByRole('checkbox', { name: 'Aktiv' }))
+    await user.click(screen.getByRole('button', { name: 'Speichern' }))
+    await screen.findByText('Die Sammelstelle wurde gespeichert.')
+    await waitFor(() => expect(listPreorders).toHaveBeenCalled())
+    expect(
+      screen.queryByTestId('pickup-point-open-after-deactivate')
+    ).not.toBeInTheDocument()
   })
 })

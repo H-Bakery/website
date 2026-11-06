@@ -5,7 +5,7 @@
  */
 import request from 'supertest'
 
-import { AuditLog, Preorder } from '../../src/models'
+import { AuditLog, PickupPoint, Preorder } from '../../src/models'
 import { PreordersService } from '../../src/services/preorders.service'
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
@@ -338,6 +338,42 @@ describe('undoing a handover restores the payment (W4-verify r4)', () => {
     await status(created.id, { paid: true })
     const undone = await status(created.id, { status: 'bereit' })
     expect(undone.body.data).toMatchObject({ status: 'bereit', paid: true })
+  })
+})
+
+describe('deactivated pickup point keeps its booked days (W4-verify r4)', () => {
+  it('stays in /day pickupPoints while it still has orders that day', async () => {
+    const DAY = '2026-12-12'
+    const booked = await create(
+      laden({
+        channel: 'sammelstelle',
+        pickupDate: DAY,
+        pickupTime: null,
+        pickupPointId: MOERSBACH,
+      })
+    )
+    expect(booked.status).toBe(201)
+    await PickupPoint.update({ active: false }, { where: { id: MOERSBACH } })
+    try {
+      const res = await request(api.app)
+        .get(`/api/preorders/day?date=${DAY}&pickupPointId=laden`)
+        .set(tokens['fahrer'])
+      expect(res.status).toBe(200)
+      expect(res.body.data.pickupPoints).toEqual([
+        expect.objectContaining({
+          id: MOERSBACH,
+          active: false,
+          preorderCount: 1,
+        }),
+      ])
+      // A day without orders there does not list the inactive point.
+      const empty = await request(api.app)
+        .get('/api/preorders/day?date=2026-12-19')
+        .set(tokens['fahrer'])
+      expect(empty.body.data.pickupPoints).toEqual([])
+    } finally {
+      await PickupPoint.update({ active: true }, { where: { id: MOERSBACH } })
+    }
   })
 })
 

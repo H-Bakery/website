@@ -435,6 +435,18 @@ export default function AbholListeClient({
     () => points.find((p) => p.id === place) ?? null,
     [points, place]
   )
+  // Eine deaktivierte Sammelstelle mit Bestellungen an diesem Tag bleibt
+  // wählbar - sonst wären die gebuchten Bestellungen nur noch über die URL
+  // erreichbar (W4-verify r4). Der Server nennt sie in `day.pickupPoints`.
+  const bookedPointIds = useMemo(
+    () =>
+      new Set(
+        (day?.pickupPoints ?? [])
+          .filter((p) => p.preorderCount > 0)
+          .map((p) => p.id)
+      ),
+    [day]
+  )
 
   /* ---------------------------------------------------------------- *
    * Start: Uhr, Sammelstellen, Vorgaben
@@ -1399,10 +1411,15 @@ export default function AbholListeClient({
                 Laden
               </MenuItem>
               {points
-                .filter((p) => p.active !== false || p.id === place)
+                .filter(
+                  (p) =>
+                    p.active !== false ||
+                    p.id === place ||
+                    bookedPointIds.has(p.id)
+                )
                 .map((p) => (
                   <MenuItem key={p.id} value={p.id} sx={TOUCH}>
-                    {p.name}
+                    {p.active === false ? `${p.name} (inaktiv)` : p.name}
                   </MenuItem>
                 ))}
             </TextField>

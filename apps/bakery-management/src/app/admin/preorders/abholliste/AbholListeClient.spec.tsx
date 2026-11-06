@@ -1168,3 +1168,35 @@ describe('Ausdruck passt auf A4 (W4-verify r4)', () => {
     expect(nowrap).toEqual(['.abholliste-print .code'])
   })
 })
+
+describe('deaktivierte Sammelstelle (W4-verify r4)', () => {
+  it('bleibt im Abholort wählbar, solange sie an dem Tag Bestellungen hat', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    const OLD = {
+      ...POINT,
+      id: 'alt-stelle',
+      name: 'Gemeindehaus Test',
+      active: false,
+    }
+    const UNUSED = {
+      ...POINT,
+      id: 'leer-stelle',
+      name: 'Stelle ohne Bestellung',
+      active: false,
+    }
+    ;(fetchPickupPoints as jest.Mock).mockResolvedValue([POINT, OLD, UNUSED])
+    mockDay.mockResolvedValue({
+      ...ladenDay(),
+      pickupPoints: [{ ...OLD, deadline: null, preorderCount: 3 }],
+    })
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.click(screen.getByRole('combobox', { name: 'Abholort' }))
+    const options = screen.getAllByRole('option').map((o) => o.textContent)
+    expect(options).toEqual([
+      'Laden',
+      'Kita Teststraße',
+      'Gemeindehaus Test (inaktiv)',
+    ])
+  })
+})
