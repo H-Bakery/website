@@ -21,6 +21,11 @@ const text = (role: keyof typeof SPICKZETTEL) =>
     .join('\n')
 
 describe('Spickzettel (P6)', () => {
+  it('Verkauf: erklärt, dass jede Sammelstelle ihr eigenes Kürzel hat (W4-verify r5)', () => {
+    // Nicht nur LA/MO - es gibt auch OB-, TE- … je Sammelstelle.
+    expect(text('verkauf')).toMatch(/Jede Sammelstelle hat ihr eigenes Kürzel/)
+  })
+
   it('gibt es für jede Pilot-Rolle, in fester Reihenfolge', () => {
     expect(Object.keys(SPICKZETTEL).sort()).toEqual([...PILOT_ROLES].sort())
     expect([...SPICKZETTEL_ORDER].sort()).toEqual([...PILOT_ROLES].sort())

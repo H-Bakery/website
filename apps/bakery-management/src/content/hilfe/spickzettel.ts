@@ -77,7 +77,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         steps: [
           'Nach dem Speichern steht groß der **Code**, z. B. LA-2026-11-28-03.',
           'Den Code auf den Zettel für die Kundschaft schreiben.',
-          'LA = Laden, MO = Sammelstelle Mörsbach.',
+          'LA = Laden. Jede Sammelstelle hat ihr eigenes Kürzel (z. B. MO = Mörsbach) - es steht vor jedem Code auf ihrer Abholliste.',
           '**Nächste Bestellung** tippen für die nächste Kundin.',
         ],
       },
