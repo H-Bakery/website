@@ -31,6 +31,15 @@
  * migrates: with pending migrations it stops (exit 1), so a deploy whose API
  * restart failed does not get its schema changed under the old process.
  *
+ * B8 (Liefertouren):
+ *
+ *   cli.js import-deliveries --file apps/bakery-api/data/delivery-store.json [--dry-run] [--update-depot]
+ *
+ * copies drivers, tours with stops and the address cache (pickup points and
+ * preorders come from `import-preorders`, run it first). Idempotent, one
+ * transaction; exit 0 = all imported or already there, 2 = hints listed,
+ * 1 = unusable file (checked before the database is opened) or error.
+ *
  * Z9 (hq snapshots):
  *
  *   cli.js snapshot-preorders [--date YYYY-MM-DD]
@@ -70,6 +79,12 @@ import {
   importDeliveryStore,
 } from './services/preorders-maintenance'
 import { defaultProductsDir } from './services/hq-catalogue'
+import {
+  DeliveryImportInputError,
+  assertDeliveryStore,
+  formatDeliveryImportReport,
+  importDeliveryTours,
+} from './services/delivery-import.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
 import { createVariantsHook } from './services/preorder-variants'
 import { isFailure, PreordersService } from './services/preorders.service'
@@ -103,6 +118,12 @@ const USAGE = `Aufruf:
     Übernimmt Sammelstellen und Vorbestellungen aus dem Store des
     Mock-Servers. Idempotent (schon importierte werden übersprungen).
 
+  cli.js import-deliveries --file <delivery-store.json> [--dry-run] [--update-depot]
+    Übernimmt Fahrer, Touren mit Stopps und den Adress-Cache aus dem Store
+    des Mock-Servers (vorher import-preorders für die Sammelstellen).
+    Idempotent. --update-depot übernimmt auch die Adresse der Backstube.
+    Exit 2: Hinweise (Einträge ausgelassen oder ohne Verknüpfung).
+
   cli.js anonymize-preorders [--dry-run] [--days 90] [--today JJJJ-MM-TT]
     DSGVO: Name, Telefon und Anmerkung aller Vorbestellungen, deren
     Abholtag mehr als 90 Tage zurückliegt, werden gelöscht (in jedem
@@ -114,7 +135,7 @@ const USAGE = `Aufruf:
     sie nach main - ohne Namen, Telefonnummern oder Anmerkungen.`
 
 /** Options without a value. */
-const BOOLEAN_FLAGS = new Set(['dry-run', 'update-partners'])
+const BOOLEAN_FLAGS = new Set(['dry-run', 'update-partners', 'update-depot'])
 
 export function parseArgs(argv: string[]): {
   command: string | undefined
@@ -358,6 +379,42 @@ async function importPreorders(flags: Record<string, string>): Promise<void> {
   })
 }
 
+/** `import-deliveries` (B8): 0 = alles übernommen, 2 = Hinweise. */
+async function importDeliveries(
+  flags: Record<string, string>
+): Promise<number> {
+  onlyFlags(flags, ['file', 'dry-run', 'update-depot'])
+  const file = flags['file']
+  if (!file) throw new UserInputError(`--file fehlt.\n\n${USAGE}`)
+  // Read and check before the database is opened: a bad file migrates nothing.
+  let store: unknown
+  try {
+    store = JSON.parse(fs.readFileSync(file, 'utf-8'))
+  } catch (error) {
+    const reason =
+      (error as NodeJS.ErrnoException).code === 'ENOENT'
+        ? 'nicht gefunden'
+        : 'kein gültiges JSON'
+    throw new UserInputError(`Datei ${file}: ${reason}.`)
+  }
+  try {
+    assertDeliveryStore(store)
+  } catch (error) {
+    if (error instanceof DeliveryImportInputError) {
+      throw new UserInputError(`Datei ${file}: ${error.message}`)
+    }
+    throw error
+  }
+  return withDatabase(async (dbPath) => {
+    const report = await importDeliveryTours(store, {
+      dryRun: flags['dry-run'] === 'true',
+      updateDepot: flags['update-depot'] === 'true',
+    })
+    console.log(`${formatDeliveryImportReport(report)}\nDatenbank: ${dbPath}`)
+    return report.problems.length > 0 ? 2 : 0
+  })
+}
+
 async function anonymize(flags: Record<string, string>): Promise<void> {
   onlyFlags(flags, ['dry-run', 'days', 'today'])
   let days: number | undefined
@@ -472,6 +529,9 @@ export async function main(argv: string[]): Promise<number> {
     if (command === 'import-preorders') {
       await importPreorders(flags)
       return 0
+    }
+    if (command === 'import-deliveries') {
+      return await importDeliveries(flags)
     }
     if (command === 'anonymize-preorders') {
       await anonymize(flags)
