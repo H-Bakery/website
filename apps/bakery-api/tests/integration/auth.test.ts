@@ -138,6 +138,22 @@ describe('POST /api/auth/login', () => {
     expect(rows[1].userId).toBeNull()
     expect(rows[1].data).toMatchObject({ username: 'test.backstube' })
     expect(JSON.stringify(rows[1].data)).not.toContain('nicht-richtig')
+    expect(rows[1].entityId).toBe(String(rows[0].userId))
+  })
+
+  it('does not store a typed unknown username (often a password) (W4-verify r2)', async () => {
+    const before = await AuditLog.count()
+    await request(api.app)
+      .post('/api/auth/login')
+      .send({ username: 'Geheim-Passwort-2026!', password: 'x' })
+    const rows = await AuditLog.findAll({
+      order: [['id', 'ASC']],
+      offset: before,
+    })
+    expect(rows.map((r) => r.action)).toEqual(['login_failed'])
+    expect(rows[0].entityId).toBeNull()
+    expect(rows[0].data).toMatchObject({ unknownUser: true, kind: 'personal' })
+    expect(JSON.stringify(rows[0].data).toLowerCase()).not.toContain('geheim')
   })
 })
 
