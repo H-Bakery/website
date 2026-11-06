@@ -665,8 +665,9 @@ export default function PartnerDetailClient({
                 </AlertTitle>
                 Für den {formatDate(selectedDate)} ist noch keine Abholung
                 erfasst. Erst die Abholung schließt den Geschäftstag ab; bis
-                dahin zählt alles, was noch im Schrank liegt, rechnerisch als
-                verkauft.
+                dahin ist nur verkauft, was beim Nachfüllen gezählt wurde - was
+                noch im Schrank liegt, ist weder als verkauft noch als Retoure
+                gebucht.
               </Alert>
             ) : !isComplete ? (
               <Alert severity="warning" sx={{ mb: 3 }}>

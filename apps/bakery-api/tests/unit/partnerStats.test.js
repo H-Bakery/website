@@ -1231,19 +1231,33 @@ describe('computeStats - Mittelwerte je Wochentag', () => {
     })
   })
 
-  it('zählt offene Tage je Wochentag mit', () => {
+  it('zählt offene Tage je Wochentag, mittelt aber nur abgeschlossene (W4-verify r4)', () => {
     const stats = computeStats(visits())
     const mittwoch = stats.byWeekday.find((w) => w.weekday === 3)
+    // Nur ein offener Mittwoch: kein Mittelwert statt „0 % verkauft“.
     expect(mittwoch).toEqual({
       weekday: 3,
       weekdayLabel: 'Mittwoch',
       dayCount: 1,
       openDayCount: 1,
-      avgDeliveredQty: 12,
-      avgSoldQty: 7,
-      avgReturnedQty: 0,
-      avgRevenue: 24.5,
-      sellThroughRate: 0.5833,
+      avgDeliveredQty: null,
+      avgSoldQty: null,
+      avgReturnedQty: null,
+      avgRevenue: null,
+      sellThroughRate: null,
+    })
+    // Ein offener Dienstag dazu ändert das Dienstags-Mittel nicht.
+    const withOpenTuesday = computeStats([
+      ...visits(),
+      visit('2026-09-15', 'initial', 1, [item(BROT, 0, 40)]),
+    ])
+    const dienstag = withOpenTuesday.byWeekday.find((w) => w.weekday === 2)
+    expect(dienstag).toMatchObject({
+      dayCount: 4,
+      openDayCount: 1,
+      avgDeliveredQty: 18.3,
+      avgSoldQty: 12.7,
+      sellThroughRate: 0.6909,
     })
   })
 

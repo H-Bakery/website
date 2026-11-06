@@ -428,7 +428,7 @@ export default function PartnerOverviewClient() {
                             sx={{ display: 'block', mt: 1.5 }}
                           >
                             {isOpen
-                              ? 'Vorläufige Zahlen: ohne erfasste Abholung gilt alles Gelieferte als verkauft.'
+                              ? 'Vorläufige Zahlen: ohne erfasste Abholung ist der Schrankinhalt noch weder verkauft noch Retoure.'
                               : 'Vorläufige Zahlen: bei der Abholung wurde nicht jedes Produkt gezählt.'}
                           </Typography>
                         )}
