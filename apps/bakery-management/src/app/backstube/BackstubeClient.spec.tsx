@@ -356,6 +356,50 @@ describe('Backstube-Tablet', () => {
     )
   })
 
+  it('Nachträge: Hinweis auf zusätzlichen Teig und Füllung, Viertel als ganze Backmenge (W4-Verifikation)', async () => {
+    const base = saturdayConfirmed()
+    mocked.fetchBackzettelDay.mockResolvedValue({
+      ...base,
+      sections: base.sections.map((s) => ({
+        ...s,
+        lines: s.lines.map((l) =>
+          l.key === ZOPF_NUSS
+            ? { ...l, delta: { qty: 0.25, open: 1, count: 1, bake: 1 } }
+            : l
+        ),
+      })),
+      deltaExtras: {
+        doughs: [
+          {
+            id: 'hefeteig-test',
+            name: 'Testhefeteig',
+            pieces: 1,
+            totalPieces: 9,
+            dough_g: 500,
+            totalDough_g: 4500,
+            batches: 1,
+            weighing: [{ piece_g: 500, pieces: 1, total: 9 }],
+          },
+        ],
+        fillings: [
+          {
+            id: 'nuss',
+            name: 'Testnussfüllung',
+            grams: 400,
+            totalGrams: 2000,
+          },
+        ],
+      },
+    })
+    renderTablet()
+    const badge = await screen.findByTestId(`bs-delta-badge-${ZOPF_NUSS}`)
+    expect(badge).toHaveTextContent('Nachtrag +0,25 · 1 mehr backen')
+    const extras = screen.getByTestId('delta-extras')
+    expect(extras).toHaveTextContent('Nachträge seit der Freigabe')
+    expect(extras).toHaveTextContent('+1 × 500 g abwiegen')
+    expect(extras).toHaveTextContent('Testnussfüllung: +400 g')
+  })
+
   it('lädt alle 60 s und beim Zurückkommen neu', async () => {
     jest.useFakeTimers()
     try {

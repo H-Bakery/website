@@ -3,10 +3,12 @@
 import React from 'react'
 import { Box, Paper, Stack, Typography } from '@mui/material'
 import type {
+  DeltaExtras,
   FillingNeed,
   Hefeteig,
   HefeteigDough,
 } from '../../lib/backzettelApi'
+import { DeltaExtrasNote } from '../backzettel/DeltaExtrasNote'
 import { formatGrams, formatNumber } from '../../lib/backzettelFormat'
 import { batchText } from '../backzettel/HefeteigCard'
 
@@ -225,6 +227,8 @@ export interface BackstubeHefeteigProps {
   fillings: FillingNeed[] | null
   /** Entwurf: Zahlen ausgegraut. */
   draft: boolean
+  /** Was die Nachträge seit der Freigabe zusätzlich brauchen. */
+  deltaExtras?: DeltaExtras | null
 }
 
 /**
@@ -235,10 +239,11 @@ export function BackstubeHefeteig({
   hefeteig,
   fillings,
   draft,
+  deltaExtras,
 }: BackstubeHefeteigProps) {
   const doughs = hefeteig?.doughs ?? []
   const list = fillings ?? []
-  if (doughs.length === 0 && list.length === 0) return null
+  if (doughs.length === 0 && list.length === 0 && !deltaExtras) return null
   return (
     <Paper
       variant="outlined"
@@ -263,6 +268,7 @@ export function BackstubeHefeteig({
         Hefeteig &amp; Füllungen
       </Typography>
       <Stack spacing={3}>
+        <DeltaExtrasNote extras={deltaExtras} large />
         {doughs.map((d) => (
           <Dough key={d.id} dough={d} muted={draft} />
         ))}

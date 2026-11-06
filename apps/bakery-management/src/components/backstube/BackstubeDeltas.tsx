@@ -8,8 +8,7 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
-  formatQty,
-  formatSigned,
+  formatSignedQty,
   formatTimestamp,
   lineLabel,
 } from '../../lib/backzettelFormat'
@@ -89,9 +88,7 @@ export function BackstubeDeltas({
                 fontVariantNumeric: 'tabular-nums',
               }}
             >
-              {d.unit && d.unit !== 'Stück'
-                ? (d.qty > 0 ? '+' : '−') + formatQty(Math.abs(d.qty), d.unit)
-                : formatSigned(d.qty)}
+              {formatSignedQty(d.qty, d.unit)}
             </Typography>
             <Box sx={{ flex: 1, minWidth: 180 }}>
               <Typography sx={{ fontSize: '1.4rem', fontWeight: 700 }}>

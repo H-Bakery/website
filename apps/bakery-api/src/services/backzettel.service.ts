@@ -394,7 +394,7 @@ export function createBackzettelService(
     })
     const deltaByKey = new Map<
       string,
-      { qty: number; open: number; count: number }
+      { qty: number; open: number; count: number; bake?: number }
     >()
     for (const d of deltas) {
       const e = deltaByKey.get(d.key) || { qty: 0, open: 0, count: 0 }
@@ -460,6 +460,31 @@ export function createBackzettelService(
     const configChangedSinceConfirm =
       snap && recomputed ? dayCore.snapshotDiffers(snap, recomputed) : null
 
+    // W4 verification: what the Nachträge mean for the oven, the dough and
+    // the fillings. `delta.bake` per line (after rounding), `deltaExtras`
+    // the change in Hefeteig/Füllungen - the frozen figures stay as they are.
+    let deltaExtras: unknown = null
+    if (deltaByKey.size > 0) {
+      const extras = dayCore.deltaBakeExtras(
+        lines,
+        Object.fromEntries(deltaByKey),
+        snap?.preordersExact ?? null
+      )
+      for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
+      if (config && recomputed) {
+        const adjusted = dayCore.linesWithExtras(lines, extras)
+        deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {
+          hefeteig: core.computeHefeteig(config, adjusted),
+          fillings: core.computeFillings(
+            config,
+            adjusted,
+            loaded.recipes || {},
+            []
+          ),
+        })
+      }
+    }
+
     return {
       date,
       weekday,
@@ -474,6 +499,7 @@ export function createBackzettelService(
       prep,
       ...dayCore.prepDateFor(date, config ? config.days : null),
       deltas,
+      deltaExtras,
       warnings,
       configStatus: loaded.ok ? ('ok' as const) : ('no-config' as const),
       configChangedSinceConfirm,

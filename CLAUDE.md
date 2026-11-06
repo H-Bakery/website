@@ -621,6 +621,15 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
     sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
 - `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
   `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
+- **Was Nachträge für Ofen, Teig und Füllung heißen** (W4-Verifikation): je Zeile
+  `delta.bake` = `roundUp(exakt + Nachtrag) − roundUp(exakt)` (`deltaBakeExtras` in
+  `backzettel-day.core.js`; `exakt` = Vorbestellungen vor dem Aufrunden, seit dieser Änderung im
+  `computed_snapshot` als `preordersExact`; ältere Freigaben rechnen mit der gerundeten Menge - eher
+  eine Einheit zu viel als zu wenig). Abzeichen sagen das mit Einheit („Nachtrag +1 l",
+  „Nachtrag +0,25 · 1 mehr backen"). `deltaExtras` am Tag nennt, was Hefeteig und Füllungen
+  dadurch zusätzlich brauchen; Hefeteig-Karte, Backstube-Tablet und Druckseite 2 zeigen es über
+  dem freigegebenen Stand (der bleibt eingefroren). Druckseite 1 ist knapper gesetzt und bricht
+  nur zwischen Abschnitten um (`.bz-section`).
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
 - **Planen und Freigeben nur von heute − 7 bis heute + 90 Tage** (400 `date_out_of_range`,

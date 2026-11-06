@@ -8,6 +8,8 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
+  deltaBadgeText,
+  deltaExtrasLines,
   formatDateLong,
   formatFactor,
   formatGrams,
@@ -15,6 +17,7 @@ import {
   formatOrDash,
   formatQty,
   formatSigned,
+  formatSignedQty,
   formatTimestamp,
   hasHefeteig,
   lineLabel,
@@ -64,8 +67,8 @@ export const backzettelPrintStyles = (
         '.bz-print': {
           display: 'block !important',
           fontFamily: 'Arial, Helvetica, sans-serif',
-          fontSize: '10.5pt',
-          lineHeight: 1.3,
+          fontSize: '10pt',
+          lineHeight: 1.25,
         },
         '.bz-print, .bz-print *': {
           color: '#000 !important',
@@ -79,13 +82,17 @@ export const backzettelPrintStyles = (
           breakBefore: 'page',
           pageBreakBefore: 'always',
         },
-        '.bz-print h1': { fontSize: '18pt', margin: '0 0 2mm' },
+        '.bz-print h1': { fontSize: '16pt', margin: '0 0 1mm' },
+        // W4-Verifikation: der Samstag (7 Abschnitte, Hefeteig, Nachträge)
+        // brauchte zwei Blätter für Seite 1 - deshalb knapp gesetzt, und ein
+        // Abschnitt wird nicht mittendrin umbrochen (.bz-section).
         '.bz-print h2': {
-          fontSize: '12.5pt',
-          margin: '4mm 0 1mm',
+          fontSize: '11.5pt',
+          margin: '2.5mm 0 0.5mm',
           borderBottom: '1.5pt solid #000',
           breakAfter: 'avoid',
         },
+        '.bz-print .bz-section': { breakInside: 'avoid' },
         '.bz-print h3': { fontSize: '11pt', margin: '3mm 0 1mm' },
         '.bz-print table': {
           width: '100%',
@@ -101,23 +108,24 @@ export const backzettelPrintStyles = (
         '.bz-print tr': { pageBreakInside: 'avoid', breakInside: 'avoid' },
         '.bz-print th, .bz-print td': {
           borderBottom: '0.5pt solid #777',
-          padding: '1.2mm 1.5mm',
+          padding: '0.6mm 1.5mm',
           textAlign: 'left',
-          verticalAlign: 'top',
+          verticalAlign: 'middle',
         },
-        '.bz-print th': { fontSize: '9pt' },
+        '.bz-print th': { fontSize: '8.5pt' },
         '.bz-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
-        '.bz-print .total': { fontSize: '15pt', fontWeight: 700 },
-        '.bz-print .small': { fontSize: '8.5pt' },
+        '.bz-print .total': { fontSize: '13pt', fontWeight: 700 },
+        '.bz-print .small': { fontSize: '8pt' },
         '.bz-print .box': {
           display: 'inline-block',
-          width: '5mm',
-          height: '5mm',
+          width: '4.5mm',
+          height: '4.5mm',
           border: '1pt solid #000',
+          verticalAlign: 'middle',
         },
         '.bz-print .box.done': {
           textAlign: 'center',
-          lineHeight: '5mm',
+          lineHeight: '4.5mm',
           fontSize: '11pt',
           fontWeight: 700,
         },
@@ -128,7 +136,12 @@ export const backzettelPrintStyles = (
           fontSize: '12pt',
           margin: '2mm 0',
         },
-        '.bz-print .meta': { margin: '0 0 2mm' },
+        '.bz-print .meta': { margin: '0 0 1mm' },
+        '.bz-print .extras': {
+          border: '1.5pt solid #000',
+          padding: '1.5mm 3mm',
+          margin: '2mm 0',
+        },
         '.bz-print .figures': { display: 'flex', gap: '8mm', margin: '1mm 0' },
         '.bz-print .figures strong': { fontSize: '14pt' },
         '.bz-print ul': { margin: '1mm 0', paddingLeft: '5mm' },
@@ -173,7 +186,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
           </>
         )}
         {day.sections.map((section) => (
-          <div key={section.id}>
+          <div key={section.id} className="bz-section">
             <h2>{section.label}</h2>
             <table className="lines">
               <thead>
@@ -207,8 +220,9 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                               ? `Korrektur: ${line.correctionReason}`
                               : null,
                             line.delta && line.delta.count > 0
-                              ? `Nachtrag ${formatSigned(
-                                  line.delta.qty
+                              ? `${deltaBadgeText(
+                                  line.delta,
+                                  line.unit
                                 )} (siehe unten)`
                               : null,
                           ]
@@ -259,7 +273,9 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
               <tbody>
                 {deltas.map((d) => (
                   <tr key={d.id}>
-                    <td className="num total">{formatSigned(d.qty)}</td>
+                    <td className="num total">
+                      {formatSignedQty(d.qty, d.unit)}
+                    </td>
                     <td>
                       <strong>
                         {lineLabel(
@@ -311,6 +327,20 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
           <h1>Hefeteig &amp; Füllungen – {formatDateLong(day.date)}</h1>
           {!confirmed && (
             <p className="banner">ENTWURF – noch nicht freigegeben</p>
+          )}
+          {deltaExtrasLines(day.deltaExtras).length > 0 && (
+            <div className="extras avoid" data-testid="print-delta-extras">
+              <strong>
+                Nachträge seit der Freigabe – zusätzlich zu den Mengen unten:
+              </strong>
+              <ul>
+                {deltaExtrasLines(day.deltaExtras).map((text) => (
+                  <li key={text}>
+                    <span className="box" /> {text}
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {doughs.map((dough) => (
             <div key={dough.id} className="avoid">

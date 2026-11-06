@@ -454,6 +454,7 @@ export default function BackstubeClient({
       hefeteig={day.hefeteig}
       fillings={day.fillings}
       draft={draft}
+      deltaExtras={day.deltaExtras}
     />
   ) : null
 

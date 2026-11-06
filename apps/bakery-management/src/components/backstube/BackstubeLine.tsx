@@ -9,6 +9,7 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   formatNumber,
+  deltaBadgeText,
   formatQty,
   formatSigned,
   formatTimestamp,
@@ -142,7 +143,7 @@ export function BackstubeLine({
                       }),
                 }}
               >
-                Nachtrag {formatSigned(line.delta.qty)}
+                {deltaBadgeText(line.delta, line.unit)}
                 {openDelta ? '' : ' · gesehen'}
               </Box>
             )}

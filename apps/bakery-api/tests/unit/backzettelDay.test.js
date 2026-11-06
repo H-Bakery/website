@@ -519,6 +519,7 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     expect(Object.keys(snap).sort()).toEqual([
       'fillings',
       'hefeteig',
+      'preordersExact',
       'prep',
       'unsetKeys',
       'warnings',
@@ -532,6 +533,7 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
       prep: null,
       warnings: [],
       unsetKeys: [],
+      preordersExact: {},
     })
   })
 
@@ -590,5 +592,111 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     })
     expect(day.prepDateFor('2026-03-01', cfg.days).prepDate).toBe('2026-02-28')
     expect(day.prepDateFor(TUE, null).prepDateProvisional).toBeNull()
+  })
+})
+
+describe('Nachträge in Backmengen (W4-Verifikation)', () => {
+  const kranz = { key: 'kranz|nuss', unit: 'Stück', preorders: 2, total: 5 }
+  const brot = { key: 'brot', unit: 'Liter', preorders: 1, total: 6.25 }
+
+  it('deltaBakeExtras rundet mit dem exakten Stand bei der Freigabe', () => {
+    expect(
+      day.deltaBakeExtras(
+        [kranz],
+        { 'kranz|nuss': { qty: 0.25 } },
+        {
+          'kranz|nuss': 2,
+        }
+      )
+    ).toEqual({ 'kranz|nuss': 1 })
+    // exakt 1,75 → bei der Freigabe schon 2: ein Viertel mehr braucht nichts
+    expect(
+      day.deltaBakeExtras(
+        [kranz],
+        { 'kranz|nuss': { qty: 0.25 } },
+        {
+          'kranz|nuss': 1.75,
+        }
+      )
+    ).toEqual({ 'kranz|nuss': 0 })
+    // ohne exakten Stand (ältere Freigabe): gerundete Menge, eher zu viel
+    expect(
+      day.deltaBakeExtras([kranz], { 'kranz|nuss': { qty: 0.25 } }, null)
+    ).toEqual({ 'kranz|nuss': 1 })
+    // Storno: weniger backen
+    expect(
+      day.deltaBakeExtras(
+        [kranz],
+        { 'kranz|nuss': { qty: -1 } },
+        {
+          'kranz|nuss': 2,
+        }
+      )
+    ).toEqual({ 'kranz|nuss': -1 })
+    // Liter: auf 0,01
+    expect(day.deltaBakeExtras([brot], { brot: { qty: 1 } }, {})).toEqual({
+      brot: 1,
+    })
+  })
+
+  it('linesWithExtras und hefeteigFillingsDiff melden nur Änderungen', () => {
+    expect(day.linesWithExtras([kranz], { 'kranz|nuss': 1 })[0].total).toBe(6)
+    const before = {
+      hefeteig: {
+        doughs: [
+          {
+            id: 'h',
+            name: 'Hefeteig',
+            pieces: 10,
+            dough_g: 6000,
+            batches: 1,
+            weighing: [{ piece_g: 600, pieces: 10 }],
+          },
+        ],
+      },
+      fillings: [{ id: 'nuss', name: 'Nussfüllung', grams: 5000 }],
+    }
+    const after = {
+      hefeteig: {
+        doughs: [
+          {
+            ...before.hefeteig.doughs[0],
+            pieces: 12,
+            dough_g: 7200,
+            weighing: [{ piece_g: 600, pieces: 12 }],
+          },
+        ],
+      },
+      fillings: [{ id: 'nuss', name: 'Nussfüllung', grams: 6000 }],
+    }
+    expect(day.hefeteigFillingsDiff(before, before)).toBeNull()
+    expect(day.hefeteigFillingsDiff(before, after)).toEqual({
+      doughs: [
+        {
+          id: 'h',
+          name: 'Hefeteig',
+          pieces: 2,
+          totalPieces: 12,
+          dough_g: 1200,
+          totalDough_g: 7200,
+          batches: 1,
+          weighing: [{ piece_g: 600, pieces: 2, total: 12 }],
+        },
+      ],
+      fillings: [
+        { id: 'nuss', name: 'Nussfüllung', grams: 1000, totalGrams: 6000 },
+      ],
+    })
+  })
+
+  it('computedSnapshot hält die exakten Vorbestellungen fest', () => {
+    expect(
+      day.computedSnapshot({
+        lines: [
+          { key: 'a', preorders: 1, preordersExact: 0.75 },
+          { key: 'b', preorders: 0, preordersExact: 0 },
+        ],
+      }).preordersExact
+    ).toEqual({ a: 0.75 })
   })
 })

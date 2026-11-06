@@ -530,7 +530,7 @@ describe('confirm, deltas, ticks, reopen', () => {
     // frozen line unchanged, highlighted
     expect(line(d, 'weck')).toMatchObject({
       total: 59,
-      delta: { qty: 4, open: 1, count: 1 },
+      delta: { qty: 4, open: 1, count: 1, bake: 4 },
     })
 
     // edit, then cancel through the API: one row each
@@ -571,7 +571,12 @@ describe('confirm, deltas, ticks, reopen', () => {
       [2, 'changed'],
       [-6, 'cancelled'],
     ])
-    expect(line(after, 'weck').delta).toEqual({ qty: 0, open: 3, count: 3 })
+    expect(line(after, 'weck').delta).toEqual({
+      qty: 0,
+      open: 3,
+      count: 3,
+      bake: 0,
+    })
     expect(await auditActions(TUE)).toEqual([
       'confirm',
       'deltas_recorded',
@@ -907,6 +912,56 @@ describe('deltas on the preorder write path (W4)', () => {
   it('a preorder for a draft day records nothing (the draft is live)', async () => {
     await apiPreorder(SUN, [{ productId: 'test-weck', quantity: 1 }])
     expect(await BackzettelDelta.count({ where: { date: SUN } })).toBe(0)
+  })
+})
+
+describe('what Nachträge mean for oven, dough and filling (W4-verify)', () => {
+  const SAT3 = '2026-12-12'
+
+  it('a quarter Kranz after confirm: bake one more, plus dough and filling', async () => {
+    const confirmed = await as('backstube').post(
+      `/api/backzettel/${SAT3}/confirm`
+    )
+    expect(confirmed.status).toBe(200)
+    expect(confirmed.body.data.deltaExtras).toBeNull()
+
+    await apiPreorder(SAT3, [
+      {
+        productId: 'test-kranz-gefuellt-viertel',
+        quantity: 1,
+        variant: 'nuss',
+      },
+    ])
+    const d = (await as('backstube').get(`/api/backzettel/${SAT3}`)).body.data
+    const kranz = line(d, 'kranz-gefuellt', 'nuss')
+    // +0,25 Kranz in the preorders, one whole Kranz more to bake
+    expect(kranz.delta).toMatchObject({ qty: 0.25, bake: 1, open: 1 })
+    // frozen figures stay; the difference is reported next to them
+    expect(d.deltaExtras).toEqual({
+      doughs: [
+        expect.objectContaining({
+          id: 'hefeteig-test',
+          pieces: 2,
+          dough_g: 1200,
+          weighing: [{ piece_g: 600, pieces: 2, total: expect.any(Number) }],
+        }),
+      ],
+      fillings: [expect.objectContaining({ id: 'nuss', grams: 1000 })],
+    })
+
+    // a second quarter needs no further Kranz (0,5 rounds up to the same 1)
+    await apiPreorder(SAT3, [
+      {
+        productId: 'test-kranz-gefuellt-viertel',
+        quantity: 1,
+        variant: 'nuss',
+      },
+    ])
+    const d2 = (await as('backstube').get(`/api/backzettel/${SAT3}`)).body.data
+    expect(line(d2, 'kranz-gefuellt', 'nuss').delta).toMatchObject({
+      qty: 0.5,
+      bake: 1,
+    })
   })
 })
 

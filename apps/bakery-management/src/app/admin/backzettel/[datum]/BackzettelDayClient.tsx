@@ -648,7 +648,11 @@ export default function BackzettelDayClient({
           ))
         )}
 
-        <HefeteigCard hefeteig={day.hefeteig} fillings={day.fillings} />
+        <HefeteigCard
+          hefeteig={day.hefeteig}
+          fillings={day.fillings}
+          deltaExtras={day.deltaExtras}
+        />
         <PrepCard
           prep={day.prep}
           prepDate={day.prepDate}
