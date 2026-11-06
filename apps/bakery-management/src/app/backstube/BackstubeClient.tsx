@@ -96,6 +96,33 @@ export function staleResolved(
   }
 }
 
+/**
+ * Netz weg oder 5xx (kein 409): nach dem nächsten erfolgreichen Laden ist die
+ * Verbindung wieder da - dann nennt die Meldung den nächsten Schritt statt
+ * weiter einen Serverfehler (W4-Verifikation Runde 3).
+ */
+const TRANSIENT_TICK = 'transient:tick'
+const TRANSIENT_ACK = 'transient:ack'
+
+function isTransient(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status
+  return (
+    describeBackstubeError(error, '').offline ||
+    (typeof status === 'number' && status >= 500)
+  )
+}
+
+/** Meldung nach dem erfolgreichen Neuladen, oder `undefined` = stehen lassen. */
+export function afterReloadMessage(code: string | null): string | undefined {
+  if (code === TRANSIENT_TICK) {
+    return 'Die Verbindung ist wieder da. Der letzte Haken wurde nicht gespeichert - bitte noch einmal abhaken.'
+  }
+  if (code === TRANSIENT_ACK) {
+    return 'Die Verbindung ist wieder da. Der Nachtrag wurde nicht quittiert - bitte noch einmal „Gesehen“ tippen.'
+  }
+  return undefined
+}
+
 function messageOf(error: unknown, fallback: string): string {
   return describeBackstubeError(error, fallback).text
 }
@@ -133,9 +160,9 @@ export interface BackstubeClientProps {
 /**
  * Backstube-Tablet (Z6, roadmap §5.5 Nr. 3): der Backzettel des aktuellen
  * bzw. nächsten Backtags in sehr großer Schrift, ein Haken je Zeile,
- * Nachträge mit „Gesehen", am Samstag zuerst Hefeteig & Füllungen, dazu der
- * Reiter „Vorbereitung heute". Läuft an der PIN-Station (Startseite der
- * Rolle Backstube) ohne Admin-Layout - deshalb mit eigenem „Abmelden".
+ * Nachträge mit „Gesehen“, am Samstag zuerst Hefeteig & Füllungen, dazu der
+ * Reiter „Vorbereitung heute“. Läuft an der PIN-Station (Startseite der
+ * Rolle Backstube) ohne Admin-Layout - deshalb mit eigenem „Abmelden“.
  *
  * Gerechnet wird nichts: alle Zahlen kommen von `/api/backzettel`. Neu
  * geladen wird alle 60 s und sobald das Tablet wieder in den Vordergrund
@@ -169,7 +196,7 @@ export default function BackstubeClient({
   } | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
-  // W4-verify r2: der 409-Code eines „veralteten" Fehlers. Zeigt ein späteres
+  // W4-verify r2: der 409-Code eines „veralteten“ Fehlers. Zeigt ein späteres
   // Neuladen den Stand, auf den der Fehler wartete (z. B. wieder
   // freigegeben), verschwindet die Meldung - sonst widersprach sie dem Zettel.
   const staleCodeRef = React.useRef<string | null>(null)
@@ -254,6 +281,10 @@ export default function BackstubeClient({
       setLoadedAt(clockRef.current())
       setLoadError(null)
       if (staleResolved(staleCodeRef.current, res)) showActionError(null)
+      else {
+        const next = afterReloadMessage(staleCodeRef.current)
+        if (next !== undefined) showActionError(next)
+      }
     } catch (error) {
       if (dateRef.current !== target) return
       setLoadError(
@@ -423,7 +454,7 @@ export default function BackstubeClient({
         stale
           ? `${text} Der Backzettel wird neu geladen.`
           : `Nicht gespeichert: ${text}`,
-        stale ? codeOf(error) : null
+        stale ? codeOf(error) : isTransient(error) ? TRANSIENT_TICK : null
       )
     } finally {
       pendingRef.current -= 1
@@ -481,7 +512,11 @@ export default function BackstubeClient({
       )
       showActionError(
         isStale(error) ? `${text} Der Backzettel wird neu geladen.` : text,
-        isStale(error) ? codeOf(error) : null
+        isStale(error)
+          ? codeOf(error)
+          : isTransient(error)
+          ? TRANSIENT_ACK
+          : null
       )
       if (isStale(error)) {
         mutationSeq.current += 1
@@ -526,7 +561,7 @@ export default function BackstubeClient({
         // global.css blendet jedes <section> beim Einhängen 0,8 s ein. Auf
         // dem Tablet (Tag wechseln, Neuladen) stünde der Zettel dann blass da.
         '& section, & .MuiChip-root': { animation: 'none' },
-        // Gedruckt wird über „Planung & Druck" (Z7); Strg+P hier soll
+        // Gedruckt wird über „Planung & Druck“ (Z7); Strg+P hier soll
         // wenigstens keine Bedienelemente und keinen dunklen Grund drucken.
         '@media print': {
           minHeight: 0,

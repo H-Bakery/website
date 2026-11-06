@@ -435,6 +435,28 @@ export const PREORDER_MAX_DAYS_AHEAD = 366
 /** … und nachgetragen höchstens so weit zurück (P4 anonymisiert nach 90 Tagen). */
 export const PREORDER_MAX_DAYS_BACK = 30
 
+/**
+ * `*[öÖ][zZ]…*` - a GLOB pattern that finds `text` anywhere, ignoring case
+ * for every letter with a one-character upper/lower pair (SQLite's LIKE and
+ * lower() only fold ASCII). `*`, `?` and `[` are matched literally.
+ */
+export function caseInsensitiveGlob(text: string): string {
+  let out = ''
+  for (const ch of text) {
+    if (ch === '*' || ch === '?' || ch === '[') {
+      out += `[${ch}]`
+      continue
+    }
+    const lower = ch.toLocaleLowerCase('de-DE')
+    const upper = ch.toLocaleUpperCase('de-DE')
+    out +=
+      lower !== upper && [...lower].length === 1 && [...upper].length === 1
+        ? `[${lower}${upper}]`
+        : ch
+  }
+  return `*${out}*`
+}
+
 export class PreordersService {
   private readonly productsDir: string
   private readonly variants: VariantsForProduct
@@ -618,14 +640,25 @@ export class PreordersService {
       if (q === null || q.length > 100) {
         return failure(400, 'invalid_query', 'Der Suchbegriff ist ungültig.')
       }
-      // LIKE-Platzhalter fallen weg: SQLite kennt ohne ESCAPE keine Maskierung.
-      const text = q.trim().replace(/[%_\\]/g, '')
+      // W4-verify r3: SQLite's LIKE ignores case for A-Z only - „öztürk“
+      // did not find „Öztürk“. GLOB with a [xX] set per letter ignores case
+      // for every letter (Ä/ä, Ö/ö, Ü/ü …) and has no `%`/`_` wildcards, so
+      // „%“ searches for a literal percent sign instead of matching all.
+      const text = q.trim()
       if (text) {
-        const like = `%${text}%`
+        const pattern = caseInsensitiveGlob(text)
         const digits = text.replace(/\D/g, '')
         const or: unknown[] = [
-          { customerName: { [Op.like]: like } },
-          { code: { [Op.like]: like } },
+          getSequelize().where(
+            getSequelize().col('Preorder.customer_name'),
+            'GLOB',
+            pattern
+          ),
+          getSequelize().where(
+            getSequelize().col('Preorder.code'),
+            'GLOB',
+            pattern
+          ),
         ]
         if (digits.length >= 3) {
           or.push({ customerPhone: { [Op.like]: `%${digits}%` } })

@@ -72,7 +72,7 @@ describe('ServiceWorkerRegistration', () => {
   })
 
   it('registriert in Tests/Entwicklung nicht', async () => {
-    // jest setzt NODE_ENV=test - genau wie `next dev` „development".
+    // jest setzt NODE_ENV=test - genau wie `next dev` „development“.
     render(<ServiceWorkerRegistration />)
     await waitFor(() =>
       expect(navigator.serviceWorker.getRegistrations).toHaveBeenCalled()

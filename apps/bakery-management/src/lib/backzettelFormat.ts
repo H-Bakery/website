@@ -135,24 +135,24 @@ export function neighbourProductionDay(
   return addDays(date, direction)
 }
 
-/** „28.11.2026" */
+/** „28.11.2026“ */
 export function formatDate(date: string): string {
   const [y, m, d] = date.split('-')
   return `${d}.${m}.${y}`
 }
 
-/** „Samstag, 28.11.2026" */
+/** „Samstag, 28.11.2026“ */
 export function formatDateLong(date: string): string {
   return `${WEEKDAY_NAMES[isoWeekday(date)]}, ${formatDate(date)}`
 }
 
-/** „Sa 28.11." */
+/** „Sa 28.11.“ */
 export function formatDateShort(date: string): string {
   const [, m, d] = date.split('-')
   return `${WEEKDAY_SHORT[isoWeekday(date)]} ${d}.${m}.`
 }
 
-/** Uhrzeit + Datum eines Zeitstempels in Ortszeit, „27.11. 14:05". */
+/** Uhrzeit + Datum eines Zeitstempels in Ortszeit, „27.11. 14:05“. */
 export function formatTimestamp(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)
@@ -164,7 +164,7 @@ export function formatTimestamp(iso: string | null | undefined): string {
 
 const NUMBER = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 2 })
 
-/** Zahl deutsch, höchstens zwei Nachkommastellen („1,24"). */
+/** Zahl deutsch, höchstens zwei Nachkommastellen („1,24“). */
 export function formatNumber(n: number): string {
   return NUMBER.format(n)
 }
@@ -175,7 +175,7 @@ const UNIT_SUFFIX: Record<string, string> = {
   Blech: 'Bl.',
 }
 
-/** Menge mit Einheit; Stück ohne Zusatz („40", „4,5 l", „3 Bl."). */
+/** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 l“, „3 Bl.“). */
 export function formatQty(n: number, unit: BackzettelUnit | null): string {
   const suffix = unit ? UNIT_SUFFIX[unit] : undefined
   return suffix ? `${formatNumber(n)} ${suffix}` : formatNumber(n)
@@ -205,13 +205,13 @@ export function previouslyDoneText(line: BackzettelLine): string | null {
   } - ${tail}`
 }
 
-/** Zu- und Abschläge: „+2", „−1", „–" für 0. */
+/** Zu- und Abschläge: „+2“, „−1“, „–“ für 0. */
 export function formatSigned(n: number): string {
   if (!n) return '–'
   return n > 0 ? `+${formatNumber(n)}` : `−${formatNumber(Math.abs(n))}`
 }
 
-/** Zu- und Abschläge mit Einheit: „+1 l", „−2", „+0,5 kg"; „–" für 0. */
+/** Zu- und Abschläge mit Einheit: „+1 l“, „−2“, „+0,5 kg“; „–“ für 0. */
 export function formatSignedQty(
   n: number,
   unit: BackzettelUnit | null
@@ -222,14 +222,17 @@ export function formatSignedQty(
 
 /**
  * Text des Nachtrag-Abzeichens einer Zeile (W4-Verifikation): mit Einheit
- * („Nachtrag +1 l") und - wenn das Aufrunden etwas anderes ergibt als der
+ * („Nachtrag +1 l“) und - wenn das Aufrunden etwas anderes ergibt als der
  * Nachtrag selbst (Viertel) - was zusätzlich zu backen ist
- * („Nachtrag +0,25 · 1 mehr backen", „… · nichts mehr backen").
+ * („Nachtrag +0,25 · 1 mehr backen“, „… · nichts mehr backen“).
  */
 export function deltaBadgeText(
   delta: BackzettelLineDelta,
   unit: BackzettelUnit | null
 ): string {
+  // W4-Verifikation Runde 3: Neu + Storno heben sich auf - statt eines
+  // nackten „Nachtrag –“ sagen, dass nichts zu tun ist.
+  if (!delta.qty && !delta.bake) return 'Nachtrag ±0 · nichts ändern'
   const base = `Nachtrag ${formatSignedQty(delta.qty, unit)}`
   const bake = delta.bake
   if (bake === undefined || bake === null || bake === delta.qty) return base
@@ -254,10 +257,15 @@ export function deltaExtrasLines(
   if (!extras) return []
   const out: string[] = []
   for (const d of extras.doughs) {
+    // W4-Verifikation Runde 3: eine Abnahme liest sich als „weniger“ - ein
+    // „−2 × 600 g abwiegen“ übersieht man aus 1,5 m leicht.
     const weighing = d.weighing
+      .filter((w) => w.pieces)
       .map(
         (w) =>
-          `${formatSigned(w.pieces)} × ${formatNumber(w.piece_g)} g abwiegen`
+          `${formatNumber(Math.abs(w.pieces))} × ${formatNumber(w.piece_g)} g ${
+            w.pieces > 0 ? 'zusätzlich' : 'weniger'
+          } abwiegen`
       )
       .join(', ')
     const dough = `${d.dough_g < 0 ? '−' : '+'}${formatGrams(
@@ -281,9 +289,14 @@ export function deltaExtrasLines(
             Math.ceil(d.dough_g / (max * 1000) - 1e-9)
           )} Chargen ansetzen`
         : ''
+    const pieces = d.pieces
+      ? `${formatNumber(Math.abs(d.pieces))} Teigstücke ${
+          d.pieces > 0 ? 'mehr' : 'weniger'
+        }`
+      : 'Teigstücke unverändert'
     out.push(
-      `${d.name}: ${formatSigned(d.pieces)} Teigstücke (${dough})${
-        weighing ? ` - ${weighing}` : ''
+      `${d.name}: ${pieces} (${dough})${
+        weighing ? `: ${weighing}` : ''
       }; mit Nachträgen ${formatNumber(
         d.totalPieces
       )} Teigstücke, ${formatGrams(d.totalDough_g)}${batchNote}${extraBatches}`
@@ -310,7 +323,7 @@ export function deltaExtrasLines(
   return out
 }
 
-/** Spaltenwert ohne Vorzeichen; 0 als „–", damit die Zahlen hervortreten. */
+/** Spaltenwert ohne Vorzeichen; 0 als „–“, damit die Zahlen hervortreten. */
 export function formatOrDash(n: number): string {
   return n ? formatNumber(n) : '–'
 }
@@ -321,7 +334,7 @@ export function formatGrams(g: number): string {
   return `${formatNumber(Math.round(g / 10) / 100)} kg`
 }
 
-/** Saisonfaktor als Text „1,2" (bzw. „1,0"). */
+/** Saisonfaktor als Text „1,2“ (bzw. „1,0“). */
 export function formatFactor(f: number): string {
   return new Intl.NumberFormat('de-DE', {
     minimumFractionDigits: 1,
@@ -361,7 +374,7 @@ export function isIntegerUnit(unit: BackzettelUnit | null): boolean {
 }
 
 /**
- * Name einer Sorte: der Füllungsname aus den Stammdaten („Nussfüllung"),
+ * Name einer Sorte: der Füllungsname aus den Stammdaten („Nussfüllung“),
  * sonst die ID mit großem Anfangsbuchstaben. `null` an einem Posten mit
  * Sorten heißt: Vorbestellung ohne Füllungsangabe.
  */
@@ -375,7 +388,7 @@ export function variantLabel(
   return variant.charAt(0).toUpperCase() + variant.slice(1)
 }
 
-/** Posten mit Sorten (aus den Stammdaten) - für „ohne Füllungsangabe". */
+/** Posten mit Sorten (aus den Stammdaten) - für „ohne Füllungsangabe“. */
 export function itemHasVariants(
   itemId: string,
   config?: Pick<BackzettelConfigData, 'items'> | null
@@ -384,7 +397,7 @@ export function itemHasVariants(
   return !!item && Array.isArray(item.variants) && item.variants.length > 0
 }
 
-/** Zeilenname mit Sorte: „Zopf gefüllt – Nussfüllung". */
+/** Zeilenname mit Sorte: „Zopf gefüllt – Nussfüllung“. */
 export function lineLabel(
   line: Pick<BackzettelLine, 'name' | 'variant' | 'itemId'>,
   config?: Pick<BackzettelConfigData, 'fillings' | 'items'> | null
@@ -455,8 +468,8 @@ export function changedTotals(
 /**
  * Zeilen des Zettels, in denen Vorbestellungen stecken (für die Übersicht).
  * Bewusst keine Stücksumme: die Zeilen stehen in Produktionseinheiten
- * (Viertel aufgerundet, Liter), eine Summe wäre weder „bestellte Stück" noch
- * „gebackene Stück".
+ * (Viertel aufgerundet, Liter), eine Summe wäre weder „bestellte Stück“ noch
+ * „gebackene Stück“.
  */
 export function linesWithPreorders(
   day: Pick<BackzettelDay, 'sections'>
@@ -464,7 +477,7 @@ export function linesWithPreorders(
   return allLines(day).filter((l) => (l.preorders || 0) > 0).length
 }
 
-/** „Di–So" für zusammenhängende Tage, sonst „Di, Do, Sa". */
+/** „Di–So“ für zusammenhängende Tage, sonst „Di, Do, Sa“. */
 function weekdayList(days: readonly number[]): string {
   const sorted = [...days].sort((a, b) => a - b)
   if (sorted.length === 0) return ''

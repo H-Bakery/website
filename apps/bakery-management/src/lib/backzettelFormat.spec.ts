@@ -190,6 +190,13 @@ describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
     expect(
       deltaBadgeText({ qty: -0.5, open: 1, count: 1, bake: -1 }, 'Stück')
     ).toBe('Nachtrag −0,5 · 1 weniger backen')
+    // Neu + Storno heben sich auf (W4-verify r3)
+    expect(
+      deltaBadgeText({ qty: 0, open: 1, count: 2, bake: 0 }, 'Stück')
+    ).toBe('Nachtrag ±0 · nichts ändern')
+    expect(deltaBadgeText({ qty: 0, open: 1, count: 2 }, 'Stück')).toBe(
+      'Nachtrag ±0 · nichts ändern'
+    )
     // älterer Server ohne `bake`
     expect(deltaBadgeText({ qty: 2, open: 1, count: 1 }, 'Stück')).toBe(
       'Nachtrag +2'
@@ -217,9 +224,34 @@ describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
         ],
       })
     ).toEqual([
-      'Hefeteig: +4 Teigstücke (+2,4 kg Teig) - +4 × 600 g abwiegen; mit Nachträgen 51 Teigstücke, 30,6 kg',
+      'Hefeteig: 4 Teigstücke mehr (+2,4 kg Teig): 4 × 600 g zusätzlich abwiegen; mit Nachträgen 51 Teigstücke, 30,6 kg',
       'Mohnfüllung: +1,6 kg; mit Nachträgen 5,2 kg',
     ])
+  })
+
+  it('deltaExtrasLines: eine Abnahme heißt „weniger“, ohne Minus vor „abwiegen“ (W4-verify r3)', () => {
+    const [line] = deltaExtrasLines({
+      doughs: [
+        {
+          id: 'h',
+          name: 'Hefeteig',
+          pieces: -3,
+          totalPieces: 44,
+          dough_g: -1700,
+          totalDough_g: 26000,
+          batches: 3,
+          weighing: [
+            { piece_g: 600, pieces: -2, total: 10 },
+            { piece_g: 500, pieces: -1, total: 4 },
+          ],
+        },
+      ],
+      fillings: [],
+    })
+    expect(line).toBe(
+      'Hefeteig: 3 Teigstücke weniger (−1,7 kg Teig): 2 × 600 g weniger abwiegen, 1 × 500 g weniger abwiegen; mit Nachträgen 44 Teigstücke, 26 kg'
+    )
+    expect(line).not.toMatch(/−\d+ ×/)
   })
 
   it('deltaExtrasLines nennt neue Chargen und das Rezept der Zusatzfüllung (W4-verify r2)', () => {
@@ -265,7 +297,7 @@ describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
         ],
       })
     ).toEqual([
-      'Hefeteig: +17 Teigstücke (+10,1 kg Teig); mit Nachträgen 64 Teigstücke, 31 kg; jetzt 4 Chargen statt 3 (je max. 10 kg); den Zusatzteig in 2 Chargen ansetzen',
+      'Hefeteig: 17 Teigstücke mehr (+10,1 kg Teig); mit Nachträgen 64 Teigstücke, 31 kg; jetzt 4 Chargen statt 3 (je max. 10 kg); den Zusatzteig in 2 Chargen ansetzen',
       'Nussfüllung: +6 kg; mit Nachträgen 9 kg; dafür Rezept „Nussfüllung“ × 3: Nüsse 3 kg',
     ])
   })

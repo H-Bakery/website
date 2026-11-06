@@ -58,12 +58,46 @@ function formatTrayInfo(item) {
   return list
 }
 
-/** Blech-Angabe aus dem YAML-Format `tray: { no, per_tray }`. */
-function trayText(tray) {
+/**
+ * Blech-Angabe aus dem YAML-Format `tray: { no, per_tray }`.
+ *
+ * Mit `total` (Stück der Zeile) und `per_tray` zählt die Angabe die Bleche
+ * nach der Menge, nicht nach der YAML (W4-Verifikation Runde 3: bei 40
+ * Croissants stand „2 Bleche à 12“ da - Platz für 24). Reichen die
+ * hinterlegten Blechnummern nicht, steht dabei, wie viele weitere es
+ * braucht; brauchen sie weniger, stehen nur die ersten da.
+ */
+function trayText(tray, total, unit) {
   if (!tray || !Array.isArray(tray.no)) return null
-  return tray.no.length === 1
-    ? formatTrayInfo({ tray_number: tray.no[0] })
-    : formatTrayInfo({ tray_numbers: tray.no, trays_of: tray.per_tray })
+  const per = tray.per_tray
+  const countable =
+    typeof total === 'number' &&
+    Number.isFinite(total) &&
+    total > 0 &&
+    (unit === undefined || unit === 'Stück') &&
+    isTrayNumber(per) &&
+    per > 0
+  if (!countable) {
+    return tray.no.length === 1
+      ? formatTrayInfo({ tray_number: tray.no[0] })
+      : formatTrayInfo({ tray_numbers: tray.no, trays_of: per })
+  }
+  const needed = Math.ceil(total / per - 1e-9)
+  const numbers = tray.no.filter(isTrayNumber)
+  const used = numbers.slice(0, needed)
+  const extra = needed - used.length
+  const list =
+    used.length === 0
+      ? ''
+      : used.length === 1
+      ? `Blech ${used[0]}`
+      : `Bleche ${used.join(', ')}`
+  const more =
+    extra > 0 ? `${extra} ${extra === 1 ? 'weiteres' : 'weitere'}` : ''
+  const where = [list, more].filter(Boolean).join(' + ')
+  return `${needed} ${needed === 1 ? 'Blech' : 'Bleche'} à ${per}${
+    where ? ` (${where})` : ''
+  }`
 }
 
 // ---------------------------------------------------------------------------
@@ -542,7 +576,7 @@ function computeDay(args) {
           correctionReason: b.reasons.length ? b.reasons.join('; ') : null,
           total,
           ...(raw < 0 ? { correctionClamped: true } : {}),
-          tray: trayText(item.tray),
+          tray: trayText(item.tray, total, item.unit),
           plu: item.plu,
         }
         if (item.unit === 'Liter' && item.pieces_per_liter) {

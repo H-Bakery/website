@@ -13,6 +13,7 @@
  */
 
 import {
+  formatCurrency,
   formatDate,
   isBusinessDate,
   shiftDate,
@@ -49,7 +50,7 @@ export const PREORDER_CHANNELS = [
 ] as const
 export type PreorderChannel = (typeof PREORDER_CHANNELS)[number]
 
-/** Filterwert „Abholung im Laden" (`pickupPointId=laden`). */
+/** Filterwert „Abholung im Laden“ (`pickupPointId=laden`). */
 export const LADEN_PICKUP = 'laden'
 
 /** Grenzen des Servers (`delivery-preorders.core.js`). */
@@ -89,7 +90,7 @@ export interface Preorder {
   pickupPointId: string | null
   pickupPoint: PreorderPickupPointRef | null
   status: PreorderStatus
-  /** „Nicht abgeholt" ist kein Status, sondern `bereit` + Zeitpunkt. */
+  /** „Nicht abgeholt“ ist kein Status, sondern `bereit` + Zeitpunkt. */
   notCollected: boolean
   notCollectedAt: string | null
   paid: boolean
@@ -329,7 +330,7 @@ export const JS_WEEKDAY_LABELS: Record<number, string> = {
   6: 'Samstag',
 }
 
-/** „nuss" → „Nuss", „schoko-kirsch" → „Schoko-Kirsch". */
+/** „nuss“ → „Nuss“, „schoko-kirsch“ → „Schoko-Kirsch“. */
 export function variantLabel(variant: string | null | undefined): string {
   if (!variant) return ''
   return variant
@@ -338,14 +339,14 @@ export function variantLabel(variant: string | null | undefined): string {
     .join('-')
 }
 
-/** „Zopf gefüllt (Nuss)" bzw. nur der Name ohne Sorte. */
+/** „Zopf gefüllt (Nuss)“ bzw. nur der Name ohne Sorte. */
 export function itemName(item: { name: string; variant?: string }): string {
   return item.variant
     ? `${item.name} (${variantLabel(item.variant)})`
     : item.name
 }
 
-/** „2 × Zopf gefüllt (Nuss), 1 × Kornbrot". */
+/** „2 × Zopf gefüllt (Nuss), 1 × Kornbrot“. */
 export function formatItems(items: PreorderItem[]): string {
   return items.map((i) => `${i.quantity} × ${itemName(i)}`).join(', ')
 }
@@ -356,14 +357,14 @@ export function jsWeekdayOf(date: string): number | null {
   return iso === null ? null : iso % 7
 }
 
-/** „Di, 17.11.2026". */
+/** „Di, 17.11.2026“. */
 export function formatDateWithWeekday(date: string): string {
   if (!isBusinessDate(date)) return date
   const js = jsWeekdayOf(date)
   return `${js === null ? '' : `${JS_WEEKDAY_SHORT[js]}, `}${formatDate(date)}`
 }
 
-/** „Di 17.11." - für Tages-Chips. */
+/** „Di 17.11.“ - für Tages-Chips. */
 export function formatShortDate(date: string): string {
   if (!isBusinessDate(date)) return date
   const js = jsWeekdayOf(date)
@@ -371,7 +372,7 @@ export function formatShortDate(date: string): string {
   return `${js === null ? '' : `${JS_WEEKDAY_SHORT[js]} `}${d}.${m}.`
 }
 
-/** Wo und wann abgeholt wird, z. B. „Laden · 08:30" oder „Kita (09:00-09:30)". */
+/** Wo und wann abgeholt wird, z. B. „Laden · 08:30“ oder „Kita (09:00-09:30)“. */
 export function formatPickupPlace(preorder: {
   pickupPoint: PreorderPickupPointRef | null
   pickupTime: string | null
@@ -505,6 +506,59 @@ export function isCancellable(
   )
 }
 
+/**
+ * Zahlungsstand einer Bestellung für Zeilen, Karten und Ausdrucke
+ * (W4-Verifikation Runde 3): eine bezahlte Bestellung, die seitdem teurer
+ * (`rest`) oder billiger/storniert (`refund`) wurde, darf nirgends als
+ * schlichtes „bezahlt“ erscheinen - sonst wird der Rest nicht kassiert oder
+ * das Geld nicht zurückgegeben. `amount` ist immer positiv.
+ */
+export type PaymentState =
+  | { kind: 'unpaid'; amount: number }
+  | { kind: 'paid'; amount: number }
+  | { kind: 'rest'; amount: number }
+  | { kind: 'refund'; amount: number }
+
+export function paymentState(
+  preorder: Pick<Preorder, 'paid' | 'paymentBalance' | 'total' | 'status'> & {
+    paidAmount?: number | null
+  }
+): PaymentState {
+  if (!preorder.paid) return { kind: 'unpaid', amount: preorder.total }
+  const balance = preorder.paymentBalance ?? 0
+  if (balance > 0) return { kind: 'rest', amount: balance }
+  if (balance < 0) return { kind: 'refund', amount: -balance }
+  return {
+    kind: 'paid',
+    amount: preorder.paidAmount ?? preorder.total,
+  }
+}
+
+/** Bezahlt, aber zu viel: Geld an die Kundschaft zurückgeben. */
+export function owesRefund(
+  preorder: Pick<Preorder, 'paid' | 'paymentBalance' | 'total' | 'status'>
+): boolean {
+  return paymentState(preorder).kind === 'refund'
+}
+
+/**
+ * Kurztext für Listenzeilen: `''` (unbezahlt), `bezahlt`,
+ * `bezahlt · Rest 3,60 € offen`, `bezahlt · 36,00 € erstatten`.
+ */
+export function paymentRowText(
+  preorder: Pick<Preorder, 'paid' | 'paymentBalance' | 'total' | 'status'>
+): string {
+  const state = paymentState(preorder)
+  if (state.kind === 'unpaid') return ''
+  if (state.kind === 'rest') {
+    return `bezahlt · Rest ${formatCurrency(state.amount)} offen`
+  }
+  if (state.kind === 'refund') {
+    return `bezahlt · ${formatCurrency(state.amount)} erstatten`
+  }
+  return 'bezahlt'
+}
+
 /** Rollen, die Vorbestellungen anlegen und ändern dürfen (API: verkauf; inhaber darf alles). */
 export const PREORDER_WRITE_ROLES: readonly string[] = ['inhaber', 'verkauf']
 
@@ -515,8 +569,8 @@ export function canWritePreorders(role: string | null | undefined): boolean {
 export type PreorderQuery = Record<string, string | string[] | undefined>
 
 /**
- * „Alle Tage" in der Seiten-URL. Ohne Marker hieße eine URL ohne Zeitraum
- * „keine Filter" und fiele beim Neuladen oder Zurückkommen auf „ab heute"
+ * „Alle Tage“ in der Seiten-URL. Ohne Marker hieße eine URL ohne Zeitraum
+ * „keine Filter“ und fiele beim Neuladen oder Zurückkommen auf „ab heute“
  * zurück. Nur für die Seite - die API kennt den Parameter nicht.
  */
 export const ALL_DAYS_PARAM = 'range'
@@ -524,7 +578,7 @@ export const ALL_DAYS_VALUE = 'alle'
 
 /**
  * Listenfilter aus der URL; Ungültiges fällt still weg. `undefined` = keine
- * (Vorgabe „ab heute"); mit `range=alle` und ohne Zeitraum `{}` bzw. die
+ * (Vorgabe „ab heute“); mit `range=alle` und ohne Zeitraum `{}` bzw. die
  * übrigen Filter ohne Zeitraum.
  */
 export function filtersFromQuery(

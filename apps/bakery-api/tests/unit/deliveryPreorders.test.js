@@ -394,6 +394,27 @@ describe('normalizePickupPointInput', () => {
     expect(result.pickupPoint.weekday).toBe(6)
   })
 
+  test('lehnt Steuerzeichen in Name und Notiz ab, Notiz darf Zeilen umbrechen (W4-verify r3)', () => {
+    const bad = core.normalizePickupPointInput(
+      { name: 'Kindergarten M\u202eörsbach\u0000' },
+      KINDERGARTEN
+    )
+    expect(bad).toMatchObject({
+      error: 'Invalid text',
+      message: 'Der Name enthält unzulässige Steuerzeichen.',
+    })
+    expect(
+      core.normalizePickupPointInput({ notes: 'Hinweis\u0007' }, KINDERGARTEN)
+        .message
+    ).toBe('Die Notiz enthält unzulässige Steuerzeichen.')
+    expect(
+      core.normalizePickupPointInput(
+        { notes: 'Zeile 1\nZeile 2' },
+        KINDERGARTEN
+      ).error
+    ).toBeUndefined()
+  })
+
   test('loescht die Koordinaten, wenn die Adresse nachgetragen wird', () => {
     const gefunden = {
       ...KINDERGARTEN,

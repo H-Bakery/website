@@ -178,7 +178,7 @@ describe('Backstube-Tablet', () => {
     expect(mocked.fetchBackzettelDay).toHaveBeenLastCalledWith('2026-11-27')
   })
 
-  it('Entwurf: Banner „Noch nicht freigegeben", Zahlen da, kein Haken', async () => {
+  it('Entwurf: Banner „Noch nicht freigegeben“, Zahlen da, kein Haken', async () => {
     mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
     renderTablet()
     expect(await screen.findByTestId('bs-draft-banner')).toHaveTextContent(
@@ -316,6 +316,30 @@ describe('Backstube-Tablet', () => {
     ).toBeInTheDocument()
   })
 
+  it('Netz wieder da: das Neuladen ersetzt den alten Fehler durch den nächsten Schritt (W4-verify r3)', async () => {
+    mocked.setLineDone.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    const old =
+      'Nicht gespeichert: Keine Verbindung zum Server – bitte WLAN prüfen.'
+    expect(await screen.findByText(old)).toBeInTheDocument()
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(
+      await screen.findByText(
+        'Die Verbindung ist wieder da. Der letzte Haken wurde nicht gespeichert - bitte noch einmal abhaken.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(old)).not.toBeInTheDocument()
+  })
+
   it('die Meldung verschwindet, sobald ein Neuladen den Tag wieder freigegeben zeigt (W4-verify r2)', async () => {
     mocked.setLineDone.mockRejectedValue(
       apiError(409, 'not_confirmed', 'Der Backzettel ist nicht freigegeben.')
@@ -377,7 +401,7 @@ describe('Backstube-Tablet', () => {
     )
   })
 
-  it('Nachtrag: Badge an der Zeile und „Gesehen" quittiert', async () => {
+  it('Nachtrag: Badge an der Zeile und „Gesehen“ quittiert', async () => {
     mocked.acknowledgeDelta.mockResolvedValue({
       ...saturdayConfirmed().deltas[0],
       acknowledgedAt: '2026-11-28T03:05:00.000Z',
@@ -447,7 +471,7 @@ describe('Backstube-Tablet', () => {
     expect(badge).toHaveTextContent('Nachtrag +0,25 · 1 mehr backen')
     const extras = screen.getByTestId('delta-extras')
     expect(extras).toHaveTextContent('Nachträge seit der Freigabe')
-    expect(extras).toHaveTextContent('+1 × 500 g abwiegen')
+    expect(extras).toHaveTextContent('1 × 500 g zusätzlich abwiegen')
     expect(extras).toHaveTextContent('Testnussfüllung: +400 g')
   })
 
@@ -609,7 +633,7 @@ describe('Backstube-Tablet', () => {
       )
     })
 
-    it('12 Uhr: eine Wahl „Heute" vom Vormittag weicht dem nächsten Backtag', async () => {
+    it('12 Uhr: eine Wahl „Heute“ vom Vormittag weicht dem nächsten Backtag', async () => {
       jest.useFakeTimers()
       try {
         const clock = renderWithClock(at('2026-11-27', 11))
@@ -638,7 +662,7 @@ describe('Backstube-Tablet', () => {
       }
     })
 
-    it('Mitternacht: „Heute" vom Sonntag zeigt am Montag nicht den Ruhetag', async () => {
+    it('Mitternacht: „Heute“ vom Sonntag zeigt am Montag nicht den Ruhetag', async () => {
       jest.useFakeTimers()
       try {
         const clock = renderWithClock(at('2026-11-29', 15))
@@ -751,7 +775,7 @@ describe('Backstube-Tablet', () => {
     ).toHaveAttribute('href', `/admin/backzettel/${SAT}`)
   })
 
-  it('„Zur Verwaltung" nur mit persönlicher Sitzung, nicht an der Station', async () => {
+  it('„Zur Verwaltung“ nur mit persönlicher Sitzung, nicht an der Station', async () => {
     const { unmount } = renderTablet()
     await screen.findByTestId('bs-progress')
     expect(
@@ -768,7 +792,7 @@ describe('Backstube-Tablet', () => {
     ).toHaveAttribute('href', '/admin')
   })
 
-  it('Verkauf (nur lesen) bekommt weder Haken noch „Gesehen"', async () => {
+  it('Verkauf (nur lesen) bekommt weder Haken noch „Gesehen“', async () => {
     renderTablet({ role: 'verkauf' })
     await screen.findByTestId('bs-progress')
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)

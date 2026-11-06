@@ -121,7 +121,7 @@ describe('PreorderListClient (P3)', () => {
     })
   })
 
-  it('„Alle Tage" steht in der URL und überlebt das Neuladen', async () => {
+  it('„Alle Tage“ steht in der URL und überlebt das Neuladen', async () => {
     const user = userEvent.setup()
     const first = renderAs('verkauf')
     await screen.findByText('Erika Beispiel')
@@ -156,7 +156,7 @@ describe('PreorderListClient (P3)', () => {
     ).toBeNull()
   })
 
-  it('zeigt Fehler mit „Erneut versuchen"', async () => {
+  it('zeigt Fehler mit „Erneut versuchen“', async () => {
     mockList.mockRejectedValueOnce(new Error('Keine Verbindung zur API.'))
     renderAs('verkauf')
     expect(

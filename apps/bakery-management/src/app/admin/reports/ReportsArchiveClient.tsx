@@ -441,9 +441,9 @@ export default function ReportsArchiveClient({
         sx={{ display: 'block', mt: 2 }}
       >
         Umsatz = Summe aller Bons des Kassenabschlusses (Stornos negativ,
-        abgebrochene Belege nicht gezählt). Karte = Zahlungsart „Unbar" der
+        abgebrochene Belege nicht gezählt). Karte = Zahlungsart „Unbar“ der
         Kasse. Tage ohne Datei (Ruhetag, Betriebsferien, fehlender Export)
-        erscheinen als „kein Bericht", nicht als Umsatz 0.
+        erscheinen als „kein Bericht“, nicht als Umsatz 0.
       </Typography>
     </Box>
   )

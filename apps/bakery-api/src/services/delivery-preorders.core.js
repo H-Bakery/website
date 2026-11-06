@@ -68,6 +68,14 @@ const PICKUP_POINT_LIMITS = {
   notes: { max: 2000, label: 'Die Notizen dürfen' },
 }
 
+const PICKUP_POINT_TEXT_LABELS = {
+  name: 'Der Name',
+  street: 'Die Straße',
+  zip: 'Die PLZ',
+  city: 'Der Ort',
+  notes: 'Die Notiz',
+}
+
 /** Rundet auf ganze Cent - `3 * 4.1` ist in Fliesskomma nicht exakt `12.3`. */
 function roundCents(value) {
   const n = Number(value)
@@ -639,6 +647,22 @@ function normalizePickupPointInput(body, existing) {
       )
     }
   }
+  // Steuerzeichen (W4-Verifikation Runde 3): der Name steht auf der
+  // gedruckten Abholliste - ein RLO drehte ihn um. Notizen dürfen Zeilen
+  // umbrechen. Auch hier nur, was der Aufrufer schickt.
+  for (const key of Object.keys(PICKUP_POINT_LIMITS)) {
+    if (source[key] === undefined) continue
+    const bad =
+      key === 'notes'
+        ? NOTE_CONTROL_CHARS.test(texts[key])
+        : NAME_CONTROL_CHARS.test(texts[key])
+    if (bad) {
+      return fail(
+        'Invalid text',
+        `${PICKUP_POINT_TEXT_LABELS[key]} enthält unzulässige Steuerzeichen.`
+      )
+    }
+  }
 
   const pickupPoint = {
     ...base,
@@ -984,12 +1008,32 @@ function normalizeStatusChange(existing, body, options) {
       403
     )
   }
+  // Ebenso die Übergabe (W4-Verifikation Runde 3): eine abgeholte, oft schon
+  // bezahlte Bestellung darf der Fahrer nicht wieder auf „nicht abgeholt“
+  // oder „bereit“ setzen - sonst stünde kassiertes Geld bei einer Bestellung,
+  // die nie übergeben wurde. Zurücknehmen kann der Verkauf.
+  if (
+    Array.isArray(opts.allowedTargets) &&
+    base.status === 'abgeholt' &&
+    (status !== 'abgeholt' || notCollected === true)
+  ) {
+    return handoverUndoForbidden()
+  }
   const blocked = checkTransition(base.status, status)
   if (blocked) return blocked
 
   const changes = statusFields(base, status, notCollected, opts.now)
   if (source.paid !== undefined) changes.paid = source.paid
   return { changes }
+}
+
+/** 403, wenn der Fahrer eine Übergabe zurücknehmen will (auch über den Alias). */
+function handoverUndoForbidden() {
+  return fail(
+    'handover_undo_forbidden',
+    'Eine Übergabe zurücknehmen kann nur der Verkauf.',
+    403
+  )
 }
 
 function anonymizedError() {
@@ -1985,6 +2029,7 @@ module.exports = {
   summarizeDay,
   itemsTotal,
   paymentBalance,
+  handoverUndoForbidden,
   comparePickup,
   toLegacyStatus,
   fromLegacyStatus,

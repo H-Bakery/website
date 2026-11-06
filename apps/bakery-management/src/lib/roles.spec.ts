@@ -215,7 +215,7 @@ describe('Station (PIN-Sitzung)', () => {
     )
   })
 
-  it('blendet „Benutzer" an der Station aus der Navigation aus', () => {
+  it('blendet „Benutzer“ an der Station aus der Navigation aus', () => {
     const navHrefs = (kind: 'personal' | 'station' | null) =>
       hrefs(getNavigationForRole('inhaber', true, kind))
     expect(navHrefs('personal')).toContain('/admin/users')

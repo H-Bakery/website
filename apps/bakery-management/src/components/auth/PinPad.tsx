@@ -88,7 +88,7 @@ export default function PinPad({
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
           gap: 1.5,
         }}
       >
@@ -122,7 +122,17 @@ export default function PinPad({
         </Button>
         <Button
           variant="contained"
-          sx={{ ...keySx, fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
+          // W4-verify r3: „ANMELDEN“ in Versalien war breiter als die Taste
+          // (115 px Text in 112 px) - normal geschrieben, ohne Sperrung und mit
+          // schmalem Innenabstand passt es auch auf 320 px.
+          sx={{
+            ...keySx,
+            fontSize: { xs: '1.05rem', sm: '1.2rem' },
+            textTransform: 'none',
+            letterSpacing: 0,
+            minWidth: 0,
+            px: 0.5,
+          }}
           onClick={onSubmit}
           disabled={!canSubmit}
         >

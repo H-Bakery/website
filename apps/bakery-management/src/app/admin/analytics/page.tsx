@@ -314,7 +314,7 @@ export default function AnalyticsPage() {
             sx={{ display: 'block', mt: 2 }}
           >
             Quelle: Kassenberichte aus dem HQ-Archiv (Tagesabschlüsse). Karte =
-            Zahlungsart „Unbar" der Kasse. Einzelne Tage im{' '}
+            Zahlungsart „Unbar“ der Kasse. Einzelne Tage im{' '}
             <MuiLink component={Link} href="/admin/reports">
               Berichtsarchiv
             </MuiLink>

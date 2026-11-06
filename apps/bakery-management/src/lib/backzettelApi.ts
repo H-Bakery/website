@@ -73,7 +73,7 @@ export interface BackzettelLine {
   name: string
   section: string | null
   unit: BackzettelUnit
-  /** Füllung/Sorte; `null` = keine (bzw. „ohne Füllungsangabe"). */
+  /** Füllung/Sorte; `null` = keine (bzw. „ohne Füllungsangabe“). */
   variant: string | null
   base: number
   /** `true`: Grundmenge noch nicht festgelegt (≠ 0 = wird nicht gebacken). */
@@ -93,7 +93,7 @@ export interface BackzettelLine {
    * (nur Entwurf; dazu Warnung `correction_exceeds_line`).
    */
   correctionClamped?: boolean
-  /** Blechangabe, z. B. „Blech 7-9" (nur Anzeige). */
+  /** Blechangabe, z. B. „Blech 7-9“ (nur Anzeige). */
   tray: string | null
   plu: number[]
   /** Nur Liter-Posten mit `pieces_per_liter`. */

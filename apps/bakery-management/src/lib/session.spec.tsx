@@ -320,7 +320,7 @@ describe('SessionProvider', () => {
       }
     })
 
-    it('Inhaber per PIN: wer nach > 10 min Ruhe auf /backstube tippt, ist „unbeaufsichtigt" (W4-Fixup)', async () => {
+    it('Inhaber per PIN: wer nach > 10 min Ruhe auf /backstube tippt, ist „unbeaufsichtigt“ (W4-Fixup)', async () => {
       jest.useFakeTimers()
       try {
         await startStation(
@@ -356,7 +356,7 @@ describe('SessionProvider', () => {
       }
     })
 
-    it('Inhaber per PIN: ein Neuladen auf /backstube nach > 10 min Ruhe ist „unbeaufsichtigt" und bleibt es (W4-Verifikation)', async () => {
+    it('Inhaber per PIN: ein Neuladen auf /backstube nach > 10 min Ruhe ist „unbeaufsichtigt“ und bleibt es (W4-Verifikation)', async () => {
       window.history.replaceState({}, '', '/backstube')
       const pinAt = Date.now() - 30 * 60 * 1000
       saveSession(
@@ -397,7 +397,7 @@ describe('SessionProvider', () => {
       expect(loadUnattended(pinAt)).toBe(false)
     })
 
-    it('Inhaber per PIN: ein Neuladen auf /backstube nach kurzer Ruhe ist nicht „unbeaufsichtigt"', async () => {
+    it('Inhaber per PIN: ein Neuladen auf /backstube nach kurzer Ruhe ist nicht „unbeaufsichtigt“', async () => {
       window.history.replaceState({}, '', '/backstube')
       saveSession(
         stored({
@@ -414,7 +414,7 @@ describe('SessionProvider', () => {
       expect(screen.getByTestId('unattended')).toHaveTextContent('false')
     })
 
-    it('die Rolle Backstube wird nach langer Ruhe nicht „unbeaufsichtigt"', async () => {
+    it('die Rolle Backstube wird nach langer Ruhe nicht „unbeaufsichtigt“', async () => {
       jest.useFakeTimers()
       try {
         await startStation(BACKSTUBE, '/backstube')

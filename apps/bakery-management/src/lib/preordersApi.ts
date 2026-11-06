@@ -56,8 +56,8 @@ export function preorderListQuery(filters: PreorderListFilters = {}): string {
 
 /**
  * Query-String der Listen-*Seite*: wie `preorderListQuery`, ohne Zeitraum
- * aber mit `range=alle` - sonst läse `filtersFromQuery` „Alle Tage" nach dem
- * Neuladen als „keine Filter" und zeigte wieder „ab heute".
+ * aber mit `range=alle` - sonst läse `filtersFromQuery` „Alle Tage“ nach dem
+ * Neuladen als „keine Filter“ und zeigte wieder „ab heute“.
  */
 export function preorderPageQuery(filters: PreorderListFilters = {}): string {
   const query = preorderListQuery(filters)
@@ -171,7 +171,7 @@ export interface BulkStatusAnswer {
 }
 
 /**
- * Mehrere Bestellungen auf einmal umstellen (Abholliste: „alle bereit",
+ * Mehrere Bestellungen auf einmal umstellen (Abholliste: „alle bereit“,
  * Tagesabschluss) - **eine** Schreib-Transaktion auf dem Server, Ergebnis
  * je Bestellung. `versions` = `updatedAt` der geladenen Fassungen; wer
  * seither woanders geändert wurde, kommt als `conflict` zurück und bleibt

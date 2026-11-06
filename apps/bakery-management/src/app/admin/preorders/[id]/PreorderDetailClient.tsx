@@ -192,7 +192,7 @@ export default function PreorderDetailClient({
   }
 
   // Jede Aktion schickt die geladene Version mit: ein Klick auf veralteter
-  // Anzeige (z. B. „Doch nicht bezahlt", nachdem der Fahrer kassiert hat)
+  // Anzeige (z. B. „Doch nicht bezahlt“, nachdem der Fahrer kassiert hat)
   // wird abgelehnt statt still übernommen.
   const setStatus = (change: PreorderStatusChange, success: string) =>
     preorder &&
@@ -330,10 +330,22 @@ export default function PreorderDetailClient({
       {preorder.paid && (preorder.paymentBalance ?? 0) > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }} data-testid="payment-balance">
           Bereits bezahlt: {formatCurrency(preorder.paidAmount ?? 0)} - die
-          Bestellung kostet jetzt {formatCurrency(preorder.total)}. Bei der
-          Abholung noch{' '}
-          <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
-          kassieren.
+          Bestellung kostet jetzt {formatCurrency(preorder.total)}.{' '}
+          {preorder.status === 'abgeholt' ? (
+            // W4-verify r3: schon übergeben - „bei der Abholung“ ist vorbei.
+            <>
+              Ohne den Rest übergeben:{' '}
+              <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
+              stehen noch aus.
+              {canWrite ? ' Wenn das Geld da ist: „Rest kassiert“ tippen.' : ''}
+            </>
+          ) : (
+            <>
+              Bei der Abholung noch{' '}
+              <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
+              kassieren.
+            </>
+          )}
         </Alert>
       )}
       {preorder.paid && (preorder.paymentBalance ?? 0) < 0 && (
@@ -349,7 +361,11 @@ export default function PreorderDetailClient({
               )}. ${formatCurrency(
                 -(preorder.paymentBalance ?? 0)
               )} zurückgeben.`}{' '}
-          Danach „Erstattet“ tippen.
+          {canWrite
+            ? 'Danach „Erstattet“ tippen.'
+            : preorder.status === 'storniert'
+            ? 'Erfassen kann das der Verkauf.'
+            : 'Danach in der Abholliste „Erstattet“ tippen.'}
         </Alert>
       )}
 
@@ -362,7 +378,7 @@ export default function PreorderDetailClient({
       {preorder.status === 'abgeholt' && canWrite && (
         <Alert severity="info" sx={{ mb: 2 }}>
           Abgeholt - Positionen, Tag und Ort bleiben so stehen. Für eine
-          Korrektur zuerst auf „Offen" zurücksetzen.
+          Korrektur zuerst auf „Offen“ zurücksetzen.
         </Alert>
       )}
       {conflict && (
@@ -502,12 +518,12 @@ export default function PreorderDetailClient({
               variant="outlined"
               startIcon={<ReopenIcon />}
               onClick={() =>
-                setStatus({ status: 'offen' }, 'Wieder auf „Offen" gesetzt.')
+                setStatus({ status: 'offen' }, 'Wieder auf „Offen“ gesetzt.')
               }
               disabled={busy}
               sx={actionSx}
             >
-              Auf „Offen" zurück
+              Auf „Offen“ zurück
             </Button>
           )}
           {preorder.status === 'storniert' && (
@@ -698,7 +714,7 @@ export default function PreorderDetailClient({
         <DialogContent>
           <DialogContentText>
             {preorder.code} für {preorder.customerName} am{' '}
-            {formatDateWithWeekday(preorder.pickupDate)} wird wieder „Offen" und
+            {formatDateWithWeekday(preorder.pickupDate)} wird wieder „Offen“ und
             zählt dann wieder für die Backstube.
           </DialogContentText>
           {actionError && (

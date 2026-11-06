@@ -34,6 +34,7 @@ import {
   Refresh as RefreshIcon,
   Search as SearchIcon,
 } from '@mui/icons-material'
+import PaymentNote from '../../../components/preorders/PaymentNote'
 import PreorderStatusChip from '../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../lib/session'
 import {
@@ -67,7 +68,7 @@ import {
 const SEARCH_DELAY_MS = 300
 
 export interface PreorderListClientProps {
-  /** Aus der URL; `undefined` = Vorgabe „ab heute". */
+  /** Aus der URL; `undefined` = Vorgabe „ab heute“. */
   initialFilters?: PreorderListFilters
 }
 
@@ -503,11 +504,7 @@ export default function PreorderListClient({
                   </TableCell>
                   <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                     {formatCurrency(p.total)}
-                    {p.paid && (
-                      <Typography variant="body2" color="text.secondary">
-                        bezahlt
-                      </Typography>
-                    )}
+                    <PaymentNote preorder={p} />
                   </TableCell>
                   <TableCell>
                     <PreorderStatusChip preorder={p} />
@@ -572,7 +569,7 @@ export default function PreorderListClient({
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
                       {formatCurrency(p.total)}
-                      {p.paid ? ' · bezahlt' : ''}
+                      <PaymentNote preorder={p} inline />
                     </Typography>
                   </Stack>
                 </CardContent>

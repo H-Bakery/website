@@ -9,6 +9,9 @@ import {
   variantLabel,
   canWritePreorders,
   preorderPatch,
+  paymentRowText,
+  paymentState,
+  owesRefund,
   type PreorderInput,
 } from './preordersTypes'
 import { preorderListQuery, preorderPageQuery } from './preordersApi'
@@ -52,6 +55,28 @@ describe('Produktionstage', () => {
     expect(pickupPointDates({ weekday: 9 }, '2026-11-14', 1)).toEqual([])
     expect(jsWeekdayOf('2026-11-15')).toBe(0)
     expect(formatShortDate('2026-11-14')).toBe('Sa 14.11.')
+  })
+})
+
+describe('Zahlungsstand (W4-verify r3)', () => {
+  it('Rest, Erstattung, bezahlt, unbezahlt', () => {
+    const rest = preorder({ paid: true, paymentBalance: 36, total: 83 })
+    const refund = preorder({ paid: true, paymentBalance: -36, total: 47 })
+    const cancelled = preorder({
+      status: 'storniert',
+      paid: true,
+      paymentBalance: -9,
+    })
+    expect(paymentState(rest)).toEqual({ kind: 'rest', amount: 36 })
+    expect(paymentState(refund)).toEqual({ kind: 'refund', amount: 36 })
+    expect(owesRefund(cancelled)).toBe(true)
+    expect(owesRefund(rest)).toBe(false)
+    expect(paymentRowText(rest)).toMatch(/^bezahlt · Rest 36,00\s€ offen$/)
+    expect(paymentRowText(refund)).toMatch(/^bezahlt · 36,00\s€ erstatten$/)
+    expect(paymentRowText(preorder({ paid: true, paymentBalance: 0 }))).toBe(
+      'bezahlt'
+    )
+    expect(paymentRowText(preorder({ paid: false }))).toBe('')
   })
 })
 
@@ -106,7 +131,7 @@ describe('Listenfilter', () => {
     expect(preorderListQuery({ q: '  ' })).toBe('')
   })
 
-  it('„Alle Tage" überlebt den Weg über die URL', () => {
+  it('„Alle Tage“ überlebt den Weg über die URL', () => {
     expect(preorderPageQuery({})).toBe('range=alle')
     expect(preorderPageQuery({ status: ['offen'] })).toBe(
       'status=offen&range=alle'

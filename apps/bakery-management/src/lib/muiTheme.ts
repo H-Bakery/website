@@ -1,4 +1,5 @@
 import { createTheme, type Theme } from '@mui/material/styles'
+import { deDE } from '@mui/material/locale'
 
 /**
  * Touch-Geräte (Handy, Laden-Tablet, Backstube) und schmale Fenster: Knöpfe
@@ -31,50 +32,56 @@ export const TOUCH_LINK_STYLE = {
  *
  * `primary`, Hintergründe und Papier bleiben MUI-Standard - `pwa.spec.ts`
  * rechnet die Statusleistenfarben daraus nach.
+ *
+ * Sprache: MUI-Locale `deDE` - sonst heißt das X einer Meldung „Close“
+ * (W4-Verifikation Runde 3), ebenso Autocomplete und Tabellen-Blättern.
  */
 export function createManagementTheme(mode: 'light' | 'dark'): Theme {
-  return createTheme({
-    palette: {
-      mode,
-      contrastThreshold: 4.5,
-      ...(mode === 'light'
-        ? {
-            warning: { main: '#a14a00' },
-            info: { main: '#0277bd' },
-          }
-        : {}),
-    },
-    components: {
-      MuiButton: {
-        styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
+  return createTheme(
+    {
+      palette: {
+        mode,
+        contrastThreshold: 4.5,
+        ...(mode === 'light'
+          ? {
+              warning: { main: '#a14a00' },
+              info: { main: '#0277bd' },
+            }
+          : {}),
       },
-      MuiIconButton: {
-        styleOverrides: {
-          root: { [TOUCH_MEDIA]: { minWidth: 44, minHeight: 44 } },
+      components: {
+        MuiButton: {
+          styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
         },
-      },
-      MuiToggleButton: {
-        styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
-      },
-      // W4-verify r2: auch Eingabefelder (Datum, Ort, Suche - `size="small"`
-      // waren 40 px) und Schalter (38 px) auf dem Handy mindestens 44 px.
-      MuiInputBase: {
-        styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
-      },
-      MuiSwitch: {
-        styleOverrides: {
-          root: {
-            [TOUCH_MEDIA]: {
-              '&.MuiSwitch-sizeMedium': {
-                width: 64,
-                height: 44,
-                padding: 15,
-                '& .MuiSwitch-switchBase': { padding: 12 },
+        MuiIconButton: {
+          styleOverrides: {
+            root: { [TOUCH_MEDIA]: { minWidth: 44, minHeight: 44 } },
+          },
+        },
+        MuiToggleButton: {
+          styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
+        },
+        // W4-verify r2: auch Eingabefelder (Datum, Ort, Suche - `size="small"`
+        // waren 40 px) und Schalter (38 px) auf dem Handy mindestens 44 px.
+        MuiInputBase: {
+          styleOverrides: { root: { [TOUCH_MEDIA]: { minHeight: 44 } } },
+        },
+        MuiSwitch: {
+          styleOverrides: {
+            root: {
+              [TOUCH_MEDIA]: {
+                '&.MuiSwitch-sizeMedium': {
+                  width: 64,
+                  height: 44,
+                  padding: 15,
+                  '& .MuiSwitch-switchBase': { padding: 12 },
+                },
               },
             },
           },
         },
       },
     },
-  })
+    deDE
+  )
 }

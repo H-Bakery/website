@@ -4,7 +4,9 @@ import {
   fetchBackzettelConfig,
   fetchReference,
   groupBySection,
+  inputProblem,
   isPerVariant,
+  labelledMessage,
   parseInput,
   referenceFor,
   saveGrundmenge,
@@ -98,6 +100,20 @@ describe('Zellen lesen', () => {
     expect(parseInput('12')).toBe(12)
     expect(parseInput('-1')).toBeNaN()
     expect(parseInput('viel')).toBeNaN()
+  })
+
+  it('Meldung: negativ ist keine erlaubte Menge, Feldname nicht doppelt (W4-verify r3)', () => {
+    expect(inputProblem('-5')).toMatch(/^Keine negativen Mengen/)
+    expect(inputProblem('viel')).toMatch(/^Bitte eine Zahl eingeben/)
+    expect(
+      labelledMessage(
+        'Kornbrot, Freitag',
+        'Kornbrot, Freitag: 99999 ist unplausibel groß (höchstens 10000).'
+      )
+    ).toBe('Kornbrot, Freitag: 99999 ist unplausibel groß (höchstens 10000).')
+    expect(labelledMessage('Kornbrot, Freitag', 'Keine Verbindung.')).toBe(
+      'Kornbrot, Freitag: Keine Verbindung.'
+    )
   })
 
   it('Abschnitte in der Reihenfolge der Config, Sortenname aus fillings', () => {

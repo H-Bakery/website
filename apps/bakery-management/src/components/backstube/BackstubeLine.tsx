@@ -18,7 +18,7 @@ import {
 } from '../../lib/backzettelFormat'
 import { useBackstubeColors } from './backstubeColors'
 
-/** Zusammensetzung in Kurzform, nur Bestandteile ≠ 0: „Basis 60 · CAP 10 · Korr. −5". */
+/** Zusammensetzung in Kurzform, nur Bestandteile ≠ 0: „Basis 60 · CAP 10 · Korr. −5“. */
 export function lineBreakdown(line: BackzettelLine): string {
   const parts: string[] = []
   parts.push(

@@ -165,7 +165,7 @@ export const backzettelPrintStyles = (
 )
 
 /**
- * Kürzel für die schmale Haken-Spalte („Bernd Backstube" → „BB"); ein
+ * Kürzel für die schmale Haken-Spalte („Bernd Backstube“ → „BB“); ein
  * ausgeschriebener Name lief über den rechten Rand (W4-verify r2).
  */
 export function initials(name: string): string {

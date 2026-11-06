@@ -289,7 +289,11 @@ describe('GET /api/backzettel/:date (draft)', () => {
       total: 59,
       doneAt: null,
     })
-    expect(line(d, 'plunder').tray).toBe('3 Bleche à 10 (Bleche 7, 8, 9)')
+    // W4-verify r3: trays follow the line total, not the YAML count
+    expect(line(d, 'plunder')).toMatchObject({
+      total: 10,
+      tray: '1 Blech à 10 (Blech 7)',
+    })
     expect(d.prep.map((p: any) => p.id)).toEqual(['sauerteig', 'wagen'])
     expect(await BackzettelDay.count()).toBe(0)
   })
@@ -855,6 +859,44 @@ describe('re-confirm and the frozen snapshot', () => {
         doneAt: expect.any(String),
       }),
     ])
+  })
+
+  it('a re-confirm that lowers a ticked line keeps the tick (W4-verify r3)', async () => {
+    // WED2 is confirmed by the test above (weck unticked again)
+    const first = await as('backstube').get(`/api/backzettel/${WED2}`)
+    expect(first.body.data.status).toBe('confirmed')
+    const weck = line(first.body.data, 'weck')
+    if (!weck.doneAt) {
+      expect(
+        (
+          await as('backstube').post(
+            `/api/backzettel/${WED2}/lines/${weck.id}/done`
+          )
+        ).status
+      ).toBe(200)
+    }
+    await as('inhaber').post(`/api/backzettel/${WED2}/reopen`)
+    const lowered = await as('backstube')
+      .put(`/api/backzettel/${WED2}/lines/weck/correction`)
+      .send({ correction: -2, reason: 'Markt zu' })
+    expect(lowered.status).toBe(200)
+    const draftWeck = line(lowered.body.data, 'weck')
+    expect(draftWeck.total).toBeLessThan(weck.total)
+    expect(draftWeck.doneAt).toEqual(expect.any(String))
+    const again = await as('backstube').post(`/api/backzettel/${WED2}/confirm`)
+    expect(again.status).toBe(200)
+    expect(line(again.body.data, 'weck')).toMatchObject({
+      id: weck.id,
+      total: draftWeck.total,
+      doneAt: expect.any(String),
+      previouslyDone: null,
+    })
+    const confirms = await AuditLog.findAll({
+      where: { entity: 'backzettel_day', entityId: WED2, action: 'confirm' },
+      order: [['id', 'DESC']],
+      limit: 1,
+    })
+    expect((confirms[0].data as any).clearedTicks).toEqual([])
   })
 
   it('Hefeteig, fillings, prep and warnings stay as confirmed when the YAML changes', async () => {

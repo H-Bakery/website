@@ -541,6 +541,21 @@ function createDeliveriesRouter(service: PreordersService): Router {
         if (!current.pickupPointId) {
           return { ok: false, ...LEGACY_NOT_FOUND }
         }
+        // W4-verify r3: the Fahrer never takes a handover back (same rule
+        // as `POST /:id/status`); checked inside the write transaction.
+        if (
+          req.user?.role === 'fahrer' &&
+          current.status === 'abgeholt' &&
+          body['status'] !== 'handed_over'
+        ) {
+          const refused = core.handoverUndoForbidden()
+          return {
+            ok: false,
+            status: refused.status,
+            error: refused.error,
+            message: refused.message,
+          }
+        }
         if (body['status'] !== undefined) {
           const blocked = core.checkStatusTransition(
             core.toLegacyStatus(current),

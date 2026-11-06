@@ -80,6 +80,8 @@ import {
   isBusinessDate,
   isProductionDay,
   itemName,
+  owesRefund,
+  paymentState,
   toBusinessDate,
   type PickupPoint,
   type Preorder,
@@ -222,12 +224,12 @@ function Tile({
 }
 
 /** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
-/** „Übergabe", „Zahlung" … - für die Meldung über eine verlorene Aktion. */
+/** „Übergabe“, „Zahlung“ … - für die Meldung über eine verlorene Aktion. */
 function describeChange(change: PreorderStatusChange): string {
   if (change.status === 'abgeholt') {
     return change.paid ? 'Die Übergabe mit Zahlung' : 'Die Übergabe'
   }
-  if (change.notCollected) return '„Nicht abgeholt"'
+  if (change.notCollected) return '„Nicht abgeholt“'
   if (change.paid !== undefined && change.status === undefined) {
     return 'Die Zahlung'
   }
@@ -243,15 +245,38 @@ function handedOverUnpaidNote(
     : null
 }
 
+/** „1 Bestellung“ / „2 Bestellungen“ bezahlt und storniert oder billiger. */
+function refundNote(
+  summary: { refundCount?: number } | null | undefined
+): string | null {
+  const n = summary?.refundCount ?? 0
+  if (n <= 0) return null
+  return `${n} ${n === 1 ? 'Bestellung' : 'Bestellungen'} - Geld zurückgeben`
+}
+
 function PaidChip({ preorder }: { preorder: Preorder }) {
-  if (owesRest(preorder)) {
+  const payment = paymentState(preorder)
+  if (payment.kind === 'rest') {
     return (
       <Chip
         size="small"
         color="warning"
         variant="outlined"
-        label={`Rest ${formatCurrency(preorder.paymentBalance ?? 0)} offen`}
+        label={`Rest ${formatCurrency(payment.amount)} offen`}
         data-paid="rest"
+      />
+    )
+  }
+  // W4-Verifikation Runde 3: zu viel bezahlt (billiger geworden oder
+  // storniert) - sonst stünde hier „Bezahlt“ und das Geld bliebe im Laden.
+  if (payment.kind === 'refund') {
+    return (
+      <Chip
+        size="small"
+        color="warning"
+        variant="outlined"
+        label={`Erstattung ${formatCurrency(payment.amount)} offen`}
+        data-paid="erstattung"
       />
     )
   }
@@ -271,6 +296,24 @@ function PaidChip({ preorder }: { preorder: Preorder }) {
       data-paid="nein"
     />
   )
+}
+
+/** Spalte „Bezahlt“ des Ausdrucks: Rest und Erstattung mit Betrag. */
+function printPaidText(preorder: Preorder): string {
+  const payment = paymentState(preorder)
+  if (payment.kind === 'rest') return `☐ Rest ${formatCurrency(payment.amount)}`
+  if (payment.kind === 'refund') {
+    return `☐ ${formatCurrency(payment.amount)} zurück`
+  }
+  return payment.kind === 'paid' ? '☑ ja' : '☐'
+}
+
+/** Ein Tipp ohne Antwort - offen, bis die Liste wieder lädt. */
+interface UncertainAction {
+  id: number
+  code: string
+  change: PreorderStatusChange
+  text: string
 }
 
 interface Toast {
@@ -306,7 +349,7 @@ export interface AbholListeClientProps {
 /**
  * P2: Abholliste je Tag und Abholort. An der Theke (Tablet) und an der
  * Sammelstelle (Fahrer): großer Haken bei der Übergabe, bezahlt ja/nein,
- * „bereit" beim Packen, am Tagesende „nicht abgeholt". Jede Schreibaktion
+ * „bereit“ beim Packen, am Tagesende „nicht abgeholt“. Jede Schreibaktion
  * schickt den geladenen `updatedAt` mit - hat ein anderes Gerät die
  * Bestellung inzwischen geändert, lädt die Liste neu statt zu überschreiben.
  */
@@ -417,12 +460,15 @@ export default function AbholListeClient({
    * zurückkommt - löst ihn auf, statt die rote Meldung stehen zu lassen
    * (W4-Verifikation Runde 2).
    */
-  const uncertainRef = useRef<{
-    id: number
-    code: string
-    change: PreorderStatusChange
-    text: string
-  } | null>(null)
+  /*
+   * W4-Verifikation Runde 3: mehrere Tipps hintereinander im Funkloch - jeder
+   * bleibt offen, bis die Liste wieder lädt, und jeder bekommt sein Ergebnis
+   * („gespeichert“ oder „NICHT gespeichert“). Vorher hielt die Seite nur den
+   * letzten, und der erste verschwand ohne Meldung.
+   */
+  const uncertainRef = useRef<UncertainAction[]>([])
+  /** Offene und nicht gespeicherte Tipps - bleiben stehen bis „Schließen“. */
+  const [openActions, setOpenActions] = useState<string[]>([])
   /**
    * Lädt den Tag. `silent`: ohne Ladeanzeige und **ohne die Liste zu
    * leeren** - scheitert es, bleibt der letzte Stand stehen und ein Hinweis
@@ -444,22 +490,52 @@ export default function AbholListeClient({
         setLoadError(null)
         setStaleNotice(null)
         const open = uncertainRef.current
-        if (open) {
-          uncertainRef.current = null
-          const fresh = next.preorders.find((p) => p.id === open.id)
-          setActionError((current) => (current === open.text ? null : current))
-          if (fresh && changeAlreadyApplied(fresh, open.change)) {
+        if (open.length > 0) {
+          uncertainRef.current = []
+          const saved: string[] = []
+          const lost: string[] = []
+          for (const action of open) {
+            const fresh = next.preorders.find((p) => p.id === action.id)
+            if (fresh && changeAlreadyApplied(fresh, action.change)) {
+              saved.push(action.code)
+            } else if (fresh) {
+              lost.push(action.code)
+            }
+          }
+          const openTexts = new Set(open.map((a) => a.text))
+          const lostTexts = lost.map(
+            (code) =>
+              `${code}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
+          )
+          setOpenActions((current) => [
+            ...current.filter((text) => !openTexts.has(text)),
+            ...lostTexts,
+          ])
+          const savedText =
+            saved.length > 0
+              ? `${saved.join(
+                  ', '
+                )}: Die Verbindung ist wieder da - gespeichert ist es.`
+              : ''
+          if (lost.length > 0) {
             setToast({
-              text: `${open.code}: Die Verbindung ist wieder da - gespeichert ist es.`,
-              severity: 'success',
+              text: [
+                lost.length === 1
+                  ? lostTexts[0]
+                  : `${lost.join(
+                      ', '
+                    )}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`,
+                savedText,
+              ]
+                .filter(Boolean)
+                .join(' '),
+              severity: 'error',
             })
-          } else if (fresh) {
-            const text = `${open.code}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
-            setActionError(text)
-            setToast({ text, severity: 'error' })
+          } else if (saved.length > 0) {
+            setToast({ text: savedText, severity: 'success' })
           } else {
             setToast((current) =>
-              current?.text === open.text ? null : current
+              current && openTexts.has(current.text) ? null : current
             )
           }
         }
@@ -509,7 +585,7 @@ export default function AbholListeClient({
     load()
   }, [load])
 
-  // URL mitführen: Neuladen und „Zurück" landen auf demselben Tag und Ort.
+  // URL mitführen: Neuladen und „Zurück“ landen auf demselben Tag und Ort.
   useEffect(() => {
     if (!isBusinessDate(date) || !place) return
     router.replace(abhollisteHref(date, place), { scroll: false })
@@ -520,8 +596,8 @@ export default function AbholListeClient({
   quietRef.current =
     busyId === null && handover === null && menu === null && bulk === null
   // Der Geschäftstag rollt mit: ein Tablet, das über Nacht offen bleibt,
-  // bietet sonst am nächsten Morgen den Tagesabschluss für „gestern" nicht
-  // an bzw. „nicht abgeholt" für den Abholtag nicht (W4).
+  // bietet sonst am nächsten Morgen den Tagesabschluss für „gestern“ nicht
+  // an bzw. „nicht abgeholt“ für den Abholtag nicht (W4).
   useEffect(() => {
     const refresh = () => {
       setToday(toBusinessDate(new Date()))
@@ -562,7 +638,7 @@ export default function AbholListeClient({
     )
   }
 
-  /** Satz nach einem Konflikt - „neu geladen" nur, wenn es auch stimmt. */
+  /** Satz nach einem Konflikt - „neu geladen“ nur, wenn es auch stimmt. */
   const afterReload = (reloaded: boolean) =>
     reloaded
       ? 'Die Liste ist neu geladen.'
@@ -596,7 +672,7 @@ export default function AbholListeClient({
       fresh.status === 'abgeholt' &&
       !fresh.paid
     ) {
-      const text = `${preorder.code}: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt" tippen.`
+      const text = `${preorder.code}: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt“ tippen.`
       setConflict(text)
       setActionError(text)
       setToast({ text, severity: 'warning' })
@@ -625,6 +701,13 @@ export default function AbholListeClient({
         preorder.updatedAt
       )
       if (updated) replaceLocal(updated)
+      // Ein erneuter Tipp hat geklappt: die alte „unklar“-Meldung ist erledigt.
+      uncertainRef.current = uncertainRef.current.filter(
+        (a) => a.id !== preorder.id
+      )
+      setOpenActions((current) =>
+        current.filter((t) => !t.startsWith(`${preorder.code}: `))
+      )
       setToast({
         text,
         undo:
@@ -674,15 +757,26 @@ export default function AbholListeClient({
               reloaded
             )}`
             if (!reloaded) {
-              uncertainRef.current = {
-                id: preorder.id,
-                code: preorder.code,
-                change,
+              uncertainRef.current = [
+                ...uncertainRef.current.filter((a) => a.id !== preorder.id),
+                { id: preorder.id, code: preorder.code, change, text },
+              ]
+              setOpenActions((current) => [
+                ...current.filter((t) => !t.startsWith(`${preorder.code}: `)),
                 text,
-              }
+              ])
+              const pending = uncertainRef.current.length
+              setToast({
+                text:
+                  pending > 1
+                    ? `${text} (${pending} Tipps noch unklar - siehe oben.)`
+                    : text,
+                severity: 'error',
+              })
+            } else {
+              setActionError(text)
+              setToast({ text, severity: 'error' })
             }
-            setActionError(text)
-            setToast({ text, severity: 'error' })
           }
         }
       }
@@ -691,7 +785,7 @@ export default function AbholListeClient({
     }
   }
 
-  /** Vorheriger Stand - für „Rückgängig" nach dem Abhaken. */
+  /** Vorheriger Stand - für „Rückgängig“ nach dem Abhaken. */
   const previousOf = (p: Preorder): PreorderStatusChange => ({
     status: p.status,
     paid: p.paid,
@@ -702,21 +796,40 @@ export default function AbholListeClient({
     setHandover(null)
     const change: PreorderStatusChange = { status: 'abgeholt' }
     if (paid !== undefined) change.paid = paid
+    const payment = paymentState(preorder)
+    const what =
+      paid !== true
+        ? ''
+        : payment.kind === 'refund'
+        ? `, ${formatCurrency(payment.amount)} erstattet`
+        : payment.kind === 'rest'
+        ? ', Rest kassiert'
+        : ' und bezahlt'
     act(
       preorder,
       change,
-      `${preorder.customerName ?? preorder.code} übergeben${
-        paid === true ? ' und bezahlt' : ''
-      }.`,
+      `${preorder.customerName ?? preorder.code} übergeben${what}.`,
       canWrite ? previousOf(preorder) : undefined
     )
   }
 
   const startHandover = (preorder: Preorder) => {
-    // Bezahlt und Verkauf: ein Tipp genügt (Rückgängig im Hinweis). Sonst
-    // fragen - nach dem Geld, und Fahrer können nicht zurücknehmen.
-    if (preorder.paid && !owesRest(preorder) && canWrite) handOver(preorder)
+    // Bezahlt, Betrag stimmt, Verkauf: ein Tipp genügt (Rückgängig im
+    // Hinweis). Sonst fragen - nach dem Geld (auch nach einer Erstattung,
+    // W4-Verifikation Runde 3), und Fahrer können nicht zurücknehmen.
+    if (paymentState(preorder).kind === 'paid' && canWrite) handOver(preorder)
     else setHandover(preorder)
+  }
+
+  /** „Erstattet“: storniert → nicht mehr bezahlt, sonst Betrag stimmt wieder. */
+  const markRefunded = (preorder: Preorder) => {
+    const payment = paymentState(preorder)
+    const name = preorder.customerName ?? preorder.code
+    act(
+      preorder,
+      { paid: preorder.status !== 'storniert' },
+      `${name}: ${formatCurrency(payment.amount)} erstattet.`
+    )
   }
 
   /**
@@ -792,13 +905,25 @@ export default function AbholListeClient({
       groupPreorders(visible, effectiveSort, { window: point?.window ?? null }),
     [visible, effectiveSort, point]
   )
-  const printGroups = useMemo(
-    () =>
-      groupPreorders(preorders, effectiveSort, {
-        window: point?.window ?? null,
-      }).filter((g) => g.key !== CANCELLED_GROUP),
-    [preorders, effectiveSort, point]
+  // Stornierte stehen nicht auf dem Blatt - außer schon bezahlte: deren Geld
+  // muss zurück, und das Blatt ist der Ersatz bei Ausfall (W4-verify r3).
+  const printRefundCancelled = useMemo(
+    () => preorders.filter((p) => p.status === 'storniert' && owesRefund(p)),
+    [preorders]
   )
+  const printGroups = useMemo(() => {
+    const groups = groupPreorders(preorders, effectiveSort, {
+      window: point?.window ?? null,
+    }).filter((g) => g.key !== CANCELLED_GROUP)
+    if (printRefundCancelled.length > 0) {
+      groups.push({
+        key: CANCELLED_GROUP,
+        label: 'Storniert - Geld zurückgeben',
+        preorders: printRefundCancelled,
+      })
+    }
+    return groups
+  }, [preorders, effectiveSort, point, printRefundCancelled])
   const waiting = preorders.filter((p) => isWaiting(p) && !p.anonymizedAt)
   const toReady = preorders.filter(
     (p) => p.status === 'offen' && !p.anonymizedAt
@@ -808,6 +933,7 @@ export default function AbholListeClient({
     (p) => p.status === 'storniert'
   ).length
   const summary = day?.summary
+  const refundTotal = summary?.refundTotal ?? 0
   const weekdayNotice = wrongWeekdayNotice(date, point)
   const title = `Abholliste ${placeLabel(place, points)}`
   const dateLabel = isBusinessDate(date) ? formatDateWithWeekday(date) : ''
@@ -944,7 +1070,7 @@ export default function AbholListeClient({
               <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
                 {formatCurrency(p.total)}
               </Typography>
-              {!cancelled && <PaidChip preorder={p} />}
+              {(!cancelled || p.paid) && <PaidChip preorder={p} />}
               <PreorderStatusChip preorder={p} />
             </Stack>
             {done && (
@@ -958,13 +1084,39 @@ export default function AbholListeClient({
                   : ''}
               </Typography>
             )}
+            {cancelled && owesRefund(p) && (
+              <Typography
+                variant="body2"
+                sx={{ textAlign: { md: 'right' } }}
+                data-testid="refund-hint"
+              >
+                Storniert, aber bezahlt:{' '}
+                <strong>{formatCurrency(paymentState(p).amount)}</strong>{' '}
+                zurückgeben.
+                {actions.markRefunded ? '' : ' Erfassen kann das der Verkauf.'}
+              </Typography>
+            )}
+            {cancelled && actions.markRefunded && (
+              <Button
+                variant="outlined"
+                color="warning"
+                size="large"
+                startIcon={<PaidIcon />}
+                onClick={() => markRefunded(p)}
+                disabled={busy}
+                aria-label={`${name}: Erstattung erfasst`}
+                sx={{ minHeight: 56, alignSelf: { md: 'flex-end' } }}
+              >
+                Erstattet
+              </Button>
+            )}
             {!cancelled && (
               <Stack
                 direction="row"
                 spacing={1}
                 justifyContent={{ xs: 'stretch', md: 'flex-end' }}
                 // Auf 320 px passen drei Knöpfe nicht nebeneinander - dann
-                // rutscht „⋮" in die nächste Zeile statt aus dem Bild.
+                // rutscht „⋮“ in die nächste Zeile statt aus dem Bild.
                 flexWrap="wrap"
                 useFlexGap
               >
@@ -1021,6 +1173,28 @@ export default function AbholListeClient({
                     Bezahlt
                   </Button>
                 )}
+                {actions.markRefunded && (
+                  <Button
+                    variant="outlined"
+                    color="warning"
+                    size="large"
+                    startIcon={<PaidIcon />}
+                    onClick={() => markRefunded(p)}
+                    disabled={busy}
+                    aria-label={`${name}: Erstattung erfasst`}
+                    sx={{
+                      minHeight: 56,
+                      flex: { xs: '1 1 120px', md: 'none' },
+                      minWidth: 0,
+                      px: { xs: 1.5, sm: 2.75 },
+                      '& .MuiButton-startIcon': {
+                        display: { xs: 'none', sm: 'inherit' },
+                      },
+                    }}
+                  >
+                    Erstattet
+                  </Button>
+                )}
                 {
                   <Tooltip title="Weitere Aktionen">
                     <span>
@@ -1051,6 +1225,7 @@ export default function AbholListeClient({
     )
   }
 
+  const handoverPayment = handover ? paymentState(handover) : null
   const menuPreorder = menu?.preorder ?? null
   const menuActions = menuPreorder
     ? abholActions(menuPreorder, role, today)
@@ -1292,6 +1467,20 @@ export default function AbholListeClient({
             ))}
           </Alert>
         )}
+        {openActions.length > 0 && (
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            data-testid="open-actions"
+            onClose={() => setOpenActions([])}
+          >
+            {openActions.map((text) => (
+              <Box key={text} component="span" sx={{ display: 'block' }}>
+                {text}
+              </Box>
+            ))}
+          </Alert>
+        )}
         {actionError && (
           <Alert
             severity="error"
@@ -1341,7 +1530,7 @@ export default function AbholListeClient({
               gridTemplateColumns: {
                 xs: 'repeat(2, minmax(0, 1fr))',
                 sm: 'repeat(3, minmax(0, 1fr))',
-                lg: 'repeat(5, minmax(0, 1fr))',
+                lg: `repeat(${refundTotal > 0 ? 6 : 5}, minmax(0, 1fr))`,
               },
               gap: 1.5,
               mb: 2,
@@ -1359,6 +1548,13 @@ export default function AbholListeClient({
               value={formatCurrency(summary.unpaidTotal)}
               note={handedOverUnpaidNote(summary)}
             />
+            {refundTotal > 0 && (
+              <Tile
+                label="Zu erstatten"
+                value={formatCurrency(refundTotal)}
+                note={refundNote(summary)}
+              />
+            )}
           </Box>
         )}
 
@@ -1471,8 +1667,20 @@ export default function AbholListeClient({
 
         {day && cancelledCount > 0 && (
           <Typography variant="caption" color="text.secondary">
-            Stornierte stehen nicht auf dem Ausdruck und zählen in keiner Summe.
+            Stornierte stehen nicht auf dem Ausdruck und zählen in keiner Summe
+            - außer schon bezahlte: die stehen unter „Zu erstatten“.
           </Typography>
+        )}
+        {/* W4-Verifikation Runde 3: die Meldung unten (Fehler bleiben stehen)
+            lag am Handy über den Knöpfen der letzten Bestellung. Solange sie
+            offen ist, lässt sich die Liste so weit schieben, dass die letzte
+            Karte darüber steht. */}
+        {toast && (
+          <Box
+            aria-hidden="true"
+            data-testid="toast-spacer"
+            sx={{ height: { xs: 280, md: 140 } }}
+          />
         )}
       </Box>
 
@@ -1492,8 +1700,13 @@ export default function AbholListeClient({
             {handedOverUnpaidNote(summary)
               ? ` (${handedOverUnpaidNote(summary)})`
               : ''}
-            {cancelledCount > 0
-              ? ` · ${cancelledCount} storniert (nicht aufgeführt)`
+            {refundTotal > 0
+              ? ` · zu erstatten ${formatCurrency(refundTotal)}`
+              : ''}
+            {cancelledCount - printRefundCancelled.length > 0
+              ? ` · ${
+                  cancelledCount - printRefundCancelled.length
+                } storniert (nicht aufgeführt)`
               : ''}
             {printedAt ? ` · Stand ${printedAt} Uhr` : ''}
           </p>
@@ -1515,7 +1728,8 @@ export default function AbholListeClient({
             <tbody>
               {printGroups.map((group) => (
                 <React.Fragment key={group.key}>
-                  {printGroups.length > 1 && (
+                  {(printGroups.length > 1 ||
+                    group.key === CANCELLED_GROUP) && (
                     <tr className="group">
                       <td colSpan={8}>
                         {group.label} ({group.preorders.length})
@@ -1525,7 +1739,11 @@ export default function AbholListeClient({
                   {group.preorders.map((p) => (
                     <tr key={p.id}>
                       <td className="tick">
-                        {p.status === 'abgeholt' ? '☑' : '☐'}
+                        {p.status === 'storniert'
+                          ? '–'
+                          : p.status === 'abgeholt'
+                          ? '☑'
+                          : '☐'}
                       </td>
                       <td className="code">{p.code}</td>
                       <td>
@@ -1556,11 +1774,11 @@ export default function AbholListeClient({
                       <td className="num">{formatCurrency(p.total)}</td>
                       {/* Zum Ankreuzen auf Papier (Kurzanleitung Fahrer):
                           offen ☐, schon bezahlt ☑. */}
-                      <td className="paid">{p.paid ? '☑ ja' : '☐'}</td>
+                      <td className="paid">{printPaidText(p)}</td>
                       <td className="tick">
                         {p.notCollected
                           ? '☑'
-                          : p.status === 'abgeholt'
+                          : p.status === 'abgeholt' || p.status === 'storniert'
                           ? ''
                           : '☐'}
                       </td>
@@ -1572,7 +1790,8 @@ export default function AbholListeClient({
             </tbody>
           </table>
           <p className="legend">
-            Ankreuzen: ✓ = übergeben, Bezahlt ☐ = Geld erhalten, n. a. = nicht
+            Ankreuzen: ✓ = übergeben, Bezahlt ☐ = Geld erhalten (bei „Rest“ nur
+            der Rest, bei „zurück“ = Geld zurückgegeben), n. a. = nicht
             abgeholt.
           </p>
         </Box>
@@ -1718,24 +1937,36 @@ export default function AbholListeClient({
               </DialogContentText>
               <Alert
                 severity={
-                  owesRest(handover)
+                  handoverPayment?.kind === 'rest' ||
+                  handoverPayment?.kind === 'refund'
                     ? 'warning'
                     : handover.paid
                     ? 'success'
                     : 'info'
                 }
                 sx={{ mt: 2 }}
+                data-testid="handover-payment"
               >
-                {owesRest(handover)
+                {handoverPayment?.kind === 'rest'
                   ? `Bezahlt waren ${formatCurrency(
                       handover.paidAmount ?? 0
                     )}, die Bestellung kostet jetzt ${formatCurrency(
                       handover.total
                     )}: noch ${formatCurrency(
-                      handover.paymentBalance ?? 0
+                      handoverPayment.amount
                     )} kassieren.`
+                  : handoverPayment?.kind === 'refund'
+                  ? `Bezahlt waren ${formatCurrency(
+                      handover.paidAmount ?? 0
+                    )}, die Bestellung kostet jetzt nur ${formatCurrency(
+                      handover.total
+                    )}: ${formatCurrency(
+                      handoverPayment.amount
+                    )} an die Kundschaft zurückgeben.`
                   : handover.paid
-                  ? `Schon bezahlt (${formatCurrency(handover.total)}).`
+                  ? `Schon bezahlt (${formatCurrency(
+                      handover.paidAmount ?? handover.total
+                    )}).`
                   : `Noch nicht bezahlt: ${formatCurrency(
                       handover.total
                     )} kassieren.`}
@@ -1783,6 +2014,15 @@ export default function AbholListeClient({
               Ohne Rest übergeben
             </Button>
           )}
+          {handover && handoverPayment?.kind === 'refund' && (
+            <Button
+              variant="outlined"
+              onClick={() => handOver(handover)}
+              sx={TOUCH}
+            >
+              Ohne Erstattung übergeben
+            </Button>
+          )}
           {handover && (
             <Button
               variant="contained"
@@ -1792,13 +2032,15 @@ export default function AbholListeClient({
               onClick={() =>
                 handOver(
                   handover,
-                  handover.paid && !owesRest(handover) ? undefined : true
+                  handoverPayment?.kind === 'paid' ? undefined : true
                 )
               }
               sx={TOUCH}
             >
-              {owesRest(handover)
+              {handoverPayment?.kind === 'rest'
                 ? 'Rest kassiert und übergeben'
+                : handoverPayment?.kind === 'refund'
+                ? 'Erstattet und übergeben'
                 : handover.paid
                 ? 'Übergeben'
                 : 'Bezahlt und übergeben'}

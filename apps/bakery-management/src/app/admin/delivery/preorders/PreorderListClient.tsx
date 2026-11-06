@@ -28,6 +28,8 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import {
   AddCircleOutline as NewPreorderIcon,
@@ -41,6 +43,7 @@ import {
   Place as AddressIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material'
+import PaymentNote from '../../../../components/preorders/PaymentNote'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../../lib/session'
 import {
@@ -78,7 +81,15 @@ const DEFAULT_WEEKDAY = 6
 
 const PICKUP_POINT_HREF = '/admin/delivery/preorders/lieferstelle'
 
-function StatTile({ label, value }: { label: string; value: string }) {
+function StatTile({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note?: string | null
+}) {
   return (
     <Box
       sx={{ p: 1.5, height: '100%', borderRadius: 1, bgcolor: 'action.hover' }}
@@ -89,8 +100,35 @@ function StatTile({ label, value }: { label: string; value: string }) {
       <Typography variant="h6" sx={{ fontSize: '1.15rem', lineHeight: 1.4 }}>
         {value}
       </Typography>
+      {note ? (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {note}
+        </Typography>
+      ) : null}
     </Box>
   )
+}
+
+/**
+ * Was „Noch zu kassieren“ nicht enthält (W4-Verifikation Runde 3, wie die
+ * Abholliste): ohne Zahlung Übergebenes und zu Erstattendes.
+ */
+export function moneyNotes(summary: {
+  handedOverUnpaidTotal?: number
+  refundTotal?: number
+}): string | null {
+  const parts: string[] = []
+  if ((summary.handedOverUnpaidTotal ?? 0) > 0) {
+    parts.push(
+      `+ ${formatCurrency(
+        summary.handedOverUnpaidTotal ?? 0
+      )} ohne Zahlung übergeben`
+    )
+  }
+  if ((summary.refundTotal ?? 0) > 0) {
+    parts.push(`${formatCurrency(summary.refundTotal ?? 0)} zu erstatten`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 interface PreorderListClientProps {
@@ -114,6 +152,10 @@ export default function PreorderListClient({
 }: PreorderListClientProps) {
   const session = useOptionalSession()
   const canWrite = canWritePreorders(session?.user?.role)
+  const theme = useTheme()
+  // Unter md (Handy, Tablet hochkant) Karten statt einer Tabelle, die
+  // Artikel, Summe, Status und Aktion seitlich aus dem Bild schiebt.
+  const wide = useMediaQuery(theme.breakpoints.up('md'))
 
   const [points, setPoints] = useState<PickupPoint[]>([])
   const [pointId, setPointId] = useState<string>('')
@@ -258,6 +300,76 @@ export default function PreorderListClient({
     pointId ? `&pickupPointId=${encodeURIComponent(pointId)}` : ''
   }`
   const pickupListHref = abhollisteHref(date, pointId || undefined)
+
+  /** Ansehen/Bearbeiten und Stornieren - gleich in Tabelle und Karte. */
+  const renderActions = (preorder: Preorder) => {
+    const isCancelled = preorder.status === 'storniert'
+    return (
+      <>
+        <Tooltip title={canWrite ? 'Bearbeiten' : 'Ansehen'}>
+          <IconButton
+            aria-label={`Vorbestellung ${preorder.code} ${
+              canWrite ? 'bearbeiten' : 'ansehen'
+            }`}
+            component={NextLink}
+            href={`/admin/delivery/preorders/${preorder.id}`}
+            sx={{ minWidth: 44, minHeight: 44 }}
+          >
+            <EditIcon fontSize="small" />
+          </IconButton>
+        </Tooltip>
+        {/* Eine übergebene Bestellung wird nicht storniert:
+            die Ware ist raus, das Geld ist kassiert. Wer das
+            wirklich rückgängig machen will, setzt sie zuerst
+            auf „Offen“ zurück. */}
+        {canWrite &&
+          !isCancelled &&
+          (isCancellable(preorder) ? (
+            <Tooltip title="Stornieren">
+              <IconButton
+                aria-label={`Vorbestellung ${preorder.code} stornieren`}
+                onClick={() => {
+                  setCancelError(null)
+                  setToCancel(preorder)
+                }}
+                sx={{ minWidth: 44, minHeight: 44 }}
+              >
+                <CancelIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          ) : (
+            <Tooltip
+              title={
+                'Bereits übergeben - zum Stornieren zuerst auf „Offen“ zurücksetzen'
+              }
+            >
+              <span>
+                <IconButton
+                  aria-label={`Vorbestellung ${preorder.code} stornieren`}
+                  disabled
+                  sx={{ minWidth: 44, minHeight: 44 }}
+                >
+                  <CancelIcon fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          ))}
+      </>
+    )
+  }
+
+  const renderPhone = (preorder: Preorder) =>
+    preorder.customerPhone ? (
+      <Link
+        href={`tel:${preorder.customerPhone.replace(/[^\d+]/g, '')}`}
+        underline="hover"
+        sx={TOUCH_LINK_STYLE}
+      >
+        {preorder.customerPhone}
+      </Link>
+    ) : (
+      '–'
+    )
 
   return (
     <Box>
@@ -462,7 +574,7 @@ export default function PreorderListClient({
         <Alert severity={notice.passed ? 'warning' : 'info'} sx={{ mb: 2 }}>
           {notice.text}
           {notice.passed
-            ? ' Später erfasste Bestellungen sind trotzdem gültig - sie werden als „Nach Bestellschluss" markiert.'
+            ? ' Später erfasste Bestellungen sind trotzdem gültig - sie werden als „Nach Bestellschluss“ markiert.'
             : ''}
         </Alert>
       )}
@@ -524,6 +636,7 @@ export default function PreorderListClient({
             <StatTile
               label="Noch zu kassieren"
               value={formatCurrency(summary.unpaidTotal)}
+              note={moneyNotes(summary)}
             />
           </Grid>
         </Grid>
@@ -556,6 +669,94 @@ export default function PreorderListClient({
             )}
           </Paper>
         )
+      ) : !wide ? (
+        <Stack spacing={1.5} data-testid="preorder-cards">
+          {preorders.map((preorder) => {
+            const isCancelled = preorder.status === 'storniert'
+            return (
+              <Paper
+                key={preorder.id}
+                variant="outlined"
+                data-testid="preorder-card"
+                sx={{ p: 1.5 }}
+              >
+                <Stack
+                  direction="row"
+                  spacing={1}
+                  alignItems="flex-start"
+                  justifyContent="space-between"
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography
+                      variant="body2"
+                      sx={{ fontWeight: 600, fontFamily: 'monospace' }}
+                    >
+                      {preorder.code}
+                    </Typography>
+                    <Typography
+                      sx={{
+                        fontWeight: 600,
+                        overflowWrap: 'anywhere',
+                        textDecoration: isCancelled ? 'line-through' : 'none',
+                        color: isCancelled ? 'text.secondary' : 'text.primary',
+                      }}
+                    >
+                      {preorder.customerName}
+                    </Typography>
+                  </Box>
+                  <PreorderStatusChip preorder={preorder} />
+                </Stack>
+                {preorder.afterDeadline && !isCancelled && (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    label="Nach Bestellschluss"
+                    sx={{ mt: 0.5 }}
+                  />
+                )}
+                {preorder.note && (
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    sx={{ mt: 0.5, overflowWrap: 'anywhere' }}
+                  >
+                    {preorder.note}
+                  </Typography>
+                )}
+                <Typography
+                  variant="body2"
+                  sx={{
+                    mt: 1,
+                    overflowWrap: 'anywhere',
+                    textDecoration: isCancelled ? 'line-through' : 'none',
+                    color: isCancelled ? 'text.secondary' : 'text.primary',
+                  }}
+                >
+                  {formatItems(preorder.items)}
+                </Typography>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  spacing={1}
+                  sx={{ mt: 0.5, flexWrap: 'wrap' }}
+                >
+                  <Box>
+                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                      {formatCurrency(preorder.total)}
+                    </Typography>
+                    <PaymentNote preorder={preorder} variant="caption" />
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    {renderPhone(preorder)}
+                    {renderActions(preorder)}
+                  </Box>
+                </Stack>
+              </Paper>
+            )
+          })}
+        </Stack>
       ) : (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small" aria-label="Vorbestellungen des Liefertags">
@@ -615,86 +816,18 @@ export default function PreorderListClient({
                       )}
                     </TableCell>
                     <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {preorder.customerPhone ? (
-                        <Link
-                          href={`tel:${preorder.customerPhone.replace(
-                            /[^\d+]/g,
-                            ''
-                          )}`}
-                          underline="hover"
-                          sx={TOUCH_LINK_STYLE}
-                        >
-                          {preorder.customerPhone}
-                        </Link>
-                      ) : (
-                        '–'
-                      )}
+                      {renderPhone(preorder)}
                     </TableCell>
                     <TableCell>{formatItems(preorder.items)}</TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {formatCurrency(preorder.total)}
-                      {preorder.paid && (
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                        >
-                          bezahlt
-                        </Typography>
-                      )}
+                      <PaymentNote preorder={preorder} variant="caption" />
                     </TableCell>
                     <TableCell>
                       <PreorderStatusChip preorder={preorder} />
                     </TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                      <Tooltip title={canWrite ? 'Bearbeiten' : 'Ansehen'}>
-                        <IconButton
-                          aria-label={`Vorbestellung ${preorder.code} ${
-                            canWrite ? 'bearbeiten' : 'ansehen'
-                          }`}
-                          component={NextLink}
-                          href={`/admin/delivery/preorders/${preorder.id}`}
-                          sx={{ minWidth: 44, minHeight: 44 }}
-                        >
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      {/* Eine übergebene Bestellung wird nicht storniert:
-                          die Ware ist raus, das Geld ist kassiert. Wer das
-                          wirklich rückgängig machen will, setzt sie zuerst
-                          auf „Offen" zurück. */}
-                      {canWrite &&
-                        !isCancelled &&
-                        (isCancellable(preorder) ? (
-                          <Tooltip title="Stornieren">
-                            <IconButton
-                              aria-label={`Vorbestellung ${preorder.code} stornieren`}
-                              onClick={() => {
-                                setCancelError(null)
-                                setToCancel(preorder)
-                              }}
-                              sx={{ minWidth: 44, minHeight: 44 }}
-                            >
-                              <CancelIcon fontSize="small" />
-                            </IconButton>
-                          </Tooltip>
-                        ) : (
-                          <Tooltip
-                            title={
-                              'Bereits übergeben - zum Stornieren zuerst auf „Offen" zurücksetzen'
-                            }
-                          >
-                            <span>
-                              <IconButton
-                                aria-label={`Vorbestellung ${preorder.code} stornieren`}
-                                disabled
-                                sx={{ minWidth: 44, minHeight: 44 }}
-                              >
-                                <CancelIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        ))}
+                      {renderActions(preorder)}
                     </TableCell>
                   </TableRow>
                 )

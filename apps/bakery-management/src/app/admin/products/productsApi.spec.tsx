@@ -8,7 +8,7 @@ import { toManagementProduct } from '../../../lib/products'
 
 /**
  * F4: Produktliste und Bearbeiten lesen `/api/hq-products` zur Laufzeit -
- * mit `pendingApproval` („wartet auf Freigabe") und Schreiben nur für den
+ * mit `pendingApproval` („wartet auf Freigabe“) und Schreiben nur für den
  * Inhaber. Synthetische Produkte.
  */
 
@@ -139,7 +139,7 @@ describe('ProductsPageClient', () => {
 })
 
 describe('ProductEditLoader', () => {
-  it('404 endet in „nicht gefunden", nicht in einem leeren Formular', async () => {
+  it('404 endet in „nicht gefunden“, nicht in einem leeren Formular', async () => {
     apiClient.get.mockRejectedValue(
       new ApiError('Produkt nicht gefunden.', 404, 'not_found')
     )

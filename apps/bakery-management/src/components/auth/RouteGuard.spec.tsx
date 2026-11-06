@@ -103,12 +103,12 @@ describe('RouteGuard', () => {
     expect(screen.queryByText('Geschützter Inhalt')).not.toBeInTheDocument()
   })
 
-  it('nach „Abmelden" zur Anmeldung ohne ?next= (kein Rennen mit dem LogoutButton)', () => {
+  it('nach „Abmelden“ zur Anmeldung ohne ?next= (kein Rennen mit dem LogoutButton)', () => {
     renderGuard('/admin/finance', fakeSession({ loggedOut: true }))
     expect(mockReplace).toHaveBeenCalledWith('/admin/login')
   })
 
-  it('nach „Abmelden" an der Station zu den Namenskacheln', () => {
+  it('nach „Abmelden“ an der Station zu den Namenskacheln', () => {
     saveStation({ token: 'st_x', name: 'Laden' })
     renderGuard('/admin/partners', fakeSession({ loggedOut: true }))
     expect(mockReplace).toHaveBeenCalledWith('/station')

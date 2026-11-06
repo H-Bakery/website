@@ -10,10 +10,10 @@ import { useTheme } from '@mui/material/styles'
  * und `primary.main` wird im dunklen Modus hell.
  */
 export interface BackstubeColors {
-  /** „Noch nicht freigegeben"-Banner. */
+  /** „Noch nicht freigegeben“-Banner. */
   draftBg: string
   draftFg: string
-  /** Nachtrag-Badge und „Gesehen"-Knopf. */
+  /** Nachtrag-Badge und „Gesehen“-Knopf. */
   deltaBg: string
   deltaFg: string
   /** Rand/Hintergrund einer Zeile mit offenem Nachtrag. */

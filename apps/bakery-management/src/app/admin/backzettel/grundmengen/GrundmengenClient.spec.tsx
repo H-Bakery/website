@@ -176,7 +176,7 @@ describe('GrundmengenClient', () => {
     ).toBe(false)
   })
 
-  it('Sorte speichern schickt variants; Leeren heißt „offen" (null)', async () => {
+  it('Sorte speichern schickt variants; Leeren heißt „offen“ (null)', async () => {
     mockGet()
     apiClient.put.mockResolvedValue({
       success: true,
@@ -384,7 +384,7 @@ describe('GrundmengenClient', () => {
     expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 
-  it('Ladefehler mit „Erneut versuchen"', async () => {
+  it('Ladefehler mit „Erneut versuchen“', async () => {
     apiClient.get.mockRejectedValueOnce(new Error('Netzwerkfehler'))
     const user = userEvent.setup()
     renderWithTheme(<GrundmengenClient />)

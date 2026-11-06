@@ -105,7 +105,7 @@ function ValueLine({
  * Einzeltag, denn ein einzelner Tag ist Rauschen.
  *
  * Das Dashboard kommt ohne Anmeldung aus; die Zielwerte nicht. Ohne Token
- * zeigt die Kachel deshalb „Anmeldung erforderlich" mit Link - keinen Fehler.
+ * zeigt die Kachel deshalb „Anmeldung erforderlich“ mit Link - keinen Fehler.
  */
 export default function TargetsTile() {
   const { isAuthenticated, isLoading: authLoading } = useSession()

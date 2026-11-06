@@ -48,7 +48,7 @@ function blend(baseHex: string, overlay: string): string {
 describe('Web-App-Manifest', () => {
   const m = manifest()
 
-  it('heißt „Heusser Verwaltung" und startet im Admin-Bereich', () => {
+  it('heißt „Heusser Verwaltung“ und startet im Admin-Bereich', () => {
     expect(m.name).toBe('Heusser Verwaltung')
     expect(m.name).toBe(PWA_NAME)
     expect(m.short_name).toBe('Verwaltung')
@@ -65,7 +65,7 @@ describe('Web-App-Manifest', () => {
     expect(m.background_color).toBe(PWA_BACKGROUND_COLORS.dark)
   })
 
-  it('hat 192er und 512er Icons, je für „any" und „maskable"', () => {
+  it('hat 192er und 512er Icons, je für „any“ und „maskable“', () => {
     const icons = m.icons ?? []
     for (const purpose of ['any', 'maskable'] as const) {
       const sizes = icons

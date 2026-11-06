@@ -62,7 +62,7 @@ export interface SessionContextValue {
   /** Warum die App zuletzt abgemeldet hat (deutsch), sonst `null`. */
   endReason: string | null
   /**
-   * `true` nach „Abmelden" (bis zur nächsten Anmeldung). Der RouteGuard
+   * `true` nach „Abmelden“ (bis zur nächsten Anmeldung). Der RouteGuard
    * leitet dann ohne `?next=` weiter - die nächste Person soll nicht auf der
    * letzten Seite der vorigen landen.
    */

@@ -10,6 +10,7 @@ import {
   LADEN_PICKUP,
   canWritePreorders,
   isBusinessDate,
+  owesRefund,
   isProductionDay,
   jsWeekdayOf,
   shiftDate,
@@ -29,7 +30,7 @@ export interface AbholGroup {
   preorders: Preorder[]
 }
 
-/** Schlüssel der Gruppe „storniert" - steht immer am Ende, ohne Aktionen. */
+/** Schlüssel der Gruppe „storniert“ - steht immer am Ende, ohne Aktionen. */
 export const CANCELLED_GROUP = 'storniert'
 
 const NO_TIME = 'ohne-uhrzeit'
@@ -123,7 +124,7 @@ export function matchesSearch(preorder: Preorder, query: string): boolean {
   const q = normalize(query)
   if (!q) return true
   if (/^\d{1,2}$/.test(q)) {
-    // Nur die laufende Nummer - sonst passte „4" auf jedes Datum mit 4.
+    // Nur die laufende Nummer - sonst passte „4“ auf jedes Datum mit 4.
     const number = preorder.code.match(/-(\d+)$/)
     return Boolean(number && Number(number[1]) === Number(q))
   }
@@ -140,7 +141,7 @@ export function matchesSearch(preorder: Preorder, query: string): boolean {
   return false
 }
 
-/** Noch zu übergeben: offen oder bereit, nicht als „nicht abgeholt" markiert. */
+/** Noch zu übergeben: offen oder bereit, nicht als „nicht abgeholt“ markiert. */
 export function isWaiting(preorder: Preorder): boolean {
   return (
     (preorder.status === 'offen' || preorder.status === 'bereit') &&
@@ -153,11 +154,18 @@ export interface AbholActions {
   handover: boolean
   /** `offen` → `bereit` (gepackt). Fahrer dürfen das nicht (API). */
   ready: boolean
-  /** Am Tagesende: `bereit` + „nicht abgeholt". */
+  /** Am Tagesende: `bereit` + „nicht abgeholt“. */
   notCollected: boolean
-  /** „Nicht abgeholt" zurücknehmen (kommt doch noch). */
+  /** „Nicht abgeholt“ zurücknehmen (kommt doch noch). */
   clearNotCollected: boolean
   markPaid: boolean
+  /**
+   * Zu viel bezahlt (billiger geworden oder storniert): Geld zurückgegeben
+   * (W4-Verifikation Runde 3). Nicht storniert → `paid: true` (der bezahlte
+   * Betrag gilt wieder als passend), storniert → `paid: false` - das darf
+   * nur der Verkauf (API 403 `paid_undo_forbidden` für den Fahrer).
+   */
+  markRefunded: boolean
   markUnpaid: boolean
   /** Übergabe zurücknehmen (→ `bereit`). */
   undoHandover: boolean
@@ -169,6 +177,7 @@ const NONE: AbholActions = {
   notCollected: false,
   clearNotCollected: false,
   markPaid: false,
+  markRefunded: false,
   markUnpaid: false,
   undoHandover: false,
 }
@@ -188,7 +197,7 @@ export function owesRest(preorder: Preorder): boolean {
  * abgeholt" und bezahlt; Verkauf und Inhaber alles. Stornierte und
  * anonymisierte bleiben unberührt.
  *
- * „Nicht abgeholt" gibt es erst ab dem Abholtag (`today`, Geschäftstag
+ * „Nicht abgeholt“ gibt es erst ab dem Abholtag (`today`, Geschäftstag
  * Berlin) - davor kann noch jemand kommen, und die API lehnt es mit 409
  * `not_collected_too_early` ab (W4). Ohne bekannten Tag: nicht anbieten.
  */
@@ -197,12 +206,14 @@ export function abholActions(
   role: string | null | undefined,
   today?: string | null
 ): AbholActions {
-  if (!role || preorder.anonymizedAt || preorder.status === 'storniert') {
-    return NONE
-  }
+  if (!role || preorder.anonymizedAt) return NONE
   const writer = canWritePreorders(role)
   const driver = role === 'fahrer'
   if (!writer && !driver) return NONE
+  if (preorder.status === 'storniert') {
+    // Storniert, aber schon bezahlt: nur noch das Geld zurückgeben.
+    return { ...NONE, markRefunded: writer && owesRefund(preorder) }
+  }
   const open = preorder.status === 'offen' || preorder.status === 'bereit'
   return {
     handover: open,
@@ -215,6 +226,7 @@ export function abholActions(
     // Bezahlt, aber teurer geworden: der Rest ist noch zu kassieren
     // (W4-Verifikation Runde 2).
     markPaid: !preorder.paid || owesRest(preorder),
+    markRefunded: owesRefund(preorder),
     markUnpaid: writer && preorder.paid,
     undoHandover: writer && preorder.status === 'abgeholt',
   }
@@ -283,7 +295,7 @@ export function isPickupPlace(
   return value === LADEN_PICKUP || points.some((p) => p.id === value)
 }
 
-/** „Laden" oder der Name der Sammelstelle. */
+/** „Laden“ oder der Name der Sammelstelle. */
 export function placeLabel(
   place: string,
   points: readonly Pick<PickupPoint, 'id' | 'name'>[]
@@ -292,7 +304,7 @@ export function placeLabel(
   return points.find((p) => p.id === place)?.name ?? place
 }
 
-/** Ob der Tag vorbei ist oder läuft - erst dann gibt es „nicht abgeholt". */
+/** Ob der Tag vorbei ist oder läuft - erst dann gibt es „nicht abgeholt“. */
 export function isDayEndAllowed(date: string, today: string): boolean {
   return isBusinessDate(date) && isBusinessDate(today) && date <= today
 }
@@ -352,8 +364,8 @@ function count(n: number, one: string, many: string): string {
 
 /**
  * Deutsche Meldungen zu einer Sammelaktion - je Fehlerart ein eigener Satz,
- * damit „inzwischen geändert" (neu laden hilft) nicht wie „anonymisiert"
- * (bleibt so) oder „abgelehnt" (Regel der API) aussieht.
+ * damit „inzwischen geändert“ (neu laden hilft) nicht wie „anonymisiert“
+ * (bleibt so) oder „abgelehnt“ (Regel der API) aussieht.
  */
 export function describeBulkResults(
   kind: AbholBulkKind,
@@ -456,6 +468,11 @@ export function changeAlreadyApplied(
     return false
   }
   if (change.paid !== undefined && Boolean(preorder.paid) !== change.paid) {
+    return false
+  }
+  // `paid: true` auf einer bezahlten Bestellung heißt „Rest kassiert“ bzw.
+  // „erstattet“ - erledigt erst, wenn kein Betrag mehr offen ist.
+  if (change.paid === true && (preorder.paymentBalance ?? 0) !== 0) {
     return false
   }
   if (

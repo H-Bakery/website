@@ -3,7 +3,7 @@
  * auf Papier umgestellt wird, und was die Formulare enthalten. Nur Text - die
  * Formulare selbst zeichnen `components/hilfe/*`.
  *
- * Die Regel muss zum Runbook passen (§2 „Wer macht was", §8, §9): wer gerade
+ * Die Regel muss zum Runbook passen (§2 „Wer macht was“, §8, §9): wer gerade
  * im Laden/in der Backstube steht, entscheidet; Schwelle 10 Minuten.
  */
 

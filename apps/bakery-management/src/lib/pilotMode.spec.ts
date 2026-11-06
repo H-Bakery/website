@@ -22,7 +22,7 @@ function hrefs(items: NavItem[]): string[] {
     .filter((href): href is string => Boolean(href))
 }
 
-// roadmap §3 „Management app, route by route"
+// roadmap §3 „Management app, route by route“
 const KEEP = [
   '/admin',
   '/admin/products',
@@ -165,7 +165,7 @@ describe('Pilot-Navigation', () => {
     })
   })
 
-  it('behält alle „Keep"-Einträge der Navigation', () => {
+  it('behält alle „Keep“-Einträge der Navigation', () => {
     expect(pilotHrefs).toEqual(
       expect.arrayContaining([
         '/admin',

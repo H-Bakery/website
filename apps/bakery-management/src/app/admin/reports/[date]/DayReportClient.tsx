@@ -92,7 +92,7 @@ export default function DayReportClient({
         </Typography>
         <Alert severity="info">
           {invalidDate
-            ? `„${report.date}" ist kein gültiges Datum (erwartet: JJJJ-MM-TT).`
+            ? `„${report.date}“ ist kein gültiges Datum (erwartet: JJJJ-MM-TT).`
             : 'Für diesen Tag liegt kein Kassenbericht vor - Ruhetag, Betriebsferien oder fehlender Export. Das ist eine Lücke, kein Umsatz von 0 €.'}
         </Alert>
       </Box>

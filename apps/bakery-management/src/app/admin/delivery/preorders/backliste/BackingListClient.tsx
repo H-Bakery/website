@@ -347,6 +347,12 @@ export default function BackingListClient({
                 ? ` · ${formatCurrency(summary.total)} Summe · ${formatCurrency(
                     summary.unpaidTotal
                   )} noch zu kassieren${
+                    (summary.handedOverUnpaidTotal ?? 0) > 0
+                      ? ` (+ ${formatCurrency(
+                          summary.handedOverUnpaidTotal ?? 0
+                        )} ohne Zahlung übergeben)`
+                      : ''
+                  }${
                     (summary.refundTotal ?? 0) > 0
                       ? ` · ${formatCurrency(
                           summary.refundTotal ?? 0

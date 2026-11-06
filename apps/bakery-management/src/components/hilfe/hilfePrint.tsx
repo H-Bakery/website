@@ -4,7 +4,7 @@ import { GlobalStyles } from '@mui/material'
 /**
  * Drucken auf `/admin/hilfe` (P6): Die Seite trägt mehrere druckbare Blätter
  * (Spickzettel je Rolle, Papier-Regel, Vorbestellscheine, Notfallblatt). Jedes
- * ist ein `.hilfe-sheet[data-sheet=<id>]`. Ein „Drucken"-Knopf setzt
+ * ist ein `.hilfe-sheet[data-sheet=<id>]`. Ein „Drucken“-Knopf setzt
  * `data-hilfe-print=<id>` an `<html>`, ruft `window.print()` und nimmt das
  * Attribut nach `afterprint` wieder weg - gedruckt wird genau dieses eine
  * Blatt, auf einer A4-Seite, schwarz auf weiß, ohne AppBar und Navigation.

@@ -6,7 +6,7 @@ import { Box, GlobalStyles } from '@mui/material'
  * Erfassungsmaske (`admin/preorders/PreorderForm.tsx`): Name, Telefon,
  * Bestellweg, Abholung (Laden: Tag + Uhrzeit, oder Sammelstelle), Positionen
  * Produkt/Sorte/Menge, bezahlt, Notiz - dazu, wer den Schein aufgenommen hat,
- * und der Haken „in App übertragen" mit dem Code, den die App beim Nachtragen
+ * und der Haken „in App übertragen“ mit dem Code, den die App beim Nachtragen
  * vergibt.
  *
  * Nur gedruckt (`.hilfe-print-only`): 2 oder 4 Scheine je A4-Seite mit

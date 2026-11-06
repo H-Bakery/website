@@ -92,7 +92,7 @@ export interface ManagementProduct {
   shortDescription: string
   /** Full body text of the product file. */
   description: string
-  /** Weicht vom freigegebenen Stand ab - „wartet auf Freigabe" (D6, B5). */
+  /** Weicht vom freigegebenen Stand ab - „wartet auf Freigabe“ (D6, B5). */
   pendingApproval: boolean
   /** Freigegebener Stand, wenn wartend; `null` bei einem neuen Produkt. */
   approved: ApprovedProductState | null

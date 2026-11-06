@@ -210,7 +210,7 @@ export interface HefeteigCardProps {
 }
 
 /**
- * „Hefeteig & Füllungen": Teigstücke, Teig je Teigsorte, Chargen,
+ * „Hefeteig & Füllungen“: Teigstücke, Teig je Teigsorte, Chargen,
  * Abwiegeliste und Füllungsbedarf mit skaliertem Rezept - genau so, wie der
  * Server sie gerechnet hat (Entwurf live, freigegeben eingefroren).
  */

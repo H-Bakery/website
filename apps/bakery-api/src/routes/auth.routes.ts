@@ -41,6 +41,8 @@ import { sendError } from '../utils/http-error'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const authCrypto = require('../services/auth-crypto.core')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const controlChars = require('../services/control-chars.core')
 
 const INVALID_CREDENTIALS = 'Benutzername oder Passwort falsch.'
 const INVALID_PIN =
@@ -371,6 +373,17 @@ export function createSessionAuthRouter(service: AuthService): Router {
           400,
           'validation',
           `Bitte einen Namen für die Station angeben (höchstens ${STATION_NAME_MAX} Zeichen).`
+        )
+        return
+      }
+      // W4-verify r3: like display names - a station name shows on the
+      // station header and in /admin/users; NUL/BEL/RLO have no place there.
+      if (controlChars.hasNameControlChars(name)) {
+        sendError(
+          res,
+          400,
+          'INVALID_TEXT',
+          'Der Name der Station enthält unzulässige Steuerzeichen.'
         )
         return
       }

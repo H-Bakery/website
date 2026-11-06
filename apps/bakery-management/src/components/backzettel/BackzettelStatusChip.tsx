@@ -3,7 +3,7 @@
 import React from 'react'
 import { Chip } from '@mui/material'
 
-/** Status eines Tages: „Freigegeben" (grün) oder „Entwurf" (umrandet). */
+/** Status eines Tages: „Freigegeben“ (grün) oder „Entwurf“ (umrandet). */
 export function BackzettelStatusChip({
   status,
   size = 'small',

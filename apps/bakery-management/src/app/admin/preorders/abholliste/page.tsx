@@ -4,7 +4,7 @@ import AbholListeClient from './AbholListeClient'
 
 /**
  * P2 - Abholliste eines Tages und Abholorts: abhaken bei der Übergabe,
- * bezahlt, „nicht abgeholt", A4-Druck.
+ * bezahlt, „nicht abgeholt“, A4-Druck.
  *
  * Query-Parameter:
  *   `?date=YYYY-MM-DD` - Abholtag (Vorgabe: heute bzw. nächster Liefertag)

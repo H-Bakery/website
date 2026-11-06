@@ -161,6 +161,26 @@ describe('AdminLayout', () => {
     )
   })
 
+  it('names analytics sub-pages and report days in German (W4-verify r3)', () => {
+    renderLayout('/admin/analytics/products')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Analysen › Produkte'
+    )
+    cleanup()
+    renderLayout('/admin/analytics/revenue')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Analysen › Umsatz'
+    )
+    cleanup()
+    renderLayout('/admin/reports/2026-11-05')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Kassenberichte › Donnerstag, 05.11.2026'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toContain(
+      '2026-11-05'
+    )
+  })
+
   it('names submenu parents in the breadcrumb instead of the raw segment', () => {
     renderLayout('/admin/bakery/intern-orders')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(

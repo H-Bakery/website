@@ -175,7 +175,7 @@ describe('PickupPointFormClient', () => {
     expect(screen.getByText('0 / 2000 Zeichen')).toBeInTheDocument()
   })
 
-  it('inzwischen woanders geändert: Hinweis mit „Neu laden", nichts überschrieben', async () => {
+  it('inzwischen woanders geändert: Hinweis mit „Neu laden“, nichts überschrieben', async () => {
     const user = userEvent.setup()
     const stale = Object.assign(
       new Error(

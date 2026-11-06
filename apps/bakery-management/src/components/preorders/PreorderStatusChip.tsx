@@ -7,7 +7,7 @@ import {
 } from '../../lib/preordersTypes'
 
 /**
- * Status einer Vorbestellung als Chip. „Nicht abgeholt" ist kein eigener
+ * Status einer Vorbestellung als Chip. „Nicht abgeholt“ ist kein eigener
  * Status (B7: `bereit` + `notCollectedAt`) und wird hier sichtbar gemacht.
  * Farbe trägt nie allein: der Text steht immer da.
  */

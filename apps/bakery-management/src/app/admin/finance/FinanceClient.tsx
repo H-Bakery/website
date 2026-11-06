@@ -271,7 +271,7 @@ function CostStructure({ rows }: { rows: FinanceStructureRow[] }) {
         Kostenstruktur
       </Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Abflüsse nach Kategorie im gewählten Zeitraum. „Nicht zugeordnet" zählt
+        Abflüsse nach Kategorie im gewählten Zeitraum. „Nicht zugeordnet“ zählt
         hier mit, solange die Buchungen keiner Kategorie zugewiesen sind.
       </Typography>
       {data.length === 0 ? (

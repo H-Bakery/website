@@ -1,6 +1,6 @@
 /**
  * Produktsuche der Vorbestell-Erfassung (P1): unscharf nach Namen, damit
- * „brotchen", „zopf nuss" oder „kornbr" am Telefon sofort treffen.
+ * „brotchen“, „zopf nuss“ oder „kornbr“ am Telefon sofort treffen.
  *
  * Reine Funktionen, keine API. Rangfolge je Suchwort: Namensanfang <
  * Wortanfang < Teilstring < Buchstabenfolge (alle Buchstaben in Reihenfolge,
@@ -40,7 +40,7 @@ function tokenRank(token: string, name: string): number | null {
   if (name.startsWith(token)) return 0
   if (name.split(' ').some((word) => word.startsWith(token))) return 1
   if (name.includes(token)) return 2
-  // Buchstabenfolge erst ab drei Zeichen - sonst trifft „ab" fast alles.
+  // Buchstabenfolge erst ab drei Zeichen - sonst trifft „ab“ fast alles.
   if (token.length >= 3 && isSubsequence(token, name.replace(/ /g, ''))) {
     return 4
   }
@@ -138,7 +138,7 @@ export function quickProducts<T extends SearchableProduct>(
 }
 
 /* ------------------------------------------------------------------ *
- * „Zuletzt verwendet" je Gerät (localStorage, nur Bequemlichkeit)
+ * „Zuletzt verwendet“ je Gerät (localStorage, nur Bequemlichkeit)
  * ------------------------------------------------------------------ */
 
 export const RECENT_PRODUCTS_KEY = 'bakery-management-preorder-recent'

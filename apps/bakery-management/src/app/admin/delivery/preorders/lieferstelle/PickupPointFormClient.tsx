@@ -60,7 +60,7 @@ export interface PickupPointFormClientProps {
  *
  * Gespeichert wird mit `expectedUpdatedAt` (Stand beim Laden): hat jemand
  * die Sammelstelle inzwischen geändert, antwortet die API 409
- * `stale_pickup_point`, und die Maske bietet „Neu laden" an, statt die
+ * `stale_pickup_point`, und die Maske bietet „Neu laden“ an, statt die
  * fremde Änderung zu überschreiben.
  */
 export default function PickupPointFormClient({
@@ -123,7 +123,7 @@ export default function PickupPointFormClient({
     try {
       const list = await fetchPickupPoints()
       setPoints(list)
-      // Nach „Neu laden" bei derselben Sammelstelle bleiben.
+      // Nach „Neu laden“ bei derselben Sammelstelle bleiben.
       const first =
         list.find((p) => p.id === pointIdRef.current) ??
         list.find((p) => p.id === initialPickupPointId) ??

@@ -16,7 +16,7 @@ export default function NoAccess({
 }: {
   roleLabel: string
   startPath: string
-  /** Eigene Begründung statt „für die Rolle … nicht freigegeben". */
+  /** Eigene Begründung statt „für die Rolle … nicht freigegeben“. */
   reason?: string
 }) {
   return (

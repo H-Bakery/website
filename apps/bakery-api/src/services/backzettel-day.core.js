@@ -11,6 +11,7 @@
 const core = require('./backzettel.core')
 const configCore = require('./backzettel-config.core')
 const recipesCore = require('./backzettel-recipes.core')
+const { hasNameControlChars } = require('./control-chars.core')
 
 const { INTEGER_UNITS, SECTION_LABELS } = configCore
 
@@ -19,6 +20,7 @@ const MAX_CORRECTION = 10000
 /** Saisonfaktor: > 0 und hoechstens 5 (D10: Standard 1,0). */
 const MAX_SEASON_FACTOR = 5
 const MAX_REASON_LENGTH = 500
+const REASON_CONTROL_MESSAGE = 'Der Grund enthält unzulässige Steuerzeichen.'
 
 function round2(x) {
   const r = Math.round(x * 100) / 100
@@ -160,6 +162,11 @@ function parseCorrection(body, item) {
       'validation',
       `Der Grund darf höchstens ${MAX_REASON_LENGTH} Zeichen lang sein.`
     )
+  }
+  // Einzeilig auf Zettel und Ausdruck (W4-Verifikation Runde 3): ein RLO
+  // drehte den Grund um, NUL/BEL haben dort nichts verloren.
+  if (hasNameControlChars(reason)) {
+    return fail('INVALID_TEXT', REASON_CONTROL_MESSAGE)
   }
   return { ok: true, value: { correction: round2(correction), reason } }
 }
@@ -365,7 +372,7 @@ function frozenLine(row, config, unsetKeys) {
     correction: Number(row.correction) || 0,
     correctionReason: row.correctionReason || null,
     total,
-    tray: item ? core.trayText(item.tray) : null,
+    tray: item ? core.trayText(item.tray, total, unit) : null,
     plu: item ? item.plu : [],
   }
   if (item && unit === 'Liter' && item.pieces_per_liter) {
@@ -439,6 +446,18 @@ function frozenQtyChanged(row, values) {
   return FROZEN_QTY_FIELDS.some(
     (f) => round2(Number(row[f]) || 0) !== round2(Number(values[f]) || 0)
   )
+}
+
+/**
+ * Bleibt der Haken einer Zeile bei einer erneuten Freigabe stehen? Ja, wenn
+ * die Menge gleich blieb - und auch, wenn sie kleiner wurde (W4-Verifikation
+ * Runde 3): wer 14 gebacken hat und jetzt nur 12 braucht, ist fertig. Nur
+ * wenn mehr nötig ist, fällt der Haken weg, sonst übersähe die Backstube die
+ * zusätzlichen Stücke.
+ */
+function tickStillValid(row, values) {
+  if (!frozenQtyChanged(row, values)) return true
+  return round2(Number(values.total) || 0) <= round2(Number(row.total) || 0)
 }
 
 /**
@@ -624,6 +643,8 @@ module.exports = {
   MAX_CORRECTION,
   MAX_SEASON_FACTOR,
   MAX_REASON_LENGTH,
+  REASON_CONTROL_MESSAGE,
+  hasNameControlChars,
   storedVariant,
   apiVariant,
   parseNumber,
@@ -639,6 +660,7 @@ module.exports = {
   frozenSections,
   FROZEN_QTY_FIELDS,
   frozenQtyChanged,
+  tickStillValid,
   computedSnapshot,
   deltaBakeExtras,
   linesWithExtras,

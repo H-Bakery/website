@@ -304,7 +304,7 @@ export function createBackzettelService(
       // After a reopen a tick only shows while the line still asks for the
       // quantity it was ticked for; confirm clears it otherwise.
       const ticked =
-        !!row && row.doneAt !== null && !dayCore.frozenQtyChanged(row, line)
+        !!row && row.doneAt !== null && dayCore.tickStillValid(row, line)
       return {
         id: row ? row.id : null,
         ...line,
@@ -1028,10 +1028,11 @@ export function createBackzettelService(
         )
         const row = rowsByKey.get(key)
         if (row) {
-          // A tick from the previous confirmation only stands if the line
-          // still asks for the same quantity.
+          // A tick from the previous confirmation stands if the line still
+          // asks for the same quantity or less (W4-verify r3: baked 14, now
+          // 12 needed - done); more needed clears it.
           const untick =
-            row.doneAt !== null && dayCore.frozenQtyChanged(row, values)
+            row.doneAt !== null && !dayCore.tickStillValid(row, values)
           if (untick) {
             clearedTicks.push({
               itemId: row.itemId,
@@ -1141,6 +1142,13 @@ export function createBackzettelService(
         400,
         'validation',
         `Der Grund darf höchstens ${dayCore.MAX_REASON_LENGTH} Zeichen lang sein.`
+      )
+    }
+    if (dayCore.hasNameControlChars(reason)) {
+      throw new BackzettelError(
+        400,
+        'INVALID_TEXT',
+        dayCore.REASON_CONTROL_MESSAGE
       )
     }
     await getSequelize().transaction(async (transaction) => {
