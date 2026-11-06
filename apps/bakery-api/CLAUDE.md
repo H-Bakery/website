@@ -671,6 +671,17 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
   `notCollected: true` before the pickup date (Berlin today) with 409 `not_collected_too_early`
   - until then the customer can still come. Core option `notCollectedFrom` of
     `normalizeStatusChange`; the Mörsbach alias does not pass it (mock contract, parity).
+- **Plausible input on `POST`/`PATCH /api/preorders` (W4-verify).** Option `strictPickup` of
+  `create()`/`update()` passes `pickupRules` + `notCollectedFrom` to `core.normalizeOrderInput`:
+  a **new** pickup day must lie within 30 days back and 366 ahead of Berlin today (400
+  `date_out_of_range`), a shop pickup (no pickup point) not on a closed weekday
+  (`PREORDER_CLOSED_WEEKDAYS` = Monday, 400 `ruhetag`), and `notCollected: true` on create/edit
+  before the day is 409 `not_collected_too_early`. An unchanged day is never re-checked, and the
+  lock errors (`already_picked_up`, `cancelled`) win. For **every** caller (alias and shop too):
+  `customerName` with C0/C1, DEL or bidi control characters is 400 `invalid_customer`, a note
+  with them (newline/tab allowed) 400 `invalid_note`, and a non-empty `customerPhone` that
+  `normalizePhone` cannot keep (fewer than 5 digits) is 400 `invalid_phone` instead of being
+  dropped silently. The Mörsbach alias does not get the day rules (mock contract).
 - **Pickup point texts are limited (W4)**, in `core.normalizePickupPointInput` and therefore on
   both servers and the alias (`PICKUP_POINT_LIMITS`): name 100, street 200, zip 10, city 100,
   notes 2000 characters (trimmed) → 400 `Text too long` with a German message. The `PUT` on

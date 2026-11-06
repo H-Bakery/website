@@ -208,6 +208,64 @@ describe('GET /api/preorders/variants (P1 variant chips)', () => {
   })
 })
 
+describe('input plausibility on /api/preorders (W4-verify)', () => {
+  it('refuses a Monday in the shop, far dates and „nicht abgeholt“ before the day', async () => {
+    const monday = await create(laden({ pickupDate: '2026-11-16' }))
+    expect(monday.status).toBe(400)
+    expect(monday.body).toMatchObject({ error: 'ruhetag' })
+    expect(monday.body.message).toMatch(/Ruhetag/)
+
+    const far = await create(laden({ pickupDate: '9999-12-31' }))
+    expect(far.status).toBe(400)
+    expect(far.body).toMatchObject({ error: 'date_out_of_range' })
+    const old = await create(laden({ pickupDate: '2026-01-02' }))
+    expect(old.status).toBe(400)
+    expect(old.body).toMatchObject({ error: 'date_out_of_range' })
+
+    const early = await create(laden({ status: 'bereit', notCollected: true }))
+    expect(early.status).toBe(409)
+    expect(early.body).toMatchObject({ error: 'not_collected_too_early' })
+  })
+
+  it('refuses control characters in the name and a phone number it cannot keep', async () => {
+    for (const customerName of [
+      'Erika\u0000Beispiel',
+      'Erika \u202eleipsieB',
+    ]) {
+      const res = await create(laden({ customerName }))
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'invalid_customer' })
+      expect(res.body.message).toMatch(/Steuerzeichen/)
+    }
+    const phone = await create(laden({ customerPhone: '<b>abc</b>' }))
+    expect(phone.status).toBe(400)
+    expect(phone.body).toMatchObject({ error: 'invalid_phone' })
+    // an empty field is still „no phone“, umlauts and emoji stay allowed
+    const ok = await create(
+      laden({ customerName: 'Zoë Müller 🥨', customerPhone: '' })
+    )
+    expect(ok.status).toBe(201)
+    expect(ok.body.data).toMatchObject({
+      customerName: 'Zoë Müller 🥨',
+      customerPhone: null,
+    })
+  })
+
+  it('keeps an existing order editable without re-checking its day', async () => {
+    const p = (await create(laden())).body.data
+    clock = new Date('2027-01-20T09:00:00.000Z')
+    try {
+      const res = await request(api.app)
+        .patch(`/api/preorders/${p.id}`)
+        .set(tokens['verkauf'])
+        .send({ note: 'Bitte klingeln' })
+      expect(res.status).toBe(200)
+    } finally {
+      clock = NOW
+    }
+  })
+})
+
 describe('pickup points', () => {
   it('has the Mörsbach Sammelstelle from the migration', async () => {
     const res = await request(api.app)

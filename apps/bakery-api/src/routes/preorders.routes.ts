@@ -260,7 +260,9 @@ function createPreordersRouter(service: PreordersService): Router {
     '/',
     requireRole(...WRITE_ROLES),
     asyncHandler(async (req, res) => {
-      const result = await service.create(req.body, req)
+      const result = await service.create(req.body, req, {
+        strictPickup: true,
+      })
       if (fail(res, result) || !result.ok) return
       res
         .status(201)
@@ -274,6 +276,7 @@ function createPreordersRouter(service: PreordersService): Router {
     asyncHandler(async (req, res) => {
       const result = await service.update(req.params['id'], req.body, req, {
         lockCancelled: true,
+        strictPickup: true,
         guard: expectedVersionGuard(req.body),
       })
       if (fail(res, result) || !result.ok) return

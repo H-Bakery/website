@@ -931,7 +931,10 @@ anonymisation (P4)". Von außen wichtig:
 - **Status** `offen → bereit → abgeholt | storniert`, `abgeholt ↔ storniert` gesperrt, storniert
   wird statt gelöscht. Eine abgeholte Bestellung behält Positionen, Abholtag und -ort (409
   `already_picked_up`, erst auf „Offen" zurücksetzen). Mengen sind ganze Zahlen; `"abc"` oder
-  `2.7` sind 400 `invalid_quantity`, nur eine ausdrückliche `0` streicht eine Zeile. „Nicht abgeholt" ist **kein eigener Status**, sondern `bereit` +
+  `2.7` sind 400 `invalid_quantity`, nur eine ausdrückliche `0` streicht eine Zeile. Ein neuer
+  Abholtag muss bei `/api/preorders` zwischen 30 Tagen zurück und 366 Tagen voraus liegen und im
+  Laden kein Montag sein (400 `date_out_of_range` / `ruhetag`); Steuerzeichen im Namen und eine
+  Telefonnummer mit weniger als 5 Ziffern sind 400, statt still gespeichert oder verworfen zu werden. „Nicht abgeholt" ist **kein eigener Status**, sondern `bereit` +
   `notCollectedAt`; so übersetzt der Alias das `not_collected` des Mocks verlustfrei.
 - **Sorten:** `variant` ist `''` für „keine Sorte", nie `null`. Gibt es
   `hq/config/backzettel.yaml`, muss bei Produkten mit Sorten eine davon gewählt werden; ohne

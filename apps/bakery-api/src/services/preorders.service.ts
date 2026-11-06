@@ -417,6 +417,13 @@ const CONFLICT_CODES = new Set([
 
 export const BULK_STATUS_MAX_IDS = 200
 
+/** Ruhetage des Ladens nach `Date.getDay()` (1 = Montag). */
+export const PREORDER_CLOSED_WEEKDAYS = [1]
+/** Vorbestellungen höchstens so viele Tage im Voraus … */
+export const PREORDER_MAX_DAYS_AHEAD = 366
+/** … und nachgetragen höchstens so weit zurück (P4 anonymisiert nach 90 Tagen). */
+export const PREORDER_MAX_DAYS_BACK = 30
+
 export class PreordersService {
   private readonly productsDir: string
   private readonly variants: VariantsForProduct
@@ -755,7 +762,8 @@ export class PreordersService {
   private normalizeOptions(
     points: Map<string, PickupPointDto>,
     requireVariant: boolean,
-    lockCancelled = false
+    lockCancelled = false,
+    strictPickup = false
   ) {
     return {
       lookupProduct: this.lookupProduct,
@@ -764,6 +772,20 @@ export class PreordersService {
       requireVariant,
       lockCancelled,
       now: this.now(),
+      // `/api/preorders` (W4-Verifikation): Abholtag im Zeitfenster, kein
+      // Ruhetag im Laden, „nicht abgeholt“ erst ab dem Abholtag. Der
+      // Mörsbach-Alias hält den Mock-Vertrag und lässt das weg.
+      ...(strictPickup
+        ? {
+            pickupRules: {
+              today: this.today(),
+              closedWeekdays: PREORDER_CLOSED_WEEKDAYS,
+              maxDaysAhead: PREORDER_MAX_DAYS_AHEAD,
+              maxDaysBack: PREORDER_MAX_DAYS_BACK,
+            },
+            notCollectedFrom: this.today(),
+          }
+        : {}),
     }
   }
 
@@ -794,14 +816,24 @@ export class PreordersService {
   async create(
     body: unknown,
     req: Request | null,
-    options: { requireVariant?: boolean; auditAction?: string } = {}
+    options: {
+      requireVariant?: boolean
+      auditAction?: string
+      /** Abholtag-Regeln von `/api/preorders` (siehe `normalizeOptions`). */
+      strictPickup?: boolean
+    } = {}
   ): Promise<Result<PreorderRecord>> {
     return getSequelize().transaction(async (transaction) => {
       const points = await this.pickupPoints(transaction)
       const result = core.normalizeOrderInput(
         body,
         null,
-        this.normalizeOptions(points, options.requireVariant !== false)
+        this.normalizeOptions(
+          points,
+          options.requireVariant !== false,
+          false,
+          options.strictPickup === true
+        )
       )
       if (result.error) {
         return failure<PreorderRecord>(
@@ -868,6 +900,8 @@ export class PreordersService {
       requireVariant?: boolean
       /** Stornierte Bestellungen: Positionen/Tag/Ort gesperrt (409 `cancelled`). */
       lockCancelled?: boolean
+      /** Abholtag-Regeln von `/api/preorders` (siehe `normalizeOptions`). */
+      strictPickup?: boolean
       guard?: (current: PreorderRecord) => Result<never> | null
       mapBody?: (current: PreorderRecord) => unknown
     } = {}
@@ -885,7 +919,8 @@ export class PreordersService {
         this.normalizeOptions(
           points,
           options.requireVariant !== false,
-          options.lockCancelled === true
+          options.lockCancelled === true,
+          options.strictPickup === true
         )
       )
       if (result.error) {
