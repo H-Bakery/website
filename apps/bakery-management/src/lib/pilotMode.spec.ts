@@ -41,6 +41,7 @@ const KEEP = [
   '/admin/finance/tagesziel',
   '/admin/social-media',
   '/admin/settings',
+  '/admin/hilfe',
   '/admin/login',
 ]
 const HIDE = [
@@ -177,6 +178,7 @@ describe('Pilot-Navigation', () => {
         '/admin/finance/tagesziel',
         '/admin/social-media',
         '/admin/settings',
+        '/admin/hilfe',
         '/admin/login',
       ])
     )

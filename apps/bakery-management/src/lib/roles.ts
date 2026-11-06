@@ -78,8 +78,11 @@ export interface RoleAccess {
   start: readonly string[]
 }
 
-/** Für jede angemeldete Rolle erreichbar (Design/Dunkelmodus). */
-const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings']
+/**
+ * Für jede angemeldete Rolle erreichbar: Design/Dunkelmodus und die Hilfe
+ * (P6: Kurzanleitung je Rolle, Papierbetrieb).
+ */
+const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings', '/admin/hilfe']
 
 /**
  * DIE Zuordnung Rolle → Routen + Startseite.

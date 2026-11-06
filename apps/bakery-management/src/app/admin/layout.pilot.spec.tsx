@@ -46,6 +46,7 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
       'Social Media',
       'Einstellungen',
       'Anmeldung',
+      'Hilfe',
     ].forEach((label) => expect(nav.getByText(label)).toBeInTheDocument())
     ;[
       'Bestellungen',

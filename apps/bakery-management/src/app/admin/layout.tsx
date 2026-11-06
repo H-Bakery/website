@@ -42,6 +42,7 @@ import {
   Login as LoginIcon,
   ManageAccounts as UsersIcon,
   Checklist as PickupIcon,
+  HelpOutline as HelpIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -100,6 +101,7 @@ const iconMap: Record<string, React.ReactElement> = {
   login: <LoginIcon />,
   users: <UsersIcon />,
   pickup: <PickupIcon />,
+  help: <HelpIcon />,
 }
 
 /**
