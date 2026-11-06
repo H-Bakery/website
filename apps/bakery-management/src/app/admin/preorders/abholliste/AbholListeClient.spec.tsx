@@ -1353,6 +1353,21 @@ describe('AbholListeClient (P2)', () => {
     expect(text).toContain('6 × Mustersemmel (Nuss)')
     expect(text).not.toContain('Stefan Storno')
     expect(text).toContain('1 storniert (nicht aufgeführt)')
+    // W4-verify r6: jede Gruppenzeile steht mit ihrer ersten Bestellung in
+    // einem eigenen tbody, der beim Drucken nicht geteilt wird.
+    const groups = Array.from(sheet.querySelectorAll('tr.group'))
+    expect(groups.length).toBeGreaterThan(1)
+    for (const g of groups) {
+      const body = g.parentElement as HTMLElement
+      expect(body.tagName).toBe('TBODY')
+      expect(body.className).toBe('keep')
+      expect(body.querySelectorAll('tr')).toHaveLength(2)
+    }
+    const css = ABHOL_PRINT_CSS['@media print'] as Record<
+      string,
+      Record<string, string>
+    >
+    expect(css['.abholliste-print tbody.keep']['breakInside']).toBe('avoid')
     await user.click(screen.getByRole('button', { name: 'Drucken' }))
     expect(print).toHaveBeenCalled()
   })

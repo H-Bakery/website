@@ -185,6 +185,17 @@ export const ABHOL_PRINT_CSS = {
     '.abholliste-print th': { background: '#eee', fontWeight: 700 },
     '.abholliste-print thead': { display: 'table-header-group' },
     '.abholliste-print tr': { pageBreakInside: 'avoid' },
+    // W4-verify r6: eine Gruppenzeile („12:15 Uhr“, „Storniert - Geld
+    // zurückgeben“) steht nie allein unten auf dem Blatt - sie bildet mit
+    // ihrer ersten Bestellung einen eigenen `tbody`, der nicht geteilt wird.
+    '.abholliste-print tbody.keep': {
+      breakInside: 'avoid',
+      pageBreakInside: 'avoid',
+    },
+    '.abholliste-print .group': {
+      breakAfter: 'avoid',
+      pageBreakAfter: 'avoid',
+    },
     '.abholliste-print .group td': {
       background: '#f3f3f3',
       fontWeight: 700,
@@ -1033,6 +1044,53 @@ export default function AbholListeClient({
       canWrite ? previousOf(preorder) : undefined
     )
   }
+
+  /** Eine Zeile des Ausdrucks (Abholliste auf Papier). */
+  const printRow = (p: Preorder) => (
+    <tr key={p.id}>
+      <td className="tick">
+        {p.status === 'storniert' ? '–' : p.status === 'abgeholt' ? '☑' : '☐'}
+      </td>
+      <td>
+        <div className="code">{p.code}</div>
+        {p.customerName}
+        {p.customerPhone ? (
+          <>
+            <br />
+            {p.customerPhone}
+          </>
+        ) : null}
+        {p.notCollected ? (
+          <>
+            <br />
+            nicht abgeholt
+          </>
+        ) : null}
+      </td>
+      <td>
+        <ul>
+          {p.items.map((item) => (
+            <li key={`${item.productId}|${item.variant}`}>
+              {item.quantity} × {itemName(item)}
+            </li>
+          ))}
+        </ul>
+        {p.note ? <em>{p.note}</em> : null}
+      </td>
+      <td className="num">{formatCurrency(p.total)}</td>
+      {/* Zum Ankreuzen auf Papier (Kurzanleitung Fahrer):
+          offen ☐, schon bezahlt ☑. */}
+      <PrintPaidCell preorder={p} />
+      <td className="tick">
+        {p.notCollected
+          ? '☑'
+          : p.status === 'abgeholt' || p.status === 'storniert'
+          ? ''
+          : '☐'}
+      </td>
+      <td className="sign" />
+    </tr>
+  )
 
   const startHandover = (preorder: Preorder) => {
     // Bezahlt, Betrag stimmt, Verkauf: ein Tipp genügt (Rückgängig im
@@ -1962,69 +2020,26 @@ export default function AbholListeClient({
                 <th className="sign">Unterschrift</th>
               </tr>
             </thead>
-            <tbody>
-              {printGroups.map((group) => (
+            {printGroups.map((group) => {
+              const header =
+                printGroups.length > 1 || group.key === CANCELLED_GROUP
+              const [first, ...rest] = group.preorders
+              return (
                 <React.Fragment key={group.key}>
-                  {(printGroups.length > 1 ||
-                    group.key === CANCELLED_GROUP) && (
-                    <tr className="group">
-                      <td colSpan={PRINT_COLUMNS.length}>
-                        {group.label} ({group.preorders.length})
-                      </td>
-                    </tr>
-                  )}
-                  {group.preorders.map((p) => (
-                    <tr key={p.id}>
-                      <td className="tick">
-                        {p.status === 'storniert'
-                          ? '–'
-                          : p.status === 'abgeholt'
-                          ? '☑'
-                          : '☐'}
-                      </td>
-                      <td>
-                        <div className="code">{p.code}</div>
-                        {p.customerName}
-                        {p.customerPhone ? (
-                          <>
-                            <br />
-                            {p.customerPhone}
-                          </>
-                        ) : null}
-                        {p.notCollected ? (
-                          <>
-                            <br />
-                            nicht abgeholt
-                          </>
-                        ) : null}
-                      </td>
-                      <td>
-                        <ul>
-                          {p.items.map((item) => (
-                            <li key={`${item.productId}|${item.variant}`}>
-                              {item.quantity} × {itemName(item)}
-                            </li>
-                          ))}
-                        </ul>
-                        {p.note ? <em>{p.note}</em> : null}
-                      </td>
-                      <td className="num">{formatCurrency(p.total)}</td>
-                      {/* Zum Ankreuzen auf Papier (Kurzanleitung Fahrer):
-                          offen ☐, schon bezahlt ☑. */}
-                      <PrintPaidCell preorder={p} />
-                      <td className="tick">
-                        {p.notCollected
-                          ? '☑'
-                          : p.status === 'abgeholt' || p.status === 'storniert'
-                          ? ''
-                          : '☐'}
-                      </td>
-                      <td className="sign" />
-                    </tr>
-                  ))}
+                  <tbody className={header ? 'keep' : undefined}>
+                    {header && (
+                      <tr className="group">
+                        <td colSpan={PRINT_COLUMNS.length}>
+                          {group.label} ({group.preorders.length})
+                        </td>
+                      </tr>
+                    )}
+                    {first ? printRow(first) : null}
+                  </tbody>
+                  {rest.length > 0 && <tbody>{rest.map(printRow)}</tbody>}
                 </React.Fragment>
-              ))}
-            </tbody>
+              )
+            })}
           </table>
           <p className="legend">
             Ankreuzen: ✓ = übergeben, Bezahlt ☐ = Geld erhalten (bei „Rest“ nur
