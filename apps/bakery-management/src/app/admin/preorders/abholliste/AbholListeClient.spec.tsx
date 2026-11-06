@@ -735,6 +735,95 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.queryByText(/erneut speichern/)).toBeNull()
   })
 
+  it('Übergabe einer inzwischen stornierten Bestellung: sagt „STORNIERT – nicht übergeben, Geld zurück“ und bleibt stehen (W4-verify r5)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(stale())
+    mockDay.mockResolvedValue(
+      ladenDay([erika, { ...max, status: 'storniert' }, paula, storno])
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    const top = await screen.findByTestId('open-actions')
+    expect(top).toHaveTextContent(
+      'LA-2026-11-12-02: Wurde inzwischen STORNIERT - bitte NICHT übergeben. Gerade kassiertes Geld zurückgeben.'
+    )
+    expect(screen.queryByText(/erneut speichern/)).toBeNull()
+    await act(async () => {
+      jest.advanceTimersByTime(20_000)
+    })
+    expect(screen.getByTestId('open-actions')).toHaveTextContent('STORNIERT')
+  })
+
+  it('Übergabe, aber der Betrag ist inzwischen gestiegen: nennt den neuen Betrag und den Rest (W4-verify r5)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(stale())
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        {
+          ...max,
+          items: [{ ...max.items[0], quantity: 10, lineTotal: 6 }],
+          total: 6,
+        },
+        paula,
+        storno,
+      ])
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    const top = await screen.findByTestId('open-actions')
+    expect(top.textContent).toMatch(
+      /LA-2026-11-12-02: Die Bestellung wurde inzwischen geändert: Betrag jetzt 6,00\s€ statt 3,60\s€ \(\+2,40\s€\)\. Es wurde nichts gespeichert - Artikel prüfen, noch 2,40\s€ kassieren \(zusammen 6,00\s€\), dann erneut übergeben\./
+    )
+  })
+
+  it('mehrere gescheiterte Übergaben bei erreichbarer Liste: jede bleibt mit eigener Zeile stehen (W4-verify r5)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus
+      .mockRejectedValueOnce(new ApiError('HTTP 500: x', 500))
+      .mockRejectedValueOnce(new Error('Failed to fetch'))
+    for (const name of ['Max Muster', 'Paula Probe']) {
+      await user.click(
+        screen.getByRole('button', { name: `${name} übergeben` })
+      )
+      const dialog = screen.queryByRole('dialog')
+      if (dialog) {
+        await user.click(
+          within(dialog).getByRole('button', {
+            name: 'Bezahlt und übergeben',
+          })
+        )
+      }
+      await waitFor(() =>
+        expect(screen.getByTestId('open-actions')).toHaveTextContent(
+          name === 'Max Muster' ? 'LA-2026-11-12-02' : 'LA-2026-11-12-03'
+        )
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    }
+    const top = screen.getByTestId('open-actions')
+    expect(top).toHaveTextContent('LA-2026-11-12-02')
+    expect(top).toHaveTextContent('LA-2026-11-12-03')
+  })
+
   it('Übergabe ohne Antwort, aber am Server gespeichert: sagt das statt „nichts gespeichert“ (W4-Verifikation)', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
     renderAs('verkauf')

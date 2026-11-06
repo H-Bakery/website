@@ -254,6 +254,64 @@ function describeChange(change: PreorderStatusChange): string {
   return 'Die Änderung'
 }
 
+/**
+ * Eine Übergabe scheiterte am Versionsabgleich, weil die Bestellung
+ * inzwischen storniert oder ihr Betrag geändert wurde (W4-Verifikation
+ * Runde 5): was ist passiert, und was ist jetzt mit dem Geld zu tun? `null`
+ * für jede andere Änderung - dann gilt der allgemeine Hinweis.
+ */
+export function handoverConflictAdvice(
+  before: Pick<Preorder, 'total'>,
+  fresh: Preorder,
+  change: PreorderStatusChange
+): string | null {
+  const tookMoney = change.paid === true
+  const cents = (n: number) => Math.round(n * 100)
+  if (fresh.status === 'storniert') {
+    const pay = paymentState(fresh)
+    const refund =
+      pay.kind === 'refund'
+        ? ` Schon bezahlte ${formatCurrency(pay.amount)} zurückgeben.`
+        : ''
+    return `Wurde inzwischen STORNIERT - bitte NICHT übergeben.${
+      tookMoney ? ' Gerade kassiertes Geld zurückgeben.' : ''
+    }${refund} Bei Fragen im Laden anrufen. Es wurde nichts gespeichert.`
+  }
+  if (
+    fresh.status === 'abgeholt' ||
+    cents(fresh.total) === cents(before.total)
+  ) {
+    return null
+  }
+  const diff = (cents(fresh.total) - cents(before.total)) / 100
+  const pay = paymentState(fresh)
+  let money: string
+  if (pay.kind === 'unpaid') {
+    money = !tookMoney
+      ? `${formatCurrency(fresh.total)} kassieren`
+      : diff > 0
+      ? `noch ${formatCurrency(diff)} kassieren (zusammen ${formatCurrency(
+          fresh.total
+        )})`
+      : `${formatCurrency(-diff)} zurückgeben (zusammen ${formatCurrency(
+          fresh.total
+        )})`
+  } else if (pay.kind === 'rest') {
+    money = `noch ${formatCurrency(pay.amount)} kassieren`
+  } else if (pay.kind === 'refund') {
+    money = `${formatCurrency(pay.amount)} zurückgeben`
+  } else {
+    money = 'schon bezahlt'
+  }
+  return `Die Bestellung wurde inzwischen geändert: Betrag jetzt ${formatCurrency(
+    fresh.total
+  )} statt ${formatCurrency(before.total)} (${
+    diff > 0 ? '+' : '−'
+  }${formatCurrency(
+    Math.abs(diff)
+  )}). Es wurde nichts gespeichert - Artikel prüfen, ${money}, dann erneut übergeben.`
+}
+
 function handedOverUnpaidNote(
   summary: { handedOverUnpaidTotal?: number } | null | undefined
 ): string | null {
@@ -692,6 +750,17 @@ export default function AbholListeClient({
   const freshOf = (id: number) =>
     loadedDayRef.current?.preorders.find((p) => p.id === id) ?? null
 
+  /**
+   * Eine Meldung je Bestellung, die stehen bleibt, bis sie weggeklickt oder
+   * der Tipp wiederholt wird (W4-Verifikation Runde 5): mehrere gescheiterte
+   * Übergaben hintereinander verdrängten sich vorher gegenseitig.
+   */
+  const keepFailure = (code: string, text: string) =>
+    setOpenActions((current) => [
+      ...current.filter((t) => !t.startsWith(`${code}: `)),
+      text,
+    ])
+
   const onConflict = async (
     preorder: Preorder,
     err: unknown,
@@ -723,6 +792,18 @@ export default function AbholListeClient({
       setActionError(text)
       setToast({ text, severity: 'warning' })
       return
+    }
+    // W4-verify r5: Übergabe, aber die Bestellung wurde inzwischen storniert
+    // oder ihr Betrag geändert - sagen, was passiert ist und was jetzt mit
+    // dem Geld zu tun ist, statt „erneut speichern“.
+    if (fresh && change?.status === 'abgeholt') {
+      const advice = handoverConflictAdvice(preorder, fresh, change)
+      if (advice) {
+        const text = `${preorder.code}: ${advice}`
+        keepFailure(preorder.code, text)
+        setToast({ text, severity: 'warning' })
+        return
+      }
     }
     const text = `${preorder.code}: ${preorderErrorMessage(
       err,
@@ -791,7 +872,7 @@ export default function AbholListeClient({
             err,
             'Das hat nicht geklappt. Bitte erneut versuchen.'
           )}`
-          setActionError(text)
+          keepFailure(preorder.code, text)
           setToast({ text, severity: 'error' })
         } else {
           // Keine oder eine 5xx-Antwort: die Anfrage kann trotzdem
@@ -826,7 +907,7 @@ export default function AbholListeClient({
                 severity: 'error',
               })
             } else {
-              setActionError(text)
+              keepFailure(preorder.code, text)
               setToast({ text, severity: 'error' })
             }
           }
