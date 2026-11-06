@@ -351,6 +351,8 @@ export default function ProductListClient({
                         <IconButton
                           size="small"
                           color="primary"
+                          // Touch-Ziel am Handy/Tablet mindestens 44 px.
+                          sx={{ minWidth: 44, minHeight: 44 }}
                           aria-label={`${product.name} bearbeiten`}
                           onClick={() =>
                             router.push(`/admin/products/${product.id}`)

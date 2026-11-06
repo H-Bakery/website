@@ -38,14 +38,18 @@ function appWith(
   })
 }
 
-/** The body the management edit form sends, built from a GET. */
+/**
+ * The body the management edit form sends, built from a GET. Like the app
+ * (`toManagementProduct`, F4) it takes the body text from `rawDescription`,
+ * not from `description` (which falls back to `short_description`).
+ */
 function editFormBody(product: Record<string, unknown>) {
   return {
     name: product['name'],
     category: product['category'],
     price: product['price'],
     short_description: product['short_description'],
-    description: product['description'],
+    description: product['rawDescription'],
     image: product['image'] ?? '',
     available: product['available'],
     seasonal: product['seasonal'],
@@ -234,6 +238,54 @@ describe('writing without HQ_WRITE_DIR (development)', () => {
       expect(read(dir, file)).toBe(before)
     }
   )
+
+  it('a product without description: rawDescription is empty, an unchanged save writes nothing (F4)', async () => {
+    const created = await request(app)
+      .post('/api/hq-products')
+      .set(owner)
+      .send({
+        name: 'Leertext Brot',
+        category: 'brot',
+        price: 2.5,
+        short_description: 'Nur ein Teaser',
+        description: '',
+        image: '',
+        available: true,
+        seasonal: false,
+      })
+    expect(created.status).toBe(201)
+    // POST answers the body without its heading - not the bare heading.
+    expect(created.body.data.description).toBe('')
+    const file = '22-leertext-brot.md'
+    const before = read(dir, file)
+    expect(before.endsWith('# Leertext Brot\n')).toBe(true)
+
+    const got = await request(app)
+      .get('/api/hq-products/leertext-brot')
+      .set(owner)
+      .expect(200)
+    // Shop view keeps its fallback; the management field is the real body.
+    expect(got.body.data.description).toBe('Nur ein Teaser')
+    expect(got.body.data.rawDescription).toBe('')
+    const listed = await request(app).get('/api/hq-products').set(owner)
+    expect(
+      listed.body.data.find((p: { id: string }) => p.id === 'leertext-brot')
+        .rawDescription
+    ).toBe('')
+
+    const res = await request(app)
+      .put('/api/hq-products/leertext-brot')
+      .set(owner)
+      .send(editFormBody(got.body.data))
+    expect(res.status).toBe(200)
+    expect(res.body.data.description).toBe('')
+    expect(read(dir, file)).toBe(before)
+  })
+
+  it('the shop view (/api/products) carries no rawDescription', async () => {
+    const res = await request(app).get('/api/products').set(owner).expect(200)
+    expect(res.body.data[0]).not.toHaveProperty('rawDescription')
+  })
 
   it('an empty PUT also leaves the file identical', async () => {
     const before = read(dir, '13-musterweck.md')

@@ -4,7 +4,8 @@
  * `HQ_PRODUCTS_DIR` when it is loaded, so the variable is set first.
  *
  * Values are compared too, not only shapes: same files, same products.
- * The real API adds `pendingApproval` (D6) - an extra key, allowed.
+ * The real API adds `pendingApproval` (D6) and, on the management view
+ * `/api/hq-products[/:id]`, `rawDescription` (F4) - extra keys, allowed.
  * Writes are compared on two separate copies of the fixture dir, file by
  * file: the same request must leave the same bytes on disk.
  */
@@ -55,7 +56,7 @@ const apps = () => ({ mock, real: realApp })
 
 function withoutPending(body: unknown): unknown {
   return JSON.parse(JSON.stringify(body), (key, value) =>
-    key === 'pendingApproval' ? undefined : value
+    key === 'pendingApproval' || key === 'rawDescription' ? undefined : value
   )
 }
 
@@ -191,5 +192,35 @@ describe('hq products parity (mock vs. real API)', () => {
     )
     expect(dup.mock.status).toBe(409)
     expect(dup.differences).toEqual([])
+  })
+
+  it('POST without description: both answer an empty description, same file', async () => {
+    const body = {
+      name: 'Paritätsleer',
+      category: 'brot',
+      price: 2.1,
+      short_description: 'Nur ein Teaser.',
+      description: '',
+      image: '',
+      available: true,
+      seasonal: false,
+    }
+    const result = await compare(
+      { method: 'post', path: '/api/hq-products', headers: auth, body },
+      apps()
+    )
+    expect(result.mock.status).toBe(201)
+    expect(result.differences).toEqual([])
+    expect(
+      (result.mock.body as { data: { description: string } }).data.description
+    ).toBe('')
+    expect(withoutPending(result.real.body)).toEqual({
+      ...(result.mock.body as object),
+      pending: false,
+    })
+    const file = '23-paritaetsleer.md'
+    expect(fs.readFileSync(path.join(realDir, file), 'utf-8')).toBe(
+      fs.readFileSync(path.join(mockDir, file), 'utf-8')
+    )
   })
 })

@@ -299,6 +299,12 @@ array) matches nothing, as in the mock.
 seasonal, image, short_description, allergens, allergens_source, allergen_recipe, description`)
 **plus `pendingApproval`**. Write answers are the mock's (`frontmatter + description`) plus
 `data.pendingApproval` and top-level `pending`. No DELETE (deleting a product = deleting a file in hq).
+The management view (`/api/hq-products[/:id]`) additionally carries **`rawDescription`** (F4): the
+body without its heading and **without** the `short_description` fallback that `description` has
+for the shop (`managedFields()` in `hq-products.core.js`). The edit form must send that back, or an
+unchanged save of a file without description writes the teaser into its body. `stripHeading()`
+also empties a body that is only the heading (POST without description answers `description: ''`
+on both servers; parity-tested).
 
 - **Two write modes.** `HQ_WRITE_DIR` set (the box): the file goes to
   `${HQ_WRITE_DIR}/products` (worktree on `app/edits`), then `git add` + `git commit -- <file>`

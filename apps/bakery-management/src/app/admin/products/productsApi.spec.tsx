@@ -49,7 +49,18 @@ const musterbrot = {
   image: 'images/',
   short_description: 'Ein Testbrot.',
   description: 'Langer Text zum Testbrot.',
+  rawDescription: 'Langer Text zum Testbrot.',
   pendingApproval: false,
+}
+/** Datei ohne Beschreibung: die API füllt `description` mit dem Kurztext. */
+const leertext = {
+  ...musterbrot,
+  id: 'leertext',
+  numeric_id: 3,
+  name: 'Leertext',
+  short_description: 'Nur ein Teaser.',
+  description: 'Nur ein Teaser.',
+  rawDescription: '',
 }
 const probekruste = {
   ...musterbrot,
@@ -79,6 +90,18 @@ describe('toManagementProduct', () => {
     expect(product.category).toBe('Brot')
     expect(product.pendingApproval).toBe(false)
     expect(product.approved).toBeNull()
+  })
+
+  it('Beschreibung aus rawDescription, nicht aus dem Rückgriff auf den Kurztext', () => {
+    expect(toManagementProduct(leertext).description).toBe('')
+    expect(toManagementProduct(leertext).shortDescription).toBe(
+      'Nur ein Teaser.'
+    )
+    // PUT-Antwort / Mock ohne rawDescription: description ist der Body
+    const withoutRaw = { ...musterbrot, rawDescription: undefined }
+    expect(toManagementProduct(withoutRaw).description).toBe(
+      'Langer Text zum Testbrot.'
+    )
   })
 
   it('wartendes Produkt trägt den freigegebenen Stand', () => {
@@ -166,6 +189,27 @@ describe('ProductEditLoader', () => {
     expect(
       screen.getByText(/freigegebene Stand: Musterbrot/)
     ).toBeInTheDocument()
+  })
+
+  it('Produkt ohne Beschreibung: unverändertes Speichern schickt keinen Kurztext als Beschreibung', async () => {
+    apiClient.get.mockResolvedValue({ success: true, data: leertext })
+    apiClient.put.mockResolvedValue({
+      success: true,
+      pending: false,
+      data: { ...leertext, description: '', rawDescription: undefined },
+    })
+    renderWithTheme(<ProductEditLoader productId="leertext" />)
+    expect(await screen.findByLabelText(/^Beschreibung/)).toHaveValue('')
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenCalledWith(
+        '/api/hq-products/leertext',
+        expect.objectContaining({
+          short_description: 'Nur ein Teaser.',
+          description: '',
+        })
+      )
+    )
   })
 
   it('Verkauf sieht das Produkt ohne Speichern', async () => {

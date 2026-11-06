@@ -463,7 +463,7 @@ const {
 function stripHeading(body) {
   return String(body)
     .trim()
-    .replace(/^#{1,6}[^\n]*\n+/, '')
+    .replace(/^#{1,6}[^\n]*(\n+|$)/, '')
     .trim()
 }
 

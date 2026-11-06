@@ -26,7 +26,13 @@ export interface ApiHqProduct {
   seasonal?: boolean
   image?: string | null
   short_description?: string
+  /** Shop-Sicht: ohne eigenen Text steht hier der Kurztext. */
   description?: string
+  /**
+   * Body der Datei ohne Überschrift, ohne Rückgriff auf den Kurztext - nur
+   * in der Verwaltungssicht `/api/hq-products[/:id]` der echten API (F4).
+   */
+  rawDescription?: string
   pendingApproval?: boolean
   /** Freigegebener Stand, nur bei wartenden Produkten; `null` = neu. */
   approved?: ApiHqProduct | null
@@ -119,7 +125,15 @@ export function toManagementProduct(product: ApiHqProduct): ManagementProduct {
     image: displayImage(rawImage, categoryKey),
     rawImage,
     shortDescription: product.short_description ?? '',
-    description: product.description ?? '',
+    // Nie `description` bevorzugen: die echte API füllt sie bei einer Datei
+    // ohne Beschreibung mit `short_description`, und das Formular schickt
+    // sie beim Speichern zurück - der Kurztext landete im Body (Null-Diff).
+    // PUT/POST-Antworten und der Mock tragen kein `rawDescription`; ihr
+    // `description` ist dort der Body selbst.
+    description:
+      typeof product.rawDescription === 'string'
+        ? product.rawDescription
+        : product.description ?? '',
     pendingApproval: product.pendingApproval === true,
     approved:
       product.pendingApproval === true && approved
