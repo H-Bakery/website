@@ -952,6 +952,10 @@ describe('sums and day summary', () => {
       unpaidTotal: 9.1,
       handedOverUnpaid: 0,
       handedOverUnpaidTotal: 0,
+      topUpCount: 0,
+      topUpTotal: 0,
+      refundCount: 0,
+      refundTotal: 0,
       byChannel: { telefon: 1, sammelstelle: 1, laden: 1 },
     })
   })
