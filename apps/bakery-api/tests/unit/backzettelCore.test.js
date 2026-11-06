@@ -213,6 +213,54 @@ describe('Vorbestellungen', () => {
     })
   })
 
+  // W4-Verifikation Runde 4: Viertel aus Vorbestellung, CAP und Saison
+  // werden zusammen aufgerundet, nicht je Spalte.
+  it('summiert Viertel ueber Vorbestellungen und CAP, bevor aufgerundet wird', () => {
+    const r = day(SAT, {
+      preorderItems: [pre('test-kranz-viertel', 3)],
+      capTemplate: {
+        weekday: 6,
+        items: [{ productSlug: 'test-kranz-viertel', quantity: 1 }],
+      },
+    })
+    // 2 + 0,75 + 0,25 = 3 (je Spalte aufgerundet waeren es 2 + 1 + 1 = 4)
+    expect(line(r, 'kranz')).toMatchObject({
+      base: 2,
+      preorders: 0.75,
+      preordersExact: 0.75,
+      cap: 0.25,
+      subtotalExact: 3,
+      quartersPooled: true,
+      total: 3,
+    })
+  })
+
+  it('rechnet den Saisonzuschlag mit den Vierteln zusammen', () => {
+    const r = day(SAT, {
+      seasonFactor: 1.1,
+      preorderItems: [pre('test-kranz-viertel', 3)],
+    })
+    // 2 × 1,1 + 0,75 = 2,95 -> 3 (nicht 3 + 1 = 4); die Spalten addieren
+    // sich zur Summe vor dem Aufrunden
+    const l = line(r, 'kranz')
+    expect(l).toMatchObject({ seasonal: 0.2, preorders: 0.75, total: 3 })
+    expect(l.base + l.seasonal + l.preorders + l.cap).toBeCloseTo(2.95)
+  })
+
+  it('laesst ganze Spalten unveraendert, wenn nur eine Quelle Bruchteile hat', () => {
+    const r = day(SAT, {
+      seasonFactor: 1.1,
+      preorderItems: [pre('test-kranz', 1)],
+    })
+    // 2,2 -> 3 (Saison +1), dazu 1 ganzer Kranz
+    expect(line(r, 'kranz')).toMatchObject({
+      seasonal: 1,
+      preorders: 1,
+      total: 4,
+    })
+    expect(line(r, 'kranz').quartersPooled).toBeUndefined()
+  })
+
   it('genau vier Viertel sind ein Ganzes', () => {
     const r = day(SAT, { preorderItems: [pre('test-kranz-viertel', 4)] })
     expect(line(r, 'kranz').preorders).toBe(1)

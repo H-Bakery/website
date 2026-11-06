@@ -575,7 +575,11 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
   `variantsForProduct` sagt, welche Varianten ein Produkt annimmt (für B7).
   Schema-Prüfung: `backzettel-config.core.js` (`validateBackzettelConfig`, `normalizeConfig`),
   Rezepte: `backzettel-recipes.core.js`, Datei-Lesen (js-yaml): `backzettel-config.loader.js`.
-- **Viertel erst summieren, dann aufrunden** - je Zeile (Posten × Variante). Aufgerundet wird mit
+- **Viertel erst summieren, dann aufrunden** - je Zeile (Posten × Variante), und zwar über alle
+  Quellen: Basis × Saison + Vorbestellt + CAP (W4-verify r4; 2 + 0,75 + 0,25 = 3, nicht 2 + 1 + 1).
+  Haben mehrere Quellen Bruchteile, stehen Saison/Vorbestellt/CAP genau da (`quartersPooled`), damit
+  sich die Spalten zur Summe vor dem Aufrunden addieren; der Schnappschuss hält `subtotalExact` für
+  die Nachträge fest. Aufgerundet wird mit
   Toleranz (`roundUp`), sonst wird aus 10 × 1,1 = 11,000…02 eine 12. Stück/Blech ganzzahlig,
   Liter/kg auf 0,01 (Haferbrot 1,24 l).
 - **Teigstücke und Füllungsgramm kommen aus der YAML**, nicht aus Code. Der gefüllte Kranz

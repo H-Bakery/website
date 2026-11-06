@@ -534,9 +534,23 @@ function computeDay(args) {
           reasons: [],
           preorderIds: [],
         }
-        const seasoned = roundUp(base * seasonFactor, item.unit)
-        const preorders = roundUp(b.preorders, item.unit)
-        const cap = roundUp(b.cap, item.unit)
+        // Viertel erst summieren, dann aufrunden - ueber alle Quellen der
+        // Zeile (W4-Verifikation Runde 4): 2 + 0,75 Vorbestellt + 0,25 CAP
+        // sind 3 Kuchen, nicht 2 + 1 + 1. Je Spalte aufgerundet ergibt das
+        // dasselbe, solange hoechstens eine Quelle Bruchteile hat; sonst
+        // zeigen die Spalten die genauen Werte, damit sie sich zu `total`
+        // (vor dem Aufrunden) addieren - `quartersPooled` markiert das.
+        const seasonedExact = base * seasonFactor
+        const subtotalExact = seasonedExact + b.preorders + b.cap
+        const pooledSubtotal = roundUp(subtotalExact, item.unit)
+        const seasonedUp = roundUp(seasonedExact, item.unit)
+        const preordersUp = roundUp(b.preorders, item.unit)
+        const capUp = roundUp(b.cap, item.unit)
+        const pooled =
+          pooledSubtotal < tidy(seasonedUp + preordersUp + capUp, item.unit)
+        const seasoned = pooled ? round2(seasonedExact) : seasonedUp
+        const preorders = pooled ? round2(b.preorders) : preordersUp
+        const cap = pooled ? round2(b.cap) : capUp
         const correction = tidy(b.correction, item.unit)
         const empty =
           base === 0 && preorders === 0 && cap === 0 && correction === 0
@@ -547,14 +561,14 @@ function computeDay(args) {
         // negativen Rest (W4-Verifikation Runde 2). Speichern lehnt so eine
         // Korrektur ab; gekappt wird nur, wenn die Zeile spaeter kleiner wird
         // (Grundmenge, Storno).
-        const raw = tidy(seasoned + preorders + cap + correction, item.unit)
+        const raw = tidy(pooledSubtotal + correction, item.unit)
         const total = Math.max(0, raw)
         if (raw < 0) {
           clamped.push({
             name: variant
               ? `${item.name} – ${variantDisplayName(cfg, variant)}`
               : item.name,
-            subtotal: tidy(seasoned + preorders + cap, item.unit),
+            subtotal: pooledSubtotal,
             correction,
           })
         }
@@ -567,9 +581,13 @@ function computeDay(args) {
           variant,
           base,
           baseUnset,
-          seasonal: tidy(seasoned - base, item.unit),
+          seasonal: pooled
+            ? round2(seasoned - base)
+            : tidy(seasoned - base, item.unit),
           preorders,
           preordersExact: round2(b.preorders),
+          subtotalExact: round2(subtotalExact),
+          ...(pooled ? { quartersPooled: true } : {}),
           preorderIds: b.preorderIds,
           cap,
           correction,

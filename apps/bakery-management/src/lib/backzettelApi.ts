@@ -82,6 +82,13 @@ export interface BackzettelLine {
   seasonal: number
   preorders: number
   preordersExact?: number
+  /** Basis × Saison + Vorbestellt + CAP vor dem Aufrunden (nur Entwurf). */
+  subtotalExact?: number
+  /**
+   * `true`: Viertel aus mehreren Quellen wurden erst summiert, dann
+   * aufgerundet - Saison/Vorbestellt/CAP stehen dann genau (z. B. 0,75).
+   */
+  quartersPooled?: boolean
   preorderIds?: number[]
   cap: number
   correction: number

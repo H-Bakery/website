@@ -514,7 +514,8 @@ export function createBackzettelService(
       const extras = dayCore.deltaBakeExtras(
         lines,
         Object.fromEntries(deltaByKey),
-        snap?.preordersExact ?? null
+        snap?.preordersExact ?? null,
+        snap?.subtotalExact ?? null
       )
       for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
       if (config && recomputed) {
@@ -909,14 +910,8 @@ export function createBackzettelService(
       (l) => l.key === key
     )
     if (hit && hit.correctionClamped) {
-      const without = Number(
-        (
-          (Number(hit.preorders) || 0) +
-          (Number(hit.cap) || 0) +
-          (Number(hit.base) || 0) +
-          (Number(hit.seasonal) || 0)
-        ).toFixed(2)
-      )
+      // Viertel aller Quellen erst summiert, dann aufgerundet (Runde 4).
+      const without = core.roundUp(Number(hit.subtotalExact) || 0, hit.unit)
       const fmt = (n: number) => String(n).replace('.', ',')
       throw new BackzettelError(
         400,
