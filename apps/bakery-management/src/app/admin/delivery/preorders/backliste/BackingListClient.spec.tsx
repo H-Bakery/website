@@ -6,10 +6,12 @@ import BackingListClient from './BackingListClient'
 import {
   fetchPickupPoints,
   fetchPreorderDay,
+  fetchPreorderSums,
 } from '../../../../../lib/preordersApi'
 import type {
   PickupPoint,
-  PreorderDay,
+  PreorderDaySummary,
+  PreorderSums,
 } from '../../../../../lib/preordersTypes'
 
 jest.mock('next/navigation', () => ({
@@ -27,13 +29,14 @@ jest.mock('../../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../../lib/preordersApi'),
   fetchPickupPoints: jest.fn(),
   fetchPreorderDay: jest.fn(),
+  fetchPreorderSums: jest.fn(),
 }))
 
 const mockFetchPickupPoints = fetchPickupPoints as jest.MockedFunction<
   typeof fetchPickupPoints
 >
-const mockFetchSummary = fetchPreorderDay as jest.MockedFunction<
-  typeof fetchPreorderDay
+const mockFetchSummary = fetchPreorderSums as jest.MockedFunction<
+  typeof fetchPreorderSums
 >
 
 /** Der 12.09.2026 ist ein Samstag. */
@@ -52,10 +55,14 @@ const POINT: PickupPoint = {
   active: true,
 }
 
-/** `GET /api/preorders/day?date=&pickupPointId=` (P2): Summen je Produkt und Sorte. */
-const SUMMARY: PreorderDay = {
+/**
+ * `GET /api/preorders/sums?date=&pickupPointId=` (W4): Summen je Produkt und
+ * Sorte plus Kopfzahlen - ohne Namen und Telefonnummern.
+ */
+const SUMMARY: PreorderSums = {
   date: DATE,
   pickupPointId: POINT.id,
+  preorderCount: 3,
   summary: {
     count: 3,
     total: 24.6,
@@ -65,7 +72,7 @@ const SUMMARY: PreorderDay = {
     unpaidTotal: 16.4,
     byChannel: { sammelstelle: 3 },
   },
-  sums: [
+  items: [
     {
       productId: 'bauernbrot',
       variant: '',
@@ -83,8 +90,6 @@ const SUMMARY: PreorderDay = {
       preorders: 3,
     },
   ],
-  pickupPoints: [],
-  preorders: [],
 }
 
 describe('BackingListClient', () => {
@@ -105,6 +110,8 @@ describe('BackingListClient', () => {
 
     expect(await screen.findByText('Bauernbrot')).toBeInTheDocument()
     expect(mockFetchSummary).toHaveBeenCalledWith(DATE, POINT.id)
+    // Die Abholliste mit Namen und Telefonnummern wird nicht geladen (W4).
+    expect(fetchPreorderDay).not.toHaveBeenCalled()
     expect(screen.getByText('6')).toBeInTheDocument()
     expect(screen.getByText('24')).toBeInTheDocument()
     // Fuß der Liste: Anzahl, Stückzahl, Betrag und die stornierten daneben.
@@ -118,6 +125,17 @@ describe('BackingListClient', () => {
     expect(
       screen.getByText(/1 storniert \(nicht enthalten\)/)
     ).toBeInTheDocument()
+  })
+
+  it('älterer Server ohne Kopfzahlen: Menge und Anzahl trotzdem', async () => {
+    const withoutSummary: PreorderSums = { ...SUMMARY }
+    delete withoutSummary.summary
+    mockFetchSummary.mockResolvedValue(withoutSummary)
+    renderWithTheme(
+      <BackingListClient initialDate={DATE} initialPickupPointId={POINT.id} />
+    )
+    expect(await screen.findByText('Bauernbrot')).toBeInTheDocument()
+    expect(screen.getByText('3 Vorbestellungen · 30 Stück')).toBeInTheDocument()
   })
 
   it('nennt den Liefertag mit Wochentag und die Sammelstelle', async () => {
@@ -177,12 +195,12 @@ describe('BackingListClient', () => {
     mockFetchSummary.mockResolvedValue({
       ...SUMMARY,
       summary: {
-        ...SUMMARY.summary,
+        ...(SUMMARY.summary as PreorderDaySummary),
         count: 0,
         total: 0,
         byStatus: { offen: 0, bereit: 0, abgeholt: 0, storniert: 0 },
       },
-      sums: [],
+      items: [],
     })
     renderWithTheme(
       <BackingListClient initialDate={DATE} initialPickupPointId={POINT.id} />

@@ -2,14 +2,17 @@ import {
   CANCELLED_GROUP,
   abholActions,
   abhollisteHref,
+  bulkRequestFailedMessage,
   defaultPickupDate,
   defaultPickupPlace,
+  describeBulkResults,
   groupPreorders,
   isDayEndAllowed,
   isPickupPlace,
   isWaiting,
   matchesSearch,
   placeLabel,
+  staleListMessage,
   stepPickupDay,
   wrongWeekdayNotice,
 } from './abholliste'
@@ -110,8 +113,11 @@ describe('matchesSearch', () => {
 })
 
 describe('abholActions', () => {
+  // Abholtag der Fixture ist der 13.11.2026.
+  const TODAY = '2026-11-13'
+
   it('Verkauf: offen → übergeben, bereit, nicht abgeholt, bezahlt', () => {
-    expect(abholActions(preorder(), 'verkauf')).toEqual({
+    expect(abholActions(preorder(), 'verkauf', TODAY)).toEqual({
       handover: true,
       ready: true,
       notCollected: true,
@@ -123,7 +129,7 @@ describe('abholActions', () => {
   })
 
   it('Fahrer: nur übergeben, nicht abgeholt und bezahlt (wie die API)', () => {
-    expect(abholActions(preorder(), 'fahrer')).toMatchObject({
+    expect(abholActions(preorder(), 'fahrer', TODAY)).toMatchObject({
       handover: true,
       ready: false,
       notCollected: true,
@@ -143,13 +149,26 @@ describe('abholActions', () => {
 
   it('„nicht abgeholt" lässt die Übergabe zu und lässt sich zurücknehmen', () => {
     const late = preorder({ status: 'bereit', notCollected: true })
-    expect(abholActions(late, 'verkauf')).toMatchObject({
+    expect(abholActions(late, 'verkauf', TODAY)).toMatchObject({
       handover: true,
       notCollected: false,
       clearNotCollected: true,
     })
     expect(isWaiting(late)).toBe(false)
     expect(isWaiting(preorder({ status: 'bereit' }))).toBe(true)
+  })
+
+  it('„nicht abgeholt" erst ab dem Abholtag (wie die API, W4)', () => {
+    const p = preorder({ status: 'bereit' })
+    expect(abholActions(p, 'verkauf', '2026-11-12').notCollected).toBe(false)
+    expect(abholActions(p, 'fahrer', '2026-11-12').notCollected).toBe(false)
+    expect(abholActions(p, 'verkauf', TODAY).notCollected).toBe(true)
+    expect(abholActions(p, 'verkauf', '2026-11-20').notCollected).toBe(true)
+    // Tag noch unbekannt (erster Render): lieber nicht anbieten.
+    expect(abholActions(p, 'verkauf').notCollected).toBe(false)
+    expect(abholActions(p, 'verkauf', '').notCollected).toBe(false)
+    // Übergeben geht trotzdem schon vorher.
+    expect(abholActions(p, 'verkauf', '2026-11-12').handover).toBe(true)
   })
 
   it('nichts für Stornierte, Anonymisierte, Backstube und ohne Rolle', () => {
@@ -235,5 +254,56 @@ describe('Tage und Orte', () => {
       '/admin/preorders/abholliste?date=2026-11-14&point=laden'
     )
     expect(abhollisteHref()).toBe('/admin/preorders/abholliste')
+  })
+})
+
+describe('Sammelaktionen: Meldungen (W4)', () => {
+  it('trennt Konflikt, anonymisiert, fehlt und abgelehnt', () => {
+    const report = describeBulkResults(
+      'dayEnd',
+      [
+        { id: 1, result: 'ok' },
+        { id: 2, result: 'ok' },
+        { id: 3, result: 'conflict' },
+        { id: 4, result: 'anonymized' },
+        { id: 5, result: 'anonymized' },
+        { id: 6, result: 'not_found' },
+        { id: 7, result: 'refused', message: 'Nicht erlaubt.' },
+      ],
+      new Map([[7, 'LA-2026-11-14-07']])
+    )
+    expect(report.done).toBe('2 Bestellungen als nicht abgeholt markiert.')
+    expect(report.problems).toEqual([
+      '1 Bestellung wurde inzwischen an anderer Stelle geändert und nicht angefasst.',
+      '2 Bestellungen sind schon anonymisiert (Datenschutz) und lassen sich nicht mehr ändern.',
+      '1 Bestellung gibt es nicht mehr.',
+      'LA-2026-11-14-07: Nicht erlaubt.',
+    ])
+  })
+
+  it('nichts geändert: keine Erfolgsmeldung', () => {
+    const report = describeBulkResults('ready', [
+      { id: 1, result: 'conflict' },
+      { id: 2, result: 'conflict' },
+    ])
+    expect(report.done).toBeNull()
+    expect(report.problems).toEqual([
+      '2 Bestellungen wurden inzwischen an anderer Stelle geändert und nicht angefasst.',
+    ])
+    expect(describeBulkResults('ready', [{ id: 1, result: 'ok' }]).done).toBe(
+      '1 Bestellung als bereit markiert.'
+    )
+  })
+
+  it('Request gescheitert und veraltete Liste: eigene Sätze je Ursache', () => {
+    expect(bulkRequestFailedMessage('offline')).toMatch(/^Keine Verbindung/)
+    expect(bulkRequestFailedMessage('server')).toMatch(/nichts gespeichert/)
+    expect(bulkRequestFailedMessage('refused', 'Nein.')).toBe('Nein.')
+    expect(staleListMessage('offline', '09:14')).toBe(
+      'Keine Verbindung zum Server - die Liste konnte nicht neu geladen werden. Angezeigt wird der Stand von 09:14.'
+    )
+    expect(staleListMessage('server', '')).toBe(
+      'Der Server hat beim Neuladen einen Fehler gemeldet.'
+    )
   })
 })

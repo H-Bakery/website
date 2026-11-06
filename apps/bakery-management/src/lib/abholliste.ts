@@ -177,10 +177,15 @@ const NONE: AbholActions = {
  * (`POST /api/preorders/:id/status`): Fahrer nur übergeben, „nicht
  * abgeholt" und bezahlt; Verkauf und Inhaber alles. Stornierte und
  * anonymisierte bleiben unberührt.
+ *
+ * „Nicht abgeholt" gibt es erst ab dem Abholtag (`today`, Geschäftstag
+ * Berlin) - davor kann noch jemand kommen, und die API lehnt es mit 409
+ * `not_collected_too_early` ab (W4). Ohne bekannten Tag: nicht anbieten.
  */
 export function abholActions(
   preorder: Preorder,
-  role: string | null | undefined
+  role: string | null | undefined,
+  today?: string | null
 ): AbholActions {
   if (!role || preorder.anonymizedAt || preorder.status === 'storniert') {
     return NONE
@@ -192,7 +197,10 @@ export function abholActions(
   return {
     handover: open,
     ready: writer && preorder.status === 'offen',
-    notCollected: open && !preorder.notCollected,
+    notCollected:
+      open &&
+      !preorder.notCollected &&
+      isDayEndAllowed(preorder.pickupDate, today ?? ''),
     clearNotCollected: writer && preorder.notCollected,
     markPaid: !preorder.paid,
     markUnpaid: writer && preorder.paid,
@@ -304,4 +312,121 @@ export function abhollisteHref(date?: string, place?: string): string {
   if (place) params.set('point', place)
   const query = params.toString()
   return query ? `${ABHOLLISTE_PATH}?${query}` : ABHOLLISTE_PATH
+}
+
+/* ------------------------------------------------------------------ *
+ * Sammelaktionen (W4): Meldungen
+ * ------------------------------------------------------------------ */
+
+export type AbholBulkKind = 'ready' | 'dayEnd'
+
+/** Ergebnis je Bestellung, wie `POST /api/preorders/bulk-status` es liefert. */
+export interface AbholBulkResult {
+  id: number
+  result: 'ok' | 'conflict' | 'anonymized' | 'not_found' | 'refused'
+  message?: string
+}
+
+export interface AbholBulkReport {
+  /** Erfolgsmeldung (Snackbar), `null` wenn nichts geändert wurde. */
+  done: string | null
+  /** Je Fehlerart ein Satz, in fester Reihenfolge. */
+  problems: string[]
+}
+
+function count(n: number, one: string, many: string): string {
+  return `${n} ${n === 1 ? one : many}`
+}
+
+/**
+ * Deutsche Meldungen zu einer Sammelaktion - je Fehlerart ein eigener Satz,
+ * damit „inzwischen geändert" (neu laden hilft) nicht wie „anonymisiert"
+ * (bleibt so) oder „abgelehnt" (Regel der API) aussieht.
+ */
+export function describeBulkResults(
+  kind: AbholBulkKind,
+  results: AbholBulkResult[],
+  codes: Map<number, string> = new Map()
+): AbholBulkReport {
+  const by = (r: AbholBulkResult['result']) =>
+    results.filter((x) => x.result === r)
+  const ok = by('ok').length
+  const what = kind === 'ready' ? 'als bereit' : 'als nicht abgeholt'
+  const problems: string[] = []
+  const conflicts = by('conflict').length
+  if (conflicts > 0) {
+    problems.push(
+      `${count(
+        conflicts,
+        'Bestellung wurde',
+        'Bestellungen wurden'
+      )} inzwischen an anderer Stelle geändert und nicht angefasst.`
+    )
+  }
+  const anonymized = by('anonymized').length
+  if (anonymized > 0) {
+    problems.push(
+      `${count(
+        anonymized,
+        'Bestellung ist',
+        'Bestellungen sind'
+      )} schon anonymisiert (Datenschutz) und ${
+        anonymized === 1 ? 'lässt' : 'lassen'
+      } sich nicht mehr ändern.`
+    )
+  }
+  const missing = by('not_found').length
+  if (missing > 0) {
+    problems.push(
+      `${count(missing, 'Bestellung gibt', 'Bestellungen gibt')} es nicht mehr.`
+    )
+  }
+  for (const r of by('refused')) {
+    const code = codes.get(r.id)
+    problems.push(
+      `${code ?? `Bestellung ${r.id}`}: ${r.message || 'vom Server abgelehnt.'}`
+    )
+  }
+  return {
+    done:
+      ok > 0
+        ? `${count(ok, 'Bestellung', 'Bestellungen')} ${what} markiert.`
+        : null,
+    problems,
+  }
+}
+
+/**
+ * Meldung, wenn der ganze Sammel-Request scheitert. Der Server schreibt in
+ * einer Transaktion - ohne Antwort oder bei 5xx ist **nichts** gespeichert.
+ */
+export function bulkRequestFailedMessage(
+  kind: 'offline' | 'server' | 'refused',
+  message?: string
+): string {
+  if (kind === 'offline') {
+    return 'Keine Verbindung zum Server - es wurde nichts gespeichert. Bitte WLAN prüfen und erneut versuchen.'
+  }
+  if (kind === 'server') {
+    return 'Der Server hat einen Fehler gemeldet - es wurde nichts gespeichert. Bitte gleich noch einmal versuchen.'
+  }
+  return message || 'Das hat nicht geklappt - es wurde nichts gespeichert.'
+}
+
+/**
+ * Hinweis, wenn stilles Nachladen scheitert: die Liste bleibt stehen,
+ * aber sie kann veraltet sein. `since` = Uhrzeit des letzten Stands.
+ */
+export function staleListMessage(
+  kind: 'offline' | 'server' | 'refused',
+  since: string
+): string {
+  const stand = since ? ` Angezeigt wird der Stand von ${since}.` : ''
+  if (kind === 'offline') {
+    return `Keine Verbindung zum Server - die Liste konnte nicht neu geladen werden.${stand}`
+  }
+  if (kind === 'server') {
+    return `Der Server hat beim Neuladen einen Fehler gemeldet.${stand}`
+  }
+  return `Die Liste konnte nicht neu geladen werden.${stand}`
 }
