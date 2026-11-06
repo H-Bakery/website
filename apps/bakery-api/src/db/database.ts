@@ -1,9 +1,7 @@
 /**
  * SQLite connection for the pilot API.
  *
- * Replaces the module-level singleton in `@bakery/api/database`, whose path is
- * hardcoded to `database.db` relative to the working directory. Here the
- * caller passes the path (`DB_PATH`, see `config/env.ts`).
+ * The caller passes the path (`DB_PATH`, see `config/env.ts`).
  *
  * - WAL journal: readers do not block the writer. Persistent in the file.
  * - busy_timeout: per connection. Sequelize's SQLite dialect opens one

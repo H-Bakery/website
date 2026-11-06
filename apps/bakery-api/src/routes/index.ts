@@ -1,7 +1,4 @@
-/**
- * Routes mounted for the pilot (roadmap §4). Everything else under
- * `src/routes/` and `libs/api/*` is unmounted and is removed in B12.
- */
+/** Router factories exported for `app.ts` (roadmap §4). */
 
 export { createPublicAuthRouter, createSessionAuthRouter } from './auth.routes'
 export { createBackzettelRouter } from './backzettel.routes'

@@ -8,42 +8,6 @@
     "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
-      "@bakery/api/auth": ["libs/api/auth/src/index.ts"],
-      "@bakery/api/baking-list": ["libs/api/baking-list/src/index.ts"],
-      "@bakery/api/cash": ["libs/api/cash/src/index.ts"],
-      "@bakery/api/core": ["libs/api/import-service/core/src/index.ts"],
-      "@bakery/api/customers": [
-        "libs/api/import-service/customers/src/index.ts"
-      ],
-      "@bakery/api/database": ["libs/api/database/src/index.ts"],
-      "@bakery/api/delivery": ["libs/api/delivery/src/index.ts"],
-      "@bakery/api/email": ["libs/api/email/src/index.ts"],
-      "@bakery/api/event-bus": [
-        "libs/api/import-service/event-bus/src/index.ts"
-      ],
-      "@bakery/api/import-service": ["libs/api/import-service/src/index.ts"],
-      "@bakery/api/inventory": [
-        "libs/api/import-service/inventory/src/index.ts"
-      ],
-      "@bakery/api/notifications": ["libs/api/notifications/src/index.ts"],
-      "@bakery/api/orders": ["libs/api/import-service/orders/src/index.ts"],
-      "@bakery/api/preferences": ["libs/api/preferences/src/index.ts"],
-      "@bakery/api/production": [
-        "libs/api/import-service/production/src/index.ts"
-      ],
-      "@bakery/api/products": ["libs/api/products/src/index.ts"],
-      "@bakery/api/recipes": ["libs/api/recipes/src/index.ts"],
-      "@bakery/api/sales-analytics": [
-        "libs/api/import-service/sales-analytics/src/index.ts"
-      ],
-      "@bakery/api/templates": ["libs/api/templates/src/index.ts"],
-      "@bakery/api/types": ["libs/api/import-service/types/src/index.ts"],
-      "@bakery/api/unsold-products": ["libs/api/unsold-products/src/index.ts"],
-      "@bakery/api/utils": ["libs/api/utils/src/index.ts"],
-      "@bakery/api/websocket": ["libs/api/websocket/src/index.ts"],
-      "@bakery/api/workflows": [
-        "libs/api/import-service/workflows/src/index.ts"
-      ],
       "@bakery/delivery/routing": ["libs/bakery-delivery-routing/src/index.ts"],
       "@bakery/delivery/tracking": [
         "libs/bakery-delivery-tracking/src/index.ts"
@@ -106,9 +70,7 @@
       "@bakery/shop/feature-catalog": [
         "libs/bakery-shop/feature-catalog/src/index.ts"
       ],
-      "api": ["libs/api/src/index.ts"],
-      "contexts": ["libs/shared/contexts/src/index.ts"],
-      "reporting-service": ["libs/api/reporting-service/src/index.ts"]
+      "contexts": ["libs/shared/contexts/src/index.ts"]
     }
   },
   "exclude": ["node_modules", "src-archive", "**/src-archive/**"]

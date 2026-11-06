@@ -359,40 +359,6 @@ describe('error responses', () => {
       expect(typeof res.body.message).toBe('string')
     }
   })
-
-  test('ensureErrorShape fills in error + German message', async () => {
-    const app = appWith((a) => {
-      a.use(api.ensureErrorShape)
-      a.get('/lib-401', (_req, res) =>
-        res.status(401).json({ success: false, error: 'Invalid credentials' })
-      )
-      a.get('/lib-400', (_req, res) =>
-        res.status(400).json({ errors: [{ msg: 'Username is required' }] })
-      )
-      a.get('/ok-shape', (_req, res) =>
-        res.status(409).json({ error: 'conflict_x', message: 'Schon da.' })
-      )
-      a.get('/success', (_req, res) => res.json({ success: true }))
-    })
-
-    let res = await request(app).get('/lib-401')
-    expect(res.body).toMatchObject({
-      error: 'unauthorized',
-      message: 'Bitte melden Sie sich an.',
-      detail: 'Invalid credentials',
-    })
-
-    res = await request(app).get('/lib-400')
-    expect(res.body.error).toBe('bad_request')
-    expect(res.body.message).toBe('Die Anfrage ist ungültig.')
-    expect(res.body.errors).toHaveLength(1)
-
-    res = await request(app).get('/ok-shape')
-    expect(res.body).toEqual({ error: 'conflict_x', message: 'Schon da.' })
-
-    res = await request(app).get('/success')
-    expect(res.body).toEqual({ success: true })
-  })
 })
 
 describe('SQLite: serialised write transactions', () => {
