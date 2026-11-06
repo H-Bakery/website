@@ -69,3 +69,28 @@ describe('control-chars.core: Unicode-Eigenschaften statt Liste (W4-verify r5)',
     expect(hasTextControlChars('Zeile\nZeile\tmit Tab\r\n')).toBe(false)
   })
 })
+
+describe('control-chars.core: ZWJ nur zwischen Emoji (W4-verify r6)', () => {
+  it('ZWJ zwischen je vier Akzenten setzt die Zählung nicht zurück', () => {
+    const zalgo = 'Z' + '́̂̃̄‍'.repeat(30) + 'algo'
+    expect(hasNameControlChars(zalgo)).toBe(true)
+    expect(hasTextControlChars(zalgo)).toBe(true)
+    // auch mit Darstellungsselektoren dazwischen
+    const vs = 'Z' + '́̂️̃̄̅'
+    expect(hasNameControlChars(vs)).toBe(true)
+  })
+
+  it('ein ZWJ neben Buchstaben ist ein unsichtbarer Doppelgänger', () => {
+    expect(hasNameControlChars('Testkundin‍ Fichte')).toBe(true)
+    expect(hasNameControlChars('‍Testkundin')).toBe(true)
+    expect(hasNameControlChars('😀‍')).toBe(true)
+  })
+
+  it('Emoji-Sequenzen mit ZWJ, Hautton und Selektor bleiben erlaubt', () => {
+    expect(hasNameControlChars('Backstube 👨‍🍳')).toBe(false)
+    expect(hasNameControlChars('Koch 👨🏽‍🍳')).toBe(false)
+    expect(hasNameControlChars('Fahne 🏳️‍🌈')).toBe(false)
+    expect(hasNameControlChars('Familie 👨‍👩‍👧')).toBe(false)
+    expect(hasNameControlChars('Herz ❤️‍🔥')).toBe(false)
+  })
+})

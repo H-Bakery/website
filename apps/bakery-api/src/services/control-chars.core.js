@@ -33,27 +33,40 @@
  * mehr als vier Kombinationszeichen am Stück („Zalgo“-Text, der über die
  * Nachbarzeilen von Abholliste und Stationskacheln wächst); echte Schrift
  * braucht höchstens zwei, drei (Vietnamesisch, Devanagari).
+ *
+ * W4-Verifikation Runde 6: ein ZWJ zwischen je vier Kombinationszeichen
+ * setzte die Zählung zurück, und ein ZWJ neben Buchstaben machte aus
+ * „Testkundin Fichte“ einen zweiten, gleich aussehenden Namen. Deshalb gilt
+ * der ZWJ nur noch **zwischen zwei Emoji** (`EMOJI_ZWJ`), und gezählt wird
+ * ohne ZWJ und Darstellungsselektoren.
  */
-const ALLOWED_INVISIBLE = new Set(['\u200d', '\ufe0e', '\ufe0f'])
+const ALLOWED_INVISIBLE = new Set(['\ufe0e', '\ufe0f'])
 const INVISIBLE = /[\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029\ufffc]/gu
 const STACKED_MARKS = /\p{M}{5,}/u
+/** ZWJ einer Emoji-Sequenz: Emoji (+ Selektor/Hautton) ZWJ Emoji. */
+const EMOJI_ZWJ =
+  /(?<=\p{Extended_Pictographic}[\ufe0e\ufe0f\p{Emoji_Modifier}]*)\u200d(?=\p{Extended_Pictographic})/gu
+const JOINERS = /[\u200d\ufe0e\ufe0f]/gu
 const NAME_ASCII_CONTROL = /[\u0000-\u001f\u007f-\u009f]/
 const TEXT_ASCII_CONTROL =
   /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/
 
 function hasInvisible(value) {
-  for (const m of value.matchAll(INVISIBLE)) {
+  for (const m of value.replace(EMOJI_ZWJ, '').matchAll(INVISIBLE)) {
     if (!ALLOWED_INVISIBLE.has(m[0])) return true
   }
   return false
 }
 
+/** Mehr als vier Kombinationszeichen am Stück - ZWJ/Selektoren zählen nicht als Pause. */
+function hasStackedMarks(value) {
+  return STACKED_MARKS.test(value.replace(JOINERS, ''))
+}
+
 function makeChecker(asciiControl) {
   const test = (value) =>
     typeof value === 'string' &&
-    (asciiControl.test(value) ||
-      hasInvisible(value) ||
-      STACKED_MARKS.test(value))
+    (asciiControl.test(value) || hasInvisible(value) || hasStackedMarks(value))
   // Aufrufer benutzen `NAME_CONTROL_CHARS.test(x)` wie eine RegExp.
   return { test, source: asciiControl.source }
 }
