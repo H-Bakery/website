@@ -272,6 +272,44 @@ describe('AbholListeClient (P2)', () => {
     )
   })
 
+  it('Fahrer: „Bezahlt" ohne „Rückgängig" - eine Zahlung nimmt nur der Verkauf zurück (W4-verify r2)', async () => {
+    const user = userEvent.setup()
+    renderAs('fahrer', {})
+    await screen.findByTestId('abhol-LA-2026-11-12-03')
+    await user.click(
+      screen.getByRole('button', { name: 'Paula Probe: als bezahlt markieren' })
+    )
+    expect(mockStatus).toHaveBeenCalledWith(
+      3,
+      { paid: true },
+      '2026-11-12T08:02:00.000Z'
+    )
+    expect(await screen.findByText('Paula Probe: bezahlt.')).toBeVisible()
+    expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull()
+  })
+
+  it('Sitzung endet mitten in der Übergabe: „Nicht gespeichert" bleibt stehen (W4-verify r2)', async () => {
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(
+      Object.assign(new Error('Sitzung abgelaufen.'), { status: 401 })
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    expect(
+      await screen.findByText(
+        /LA-2026-11-12-02 \(Max Muster\): Die Übergabe mit Zahlung wurde NICHT gespeichert/
+      )
+    ).toBeInTheDocument()
+  })
+
   it('meldet „bereit" über das Menü und bündelt „Alle offenen als bereit"', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')

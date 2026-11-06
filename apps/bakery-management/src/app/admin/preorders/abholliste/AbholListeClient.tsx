@@ -5,6 +5,7 @@ import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   Chip,
@@ -54,6 +55,12 @@ import {
 } from '@mui/icons-material'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../../lib/session'
+import {
+  clearLostActions,
+  readLostActions,
+  rememberLostAction,
+  type LostAction,
+} from '../../../../lib/lostActions'
 import {
   bulkPreorderStatus,
   changePreorderStatus,
@@ -215,6 +222,18 @@ function Tile({
 }
 
 /** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
+/** „Übergabe", „Zahlung" … - für die Meldung über eine verlorene Aktion. */
+function describeChange(change: PreorderStatusChange): string {
+  if (change.status === 'abgeholt') {
+    return change.paid ? 'Die Übergabe mit Zahlung' : 'Die Übergabe'
+  }
+  if (change.notCollected) return '„Nicht abgeholt"'
+  if (change.paid !== undefined && change.status === undefined) {
+    return 'Die Zahlung'
+  }
+  return 'Die Änderung'
+}
+
 function handedOverUnpaidNote(
   summary: { handedOverUnpaidTotal?: number } | null | undefined
 ): string | null {
@@ -322,6 +341,10 @@ export default function AbholListeClient({
 
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Nicht gespeicherte Aktionen aus einer abgelaufenen Sitzung (siehe
+  // `lib/lostActions.ts`) - bleiben stehen, bis jemand sie wegklickt.
+  const [lostActions, setLostActions] = useState<LostAction[]>([])
+  useEffect(() => setLostActions(readLostActions()), [])
   const [conflict, setConflict] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [handover, setHandover] = useState<Preorder | null>(null)
@@ -564,7 +587,18 @@ export default function AbholListeClient({
       await load(true)
     } catch (err) {
       if (isPreorderConflict(err)) await onConflict(preorder, err, change)
-      else {
+      else if ((err as { status?: unknown } | null)?.status === 401) {
+        // Sitzung beendet (Refresh gescheitert): gleich geht es zur
+        // Anmeldung. Merken, was NICHT gespeichert wurde - sonst bliebe eine
+        // verlorene Übergabe unbemerkt (W4-Verifikation Runde 2).
+        const text = `${preorder.code}${
+          preorder.customerName ? ` (${preorder.customerName})` : ''
+        }: ${describeChange(
+          change
+        )} wurde NICHT gespeichert - die Sitzung war abgelaufen. Bitte wiederholen.`
+        rememberLostAction(text)
+        setActionError(text)
+      } else {
         const kind = requestFailureKind(err)
         if (kind === 'refused') {
           const text = `${preorder.code}: ${preorderErrorMessage(
@@ -1175,6 +1209,28 @@ export default function AbholListeClient({
             onClose={() => setConflict(null)}
           >
             {conflict}
+          </Alert>
+        )}
+        {lostActions.length > 0 && (
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            data-testid="lost-actions"
+            onClose={() => {
+              clearLostActions()
+              setLostActions([])
+            }}
+          >
+            <AlertTitle>Nicht gespeichert</AlertTitle>
+            {lostActions.map((a) => (
+              <Box
+                key={a.at + a.text}
+                component="span"
+                sx={{ display: 'block' }}
+              >
+                {a.text}
+              </Box>
+            ))}
           </Alert>
         )}
         {actionError && (

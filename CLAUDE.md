@@ -1154,7 +1154,9 @@ Sieben Dinge, die man wissen muss:
 - **Client-Wache: `components/auth/RouteGuard.tsx`, in `Providers.tsx`.** Solange `status`
   `loading` ist (Start, `GET /api/auth/me`) oder eine Weiterleitung läuft, steht nur
   `SessionLoading` da - auch im Server-HTML, also kein Aufblitzen geschützter Inhalte. Ohne
-  Sitzung: `/admin/login?next=…`, auf einem Gerät mit Stations-Token `/station`; nach „Abmelden"
+  Sitzung: `/admin/login?next=…` (mit Query, z. B. Tag und Ort der Abholliste; `?next=` prüft
+  `isSafeInternalPath()` in `src/lib/safePath.ts` - keine `..`-Segmente, kein `//`, kein `%` im
+  Pfad, kein Backslash), auf einem Gerät mit Stations-Token `/station`; nach „Abmelden"
   (`loggedOut` im Sitzungskontext) **ohne** `?next=`, damit die nächste Person nicht auf der
   letzten Seite der vorigen landet. Sie sitzt nicht
   im Admin-Layout, weil `/backstube` keins hat (und F2s `pilotMode.spec.ts` ein Verzeichnis

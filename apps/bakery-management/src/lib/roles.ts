@@ -23,6 +23,7 @@ import {
   type NavItem,
 } from '../app/admin/navigation'
 import { isPilotMode } from './pilotMode'
+import { isSafeInternalPath } from './safePath'
 
 export const PILOT_ROLES = [
   'inhaber',
@@ -236,7 +237,7 @@ export function resolvePostLoginPath(
   role: PilotRole,
   next: string | null | undefined
 ): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) {
+  if (!isSafeInternalPath(next)) {
     return startPathForRole(role)
   }
   // Der Inhaber meldet sich an, um ein Tablet als Station einzurichten.

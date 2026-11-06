@@ -27,6 +27,7 @@
 import { apiClient } from '@bakery/shared/data-access'
 import { normalizeRole, type PilotRole } from './roles'
 import { writeSessionCookie } from './sessionCookie'
+import { isSafeInternalPath } from './safePath'
 
 export const SESSION_STORAGE_KEY = 'bakery-management-session'
 export const ACTIVITY_STORAGE_KEY = 'bakery-management-activity'
@@ -221,8 +222,7 @@ export function clearStation(): void {
  */
 export function safeNextPath(value: string | null | undefined): string {
   if (
-    value &&
-    !value.startsWith('//') &&
+    isSafeInternalPath(value) &&
     /^\/(admin|backstube|station)(\/|\?|#|$)/.test(value)
   ) {
     return value
