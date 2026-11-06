@@ -48,12 +48,10 @@ const PRODUCT_LIMITS = Object.freeze({
  * Steuerzeichen drehen Namen optisch um. Im Langtext bleiben Zeilenumbruch
  * und Tab erlaubt.
  */
-// eslint-disable-next-line no-control-regex
-const NAME_CONTROL =
-  /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
-// eslint-disable-next-line no-control-regex
-const TEXT_CONTROL =
-  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+const {
+  NAME_CONTROL_CHARS: NAME_CONTROL,
+  TEXT_CONTROL_CHARS: TEXT_CONTROL,
+} = require('./control-chars.core')
 
 const MESSAGES = Object.freeze({
   name: 'Produktname ist erforderlich',

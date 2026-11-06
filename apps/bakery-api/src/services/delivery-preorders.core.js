@@ -122,12 +122,10 @@ function daysBetween(a, b) {
  * ein Name in der Abholliste optisch umdrehen liesse. Die Anmerkung darf
  * Zeilenumbrueche und Tabs behalten.
  */
-// eslint-disable-next-line no-control-regex
-const NAME_CONTROL_CHARS =
-  /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
-// eslint-disable-next-line no-control-regex
-const NOTE_CONTROL_CHARS =
-  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+const {
+  NAME_CONTROL_CHARS,
+  TEXT_CONTROL_CHARS: NOTE_CONTROL_CHARS,
+} = require('./control-chars.core')
 
 /** Wochentag eines Geschaeftsdatums nach `Date.getDay()`, sonst `null`. */
 function weekdayOf(iso) {

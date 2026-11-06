@@ -237,7 +237,10 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   `{ id, deleted: true, message }` statt 204. **Bewusst anders als der Mock:** eigene
   Fehlercodes (`INVALID_ITEMS` statt `Invalid items`, plus `success: false` - das Frontend liest
   nur `message`), `GET …/templates` legt beim Lesen keine leeren Vorlagen an, `from > to` ist 400,
-  ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (die Erfassungsmaske schickt
+  ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (ein ausdrücklicher `visitAt` muss
+  aber höchstens einen Tag neben dem Geschäftstag liegen, sonst 400 `INVALID_VISIT_AT`; Steuer- und
+  Bidi-Zeichen in Stammdaten, `staffName` und Notiz sind 400 `INVALID_TEXT` - Regel einmal in
+  `src/services/control-chars.core.js`, auch für Vorbestellungen, hq-Produkte und Anzeigenamen) (die Erfassungsmaske schickt
   `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
   `commission`; seit der W4-Verifikation prüft die Vorlage ihre Positionen wie ein Besuch (Menge
   ganzzahlig 0…10000, Produkt im Katalog oder schon in der Vorlage, sonst 400 `INVALID_ITEMS`),
