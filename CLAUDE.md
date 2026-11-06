@@ -910,6 +910,8 @@ Sitzung, Schreiben nur `inhaber`; kein DELETE. Details: `apps/bakery-api/CLAUDE.
 - **Namen werden vor dem Schreiben gegengelesen.** `product-file.core.js` quotet alles, was YAML
   umdeuten würde (`Brot:`, `'s Weck`, `1e3`, `0x1F`, ...); die API parst die fertige Datei noch einmal
   und antwortet 400 `invalid_product_file`, statt eine unlesbare Datei nach hq zu committen.
+  Davor prüft `product-input.core.js` Grenzen (Name ≤ 120 Zeichen ohne Steuerzeichen, Preis
+  0…10000 € mit höchstens zwei Nachkommastellen, Texte begrenzt) - 400 `validation` statt 500.
 - **Katalog für andere Domänen:** Partner (B6) und Vorbestellungen (B7) holen Name und Preis für
   ihre Snapshots aus `getCatalogue()` / `getProduct()` in
   `apps/bakery-api/src/services/hq-catalogue.ts` - freigegebener Stand, gecacht, nie eigene

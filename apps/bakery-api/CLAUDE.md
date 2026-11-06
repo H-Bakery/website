@@ -356,6 +356,12 @@ on both servers; parity-tested).
   (`roundTripsAs` in `hq-products.core.js`); a mismatch is 400 `invalid_product_file` and nothing
   is written. Without this a name like `Brot:` was committed as an unparseable file, vanished from
   every list and would have blocked the rolling PR (H2).
+- **Limits before any write (W4-verify)**, in `product-input.core.js` (`PRODUCT_LIMITS`, shared
+  with the mock): name ≤ 120 characters and free of C0/C1/bidi control characters (a NUL used to
+  break the git commit → 500 `hq_commit_failed`, a 5000-character name the file name →
+  `ENAMETOOLONG`), price 0…10000 € with at most two decimals, `short_description`/`image` ≤ 500,
+  body ≤ 20000 (newline/tab allowed, other control characters not). All 400 `validation` with a
+  German `message`.
 - **No-op saves write and commit nothing** (identical bytes) - tested for every sample file with the
   body the edit form sends. A file that was dirty on disk and is saved back to the committed state
   is also a no-op (nothing staged → no commit, 200). A failed commit (e.g. a rejecting pre-commit
