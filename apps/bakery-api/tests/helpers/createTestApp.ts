@@ -22,6 +22,12 @@ import { MigrationEntry } from '../../src/db/migrations'
 import { initializeModels } from '../../src/models'
 import { runPartnerSeeder } from '../../src/seeders/partner.seeder'
 
+/** Address search and routing that never find anything (B8). */
+export const OFFLINE_GEO = {
+  geocodeAddress: async () => null,
+  routeTour: async () => null,
+}
+
 const QUIET_LOG = {
   log: () => undefined,
   warn: () => undefined,
@@ -70,6 +76,13 @@ export async function createTestApp(
     ...options.app,
     // The hq modules (B4) log their data source on mount; quiet by default.
     hq: { log: QUIET_LOG, ...options.app?.hq },
+    // B8: no Nominatim/OSRM from tests - the estimate path, quietly. A test
+    // that wants hits passes its own `deliveries.geo`.
+    deliveries: {
+      geo: OFFLINE_GEO,
+      log: QUIET_LOG,
+      ...options.app?.deliveries,
+    },
     sequelize,
   })
 

@@ -53,4 +53,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20261116000000-preorders-request-id.js',
     module: require('../../migrations/20261116000000-preorders-request-id.js'),
   },
+  {
+    // B8: delivery tours on the real API (depot, drivers, tours, stops, geocache)
+    name: '20270105000000-delivery-tours-b8.js',
+    module: require('../../migrations/20270105000000-delivery-tours-b8.js'),
+  },
 ]

@@ -358,40 +358,6 @@ function checkLegacyQuery(req: Request, res: Response): boolean {
   return true
 }
 
-/** Sammelstellen-Bestellungen als Mock-Objekte, gefiltert wie im Mock. */
-async function legacyList(
-  service: PreordersService,
-  query: Request['query']
-): Promise<Record<string, unknown>[]> {
-  const filters: Record<string, unknown> = {}
-  if (typeof query['date'] === 'string') filters['date'] = query['date']
-  if (query['pickupPointId'] !== undefined) {
-    filters['pickupPointId'] = String(query['pickupPointId'])
-  }
-  const result = await service.list(filters)
-  if (!result.ok) return []
-  const points = await service.pickupPoints()
-  const now = service.now()
-  return result.data
-    .filter((p) => p.pickupPointId !== null)
-    .map((p) =>
-      core.toLegacyPreorder(
-        { ...p, items: p.items },
-        points.get(p.pickupPointId as string) ?? null,
-        now
-      )
-    )
-    .filter(
-      (p: { status: string }) =>
-        query['status'] === undefined || p.status === query['status']
-    )
-    .sort(
-      (a: { date: string; reference: string }, b: typeof a) =>
-        a.date.localeCompare(b.date) ||
-        String(a.reference).localeCompare(String(b.reference))
-    )
-}
-
 function createDeliveriesRouter(service: PreordersService): Router {
   const router = Router()
 
@@ -424,7 +390,7 @@ function createDeliveriesRouter(service: PreordersService): Router {
     requireRole(...READ_ROLES),
     asyncHandler(async (req, res) => {
       if (!checkLegacyQuery(req, res)) return
-      res.json(await legacyList(service, req.query))
+      res.json(await service.legacyList(req.query))
     })
   )
 
@@ -448,7 +414,7 @@ function createDeliveriesRouter(service: PreordersService): Router {
         pickupPointId === undefined
           ? [...points.values()].find((p) => p.active !== false) ?? null
           : points.get(String(pickupPointId)) ?? null
-      const list = await legacyList(service, req.query)
+      const list = await service.legacyList(req.query)
       res.json({
         date,
         pickupPointId:

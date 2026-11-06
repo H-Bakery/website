@@ -478,6 +478,24 @@ export type PreorderWriteHook = (
   context: { transaction: Transaction; req: Request | null; via: string }
 ) => Promise<void>
 
+/**
+ * Called inside the write transaction of a pickup point update that changed
+ * something (B8): the delivery tours copy a new address into the stops of
+ * that point, so the driver is not sent to the old one.
+ */
+export type PickupPointChangeHook = (
+  before: PickupPointDto,
+  after: PickupPointDto,
+  context: { transaction: Transaction; req: Request | null }
+) => Promise<void>
+
+/** Filters of the Mörsbach alias list (`GET /api/deliveries/preorders`). */
+export interface LegacyListQuery {
+  date?: unknown
+  pickupPointId?: unknown
+  status?: unknown
+}
+
 /** Per-id outcome of `POST /api/preorders/bulk-status` (W4). */
 export type BulkStatusOutcome =
   | 'ok'
@@ -557,10 +575,16 @@ export class PreordersService {
   private readonly allVariants: () => VariantsMap | null
   private readonly clock: () => Date
   private writeHook: PreorderWriteHook | null = null
+  private pickupPointHook: PickupPointChangeHook | null = null
 
   /** Registers the Backzettel delta recorder (app.ts, W4). */
   onWrite(hook: PreorderWriteHook | null): void {
     this.writeHook = hook
+  }
+
+  /** Registers the delivery tours' stop sync (app.ts, B8). */
+  onPickupPointChanged(hook: PickupPointChangeHook | null): void {
+    this.pickupPointHook = hook
   }
 
   private async notifyWrite(
@@ -782,6 +806,43 @@ export class PreordersService {
         )
       ),
     }
+  }
+
+  /**
+   * Sammelstellen-Bestellungen in der Mock-Form (`toLegacyPreorder`),
+   * gefiltert und sortiert wie im Mock: der Mörsbach-Alias
+   * (`GET /api/deliveries/preorders`) und die Übergabeliste eines
+   * Sammelstellen-Stopps der Touren (B8) lesen beide hier. Laden-Bestellungen
+   * fehlen; ungültige Filter ergeben eine leere Liste (die Route prüft vorher).
+   */
+  async legacyList(query: LegacyListQuery): Promise<Record<string, unknown>[]> {
+    const filters: ListFilters = {}
+    if (typeof query.date === 'string') filters.date = query.date
+    if (query.pickupPointId !== undefined) {
+      filters.pickupPointId = String(query.pickupPointId)
+    }
+    const result = await this.list(filters)
+    if (isFailure(result)) return []
+    const points = await this.pickupPoints()
+    const now = this.now()
+    return result.data
+      .filter((p) => p.pickupPointId !== null)
+      .map((p) =>
+        core.toLegacyPreorder(
+          { ...p, items: p.items },
+          points.get(p.pickupPointId as string) ?? null,
+          now
+        )
+      )
+      .filter(
+        (p: { status: string }) =>
+          query.status === undefined || p.status === query.status
+      )
+      .sort(
+        (a: { date: string; reference: string }, b: typeof a) =>
+          a.date.localeCompare(b.date) ||
+          String(a.reference).localeCompare(String(b.reference))
+      )
   }
 
   async get(id: unknown): Promise<Result<PreorderDto>> {
@@ -1619,6 +1680,9 @@ export class PreordersService {
             transaction,
           }
         )
+        if (this.pickupPointHook) {
+          await this.pickupPointHook(before, after, { transaction, req })
+        }
       }
       return { ok: true as const, status: 200, data: after }
     })

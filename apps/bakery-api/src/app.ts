@@ -7,8 +7,8 @@
  *
  * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
  * data (B4: reports, analytics, finance, targets), products (B5), preorders
- * (B7) and the Backzettel (Z3). The other pilot domains get their mount
- * points below as their tasks land.
+ * (B7), the Backzettel (Z3) and the delivery tours (B8). The other pilot
+ * domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
  * endpoints and health. That is structural, not an allow-list: the public
@@ -37,6 +37,11 @@ import { createHqProductsRouters } from './routes/hq-products.routes'
 import { HqProductsOptions } from './services/hq-products.service'
 import { createPreorderRouters } from './routes/preorders.routes'
 import { PreordersOptions } from './services/preorders.service'
+import { createDeliveryToursRouter } from './routes/delivery-tours.routes'
+import {
+  DeliveryToursOptions,
+  DeliveryToursService,
+} from './services/delivery-tours.service'
 import {
   BackzettelRouterOptions,
   createBackzettel,
@@ -91,6 +96,12 @@ export interface CreateAppOptions {
    * locally (B5).
    */
   hqSync?: { edits?: HqEditsSync; snapshots?: HqSnapshotWriter }
+  /**
+   * Delivery tours (B8): address search / routing (`geo`, default Nominatim +
+   * OSRM via `delivery-geo.core.js`; tests pass an offline stub), the
+   * 2.5 s read budget and the 5-min negative cache.
+   */
+  deliveries?: Omit<DeliveryToursOptions, 'preorders'>
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -175,6 +186,20 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api/preorders', preorders.preorders)
   app.use('/api/deliveries', preorders.deliveries)
   app.use('/api/orders', preorders.orders)
+  // B8: tours, stops, drivers, depot on the same prefix (no path overlap
+  // with the alias: /pickup-points*, /preorders*). The Sammelstelle stop
+  // reads its handover list from the preorders; an address change of a
+  // pickup point moves into its stops (same transaction).
+  const deliveries = new DeliveryToursService({
+    preorders: preorders.service,
+    ...options.deliveries,
+  })
+  app.use('/api/deliveries', createDeliveryToursRouter(deliveries))
+  preorders.service.onPickupPointChanged((before, after, { transaction }) =>
+    deliveries.pickupPointChanged(before, after, transaction)
+  )
+  // Tests: wait for address searches that outlived their 2.5 s budget.
+  app.locals['deliveriesIdle'] = () => deliveries.idle()
   // Z3; Z9 writes the confirmed day to hq data/production/backzettel/;
   // Z4 writes Grundmengen like the products (write worktree, B5b PR) and
   // reads the cash reports for the reference column
