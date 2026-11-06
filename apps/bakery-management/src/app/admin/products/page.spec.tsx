@@ -67,7 +67,9 @@ describe('ProductListClient (admin/products)', () => {
     expect(screen.getByText('Produktliste (3)')).toBeInTheDocument()
     expect(screen.getByText('Roggenbrot')).toBeInTheDocument()
     expect(screen.getByText('Christstollen')).toBeInTheDocument()
-    expect(screen.getByText('4.50 €')).toBeInTheDocument()
+    // Deutsches Zahlformat (W4-Verifikation), nicht „4.50 €“.
+    expect(screen.getByText(/^4,50\s€$/)).toBeInTheDocument()
+    expect(screen.queryByText('4.50 €')).not.toBeInTheDocument()
     expect(
       screen.getByText('Verfügbar', { selector: '.MuiChip-label' })
     ).toBeInTheDocument()
