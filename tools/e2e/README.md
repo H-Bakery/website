@@ -24,8 +24,10 @@ Gemeinsame Teile der drei Playwright-Suiten `apps/bakery-shop-e2e`,
   `src/proxy.ts` an `API_URL` weiter - der Browser spricht nur die eigene Origin.
   `src/global-setup.ts` meldet einmal vor allen Tests drei Sitzungen an
   (Inhaber, Verkauf, Inhaber an einer PIN-Station) und gibt sie über
-  `E2E_SESSIONS` an die Worker; je Worker anzumelden ließe das Login-Limit der
-  API (zählt gleichzeitige Anfragen mit) mit 429 zuschlagen.
+  `E2E_SESSIONS` an die Worker; je Worker eine eigene PIN zu setzen, meldete
+  die Stations-Sitzungen der anderen ab. (Das Login-Limit zählt seit W4 nur
+  Fehlversuche, gleichzeitige erfolgreiche Anmeldungen sind kein Problem
+  mehr.)
 - **Shop**: weiter die Mock-API `apps/bakery-api/simple-server.js` - die echte
   API verlangt für jede `/api`-Route eine Sitzung, ein öffentlicher Bestellweg
   ist noch nicht entschieden.
@@ -100,7 +102,19 @@ Was die Suiten voraussetzen, wenn jemand den Katalog ändert:
 - Bildpfade zeigen auf SVGs, die in `apps/bakery-shop/public/assets/images/products`
   liegen.
 
-Die Management-Suite **speichert nie**. Sie liest ohnehin nur eine Kopie
-(`prepareE2eHq()`), sodass ein Speichern das Fixture im Repo nicht ändern
-würde - geprüft wird das Speichern in den Unit-Specs und in der Parity-Suite
-der API (`apps/bakery-api/tests/parity/hqProducts.parity.test.ts`).
+Die Management-Suite **speichert nie in hq** (Produkte, Grundmengen). Sie
+liest ohnehin nur eine Kopie (`prepareE2eHq()`), sodass ein Speichern das
+Fixture im Repo nicht ändern würde - geprüft wird das Speichern in den
+Unit-Specs und in der Parity-Suite der API
+(`apps/bakery-api/tests/parity/hqProducts.parity.test.ts`).
+
+**Ausnahme seit W4:** `management-preorders.spec.ts` schreibt
+**Vorbestellungen** - aber nur in die Wegwerf-SQLite der Test-API
+(`real-api.js`, `mkdtemp`). Sie legt über `POST /api/preorders` zwei
+Bestellungen an der Sammelstelle `kindergarten-moersbach` an (Produkt
+`kornbrot-500g` aus dem Fixture), findet sie in Mörsbach-Liste und
+Abholliste, stellt sie per Sammelaktion auf „bereit" und übergibt eine.
+Jedes Playwright-Projekt nimmt einen eigenen Samstag (Desktop: in einer
+Woche, Pixel 5: in zwei), damit die Sammelaktion des einen Projekts nicht die
+Bestellungen des anderen anfasst. Gegen eine wiederverwendete API (Entwicklung,
+`reuseExistingServer`) bleiben die Testbestellungen in deren Datenbank liegen.
