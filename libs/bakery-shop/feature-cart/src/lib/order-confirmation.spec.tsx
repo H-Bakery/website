@@ -9,6 +9,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import type { ShopOrder } from '@bakery/shared/data-access'
 
 import { OrderConfirmation } from './order-confirmation'
+import { PLACED_ORDERS_KEY, rememberPlacedOrder } from './confirmation-link'
 
 let mockSearch = ''
 const mockFetchShopOrder = jest.fn()
@@ -46,6 +47,7 @@ describe('OrderConfirmation', () => {
   beforeEach(() => {
     mockSearch = ''
     mockFetchShopOrder.mockReset().mockResolvedValue(bookedOrder)
+    window.sessionStorage.removeItem(PLACED_ORDERS_KEY)
   })
 
   it('sagt die Preisänderung dazu, wenn die Kasse sie meldet', async () => {
@@ -74,6 +76,7 @@ describe('OrderConfirmation', () => {
   it('zeigt den Hinweis nicht, wenn es keine Einzelheiten gibt, an denen er hinge', async () => {
     mockSearch = 'preis=aktualisiert'
     mockFetchShopOrder.mockRejectedValue(new Error('Server nicht erreichbar'))
+    rememberPlacedOrder(bookedOrder.id)
     render(<OrderConfirmation orderId={bookedOrder.id} />)
 
     await waitFor(() =>
@@ -180,6 +183,7 @@ describe('OrderConfirmation', () => {
 
   it('unterscheidet „nicht gefunden" von „Server antwortet nicht"', async () => {
     mockFetchShopOrder.mockRejectedValue(new Error('Server nicht erreichbar'))
+    rememberPlacedOrder(bookedOrder.id)
     render(<OrderConfirmation orderId={bookedOrder.id} />)
 
     await screen.findByTestId('order-unavailable')
@@ -188,4 +192,30 @@ describe('OrderConfirmation', () => {
     expect(screen.queryByTestId('order-not-found')).toBeNull()
     expect(screen.getByTestId('order-number').textContent).toBe(bookedOrder.id)
   })
+
+  /* ------------------------------------------------------------------ */
+  /* Abschluss-Verifikation next                                          */
+  /* ------------------------------------------------------------------ */
+
+  it.each([
+    [
+      '401/403 (Abruf nicht öffentlich)',
+      new Error('Bestellung konnte nicht geladen werden.'),
+    ],
+    ['kein Netz', new TypeError('Failed to fetch')],
+  ])(
+    'bestätigt einen fremden Code nicht, wenn der Server nichts sagt: %s',
+    async (_label, error) => {
+      mockFetchShopOrder.mockRejectedValue(error)
+      render(<OrderConfirmation orderId="ZZZZ-ZZZZ-ZZZZ" />)
+
+      const view = await screen.findByTestId('order-unverifiable')
+      expect(view.textContent).not.toContain('Danke')
+      expect(screen.queryByTestId('order-confirmation')).toBeNull()
+      expect(screen.queryByTestId('order-not-found')).toBeNull()
+      expect(screen.getByTestId('order-number').textContent).toBe(
+        'ZZZZ-ZZZZ-ZZZZ'
+      )
+    }
+  )
 })

@@ -34,7 +34,7 @@ import { buildOrderItems, submitOrder } from '@bakery/shared/data-access'
 import { BRAND_FACTS, CROSS_CONTAMINATION_NOTE } from '@bakery/shared/utils'
 import { ShopPrice } from '@bakery/shop/feature-catalog'
 
-import { confirmationPath } from './confirmation-link'
+import { confirmationPath, rememberPlacedOrder } from './confirmation-link'
 import { grossTotal } from './order-totals'
 import {
   PRICES_UPDATED_NOTICE,
@@ -352,6 +352,7 @@ export const CheckoutPage: React.FC = () => {
       // länger herumliegen.
       clearStoredForm()
       clearCart()
+      rememberPlacedOrder(orderId)
       // Der Server rechnet mit den hq-Preisen. Weicht seine Summe von der ab,
       // die hier stand, sagt die Bestätigung es dazu — statt still eine
       // andere Zahl zu zeigen.
