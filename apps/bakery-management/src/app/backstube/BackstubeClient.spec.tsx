@@ -316,6 +316,30 @@ describe('Backstube-Tablet', () => {
     ).toBeInTheDocument()
   })
 
+  it('Netz wieder da: das Neuladen ersetzt den alten Fehler durch den nächsten Schritt (W4-verify r3)', async () => {
+    mocked.setLineDone.mockRejectedValue(new TypeError('Failed to fetch'))
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    const old =
+      'Nicht gespeichert: Keine Verbindung zum Server – bitte WLAN prüfen.'
+    expect(await screen.findByText(old)).toBeInTheDocument()
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    expect(
+      await screen.findByText(
+        'Die Verbindung ist wieder da. Der letzte Haken wurde nicht gespeichert - bitte noch einmal abhaken.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(old)).not.toBeInTheDocument()
+  })
+
   it('die Meldung verschwindet, sobald ein Neuladen den Tag wieder freigegeben zeigt (W4-verify r2)', async () => {
     mocked.setLineDone.mockRejectedValue(
       apiError(409, 'not_confirmed', 'Der Backzettel ist nicht freigegeben.')

@@ -96,6 +96,33 @@ export function staleResolved(
   }
 }
 
+/**
+ * Netz weg oder 5xx (kein 409): nach dem nächsten erfolgreichen Laden ist die
+ * Verbindung wieder da - dann nennt die Meldung den nächsten Schritt statt
+ * weiter einen Serverfehler (W4-Verifikation Runde 3).
+ */
+const TRANSIENT_TICK = 'transient:tick'
+const TRANSIENT_ACK = 'transient:ack'
+
+function isTransient(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status
+  return (
+    describeBackstubeError(error, '').offline ||
+    (typeof status === 'number' && status >= 500)
+  )
+}
+
+/** Meldung nach dem erfolgreichen Neuladen, oder `undefined` = stehen lassen. */
+export function afterReloadMessage(code: string | null): string | undefined {
+  if (code === TRANSIENT_TICK) {
+    return 'Die Verbindung ist wieder da. Der letzte Haken wurde nicht gespeichert - bitte noch einmal abhaken.'
+  }
+  if (code === TRANSIENT_ACK) {
+    return 'Die Verbindung ist wieder da. Der Nachtrag wurde nicht quittiert - bitte noch einmal „Gesehen“ tippen.'
+  }
+  return undefined
+}
+
 function messageOf(error: unknown, fallback: string): string {
   return describeBackstubeError(error, fallback).text
 }
@@ -254,6 +281,10 @@ export default function BackstubeClient({
       setLoadedAt(clockRef.current())
       setLoadError(null)
       if (staleResolved(staleCodeRef.current, res)) showActionError(null)
+      else {
+        const next = afterReloadMessage(staleCodeRef.current)
+        if (next !== undefined) showActionError(next)
+      }
     } catch (error) {
       if (dateRef.current !== target) return
       setLoadError(
@@ -423,7 +454,7 @@ export default function BackstubeClient({
         stale
           ? `${text} Der Backzettel wird neu geladen.`
           : `Nicht gespeichert: ${text}`,
-        stale ? codeOf(error) : null
+        stale ? codeOf(error) : isTransient(error) ? TRANSIENT_TICK : null
       )
     } finally {
       pendingRef.current -= 1
@@ -481,7 +512,11 @@ export default function BackstubeClient({
       )
       showActionError(
         isStale(error) ? `${text} Der Backzettel wird neu geladen.` : text,
-        isStale(error) ? codeOf(error) : null
+        isStale(error)
+          ? codeOf(error)
+          : isTransient(error)
+          ? TRANSIENT_ACK
+          : null
       )
       if (isStale(error)) {
         mutationSeq.current += 1
