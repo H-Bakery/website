@@ -138,6 +138,20 @@ interface LimitEntry {
   waiters: Array<() => void>
 }
 
+/** Longest a login waits for a slot before it gets a 429 (W4). */
+export const LOGIN_WAIT_MAX_MS = 5000
+/** An aborted attempt whose handler never answers counts as failed after this. */
+export const LOGIN_ABORT_GRACE_MS = 30_000
+
+const RELEASES = Symbol('loginRateLimitReleases')
+
+/** Per request: how the outer limiters of a stack free their slot. */
+function releasesOf(req: Request): Array<() => void> {
+  const holder = req as unknown as Record<symbol, Array<() => void>>
+  if (!holder[RELEASES]) holder[RELEASES] = []
+  return holder[RELEASES]
+}
+
 /** Above this many keys, expired idle entries are swept on the next hit. */
 const LIMIT_SWEEP_AT = 10_000
 
@@ -158,6 +172,14 @@ const LIMIT_SWEEP_AT = 10_000
  * status ≥ 400 counts as a failure, except a 429 from another limiter of the
  * stack - that request never tried a password.
  *
+ * Aborted requests never wedge a key: a waiting request whose client goes
+ * away leaves the queue and frees the slots the outer limiters gave it
+ * (no failure - it never reached a password check); a woken request whose
+ * client is gone is never handed on. An admitted attempt settles when the
+ * handler answers (`res.end`, even on a dead socket), so an aborted wrong
+ * guess still counts. Nobody waits longer than `LOGIN_WAIT_MAX_MS` (then 429
+ * with Retry-After).
+ *
  * The routes stack several of these (see `auth.routes.ts`): per IP + account
  * (5), per IP across all accounts (30, against password spraying) and, for
  * the PIN, per account across all IPs (10 - a 4-digit PIN space is tiny).
@@ -169,7 +191,12 @@ export function loginRateLimit(options: {
   perIp?: boolean
   windowMs?: number
   max?: number
+  /** Tests only: LOGIN_WAIT_MAX_MS / LOGIN_ABORT_GRACE_MS. */
+  waitMs?: number
+  abortGraceMs?: number
 }): RequestHandler {
+  const waitMs = options.waitMs ?? LOGIN_WAIT_MAX_MS
+  const abortGraceMs = options.abortGraceMs ?? LOGIN_ABORT_GRACE_MS
   const perIp = options.perIp !== false
   const windowMs = options.windowMs ?? LOGIN_RATE_LIMIT_WINDOW_MS
   const max = options.max ?? LOGIN_RATE_LIMIT_MAX
@@ -219,10 +246,51 @@ export function loginRateLimit(options: {
 
   return (req, res, next) => {
     const key = keyFor(req)
+    /** The client went away (aborted) - never hand such a request on. */
+    let gone = false
+    /** Where this request waits, if it does. */
+    let queued: { e: LimitEntry; wake: () => void } | null = null
+    let waitTimer: ReturnType<typeof setTimeout> | null = null
+
+    /**
+     * This limiter drops a request it never handed on (client gone): the
+     * outer limiters of the stack admitted it, and must free their slot
+     * without counting a failure - no password was checked.
+     */
+    const drop = () => {
+      const releases = releasesOf(req).splice(0)
+      for (const release of releases) release()
+    }
+    const unqueue = () => {
+      if (queued) {
+        const i = queued.e.waiters.indexOf(queued.wake)
+        if (i >= 0) queued.e.waiters.splice(i, 1)
+        const { e } = queued
+        queued = null
+        if (idle(e, Date.now()) && entries.get(key) === e) entries.delete(key)
+      }
+      if (waitTimer) clearTimeout(waitTimer)
+      waitTimer = null
+    }
+    const isGone = () => gone || res.destroyed || res.writableEnded
+
+    res.once('close', () => {
+      gone = true
+      if (queued || waitTimer) drop()
+      unqueue()
+    })
+
     const attempt = (): void => {
+      queued = null
+      if (isGone()) {
+        unqueue()
+        drop()
+        return
+      }
       const now = Date.now()
       const e = entryFor(key, now)
       if (e.failures >= max) {
+        unqueue()
         res.setHeader(
           'Retry-After',
           String(Math.max(1, Math.ceil((e.resetAt - now) / 1000)))
@@ -236,22 +304,68 @@ export function loginRateLimit(options: {
         return
       }
       if (e.failures + e.pending >= max) {
-        // Wait for an answer instead of guessing its outcome.
+        // Wait for an answer instead of guessing its outcome - but not
+        // forever: after LOGIN_WAIT_MAX_MS a 429 with Retry-After.
+        queued = { e, wake: attempt }
         e.waiters.push(attempt)
+        if (!waitTimer) {
+          waitTimer = setTimeout(() => {
+            waitTimer = null
+            unqueue()
+            if (isGone()) {
+              drop()
+              return
+            }
+            res.setHeader('Retry-After', String(Math.ceil(waitMs / 1000)))
+            sendError(
+              res,
+              429,
+              'too_many_requests',
+              'Gerade laufen zu viele Anmeldeversuche. Bitte gleich erneut versuchen.'
+            )
+          }, waitMs)
+          waitTimer.unref?.()
+        }
         return
       }
+      unqueue()
+      admit(e)
+    }
+
+    /**
+     * Settles when the handler answers (`res.end`), whatever happened to the
+     * socket - so an aborted wrong guess still counts as a failure and an
+     * aborted correct login as a success. 'finish' alone never fires on a
+     * destroyed socket. If the client is gone and the handler does not answer
+     * within LOGIN_ABORT_GRACE_MS, the attempt counts as failed (it may have
+     * checked a password) and frees its slot.
+     */
+    const admit = (e: LimitEntry) => {
       e.pending += 1
-      let done = false
-      const finish = () => {
-        if (done) return
-        done = true
-        const status = res.statusCode
-        settle(key, e, status >= 400 && status !== 429)
+      let settled = false
+      let graceTimer: ReturnType<typeof setTimeout> | null = null
+      const settleOnce = (failed: boolean) => {
+        if (settled) return
+        settled = true
+        if (graceTimer) clearTimeout(graceTimer)
+        settle(key, e, failed)
       }
-      res.once('finish', finish)
-      res.once('close', finish)
+      const isFailure = (status: number) => status >= 400 && status !== 429
+      const end = res.end
+      res.end = function (this: typeof res, ...args: unknown[]) {
+        settleOnce(isFailure(res.statusCode))
+        return (end as (...a: unknown[]) => typeof res).apply(this, args)
+      } as typeof res.end
+      res.once('finish', () => settleOnce(isFailure(res.statusCode)))
+      res.once('close', () => {
+        if (settled) return
+        graceTimer = setTimeout(() => settleOnce(true), abortGraceMs)
+        graceTimer.unref?.()
+      })
+      releasesOf(req).push(() => settleOnce(false))
       next()
     }
+
     attempt()
   }
 }

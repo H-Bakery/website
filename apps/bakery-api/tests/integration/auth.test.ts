@@ -549,7 +549,12 @@ describe('rate limit (5 failed attempts / 5 min per IP + username)', () => {
       .post('/api/auth/login')
       .set('X-Forwarded-For', '203.0.113.21')
       .send({ username: 'test.inhaber', password: TEST_PASSWORD })
-    expect(other.status).toBe(200)
+    // status + code together: a flake here (seen once under full-suite load)
+    // must say which answer it was
+    expect({ status: other.status, error: other.body.error }).toEqual({
+      status: 200,
+      error: undefined,
+    })
   })
 
   it('successful logins do not count', async () => {
