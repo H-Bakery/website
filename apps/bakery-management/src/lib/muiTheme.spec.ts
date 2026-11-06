@@ -102,4 +102,15 @@ describe('createManagementTheme (W4-Verifikation: Kontrast)', () => {
     expect(sw).toMatchObject({ width: 64, height: 44, padding: 15 })
     expect(sw['& .MuiSwitch-switchBase']).toEqual({ padding: 12 })
   })
+
+  it('MUI-Texte auf Deutsch: das X einer Meldung heißt „Schließen" (W4-verify r3)', () => {
+    const theme = createManagementTheme('light')
+    expect(theme.components?.MuiAlert?.defaultProps?.closeText).toBe(
+      'Schließen'
+    )
+    // Die eigenen Overrides bleiben neben der Locale erhalten.
+    expect(theme.components?.MuiButton?.styleOverrides?.root).toEqual({
+      [TOUCH_MEDIA]: { minHeight: 44 },
+    })
+  })
 })
