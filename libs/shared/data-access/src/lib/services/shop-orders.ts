@@ -73,6 +73,19 @@ export interface ShopCartLineItem {
 
 const SUBMIT_ERROR = 'Bestellung konnte nicht übermittelt werden.'
 const LOAD_ORDER_ERROR = 'Bestellung konnte nicht geladen werden.'
+/**
+ * B12: the shop talks to the real API, whose `/api/orders` sits behind the
+ * login until a public order path is decided (owner question). Its 401 text
+ * („Bitte melden Sie sich an.“) would tell a customer to log in somewhere
+ * they cannot - so 401/403 get this instead.
+ */
+export const ORDERING_UNAVAILABLE_ERROR =
+  'Online-Bestellung ist derzeit nicht möglich. Bitte bestellen Sie telefonisch oder im Laden.'
+
+/** 401/403: the order endpoint is not open to the public (yet). */
+function isClosedToPublic(response: Response): boolean {
+  return response.status === 401 || response.status === 403
+}
 
 /**
  * Maps cart items to order lines so the checkout page does not reimplement it.
@@ -149,6 +162,8 @@ export async function submitOrder(input: ShopOrderInput): Promise<ShopOrder> {
     throw new Error(SUBMIT_ERROR)
   }
 
+  if (isClosedToPublic(response)) throw new Error(ORDERING_UNAVAILABLE_ERROR)
+
   const payload = await readJson(response)
 
   if (!response.ok) {
@@ -165,8 +180,9 @@ export async function submitOrder(input: ShopOrderInput): Promise<ShopOrder> {
 
 /**
  * Loads a previously placed order, e.g. when the confirmation page is reloaded.
- * Orders live in memory on the mock API, so this legitimately returns `null`
- * after an API restart.
+ * The real API has no public `GET /api/orders/:code` yet (B12, see
+ * `ORDERING_UNAVAILABLE_ERROR`); a 401/403 is reported as a plain load error,
+ * never with the API's „Bitte melden Sie sich an.“
  *
  * @returns the order, or `null` when it does not exist.
  * @throws {Error} `'Bestellung konnte nicht geladen werden.'` on network/HTTP failure.
@@ -186,6 +202,7 @@ export async function fetchShopOrder(id: string): Promise<ShopOrder | null> {
   }
 
   if (response.status === 404) return null
+  if (isClosedToPublic(response)) throw new Error(LOAD_ORDER_ERROR)
 
   const payload = await readJson(response)
 
