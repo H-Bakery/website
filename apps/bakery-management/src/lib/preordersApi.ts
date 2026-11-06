@@ -87,6 +87,37 @@ export async function createPreorder(input: PreorderInput): Promise<Preorder> {
 }
 
 /**
+ * Code, wenn ein wiederholtes Speichern (gleiche `requestId`) anderes
+ * enthält als die Bestellung, die der erste Versuch schon angelegt hat
+ * (W4-Verifikation Runde 5) - die Maske wurde nach dem unklaren Versuch
+ * geändert. Nichts wurde gespeichert; die Antwort nennt die Bestellung.
+ */
+export const REQUEST_ID_CHANGED = 'request_id_changed'
+
+export interface EarlierPreorderRef {
+  id: number
+  code: string
+  updatedAt: string | null
+}
+
+/** Die schon angelegte Bestellung aus einem `request_id_changed`, sonst `null`. */
+export function requestIdChangedTarget(
+  error: unknown
+): EarlierPreorderRef | null {
+  if (preorderErrorCode(error) !== REQUEST_ID_CHANGED) return null
+  const ref = (error as { details?: { preorder?: unknown } } | null)?.details
+    ?.preorder as Partial<EarlierPreorderRef> | undefined
+  if (!ref || typeof ref.id !== 'number' || typeof ref.code !== 'string') {
+    return null
+  }
+  return {
+    id: ref.id,
+    code: ref.code,
+    updatedAt: typeof ref.updatedAt === 'string' ? ref.updatedAt : null,
+  }
+}
+
+/**
  * Maschinen-Code, wenn eine Vorbestellung seit dem Laden an anderer Stelle
  * geändert wurde (`expectedUpdatedAt` passt nicht mehr) - die Seite lädt
  * dann neu, statt die fremde Änderung zu überschreiben.
