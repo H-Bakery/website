@@ -1,8 +1,12 @@
 'use client'
 
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 
-import { clearDeviceData, describeError } from '../lib/delivery-api'
+import {
+  clearDeviceData,
+  clearOfflineCopies,
+  describeError,
+} from '../lib/delivery-api'
 import {
   lastUser,
   login,
@@ -32,6 +36,12 @@ export function AuthGate({ children }: { children: ReactNode }) {
 }
 
 export function LoginForm() {
+  // Ohne gültige Sitzung (abgelaufen, widerrufen, Konto deaktiviert) keine
+  // Kundendaten mehr auf dem Gerät: die Offline-Kopien gehen, die
+  // Warteschlange bleibt für die nächste Anmeldung desselben Benutzers.
+  useEffect(() => {
+    clearOfflineCopies()
+  }, [])
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)

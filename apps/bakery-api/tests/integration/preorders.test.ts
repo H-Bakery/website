@@ -1524,7 +1524,7 @@ describe('/api/deliveries alias (Mörsbach mock contract)', () => {
         .set(tokens['verkauf'])
     ).body
     expect(legacy.items[0]).toMatchObject({
-      name: 'Mustersemmel (schoko)',
+      name: 'Mustersemmel (Schoko)',
       variant: 'schoko',
     })
     const res = await request(api.app)

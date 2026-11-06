@@ -47,6 +47,7 @@ function summary(overrides: Partial<RestSummary> = {}): RestSummary {
         shopBaked: 50,
         rest: 6,
         rate: 0.12,
+        restExceedsItems: 1,
       },
       {
         unit: 'Liter',
@@ -167,6 +168,12 @@ describe('Rest-Auswertung', () => {
     expect(screen.queryByTestId('rest-exceeds-plunder')).toBeNull()
     expect(screen.getByText('12,0 %')).toBeTruthy()
     expect(screen.getByText('25,0 %')).toBeTruthy()
+    // Die Quote der Kachel enthält den verzählten Tag - die Kachel sagt es
+    // (Abschluss-Verifikation next).
+    expect(screen.getByTestId('rest-total-exceeds-Stück').textContent).toBe(
+      '1 Posten mit mehr Rest als gebacken - Quote enthält vermutlich Zählfehler.'
+    )
+    expect(screen.queryByTestId('rest-total-exceeds-Liter')).toBeNull()
     expect(screen.getByTestId('day-counts').textContent).toContain(
       '1 Tage ausgewertet'
     )

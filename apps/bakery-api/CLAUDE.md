@@ -771,7 +771,11 @@ status, bulk and the Mörsbach alias; W4-verify r3),
   `cancelled → storniert`; back: `offen`/`bereit` → `open` unless `notCollectedAt` is set.
   **Handover means paid** on both mock paths: the import and an alias `handed_over` (from any
   other status) set `paid: true` - Mörsbach collects at the handover and the old form has no
-  paid switch. Reopening does not clear it.
+  paid switch. Reopening does not clear it. Since the final `next` verification this applies
+  only to an **unpaid** order: a prepaid one keeps `paidAmount`, so an open rest stays
+  "noch zu kassieren" and an open refund stays "zu erstatten" instead of being booked silently.
+  The driver confirms them with `{ status: 'handed_over', paid: true }` (Fahrer-App: "Rest
+  kassiert und übergeben" / "Erstattet und übergeben").
 - **Items** carry a **price/name/unit snapshot** from the approved hq catalogue (`getProduct`);
   duplicates of product + variant are merged; a product without a price is 400. **Quantities**
   are whole numbers (number or digit string, `core.parseQuantity`); `"abc"`, `2.7`, negatives,
@@ -810,13 +814,15 @@ status, bulk and the Mörsbach alias; W4-verify r3),
   means "the point is served that weekday" (no tours, D11); the PUT does no geocoding (an address
   change clears the coordinates); Laden preorders are invisible there (404); a PATCH with `items`
   on a preorder that has variants is 409 `has_variants` (the old form cannot show them and would
-  drop them); fahrer may PATCH only `{ status: handed_over | not_collected }`, and not at all
-  away from a handed-over order (403 `handover_undo_forbidden`). A PATCH whose
-  body is **only** `{ status }` goes through `changeStatus` (no re-validation of weekday, items
+  drop them); fahrer may PATCH only `{ status: handed_over | not_collected }` (plus `paid: true`
+  with `handed_over`), and not at all away from a handed-over order (403
+  `handover_undo_forbidden`). A PATCH whose body is **only** `{ status[, paid] }` goes through
+  `changeStatus` (no re-validation of weekday, items
   …), so a preorder stays hand-over-able after the inhaber changed the point's weekday; a full
   form save still re-validates. The alias guards (Laden → 404, legacy transition locks) run
   inside the write's transaction, also for DELETE. Answers carry
-  `code`, `channel`, `paid` (and `variant` per item) in addition.
+  `code`, `channel`, `paid`, `paidAmount`, `paymentBalance` (and `variant` per item; the item
+  name shows the Sorte capitalised, `Zopf (Nuss)`, as in management) in addition.
 - **Shop `POST /api/orders`** (verkauf) validates with `shop-orders.core.js` and creates a `shop`
   preorder for the Laden; it answers in the mock's shape with `id` = code and `orderNumber` =
   preorder id. **It stays behind the global auth guard** - the public shop cannot order until a
@@ -1124,7 +1130,9 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
 - **Mörsbach.** `POST /tours` on a pickup point's weekday attaches that point's stop **only to
   the first tour of the day** (checked in the transaction). The stop's handover list is read from
   the B7 preorders (`PreordersService.legacyList()`, the alias shape), not stored on the stop -
-  so `GET /tours` shows the same preorders as `/api/preorders`. Changing a pickup point
+  so `GET /tours` shows the same preorders as `/api/preorders`. Cancelled ones are left out,
+  except a paid one with money to give back (`paymentBalance < 0`): the driver sees it as a
+  refund (`preorderSummary` still counts only active ones). Changing a pickup point
   (`PUT /api/deliveries/preorders/pickup-points/:id`, `PUT /api/preorders/pickup-points/:id`)
   copies the new address onto every stop of that point and clears its coordinates, so the next
   read searches it again (`pickupPointChanged`, inside the pickup point's transaction).
@@ -1134,7 +1142,11 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
 - **Deliberate deviations from the mock:** text limits (`DELIVERY_LIMITS`: customer/street 200,
   city 120, zip 16, time window 64, notes 2000, ≤ 100 items, phone 40 after `normalizePhone` -
   stops, drivers, depot) → 400 `Text too long`; control and bidi characters (stops, drivers,
-  depot, tour names on POST and PATCH) → 400 `Invalid text`; an unknown `pickupPointId` on a stop is 400
+  depot, tour names on POST and PATCH, a stop's `failureReason`) → 400 `Invalid text`; an item
+  quantity that is not a whole number ≥ 0 (`"abc"`, `-5`, `1.5`, `1e309`; missing = 1) → 400
+  `Invalid quantity` (the mock coerced it); `driverId` other than empty/0/a whole number → 400
+  `Invalid driverId`; a tour date outside 2020-01-01 … today + 366 → 400 `Invalid date`; an
+  explicit `completedAt` outside the tour date − 1 … + 3 days → 400 `Invalid completedAt`; an unknown `pickupPointId` on a stop is 400
   `Pickup point not found` (the mock stores it); an invalid `completedAt` is 400 (the mock stores
   it); errors carry `success: false`; drivers carry `userId`; a depot with manual coordinates
   answers `geocodeSource: 'manual'`; the fahrer restriction above. The alias' `hasPickupStop`
@@ -1253,7 +1265,17 @@ bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not count
   test checks that summary and day view agree on "baked" with an acknowledged Nachtrag.
 - **Averages** (`weekdayRestAverages`) use the same completeness rule as the summary and only
   days with a confirmed Backzettel (`backzettelByDate`): a Sorte baked but not counted makes the
-  day unusable instead of lowering the mean.
+  day unusable instead of lowering the mean. A day whose rest exceeds `baked − cap` (the
+  "Zählung prüfen" case) is left out of the mean too and listed in `excludedDates`; the summary
+  keeps such days but marks them (`restExceedsDates` per item, `restExceedsItems` per day and per
+  unit total, CSV column `Zählung prüfen` on item and day rows).
+- **Count lines as they were** (`rest_counts.line_rows`, migration
+  `20270106000000-rest-count-line-rows.js`): every save writes the line's product ids from the
+  config of that moment onto all rows of the touched Posten × Sorte; completeness
+  (`expectedRowsForLine`) and the day view's rows follow that snapshot, not today's YAML. Without
+  it, adding a product to a Posten turned every earlier fully counted day into `partial` and
+  dropped its history out of summary and Rest Ø. Rows from before the column (`NULL`) fall back
+  to the current config.
 - **Z9 snapshot:** with `HQ_SNAPSHOT_DIR` set, every save with changes calls
   `snapshots.restCounted(view)` in the background → `data/production/rest/<date>.json`
   (`restSnapshot` in `hq-snapshots.core.js`: baked, cap, rest and counts per line - no user, no

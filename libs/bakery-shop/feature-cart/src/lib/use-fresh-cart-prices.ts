@@ -21,17 +21,38 @@ import { fetchShopProducts, toCartProduct } from '@bakery/shared/data-access'
 export const PRICES_UPDATED_NOTICE =
   'Seit Ihrem letzten Besuch hat sich ein Preis geändert. Wir zeigen hier die aktuellen Preise.'
 
+/** Der Hinweis, wenn eine Zeile des Warenkorbs nicht mehr bestellbar ist. */
+export const ITEMS_UNAVAILABLE_NOTICE =
+  'Mindestens ein Artikel ist derzeit nicht erhältlich. Bitte entfernen Sie ihn - er ist in der Summe nicht enthalten.'
+
+export interface FreshCartState {
+  /** Seit der Momentaufnahme hat sich ein Preis geändert. */
+  pricesUpdated: boolean
+  /**
+   * Warenkorbzeilen (Produkt-id), die laut API nicht mehr bestellbar sind:
+   * `available: false` oder ganz aus dem Sortiment. Leer, solange die API
+   * nicht geantwortet hat (Abschluss-Verifikation next: sie zählten sonst
+   * in der Summe mit und gingen mit in die Bestellung).
+   */
+  unavailableIds: ReadonlySet<number>
+}
+
+const NONE: ReadonlySet<number> = new Set()
+
 /**
  * Gleicht die Warenkorbzeilen einmal pro Seitenaufruf mit `GET /api/products`
  * ab. Ohne API bleibt es bei der Momentaufnahme — der Server prüft beim
  * Absenden ohnehin, und die Kasse meldet eine abweichende Summe dann über den
  * Bestätigungslink.
  *
- * @returns ob sich seit der Momentaufnahme ein Preis geändert hat
+ * @returns ob sich ein Preis geändert hat und welche Zeilen nicht mehr
+ * erhältlich sind
  */
-export function useFreshCartPrices(): boolean {
+export function useFreshCartPrices(): FreshCartState {
   const { items, isLoading, refreshItems } = useCart()
   const [pricesUpdated, setPricesUpdated] = React.useState(false)
+  const [unavailableIds, setUnavailableIds] =
+    React.useState<ReadonlySet<number>>(NONE)
   /** Einmal je Seitenaufruf — sonst zöge jede Mengenänderung einen Request nach sich. */
   const started = React.useRef(false)
   const mounted = React.useRef(true)
@@ -50,10 +71,40 @@ export function useFreshCartPrices(): boolean {
     fetchShopProducts()
       .then((products) => {
         if (!mounted.current) return
-        setPricesUpdated(refreshItems(products.map(toCartProduct)))
+        const cartProducts = products.map(toCartProduct)
+        const byId = new Map(cartProducts.map((p) => [p.id, p]))
+        // Eine leere Liste ist eher ein Fehler als ein leeres Sortiment.
+        if (byId.size > 0) {
+          setUnavailableIds(
+            new Set(
+              items
+                .filter((item) => {
+                  const product = byId.get(item.id)
+                  return !product || product.isActive === false
+                })
+                .map((item) => item.id)
+            )
+          )
+        }
+        setPricesUpdated(refreshItems(cartProducts))
       })
       .catch(() => undefined)
-  }, [isLoading, items.length, refreshItems])
+  }, [isLoading, items, refreshItems])
 
-  return pricesUpdated
+  return { pricesUpdated, unavailableIds }
+}
+
+/**
+ * Summe ohne die nicht mehr erhältlichen Zeilen - was die Kundschaft
+ * tatsächlich bestellen kann.
+ */
+export function availableTotal(
+  total: number,
+  items: ReadonlyArray<{ id: number; price: number; quantity: number }>,
+  unavailableIds: ReadonlySet<number>
+): number {
+  const removed = items
+    .filter((item) => unavailableIds.has(item.id))
+    .reduce((sum, item) => sum + item.price * item.quantity, 0)
+  return Math.max(0, Math.round((total - removed) * 100) / 100)
 }

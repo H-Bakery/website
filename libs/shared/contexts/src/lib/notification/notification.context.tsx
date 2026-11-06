@@ -264,6 +264,16 @@ function isMissingEndpoint(error: unknown): boolean {
   return status === 404 || status === 501
 }
 
+/**
+ * 401/403 = not (yet) signed in, or the role may not read notifications.
+ * Not a defect of the page: no console.error, and not "unavailable" either -
+ * the next load after sign-in asks again.
+ */
+function isNotAllowed(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status
+  return status === 401 || status === 403
+}
+
 function readUnavailableMark(): boolean {
   try {
     return (
@@ -376,7 +386,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
           clearInterval(pollingRef.current)
           pollingRef.current = null
         }
-      } else {
+      } else if (!isNotAllowed(error)) {
         console.error('Failed to load notifications:', error)
       }
     } finally {

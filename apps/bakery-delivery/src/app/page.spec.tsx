@@ -35,6 +35,8 @@ jest.mock('../lib/delivery-api', () => ({
     drivers: jest.fn(),
     tours: jest.fn(),
     createTour: jest.fn(),
+    updateTour: jest.fn(),
+    deleteTour: jest.fn(),
     updateStop: jest.fn(),
     updatePreorder: jest.fn(),
     reportPosition: jest.fn(),
@@ -581,7 +583,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
         kind: 'stop',
         tourId: 7,
         stopId: 1,
-        body: { status: 'done' },
+        body: { status: 'done', completedAt: expect.any(String) },
       }),
     ])
   })
@@ -622,6 +624,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
         status: 'failed',
         failureReason: 'Adresse nicht gefunden',
         goodsDisposition: 'left_at_address',
+        completedAt: expect.any(String),
       })
     )
     expect(
@@ -653,6 +656,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
           status: 'failed',
           failureReason: 'Annahme verweigert',
           goodsDisposition: 'taken_back',
+          completedAt: expect.any(String),
         },
       }),
     ])
@@ -913,7 +917,10 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
       screen.getByRole('button', { name: 'Trotzdem abschließen' })
     )
     await waitFor(() =>
-      expect(api.updateStop).toHaveBeenCalledWith(7, 1, { status: 'done' })
+      expect(api.updateStop).toHaveBeenCalledWith(7, 1, {
+        status: 'done',
+        completedAt: expect.any(String),
+      })
     )
   })
 
@@ -950,7 +957,10 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
       screen.getByRole('button', { name: 'Trotzdem abschließen' })
     )
     await waitFor(() =>
-      expect(api.updateStop).toHaveBeenCalledWith(7, 1, { status: 'done' })
+      expect(api.updateStop).toHaveBeenCalledWith(7, 1, {
+        status: 'done',
+        completedAt: expect.any(String),
+      })
     )
 
     expect(await screen.findByText('Abgeschlossen')).toBeTruthy()
@@ -1142,5 +1152,102 @@ describe('DeliveryDashboard nach Rolle', () => {
       await screen.findByText(/Ihrem Konto ist noch kein Fahrer zugeordnet/)
     ).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Tour anlegen' })).toBeNull()
+  })
+})
+
+describe('DeliveryDashboard: Tour planen (Abschluss-Verifikation next)', () => {
+  const date = nextSaturdayIso()
+  const second: Driver = { ...driver, id: 2, name: 'Fahrer 2' }
+  const planStop = (id: number, customer: string): Stop => ({
+    id,
+    customer,
+    street: 'Talstraße 5',
+    zip: '66424',
+    city: 'Homburg',
+    address: 'Talstraße 5, 66424 Homburg',
+    phone: null,
+    timeWindow: null,
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    goodsDisposition: null,
+    lat: 49.3226,
+    lon: 7.3389,
+    geocodeSource: null,
+    geocodePrecision: null,
+    estimatedArrival: null,
+  })
+  // Unter „Alle" angelegt: ohne Fahrer.
+  const unassigned: Tour = {
+    ...tour,
+    date,
+    driverId: null,
+    driver: null,
+    stops: [planStop(1, 'Kunde A'), planStop(2, 'Kunde B')],
+    progress: { total: 2, done: 0, failed: 0, open: 2, isComplete: false },
+    nextStopId: 1,
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    signIn('inhaber')
+    api.drivers.mockResolvedValue([driver, second])
+    api.tours.mockResolvedValue([unassigned])
+  })
+
+  async function openPlanning() {
+    render(<DeliveryDashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
+  }
+
+  it('ordnet einer Tour ohne Fahrer nachträglich einen zu', async () => {
+    api.updateTour.mockResolvedValue({
+      ...unassigned,
+      driverId: 2,
+      driver: second,
+    })
+    await openPlanning()
+    fireEvent.change(screen.getByLabelText('Fahrer dieser Tour'), {
+      target: { value: '2' },
+    })
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, { driverId: 2 })
+    )
+    expect(await screen.findByText(new RegExp(`· Fahrer 2`))).toBeTruthy()
+  })
+
+  it('sortiert Stopps von Hand', async () => {
+    api.updateTour.mockResolvedValue({
+      ...unassigned,
+      stops: [unassigned.stops[1], unassigned.stops[0]],
+    })
+    await openPlanning()
+    const down = screen.getAllByRole('button', { name: 'Nach unten' })
+    expect(
+      (
+        screen.getAllByRole('button', {
+          name: 'Nach oben',
+        })[0] as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
+    fireEvent.click(down[down.length - 2])
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, { stopOrder: [2, 1] })
+    )
+  })
+
+  it('löscht eine Tour erst nach Rückfrage', async () => {
+    api.deleteTour.mockResolvedValue({ success: true })
+    await openPlanning()
+    fireEvent.click(screen.getByRole('button', { name: 'Tour löschen' }))
+    expect(api.deleteTour).not.toHaveBeenCalled()
+    fireEvent.click(screen.getByRole('button', { name: 'Ja, Tour löschen' }))
+    await waitFor(() => expect(api.deleteTour).toHaveBeenCalledWith(7))
+    expect(
+      await screen.findByRole('heading', { name: /Keine Tour für/ })
+    ).toBeTruthy()
   })
 })

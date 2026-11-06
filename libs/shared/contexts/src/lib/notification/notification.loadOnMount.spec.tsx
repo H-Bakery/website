@@ -178,3 +178,42 @@ describe('NotificationProvider without /api/notifications (W4)', () => {
     )
   })
 })
+
+describe('NotificationProvider before sign-in (Abschluss-Verifikation next)', () => {
+  it('treats 401 quietly: no console.error, not marked unavailable', async () => {
+    const error = Object.assign(new Error('Nicht angemeldet.'), {
+      status: 401,
+    })
+    mockGetNotifications.mockReset().mockRejectedValue(error)
+    mockGetPreferences.mockReset().mockRejectedValue(error)
+    window.sessionStorage.removeItem(NOTIFICATIONS_UNAVAILABLE_KEY)
+    const consoleError = jest
+      .spyOn(console, 'error')
+      .mockImplementation(() => undefined)
+    function Available() {
+      const { available, isLoading } = useNotifications()
+      return (
+        <span data-testid="available">
+          {isLoading ? 'loading' : String(available)}
+        </span>
+      )
+    }
+    render(
+      <NotificationProvider
+        enableRealTime={false}
+        pollingInterval={0}
+        requestPermissionOnMount={false}
+      >
+        <Available />
+      </NotificationProvider>
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('available').textContent).toBe('null')
+    )
+    expect(consoleError).not.toHaveBeenCalled()
+    expect(
+      window.sessionStorage.getItem(NOTIFICATIONS_UNAVAILABLE_KEY)
+    ).not.toBe('1')
+    consoleError.mockRestore()
+  })
+})

@@ -668,7 +668,13 @@ function ProductDetail({ product }: { product: ShopProduct }) {
                 aria-label="Menge verringern"
                 disabled={quantity <= 1}
                 onClick={() => setQuantity(quantity - 1)}
-                sx={{ border: '1px solid', borderColor: 'divider' }}
+                // ≥ 44 px Touch-Ziel (Abschluss-Verifikation next: 38 × 38).
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  minWidth: 44,
+                  minHeight: 44,
+                }}
               >
                 <RemoveIcon fontSize="small" />
               </IconButton>
@@ -695,7 +701,13 @@ function ProductDetail({ product }: { product: ShopProduct }) {
                 aria-label="Menge erhöhen"
                 disabled={quantity >= MAX_QUANTITY}
                 onClick={() => setQuantity(quantity + 1)}
-                sx={{ border: '1px solid', borderColor: 'divider' }}
+                // ≥ 44 px Touch-Ziel (Abschluss-Verifikation next: 38 × 38).
+                sx={{
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  minWidth: 44,
+                  minHeight: 44,
+                }}
               >
                 <AddIcon fontSize="small" />
               </IconButton>

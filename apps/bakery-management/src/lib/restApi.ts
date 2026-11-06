@@ -130,6 +130,8 @@ export interface RestTotal {
   shopBaked: number
   rest: number
   rate: number | null
+  /** Posten mit mindestens einem Tag „mehr übrig als für den Laden gebacken“. */
+  restExceedsItems?: number
 }
 
 export interface RestSummaryItem {
@@ -206,6 +208,8 @@ export interface RestAveragesItem {
   mean: number
   samples: number[]
   dates: string[]
+  /** Tage, die wegen „mehr übrig als gebacken“ nicht in den Schnitt gingen. */
+  excludedDates?: string[]
 }
 
 export interface RestAverages {
@@ -567,4 +571,27 @@ export function storeDraft(
   } catch {
     // Speicher gesperrt - die Eingaben leben dann nur bis zum Neuladen.
   }
+}
+
+/**
+ * Tage, für die diese Person noch ungespeicherte Eingaben im Browser hat
+ * (Abschluss-Verifikation next: ein Entwurf vom Vortag blieb sonst
+ * unsichtbar, bis jemand zufällig auf den Tag blätterte). Sortiert.
+ */
+export function listDraftDates(userId: number | string): string[] {
+  const prefix = `${DRAFT_PREFIX}${userId}:`
+  const out: string[] = []
+  try {
+    const storage = window.localStorage
+    for (let i = 0; i < storage.length; i += 1) {
+      const key = storage.key(i)
+      if (!key || !key.startsWith(prefix)) continue
+      const date = key.slice(prefix.length)
+      if (!isIsoDate(date)) continue
+      if (Object.keys(loadDraft(userId, date)).length > 0) out.push(date)
+    }
+  } catch {
+    return []
+  }
+  return out.sort()
 }

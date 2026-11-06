@@ -74,6 +74,17 @@ async function usersById(
   )
 }
 
+/** `line_rows` (JSON array of product ids) or `null` for older rows. */
+function parseLineRows(raw: unknown): string[] | null {
+  if (typeof raw !== 'string' || raw === '') return null
+  try {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.map((x) => String(x ?? '')) : null
+  } catch {
+    return null
+  }
+}
+
 /** Stored counts as the core reads them (plain, numbers, user refs). */
 async function loadRows(
   where: Record<string, unknown>,
@@ -101,6 +112,7 @@ async function loadRows(
     factor: toNumber(r.factor),
     qty: toNumber(r.qty),
     revision: r.revision,
+    lineRows: parseLineRows(r.lineRows),
     countedAt: r.updatedAt ? new Date(r.updatedAt).toISOString() : null,
     countedBy:
       r.countedBy === null || r.countedBy === undefined
@@ -330,6 +342,32 @@ export function createRestService(
           to: e.qty,
           ...(change.from !== null ? { correction: true } : {}),
         })
+      }
+      // Die Zählzeilen jeder geänderten Tageszeile, wie sie jetzt gelten, an
+      // alle ihre Zeilen schreiben - die Vollständigkeit eines Tages richtet
+      // sich danach, nicht nach einer später geänderten YAML.
+      const touched = new Map<string, { itemId: string; variant: string }>()
+      for (const change of plan.changes) {
+        const e = change.entry
+        touched.set(`${e.itemId}|${e.variant}`, {
+          itemId: e.itemId,
+          variant: e.variant,
+        })
+      }
+      for (const { itemId, variant } of touched.values()) {
+        const item = loaded.config.items.find(
+          (i: { id: string }) => i.id === itemId
+        )
+        if (!item) continue
+        const lineRows = JSON.stringify(
+          core
+            .countRowsForItem(item, loaded.catalog)
+            .map((r: { productId: string }) => r.productId)
+        )
+        await RestCount.update(
+          { lineRows },
+          { where: { businessDate: date, itemId, variant }, transaction }
+        )
       }
       if (changes.length > 0) {
         await audit(

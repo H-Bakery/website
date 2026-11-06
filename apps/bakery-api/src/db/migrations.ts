@@ -63,4 +63,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270105000000-delivery-tours-b8.js',
     module: require('../../migrations/20270105000000-delivery-tours-b8.js'),
   },
+  {
+    // M4 follow-up: rest_counts.line_rows (count lines as they were)
+    name: '20270106000000-rest-count-line-rows.js',
+    module: require('../../migrations/20270106000000-rest-count-line-rows.js'),
+  },
 ]

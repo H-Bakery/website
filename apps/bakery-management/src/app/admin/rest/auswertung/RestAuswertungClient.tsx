@@ -505,6 +505,20 @@ export default function RestAuswertungClient() {
                   Rest {formatQtyUnit(t.rest, t.unit)} von{' '}
                   {formatQtyUnit(t.shopBaked, t.unit)} im Laden
                 </Typography>
+                {(t.restExceedsItems ?? 0) > 0 && (
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    sx={{ mt: 0.5 }}
+                    data-testid={`rest-total-exceeds-${t.unit}`}
+                  >
+                    {t.restExceedsItems === 1
+                      ? '1 Posten'
+                      : `${t.restExceedsItems} Posten`}{' '}
+                    mit mehr Rest als gebacken - Quote enthält vermutlich
+                    Zählfehler.
+                  </Typography>
+                )}
               </Paper>
             ))}
           </Box>

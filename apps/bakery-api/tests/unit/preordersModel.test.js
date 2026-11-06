@@ -1120,7 +1120,7 @@ describe('mock status mapping (alias)', () => {
       items: [
         {
           productId: 'zopf-test',
-          name: 'Testzopf gefüllt (nuss)',
+          name: 'Testzopf gefüllt (Nuss)',
           qty: 3,
           unitPrice: 4.1,
           lineTotal: 12.3,

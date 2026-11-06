@@ -103,6 +103,8 @@ export default function DeliveryDashboard() {
     () => new Set()
   )
   const [planning, setPlanning] = useState(false)
+  // Rückfrage vor dem Löschen einer Tour - im Bildschirm, kein window.confirm.
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // Eigenes Flag statt `error`: das teilen sich auch Anlegen, Abhaken und
   // Routing. Nur ein gescheitertes *Laden* darf "nichts geplant" ersetzen -
@@ -481,7 +483,8 @@ export default function DeliveryDashboard() {
 
   const changePreorderStatus = async (
     preorderId: number,
-    status: PreorderStatus
+    status: PreorderStatus,
+    paid?: true
   ) => {
     if (!tour) return
     if (busyPreorders.has(preorderId)) return
@@ -491,20 +494,22 @@ export default function DeliveryDashboard() {
     // Die Vorbestellungen haengen an der Tour: die Antwort auf einen
     // Stopp-PATCH braechte sonst eine eben uebergebene Bestellung wieder
     // auf „Offen", solange ihr eigener PATCH noch haengt.
+    // `paid: true` = Rest kassiert bzw. Erstattung ausgezahlt.
+    const body: PreorderUpdate = paid ? { status, paid } : { status }
     const key = inFlightKey('preorder', preorderId)
     inFlightRef.current.set(key, {
       kind: 'preorder',
       preorderId,
-      body: { status },
+      body,
     })
 
     // Wie beim Stopp: erst lokal umschalten. Die Familie steht vor dem
     // Fahrer, das Netz ist am Kindergarten die Ausnahme.
-    const optimistic = applyPreorderStatus(tour, preorderId, status)
+    const optimistic = applyPreorderStatus(tour, preorderId, body)
     setTours((list) => list.map((t) => (t.id === tour.id ? optimistic : t)))
 
     try {
-      const updated = await deliveryApi.updatePreorder(preorderId, { status })
+      const updated = await deliveryApi.updatePreorder(preorderId, body)
       inFlightRef.current.delete(key)
       setTours((list) =>
         list.map((t) => (t.id === tour.id ? replacePreorder(t, updated) : t))
@@ -520,7 +525,7 @@ export default function DeliveryDashboard() {
         setError(err.message)
       } else {
         // Kein Netz: gemerkt, geht spaeter automatisch raus.
-        setPending(queuePreorderUpdate(preorderId, { status }))
+        setPending(queuePreorderUpdate(preorderId, body))
         inFlightRef.current.delete(key)
         setIsOnline(false)
       }
@@ -573,6 +578,61 @@ export default function DeliveryDashboard() {
       mergeTour(updated)
     } catch (err) {
       setError(describeError(err, 'Stopp konnte nicht entfernt werden.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // --- Planung (nur Inhaber; die API verlangt dasselbe) ---
+
+  const assignDriver = async (value: number | null) => {
+    if (!tour) return
+    setBusy(true)
+    setError(null)
+    try {
+      mergeTour(await deliveryApi.updateTour(tour.id, { driverId: value }))
+    } catch (err) {
+      setError(describeError(err, 'Fahrer konnte nicht zugeordnet werden.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const moveStop = async (stopId: number, direction: -1 | 1) => {
+    if (!tour) return
+    const order = tour.stops.map((stop) => stop.id)
+    const from = order.indexOf(stopId)
+    const to = from + direction
+    if (from < 0 || to < 0 || to >= order.length) return
+    order.splice(from, 1)
+    order.splice(to, 0, stopId)
+    setBusy(true)
+    setError(null)
+    try {
+      mergeTour(await deliveryApi.updateTour(tour.id, { stopOrder: order }))
+    } catch (err) {
+      setError(
+        describeError(err, 'Reihenfolge konnte nicht gespeichert werden.')
+      )
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const deleteTour = async () => {
+    if (!tour) return
+    const deletedId = tour.id
+    setBusy(true)
+    setError(null)
+    try {
+      await deliveryApi.deleteTour(deletedId)
+      const rest = tours.filter((entry) => entry.id !== deletedId)
+      setTours(rest)
+      setTourId(rest[0]?.id ?? null)
+      setPlanning(false)
+      setConfirmDelete(false)
+    } catch (err) {
+      setError(describeError(err, 'Tour konnte nicht gelöscht werden.'))
     } finally {
       setBusy(false)
     }
@@ -896,7 +956,10 @@ export default function DeliveryDashboard() {
                 <button
                   type="button"
                   className={styles.buttonGhost}
-                  onClick={() => setPlanning((value) => !value)}
+                  onClick={() => {
+                    setConfirmDelete(false)
+                    setPlanning((value) => !value)
+                  }}
                 >
                   {planning ? 'Planung schließen' : 'Tour planen'}
                 </button>
@@ -993,6 +1056,9 @@ export default function DeliveryDashboard() {
                     onStatusChange={changeStopStatus}
                     onPreorderStatusChange={changePreorderStatus}
                     onRemove={planning && can.plan ? removeStop : undefined}
+                    onMove={planning && can.plan ? moveStop : undefined}
+                    isFirst={index === 0}
+                    isLast={index === tour.stops.length - 1}
                     readOnly={!can.drive}
                     canUndoHandover={can.undoHandover}
                   />
@@ -1000,6 +1066,72 @@ export default function DeliveryDashboard() {
               </ul>
             )}
           </section>
+
+          {planning && can.plan && (
+            <section className={styles.card}>
+              <h2>Tour bearbeiten</h2>
+              <div className={styles.field}>
+                <label htmlFor="tour-driver-select">Fahrer dieser Tour</label>
+                <select
+                  id="tour-driver-select"
+                  value={tour.driverId ?? ''}
+                  disabled={busy}
+                  onChange={(event) =>
+                    assignDriver(
+                      event.target.value ? Number(event.target.value) : null
+                    )
+                  }
+                >
+                  <option value="">ohne Fahrer</option>
+                  {drivers.map((driver) => (
+                    <option key={driver.id} value={driver.id}>
+                      {driver.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className={styles.placeholder}>
+                Reihenfolge von Hand: „Nach oben“ / „Nach unten“ an den Stopps.
+              </p>
+              {!confirmDelete ? (
+                <div className={styles.buttonGroup}>
+                  <button
+                    type="button"
+                    className={styles.buttonGhost}
+                    disabled={busy}
+                    onClick={() => setConfirmDelete(true)}
+                  >
+                    Tour löschen
+                  </button>
+                </div>
+              ) : (
+                <div role="alertdialog" aria-label="Tour löschen?">
+                  <p>
+                    Tour „{tour.name}“ mit {tour.stops.length} Stopp(s) wirklich
+                    löschen? Vorbestellungen der Sammelstelle bleiben erhalten.
+                  </p>
+                  <div className={styles.buttonGroup}>
+                    <button
+                      type="button"
+                      className={styles.button}
+                      disabled={busy}
+                      onClick={deleteTour}
+                    >
+                      Ja, Tour löschen
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.buttonGhost}
+                      disabled={busy}
+                      onClick={() => setConfirmDelete(false)}
+                    >
+                      Abbrechen
+                    </button>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           {planning && can.plan && (
             <section className={styles.card}>
@@ -1048,11 +1180,17 @@ function withId(
 function stopDetails(
   status: Stop['status'],
   details?: FailureDetails
-): Pick<StopInput, 'failureReason' | 'goodsDisposition'> {
-  if (status !== 'failed') return {}
+): Pick<StopInput, 'failureReason' | 'goodsDisposition' | 'completedAt'> {
+  // Der Zeitpunkt des Antippens geht mit - sonst stempelte der Server bei
+  // einem Nachsenden aus der Warteschlange die Zeit des Nachsendens, und nach
+  // einem Funkloch stünde jedes „Erledigt“ eine halbe Stunde zu spät da.
+  if (status === 'open') return {}
+  const completedAt = new Date().toISOString()
+  if (status !== 'failed') return { completedAt }
   return {
     failureReason: details?.failureReason ?? 'Nicht angetroffen',
     goodsDisposition: details?.goodsDisposition ?? null,
+    completedAt,
   }
 }
 
@@ -1069,7 +1207,10 @@ function applyStopUpdate(
       ? {
           ...stop,
           status,
-          completedAt: status === 'open' ? null : new Date().toISOString(),
+          completedAt:
+            status === 'open'
+              ? null
+              : body.completedAt ?? new Date().toISOString(),
           failureReason:
             status === 'failed'
               ? body.failureReason ?? stop.failureReason ?? 'Nicht angetroffen'
@@ -1103,13 +1244,25 @@ function applyStopUpdate(
 function applyPreorderStatus(
   tour: Tour,
   preorderId: number,
-  status: PreorderStatus
+  body: PreorderUpdate
 ): Tour {
-  return mapPreorder(tour, preorderId, (preorder) => ({
-    ...preorder,
-    status,
-    handedOverAt: status === 'handed_over' ? new Date().toISOString() : null,
-  }))
+  const { status } = body
+  return mapPreorder(tour, preorderId, (preorder) => {
+    // Wie der Server: eine unbezahlte gilt mit der Übergabe als bezahlt,
+    // eine vorab bezahlte nur mit `paid: true` als ausgeglichen.
+    const settles =
+      status === 'handed_over' &&
+      preorder.status !== 'handed_over' &&
+      (body.paid === true || preorder.paid === false)
+    return {
+      ...preorder,
+      status,
+      handedOverAt: status === 'handed_over' ? new Date().toISOString() : null,
+      ...(settles
+        ? { paid: true, paidAmount: preorder.total, paymentBalance: 0 }
+        : {}),
+    }
+  })
 }
 
 /** Ersetzt eine Vorbestellung durch den Stand, den der Server bestaetigt hat. */
@@ -1161,7 +1314,7 @@ function withPendingUpdates(tours: Tour[], queue: LocalUpdate[]): Tour[] {
       // Zu welcher Tour die Vorbestellung gehoert, steht nicht im Eintrag -
       // gesucht wird sie ueber die Stopps, die sie tragen.
       return list.map((t) =>
-        applyPreorderStatus(t, entry.preorderId, entry.body.status)
+        applyPreorderStatus(t, entry.preorderId, entry.body)
       )
     }
     if (!entry.body.status) return list

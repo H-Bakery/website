@@ -614,6 +614,7 @@ describe('summarize', () => {
         shopBaked: 60,
         rest: 5,
         rate: 0.0833,
+        restExceedsItems: 0,
       },
     ])
     expect(plunder.weeks).toEqual([
@@ -730,6 +731,7 @@ describe('summarize', () => {
         shopBaked: 4,
         rest: 1,
         rate: 0.25,
+        restExceedsItems: 0,
       },
     ])
   })
@@ -805,6 +807,7 @@ describe('weekdayRestAverages', () => {
         mean: 2,
         samples: [2, 4, 0],
         dates: ['2026-12-01', '2026-11-24', '2026-11-10'],
+        excludedDates: [],
       },
     ])
   })
@@ -837,7 +840,13 @@ describe('weekdayRestAverages - wie die Auswertung vollständig', () => {
         bz
       )
     ).toEqual([
-      { itemId: 'zopf-gefuellt', mean: 3, samples: [3], dates: ['2026-12-05'] },
+      {
+        itemId: 'zopf-gefuellt',
+        mean: 3,
+        samples: [3],
+        dates: ['2026-12-05'],
+        excludedDates: [],
+      },
     ])
   })
 
@@ -858,5 +867,127 @@ describe('isoWeek', () => {
     expect(core.isoWeek('2026-12-28')).toBe('2026-W53')
     expect(core.isoWeek('2027-01-04')).toBe('2027-W01')
     expect(core.isoWeek('2026-12-01')).toBe('2026-W49')
+  })
+})
+
+describe('Abschluss-Verifikation next', () => {
+  // Plunder bekommt nachträglich ein zweites Produkt (z. B. eine neue Größe).
+  const grown = configCore.normalizeConfig(fixture.config())
+  grown.items
+    .find((i) => i.id === 'plunder')
+    .products.push({
+      id: 'test-alt',
+      factor: 1,
+    })
+  const tue = '2026-12-01'
+  const bz = bzDay('confirmed', [{ itemId: 'plunder', total: 10 }])
+
+  it('ein später ergänztes Produkt macht einen damals vollständig gezählten Tag nicht teilweise', () => {
+    const counted = [row('plunder', 1, { lineRows: ['test-plunder'] })]
+    const s = core.summarize({
+      from: tue,
+      to: tue,
+      today: TODAY,
+      config: grown,
+      catalog,
+      days: { [tue]: { backzettel: bz, rows: counted, report: null } },
+    })
+    expect(s.counts).toMatchObject({ counted: 1, partial: 0 })
+    expect(s.items.find((i) => i.itemId === 'plunder')).toMatchObject({
+      days: 1,
+      rest: 1,
+      uncountedDays: 0,
+    })
+    // Rest Ø nimmt den Tag ebenfalls.
+    const [avg] = core.weekdayRestAverages({
+      config: grown,
+      catalog,
+      today: TODAY,
+      weeks: 6,
+      weekdays: [2],
+      rowsByDate: { [tue]: counted },
+      backzettelByDate: { [tue]: bz },
+    })
+    expect(avg.items.map((i) => i.itemId)).toEqual(['plunder'])
+    // Die Tagesansicht zeigt das neue Produkt an diesem Tag nicht als offen.
+    const view = core.buildDayView({
+      date: tue,
+      today: TODAY,
+      config: grown,
+      catalog,
+      backzettel: bz,
+      rows: counted,
+    })
+    const line = view.lines.find((l) => l.itemId === 'plunder')
+    expect(line.counted).toBe(true)
+    expect(line.rows.map((r) => r.productId)).toEqual(['test-plunder'])
+  })
+
+  it('ohne Schnappschuss (ältere Zählung) gilt weiter die aktuelle Config', () => {
+    const s = core.summarize({
+      from: tue,
+      to: tue,
+      today: TODAY,
+      config: grown,
+      catalog,
+      days: {
+        [tue]: { backzettel: bz, rows: [row('plunder', 1)], report: null },
+      },
+    })
+    expect(s.counts).toMatchObject({ counted: 0, partial: 1 })
+  })
+
+  it('Rest Ø lässt Tage mit mehr Rest als für den Laden gebacken aus und nennt sie', () => {
+    const days = ['2026-12-01', '2026-11-24']
+    const rowsByDate = {
+      '2026-12-01': [row('plunder', 15)], // 10 gebacken, 15 gezählt
+      '2026-11-24': [row('plunder', 2)],
+    }
+    const backzettelByDate = Object.fromEntries(
+      days.map((d) => [
+        d,
+        bzDay('confirmed', [{ itemId: 'plunder', total: 10 }]),
+      ])
+    )
+    const [avg] = core.weekdayRestAverages({
+      config,
+      catalog,
+      today: TODAY,
+      weeks: 6,
+      weekdays: [2],
+      rowsByDate,
+      backzettelByDate,
+    })
+    expect(avg.items).toEqual([
+      {
+        itemId: 'plunder',
+        mean: 2,
+        samples: [2],
+        dates: ['2026-11-24'],
+        excludedDates: ['2026-12-01'],
+      },
+    ])
+  })
+
+  it('CSV und Summen markieren „Zählung prüfen“', () => {
+    const s = core.summarize({
+      from: tue,
+      to: tue,
+      today: TODAY,
+      config,
+      catalog,
+      days: {
+        [tue]: { backzettel: bz, rows: [row('plunder', 15)], report: null },
+      },
+    })
+    expect(s.totals[0]).toMatchObject({ unit: 'Stück', restExceedsItems: 1 })
+    expect(s.days[0].restExceedsItems).toEqual([s.items[0].name])
+    const csv = core.summaryCsv(s).split('\r\n')
+    const header = csv.find((l) => l.startsWith('Bereich;'))
+    expect(header.split(';').pop()).toBe('Zählung prüfen')
+    const itemLine = csv.find((l) => l.includes(`;${s.items[0].name};`))
+    expect(itemLine.split(';').pop()).toBe(tue)
+    const dayLine = csv.find((l) => l.startsWith(`${tue};`))
+    expect(dayLine.split(';').pop()).toBe(s.items[0].name)
   })
 })

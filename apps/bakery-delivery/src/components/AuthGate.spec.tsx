@@ -145,6 +145,27 @@ describe('AuthGate', () => {
     expect(window.localStorage.getItem('bakery-delivery-driver')).toBeNull()
   })
 
+  it('ohne gültige Sitzung bleiben keine Kundendaten auf dem Gerät, die Warteschlange schon', () => {
+    // Sitzung serverseitig beendet (abgelaufen, widerrufen): das Formular
+    // erscheint ohne „Abmelden“ - die Offline-Kopien mit Namen, Adressen und
+    // Telefonnummern gehen trotzdem.
+    window.localStorage.setItem(
+      'bakery-delivery-tours',
+      JSON.stringify({ date: '2026-11-07', driverId: 1, at: 'x', tours: [] })
+    )
+    window.localStorage.setItem('bakery-delivery-drivers', '[]')
+    queueStopUpdate(7, 1, { status: 'done' })
+    render(
+      <AuthGate>
+        <p>App</p>
+      </AuthGate>
+    )
+    expect(screen.getByLabelText('Benutzername')).toBeTruthy()
+    expect(window.localStorage.getItem('bakery-delivery-tours')).toBeNull()
+    expect(window.localStorage.getItem('bakery-delivery-drivers')).toBeNull()
+    expect(pendingUpdates()).toHaveLength(1)
+  })
+
   it('derselbe Benutzer behält seine Warteschlange', async () => {
     window.localStorage.setItem(LAST_USER_KEY, '42')
     queueStopUpdate(7, 1, { status: 'done' })

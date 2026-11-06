@@ -219,4 +219,16 @@ describe('ShopHeader', () => {
       expect(screen.queryByTestId('category-filter')).not.toBeInTheDocument()
     })
   })
+
+  it('gibt den Suchknöpfen mindestens 44 px (Abschluss-Verifikation next)', () => {
+    mockSearch = 'q=brot'
+    renderHeader()
+    for (const name of ['Suchen', 'Suche zurücksetzen']) {
+      const style = window.getComputedStyle(
+        screen.getByRole('button', { name })
+      )
+      expect(style.minWidth).toBe('44px')
+      expect(style.minHeight).toBe('44px')
+    }
+  })
 })

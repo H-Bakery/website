@@ -546,6 +546,21 @@ function lineComplete(stored, expected) {
 }
 
 /**
+ * Die Zählzeilen einer gespeicherten Tageszeile, **wie sie beim Zählen
+ * galten** (`lineRows`, Spalte `line_rows`): sonst machte ein später in der
+ * YAML ergänztes Produkt jeden früher vollständig gezählten Tag des Postens
+ * zu „teilweise gezählt“ und nähme ihn aus Auswertung und Rest Ø. Ohne
+ * Schnappschuss (Zählungen von vor der Spalte) gilt die aktuelle Config.
+ *
+ * @returns {Array<{productId: string}>}
+ */
+function expectedRowsForLine(item, catalog, stored) {
+  const snap = (stored || []).find((s) => s && Array.isArray(s.lineRows))
+  if (snap) return snap.lineRows.map((id) => ({ productId: String(id || '') }))
+  return item ? countRowsForItem(item, catalog) : []
+}
+
+/**
  * Die Zeilenschlüssel eines Tages, über die gerechnet wird: alles, was
  * gezählt wurde, und alles, was laut freigegebenem Backzettel gebacken
  * wurde (`baked > 0`). Dieselbe Regel für Auswertung und Rest Ø.
@@ -588,14 +603,43 @@ function sectionOrder(config) {
  * Zählungen darüber (auch zu Produkten, die die Config nicht mehr kennt).
  */
 function mergeRows(item, catalog, stored) {
-  const rows = countRowsForItem(item, catalog).map((r) => ({
-    ...r,
-    qty: null,
-    countedAt: null,
-    countedBy: null,
-    revision: 0,
-    stale: false,
-  }))
+  // Mit Schnappschuss nur die Zählzeilen, die beim Zählen galten - ein
+  // inzwischen ergänztes Produkt gehört nicht zu diesem Tag.
+  const snap = (stored || []).find((s) => s && Array.isArray(s.lineRows))
+  const wanted = snap
+    ? new Set(snap.lineRows.map((id) => String(id || '')))
+    : null
+  const rows = countRowsForItem(item, catalog)
+    .filter((r) => !wanted || wanted.has(r.productId))
+    .map((r) => ({
+      ...r,
+      qty: null,
+      countedAt: null,
+      countedBy: null,
+      revision: 0,
+      stale: false,
+    }))
+  if (wanted) {
+    // Damals gezählt werden sollte, heute nicht mehr in der Config: als
+    // offene Zeile stehen lassen, sonst wirkte die Zeile vollständig.
+    for (const productId of wanted) {
+      if (rows.some((r) => r.productId === productId)) continue
+      if (stored.some((s) => (s.productId || '') === productId)) continue
+      rows.push({
+        productId,
+        label: productId || (item ? item.name : ''),
+        unit: 'Stück',
+        factor: 1,
+        integer: true,
+        step: 1,
+        qty: null,
+        countedAt: null,
+        countedBy: null,
+        revision: 0,
+        stale: true,
+      })
+    }
+  }
   for (const s of stored) {
     const productId = s.productId || ''
     let row = rows.find((r) => r.productId === productId)
@@ -873,6 +917,8 @@ function summarize(a) {
       weekdayName: WEEKDAY_NAMES[weekday] || null,
       status: 'not_counted',
       byUnit: {},
+      // Posten mit mehr Rest als für den Laden gebacken (Zählung prüfen).
+      restExceedsItems: [],
     }
     days.push(day)
     if (date > a.today) {
@@ -900,7 +946,7 @@ function summarize(a) {
       const item = items.get(itemId) || null
       if (item && !isCountable(item)) continue
       const stored = byLine.get(key) || []
-      const expected = item ? countRowsForItem(item, a.catalog) : []
+      const expected = expectedRowsForLine(item, a.catalog, stored)
       const complete = lineComplete(stored, expected)
       const b = bz.get(key) || null
       const first = stored[0] || {}
@@ -945,7 +991,10 @@ function summarize(a) {
       const cap = round2(p.lines.reduce((s, l) => s + (l.cap || 0), 0))
       const rest = round2(p.lines.reduce((s, l) => s + (l.rest || 0), 0))
       t.days += 1
-      if (restExceedsShop(rest, baked, cap)) t.restExceedsDates.push(date)
+      if (restExceedsShop(rest, baked, cap)) {
+        t.restExceedsDates.push(date)
+        day.restExceedsItems.push(p.meta.name)
+      }
       t.baked = round2(t.baked + baked)
       t.cap = round2(t.cap + cap)
       t.rest = round2(t.rest + rest)
@@ -1074,8 +1123,11 @@ function summarize(a) {
       cap: 0,
       shopBaked: 0,
       rest: 0,
+      // Posten dieser Einheit mit mindestens einem „Zählung prüfen“-Tag.
+      restExceedsItems: 0,
     }
     t.items += 1
+    if (i.restExceedsDates.length > 0) t.restExceedsItems += 1
     t.baked = round2(t.baked + i.baked)
     t.cap = round2(t.cap + i.cap)
     t.shopBaked = round2(t.shopBaked + i.shopBaked)
@@ -1146,6 +1198,7 @@ function summaryCsv(s) {
     'Rest',
     'Restquote',
     'Tage ohne Zählung',
+    'Zählung prüfen',
   ])
   for (const i of s.items) {
     push([
@@ -1162,6 +1215,8 @@ function summaryCsv(s) {
       qtyCell(i.rest),
       pct(i.rate),
       i.uncountedDays,
+      // Mehr Rest als für den Laden gebacken - mitgerechnet, aber markiert.
+      (i.restExceedsDates || []).join(', '),
     ])
     for (const v of i.variants) {
       push([
@@ -1175,6 +1230,7 @@ function summaryCsv(s) {
         '',
         qtyCell(v.rest),
         pct(v.rate),
+        '',
         '',
       ])
     }
@@ -1191,6 +1247,7 @@ function summaryCsv(s) {
       `Rest (${u})`,
       `Restquote (${u})`,
     ]),
+    'Zählung prüfen',
   ])
   for (const d of s.days) {
     push([
@@ -1203,6 +1260,7 @@ function summaryCsv(s) {
           ? [qtyCell(x.shopBaked), qtyCell(x.rest), pct(x.rate)]
           : ['', '', '']
       }),
+      (d.restExceedsItems || []).join(', '),
     ])
   }
   push([])
@@ -1256,8 +1314,8 @@ function weekdayRestAverages(a) {
     const items = []
     for (const item of config.items) {
       if (!isCountable(item)) continue
-      const expected = countRowsForItem(item, a.catalog)
       const samples = []
+      const excluded = []
       const used = []
       for (const date of dates) {
         if (samples.length >= a.weeks) break
@@ -1270,13 +1328,29 @@ function weekdayRestAverages(a) {
         const byLine = rowsByLine(rows)
         const itemBz = new Map([...bz].filter(([, l]) => l.itemId === item.id))
         const keys = evaluatedLineKeys(byLine, itemBz)
-        const complete = [...keys].every((key) =>
-          lineComplete(byLine.get(key) || [], expected)
-        )
+        const complete = [...keys].every((key) => {
+          const stored = byLine.get(key) || []
+          return lineComplete(
+            stored,
+            expectedRowsForLine(item, a.catalog, stored)
+          )
+        })
         if (!complete) continue
-        samples.push(
+        const rest =
           lineRest(rows.map((r) => ({ ...r, factor: num(r.factor) }))) || 0
-        )
+        // Mehr übrig als für den Laden gebacken ist fast immer verzählt
+        // (Tagesansicht: „bitte nachzählen“) - nicht in den Mittelwert.
+        let baked = 0
+        let cap = 0
+        for (const l of itemBz.values()) {
+          baked += l.baked || 0
+          cap += l.cap || 0
+        }
+        if (restExceedsShop(rest, round2(baked), round2(cap))) {
+          excluded.push(date)
+          continue
+        }
+        samples.push(rest)
         used.push(date)
       }
       if (samples.length === 0) continue
@@ -1285,6 +1359,8 @@ function weekdayRestAverages(a) {
         mean: round2(samples.reduce((s, x) => s + x, 0) / samples.length),
         samples,
         dates: used,
+        // Tage mit „Zählung prüfen“, die nicht mitgerechnet sind.
+        excludedDates: excluded,
       })
     }
     out.push({ weekday, weekdayName: WEEKDAY_NAMES[weekday] || null, items })
@@ -1314,6 +1390,7 @@ module.exports = {
   emptyVariantCandidates,
   emptyVariantLines,
   lineComplete,
+  expectedRowsForLine,
   restExceedsShop,
   planBatch,
   acknowledgedExtra,

@@ -35,6 +35,8 @@ export class RestCount extends Model<
   declare qty: number
   declare revision: CreationOptional<number>
   declare countedBy: CreationOptional<number | null>
+  /** JSON array of the line's product ids when counted (`null` = before the column). */
+  declare lineRows: CreationOptional<string | null>
   declare createdAt: CreationOptional<Date>
   declare updatedAt: CreationOptional<Date>
 
@@ -70,6 +72,7 @@ export class RestCount extends Model<
           defaultValue: 1,
         },
         countedBy: { type: DataTypes.INTEGER, allowNull: true },
+        lineRows: { type: DataTypes.TEXT, allowNull: true },
         createdAt: DataTypes.DATE,
         updatedAt: DataTypes.DATE,
       },

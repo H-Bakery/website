@@ -52,6 +52,7 @@ describe('createTestApp', () => {
       '20261116000000-preorders-request-id.js',
       '20261201000000-rest-am-abend.js',
       '20270105000000-delivery-tours-b8.js',
+      '20270106000000-rest-count-line-rows.js',
     ])
   })
 })

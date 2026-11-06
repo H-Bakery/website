@@ -491,10 +491,19 @@ function createDeliveriesRouter(service: PreordersService): Router {
         sendError(res, 400, 'Invalid status', LEGACY_STATUS_MESSAGE)
         return
       }
+      if (body['paid'] !== undefined && typeof body['paid'] !== 'boolean') {
+        sendError(res, 400, 'invalid_paid', '„Bezahlt" muss ja oder nein sein.')
+        return
+      }
       if (req.user?.role === 'fahrer') {
+        // Neben dem Status darf der Fahrer bei der Übergabe `paid: true`
+        // schicken: Rest kassiert bzw. Erstattung ausgezahlt. Zurücknehmen
+        // (`paid: false`) bleibt dem Verkauf.
         const keys = Object.keys(body)
         if (
-          keys.some((k) => k !== 'status') ||
+          keys.some((k) => k !== 'status' && k !== 'paid') ||
+          (body['paid'] !== undefined &&
+            (body['paid'] !== true || body['status'] !== 'handed_over')) ||
           !['handed_over', 'not_collected'].includes(String(body['status']))
         ) {
           sendError(
@@ -556,7 +565,8 @@ function createDeliveriesRouter(service: PreordersService): Router {
       // Prüfung von Liefertag, Positionen usw. - sonst ließe sich eine
       // Bestellung nach einer Wochentagsänderung der Stelle nicht mehr übergeben.
       const statusOnly =
-        Object.keys(body).length === 1 && body['status'] !== undefined
+        body['status'] !== undefined &&
+        Object.keys(body).every((k) => k === 'status' || k === 'paid')
       const result = statusOnly
         ? await service.changeStatus(req.params['id'], body, req, {
             guard,

@@ -218,7 +218,9 @@ describe('Rest am Abend - Zählung', () => {
     expect(mocked.saveRestDay).not.toHaveBeenCalled()
     // The input (3) is still there; saving now is a conscious overwrite of 40.
     expect(screen.getByText('1 Änderung')).toBeTruthy()
-    fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Meine Zahlen speichern' })
+    )
     await waitFor(() =>
       expect(mocked.saveRestDay).toHaveBeenCalledWith('2026-12-01', [
         { itemId: 'weck', productId: 'test-weck', qty: 3, expected: 40 },
@@ -400,5 +402,139 @@ describe('Rest am Abend - Zählung', () => {
     )
     renderAs('verkauf')
     expect(await screen.findByText('Keine Zählliste')).toBeTruthy()
+  })
+
+  describe('Abschluss-Verifikation next', () => {
+    function conflict409() {
+      const error = new ApiError(
+        'Weck wurde inzwischen von Test inhaber gezählt (6). Nichts wurde gespeichert.',
+        409,
+        'rest_changed'
+      )
+      error.details = {
+        current: [
+          {
+            itemId: 'weck',
+            variant: null,
+            productId: 'test-weck',
+            name: 'Weck',
+            qty: 6,
+            countedBy: { id: 1, displayName: 'Test inhaber' },
+          },
+        ],
+      }
+      return error
+    }
+
+    it('409: the save bar and the line say what the other device saved, overwriting is explicit', async () => {
+      mocked.saveRestDay.mockRejectedValueOnce(conflict409())
+      renderAs('verkauf')
+      await screen.findByTestId('rest-line-weck|')
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Weck: nichts übrig' })
+      )
+      mocked.fetchRestDay.mockResolvedValue(
+        makeDay({
+          lines: [
+            line({
+              rows: [
+                row({
+                  qty: 6,
+                  revision: 1,
+                  countedBy: { id: 1, displayName: 'Test inhaber' },
+                }),
+              ],
+              counted: true,
+              rest: 6,
+            }),
+          ],
+        })
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+      const bar = await screen.findByTestId('rest-save-bar')
+      expect(
+        (await within(bar).findByTestId('rest-save-bar-message')).textContent
+      ).toMatch(/Inzwischen anders gezählt \(1\)/)
+      expect(screen.getByTestId('rest-conflict-weck|').textContent).toBe(
+        'Inzwischen gespeichert: 6 von Test inhaber · deine Eingabe: 0'
+      )
+      // Kein zweites „Speichern“, das die Zahl der Kollegin ungesehen
+      // überschreibt - der Knopf sagt, was er tut.
+      expect(
+        within(bar).queryByRole('button', { name: 'Speichern' })
+      ).toBeNull()
+      expect(
+        within(bar).getByRole('button', { name: 'Meine Zahlen speichern' })
+      ).toBeTruthy()
+    })
+
+    it('network and proxy errors are German, not „Failed to fetch“ / „HTTP 502“', async () => {
+      mocked.saveRestDay.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      renderAs('verkauf')
+      await screen.findByTestId('rest-line-weck|')
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Weck: nichts übrig' })
+      )
+      fireEvent.click(screen.getByRole('button', { name: 'Speichern' }))
+      expect(
+        (await screen.findByTestId('rest-save-bar-message')).textContent
+      ).toBe('Keine Verbindung zum Server – bitte WLAN prüfen.')
+      expect(screen.queryByText('Failed to fetch')).toBeNull()
+    })
+
+    it('a load answered by Caddy with 502 says WLAN, not HTTP 502', async () => {
+      mocked.fetchRestDay.mockRejectedValueOnce(
+        new ApiError('HTTP 502: Bad Gateway', 502)
+      )
+      renderAs('verkauf')
+      expect(
+        await screen.findByText(
+          'Keine Verbindung zum Server – bitte WLAN prüfen.'
+        )
+      ).toBeTruthy()
+      expect(screen.queryByText(/HTTP 502/)).toBeNull()
+    })
+
+    it('names unsaved drafts of other days', async () => {
+      window.localStorage.setItem(
+        'bakery-rest-draft:1:2026-11-28',
+        JSON.stringify({ 'weck||test-weck': { qty: 4, base: null } })
+      )
+      renderAs('verkauf')
+      const hint = await screen.findByTestId('rest-other-drafts')
+      fireEvent.click(
+        within(hint).getByRole('button', { name: '28.11. öffnen' })
+      )
+      await waitFor(() =>
+        expect(mocked.fetchRestDay).toHaveBeenCalledWith('2026-11-28')
+      )
+    })
+
+    it('a draft on a day that can no longer be saved offers only „Verwerfen“', async () => {
+      window.localStorage.setItem(
+        'bakery-rest-draft:1:2026-12-01',
+        JSON.stringify({ 'weck||test-weck': { qty: 4, base: null } })
+      )
+      mocked.fetchRestDay.mockResolvedValue(
+        makeDay({
+          editable: false,
+          editIssue:
+            'Zählungen lassen sich nur bis 7 Tage zurück erfassen oder korrigieren.',
+        })
+      )
+      renderAs('verkauf')
+      const bar = await screen.findByTestId('rest-save-bar')
+      expect(
+        within(bar).queryByRole('button', { name: 'Speichern' })
+      ).toBeNull()
+      expect(within(bar).getByTestId('rest-save-bar-message').textContent).toBe(
+        'Zählungen lassen sich nur bis 7 Tage zurück erfassen oder korrigieren.'
+      )
+      fireEvent.click(within(bar).getByRole('button', { name: 'Verwerfen' }))
+      expect(screen.queryByTestId('rest-save-bar')).toBeNull()
+      expect(
+        window.localStorage.getItem('bakery-rest-draft:1:2026-12-01')
+      ).toBeNull()
+    })
   })
 })

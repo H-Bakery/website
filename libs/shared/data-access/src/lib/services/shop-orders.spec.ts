@@ -7,6 +7,7 @@ import {
   ShopOrderInput,
   buildOrderItems,
   fetchShopOrder,
+  OrderLookupClosedError,
   submitOrder,
 } from './shop-orders'
 
@@ -251,9 +252,12 @@ describe('shop-orders', () => {
         )
       )
 
-      await expect(fetchShopOrder('8QMZ-QXS5-HM0W')).rejects.toThrow(
+      const failure = fetchShopOrder('8QMZ-QXS5-HM0W')
+      await expect(failure).rejects.toThrow(
         'Bestellung konnte nicht geladen werden.'
       )
+      // Eigener Typ: die Bestätigung macht daraus keine Erfolgsseite.
+      await expect(failure).rejects.toBeInstanceOf(OrderLookupClosedError)
     })
 
     it('throws a German error on a network failure', async () => {

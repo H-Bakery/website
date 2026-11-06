@@ -1807,14 +1807,23 @@ function fromLegacyInput(body, current) {
       out.notCollected = mapped.notCollected
     // Mörsbach kassiert bei der Übergabe, und die alte Maske hat keinen
     // Bezahlt-Schalter: übergeben heißt bezahlt - dieselbe Regel wie der
-    // Import (`legacyPreorderToRecord`).
+    // Import (`legacyPreorderToRecord`). Aber nur für eine noch **unbezahlte**
+    // Bestellung: eine vorab bezahlte behält ihren Betrag, sonst wäre ein
+    // offener Rest als kassiert und eine offene Erstattung als ausgezahlt
+    // gebucht, ohne dass jemand es bestätigt hat (Abschluss-Verifikation
+    // next). Rest oder Erstattung bestätigt die Fahrer-App mit `paid: true`.
     if (
       out.status === 'abgeholt' &&
-      (!current || current.status !== 'abgeholt')
+      (!current || current.status !== 'abgeholt') &&
+      !(current && current.paid) &&
+      source.paid === undefined
     ) {
       out.paid = true
     }
   }
+  // Ausdrücklich „bezahlt“ (Rest kassiert / Erstattung ausgezahlt) - wie
+  // `paid` am Status-Endpunkt; geprüft wird dort (`invalid_paid`).
+  if (source.paid !== undefined) out.paid = source.paid
   return out
 }
 
@@ -1841,6 +1850,15 @@ function legacyItemsLoseVariants(currentItems, incomingItems) {
   )
 }
 
+/** Sorte zum Vorlesen: „nuss“ → „Nuss“, „schoko-kirsch“ → „Schoko-Kirsch“
+ * (wie `variantLabel` der Verwaltung, `preordersTypes.ts`). */
+function variantLabel(variant) {
+  return String(variant || '')
+    .split('-')
+    .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+    .join('-')
+}
+
 function isoOrNull(value) {
   if (value === null || value === undefined) return null
   const d = value instanceof Date ? value : new Date(value)
@@ -1865,7 +1883,9 @@ function toLegacyPreorder(preorder, pickupPoint, now) {
     items: (p.items || []).map((item) => {
       const out = {
         productId: item.productId,
-        name: item.variant ? `${item.name} (${item.variant})` : item.name,
+        name: item.variant
+          ? `${item.name} (${variantLabel(item.variant)})`
+          : item.name,
         qty: item.quantity,
         unit: item.unit,
         unitPrice: Number(item.unitPrice),
@@ -1883,6 +1903,15 @@ function toLegacyPreorder(preorder, pickupPoint, now) {
     code: p.code,
     channel: p.channel,
     paid: !!p.paid,
+    // Was schon bezahlt ist und was offen bleibt (wie `/api/preorders`):
+    // die Fahrer-App kassiert sonst vorab Bezahltes ein zweites Mal und
+    // sieht weder Rest noch Erstattung.
+    paidAmount: p.paid
+      ? p.paidAmount == null || p.paidAmount === ''
+        ? roundCents(p.total)
+        : roundCents(p.paidAmount)
+      : null,
+    paymentBalance: paymentBalance(p),
   }
   return decoratePreorder(legacy, pickupPoint, now)
 }
