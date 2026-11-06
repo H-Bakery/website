@@ -1,6 +1,6 @@
-import { expect, test, type Route } from '@playwright/test'
+import { expect, type Route } from '@playwright/test'
 
-import { E2E_LOGIN, useSession } from './login'
+import { API, E2E_LOGIN, driverId, test, useSession } from './login'
 
 /**
  * Fahrer-App der Samstagsauslieferung.
@@ -9,11 +9,6 @@ import { E2E_LOGIN, useSession } from './login'
  * Reihenfolge berechnen, Stopps abhaken. Sie legen ihre eigenen Stopps an und
  * raeumen sie wieder weg, damit sie den Liefer-Store nicht vollmuellen.
  */
-
-// Muss zu `playwright.config.ts` passen: API_URL, sonst API_PORT, sonst 5000.
-const API =
-  process.env['API_URL'] ||
-  `http://localhost:${process.env['API_PORT'] || '5000'}`
 
 /**
  * Den Tag leerraeumen, bevor der Test ihn benutzt.
@@ -61,7 +56,11 @@ test.describe('Liefertour', () => {
       // Bewusst ein Werktag: an einem Samstag haengt die Sammelstelle
       // Moersbach automatisch mit an der Tour, und dieser Test zaehlt Stopps.
       // Und je Projekt ein eigener Tag, weil beide parallel laufen.
-      data: { date: workday, driverId: 1, name: 'E2E-Tour' },
+      data: {
+        date: workday,
+        driverId: await driverId(request),
+        name: 'E2E-Tour',
+      },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()
@@ -116,7 +115,11 @@ test.describe('Liefertour', () => {
       test.info().project.name === 'chromium' ? '2026-09-16' : '2026-09-17'
     await resetTours(request, workday)
     const created = await request.post(`${API}/api/deliveries/tours`, {
-      data: { date: workday, driverId: 1, name: 'E2E-Tour ohne Adresse' },
+      data: {
+        date: workday,
+        driverId: await driverId(request),
+        name: 'E2E-Tour ohne Adresse',
+      },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()
@@ -203,7 +206,7 @@ test.describe('Liefertour', () => {
       test.info().project.name === 'chromium' ? '2027-03-03' : '2027-03-10'
     await resetTours(request, date)
     const created = await request.post(`${API}/api/deliveries/tours`, {
-      data: { date, driverId: 1, name: 'Funkloch-Tour' },
+      data: { date, driverId: await driverId(request), name: 'Funkloch-Tour' },
     })
     expect(created.ok()).toBeTruthy()
     const tour = await created.json()

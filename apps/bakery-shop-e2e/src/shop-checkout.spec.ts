@@ -22,6 +22,7 @@ import {
   priceOf,
   seedCart,
   storedCartItems,
+  stubOrderEndpoint,
   type ApiProduct,
 } from './support/shop'
 
@@ -202,6 +203,8 @@ test.describe('Kasse — Bestellung', () => {
     page,
   }) => {
     const { first, second } = await seedTwoLines(page)
+    // Kein öffentlicher Bestellweg in der echten API - siehe stubOrderEndpoint.
+    await stubOrderEndpoint(page)
     await page.goto('/kasse')
     await expect(page.getByTestId('submit-order')).toBeVisible()
 
@@ -218,7 +221,7 @@ test.describe('Kasse — Bestellung', () => {
     await expect(orderNumber).not.toBeEmpty()
     await expect(orderNumber).not.toHaveText('unbekannt')
 
-    // Die Bestätigung zeigt die echte Bestellung aus der API.
+    // Die Bestätigung zeigt die Bestellung, wie sie der Endpunkt zurückgibt.
     await expect(page.getByTestId('order-confirmation')).toContainText(
       values.name
     )

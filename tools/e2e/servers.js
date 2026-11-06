@@ -3,17 +3,22 @@
  * Landing) - an einer Stelle, damit CI und lokaler Lauf dieselben Server
  * bekommen.
  *
- * Welche API:
+ * Welche API: immer die **echte API** (`realApiServer()`, das esbuild-Bundle
+ * über `tools/e2e/real-api.js`) mit frischer SQLite-Datenbank im
+ * Temp-Verzeichnis und dem E2E-Inhaber aus `BOOTSTRAP_ADMIN_*` (`E2E_ADMIN`).
+ * Den Mock-Server `simple-server.js` gibt es seit B12 nicht mehr.
  *
- * - **Management** (seit F4): die **echte API** (`realApiServer()`, das
- *   esbuild-Bundle über `tools/e2e/real-api.js`) mit frischer SQLite-Datenbank
- *   im Temp-Verzeichnis und dem E2E-Inhaber aus `BOOTSTRAP_ADMIN_*`
- *   (`E2E_ADMIN`). App und API lesen dasselbe synthetische `hq`
+ * - **Management** (seit F4): App und API lesen dasselbe synthetische `hq`
  *   (`prepareE2eHq()`: Produkte plus erfundene Kassenberichte und Finanzen).
  *   Die App reicht `/api/*` über `src/proxy.ts` an `API_URL` weiter.
- * - **Shop**: weiter die Mock-API (`mockApiServer()`) - der Shop hat noch
- *   keinen öffentlichen Weg in die echte API (jede `/api`-Route dort braucht
- *   eine Sitzung).
+ * - **Shop** (seit B12, `shopApiServer()`): dieselbe API mit
+ *   `PUBLIC_CATALOGUE=1` - `GET /api/products` ohne Sitzung - und der
+ *   Shop-Origin in `CORS_ORIGIN`, weil der Browser die API direkt fragt.
+ *   Einen öffentlichen Bestellweg hat die echte API nicht (Owner-Entscheidung
+ *   offen); die Kasse prüft ihren Erfolgsweg gegen einen im Browser
+ *   nachgestellten Bestell-Endpunkt (`apps/bakery-shop-e2e/src/support/shop.ts`).
+ * - **Fahrer-App** (`apps/bakery-delivery-e2e`, nicht in CI): wie der Shop mit
+ *   dem Origin der App in `CORS_ORIGIN` (`deliveryApiServer()`).
  *
  * Zwei Betriebsarten:
  *
@@ -49,7 +54,7 @@ function usesBuiltApp() {
 }
 
 /**
- * Das Produktverzeichnis, das App *und* Mock-API bekommen, wenn Playwright sie
+ * Das Produktverzeichnis, das App *und* API bekommen, wenn Playwright sie
  * startet. Beide müssen dieselben Dateien lesen - der Dashboard-Zähler, die
  * Produktliste und die Shop-Kasse vergleichen die Oberfläche mit
  * `GET /api/products`. Ein Server, der nur das Fixture sieht, während der
@@ -125,8 +130,9 @@ function prepareE2eHq(apiURL) {
  *
  * @param {string} apiURL
  * @param {Record<string, string>} hqEnv  aus `prepareE2eHq()`
+ * @param {Record<string, string>} [extraEnv]  z. B. `PUBLIC_CATALOGUE`, `CORS_ORIGIN`
  */
-function realApiServer(apiURL, hqEnv) {
+function realApiServer(apiURL, hqEnv, extraEnv = {}) {
   return {
     command: 'node tools/e2e/real-api.js',
     url: `${apiURL}/health`,
@@ -138,6 +144,7 @@ function realApiServer(apiURL, hqEnv) {
       // Backzettel-Stammdaten gibt es in der Suite nicht (no-config).
       HQ_BACKZETTEL_CONFIG: path.join(os.tmpdir(), 'bakery-e2e-keine.yaml'),
       E2E_API_BUILD: usesBuiltApp() ? '' : '1',
+      ...extraEnv,
     },
     reuseExistingServer: reuseExistingServer(),
     cwd: ROOT,
@@ -160,22 +167,32 @@ function portOf(url) {
 }
 
 /**
- * Die Mock-API (`apps/bakery-api/simple-server.js`) auf `productsDir()` -
- * in CI das Fixture, in Entwicklung dieselbe Quelle wie der Dev-Server.
- * Ein bereits laufender Server bleibt unangetastet.
+ * Die echte API für den Shop (B12): öffentlicher Katalog (`PUBLIC_CATALOGUE`)
+ * und der Shop-Origin in `CORS_ORIGIN` - der Shop fragt `GET /api/products`
+ * aus dem Browser, ohne Anmeldung. Produkte aus `productsDir()` (über
+ * `prepareE2eHq()`), wie bei der Verwaltung.
+ *
+ * @param {string} apiURL
+ * @param {string} baseURL  wo der Shop läuft
  */
-function mockApiServer(apiURL) {
-  return {
-    command: 'node apps/bakery-api/simple-server.js',
-    url: `${apiURL}/health`,
-    env: {
-      PORT: String(portOf(apiURL)),
-      HQ_PRODUCTS_DIR: productsDir(),
-    },
-    reuseExistingServer: reuseExistingServer(),
-    cwd: ROOT,
-    timeout: 60_000,
-  }
+function shopApiServer(apiURL, baseURL) {
+  return realApiServer(apiURL, prepareE2eHq(apiURL), {
+    PUBLIC_CATALOGUE: '1',
+    CORS_ORIGIN: new URL(baseURL).origin,
+  })
+}
+
+/**
+ * Die echte API für die Fahrer-App (B8/B12): Anmeldung als E2E-Inhaber, der
+ * Origin der App in `CORS_ORIGIN`.
+ *
+ * @param {string} apiURL
+ * @param {string} baseURL  wo die Fahrer-App läuft
+ */
+function deliveryApiServer(apiURL, baseURL) {
+  return realApiServer(apiURL, prepareE2eHq(apiURL), {
+    CORS_ORIGIN: new URL(baseURL).origin,
+  })
 }
 
 /**
@@ -225,11 +242,12 @@ module.exports = {
   E2E_ADMIN,
   FIXTURE_PRODUCTS_DIR,
   ROOT,
+  deliveryApiServer,
   landingApp,
-  mockApiServer,
   nextApp,
   prepareE2eHq,
   productsDir,
   realApiServer,
+  shopApiServer,
   usesBuiltApp,
 }
