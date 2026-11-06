@@ -210,9 +210,9 @@ describe('Hilfe (/admin/hilfe, P6)', () => {
       'Testzopf gefüllt – Testmohnfüllung',
       '',
     ])
-    const headers = Array.from(sheet.querySelectorAll('thead th')).map(
-      (th) => th.textContent
-    )
+    const headers = Array.from(
+      sheet.querySelectorAll('thead th:not(.nfb-title)')
+    ).map((th) => th.textContent)
     expect(headers.slice(0, 5)).toEqual([
       'Posten',
       'Basis',
