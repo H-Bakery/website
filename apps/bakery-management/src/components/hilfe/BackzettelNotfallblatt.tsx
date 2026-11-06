@@ -137,9 +137,14 @@ export function notfallLayout(sections: NotfallSection[]): {
 const styles = (
   <GlobalStyles
     styles={{
+      // 1pt Luft rechts: der rechte Rand der Kästen und die äußere Hälfte
+      // der zusammengefallenen Tabellenrahmen lagen genau auf der Seitenkante
+      // bzw. hinter `overflow: hidden` und kamen nur halb aufs Papier
+      // (W4-verify r6, wie die Abholliste in r4).
       '.nfb': {
         boxSizing: 'border-box',
         height: '270mm',
+        paddingRight: '1pt',
         overflow: 'hidden',
         display: 'flex',
         flexDirection: 'column',

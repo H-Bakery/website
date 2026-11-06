@@ -129,9 +129,12 @@ export const hilfePrintStyles = (
           fontSize: '10pt !important',
           margin: '0 0 3mm !important',
         },
+        // 1pt Luft rechts, sonst lag der rechte Rahmen der Kästen in der
+        // rechten Spalte auf der Seitenkante und kam nur halb aufs Papier.
         '.spickzettel .sz-grid': {
           columnCount: '2 !important',
           columnGap: '6mm !important',
+          paddingRight: '1pt !important',
         },
         '.spickzettel h3': {
           fontSize: '10.5pt !important',
