@@ -956,7 +956,15 @@ anonymisation (P4)". Von außen wichtig:
   fremde Bestellung.
 - **Rollen:** `verkauf` (und `inhaber`) alles, `fahrer` lesen und nur übergeben bzw. „nicht
   abgeholt", `backstube` nur `/sums` (und dort ohne `summary`, also ohne Beträge und
-  Bezahlstand).
+  Bezahlstand). Der Fahrer darf „bezahlt" setzen, aber nie zurücknehmen (403
+  `paid_undo_forbidden`, auch über `bulk-status`).
+- **Bezahlter Betrag** (`paid_amount`, Migration 20261114, W4-Verifikation Runde 2): wird beim
+  Erfassen der Zahlung auf die Summe gesetzt (Anlegen mit `paid`, `paid` false → true, ein
+  ausdrückliches `paid: true` am Status-Endpunkt = „Rest kassiert"), bleibt beim Bearbeiten stehen
+  und fällt mit `paid: false` weg. DTO: `paidAmount`, `paymentBalance` (> 0 noch kassieren, < 0
+  erstatten; storniert + bezahlt = −bezahlt). `/day`-Summary: `unpaidTotal` enthält Nachzahlungen
+  (`topUpTotal`), dazu `refundCount`/`refundTotal` - auch über stornierte. `NULL` bei `paid` heißt
+  „voll bezahlt" (Altbestand, Importe).
 - **Shop:** `POST /api/orders` legt eine Vorbestellung mit Kanal `shop` an, **bleibt aber hinter
   der Anmeldung** - ein öffentlicher Bestellweg ist noch nicht entschieden. Die E-Mail wird nicht
   gespeichert.
