@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor } from '@testing-library/react'
+import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderListClient from './PreorderListClient'
@@ -326,5 +326,54 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     } finally {
       jest.useRealTimers()
     }
+  })
+
+  describe('Layout nach Breite (W4-verify r3)', () => {
+    const original = window.matchMedia
+    function setWide(wide: boolean) {
+      window.matchMedia = jest.fn().mockImplementation((query: string) => ({
+        // theme.breakpoints.up('md') -> "(min-width:900px)"
+        matches: wide && /min-width/.test(query),
+        media: query,
+        onchange: null,
+        addListener: jest.fn(),
+        removeListener: jest.fn(),
+        addEventListener: jest.fn(),
+        removeEventListener: jest.fn(),
+        dispatchEvent: jest.fn(),
+      })) as unknown as typeof window.matchMedia
+    }
+    afterEach(() => {
+      window.matchMedia = original
+    })
+
+    it('zeigt am Handy Karten mit Summe, Status und Aktion statt einer seitlich scrollenden Tabelle', async () => {
+      setWide(false)
+      renderAs()
+      expect(await screen.findByText('Testkundschaft A')).toBeInTheDocument()
+      expect(screen.queryByRole('table')).toBeNull()
+      const cards = screen.getAllByTestId('preorder-card')
+      expect(cards).toHaveLength(3)
+      const first = within(cards[0])
+      expect(first.getByText('MO-2026-09-12-01')).toBeInTheDocument()
+      expect(first.getByText('2 × Mustersemmel (Nuss)')).toBeInTheDocument()
+      expect(first.getByText('Offen')).toBeInTheDocument()
+      expect(
+        first.getByRole('link', { name: /MO-2026-09-12-01 bearbeiten/ })
+      ).toHaveAttribute('href', `/admin/delivery/preorders/${OPEN.id}`)
+      expect(
+        first.getByRole('button', { name: /MO-2026-09-12-01 stornieren/ })
+      ).toBeInTheDocument()
+    })
+
+    it('bleibt ab md bei der Tabelle', async () => {
+      setWide(true)
+      renderAs()
+      expect(await screen.findByText('Testkundschaft A')).toBeInTheDocument()
+      expect(
+        screen.getByRole('table', { name: 'Vorbestellungen des Liefertags' })
+      ).toBeInTheDocument()
+      expect(screen.queryAllByTestId('preorder-card')).toHaveLength(0)
+    })
   })
 })
