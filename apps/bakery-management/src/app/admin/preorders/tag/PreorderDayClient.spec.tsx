@@ -4,7 +4,11 @@ import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderDayClient from './PreorderDayClient'
 import { fetchPreorderDay } from '../../../../lib/preordersApi'
-import { ONLY_DATE, day } from '../../../../lib/testing/preorderFixtures'
+import {
+  ONLY_DATE,
+  day,
+  preorder,
+} from '../../../../lib/testing/preorderFixtures'
 
 jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
@@ -49,6 +53,35 @@ describe('PreorderDayClient (P3)', () => {
       await user.click(screen.getByRole('button', { name: 'Nächster Backtag' }))
     }
     await waitFor(() => expect(mockDay).toHaveBeenLastCalledWith('2026-11-17'))
+  })
+
+  it('streicht eine stornierte Bestellung durch, aber nicht die Erstattung (W4-verify r4)', async () => {
+    mockDay.mockResolvedValue(
+      day({
+        preorders: [
+          preorder({
+            id: 9,
+            code: 'LA-2026-11-14-03',
+            customerName: 'Stefan Storno',
+            pickupDate: '2026-11-14',
+            status: 'storniert',
+            paid: true,
+            paymentBalance: -4.8,
+          } as Partial<ReturnType<typeof preorder>>),
+        ],
+      })
+    )
+    renderWithTheme(<PreorderDayClient initialDate="2026-11-14" />)
+    const note = await screen.findByText(/4,80\s€ erstatten/)
+    const struck = (el: Element | null) =>
+      el ? getComputedStyle(el).textDecoration.includes('line-through') : false
+    const moneyCell = note.closest('td')
+    expect(struck(moneyCell)).toBe(false)
+    expect(struck(note)).toBe(false)
+    expect(struck(moneyCell?.querySelector('.preorder-total') ?? null)).toBe(
+      true
+    )
+    expect(struck(screen.getByText('Stefan Storno').closest('td'))).toBe(true)
   })
 
   it('druckt', async () => {

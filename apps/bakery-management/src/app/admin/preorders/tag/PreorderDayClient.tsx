@@ -447,10 +447,12 @@ export default function PreorderDayClient({
                         sx={
                           p.status === 'storniert'
                             ? {
-                                '& td': {
-                                  color: 'text.secondary',
-                                  textDecoration: 'line-through',
-                                },
+                                '& td': { color: 'text.secondary' },
+                                // Durchgestrichen wird die Bestellung, nicht
+                                // die Erstattung daneben: „37,00 € erstatten“
+                                // ist eine offene Aufgabe (W4-verify r4).
+                                '& td:not(.preorder-money), & .preorder-total':
+                                  { textDecoration: 'line-through' },
                               }
                             : undefined
                         }
@@ -475,8 +477,14 @@ export default function PreorderDayClient({
                         </TableCell>
                         <TableCell>{formatPickupPlace(p)}</TableCell>
                         <TableCell>{formatItems(p.items)}</TableCell>
-                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                          {formatCurrency(p.total)}
+                        <TableCell
+                          align="right"
+                          className="preorder-money"
+                          sx={{ whiteSpace: 'nowrap' }}
+                        >
+                          <span className="preorder-total">
+                            {formatCurrency(p.total)}
+                          </span>
                           {paymentState(p).kind === 'paid' ? (
                             ' ✓'
                           ) : (
