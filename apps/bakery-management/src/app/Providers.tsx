@@ -8,7 +8,7 @@ import {
   ThemeProvider,
   useColorScheme,
 } from '@bakery/shared/contexts'
-import { SessionProvider } from '../lib/session'
+import { SessionProvider, useOptionalSession } from '../lib/session'
 import RouteGuard from '../components/auth/RouteGuard'
 import { isPilotMode } from '../lib/pilotMode'
 import ThemeColorSync from '../components/pwa/ThemeColorSync'
@@ -41,6 +41,36 @@ function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * Benachrichtigungen erst mit Sitzung (Abschluss-Verifikation next): vorher
+ * hatte der `ApiClient` noch kein Token, `/api/notifications` antwortete 401
+ * und landete als console.error im Log. Im Pilotbetrieb gar nicht - die echte
+ * API hat kein /api/notifications: kein Laden, kein 30-s-Polling. Die
+ * Browser-Rückfrage nach Mitteilungen kommt nie ungefragt beim Start. Der
+ * Provider bleibt, weil Dashboard und Einstellungen useNotifications()
+ * aufrufen; ein 404 setzt `available: false` (W4).
+ */
+export function SessionNotifications({
+  pilot,
+  children,
+}: {
+  pilot: boolean
+  children: React.ReactNode
+}) {
+  const signedIn = useOptionalSession()?.status === 'authenticated'
+  const active = !pilot && signedIn
+  return (
+    <NotificationProvider
+      enableRealTime={false}
+      pollingInterval={active ? undefined : 0}
+      requestPermissionOnMount={false}
+      loadOnMount={active}
+    >
+      {children}
+    </NotificationProvider>
+  )
+}
+
 export default function Providers({ children }: { children: React.ReactNode }) {
   const pilot = isPilotMode()
 
@@ -54,18 +84,9 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             erst mit gültiger Sitzung rendern - vorher nur einen
             Ladezustand. */}
         <SessionProvider>
-          {/* Pilotbetrieb: die echte API hat kein /api/notifications - kein
-                Laden beim Start, kein 30-s-Polling und keine Browser-Rückfrage
-                nach Mitteilungen. Der Provider bleibt, weil das Dashboard
-                useNotifications() aufruft. */}
-          <NotificationProvider
-            enableRealTime={false}
-            pollingInterval={pilot ? 0 : undefined}
-            requestPermissionOnMount={!pilot}
-            loadOnMount={!pilot}
-          >
+          <SessionNotifications pilot={pilot}>
             <RouteGuard>{children}</RouteGuard>
-          </NotificationProvider>
+          </SessionNotifications>
         </SessionProvider>
       </MuiThemeBridge>
     </ThemeProvider>

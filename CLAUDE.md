@@ -532,7 +532,11 @@ Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
   einmal; ein 404/501 setzt `available: false` im Kontext, beendet das Pollen ohne
   `console.error` und merkt sich das im `sessionStorage` des Tabs
   (`bakery-notifications-unavailable`) - die Einstellungen blenden „Benachrichtigungen" dann
-  still aus. Die eine 404-Zeile im Netzwerk-Log des Browsers bleibt.
+  still aus. Die eine 404-Zeile im Netzwerk-Log des Browsers bleibt. **Seit der
+  Abschluss-Verifikation next** fragt `SessionNotifications` (`Providers.tsx`) erst mit
+  angemeldeter Sitzung (vorher 401 + `console.error`, weil der `ApiClient` noch kein Token hatte),
+  ein 401/403 bleibt im Kontext still, und die Browser-Rückfrage nach Mitteilungen kommt nie
+  ungefragt beim Start.
 
 Tests: `src/lib/pilotMode.spec.ts`, `src/app/admin/layout.pilot.spec.tsx`,
 `src/app/admin/DashboardClient.spec.tsx` (Management-App) und
