@@ -149,6 +149,32 @@ describe('HandoverList', () => {
     expect(onStatusChange).toHaveBeenCalledWith(1, 'open')
   })
 
+  it('bietet dem Fahrer kein Zurücknehmen einer Übergabe an (API: 403)', () => {
+    const onStatusChange = jest.fn()
+    render(
+      <HandoverList
+        preorders={[
+          preorder({ id: 1, status: 'handed_over' }),
+          preorder({
+            id: 2,
+            reference: 'MO-2026-09-12-02',
+            status: 'not_collected',
+          }),
+        ]}
+        busy={false}
+        onStatusChange={onStatusChange}
+        canUndoHandover={false}
+      />
+    )
+
+    expect(screen.getByText('Zurücknehmen kann der Verkauf.')).toBeTruthy()
+    // „Nicht abgeholt" darf er weiter zurücksetzen - die Familie kam doch.
+    const reset = screen.getAllByRole('button', { name: 'Zurücksetzen' })
+    expect(reset).toHaveLength(1)
+    fireEvent.click(reset[0])
+    expect(onStatusChange).toHaveBeenCalledWith(2, 'open')
+  })
+
   it('sperrt nur die Zeile, deren Abhaken noch unterwegs ist', () => {
     // Die naechste Familie steht schon vor dem Fahrer; der haengende PATCH
     // der vorigen darf ihren Knopf nicht ausgrauen.

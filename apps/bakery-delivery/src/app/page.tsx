@@ -462,8 +462,10 @@ export default function DeliveryDashboard() {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
         // Abgelehnt: der Server-Stand gilt, die Vorschau darf nicht bleiben.
         inFlightRef.current.delete(key)
-        setError(err.message)
+        // Erst neu laden, dann melden: `loadTours` leert die Meldung, sonst
+        // verschwände der Grund der Ablehnung (etwa ein 403) sofort wieder.
         await loadTours(date, driverId)
+        setError(err.message)
       } else {
         // Kein Netz: gemerkt, geht spaeter automatisch raus. Von jetzt an
         // haelt die Warteschlange die Aenderung, nicht mehr diese Liste.
@@ -512,8 +514,10 @@ export default function DeliveryDashboard() {
     } catch (err) {
       if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
         inFlightRef.current.delete(key)
-        setError(err.message)
+        // Erst neu laden, dann melden: `loadTours` leert die Meldung, sonst
+        // verschwände der Grund der Ablehnung (etwa ein 403) sofort wieder.
         await loadTours(date, driverId)
+        setError(err.message)
       } else {
         // Kein Netz: gemerkt, geht spaeter automatisch raus.
         setPending(queuePreorderUpdate(preorderId, { status }))
@@ -914,6 +918,7 @@ export default function DeliveryDashboard() {
                   onStatusChange={changeStopStatus}
                   onPreorderStatusChange={changePreorderStatus}
                   readOnly={!can.drive}
+                  canUndoHandover={can.undoHandover}
                 />
               </ul>
             </section>
@@ -989,6 +994,7 @@ export default function DeliveryDashboard() {
                     onPreorderStatusChange={changePreorderStatus}
                     onRemove={planning && can.plan ? removeStop : undefined}
                     readOnly={!can.drive}
+                    canUndoHandover={can.undoHandover}
                   />
                 ))}
               </ul>

@@ -805,6 +805,51 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     ).toBeGreaterThan(0)
   })
 
+  it('lässt den Grund stehen, wenn der Server eine Übergabe ablehnt', async () => {
+    // Regression (next-Integration): `loadTours` leerte die Meldung, die
+    // Ablehnung (etwa 403) verschwand also im selben Moment.
+    const { ApiError } = jest.requireActual('../lib/delivery-api')
+    api.updatePreorder.mockRejectedValue(
+      new ApiError('Diese Übergabe ist nicht erlaubt.', 403)
+    )
+
+    render(<DeliveryDashboard />)
+
+    const buttons = await screen.findAllByRole('button', { name: 'Übergeben' })
+    fireEvent.click(buttons[0])
+
+    expect(
+      await screen.findByText('Diese Übergabe ist nicht erlaubt.')
+    ).toBeTruthy()
+    await waitFor(() => expect(api.tours).toHaveBeenCalledTimes(2))
+    expect(screen.getByText('Diese Übergabe ist nicht erlaubt.')).toBeTruthy()
+  })
+
+  it('zeigt dem Fahrer an einer übergebenen Bestellung kein „Zurücksetzen"', async () => {
+    signIn('fahrer', 42)
+    const own: Driver = { ...driver, userId: 42 }
+    api.drivers.mockResolvedValue([own])
+    api.tours.mockResolvedValue([
+      {
+        ...pickupTour,
+        driver: own,
+        stops: [
+          {
+            ...pickupStop,
+            preorders: [preorder({ id: 101, status: 'handed_over' })],
+          },
+        ],
+      },
+    ])
+
+    render(<DeliveryDashboard />)
+
+    expect(
+      (await screen.findAllByText('Zurücknehmen kann der Verkauf.')).length
+    ).toBeGreaterThan(0)
+    expect(screen.queryByRole('button', { name: 'Zurücksetzen' })).toBeNull()
+  })
+
   it('nennt einen erledigten Sammelstellen-Stopp „Abgeschlossen", nicht „Geliefert"', async () => {
     // An der Sammelstelle wird nichts zugestellt, sondern ausgegeben.
     api.tours.mockResolvedValue([

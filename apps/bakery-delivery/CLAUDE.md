@@ -81,8 +81,14 @@ steht.
   `inhaber` alles; `fahrer` sieht nur **seinen** Fahrer (Auswahl gesperrt, zugeordnet über
   `driver.userId`; ohne Zuordnung ein Hinweis „bitte im Büro melden"), hakt ab, meldet die
   Position und darf „Route berechnen", aber nicht planen (kein „Tour anlegen", „Tour planen",
-  Stopp entfernen); `verkauf` liest nur (keine Abhak-Knöpfe, kein Standort); `backstube` wird
+  Stopp entfernen) und eine **Übergabe nicht zurücknehmen** (`undoHandover`: an einer
+  übergebenen Vorbestellung steht statt „Zurücksetzen" „Zurücknehmen kann der Verkauf." - die
+  API sagt sonst 403 `handover_undo_forbidden`; „Nicht abgeholt" darf er zurücksetzen);
+  `verkauf` liest nur (keine Abhak-Knöpfe, kein Standort); `backstube` wird
   beim Anmelden abgewiesen und gleich wieder abgemeldet.
+- **Abgelehnte Änderungen bleiben sichtbar.** Lehnt die API ein Abhaken oder eine Übergabe mit
+  4xx ab, lädt die Seite die Tour neu und zeigt **danach** die `message` - `loadTours()` leert
+  die Fehlermeldung, vorher gesetzt verschwand sie sofort.
 - **Der Mock wird verstanden** (`normalizeUser()`): `email`/`firstName` statt `displayName`,
   `admin` → `inhaber`, `staff` → `verkauf`; sein Refresh rotiert nicht, der alte Refresh-Token
   bleibt dann stehen. Die E2E-Suite meldet sich dort mit `admin`/`admin` an.

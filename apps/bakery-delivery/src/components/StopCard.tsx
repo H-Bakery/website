@@ -53,6 +53,8 @@ interface StopCardProps {
    * Anrufen bleiben. Die API lehnt das Abhaken ohnehin ab (403).
    */
   readOnly?: boolean
+  /** Übergabe zurücknehmen erlaubt (nicht für den Fahrer, B8). */
+  canUndoHandover?: boolean
 }
 
 export function StopCard({
@@ -66,6 +68,7 @@ export function StopCard({
   onPreorderStatusChange,
   busyPreorderIds,
   readOnly = false,
+  canUndoHandover = true,
 }: StopCardProps) {
   // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
   // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
@@ -228,6 +231,7 @@ export function StopCard({
             busyIds={busyPreorderIds}
             onStatusChange={onPreorderStatusChange}
             readOnly={readOnly}
+            canUndoHandover={canUndoHandover}
           />
         </>
       )}

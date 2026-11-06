@@ -103,16 +103,19 @@ describe('permissionsFor', () => {
       plan: true,
       drive: true,
       ownToursOnly: false,
+      undoHandover: true,
     })
     expect(permissionsFor('fahrer')).toEqual({
       plan: false,
       drive: true,
       ownToursOnly: true,
+      undoHandover: false,
     })
     expect(permissionsFor('verkauf')).toEqual({
       plan: false,
       drive: false,
       ownToursOnly: false,
+      undoHandover: false,
     })
     expect(permissionsFor(undefined).drive).toBe(false)
   })

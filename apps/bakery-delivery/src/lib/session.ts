@@ -60,6 +60,11 @@ export function permissionsFor(role: DeliveryRole | null | undefined) {
     drive: role === 'inhaber' || role === 'fahrer',
     /** Auf den eigenen Fahrer festgelegt. */
     ownToursOnly: role === 'fahrer',
+    /**
+     * Eine Übergabe zurücknehmen (`abgeholt` → offen). Der Fahrer darf das
+     * nicht (API: 403 `handover_undo_forbidden`) - das kann der Verkauf.
+     */
+    undoHandover: role === 'inhaber',
   }
 }
 

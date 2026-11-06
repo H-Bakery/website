@@ -77,6 +77,11 @@ interface HandoverListProps {
   onStatusChange: (preorderId: number, status: PreorderStatus) => void
   /** Nur ansehen (Rolle `verkauf`, B8): keine Statusknöpfe. */
   readOnly?: boolean
+  /**
+   * Eine übergebene Bestellung zurück auf „Offen" setzen. Der Fahrer darf das
+   * nicht (403 `handover_undo_forbidden`); er sieht stattdessen einen Hinweis.
+   */
+  canUndoHandover?: boolean
 }
 
 export function HandoverList({
@@ -85,6 +90,7 @@ export function HandoverList({
   busyIds,
   onStatusChange,
   readOnly = false,
+  canUndoHandover = true,
 }: HandoverListProps) {
   if (preorders.length === 0) {
     return (
@@ -170,6 +176,10 @@ export function HandoverList({
                     Nicht abgeholt
                   </button>
                 </>
+              ) : preorder.status === 'handed_over' && !canUndoHandover ? (
+                <p className={styles.placeholder}>
+                  Zurücknehmen kann der Verkauf.
+                </p>
               ) : (
                 <button
                   type="button"
