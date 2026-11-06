@@ -1191,7 +1191,7 @@ Sieben Dinge, die man wissen muss:
   `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
   Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
   eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
-  (`/admin/users`) sind an einer Station (PIN-Sitzung) auch für den Inhaber gesperrt - wie
+  (`/admin/users`, `/admin/finance` samt Tagesziel) sind an einer Station (PIN-Sitzung) auch für den Inhaber gesperrt - wie
   `requirePersonalSession` der API; Navigation, Layout („Kein Zugriff" mit Begründung) und Proxy
   fragen `isPathAllowedForRole(path, role, sessionKind)`.
 - **Station (`/station`, außerhalb `/admin`, ohne Seitenleiste).** Ohne Token richtet ein mit
