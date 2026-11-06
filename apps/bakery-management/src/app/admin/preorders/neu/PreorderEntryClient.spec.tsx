@@ -245,5 +245,42 @@ describe('PreorderEntryClient (P1)', () => {
     expect(
       await screen.findByText('„Mustersemmel" gibt es nicht in Sorten.')
     ).toBeInTheDocument()
+
+    // W4-verify r2: an invalid field afterwards replaces the stale server message
+    fireEvent.change(screen.getByLabelText('Abholtag'), {
+      target: { value: '2026-11-16' },
+    })
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    expect(
+      screen.queryByText('„Mustersemmel" gibt es nicht in Sorten.')
+    ).toBeNull()
+  })
+
+  it('fragt nach, bevor ein Abholtag in der Vergangenheit gespeichert wird (W4-verify r2)', async () => {
+    const user = userEvent.setup()
+    mockCreate.mockResolvedValue(preorder({ pickupDate: '2026-11-07' }))
+    await ready()
+    await user.keyboard('Erika{Enter}{Enter}weck{Enter}{Enter}')
+    fireEvent.change(screen.getByLabelText('Abholtag'), {
+      target: { value: '2026-11-07' },
+    })
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    expect(
+      await screen.findByText(
+        /liegt in der Vergangenheit - die Bestellung erscheint dann in keiner Liste/
+      )
+    ).toBeInTheDocument()
+    expect(mockCreate).not.toHaveBeenCalled()
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(1))
+    expect(mockCreate.mock.calls[0][0]).toMatchObject({
+      pickupDate: '2026-11-07',
+    })
   })
 })

@@ -46,6 +46,7 @@ import {
   MAX_ITEMS,
   MAX_QTY_PER_ITEM,
   formatCurrency,
+  formatDateWithWeekday,
   formatShortDate,
   isBusinessDate,
   isProductionDay,
@@ -402,6 +403,8 @@ export default function PreorderForm({
   const datePast = Boolean(
     today && isBusinessDate(pickupDate) && pickupDate < today
   )
+  /** Abholtag in der Vergangenheit, für den die Rückfrage bestätigt ist. */
+  const [pastAck, setPastAck] = useState<string | null>(null)
 
   /* ---------------------------------------------------------------- *
    * Produkte, Sorten, Menge
@@ -527,8 +530,30 @@ export default function PreorderForm({
 
   const submit = async () => {
     setShowErrors(true)
+    // Eine alte Server-Meldung gilt nicht mehr, sobald neu gespeichert wird -
+    // sonst stünde „Telefonnummer ungültig“ neben einem leeren Feld
+    // (W4-Verifikation Runde 2).
+    if (!saving) setError(null)
     if (!valid || saving) {
       if (nameError) nameRef.current?.focus()
+      return
+    }
+    // Abholtag in der Vergangenheit (meist ein Tippfehler, 01.11. statt
+    // 11.11.): die Bestellung fiele aus jeder Liste „ab heute“, aus
+    // Abholliste und Backzettel. Deshalb erst nach Rückfrage speichern.
+    if (
+      datePast &&
+      pastAck !== pickupDate &&
+      (!preorder || preorder.pickupDate !== pickupDate)
+    ) {
+      setPastAck(pickupDate)
+      setError(
+        `Der Abholtag ${formatDateWithWeekday(
+          pickupDate
+        )} liegt in der Vergangenheit - die Bestellung erscheint dann in keiner Liste ab heute und auf keinem Backzettel. Bitte den Tag prüfen. Nur zum Nachtragen noch einmal „${
+          preorder ? 'Änderungen speichern' : 'Vorbestellung speichern'
+        }“ tippen.`
+      )
       return
     }
     const input: PreorderInput = {
