@@ -236,14 +236,22 @@ What to know before changing it:
   across all accounts (`LOGIN_RATE_LIMIT_IP_MAX`, password spraying); for the PIN also 10 per
   user across all IPs (`PIN_RATE_LIMIT_USER_MAX`; the side effect - anyone at a station can lock
   a user's PIN login for 5 min - is accepted, password login still works). **Only failures
-  count (W4)**: a request is settled on `finish`/`close` - status ≥ 400 except 429 is a failure,
-  anything else costs nothing, so any number of **parallel successful** logins pass (before W4
+  count (W4)**: a request is settled when its handler answers (`res.end`, also on a dead
+  socket) - status ≥ 400 except 429 is a failure, anything else costs nothing, so any number of **parallel successful** logins pass (before W4
   express-rate-limit counted every request on arrival and the sixth parallel login got a 429
   that then counted as a failure). While requests are in flight they are reserved: a request
   that could push `failures + pending` over the limit **waits** for one of them to settle instead
   of being rejected or let through - so a burst of wrong guesses cannot get past the limit
-  either (test: 12 parallel wrong guesses → exactly 5 × 401, 7 × 429). The window starts at the
-  first failure; idle keys are swept above 10 000 entries.
+  either (test: 12 parallel wrong guesses → exactly 5 × 401, 7 × 429). **Aborted requests
+  (W4 fixup):** a waiter whose client hangs up leaves the queue and releases the slots the outer
+  limiters of the stack gave it (no failure - it never reached a password check); a woken waiter
+  whose client is gone is never handed on; an admitted attempt whose client hangs up still
+  settles when the handler answers (an aborted wrong guess counts, an aborted correct login does
+  not), or as a failure after `LOGIN_ABORT_GRACE_MS` (30 s) if the handler never answers. Nobody
+  waits longer than `LOGIN_WAIT_MAX_MS` (5 s) → 429 with `Retry-After`. Before this fix three
+  aborted waiters could wedge an IP + account until restart. Tests:
+  `tests/integration/loginRateLimit.abort.test.ts` (real HTTP, clients that hang up). The window
+  starts at the first failure; idle keys are swept above 10 000 entries.
   `req.ip` depends on `TRUST_PROXY` (default `loopback`, Caddy).
   Tests override via `createApp({ auth: { rateLimit: { max, ipMax, pinUserMax, windowMs } } })`.
 - **Usernames are lower-case.** Login and the CLI normalise (`trim().toLowerCase()`) and look up
@@ -619,7 +627,9 @@ the Backzettel-variant hook in `src/services/preorder-variants.ts`.
 `inhaber` passes every check. `sums` items = `[{ productId, variant, name, unit, quantity,
 preorders }]`, everything except `storniert`, optionally `&pickupPointId=`; `summary` is the same
 `core.summarizeDay()` as `/day` (counts, totals, `byStatus` incl. `storniert`) - **no names or
-phones**, so the Backliste reads `/sums` instead of `/day` (W4). List filters: `date`
+phones**, so the Backliste reads `/sums` instead of `/day` (W4). The role `backstube` gets `/sums`
+**without `summary`** (no amounts, no paid state - it may not read `/day` either; its screens do
+not use it). List filters: `date`
 or `from`/`to`, `status` (comma list), `channel`, `pickupPointId` (`laden` = no point), `q`
 (name/code; phone digits from 3 on; LIKE wildcards stripped). `Preorder` = `{ id, code, channel,
 customerName, customerPhone, pickupDate, pickupTime, pickupPointId, pickupPoint
@@ -633,8 +643,11 @@ createdBy, updatedBy, createdAt, updatedAt, deadline, afterDeadline }`. Errors v
 
 - **Bulk status (W4).** `POST /bulk-status` changes many preorders in **one** serialised write
   transaction (Abholliste: „alle bereit", Tagesabschluss „nicht abgeholt"). Body: `ids` (1-200
-  positive integers, duplicates merged; else 400 `invalid_ids`), the same change fields as
-  `/:id/status` (at least one, else 400 `invalid_status`), optional `expectedUpdatedAt` as a map
+  positive integers or canonical digit strings like `"7"`, duplicates merged; else 400
+  `invalid_ids`), the same change fields as `/:id/status` (at least one, else 400
+  `invalid_status`; values that are wrong for every preorder - unknown `status`, non-boolean
+  `paid`/`notCollected`, `notCollected` with a status other than `bereit` - are one top-level
+  400 `invalid_status` / `invalid_paid` / `invalid_not_collected`, not `refused` per id), optional `expectedUpdatedAt` as a map
   `{ "<id>": "<ISO>" }` (not an object → 400 `invalid_expected_updated_at`; an id without entry
   is not checked). Each id runs through the same `changeStatusIn()` as the single route - same
   rules, same fahrer targets, same `not_collected_too_early` - and gets one result:
@@ -848,17 +861,24 @@ What to know before changing it:
   `deltas_recorded` on `backzettel_day` with `data.via` = `preorder_create` / `preorder_update`
   / `preorder_status` / `preorder_cancel` / `preorder_bulk_status` and the writing user as
   `user_id`; a delta's `createdAt` is now the moment of the preorder change. A draft day records
-  nothing. **`GET /:date` and `GET /prep` are side-effect free**; the confirmed view carries
-  `deltasPending` (`true` = the current preorders differ from snapshot + recorded deltas, i.e. a
-  reconciliation is due; `null` without valid master data).
+  nothing. **`GET /:date` and `GET /prep` write nothing within the request**; the confirmed view
+  carries `deltasPending` (`true` = the current preorders differ from snapshot + recorded deltas,
+  i.e. a reconciliation is due; `null` without valid master data). When a read sees `true`, it
+  starts a **background catch-up** for that date (`scheduleCatchUp`: `setImmediate`, own
+  serialised transaction, audit `via: 'reconcile'`, user null, one run per date at a time;
+  `service.idle()` / `app.locals.backzettelIdle()` for tests) - so a preorder written while the
+  master data were broken, or by the CLI import, shows up with the tablet's next reload instead
+  of waiting for another write or a restart. The screens show `deltasPending` as a notice and
+  reload after 5 s (`DELTAS_PENDING_RELOAD_MS`, at most 6 times).
 - **Reconciliation for writes without master data.** If `backzettel.yaml` is missing or invalid
   while a preorder changes, the hook cannot compute and records nothing (warned once per day and
   process, the preorder write still succeeds). Those changes are caught up by
   `reconcileConfirmedDays({ from? })` - every confirmed day from `from` (default: Berlin
   yesterday) on, each in its own transaction, audit `via: 'reconcile'` with `user_id` null
   (system). It runs **once at server start** (in the background after `listen`, logged as
-  `[INFO] Backzettel: Deltas nachgetragen für …`), **after every confirm and reopen**, and
-  implicitly with the next preorder write to that day. Tests call it through
+  `[INFO] Backzettel: Deltas nachgetragen für …`), **after every confirm and reopen**,
+  implicitly with the next preorder write to that day, and in the background after a read that
+  finds `deltasPending: true` (above). Tests call it through
   `app.locals.reconcileBackzettelDeltas`. `createBackzettel(options)` (routes) returns
   `{ router, service }` for this wiring; `createBackzettelRouter()` stays for callers that only
   need the router.

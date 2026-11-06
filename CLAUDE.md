@@ -599,13 +599,17 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
   Vorbestellungen als **Deltas** dazu - je Vorbestellung und Änderung eine Zeile, hervorgehoben,
   von der Backstube quittiert (`ack`), nie still in die Zeilen gemischt. **Seit W4 schreibt sie
   der Schreibweg der Vorbestellung** (Anlegen, Ändern, Status, Storno, Sammelaktion - in derselben
-  Transaktion), nicht mehr das Lesen: `GET /api/backzettel/:datum` ist ohne Nebenwirkung und sagt
+  Transaktion), nicht mehr das Lesen: `GET /api/backzettel/:datum` schreibt in der Anfrage nichts und sagt
   mit `deltasPending`, ob noch etwas nachzutragen ist. Was geschrieben wurde, während die
-  Stammdaten fehlten, trägt ein einmaliger Abgleich nach (Serverstart, Freigabe, Wiederöffnen,
-  nächste Änderung des Tages; Details in `apps/bakery-api/CLAUDE.md`). Nur der Inhaber kann
-  wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
-  Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
-  sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
+  Stammdaten fehlten (oder per CLI-Import), trägt ein Abgleich nach (Serverstart, Freigabe,
+  Wiederöffnen, nächste Änderung des Tages - und **im Hintergrund, sobald ein Lesen
+  `deltasPending: true` findet**; Details in `apps/bakery-api/CLAUDE.md`). Tablet und
+  Planungsseite zeigen `deltasPending` als Hinweis und laden nach 5 s nach (höchstens 6-mal);
+  fehlen die Stammdaten an einem freigegebenen Tag, sagt das Tablet, dass Nachträge fehlen können
+  - nie still. Nur der Inhaber kann
+    wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
+    Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
+    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
 - `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
   `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
@@ -729,7 +733,12 @@ path })` in `sessionPolicy.ts`, gelesen bei jeder Prüfung aus `window.location.
   praktisch also mit der 12-h-Grenze nach der PIN oder `NEXT_PUBLIC_STATION_LOGOUT_AT`. **Seit W4
   für jede Rolle**, auch für den **Inhaber per PIN** (er backt dort genauso; `/backstube` kann
   nichts verwalten). Jede andere Seite an der Station behält die 10 min, sobald sie offen ist; die
-  12-h-Grenze nach der PIN gilt immer.
+  12-h-Grenze nach der PIN gilt immer. **Damit niemand die Inhaber-Rechte eines liegen
+  gelassenen Tablets erbt:** lag `/backstube` in einer Stationssitzung, die nicht der Rolle
+  `backstube` gehört, länger als die Stations-Grenze unberührt, markiert die nächste Berührung die
+  Sitzung (`unattendedAtBackstube` in `session.tsx`); auf `/backstube` geht es weiter, beim
+  Verlassen meldet der `RouteGuard` wegen Inaktivität ab (`endUnattended`), statt die nächste Seite
+  zu zeigen. Ob der Inhaber am Tablet überhaupt die lange Grenze bekommt, bleibt Owner-Entscheidung.
 - **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube` (sonst kein Haken; die API
   sagt dasselbe): ein 72-px-Haken je Zeile, sofort gesetzt (`POST …/lines/:id/done|undone`), bei
   einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409 `not_confirmed`/`confirmed`/… lädt
@@ -834,7 +843,9 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
 - **Rate-Limit** (Fehlversuche je 5 min → 429): 5 je IP + Benutzer, 30 je IP über alle Benutzer
   (Passwort-Spraying), bei der PIN zusätzlich 10 je Benutzer über alle IPs. Seit W4 zählen **nur
   Fehlversuche** - gleichzeitige erfolgreiche Anmeldungen bekommen nie ein 429; laufende Anfragen,
-  die das Limit sprengen könnten, warten kurz. `req.ip` kommt hinter Caddy aus
+  die das Limit sprengen könnten, warten kurz (höchstens 5 s, dann 429 mit `Retry-After`). Ein
+  Client, der während des Wartens auflegt, gibt seinen Platz sofort frei und zählt nicht; ein
+  abgebrochener, schon geprüfter Fehlversuch zählt trotzdem. `req.ip` kommt hinter Caddy aus
   `X-Forwarded-For` (`TRUST_PROXY`, Vorgabe `loopback`).
 
 ## hq-Produkte auf der echten API (B5)
@@ -897,7 +908,8 @@ anonymisation (P4)". Von außen wichtig:
   anderen Tag/Ort umzieht (Register `preorder_codes`); ein alter Abholzettel zeigt nie auf eine
   fremde Bestellung.
 - **Rollen:** `verkauf` (und `inhaber`) alles, `fahrer` lesen und nur übergeben bzw. „nicht
-  abgeholt", `backstube` nur `/sums`.
+  abgeholt", `backstube` nur `/sums` (und dort ohne `summary`, also ohne Beträge und
+  Bezahlstand).
 - **Shop:** `POST /api/orders` legt eine Vorbestellung mit Kanal `shop` an, **bleibt aber hinter
   der Anmeldung** - ein öffentlicher Bestellweg ist noch nicht entschieden. Die E-Mail wird nicht
   gespeichert.
