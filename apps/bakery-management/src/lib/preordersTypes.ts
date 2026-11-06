@@ -122,6 +122,19 @@ export interface PickupPoint {
   active: boolean
 }
 
+/** Body von `PUT /api/preorders/pickup-points/:id` (Lieferstelle, Inhaber). */
+export interface PickupPointInput {
+  name: string
+  street: string
+  zip: string
+  city: string
+  weekday: number
+  window: string | null
+  orderDeadline: { weekday: number; time: string } | null
+  notes: string | null
+  active: boolean
+}
+
 export interface PreorderItemInput {
   productId: string
   variant?: string
@@ -195,6 +208,8 @@ export interface PreorderDayPickupPoint extends PickupPoint {
 
 export interface PreorderDay {
   date: string
+  /** Abholort, auf den Kopfzahlen, Summen und Liste beschränkt sind (P2). */
+  pickupPointId?: string | null
   summary: PreorderDaySummary
   sums: PreorderSumItem[]
   pickupPoints: PreorderDayPickupPoint[]

@@ -1,6 +1,6 @@
 /**
  * Getippter Client für `/api/preorders` (B7) - Erfassung (P1), Liste und
- * Tagesübersicht (P3), später die Abholliste (P2).
+ * Tagesübersicht (P3), Abholliste und Mörsbach-Seiten (P2).
  *
  * Kapselt `apiClient`, damit keine Seite Endpunkt-Strings dupliziert (wie
  * `partnerApi.ts`). Die API antwortet mit `{ success, data }`; `apiClient`
@@ -15,6 +15,7 @@ import { ALL_DAYS_PARAM, ALL_DAYS_VALUE } from './preordersTypes'
 import type {
   CatalogueProduct,
   PickupPoint,
+  PickupPointInput,
   Preorder,
   PreorderDay,
   PreorderInput,
@@ -170,9 +171,19 @@ export async function fetchPreorderSums(
   return unwrap(res, null as unknown as PreorderSums)
 }
 
-export async function fetchPreorderDay(date: string): Promise<PreorderDay> {
+/**
+ * Tagesübersicht. Mit `pickupPointId` (Sammelstelle oder `laden`) gelten
+ * Kopfzahlen, Summen und Liste nur für diesen Abholort (P2 Abholliste,
+ * Mörsbach-Seiten); `pickupPoints` bleibt vollständig.
+ */
+export async function fetchPreorderDay(
+  date: string,
+  pickupPointId?: string
+): Promise<PreorderDay> {
+  const params = new URLSearchParams({ date })
+  if (pickupPointId) params.set('pickupPointId', pickupPointId)
   const res = await apiClient.get<PreorderDay>(
-    `${BASE}/day?date=${encodeURIComponent(date)}`
+    `${BASE}/day?${params.toString()}`
   )
   return unwrap(res, null as unknown as PreorderDay)
 }
@@ -180,6 +191,18 @@ export async function fetchPreorderDay(date: string): Promise<PreorderDay> {
 export async function fetchPickupPoints(): Promise<PickupPoint[]> {
   const res = await apiClient.get<PickupPoint[]>(`${BASE}/pickup-points`)
   return unwrap(res, [])
+}
+
+/** Stammdaten einer Sammelstelle ändern (nur Inhaber; keine Adresssuche). */
+export async function savePickupPoint(
+  id: string,
+  input: PickupPointInput
+): Promise<PickupPoint> {
+  const res = await apiClient.put<PickupPoint>(
+    `${BASE}/pickup-points/${encodeURIComponent(id)}`,
+    input
+  )
+  return unwrap(res, null as unknown as PickupPoint)
 }
 
 export async function fetchPreorderVariants(): Promise<PreorderVariants> {

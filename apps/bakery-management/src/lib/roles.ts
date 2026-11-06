@@ -88,9 +88,10 @@ const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings']
  *   (Liste, ohne Bearbeiten/Neu), Backschrank. Start: /admin/preorders (P3);
  *   das Dashboard bleibt Ausweichstart.
  * - backstube: Backzettel, Backstube-Tablet; Ausweichstart Dashboard.
- * - fahrer: Abholliste der Sammelstelle Mörsbach (Backliste, Lieferstelle);
- *   Vorbestellungen nur lesen (Liste, Bestellung, Tagesübersicht - ohne die
- *   Erfassung `/admin/preorders/neu`; die API lässt Fahrer nur übergeben).
+ * - fahrer: Abholliste (P2, Start: übergeben, bezahlt, „nicht abgeholt");
+ *   Sammelstelle Mörsbach lesen (Liste, Bestellung, Backliste - ohne Erfassen
+ *   und Lieferstelle); Vorbestellungen nur lesen (ohne die Erfassung
+ *   `/admin/preorders/neu`; die API lässt Fahrer nur übergeben).
  */
 export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
   inhaber: { routes: 'all', start: ['/admin'] },
@@ -111,11 +112,17 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
   },
   fahrer: {
     routes: [
-      '/admin/delivery/preorders',
+      {
+        path: '/admin/delivery/preorders',
+        except: [
+          '/admin/delivery/preorders/new',
+          '/admin/delivery/preorders/lieferstelle',
+        ],
+      },
       { path: '/admin/preorders', except: ['/admin/preorders/neu'] },
       ...COMMON_ROUTES,
     ],
-    start: ['/admin/delivery/preorders'],
+    start: ['/admin/preorders/abholliste', '/admin/delivery/preorders'],
   },
 }
 

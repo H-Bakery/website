@@ -70,4 +70,16 @@ describe('isNavItemActive', () => {
   it('handles missing hrefs', () => {
     expect(isNavItemActive('/admin', undefined)).toBe(false)
   })
+
+  it('lets the more specific item win (P2 Abholliste under Vorbestellungen)', () => {
+    const hrefs = ['/admin/preorders', '/admin/preorders/abholliste']
+    const path = '/admin/preorders/abholliste'
+    expect(isNavItemActive(path, '/admin/preorders', hrefs)).toBe(false)
+    expect(isNavItemActive(path, '/admin/preorders/abholliste', hrefs)).toBe(
+      true
+    )
+    expect(
+      isNavItemActive('/admin/preorders/7', '/admin/preorders', hrefs)
+    ).toBe(true)
+  })
 })

@@ -48,6 +48,10 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['backstube', '/admin/preorders', false],
     ['backstube', '/admin/reports', false],
     ['fahrer', '/admin/delivery/preorders/backliste', true],
+    ['fahrer', '/admin/delivery/preorders/7', true],
+    // P2: Fahrer erfassen nicht und ändern keine Lieferstelle (API: 403)
+    ['fahrer', '/admin/delivery/preorders/new', false],
+    ['fahrer', '/admin/delivery/preorders/lieferstelle', false],
     ['fahrer', '/admin', false],
     ['fahrer', '/admin/delivery', false],
     ['fahrer', '/admin/products', false],
@@ -78,7 +82,11 @@ describe('Startseite nach der Anmeldung', () => {
     const none = () => false
     const all = () => true
     expect(startPathForRole('inhaber')).toBe('/admin')
-    expect(startPathForRole('fahrer')).toBe('/admin/delivery/preorders')
+    // P2: Fahrer starten in der Abholliste (die Seite ist gebaut)
+    expect(startPathForRole('fahrer')).toBe('/admin/preorders/abholliste')
+    expect(
+      startPathForRole('fahrer', (h) => h !== '/admin/preorders/abholliste')
+    ).toBe('/admin/delivery/preorders')
     expect(startPathForRole('verkauf', all)).toBe('/admin/preorders')
     expect(startPathForRole('backstube', all)).toBe('/backstube')
     // solange es /admin/preorders und /backstube nicht gibt: Dashboard
@@ -93,7 +101,7 @@ describe('Startseite nach der Anmeldung', () => {
       '/admin/finance'
     )
     expect(resolvePostLoginPath('fahrer', '/admin/finance')).toBe(
-      '/admin/delivery/preorders'
+      '/admin/preorders/abholliste'
     )
     expect(resolvePostLoginPath('inhaber', '//evil.example')).toBe('/admin')
     expect(resolvePostLoginPath('inhaber', '/admin/login')).toBe('/admin')
@@ -138,6 +146,7 @@ describe('getNavigationForRole', () => {
       [
         '/admin',
         '/admin/preorders',
+        '/admin/preorders/abholliste',
         '/admin/delivery/preorders',
         '/admin/products',
         '/admin/partners',
@@ -149,6 +158,7 @@ describe('getNavigationForRole', () => {
   it('Fahrer: Vorbestellungen (lesen), Sammelstelle Mörsbach, Einstellungen', () => {
     expect(hrefs(getNavigationForRole('fahrer', true))).toEqual([
       '/admin/preorders',
+      '/admin/preorders/abholliste',
       '/admin/delivery/preorders',
       '/admin/settings',
     ])

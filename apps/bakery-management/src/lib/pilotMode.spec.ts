@@ -65,7 +65,12 @@ const REPLACE = [
   '/admin/bakery/daily-prep',
   '/admin/bakery/saturday-production',
 ]
-const UPCOMING = ['/admin/preorders', '/admin/backzettel', '/backstube']
+const UPCOMING = [
+  '/admin/preorders',
+  '/admin/preorders/abholliste',
+  '/admin/backzettel',
+  '/backstube',
+]
 
 describe('isPilotMode', () => {
   const original = process.env.NEXT_PUBLIC_PILOT_MODE

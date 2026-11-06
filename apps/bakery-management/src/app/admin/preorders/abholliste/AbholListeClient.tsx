@@ -1,0 +1,1508 @@
+'use client'
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import NextLink from 'next/link'
+import { useRouter } from 'next/navigation'
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
+  FormControlLabel,
+  GlobalStyles,
+  IconButton,
+  InputAdornment,
+  ListItemIcon,
+  ListItemText,
+  Menu,
+  MenuItem,
+  Paper,
+  Snackbar,
+  Stack,
+  Switch,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Tooltip,
+  Typography,
+} from '@mui/material'
+import {
+  AddCircleOutline as NewIcon,
+  CheckCircle as HandoverIcon,
+  ChevronLeft as PrevIcon,
+  ChevronRight as NextIcon,
+  Clear as ClearIcon,
+  DoNotDisturbOn as NotCollectedIcon,
+  EventAvailable as DayEndIcon,
+  Inventory2 as ReadyIcon,
+  MoneyOff as UnpaidIcon,
+  MoreVert as MoreIcon,
+  OpenInNew as OpenIcon,
+  Payments as PaidIcon,
+  Print as PrintIcon,
+  Refresh as RefreshIcon,
+  Replay as ComesIcon,
+  Search as SearchIcon,
+  Summarize as DayIcon,
+  Undo as UndoIcon,
+} from '@mui/icons-material'
+import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
+import { useOptionalSession } from '../../../../lib/session'
+import {
+  changePreorderStatus,
+  fetchPickupPoints,
+  fetchPreorderDay,
+  isPreorderConflict,
+  preorderErrorMessage,
+} from '../../../../lib/preordersApi'
+import {
+  LADEN_PICKUP,
+  canWritePreorders,
+  formatCurrency,
+  formatDate,
+  formatDateWithWeekday,
+  isBusinessDate,
+  isProductionDay,
+  itemName,
+  toBusinessDate,
+  type PickupPoint,
+  type Preorder,
+  type PreorderDay,
+  type PreorderStatusChange,
+} from '../../../../lib/preordersTypes'
+import {
+  CANCELLED_GROUP,
+  abholActions,
+  abhollisteHref,
+  defaultPickupDate,
+  defaultPickupPlace,
+  formatClock,
+  groupPreorders,
+  isDayEndAllowed,
+  isPickupPlace,
+  isWaiting,
+  matchesSearch,
+  placeLabel,
+  stepPickupDay,
+  wrongWeekdayNotice,
+  type AbholSort,
+} from '../../../../lib/abholliste'
+
+/** Alle so oft still neu laden, solange niemand gerade etwas tut. */
+const REFRESH_MS = 60_000
+
+/**
+ * Druckbild A4 hoch, schwarz auf weiß. Gedruckt wird nicht der Bildschirm
+ * (Karten mit großen Knöpfen), sondern eine eigene Tabelle `.abholliste-print`
+ * - immer die ganze Liste des Tages, unabhängig von Suche und Filter: das
+ * Blatt ist der Ersatz, wenn Tablet oder WLAN ausfallen. AppBar, Navigation
+ * und Pfad fallen weg (wie in der Tagesübersicht).
+ */
+const printStyles = (
+  <GlobalStyles
+    styles={{
+      '.abholliste-print': { display: 'none' },
+      '@media print': {
+        '@page': { size: 'A4 portrait', margin: '12mm' },
+        'html, body': {
+          background: '#fff !important',
+          color: '#000 !important',
+        },
+        '.MuiAppBar-root, nav, .MuiDrawer-root, [aria-label="Pfad"]': {
+          display: 'none !important',
+        },
+        main: { padding: '0 !important', width: '100% !important' },
+        'main > .MuiToolbar-root': { display: 'none !important' },
+        '.abholliste-screen, .MuiSnackbar-root': {
+          display: 'none !important',
+        },
+        '.abholliste-print': {
+          display: 'block !important',
+          color: '#000',
+          fontFamily: 'Arial, Helvetica, sans-serif',
+          fontSize: '10pt',
+        },
+        '.abholliste-print h1': { fontSize: '15pt', margin: '0 0 2mm' },
+        '.abholliste-print p': { margin: '0 0 3mm' },
+        '.abholliste-print table': {
+          width: '100%',
+          borderCollapse: 'collapse',
+        },
+        '.abholliste-print th, .abholliste-print td': {
+          border: '0.5pt solid #555',
+          padding: '1.5mm 2mm',
+          verticalAlign: 'top',
+          textAlign: 'left',
+        },
+        '.abholliste-print th': { background: '#eee', fontWeight: 700 },
+        '.abholliste-print thead': { display: 'table-header-group' },
+        '.abholliste-print tr': { pageBreakInside: 'avoid' },
+        '.abholliste-print .group td': {
+          background: '#f3f3f3',
+          fontWeight: 700,
+        },
+        '.abholliste-print .tick': {
+          width: '7mm',
+          textAlign: 'center',
+          fontSize: '13pt',
+        },
+        '.abholliste-print .code': {
+          fontFamily: 'monospace',
+          whiteSpace: 'nowrap',
+        },
+        '.abholliste-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
+        '.abholliste-print .sign': { width: '32mm' },
+        '.abholliste-print ul': { margin: 0, paddingLeft: '3.5mm' },
+      },
+    }}
+  />
+)
+
+/** Touch-Ziel: mindestens 48 px hoch (Tablet an der Theke). */
+const TOUCH = { minHeight: 48 } as const
+
+function Tile({ label, value }: { label: string; value: string }) {
+  return (
+    <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
+      <Typography variant="caption" color="text.secondary" display="block">
+        {label}
+      </Typography>
+      <Typography variant="h6" component="p" sx={{ fontSize: '1.15rem' }}>
+        {value}
+      </Typography>
+    </Box>
+  )
+}
+
+function PaidChip({ preorder }: { preorder: Preorder }) {
+  return preorder.paid ? (
+    <Chip
+      size="small"
+      color="success"
+      variant="outlined"
+      label="Bezahlt"
+      data-paid="ja"
+    />
+  ) : (
+    <Chip
+      size="small"
+      variant="outlined"
+      label="Nicht bezahlt"
+      data-paid="nein"
+    />
+  )
+}
+
+interface Toast {
+  text: string
+  undo?: () => void
+}
+
+type BulkKind = 'ready' | 'dayEnd'
+
+export interface AbholListeClientProps {
+  initialDate?: string
+  /** `laden` oder die ID einer Sammelstelle. */
+  initialPlace?: string
+}
+
+/**
+ * P2: Abholliste je Tag und Abholort. An der Theke (Tablet) und an der
+ * Sammelstelle (Fahrer): großer Haken bei der Übergabe, bezahlt ja/nein,
+ * „bereit" beim Packen, am Tagesende „nicht abgeholt". Jede Schreibaktion
+ * schickt den geladenen `updatedAt` mit - hat ein anderes Gerät die
+ * Bestellung inzwischen geändert, lädt die Liste neu statt zu überschreiben.
+ */
+export default function AbholListeClient({
+  initialDate,
+  initialPlace,
+}: AbholListeClientProps) {
+  const router = useRouter()
+  const session = useOptionalSession()
+  const role = session?.user?.role ?? null
+  const canWrite = canWritePreorders(role)
+
+  // Leer starten: Vorgabetag und -ort kommen aus Uhr und Sammelstellen.
+  const [today, setToday] = useState('')
+  const [date, setDate] = useState(initialDate ?? '')
+  const [place, setPlace] = useState('')
+  const [points, setPoints] = useState<PickupPoint[]>([])
+  const [pointsError, setPointsError] = useState<string | null>(null)
+  const [day, setDay] = useState<PreorderDay | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [printedAt, setPrintedAt] = useState('')
+
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<AbholSort | null>(null)
+  const [hideDone, setHideDone] = useState(false)
+
+  const [busyId, setBusyId] = useState<number | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [conflict, setConflict] = useState<string | null>(null)
+  const [toast, setToast] = useState<Toast | null>(null)
+  const [handover, setHandover] = useState<Preorder | null>(null)
+  const [menu, setMenu] = useState<{
+    anchor: HTMLElement
+    preorder: Preorder
+  } | null>(null)
+  const [bulk, setBulk] = useState<BulkKind | null>(null)
+  const [bulkRunning, setBulkRunning] = useState(false)
+
+  const point = useMemo(
+    () => points.find((p) => p.id === place) ?? null,
+    [points, place]
+  )
+
+  /* ---------------------------------------------------------------- *
+   * Start: Uhr, Sammelstellen, Vorgaben
+   * ---------------------------------------------------------------- */
+  useEffect(() => {
+    const now = toBusinessDate(new Date())
+    setToday(now)
+    let active = true
+    fetchPickupPoints()
+      .then((list) => {
+        if (!active) return
+        setPoints(list)
+        const chosen = isPickupPlace(initialPlace, list)
+          ? initialPlace
+          : defaultPickupPlace(role, list, initialDate ?? now)
+        setPlace(chosen)
+        const chosenPoint = list.find((p) => p.id === chosen) ?? null
+        setDate((current) =>
+          isBusinessDate(current)
+            ? current
+            : defaultPickupDate(now, chosenPoint)
+        )
+      })
+      .catch((err) => {
+        if (!active) return
+        setPointsError(
+          preorderErrorMessage(
+            err,
+            'Die Sammelstellen konnten nicht geladen werden.'
+          )
+        )
+        setPlace(initialPlace ?? LADEN_PICKUP)
+        setDate((current) =>
+          isBusinessDate(current) ? current : defaultPickupDate(now, null)
+        )
+      })
+    return () => {
+      active = false
+    }
+    // Einmal beim Öffnen; danach steuern Tag und Ort die Seite.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  /* ---------------------------------------------------------------- *
+   * Laden
+   * ---------------------------------------------------------------- */
+  const requestRef = useRef(0)
+  const load = useCallback(
+    async (silent = false) => {
+      if (!isBusinessDate(date) || !place) return
+      const request = ++requestRef.current
+      if (!silent) {
+        setLoading(true)
+        setLoadError(null)
+      }
+      try {
+        const next = await fetchPreorderDay(date, place)
+        if (request !== requestRef.current) return
+        setDay(next)
+        setLoadError(null)
+        setPrintedAt(
+          new Date().toLocaleString('de-DE', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })
+        )
+      } catch (err) {
+        if (request !== requestRef.current) return
+        if (!silent) setDay(null)
+        setLoadError(
+          preorderErrorMessage(
+            err,
+            'Die Abholliste konnte nicht geladen werden.'
+          )
+        )
+      } finally {
+        if (request === requestRef.current) setLoading(false)
+      }
+    },
+    [date, place]
+  )
+
+  useEffect(() => {
+    load()
+  }, [load])
+
+  // URL mitführen: Neuladen und „Zurück" landen auf demselben Tag und Ort.
+  useEffect(() => {
+    if (!isBusinessDate(date) || !place) return
+    router.replace(abhollisteHref(date, place), { scroll: false })
+  }, [date, place, router])
+
+  // Still nachladen (zweites Gerät, Fahrer), aber nicht mitten in einer Aktion.
+  const quietRef = useRef(true)
+  quietRef.current =
+    busyId === null && handover === null && menu === null && bulk === null
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && quietRef.current) {
+        load(true)
+      }
+    }
+    const timer = window.setInterval(refresh, REFRESH_MS)
+    window.addEventListener('focus', refresh)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [load])
+
+  /* ---------------------------------------------------------------- *
+   * Aktionen
+   * ---------------------------------------------------------------- */
+  const replaceLocal = (updated: Preorder) => {
+    setDay((current) =>
+      current
+        ? {
+            ...current,
+            preorders: current.preorders.map((p) =>
+              p.id === updated.id ? updated : p
+            ),
+          }
+        : current
+    )
+  }
+
+  const onConflict = async (preorder: Preorder, err: unknown) => {
+    setConflict(
+      `${preorder.code}: ${preorderErrorMessage(
+        err,
+        'Die Bestellung wurde inzwischen geändert.'
+      )} Die Liste ist neu geladen - es wurde nichts überschrieben.`
+    )
+    await load(true)
+  }
+
+  const act = async (
+    preorder: Preorder,
+    change: PreorderStatusChange,
+    text: string,
+    undo?: PreorderStatusChange
+  ) => {
+    setBusyId(preorder.id)
+    setActionError(null)
+    try {
+      const updated = await changePreorderStatus(
+        preorder.id,
+        change,
+        preorder.updatedAt
+      )
+      if (updated) replaceLocal(updated)
+      setToast({
+        text,
+        undo:
+          undo && updated
+            ? () => {
+                setToast(null)
+                act(updated, undo, `${updated.code}: rückgängig gemacht.`)
+              }
+            : undefined,
+      })
+      await load(true)
+    } catch (err) {
+      if (isPreorderConflict(err)) await onConflict(preorder, err)
+      else {
+        setActionError(
+          `${preorder.code}: ${preorderErrorMessage(
+            err,
+            'Das hat nicht geklappt. Bitte erneut versuchen.'
+          )}`
+        )
+      }
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  /** Vorheriger Stand - für „Rückgängig" nach dem Abhaken. */
+  const previousOf = (p: Preorder): PreorderStatusChange => ({
+    status: p.status,
+    paid: p.paid,
+    notCollected: p.notCollected,
+  })
+
+  const handOver = (preorder: Preorder, paid?: boolean) => {
+    setHandover(null)
+    const change: PreorderStatusChange = { status: 'abgeholt' }
+    if (paid !== undefined) change.paid = paid
+    act(
+      preorder,
+      change,
+      `${preorder.customerName ?? preorder.code} übergeben${
+        paid === true ? ' und bezahlt' : ''
+      }.`,
+      canWrite ? previousOf(preorder) : undefined
+    )
+  }
+
+  const startHandover = (preorder: Preorder) => {
+    // Bezahlt und Verkauf: ein Tipp genügt (Rückgängig im Hinweis). Sonst
+    // fragen - nach dem Geld, und Fahrer können nicht zurücknehmen.
+    if (preorder.paid && canWrite) handOver(preorder)
+    else setHandover(preorder)
+  }
+
+  const runBulk = async (kind: BulkKind, list: Preorder[]) => {
+    setBulkRunning(true)
+    setActionError(null)
+    let done = 0
+    let failed = 0
+    for (const p of list) {
+      try {
+        await changePreorderStatus(
+          p.id,
+          kind === 'ready' ? { status: 'bereit' } : { notCollected: true },
+          p.updatedAt
+        )
+        done++
+      } catch {
+        failed++
+      }
+    }
+    setBulkRunning(false)
+    setBulk(null)
+    const what = kind === 'ready' ? 'als bereit' : 'als nicht abgeholt'
+    setToast({
+      text: `${done} ${
+        done === 1 ? 'Bestellung' : 'Bestellungen'
+      } ${what} markiert.`,
+    })
+    if (failed > 0) {
+      setConflict(
+        `${failed} ${
+          failed === 1 ? 'Bestellung wurde' : 'Bestellungen wurden'
+        } inzwischen an anderer Stelle geändert und nicht angefasst. Die Liste ist neu geladen.`
+      )
+    }
+    await load(true)
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Ableitungen
+   * ---------------------------------------------------------------- */
+  const effectiveSort: AbholSort = sort ?? (point ? 'name' : 'zeit')
+  const preorders = useMemo(() => day?.preorders ?? [], [day])
+  const searching = query.trim() !== ''
+  const visible = useMemo(
+    () =>
+      preorders.filter((p) =>
+        searching
+          ? matchesSearch(p, query)
+          : !hideDone || (p.status !== 'abgeholt' && p.status !== 'storniert')
+      ),
+    [preorders, query, searching, hideDone]
+  )
+  const groups = useMemo(
+    () =>
+      groupPreorders(visible, effectiveSort, { window: point?.window ?? null }),
+    [visible, effectiveSort, point]
+  )
+  const printGroups = useMemo(
+    () =>
+      groupPreorders(preorders, effectiveSort, {
+        window: point?.window ?? null,
+      }).filter((g) => g.key !== CANCELLED_GROUP),
+    [preorders, effectiveSort, point]
+  )
+  const waiting = preorders.filter((p) => isWaiting(p) && !p.anonymizedAt)
+  const toReady = preorders.filter(
+    (p) => p.status === 'offen' && !p.anonymizedAt
+  )
+  const dayEndAllowed = isDayEndAllowed(date, today)
+  const cancelledCount = preorders.filter(
+    (p) => p.status === 'storniert'
+  ).length
+  const summary = day?.summary
+  const weekdayNotice = wrongWeekdayNotice(date, point)
+  const title = `Abholliste ${placeLabel(place, points)}`
+  const dateLabel = isBusinessDate(date) ? formatDateWithWeekday(date) : ''
+  const newHref = `/admin/preorders/neu?date=${date}${
+    point ? `&pickupPointId=${encodeURIComponent(point.id)}` : ''
+  }`
+
+  const changeDate = (next: string) => {
+    setQuery('')
+    setDate(next)
+  }
+
+  const changePlace = (next: string) => {
+    setQuery('')
+    setPlace(next)
+    const nextPoint = points.find((p) => p.id === next) ?? null
+    if (nextPoint && today && wrongWeekdayNotice(date, nextPoint)) {
+      setDate(defaultPickupDate(today, nextPoint))
+    } else if (!nextPoint && isBusinessDate(date) && !isProductionDay(date)) {
+      setDate(defaultPickupDate(today || date, null))
+    }
+  }
+
+  /* ---------------------------------------------------------------- *
+   * Darstellung
+   * ---------------------------------------------------------------- */
+  const renderRow = (p: Preorder) => {
+    const actions = abholActions(p, role)
+    const busy = busyId === p.id || bulkRunning
+    const done = p.status === 'abgeholt'
+    const cancelled = p.status === 'storniert'
+    const name = p.customerName ?? p.code
+    return (
+      <Paper
+        key={p.id}
+        component="li"
+        variant="outlined"
+        data-testid={`abhol-${p.code}`}
+        data-status={p.notCollected ? 'nicht_abgeholt' : p.status}
+        sx={{
+          listStyle: 'none',
+          p: { xs: 1.5, sm: 2 },
+          borderLeftWidth: 6,
+          borderLeftColor: done
+            ? 'success.main'
+            : p.notCollected
+            ? 'error.main'
+            : cancelled
+            ? 'divider'
+            : p.status === 'bereit'
+            ? 'primary.main'
+            : 'info.main',
+        }}
+      >
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) auto' },
+            gap: { xs: 1.5, md: 2 },
+            alignItems: 'center',
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="baseline"
+              flexWrap="wrap"
+              useFlexGap
+            >
+              <Typography
+                variant="h6"
+                component="h3"
+                sx={{
+                  fontSize: { xs: '1.15rem', sm: '1.3rem' },
+                  fontWeight: 700,
+                  textDecoration: cancelled ? 'line-through' : 'none',
+                  color: cancelled ? 'text.secondary' : 'text.primary',
+                  overflowWrap: 'anywhere',
+                }}
+              >
+                {name}
+              </Typography>
+              <Typography
+                component="span"
+                sx={{ fontFamily: 'monospace', color: 'text.secondary' }}
+              >
+                {p.code}
+              </Typography>
+              {effectiveSort === 'name' && p.pickupTime && (
+                <Typography component="span" color="text.secondary">
+                  {p.pickupTime} Uhr
+                </Typography>
+              )}
+            </Stack>
+            <Box
+              component="ul"
+              sx={{ m: 0, mt: 0.5, pl: 2.5, fontSize: '1.05rem' }}
+              aria-label={`Artikel von ${name}`}
+            >
+              {p.items.map((item) => (
+                <li key={`${item.productId}|${item.variant}`}>
+                  <strong>{item.quantity} ×</strong> {itemName(item)}
+                </li>
+              ))}
+            </Box>
+            {p.note && (
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                Anmerkung: {p.note}
+              </Typography>
+            )}
+            {p.customerPhone && (
+              <Typography variant="body2" color="text.secondary">
+                Tel.{' '}
+                <a
+                  href={`tel:${p.customerPhone.replace(/[^\d+]/g, '')}`}
+                  style={{ color: 'inherit' }}
+                >
+                  {p.customerPhone}
+                </a>
+              </Typography>
+            )}
+          </Box>
+
+          <Stack spacing={1} alignItems={{ xs: 'stretch', md: 'flex-end' }}>
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              justifyContent={{ xs: 'flex-start', md: 'flex-end' }}
+              flexWrap="wrap"
+              useFlexGap
+            >
+              <Typography sx={{ fontWeight: 700, fontSize: '1.1rem' }}>
+                {formatCurrency(p.total)}
+              </Typography>
+              {!cancelled && <PaidChip preorder={p} />}
+              <PreorderStatusChip preorder={p} />
+            </Stack>
+            {done && (
+              <Typography
+                sx={{ fontWeight: 600, textAlign: { md: 'right' } }}
+                data-testid="handover-time"
+              >
+                ✓ Übergeben
+                {formatClock(p.pickedUpAt)
+                  ? ` um ${formatClock(p.pickedUpAt)} Uhr`
+                  : ''}
+              </Typography>
+            )}
+            {!cancelled && (
+              <Stack
+                direction="row"
+                spacing={1}
+                justifyContent={{ xs: 'stretch', md: 'flex-end' }}
+              >
+                {actions.handover && (
+                  <Button
+                    variant="contained"
+                    color="success"
+                    size="large"
+                    startIcon={<HandoverIcon />}
+                    onClick={() => startHandover(p)}
+                    disabled={busy}
+                    aria-label={`${name} übergeben`}
+                    sx={{
+                      minHeight: 56,
+                      flex: { xs: 1, md: 'none' },
+                      minWidth: { md: 180 },
+                      fontSize: '1.05rem',
+                    }}
+                  >
+                    Übergeben
+                  </Button>
+                )}
+                {actions.markPaid && (
+                  <Button
+                    variant="outlined"
+                    size="large"
+                    startIcon={<PaidIcon />}
+                    onClick={() =>
+                      act(p, { paid: true }, `${name}: bezahlt.`, {
+                        paid: false,
+                      })
+                    }
+                    disabled={busy}
+                    aria-label={`${name}: als bezahlt markieren`}
+                    sx={{ minHeight: 56, flex: { xs: 1, md: 'none' } }}
+                  >
+                    Bezahlt
+                  </Button>
+                )}
+                {
+                  <Tooltip title="Weitere Aktionen">
+                    <span>
+                      <IconButton
+                        aria-label={`Weitere Aktionen für ${name}`}
+                        onClick={(event) =>
+                          setMenu({ anchor: event.currentTarget, preorder: p })
+                        }
+                        disabled={busy}
+                        sx={{
+                          width: 56,
+                          height: 56,
+                          border: 1,
+                          borderColor: 'divider',
+                          borderRadius: 1,
+                        }}
+                      >
+                        {busy ? <CircularProgress size={22} /> : <MoreIcon />}
+                      </IconButton>
+                    </span>
+                  </Tooltip>
+                }
+              </Stack>
+            )}
+          </Stack>
+        </Box>
+      </Paper>
+    )
+  }
+
+  const menuPreorder = menu?.preorder ?? null
+  const menuActions = menuPreorder ? abholActions(menuPreorder, role) : null
+  const menuName = menuPreorder?.customerName ?? menuPreorder?.code ?? ''
+  const closeMenu = () => setMenu(null)
+
+  return (
+    <Box>
+      {printStyles}
+
+      <Box className="abholliste-screen">
+        <Stack
+          direction={{ xs: 'column', md: 'row' }}
+          justifyContent="space-between"
+          alignItems={{ xs: 'stretch', md: 'center' }}
+          spacing={1}
+          sx={{ mb: 1 }}
+        >
+          <Typography
+            variant="h4"
+            component="h1"
+            sx={{ fontSize: { xs: '1.5rem', md: '2rem' } }}
+          >
+            {title}
+          </Typography>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            <Button
+              component={NextLink}
+              href={`/admin/preorders/tag${
+                isBusinessDate(date) ? `?date=${date}` : ''
+              }`}
+              startIcon={<DayIcon />}
+              sx={TOUCH}
+            >
+              Tagesübersicht
+            </Button>
+            <Tooltip title="Aktualisieren">
+              <span>
+                <IconButton
+                  aria-label="Abholliste aktualisieren"
+                  onClick={() => load()}
+                  disabled={loading || !place}
+                  sx={{ width: 48, height: 48 }}
+                >
+                  <RefreshIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Button
+              variant="contained"
+              startIcon={<PrintIcon />}
+              onClick={() => window.print()}
+              disabled={!day}
+              sx={TOUCH}
+            >
+              Drucken
+            </Button>
+          </Stack>
+        </Stack>
+        <Typography color="text.secondary" sx={{ mb: 2 }}>
+          {dateLabel}
+          {point?.window ? ` · Übergabe ${point.window} Uhr` : ''}
+          {point && point.street
+            ? ` · ${[
+                point.street,
+                [point.zip, point.city].filter(Boolean).join(' '),
+              ]
+                .filter(Boolean)
+                .join(', ')}`
+            : ''}
+        </Typography>
+
+        {/* Tag, Ort, Suche */}
+        <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
+          <Box
+            sx={{
+              display: 'grid',
+              gap: 1.5,
+              gridTemplateColumns: {
+                xs: '1fr',
+                sm: 'auto minmax(0, 1fr)',
+                lg: 'auto minmax(180px, 240px) minmax(0, 1fr) auto',
+              },
+              alignItems: 'center',
+            }}
+          >
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Tooltip title="Vorheriger Abholtag">
+                <span>
+                  <IconButton
+                    aria-label="Vorheriger Abholtag"
+                    onClick={() => changeDate(stepPickupDay(date, -1, point))}
+                    disabled={!isBusinessDate(date)}
+                    sx={{ width: 48, height: 48 }}
+                  >
+                    <PrevIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
+              <TextField
+                label="Abholtag"
+                type="date"
+                size="small"
+                value={date}
+                onChange={(event) => changeDate(event.target.value)}
+                InputLabelProps={{ shrink: true }}
+                sx={{ minWidth: 160, flex: 1 }}
+              />
+              <Tooltip title="Nächster Abholtag">
+                <span>
+                  <IconButton
+                    aria-label="Nächster Abholtag"
+                    onClick={() => changeDate(stepPickupDay(date, 1, point))}
+                    disabled={!isBusinessDate(date)}
+                    sx={{ width: 48, height: 48 }}
+                  >
+                    <NextIcon />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            </Stack>
+            <TextField
+              select
+              label="Abholort"
+              size="small"
+              value={place}
+              onChange={(event) => changePlace(event.target.value)}
+              disabled={!place}
+              SelectProps={{ native: false }}
+            >
+              <MenuItem value={LADEN_PICKUP} sx={TOUCH}>
+                Laden
+              </MenuItem>
+              {points
+                .filter((p) => p.active !== false || p.id === place)
+                .map((p) => (
+                  <MenuItem key={p.id} value={p.id} sx={TOUCH}>
+                    {p.name}
+                  </MenuItem>
+                ))}
+            </TextField>
+            <TextField
+              size="small"
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Name oder Code, z. B. „Müller“ oder „3“"
+              inputProps={{ 'aria-label': 'Name oder Code suchen' }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <SearchIcon />
+                  </InputAdornment>
+                ),
+                endAdornment: query ? (
+                  <InputAdornment position="end">
+                    <IconButton
+                      aria-label="Suche leeren"
+                      onClick={() => setQuery('')}
+                      edge="end"
+                      sx={{ width: 44, height: 44 }}
+                    >
+                      <ClearIcon />
+                    </IconButton>
+                  </InputAdornment>
+                ) : undefined,
+              }}
+              sx={{ gridColumn: { sm: '1 / -1', lg: 'auto' } }}
+            />
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              value={effectiveSort}
+              onChange={(_e, value: AbholSort | null) =>
+                value && setSort(value)
+              }
+              aria-label="Sortierung"
+              sx={{ '& .MuiToggleButton-root': { minHeight: 44, px: 2 } }}
+            >
+              <ToggleButton value="zeit">Nach Uhrzeit</ToggleButton>
+              <ToggleButton value="name">Nach Name</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+          <FormControlLabel
+            sx={{ mt: 1, minHeight: 44 }}
+            control={
+              <Switch
+                checked={hideDone}
+                onChange={(event) => setHideDone(event.target.checked)}
+              />
+            }
+            label="Abgeholte und stornierte ausblenden"
+          />
+        </Paper>
+
+        {pointsError && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            {pointsError}
+          </Alert>
+        )}
+        {weekdayNotice && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            {weekdayNotice} Am {formatDate(date)} gibt es dort keine Übergabe.
+          </Alert>
+        )}
+        {!point && isBusinessDate(date) && !isProductionDay(date) && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Montag ist Ruhetag - im Laden wird nichts abgeholt.
+          </Alert>
+        )}
+        {conflict && (
+          <Alert
+            severity="info"
+            sx={{ mb: 2 }}
+            onClose={() => setConflict(null)}
+          >
+            {conflict}
+          </Alert>
+        )}
+        {actionError && (
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            onClose={() => setActionError(null)}
+          >
+            {actionError}
+          </Alert>
+        )}
+        {loadError && (
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            action={
+              <Button color="inherit" size="small" onClick={() => load()}>
+                Erneut versuchen
+              </Button>
+            }
+          >
+            {loadError}
+          </Alert>
+        )}
+
+        {summary && (
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(2, minmax(0, 1fr))',
+                sm: 'repeat(3, minmax(0, 1fr))',
+                lg: 'repeat(5, minmax(0, 1fr))',
+              },
+              gap: 1.5,
+              mb: 2,
+            }}
+          >
+            <Tile label="Bestellungen" value={String(summary.count)} />
+            <Tile
+              label="Übergeben"
+              value={`${summary.byStatus.abgeholt} von ${summary.count}`}
+            />
+            <Tile label="Warten noch" value={String(waiting.length)} />
+            <Tile label="Nicht abgeholt" value={String(summary.notCollected)} />
+            <Tile
+              label="Noch zu kassieren"
+              value={formatCurrency(summary.unpaidTotal)}
+            />
+          </Box>
+        )}
+
+        {day && (canWrite || role === 'fahrer') && (
+          <Stack
+            direction={{ xs: 'column', sm: 'row' }}
+            spacing={1}
+            sx={{ mb: 2 }}
+          >
+            {canWrite && toReady.length > 0 && (
+              <Button
+                variant="outlined"
+                startIcon={<ReadyIcon />}
+                onClick={() => setBulk('ready')}
+                disabled={bulkRunning}
+                sx={TOUCH}
+              >
+                Alle offenen als bereit markieren ({toReady.length})
+              </Button>
+            )}
+            {waiting.length > 0 && (
+              <Tooltip
+                title={
+                  dayEndAllowed
+                    ? ''
+                    : 'Erst am Abholtag - vorher kann noch jemand kommen.'
+                }
+              >
+                <span>
+                  <Button
+                    variant="outlined"
+                    startIcon={<DayEndIcon />}
+                    onClick={() => setBulk('dayEnd')}
+                    disabled={!dayEndAllowed || bulkRunning}
+                    sx={{ ...TOUCH, width: { xs: '100%', sm: 'auto' } }}
+                  >
+                    Tagesabschluss: Rest „nicht abgeholt“ ({waiting.length})
+                  </Button>
+                </span>
+              </Tooltip>
+            )}
+          </Stack>
+        )}
+
+        {loading && !day ? (
+          <Box
+            sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
+            role="status"
+            aria-label="Abholliste wird geladen"
+          >
+            <CircularProgress />
+          </Box>
+        ) : (
+          day &&
+          (preorders.length === 0 ? (
+            <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
+              <Typography color="text.secondary" sx={{ mb: canWrite ? 2 : 0 }}>
+                Für diesen Tag ist hier nichts vorbestellt.
+              </Typography>
+              {canWrite && (
+                <Button
+                  component={NextLink}
+                  href={newHref}
+                  variant="contained"
+                  startIcon={<NewIcon />}
+                  sx={TOUCH}
+                >
+                  Vorbestellung erfassen
+                </Button>
+              )}
+            </Paper>
+          ) : groups.length === 0 ? (
+            <Typography color="text.secondary" sx={{ py: 3 }}>
+              {searching
+                ? `Keine Bestellung zu „${query.trim()}“.`
+                : 'Alles abgeholt.'}
+            </Typography>
+          ) : (
+            groups.map((group) => (
+              <Box
+                key={group.key}
+                component="section"
+                aria-label={group.label}
+                sx={{ mb: 2.5 }}
+              >
+                <Typography
+                  variant="subtitle1"
+                  component="h2"
+                  sx={{
+                    fontWeight: 700,
+                    mb: 1,
+                    color:
+                      group.key === CANCELLED_GROUP
+                        ? 'text.secondary'
+                        : 'text.primary',
+                  }}
+                >
+                  {group.label}{' '}
+                  <Typography component="span" color="text.secondary">
+                    · {group.preorders.length}
+                  </Typography>
+                </Typography>
+                <Stack component="ul" spacing={1} sx={{ m: 0, p: 0 }}>
+                  {group.preorders.map(renderRow)}
+                </Stack>
+              </Box>
+            ))
+          ))
+        )}
+
+        {day && cancelledCount > 0 && (
+          <Typography variant="caption" color="text.secondary">
+            Stornierte stehen nicht auf dem Ausdruck und zählen in keiner Summe.
+          </Typography>
+        )}
+      </Box>
+
+      {/* ------------------------------ Druck ------------------------------ */}
+      {day && (
+        <Box className="abholliste-print" aria-hidden="true">
+          <h1>
+            {title} · {dateLabel}
+          </h1>
+          <p>
+            {summary?.count ?? 0}{' '}
+            {summary?.count === 1 ? 'Bestellung' : 'Bestellungen'}
+            {point?.window ? ` · Übergabe ${point.window} Uhr` : ''}
+            {summary
+              ? ` · noch zu kassieren ${formatCurrency(summary.unpaidTotal)}`
+              : ''}
+            {cancelledCount > 0
+              ? ` · ${cancelledCount} storniert (nicht aufgeführt)`
+              : ''}
+            {printedAt ? ` · Stand ${printedAt} Uhr` : ''}
+          </p>
+          <table>
+            <thead>
+              <tr>
+                <th className="tick">✓</th>
+                <th>Code</th>
+                <th>Name</th>
+                <th>Artikel</th>
+                <th className="num">Summe</th>
+                <th>Bezahlt</th>
+                <th className="sign">Unterschrift</th>
+              </tr>
+            </thead>
+            <tbody>
+              {printGroups.map((group) => (
+                <React.Fragment key={group.key}>
+                  {printGroups.length > 1 && (
+                    <tr className="group">
+                      <td colSpan={7}>
+                        {group.label} ({group.preorders.length})
+                      </td>
+                    </tr>
+                  )}
+                  {group.preorders.map((p) => (
+                    <tr key={p.id}>
+                      <td className="tick">
+                        {p.status === 'abgeholt' ? '☑' : '☐'}
+                      </td>
+                      <td className="code">{p.code}</td>
+                      <td>
+                        {p.customerName}
+                        {p.customerPhone ? (
+                          <>
+                            <br />
+                            {p.customerPhone}
+                          </>
+                        ) : null}
+                        {p.notCollected ? (
+                          <>
+                            <br />
+                            nicht abgeholt
+                          </>
+                        ) : null}
+                      </td>
+                      <td>
+                        <ul>
+                          {p.items.map((item) => (
+                            <li key={`${item.productId}|${item.variant}`}>
+                              {item.quantity} × {itemName(item)}
+                            </li>
+                          ))}
+                        </ul>
+                        {p.note ? <em>{p.note}</em> : null}
+                      </td>
+                      <td className="num">{formatCurrency(p.total)}</td>
+                      <td>{p.paid ? 'ja' : 'nein'}</td>
+                      <td className="sign" />
+                    </tr>
+                  ))}
+                </React.Fragment>
+              ))}
+            </tbody>
+          </table>
+        </Box>
+      )}
+
+      {/* --------------------------- Dialoge ------------------------------ */}
+      <Menu
+        anchorEl={menu?.anchor ?? null}
+        open={menu !== null}
+        onClose={closeMenu}
+      >
+        {menuPreorder && menuActions?.ready && (
+          <MenuItem
+            sx={TOUCH}
+            onClick={() => {
+              closeMenu()
+              act(menuPreorder, { status: 'bereit' }, `${menuName}: bereit.`, {
+                status: 'offen',
+              })
+            }}
+          >
+            <ListItemIcon>
+              <ReadyIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Bereit (gepackt)</ListItemText>
+          </MenuItem>
+        )}
+        {menuPreorder && menuActions?.notCollected && (
+          <MenuItem
+            sx={TOUCH}
+            onClick={() => {
+              closeMenu()
+              act(
+                menuPreorder,
+                { notCollected: true },
+                `${menuName}: nicht abgeholt.`,
+                canWrite ? previousOf(menuPreorder) : undefined
+              )
+            }}
+          >
+            <ListItemIcon>
+              <NotCollectedIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Nicht abgeholt</ListItemText>
+          </MenuItem>
+        )}
+        {menuPreorder && menuActions?.clearNotCollected && (
+          <MenuItem
+            sx={TOUCH}
+            onClick={() => {
+              closeMenu()
+              act(
+                menuPreorder,
+                { status: 'bereit', notCollected: false },
+                `${menuName}: wartet wieder auf Abholung.`
+              )
+            }}
+          >
+            <ListItemIcon>
+              <ComesIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Kommt doch noch</ListItemText>
+          </MenuItem>
+        )}
+        {menuPreorder && menuActions?.markUnpaid && (
+          <MenuItem
+            sx={TOUCH}
+            onClick={() => {
+              closeMenu()
+              act(
+                menuPreorder,
+                { paid: false },
+                `${menuName}: nicht bezahlt.`,
+                { paid: true }
+              )
+            }}
+          >
+            <ListItemIcon>
+              <UnpaidIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Als nicht bezahlt markieren</ListItemText>
+          </MenuItem>
+        )}
+        {menuPreorder && menuActions?.undoHandover && (
+          <MenuItem
+            sx={TOUCH}
+            onClick={() => {
+              closeMenu()
+              act(
+                menuPreorder,
+                { status: 'bereit' },
+                `${menuName}: Übergabe zurückgenommen.`
+              )
+            }}
+          >
+            <ListItemIcon>
+              <UndoIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Übergabe zurücknehmen</ListItemText>
+          </MenuItem>
+        )}
+        {menuPreorder && (
+          <MenuItem
+            sx={TOUCH}
+            component={NextLink}
+            href={`/admin/preorders/${menuPreorder.id}`}
+            onClick={closeMenu}
+          >
+            <ListItemIcon>
+              <OpenIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Bestellung öffnen</ListItemText>
+          </MenuItem>
+        )}
+      </Menu>
+
+      <Dialog
+        open={handover !== null}
+        onClose={() => setHandover(null)}
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle>
+          An {handover?.customerName ?? handover?.code} übergeben?
+        </DialogTitle>
+        <DialogContent>
+          {handover && (
+            <>
+              <DialogContentText component="div">
+                <Box
+                  component="span"
+                  sx={{ fontFamily: 'monospace', display: 'block' }}
+                >
+                  {handover.code}
+                </Box>
+                <Box component="ul" sx={{ m: 0, mt: 1, pl: 2.5 }}>
+                  {handover.items.map((item) => (
+                    <li key={`${item.productId}|${item.variant}`}>
+                      {item.quantity} × {itemName(item)}
+                    </li>
+                  ))}
+                </Box>
+              </DialogContentText>
+              <Alert
+                severity={handover.paid ? 'success' : 'info'}
+                sx={{ mt: 2 }}
+              >
+                {handover.paid
+                  ? `Schon bezahlt (${formatCurrency(handover.total)}).`
+                  : `Noch nicht bezahlt: ${formatCurrency(
+                      handover.total
+                    )} kassieren.`}
+              </Alert>
+              {!canWrite && (
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 1 }}
+                >
+                  Zurücknehmen kann danach nur der Verkauf.
+                </Typography>
+              )}
+            </>
+          )}
+        </DialogContent>
+        <DialogActions
+          sx={{
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: 'stretch',
+            gap: 1,
+            px: 3,
+            pb: 2,
+            '& > :not(style) ~ :not(style)': { ml: { xs: 0, sm: 1 } },
+          }}
+        >
+          <Button onClick={() => setHandover(null)} sx={TOUCH}>
+            Abbrechen
+          </Button>
+          {handover && !handover.paid && (
+            <Button
+              variant="outlined"
+              onClick={() => handOver(handover, false)}
+              sx={TOUCH}
+            >
+              Ohne Zahlung übergeben
+            </Button>
+          )}
+          {handover && (
+            <Button
+              variant="contained"
+              color="success"
+              autoFocus
+              startIcon={<HandoverIcon />}
+              onClick={() =>
+                handOver(handover, handover.paid ? undefined : true)
+              }
+              sx={TOUCH}
+            >
+              {handover.paid ? 'Übergeben' : 'Bezahlt und übergeben'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={bulk !== null}
+        onClose={() => !bulkRunning && setBulk(null)}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>
+          {bulk === 'ready'
+            ? 'Alle offenen als bereit markieren?'
+            : 'Tagesabschluss: nicht abgeholt?'}
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText component="div">
+            {bulk === 'ready'
+              ? `${toReady.length} ${
+                  toReady.length === 1 ? 'Bestellung ist' : 'Bestellungen sind'
+                } gepackt und liegen zur Abholung bereit:`
+              : `Diese ${waiting.length} ${
+                  waiting.length === 1
+                    ? 'Bestellung wurde'
+                    : 'Bestellungen wurden'
+                } am ${dateLabel} nicht abgeholt. Sie bleiben in der Liste und lassen sich weiter übergeben, falls jemand später kommt.`}
+            <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2.5 }}>
+              {(bulk === 'ready' ? toReady : waiting).map((p) => (
+                <li key={p.id}>
+                  {p.customerName} ({p.code})
+                </li>
+              ))}
+            </Box>
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button
+            onClick={() => setBulk(null)}
+            disabled={bulkRunning}
+            sx={TOUCH}
+          >
+            Abbrechen
+          </Button>
+          <Button
+            variant="contained"
+            onClick={() =>
+              bulk && runBulk(bulk, bulk === 'ready' ? toReady : waiting)
+            }
+            disabled={bulkRunning}
+            sx={TOUCH}
+          >
+            {bulkRunning
+              ? 'Wird gespeichert …'
+              : bulk === 'ready'
+              ? 'Als bereit markieren'
+              : 'Als nicht abgeholt markieren'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Snackbar
+        open={toast !== null}
+        autoHideDuration={6000}
+        onClose={(_event, reason) => {
+          if (reason !== 'clickaway') setToast(null)
+        }}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert
+          severity="success"
+          variant="filled"
+          onClose={() => setToast(null)}
+          action={
+            toast?.undo ? (
+              <Button color="inherit" size="small" onClick={toast.undo}>
+                Rückgängig
+              </Button>
+            ) : undefined
+          }
+          sx={{ alignItems: 'center' }}
+        >
+          {toast?.text}
+        </Alert>
+      </Snackbar>
+    </Box>
+  )
+}
