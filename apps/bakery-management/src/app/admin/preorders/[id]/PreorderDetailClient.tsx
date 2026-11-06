@@ -330,10 +330,22 @@ export default function PreorderDetailClient({
       {preorder.paid && (preorder.paymentBalance ?? 0) > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }} data-testid="payment-balance">
           Bereits bezahlt: {formatCurrency(preorder.paidAmount ?? 0)} - die
-          Bestellung kostet jetzt {formatCurrency(preorder.total)}. Bei der
-          Abholung noch{' '}
-          <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
-          kassieren.
+          Bestellung kostet jetzt {formatCurrency(preorder.total)}.{' '}
+          {preorder.status === 'abgeholt' ? (
+            // W4-verify r3: schon übergeben - „bei der Abholung" ist vorbei.
+            <>
+              Ohne den Rest übergeben:{' '}
+              <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
+              stehen noch aus.
+              {canWrite ? ' Wenn das Geld da ist: „Rest kassiert“ tippen.' : ''}
+            </>
+          ) : (
+            <>
+              Bei der Abholung noch{' '}
+              <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
+              kassieren.
+            </>
+          )}
         </Alert>
       )}
       {preorder.paid && (preorder.paymentBalance ?? 0) < 0 && (
@@ -349,7 +361,11 @@ export default function PreorderDetailClient({
               )}. ${formatCurrency(
                 -(preorder.paymentBalance ?? 0)
               )} zurückgeben.`}{' '}
-          Danach „Erstattet“ tippen.
+          {canWrite
+            ? 'Danach „Erstattet“ tippen.'
+            : preorder.status === 'storniert'
+            ? 'Erfassen kann das der Verkauf.'
+            : 'Danach in der Abholliste „Erstattet“ tippen.'}
         </Alert>
       )}
 

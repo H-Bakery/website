@@ -166,6 +166,36 @@ describe('PreorderDetailClient (P3)', () => {
     )
   })
 
+  it('schon übergeben mit Rest: kein „bei der Abholung kassieren"; Fahrer ohne Knopf bekommt keinen „Erstattet"-Auftrag (W4-verify r3)', async () => {
+    mockGet.mockResolvedValue(
+      preorder({
+        status: 'abgeholt',
+        paid: true,
+        paidAmount: 41.4,
+        total: 45,
+        paymentBalance: 3.6,
+      })
+    )
+    const first = renderAs('fahrer')
+    const note = await screen.findByTestId('payment-balance')
+    expect(note).toHaveTextContent(/Ohne den Rest übergeben:\s*3,60\s*€/)
+    expect(note).not.toHaveTextContent(/Bei der Abholung/)
+    first.unmount()
+    mockGet.mockResolvedValue(
+      preorder({
+        status: 'storniert',
+        paid: true,
+        paidAmount: 9,
+        total: 9,
+        paymentBalance: -9,
+      })
+    )
+    renderAs('fahrer')
+    const refund = await screen.findByTestId('payment-balance')
+    expect(refund).toHaveTextContent('Erfassen kann das der Verkauf.')
+    expect(refund).not.toHaveTextContent('Danach „Erstattet“ tippen.')
+  })
+
   it('setzt Status und bezahlt; zeigt Fehler des Servers', async () => {
     const user = userEvent.setup()
     mockStatus.mockRejectedValueOnce(

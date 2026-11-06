@@ -13,6 +13,7 @@
  */
 
 import {
+  formatCurrency,
   formatDate,
   isBusinessDate,
   shiftDate,
@@ -503,6 +504,59 @@ export function isCancellable(
     preorder.status !== 'abgeholt' &&
     preorder.status !== 'storniert'
   )
+}
+
+/**
+ * Zahlungsstand einer Bestellung für Zeilen, Karten und Ausdrucke
+ * (W4-Verifikation Runde 3): eine bezahlte Bestellung, die seitdem teurer
+ * (`rest`) oder billiger/storniert (`refund`) wurde, darf nirgends als
+ * schlichtes „bezahlt" erscheinen - sonst wird der Rest nicht kassiert oder
+ * das Geld nicht zurückgegeben. `amount` ist immer positiv.
+ */
+export type PaymentState =
+  | { kind: 'unpaid'; amount: number }
+  | { kind: 'paid'; amount: number }
+  | { kind: 'rest'; amount: number }
+  | { kind: 'refund'; amount: number }
+
+export function paymentState(
+  preorder: Pick<Preorder, 'paid' | 'paymentBalance' | 'total' | 'status'> & {
+    paidAmount?: number | null
+  }
+): PaymentState {
+  if (!preorder.paid) return { kind: 'unpaid', amount: preorder.total }
+  const balance = preorder.paymentBalance ?? 0
+  if (balance > 0) return { kind: 'rest', amount: balance }
+  if (balance < 0) return { kind: 'refund', amount: -balance }
+  return {
+    kind: 'paid',
+    amount: preorder.paidAmount ?? preorder.total,
+  }
+}
+
+/** Bezahlt, aber zu viel: Geld an die Kundschaft zurückgeben. */
+export function owesRefund(
+  preorder: Pick<Preorder, 'paid' | 'paymentBalance' | 'total' | 'status'>
+): boolean {
+  return paymentState(preorder).kind === 'refund'
+}
+
+/**
+ * Kurztext für Listenzeilen: `''` (unbezahlt), `bezahlt`,
+ * `bezahlt · Rest 3,60 € offen`, `bezahlt · 36,00 € erstatten`.
+ */
+export function paymentRowText(
+  preorder: Pick<Preorder, 'paid' | 'paymentBalance' | 'total' | 'status'>
+): string {
+  const state = paymentState(preorder)
+  if (state.kind === 'unpaid') return ''
+  if (state.kind === 'rest') {
+    return `bezahlt · Rest ${formatCurrency(state.amount)} offen`
+  }
+  if (state.kind === 'refund') {
+    return `bezahlt · ${formatCurrency(state.amount)} erstatten`
+  }
+  return 'bezahlt'
 }
 
 /** Rollen, die Vorbestellungen anlegen und ändern dürfen (API: verkauf; inhaber darf alles). */

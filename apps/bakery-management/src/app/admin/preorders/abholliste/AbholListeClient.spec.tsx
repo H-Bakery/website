@@ -843,6 +843,214 @@ describe('AbholListeClient (P2)', () => {
     ).not.toBeInTheDocument()
   })
 
+  describe('zu viel bezahlt / Rest offen (W4-verify r3)', () => {
+    // Erika: 9,00 € bezahlt, kostet jetzt 3,60 € → 5,40 € zurück.
+    const cheaper: Preorder = {
+      ...erika,
+      paidAmount: 9,
+      total: 3.6,
+      paymentBalance: -5.4,
+    }
+    // Max: 3,60 € bezahlt, kostet jetzt 5,40 € → 1,80 € Rest.
+    const dearer: Preorder = {
+      ...max,
+      paid: true,
+      paidAmount: 3.6,
+      total: 5.4,
+      paymentBalance: 1.8,
+    }
+    // Storniert, aber bezahlt.
+    const paidStorno: Preorder = {
+      ...storno,
+      paid: true,
+      paidAmount: 4.2,
+      total: 4.2,
+      paymentBalance: -4.2,
+    }
+    function refundDay() {
+      const base = ladenDay([cheaper, dearer, paula, paidStorno])
+      return {
+        ...base,
+        summary: { ...base.summary, refundCount: 2, refundTotal: 9.6 },
+      }
+    }
+
+    it('Karte zeigt „Erstattung … offen", Kachel „Zu erstatten", Verkauf übergibt nicht mit einem Tipp', async () => {
+      const user = userEvent.setup()
+      mockDay.mockResolvedValue(refundDay())
+      renderAs('verkauf')
+      await screen.findByTestId('abhol-LA-2026-11-12-01')
+      const card = row('LA-2026-11-12-01')
+      expect(
+        within(card).getByText(/^Erstattung 5,40\s€ offen$/)
+      ).toBeInTheDocument()
+      expect(within(card).queryByText('Bezahlt')).toBeNull()
+      expect(
+        within(row('LA-2026-11-12-02')).getByText(/^Rest 1,80\s€ offen$/)
+      ).toBeInTheDocument()
+      expect(screen.getByText('Zu erstatten')).toBeInTheDocument()
+      // Stornierte mit Zahlung: Hinweis + „Erstattet" (Verkauf).
+      const cancelledCard = row('LA-2026-11-12-04')
+      expect(
+        within(cancelledCard).getByTestId('refund-hint')
+      ).toHaveTextContent(/4,20\s€ zurückgeben/)
+      await user.click(
+        screen.getByRole('button', { name: 'Erika Beispiel übergeben' })
+      )
+      const dialog = await screen.findByRole('dialog')
+      expect(mockStatus).not.toHaveBeenCalled()
+      expect(within(dialog).getByTestId('handover-payment')).toHaveTextContent(
+        /Bezahlt waren 9,00\s€.*3,60\s€: 5,40\s€ an die Kundschaft zurückgeben/
+      )
+      await user.click(
+        within(dialog).getByRole('button', { name: 'Erstattet und übergeben' })
+      )
+      expect(mockStatus).toHaveBeenCalledWith(
+        1,
+        { status: 'abgeholt', paid: true },
+        erika.updatedAt
+      )
+    })
+
+    it('Fahrer: Dialog nennt den tatsächlich bezahlten Betrag, „Ohne Erstattung übergeben" ändert die Zahlung nicht', async () => {
+      const user = userEvent.setup()
+      mockDay.mockResolvedValue(refundDay())
+      renderAs('fahrer')
+      await screen.findByTestId('abhol-LA-2026-11-12-01')
+      // Storniert + bezahlt: der Fahrer sieht den Hinweis, erfassen kann der Verkauf.
+      expect(
+        within(row('LA-2026-11-12-04')).getByTestId('refund-hint')
+      ).toHaveTextContent('Erfassen kann das der Verkauf.')
+      expect(
+        within(row('LA-2026-11-12-04')).queryByRole('button', {
+          name: /Erstattung erfasst/,
+        })
+      ).toBeNull()
+      await user.click(
+        screen.getByRole('button', { name: 'Erika Beispiel übergeben' })
+      )
+      const dialog = await screen.findByRole('dialog')
+      expect(within(dialog).queryByText(/Schon bezahlt \(3,60/)).toBeNull()
+      await user.click(
+        within(dialog).getByRole('button', {
+          name: 'Ohne Erstattung übergeben',
+        })
+      )
+      expect(mockStatus).toHaveBeenCalledWith(
+        1,
+        { status: 'abgeholt' },
+        erika.updatedAt
+      )
+    })
+
+    it('„Erstattet" auf der Karte: nicht storniert → paid true, storniert → paid false', async () => {
+      const user = userEvent.setup()
+      mockDay.mockResolvedValue(refundDay())
+      renderAs('verkauf')
+      await screen.findByTestId('abhol-LA-2026-11-12-01')
+      await user.click(
+        screen.getByRole('button', {
+          name: 'Erika Beispiel: Erstattung erfasst',
+        })
+      )
+      expect(mockStatus).toHaveBeenLastCalledWith(
+        1,
+        { paid: true },
+        erika.updatedAt
+      )
+      await user.click(
+        screen.getByRole('button', {
+          name: 'Stefan Storno: Erstattung erfasst',
+        })
+      )
+      expect(mockStatus).toHaveBeenLastCalledWith(
+        4,
+        { paid: false },
+        storno.updatedAt
+      )
+    })
+
+    it('Ausdruck: Rest und Erstattung je Zeile, stornierte mit Zahlung stehen drauf', async () => {
+      mockDay.mockResolvedValue(refundDay())
+      const { container } = renderAs('verkauf')
+      await screen.findByTestId('abhol-LA-2026-11-12-01')
+      const sheet = container.querySelector('.abholliste-print') as HTMLElement
+      const paidCells = Array.from(sheet.querySelectorAll('td.paid')).map(
+        (td) => (td.textContent ?? '').replace(/\s/g, ' ')
+      )
+      expect(paidCells).toEqual(
+        expect.arrayContaining([
+          '☐ Rest 1,80 €',
+          '☐ 5,40 € zurück',
+          '☐ 4,20 € zurück',
+        ])
+      )
+      expect(paidCells).not.toContain('☑ ja')
+      const text = sheet.textContent ?? ''
+      expect(text).toContain('Storniert - Geld zurückgeben')
+      expect(text).toContain('Stefan Storno')
+      expect(text).toMatch(/zu erstatten 9,60\s€/)
+      expect(text).not.toContain('storniert (nicht aufgeführt)')
+    })
+  })
+
+  it('zwei Übergaben im Funkloch: beide werden nach dem WLAN aufgelöst, keine verschwindet (W4-verify r3)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValue(new Error('Failed to fetch'))
+    mockDay.mockRejectedValue(new Error('Failed to fetch'))
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    await screen.findAllByText(/LA-2026-11-12-02: Keine Verbindung/)
+    // Dialog-Ausblendung abwarten.
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await user.click(
+      screen.getByRole('button', { name: 'Paula Probe übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    await screen.findAllByText(/LA-2026-11-12-03: Keine Verbindung/)
+    // Beide stehen oben - der zweite Tipp hat den ersten nicht verdrängt.
+    const open = screen.getByTestId('open-actions')
+    expect(open).toHaveTextContent('LA-2026-11-12-02')
+    expect(open).toHaveTextContent('LA-2026-11-12-03')
+    // WLAN zurück: Max ist gespeichert, Paula nicht.
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        { ...max, status: 'abgeholt', paid: true },
+        paula,
+        storno,
+      ])
+    )
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    await waitFor(() =>
+      expect(screen.getByTestId('open-actions')).toHaveTextContent(
+        'LA-2026-11-12-03: Die Verbindung ist wieder da - das wurde NICHT gespeichert'
+      )
+    )
+    expect(screen.getByTestId('open-actions')).not.toHaveTextContent(
+      'LA-2026-11-12-02'
+    )
+    expect(
+      screen.getAllByText(
+        /LA-2026-11-12-02: Die Verbindung ist wieder da - gespeichert ist es/
+      ).length
+    ).toBeGreaterThan(0)
+  })
+
   it('druckt eine eigene A4-Tabelle: ganze Liste ohne Stornierte, mit Unterschrift', async () => {
     const user = userEvent.setup()
     const print = jest.fn()

@@ -28,6 +28,7 @@ import {
   ListAlt as ListIcon,
   Print as PrintIcon,
 } from '@mui/icons-material'
+import PaymentNote from '../../../../components/preorders/PaymentNote'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import {
   fetchPreorderDay,
@@ -42,6 +43,7 @@ import {
   isBusinessDate,
   isProductionDay,
   nextProductionDate,
+  paymentState,
   shiftDate,
   toBusinessDate,
   variantLabel,
@@ -475,7 +477,11 @@ export default function PreorderDayClient({
                         <TableCell>{formatItems(p.items)}</TableCell>
                         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                           {formatCurrency(p.total)}
-                          {p.paid ? ' ✓' : ''}
+                          {paymentState(p).kind === 'paid' ? (
+                            ' ✓'
+                          ) : (
+                            <PaymentNote preorder={p} />
+                          )}
                         </TableCell>
                         <TableCell>
                           <PreorderStatusChip preorder={p} />
@@ -491,8 +497,10 @@ export default function PreorderDayClient({
               color="text.secondary"
               sx={{ mt: 1, display: 'block' }}
             >
-              ✓ = bezahlt. Stornierte stehen grau in der Liste und zählen in
-              keiner Summe - außer schon Bezahltes unter „Zu erstatten“.
+              ✓ = bezahlt, Betrag stimmt. Ein offener Rest oder eine Erstattung
+              steht mit Betrag in der Zeile. Stornierte stehen grau in der Liste
+              und zählen in keiner Summe - außer schon Bezahltes unter „Zu
+              erstatten“.
             </Typography>
           </>
         )

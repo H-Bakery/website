@@ -126,9 +126,44 @@ describe('abholActions', () => {
       notCollected: true,
       clearNotCollected: false,
       markPaid: true,
+      markRefunded: false,
       markUnpaid: false,
       undoHandover: false,
     })
+  })
+
+  it('zu viel bezahlt: „Erstattet" für Verkauf und Fahrer, storniert nur Verkauf (W4-verify r3)', () => {
+    const cheaper = preorder({
+      paid: true,
+      paidAmount: 9,
+      total: 3.6,
+      paymentBalance: -5.4,
+    })
+    expect(abholActions(cheaper, 'fahrer', TODAY)).toMatchObject({
+      handover: true,
+      markPaid: false,
+      markRefunded: true,
+    })
+    expect(abholActions(cheaper, 'verkauf', TODAY).markRefunded).toBe(true)
+    const cancelled = preorder({
+      status: 'storniert',
+      paid: true,
+      paymentBalance: -9,
+    })
+    // Storniert + bezahlt → `paid: false`; das darf der Fahrer nicht (API).
+    expect(abholActions(cancelled, 'verkauf')).toMatchObject({
+      handover: false,
+      markRefunded: true,
+    })
+    expect(abholActions(cancelled, 'fahrer').markRefunded).toBe(false)
+    // Betrag stimmt: kein „Erstattet".
+    expect(
+      abholActions(
+        preorder({ paid: true, paymentBalance: 0 }),
+        'verkauf',
+        TODAY
+      ).markRefunded
+    ).toBe(false)
   })
 
   it('Fahrer: nur übergeben, nicht abgeholt und bezahlt (wie die API)', () => {
@@ -328,6 +363,20 @@ describe('verlorene Antworten (W4-Verifikation)', () => {
       )
     ).toBe(false)
     expect(changeAlreadyApplied(base, { status: 'abgeholt' })).toBe(false)
+    // „Erstattet"/„Rest kassiert" (paid: true auf Bezahltem) ist erst
+    // erledigt, wenn kein Betrag mehr offen ist (W4-verify r3).
+    expect(
+      changeAlreadyApplied(
+        { ...base, status: 'abgeholt', paid: true, paymentBalance: -3.6 },
+        { status: 'abgeholt', paid: true }
+      )
+    ).toBe(false)
+    expect(
+      changeAlreadyApplied(
+        { ...base, status: 'abgeholt', paid: true, paymentBalance: 0 },
+        { status: 'abgeholt', paid: true }
+      )
+    ).toBe(true)
     expect(
       changeAlreadyApplied(
         { ...base, status: 'bereit', notCollected: true },

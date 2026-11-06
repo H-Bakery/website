@@ -41,6 +41,7 @@ import {
   Place as AddressIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material'
+import PaymentNote from '../../../../components/preorders/PaymentNote'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../../lib/session'
 import {
@@ -78,7 +79,15 @@ const DEFAULT_WEEKDAY = 6
 
 const PICKUP_POINT_HREF = '/admin/delivery/preorders/lieferstelle'
 
-function StatTile({ label, value }: { label: string; value: string }) {
+function StatTile({
+  label,
+  value,
+  note,
+}: {
+  label: string
+  value: string
+  note?: string | null
+}) {
   return (
     <Box
       sx={{ p: 1.5, height: '100%', borderRadius: 1, bgcolor: 'action.hover' }}
@@ -89,8 +98,35 @@ function StatTile({ label, value }: { label: string; value: string }) {
       <Typography variant="h6" sx={{ fontSize: '1.15rem', lineHeight: 1.4 }}>
         {value}
       </Typography>
+      {note ? (
+        <Typography variant="caption" color="text.secondary" display="block">
+          {note}
+        </Typography>
+      ) : null}
     </Box>
   )
+}
+
+/**
+ * Was „Noch zu kassieren" nicht enthält (W4-Verifikation Runde 3, wie die
+ * Abholliste): ohne Zahlung Übergebenes und zu Erstattendes.
+ */
+export function moneyNotes(summary: {
+  handedOverUnpaidTotal?: number
+  refundTotal?: number
+}): string | null {
+  const parts: string[] = []
+  if ((summary.handedOverUnpaidTotal ?? 0) > 0) {
+    parts.push(
+      `+ ${formatCurrency(
+        summary.handedOverUnpaidTotal ?? 0
+      )} ohne Zahlung übergeben`
+    )
+  }
+  if ((summary.refundTotal ?? 0) > 0) {
+    parts.push(`${formatCurrency(summary.refundTotal ?? 0)} zu erstatten`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 interface PreorderListClientProps {
@@ -524,6 +560,7 @@ export default function PreorderListClient({
             <StatTile
               label="Noch zu kassieren"
               value={formatCurrency(summary.unpaidTotal)}
+              note={moneyNotes(summary)}
             />
           </Grid>
         </Grid>
@@ -633,15 +670,7 @@ export default function PreorderListClient({
                     <TableCell>{formatItems(preorder.items)}</TableCell>
                     <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                       {formatCurrency(preorder.total)}
-                      {preorder.paid && (
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                        >
-                          bezahlt
-                        </Typography>
-                      )}
+                      <PaymentNote preorder={preorder} variant="caption" />
                     </TableCell>
                     <TableCell>
                       <PreorderStatusChip preorder={preorder} />

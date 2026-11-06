@@ -10,6 +10,7 @@ import {
   LADEN_PICKUP,
   canWritePreorders,
   isBusinessDate,
+  owesRefund,
   isProductionDay,
   jsWeekdayOf,
   shiftDate,
@@ -158,6 +159,13 @@ export interface AbholActions {
   /** „Nicht abgeholt" zurücknehmen (kommt doch noch). */
   clearNotCollected: boolean
   markPaid: boolean
+  /**
+   * Zu viel bezahlt (billiger geworden oder storniert): Geld zurückgegeben
+   * (W4-Verifikation Runde 3). Nicht storniert → `paid: true` (der bezahlte
+   * Betrag gilt wieder als passend), storniert → `paid: false` - das darf
+   * nur der Verkauf (API 403 `paid_undo_forbidden` für den Fahrer).
+   */
+  markRefunded: boolean
   markUnpaid: boolean
   /** Übergabe zurücknehmen (→ `bereit`). */
   undoHandover: boolean
@@ -169,6 +177,7 @@ const NONE: AbholActions = {
   notCollected: false,
   clearNotCollected: false,
   markPaid: false,
+  markRefunded: false,
   markUnpaid: false,
   undoHandover: false,
 }
@@ -197,12 +206,14 @@ export function abholActions(
   role: string | null | undefined,
   today?: string | null
 ): AbholActions {
-  if (!role || preorder.anonymizedAt || preorder.status === 'storniert') {
-    return NONE
-  }
+  if (!role || preorder.anonymizedAt) return NONE
   const writer = canWritePreorders(role)
   const driver = role === 'fahrer'
   if (!writer && !driver) return NONE
+  if (preorder.status === 'storniert') {
+    // Storniert, aber schon bezahlt: nur noch das Geld zurückgeben.
+    return { ...NONE, markRefunded: writer && owesRefund(preorder) }
+  }
   const open = preorder.status === 'offen' || preorder.status === 'bereit'
   return {
     handover: open,
@@ -215,6 +226,7 @@ export function abholActions(
     // Bezahlt, aber teurer geworden: der Rest ist noch zu kassieren
     // (W4-Verifikation Runde 2).
     markPaid: !preorder.paid || owesRest(preorder),
+    markRefunded: owesRefund(preorder),
     markUnpaid: writer && preorder.paid,
     undoHandover: writer && preorder.status === 'abgeholt',
   }
@@ -456,6 +468,11 @@ export function changeAlreadyApplied(
     return false
   }
   if (change.paid !== undefined && Boolean(preorder.paid) !== change.paid) {
+    return false
+  }
+  // `paid: true` auf einer bezahlten Bestellung heißt „Rest kassiert" bzw.
+  // „erstattet" - erledigt erst, wenn kein Betrag mehr offen ist.
+  if (change.paid === true && (preorder.paymentBalance ?? 0) !== 0) {
     return false
   }
   if (
