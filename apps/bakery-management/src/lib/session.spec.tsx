@@ -279,7 +279,7 @@ describe('SessionProvider', () => {
       }
     })
 
-    it('ein Inhaber per PIN auf /backstube wird nach 10 min abgemeldet', async () => {
+    it('auch ein Inhaber per PIN auf /backstube bleibt angemeldet - bis 12 h nach der PIN (W4)', async () => {
       jest.useFakeTimers()
       try {
         await startStation(
@@ -287,7 +287,28 @@ describe('SessionProvider', () => {
           '/backstube'
         )
         await idleFor(10 * 60 * 1000 + 20 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+        await idleFor(3 * 3600 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+        await idleFor(9 * 3600 * 1000)
         expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+        expect(screen.getByTestId('reason')).toHaveTextContent('12 Stunden')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('ein Inhaber per PIN, der /backstube verlässt: wieder 10 min', async () => {
+      jest.useFakeTimers()
+      try {
+        await startStation(
+          { ...INHABER, id: 1 } as typeof BACKSTUBE,
+          '/backstube'
+        )
+        window.history.replaceState({}, '', '/admin')
+        await idleFor(10 * 60 * 1000 + 20 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+        expect(screen.getByTestId('reason')).toHaveTextContent('Inaktivität')
       } finally {
         jest.useRealTimers()
       }
