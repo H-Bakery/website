@@ -447,7 +447,7 @@ describe('Backstube-Tablet', () => {
     expect(badge).toHaveTextContent('Nachtrag +0,25 · 1 mehr backen')
     const extras = screen.getByTestId('delta-extras')
     expect(extras).toHaveTextContent('Nachträge seit der Freigabe')
-    expect(extras).toHaveTextContent('+1 × 500 g abwiegen')
+    expect(extras).toHaveTextContent('1 × 500 g zusätzlich abwiegen')
     expect(extras).toHaveTextContent('Testnussfüllung: +400 g')
   })
 

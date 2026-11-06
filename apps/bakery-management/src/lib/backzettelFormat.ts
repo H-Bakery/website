@@ -230,6 +230,9 @@ export function deltaBadgeText(
   delta: BackzettelLineDelta,
   unit: BackzettelUnit | null
 ): string {
+  // W4-Verifikation Runde 3: Neu + Storno heben sich auf - statt eines
+  // nackten „Nachtrag –" sagen, dass nichts zu tun ist.
+  if (!delta.qty && !delta.bake) return 'Nachtrag ±0 · nichts ändern'
   const base = `Nachtrag ${formatSignedQty(delta.qty, unit)}`
   const bake = delta.bake
   if (bake === undefined || bake === null || bake === delta.qty) return base
@@ -254,10 +257,15 @@ export function deltaExtrasLines(
   if (!extras) return []
   const out: string[] = []
   for (const d of extras.doughs) {
+    // W4-Verifikation Runde 3: eine Abnahme liest sich als „weniger" - ein
+    // „−2 × 600 g abwiegen" übersieht man aus 1,5 m leicht.
     const weighing = d.weighing
+      .filter((w) => w.pieces)
       .map(
         (w) =>
-          `${formatSigned(w.pieces)} × ${formatNumber(w.piece_g)} g abwiegen`
+          `${formatNumber(Math.abs(w.pieces))} × ${formatNumber(w.piece_g)} g ${
+            w.pieces > 0 ? 'zusätzlich' : 'weniger'
+          } abwiegen`
       )
       .join(', ')
     const dough = `${d.dough_g < 0 ? '−' : '+'}${formatGrams(
@@ -281,9 +289,14 @@ export function deltaExtrasLines(
             Math.ceil(d.dough_g / (max * 1000) - 1e-9)
           )} Chargen ansetzen`
         : ''
+    const pieces = d.pieces
+      ? `${formatNumber(Math.abs(d.pieces))} Teigstücke ${
+          d.pieces > 0 ? 'mehr' : 'weniger'
+        }`
+      : 'Teigstücke unverändert'
     out.push(
-      `${d.name}: ${formatSigned(d.pieces)} Teigstücke (${dough})${
-        weighing ? ` - ${weighing}` : ''
+      `${d.name}: ${pieces} (${dough})${
+        weighing ? `: ${weighing}` : ''
       }; mit Nachträgen ${formatNumber(
         d.totalPieces
       )} Teigstücke, ${formatGrams(d.totalDough_g)}${batchNote}${extraBatches}`
