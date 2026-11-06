@@ -316,6 +316,34 @@ describe('Backstube-Tablet', () => {
     ).toBeInTheDocument()
   })
 
+  it('die Meldung verschwindet, sobald ein Neuladen den Tag wieder freigegeben zeigt (W4-verify r2)', async () => {
+    mocked.setLineDone.mockRejectedValue(
+      apiError(409, 'not_confirmed', 'Der Backzettel ist nicht freigegeben.')
+    )
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+    expect(await screen.findByTestId('bs-draft-banner')).toBeInTheDocument()
+    const text =
+      'Der Backzettel ist nicht freigegeben. Der Backzettel wird neu geladen.'
+    expect(screen.getByText(text)).toBeInTheDocument()
+    // wieder freigegeben: das nächste Neuladen (60 s / Zurückkommen)
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByTestId('bs-draft-banner')).not.toBeInTheDocument()
+    )
+    expect(screen.queryByText(text)).not.toBeInTheDocument()
+  })
+
   it('ein Neuladen während des Abhakens überschreibt den Haken nicht', async () => {
     const pending = deferred<api.LineDoneResult>()
     mocked.setLineDone.mockReturnValue(pending.promise)
