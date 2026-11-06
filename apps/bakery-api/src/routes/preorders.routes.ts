@@ -22,7 +22,8 @@
  *   POST   /:id/status        { status, notCollected?, paid? } verkauf, inhaber, fahrer*
  *   POST   /:id/cancel        { success, data }              verkauf, inhaber
  *
- *   Lesen: verkauf, inhaber, fahrer; `/sums` zusätzlich backstube (keine Namen).
+ *   Lesen: verkauf, inhaber, fahrer; `/sums` zusätzlich backstube (keine Namen,
+ *   für die Backstube auch ohne `summary` - keine Beträge).
  *   *fahrer: nur `abgeholt` und „nicht abgeholt“ (+ bezahlt) - Übergabe.
  *   „Nicht abgeholt“ erst ab dem Abholtag (409 not_collected_too_early, W4).
  *
@@ -126,6 +127,16 @@ function createPreordersRouter(service: PreordersService): Router {
     asyncHandler(async (req, res) => {
       const result = await service.sums(req.query)
       if (fail(res, result) || !result.ok) return
+      // Die Backstube braucht Mengen, keine Beträge und keinen Bezahlstand
+      // (wie `/day`, das sie gar nicht lesen darf): ohne `summary`.
+      if (req.user?.role === 'backstube') {
+        const { summary: _summary, ...data } = result.data as Record<
+          string,
+          unknown
+        >
+        res.json({ success: true, data })
+        return
+      }
       res.json({ success: true, data: result.data })
     })
   )

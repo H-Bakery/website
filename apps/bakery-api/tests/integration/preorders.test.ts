@@ -96,13 +96,22 @@ describe('session and roles', () => {
           .set(tokens['backstube'])
       ).status
     ).toBe(403)
-    expect(
-      (
-        await request(api.app)
-          .get(`/api/preorders/sums?date=${TUESDAY}`)
-          .set(tokens['backstube'])
-      ).status
-    ).toBe(200)
+    const sums = await request(api.app)
+      .get(`/api/preorders/sums?date=${TUESDAY}`)
+      .set(tokens['backstube'])
+    expect(sums.status).toBe(200)
+    // quantities only: no `summary` (amounts, paid state) for the Backstube
+    expect(sums.body.data).toEqual(
+      expect.objectContaining({ items: expect.any(Array) })
+    )
+    expect(sums.body.data).not.toHaveProperty('summary')
+    expect(JSON.stringify(sums.body)).not.toMatch(/total|paid/i)
+    const forSale = await request(api.app)
+      .get(`/api/preorders/sums?date=${TUESDAY}`)
+      .set(tokens['verkauf'])
+    expect(forSale.body.data.summary).toEqual(
+      expect.objectContaining({ total: expect.any(Number) })
+    )
     expect((await create(laden(), 'backstube')).status).toBe(403)
   })
 
@@ -780,9 +789,10 @@ describe('list, sums, day', () => {
   })
 
   it('sums per product and variant without cancelled preorders', async () => {
+    // verkauf (Backliste) gets the summary; backstube the same without it
     const res = await request(api.app)
       .get('/api/preorders/sums?date=2026-11-28')
-      .set(tokens['backstube'])
+      .set(tokens['verkauf'])
     expect(res.status).toBe(200)
     expect(res.body.data).toEqual({
       date: '2026-11-28',
@@ -1425,7 +1435,8 @@ describe('POST /api/preorders/bulk-status (W4)', () => {
     for (const ids of [
       undefined,
       [],
-      ['1'],
+      ['01'],
+      ['x'],
       [0],
       [1.5],
       new Array(201).fill(1),
@@ -1438,6 +1449,24 @@ describe('POST /api/preorders/bulk-status (W4)', () => {
     const nothing = await bulk({ ids: [p.id] })
     expect(nothing.status).toBe(400)
     expect(nothing.body.error).toBe('invalid_status')
+    // values wrong for every preorder: one 400, not `refused` per id
+    for (const [body, error] of [
+      [{ status: 'quatsch' }, 'invalid_status'],
+      [{ paid: 'ja' }, 'invalid_paid'],
+      [{ notCollected: 'ja' }, 'invalid_not_collected'],
+      [{ status: 'offen', notCollected: true }, 'invalid_not_collected'],
+    ] as const) {
+      const res = await bulk({ ids: [p.id], ...body })
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error })
+      expect(res.body.message).toMatch(/\S/)
+    }
+    // ids as digit strings, like `/:id`
+    const asString = await bulk({ ids: [String(p.id)], status: 'bereit' })
+    expect(asString.status).toBe(200)
+    expect(asString.body.data.results).toEqual([
+      expect.objectContaining({ id: p.id, result: 'ok' }),
+    ])
     const badMap = await bulk({
       ids: [p.id],
       status: 'bereit',

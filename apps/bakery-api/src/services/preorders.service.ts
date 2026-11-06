@@ -1080,12 +1080,21 @@ export class PreordersService {
       body && typeof body === 'object' && !Array.isArray(body)
         ? (body as Record<string, unknown>)
         : {}
-    const ids = b['ids']
+    // Integers or canonical digit strings ("7"), like the single routes'
+    // `/:id` parameter; anything else ("07", 2.5, "x") makes the list invalid.
+    const rawIds = b['ids']
+    const ids = Array.isArray(rawIds)
+      ? rawIds.map((id) =>
+          typeof id === 'string' && /^[1-9][0-9]{0,15}$/.test(id)
+            ? Number(id)
+            : id
+        )
+      : null
     if (
-      !Array.isArray(ids) ||
+      !ids ||
       ids.length === 0 ||
       ids.length > BULK_STATUS_MAX_IDS ||
-      ids.some((id) => !Number.isInteger(id) || (id as number) <= 0)
+      ids.some((id) => !Number.isSafeInteger(id) || (id as number) <= 0)
     ) {
       return failure(
         400,
@@ -1117,6 +1126,19 @@ export class PreordersService {
         'invalid_status',
         'Es fehlt, was geändert werden soll (status, notCollected oder paid).'
       )
+    }
+    // Values that are wrong for every preorder (unknown status, paid not a
+    // boolean, "nicht abgeholt" with another status) are one 400 for the
+    // request, not a `refused` per id. Checked against a neutral open
+    // preorder; record-dependent rules stay per id.
+    const shape = core.normalizeStatusChange({ status: 'offen' }, change, {})
+    if (
+      shape.error &&
+      ['invalid_status', 'invalid_not_collected', 'invalid_paid'].includes(
+        shape.error
+      )
+    ) {
+      return failure(400, shape.error, shape.message)
     }
 
     return getSequelize().transaction(async (transaction) => {
