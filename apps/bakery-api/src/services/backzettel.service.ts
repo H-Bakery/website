@@ -497,9 +497,15 @@ export function createBackzettelService(
       if (!warnedPending.has(date)) {
         warnedPending.add(date)
         console.warn(
-          `[backzettel] ${date}: Änderungen an Vorbestellungen nicht als Delta erfasst - Stammdaten fehlen (${loaded.reasons.join(
-            '; '
-          )}). Nachgeholt beim nächsten Schreiben, Freigeben/Öffnen oder Neustart.`
+          `[backzettel] ${date}: Änderungen an Vorbestellungen nicht als Delta erfasst - Stammdaten fehlen (${loaded.reasons
+            .map((r: unknown) =>
+              typeof r === 'string'
+                ? r
+                : (r as { message?: string } | null)?.message ?? String(r)
+            )
+            .join(
+              '; '
+            )}). Nachgeholt beim nächsten Lesen mit Stammdaten, Schreiben, Freigeben/Öffnen oder Neustart.`
         )
       }
       return null
@@ -595,12 +601,52 @@ export function createBackzettelService(
     }
   }
 
+  /** Background catch-ups started by a read, per date (W4 fixup). */
+  const catchUps = new Map<string, Promise<void>>()
+
+  /**
+   * A read found unrecorded deltas while the master data load again (the
+   * preorder was written while they did not, or by the CLI import): record
+   * them in the background, in their own serialised transaction - the GET
+   * itself stays free of writes, and the tablet's next reload (60 s, or the
+   * short follow-up the screens do while `deltasPending`) shows them. One
+   * run per date at a time.
+   */
+  function scheduleCatchUp(date: string): void {
+    if (catchUps.has(date)) return
+    const run = new Promise<void>((resolve) => setImmediate(resolve))
+      .then(() =>
+        getSequelize().transaction((transaction) =>
+          recordDeltasIn(date, transaction, null, 'reconcile', true)
+        )
+      )
+      .then(
+        () => undefined,
+        (error) => {
+          console.error(
+            `[backzettel] ${date}: Delta-Nachtrag fehlgeschlagen:`,
+            error
+          )
+        }
+      )
+      .finally(() => catchUps.delete(date))
+    catchUps.set(date, run)
+  }
+
+  /** Tests: wait for every background catch-up started so far. */
+  async function idle(): Promise<void> {
+    while (catchUps.size > 0) await Promise.all([...catchUps.values()])
+  }
+
   // ------------------------------------------------------------- reads
 
   /**
-   * Side-effect free (W4): reading never records deltas. `deltasPending`
-   * says whether preorder changes exist that are not recorded yet (only
-   * after a write without loadable master data) - `null` without them.
+   * Free of writes in the request (W4): reading never records deltas itself.
+   * `deltasPending` says whether preorder changes exist that are not
+   * recorded yet (only after a write without loadable master data, or an
+   * import) - `null` without master data. When it is `true`, a background
+   * catch-up is started (`scheduleCatchUp`), so nothing stays unrecorded
+   * until the next preorder write or a restart.
    */
   async function getDay(date: string) {
     assertDate(date)
@@ -617,6 +663,7 @@ export function createBackzettelService(
             day.preorderSnapshot || []
           ).length > 0
         : null
+      if (deltasPending === true) scheduleCatchUp(date)
       return { ...view, deltasPending }
     }
     if (!loaded.ok) {
@@ -1078,6 +1125,7 @@ export function createBackzettelService(
     acknowledgeDelta,
     recordPreorderDeltas,
     reconcileConfirmedDays,
+    idle,
   }
 }
 

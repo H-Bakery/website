@@ -18,6 +18,8 @@ import {
 import RefreshIcon from '@mui/icons-material/Refresh'
 import type { Theme } from '@mui/material/styles'
 import {
+  DELTAS_PENDING_MAX_RELOADS,
+  DELTAS_PENDING_RELOAD_MS,
   acknowledgeDelta,
   fetchBackzettelConfig,
   fetchBackzettelDay,
@@ -273,6 +275,28 @@ export default function BackstubeClient({
   }, [refresh])
 
   const shown = result && result.date === date ? result : null
+
+  // Freigegebener Tag mit noch nicht erfassten Änderungen an Vorbestellungen:
+  // die API trägt sie im Hintergrund nach - nach kurzer Zeit noch einmal
+  // laden statt erst nach 60 s (begrenzt).
+  const pendingReloads = React.useRef(0)
+  const deltasPending =
+    !!shown &&
+    isBackzettelDay(shown) &&
+    shown.status === 'confirmed' &&
+    shown.deltasPending === true
+  React.useEffect(() => {
+    if (!deltasPending) {
+      pendingReloads.current = 0
+      return
+    }
+    if (pendingReloads.current >= DELTAS_PENDING_MAX_RELOADS) return
+    const timer = window.setTimeout(() => {
+      pendingReloads.current += 1
+      if (!loadingRef.current) void loadDay()
+    }, DELTAS_PENDING_RELOAD_MS)
+    return () => window.clearTimeout(timer)
+  }, [deltasPending, result, loadDay])
   const prepShown = prep && prep.date === prepDate ? prep : null
   const day = isBackzettelDay(shown) ? shown : null
 
@@ -760,6 +784,28 @@ export default function BackstubeClient({
                         : ''}
                     </Typography>
                   </Stack>
+                )}
+
+                {deltasPending && (
+                  <Alert
+                    severity="warning"
+                    data-testid="bs-deltas-pending"
+                    sx={{ fontSize: '1.05rem' }}
+                  >
+                    Vorbestellungen haben sich geändert. Die Nachträge werden
+                    gerade übernommen und erscheinen gleich.
+                  </Alert>
+                )}
+                {!draft && day.configStatus === 'no-config' && (
+                  <Alert
+                    severity="warning"
+                    data-testid="bs-confirmed-no-config"
+                    sx={{ fontSize: '1.05rem' }}
+                  >
+                    Die Backzettel-Stammdaten fehlen gerade. Spätere Änderungen
+                    an Vorbestellungen können deshalb nicht als Nachtrag
+                    erscheinen. Bitte dem Inhaber Bescheid geben.
+                  </Alert>
                 )}
 
                 {day.configChangedSinceConfirm && (

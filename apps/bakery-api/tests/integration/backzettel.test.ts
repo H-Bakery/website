@@ -131,6 +131,8 @@ const reconcile = (from = '2026-01-01') =>
     }) => Promise<{ date: string; recorded: number | null }[]>
   )({ from })
 
+const idle = () => (api.app.locals['backzettelIdle'] as () => Promise<void>)()
+
 function line(
   dayData: any,
   itemId: string,
@@ -956,12 +958,10 @@ describe('missing or invalid config', () => {
     writeHq(hqDir)
     const seen = (await as('backstube').get(`/api/backzettel/${THU}`)).body.data
     expect(seen.deltasPending).toBe(true)
-    // still only read: nothing recorded by the GET
-    expect(await BackzettelDelta.count({ where: { date: THU } })).toBe(count)
-
-    expect(await reconcile()).toEqual(
-      expect.arrayContaining([{ date: THU, recorded: 1 }])
-    )
+    // ... and the GET started a background catch-up (W4 fixup): no further
+    // preorder write, confirm or restart needed - the tablet's next reload
+    // shows the delta.
+    await idle()
     const rows = await BackzettelDelta.findAll({
       where: { date: THU, preorderId: p.id },
     })
@@ -972,7 +972,15 @@ describe('missing or invalid config', () => {
     })
     expect(sweep?.userId).toBeNull()
     expect(sweep?.data).toMatchObject({ via: 'reconcile' })
-    // a second sweep finds nothing
+    // one catch-up only: a second read and a sweep find nothing
+    expect(
+      (await as('backstube').get(`/api/backzettel/${THU}`)).body.data
+        .deltasPending
+    ).toBe(false)
+    await idle()
+    expect(await BackzettelDelta.count({ where: { date: THU } })).toBe(
+      count + 1
+    )
     expect(await reconcile()).toEqual(
       expect.arrayContaining([{ date: THU, recorded: 0 }])
     )

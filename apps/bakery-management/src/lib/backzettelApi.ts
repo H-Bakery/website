@@ -201,6 +201,12 @@ export interface BackzettelDay {
   configStatus: 'ok' | 'no-config'
   /** Nur freigegeben: aktuelle Stammdaten ergäben jetzt etwas anderes. */
   configChangedSinceConfirm?: boolean | null
+  /**
+   * Nur freigegeben: Vorbestellungen haben sich geändert, die Deltas dazu
+   * sind aber noch nicht erfasst (die API trägt sie gerade im Hintergrund
+   * nach). `null` ohne gültige Stammdaten - dann weiß es niemand.
+   */
+  deltasPending?: boolean | null
   configReasons?: ConfigReason[]
 }
 
@@ -409,3 +415,11 @@ export async function acknowledgeDelta(
     )
   )
 }
+
+/**
+ * Solange ein freigegebener Tag `deltasPending: true` meldet, lädt die Seite
+ * nach so vielen ms erneut (höchstens `DELTAS_PENDING_MAX_RELOADS`-mal),
+ * statt bis zum nächsten 60-s-Lauf zu warten.
+ */
+export const DELTAS_PENDING_RELOAD_MS = 5000
+export const DELTAS_PENDING_MAX_RELOADS = 6

@@ -204,6 +204,8 @@ export function createApp(options: CreateAppOptions = {}): Application {
   // no master data could be loaded, or by the CLI import.
   app.locals['reconcileBackzettelDeltas'] = (reconcile?: { from?: string }) =>
     backzettel.service.reconcileConfirmedDays(reconcile)
+  // Tests: wait for the background catch-ups a GET started.
+  app.locals['backzettelIdle'] = () => backzettel.service.idle()
   // B5b/Z9 status + retry, inhaber only
   app.use('/api/hq-sync', createHqSyncRouter({ edits, snapshots }))
 
