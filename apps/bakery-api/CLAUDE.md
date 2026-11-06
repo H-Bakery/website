@@ -188,7 +188,8 @@ PIN/stations; the `user` object deliberately deviates (see below the table):
 | `GET/POST /api/auth/stations`, `DELETE /api/auth/stations/:id`                                           | `inhaber`, personal session     | register `{ name }` → 201 `{ station, token }` (token shown once); revoke ends its sessions                    |
 | `GET/POST /api/users`, `PATCH /api/users/:id`, `POST /api/users/:id/password`, `POST /api/users/:id/pin` | `inhaber`, personal session     | `AdminUser` = user + `hasPin`, never a hash                                                                    |
 
-A station `name` with control characters (also BOM, U+2028/U+2029) is 400 `INVALID_TEXT` (W4-verify r3).
+A station `name` with control or bidi characters (NUL, BEL, RLO, …) is 400 `INVALID_TEXT` (W4-verify r3);
+whitespace - tabs, line breaks, U+2028/U+2029, BOM - is collapsed to one space before the check.
 
 `user` = `{ id, username, displayName, role, active, isActive, createdAt, updatedAt, sessionKind }`.
 Roles `inhaber | verkauf | backstube | fahrer`. **D3 deviation, deliberate:** the mock's `email`,
