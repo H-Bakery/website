@@ -161,7 +161,7 @@ describe('PreorderDetailClient (P3)', () => {
     )
     await waitFor(() =>
       expect(
-        [...data.keys()].some((k) =>
+        Array.from(data.keys()).some((k) =>
           k.startsWith('bakery-management-preorder-edit')
         )
       ).toBe(false)

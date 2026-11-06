@@ -1363,9 +1363,9 @@ describe('AbholListeClient (P2)', () => {
       expect(body.className).toBe('keep')
       expect(body.querySelectorAll('tr')).toHaveLength(2)
     }
-    const css = ABHOL_PRINT_CSS['@media print'] as Record<
+    const css = ABHOL_PRINT_CSS['@media print'] as unknown as Record<
       string,
-      Record<string, string>
+      Record<string, unknown>
     >
     expect(css['.abholliste-print tbody.keep']['breakInside']).toBe('avoid')
     await user.click(screen.getByRole('button', { name: 'Drucken' }))
