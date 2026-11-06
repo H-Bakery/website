@@ -155,6 +155,25 @@ describe('GrundmengenClient', () => {
     expect(
       screen.getByText(/Gespeichert: Testweck, Dienstag/)
     ).toBeInTheDocument()
+
+    // W4-verify r2: Unsinn danach ersetzt die alte Erfolgsmeldung
+    const friday = input('Testweck, Freitag')
+    await user.clear(friday)
+    await user.type(friday, 'abc')
+    await user.tab()
+    expect(
+      await screen.findByText(
+        /Nicht gespeichert - Testweck, Freitag: Bitte eine Zahl eingeben/
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Gespeichert: Testweck, Dienstag/)
+    ).not.toBeInTheDocument()
+    expect(
+      apiClient.put.mock.calls.some(
+        ([, body]: [string, { weekday?: number }]) => body.weekday === 5
+      )
+    ).toBe(false)
   })
 
   it('Sorte speichern schickt variants; Leeren heißt „offen" (null)', async () => {
