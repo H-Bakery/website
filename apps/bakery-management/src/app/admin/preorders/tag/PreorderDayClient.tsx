@@ -88,6 +88,31 @@ const printStyles = (
         '.preorder-day-root tr': { pageBreakInside: 'avoid' },
         '.preorder-day-root thead': { display: 'table-header-group' },
         '.preorder-day-noprint': { display: 'none !important' },
+        // Bestellungen auf A4 (W4-verify r4): feste Spalten, Artikel bekommt
+        // den Rest - vorher 13 % Breite, 13 Seiten für 56 Bestellungen, und
+        // ein langer Name schob den Status-Chip über den Rand.
+        '.preorder-day-orders': { tableLayout: 'fixed', width: '100%' },
+        '.preorder-day-orders td, .preorder-day-orders th': {
+          overflowWrap: 'anywhere',
+          fontSize: '9pt',
+        },
+        '.preorder-day-orders th:nth-of-type(1)': { width: '32mm' },
+        '.preorder-day-orders th:nth-of-type(2)': { width: '28mm' },
+        '.preorder-day-orders th:nth-of-type(3)': { width: '22mm' },
+        '.preorder-day-orders th:nth-of-type(5)': { width: '24mm' },
+        '.preorder-day-orders th:nth-of-type(6)': { width: '20mm' },
+        '.preorder-day-orders td:first-of-type': {
+          fontSize: '8pt',
+          overflowWrap: 'normal',
+        },
+        '.preorder-day-orders .MuiChip-root': {
+          height: 'auto',
+          maxWidth: '100%',
+        },
+        '.preorder-day-orders .MuiChip-label': {
+          padding: '0 4px',
+          whiteSpace: 'normal',
+        },
       },
     }}
   />
@@ -428,6 +453,7 @@ export default function PreorderDayClient({
                 <Table
                   size="small"
                   aria-label="Bestellungen des Tages"
+                  className="preorder-day-orders"
                   sx={COMPACT_TABLE}
                 >
                   <TableHead>
