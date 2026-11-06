@@ -163,6 +163,8 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     expect(screen.getAllByText('2 × Mustersemmel (Nuss)')).toHaveLength(3)
     // Gesamtsumme des Tages vom Server.
     expect(screen.getAllByText('16,40 €').length).toBeGreaterThan(0)
+    // Offen + Bereit heißt wie in der Abholliste „Warten noch“ (W4-verify r4).
+    expect(screen.getByText('Warten noch')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Abholliste' })).toHaveAttribute(
       'href',
       `/admin/preorders/abholliste?date=${DATE}&point=${POINT.id}`

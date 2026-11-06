@@ -611,8 +611,11 @@ export default function PreorderListClient({
             />
           </Grid>
           <Grid item xs={6} sm={4} md={2}>
+            {/* Offen + Bereit, ohne „nicht abgeholt“ - wie „Warten noch“ in
+                der Abholliste; „Offen“ hieße sonst etwas anderes als der
+                Status-Chip „Offen“ darunter (W4-verify r4). */}
             <StatTile
-              label="Offen"
+              label="Warten noch"
               value={String(
                 summary.byStatus.offen +
                   summary.byStatus.bereit -
