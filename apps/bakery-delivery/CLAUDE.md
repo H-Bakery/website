@@ -25,7 +25,8 @@ Es gibt jetzt npm-Skripte; der Rest läuft über Nx, von `website/` aus:
 
 ```bash
 npm run serve:delivery                 # Fahrer-App auf Port 4300
-npm run serve:api:simple               # die API, die sie braucht (Port 5000)
+npm run serve:api                      # echte API (B8, Anmeldung nötig), Port 5000
+npm run serve:api:simple               # oder der Mock (Login admin/admin), Port 5000
 npm run test:e2e:delivery              # Playwright (Desktop + Pixel 5), startet beide Server selbst
 
 npx nx build bakery-delivery
@@ -45,6 +46,51 @@ Ein `simple-server.js`, der schon vor den Liefer-Endpunkten gestartet wurde, ant
 `/api/deliveries/*` mit 404 — dann hilft nur ein Neustart des Servers.
 `NEXT_PUBLIC_API_URL` überschreibt die Adresse (Default `http://localhost:5000`); der Wert wird beim
 Build eingebacken, ein Wechsel braucht also einen Neustart des Dev-Servers.
+
+## Anmeldung und Rollen (B8)
+
+Ohne Anmeldung zeigt die App **nur das Anmeldeformular** (`components/AuthGate.tsx`, im
+`layout.tsx` um alle Seiten gelegt): wer die URL hat, sieht keine Adressen der Kundschaft mehr.
+Angemeldet wird mit Benutzername und Passwort gegen den B3-Vertrag (`POST /api/auth/login`,
+persönliche Sitzung). Den Zustand hält `src/lib/session.ts` - kein React Context, ein Modul mit
+`useSyncExternalStore` (`useDeliverySession()`), weil die App außerhalb des MUI/Context-Stacks
+steht.
+
+- **Speicher:** `bakery-delivery-session` (Access- + Refresh-Token, Benutzer),
+  `bakery-delivery-last-user` (wer zuletzt angemeldet war). Meldet sich ein **anderer** Benutzer
+  an, löscht `clearDeviceData()` vorher Warteschlange, Offline-Kopien und den gewählten Fahrer -
+  sonst sähe die nächste Person die Tour des vorigen Fahrers oder schickte dessen Abhaken unter
+  eigenem Namen ab. Derselbe Benutzer behält seine Warteschlange.
+- **Jede Anfrage trägt `Authorization: Bearer`** (`request()` in `delivery-api.ts`). Eine 401
+  erneuert die Sitzung **einmal** (`refreshSession()`: ein Refresh je Tab, der rotierte
+  Refresh-Token steht sofort im Speicher) und wiederholt die Anfrage. 409 `refresh_superseded`
+  heißt, ein anderer Tab war schneller: dessen Token wird aus dem Speicher übernommen. Lehnt der
+  Server den Refresh ab (4xx), ist die Sitzung vorbei - `SessionExpiredError`, das Formular
+  erscheint. Scheitert der Refresh im Funkloch, bleibt die Sitzung.
+- **`SessionExpiredError` ist absichtlich keine `ApiError`.** `flushQueue` wirft 4xx aus der
+  Warteschlange; ein Abhaken darf aber nicht verloren gehen, nur weil die Sitzung ablief. Es
+  bleibt liegen und geht nach der nächsten Anmeldung raus (derselbe Benutzer).
+- **Abmelden** (`components/AccountBar.tsx`, unter dem Kopf): beendet die Sitzung auf dem Server
+  (Bearer + Refresh-Token; ohne Netz nur lokal) und löscht die Gerätedaten. Liegen noch
+  ungesendete Änderungen in der Schlange, fragt die Leiste in der Seite nach („Trotzdem
+  abmelden" / „Angemeldet bleiben"), nicht per `window.confirm`.
+- **Rollen** (`permissionsFor()` in `session.ts`, Bedienführung - durchgesetzt wird in der API):
+  `inhaber` alles; `fahrer` sieht nur **seinen** Fahrer (Auswahl gesperrt, zugeordnet über
+  `driver.userId`; ohne Zuordnung ein Hinweis „bitte im Büro melden"), hakt ab, meldet die
+  Position und darf „Route berechnen", aber nicht planen (kein „Tour anlegen", „Tour planen",
+  Stopp entfernen); `verkauf` liest nur (keine Abhak-Knöpfe, kein Standort); `backstube` wird
+  beim Anmelden abgewiesen und gleich wieder abgemeldet.
+- **Der Mock wird verstanden** (`normalizeUser()`): `email`/`firstName` statt `displayName`,
+  `admin` → `inhaber`, `staff` → `verkauf`; sein Refresh rotiert nicht, der alte Refresh-Token
+  bleibt dann stehen. Die E2E-Suite meldet sich dort mit `admin`/`admin` an.
+
+Erreichbar ist die API nur im LAN der Bäckerei. Wie der Fahrer sie unterwegs erreicht (Tailscale
+oder ein schmaler öffentlicher Endpunkt), entscheidet der Inhaber: `docs/fernzugriff-fahrer.md` (Q8).
+
+Tests: `src/lib/session.spec.ts`, `src/lib/delivery-api.spec.ts` („Anmeldung in request()"),
+`src/components/AuthGate.spec.tsx` (Formular, Gerätedaten bei Benutzerwechsel, Abmelden mit
+Rückfrage), `src/app/page.spec.tsx` („nach Rolle"). Specs legen die Sitzung mit `saveSession()`
+an (`signIn()` in `page.spec.tsx`).
 
 ## Wo was gerechnet wird
 
@@ -108,8 +154,14 @@ suchen mit `force` trotzdem. Gleichzeitige Anfragen nach derselben Adresse teile
 
 ## Datenhaltung
 
-Kein Datenbankzugriff — der Mock-Server ist die einzige laufende API (siehe Root-`CLAUDE.md`).
-Der Store lebt **im Speicher des Servers** (`getDeliveryStore()`, einmal geladen) und wird nach
+**Seit B8 gibt es die Endpunkte auch in der echten TypeScript-API** - SQLite, Rollen, Audit,
+dieselben Core-Dateien; Vertrag, Rollen und bewusste Abweichungen stehen in
+`apps/bakery-api/CLAUDE.md`, Abschnitt „Delivery tours (B8)". Umzug der Mock-Daten:
+`cli.js import-deliveries` (Touren, Fahrer, Geocache) und `import-preorders` (Sammelstellen,
+Vorbestellungen). Der Rest dieses Abschnitts beschreibt den Mock, der bis zur Umstellung die
+Referenz bleibt.
+
+Der Store des Mock-Servers lebt **im Speicher des Servers** (`getDeliveryStore()`, einmal geladen) und wird nach
 jeder Änderung als JSON neben den Server geschrieben: **`apps/bakery-api/data/delivery-store.json`**
 (gitignored, überlebt Neustarts). Geschrieben wird atomar — erst `.tmp`, dann `rename` —, damit ein
 Absturz mitten im Schreiben nicht eine halbe Datei hinterlässt, die beim nächsten Start den Seed
@@ -334,7 +386,7 @@ Nicht „lösen", indem man die Libs auf CommonJS umschreibt — das bricht ihre
 - `delivery` ist ein _anderes_ Projekt: `libs/api/delivery` (Express-Domäne mit Model, Controller,
   Service — vollständig getippt, aber **an keine laufende API angeschlossen**, weil `serve:api`
   nicht startet). `bakery-management-feature-delivery` ist die Admin-Ansicht. Diese App spricht mit
-  keinem von beiden, sondern mit `simple-server.js`.
+  keinem von beiden, sondern mit `/api/deliveries` - im Mock (`simple-server.js`) oder seit B8 in der echten API (`routes/delivery-tours.routes.ts`).
 
 ## Architektur
 
@@ -346,7 +398,11 @@ src/components/HandoverList.tsx  Übergabeliste einer Sammelstelle (Vorbestellun
 src/components/FailureForm.tsx   Rückfrage zu „Nicht angetroffen": Grund und Verbleib der Ware
 src/components/ThemeToggle.tsx   Farbschema System / Hell / Dunkel
 src/components/Map.tsx        Leaflet, dynamisch mit ssr:false
-src/lib/delivery-api.ts       Typen, fetch-Client, Offline-Warteschlange
+src/lib/delivery-api.ts       Typen, fetch-Client (Bearer + Refresh), Offline-Warteschlange
+src/lib/session.ts            Anmeldung, Sitzung, Refresh mit Rotation, Rollenrechte (B8)
+src/lib/api-base.ts           NEXT_PUBLIC_API_URL, geteilt von beiden
+src/components/AuthGate.tsx   ohne Sitzung nur das Anmeldeformular (im Layout)
+src/components/AccountBar.tsx Name, Rolle, „Abmelden" (mit Rückfrage bei voller Warteschlange)
 src/lib/format.ts             de-DE-Formatierung, Datumshilfen
 src/lib/theme.ts              Farbschema lesen/schreiben + Inline-Skript gegen den Flash
 
@@ -464,7 +520,9 @@ Reihenfolge, Geolocation des Fahrers, Statuswechsel, Persistenz über Neustarts.
 **Auch echt:** die Vorbestellungen der Sammelstelle Mörsbach — vom Team in der Management-App
 erfasst, mit Preisen aus `hq`, dauerhaft im Liefer-Store, und der Fahrer hakt sie einzeln ab.
 
-**Noch nicht da:** keine Authentifizierung (wer die URL hat, sieht und ändert die Tour), keine
+**Auch echt (B8):** Anmeldung mit Rollen; ein Fahrer sieht nur seine eigenen Touren.
+
+**Noch nicht da:** Fernzugriff von unterwegs (Q8, siehe oben), keine
 Anbindung an Bestellungen aus dem Shop (gewöhnliche Stopps werden von Hand erfasst; nur die
 Vorbestellungen der Sammelstelle kommen aus der Management-App), keine Tourplanung in der
 Management-App, kein Push an die Kundschaft. Wer eine übergebene Vorbestellung doch noch stornieren
@@ -477,7 +535,11 @@ WebSocket-Client ohne Server — die App benutzt ihn nicht, Positionen gehen per
 `apps/bakery-delivery-e2e/src/delivery.spec.ts` fährt den Weg des Fahrers ab: Tour öffnen, Stopp
 anlegen, Route berechnen, abhaken. `sammelstelle.spec.ts` daneben die Übergabe in Mörsbach:
 Vorbestellungen am Stopp, Abhaken samt Neuladen, die Rückfrage vor dem Abschließen, Nichtabholung
-und Zurücksetzen, dazu der Dunkelmodus über das Neuladen hinweg. 13 Tests je Projekt, also 26. Die Konfiguration startet **beide** Server selbst (API auf 5000,
+und Zurücksetzen, dazu der Dunkelmodus über das Neuladen hinweg. Ein dritter Block „Anmeldung"
+prüft Formular, falsches Passwort, Neuladen und Abmelden. 14 Tests je Projekt, also 28. Alle
+anderen Tests starten angemeldet: `src/login.ts` holt eine Sitzung am Mock (`admin`/`admin`) und
+legt sie per `addInitScript` in den `localStorage`; die Liefer-Endpunkte des Mocks selbst
+brauchen keine Sitzung, die Tests legen ihre Touren weiter direkt an. Die Konfiguration startet **beide** Server selbst (API auf 5000,
 App auf 4300) und setzt Locale `de-DE` sowie eine Position in Homburg. Der zweite Test legt sich seine
 eigene Tour per API an und löscht sie im `finally` wieder, damit er den Store nicht vollmüllt.
 
@@ -508,6 +570,8 @@ Drei Regeln, ohne die die Suite reihenweise an Kleinigkeiten scheitert, die gar 
 - Stopps aus den Shop-Bestellungen erzeugen, statt sie abzutippen.
 - Eine Planungsansicht in der Management-App (die Erfassung gewöhnlicher Stopps steckt weiterhin in
   der Fahrer-App; nur die Vorbestellungen der Sammelstelle werden dort erfasst).
-- Authentifizierung, bevor die App aus dem LAN heraus erreichbar gemacht wird.
-- Die Liefer-Endpunkte auch in der echten TypeScript-API (`libs/api/delivery`) verdrahten, sobald
-  `serve:api` wieder startet.
+- Fernzugriff für die Fahrer (Q8, `docs/fernzugriff-fahrer.md`).
+- Eine Fahrerverwaltung in der Management-App (Fahrer anlegen, Konto zuordnen - heute nur über
+  `POST/PUT /api/deliveries/drivers`).
+- Stopps nach 90 Tagen anonymisieren wie die Vorbestellungen (P4) - Name, Telefon, Notizen der
+  Kundschaft stehen sonst unbegrenzt in `delivery_stops`.
