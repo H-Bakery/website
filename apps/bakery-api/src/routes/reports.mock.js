@@ -153,12 +153,8 @@ function registerReportsRoutes(app, options) {
     )
     let products = summary.status === 'ok' ? summary.products : []
     if (req.query.type === 'bottom') {
-      // Schwache Produkte: nur, was überhaupt verkauft wurde - ein Produkt
-      // mit Nettomenge <= 0 ist ein Storno-Rest, kein Ladenhüter.
-      products = products
-        .filter((p) => p.quantity > 0)
-        .slice()
-        .reverse()
+      // Schwache Produkte: nach verkaufter Stückzahl (core.bottomProducts).
+      products = core.bottomProducts(products)
     }
     res.json({
       data: products.slice(0, limit).map((p, i) => ({
