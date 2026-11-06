@@ -152,6 +152,20 @@ export function createRestService(
     }
   }
 
+  /**
+   * The confirmed Backzettel day in the light form (lines, deltas and their
+   * oven figures only) - for evaluations over many days, where the full
+   * screen view per day would be ~340 heavy reads for a year.
+   */
+  async function confirmedLines(date: string): Promise<RestDayView | null> {
+    try {
+      return await backzettel.getConfirmedLines(date)
+    } catch (error) {
+      if (error instanceof BackzettelError) return null
+      throw error
+    }
+  }
+
   async function view(date: string): Promise<RestDayView> {
     const loaded = source.load()
     const rows = await loadRows({ businessDate: date })
@@ -221,9 +235,20 @@ export function createRestService(
         { weekday }
       )
     }
+    // A Posten with Sorten counted without one is only valid when the day's
+    // Backzettel itself has such a line - read it only in that case.
+    const candidates: Set<string> = core.emptyVariantCandidates(
+      body,
+      loaded.config
+    )
+    const emptyVariantItems =
+      candidates.size > 0
+        ? core.emptyVariantLines(await backzettelDay(date), loaded.config)
+        : undefined
     const parsed = core.validateBatch(body, {
       config: loaded.config,
       catalog: loaded.catalog,
+      emptyVariantItems,
     })
     if (!parsed.ok) {
       throw new BackzettelError(parsed.status, parsed.error, parsed.message)
@@ -362,7 +387,7 @@ export function createRestService(
     for (const r of rows) ensure(r.businessDate).rows.push(r)
     for (const d of confirmed) {
       const entry = ensure(d.date)
-      entry.backzettel = await backzettelDay(d.date)
+      entry.backzettel = await confirmedLines(d.date)
       if (reportDates.has(d.date)) {
         entry.report = files.readDailyReport(reportsDir, d.date, options.log)
       }
@@ -413,12 +438,25 @@ export function createRestService(
     })
     const rowsByDate: Record<string, unknown[]> = {}
     for (const r of rows) (rowsByDate[r.businessDate] ||= []).push(r)
+    // Only days with a confirmed Backzettel count (as in the evaluation);
+    // only days with counts need reading.
+    const confirmed = await BackzettelDay.findAll({
+      where: {
+        date: { [Op.in]: Object.keys(rowsByDate) },
+        status: 'confirmed',
+      },
+      attributes: ['date'],
+    })
+    const backzettelByDate: Record<string, unknown> = {}
+    for (const d of confirmed) {
+      backzettelByDate[d.date] = await confirmedLines(d.date)
+    }
     return {
       status: 'ok',
       today: day,
       weeks,
       basis:
-        'Mittlerer Rest am Abend in der Einheit des Postens, letzte gleiche Wochentage mit vollständiger Zählung; Tage ohne Zählung zählen nicht.',
+        'Mittlerer Rest am Abend in der Einheit des Postens, letzte gleiche Wochentage mit freigegebenem Backzettel und vollständiger Zählung; Tage ohne Zählung zählen nicht.',
       weekdays: core.weekdayRestAverages({
         config: loaded.config,
         catalog: loaded.catalog,
@@ -426,6 +464,7 @@ export function createRestService(
         weeks,
         weekdays: loaded.config.days,
         rowsByDate,
+        backzettelByDate,
       }),
     }
   }

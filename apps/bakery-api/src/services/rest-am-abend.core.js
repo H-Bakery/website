@@ -246,6 +246,8 @@ function fail(status, error, message, extra) {
 function validateBatch(body, options) {
   const config = options && options.config
   const catalog = options && options.catalog
+  /** Posten mit Sorten, die der Backzettel des Tages auch ohne Sorte führt. */
+  const emptyVariantItems = (options && options.emptyVariantItems) || null
   if (!body || typeof body !== 'object' || !Array.isArray(body.items)) {
     return fail(
       400,
@@ -322,6 +324,21 @@ function validateBatch(body, options) {
     seen.add(key)
     const qty = parseQty(raw.qty, row, row.label)
     if (!qty.ok) return fail(400, 'invalid_quantity', qty.message)
+    // Wie bei den Vorbestellungen (B7): ein Posten mit Sorten wird je Sorte
+    // gezählt. Ohne Sorte nur, wenn der Backzettel des Tages selbst eine
+    // Zeile ohne Sorte hat (gefüllte Ware ohne Sorte); Löschen geht immer.
+    if (
+      variant === '' &&
+      item.variants.length > 0 &&
+      qty.value !== null &&
+      !(emptyVariantItems && emptyVariantItems.has(itemId))
+    ) {
+      return fail(
+        400,
+        'variant_required',
+        `„${item.name}“ wird je Sorte gezählt - bitte die Sorte angeben.`
+      )
+    }
     const hasExpected = Object.prototype.hasOwnProperty.call(raw, 'expected')
     let expected = null
     if (hasExpected) {
@@ -347,6 +364,33 @@ function validateBatch(body, options) {
     })
   }
   return { ok: true, entries }
+}
+
+/**
+ * Posten im Request, die ohne Sorte gezählt werden sollen, obwohl sie Sorten
+ * haben - nur dann muss der Dienst den Backzettel des Tages lesen.
+ */
+function emptyVariantCandidates(body, config) {
+  const items = itemsById(config)
+  const out = new Set()
+  for (const raw of body && Array.isArray(body.items) ? body.items : []) {
+    if (!raw || typeof raw !== 'object') continue
+    const item = items.get(raw.itemId)
+    if (!item || !Array.isArray(item.variants) || item.variants.length === 0)
+      continue
+    if (raw.variant === undefined || raw.variant === null || raw.variant === '')
+      out.add(item.id)
+  }
+  return out
+}
+
+/** Posten, die der Backzettel des Tages ohne Sorte führt. */
+function emptyVariantLines(backzettel, config) {
+  const out = new Set()
+  for (const l of backzettelLines(backzettel, config).values()) {
+    if (l.variant === '') out.add(l.itemId)
+  }
+  return out
 }
 
 function sameQty(a, b) {
@@ -481,6 +525,54 @@ function lineRest(rows) {
   return any ? round2(sum) : null
 }
 
+/**
+ * Ist eine Tageszeile (Posten × Sorte) vollständig gezählt? Jede Zählzeile
+ * der Config hat einen Wert, und keine gespeicherte Zählung ist leer. Eine
+ * Zeile ohne jede Zählung ist nie vollständig - nie als 0 lesen.
+ */
+function lineComplete(stored, expected) {
+  return (
+    stored.length > 0 &&
+    expected.every((r) =>
+      stored.some(
+        (s) =>
+          (s.productId || '') === r.productId &&
+          s.qty !== null &&
+          s.qty !== undefined
+      )
+    ) &&
+    stored.every((s) => s.qty !== null && s.qty !== undefined)
+  )
+}
+
+/**
+ * Die Zeilenschlüssel eines Tages, über die gerechnet wird: alles, was
+ * gezählt wurde, und alles, was laut freigegebenem Backzettel gebacken
+ * wurde (`baked > 0`). Dieselbe Regel für Auswertung und Rest Ø.
+ */
+function evaluatedLineKeys(byLine, bz) {
+  const keys = new Set(byLine.keys())
+  for (const [key, l] of bz) if ((l.baked || 0) > 0) keys.add(key)
+  return keys
+}
+
+function rowsByLine(rows) {
+  const byLine = new Map()
+  for (const r of rows) {
+    const key = lineKey(r.itemId, r.variant)
+    if (!byLine.has(key)) byLine.set(key, [])
+    byLine.get(key).push(r)
+  }
+  return byLine
+}
+
+/** Mehr übrig, als für den Laden gebacken wurde (Gebacken − CAP)? */
+function restExceedsShop(rest, baked, cap) {
+  if (rest === null || rest === undefined) return false
+  if (baked === null || baked === undefined) return false
+  return rest > round2(baked - (cap || 0)) + 1e-9
+}
+
 function sectionOrder(config) {
   const order = new Map()
   const list =
@@ -596,6 +688,12 @@ function buildDayView(a) {
       counted,
       rest: counted ? lineRest(rows) : null,
       restSoFar: lineRest(rows),
+      // Mehr Rest als für den Laden gebacken: fast immer verzählt.
+      restExceedsShop: restExceedsShop(
+        lineRest(rows),
+        b ? b.baked : null,
+        b ? b.cap : 0
+      ),
     }
   })
   lines.sort(
@@ -745,6 +843,7 @@ function summarize(a) {
         sold: 0,
         soldDays: 0,
         uncountedDates: [],
+        restExceedsDates: [],
         variants: new Map(),
         weeks: new Map(),
       })
@@ -791,14 +890,8 @@ function summarize(a) {
       !!input.backzettel && input.backzettel.status === 'confirmed'
 
     // Zählungen je Zeile
-    const byLine = new Map()
-    for (const r of rows) {
-      const key = lineKey(r.itemId, r.variant)
-      if (!byLine.has(key)) byLine.set(key, [])
-      byLine.get(key).push(r)
-    }
-    const lineKeys = new Set(byLine.keys())
-    for (const [key, l] of bz) if ((l.baked || 0) > 0) lineKeys.add(key)
+    const byLine = rowsByLine(rows)
+    const lineKeys = evaluatedLineKeys(byLine, bz)
 
     // je Posten: alle Zeilen vollständig gezählt?
     const perItem = new Map()
@@ -808,17 +901,7 @@ function summarize(a) {
       if (item && !isCountable(item)) continue
       const stored = byLine.get(key) || []
       const expected = item ? countRowsForItem(item, a.catalog) : []
-      const complete =
-        stored.length > 0 &&
-        expected.every((r) =>
-          stored.some(
-            (s) =>
-              (s.productId || '') === r.productId &&
-              s.qty !== null &&
-              s.qty !== undefined
-          )
-        ) &&
-        stored.every((s) => s.qty !== null && s.qty !== undefined)
+      const complete = lineComplete(stored, expected)
       const b = bz.get(key) || null
       const first = stored[0] || {}
       if (!perItem.has(itemId)) {
@@ -862,6 +945,7 @@ function summarize(a) {
       const cap = round2(p.lines.reduce((s, l) => s + (l.cap || 0), 0))
       const rest = round2(p.lines.reduce((s, l) => s + (l.rest || 0), 0))
       t.days += 1
+      if (restExceedsShop(rest, baked, cap)) t.restExceedsDates.push(date)
       t.baked = round2(t.baked + baked)
       t.cap = round2(t.cap + cap)
       t.rest = round2(t.rest + rest)
@@ -949,6 +1033,8 @@ function summarize(a) {
         soldStatus,
         uncountedDays: t.uncountedDates.length,
         uncountedDates: t.uncountedDates,
+        // Tage, an denen mehr übrig war als für den Laden gebacken.
+        restExceedsDates: t.restExceedsDates,
         variants: [...t.variants.entries()]
           .filter(([v]) => v !== '' || t.variants.size > 1)
           .map(([v, x]) => ({
@@ -1134,14 +1220,31 @@ function summaryCsv(s) {
 
 /**
  * Mittlerer Rest je Posten und Wochentag über die letzten `weeks` gleichen
- * Wochentage **mit vollständiger Zählung** des Postens (vor heute). Tage
- * ohne Zählung werden übersprungen, nie als 0 gezählt.
+ * Wochentage **mit freigegebenem Backzettel und vollständiger Zählung** des
+ * Postens (vor heute). Vollständig heißt wie in der Auswertung
+ * (`summarize`): jede Zeile, die gezählt wurde oder laut Backzettel gebacken
+ * wurde, ist ganz gezählt - eine gebackene, aber nicht gezählte Sorte macht
+ * den Tag unbrauchbar, statt den Mittelwert zu drücken. Tage ohne Zählung
+ * oder ohne Freigabe werden übersprungen, nie als 0 gezählt.
  *
- * @param {object} a `{ config, catalog, today, weeks, weekdays, rowsByDate }`
+ * @param {object} a `{ config, catalog, today, weeks, weekdays, rowsByDate, backzettelByDate }`
+ *   `backzettelByDate`: je Datum die (freigegebene) Backzettel-Tagesansicht;
+ *   fehlt ein Datum, ist der Tag nicht freigegeben.
  * @returns {Array<{weekday, weekdayName, items: [{itemId, mean, samples, dates}]}>}
  */
 function weekdayRestAverages(a) {
   const config = a.config
+  const bzCache = new Map()
+  const linesOn = (date) => {
+    if (!bzCache.has(date)) {
+      const day = a.backzettelByDate ? a.backzettelByDate[date] : null
+      bzCache.set(
+        date,
+        day && day.status === 'confirmed' ? backzettelLines(day, config) : null
+      )
+    }
+    return bzCache.get(date)
+  }
   const out = []
   for (const weekday of a.weekdays) {
     const { dates } = refCore.referenceDates({
@@ -1158,21 +1261,17 @@ function weekdayRestAverages(a) {
       const used = []
       for (const date of dates) {
         if (samples.length >= a.weeks) break
+        const bz = linesOn(date)
+        if (!bz) continue
         const rows = ((a.rowsByDate && a.rowsByDate[date]) || []).filter(
           (r) => r.itemId === item.id
         )
         if (rows.length === 0) continue
-        const variants = [...new Set(rows.map((r) => r.variant || ''))]
-        const complete = variants.every((v) =>
-          expected.every((e) =>
-            rows.some(
-              (r) =>
-                (r.variant || '') === v &&
-                (r.productId || '') === e.productId &&
-                r.qty !== null &&
-                r.qty !== undefined
-            )
-          )
+        const byLine = rowsByLine(rows)
+        const itemBz = new Map([...bz].filter(([, l]) => l.itemId === item.id))
+        const keys = evaluatedLineKeys(byLine, itemBz)
+        const complete = [...keys].every((key) =>
+          lineComplete(byLine.get(key) || [], expected)
         )
         if (!complete) continue
         samples.push(
@@ -1212,6 +1311,10 @@ module.exports = {
   countRowsForItem,
   parseQty,
   validateBatch,
+  emptyVariantCandidates,
+  emptyVariantLines,
+  lineComplete,
+  restExceedsShop,
   planBatch,
   acknowledgedExtra,
   backzettelLines,

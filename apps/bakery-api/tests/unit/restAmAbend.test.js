@@ -209,6 +209,45 @@ describe('validateBatch', () => {
     expect(r).toMatchObject({ ok: false, status: 400, error })
     expect(typeof r.message).toBe('string')
   })
+  it('ein Posten mit Sorten braucht die Sorte (wie bei Vorbestellungen)', () => {
+    const e = { itemId: 'zopf-gefuellt', productId: 'test-zopf-gefuellt' }
+    expect(v([{ ...e, qty: 1 }])).toMatchObject({
+      ok: false,
+      status: 400,
+      error: 'variant_required',
+    })
+    // Löschen einer Zählung ohne Sorte geht immer (Altbestand).
+    expect(v([{ ...e, qty: null }]).ok).toBe(true)
+    // Führt der Backzettel des Tages den Posten ohne Sorte, ist es eine Zeile.
+    expect(
+      core.validateBatch(
+        { items: [{ ...e, qty: 1 }] },
+        { config, catalog, emptyVariantItems: new Set(['zopf-gefuellt']) }
+      ).ok
+    ).toBe(true)
+    expect(
+      core.emptyVariantCandidates(
+        {
+          items: [
+            { ...e, qty: 1 },
+            { ...e, variant: 'nuss', qty: 1 },
+            { itemId: 'weck', qty: 1 },
+          ],
+        },
+        config
+      )
+    ).toEqual(new Set(['zopf-gefuellt']))
+    expect(
+      core.emptyVariantLines(
+        bzDay('confirmed', [
+          { itemId: 'zopf-gefuellt', variant: 'nuss', total: 2 },
+          { itemId: 'zopf-gefuellt', total: 1 },
+          { itemId: 'weck', total: 5 },
+        ]),
+        config
+      )
+    ).toEqual(new Set(['zopf-gefuellt', 'weck']))
+  })
   it('lehnt doppelte Zeilen, leere und übergroße Listen ab', () => {
     const e = { itemId: 'weck', productId: 'test-weck', qty: 1 }
     expect(v([e, { ...e, qty: 2 }])).toMatchObject({ error: 'duplicate_item' })
@@ -625,6 +664,37 @@ describe('summarize', () => {
     })
   })
 
+  it('mehr Rest als für den Laden gebacken wird markiert, nicht verschluckt', () => {
+    const s = run({
+      '2026-12-05': {
+        backzettel: bzDay('confirmed', [
+          { itemId: 'plunder', total: 10 },
+          { itemId: 'weck', total: 20, cap: 10 },
+        ]),
+        rows: [row('plunder', 3), row('weck', 11)],
+        report: null,
+      },
+    })
+    expect(s.items.find((i) => i.itemId === 'weck').restExceedsDates).toEqual([
+      '2026-12-05',
+    ])
+    expect(
+      s.items.find((i) => i.itemId === 'plunder').restExceedsDates
+    ).toEqual([])
+    const view = core.buildDayView({
+      date: '2026-12-05',
+      today: TODAY,
+      config,
+      catalog,
+      backzettel: bzDay('confirmed', [{ itemId: 'weck', total: 20, cap: 10 }]),
+      rows: [row('weck', 11)],
+    })
+    expect(view.lines[0]).toMatchObject({ rest: 11, restExceedsShop: true })
+    expect(core.restExceedsShop(10, 20, 10)).toBe(false)
+    expect(core.restExceedsShop(null, 20, 10)).toBe(false)
+    expect(core.restExceedsShop(5, null, 0)).toBe(false)
+  })
+
   it('ein Posten mit nur einem gezählten Produkt ist unvollständig', () => {
     const s = run({
       '2026-12-05': {
@@ -712,6 +782,13 @@ describe('weekdayRestAverages', () => {
       '2026-11-17': [],
       '2026-11-10': [row('plunder', 0)],
     }
+    const confirmed = bzDay('confirmed', [{ itemId: 'plunder', total: 10 }])
+    const backzettelByDate = {
+      '2026-12-01': confirmed,
+      '2026-11-24': confirmed,
+      '2026-11-17': confirmed,
+      '2026-11-10': confirmed,
+    }
     const [tue] = core.weekdayRestAverages({
       config,
       catalog,
@@ -719,6 +796,7 @@ describe('weekdayRestAverages', () => {
       weeks: 6,
       weekdays: [2],
       rowsByDate,
+      backzettelByDate,
     })
     expect(tue.weekdayName).toBe('Dienstag')
     expect(tue.items).toEqual([
@@ -729,6 +807,49 @@ describe('weekdayRestAverages', () => {
         dates: ['2026-12-01', '2026-11-24', '2026-11-10'],
       },
     ])
+  })
+})
+
+describe('weekdayRestAverages - wie die Auswertung vollständig', () => {
+  const sat = (rows, backzettel) =>
+    core.weekdayRestAverages({
+      config,
+      catalog,
+      today: TODAY,
+      weeks: 6,
+      weekdays: [6],
+      rowsByDate: { '2026-12-05': rows },
+      backzettelByDate: backzettel ? { '2026-12-05': backzettel } : {},
+    })[0].items
+
+  it('eine gebackene, aber nicht gezählte Sorte macht den Tag unbrauchbar', () => {
+    const bz = bzDay('confirmed', [
+      { itemId: 'zopf-gefuellt', variant: 'nuss', total: 4 },
+      { itemId: 'zopf-gefuellt', variant: 'mohn', total: 2 },
+    ])
+    expect(sat([row('zopf-gefuellt', 1, { variant: 'nuss' })], bz)).toEqual([])
+    expect(
+      sat(
+        [
+          row('zopf-gefuellt', 1, { variant: 'nuss' }),
+          row('zopf-gefuellt', 2, { variant: 'mohn' }),
+        ],
+        bz
+      )
+    ).toEqual([
+      { itemId: 'zopf-gefuellt', mean: 3, samples: [3], dates: ['2026-12-05'] },
+    ])
+  })
+
+  it('ohne freigegebenen Backzettel zählt der Tag nicht', () => {
+    const rows = [row('plunder', 2)]
+    expect(sat(rows, null)).toEqual([])
+    expect(
+      sat(rows, bzDay('draft', [{ itemId: 'plunder', total: 10 }]))
+    ).toEqual([])
+    expect(
+      sat(rows, bzDay('confirmed', [{ itemId: 'plunder', total: 10 }]))
+    ).toHaveLength(1)
   })
 })
 

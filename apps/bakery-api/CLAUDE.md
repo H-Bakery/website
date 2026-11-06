@@ -1070,7 +1070,8 @@ after `/api/backzettel` with the Backzettel source and service from `createBackz
 
 `inhaber` passes every check, `fahrer` gets 403. Station (PIN) sessions are fine - the shop tablet
 is where Verkauf counts. Errors via `sendError`: 400 `invalid_date` / `date_out_of_range` /
-`validation` / `unknown_item` / `not_countable` / `unknown_variant` / `unknown_product` /
+`validation` / `unknown_item` / `not_countable` / `unknown_variant` / `variant_required` /
+`unknown_product` /
 `duplicate_item` / `invalid_quantity` / `invalid_range` / `range_too_large`, 409 `ruhetag` /
 `no_config` / `rest_changed` (with `current`).
 
@@ -1083,7 +1084,10 @@ is where Verkauf counts. Errors via `sendError`: 400 `invalid_date` / `date_out_
   counted per product in Stück with that product's `factor`; a Liter item without products but
   with `pieces_per_liter` in Stück with factor 1/ppl; otherwise in its own unit (`Liter`/`kg`
   allow 2 decimals, step 0.5). Section `vorbereitung` is not countable. Quantities 0…10000,
-  ≤ 500 entries per PUT, an item twice is 400.
+  ≤ 500 entries per PUT, an item twice is 400. An item with `variants` is counted per variant,
+  as preorders (B7) require: a count without one is 400 `variant_required`, unless the day's
+  Backzettel itself has a line without variant (filled goods without a Sorte; the service reads
+  the day only when the request has such an entry). Deleting (`qty: null`) always works.
 - **All or nothing.** The PUT runs in one serialised write transaction; each entry may carry
   `expected` (the value the screen showed, `null` = not counted). Any mismatch → 409
   `rest_changed`, `current` lists the stored values with `countedBy`, nothing is written. A save
@@ -1096,11 +1100,24 @@ is where Verkauf counts. Errors via `sendError`: 400 `invalid_date` / `date_out_
 bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not counted as baked. A
   draft day gives `planned` only, `baked: null`. **Rate** = rest ÷ (baked − cap), because CAP
   goods leave the shop. The summary evaluates only confirmed days whose item is counted
-  completely (every count line of every variant); others are listed as gaps
+  completely (`lineComplete` over `evaluatedLineKeys`: every line that was counted or baked
+  `> 0`, every count line of it); others are listed as gaps
   (`uncountedDates`, day status `partial` / `not_counted` / `no_backzettel` /
   `counted_without_backzettel`), never as 0. **Sold** = Z4's `soldOnDay` over the item's PLUs on
   the same evaluated days, from `HQ_REPORTS_DIR` (`soldStatus ok|partial|no_plu|no_report`).
-  Range default the last 28 days, at most 400.
+  Range default the last 28 days, at most 400. A rest above `baked − cap` is flagged, not
+  dropped: `restExceedsShop` on the day line, `restExceedsDates` on the summary item (almost
+  always a miscount; the screens say "bitte nachzählen" / "Zählung prüfen").
+- **Light Backzettel view:** the summary and the averages read each confirmed day through
+  `BackzettelService.getConfirmedLines(date)` - `confirmedView(..., { light: true })`: frozen
+  lines, deltas and their oven figures (`bake`/`bakeOpen`, `deltaTotals`) exactly as the full
+  view, without confirm audits, user names, preorder codes, the Hefeteig/Füllungen recompute and
+  the `deltasPending` catch-up (an unrecorded delta is never acknowledged, so it cannot change
+  "baked"). A year's summary is then ~340 light reads, not ~340 screen views. An integration
+  test checks that summary and day view agree on "baked" with an acknowledged Nachtrag.
+- **Averages** (`weekdayRestAverages`) use the same completeness rule as the summary and only
+  days with a confirmed Backzettel (`backzettelByDate`): a Sorte baked but not counted makes the
+  day unusable instead of lowering the mean.
 - **Z9 snapshot:** with `HQ_SNAPSHOT_DIR` set, every save with changes calls
   `snapshots.restCounted(view)` in the background → `data/production/rest/<date>.json`
   (`restSnapshot` in `hq-snapshots.core.js`: baked, cap, rest and counts per line - no user, no
@@ -1109,8 +1126,10 @@ bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not count
   list (see the website `CLAUDE.md`).
 
 Tests: `tests/unit/restAmAbend.test.js` (core), `tests/integration/rest.test.ts` (roles incl.
-PIN station, PUT rules, window, 409, audit, summary with a synthetic cash report, CSV, averages),
-`tests/unit/hqSnapshotsCore.test.js` (snapshot whitelist), migration in
+PIN station, PUT rules, `variant_required`, parallel PUTs on one row = one 200 + 409s, window,
+409, audit, summary with a synthetic cash report and the light view, CSV, averages),
+`tests/unit/hqSnapshotsCore.test.js` (snapshot whitelist), `tests/integration/hqSnapshots.test.ts`
+(`writeRest` against a bare remote: path, commit message, no names/times, no second commit), migration in
 `tests/migrations/pilotBaseline.test.ts`.
 
 ## Schema (B2)

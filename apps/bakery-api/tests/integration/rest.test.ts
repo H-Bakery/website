@@ -320,6 +320,54 @@ describe('PUT /api/rest/:date', () => {
     expect(Number(plunder!.qty)).toBe(0)
   })
 
+  it('an item with Sorten needs the Sorte (400 variant_required), as preorders do', async () => {
+    const res = await as('verkauf')
+      .put(`/api/rest/${TUE}`)
+      .send({
+        items: [
+          { itemId: 'zopf-gefuellt', productId: 'test-zopf-gefuellt', qty: 1 },
+        ],
+      })
+    expect(res.status).toBe(400)
+    expect(res.body).toMatchObject({
+      error: 'variant_required',
+      message: expect.stringContaining('Sorte'),
+    })
+    expect(
+      await RestCount.count({
+        where: { businessDate: TUE, itemId: 'zopf-gefuellt' },
+      })
+    ).toBe(0)
+  })
+
+  it('parallel saves of the same row: exactly one wins, the rest are 409, never 500', async () => {
+    const send = (qty: number) =>
+      as('verkauf')
+        .put(`/api/rest/${WED}`)
+        .send({
+          items: [
+            { itemId: 'weck', productId: 'test-weck', qty, expected: null },
+          ],
+        })
+    const results = await Promise.all(
+      Array.from({ length: 8 }, (_, i) => send(i + 1))
+    )
+    const statuses = results.map((r) => r.status).sort()
+    expect(statuses.filter((s) => s === 200)).toHaveLength(1)
+    expect(statuses.filter((s) => s === 409)).toHaveLength(7)
+    const winner = results.find((r) => r.status === 200)!
+    const stored = await RestCount.findAll({
+      where: { businessDate: WED, itemId: 'weck' },
+    })
+    expect(stored).toHaveLength(1)
+    expect(Number(stored[0].qty)).toBe(
+      line(winner.body.data, 'weck').rows[0].qty
+    )
+    for (const r of results.filter((x) => x.status === 409)) {
+      expect(r.body).toMatchObject({ error: 'rest_changed' })
+    }
+  })
+
   it('qty null deletes a count (the audit keeps it)', async () => {
     const res = await as('verkauf')
       .put(`/api/rest/${TUE}`)
@@ -495,5 +543,36 @@ describe('GET /api/rest/averages', () => {
     })
     const bad = await as('backstube').get('/api/rest/averages?weeks=0')
     expect(bad.status).toBe(400)
+  })
+})
+
+describe('summary reads the light Backzettel view', () => {
+  it('„gebacken“ in the summary equals the day view, also with an acknowledged Nachtrag', async () => {
+    const pre = await as('verkauf')
+      .post('/api/preorders')
+      .send({
+        channel: 'telefon',
+        customerName: 'Testkunde',
+        pickupDate: TUE,
+        items: [{ productId: 'test-weck', quantity: 3 }],
+      })
+    expect(pre.status).toBe(201)
+    const bz = await as('backstube').get(`/api/backzettel/${TUE}`)
+    const delta = bz.body.data.deltas.find((d: any) => d.itemId === 'weck')
+    expect(delta).toBeTruthy()
+    expect(
+      (
+        await as('backstube').post(
+          `/api/backzettel/${TUE}/deltas/${delta.id}/ack`
+        )
+      ).status
+    ).toBe(200)
+    const day = await as('verkauf').get(`/api/rest?date=${TUE}`)
+    const baked = line(day.body.data, 'weck').baked
+    expect(baked).toBe(55)
+    const s = await as('inhaber').get(`/api/rest/summary?from=${TUE}&to=${TUE}`)
+    expect(
+      s.body.data.items.find((i: any) => i.itemId === 'weck')
+    ).toMatchObject({ baked, cap: 12 })
   })
 })
