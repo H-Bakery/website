@@ -463,6 +463,23 @@ export const DELTA_KIND_LABELS: Record<string, string> = {
   added: 'neu',
   changed: 'geändert',
   cancelled: 'storniert',
+  removed: 'entfernt',
+  moved: 'verschoben',
+}
+
+/**
+ * Code eines Nachtrags; liegt die Bestellung inzwischen an einem anderen
+ * Tag, mit „jetzt Di 10.11.“ - ihr Code ist dann der des neuen Tags
+ * (W4-Verifikation Runde 5).
+ */
+export function deltaCodeText(d: {
+  preorderCode: string | null
+  preorderMovedTo?: string | null
+}): string | null {
+  if (!d.preorderCode) return null
+  return d.preorderMovedTo
+    ? `${d.preorderCode} (jetzt ${formatDateShort(d.preorderMovedTo)})`
+    : d.preorderCode
 }
 
 /** Offene (nicht quittierte) Nachträge. */

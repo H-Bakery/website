@@ -969,9 +969,10 @@ describe('deltas on the preorder write path (W4)', () => {
           order: [['id', 'ASC']],
         })
       ).map((r) => [Number(r.qty), r.kind])
+    // W4-verify r5: not „storniert“ - the order still exists, on Friday
     expect(await kinds(THU)).toEqual([
       [3, 'added'],
-      [-3, 'cancelled'],
+      [-3, 'moved'],
     ])
     expect(await kinds(FRI)).toEqual([[3, 'added']])
   })
@@ -1099,6 +1100,43 @@ describe('what Nachträge mean for oven, dough and filling (W4-verify)', () => {
       openQty: 1,
       bakeOpen: 1,
     })
+  })
+})
+
+describe('Nachträge: entfernt, verschoben und der Code am Tag (W4-verify r5)', () => {
+  const TUE5 = '2026-12-15'
+  const WED5 = '2026-12-16'
+
+  it('eine auf 0 gesetzte Zeile heißt „removed“, ein Tageswechsel „moved“ mit neuem Tag', async () => {
+    expect(
+      (await as('inhaber').post(`/api/backzettel/${TUE5}/confirm`)).status
+    ).toBe(200)
+    const order = await apiPreorder(TUE5, [
+      { productId: 'test-weck', quantity: 4 },
+      { productId: 'test-plunder', quantity: 2 },
+    ])
+    const removed = await as('verkauf')
+      .patch(`/api/preorders/${order.id}`)
+      .send({ items: [{ productId: 'test-plunder', quantity: 2 }] })
+    expect(removed.status).toBe(200)
+    const moved = await as('verkauf')
+      .patch(`/api/preorders/${order.id}`)
+      .send({ pickupDate: WED5 })
+    expect(moved.status).toBe(200)
+    const d = (await as('backstube').get(`/api/backzettel/${TUE5}`)).body.data
+    const mine = d.deltas.filter((x: any) => x.preorderId === order.id)
+    expect(mine.map((x: any) => [x.itemId, x.qty, x.kind])).toEqual(
+      expect.arrayContaining([
+        ['weck', 4, 'added'],
+        ['weck', -4, 'removed'],
+        ['plunder', -2, 'moved'],
+      ])
+    )
+    expect(mine.some((x: any) => x.kind === 'cancelled')).toBe(false)
+    for (const x of mine) {
+      expect(x.preorderCode).toBe(moved.body.data.code)
+      expect(x.preorderMovedTo).toBe(WED5)
+    }
   })
 })
 

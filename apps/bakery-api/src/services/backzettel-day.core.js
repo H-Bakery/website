@@ -255,8 +255,25 @@ function preorderSums(config, date, snapshot, catalog) {
  * @param {Array} args.current Positionen jetzt (Schnappschuss-Form)
  * @param {Array} args.recorded gespeicherte Deltas `{itemId, variant, preorderId, qty}`
  * @param {Array} [args.catalog] hq-Produkte fuer numerische IDs
- * @returns {Array<{itemId:string, variant:string, preorderId:number|null, qty:number, kind:'added'|'changed'|'cancelled'}>}
+ * @param {Record<string, string>} [args.orders] Status je Vorbestellung, die
+ *   jetzt an diesem Tag liegt (auch `storniert`). Damit heisst eine Menge,
+ *   die auf 0 faellt, nur dann `cancelled`, wenn die Bestellung storniert
+ *   ist; liegt sie noch hier, ist die Zeile `removed`, liegt sie nicht mehr
+ *   hier, ist sie `moved` (W4-Verifikation Runde 5). Ohne Angabe: wie
+ *   bisher `cancelled`.
+ * @returns {Array<{itemId:string, variant:string, preorderId:number|null, qty:number, kind:'added'|'changed'|'cancelled'|'removed'|'moved'}>}
  */
+function goneKind(orders, preorderId) {
+  if (!orders || preorderId === null || preorderId === undefined) {
+    return 'cancelled'
+  }
+  const status = orders[String(preorderId)]
+  if (status === undefined) return 'moved'
+  return status === 'storniert' || status === 'cancelled'
+    ? 'cancelled'
+    : 'removed'
+}
+
 function reconcileDeltas(args) {
   const a = args || {}
   const before = preorderSums(a.config, a.date, a.snapshot, a.catalog)
@@ -295,7 +312,12 @@ function reconcileDeltas(args) {
       variant: ref.variant,
       preorderId: ref.preorderId,
       qty,
-      kind: previous === 0 ? 'added' : n === 0 ? 'cancelled' : 'changed',
+      kind:
+        previous === 0
+          ? 'added'
+          : n === 0
+          ? goneKind(a.orders, ref.preorderId)
+          : 'changed',
     })
   }
   return out

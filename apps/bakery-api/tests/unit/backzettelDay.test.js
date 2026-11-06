@@ -268,6 +268,24 @@ describe('reconcileDeltas', () => {
     ])
   })
 
+  it('Menge auf 0: storniert nur bei Storno, sonst entfernt bzw. verschoben (W4-verify r5)', () => {
+    const at = (orders) =>
+      day.reconcileDeltas({
+        config: cfg,
+        date: TUE,
+        snapshot: base,
+        current: [],
+        recorded: [],
+        catalog: PRODUCTS,
+        orders,
+      })[0].kind
+    expect(at({ 1: 'storniert' })).toBe('cancelled')
+    expect(at({ 1: 'offen' })).toBe('removed')
+    expect(at({})).toBe('moved')
+    // ohne Angabe wie bisher
+    expect(at(undefined)).toBe('cancelled')
+  })
+
   it('zurück zum alten Stand -> Gegenbuchung, keine stille Zusammenführung', () => {
     const recorded = [{ itemId: 'weck', variant: '', preorderId: 1, qty: 2 }]
     expect(run(base, recorded)).toEqual([

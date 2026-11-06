@@ -16,7 +16,14 @@ import {
   Sequelize,
 } from 'sequelize'
 
-export const BACKZETTEL_DELTA_KINDS = ['added', 'changed', 'cancelled'] as const
+/** `removed`/`moved` seit W4-Verifikation Runde 5 (Zeile auf 0, Tag gewechselt). */
+export const BACKZETTEL_DELTA_KINDS = [
+  'added',
+  'changed',
+  'cancelled',
+  'removed',
+  'moved',
+] as const
 export type BackzettelDeltaKind = (typeof BACKZETTEL_DELTA_KINDS)[number]
 
 export class BackzettelDelta extends Model<

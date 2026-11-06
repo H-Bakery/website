@@ -8,6 +8,7 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
+  deltaCodeText,
   deltaBadgeText,
   deltaExtrasLines,
   formatDateLong,
@@ -348,7 +349,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                       <span className="small">
                         {[
                           DELTA_KIND_LABELS[d.kind] ?? d.kind,
-                          d.preorderCode,
+                          deltaCodeText(d),
                           d.acknowledgedAt ? 'quittiert' : 'offen',
                         ]
                           .filter(Boolean)

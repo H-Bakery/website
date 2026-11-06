@@ -215,7 +215,14 @@ export interface BackzettelWarning {
   [key: string]: unknown
 }
 
-export type BackzettelDeltaKind = 'added' | 'changed' | 'cancelled'
+export type BackzettelDeltaKind =
+  | 'added'
+  | 'changed'
+  | 'cancelled'
+  /** Zeile einer offenen Bestellung auf 0 (W4-Verifikation Runde 5). */
+  | 'removed'
+  /** Bestellung liegt jetzt an einem anderen Tag. */
+  | 'moved'
 
 /** Eine Vorbestellungsänderung nach der Freigabe (eine Zeile je Änderung). */
 export interface BackzettelDeltaEntry {
@@ -229,6 +236,8 @@ export interface BackzettelDeltaEntry {
   kind: BackzettelDeltaKind | string
   preorderId: number | null
   preorderCode: string | null
+  /** Die Bestellung liegt inzwischen an diesem Tag (ihr Code ist der neue). */
+  preorderMovedTo?: string | null
   /** Wann der Server die Änderung bemerkt hat. */
   createdAt: string
   acknowledgedAt: string | null

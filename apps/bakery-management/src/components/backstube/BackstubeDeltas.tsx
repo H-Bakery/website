@@ -9,6 +9,7 @@ import type {
 import {
   DELTA_KIND_LABELS,
   deltaBadgeText,
+  deltaCodeText,
   formatSignedQty,
   formatTimestamp,
   lineLabel,
@@ -84,14 +85,14 @@ function groupDetail(group: BackstubeDeltaGroup): string {
     const d = group.deltas[0]
     return [
       DELTA_KIND_LABELS[d.kind] ?? d.kind,
-      d.preorderCode,
+      deltaCodeText(d),
       formatTimestamp(d.createdAt),
     ]
       .filter(Boolean)
       .join(' · ')
   }
   const codes = Array.from(
-    new Set(group.deltas.map((d) => d.preorderCode).filter(Boolean))
+    new Set(group.deltas.map((d) => deltaCodeText(d)).filter(Boolean))
   ) as string[]
   const shownCodes =
     codes.length > MAX_CODES

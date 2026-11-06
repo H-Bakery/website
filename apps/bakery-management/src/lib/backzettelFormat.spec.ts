@@ -1,4 +1,6 @@
 import {
+  DELTA_KIND_LABELS,
+  deltaCodeText,
   addDays,
   deltaBadgeText,
   deltaExtrasLines,
@@ -361,5 +363,25 @@ describe('Vorbereitungs-Beschriftung (W4-verify r2)', () => {
     expect(
       prepTaskLabel({ id: 'x', name: 'Sauerteig', variant: 'misch' })
     ).toBe('Sauerteig (Misch)')
+  })
+})
+
+describe('Nachtrag: Art und Code (W4-verify r5)', () => {
+  it('nennt entfernte Zeilen und verschobene Bestellungen nicht „storniert“', () => {
+    expect(DELTA_KIND_LABELS['removed']).toBe('entfernt')
+    expect(DELTA_KIND_LABELS['moved']).toBe('verschoben')
+  })
+
+  it('sagt beim Code einer verschobenen Bestellung, wo sie jetzt liegt', () => {
+    expect(
+      deltaCodeText({
+        preorderCode: 'LA-2026-11-10-02',
+        preorderMovedTo: '2026-11-10',
+      })
+    ).toBe('LA-2026-11-10-02 (jetzt Di 10.11.)')
+    expect(deltaCodeText({ preorderCode: 'LA-2026-11-08-03' })).toBe(
+      'LA-2026-11-08-03'
+    )
+    expect(deltaCodeText({ preorderCode: null })).toBeNull()
   })
 })
