@@ -1,5 +1,11 @@
 # Bäckerei-Verwaltung (Next.js, `next start` auf dem Build) - roadmap §4, O1.
 # Lauscht nur auf 127.0.0.1:4201; von außen erreichbar über Caddy.
+# Gebunden wird über den Namen `localhost` (mit --dns-result-order=ipv4first,
+# also wieder 127.0.0.1), nicht über `--hostname 127.0.0.1`: Next 16 schreibt
+# Rewrite-Ziele aus src/proxy.ts (Sitzungsprüfung, „nicht verfügbar“) auf
+# `localhost` um und hält sie bei einem anderen Host für externe URLs - jede
+# Seite ohne gültiges Cookie antwortete dann mit „Internal Server Error“
+# (W4-Verifikation Runde 5). deploy/tests/run-tests.sh prüft beides.
 # WorkingDirectory muss das Monorepo sein: die Loader für Berichte/Finanzen
 # suchen nx.json ab process.cwd() und laden apps/bakery-api/src/services/*.core.js.
 # NEXT_PUBLIC_* sind beim Build eingebacken (deploy.sh liest bakery.env vorher).
@@ -19,7 +25,7 @@ WorkingDirectory=/opt/bakery/current
 EnvironmentFile=/etc/bakery/bakery.env
 Environment=NODE_ENV=production
 Environment=NEXT_TELEMETRY_DISABLED=1
-ExecStart=/usr/bin/node node_modules/next/dist/bin/next start dist/apps/bakery-management --hostname 127.0.0.1 --port 4201
+ExecStart=/usr/bin/node --dns-result-order=ipv4first node_modules/next/dist/bin/next start dist/apps/bakery-management --hostname localhost --port 4201
 Restart=always
 RestartSec=5
 TimeoutStopSec=20

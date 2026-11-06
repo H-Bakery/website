@@ -226,7 +226,10 @@ Caddy erneuert das Zertifikat selbst (alle ~60 Tage). Läuft es trotzdem ab, sie
 ### 3.8 Firewall
 
 API und Verwaltung lauschen auf `127.0.0.1`; die Firewall ist die zweite Linie (die API lauscht
-bis zur B0-Folgeaufgabe noch auf allen Schnittstellen, siehe §10):
+bis zur B0-Folgeaufgabe noch auf allen Schnittstellen, siehe §10). Die Verwaltung bindet über
+den Namen `localhost` mit `node --dns-result-order=ipv4first` - nicht über `--hostname 127.0.0.1`,
+sonst antwortet jede Seite, die die Sitzung prüfen muss, mit „Internal Server Error“ (Next hält die
+Rewrites des Proxys dann für externe URLs). `ss -ltnp | grep 4201` muss `127.0.0.1:4201` zeigen.
 
 ```bash
 sudo ufw default deny incoming
