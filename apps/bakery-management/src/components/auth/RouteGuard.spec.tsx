@@ -66,6 +66,37 @@ describe('RouteGuard', () => {
     expect(mockReplace).not.toHaveBeenCalled()
   })
 
+  it('vom unbeaufsichtigten Backstube-Tablet weg: abmelden statt Inhalt (W4-Fixup)', () => {
+    const endUnattended = jest.fn()
+    renderGuard(
+      '/admin/reports',
+      fakeSession({
+        role: 'inhaber',
+        sessionKind: 'station',
+        unattendedAtBackstube: true,
+        endUnattended,
+      })
+    )
+    expect(screen.queryByText('Geschützter Inhalt')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Inaktivität')
+    expect(endUnattended).toHaveBeenCalledTimes(1)
+  })
+
+  it('auf /backstube selbst bleibt die unbeaufsichtigte Sitzung nutzbar', () => {
+    const endUnattended = jest.fn()
+    renderGuard(
+      '/backstube',
+      fakeSession({
+        role: 'inhaber',
+        sessionKind: 'station',
+        unattendedAtBackstube: true,
+        endUnattended,
+      })
+    )
+    expect(screen.getByText('Geschützter Inhalt')).toBeInTheDocument()
+    expect(endUnattended).not.toHaveBeenCalled()
+  })
+
   it('prüft außerhalb von /admin die Rolle selbst (/backstube)', () => {
     renderGuard('/backstube', fakeSession({ role: 'fahrer' }))
     expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()

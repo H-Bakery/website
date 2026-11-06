@@ -44,6 +44,7 @@ import {
 import {
   SESSION_END_MESSAGES,
   idleLimitMs,
+  isBackstubePath,
   sessionEndReason,
   type SessionEndReason,
 } from './sessionPolicy'
@@ -73,6 +74,16 @@ export interface SessionContextValue {
   ) => Promise<SessionUser>
   /** Meldet ab; liefert das Ziel (`/station` auf einer Station, sonst `/admin/login`). */
   logout: () => Promise<string>
+  /**
+   * W4-Fixup: an einer Station stand `/backstube` (lange Leerlauf-Grenze)
+   * länger als die normale Stations-Grenze unberührt, und die Sitzung gehört
+   * nicht der Rolle `backstube`. Wer dann das Tablet berührt, darf auf
+   * `/backstube` weiterarbeiten - verlässt er die Seite, endet die Sitzung
+   * (`endUnattended`), statt ihm die Rechte des Inhabers mitzugeben. Der
+   * RouteGuard prüft das. Optional, damit Test-Attrappen es nicht brauchen.
+   */
+  unattendedAtBackstube?: boolean
+  endUnattended?: () => void
 }
 
 const SessionContext = React.createContext<SessionContextValue | null>(null)
@@ -184,8 +195,11 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<SessionStatus>('loading')
   const [endReason, setEndReason] = React.useState<string | null>(null)
   const [loggedOut, setLoggedOut] = React.useState(false)
+  const [unattendedAtBackstube, setUnattendedAtBackstube] =
+    React.useState(false)
 
   const becomeAnonymous = React.useCallback((reason: string | null) => {
+    setUnattendedAtBackstube(false)
     setSession(null)
     setStatus('anonymous')
     setEndReason(reason)
@@ -291,8 +305,23 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     if (status !== 'authenticated' || !kind || startedAt === undefined) return
     let lastWrite = Date.now()
     saveLastActivity(lastWrite)
+    // Genaue letzte Bedienung in diesem Tab (der Speicher ist gedrosselt).
+    let lastSeen = lastWrite
+    // Grenze außerhalb von /backstube (an der Station: 10 min).
+    const shortLimit = idleLimitMs(kind, undefined, { role, path: null })
     const onActivity = () => {
       const now = Date.now()
+      if (
+        kind === 'station' &&
+        role !== 'backstube' &&
+        now - lastSeen >= shortLimit &&
+        isBackstubePath(window.location.pathname)
+      ) {
+        // Vor dieser Berührung lag das Tablet länger als die Stations-Grenze
+        // unberührt - wer jetzt tippt, ist nicht sicher dieselbe Person.
+        setUnattendedAtBackstube(true)
+      }
+      lastSeen = now
       if (now - lastWrite >= ACTIVITY_WRITE_MS) {
         lastWrite = now
         saveLastActivity(now)
@@ -319,7 +348,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
     }
   }, [status, kind, startedAt, role, endSession])
 
+  const endUnattended = React.useCallback(() => {
+    void endSession('idle')
+  }, [endSession])
+
   const establish = React.useCallback((next: StoredSession) => {
+    setUnattendedAtBackstube(false)
     saveSession(next)
     saveLastActivity(Date.now())
     apiClient.setAuthToken(next.token)
@@ -378,6 +412,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       login,
       pinLogin,
       logout,
+      unattendedAtBackstube,
+      endUnattended,
     }),
     [
       status,
@@ -388,6 +424,8 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       login,
       pinLogin,
       logout,
+      unattendedAtBackstube,
+      endUnattended,
     ]
   )
 

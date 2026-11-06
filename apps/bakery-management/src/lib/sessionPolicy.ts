@@ -21,6 +21,10 @@
  *   Backstube steht, hat genauso Teig an den Händen. Die Seite selbst kann
  *   nichts verwalten; auf jeder anderen Seite gelten an der Station wieder
  *   die 10 min, sobald man sie öffnet.
+ *   Lag die Seite in einer Sitzung, die nicht der Rolle `backstube` gehört,
+ *   länger als die Stations-Grenze unberührt, meldet das Verlassen von
+ *   `/backstube` ab (`unattendedAtBackstube` in `session.tsx`, W4-Fixup):
+ *   sonst erbte, wer das liegen gelassene Tablet berührt, die Inhaber-Rechte.
  * - **Persönlich** (Benutzername + Passwort): nach
  *   `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (Vorgabe 12) Stunden ohne Bedienung.
  *
