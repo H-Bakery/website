@@ -242,7 +242,9 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   Bidi-Zeichen in Stammdaten, `staffName` und Notiz sind 400 `INVALID_TEXT` - Regel einmal in
   `src/services/control-chars.core.js`, auch für Vorbestellungen, Sammelstellen, Stationsnamen,
   Backzettel-Gründe, hq-Produkte und Anzeigenamen; seit W4-Verifikation Runde 3 zählen auch BOM und
-  U+2028/U+2029) (die Erfassungsmaske schickt
+  U+2028/U+2029, seit Runde 4 auch U+061C und unsichtbare Format-/Füllzeichen wie weiches
+  Trennzeichen, Null-Breiten-Leerzeichen, Hangul-Füller und Tag-Zeichen - ZWJ bleibt für Emoji
+  erlaubt) (die Erfassungsmaske schickt
   `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
   `commission`; seit der W4-Verifikation prüft die Vorlage ihre Positionen wie ein Besuch (Menge
   ganzzahlig 0…10000, Produkt im Katalog oder schon in der Vorlage, sonst 400 `INVALID_ITEMS`),
