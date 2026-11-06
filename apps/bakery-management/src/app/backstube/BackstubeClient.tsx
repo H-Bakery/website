@@ -939,6 +939,11 @@ export default function BackstubeClient({
 
                 <BackstubeDeltas
                   deltas={day.deltas}
+                  bakeByKey={Object.fromEntries(
+                    day.sections.flatMap((section) =>
+                      section.lines.map((l) => [l.key, l.delta?.bakeOpen])
+                    )
+                  )}
                   config={config}
                   canAck={canWork && !draft}
                   ackingKey={ackingKey}

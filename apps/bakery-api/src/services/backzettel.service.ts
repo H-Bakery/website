@@ -470,13 +470,30 @@ export function createBackzettelService(
     })
     const deltaByKey = new Map<
       string,
-      { qty: number; open: number; count: number; bake?: number }
+      {
+        qty: number
+        open: number
+        count: number
+        bake?: number
+        /** Summe der noch nicht quittierten Nachträge. */
+        openQty: number
+        /** Was die noch nicht quittierten zusätzlich zu backen heißen. */
+        bakeOpen?: number
+      }
     >()
     for (const d of deltas) {
-      const e = deltaByKey.get(d.key) || { qty: 0, open: 0, count: 0 }
+      const e = deltaByKey.get(d.key) || {
+        qty: 0,
+        open: 0,
+        count: 0,
+        openQty: 0,
+      }
       e.qty = Math.round((e.qty + d.qty) * 100) / 100
       e.count += 1
-      if (!d.acknowledgedAt) e.open += 1
+      if (!d.acknowledgedAt) {
+        e.open += 1
+        e.openQty = Math.round((e.openQty + d.qty) * 100) / 100
+      }
       deltaByKey.set(d.key, e)
     }
 
@@ -559,6 +576,25 @@ export function createBackzettelService(
         snap?.subtotalExact ?? null
       )
       for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
+      // W4-verify r5: the Backstube panel lists only the open Nachträge and
+      // needs *their* oven figure, not the raw quarter sum (+6,5 Kranz is 7
+      // to bake). Open = all − already acknowledged, both after rounding.
+      const ackedByKey = Object.fromEntries(
+        [...deltaByKey].map(([key, e]) => [
+          key,
+          { qty: Math.round((e.qty - e.openQty) * 100) / 100 },
+        ])
+      )
+      const ackedExtras = dayCore.deltaBakeExtras(
+        lines,
+        ackedByKey,
+        snap?.preordersExact ?? null,
+        snap?.subtotalExact ?? null
+      )
+      for (const [key, entry] of deltaByKey) {
+        entry.bakeOpen =
+          Math.round(((entry.bake ?? 0) - (ackedExtras[key] ?? 0)) * 100) / 100
+      }
       if (config && recomputed) {
         const adjusted = dayCore.linesWithExtras(lines, extras)
         deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {

@@ -612,6 +612,8 @@ describe('confirm, deltas, ticks, reopen', () => {
       open: 3,
       count: 3,
       bake: 0,
+      openQty: 0,
+      bakeOpen: 0,
     })
     expect(await auditActions(TUE)).toEqual([
       'confirm',
@@ -1056,6 +1058,46 @@ describe('what Nachträge mean for oven, dough and filling (W4-verify)', () => {
     expect(line(d2, 'kranz-gefuellt', 'nuss').delta).toMatchObject({
       qty: 0.5,
       bake: 1,
+      openQty: 0.5,
+      bakeOpen: 1,
+    })
+
+    // W4-verify r5: the Backstube panel shows the open Nachträge as what to
+    // bake. After the first quarter was seen (one Kranz baked), the second
+    // quarter means nothing more - not „+0,25“.
+    const firstDelta = d2.deltas.find((x: any) => x.qty === 0.25)
+    expect(
+      (
+        await as('backstube').post(
+          `/api/backzettel/${SAT3}/deltas/${firstDelta.id}/ack`
+        )
+      ).status
+    ).toBe(200)
+    const d3 = (await as('backstube').get(`/api/backzettel/${SAT3}`)).body.data
+    expect(line(d3, 'kranz-gefuellt', 'nuss').delta).toMatchObject({
+      qty: 0.5,
+      bake: 1,
+      open: 1,
+      openQty: 0.25,
+      bakeOpen: 0,
+    })
+    // a third and fourth quarter after that: still within the same Kranz
+    // (0,75 → 1), then the fifth makes 1,25 → 2: one more
+    for (let i = 0; i < 3; i++) {
+      await apiPreorder(SAT3, [
+        {
+          productId: 'test-kranz-gefuellt-viertel',
+          quantity: 1,
+          variant: 'nuss',
+        },
+      ])
+    }
+    const d4 = (await as('backstube').get(`/api/backzettel/${SAT3}`)).body.data
+    expect(line(d4, 'kranz-gefuellt', 'nuss').delta).toMatchObject({
+      qty: 1.25,
+      bake: 2,
+      openQty: 1,
+      bakeOpen: 1,
     })
   })
 })

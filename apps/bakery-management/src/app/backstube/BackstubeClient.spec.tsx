@@ -455,6 +455,71 @@ describe('Backstube-Tablet', () => {
     expect(screen.queryByTestId('bs-deltas-ack-all')).not.toBeInTheDocument()
   })
 
+  it('die große Zahl im Nachtrags-Kasten ist die Backmenge, nicht die Viertelsumme (W4-verify r5)', async () => {
+    const base = saturdayConfirmed()
+    const zopf = base.deltas[0]
+    const deltas = [
+      { ...zopf, qty: 6 },
+      { ...zopf, id: 9, qty: 0.5, preorderCode: 'MO-2026-11-28-01' },
+      {
+        ...zopf,
+        id: 11,
+        key: WECK,
+        itemId: 'test-weck',
+        name: 'Testweck',
+        variant: null,
+        qty: -0.25,
+      },
+    ]
+    mocked.fetchBackzettelDay.mockResolvedValue({
+      ...base,
+      deltas,
+      sections: base.sections.map((s) => ({
+        ...s,
+        lines: s.lines.map((l) =>
+          l.key === ZOPF_NUSS
+            ? {
+                ...l,
+                delta: {
+                  qty: 6.5,
+                  open: 2,
+                  count: 2,
+                  bake: 7,
+                  openQty: 6.5,
+                  bakeOpen: 7,
+                },
+              }
+            : l.key === WECK
+            ? {
+                ...l,
+                delta: {
+                  qty: -0.25,
+                  open: 1,
+                  count: 1,
+                  bake: 0,
+                  openQty: -0.25,
+                  bakeOpen: 0,
+                },
+              }
+            : l
+        ),
+      })),
+    })
+    renderTablet()
+    const card = await screen.findByTestId('bs-deltas')
+    const zopfGroup = within(card).getByTestId(`bs-delta-group-${ZOPF_NUSS}`)
+    expect(within(zopfGroup).getByText('+7')).toBeInTheDocument()
+    expect(within(zopfGroup).queryByText('+6,5')).toBeNull()
+    expect(
+      within(card).getByTestId(`bs-delta-bake-${ZOPF_NUSS}`)
+    ).toHaveTextContent('Nachtrag +6,5 · 7 mehr backen')
+    const weckGroup = within(card).getByTestId(`bs-delta-group-${WECK}`)
+    expect(within(weckGroup).getByText('±0')).toBeInTheDocument()
+    expect(within(card).getByTestId(`bs-delta-bake-${WECK}`)).toHaveTextContent(
+      'nicht weniger backen'
+    )
+  })
+
   it('„Alle gesehen“ quittiert alle offenen Nachträge auf einmal', async () => {
     const base = saturdayConfirmed()
     const zopf = base.deltas[0]

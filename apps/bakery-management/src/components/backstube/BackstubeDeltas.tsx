@@ -8,6 +8,7 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
+  deltaBadgeText,
   formatSignedQty,
   formatTimestamp,
   lineLabel,
@@ -52,6 +53,30 @@ export interface BackstubeDeltasProps {
   /** Gruppe (Zeilen-Schlüssel) bzw. `ACK_ALL_KEY`, die gerade quittiert wird. */
   ackingKey: string | null
   onAck: (deltas: BackzettelDeltaEntry[], key: string) => void
+  /**
+   * Je Zeile, was die offenen Nachträge nach dem Aufrunden zusätzlich zu
+   * backen heißen (`line.delta.bakeOpen`, W4-Verifikation Runde 5): die
+   * große Zahl ist das, nicht die Viertelsumme (+6,5 Kranz = 7 backen).
+   */
+  bakeByKey?: Record<string, number | undefined>
+}
+
+/** Große Zahl einer Gruppe: zu backen, sonst (ältere Server) die Summe. */
+export function groupHeadline(
+  group: Pick<BackstubeDeltaGroup, 'qty'>,
+  bake: number | undefined,
+  unit: BackzettelDeltaEntry['unit']
+): { big: string; note: string | null } {
+  if (bake === undefined || bake === null || bake === group.qty) {
+    return {
+      big: group.qty === 0 ? '±0' : formatSignedQty(group.qty, unit),
+      note: null,
+    }
+  }
+  return {
+    big: bake === 0 ? '±0' : formatSignedQty(bake, unit),
+    note: deltaBadgeText({ qty: group.qty, bake, open: 0, count: 0 }, unit),
+  }
 }
 
 function groupDetail(group: BackstubeDeltaGroup): string {
@@ -97,6 +122,7 @@ export function BackstubeDeltas({
   canAck,
   ackingKey,
   onAck,
+  bakeByKey,
 }: BackstubeDeltasProps) {
   const colors = useBackstubeColors()
   const groups = groupOpenDeltas(deltas)
@@ -176,6 +202,7 @@ export function BackstubeDeltas({
             { name: d.name, variant: d.variant, itemId: d.itemId },
             config
           )
+          const headline = groupHeadline(g, bakeByKey?.[g.key], d.unit)
           return (
             <Box
               key={g.key}
@@ -198,12 +225,20 @@ export function BackstubeDeltas({
                   fontVariantNumeric: 'tabular-nums',
                 }}
               >
-                {g.qty === 0 ? '±0' : formatSignedQty(g.qty, d.unit)}
+                {headline.big}
               </Typography>
               <Box sx={{ flex: 1, minWidth: 180 }}>
                 <Typography sx={{ fontSize: '1.4rem', fontWeight: 700 }}>
                   {label}
                 </Typography>
+                {headline.note && (
+                  <Typography
+                    sx={{ fontSize: '1.1rem', fontWeight: 700 }}
+                    data-testid={`bs-delta-bake-${g.key}`}
+                  >
+                    {headline.note}
+                  </Typography>
+                )}
                 <Typography sx={{ fontSize: '1rem', color: 'text.secondary' }}>
                   {groupDetail(g)}
                 </Typography>

@@ -35,6 +35,10 @@ export interface BackzettelLineDelta {
    * (Einheit der Zeile; +0,25 Kranz → 1 oder 0). Fehlt bei älteren Servern.
    */
   bake?: number
+  /** Summe der noch nicht quittierten Nachträge (W4-Verifikation Runde 5). */
+  openQty?: number
+  /** Was die noch nicht quittierten zusätzlich zu backen heißen. */
+  bakeOpen?: number
 }
 
 /** Hefeteig/Füllungen: was die Nachträge zusätzlich brauchen (nur Änderungen). */
