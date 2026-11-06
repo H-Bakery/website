@@ -289,7 +289,11 @@ describe('GET /api/backzettel/:date (draft)', () => {
       total: 59,
       doneAt: null,
     })
-    expect(line(d, 'plunder').tray).toBe('3 Bleche à 10 (Bleche 7, 8, 9)')
+    // W4-verify r3: trays follow the line total, not the YAML count
+    expect(line(d, 'plunder')).toMatchObject({
+      total: 10,
+      tray: '1 Blech à 10 (Blech 7)',
+    })
     expect(d.prep.map((p: any) => p.id)).toEqual(['sauerteig', 'wagen'])
     expect(await BackzettelDay.count()).toBe(0)
   })

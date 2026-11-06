@@ -467,6 +467,9 @@ describe('Freigabe und freigegebene Zeilen', () => {
     })
     expect(
       day.frozenLine({ itemId: 'plunder', variant: '', total: 10 }, cfg).tray
+    ).toBe('1 Blech à 10 (Blech 7)')
+    expect(
+      day.frozenLine({ itemId: 'plunder', variant: '', total: 25 }, cfg).tray
     ).toBe('3 Bleche à 10 (Bleche 7, 8, 9)')
   })
 })

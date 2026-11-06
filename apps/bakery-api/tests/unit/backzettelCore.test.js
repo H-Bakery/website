@@ -92,7 +92,8 @@ describe('Wochentag vs. Samstag', () => {
       ['plunder', 10],
       ['schnecke', 6],
     ])
-    expect(line(r, 'plunder').tray).toBe('3 Bleche à 10 (Bleche 7, 8, 9)')
+    // W4-verify r3: Bleche nach der Menge (10 Stück à 10 = 1 Blech)
+    expect(line(r, 'plunder').tray).toBe('1 Blech à 10 (Blech 7)')
     expect(line(r, 'schnecke').tray).toBe('Blech 3')
     expect(line(r, 'weck').tray).toBeNull()
     expect(line(r, 'kornbrot').loavesEstimate).toBe(8)
@@ -1035,6 +1036,32 @@ describe('formatTrayInfo (Duplikat von feature-daily-prep/utils/trayInfo.ts)', (
       '2 Bleche à 6 (Bleche 1, 2)'
     )
     expect(core.trayText(null)).toBeNull()
+  })
+
+  it('zählt Bleche nach der Menge der Zeile (W4-verify r3)', () => {
+    const croissant = { no: [1, 2], per_tray: 12 }
+    // 40 Stück: 4 Bleche, nicht „2 Bleche à 12“ (Platz für 24)
+    expect(core.trayText(croissant, 40, 'Stück')).toBe(
+      '4 Bleche à 12 (Bleche 1, 2 + 2 weitere)'
+    )
+    expect(core.trayText(croissant, 24, 'Stück')).toBe(
+      '2 Bleche à 12 (Bleche 1, 2)'
+    )
+    expect(core.trayText(croissant, 27, 'Stück')).toBe(
+      '3 Bleche à 12 (Bleche 1, 2 + 1 weiteres)'
+    )
+    expect(core.trayText(croissant, 12, 'Stück')).toBe('1 Blech à 12 (Blech 1)')
+    expect(core.trayText({ no: [5], per_tray: 6 }, 7, 'Stück')).toBe(
+      '2 Bleche à 6 (Blech 5 + 1 weiteres)'
+    )
+    // Ohne Menge oder ohne per_tray: wie bisher
+    expect(core.trayText(croissant, 0, 'Stück')).toBe(
+      '2 Bleche à 12 (Bleche 1, 2)'
+    )
+    expect(core.trayText({ no: [3] }, 40, 'Stück')).toBe('Blech 3')
+    expect(core.trayText(croissant, 4, 'Liter')).toBe(
+      '2 Bleche à 12 (Bleche 1, 2)'
+    )
   })
 })
 

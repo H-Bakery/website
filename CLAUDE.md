@@ -601,6 +601,10 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
   (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
 - `formatTrayInfo` ist ein **Duplikat** von `feature-daily-prep/.../utils/trayInfo.ts`; beide
   ändern.
+- **Bleche zählen nach der Menge der Zeile** (`trayText(tray, total, unit)`, W4-Verifikation
+  Runde 3): `per_tray` ist Stück je Blech, die Angabe heißt also bei 40 Croissants à 12
+  „4 Bleche à 12 (Bleche 1, 2 + 2 weitere)“, nicht „2 Bleche à 12“. Ohne `per_tray`, ohne
+  Menge oder bei Litern bleibt die reine Blechliste aus der YAML.
 - CLI für das hq-CI (H2): `node apps/bakery-api/scripts/validate-backzettel.js <yaml> [productsDir]
 [--json]`, Exit 1 bei Fehlern. Der Loader braucht `js-yaml` ^4 (Root-`dependencies`); das hq-CI
   muss es selbst installieren. Im API-Bundle landen die Dateien, sobald eine gemountete Route sie

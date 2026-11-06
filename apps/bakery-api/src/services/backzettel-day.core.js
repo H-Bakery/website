@@ -372,7 +372,7 @@ function frozenLine(row, config, unsetKeys) {
     correction: Number(row.correction) || 0,
     correctionReason: row.correctionReason || null,
     total,
-    tray: item ? core.trayText(item.tray) : null,
+    tray: item ? core.trayText(item.tray, total, unit) : null,
     plu: item ? item.plu : [],
   }
   if (item && unit === 'Liter' && item.pieces_per_liter) {
