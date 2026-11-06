@@ -120,8 +120,13 @@ const REFRESH_MS = 60_000
  * Spaltenbreiten des Ausdrucks in mm (W4-verify r4). A4 hoch mit 12 mm Rand
  * lässt 186 mm; die Tabelle hat `table-layout: fixed`, damit kein langer
  * Name, Code oder „Rest …“ sie über den Rand schiebt - vorher maß sie
- * 744 px statt 703 und die Unterschrift fiel vom Blatt. `null` = teilt sich
- * den Rest (Name, Artikel); dort wird umbrochen, notfalls mitten im Wort.
+ * 744 px statt 703 und die Unterschrift fiel vom Blatt. `null` = bekommt
+ * den Rest (Artikel).
+ *
+ * W4-verify r5: Code und Name stehen untereinander in EINER Spalte - vorher
+ * blieben dem Artikel 34 mm, jede Position brach über zwei, drei Zeilen und
+ * 42 Samstagsbestellungen brauchten 10 Blätter. Jetzt ~59 mm; umbrochen wird
+ * an Wortgrenzen, lange Wörter mit Trennstrich (`hyphens`, `lang="de"`).
  */
 export const PRINT_PAGE_WIDTH_MM = 186
 export const PRINT_COLUMNS: ReadonlyArray<{
@@ -129,8 +134,7 @@ export const PRINT_COLUMNS: ReadonlyArray<{
   widthMm: number | null
 }> = [
   { key: 'tick', widthMm: 8 },
-  { key: 'code', widthMm: 31 },
-  { key: 'name', widthMm: 28 },
+  { key: 'who', widthMm: 34 },
   { key: 'items', widthMm: null },
   { key: 'sum', widthMm: 19 },
   { key: 'paid', widthMm: 25 },
@@ -174,7 +178,8 @@ export const ABHOL_PRINT_CSS = {
       padding: '1.5mm',
       verticalAlign: 'top',
       textAlign: 'left',
-      overflowWrap: 'anywhere',
+      overflowWrap: 'break-word',
+      hyphens: 'auto',
     },
     '.abholliste-print th': { background: '#eee', fontWeight: 700 },
     '.abholliste-print thead': { display: 'table-header-group' },
@@ -184,12 +189,14 @@ export const ABHOL_PRINT_CSS = {
       fontWeight: 700,
     },
     '.abholliste-print .tick': { textAlign: 'center', fontSize: '13pt' },
-    // 16 Zeichen „MO-2026-11-07-03“ in 8 pt passen in 31 mm.
+    // 16 Zeichen „MO-2026-11-07-03“ in 8 pt passen in 31 mm (Spalte 34 mm
+    // abzüglich Innenabstand); der Name steht darunter.
     '.abholliste-print .code': {
       fontFamily: 'monospace',
       fontSize: '8pt',
       whiteSpace: 'nowrap',
       overflowWrap: 'normal',
+      hyphens: 'manual',
     },
     '.abholliste-print .num': { textAlign: 'right' },
     // Kästchen zum Ankreuzen so groß wie der Übergabe-Haken; der Text
@@ -1068,7 +1075,11 @@ export default function AbholListeClient({
   const summary = day?.summary
   const refundTotal = summary?.refundTotal ?? 0
   const weekdayNotice = wrongWeekdayNotice(date, point)
-  const title = `Abholliste ${placeLabel(place, points)}`
+  // Auch auf Papier: eine deaktivierte Sammelstelle wird nicht mehr
+  // angefahren - die gebuchten Kunden müssen verständigt werden (W4-verify r5).
+  const title = `Abholliste ${placeLabel(place, points)}${
+    point?.active === false ? ' (inaktiv)' : ''
+  }`
   const dateLabel = isBusinessDate(date) ? formatDateWithWeekday(date) : ''
   const newHref = `/admin/preorders/neu?date=${date}${
     point ? `&pickupPointId=${encodeURIComponent(point.id)}` : ''
@@ -1824,7 +1835,7 @@ export default function AbholListeClient({
 
       {/* ------------------------------ Druck ------------------------------ */}
       {day && (
-        <Box className="abholliste-print" aria-hidden="true">
+        <Box className="abholliste-print" aria-hidden="true" lang="de">
           <h1>
             {title} · {dateLabel}
           </h1>
@@ -1860,8 +1871,7 @@ export default function AbholListeClient({
             <thead>
               <tr>
                 <th className="tick">✓</th>
-                <th>Code</th>
-                <th>Name</th>
+                <th>Code / Name</th>
                 <th>Artikel</th>
                 <th className="num">Summe</th>
                 <th>Bezahlt</th>
@@ -1877,7 +1887,7 @@ export default function AbholListeClient({
                   {(printGroups.length > 1 ||
                     group.key === CANCELLED_GROUP) && (
                     <tr className="group">
-                      <td colSpan={8}>
+                      <td colSpan={PRINT_COLUMNS.length}>
                         {group.label} ({group.preorders.length})
                       </td>
                     </tr>
@@ -1891,8 +1901,8 @@ export default function AbholListeClient({
                           ? '☑'
                           : '☐'}
                       </td>
-                      <td className="code">{p.code}</td>
                       <td>
+                        <div className="code">{p.code}</div>
                         {p.customerName}
                         {p.customerPhone ? (
                           <>

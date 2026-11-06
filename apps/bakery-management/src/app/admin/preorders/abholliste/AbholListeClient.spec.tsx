@@ -1167,8 +1167,7 @@ describe('AbholListeClient (P2)', () => {
     )
     expect(headers).toEqual([
       '✓',
-      'Code',
-      'Name',
+      'Code / Name',
       'Artikel',
       'Summe',
       'Bezahlt',
@@ -1234,8 +1233,7 @@ describe('Ausdruck passt auf A4 (W4-verify r4)', () => {
   it('feste Spaltenbreiten lassen Name und Artikel mindestens 50 mm', () => {
     expect(PRINT_COLUMNS.map((c) => c.key)).toEqual([
       'tick',
-      'code',
-      'name',
+      'who',
       'items',
       'sum',
       'paid',
@@ -1248,6 +1246,18 @@ describe('Ausdruck passt auf A4 (W4-verify r4)', () => {
     expect(PRINT_PAGE_WIDTH_MM - fixed).toBeGreaterThanOrEqual(30)
     const sign = PRINT_COLUMNS.find((c) => c.key === 'sign')
     expect(sign?.widthMm).toBeGreaterThanOrEqual(30)
+  })
+
+  it('der Artikel bekommt den Platz, Wörter brechen mit Trennstrich (W4-verify r5)', () => {
+    // Vorher 34 mm: 42 Samstagsbestellungen brauchten 10 Blätter.
+    const fixed = PRINT_COLUMNS.reduce((sum, c) => sum + (c.widthMm ?? 0), 0)
+    expect(PRINT_COLUMNS.filter((c) => c.widthMm === null)).toEqual([
+      { key: 'items', widthMm: null },
+    ])
+    expect(PRINT_PAGE_WIDTH_MM - fixed).toBeGreaterThanOrEqual(55)
+    const cell = css['.abholliste-print th, .abholliste-print td']
+    expect(cell['overflowWrap']).not.toBe('anywhere')
+    expect(cell['hyphens']).toBe('auto')
   })
 
   it('die Tabelle rechnet fest, nur der Code bricht nie um', () => {
@@ -1288,5 +1298,28 @@ describe('deaktivierte Sammelstelle (W4-verify r4)', () => {
       'Kita Teststraße',
       'Gemeindehaus Test (inaktiv)',
     ])
+  })
+
+  it('Überschrift und Ausdruck sagen „(inaktiv)“ (W4-verify r5)', async () => {
+    const OLD = {
+      ...POINT,
+      id: 'alt-stelle',
+      name: 'Gemeindehaus Test',
+      active: false,
+    }
+    ;(fetchPickupPoints as jest.Mock).mockResolvedValue([POINT, OLD])
+    mockDay.mockResolvedValue({
+      ...ladenDay(),
+      pickupPoints: [{ ...OLD, deadline: null, preorderCount: 1 }],
+    })
+    const { container } = renderAs('verkauf', {
+      initialDate: DATE,
+      initialPlace: 'alt-stelle',
+    })
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    const sheet = container.querySelector('.abholliste-print') as HTMLElement
+    expect(sheet.querySelector('h1')?.textContent).toMatch(
+      /^Abholliste Gemeindehaus Test \(inaktiv\) · /
+    )
   })
 })
