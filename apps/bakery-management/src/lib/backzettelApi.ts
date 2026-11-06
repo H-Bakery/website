@@ -82,6 +82,11 @@ export interface BackzettelLine {
   correctionReason: string | null
   correctionBy: BackzettelUserRef | null
   total: number
+  /**
+   * `true`: die Korrektur drückt die Zeile unter 0, `total` ist auf 0 gekappt
+   * (nur Entwurf; dazu Warnung `correction_exceeds_line`).
+   */
+  correctionClamped?: boolean
   /** Blechangabe, z. B. „Blech 7-9" (nur Anzeige). */
   tray: string | null
   plu: number[]

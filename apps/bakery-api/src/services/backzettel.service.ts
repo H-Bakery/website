@@ -184,7 +184,7 @@ function computeDraft(
   inputs: {
     snapshot: PreorderSnapshotItem[]
     templates: unknown[]
-    rows: BackzettelLine[]
+    rows: Array<BackzettelLine | Record<string, unknown>>
     seasonFactor: number
   }
 ) {
@@ -194,7 +194,9 @@ function computeDraft(
     preorderItems: dayCore.toCorePreorderItems(inputs.snapshot, date),
     capTemplate: inputs.templates,
     corrections: dayCore.correctionsFromRows(
-      inputs.rows.map((r) => r.get({ plain: true }))
+      inputs.rows.map((r) =>
+        r instanceof BackzettelLine ? r.get({ plain: true }) : r
+      )
     ),
     seasonFactor: inputs.seasonFactor,
     recipes: loaded.recipes,
@@ -814,6 +816,79 @@ export function createBackzettelService(
     return getDay(date)
   }
 
+  /**
+   * W4 verification round 2: a correction that pushes its line below 0 is
+   * refused. Stored, it clamped the line to 0 without a word, and every later
+   * Vorbestellung on that line vanished in the negative remainder.
+   */
+  async function assertCorrectionFits(
+    date: string,
+    day: BackzettelDay,
+    loaded: Loaded,
+    next: {
+      itemId: string
+      variant: string | null
+      correction: number
+      reason: string | null
+    },
+    transaction: Transaction
+  ) {
+    const weekday = core.isoWeekday(date)
+    const [snapshot, templates, rows] = await Promise.all([
+      loadPreorderSnapshot(date, transaction),
+      loadCapTemplates(weekday, transaction),
+      BackzettelLine.findAll({ where: { date }, transaction }),
+    ])
+    const plain: Record<string, unknown>[] = rows
+      .map((r) => r.get({ plain: true }) as Record<string, unknown>)
+      .filter(
+        (r) =>
+          !(
+            r.itemId === next.itemId &&
+            dayCore.apiVariant(r.variant) === dayCore.apiVariant(next.variant)
+          )
+      )
+    plain.push({
+      itemId: next.itemId,
+      variant: next.variant,
+      correction: next.correction,
+      correctionReason: next.reason,
+    })
+    const result = computeDraft(loaded, date, {
+      snapshot,
+      templates,
+      rows: plain,
+      seasonFactor: toNumber(day.seasonFactor) || 1,
+    })
+    const key = core.lineKey(next.itemId, dayCore.apiVariant(next.variant))
+    const hit = (result.lines as Array<Record<string, unknown>>).find(
+      (l) => l.key === key
+    )
+    if (hit && hit.correctionClamped) {
+      const without = Number(
+        (
+          (Number(hit.preorders) || 0) +
+          (Number(hit.cap) || 0) +
+          (Number(hit.base) || 0) +
+          (Number(hit.seasonal) || 0)
+        ).toFixed(2)
+      )
+      const fmt = (n: number) => String(n).replace('.', ',')
+      throw new BackzettelError(
+        400,
+        'correction_exceeds_line',
+        `Die Korrektur (${fmt(next.correction).replace(
+          '-',
+          '−'
+        )}) ist größer als die geplante Menge (${fmt(
+          without
+        )}). Höchstens −${fmt(
+          without
+        )} - sonst stünde 0 auf dem Backzettel, und spätere Vorbestellungen fielen weg.`
+      )
+    }
+  }
+
   async function setCorrection(
     date: string,
     itemId: string,
@@ -828,9 +903,18 @@ export function createBackzettelService(
     if (!line.ok) throw new BackzettelError(404, line.error, line.message)
     const parsed = dayCore.parseCorrection(body, line.item)
     if (!parsed.ok) throw new BackzettelError(400, parsed.error, parsed.message)
-    await writeDraft(date, async (_day, _loaded, transaction) => {
+    await writeDraft(date, async (day, loadedNow, transaction) => {
       const where = { date, itemId, variant: line.variant }
       const row = await BackzettelLine.findOne({ where, transaction })
+      if (parsed.value.correction < 0) {
+        await assertCorrectionFits(
+          date,
+          day,
+          loadedNow,
+          { itemId, variant: line.variant, ...parsed.value },
+          transaction
+        )
+      }
       const from = row
         ? {
             correction: toNumber(row.correction),

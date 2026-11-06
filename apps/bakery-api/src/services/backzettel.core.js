@@ -463,6 +463,7 @@ function computeDay(args) {
   // auch ohne Menge, und es gibt eine Warnung `base_unset`.
   const lines = []
   const unset = []
+  const clamped = []
   if (open) {
     for (const item of cfg.items) {
       const hasDay = Object.prototype.hasOwnProperty.call(item.base, weekday)
@@ -506,10 +507,23 @@ function computeDay(args) {
         const empty =
           base === 0 && preorders === 0 && cap === 0 && correction === 0
         if (empty && !baseUnset && !a.includeEmpty) continue
-        const total = Math.max(
-          0,
-          tidy(seasoned + preorders + cap + correction, item.unit)
-        )
+        // Eine Korrektur, die die Zeile unter 0 drueckt, wird auf 0 gekappt -
+        // aber nie still: die Zeile traegt `correctionClamped`, es gibt eine
+        // Warnung, und spaetere Vorbestellungen verschwaenden still in dem
+        // negativen Rest (W4-Verifikation Runde 2). Speichern lehnt so eine
+        // Korrektur ab; gekappt wird nur, wenn die Zeile spaeter kleiner wird
+        // (Grundmenge, Storno).
+        const raw = tidy(seasoned + preorders + cap + correction, item.unit)
+        const total = Math.max(0, raw)
+        if (raw < 0) {
+          clamped.push({
+            name: variant
+              ? `${item.name} – ${variantDisplayName(cfg, variant)}`
+              : item.name,
+            subtotal: tidy(seasoned + preorders + cap, item.unit),
+            correction,
+          })
+        }
         const line = {
           key: lineKey(item.id, variant),
           itemId: item.id,
@@ -527,6 +541,7 @@ function computeDay(args) {
           correction,
           correctionReason: b.reasons.length ? b.reasons.join('; ') : null,
           total,
+          ...(raw < 0 ? { correctionClamped: true } : {}),
           tray: trayText(item.tray),
           plu: item.plu,
         }
@@ -536,6 +551,26 @@ function computeDay(args) {
         lines.push(line)
       }
     }
+  }
+
+  if (clamped.length > 0) {
+    warnings.push({
+      code: 'correction_exceeds_line',
+      items: clamped.map((c) => c.name),
+      message: `Korrektur größer als die Menge: ${clamped
+        .map(
+          (c) =>
+            `${c.name} (${String(c.subtotal).replace(
+              '.',
+              ','
+            )} geplant, Korrektur ${String(c.correction)
+              .replace('.', ',')
+              .replace('-', '−')})`
+        )
+        .join(
+          ', '
+        )} - Gesamt steht auf 0, auch neue Vorbestellungen ändern daran nichts. Bitte die Korrektur prüfen.`,
+    })
   }
 
   if (unset.length > 0) {

@@ -395,7 +395,19 @@ describe('Korrekturen', () => {
       base: 40,
       correction: -100,
       total: 0,
+      correctionClamped: true,
     })
+    // nie still (W4-Verifikation Runde 2): Warnung mit Zahlen
+    const w = r.warnings.find((x) => x.code === 'correction_exceeds_line')
+    expect(w).toBeDefined()
+    expect(w.items).toEqual(['Weck'])
+    expect(w.message).toMatch(/40 geplant, Korrektur −100/)
+    // eine passende Korrektur ist keine Warnung
+    const ok = day(TUE, { corrections: [{ itemId: 'weck', qty: -40 }] })
+    expect(line(ok, 'weck').correctionClamped).toBeUndefined()
+    expect(ok.warnings.map((x) => x.code)).not.toContain(
+      'correction_exceeds_line'
+    )
   })
 
   it('kann einen Posten ohne Grundmenge an diesem Tag hinzufuegen', () => {

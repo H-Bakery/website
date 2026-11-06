@@ -412,6 +412,38 @@ describe('season factor and corrections (draft)', () => {
   })
 })
 
+describe('correction larger than the line (W4 verification round 2)', () => {
+  it('refuses a correction that would push the line below 0', async () => {
+    // Sunday: weck base 80 (season 1.5 from the test above -> 120)
+    const res = await as('inhaber')
+      .put(`/api/backzettel/${SUN}/lines/weck/correction`)
+      .send({ correction: -200, reason: 'Stadtfest' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('correction_exceeds_line')
+    expect(res.body.message).toMatch(/größer als die geplante Menge \(120\)/)
+    // exactly the line is fine
+    const ok = await as('inhaber')
+      .put(`/api/backzettel/${SUN}/lines/weck/correction`)
+      .send({ correction: -120, reason: 'Stadtfest' })
+    expect(ok.status).toBe(200)
+    expect(line(ok.body.data, 'weck')).toMatchObject({ total: 0 })
+    expect(line(ok.body.data, 'weck').correctionClamped).toBeUndefined()
+    // a later preorder raises the total again
+    const p = await preorder(SUN, [{ productId: 'test-weck', quantity: 7 }])
+    const after = await as('inhaber').get(`/api/backzettel/${SUN}`)
+    expect(line(after.body.data, 'weck')).toMatchObject({
+      preorders: 7,
+      total: 7,
+    })
+    // reset for later tests
+    await PreorderItem.destroy({ where: { preorderId: p.id } })
+    await p.destroy()
+    await as('inhaber')
+      .put(`/api/backzettel/${SUN}/lines/weck/correction`)
+      .send({ correction: 0 })
+  })
+})
+
 describe('confirm, deltas, ticks, reopen', () => {
   let confirmed: any
 
