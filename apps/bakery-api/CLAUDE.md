@@ -404,8 +404,8 @@ What to know before changing it:
 - Deliberate deviations from the mock: error codes; `GET …/templates` does not create empty
   templates on read; `from > to` is 400; PATCH with `visitAt` alone keeps the business day;
   an unknown `settlementModel` is 400.
-- The management app's CSV export is a plain link (`reportCsvUrl()`), which the real API answers
-  with 401 - F4 has to download it through `fetch` with the token.
+- The management app downloads the CSV through `apiClient.getBlob()` with the Bearer token
+  (`downloadReportCsv()` in `partnerApi.ts`, F4); the old plain link is gone.
 
 ### `import-partners` CLI
 

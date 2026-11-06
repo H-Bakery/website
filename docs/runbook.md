@@ -158,7 +158,7 @@ Ohne dieses Passwort ist jedes Off-site-Backup wertlos.
 ### 3.6 Konfiguration ausfüllen
 
 ```bash
-sudoedit /etc/bakery/bakery.env    # Domain in CORS_ORIGIN / NEXT_PUBLIC_API_URL, HQ_GITHUB_TOKEN (Q3)
+sudoedit /etc/bakery/bakery.env    # Domain in CORS_ORIGIN, HQ_GITHUB_TOKEN (Q3); NEXT_PUBLIC_API_URL leer lassen
 sudoedit /etc/bakery/ops.env       # TELEGRAM_*, RESTIC_REPOSITORY + Zugang (Q4)
 sudoedit /etc/caddy/bakery.env     # BAKERY_DOMAIN, ACME_EMAIL, ACME_DNS_* (Q2)
 sudo /opt/bakery/bin/install.sh    # noch einmal: legt jetzt den hq-Lese-Klon an
@@ -168,7 +168,9 @@ Format beider Dateien: `KEY=wert`, ohne `export`, ohne Leerzeichen um `=`. Sie w
 systemd **und** von bash gelesen.
 
 `NEXT_PUBLIC_API_URL` und `NEXT_PUBLIC_PILOT_MODE` werden beim Build in die Web-App eingebacken.
-Wer sie ändert, muss neu bauen: `sudo /opt/bakery/bin/deploy.sh --rebuild`. Solange
+Wer sie ändert, muss neu bauen: `sudo /opt/bakery/bin/deploy.sh --rebuild`. `NEXT_PUBLIC_API_URL`
+bleibt im Normalfall **leer** (F4): die Verwaltung fragt `/api` auf der eigenen Origin, Caddy
+schickt es an die API. `API_URL` liest die Verwaltung zur Laufzeit (kein Rebuild). Solange
 `NEXT_PUBLIC_API_URL` oder `CORS_ORIGIN` noch `example.` aus der Vorlage enthalten, bricht
 `deploy.sh` vor dem Build ab, und `install.sh --check` meldet es.
 
