@@ -17,6 +17,7 @@ import {
   Typography,
   ToggleButton,
   ToggleButtonGroup,
+  useTheme,
 } from '@mui/material'
 import type { RevenueData, Granularity } from '@bakery/shared/types'
 
@@ -87,6 +88,7 @@ export function RevenueTrendChart({
   }))
 
   const Chart = currentChartType === 'line' ? LineChart : BarChart
+  const theme = useTheme()
 
   const renderSeries = (
     yAxisId: string,
@@ -156,7 +158,18 @@ export function RevenueTrendChart({
             }}
             labelFormatter={(label) => `Datum: ${label}`}
           />
-          <Legend />
+          {/* W4-verify r2: Legendentext in Textfarbe - in Blau/Grün lag er
+              im hellen Modus unter 4,5:1; die Farbe trägt das Symbol. */}
+          <Legend
+            formatter={(value: string) => (
+              <span
+                data-testid="chart-legend-text"
+                style={{ color: theme.palette.text.primary }}
+              >
+                {value}
+              </span>
+            )}
+          />
           {renderSeries('revenue', 'revenue', 'Umsatz', '#007bff')}
           {showTransactions &&
             renderSeries(
