@@ -104,11 +104,20 @@ export const backzettelPrintStyles = (
           pageBreakInside: 'auto',
         },
         '.bz-print thead': { display: 'table-header-group' },
+        // W4-Verifikation Runde 2: die Spaltenköpfe stehen nur über dem
+        // ersten Abschnitt (die Spalten sind überall gleich breit). Sieben
+        // wiederholte Kopfzeilen kosteten auf dem Samstag gut 3 cm - genau
+        // den Platz, den die Nachträge brauchen, um auf Seite 1 zu bleiben.
+        '.bz-print table.lines.follow thead': { display: 'none' },
         // Alle Abschnitte gleich breit: die Zahlen stehen untereinander.
         '.bz-print table.lines': { tableLayout: 'fixed' },
-        '.bz-print table.lines th:first-child': { width: '34%' },
-        '.bz-print table.lines th:nth-last-child(2)': { width: '14%' },
-        '.bz-print table.lines th:last-child': { width: '7%' },
+        // Breiten über <colgroup>, nicht über die <th>: Folge-Abschnitte haben
+        // keine sichtbare Kopfzeile, und `table-layout: fixed` nähme sonst die
+        // erste Datenzeile als Maß.
+        '.bz-print table.lines col.c-name': { width: '34%' },
+        '.bz-print table.lines col.c-num': { width: '9%' },
+        '.bz-print table.lines col.c-total': { width: '14%' },
+        '.bz-print table.lines col.c-tick': { width: '7%' },
         '.bz-print tr': { pageBreakInside: 'avoid', breakInside: 'avoid' },
         '.bz-print th, .bz-print td': {
           borderBottom: '0.5pt solid #777',
@@ -155,6 +164,20 @@ export const backzettelPrintStyles = (
   />
 )
 
+/**
+ * Kürzel für die schmale Haken-Spalte („Bernd Backstube" → „BB"); ein
+ * ausgeschriebener Name lief über den rechten Rand (W4-verify r2).
+ */
+export function initials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean)
+  if (words.length === 0) return ''
+  if (words.length === 1) return words[0].slice(0, 3)
+  return words
+    .slice(0, 3)
+    .map((w) => Array.from(w)[0].toUpperCase())
+    .join('')
+}
+
 export interface BackzettelPrintProps {
   day: BackzettelDay
   config: BackzettelConfigData | null
@@ -189,10 +212,20 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
             </p>
           </>
         )}
-        {day.sections.map((section) => (
+        {day.sections.map((section, sectionIndex) => (
           <div key={section.id} className="bz-section">
             <h2>{section.label}</h2>
-            <table className="lines">
+            <table className={sectionIndex === 0 ? 'lines' : 'lines follow'}>
+              <colgroup>
+                <col className="c-name" />
+                <col className="c-num" />
+                <col className="c-num" />
+                <col className="c-num" />
+                <col className="c-num" />
+                <col className="c-num" />
+                <col className="c-total" />
+                <col className="c-tick" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>Posten</th>
@@ -229,7 +262,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                               ? `${deltaBadgeText(
                                   line.delta,
                                   line.unit
-                                )} (siehe unten)`
+                                )} (Liste unten)`
                               : null,
                           ]
                             .filter(Boolean)
@@ -257,8 +290,11 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                             ✓
                           </span>
                           {line.doneBy && (
-                            <div className="small">
-                              {line.doneBy.displayName}
+                            <div
+                              className="small"
+                              title={line.doneBy.displayName}
+                            >
+                              {initials(line.doneBy.displayName)}
                             </div>
                           )}
                         </>
@@ -292,8 +328,9 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                           },
                           config
                         )}
-                      </strong>
-                      <div className="small">
+                      </strong>{' '}
+                      {/* eine Zeile je Nachtrag: hält die Liste auf Seite 1 */}
+                      <span className="small">
                         {[
                           DELTA_KIND_LABELS[d.kind] ?? d.kind,
                           d.preorderCode,
@@ -301,7 +338,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                         ]
                           .filter(Boolean)
                           .join(' · ')}
-                      </div>
+                      </span>
                     </td>
                     <td className="num">
                       <span className="box" />

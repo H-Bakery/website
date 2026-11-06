@@ -503,7 +503,11 @@ export default function BackstubeClient({
             color: '#000 !important',
             boxShadow: 'none !important',
             opacity: '1 !important',
+            // W4-verify r2: Rahmen in `text.primary`/`divider` sind im
+            // dunklen Modus weiß - auf Papier fehlten die leeren Kästchen.
+            borderColor: '#888 !important',
           },
+          '& [role="checkbox"]': { borderColor: '#000 !important' },
         },
       }}
     >
