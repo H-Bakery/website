@@ -605,6 +605,23 @@ export function createBackzettelService(
         snap?.subtotalExact ?? null
       )
       for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
+      // W4-verify r6: the tray hint follows what is now to bake - 24 + 4
+      // croissants do not fit on „2 Bleche à 12“.
+      for (const section of viewSections) {
+        for (const l of section.lines) {
+          const extra = extras[l.key]
+          const item = extra ? itemsById.get(l.itemId) : null
+          if (!item || !l.tray) continue
+          const after = core.trayText(
+            item.tray,
+            Math.max(0, l.total + extra),
+            l.unit
+          )
+          if (after && after !== l.tray) {
+            l.tray = `${l.tray} · mit Nachträgen: ${after}`
+          }
+        }
+      }
       // W4-verify r5: the Backstube panel lists only the open Nachträge and
       // needs *their* oven figure, not the raw quarter sum (+6,5 Kranz is 7
       // to bake). Open = all − already acknowledged, both after rounding.

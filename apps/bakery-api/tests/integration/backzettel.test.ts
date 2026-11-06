@@ -1148,6 +1148,27 @@ describe('Nachtrag für einen Posten ohne freigegebene Zeile (W4-verify r6)', ()
   })
 })
 
+describe('Blechangabe mit Nachträgen (W4-verify r6)', () => {
+  const TUE6 = '2026-12-22'
+
+  it('nennt die Bleche für die Menge mit Nachträgen', async () => {
+    expect(
+      (await as('backstube').post(`/api/backzettel/${TUE6}/confirm`)).status
+    ).toBe(200)
+    const before = (await as('backstube').get(`/api/backzettel/${TUE6}`)).body
+      .data
+    // Plunder Di: 10 Stück, 10 je Blech
+    expect(line(before, 'plunder').tray).toBe('1 Blech à 10 (Blech 7)')
+    await apiPreorder(TUE6, [{ productId: 'test-plunder', quantity: 5 }])
+    const after = (await as('backstube').get(`/api/backzettel/${TUE6}`)).body
+      .data
+    expect(line(after, 'plunder').total).toBe(10)
+    expect(line(after, 'plunder').tray).toBe(
+      '1 Blech à 10 (Blech 7) · mit Nachträgen: 2 Bleche à 10 (Bleche 7, 8)'
+    )
+  })
+})
+
 describe('Nachtrag bringt eine Vorbereitung mit (W4-verify r6)', () => {
   const SUN4 = '2026-12-20'
   afterAll(() => writeHq(hqDir))
