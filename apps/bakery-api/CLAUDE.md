@@ -672,6 +672,13 @@ status, bulk and the Mörsbach alias; W4-verify r3),
 404 `not_found`, 409 `already_picked_up` / `cancelled` / `anonymized` / `has_variants` /
 `stale_preorder` / `not_collected_too_early`.
 
+- **Undoing a handover restores the payment (W4-verify r4).** A status change _into_ `abgeholt`
+  writes `payment: { before, after }` (paid + paidAmount) into its `audit_log` row. Leaving
+  `abgeholt` again (menu „Übergabe zurücknehmen", toast „Rückgängig", bulk) puts `before` back -
+  „Bezahlt und übergeben" on an unpaid order is unpaid again, a part payment keeps its amount -
+  unless the payment changed since the handover or the request asks for a different `paid`.
+  The Mörsbach alias keeps the payment (mock contract, `keepPaymentOnUndo`).
+
 - **Bulk status (W4).** `POST /bulk-status` changes many preorders in **one** serialised write
   transaction (Abholliste: „alle bereit", Tagesabschluss „nicht abgeholt"). Body: `ids` (1-200
   positive integers or canonical digit strings like `"7"`, duplicates merged; else 400

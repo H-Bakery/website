@@ -87,7 +87,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
           'Menü › **Abholliste**. Tag und **Abholort** prüfen.',
           'Name oder Code ins Suchfeld tippen.',
           '**Übergeben** tippen. Noch nicht bezahlt: kassieren, dann **Bezahlt und übergeben**.',
-          'Vertippt? **⋮** › **Übergabe zurücknehmen**.',
+          'Vertippt? **⋮** › **Übergabe zurücknehmen** – die Zahlung steht dann wieder wie vorher.',
           'Nachmittags die Liste für morgen **drucken** – falls morgen die Technik streikt.',
         ],
       },

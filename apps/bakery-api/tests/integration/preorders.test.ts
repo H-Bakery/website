@@ -265,6 +265,82 @@ describe('paid amount and balance (W4-verify r2)', () => {
   })
 })
 
+describe('undoing a handover restores the payment (W4-verify r4)', () => {
+  const DAY = '2026-12-04'
+  const status = (id: number, body: Record<string, unknown>) =>
+    request(api.app)
+      .post(`/api/preorders/${id}/status`)
+      .set(tokens['verkauf'])
+      .send(body)
+
+  it('"Bezahlt und übergeben", then ⋮ › Übergabe zurücknehmen: unpaid again', async () => {
+    const created = (await create(laden({ pickupDate: DAY }))).body.data
+    expect(created.paid).toBe(false)
+    const handed = await status(created.id, { status: 'abgeholt', paid: true })
+    expect(handed.status).toBe(200)
+    expect(handed.body.data).toMatchObject({ status: 'abgeholt', paid: true })
+
+    const undone = await status(created.id, { status: 'bereit' })
+    expect(undone.status).toBe(200)
+    expect(undone.body.data).toMatchObject({
+      status: 'bereit',
+      paid: false,
+      paidAmount: null,
+    })
+    const row = await Preorder.findByPk(created.id)
+    expect(row?.paid).toBe(false)
+  })
+
+  it('"Rest kassiert und übergeben", then undo (menu or toast): the earlier part payment is back', async () => {
+    const created = (
+      await create(
+        laden({
+          pickupDate: DAY,
+          paid: true,
+          items: [{ productId: 'kornbrot-500g', quantity: 2 }],
+        })
+      )
+    ).body.data
+    const edited = (
+      await request(api.app)
+        .patch(`/api/preorders/${created.id}`)
+        .set(tokens['verkauf'])
+        .send({ items: [{ productId: 'kornbrot-500g', quantity: 3 }] })
+    ).body.data
+    expect(edited.paidAmount).toBe(created.total)
+    expect(edited.paymentBalance).toBeGreaterThan(0)
+
+    await status(created.id, { status: 'abgeholt', paid: true })
+    const menu = await status(created.id, { status: 'bereit' })
+    expect(menu.body.data).toMatchObject({
+      paid: true,
+      paidAmount: created.total,
+      paymentBalance: edited.paymentBalance,
+    })
+
+    // The toast sends the earlier state including `paid: true`.
+    await status(created.id, { status: 'abgeholt', paid: true })
+    const toast = await status(created.id, {
+      status: 'bereit',
+      paid: true,
+      notCollected: false,
+    })
+    expect(toast.body.data).toMatchObject({
+      paid: true,
+      paidAmount: created.total,
+      paymentBalance: edited.paymentBalance,
+    })
+  })
+
+  it('keeps a payment that was changed after the handover', async () => {
+    const created = (await create(laden({ pickupDate: DAY }))).body.data
+    await status(created.id, { status: 'abgeholt' })
+    await status(created.id, { paid: true })
+    const undone = await status(created.id, { status: 'bereit' })
+    expect(undone.body.data).toMatchObject({ status: 'bereit', paid: true })
+  })
+})
+
 describe('idempotent create with requestId (W4-verify r4)', () => {
   const DAY = '2026-12-03'
   it('a retried save after a lost answer returns the first order, not a second one', async () => {

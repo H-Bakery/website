@@ -595,6 +595,7 @@ function createDeliveriesRouter(service: PreordersService): Router {
         ? await service.changeStatus(req.params['id'], body, req, {
             guard,
             mapBody,
+            keepPaymentOnUndo: true,
           })
         : await service.update(req.params['id'], body, req, {
             requireVariant: false,
