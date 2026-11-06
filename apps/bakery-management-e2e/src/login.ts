@@ -1,85 +1,258 @@
 /**
- * @fileoverview Anmeldung für die Smoke-Suite (F1).
+ * @fileoverview Anmeldung für die Smoke-Suite gegen die echte API (F4).
  *
- * Seit F1 braucht jede Seite unter `/admin` eine Sitzung. Die Suite meldet
- * sich deshalb einmal an der Mock-API an (`auth.mock.js`, Vorgabe
- * `admin`/`admin`, überschreibbar mit `MOCK_ADMIN_USER`/`MOCK_ADMIN_PASSWORD`)
- * und legt die Sitzung so in `localStorage`, wie die App sie selbst ablegt
- * (`src/lib/authSession.ts`, Schlüssel `bakery-management-session`). Die
- * Rolle kommt aus der Login-Antwort und wird wie in der App normalisiert
- * (`normalizeRole` in `src/lib/roles.ts`: Mock-`admin` = `inhaber`). Dazu
- * setzt `signIn()` das Sitzungs-Cookie (`src/lib/sessionCookie.ts`), das
- * `src/proxy.ts` serverseitig prüft - sonst rendert der Server jede Seite
- * unter `/admin` nur als Ladezustand.
+ * Jede Seite unter `/admin` braucht eine Sitzung, jede `/api`-Route auch
+ * (B3). Die Sitzungen holt `global-setup.ts` **einmal** vor allen Tests
+ * (`issueSessions()`), direkt an der API (`API_URL`):
+ *
+ * - `inhaber`: der Inhaber, den `tools/e2e/real-api.js` beim Start über
+ *   `BOOTSTRAP_ADMIN_*` anlegt (`E2E_ADMIN` in `tools/e2e/servers.js`),
+ * - `verkauf`: ein Konto, das der Inhaber über `POST /api/users` anlegt,
+ * - `station`: der Inhaber an einer PIN-Station (Station registrieren, PIN
+ *   setzen, `POST /api/auth/pin`).
+ *
+ * Warum nicht je Worker: das Login-Limit der API (5 Fehlversuche je IP +
+ * Benutzer) zählt jede Anfrage beim Eingang und nimmt erfolgreiche erst nach
+ * der Antwort wieder heraus - sechs Worker, die sich gleichzeitig als
+ * derselbe Inhaber anmelden, bekommen ein 429, und jedes 429 zählt dann als
+ * Fehlversuch (fünf Minuten Sperre). Und eine neue PIN beendet die
+ * Stations-Sitzungen des Benutzers - zwei Projekte, die je eine eigene PIN
+ * setzen, würden sich gegenseitig abmelden.
+ *
+ * Die Sitzungen reisen als JSON in `E2E_SESSIONS` zu den Workern (Playwright
+ * gibt Umgebungsvariablen aus dem Global Setup weiter). `useSession()` legt
+ * eine davon so in `localStorage`, wie die App sie selbst ablegt
+ * (`src/lib/authSession.ts`, Schlüssel `bakery-management-session`), dazu das
+ * Sitzungs-Cookie (`src/lib/sessionCookie.ts`), das `src/proxy.ts`
+ * serverseitig prüft. Kein Test meldet diese Sitzungen ab oder erneuert sie
+ * (Access-Token 1 h), sonst rotierte ein Tab das Refresh-Token der anderen.
+ * Die Anmeldung über die Oberfläche prüft `management-smoke.spec.ts` mit
+ * einer eigenen Sitzung.
  */
 
 import {
-  expect,
   request as playwrightRequest,
+  type APIRequestContext,
+  type APIResponse,
   type Page,
 } from '@playwright/test'
 
-const API_BASE = process.env['API_URL'] || 'http://localhost:5000'
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const { E2E_ADMIN } = require('../../../tools/e2e/servers') as {
+  E2E_ADMIN: { username: string; password: string }
+}
+
+export const API_BASE = process.env['API_URL'] || 'http://localhost:5000'
 const SESSION_KEY = 'bakery-management-session'
 /** Wie `SESSION_COOKIE_NAME` in apps/bakery-management/src/lib/sessionCookie.ts. */
 const SESSION_COOKIE = 'bakery-management-at'
 const BASE_URL = process.env['BASE_URL'] || 'http://localhost:3001'
+const SESSIONS_ENV = 'E2E_SESSIONS'
 
-/** Wie `normalizeRole()` der App - eine unbekannte Rolle bricht den Lauf ab. */
-export function pilotRole(raw: unknown): string {
-  const role = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
-  if (['inhaber', 'verkauf', 'backstube', 'fahrer'].includes(role)) return role
-  if (role === 'admin') return 'inhaber'
-  if (role === 'staff' || role === 'manager') return 'verkauf'
-  throw new Error(`Unbekannte Rolle aus /api/auth/login: ${String(raw)}`)
+export { E2E_ADMIN }
+
+export type PilotRole = 'inhaber' | 'verkauf' | 'backstube' | 'fahrer'
+export type SessionName = 'inhaber' | 'verkauf' | 'station'
+
+export interface IssuedSession {
+  /** Was die App unter `bakery-management-session` ablegt. */
+  json: string
+  token: string
 }
 
-let cached: { json: string; token: string } | null = null
+export type IssuedSessions = Record<SessionName, IssuedSession>
 
-async function issuedSession(): Promise<{ json: string; token: string }> {
-  if (cached) return cached
-  const context = await playwrightRequest.newContext()
-  try {
-    const response = await context.post(`${API_BASE}/api/auth/login`, {
-      data: {
-        username: process.env['MOCK_ADMIN_USER'] || 'admin',
-        password: process.env['MOCK_ADMIN_PASSWORD'] || 'admin',
-      },
-    })
-    expect(response.ok(), 'Anmeldung an der Mock-API').toBeTruthy()
-    const { data } = await response.json()
-    const username = data.user.username || data.user.email || 'admin'
-    const json = JSON.stringify({
-      token: data.token,
-      refreshToken: data.refreshToken ?? null,
-      user: {
-        id: data.user.id,
-        username,
-        displayName: data.user.displayName || username,
-        role: pilotRole(data.user.role),
-      },
-      sessionKind: data.sessionKind === 'station' ? 'station' : 'personal',
-      startedAt: Date.now(),
-    })
-    cached = { json, token: data.token }
-    return cached
-  } finally {
-    await context.dispose()
+/** Antwort von login/pin der echten API (`data`). */
+interface IssuedData {
+  token: string
+  refreshToken: string | null
+  sessionKind?: string
+  user: {
+    id: number
+    username?: string
+    displayName?: string
+    role: string
+    sessionKind?: string
   }
 }
 
-/** Vor dem ersten `page.goto`: die Seite startet angemeldet (Mock: Inhaber). */
-export async function signIn(page: Page): Promise<void> {
-  const { json, token } = await issuedSession()
-  await page
-    .context()
-    .addCookies([
-      { name: SESSION_COOKIE, value: encodeURIComponent(token), url: BASE_URL },
-    ])
+/** Wie `normalizeRole()` der App - eine unbekannte Rolle bricht den Lauf ab. */
+export function pilotRole(raw: unknown): PilotRole {
+  const role = typeof raw === 'string' ? raw.trim().toLowerCase() : ''
+  if (['inhaber', 'verkauf', 'backstube', 'fahrer'].includes(role)) {
+    return role as PilotRole
+  }
+  throw new Error(`Unbekannte Rolle von der API: ${String(raw)}`)
+}
+
+function toSession(data: IssuedData): IssuedSession {
+  const username = data.user.username || String(data.user.id)
+  const kind = data.sessionKind ?? data.user.sessionKind
+  const json = JSON.stringify({
+    token: data.token,
+    refreshToken: data.refreshToken ?? null,
+    user: {
+      id: data.user.id,
+      username,
+      displayName: data.user.displayName || username,
+      role: pilotRole(data.user.role),
+    },
+    sessionKind: kind === 'station' ? 'station' : 'personal',
+    startedAt: Date.now(),
+  })
+  return { json, token: data.token }
+}
+
+async function withApi<T>(work: (api: APIRequestContext) => Promise<T>) {
+  const api = await playwrightRequest.newContext({ baseURL: API_BASE })
+  try {
+    return await work(api)
+  } finally {
+    await api.dispose()
+  }
+}
+
+async function expectOk(response: APIResponse, what: string, ok = [200]) {
+  if (!ok.includes(response.status())) {
+    throw new Error(
+      `${what}: HTTP ${response.status()} ${await response.text()}`
+    )
+  }
+  return response
+}
+
+const E2E_USER_PASSWORD = 'e2e-Benutzer-Passwort-1'
+const E2E_PIN = '0420'
+
+/**
+ * Für `global-setup.ts`: meldet Inhaber, Verkauf und Inhaber-an-der-Station
+ * nacheinander an. Synthetische Namen und Geheimnisse.
+ */
+export async function issueSessions(): Promise<IssuedSessions> {
+  return withApi(async (api) => {
+    const login = async (username: string, password: string) => {
+      const response = await expectOk(
+        await api.post('/api/auth/login', { data: { username, password } }),
+        `Anmeldung als ${username}`
+      )
+      return ((await response.json()) as { data: IssuedData }).data
+    }
+
+    const owner = await login(E2E_ADMIN.username, E2E_ADMIN.password)
+    const auth = { Authorization: `Bearer ${owner.token}` }
+
+    // Verkauf: 409 username_taken heißt, ein früherer Lauf gegen dieselbe
+    // (wiederverwendete) API hat das Konto schon angelegt.
+    await expectOk(
+      await api.post('/api/users', {
+        headers: auth,
+        data: {
+          username: 'e2e.verkauf',
+          displayName: 'Test Verkauf',
+          role: 'verkauf',
+          password: E2E_USER_PASSWORD,
+        },
+      }),
+      'Konto e2e.verkauf anlegen',
+      [201, 409]
+    )
+    const sales = await login('e2e.verkauf', E2E_USER_PASSWORD)
+
+    // Station: registrieren (Token kommt einmal), PIN des Inhabers setzen,
+    // an der Station mit PIN anmelden.
+    const station = await expectOk(
+      await api.post('/api/auth/stations', {
+        headers: auth,
+        data: { name: `E2E-Station ${Date.now()}` },
+      }),
+      'Station registrieren',
+      [201]
+    )
+    const stationToken = ((await station.json()) as { data: { token: string } })
+      .data.token
+    await expectOk(
+      await api.post(`/api/users/${owner.user.id}/pin`, {
+        headers: auth,
+        data: { pin: E2E_PIN },
+      }),
+      'PIN setzen'
+    )
+    const pin = await expectOk(
+      await api.post('/api/auth/pin', {
+        headers: { 'X-Station-Token': stationToken },
+        data: { userId: owner.user.id, pin: E2E_PIN },
+      }),
+      'PIN-Anmeldung'
+    )
+    const atStation = ((await pin.json()) as { data: IssuedData }).data
+    if ((atStation.sessionKind ?? atStation.user.sessionKind) !== 'station') {
+      throw new Error('PIN-Anmeldung lieferte keine Stations-Sitzung')
+    }
+
+    return {
+      inhaber: toSession(owner),
+      verkauf: toSession(sales),
+      station: toSession(atStation),
+    }
+  })
+}
+
+/** Eine der Sitzungen aus dem Global Setup. */
+export function session(name: SessionName): IssuedSession {
+  const raw = process.env[SESSIONS_ENV]
+  if (!raw) {
+    throw new Error(
+      `${SESSIONS_ENV} fehlt - läuft global-setup.ts (playwright.config.ts)?`
+    )
+  }
+  return (JSON.parse(raw) as IssuedSessions)[name]
+}
+
+export function storeSessions(sessions: IssuedSessions): void {
+  process.env[SESSIONS_ENV] = JSON.stringify(sessions)
+}
+
+/** `GET` an der API mit dem Token des Inhabers. */
+export async function apiGet<T = unknown>(path: string): Promise<T> {
+  const { token } = session('inhaber')
+  return withApi(async (api) => {
+    const response = await expectOk(
+      await api.get(path, { headers: { Authorization: `Bearer ${token}` } }),
+      `GET ${path}`
+    )
+    return (await response.json()) as T
+  })
+}
+
+/** Anzahl der Einträge, die `GET <pfad>` liefert (Liste oder `data`). */
+export async function apiCount(path: string): Promise<number> {
+  const body = await apiGet<unknown>(path)
+  const list = Array.isArray(body) ? body : (body as { data: unknown }).data
+  if (!Array.isArray(list)) throw new Error(`GET ${path}: keine Liste`)
+  return list.length
+}
+
+/** Legt eine fertige Sitzung vor dem ersten `page.goto` in die Seite. */
+export async function useSession(
+  page: Page,
+  issued: IssuedSession
+): Promise<void> {
+  await page.context().addCookies([
+    {
+      name: SESSION_COOKIE,
+      value: encodeURIComponent(issued.token),
+      url: BASE_URL,
+    },
+  ])
   await page.addInitScript(
     ([key, value]) => {
       window.localStorage.setItem(key, value)
     },
-    [SESSION_KEY, json] as const
+    [SESSION_KEY, issued.json] as const
   )
+}
+
+/** Vor dem ersten `page.goto`: die Seite startet angemeldet. */
+export async function signIn(page: Page, name: SessionName = 'inhaber') {
+  await useSession(page, session(name))
 }

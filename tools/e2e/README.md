@@ -5,9 +5,30 @@ Gemeinsame Teile der drei Playwright-Suiten `apps/bakery-shop-e2e`,
 
 | Datei             | Zweck                                                                                              |
 | ----------------- | -------------------------------------------------------------------------------------------------- |
-| `servers.js`      | Die `webServer`-Einträge der Suiten: Mock-API, `next start` bzw. `nx serve`, statischer Export     |
+| `servers.js`      | Die `webServer`-Einträge der Suiten: echte API, Mock-API, `next start` bzw. `nx serve`, Export     |
+| `real-api.js`     | Startet das API-Bundle mit frischer SQLite-Datenbank im Temp-Verzeichnis (Management-Suite, F4)    |
 | `serve-static.js` | Liefert `apps/bakery-landing/out` aus wie GitHub Pages (`/about` → `about.html`, 404 → `404.html`) |
 | `hq-products/`    | Synthetischer Produktkatalog im Format von `hq/products/*.md` (56 Produkte, 7 Kategorien)          |
+
+## Welche API
+
+- **Management** (seit F4): die **echte API** - das esbuild-Bundle
+  `dist/apps/bakery-api/bundle/main.js`, gestartet von `real-api.js` mit einer
+  frischen SQLite-Datenbank (`mkdtemp`, beim Beenden gelöscht),
+  `NODE_ENV=development` und dem Inhaber `E2E_ADMIN` aus `servers.js`
+  (`BOOTSTRAP_ADMIN_*`, synthetisch). App und API lesen dasselbe synthetische
+  `hq` aus `prepareE2eHq()`: eine Kopie des Fixture-Katalogs plus erfundene
+  Kassenberichte und Finanzdaten aus
+  `apps/bakery-api/tests/fixtures/hq-data.synthetic.js`, im Temp-Verzeichnis je
+  API-Port. Die App läuft im Pilotbetrieb und reicht `/api/*` über ihren
+  `src/proxy.ts` an `API_URL` weiter - der Browser spricht nur die eigene Origin.
+  `src/global-setup.ts` meldet einmal vor allen Tests drei Sitzungen an
+  (Inhaber, Verkauf, Inhaber an einer PIN-Station) und gibt sie über
+  `E2E_SESSIONS` an die Worker; je Worker anzumelden ließe das Login-Limit der
+  API (zählt gleichzeitige Anfragen mit) mit 429 zuschlagen.
+- **Shop**: weiter die Mock-API `apps/bakery-api/simple-server.js` - die echte
+  API verlangt für jede `/api`-Route eine Sitzung, ein öffentlicher Bestellweg
+  ist noch nicht entschieden.
 
 ## Zwei Betriebsarten
 
@@ -18,13 +39,16 @@ Playwright die Server selbst, bekommen Dev-Server und Mock-API **dasselbe**
 Produktverzeichnis (`productsDir()` in `servers.js`): `HQ_PRODUCTS_DIR` aus der
 Umgebung, sonst `../hq/products`, und nur wenn es das nicht gibt, das Fixture.
 Die Suiten vergleichen die Oberfläche mit `GET /api/products`; sähe die API
-das Fixture (56) und die App das echte `hq` (103), wäre die Suite rot.
+das Fixture (56) und die App das echte `hq` (103), wäre die Suite rot. Die
+Management-Suite baut in Entwicklung das API-Bundle vor dem Start neu
+(`E2E_API_BUILD=1`), damit nicht gegen ein altes getestet wird.
 
 **Gebaut** (`CI=true`, alternativ `E2E_BUILT=1`): die Suite startet ihre Server
 selbst - `next start dist/apps/<app>` (Landing: der statische Export hinter
-`serve-static.js`) und die Mock-API `apps/bakery-api/simple-server.js` mit
-`HQ_PRODUCTS_DIR=tools/e2e/hq-products`. So läuft `.github/workflows/ci.yml`:
-ohne das private `hq`-Repo, ohne Datenbank, nur Chromium.
+`serve-static.js`) und die API auf `tools/e2e/hq-products` (Shop: Mock-API,
+Management: echte API, deren Bundle vorher gebaut sein muss - `real-api.js`
+baut es sonst selbst). So läuft `.github/workflows/ci.yml`: ohne das private
+`hq`-Repo, ohne vorhandene Datenbank, nur Chromium.
 
 Ports kommen aus `BASE_URL` und `API_URL`, damit mehrere Läufe nebeneinander
 Platz haben. Ein Lauf wie in CI, aber auf eigenen Ports:
@@ -35,11 +59,12 @@ NX_ISOLATE_PLUGINS=false NODE_ENV=production NEXT_PUBLIC_API_URL=http://localhos
   npx nx build bakery-shop --configuration=production
 CI=true BASE_URL=http://localhost:4381 API_URL=http://localhost:5280 npx nx e2e bakery-shop-e2e
 
-# Management: Produktliste wird beim Bauen gelesen, API-Adresse ebenfalls
-NX_ISOLATE_PLUGINS=false NODE_ENV=production HQ_PRODUCTS_DIR=$PWD/tools/e2e/hq-products \
-  API_URL=http://localhost:5280 NEXT_PUBLIC_API_URL=http://localhost:5280 \
+# Management: Pilotbetrieb wird eingebacken; die API-Adresse liest src/proxy.ts
+# erst beim Start (API_URL) - der Build braucht sie nicht.
+NX_ISOLATE_PLUGINS=false NODE_ENV=production NEXT_PUBLIC_PILOT_MODE=1 \
   npx nx build bakery-management --configuration=production
-CI=true BASE_URL=http://localhost:4382 API_URL=http://localhost:5280 npx nx e2e bakery-management-e2e
+npx nx run bakery-api:bundle
+CI=true BASE_URL=http://localhost:4382 API_URL=http://localhost:5281 npx nx e2e bakery-management-e2e
 
 # Landing: statischer Export mit dem gebündelten Produkt-Fallback (wie auf GitHub Pages)
 NX_ISOLATE_PLUGINS=false NODE_ENV=production npx nx build bakery-landing --configuration=production
@@ -72,6 +97,7 @@ Was die Suiten voraussetzen, wenn jemand den Katalog ändert:
 - Bildpfade zeigen auf SVGs, die in `apps/bakery-shop/public/assets/images/products`
   liegen.
 
-Die Management-Suite **speichert nie** (`PUT /api/hq-products/:id` schriebe in
-diese Dateien). Wer ein Speichern testen will, kopiert den Katalog vorher nach
-`tmp/` und zeigt `HQ_PRODUCTS_DIR` dorthin.
+Die Management-Suite **speichert nie**. Sie liest ohnehin nur eine Kopie
+(`prepareE2eHq()`), sodass ein Speichern das Fixture im Repo nicht ändern
+würde - geprüft wird das Speichern in den Unit-Specs und in der Parity-Suite
+der API (`apps/bakery-api/tests/parity/hqProducts.parity.test.ts`).
