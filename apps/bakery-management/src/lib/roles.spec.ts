@@ -150,7 +150,7 @@ describe('getNavigationForRole', () => {
     expect(items).not.toContain('/admin/login')
   })
 
-  it('Verkauf: Vorbestellungen/Mörsbach, Produkte, Backschrank, Backzettel (lesen), Einstellungen', () => {
+  it('Verkauf: Vorbestellungen/Mörsbach, Produkte, Backschrank, Backzettel (lesen), Einstellungen, Hilfe', () => {
     expect(hrefs(getNavigationForRole('verkauf', true)).sort()).toEqual(
       [
         '/admin',
@@ -161,25 +161,28 @@ describe('getNavigationForRole', () => {
         '/admin/products',
         '/admin/partners',
         '/admin/settings',
+        '/admin/hilfe',
       ].sort()
     )
   })
 
-  it('Fahrer: Vorbestellungen (lesen), Sammelstelle Mörsbach, Einstellungen', () => {
+  it('Fahrer: Vorbestellungen (lesen), Sammelstelle Mörsbach, Einstellungen, Hilfe', () => {
     expect(hrefs(getNavigationForRole('fahrer', true))).toEqual([
       '/admin/preorders',
       '/admin/preorders/abholliste',
       '/admin/delivery/preorders',
       '/admin/settings',
+      '/admin/hilfe',
     ])
   })
 
-  it('Backstube: Dashboard, Backzettel, Tablet und Einstellungen', () => {
+  it('Backstube: Dashboard, Backzettel, Tablet, Einstellungen und Hilfe', () => {
     expect(hrefs(getNavigationForRole('backstube', true))).toEqual([
       '/admin',
       '/admin/backzettel',
       '/backstube',
       '/admin/settings',
+      '/admin/hilfe',
     ])
   })
 

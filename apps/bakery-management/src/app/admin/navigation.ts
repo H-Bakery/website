@@ -232,6 +232,13 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Zum Online-Shop',
     external: true,
   },
+  {
+    // P6: ganz unten, für jede Rolle (ROLE_ACCESS: COMMON_ROUTES).
+    label: 'Hilfe',
+    href: '/admin/hilfe',
+    icon: 'help',
+    description: 'Kurzanleitung & Papierbetrieb',
+  },
 ]
 
 /**

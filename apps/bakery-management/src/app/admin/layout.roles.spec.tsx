@@ -56,6 +56,7 @@ describe('AdminLayout mit Rollen (F1)', () => {
         'Produkte',
         'Verkaufspartner',
         'Einstellungen',
+        'Hilfe',
       ])
     )
     ;['Finanzen', 'Benutzer', 'Kassenberichte', 'Anmeldung', 'Shop'].forEach(

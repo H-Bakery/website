@@ -1,0 +1,291 @@
+import React from 'react'
+import { Box, GlobalStyles } from '@mui/material'
+import type { BackzettelConfigData } from '../../lib/backzettelApi'
+import { variantLabel } from '../../lib/backzettelFormat'
+import { SECTION_LABELS } from '../../lib/grundmengenApi'
+
+/**
+ * Backzettel-Notfallblatt (P6): ein leerer Backzettel zum Ausfüllen von Hand,
+ * wenn die App ausfällt UND kein freigegebener Ausdruck da ist. Spalten wie
+ * auf dem echten Zettel, nur Basis | Vorbestellt | Gesamt (+ Haken), alles
+ * leer. Mit Stammdaten (`GET /api/backzettel/config`) stehen die Posten schon
+ * da (je Sorte eine Zeile), sonst leere Zeilen je Abschnitt.
+ *
+ * Nur gedruckt, immer genau eine A4-Seite: zwei Spalten, die Zeilenhöhe
+ * richtet sich nach der Zahl der Zeilen (`notfallLayout`).
+ */
+
+/** Abschnitte ohne Stammdaten (Reihenfolge wie `backzettel.yaml`). */
+export const FALLBACK_SECTIONS = [
+  'brot',
+  'broetchen',
+  'laugen',
+  'kaffeestueckchen',
+  'kuchen',
+  'hefeteig',
+] as const
+
+const BLANK_ROWS_WITHOUT_CONFIG = 7
+/** Platz für Posten, die nicht auf dem Blatt stehen. */
+const BLANK_ROWS_WITH_CONFIG = 1
+
+export interface NotfallSection {
+  id: string
+  label: string
+  /** Zeilennamen; `''` = leere Zeile zum Eintragen. */
+  rows: string[]
+}
+
+/** Abschnitte und Zeilen des Blatts aus den Stammdaten (oder leer). */
+export function notfallSections(
+  config: Pick<BackzettelConfigData, 'sections' | 'items' | 'fillings'> | null
+): NotfallSection[] {
+  if (!config) {
+    return FALLBACK_SECTIONS.map((id) => ({
+      id,
+      label: SECTION_LABELS[id] ?? id,
+      rows: Array.from({ length: BLANK_ROWS_WITHOUT_CONFIG }, () => ''),
+    }))
+  }
+  return config.sections
+    .filter((id) => id !== 'vorbereitung')
+    .map((id) => {
+      const rows = config.items
+        .filter((item) => item.section === id)
+        .flatMap((item) =>
+          item.variants && item.variants.length > 0
+            ? item.variants.map(
+                (v) => `${item.name} – ${variantLabel(v, config) ?? v}`
+              )
+            : [item.name]
+        )
+      return {
+        id,
+        label: SECTION_LABELS[id] ?? id,
+        rows: [
+          ...rows,
+          ...Array.from({ length: BLANK_ROWS_WITH_CONFIG }, () => ''),
+        ],
+      }
+    })
+    .filter((section) => section.rows.some((row) => row !== ''))
+}
+
+/** Nutzbare Höhe einer Spalte in mm (mit Reserve für Spaltenumbrüche). */
+const COLUMN_HEIGHT_MM = 190
+/** Überschrift + Kopfzeile eines Abschnitts in mm. */
+const SECTION_OVERHEAD_MM = 10
+const MIN_ROW_MM = 4
+const MAX_ROW_MM = 7
+
+/**
+ * Spalten und Zeilenhöhe, damit alles auf EINE Seite passt: zwei Spalten,
+ * Zeilen zwischen 4 und 7 mm hoch. Reicht das nicht (mehr als ~80 Zeilen),
+ * drei schmalere Spalten - lieber gekürzte Namen als eine zweite Seite.
+ */
+export function notfallLayout(sections: NotfallSection[]): {
+  columns: 2 | 3
+  rowHeightMm: number
+} {
+  const rows = sections.reduce((sum, s) => sum + s.rows.length, 0)
+  const height = (columns: number) => {
+    const available =
+      columns * COLUMN_HEIGHT_MM - sections.length * SECTION_OVERHEAD_MM
+    return rows > 0 ? available / rows : MAX_ROW_MM
+  }
+  const columns = height(2) >= MIN_ROW_MM ? 2 : 3
+  const raw = Math.floor(height(columns) * 10) / 10
+  return {
+    columns,
+    rowHeightMm: Math.max(MIN_ROW_MM, Math.min(MAX_ROW_MM, raw)),
+  }
+}
+
+const styles = (
+  <GlobalStyles
+    styles={{
+      '.nfb': {
+        boxSizing: 'border-box',
+        height: '270mm',
+        overflow: 'hidden',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '2.5mm',
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '9pt',
+        color: '#000',
+      },
+      '.nfb h2': { fontSize: '15pt', margin: 0 },
+      '.nfb-head': {
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: '4mm',
+        whiteSpace: 'nowrap',
+      },
+      '.nfb-field': {
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: '1.5mm',
+        flexGrow: 1,
+      },
+      '.nfb-field b': { fontSize: '9pt' },
+      '.nfb-field span': {
+        flexGrow: 1,
+        borderBottom: '0.6pt solid #000',
+        height: '5mm',
+        minWidth: '15mm',
+      },
+      '.nfb-hint': {
+        border: '1.2pt solid #000',
+        padding: '1.5mm 2.5mm',
+        fontSize: '8.5pt',
+      },
+      '.nfb-hint p': { margin: '0 0 0.6mm' },
+      '.nfb-cols': {
+        columnCount: 2,
+        columnGap: '5mm',
+        columnFill: 'auto',
+        flexGrow: 1,
+        minHeight: 0,
+      },
+      // Ein langer Abschnitt darf in die zweite Spalte umbrechen (die Kopfzeile
+      // wiederholt sich), sonst bliebe unten in Spalte 1 Platz frei und der
+      // letzte Abschnitt fiele in eine dritte, abgeschnittene Spalte.
+      '.nfb-section': { marginBottom: '2mm' },
+      '.nfb tr': { breakInside: 'avoid' },
+      '.nfb thead': { display: 'table-header-group' },
+      '.nfb-section h3': {
+        fontSize: '9.5pt',
+        margin: '0 0 0.8mm',
+        textTransform: 'uppercase',
+        letterSpacing: '0.03em',
+        breakAfter: 'avoid',
+      },
+      '.nfb table': {
+        width: '100%',
+        borderCollapse: 'collapse',
+        tableLayout: 'fixed',
+      },
+      '.nfb th, .nfb td': {
+        border: '0.5pt solid #000',
+        padding: '0 1.2mm',
+        fontSize: '8pt',
+        textAlign: 'left',
+        overflow: 'hidden',
+        whiteSpace: 'nowrap',
+        textOverflow: 'ellipsis',
+      },
+      '.nfb th': { height: '4.2mm', fontWeight: 700 },
+      '.nfb .num': { width: '15mm' },
+      '.nfb .gesamt': { width: '16mm', borderLeft: '1.2pt solid #000' },
+      '.nfb .tick': { width: '5mm', textAlign: 'center' },
+      '.nfb-foot': { display: 'flex', gap: '4mm' },
+      '.nfb-box': {
+        flex: 1,
+        border: '0.6pt solid #000',
+        padding: '1mm 2mm',
+        height: '24mm',
+        boxSizing: 'border-box',
+      },
+      '.nfb-box b': { fontSize: '8.5pt' },
+      '.nfb-small': { fontSize: '7.5pt', margin: 0 },
+    }}
+  />
+)
+
+export default function BackzettelNotfallblatt({
+  config,
+}: {
+  config: Pick<BackzettelConfigData, 'sections' | 'items' | 'fillings'> | null
+}) {
+  const sections = notfallSections(config)
+  const { columns, rowHeightMm: rowHeight } = notfallLayout(sections)
+  return (
+    <>
+      {styles}
+      <Box
+        className="hilfe-sheet hilfe-print-only"
+        data-sheet="notfallblatt"
+        data-testid="sheet-notfallblatt"
+        aria-hidden="true"
+      >
+        <div className="nfb">
+          <div className="nfb-head">
+            <h2>Backzettel – Notfallblatt</h2>
+            <span className="nfb-field">
+              <b>Tag</b>
+              <span />
+            </span>
+            <span className="nfb-field">
+              <b>Datum</b>
+              <span />
+            </span>
+            <span className="nfb-field">
+              <b>ausgefüllt von</b>
+              <span />
+            </span>
+          </div>
+          <div className="nfb-hint">
+            <p>
+              <b>Zuerst den letzten freigegebenen Ausdruck verwenden</b> (App:
+              Backzettel › Drucken). Dieses Blatt nur, wenn keiner da ist.
+            </p>
+            <p>
+              <b>Basis</b> = Grundmenge des Wochentags (letzter Ausdruck vom
+              gleichen Wochentag) plus CAP-Lieferung. <b>Vorbestellt</b> =
+              Vorbestellscheine und Abholliste für den Tag. <b>Gesamt</b> =
+              Basis + Vorbestellt.
+            </p>
+          </div>
+          <div className="nfb-cols" style={{ columnCount: columns }}>
+            {sections.map((section) => (
+              <div className="nfb-section" key={section.id}>
+                <h3>{section.label}</h3>
+                <table>
+                  <thead>
+                    <tr>
+                      <th className="hilfe-shade">Posten</th>
+                      <th className="hilfe-shade num">Basis</th>
+                      <th className="hilfe-shade num">Vorb.</th>
+                      <th className="hilfe-shade gesamt">Gesamt</th>
+                      <th className="hilfe-shade tick">✓</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {section.rows.map((row, index) => (
+                      <tr
+                        key={`${row}-${index}`}
+                        style={{ height: `${rowHeight}mm` }}
+                      >
+                        <td>{row}</td>
+                        <td />
+                        <td />
+                        <td className="gesamt" />
+                        <td />
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+          <div className="nfb-foot">
+            <div className="nfb-box">
+              <b>Vorbereitung für morgen</b>
+            </div>
+            <div className="nfb-box">
+              <b>Notizen / Nachträge</b>
+            </div>
+          </div>
+          <p className="nfb-small">
+            {config
+              ? 'Posten aus den Backzettel-Stammdaten. Fehlt ein Posten: in die leere Zeile seines Abschnitts schreiben.'
+              : 'Ohne Stammdaten gedruckt: Posten von Hand eintragen.'}{' '}
+            Wenn die App wieder geht: Backzettel des Tages in der App prüfen und
+            freigeben.
+          </p>
+        </div>
+      </Box>
+    </>
+  )
+}

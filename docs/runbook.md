@@ -587,16 +587,35 @@ Minute der Störung.
 | Produkte/Preise geändert, App zeigt alten Stand       | `cat /var/lib/bakery/state/hq-sync.ok`                                         | Änderung schon in hq `main` gemerged? Sonst „wartet auf Freigabe" (D6); Sync von Hand   |
 | Kein Telegram trotz Störung                           | `journalctl -u bakery-health -n 20`                                            | Token/Chat-ID in `ops.env`; Telegram-Fehler werden beim nächsten Lauf erneut gesendet   |
 
-## 9. Papier-Fallback
+## 9. Papierbetrieb (Papier-Fallback)
+
+**Regel:** blockiert die App die Arbeit länger als **10 Minuten**, wird auf Papier umgestellt.
+Das entscheidet, wer gerade im Laden bzw. in der Backstube steht (§2), ohne Rückfrage; danach
+den Inhaber anrufen, der die Technik anruft.
+
+Alle Vordrucke kommen aus der App: **Menü › Hilfe › Papierbetrieb** (`/admin/hilfe`, jede
+Rolle, je Blatt eine A4-Seite). Einweisung und Go-live-Checkliste fürs Personal:
+[onboarding.md](onboarding.md).
 
 Liegt ausgedruckt im Laden und in der Backstube (P6):
 
-- **Vorbestellungen:** Papierformular (P6). Zettel sammeln und nachtragen, sobald die App wieder
-  läuft – mit dem tatsächlichen Annahmedatum in der Notiz.
+- **Aushang „Papierbetrieb – wann und wie"** in Laden und Backstube, Name und Telefon von
+  Inhaber und Technik von Hand eingetragen (nicht in der App, das Repo ist öffentlich).
+- **Vorbestellungen:** Vorbestellschein (2 oder 4 pro Seite) an der Theke. Ausgefüllte Scheine
+  in einem Fach sammeln. Nachtragen, sobald die App wieder läuft: neue Vorbestellung mit den
+  Angaben vom Schein, in der Notiz „Papier, angenommen am …" (tatsächliches Annahmedatum), den
+  neuen Code auf den Schein schreiben und „in App übertragen" ankreuzen. Schon übergeben/bezahlt
+  → in der Abholliste mit abhaken. Scheine tragen Namen und Telefonnummern: vernichten, sobald
+  übertragen und abgeholt; nie fotografieren, nie nach `hq`.
 - **Backzettel:** der zuletzt freigegebene Backzettel ist als A4 ausgedruckt (Z7). Für den
-  nächsten Tag: den gestrigen Ausdruck mit Hand korrigieren.
+  nächsten Tag: den Ausdruck vom gleichen Wochentag mit Hand korrigieren. Ist keiner da: das
+  **Backzettel-Notfallblatt** (Posten aus den Stammdaten, Basis / Vorbestellt / Gesamt leer).
+  Wenn die App wieder geht: den Tag in der App prüfen und freigeben.
 - **Abholliste:** jeden Nachmittag die Abholliste des nächsten Tages ausdrucken (P2), damit sie
   bei einem Ausfall am Morgen vorliegt.
+
+Vordrucke nachdrucken, wenn der Stapel unter zehn Scheine fällt. Nach einer Änderung an
+Stammdaten (neue Posten) das Notfallblatt neu drucken.
 
 ## 10. Offene Punkte
 
