@@ -642,6 +642,18 @@ describe('Vorbereitung je Wochentag', () => {
     expect(ids(day(SAT))).toEqual([['samstag-only', 'gross']])
   })
 
+  it('variant_labels gibt der Variante einen deutschen Namen (W4-verify r2)', () => {
+    expect(day(SAT).prep[0]).toMatchObject({
+      variant: 'gross',
+      variantLabel: 'groß',
+    })
+    // ohne Eintrag: null, die Oberflaeche zeigt dann die ID
+    expect(day(TUE).prep[0]).toMatchObject({
+      variant: 'misch',
+      variantLabel: null,
+    })
+  })
+
   it('Sonntag: default greift, Wagen nicht', () => {
     expect(ids(day(SUN))).toEqual([['sauerteig', 'misch']])
   })

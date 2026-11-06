@@ -33,6 +33,7 @@ import {
   saturdayConfirmed,
   saturdayDraft,
 } from './backzettelFixtures'
+import { prepTaskLabel } from '../components/backzettel/PrepCard'
 
 describe('Backzettel-Kalender', () => {
   it('prüft Daten kalendarisch', () => {
@@ -312,5 +313,21 @@ describe('erneute Freigabe nach dem Abhaken (W4-verify r2)', () => {
     )
     line.doneAt = '2026-11-28T04:00:00.000Z'
     expect(previouslyDoneText(line)).toBeNull()
+  })
+})
+
+describe('Vorbereitungs-Beschriftung (W4-verify r2)', () => {
+  it('nimmt variantLabel aus der YAML, sonst die ID mit großem Anfang', () => {
+    expect(
+      prepTaskLabel({
+        id: 'x',
+        name: 'Hefeteig ansetzen',
+        variant: 'gross',
+        variantLabel: 'groß',
+      })
+    ).toBe('Hefeteig ansetzen (groß)')
+    expect(
+      prepTaskLabel({ id: 'x', name: 'Sauerteig', variant: 'misch' })
+    ).toBe('Sauerteig (Misch)')
   })
 })

@@ -193,6 +193,8 @@ export interface PrepTask {
   id: string
   name: string
   variant: string | null
+  /** Anzeigename der Variante aus der YAML (`variant_labels`), sonst `null`. */
+  variantLabel?: string | null
   note?: string | null
 }
 

@@ -579,6 +579,9 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
   `null`-Zeile erscheint mit `baseUnset: true` (Warnung `base_unset`); nicht zu 0 zusammenlegen.
   Gefüllte Posten (`filling_g`) brauchen die Grundmenge je Variante, sonst fehlt sie im
   Füllungsbedarf (der Validator lehnt eine bloße Zahl ab).
+- **Vorbereitungen mit Variante** (`by_weekday: { 6: gross }`) zeigen die ID nur als Notbehelf
+  („Gross"); den deutschen Namen trägt `variant_labels: { gross: groß }` an der Aufgabe, die API
+  liefert ihn als `variantLabel`.
 - **Rezeptpfade nur relativ unter `data/recipes/` und `.md`** - Validator und Loader prüfen das
   beide; die YAML schreibt später die App (B5b).
 - **Ein unvollständiges Rezept wird nicht hochgerechnet** (W4-Verifikation Runde 2): hat eine

@@ -778,7 +778,18 @@ function computePrep(cfg, lines, weekday) {
       if (variant === null) continue
     }
     if (task.when_item && !(itemTotals.get(task.when_item) > 0)) continue
-    out.push({ id: task.id, name: task.name, variant, note: task.note })
+    const labels = task.variant_labels
+    const variantLabel =
+      variant && labels && Object.prototype.hasOwnProperty.call(labels, variant)
+        ? labels[variant]
+        : null
+    out.push({
+      id: task.id,
+      name: task.name,
+      variant,
+      variantLabel,
+      note: task.note,
+    })
   }
   return out
 }

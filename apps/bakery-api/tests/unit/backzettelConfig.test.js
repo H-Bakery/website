@@ -277,9 +277,13 @@ describe('validateBackzettelConfig', () => {
     cfg.prep.push({ id: 'x', when_item: 'gibt-es-nicht' })
     cfg.prep.push({ id: 'y', by_weekday: { 1: 'misch', sonntag: 'x' } })
     cfg.prep.push({ id: 'z', days: [1] })
+    cfg.prep.push({ id: 'l1', variant_labels: ['groß'] })
+    cfg.prep.push({ id: 'l2', variant_labels: { gross: '  ' } })
     const p = paths(validate(cfg))
     expect(p).toEqual(
       expect.arrayContaining([
+        'prep[8].variant_labels',
+        'prep[9].variant_labels.gross',
         'prep[4].id',
         'prep[5].when_item',
         'prep[6].by_weekday.1',

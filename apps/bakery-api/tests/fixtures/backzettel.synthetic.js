@@ -135,6 +135,7 @@ function config(overrides = {}) {
         id: 'samstag-only',
         name: 'Hefeteig ansetzen',
         by_weekday: { 6: 'gross' },
+        variant_labels: { gross: 'groß' },
       },
     ],
     ...overrides,
