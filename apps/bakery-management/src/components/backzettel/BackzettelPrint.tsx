@@ -2,11 +2,12 @@
 
 import React from 'react'
 import { GlobalStyles } from '@mui/material'
-import type {
-  BackzettelConfigData,
-  BackzettelDay,
-  BackzettelDeltaEntry,
-  BackzettelLineDelta,
+import {
+  deltaTotalsByKey,
+  type BackzettelConfigData,
+  type BackzettelDay,
+  type BackzettelDeltaEntry,
+  type BackzettelLineDelta,
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
@@ -202,6 +203,10 @@ export interface PrintDeltaGroup {
   /** Was zusätzlich zu backen ist (aufgerundet); fehlt bei älteren Servern. */
   bake: number | undefined
   open: number
+  /** Summe der noch nicht gesehenen Nachträge (W4-verify r6). */
+  openQty: number
+  /** Was die noch nicht gesehenen zusätzlich zu backen heißen. */
+  bakeOpen: number | undefined
 }
 
 /**
@@ -224,10 +229,15 @@ export function groupDeltasForPrint(
       qty: 0,
       bake: undefined,
       open: 0,
+      openQty: 0,
+      bakeOpen: undefined,
     }
     g.deltas.push(d)
     g.qty = Math.round((g.qty + (Number(d.qty) || 0)) * 100) / 100
-    if (!d.acknowledgedAt) g.open += 1
+    if (!d.acknowledgedAt) {
+      g.open += 1
+      g.openQty = Math.round((g.openQty + (Number(d.qty) || 0)) * 100) / 100
+    }
     groups.set(d.key, g)
   }
   for (const g of Array.from(groups.values())) {
@@ -235,9 +245,63 @@ export function groupDeltasForPrint(
     // Nur wenn die Zeile dieselben Nachträge meint, ihr `bake` übernehmen.
     if (line && line.qty === g.qty && typeof line.bake === 'number') {
       g.bake = line.bake
+      if (
+        typeof line.bakeOpen === 'number' &&
+        (line.openQty === undefined || line.openQty === g.openQty)
+      ) {
+        g.bakeOpen = line.bakeOpen
+      }
     }
   }
   return Array.from(groups.values())
+}
+
+/**
+ * Was im Ausdruck groß neben dem Kästchen steht (W4-verify r6): bei schon
+ * gesehenen Nachträgen nicht mehr die ganze Summe mit leerem Kästchen - die
+ * Backstube buk sie sonst ein zweites Mal. Ganz gesehen: die Summe mit
+ * Haken; teils gesehen: nur, was noch offen ist.
+ */
+export function printDeltaFigure(group: PrintDeltaGroup): {
+  shown: number
+  done: boolean
+  seen: number | null
+} {
+  const total = group.bake ?? group.qty
+  if (group.open === 0) return { shown: total, done: true, seen: null }
+  if (group.open === group.deltas.length) {
+    return { shown: total, done: false, seen: null }
+  }
+  const open = group.bakeOpen ?? group.openQty
+  return {
+    shown: open,
+    done: false,
+    seen: Math.round((total - open) * 100) / 100,
+  }
+}
+
+/**
+ * Hinweis an der Zeile auf Seite 1: wie im Ausdruck unten - gesehen, teils
+ * gesehen (nur der offene Teil zählt) oder offen.
+ */
+export function printLineDeltaNote(
+  delta: BackzettelLineDelta,
+  unit: BackzettelDeltaEntry['unit']
+): string {
+  if (delta.open === 0) {
+    return `${deltaBadgeText(delta, unit)} · schon gesehen (Liste unten)`
+  }
+  if (delta.open < delta.count && typeof delta.openQty === 'number') {
+    const open = delta.bakeOpen ?? delta.openQty
+    return `Nachtrag offen ${formatSignedQty(
+      open,
+      unit
+    )} (von ${formatSignedQty(
+      delta.bake ?? delta.qty,
+      unit
+    )}, Rest schon gesehen; Liste unten)`
+  }
+  return `${deltaBadgeText(delta, unit)} (Liste unten)`
 }
 
 function printDeltaDetail(
@@ -280,14 +344,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
   const withPage2 = hasHefeteig(day)
   const withPage3 = prep.length > 0
   const deltas = day.deltas ?? []
-  const deltaGroups = groupDeltasForPrint(
-    deltas,
-    Object.fromEntries(
-      day.sections.flatMap((section) =>
-        section.lines.map((l) => [l.key, l.delta])
-      )
-    )
-  )
+  const deltaGroups = groupDeltasForPrint(deltas, deltaTotalsByKey(day))
 
   return (
     <div className="bz-print" data-testid="bz-print" aria-hidden="true">
@@ -356,10 +413,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                               : null,
                             previouslyDoneText(line),
                             line.delta && line.delta.count > 0
-                              ? `${deltaBadgeText(
-                                  line.delta,
-                                  line.unit
-                                )} (Liste unten)`
+                              ? printLineDeltaNote(line.delta, line.unit)
                               : null,
                           ]
                             .filter(Boolean)
@@ -419,7 +473,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
               </thead>
               <tbody>
                 {deltaGroups.map((g) => {
-                  const shown = g.bake ?? g.qty
+                  const { shown, done, seen } = printDeltaFigure(g)
                   return (
                     <tr key={g.key} data-testid={`print-delta-${g.key}`}>
                       <td className="num total">
@@ -439,11 +493,33 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                           )}
                         </strong>{' '}
                         <span className="small">
-                          {printDeltaDetail(g, g.first.unit)}
+                          {[
+                            seen !== null
+                              ? `noch offen - von ${formatSignedQty(
+                                  g.bake ?? g.qty,
+                                  g.first.unit
+                                )}, ${formatQty(
+                                  Math.abs(seen),
+                                  g.first.unit
+                                )} schon gesehen`
+                              : null,
+                            printDeltaDetail(g, g.first.unit),
+                          ]
+                            .filter(Boolean)
+                            .join(' · ')}
                         </span>
                       </td>
                       <td className="num">
-                        <span className="box" />
+                        {done ? (
+                          <span
+                            className="box done"
+                            data-testid={`print-delta-done-${g.key}`}
+                          >
+                            ✓
+                          </span>
+                        ) : (
+                          <span className="box" />
+                        )}
                       </td>
                     </tr>
                   )
