@@ -6,7 +6,9 @@
  * Partner prüften gar nicht).
  *
  * In einem Namen nichts verloren haben: C0/C1 (auch NUL), DEL und die
- * Bidi-Steuerzeichen (LRM/RLM, LRE…RLO, LRI…PDI). NUL brach den git-Commit
+ * Bidi-Steuerzeichen (LRM/RLM, LRE…RLO, LRI…PDI), dazu (W4-Verifikation
+ * Runde 3) das unsichtbare BOM U+FEFF sowie Zeilen-/Absatztrenner
+ * U+2028/U+2029. NUL brach den git-Commit
  * der hq-Produkte, ein RLO dreht den Rest eines Namens auf Stationskacheln,
  * Abholliste und im CSV optisch um. Freitext (Anmerkung, Langtext) darf
  * Zeilenumbruch, Wagenrücklauf und Tab behalten.
@@ -15,10 +17,11 @@
  */
 
 // eslint-disable-next-line no-control-regex
-const NAME_CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/
+const NAME_CONTROL_CHARS =
+  /[\u0000-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩\u2028\u2029\ufeff]/
 // eslint-disable-next-line no-control-regex
 const TEXT_CONTROL_CHARS =
-  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩]/
+  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f‎‏‪-‮⁦-⁩\u2028\u2029\ufeff]/
 
 /** `true`, wenn ein einzeiliger Name unzulässige Steuerzeichen enthält. */
 function hasNameControlChars(value) {

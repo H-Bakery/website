@@ -102,6 +102,18 @@ describe('registering stations', () => {
       .send({ name: '   ' })
     expect(bad.status).toBe(400)
     expect(bad.body).toMatchObject({ error: 'validation' })
+    // W4-verify r3: control and bidi characters, like display names
+    for (const name of ['Nul\u0000Station\u0007', 'Teststation\u202e']) {
+      const res = await request(api.app)
+        .post('/api/auth/stations')
+        .set(bearer(ownerToken))
+        .send({ name })
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({
+        error: 'INVALID_TEXT',
+        message: 'Der Name der Station enthält unzulässige Steuerzeichen.',
+      })
+    }
   })
 })
 

@@ -1143,6 +1143,13 @@ export function createBackzettelService(
         `Der Grund darf höchstens ${dayCore.MAX_REASON_LENGTH} Zeichen lang sein.`
       )
     }
+    if (dayCore.hasNameControlChars(reason)) {
+      throw new BackzettelError(
+        400,
+        'INVALID_TEXT',
+        dayCore.REASON_CONTROL_MESSAGE
+      )
+    }
     await getSequelize().transaction(async (transaction) => {
       const day = await BackzettelDay.findByPk(date, { transaction })
       if (!day || day.status !== 'confirmed') {

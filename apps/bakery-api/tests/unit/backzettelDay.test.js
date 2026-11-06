@@ -90,6 +90,16 @@ describe('parseCorrection', () => {
     ).toEqual({ ok: true, value: { correction: -3, reason: 'Markt zu' } })
   })
 
+  it('lehnt Steuerzeichen im Grund ab (W4-verify r3)', () => {
+    for (const reason of ['Grund\u0000', 'Grund\u202eTSET', 'Grund\u0007']) {
+      expect(day.parseCorrection({ correction: 1, reason }, weck)).toEqual({
+        ok: false,
+        error: 'INVALID_TEXT',
+        message: 'Der Grund enthält unzulässige Steuerzeichen.',
+      })
+    }
+  })
+
   it('0 löscht Korrektur und Grund', () => {
     expect(
       day.parseCorrection({ correction: 0, reason: 'egal' }, weck)
