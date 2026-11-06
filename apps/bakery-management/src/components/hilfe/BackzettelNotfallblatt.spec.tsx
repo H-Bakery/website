@@ -2,7 +2,9 @@ import React from 'react'
 import { render } from '@testing-library/react'
 import BackzettelNotfallblatt, {
   FALLBACK_SECTIONS,
+  NOTFALL_COLS_MM,
   notfallLayout,
+  notfallPostenWidthMm,
   notfallSections,
 } from './BackzettelNotfallblatt'
 import { TEST_CONFIG } from '../../lib/backzettelFixtures'
@@ -82,5 +84,48 @@ describe('Notfallblatt: Abschnittsname wiederholt sich beim Spaltenumbruch (W4-v
         notfallSections(TEST_CONFIG)[i].label
       )
     })
+  })
+})
+
+describe('Notfallblatt: Posten stehen ganz da (W4-verify r5)', () => {
+  it('Spaltenbreiten per <colgroup>, nicht über die erste Zeile (die ist die Überschrift)', () => {
+    const { container } = render(
+      <BackzettelNotfallblatt config={TEST_CONFIG} />
+    )
+    const table = container.querySelector('.nfb-section table')!
+    expect(table.firstElementChild?.tagName).toBe('COLGROUP')
+    const widths = Array.from(table.querySelectorAll('col')).map(
+      (c) => (c as HTMLElement).style.width
+    )
+    expect(widths).toEqual([
+      '',
+      `${NOTFALL_COLS_MM.basis}mm`,
+      `${NOTFALL_COLS_MM.vorb}mm`,
+      `${NOTFALL_COLS_MM.gesamt}mm`,
+      `${NOTFALL_COLS_MM.tick}mm`,
+    ])
+    const cell = Array.from(container.querySelectorAll('tbody td')).find(
+      (td) => td.textContent === 'Testzopf gefüllt – Testnussfüllung'
+    )
+    expect(cell?.className).toBe('posten')
+  })
+
+  it('zwei Spalten: die Postenspalte fasst „Kranz gefüllt – Mohnfüllung“ in 9 pt', () => {
+    // 27 Zeichen à ~1,75 mm
+    expect(notfallPostenWidthMm(2)).toBeGreaterThanOrEqual(27 * 1.75)
+  })
+
+  it('lange Namen zählen in der Zeilenhöhe doppelt, damit alles auf eine Seite passt', () => {
+    const long =
+      'Sehr langer Postenname – mit einer Sorte, die umbricht'.repeat(2)
+    const short = notfallLayout([{ id: 'a', label: 'A', rows: ['x'] }])
+    const wrapped = notfallLayout([{ id: 'a', label: 'A', rows: [long] }])
+    expect(wrapped.columns).toBe(2)
+    expect(short.rowHeightMm).toBe(7)
+    const many = (row: string) =>
+      notfallLayout([
+        { id: 'a', label: 'A', rows: Array.from({ length: 50 }, () => row) },
+      ])
+    expect(many(long).rowHeightMm).toBeLessThan(many('x').rowHeightMm)
   })
 })
