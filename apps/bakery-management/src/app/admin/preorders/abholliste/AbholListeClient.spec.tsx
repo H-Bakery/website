@@ -618,23 +618,63 @@ describe('AbholListeClient (P2)', () => {
     ).toBeInTheDocument()
   })
 
-  it('anderes Gerät war schneller: Hinweis, neu geladen, nichts überschrieben', async () => {
-    const user = userEvent.setup()
-    mockStatus.mockRejectedValueOnce(stale())
+  it('anderes Gerät war schneller: Übergabe NICHT gespeichert, bleibt stehen, neu geladen (W4-verify r6)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    // Auch der Wiederholungsversuch mit der frischen Fassung scheitert.
+    mockStatus.mockRejectedValueOnce(stale()).mockRejectedValueOnce(stale())
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-01')
     const loadsBefore = mockDay.mock.calls.length
     await user.click(
       screen.getByRole('button', { name: 'Erika Beispiel übergeben' })
     )
-    // Oben über der Liste und unten als Hinweis, wo getippt wurde.
-    expect(
-      await screen.findAllByText(
-        /LA-2026-11-12-01: Die Vorbestellung wurde inzwischen geändert\. Es wurde nichts überschrieben\. Die Liste ist neu geladen/
-      )
-    ).toHaveLength(2)
+    const top = await screen.findByTestId('open-actions')
+    expect(top).toHaveTextContent(
+      'LA-2026-11-12-01: Die Bestellung wurde inzwischen an anderer Stelle geändert - Die Übergabe wurde NICHT gespeichert. Bitte die Bestellung prüfen und erneut „Übergeben“ tippen. Die Liste ist neu geladen.'
+    )
+    expect(mockStatus).toHaveBeenCalledTimes(2)
     expect(mockDay.mock.calls.length).toBeGreaterThan(loadsBefore)
     expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull()
+    await act(async () => {
+      jest.advanceTimersByTime(20_000)
+    })
+    expect(screen.getByTestId('open-actions')).toHaveTextContent(
+      'NICHT gespeichert'
+    )
+  })
+
+  it('„bereit“ ist kein Konflikt für eine Übergabe: wiederholt mit der frischen Fassung, Geld erfasst (W4-verify r6)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    // Der Verkauf hat Max inzwischen „bereit“ gesetzt und die Anmerkung
+    // geändert - neue Version, sonst nichts.
+    const ready = {
+      ...max,
+      status: 'bereit' as const,
+      note: 'liegt hinten',
+      updatedAt: '2026-11-12T09:10:00.000Z',
+    }
+    mockStatus.mockRejectedValueOnce(stale())
+    mockDay.mockResolvedValue(ladenDay([erika, ready, paula, storno]))
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2))
+    expect(mockStatus.mock.calls[1]).toEqual([
+      2,
+      { status: 'abgeholt', paid: true },
+      '2026-11-12T09:10:00.000Z',
+    ])
+    expect(
+      await screen.findByText('Max Muster übergeben und bezahlt.')
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('open-actions')).toBeNull()
   })
 
   it('Übergabe ohne Antwort und ohne frische Liste: „unklar“, unten am Bildschirm, bleibt stehen (W4-Verifikation)', async () => {
@@ -1147,6 +1187,130 @@ describe('AbholListeClient (P2)', () => {
         /LA-2026-11-12-02: Die Verbindung ist wieder da - gespeichert ist es/
       ).length
     ).toBeGreaterThan(0)
+  })
+
+  it('Funkloch, und inzwischen storniert / teurer / schon übergeben: nach dem WLAN derselbe Rat wie im Netz (W4-verify r6)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    const unpaid = { ...paula, status: 'offen' as const, paid: false }
+    mockDay.mockResolvedValue(ladenDay([erika, max, unpaid, storno]))
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValue(new Error('Failed to fetch'))
+    mockDay.mockRejectedValue(new Error('Failed to fetch'))
+    for (const name of ['Max Muster', 'Paula Probe']) {
+      await user.click(
+        screen.getByRole('button', { name: `${name} übergeben` })
+      )
+      await user.click(
+        within(await screen.findByRole('dialog')).getByRole('button', {
+          name: 'Bezahlt und übergeben',
+        })
+      )
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    }
+    await screen.findAllByText(/LA-2026-11-12-03: Keine Verbindung/)
+    // Max storniert, Paula vom Laden ohne Zahlung übergeben.
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        { ...max, status: 'storniert' },
+        { ...unpaid, status: 'abgeholt', paid: false },
+        storno,
+      ])
+    )
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    const top = await screen.findByTestId('open-actions')
+    await waitFor(() =>
+      expect(top).toHaveTextContent(
+        'LA-2026-11-12-02: Die Verbindung ist wieder da - die Übergabe ist NICHT gespeichert. Wurde inzwischen STORNIERT - bitte NICHT übergeben. Gerade kassiertes Geld zurückgeben.'
+      )
+    )
+    expect(top).toHaveTextContent(
+      'LA-2026-11-12-03: Die Verbindung ist wieder da - wurde inzwischen schon an anderer Stelle übergeben, Ihre Zahlung ist NICHT erfasst.'
+    )
+    expect(top).not.toHaveTextContent('Bitte jetzt erneut tippen')
+  })
+
+  it('Funkloch, und der Betrag ist gestiegen: nennt den Rest nach dem WLAN (W4-verify r6)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValue(new Error('Failed to fetch'))
+    mockDay.mockRejectedValue(new Error('Failed to fetch'))
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    await screen.findAllByText(/LA-2026-11-12-02: Keine Verbindung/)
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        {
+          ...max,
+          items: [{ ...max.items[0], quantity: 10, lineTotal: 6 }],
+          total: 6,
+        },
+        paula,
+        storno,
+      ])
+    )
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    const top = await screen.findByTestId('open-actions')
+    await waitFor(() =>
+      expect(top.textContent).toMatch(
+        /LA-2026-11-12-02: Die Verbindung ist wieder da - die Übergabe ist NICHT gespeichert\. Die Bestellung wurde inzwischen geändert: Betrag jetzt 6,00\s€ statt 3,60\s€.*noch 2,40\s€ kassieren/
+      )
+    )
+  })
+
+  it('Hinweis unten verdeckt den Übergabe-Dialog nicht, der Dialog nennt ihn selbst (W4-verify r6)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(stale())
+    const dearer = {
+      ...max,
+      items: [{ ...max.items[0], quantity: 10, lineTotal: 6 }],
+      total: 6,
+      updatedAt: '2026-11-12T09:10:00.000Z',
+    }
+    mockDay.mockResolvedValue(ladenDay([erika, dearer, paula, storno]))
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    await screen.findByTestId('open-actions')
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    // Die Meldung unten (Snackbar) ist da …
+    expect(screen.getAllByText(/Betrag jetzt 6,00/).length).toBe(2)
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    // … aber nicht über dem Dialog; der zeigt den Rat selbst.
+    expect(
+      within(dialog).getByTestId('handover-earlier-failure')
+    ).toHaveTextContent('Betrag jetzt 6,00')
+    // Ausblend-Animation der Snackbar abwarten.
+    await waitFor(() =>
+      expect(
+        screen
+          .getAllByText(/Betrag jetzt 6,00/)
+          .filter((el) => el.closest('.MuiSnackbar-root'))
+      ).toHaveLength(0)
+    )
   })
 
   it('druckt eine eigene A4-Tabelle: ganze Liste ohne Stornierte, mit Unterschrift', async () => {

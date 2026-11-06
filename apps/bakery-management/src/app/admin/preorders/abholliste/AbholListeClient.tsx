@@ -100,6 +100,7 @@ import {
   describeBulkResults,
   formatClock,
   groupPreorders,
+  handoverStillMatches,
   isDayEndAllowed,
   isPickupPlace,
   isWaiting,
@@ -319,6 +320,33 @@ export function handoverConflictAdvice(
   )}). Es wurde nichts gespeichert - Artikel prüfen, ${money}, dann erneut übergeben.`
 }
 
+/**
+ * Text für einen Tipp, der im Funkloch NICHT ankam (W4-Verifikation Runde 6):
+ * dieselben Hinweise wie beim Konflikt im Netz - storniert (Geld zurück),
+ * Betrag geändert (Rest/zurück), von jemand anderem schon übergeben
+ * (Zahlung nicht erfasst) - statt für alles „erneut tippen“.
+ */
+export function lostActionText(
+  code: string,
+  before: Pick<Preorder, 'total'>,
+  fresh: Preorder,
+  change: PreorderStatusChange
+): string {
+  const back = 'Die Verbindung ist wieder da -'
+  if (change.status === 'abgeholt' && fresh.status === 'abgeholt') {
+    if (change.paid === true && !fresh.paid) {
+      return `${code}: ${back} wurde inzwischen schon an anderer Stelle übergeben, Ihre Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt“ tippen.`
+    }
+    return `${code}: ${back} wurde inzwischen schon an anderer Stelle übergeben, Ihre Übergabe ist NICHT gespeichert. Bitte prüfen, ob die Ware doppelt ausgegeben wurde.`
+  }
+  if (change.status === 'abgeholt') {
+    const advice = handoverConflictAdvice(before, fresh, change)
+    if (advice)
+      return `${code}: ${back} die Übergabe ist NICHT gespeichert. ${advice}`
+  }
+  return `${code}: ${back} das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
+}
+
 function handedOverUnpaidNote(
   summary: { handedOverUnpaidTotal?: number } | null | undefined
 ): string | null {
@@ -411,6 +439,8 @@ interface UncertainAction {
   code: string
   change: PreorderStatusChange
   text: string
+  /** Betrag beim Tippen - für „Betrag jetzt X statt Y“ nach dem Funkloch. */
+  total: number
 }
 
 interface Toast {
@@ -603,19 +633,19 @@ export default function AbholListeClient({
           uncertainRef.current = []
           const saved: string[] = []
           const lost: string[] = []
+          const lostTexts: string[] = []
           for (const action of open) {
             const fresh = next.preorders.find((p) => p.id === action.id)
             if (fresh && changeAlreadyApplied(fresh, action.change)) {
               saved.push(action.code)
             } else if (fresh) {
               lost.push(action.code)
+              lostTexts.push(
+                lostActionText(action.code, action, fresh, action.change)
+              )
             }
           }
           const openTexts = new Set(open.map((a) => a.text))
-          const lostTexts = lost.map(
-            (code) =>
-              `${code}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
-          )
           setOpenActions((current) => [
             ...current.filter((text) => !openTexts.has(text)),
             ...lostTexts,
@@ -626,14 +656,23 @@ export default function AbholListeClient({
                   ', '
                 )}: Die Verbindung ist wieder da - gespeichert ist es.`
               : ''
+          const generic = (code: string) =>
+            `${code}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
           if (lost.length > 0) {
+            // Nur wenn alle bloß „erneut tippen“ heißen, in einem Satz;
+            // sonst jeder Hinweis für sich (Geld zurück, Rest, …).
+            const allGeneric = lost.every(
+              (code, i) => lostTexts[i] === generic(code)
+            )
             setToast({
               text: [
                 lost.length === 1
                   ? lostTexts[0]
-                  : `${lost.join(
+                  : allGeneric
+                  ? `${lost.join(
                       ', '
-                    )}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`,
+                    )}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
+                  : lostTexts.join(' '),
                 savedText,
               ]
                 .filter(Boolean)
@@ -812,6 +851,23 @@ export default function AbholListeClient({
         return
       }
     }
+    // W4-verify r6: eine gescheiterte Übergabe muss stehen bleiben und klar
+    // sagen, dass weder Übergabe noch Geld erfasst sind - ein blauer Hinweis,
+    // der nach 6 s verschwindet, ließ den Fahrer glauben, es habe geklappt.
+    if (change?.status === 'abgeholt') {
+      const text = `${
+        preorder.code
+      }: Die Bestellung wurde inzwischen an anderer Stelle geändert - ${describeChange(
+        change
+      )} wurde NICHT gespeichert${
+        change.paid === true ? ', das Geld ist NICHT erfasst' : ''
+      }. Bitte die Bestellung prüfen und erneut „Übergeben“ tippen. ${afterReload(
+        reloaded
+      )}`
+      keepFailure(preorder.code, text)
+      setToast({ text, severity: 'warning' })
+      return
+    }
     const text = `${preorder.code}: ${preorderErrorMessage(
       err,
       'Die Bestellung wurde inzwischen geändert.'
@@ -824,8 +880,9 @@ export default function AbholListeClient({
     preorder: Preorder,
     change: PreorderStatusChange,
     text: string,
-    undo?: PreorderStatusChange
-  ) => {
+    undo?: PreorderStatusChange,
+    retried = false
+  ): Promise<void> => {
     setBusyId(preorder.id)
     setActionError(null)
     try {
@@ -854,8 +911,26 @@ export default function AbholListeClient({
       })
       await load(true)
     } catch (err) {
-      if (isPreorderConflict(err)) await onConflict(preorder, err, change)
-      else if ((err as { status?: unknown } | null)?.status === 401) {
+      if (isPreorderConflict(err)) {
+        // W4-verify r6: ein Kollege hat die Bestellung nur „bereit“ gesetzt,
+        // „nicht abgeholt“ markiert oder die Anmerkung geändert - für die
+        // Übergabe zählt das nicht. Einmal mit der frischen Fassung
+        // wiederholen, statt Übergabe und Geld zu verwerfen.
+        if (change.status === 'abgeholt' && !retried) {
+          const reloaded = await load(true)
+          const fresh = reloaded ? freshOf(preorder.id) : null
+          if (fresh && handoverStillMatches(preorder, fresh)) {
+            return act(
+              fresh,
+              change,
+              text,
+              undo ? previousOf(fresh) : undefined,
+              true
+            )
+          }
+        }
+        await onConflict(preorder, err, change)
+      } else if ((err as { status?: unknown } | null)?.status === 401) {
         // Sitzung beendet (Refresh gescheitert): gleich geht es zur
         // Anmeldung. Merken, was NICHT gespeichert wurde - sonst bliebe eine
         // verlorene Übergabe unbemerkt (W4-Verifikation Runde 2).
@@ -899,7 +974,13 @@ export default function AbholListeClient({
             if (!reloaded) {
               uncertainRef.current = [
                 ...uncertainRef.current.filter((a) => a.id !== preorder.id),
-                { id: preorder.id, code: preorder.code, change, text },
+                {
+                  id: preorder.id,
+                  code: preorder.code,
+                  change,
+                  text,
+                  total: preorder.total,
+                },
               ]
               setOpenActions((current) => [
                 ...current.filter((t) => !t.startsWith(`${preorder.code}: `)),
@@ -2127,6 +2208,18 @@ export default function AbholListeClient({
                       handover.total
                     )} kassieren.`}
               </Alert>
+              {openActions
+                .filter((t) => t.startsWith(`${handover.code}: `))
+                .map((t) => (
+                  <Alert
+                    key={t}
+                    severity="warning"
+                    sx={{ mt: 2 }}
+                    data-testid="handover-earlier-failure"
+                  >
+                    {t.slice(handover.code.length + 2)}
+                  </Alert>
+                ))}
               {!canWrite && (
                 <Typography
                   variant="body2"
@@ -2273,8 +2366,13 @@ export default function AbholListeClient({
         </DialogActions>
       </Dialog>
 
+      {/*
+        W4-verify r6: nicht über einem offenen Dialog - am 360er-Handy
+        verdeckte der lange Hinweis die Übergabe-Knöpfe. Was stehen bleiben
+        muss, steht im Übergabe-Dialog selbst und oben in der Liste.
+      */}
       <Snackbar
-        open={toast !== null}
+        open={toast !== null && handover === null && bulk === null}
         autoHideDuration={
           toast?.severity === 'error' || toast?.severity === 'warning'
             ? null
