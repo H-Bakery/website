@@ -639,6 +639,11 @@ describe('Backstube-Tablet', () => {
     expect(extras).toHaveTextContent('Nachträge seit der Freigabe')
     expect(extras).toHaveTextContent('1 × 500 g zusätzlich abwiegen')
     expect(extras).toHaveTextContent('Testnussfüllung: +400 g')
+    // Groß zum Abwiegen (W4-verify r4)
+    const big = within(extras)
+      .getAllByText(/^\+\d/)
+      .map((el) => el.textContent)
+    expect(big).toEqual(expect.arrayContaining(['+1 × 500 g', '+400 g']))
   })
 
   it('lädt alle 60 s und beim Zurückkommen neu', async () => {
