@@ -44,8 +44,16 @@ interface StopCardProps {
     details?: FailureDetails
   ) => void
   onRemove?: (stopId: number) => void
+  /** Planung (Inhaber): Stopp in der Reihenfolge eins nach oben/unten. */
+  onMove?: (stopId: number, direction: -1 | 1) => void
+  isFirst?: boolean
+  isLast?: boolean
   /** Nur an einer Sammelstelle gebraucht - dort wird je Vorbestellung abgehakt. */
-  onPreorderStatusChange?: (preorderId: number, status: PreorderStatus) => void
+  onPreorderStatusChange?: (
+    preorderId: number,
+    status: PreorderStatus,
+    paid?: true
+  ) => void
   /** Vorbestellungen, deren eigener Statuswechsel gerade unterwegs ist. */
   busyPreorderIds?: ReadonlySet<number>
   /**
@@ -65,6 +73,9 @@ export function StopCard({
   busy,
   onStatusChange,
   onRemove,
+  onMove,
+  isFirst = false,
+  isLast = false,
   onPreorderStatusChange,
   busyPreorderIds,
   readOnly = false,
@@ -336,6 +347,27 @@ export function StopCard({
           >
             Zurücksetzen
           </button>
+        )}
+
+        {onMove && (
+          <>
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              disabled={busy || isFirst}
+              onClick={() => onMove(stop.id, -1)}
+            >
+              Nach oben
+            </button>
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              disabled={busy || isLast}
+              onClick={() => onMove(stop.id, 1)}
+            >
+              Nach unten
+            </button>
+          </>
         )}
 
         {onRemove && (

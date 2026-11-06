@@ -222,6 +222,59 @@ describe('Warteschlange', () => {
     expect(pendingUpdates()).toHaveLength(1)
   })
 
+  it('verliert kein Abhaken, das während des Nachsendens dazukommt', async () => {
+    // Wackliges Netz: A wird nachgesendet und hängt; währenddessen tippt der
+    // Fahrer B, dessen Request scheitert - B landet in der Schlange. Früher
+    // schrieb flushQueue nach As Antwort seine alte Kopie zurück ([]).
+    let answerA: (value: unknown) => void = () => undefined
+    ;(global as { fetch?: unknown }).fetch = jest.fn(
+      () =>
+        new Promise((resolve) => {
+          answerA = resolve
+        })
+    )
+    queueStopUpdate(7, 1, { status: 'done' })
+    const flushing = flushQueue()
+    queueStopUpdate(7, 2, { status: 'done' })
+    expect(pendingUpdates()).toHaveLength(2)
+    answerA({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ id: 7, stops: [] }),
+    })
+    const result = await flushing
+
+    expect(pendingUpdates()).toEqual([
+      expect.objectContaining({ kind: 'stop', tourId: 7, stopId: 2 }),
+    ])
+    expect(result.remaining).toEqual(pendingUpdates())
+  })
+
+  it('schickt einen inzwischen ersetzten Stand nicht mehr', async () => {
+    const fetchMock = serverAnswers(preorderResponse)
+    ;(global as { fetch?: unknown }).fetch = fetchMock
+    queuePreorderUpdate(101, { status: 'handed_over' })
+    queueStopUpdate(7, 1, { status: 'done' })
+    // Während die Übergabe unterwegs ist, tippt der Fahrer um auf „nicht
+    // abgeholt" (gleiche Millisekunde). Die Antwort auf den alten Stand darf
+    // den neuen Eintrag nicht mit aus der Schlange nehmen.
+    fetchMock.mockImplementationOnce(async () => {
+      queuePreorderUpdate(101, { status: 'not_collected' })
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify(preorderResponse),
+      }
+    })
+    await flushQueue()
+    expect(pendingUpdates()).toEqual([
+      expect.objectContaining({
+        kind: 'preorder',
+        body: { status: 'not_collected' },
+      }),
+    ])
+  })
+
   it('wirft eine fachlich abgelehnte Übergabe aus der Schlange', async () => {
     // Sonst blockierte sie alle folgenden Aenderungen fuer immer.
     ;(global as { fetch?: unknown }).fetch = serverAnswers(

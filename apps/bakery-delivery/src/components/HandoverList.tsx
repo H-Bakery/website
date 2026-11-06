@@ -20,18 +20,38 @@ import styles from '../app/page.module.css'
 /** Die Kennzahlen der Kopfzeile. Nur aus `preorders`, nie aus dem Server-Summary:
  * ein eben abgehaktes Kundenpaar soll die Zeile sofort bewegen. */
 export interface HandoverSummary {
-  /** Vorbestellungen insgesamt (stornierte liefert der Server nicht mit). */
+  /** Vorbestellungen insgesamt, ohne stornierte. */
   total: number
   handedOver: number
   notCollected: number
   open: number
-  /** Summe der noch offenen Beträge - das, was noch zu kassieren ist. */
+  /**
+   * Was bei den offenen Bestellungen noch bar zu kassieren ist: unbezahlte
+   * voll, vorab bezahlte nur ein offener Rest - nie ein zweites Mal.
+   */
   openTotal: number
+  /** Zurückzugeben: billiger gewordene und stornierte, schon bezahlte. */
+  refundTotal: number
+  refundCount: number
+}
+
+/**
+ * Was an einer Vorbestellung noch zu kassieren (`> 0`) oder zurückzugeben
+ * (`< 0`) ist - wie `paymentState()` der Abholliste. Ohne `paid` im Payload
+ * (alte Offline-Kopie) gilt sie als unbezahlt: der ganze Betrag.
+ */
+export function moneyDue(preorder: Preorder): number {
+  if (!preorder.paid) {
+    return preorder.status === 'cancelled' ? 0 : roundCents(preorder.total)
+  }
+  return roundCents(Number(preorder.paymentBalance) || 0)
 }
 
 export function summarizeHandover(preorders: Preorder[]): HandoverSummary {
-  const list = preorders ?? []
+  const all = preorders ?? []
+  const list = all.filter((preorder) => preorder.status !== 'cancelled')
   const open = list.filter((preorder) => preorder.status === 'open')
+  const refunds = all.filter((preorder) => moneyDue(preorder) < 0)
   return {
     total: list.length,
     handedOver: list.filter((p) => p.status === 'handed_over').length,
@@ -40,9 +60,25 @@ export function summarizeHandover(preorders: Preorder[]): HandoverSummary {
     // Geld nie ungerundet summieren: 6,10 + 6,20 ergibt sonst
     // 12,299999999999999 und darunter steht ein Betrag, den niemand kassiert.
     openTotal: roundCents(
-      open.reduce((sum, preorder) => sum + roundCents(preorder.total), 0)
+      open.reduce((sum, preorder) => sum + Math.max(0, moneyDue(preorder)), 0)
     ),
+    refundTotal: roundCents(
+      refunds.reduce((sum, preorder) => sum - moneyDue(preorder), 0)
+    ),
+    refundCount: refunds.length,
   }
+}
+
+/** Eine Zeile zum Geld: was der Fahrer an dieser Bestellung tun muss. */
+function paymentNote(preorder: Preorder): string {
+  const due = moneyDue(preorder)
+  if (preorder.status === 'cancelled') {
+    return `Storniert – ${formatCurrency(-due)} zurückgeben`
+  }
+  if (due < 0) return `${formatCurrency(-due)} zurückgeben`
+  if (!preorder.paid) return `${formatCurrency(due)} kassieren`
+  if (due > 0) return `Bezahlt – Rest ${formatCurrency(due)} kassieren`
+  return 'Bezahlt – nichts zu kassieren'
 }
 
 function roundCents(value: number): number {
@@ -74,7 +110,15 @@ interface HandoverListProps {
    * der vorigen darf sie nicht warten lassen.
    */
   busyIds?: ReadonlySet<number>
-  onStatusChange: (preorderId: number, status: PreorderStatus) => void
+  /**
+   * `paid: true` = Rest kassiert bzw. Erstattung ausgezahlt (nur mit
+   * „Übergeben“). Ohne bleibt ein offener Rest/Erstattung offen.
+   */
+  onStatusChange: (
+    preorderId: number,
+    status: PreorderStatus,
+    paid?: true
+  ) => void
   /** Nur ansehen (Rolle `verkauf`, B8): keine Statusknöpfe. */
   readOnly?: boolean
   /**
@@ -132,6 +176,12 @@ export function HandoverList({
                 <dt>Betrag</dt>
                 <dd>{formatCurrency(preorder.total)}</dd>
               </div>
+              <div>
+                <dt>Geld</dt>
+                <dd data-testid={`payment-${preorder.id}`}>
+                  {paymentNote(preorder)}
+                </dd>
+              </div>
               {preorder.status === 'handed_over' && preorder.handedOverAt && (
                 <div>
                   <dt>Übergeben</dt>
@@ -157,16 +207,49 @@ export function HandoverList({
                   Anrufen
                 </a>
               )}
-              {readOnly ? null : preorder.status === 'open' ? (
+              {readOnly ? null : preorder.status === 'cancelled' ? (
+                <p className={styles.placeholder}>
+                  Erfassen kann das der Verkauf.
+                </p>
+              ) : preorder.status === 'open' ? (
                 <>
-                  <button
-                    type="button"
-                    className={styles.buttonSuccess}
-                    disabled={rowBusy}
-                    onClick={() => onStatusChange(preorder.id, 'handed_over')}
-                  >
-                    Übergeben
-                  </button>
+                  {preorder.paid && moneyDue(preorder) !== 0 ? (
+                    <>
+                      <button
+                        type="button"
+                        className={styles.buttonSuccess}
+                        disabled={rowBusy}
+                        onClick={() =>
+                          onStatusChange(preorder.id, 'handed_over', true)
+                        }
+                      >
+                        {moneyDue(preorder) > 0
+                          ? 'Rest kassiert und übergeben'
+                          : 'Erstattet und übergeben'}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.buttonGhost}
+                        disabled={rowBusy}
+                        onClick={() =>
+                          onStatusChange(preorder.id, 'handed_over')
+                        }
+                      >
+                        {moneyDue(preorder) > 0
+                          ? 'Ohne Rest übergeben'
+                          : 'Ohne Erstattung übergeben'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.buttonSuccess}
+                      disabled={rowBusy}
+                      onClick={() => onStatusChange(preorder.id, 'handed_over')}
+                    >
+                      Übergeben
+                    </button>
+                  )}
                   <button
                     type="button"
                     className={styles.buttonWarn}
@@ -198,12 +281,15 @@ export function HandoverList({
   )
 }
 
-/** „4 von 12 übergeben · Bar zu kassieren: 96,40 €" */
+/** „4 von 12 übergeben · Bar zu kassieren: 96,40 € · Zurückzugeben: 9,60 €" */
 export function handoverHeadline(summary: HandoverSummary): string {
   const parts = [`${summary.handedOver} von ${summary.total} übergeben`]
   if (summary.notCollected > 0) {
     parts.push(`${summary.notCollected} nicht abgeholt`)
   }
   parts.push(`Bar zu kassieren: ${formatCurrency(summary.openTotal)}`)
+  if (summary.refundTotal > 0) {
+    parts.push(`Zurückzugeben: ${formatCurrency(summary.refundTotal)}`)
+  }
   return parts.join(' · ')
 }

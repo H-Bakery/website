@@ -114,6 +114,12 @@ export interface Preorder {
   deadline: string | null
   /** Berechnet vom Server: nach Bestellschluss aufgenommen. */
   afterDeadline: boolean
+  /** Schon bezahlt (Vorkasse oder bei der Übergabe). Alte Payloads: fehlt. */
+  paid?: boolean
+  /** Bezahlter Betrag; `null` ohne Zahlung. */
+  paidAmount?: number | null
+  /** `> 0` Rest zu kassieren, `< 0` zurückzugeben, `0` ausgeglichen. */
+  paymentBalance?: number
 }
 
 export interface PreorderSummaryProduct {
@@ -210,6 +216,8 @@ export interface Tour {
 /** Was die Übergabeliste an die API schickt. */
 export interface PreorderUpdate {
   status: PreorderStatus
+  /** Rest kassiert bzw. Erstattung ausgezahlt - nur mit `handed_over`. */
+  paid?: true
 }
 
 /** Was die Erfassungsmaske an die API schickt. */
@@ -225,6 +233,8 @@ export interface StopInput {
   status?: StopStatus
   failureReason?: string | null
   goodsDisposition?: GoodsDisposition | null
+  /** Zeitpunkt des Antippens (ISO), auch aus der Warteschlange. */
+  completedAt?: string | null
   lat?: number | null
   lon?: number | null
 }
@@ -380,6 +390,12 @@ export const deliveryApi = {
       body: JSON.stringify(body),
     }),
 
+  deleteTour: (id: number) =>
+    request<{ success: boolean; message?: string }>(
+      `/api/deliveries/tours/${id}`,
+      { method: 'DELETE' }
+    ),
+
   addStop: (tourId: number, body: StopInput) =>
     request<Tour>(`/api/deliveries/tours/${tourId}/stops`, {
       method: 'POST',
@@ -439,6 +455,25 @@ export function clearDeviceData(): void {
     TOURS_COPY_KEY,
     'bakery-delivery-driver',
   ]) {
+    try {
+      window.localStorage.removeItem(key)
+    } catch {
+      // egal
+    }
+  }
+}
+
+/**
+ * Die Offline-Kopien (Tourliste mit Namen, Adressen, Telefonnummern der
+ * Kundschaft; Fahrerliste) weg, die Warteschlange bleibt: wenn die Sitzung
+ * ohne „Abmelden“ endet (abgelaufen, widerrufen, Konto deaktiviert). Ein
+ * Abhaken darf dabei nicht verloren gehen - es geht nach der nächsten
+ * Anmeldung desselben Benutzers raus -, Kundendaten sollen aber nicht
+ * unbegrenzt auf dem Handy liegen bleiben.
+ */
+export function clearOfflineCopies(): void {
+  if (typeof window === 'undefined') return
+  for (const key of [DRIVERS_COPY_KEY, TOURS_COPY_KEY]) {
     try {
       window.localStorage.removeItem(key)
     } catch {
@@ -549,6 +584,14 @@ function writeQueue(queue: QueuedUpdate[]): void {
  * Ziel bleibt nur der letzte Stand stehen; zweimal Antippen soll nicht zwei
  * widerspruechliche Aenderungen nachschieben.
  */
+// Eindeutig auch innerhalb einer Millisekunde: flushQueue streicht nach dem
+// Versand per id - ein im selben Moment ersetzter Eintrag darf nicht mitfallen.
+let queueSeq = 0
+function queueId(prefix: string): string {
+  queueSeq += 1
+  return `${prefix}-${Date.now()}-${queueSeq}`
+}
+
 function enqueue(
   entry: QueuedUpdate,
   isSameTarget: (other: QueuedUpdate) => boolean
@@ -565,7 +608,7 @@ export function queueStopUpdate(
 ): QueuedUpdate[] {
   return enqueue(
     {
-      id: `stop-${tourId}-${stopId}-${Date.now()}`,
+      id: queueId(`stop-${tourId}-${stopId}`),
       kind: 'stop',
       tourId,
       stopId,
@@ -585,7 +628,7 @@ export function queuePreorderUpdate(
 ): QueuedUpdate[] {
   return enqueue(
     {
-      id: `preorder-${preorderId}-${Date.now()}`,
+      id: queueId(`preorder-${preorderId}`),
       kind: 'preorder',
       preorderId,
       body,
@@ -616,13 +659,22 @@ export async function flushQueue(): Promise<{
   /** true, wenn der Server nicht erreichbar war und Eintraege liegen blieben. */
   offline: boolean
 }> {
-  let queue = readQueue()
+  // Nur eine Momentaufnahme dessen, was abzuarbeiten ist. Geschrieben wird
+  // immer auf den *aktuellen* Stand des Speichers: ein Abhaken, das während
+  // des Nachsendens neu in die Schlange kommt (wackliges Netz), darf nicht
+  // von einer alten Kopie überschrieben werden - so ging es früher verloren.
+  const snapshot = readQueue()
   let tour: Tour | null = null
   const confirmed: Preorder[] = []
   const rejected: QueuedUpdate[] = []
   let offline = false
+  const drop = (id: string) =>
+    writeQueue(readQueue().filter((q) => q.id !== id))
 
-  for (const entry of [...queue]) {
+  for (const entry of snapshot) {
+    // Inzwischen ersetzt (neuer Stand desselben Ziels) - der neue geht beim
+    // nächsten Lauf raus, der alte nicht mehr.
+    if (!readQueue().some((q) => q.id === entry.id)) continue
     try {
       if (entry.kind === 'preorder') {
         confirmed.push(
@@ -635,8 +687,7 @@ export async function flushQueue(): Promise<{
           entry.body
         )
       }
-      queue = queue.filter((q) => q.id !== entry.id)
-      writeQueue(queue)
+      drop(entry.id)
     } catch (error) {
       if (
         error instanceof ApiError &&
@@ -644,8 +695,7 @@ export async function flushQueue(): Promise<{
         error.status < 500
       ) {
         rejected.push(entry)
-        queue = queue.filter((q) => q.id !== entry.id)
-        writeQueue(queue)
+        drop(entry.id)
         continue
       }
       offline = true
@@ -653,7 +703,13 @@ export async function flushQueue(): Promise<{
     }
   }
 
-  return { tour, preorders: confirmed, remaining: queue, rejected, offline }
+  return {
+    tour,
+    preorders: confirmed,
+    remaining: readQueue(),
+    rejected,
+    offline,
+  }
 }
 
 // --- Offline-Kopie ---

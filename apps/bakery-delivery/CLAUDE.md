@@ -63,7 +63,10 @@ steht.
   `bakery-delivery-last-user` (wer zuletzt angemeldet war). Meldet sich ein **anderer** Benutzer
   an, löscht `clearDeviceData()` vorher Warteschlange, Offline-Kopien und den gewählten Fahrer -
   sonst sähe die nächste Person die Tour des vorigen Fahrers oder schickte dessen Abhaken unter
-  eigenem Namen ab. Derselbe Benutzer behält seine Warteschlange.
+  eigenem Namen ab. Derselbe Benutzer behält seine Warteschlange. **Steht das Anmeldeformular**
+  (Sitzung abgelaufen oder serverseitig beendet), löscht `clearOfflineCopies()` sofort Tour- und
+  Fahrer-Kopie (Namen, Adressen, Telefonnummern der Kundschaft) - nur die Warteschlange bleibt bis
+  zur nächsten Anmeldung (Abschluss-Verifikation next).
 - **Jede Anfrage trägt `Authorization: Bearer`** (`request()` in `delivery-api.ts`). Eine 401
   erneuert die Sitzung **einmal** (`refreshSession()`: ein Refresh je Tab, der rotierte
   Refresh-Token steht sofort im Speicher) und wiederholt die Anfrage. 409 `refresh_superseded`
@@ -83,7 +86,10 @@ steht.
   Position und darf „Route berechnen", aber nicht planen (kein „Tour anlegen", „Tour planen",
   Stopp entfernen) und eine **Übergabe nicht zurücknehmen** (`undoHandover`: an einer
   übergebenen Vorbestellung steht statt „Zurücksetzen" „Zurücknehmen kann der Verkauf." - die
-  API sagt sonst 403 `handover_undo_forbidden`; „Nicht abgeholt" darf er zurücksetzen);
+  API sagt sonst 403 `handover_undo_forbidden`; „Nicht abgeholt" darf er zurücksetzen).
+  **Planen (nur Inhaber):** „Tour planen" öffnet „Tour bearbeiten" mit Fahrer-Zuordnung
+  (`PATCH /tours/:id { driverId }` - eine unter „Alle" angelegte Tour hat sonst keinen Fahrer),
+  „Nach oben"/„Nach unten" je Stopp (`stopOrder`) und „Tour löschen" mit Rückfrage in der Seite;
   `verkauf` liest nur (keine Abhak-Knöpfe, kein Standort); `backstube` wird
   beim Anmelden abgewiesen und gleich wieder abgemeldet.
 - **Abgelehnte Änderungen bleiben sichtbar.** Lehnt die API ein Abhaken oder eine Übergabe mit
@@ -246,7 +252,12 @@ Vier Regeln, die man kennen muss, bevor man hier etwas ändert:
 - **Die Vorbestellungen hängen im Tour-Payload.** `decorateTour()` hängt an jeden Stopp mit
   `pickupPointId` die Vorbestellungen des Tourtags plus `preorderSummary`. Das ist Absicht und kein
   überflüssiger Ballast: die Fahrer-App hält die Tourliste als Offline-Kopie im `localStorage` — läge
-  die Übergabeliste hinter einem zweiten Aufruf, wäre sie im Funkloch weg. Stornierte sind nicht dabei.
+  die Übergabeliste hinter einem zweiten Aufruf, wäre sie im Funkloch weg. Stornierte sind nur dabei,
+  wenn Geld zurückzugeben ist (`paymentBalance < 0`). **Bezahlstand:** jede Bestellung trägt `paid`,
+  `paidAmount` und `paymentBalance`; `HandoverList` zeigt je Zeile „Geld" (nichts / X kassieren /
+  Rest X / X zurückgeben), die Kopfzeile kassiert Vorkasse nicht ein zweites Mal und nennt
+  „Zurückzugeben". Bei Rest oder Erstattung fragen zwei Knöpfe, ob das Geld geflossen ist (`paid:
+true` mit der Übergabe) - der Alias setzt `paid` nur bei einer **unbezahlten** Bestellung selbst.
 - **Preise und Namen sind ein Snapshot** aus `hq`, wie bei `PartnerVisitItem`. Der Client schickt nur
   `productId` und `qty`; ein mitgeschickter Preis wird ignoriert. Beim **Bearbeiten** wird der
   Snapshot bereits erfasster Positionen aus der gespeicherten Bestellung übernommen, nicht neu aus
@@ -431,6 +442,11 @@ Netzfehler in eine `localStorage`-Warteschlange gelegt (`bakery-delivery-queue`)
 Funk da ist, ob der Server antwortet, weiß er nicht. Pro Stopp bleibt nur der letzte Stand stehen.
 Eine Änderung, die der Server **fachlich** ablehnt (4xx), fliegt aus der Schlange — sonst blockierte
 sie alle folgenden für immer; Netzfehler (5xx, kein Netz, Timeout) lassen den Eintrag stehen.
+`flushQueue` liest die Schlange nach jedem Versand **neu** und streicht nur den gesendeten Eintrag
+(per eindeutiger `id`) - früher schrieb es seine Kopie vom Start zurück und verlor ein Abhaken, das
+während des Nachsendens dazukam. Ein Stopp-Abhaken trägt `completedAt` = Zeitpunkt des Tippens,
+damit ein Nachsenden Stunden später nicht die Sendezeit einträgt (die API nimmt nur Werte vom
+Tourtag −1 bis +3 Tage).
 
 Jede Anfrage bricht nach 15 s ab (`AbortSignal.timeout`, wo der Browser es kann). Ohne das hing
 `fetch` im Funkloch minutenlang — und solange es hing, waren alle Knöpfe gesperrt und die
