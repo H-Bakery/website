@@ -199,6 +199,23 @@ function numericIndex(catalog) {
   return map
 }
 
+/**
+ * Anzeigename eines hq-Produkts (Slug oder numerische ID) aus dem Katalog;
+ * ohne Treffer der Slug selbst (W4-Verifikation Runde 4: Hinweise nannten
+ * „schwarzwaelder-kirsch-torte“ statt des Produktnamens).
+ */
+function catalogNamer(catalog) {
+  const names = new Map()
+  for (const p of Array.isArray(catalog) ? catalog : []) {
+    if (!p || !p.id || typeof p.name !== 'string' || !p.name.trim()) continue
+    names.set(String(p.id), p.name.trim())
+    if (p.numeric_id !== undefined && p.numeric_id !== null) {
+      names.set(String(p.numeric_id), p.name.trim())
+    }
+  }
+  return (productId) => names.get(String(productId)) || String(productId)
+}
+
 function lineKey(itemId, variant) {
   return `${itemId}|${variant || ''}`
 }
@@ -336,6 +353,7 @@ function computeDay(args) {
 
   const open = cfg.days.includes(weekday)
   const resolveProduct = createProductResolver(cfg, a.catalog)
+  const numericSlugs = numericIndex(a.catalog)
   const itemsById = new Map(cfg.items.map((i) => [i.id, i]))
 
   // Sammeltöpfe je Zeile: exakte (ungerundete) Summen
@@ -383,7 +401,8 @@ function computeDay(args) {
     const productId = raw.productSlug || raw.productId
     const hit = resolveProduct(productId)
     if (!hit) {
-      const k = String(productId)
+      // numerische ID und Slug desselben Produkts zusammen melden
+      const k = numericSlugs.get(String(productId)) || String(productId)
       unmatched.set(k, (unmatched.get(k) || 0) + qty)
       continue
     }
@@ -404,12 +423,15 @@ function computeDay(args) {
       b.preorderIds.push(raw.preorderId)
     }
   }
+  const productName = catalogNamer(a.catalog)
   for (const [productId, qty] of unmatched) {
     warnings.push({
       code: 'unmapped_product',
       productId,
       qty,
-      message: `Vorbestelltes Produkt „${productId}“ (${qty}) gehört zu keinem Backzettel-Posten.`,
+      message: `Vorbestelltes Produkt „${productName(
+        productId
+      )}“ (${qty} Stück) gehört zu keinem Backzettel-Posten.`,
     })
   }
   if (preordersOnClosedDay > 0) {
@@ -441,7 +463,9 @@ function computeDay(args) {
             code: 'unmapped_cap_product',
             productId: String(productId),
             qty,
-            message: `CAP-Produkt „${productId}“ (${qty}) gehört zu keinem Backzettel-Posten.`,
+            message: `CAP-Produkt „${productName(
+              productId
+            )}“ (${qty} Stück) gehört zu keinem Backzettel-Posten.`,
           })
           continue
         }

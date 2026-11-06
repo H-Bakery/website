@@ -321,6 +321,36 @@ describe('Vorbestellungen', () => {
     )
   })
 
+  it('nennt nicht zugeordnete Produkte mit dem Namen aus dem Katalog (W4-verify r4)', () => {
+    const r = day(SAT, {
+      catalog: [
+        ...PRODUCTS,
+        {
+          id: 'muster-kirsch-torte',
+          numeric_id: 950,
+          name: 'Muster-Kirsch-Torte',
+        },
+      ],
+      preorderItems: [pre('muster-kirsch-torte', 5), pre(950, 3)],
+      capTemplate: {
+        weekday: 6,
+        items: [{ productSlug: 'muster-kirsch-torte', quantity: 2 }],
+      },
+    })
+    const w = r.warnings.find((x) => x.code === 'unmapped_product')
+    expect(w.message).toBe(
+      'Vorbestelltes Produkt „Muster-Kirsch-Torte“ (8 Stück) gehört zu keinem Backzettel-Posten.'
+    )
+    expect(
+      r.warnings.find((x) => x.code === 'unmapped_cap_product').message
+    ).toContain('„Muster-Kirsch-Torte“ (2 Stück)')
+    // ohne Katalogeintrag bleibt die Kennung stehen
+    const r2 = day(SAT, { preorderItems: [pre('unbekannt', 1)] })
+    expect(
+      r2.warnings.find((x) => x.code === 'unmapped_product').message
+    ).toContain('„unbekannt“ (1 Stück)')
+  })
+
   it('ueberspringt Mengen <= 0 und Unsinn', () => {
     const r = day(SAT, {
       preorderItems: [
