@@ -86,7 +86,7 @@ export function createBackzettelRouter(
 
   router.get(
     '/config',
-    handle(async () => ({ ...service.getConfig(), ...writer.status() }))
+    handle(async () => ({ ...service.getConfig(), ...(await writer.status()) }))
   )
 
   // Z4 - before `/:date`, which would otherwise take "reference" as a date.

@@ -69,7 +69,13 @@ export interface ConfigReason {
   message: string
 }
 
-/** Die Stammdaten, auf denen ein Speichern aufbaut. */
+/**
+ * Die Stammdaten, auf denen ein Speichern aufbaut. `config` ist auch bei
+ * `status: 'no-config'` gesetzt, solange sich die YAML lesen lässt
+ * (normalisiert, mit `errors`): ein Speichern scheitert nur an Fehlern, die
+ * es selbst hinzufügt - ein fremder Fehler (z. B. ein in hq gelöschtes
+ * Produkt) darf die Grundmengen-Seite nicht leer machen.
+ */
 export interface WorkingConfig {
   status: 'ok' | 'no-config'
   config: unknown | null
@@ -80,11 +86,19 @@ export interface WorkingConfig {
 export interface ConfigWriteStatus {
   /** Die YAML im Schreib-Worktree weicht vom freigegebenen Stand ab. */
   pendingApproval: boolean
-  /** Ob gespeichert werden kann (Schreibziel vorhanden). */
+  /**
+   * Ob gespeichert werden kann: Schreibziel vorhanden und - mit
+   * `HQ_WRITE_DIR` - ein git-Worktree auf `app/edits` (wie `target()`).
+   */
   writable: boolean
+  /** Warum nicht (`error` wie die 503 beim Speichern, `message` deutsch). */
+  writeIssue: { error: string; message: string } | null
   /** Stand im Schreib-Worktree (sonst = freigegebener Stand). */
   working: WorkingConfig
 }
+
+/** Wie lange `GET /config` den geprüften Branch wiederverwendet. */
+const BRANCH_CHECK_MS = 5_000
 
 function readIfExists(file: string): string | null {
   try {
@@ -150,40 +164,95 @@ export function createBackzettelConfigWriter(
     return readIfExists(source.paths.configPath)
   }
 
+  /**
+   * Normalisierte Config trotz Validierungsfehlern, solange die YAML sich
+   * parsen lässt (`null` sonst) - Grundlage der Tabelle bei fremden Fehlern.
+   */
+  function parsedConfig(text: string | null): unknown | null {
+    if (text === null) return null
+    const parsed = loader.parseBackzettelYaml(text)
+    if (!parsed.ok) return null
+    try {
+      return configCore.normalizeConfig(parsed.data)
+    } catch {
+      return null
+    }
+  }
+
   function working(catalog: unknown): WorkingConfig {
     const result = loader.loadBackzettelConfig(writeFile as string, {
       products: catalog,
     })
     return {
       status: result.ok ? 'ok' : 'no-config',
-      config: result.config,
+      config: result.ok
+        ? result.config
+        : parsedConfig(readIfExists(writeFile as string)),
       errors: result.errors,
       warnings: result.warnings,
     }
   }
 
-  /** Für `GET /config`: Freigabestatus und Arbeitsstand. */
-  function status(): ConfigWriteStatus {
-    const loaded = source.load()
-    const fromRead: WorkingConfig = {
-      status: loaded.ok ? 'ok' : 'no-config',
-      config: loaded.config,
-      errors: loaded.reasons,
-      warnings: loaded.warnings,
+  let branchCheck: {
+    at: number
+    issue: ConfigWriteStatus['writeIssue']
+  } | null = null
+
+  /** Dieselbe Prüfung wie `target()`, für die Anzeige kurz gecacht. */
+  async function writeIssue(): Promise<ConfigWriteStatus['writeIssue']> {
+    if (!writeDir) {
+      return production
+        ? { error: 'hq_write_unavailable', message: MSG.writeMissing }
+        : null
     }
+    if (!fs.existsSync(writeDir)) {
+      return { error: 'hq_write_unavailable', message: MSG.writeMissing }
+    }
+    const now = Date.now()
+    if (branchCheck && now - branchCheck.at < BRANCH_CHECK_MS) {
+      return branchCheck.issue
+    }
+    let issue: ConfigWriteStatus['writeIssue'] = null
+    try {
+      const branch = await currentBranch(git, writeDir)
+      if (branch !== writeBranch) {
+        issue = {
+          error: 'hq_write_wrong_branch',
+          message: MSG.wrongBranch(writeBranch, branch),
+        }
+      }
+    } catch {
+      issue = { error: 'hq_write_unavailable', message: MSG.writeNotRepo }
+    }
+    branchCheck = { at: now, issue }
+    return issue
+  }
+
+  /** Für `GET /config`: Freigabestatus, Schreibbarkeit und Arbeitsstand. */
+  async function status(): Promise<ConfigWriteStatus> {
+    const loaded = source.load()
+    const issue = await writeIssue()
     const own = writeFile ? readIfExists(writeFile) : null
     if (own === null) {
+      const exists = fs.existsSync(source.paths.configPath)
       return {
         pendingApproval: false,
-        writable: writeDir
-          ? fs.existsSync(writeDir) && fs.existsSync(source.paths.configPath)
-          : !production && fs.existsSync(source.paths.configPath),
-        working: fromRead,
+        writable: issue === null && exists,
+        writeIssue: issue,
+        working: {
+          status: loaded.ok ? 'ok' : 'no-config',
+          config: loaded.ok
+            ? loaded.config
+            : parsedConfig(readIfExists(source.paths.configPath)),
+          errors: loaded.reasons,
+          warnings: loaded.warnings,
+        },
       }
     }
     return {
       pendingApproval: own !== approvedText(),
-      writable: true,
+      writable: issue === null,
+      writeIssue: issue,
       working: working(loaded.catalog),
     }
   }
@@ -291,11 +360,8 @@ export function createBackzettelConfigWriter(
         )
       }
       if (!result.changed) {
-        return {
-          ...status(),
-          pending: status().pendingApproval,
-          changed: false,
-        }
+        const now = await status()
+        return { ...now, pending: now.pendingApproval, changed: false }
       }
 
       const catalog = source.load().catalog
@@ -343,7 +409,7 @@ export function createBackzettelConfigWriter(
           console.error('[backzettel] afterCommit failed:', error)
         }
       }
-      const now = status()
+      const now = await status()
       return { ...now, pending: now.pendingApproval, changed: true }
     })
   }

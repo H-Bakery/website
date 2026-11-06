@@ -19,6 +19,7 @@
 import * as esbuild from 'esbuild'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import { createRequire } from 'node:module'
 
 const appDir = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(appDir, '../..')
@@ -37,6 +38,24 @@ const watch = process.argv.includes('--watch')
  * box would not install it. Bundled, the server does not need it at runtime.
  */
 const BUNDLED_PACKAGES = new Set(['yaml'])
+
+/**
+ * The hoisted `yaml` is whatever npm picks: several dependencies pin
+ * yaml@1.x, whose API lacks `isScalar`/`isMap`/`isSeq` that the editor
+ * uses. Fail the build instead of the first Grundmengen save at runtime.
+ * (Follow-up: `yaml` ^2 in the root `dependencies`.)
+ */
+const REQUIRED_MAJOR = { yaml: 2 }
+for (const [name, major] of Object.entries(REQUIRED_MAJOR)) {
+  const req = createRequire(path.join(rootDir, 'package.json'))
+  const version = req(`${name}/package.json`).version
+  if (Number(String(version).split('.')[0]) !== major) {
+    console.error(
+      `[build] ${name}@${version} is hoisted to node_modules, the bundle needs ${name}@${major}.x`
+    )
+    process.exit(1)
+  }
+}
 
 const externalPackages = {
   name: 'external-packages',

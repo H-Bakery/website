@@ -790,11 +790,11 @@ models). `tests/setup-ts.js` points `HQ_DIR`/`HQ_BACKZETTEL_CONFIG` nowhere, lik
 Two additions to `/api/backzettel` (registered **before** `/:date`, which would otherwise read
 `reference` as a date). Both serve the management screen `/admin/backzettel/grundmengen`.
 
-| Endpoint                          | Who                | Body / answer                                                                                                                                                                              |
-| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on)   |
-| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                         |
-| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data }] }] }` |
+| Endpoint                          | Who                | Body / answer                                                                                                                                                                                          |
+| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `writeIssue`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on) |
+| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                                     |
+| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data }] }] }`             |
 
 Errors (`sendError`): 400 `validation` (with `errors` for new config errors), `invalid_weekday`
 (also a weekday not in `days`), `invalid_quantity` (negative, > 10000, not a number; `"1,5"` is
@@ -818,7 +818,9 @@ edit)`): `yaml.parseDocument` only to find node ranges, then a **splice** of the
   `config_layout_unsupported` (edit hq by hand).
 - **Validation before the commit:** `validateBackzettelConfig` on before and after; only errors
   the edit **adds** (same path + message, `newErrors`) block - a config with an unrelated known
-  error stays editable. Rules in `backzettel-base.core.js` (`parseBaseEdit`, `nextDayValue`,
+  error stays editable. To make that reachable from the UI, `working.config` is the normalised
+  config **even with `status: 'no-config'`** as long as the YAML parses (`errors` say what is
+  wrong); only an unparsable or missing file gives `config: null`. Rules in `backzettel-base.core.js` (`parseBaseEdit`, `nextDayValue`,
   `commitMessage`).
 - **Write path = B5's.** `backzettel-config-write.ts`: with `HQ_WRITE_DIR` the file is
   `${HQ_WRITE_DIR}/config/backzettel.yaml` (base text: that file, else the read clone's), branch
@@ -826,7 +828,10 @@ edit)`): `yaml.parseDocument` only to find node ranges, then a **splice** of the
   `Co-authored-by: <displayName> <user-<id>@bakery.local>` with the pathspec, failure restores the
   file and unstages (500). Then `afterCommit` → `HqEditsSync.notifyCommitted()` (push + rolling
   PR, B5b). Without `HQ_WRITE_DIR` (development) it writes straight to the config path, no git;
-  production without it is 503. `writable` in `/config` says whether a save can succeed.
+  production without it is 503. `writable` in `/config` says whether a save can succeed: it runs
+  the same checks as the save (dir exists, git repo, branch = `HQ_WRITE_BRANCH`; the branch lookup
+  is cached 5 s per writer) and names the failing one in `writeIssue { error, message }` (the 503
+  code a save would get), `null` when writable.
 - **pendingApproval** = the write-worktree YAML differs from `origin/main`
   (`HqEditsSync.approvedTextFile('config/backzettel.yaml')`, read in `refreshApproved` with the
   products; `APPROVED_TEXT_FILES`), falling back to the read clone before the first read or when
@@ -841,7 +846,10 @@ edit)`): `yaml.parseDocument` only to find node ranges, then a **splice** of the
   "St.". Info only: nothing ever writes it into the config.
 - **Bundling:** `yaml` is in `BUNDLED_PACKAGES` in `build.mjs` - it is only a transitive dev
   dependency at the root, so `npm ci --omit=dev` would not install it. Add it to root
-  `dependencies` to make it external again.
+  `dependencies` to make it external again. `build.mjs` fails when the hoisted `yaml` is not 2.x
+  (several packages pin 1.x, which lacks `isScalar`/`isMap`/`isSeq`).
+- The Z1 validator formats a fractional quantity with a decimal comma in its message
+  (`Menge 12,5 muss bei der Einheit Stück ganzzahlig sein.`) - the message reaches the screen.
 
 Tests: `tests/unit/backzettelBaseEdit.test.js` (parse rules, editor incl. comments, flow/block
 maps, no-op zero diff), `tests/unit/backzettelReference.test.js` (synthetic converted reports),

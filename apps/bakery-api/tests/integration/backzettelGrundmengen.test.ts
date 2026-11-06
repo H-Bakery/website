@@ -415,6 +415,63 @@ describe('PUT /config/base with HQ_WRITE_DIR (commit in app/edits)', () => {
     )
   })
 
+  it('GET /config: a worktree off app/edits (or no repo) is not writable', async () => {
+    git(write, 'checkout', '-q', '-b', 'anders')
+    // a fresh app: the branch check is cached for a few seconds per writer
+    let cfg = await as(a, 'backstube').get('/api/backzettel/config')
+    expect(cfg.body.data).toMatchObject({
+      writable: false,
+      writeIssue: {
+        error: 'hq_write_wrong_branch',
+        message: expect.stringContaining('app/edits'),
+      },
+    })
+    const plain = tempDir('bz-plain-')
+    writeHq(plain)
+    const b = app({
+      backzettel: { hqDir: read, cacheMs: 0 },
+      hqProducts: { productsDir: path.join(read, 'products'), writeDir: plain },
+    })
+    cfg = await as(b, 'backstube').get('/api/backzettel/config')
+    expect(cfg.body.data).toMatchObject({
+      writable: false,
+      writeIssue: { error: 'hq_write_unavailable' },
+    })
+  })
+
+  it('a foreign validation error keeps the grid: working.config + errors, saves still work', async () => {
+    const broken = fixture.CONFIG_YAML.replace(
+      'products: [{ id: musterweck, factor: 1 }]',
+      'products: [{ id: geloeschtes-produkt, factor: 1 }]'
+    )
+    expect(broken).not.toBe(fixture.CONFIG_YAML)
+    fs.writeFileSync(path.join(write, CONFIG_REL), broken)
+    git(write, 'commit', '-q', '-am', 'produkt weg')
+    let cfg = await as(a, 'backstube').get('/api/backzettel/config')
+    expect(cfg.body.data.working.status).toBe('no-config')
+    expect(cfg.body.data.working.errors).toEqual([
+      expect.objectContaining({ path: expect.stringContaining('items[1]') }),
+    ])
+    expect(workingBase(cfg.body.data, 'musterweck')[2]).toBe(40)
+    const res = await put({ itemId: 'musterweck', weekday: 2, value: 42 })
+    expect(res.status).toBe(200)
+    expect(workingBase(res.body.data, 'musterweck')[2]).toBe(42)
+    // dev mode reads the read clone directly - same rule there
+    fs.writeFileSync(path.join(read, CONFIG_REL), broken)
+    const dev = app({
+      backzettel: { hqDir: read, cacheMs: 0 },
+      hqProducts: { productsDir: path.join(read, 'products'), writeDir: null },
+    })
+    cfg = await as(dev, 'backstube').get('/api/backzettel/config')
+    expect(cfg.body.data).toMatchObject({
+      status: 'no-config',
+      writable: true,
+      writeIssue: null,
+      working: { status: 'no-config' },
+    })
+    expect(workingBase(cfg.body.data, 'kornbrot')[2]).toBe(4)
+  })
+
   it('a failing commit restores the file and answers 500', async () => {
     const hook = path.join(write, '.git', 'hooks', 'pre-commit')
     fs.writeFileSync(hook, '#!/bin/sh\nexit 1\n', { mode: 0o755 })
