@@ -103,6 +103,34 @@ describe('401 → ein Refresh → Wiederholung', () => {
     })
   })
 
+  it.each([
+    ['502 beim Deploy', () => json(502, { error: 'bad_gateway' })],
+    [
+      'Antwort verloren',
+      () => {
+        throw new TypeError('Failed to fetch')
+      },
+    ],
+  ])(
+    'Start mit abgelaufenem Token, Refresh scheitert am Netz (%s): Sitzung bleibt (W4-verify r6)',
+    async (_label, refreshAnswer) => {
+      fetchMock
+        .mockResolvedValueOnce(
+          json(401, { error: 'unauthorized', message: 'Sitzung abgelaufen.' })
+        )
+        .mockImplementationOnce(async () => refreshAnswer())
+      render(
+        <SessionProvider>
+          <Probe />
+        </SessionProvider>
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+      )
+      expect(loadSession()).toMatchObject({ refreshToken: 'rt_1' })
+    }
+  )
+
   it('scheitert der Refresh, ist die Sitzung vorbei', async () => {
     fetchMock
       .mockResolvedValueOnce(
