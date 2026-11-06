@@ -254,6 +254,22 @@ describe('PreorderEntryClient (P1)', () => {
     )
   })
 
+  it('erst Bestellweg, dann Sammelstelle (Kurzanleitung): der Bestellweg bleibt (W4-verify r6)', async () => {
+    const user = userEvent.setup()
+    mockCreate.mockResolvedValue(preorder())
+    await ready()
+    await user.click(screen.getByRole('radio', { name: 'Telefon' }))
+    await user.click(screen.getByRole('radio', { name: POINT.name }))
+    expect(screen.getByRole('radio', { name: 'Telefon' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    )
+    expect(screen.getByRole('radio', { name: 'Sammelstelle' })).toHaveAttribute(
+      'aria-checked',
+      'false'
+    )
+  })
+
   it('lässt keinen Montag zu und speichert nichts Unvollständiges', async () => {
     const user = userEvent.setup()
     await ready()

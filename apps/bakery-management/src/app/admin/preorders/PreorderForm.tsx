@@ -584,12 +584,24 @@ export default function PreorderForm({
       : nextProductionDates(today, 6)
   }, [today, point])
 
+  // W4-verify r6: hat die Verkäuferin den Bestellweg schon angetippt
+  // (Telefon, WhatsApp, Laden - so die Reihenfolge der Kurzanleitung), bleibt
+  // er beim Wählen der Sammelstelle stehen; sonst stimmen die Zahlen je
+  // Bestellweg nicht. Nur ohne eigene Wahl wird „Sammelstelle“ vorbelegt.
+  const channelChosenRef = useRef(false)
+  const chooseChannel = (value: PreorderChannel) => {
+    channelChosenRef.current = true
+    setChannel(value)
+  }
+
   const choosePickup = (id: string) => {
     if (id === pickupPointId) return
     const next = points.find((p) => p.id === id) ?? null
     setPickupPointId(id)
     if (next) {
-      setChannel('sammelstelle')
+      if (!channelChosenRef.current || channel === 'shop') {
+        setChannel('sammelstelle')
+      }
       setPickupTime('')
       if (jsWeekdayOf(pickupDate) !== next.weekday && today) {
         setPickupDate(pickupPointDates(next, today, 1)[0] ?? '')
@@ -1111,7 +1123,7 @@ export default function PreorderForm({
                     label={CHANNEL_LABELS[value]}
                     color={channel === value ? 'primary' : 'default'}
                     variant={channel === value ? 'filled' : 'outlined'}
-                    onClick={() => setChannel(value)}
+                    onClick={() => chooseChannel(value)}
                     sx={chipSx}
                   />
                 ))}
