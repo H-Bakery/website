@@ -175,12 +175,12 @@ describe('FinanceClient', () => {
     renderWithTheme(<FinanceClient />)
     expect(
       await screen.findByText(
-        'Bitte mit Passwort anmelden – an der PIN-Station nicht verfügbar.'
+        'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
       )
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('link', { name: /Mit Passwort anmelden/ })
-    ).toHaveAttribute('href', '/admin/login?next=/admin/finance')
+    // Kein Link zur Anmeldung: eine PIN-Sitzung gibt es nur an einer Station,
+    // und dort soll keine Passwort-Sitzung des Inhabers offen bleiben.
+    expect(screen.queryByRole('link', { name: /anmelden/i })).toBeNull()
     expect(screen.queryByText('Keine Berechtigung')).toBeNull()
   })
 

@@ -64,7 +64,7 @@ describe('TargetsTile', () => {
     )
     renderWithTheme(<TargetsTile />)
     expect(
-      await screen.findByText(/Bitte mit Passwort anmelden/)
+      await screen.findByText(/An der PIN-Station nicht verfügbar/)
     ).toBeInTheDocument()
     expect(screen.queryByText(/Keine Berechtigung/)).toBeNull()
   })

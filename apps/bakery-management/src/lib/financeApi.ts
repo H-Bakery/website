@@ -68,7 +68,7 @@ export type FinanceAccessProblem =
 
 /** Hinweis für `personal_session` (F4) - überall derselbe Wortlaut. */
 export const PERSONAL_SESSION_HINT =
-  'Bitte mit Passwort anmelden – an der PIN-Station nicht verfügbar.'
+  'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
 
 export function classifyFinanceError(err: unknown): {
   kind: FinanceAccessProblem

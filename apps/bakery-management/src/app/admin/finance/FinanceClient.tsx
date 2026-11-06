@@ -429,22 +429,12 @@ function AccessNotice({
   }
   if (kind === 'personal_session') {
     // F4: Inhaber an einer PIN-Station - die API verlangt eine
-    // Passwort-Sitzung (403 personal_session_required, B4).
+    // Passwort-Sitzung (403 personal_session_required, B4). Bewusst ohne
+    // Anmelde-Link: eine PIN-Sitzung gibt es nur an einem Stationsgerät, und
+    // eine Passwort-Sitzung dort hielte Finanzen und Benutzerverwaltung 12 h
+    // statt 10 min offen (F1 beendet sie beim Einrichten der Station).
     return (
-      <Alert
-        severity="info"
-        action={
-          <Button
-            component={Link}
-            href="/admin/login?next=/admin/finance"
-            color="inherit"
-            size="small"
-            startIcon={<LoginIcon />}
-          >
-            Mit Passwort anmelden
-          </Button>
-        }
-      >
+      <Alert severity="info" data-testid="personal-session-notice">
         <AlertTitle>Finanzdaten an der Station nicht verfügbar</AlertTitle>
         {PERSONAL_SESSION_HINT}
       </Alert>

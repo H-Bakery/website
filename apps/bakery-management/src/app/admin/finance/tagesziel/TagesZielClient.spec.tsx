@@ -131,9 +131,10 @@ describe('TagesZielClient', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByText(
-        'Bitte mit Passwort anmelden – an der PIN-Station nicht verfügbar.'
+        'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
       )
     ).toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /anmelden/i })).toBeNull()
     expect(screen.queryByText('Keine Berechtigung')).toBeNull()
   })
 

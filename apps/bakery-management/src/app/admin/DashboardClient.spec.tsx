@@ -108,6 +108,31 @@ describe('DashboardClient', () => {
     )
   })
 
+  it('zeigt "Produkte verwalten" nur Rollen, die die Produktliste öffnen dürfen', async () => {
+    process.env.NEXT_PUBLIC_PILOT_MODE = '1'
+    const { unmount } = renderWithTheme(
+      <WithSession value={fakeSession({ role: 'backstube' })}>
+        <DashboardClient latestReport={null} reportsAvailable={false} />
+      </WithSession>
+    )
+    await screen.findByText('API erreichbar')
+    expect(screen.getByText('Produkte gesamt')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Produkte verwalten' })
+    ).not.toBeInTheDocument()
+    unmount()
+
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        <DashboardClient latestReport={null} reportsAvailable={false} />
+      </WithSession>
+    )
+    await screen.findByText('API erreichbar')
+    expect(
+      screen.getByRole('button', { name: 'Produkte verwalten' })
+    ).toBeInTheDocument()
+  })
+
   it('zeigt Verkauf (Ausweich-Start) weder Kasse noch Tagesziel noch Berichte (F1)', async () => {
     process.env.NEXT_PUBLIC_PILOT_MODE = '1'
     renderWithTheme(
