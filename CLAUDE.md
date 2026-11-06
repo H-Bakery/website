@@ -871,13 +871,24 @@ TypeScript-API. Was man wissen muss:
   antwortet sonst 403); andere Rollen sehen die Liste ohne Stift. Der Partner-Katalog der
   Erfassungsmaske liest weiter serverseitig aus `HQ_PRODUCTS_DIR` (`src/lib/hqProductsFs.ts`,
   dasselbe Verzeichnis wie die API).
+  **Beschreibung aus `rawDescription`, nie aus `description`:** die Verwaltungssicht
+  `/api/hq-products[/:id]` liefert zusätzlich `rawDescription` - den Body ohne Überschrift,
+  **ohne** den Rückgriff auf `short_description`, den `description` für den Shop hat
+  (`managedFields()` in `hq-products.core.js`). `toManagementProduct()` liest das Feld; sonst
+  schriebe ein Speichern ohne Änderung bei einer Datei ohne Beschreibung den Kurztext in den
+  Body (Null-Diff-Invariante, Integrationstest in `tests/integration/hqProducts.test.ts`).
+  PUT/POST-Antworten und der Mock haben kein `rawDescription`; dort ist `description` der Body.
+  Die Dashboard-Kachel zählt `/api/products` (freigegebener Stand, „Verfügbar" inkl. Saisonware)
+  und zeigt „Produkte verwalten" nur Rollen, die `/admin/products` öffnen dürfen.
 - **Backschrank:** CSV-Export über `apiClient.getBlob()` (Bearer) statt Link; `deleteVisit()`
   liefert `{ id, deleted, message }` und die Seite zeigt `message`; Standard-Bestückung ist für
   alle außer `inhaber` nur lesbar.
 - **403 hat eine Ursache, und die steht da.** Finanzen/Tagesziel an der PIN-Station (403
-  `personal_session_required`): „Bitte mit Passwort anmelden – an der PIN-Station nicht
-  verfügbar." mit Link zur Anmeldung (`PERSONAL_SESSION_HINT` in `financeApi.ts`, auch in der
-  Dashboard-Kachel). Analysen für andere Rollen: „Nur für Inhaber"
+  `personal_session_required`): „An der PIN-Station nicht verfügbar – bitte am Büro-PC oder
+  eigenen Gerät mit Passwort anmelden." (`PERSONAL_SESSION_HINT` in `financeApi.ts`, auch in der
+  Dashboard-Kachel) - **bewusst ohne Anmelde-Link**: eine PIN-Sitzung gibt es nur an einem
+  Stationsgerät, und eine Passwort-Sitzung dort hielte Finanzen und Benutzerverwaltung 12 h statt
+  10 min offen (F1 beendet die persönliche Sitzung beim Einrichten der Station). Analysen für andere Rollen: „Nur für Inhaber"
   (`components/analytics/OwnerOnlyNotice.tsx`; `analyticsService` liefert `forbidden: true`). Der
   Export-Knopf der Analysen ist entfernt - `/api/reports/generate` gibt es auf keiner API.
 - **Einstellungen im Pilotbetrieb** ohne Benachrichtigungen und E-Mail (keine API dafür);

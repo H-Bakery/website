@@ -217,9 +217,11 @@ test.describe('Rollen', () => {
     await page.goto('/admin/finance')
     await expect(
       page.getByText(
-        'Bitte mit Passwort anmelden – an der PIN-Station nicht verfügbar.'
+        'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
       )
     ).toBeVisible()
+    // kein Weg zur Passwort-Anmeldung am Stationsgerät (F4-Review)
+    await expect(page.getByRole('link', { name: /anmelden/i })).toHaveCount(0)
   })
 })
 

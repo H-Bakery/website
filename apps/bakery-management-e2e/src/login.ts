@@ -121,6 +121,30 @@ async function expectOk(response: APIResponse, what: string, ok = [200]) {
   return response
 }
 
+/**
+ * In Entwicklung verwendet Playwright einen schon laufenden Server auf dem
+ * API-Port wieder (`reuseExistingServer`). Läuft dort der Mock
+ * (`serve:api:simple`), scheiterte die Anmeldung sonst mit einer
+ * rätselhaften 401. Die echte API meldet in `/health` die Datenbank
+ * (`database: 'ok'`), der Mock nicht (`status: 'healthy'`).
+ */
+async function expectRealApi(api: APIRequestContext): Promise<void> {
+  let body: Record<string, unknown> | null = null
+  try {
+    body = (await (await api.get('/health')).json()) as Record<string, unknown>
+  } catch {
+    body = null
+  }
+  if (!body || body['database'] !== 'ok') {
+    throw new Error(
+      `Auf ${API_BASE} läuft nicht die echte API (GET /health ohne database: 'ok'` +
+        `${body ? `, Antwort: ${JSON.stringify(body)}` : ''}). ` +
+        'Den Server auf diesem Port beenden (z. B. serve:api:simple) - die ' +
+        'Suite startet die echte API selbst (tools/e2e/real-api.js).'
+    )
+  }
+}
+
 const E2E_USER_PASSWORD = 'e2e-Benutzer-Passwort-1'
 const E2E_PIN = '0420'
 
@@ -130,6 +154,7 @@ const E2E_PIN = '0420'
  */
 export async function issueSessions(): Promise<IssuedSessions> {
   return withApi(async (api) => {
+    await expectRealApi(api)
     const login = async (username: string, password: string) => {
       const response = await expectOk(
         await api.post('/api/auth/login', { data: { username, password } }),

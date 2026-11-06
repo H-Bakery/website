@@ -41,7 +41,10 @@ Umgebung, sonst `../hq/products`, und nur wenn es das nicht gibt, das Fixture.
 Die Suiten vergleichen die Oberfläche mit `GET /api/products`; sähe die API
 das Fixture (56) und die App das echte `hq` (103), wäre die Suite rot. Die
 Management-Suite baut in Entwicklung das API-Bundle vor dem Start neu
-(`E2E_API_BUILD=1`), damit nicht gegen ein altes getestet wird.
+(`E2E_API_BUILD=1`), damit nicht gegen ein altes getestet wird. Läuft auf ihrem
+API-Port schon ein anderer Server, übernimmt Playwright ihn ebenfalls; ist es
+der Mock (`serve:api:simple`), bricht `global-setup.ts` mit einer deutschen
+Meldung ab (`/health` ohne `database: 'ok'`) - den Mock dann beenden.
 
 **Gebaut** (`CI=true`, alternativ `E2E_BUILT=1`): die Suite startet ihre Server
 selbst - `next start dist/apps/<app>` (Landing: der statische Export hinter
