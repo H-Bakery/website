@@ -127,6 +127,12 @@ describe('isPilotPathAllowed', () => {
     expect(isPilotPathAllowed(route, true)).toBe(true)
   })
 
+  it('sperrt Rest am Abend (M4, nach dem Pilot), bis der Inhaber es freigibt', () => {
+    expect(isPilotPathAllowed('/admin/rest', true)).toBe(false)
+    expect(isPilotPathAllowed('/admin/rest/auswertung', true)).toBe(false)
+    expect(isPilotPathAllowed('/admin/rest', false)).toBe(true)
+  })
+
   it('lässt das Dashboard nur exakt zu, nicht jede /admin-Unterseite', () => {
     expect(matchesRoute('/admin')).toBe(true)
     expect(matchesRoute('/admin/')).toBe(true)

@@ -130,6 +130,21 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Rückläufer & Reste',
   },
   {
+    // M4: Zählung bei Ladenschluss (Verkauf, Laden-Tablet). Nicht in
+    // PILOT_ALLOWED_ROUTES - im Pilotbetrieb erst nach Freigabe sichtbar.
+    label: 'Rest am Abend',
+    href: '/admin/rest',
+    icon: 'unsold',
+    description: 'Was bei Ladenschluss übrig ist',
+  },
+  {
+    // M4: nur Inhaber (ROLE_ACCESS; API: GET /api/rest/summary).
+    label: 'Rest-Auswertung',
+    href: '/admin/rest/auswertung',
+    icon: 'analytics',
+    description: 'Gebacken, verkauft, übrig',
+  },
+  {
     label: 'Lieferung',
     href: '/admin/delivery',
     icon: 'delivery',

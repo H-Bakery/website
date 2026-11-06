@@ -86,6 +86,17 @@ export interface RoleAccess {
 const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings', '/admin/hilfe']
 
 /**
+ * M4 „Rest am Abend“: die Zählliste, ohne die Auswertung (`GET
+ * /api/rest/summary` ist nur Inhaber). Bewusst **nicht** in
+ * `PILOT_ALLOWED_ROUTES` - im Pilotbetrieb bleibt die Seite gesperrt, bis der
+ * Inhaber sie freigibt (Eintrag dort ergänzen).
+ */
+const REST_COUNT_ROUTE: RouteRule = {
+  path: '/admin/rest',
+  except: ['/admin/rest/auswertung'],
+}
+
+/**
  * DIE Zuordnung Rolle → Routen + Startseite.
  *
  * - inhaber: alles, Start Dashboard.
@@ -114,12 +125,21 @@ export const ROLE_ACCESS: Record<PilotRole, RoleAccess> = {
       // die Seite (und die API) außer Inhaber und Backstube. Die Grundmengen
       // (Z4, roadmap §5.5: nur Inhaber/Backstube) bleiben gesperrt.
       { path: '/admin/backzettel', except: ['/admin/backzettel/grundmengen'] },
+      // M4: Rest am Abend zählen (ohne die Auswertung - die ist Inhaber-Sache).
+      REST_COUNT_ROUTE,
       ...COMMON_ROUTES,
     ],
     start: ['/admin/preorders', '/admin'],
   },
   backstube: {
-    routes: ['/admin', '/admin/backzettel', '/backstube', ...COMMON_ROUTES],
+    routes: [
+      '/admin',
+      '/admin/backzettel',
+      '/backstube',
+      // M4: die Zählung nur lesen (die API lässt die Backstube nicht zählen).
+      REST_COUNT_ROUTE,
+      ...COMMON_ROUTES,
+    ],
     start: ['/backstube', '/admin'],
   },
   fahrer: {

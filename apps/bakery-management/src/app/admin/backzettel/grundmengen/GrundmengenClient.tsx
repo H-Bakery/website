@@ -41,6 +41,7 @@ import {
   variantLabel,
   WEEKDAY_LONG,
   WEEKDAY_SHORT,
+  withRestAverages,
   type BackzettelConfigView,
   type BaseEdit,
   type GrundmengenConfig,
@@ -48,6 +49,7 @@ import {
   type ReferenceItem,
   type ReferenceResponse,
 } from '../../../../lib/grundmengenApi'
+import { fetchRestAverages, type RestAverages } from '../../../../lib/restApi'
 import GrundmengenPrint, { grundmengenPrintStyles } from './GrundmengenPrint'
 
 /** Wer Grundmengen ändern darf (wie `PUT /config/base`). */
@@ -130,6 +132,14 @@ function ReferenceHint({
               </>
             )
           )}
+          {typeof reference.restMean === 'number' && (
+            <>
+              <br />
+              Rest am Abend Ø {formatQty(reference.restMean)}
+              {unit === 'Stück' ? ' St.' : ` ${unit}`} ({reference.restDays}{' '}
+              {reference.restDays === 1 ? 'Tag' : 'Tage'} gezählt)
+            </>
+          )}
           <br />
           Nur zur Information - wird nie übernommen.
         </>
@@ -139,7 +149,11 @@ function ReferenceHint({
         component="span"
         variant="caption"
         data-testid="reference"
-        aria-label={`${REFERENCE_TOOLTIP}: ${text}`}
+        aria-label={`${REFERENCE_TOOLTIP}: ${text}${
+          typeof reference.restMean === 'number'
+            ? `; Rest am Abend Ø ${formatQty(reference.restMean)}`
+            : ''
+        }`}
         sx={{
           color: 'text.secondary',
           whiteSpace: 'nowrap',
@@ -604,6 +618,11 @@ export default function GrundmengenClient() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [reference, setReference] = useState<ReferenceResponse | null>(null)
   const [referenceError, setReferenceError] = useState<string | null>(null)
+  const [restAverages, setRestAverages] = useState<RestAverages | null>(null)
+  const referenceShown = useMemo(
+    () => withRestAverages(reference, restAverages),
+    [reference, restAverages]
+  )
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedNote, setSavedNote] = useState<string | null>(null)
   /** Ein Speichern bekam 503 `hq_write_*`: ab jetzt nur lesen. */
@@ -628,6 +647,12 @@ export default function GrundmengenClient() {
     fetchReference(6).then(
       (res) => alive && setReference(res),
       (error) => alive && setReferenceError(errorMessage(error))
+    )
+    // M4: Rest Ø nur als Zusatz im Hinweis - fehlt er (keine Zählungen,
+    // ältere API), bleibt alles wie bisher.
+    fetchRestAverages(6).then(
+      (res) => alive && setRestAverages(res),
+      () => undefined
     )
     return () => {
       alive = false
@@ -840,7 +865,7 @@ export default function GrundmengenClient() {
             config={config}
             approved={view?.status === 'ok' ? view.config : null}
             pendingApproval={Boolean(view?.pendingApproval)}
-            reference={mayEdit ? reference : null}
+            reference={mayEdit ? referenceShown : null}
             editable={editable}
             onSave={onSave}
             onInvalid={(label, text) => {

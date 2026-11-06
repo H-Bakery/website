@@ -87,6 +87,13 @@ export interface ReferenceItem {
    * 0,5 l); sonst Stück laut Kasse. Ältere Server: fehlt.
    */
   converted?: boolean
+  /**
+   * M4: mittlerer Rest am Abend in der Einheit des Postens (letzte gleiche
+   * Wochentage mit vollständiger Zählung, `GET /api/rest/averages`) - nur
+   * Information. Setzt der Client dazu, der Server der Referenz kennt es nicht.
+   */
+  restMean?: number | null
+  restDays?: number
 }
 
 export interface ReferenceWeekday {
@@ -231,6 +238,52 @@ export function inputProblem(text: string): string {
 /** Fehlermeldung mit Feldnamen davor - aber nicht doppelt, wenn der Server ihn schon nennt. */
 export function labelledMessage(label: string, message: string): string {
   return message.startsWith(`${label}:`) ? message : `${label}: ${message}`
+}
+
+/**
+ * Rest Ø (M4) an die Referenz hängen. Ohne Zählung bleibt die Referenz, wie
+ * sie ist; ein Posten ohne Referenzeintrag bekommt keinen.
+ */
+export function withRestAverages(
+  reference: ReferenceResponse | null,
+  averages: {
+    status: string
+    weekdays: {
+      weekday: number
+      items: { itemId: string; mean: number; dates: string[] }[]
+    }[]
+  } | null
+): ReferenceResponse | null {
+  if (!reference || reference.status !== 'ok') return reference
+  if (
+    !averages ||
+    averages.status !== 'ok' ||
+    !Array.isArray(averages.weekdays)
+  ) {
+    return reference
+  }
+  return {
+    ...reference,
+    weekdays: reference.weekdays.map((w) => {
+      const rest = averages.weekdays.find((a) => a && a.weekday === w.weekday)
+      if (!rest || !Array.isArray(rest.items) || rest.items.length === 0) {
+        return w
+      }
+      return {
+        ...w,
+        items: w.items.map((item) => {
+          const avg = rest.items.find((r) => r && r.itemId === item.itemId)
+          return avg && typeof avg.mean === 'number'
+            ? {
+                ...item,
+                restMean: avg.mean,
+                restDays: Array.isArray(avg.dates) ? avg.dates.length : 0,
+              }
+            : item
+        }),
+      }
+    }),
+  }
 }
 
 /** Referenz eines Postens an einem Wochentag. */
