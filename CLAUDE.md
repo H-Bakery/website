@@ -137,8 +137,9 @@ list in `src/db/migrations.ts`), then `initializeModels()`, then listens. Mounte
 (+ `/api/health`), `/api/auth`, `/api/users`, `/api/partners`. Every `/api` path except login,
 refresh, PIN and the station user list needs a session (401); with a session an unknown path is a
 JSON 404 with `error` + `message`. See "Anmeldung (B3)" below. The other pilot domains (products,
-reports, finance, targets, preorders, Backzettel) are added by their roadmap tasks; until then the frontend still talks to `serve:api:simple`. Details in
-`apps/bakery-api/CLAUDE.md`.
+reports, finance, targets, preorders, Backzettel) are added by their roadmap tasks. Since F4 the
+management app's pilot screens run against this API (see „Verwaltung auf der echten API (F4)");
+shop and delivery still talk to `serve:api:simple`. Details in `apps/bakery-api/CLAUDE.md`.
 
 ## Verkaufspartner (Backschrank CAP-Markt)
 
@@ -231,9 +232,9 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   (Partner, Vorlage, Besuche, Korrektur, Tageswechsel, Löschen, Kennzahlen, Report, CSV) auf
   Mock und echter API durch und vergleicht Status, Form und - wo beide dieselben Daten halten -
   die Werte; das CSV byte-genau. Die Abweichungen oben sind dort als Erwartung festgeschrieben.
-- **Für F4 offen:** der CSV-Export der Report-Seite ist ein schlichter Link
-  (`reportCsvUrl()` in `partnerApi.ts`) ohne `Authorization`-Header - gegen die echte API ist
-  das 401. Der Download muss über `fetch` mit Token + Blob laufen.
+- **CSV-Export (F4):** `downloadReportCsv()` in `partnerApi.ts` holt den Report über
+  `apiClient.getBlob()` (Bearer, 401 → Refresh) und speichert ihn als Blob; der frühere
+  schlichte Link (`reportCsvUrl()`, ohne Token → 401) ist entfernt.
 
 **Import des Mock-Stores** (`partner-store.json` → SQLite), idempotent, in einer Transaktion:
 
@@ -648,12 +649,16 @@ und die API-Suites (`backzettelBaseEdit`, `backzettelReference`, `backzettelGrun
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).
 Was sie starten, steht **einmal** in `tools/e2e/servers.js`: in Entwicklung `nx serve` plus ein
 laufender Server, in CI (`CI=true` oder `E2E_BUILT=1`) `next start` auf dem Build in `dist/apps/`
-bzw. der statische Landing-Export hinter `tools/e2e/serve-static.js`, dazu die Mock-API auf dem
-**synthetischen Produktkatalog** `tools/e2e/hq-products` (56 Markdown-Produkte im `hq`-Format).
+bzw. der statische Landing-Export hinter `tools/e2e/serve-static.js`, dazu eine API auf dem
+**synthetischen Produktkatalog** `tools/e2e/hq-products` (56 Markdown-Produkte im `hq`-Format):
+für den Shop die Mock-API, für die **Verwaltung seit F4 die echte API** (Bundle über
+`tools/e2e/real-api.js`, frische SQLite-Datenbank im Temp-Verzeichnis, Inhaber aus
+`BOOTSTRAP_ADMIN_*`, dazu erfundene Kassenberichte und Finanzen aus `prepareE2eHq()`).
 So laufen die Jobs `test-e2e-*` in `.github/workflows/ci.yml` ohne das private `hq` und ohne
-Datenbank. Details, Ports und die Bedingungen, die der Katalog erfüllen muss: `tools/e2e/README.md`.
+vorhandene Datenbank. Details, Ports und die Bedingungen, die der Katalog erfüllen muss:
+`tools/e2e/README.md`.
 
-App und Mock-API müssen **dieselben Produktdateien** lesen - die Suiten vergleichen die Oberfläche
+App und API müssen **dieselben Produktdateien** lesen - die Suiten vergleichen die Oberfläche
 mit `GET /api/products`. `productsDir()` in `servers.js` entscheidet das für beide Server auf
 einmal: gebaut immer das Fixture, in Entwicklung `HQ_PRODUCTS_DIR`, sonst `../hq/products`, sonst
 das Fixture. Nicht einem der beiden Server ein eigenes Verzeichnis geben.
@@ -721,7 +726,7 @@ Sitzung, Schreiben nur `inhaber`; kein DELETE. Details: `apps/bakery-api/CLAUDE.
   `Co-authored-by`; Push + PR folgt mit B5b. Ohne `HQ_WRITE_DIR` (Entwicklung) wird wie beim Mock
   direkt nach `HQ_PRODUCTS_DIR` geschrieben. Den Lese-Klon fasst die API mit `HQ_WRITE_DIR` nie an.
 - **`pendingApproval`** steht zusätzlich an jedem Produkt: die Datei im Schreib-Worktree weicht vom
-  Lese-Klon ab („wartet auf Freigabe", die Oberfläche dazu kommt später). **Zwei Sichten:**
+  Lese-Klon ab („wartet auf Freigabe" - seit F4 als Chip in Produktliste und Bearbeiten-Seite). **Zwei Sichten:**
   `/api/products` (Shop) liefert bis zum Merge den **freigegebenen** Stand; `/api/hq-products[/:id]`
   (Verwaltung) liefert den Stand im Schreib-Worktree - den, auf dem ein `PUT` aufbaut - und bei
   wartenden Produkten daneben `approved` (freigegebener Stand, `null` bei neuen). Sonst überschriebe
@@ -869,10 +874,11 @@ Dazu: `/admin/users` (nur Inhaber) verwaltet Konten, Rollen, Passwörter, PINs u
 (Widerrufen); Fehler wie `last_inhaber` kommen als deutsche API-Meldung in den Dialog.
 **`src/proxy.ts`** (Next 16, früher `middleware.ts`) schreibt außerdem im Pilotbetrieb gesperrte
 `/admin`-Routen auf `/admin/nicht-verfuegbar` um (`src/lib/pilotRewrite.ts`), sodass die
-Demo-Seiten serverseitig gar nicht mehr rendern. Die E2E-Smoke-Suite meldet sich an der Mock-API
-an (`apps/bakery-management-e2e/src/login.ts`, `admin`/`admin`, Rolle aus der Antwort normalisiert),
-legt die Sitzung in `localStorage` **und** das Sitzungs-Cookie, und prüft, dass eine anonyme
-`GET /admin/products` keinen Produktnamen enthält.
+Demo-Seiten serverseitig gar nicht mehr rendern. Die E2E-Smoke-Suite meldet sich seit F4 an der
+**echten API** an (`apps/bakery-management-e2e/src/global-setup.ts` + `login.ts`: Inhaber,
+Verkauf und Inhaber an einer PIN-Station, einmal vor allen Tests), legt die Sitzung in
+`localStorage` **und** das Sitzungs-Cookie, meldet sich einmal über die Oberfläche an und prüft,
+dass eine anonyme Anfrage weder Berichtsdaten noch `/api`-Antworten bekommt.
 
 Tests: `src/lib/{authSession,roles,sessionPolicy,serverSession}.spec.ts`, `src/proxy.spec.ts`
 (beide `@jest-environment node` - `test-setup.ts` legt die Browser-Attrappen nur mit `window` an),
@@ -884,6 +890,61 @@ Tests: `src/lib/{authSession,roles,sessionPolicy,serverSession}.spec.ts`, `src/p
 `libs/shared/data-access/src/lib/api-client.spec.ts`. Specs nutzen `src/lib/testing/fakeSession.tsx`
 und `memoryStorage.ts`; nicht `jest.resetAllMocks()` in MUI-Specs - das nimmt `test-setup.ts` die
 `ResizeObserver`-Attrappe.
+
+## Verwaltung auf der echten API (F4)
+
+Seit F4 sprechen die Pilot-Bildschirme der Management-App (Dashboard, Produkte, Backschrank,
+Kassenberichte, Analysen, Finanzen, Tagesziel, Sammelstelle Mörsbach, Einstellungen) die
+TypeScript-API. Was man wissen muss:
+
+- **Gleiche Origin, kein CORS.** Der `ApiClient` der App hat die Basis `''`
+  (`resolveBrowserApiBase()` in `src/lib/apiBase.ts`, gesetzt in `Providers.tsx`) - der Browser
+  fragt `/api/...` bei der App selbst. Auf der Box schickt Caddy `/api/*` direkt an die API; ohne
+  Caddy (lokal, Port 4201 direkt) reicht **`src/proxy.ts`** es an `API_URL` weiter
+  (`apiProxyTarget()`, `NextResponse.rewrite`). Das frühere `rewrites()` in `next.config.js` ist
+  weg: Next.js backt Rewrites beim **Build** in das Routes-Manifest, `API_URL` beim `next start`
+  hatte also keine Wirkung. `API_URL` wird jetzt zur Laufzeit gelesen. `NEXT_PUBLIC_API_URL`
+  bleibt leer (setzen nur für eine API auf fremder Origin, dann braucht die API `CORS_ORIGIN`);
+  `deploy.sh` bricht bei leerem Wert nicht mehr ab, nur noch beim `example.`-Platzhalter.
+- **Produkte** kommen im Browser aus `GET /api/hq-products[/:id]` (`fetchManagementProducts()`,
+  `fetchManagementProduct()` in `src/lib/products.ts`, kein `fs` mehr; Seiten
+  `ProductsPageClient.tsx`, `[id]/ProductEditLoader.tsx`, dynamisch statt `generateStaticParams`).
+  `pendingApproval` zeigt den Chip „wartet auf Freigabe" in Liste und Bearbeiten-Seite, dazu den
+  freigegebenen Stand (`approved`) als Hinweis. Neu/Bearbeiten nur für `inhaber` (die API
+  antwortet sonst 403); andere Rollen sehen die Liste ohne Stift. Der Partner-Katalog der
+  Erfassungsmaske liest weiter serverseitig aus `HQ_PRODUCTS_DIR` (`src/lib/hqProductsFs.ts`,
+  dasselbe Verzeichnis wie die API).
+  **Beschreibung aus `rawDescription`, nie aus `description`:** die Verwaltungssicht
+  `/api/hq-products[/:id]` liefert zusätzlich `rawDescription` - den Body ohne Überschrift,
+  **ohne** den Rückgriff auf `short_description`, den `description` für den Shop hat
+  (`managedFields()` in `hq-products.core.js`). `toManagementProduct()` liest das Feld; sonst
+  schriebe ein Speichern ohne Änderung bei einer Datei ohne Beschreibung den Kurztext in den
+  Body (Null-Diff-Invariante, Integrationstest in `tests/integration/hqProducts.test.ts`).
+  PUT/POST-Antworten und der Mock haben kein `rawDescription`; dort ist `description` der Body.
+  Die Dashboard-Kachel zählt `/api/products` (freigegebener Stand, „Verfügbar" inkl. Saisonware)
+  und zeigt „Produkte verwalten" nur Rollen, die `/admin/products` öffnen dürfen.
+- **Backschrank:** CSV-Export über `apiClient.getBlob()` (Bearer) statt Link; `deleteVisit()`
+  liefert `{ id, deleted, message }` und die Seite zeigt `message`; Standard-Bestückung ist für
+  alle außer `inhaber` nur lesbar.
+- **403 hat eine Ursache, und die steht da.** Finanzen/Tagesziel an der PIN-Station (403
+  `personal_session_required`): „An der PIN-Station nicht verfügbar – bitte am Büro-PC oder
+  eigenen Gerät mit Passwort anmelden." (`PERSONAL_SESSION_HINT` in `financeApi.ts`, auch in der
+  Dashboard-Kachel) - **bewusst ohne Anmelde-Link**: eine PIN-Sitzung gibt es nur an einem
+  Stationsgerät, und eine Passwort-Sitzung dort hielte Finanzen und Benutzerverwaltung 12 h statt
+  10 min offen (F1 beendet die persönliche Sitzung beim Einrichten der Station). Analysen für andere Rollen: „Nur für Inhaber"
+  (`components/analytics/OwnerOnlyNotice.tsx`; `analyticsService` liefert `forbidden: true`). Der
+  Export-Knopf der Analysen ist entfernt - `/api/reports/generate` gibt es auf keiner API.
+- **Einstellungen im Pilotbetrieb** ohne Benachrichtigungen und E-Mail (keine API dafür);
+  Passwort/PIN verweisen auf `/admin/users`.
+- `ApiClient` (`libs/shared/data-access`) hat dafür `setBaseUrl()`, `getBaseUrl()` und
+  `getBlob()` (Dateiname aus `Content-Disposition`, Fehler-JSON → `ApiError` mit `message`).
+
+E2E: siehe „E2E-Suiten" - die Management-Suite fährt gegen das Bundle der echten API.
+Tests: `src/lib/apiBase.spec.ts`, `src/proxy.spec.ts` (Weiterleitung `/api`),
+`admin/products/{page,productsApi}.spec.tsx`, `src/lib/partnerApi.spec.ts`,
+`admin/partners/**/{Report,PartnerDetail,Templates}Client.spec.tsx`, `src/lib/financeApi.spec.ts`,
+`admin/finance/**/*.spec.tsx`, `admin/analytics/revenue/page.spec.tsx`, `admin/settings/page.spec.tsx`,
+`libs/shared/data-access/src/lib/{api-client,services/analytics.service}.spec.ts`.
 
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 

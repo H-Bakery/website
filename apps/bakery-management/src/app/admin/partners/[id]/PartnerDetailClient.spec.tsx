@@ -264,7 +264,11 @@ describe('PartnerDetailClient', () => {
     jest.clearAllMocks()
     mockFetchPartner.mockResolvedValue(PARTNER)
     mockFetchToday.mockResolvedValue(OPEN_DAY)
-    mockDeleteVisit.mockResolvedValue(undefined)
+    mockDeleteVisit.mockResolvedValue({
+      id: 12,
+      deleted: true,
+      message: 'Besuch gelöscht (API).',
+    })
   })
 
   it('warns that an open day is provisional and marks the affected KPI tiles', async () => {
@@ -410,7 +414,9 @@ describe('PartnerDetailClient', () => {
     await waitFor(() =>
       expect(mockDeleteVisit).toHaveBeenCalledWith(PARTNER_ID, 12)
     )
-    expect(await screen.findByText('Besuch gelöscht.')).toBeInTheDocument()
+    expect(
+      await screen.findByText('Besuch gelöscht (API).')
+    ).toBeInTheDocument()
     // Der Tag wird nach dem Löschen neu berechnet
     await waitFor(() => expect(mockFetchToday).toHaveBeenCalledTimes(2))
   })

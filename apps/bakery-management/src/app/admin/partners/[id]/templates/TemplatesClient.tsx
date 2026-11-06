@@ -44,6 +44,7 @@ import {
   fetchTemplates,
   saveTemplate,
 } from '../../../../../lib/partnerApi'
+import { useOptionalSession } from '../../../../../lib/session'
 
 interface CategoryGroup {
   category: string
@@ -92,6 +93,11 @@ export default function TemplatesClient({
   catalogue: CatalogueProduct[]
   groups: CategoryGroup[]
 }) {
+  // F4: die Standard-Bestückung schreibt nur der Inhaber (B6, PUT
+  // …/templates/:weekday). Verkauf sieht sie zum Nachschlagen. Ohne Sitzung
+  // (Specs) wie bisher.
+  const role = useOptionalSession()?.user?.role
+  const canEdit = !role || role === 'inhaber'
   const [partner, setPartner] = useState<Partner | null>(null)
   const [saved, setSaved] = useState<QuantityMap>({})
   const [drafts, setDrafts] = useState<QuantityMap>({})
@@ -378,6 +384,13 @@ export default function TemplatesClient({
     <Box>
       {header}
 
+      {!canEdit && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Die Standard-Bestückung ändert nur der Inhaber - hier nur zum
+          Nachschlagen.
+        </Alert>
+      )}
+
       {!hasDeliveryDays && (
         <Alert severity="info" sx={{ mb: 2 }}>
           Für diesen Partner sind keine Liefertage hinterlegt – es stehen alle
@@ -477,36 +490,38 @@ export default function TemplatesClient({
             </Typography>
           </Box>
           <Box sx={{ flexGrow: 1 }} />
-          <Stack
-            direction="row"
-            spacing={1}
-            alignItems="center"
-            justifyContent={{ xs: 'space-between', md: 'flex-end' }}
-          >
-            {isDirty && (
-              <Chip
-                size="small"
-                color="warning"
-                variant="outlined"
-                label="Ungespeicherte Änderungen"
-              />
-            )}
-            <Button
-              startIcon={<UndoIcon />}
-              onClick={handleReset}
-              disabled={!isDirty || saving}
+          {canEdit && (
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="center"
+              justifyContent={{ xs: 'space-between', md: 'flex-end' }}
             >
-              Zurücksetzen
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<SaveIcon />}
-              onClick={handleSave}
-              disabled={!isDirty || saving || weekday == null}
-            >
-              {saving ? 'Speichert …' : 'Speichern'}
-            </Button>
-          </Stack>
+              {isDirty && (
+                <Chip
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  label="Ungespeicherte Änderungen"
+                />
+              )}
+              <Button
+                startIcon={<UndoIcon />}
+                onClick={handleReset}
+                disabled={!isDirty || saving}
+              >
+                Zurücksetzen
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSave}
+                disabled={!isDirty || saving || weekday == null}
+              >
+                {saving ? 'Speichert …' : 'Speichern'}
+              </Button>
+            </Stack>
+          )}
         </Stack>
       </Paper>
 

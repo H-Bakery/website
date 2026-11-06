@@ -47,6 +47,7 @@ import {
   classifyFinanceError,
   fetchFinanceMonths,
   fetchFinanceSummary,
+  PERSONAL_SESSION_HINT,
   type FinanceAccessProblem,
 } from '../../../lib/financeApi'
 import type {
@@ -423,6 +424,19 @@ function AccessNotice({
       >
         <AlertTitle>Anmeldung erforderlich</AlertTitle>
         Die Finanzdaten sind nur nach Anmeldung als Inhaber/Admin sichtbar.
+      </Alert>
+    )
+  }
+  if (kind === 'personal_session') {
+    // F4: Inhaber an einer PIN-Station - die API verlangt eine
+    // Passwort-Sitzung (403 personal_session_required, B4). Bewusst ohne
+    // Anmelde-Link: eine PIN-Sitzung gibt es nur an einem Stationsgerät, und
+    // eine Passwort-Sitzung dort hielte Finanzen und Benutzerverwaltung 12 h
+    // statt 10 min offen (F1 beendet sie beim Einrichten der Station).
+    return (
+      <Alert severity="info" data-testid="personal-session-notice">
+        <AlertTitle>Finanzdaten an der Station nicht verfügbar</AlertTitle>
+        {PERSONAL_SESSION_HINT}
       </Alert>
     )
   }

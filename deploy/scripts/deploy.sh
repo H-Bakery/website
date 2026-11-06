@@ -366,10 +366,9 @@ fi
 
 # --- 1. holen ---
 
-# NEXT_PUBLIC_* werden beim Build in die Web-App eingebacken. Ohne die URL der
-# Box zeigt die App auf localhost:5000 - auf Handys und Tablets also ins Leere.
-[ -n "${NEXT_PUBLIC_API_URL:-}" ] ||
-  die 2 "NEXT_PUBLIC_API_URL ist nicht gesetzt (/etc/bakery/bakery.env) - die Web-App würde localhost ansprechen"
+# NEXT_PUBLIC_* werden beim Build in die Web-App eingebacken. Seit F4 ist ein
+# leeres NEXT_PUBLIC_API_URL der Normalfall: der Browser fragt /api auf der
+# eigenen Origin, Caddy reicht es an die API weiter (gleiche Origin, kein CORS).
 # Unveränderte Vorlage: der Build würde einen Host einbacken, den kein Gerät erreicht.
 for key in NEXT_PUBLIC_API_URL CORS_ORIGIN; do
   case "${!key:-}" in

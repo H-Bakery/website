@@ -6,7 +6,7 @@ import ReportClient from './ReportClient'
 import {
   fetchPartner,
   fetchStats,
-  reportCsvUrl,
+  downloadReportCsv,
 } from '../../../../../lib/partnerApi'
 import {
   Partner,
@@ -62,15 +62,15 @@ jest.mock('recharts', () => {
 jest.mock('../../../../../lib/partnerApi', () => ({
   fetchPartner: jest.fn(),
   fetchStats: jest.fn(),
-  reportCsvUrl: jest.fn(),
+  downloadReportCsv: jest.fn(),
 }))
 
 const mockFetchPartner = fetchPartner as jest.MockedFunction<
   typeof fetchPartner
 >
 const mockFetchStats = fetchStats as jest.MockedFunction<typeof fetchStats>
-const mockReportCsvUrl = reportCsvUrl as jest.MockedFunction<
-  typeof reportCsvUrl
+const mockDownloadCsv = downloadReportCsv as jest.MockedFunction<
+  typeof downloadReportCsv
 >
 
 const PARTNER_ID = '1'
@@ -274,10 +274,7 @@ describe('ReportClient', () => {
     jest.clearAllMocks()
     mockFetchPartner.mockResolvedValue(PARTNER)
     mockFetchStats.mockResolvedValue(STATS_PROVISIONAL)
-    mockReportCsvUrl.mockImplementation(
-      (partnerId, range) =>
-        `https://api.test/api/partners/${partnerId}/report.csv?from=${range.from}&to=${range.to}`
-    )
+    mockDownloadCsv.mockResolvedValue(undefined)
   })
 
   it('renders the per-product settlement table with German figures', async () => {
@@ -373,29 +370,34 @@ describe('ReportClient', () => {
     expect(mockFetchStats).toHaveBeenNthCalledWith(2, PARTNER_ID, LAST_WEEK)
 
     // Der Export folgt dem neuen Zeitraum
+    await user.click(screen.getByRole('button', { name: 'CSV exportieren' }))
     await waitFor(() =>
-      expect(
-        screen
-          .getByRole('link', { name: 'CSV exportieren' })
-          .getAttribute('download')
-      ).toBe(`partner-report-${LAST_WEEK.from}-bis-${LAST_WEEK.to}.csv`)
+      expect(mockDownloadCsv).toHaveBeenCalledWith(PARTNER_ID, LAST_WEEK)
     )
   })
 
-  it('offers the CSV export as a download anchor', async () => {
+  it('lädt den CSV-Export per fetch mit Token statt über einen Link (F4)', async () => {
+    const user = userEvent.setup()
     await renderReport()
 
-    const link = screen.getByRole('link', { name: 'CSV exportieren' })
-    expect(link.tagName).toBe('A')
-    expect(link).toHaveAttribute(
-      'href',
-      `https://api.test/api/partners/${PARTNER_ID}/report.csv?from=${THIS_WEEK.from}&to=${THIS_WEEK.to}`
+    // Ein Link trüge kein Authorization - die echte API antwortete 401.
+    expect(screen.queryByRole('link', { name: 'CSV exportieren' })).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'CSV exportieren' }))
+    await waitFor(() =>
+      expect(mockDownloadCsv).toHaveBeenCalledWith(PARTNER_ID, THIS_WEEK)
     )
-    expect(link).toHaveAttribute(
-      'download',
-      `partner-report-${THIS_WEEK.from}-bis-${THIS_WEEK.to}.csv`
-    )
-    expect(mockReportCsvUrl).toHaveBeenCalledWith(PARTNER_ID, THIS_WEEK)
+    expect(screen.queryByText(/CSV-Export fehlgeschlagen/)).toBeNull()
+  })
+
+  it('zeigt die deutsche Meldung, wenn der CSV-Export scheitert', async () => {
+    const user = userEvent.setup()
+    mockDownloadCsv.mockRejectedValue(new Error('Nicht angemeldet.'))
+    await renderReport()
+
+    await user.click(screen.getByRole('button', { name: 'CSV exportieren' }))
+    expect(
+      await screen.findByText('CSV-Export fehlgeschlagen: Nicht angemeldet.')
+    ).toBeInTheDocument()
   })
 
   it('shows the German error message when the report cannot be loaded', async () => {

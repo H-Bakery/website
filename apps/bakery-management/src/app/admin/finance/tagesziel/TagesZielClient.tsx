@@ -48,6 +48,7 @@ import {
   fetchTargetPeriod,
   fetchTargetStatus,
   fetchTargets,
+  PERSONAL_SESSION_HINT,
   type FinanceAccessProblem,
 } from '../../../../lib/targetsApi'
 import type {
@@ -454,6 +455,19 @@ function AccessNotice({
       >
         <AlertTitle>Anmeldung erforderlich</AlertTitle>
         Das Tagesziel ist nur nach Anmeldung als Inhaber/Admin sichtbar.
+      </Alert>
+    )
+  }
+  if (kind === 'personal_session') {
+    // F4: Inhaber an einer PIN-Station - die API verlangt eine
+    // Passwort-Sitzung (403 personal_session_required, B4). Bewusst ohne
+    // Anmelde-Link: eine PIN-Sitzung gibt es nur an einem Stationsgerät, und
+    // eine Passwort-Sitzung dort hielte Finanzen und Benutzerverwaltung 12 h
+    // statt 10 min offen (F1 beendet sie beim Einrichten der Station).
+    return (
+      <Alert severity="info" data-testid="personal-session-notice">
+        <AlertTitle>Tagesziel an der Station nicht verfügbar</AlertTitle>
+        {PERSONAL_SESSION_HINT}
       </Alert>
     )
   }

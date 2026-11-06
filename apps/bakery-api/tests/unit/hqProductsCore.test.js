@@ -46,6 +46,36 @@ describe('stripHeading', () => {
     )
     expect(core.stripHeading('Nur Text')).toBe('Nur Text')
   })
+
+  it('a body that is only the heading is empty (no trailing newline after trim)', () => {
+    expect(core.stripHeading('# Leertext Brot')).toBe('')
+    expect(core.stripHeading('\n# Leertext Brot\n\n')).toBe('')
+    expect(core.stripHeading('')).toBe('')
+  })
+})
+
+describe('managedFields', () => {
+  it('rawDescription is the body without heading and without fallback', () => {
+    expect(core.managedFields('\n# Leertext Brot\n')).toEqual({
+      rawDescription: '',
+    })
+    expect(core.managedFields('# Titel\n\nText')).toEqual({
+      rawDescription: 'Text',
+    })
+    // the shop view still falls back to the teaser
+    expect(
+      core.toHqProduct(
+        { id: 'x', name: 'X', short_description: 'Teaser' },
+        '\n# X\n'
+      ).description
+    ).toBe('Teaser')
+    expect(
+      core.toHqProduct(
+        { id: 'x', name: 'X', short_description: 'Teaser' },
+        '# X'
+      ).description
+    ).toBe('Teaser')
+  })
 })
 
 describe('toHqProduct', () => {

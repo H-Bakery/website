@@ -450,7 +450,8 @@ rel() { basename "$(readlink "$BAKERY_ROOT/current")" | cut -c1-12; }
 active_ok() { test -f "$(readlink "$BAKERY_ROOT/current")/.bakery-release" && test -f "$(readlink "$BAKERY_ROOT/current")/dist/apps/bakery-api/bundle/main.js"; }
 sha12() { git -C "$W_SEED" rev-parse HEAD | cut -c1-12; }
 
-expect 2 "ohne NEXT_PUBLIC_API_URL -> Abbruch" env "${DEPLOY_ENV[@]}" NEXT_PUBLIC_API_URL= "$SCRIPTS/deploy.sh" main
+# F4: leer = gleiche Origin (Caddy) - kein Abbruch, es geht bis zur REF-Suche.
+expect 3 "leeres NEXT_PUBLIC_API_URL ist erlaubt (gleiche Origin)" env "${DEPLOY_ENV[@]}" NEXT_PUBLIC_API_URL= "$SCRIPTS/deploy.sh" gibtsnicht
 expect 2 "NEXT_PUBLIC_API_URL aus der Vorlage -> Abbruch" env "${DEPLOY_ENV[@]}" NEXT_PUBLIC_API_URL=https://intern.example.de "$SCRIPTS/deploy.sh" main
 check "Meldung nennt den Platzhalter" log_has "Platzhalter aus der Vorlage"
 expect 2 "CORS_ORIGIN aus der Vorlage -> Abbruch" env "${DEPLOY_ENV[@]}" CORS_ORIGIN=https://intern.example.de "$SCRIPTS/deploy.sh" main

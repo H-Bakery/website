@@ -25,11 +25,15 @@ function isProductFileName(file) {
   )
 }
 
-/** Body ohne die führende `# Überschrift`-Zeile. */
+/**
+ * Body ohne die führende `# Überschrift`-Zeile. Auch ein Body, der nur aus
+ * der Überschrift besteht (Produkt ohne Beschreibung), ergibt `''` - nach
+ * dem `trim()` fehlt dort der Zeilenumbruch hinter der Überschrift.
+ */
 function stripHeading(body) {
-  return String(body)
+  return String(body ?? '')
     .trim()
-    .replace(/^#{1,6}[^\n]*\n+/, '')
+    .replace(/^#{1,6}[^\n]*(\n+|$)/, '')
     .trim()
 }
 
@@ -67,13 +71,22 @@ function toHqProduct(data, content) {
     allergens: Array.isArray(data.allergens) ? data.allergens : null,
     allergens_source: data.allergens_source || null,
     allergen_recipe: data.allergen_recipe || null,
-    description:
-      String(content ?? '')
-        .replace(/^\s*#[^\n]*\n+/, '')
-        .trim() ||
-      data.short_description ||
-      '',
+    // Shop-Sicht: ohne eigenen Text steht der Kurztext da. Die Verwaltung
+    // braucht den echten Body - `rawDescription` (siehe `managedFields`).
+    description: stripHeading(content) || data.short_description || '',
   }
+}
+
+/**
+ * Zusatzfelder der Verwaltungssicht (`/api/hq-products[/:id]`, F4):
+ * `rawDescription` ist der Body der Datei ohne Überschrift, **ohne** den
+ * Rückgriff auf `short_description`, den `description` für den Shop hat.
+ * Das Bearbeiten-Formular schickt `description` immer mit; läse es den
+ * Rückgriff, schriebe ein Speichern ohne Änderung den Kurztext in den Body
+ * einer Datei ohne Beschreibung (Null-Diff-Invariante).
+ */
+function managedFields(content) {
+  return { rawDescription: stripHeading(content) }
 }
 
 /** Sortierung wie im Mock: nach `numeric_id`, fehlende zuerst. */
@@ -290,5 +303,6 @@ module.exports = {
   sortProducts,
   stripHeading,
   toHqProduct,
+  managedFields,
   writeResponse,
 }

@@ -7,6 +7,7 @@ import {
   SESSION_KIND_HEADER,
 } from './lib/sessionCookie'
 import { createSessionVerifier, decideAccess } from './lib/serverSession'
+import { apiProxyTarget, resolveServerApiUrl } from './lib/apiBase'
 
 /**
  * Next.js 16 Proxy (früher `middleware.ts`) - die serverseitige Wache (F1):
@@ -24,11 +25,18 @@ import { createSessionVerifier, decideAccess } from './lib/serverSession'
  * `x-bakery-session-kind` an die Seite; eingehende Header dieser Namen werden
  * immer entfernt. Der Proxy läuft in Next 16 immer in Node.js; `API_URL`
  * wird zur Laufzeit gelesen.
+ *
+ * 3. `/api/**` (F4): wird an `API_URL` weitergereicht, damit der Browser nur
+ *    mit der eigenen Origin spricht (kein CORS). Das stand früher als
+ *    `rewrites()` in `next.config.js` - die setzt `next build` aber in das
+ *    Routen-Manifest ein, ein bei `next start` gesetztes `API_URL` wirkte
+ *    nicht. Auf der Box leitet Caddy `/api/*` schon vorher direkt an die API;
+ *    dieser Weg gilt für `next dev`, `next start` ohne Caddy und die E2E-Suite.
  */
 
-const verify = createSessionVerifier({
-  apiUrl: process.env.API_URL || 'http://localhost:5000',
-})
+const API_URL = resolveServerApiUrl()
+
+const verify = createSessionVerifier({ apiUrl: API_URL })
 
 function rewriteTo(request: NextRequest, pathname: string, headers: Headers) {
   const url = request.nextUrl.clone()
@@ -40,6 +48,10 @@ function rewriteTo(request: NextRequest, pathname: string, headers: Headers) {
 
 export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
+
+  const apiTarget = apiProxyTarget(pathname, request.nextUrl.search, API_URL)
+  if (apiTarget) return NextResponse.rewrite(new URL(apiTarget))
+
   const headers = new Headers(request.headers)
   headers.delete(ROLE_HEADER)
   headers.delete(SESSION_KIND_HEADER)
@@ -66,5 +78,12 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin', '/admin/:path*', '/backstube', '/backstube/:path*'],
+  matcher: [
+    '/admin',
+    '/admin/:path*',
+    '/backstube',
+    '/backstube/:path*',
+    '/api',
+    '/api/:path*',
+  ],
 }

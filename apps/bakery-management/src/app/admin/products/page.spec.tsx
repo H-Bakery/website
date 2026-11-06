@@ -23,6 +23,8 @@ const products: ManagementProduct[] = [
     rawImage: '',
     shortDescription: 'Kräftig',
     description: 'Kräftiges Roggenbrot aus eigenem Sauerteig.',
+    pendingApproval: false,
+    approved: null,
   },
   {
     id: 'stollen',
@@ -35,6 +37,8 @@ const products: ManagementProduct[] = [
     rawImage: '/img/stollen.svg',
     shortDescription: '',
     description: '',
+    pendingApproval: true,
+    approved: { name: 'Christstollen', price: 11, status: 'seasonal' },
   },
   {
     id: 'altbrot',
@@ -47,6 +51,8 @@ const products: ManagementProduct[] = [
     rawImage: '',
     shortDescription: '',
     description: '',
+    pendingApproval: false,
+    approved: null,
   },
 ]
 
@@ -99,6 +105,27 @@ describe('ProductListClient (admin/products)', () => {
     expect(
       screen.queryByRole('button', { name: /Neues Produkt/ })
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Roggenbrot bearbeiten' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('markiert wartende Änderungen mit „wartet auf Freigabe" (F4)', () => {
+    renderWithTheme(<ProductListClient products={products} />)
+    const chips = screen.getAllByText('wartet auf Freigabe')
+    expect(chips).toHaveLength(1)
+    expect(chips[0].closest('tr')).toHaveTextContent('Christstollen')
+    expect(
+      screen.getByText(/1 Änderung wartet auf Freigabe/)
+    ).toBeInTheDocument()
+  })
+
+  it('Backstube oder Fahrer: kein Bearbeiten, nur der Inhaber schreibt (F4)', () => {
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'backstube' })}>
+        <ProductListClient products={products} />
+      </WithSession>
+    )
     expect(
       screen.queryByRole('button', { name: 'Roggenbrot bearbeiten' })
     ).not.toBeInTheDocument()

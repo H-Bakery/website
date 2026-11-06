@@ -18,7 +18,7 @@ import type {
   TargetsResponse,
 } from './targetsTypes'
 
-export { classifyFinanceError } from './financeApi'
+export { classifyFinanceError, PERSONAL_SESSION_HINT } from './financeApi'
 export type { FinanceAccessProblem } from './financeApi'
 
 interface TargetsEnvelope<T> {

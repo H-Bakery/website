@@ -325,9 +325,20 @@ export default function DashboardClient({
                 }}
               />
             </Box>
-            <Button size="small" onClick={() => router.push('/admin/products')}>
-              Produkte verwalten
-            </Button>
+            {/* Nur für Rollen, die die Produktliste öffnen dürfen (Backstube
+                landete sonst auf „Kein Zugriff"). */}
+            {allowed('/admin/products') ? (
+              <Button
+                size="small"
+                onClick={() => router.push('/admin/products')}
+              >
+                Produkte verwalten
+              </Button>
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Freigegebener Stand
+              </Typography>
+            )}
           </Paper>
         </Grid>
 
@@ -365,7 +376,7 @@ export default function DashboardClient({
               color="text.secondary"
               sx={{ display: { xs: 'none', sm: 'block' } }}
             >
-              Im Sortiment aktiv
+              Freigegeben, inkl. Saisonware
             </Typography>
           </Paper>
         </Grid>

@@ -3,26 +3,39 @@
  * Landing) - an einer Stelle, damit CI und lokaler Lauf dieselben Server
  * bekommen.
  *
+ * Welche API:
+ *
+ * - **Management** (seit F4): die **echte API** (`realApiServer()`, das
+ *   esbuild-Bundle über `tools/e2e/real-api.js`) mit frischer SQLite-Datenbank
+ *   im Temp-Verzeichnis und dem E2E-Inhaber aus `BOOTSTRAP_ADMIN_*`
+ *   (`E2E_ADMIN`). App und API lesen dasselbe synthetische `hq`
+ *   (`prepareE2eHq()`: Produkte plus erfundene Kassenberichte und Finanzen).
+ *   Die App reicht `/api/*` über `src/proxy.ts` an `API_URL` weiter.
+ * - **Shop**: weiter die Mock-API (`mockApiServer()`) - der Shop hat noch
+ *   keinen öffentlichen Weg in die echte API (jede `/api`-Route dort braucht
+ *   eine Sitzung).
+ *
  * Zwei Betriebsarten:
  *
  * - **Entwicklung** (Standard): `nx serve <app>` und laufende Server werden
- *   wiederverwendet (`reuseExistingServer`). Wer die Mock-API schon auf 5000
- *   laufen hat, testet gegen deren Daten - in der Regel das echte `hq`.
- *   Startet Playwright die Server selbst, lesen App und API aus derselben
- *   Quelle (`productsDir()`): `HQ_PRODUCTS_DIR` aus der Umgebung, sonst das
- *   `hq` neben dem Repo, und erst wenn es das nicht gibt, das Fixture.
+ *   wiederverwendet (`reuseExistingServer`). Startet Playwright die Server
+ *   selbst, lesen App und API aus derselben Quelle (`productsDir()`):
+ *   `HQ_PRODUCTS_DIR` aus der Umgebung, sonst das `hq` neben dem Repo, und erst
+ *   wenn es das nicht gibt, das Fixture. Das API-Bundle wird dann vor dem
+ *   Start neu gebaut.
  * - **Gebaut** (`CI=true` oder `E2E_BUILT=1`): die Suite startet ihre Server
  *   selbst - `next start` auf dem Build in `dist/apps/<app>` (bzw. der
- *   statische Export der Landing) und die Mock-API auf dem synthetischen
+ *   statische Export der Landing), die API auf dem synthetischen
  *   Produktverzeichnis `tools/e2e/hq-products`. Das ist der Lauf, den
  *   `.github/workflows/ci.yml` fährt; er braucht weder das private `hq` noch
- *   eine Datenbank.
+ *   eine vorhandene Datenbank.
  *
  * Die Ports kommen aus `BASE_URL` / `API_URL`, damit mehrere Läufe nebeneinander
  * Platz haben.
  */
 
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 
 const ROOT = path.resolve(__dirname, '..', '..')
@@ -51,6 +64,88 @@ function productsDir() {
   if (process.env.HQ_PRODUCTS_DIR) return process.env.HQ_PRODUCTS_DIR
   const hq = path.join(ROOT, '..', 'hq', 'products')
   return fs.existsSync(hq) ? hq : FIXTURE_PRODUCTS_DIR
+}
+
+/**
+ * Anmeldedaten des Inhabers, den die echte API in der E2E-Instanz beim Start
+ * anlegt (`BOOTSTRAP_ADMIN_*`, nur außerhalb von Produktion). Synthetisch.
+ */
+const E2E_ADMIN = {
+  username: process.env.E2E_ADMIN_USER || 'e2e.inhaber',
+  password: process.env.E2E_ADMIN_PASSWORD || 'e2e-Passwort-nur-fuer-Tests',
+}
+
+/**
+ * Synthetisches `hq` für die Verwaltungs-Suite gegen die echte API (F4):
+ * eine Kopie von `productsDir()` plus Kassenberichte, Finanzen und Tagesziel
+ * aus `apps/bakery-api/tests/fixtures/hq-data.synthetic.js` - erfunden.
+ * Verwaltung (Server-Komponenten: Dashboard-Kasse, Berichtsarchiv,
+ * Partner-Katalog) und API bekommen **dieselben** Verzeichnisse. Die Kopie
+ * der Produkte schützt das Fixture im Repo, falls ein Test speichert.
+ *
+ * Liegt je API-Port fest im Temp-Verzeichnis. Geschrieben wird nur im
+ * Hauptprozess von Playwright: jeder Test-Worker lädt die Konfiguration noch
+ * einmal (`TEST_WORKER_INDEX` gesetzt) und bekäme sonst beim gleichzeitigen
+ * Löschen und Kopieren `ENOTEMPTY` - Worker brauchen nur die Pfade.
+ */
+function prepareE2eHq(apiURL) {
+  const root = path.join(os.tmpdir(), `bakery-e2e-hq-${portOf(apiURL)}`)
+  const products = path.join(root, 'products')
+  const data = path.join(root, 'data')
+  const env = {
+    HQ_PRODUCTS_DIR: products,
+    HQ_REPORTS_DIR: path.join(data, 'reports'),
+    HQ_FINANCE_DIR: path.join(data, 'finance'),
+  }
+  if (process.env.TEST_WORKER_INDEX !== undefined) return env
+
+  fs.rmSync(products, { recursive: true, force: true })
+  fs.mkdirSync(products, { recursive: true })
+  fs.cpSync(productsDir(), products, { recursive: true })
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { writeSyntheticHq } = require(path.join(
+    ROOT,
+    'apps/bakery-api/tests/fixtures/hq-data.synthetic.js'
+  ))
+  const written = writeSyntheticHq(data)
+  if (
+    written.reportsDir !== env.HQ_REPORTS_DIR ||
+    written.financeDir !== env.HQ_FINANCE_DIR
+  ) {
+    throw new Error('hq-data.synthetic.js schreibt an unerwartete Pfade')
+  }
+  return env
+}
+
+/**
+ * Die echte API (F4): `tools/e2e/real-api.js` startet das esbuild-Bundle mit
+ * frischer Datenbank und dem E2E-Inhaber. In Entwicklung wird das Bundle vor
+ * jedem Start neu gebaut (sonst testete man ein altes), gebaut/CI nur, wenn
+ * es fehlt - der CI-Job baut es vorher mit `nx run bakery-api:bundle`.
+ *
+ * @param {string} apiURL
+ * @param {Record<string, string>} hqEnv  aus `prepareE2eHq()`
+ */
+function realApiServer(apiURL, hqEnv) {
+  return {
+    command: 'node tools/e2e/real-api.js',
+    url: `${apiURL}/health`,
+    env: {
+      ...hqEnv,
+      PORT: String(portOf(apiURL)),
+      BOOTSTRAP_ADMIN_USER: E2E_ADMIN.username,
+      BOOTSTRAP_ADMIN_PASSWORD: E2E_ADMIN.password,
+      // Backzettel-Stammdaten gibt es in der Suite nicht (no-config).
+      HQ_BACKZETTEL_CONFIG: path.join(os.tmpdir(), 'bakery-e2e-keine.yaml'),
+      E2E_API_BUILD: usesBuiltApp() ? '' : '1',
+    },
+    reuseExistingServer: reuseExistingServer(),
+    cwd: ROOT,
+    timeout: 120_000,
+    // Ohne diese Angabe beendet Playwright den Server mit SIGKILL, und
+    // real-api.js kann seine Temp-Datenbank nicht mehr löschen.
+    gracefulShutdown: { signal: 'SIGTERM', timeout: 15_000 },
+  }
 }
 
 /** Sollen laufende Server übernommen werden? In CI nie - dort ist alles frisch. */
@@ -127,11 +222,14 @@ function landingApp(baseURL) {
 }
 
 module.exports = {
+  E2E_ADMIN,
   FIXTURE_PRODUCTS_DIR,
   ROOT,
   landingApp,
   mockApiServer,
   nextApp,
+  prepareE2eHq,
   productsDir,
+  realApiServer,
   usesBuiltApp,
 }

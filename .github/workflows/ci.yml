@@ -51,7 +51,9 @@ jobs:
               - 'apps/bakery-management-e2e/**'
               - 'libs/bakery-management/**'
               - 'libs/shared/**'
-              - 'apps/bakery-api/simple-server.js'
+              # Die Management-Suite faehrt seit F4 gegen die echte API.
+              - 'apps/bakery-api/**'
+              - 'libs/api/**'
               - 'tools/e2e/**'
               - '.github/workflows/ci.yml'
             landing:
@@ -207,15 +209,18 @@ jobs:
           # Same pair as in the build job below, for the same two reasons.
           NX_ISOLATE_PLUGINS: 'false'
           NODE_ENV: production
-          # Die Produktliste wird beim Bauen aus dem Markdown-Verzeichnis
-          # gelesen (generateStaticParams). Ohne hq: der synthetische Katalog,
-          # denselben bekommt die Mock-API im naechsten Schritt.
-          HQ_PRODUCTS_DIR: ${{ github.workspace }}/tools/e2e/hq-products
+          # Wie auf der Box (F2): NEXT_PUBLIC_* wirken nur beim Build.
+          NEXT_PUBLIC_PILOT_MODE: '1'
         run: npx nx build bakery-management --configuration=production
 
+      # Die echte API (esbuild-Bundle) - tools/e2e/real-api.js startet es.
+      - name: Build API bundle
+        run: npx nx run bakery-api:bundle
+
       # Server startet Playwright selbst (tools/e2e/servers.js, CI=true):
-      # `next start` auf dem Build und die Mock-API, beide auf
-      # tools/e2e/hq-products.
+      # `next start` auf dem Build und die echte API mit frischer SQLite-
+      # Datenbank, beide auf einem synthetischen hq (tools/e2e/hq-products
+      # plus erfundene Kassenberichte/Finanzen, prepareE2eHq()).
       - name: Run E2E tests
         run: npx nx e2e bakery-management-e2e
 

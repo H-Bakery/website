@@ -442,9 +442,10 @@ export default function PartnerDetailClient({
     if (!deleteTarget) return
     setDeleting(true)
     try {
-      await deleteVisit(partnerId, deleteTarget.visitId)
+      // B6: 200 { id, deleted, message } - die Meldung kommt von der API.
+      const result = await deleteVisit(partnerId, deleteTarget.visitId)
       setDeleteTarget(null)
-      setFeedback({ message: 'Besuch gelöscht.', severity: 'success' })
+      setFeedback({ message: result.message, severity: 'success' })
       await load()
     } catch (err) {
       setFeedback({

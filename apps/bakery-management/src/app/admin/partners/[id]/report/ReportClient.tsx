@@ -44,7 +44,7 @@ import Link from 'next/link'
 import {
   fetchPartner,
   fetchStats,
-  reportCsvUrl,
+  downloadReportCsv,
 } from '../../../../../lib/partnerApi'
 import {
   Partner,
@@ -269,6 +269,8 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
   const [stats, setStats] = useState<PartnerStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [csvBusy, setCsvBusy] = useState(false)
+  const [csvError, setCsvError] = useState<string | null>(null)
 
   // Erst nach dem Mount: `new Date()` auf dem Server und im Browser kann
   // auseinanderlaufen und würde die Hydration zerlegen.
@@ -361,8 +363,26 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
       : 'Abrechnung: Kommission - vergütet wird die verkaufte Ware'
 
   const isEmpty = Boolean(stats && stats.byDay.length === 0)
-  const csvHref =
-    rangeReady && !rangeInvalid ? reportCsvUrl(partnerId, range) : ''
+  const csvReady = rangeReady && !rangeInvalid
+
+  // F4: Download über fetch mit Token - ein schlichter Link bekäme von der
+  // echten API 401 (jede Route braucht eine Sitzung).
+  const exportCsv = async () => {
+    if (!csvReady || csvBusy) return
+    setCsvBusy(true)
+    setCsvError(null)
+    try {
+      await downloadReportCsv(partnerId, range)
+    } catch (err) {
+      setCsvError(
+        err instanceof Error && err.message
+          ? err.message
+          : 'Der CSV-Export ist fehlgeschlagen.'
+      )
+    } finally {
+      setCsvBusy(false)
+    }
+  }
 
   return (
     <Box className="report-root">
@@ -419,11 +439,11 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
             <Button
               size="small"
               variant="outlined"
-              startIcon={<DownloadIcon />}
-              component="a"
-              href={csvHref || undefined}
-              download={`partner-report-${range.from}-bis-${range.to}.csv`}
-              disabled={!csvHref}
+              startIcon={
+                csvBusy ? <CircularProgress size={16} /> : <DownloadIcon />
+              }
+              onClick={exportCsv}
+              disabled={!csvReady || csvBusy}
             >
               CSV exportieren
             </Button>
@@ -492,6 +512,17 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
         <Alert severity="warning" className="report-no-print" sx={{ mb: 2 }}>
           Das Startdatum liegt nach dem Enddatum - bitte den Zeitraum
           korrigieren.
+        </Alert>
+      )}
+
+      {csvError && (
+        <Alert
+          severity="error"
+          className="report-no-print"
+          sx={{ mb: 2 }}
+          onClose={() => setCsvError(null)}
+        >
+          CSV-Export fehlgeschlagen: {csvError}
         </Alert>
       )}
 

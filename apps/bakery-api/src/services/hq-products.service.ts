@@ -53,6 +53,8 @@ export type ListedProduct = HqProduct & { pendingApproval: boolean }
  * auf Freigabe, steht der freigegebene Stand daneben (`null` = neu angelegt).
  */
 export type ManagedProduct = ListedProduct & {
+  /** Body ohne Überschrift, ohne Rückgriff auf `short_description` (F4). */
+  rawDescription: string
   approved?: Readonly<HqProduct> | null
 }
 
@@ -297,6 +299,7 @@ export class HqProductsService {
       writeFile !== null && writeFile.raw !== this.approvedRaw(writeFile.file)
     const product: ManagedProduct = {
       ...current.product,
+      ...(core.managedFields(current.content) as { rawDescription: string }),
       pendingApproval: pending,
     }
     if (pending) {

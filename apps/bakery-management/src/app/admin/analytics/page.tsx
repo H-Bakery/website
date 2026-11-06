@@ -18,13 +18,13 @@ import {
 } from '@mui/icons-material'
 import {
   DateRangePicker,
-  ExportButton,
   AnalyticsSummaryCard,
   RevenueTrendChart,
   PaymentMethodsChart,
   ProductRankingTable,
 } from '@bakery/management/feature-analytics'
 import { analyticsService } from '@bakery/shared/data-access'
+import OwnerOnlyNotice from '../../../components/analytics/OwnerOnlyNotice'
 import type {
   RevenueData,
   ProductAnalyticsPerformance,
@@ -51,6 +51,8 @@ export default function AnalyticsPage() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethodData[]>([])
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
   const [available, setAvailable] = useState(true)
+  // F4: 403 = falsche Rolle (Analysen nur für den Inhaber, B4).
+  const [forbidden, setForbidden] = useState(false)
 
   React.useEffect(() => {
     fetchAnalyticsData()
@@ -102,15 +104,15 @@ export default function AnalyticsPage() {
       setBottomProducts(bottomProductsRes.data)
       setPaymentMethods(paymentRes.data)
       setSummary(summaryRes.data)
-      setAvailable(
-        [
-          revenueRes,
-          topProductsRes,
-          bottomProductsRes,
-          paymentRes,
-          summaryRes,
-        ].every((r) => r.available)
-      )
+      const results = [
+        revenueRes,
+        topProductsRes,
+        bottomProductsRes,
+        paymentRes,
+        summaryRes,
+      ]
+      setAvailable(results.every((r) => r.available))
+      setForbidden(results.some((r) => r.forbidden))
     } catch (err) {
       console.error('Error fetching analytics:', err)
       setError('Analysedaten konnten nicht geladen werden.')
@@ -180,17 +182,11 @@ export default function AnalyticsPage() {
         gap={2}
       >
         <DateRangePicker value={dateRange} onChange={setDateRange} />
-        <ExportButton
-          formats={['csv', 'pdf', 'excel']}
-          analyticsParams={{
-            ...dateRange,
-            granularity: 'daily',
-          }}
-          includeCharts={true}
-        />
       </Box>
 
-      {!available && !loading && (
+      {forbidden && !loading && <OwnerOnlyNotice />}
+
+      {!available && !forbidden && !loading && (
         <Alert severity="error" sx={{ mb: 3 }}>
           Die API liefert keine Analysedaten. Es werden keine Zahlen angezeigt -
           Beispieldaten gibt es hier bewusst nicht.

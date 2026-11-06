@@ -1,80 +1,87 @@
 /**
- * @fileoverview Die Verwaltung, wie sie gebaut ist.
+ * @fileoverview Die Verwaltung gegen die echte API (F4).
  *
  * Läuft gegen den Build in `dist/apps/bakery-management` (CI) oder den
- * Dev-Server, jeweils mit der Mock-API (`simple-server.js`). Produkte liest
- * die App beim Bauen aus `HQ_PRODUCTS_DIR` - in CI das synthetische Fixture
- * unter `tools/e2e/hq-products`, das auch die Mock-API bekommt. Deshalb
+ * Dev-Server, jeweils mit der **echten API** (esbuild-Bundle,
+ * `tools/e2e/real-api.js`: frische SQLite-Datenbank, Inhaber aus
+ * `BOOTSTRAP_ADMIN_*`) und im Pilotbetrieb (`NEXT_PUBLIC_PILOT_MODE=1`, wie
+ * auf der Box). App und API lesen dasselbe synthetische hq
+ * (`prepareE2eHq()` in `tools/e2e/servers.js`): eine Kopie des
+ * Produkt-Fixtures plus erfundene Kassenberichte und Finanzdaten. Deshalb
  * vergleicht die Suite Zahlen der Oberfläche mit dem, was die API liefert,
  * statt Werte fest zu verdrahten.
  *
- * Seit F1 braucht `/admin` eine Sitzung: `signIn()` (login.ts) meldet sich
- * an der Mock-API an und legt die Sitzung vor jedem Test in `localStorage`.
- * Nichts hier speichert - `PUT /api/hq-products/:id` schriebe in die
- * Produktdateien, in CI also ins Fixture.
+ * Der Browser spricht die API nur über die eigene Origin an (`/api/...`,
+ * `src/proxy.ts` reicht weiter) - ein CORS- oder Proxy-Fehler fiele hier auf.
+ * Nichts hier speichert Produkte.
  */
 
-import { expect, test, request as playwrightRequest } from '@playwright/test'
-import { signIn } from './login'
+import { expect, test, type Locator, type Page } from '@playwright/test'
+import { E2E_ADMIN, apiCount, signIn } from './login'
 
-const API_BASE = process.env['API_URL'] || 'http://localhost:5000'
+test.describe('Anmeldung', () => {
+  test('ohne Sitzung führt /admin zur Anmeldung', async ({ browser }) => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    try {
+      await page.goto('/admin/products')
+      await expect(page).toHaveURL(/\/admin\/login\?next=%2Fadmin%2Fproducts/)
+      await expect(
+        page.getByRole('heading', { name: 'Anmeldung' })
+      ).toBeVisible()
+    } finally {
+      await context.close()
+    }
+  })
 
-test.beforeEach(async ({ page }) => {
-  await signIn(page)
+  test('Anmeldung über die Oberfläche an der echten API', async ({
+    browser,
+  }) => {
+    const context = await browser.newContext()
+    const page = await context.newPage()
+    try {
+      await page.goto('/admin/login?next=%2Fadmin%2Fproducts')
+      await page.getByLabel(/Benutzername/).fill(E2E_ADMIN.username)
+      await page.getByLabel(/Passwort/).fill(E2E_ADMIN.password)
+      await page.getByRole('button', { name: /Anmelden/ }).click()
+      await expect(page).toHaveURL(/\/admin\/products$/)
+      await expect(page.getByRole('heading', { level: 1 })).toContainText(
+        'Produktverwaltung'
+      )
+    } finally {
+      await context.close()
+    }
+  })
+
+  test('ohne Sitzung liefert der Server keine Seitendaten aus', async ({
+    playwright,
+    baseURL,
+  }) => {
+    // Seiten mit Serverdaten (Dashboard-Kasse, Berichte) schreibt
+    // src/proxy.ts ohne gültiges Sitzungs-Cookie auf die leere Prüfseite um;
+    // /api ohne Token beantwortet die API mit 401.
+    const anonymous = await playwright.request.newContext({ baseURL })
+    try {
+      const page = await anonymous.get('/admin/reports')
+      expect(page.status()).toBe(200)
+      expect(await page.text()).not.toContain('Kassenbericht vom')
+      const api = await anonymous.get('/api/products')
+      expect(api.status()).toBe(401)
+      const body = await api.json()
+      expect(body.error).toBeTruthy()
+      expect(body.message).toBeTruthy()
+    } finally {
+      await anonymous.dispose()
+    }
+  })
 })
 
-test('ohne Sitzung führt /admin zur Anmeldung', async ({ browser }) => {
-  const context = await browser.newContext()
-  const page = await context.newPage()
-  try {
-    await page.goto('/admin/products')
-    await expect(page).toHaveURL(/\/admin\/login\?next=%2Fadmin%2Fproducts/)
-    await expect(page.getByRole('heading', { name: 'Anmeldung' })).toBeVisible()
-  } finally {
-    await context.close()
-  }
-})
+test.describe('mit Sitzung (Inhaber)', () => {
+  test.beforeEach(async ({ page }) => {
+    await signIn(page)
+  })
 
-test('ohne Sitzung liefert der Server keine Seitendaten aus', async ({
-  playwright,
-  baseURL,
-}) => {
-  // Die Produktliste ist eine Server-Komponente: ohne gültiges Sitzungs-
-  // Cookie schreibt src/proxy.ts auf die leere Prüfseite um - weder HTML noch
-  // RSC-Payload dürfen einen Produktnamen tragen.
-  const api = await playwrightRequest.newContext()
-  const anonymous = await playwright.request.newContext({ baseURL })
-  try {
-    const products = await (await api.get(`${API_BASE}/api/products`)).json()
-    const list = Array.isArray(products) ? products : products.data
-    const name: string = list[0].name
-    const response = await anonymous.get('/admin/products')
-    expect(response.status()).toBe(200)
-    const html = await response.text()
-    expect(html).not.toContain(name)
-  } finally {
-    await api.dispose()
-    await anonymous.dispose()
-  }
-})
-
-/** Anzahl der Einträge, die `GET <pfad>` der Mock-API liefert. */
-async function apiCount(path: string): Promise<number> {
-  const context = await playwrightRequest.newContext()
-  try {
-    const response = await context.get(`${API_BASE}${path}`)
-    expect(response.ok(), `GET ${path} muss 2xx antworten`).toBeTruthy()
-    const body = await response.json()
-    const list = Array.isArray(body) ? body : body.data
-    expect(Array.isArray(list)).toBe(true)
-    return list.length
-  } finally {
-    await context.dispose()
-  }
-}
-
-test.describe('Dashboard', () => {
-  test('meldet die API als erreichbar und zählt das Sortiment', async ({
+  test('Dashboard meldet die API erreichbar und zählt das Sortiment', async ({
     page,
   }) => {
     const productCount = await apiCount('/api/products')
@@ -84,49 +91,28 @@ test.describe('Dashboard', () => {
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       'Dashboard'
     )
-
-    // Erst „wird geprüft …“, dann das Urteil - ohne API wäre es „nicht
-    // erreichbar“, und die Zahlen darunter blieben 0.
     await expect(
       page.getByText('API erreichbar', { exact: true })
     ).toBeVisible()
-
     const productsCard = page
       .locator('.MuiPaper-root')
       .filter({ hasText: 'Produkte gesamt' })
       .first()
     await expect(productsCard).toContainText(String(productCount))
+    // Kassen-Kachel aus dem synthetischen Kassenbericht (Server-Komponente).
+    await expect(page.getByText(/Stand:/).first()).toBeVisible()
   })
 
-  test('Schnellzugriff führt in die Produktverwaltung', async ({ page }) => {
-    await page.goto('/admin')
-    await page
-      .getByRole('heading', { name: 'Produkte', exact: true })
-      .first()
-      .click()
-    await expect(page).toHaveURL(/\/admin\/products$/)
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(
-      'Produktverwaltung'
-    )
-  })
-})
-
-test.describe('Produkte', () => {
-  test('Liste zeigt jedes Produkt aus hq und öffnet die Bearbeitung', async ({
+  test('Produkte: Liste aus /api/hq-products, Bearbeiten öffnet sich', async ({
     page,
   }) => {
-    const productCount = await apiCount('/api/products')
+    const productCount = await apiCount('/api/hq-products')
 
     await page.goto('/admin/products')
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
       'Produktverwaltung'
     )
-    // Die Liste kommt aus dem Markdown-Verzeichnis, die API liest dasselbe
-    // Verzeichnis - beide müssen dieselbe Zahl nennen. Ohne Verzeichnis
-    // stünde hier „Keine Produkte gefunden.“ und die Zahl wäre 0.
     await expect(page.getByText(`Produktliste (${productCount})`)).toBeVisible()
-    await expect(page.getByText('Keine Produkte gefunden.')).toHaveCount(0)
-
     const rows = page.locator('tbody tr')
     await expect(rows).toHaveCount(productCount)
 
@@ -136,16 +122,7 @@ test.describe('Produkte', () => {
     const editButton = rows
       .first()
       .getByRole('button', { name: `${firstName} bearbeiten` })
-    const editURL = /\/admin\/products\/[^/]+$/
-
-    // Der Knopf navigiert per `router.push`, also erst nach der Hydration.
-    // Der Dev-Server hydriert hundert Zeilen spürbar später, als sie sichtbar
-    // sind - ein Klick davor verpufft ohne Fehler. Deshalb klicken, bis die
-    // URL wechselt; im Build greift der erste Klick.
-    await expect(async () => {
-      if (!editURL.test(page.url())) await editButton.click({ timeout: 2_000 })
-      await expect(page).toHaveURL(editURL, { timeout: 2_000 })
-    }).toPass({ timeout: 20_000 })
+    await clickUntilURL(page, editButton, /\/admin\/products\/[^/]+$/)
     await expect(page.getByLabel('Produktname')).toHaveValue(firstName)
     await expect(page.getByLabel('Preis (EUR)')).not.toHaveValue('')
   })
@@ -154,39 +131,104 @@ test.describe('Produkte', () => {
     page,
   }) => {
     await page.goto('/admin/products/gibt-es-nicht')
-    await expect(page.getByLabel('Produktname')).toHaveCount(0)
     await expect(page.getByRole('main')).toContainText(/nicht gefunden/i)
+    await expect(page.getByLabel('Produktname')).toHaveCount(0)
   })
-})
 
-test.describe('Bestellungen', () => {
-  test('Liste zeigt die Bestellungen der API und filtert nach Status', async ({
+  test('Backschrank: Partner aus der Datenbank, Report als CSV mit Token', async ({
     page,
   }) => {
-    const orderCount = await apiCount('/api/orders')
-    expect(orderCount).toBeGreaterThan(0)
+    const partners = await apiCount('/api/partners')
+    expect(partners).toBeGreaterThan(0)
 
-    await page.goto('/admin/orders')
-    await expect(page.getByRole('heading', { level: 1 })).toContainText(
-      'Bestellungen'
-    )
+    await page.goto('/admin/partners')
+    const reportLink = page.getByRole('link', { name: 'Report' }).first()
+    await expect(reportLink).toBeVisible()
+    await clickUntilURL(page, reportLink, /\/admin\/partners\/\d+\/report/)
     await expect(
-      page.getByRole('status', { name: 'Bestellungen werden geladen' })
-    ).toBeHidden()
+      page.getByRole('heading', { name: 'Partner-Report' })
+    ).toBeVisible()
 
-    const rows = page.locator('tbody tr')
-    await expect(rows).toHaveCount(orderCount)
+    const exportButton = page.getByRole('button', { name: 'CSV exportieren' })
+    await expect(exportButton).toBeEnabled()
+    const [download] = await Promise.all([
+      page.waitForEvent('download'),
+      exportButton.click(),
+    ])
+    expect(download.suggestedFilename()).toMatch(/\.csv$/)
+    await expect(page.getByText(/CSV-Export fehlgeschlagen/)).toHaveCount(0)
+  })
 
-    // Der Filter nimmt Zeilen weg, aber die Seite bleibt bedienbar.
-    const completed = await apiCount('/api/orders?status=completed')
-    await page.getByRole('combobox', { name: 'Status' }).click()
-    await page.getByRole('option', { name: 'Abgeschlossen' }).click()
-    if (completed > 0) {
-      await expect(rows).toHaveCount(completed)
-    } else {
-      await expect(
-        page.getByText('Keine Bestellungen mit diesem Status.')
-      ).toBeVisible()
-    }
+  // Je Seite ein eigener Test: ein `goto` direkt nach dem vorigen konnte im
+  // Dev-Server an dessen später Client-Navigation abbrechen (ERR_ABORTED).
+  for (const [path, what] of [
+    ['/admin/reports', 'Kassenberichte'],
+    ['/admin/analytics', 'Analysen'],
+    ['/admin/finance', 'Finanzen'],
+    ['/admin/finance/tagesziel', 'Tagesziel'],
+  ] as const) {
+    test(`${what} laden für den Inhaber ohne Fehlerhinweis`, async ({
+      page,
+    }) => {
+      await page.goto(path)
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+      await expect(page.getByText('Nur für Inhaber')).toHaveCount(0)
+      await expect(page.getByText('Keine Berechtigung')).toHaveCount(0)
+      await expect(page.getByText(/Kein Zugriff/)).toHaveCount(0)
+      await expect(page.getByText(/konnten nicht geladen werden/)).toHaveCount(
+        0
+      )
+    })
+  }
+
+  test('Sammelstelle Mörsbach liest den Alias der echten API', async ({
+    page,
+  }) => {
+    await page.goto('/admin/delivery/preorders')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await expect(
+      page.getByRole('alert').filter({ hasText: /Fehler/ })
+    ).toHaveCount(0)
   })
 })
+
+test.describe('Rollen', () => {
+  test('Verkauf sieht Produkte ohne Bearbeiten und keine Finanzen', async ({
+    page,
+  }) => {
+    await signIn(page, 'verkauf')
+    await page.goto('/admin/products')
+    await expect(page.getByText(/Produktliste \(\d+\)/)).toBeVisible()
+    await expect(
+      page.getByRole('button', { name: /Neues Produkt/ })
+    ).toHaveCount(0)
+    await expect(page.getByRole('button', { name: /bearbeiten$/ })).toHaveCount(
+      0
+    )
+
+    await page.goto('/admin/finance')
+    await expect(page.getByText(/Kein Zugriff/).first()).toBeVisible()
+  })
+
+  test('Inhaber an der PIN-Station: Finanzen verlangen die Passwort-Anmeldung', async ({
+    page,
+  }) => {
+    await signIn(page, 'station')
+    await page.goto('/admin/finance')
+    await expect(
+      page.getByText(
+        'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
+      )
+    ).toBeVisible()
+    // kein Weg zur Passwort-Anmeldung am Stationsgerät (F4-Review)
+    await expect(page.getByRole('link', { name: /anmelden/i })).toHaveCount(0)
+  })
+})
+
+/** Klickt, bis die URL wechselt - der Dev-Server hydriert spät. */
+async function clickUntilURL(page: Page, target: Locator, url: RegExp) {
+  await expect(async () => {
+    if (!url.test(page.url())) await target.click({ timeout: 2_000 })
+    await expect(page).toHaveURL(url, { timeout: 2_000 })
+  }).toPass({ timeout: 20_000 })
+}
