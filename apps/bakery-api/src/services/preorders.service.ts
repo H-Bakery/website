@@ -133,6 +133,58 @@ export interface PickupPointDto {
   geocodePrecision: string | null
 }
 
+interface ComparableInput {
+  channel: string
+  customerName: string | null
+  customerPhone: string | null
+  pickupDate: string
+  pickupTime: string | null
+  pickupPointId: string | null
+  paid: boolean
+  note: string | null
+  items: Array<{ productId: string; variant?: string | null; quantity: number }>
+}
+
+function itemKeys(items: ComparableInput['items']): string {
+  return items
+    .map((i) => `${i.productId}|${i.variant ?? ''}|${Number(i.quantity)}`)
+    .sort()
+    .join(',')
+}
+
+/**
+ * Does a retried create (same `requestId`) carry what the stored order
+ * holds? Prices are left out: they are the server's snapshot, not input.
+ */
+export function sameOrderInput(
+  input: ComparableInput,
+  record: PreorderRecord
+): boolean {
+  return (
+    input.channel === record.channel &&
+    (input.customerName ?? null) === (record.customerName ?? null) &&
+    (input.customerPhone ?? null) === (record.customerPhone ?? null) &&
+    input.pickupDate === record.pickupDate &&
+    (input.pickupTime ?? null) === (record.pickupTime ?? null) &&
+    (input.pickupPointId ?? null) === (record.pickupPointId ?? null) &&
+    Boolean(input.paid) === Boolean(record.paid) &&
+    (input.note ?? null) === (record.note ?? null) &&
+    itemKeys(input.items) === itemKeys(record.items)
+  )
+}
+
+function itemsSummary(items: PreorderRecord['items']): string {
+  if (items.length === 0) return 'ohne Artikel'
+  return items
+    .map(
+      (i) =>
+        `${String(i.quantity).replace('.', ',')} × ${i.name}${
+          i.variant ? ` (${i.variant})` : ''
+        }`
+    )
+    .join(', ')
+}
+
 function iso(value: Date | string | null | undefined): string | null {
   if (value === null || value === undefined) return null
   const d = value instanceof Date ? value : new Date(value)
@@ -946,6 +998,48 @@ export class PreordersService {
             earlier.id,
             transaction
           )) as PreorderRecord
+          // W4-verify r5: only an unchanged retry is the same save. A form
+          // edited after the unclear attempt (more items, a name fix,
+          // „bezahlt“, or the next customer typed over a restored draft)
+          // must not be answered with the old order as if it were saved.
+          // Compared on the normalised input without the pickup-day window,
+          // so a retry after the Bestellschluss still finds its order.
+          const points = await this.pickupPoints(transaction)
+          const replay = core.normalizeOrderInput(
+            body,
+            null,
+            this.normalizeOptions(
+              points,
+              options.requireVariant !== false,
+              false,
+              false
+            )
+          )
+          if (replay.error) {
+            return failure<PreorderRecord>(
+              replay.status,
+              replay.error,
+              replay.message
+            )
+          }
+          if (!sameOrderInput(replay.preorder, record)) {
+            return failure<PreorderRecord>(
+              409,
+              'request_id_changed',
+              `Diese Vorbestellung ist beim ersten Versuch schon angekommen: ${
+                record.code
+              } · ${record.customerName ?? 'ohne Namen'} · ${itemsSummary(
+                record.items
+              )} - mit den Angaben von damals. Was seitdem geändert wurde, ist NICHT gespeichert.`,
+              {
+                preorder: {
+                  id: record.id,
+                  code: record.code,
+                  updatedAt: iso(record.updatedAt),
+                },
+              }
+            )
+          }
           return { ok: true as const, status: 200, data: record }
         }
       }
