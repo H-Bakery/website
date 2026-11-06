@@ -508,4 +508,28 @@ describe('CheckoutPage', () => {
       expect(screen.queryByTestId(id)).not.toBeNull()
     }
   })
+
+  it('schickt keine Bestellung mit nicht mehr erhältlicher Ware ab (Abschluss-Verifikation next)', async () => {
+    mockItems = [
+      line(),
+      line({ id: 2, name: 'Ausverkauft', price: 4, quantity: 1 }),
+    ]
+    mockFetchShopProducts.mockResolvedValue([
+      shopProduct(),
+      shopProduct({ id: 'ausverkauft', numericId: 2, available: false }),
+    ])
+    render(<CheckoutPage />)
+
+    expect(await screen.findByTestId('checkout-items-unavailable')).toBeTruthy()
+    expect(screen.getByTestId('checkout-item-unavailable')).toBeTruthy()
+    expect(screen.getByTestId('checkout-total').textContent).toContain('5,00')
+    expect(
+      (screen.getByTestId('submit-order') as HTMLButtonElement).disabled
+    ).toBe(true)
+    fillValidForm()
+    fireEvent.submit(
+      screen.getByTestId('submit-order').closest('form') as HTMLFormElement
+    )
+    await waitFor(() => expect(mockSubmitOrder).not.toHaveBeenCalled())
+  })
 })

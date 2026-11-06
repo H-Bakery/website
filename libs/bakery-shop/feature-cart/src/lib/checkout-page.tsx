@@ -37,7 +37,9 @@ import { ShopPrice } from '@bakery/shop/feature-catalog'
 import { confirmationPath, rememberPlacedOrder } from './confirmation-link'
 import { grossTotal } from './order-totals'
 import {
+  ITEMS_UNAVAILABLE_NOTICE,
   PRICES_UPDATED_NOTICE,
+  availableTotal,
   useFreshCartPrices,
 } from './use-fresh-cart-prices'
 import {
@@ -154,7 +156,8 @@ export const CheckoutPage: React.FC = () => {
   const { items, summary, isLoading, clearCart } = useCart()
   const router = useRouter()
   /** Die Momentaufnahme aus dem `localStorage` gegen die hq-Preise abgleichen. */
-  const pricesUpdated = useFreshCartPrices()
+  const { pricesUpdated, unavailableIds } = useFreshCartPrices()
+  const hasUnavailable = items.some((item) => unavailableIds.has(item.id))
 
   const [values, setValues] =
     React.useState<CheckoutFormValues>(EMPTY_CHECKOUT_FORM)
@@ -191,7 +194,7 @@ export const CheckoutPage: React.FC = () => {
   }, [isRestored, isLoading, isRedirecting, items.length])
 
   const todayIso = now?.iso ?? ''
-  const total = grossTotal(summary)
+  const total = availableTotal(grossTotal(summary), items, unavailableIds)
 
   /**
    * Vorbestellfrist des Warenkorbs. Ganze Torten und Kuchen werden auf
@@ -282,6 +285,12 @@ export const CheckoutPage: React.FC = () => {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitError(null)
+    // Nicht mehr erhältliche Ware geht nicht mit in die Bestellung - erst im
+    // Warenkorb entfernen (Abschluss-Verifikation next).
+    if (hasUnavailable) {
+      setSubmitError(ITEMS_UNAVAILABLE_NOTICE)
+      return
+    }
 
     // Die Uhr beim Absenden neu lesen, nicht die vom Öffnen der Seite nehmen:
     // wer die Kasse eine Stunde offen liegen lässt, könnte sonst einen Slot
@@ -635,7 +644,7 @@ export const CheckoutPage: React.FC = () => {
                     variant="contained"
                     size="large"
                     fullWidth
-                    disabled={isSubmitting}
+                    disabled={isSubmitting || hasUnavailable}
                     startIcon={
                       isSubmitting ? (
                         <CircularProgress size={18} color="inherit" />
@@ -708,6 +717,16 @@ export const CheckoutPage: React.FC = () => {
                   </Button>
                 </Box>
 
+                {hasUnavailable && (
+                  <Alert
+                    data-testid="checkout-items-unavailable"
+                    severity="warning"
+                    sx={{ mt: 1.5 }}
+                  >
+                    {ITEMS_UNAVAILABLE_NOTICE}
+                  </Alert>
+                )}
+
                 {pricesUpdated && (
                   <Alert
                     data-testid="checkout-prices-updated"
@@ -741,13 +760,31 @@ export const CheckoutPage: React.FC = () => {
                           {item.quantity}×
                         </Box>
                         {item.name}
+                        {unavailableIds.has(item.id) && (
+                          <Box
+                            component="span"
+                            data-testid="checkout-item-unavailable"
+                            sx={{ display: 'block', color: 'error.main' }}
+                          >
+                            derzeit nicht erhältlich
+                          </Box>
+                        )}
                       </Typography>
-                      <ShopPrice
-                        value={item.price * item.quantity}
-                        size="sm"
-                        tone="plain"
+                      <Box
                         component="span"
-                      />
+                        sx={
+                          unavailableIds.has(item.id)
+                            ? { textDecoration: 'line-through' }
+                            : undefined
+                        }
+                      >
+                        <ShopPrice
+                          value={item.price * item.quantity}
+                          size="sm"
+                          tone="plain"
+                          component="span"
+                        />
+                      </Box>
                     </Box>
                   ))}
                 </Stack>

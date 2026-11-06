@@ -39,9 +39,17 @@ import { grossTotal } from './order-totals'
 import { formatGermanDate } from './pickup'
 import { leadTimeLimitFor, type LeadTimeLimit } from './checkout-validation'
 import {
+  ITEMS_UNAVAILABLE_NOTICE,
   PRICES_UPDATED_NOTICE,
+  availableTotal,
   useFreshCartPrices,
 } from './use-fresh-cart-prices'
+
+/**
+ * Mindestens 44 × 44 px (WCAG 2.5.5 / Apple HIG) - Abschluss-Verifikation
+ * next: die Mengenknöpfe waren 30 × 30, „Entfernen“ noch flacher.
+ */
+const TOUCH_TARGET = { minWidth: 44, minHeight: 44 } as const
 
 /** Mirrors `CartProvider`'s `maxQuantityPerItem` default — never offer more than it accepts. */
 const MAX_QUANTITY_PER_ITEM = 99
@@ -51,6 +59,8 @@ interface CartLineProps {
   onDecrease: () => void
   onIncrease: () => void
   onRemove: () => void
+  /** Laut API nicht mehr bestellbar: nicht in der Summe, nur noch entfernen. */
+  unavailable?: boolean
 }
 
 const CartLine: React.FC<CartLineProps> = ({
@@ -58,6 +68,7 @@ const CartLine: React.FC<CartLineProps> = ({
   onDecrease,
   onIncrease,
   onRemove,
+  unavailable = false,
 }) => {
   // § 4 PAngV: Wer nach Gewicht anbietet, nennt den Grundpreis. Trägt der Name
   // kein Gewicht, gibt es keinen — dann steht hier nichts.
@@ -96,6 +107,16 @@ const CartLine: React.FC<CartLineProps> = ({
         >
           {item.name}
         </Typography>
+        {unavailable && (
+          <Typography
+            data-testid="cart-item-unavailable"
+            variant="body2"
+            color="error"
+            sx={{ fontWeight: 700 }}
+          >
+            Derzeit nicht erhältlich – bitte entfernen
+          </Typography>
+        )}
         <Typography variant="body2" color="text.secondary">
           {formatEuro(item.price)} pro {item.unit || 'Stück'}
         </Typography>
@@ -143,9 +164,9 @@ const CartLine: React.FC<CartLineProps> = ({
             data-testid="cart-decrease"
             size="small"
             onClick={onDecrease}
-            disabled={item.quantity <= 1}
+            disabled={item.quantity <= 1 || unavailable}
             aria-label={`Menge von ${item.name} verringern`}
-            sx={{ borderRadius: 0 }}
+            sx={{ borderRadius: 0, ...TOUCH_TARGET }}
           >
             <RemoveIcon fontSize="small" />
           </IconButton>
@@ -166,9 +187,9 @@ const CartLine: React.FC<CartLineProps> = ({
             data-testid="cart-increase"
             size="small"
             onClick={onIncrease}
-            disabled={item.quantity >= MAX_QUANTITY_PER_ITEM}
+            disabled={item.quantity >= MAX_QUANTITY_PER_ITEM || unavailable}
             aria-label={`Menge von ${item.name} erhöhen`}
-            sx={{ borderRadius: 0 }}
+            sx={{ borderRadius: 0, ...TOUCH_TARGET }}
           >
             <AddIcon fontSize="small" />
           </IconButton>
@@ -182,12 +203,17 @@ const CartLine: React.FC<CartLineProps> = ({
             alignItems: 'flex-end',
           }}
         >
-          <ShopPrice
-            value={item.price * item.quantity}
-            size="sm"
-            tone="plain"
+          <Box
             component="span"
-          />
+            sx={unavailable ? { textDecoration: 'line-through' } : undefined}
+          >
+            <ShopPrice
+              value={item.price * item.quantity}
+              size="sm"
+              tone="plain"
+              component="span"
+            />
+          </Box>
           <Button
             data-testid="cart-remove"
             size="small"
@@ -195,7 +221,12 @@ const CartLine: React.FC<CartLineProps> = ({
             onClick={onRemove}
             startIcon={<DeleteOutlineIcon fontSize="small" />}
             aria-label={`${item.name} aus dem Warenkorb entfernen`}
-            sx={{ mt: 0.25, color: 'text.secondary', minHeight: 0, px: 0.5 }}
+            sx={{
+              mt: 0.25,
+              color: unavailable ? 'error.main' : 'text.secondary',
+              minHeight: 44,
+              px: 1,
+            }}
           >
             Entfernen
           </Button>
@@ -216,10 +247,11 @@ export const CartPage: React.FC = () => {
   } = useCart()
   const router = useRouter()
   /** Die Momentaufnahme aus dem `localStorage` gegen die hq-Preise abgleichen. */
-  const pricesUpdated = useFreshCartPrices()
+  const { pricesUpdated, unavailableIds } = useFreshCartPrices()
 
   const isEmpty = items.length === 0
-  const total = grossTotal(summary)
+  const hasUnavailable = items.some((item) => unavailableIds.has(item.id))
+  const total = availableTotal(grossTotal(summary), items, unavailableIds)
 
   /** "Jetzt", im Effect gelesen — `new Date()` im Render bricht die Hydration. */
   const [now, setNow] = React.useState<Date | null>(null)
@@ -284,6 +316,16 @@ export const CartPage: React.FC = () => {
             sx={{ mb: { xs: 2, md: 3 } }}
           >
             {PRICES_UPDATED_NOTICE}
+          </Alert>
+        )}
+
+        {hasUnavailable && (
+          <Alert
+            data-testid="cart-items-unavailable"
+            severity="warning"
+            sx={{ mb: { xs: 2, md: 3 } }}
+          >
+            {ITEMS_UNAVAILABLE_NOTICE}
           </Alert>
         )}
 
@@ -384,6 +426,7 @@ export const CartPage: React.FC = () => {
                         updateQuantity(item.id, item.quantity + 1)
                       }
                       onRemove={() => removeFromCart(item.id)}
+                      unavailable={unavailableIds.has(item.id)}
                     />
                   ))}
                 </Box>
@@ -461,7 +504,7 @@ export const CartPage: React.FC = () => {
                 variant="contained"
                 size="large"
                 fullWidth
-                disabled={isEmpty || isLoading}
+                disabled={isEmpty || isLoading || hasUnavailable}
                 onClick={goToCheckout}
                 sx={{ mt: 2.5 }}
               >
@@ -531,6 +574,7 @@ export const CartPage: React.FC = () => {
               variant="contained"
               size="large"
               onClick={goToCheckout}
+              disabled={hasUnavailable}
               sx={{ flexShrink: 0 }}
             >
               Zur Kasse

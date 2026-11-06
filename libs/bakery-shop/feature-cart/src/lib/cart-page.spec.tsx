@@ -9,7 +9,7 @@
  */
 
 import React from 'react'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 
 import type { CartItem } from '@bakery/shared/contexts'
 
@@ -191,5 +191,76 @@ describe('CartPage', () => {
     // Die Menge ist ein Textknoten, kein Eingabefeld.
     expect(screen.getByTestId('cart-item-quantity').tagName).not.toBe('INPUT')
     expect(screen.getByTestId('cart-item-quantity').textContent).toBe('2')
+  })
+
+  /* ------------------------------------------------------------------ */
+  /* Abschluss-Verifikation next                                          */
+  /* ------------------------------------------------------------------ */
+
+  /** So liefert `GET /api/products` ein Produkt (vor `toCartProduct`). */
+  const shopProduct = (numericId: number, available: boolean) => ({
+    id: `test-produkt-${numericId}`,
+    numericId,
+    name: `Testprodukt ${numericId}`,
+    category: 'brot',
+    price: 2.5,
+    available,
+    seasonal: false,
+    image: null,
+    shortDescription: '',
+    description: '',
+  })
+
+  it('nimmt nicht mehr erhältliche Ware aus der Summe und sperrt die Kasse', async () => {
+    mockItems = [
+      line({ id: 1, price: 2.5, quantity: 2 }),
+      line({ id: 2, name: 'Ausverkauft', price: 4, quantity: 1 }),
+      line({ id: 3, name: 'Aus dem Sortiment', price: 3, quantity: 1 }),
+    ]
+    // 2 ist ausverkauft, 3 gibt es gar nicht mehr.
+    mockFetchShopProducts.mockResolvedValue([
+      shopProduct(1, true),
+      shopProduct(2, false),
+    ])
+    render(<CartPage />)
+
+    expect(
+      (await screen.findByTestId('cart-items-unavailable')).textContent
+    ).toContain('nicht erhältlich')
+    expect(screen.getAllByTestId('cart-item-unavailable')).toHaveLength(2)
+    // 2 × 2,50 statt 2 × 2,50 + 4 + 3
+    expect(screen.getByTestId('cart-total').textContent).toContain('5,00')
+    expect(
+      (screen.getByTestId('cart-checkout') as HTMLButtonElement).disabled
+    ).toBe(true)
+    const bar = screen.getByTestId('cart-sticky-bar')
+    expect(
+      (
+        within(bar).getByRole('button', {
+          name: 'Zur Kasse',
+        }) as HTMLButtonElement
+      ).disabled
+    ).toBe(true)
+  })
+
+  it('lässt die Kasse offen, solange alles erhältlich ist', async () => {
+    mockFetchShopProducts.mockResolvedValue([shopProduct(1, true)])
+    render(<CartPage />)
+    await waitFor(() => expect(mockRefreshItems).toHaveBeenCalled())
+    expect(screen.queryByTestId('cart-items-unavailable')).toBeNull()
+    expect(
+      (screen.getByTestId('cart-checkout') as HTMLButtonElement).disabled
+    ).toBe(false)
+  })
+
+  it('gibt Mengenknöpfen und „Entfernen“ mindestens 44 px', () => {
+    render(<CartPage />)
+    for (const id of ['cart-decrease', 'cart-increase', 'cart-remove']) {
+      const style = window.getComputedStyle(screen.getByTestId(id))
+      expect(style.minHeight).toBe('44px')
+    }
+    expect(
+      window.getComputedStyle(screen.getByTestId('cart-decrease')).minWidth
+    ).toBe('44px')
   })
 })
