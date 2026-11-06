@@ -210,6 +210,23 @@ export function parseInput(text: string): number | null {
   return Number(t)
 }
 
+/**
+ * Warum eine Eingabe nicht gilt - als Satz für die Meldung (W4-Verifikation
+ * Runde 3: „-5" ist eine Zahl, nur keine erlaubte Menge).
+ */
+export function inputProblem(text: string): string {
+  const t = text.trim().replace(',', '.')
+  if (/^[-−–]\s*\d+(\.\d+)?$/.test(t)) {
+    return 'Keine negativen Mengen - 0 heißt „wird nicht gebacken“, leer lassen heißt „offen“.'
+  }
+  return 'Bitte eine Zahl eingeben (z. B. 12 oder 2,5) - leer lassen heißt „offen“.'
+}
+
+/** Fehlermeldung mit Feldnamen davor - aber nicht doppelt, wenn der Server ihn schon nennt. */
+export function labelledMessage(label: string, message: string): string {
+  return message.startsWith(`${label}:`) ? message : `${label}: ${message}`
+}
+
 /** Referenz eines Postens an einem Wochentag. */
 export function referenceFor(
   reference: ReferenceResponse | null,

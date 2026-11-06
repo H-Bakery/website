@@ -33,6 +33,8 @@ import {
   fetchReference,
   groupBySection,
   isPerVariant,
+  inputProblem,
+  labelledMessage,
   parseInput,
   referenceFor,
   saveGrundmenge,
@@ -84,7 +86,7 @@ interface CellProps {
   editable: boolean
   onSave: (value: number | null) => Promise<void>
   /** Eingabe ist keine Zahl - die Statuszeile sagt es (W4-verify r2). */
-  onInvalid?: () => void
+  onInvalid?: (text: string) => void
 }
 
 function ReferenceHint({
@@ -194,7 +196,7 @@ function BaseCell({
     const parsed = parseInput(draft)
     if (parsed !== null && Number.isNaN(parsed)) {
       setInvalid(true)
-      onInvalid?.()
+      onInvalid?.(draft)
       return
     }
     setSaving(true)
@@ -339,7 +341,7 @@ interface GridProps {
   reference: ReferenceResponse | null
   editable: boolean
   onSave: (edit: BaseEdit, label: string) => Promise<void>
-  onInvalid?: (label: string) => void
+  onInvalid?: (label: string, text: string) => void
 }
 
 function approvedCell(
@@ -405,7 +407,7 @@ function GrundmengenGrid(props: GridProps) {
               reference={ref}
               unit={item.unit}
               editable={editable}
-              onInvalid={() => onInvalid?.(label)}
+              onInvalid={(text) => onInvalid?.(label, text)}
               onSave={(v) =>
                 onSave(
                   variant === null
@@ -631,7 +633,7 @@ export default function GrundmengenClient() {
       setView(result)
       if (result.changed) setSavedNote(`Gespeichert: ${label}`)
     } catch (error) {
-      setSaveError(`${label}: ${errorMessage(error)}`)
+      setSaveError(labelledMessage(label, errorMessage(error)))
       if (
         error instanceof ApiError &&
         typeof error.code === 'string' &&
@@ -832,11 +834,9 @@ export default function GrundmengenClient() {
             reference={mayEdit ? reference : null}
             editable={editable}
             onSave={onSave}
-            onInvalid={(label) => {
+            onInvalid={(label, text) => {
               setSavedNote(null)
-              setSaveError(
-                `${label}: Bitte eine Zahl eingeben (z. B. 12 oder 2,5) - leer lassen heißt „offen".`
-              )
+              setSaveError(labelledMessage(label, inputProblem(text)))
             }}
           />
           {reference?.status === 'ok' && reference.weekdays.length > 0 && (
