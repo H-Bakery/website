@@ -74,6 +74,9 @@ function failure<T>(
 }
 
 /** Plain record as the core sees it. */
+/** Client id of one save (`requestId`), e.g. a UUID. */
+const REQUEST_ID = /^[A-Za-z0-9_-]{8,64}$/
+
 export interface PreorderRecord {
   id: number
   code: string
@@ -867,7 +870,46 @@ export class PreordersService {
       strictPickup?: boolean
     } = {}
   ): Promise<Result<PreorderRecord>> {
+    // W4-verify r4: the entry form's id for this save, kept across retries.
+    const rawRequestId =
+      body && typeof body === 'object'
+        ? (body as Record<string, unknown>)['requestId']
+        : undefined
+    if (
+      rawRequestId !== undefined &&
+      rawRequestId !== null &&
+      (typeof rawRequestId !== 'string' || !REQUEST_ID.test(rawRequestId))
+    ) {
+      return failure<PreorderRecord>(
+        400,
+        'invalid_request_id',
+        'requestId muss 8 bis 64 Zeichen aus Buchstaben, Ziffern, „-“ und „_“ sein.'
+      )
+    }
+    const requestId = typeof rawRequestId === 'string' ? rawRequestId : null
     return getSequelize().transaction(async (transaction) => {
+      if (requestId) {
+        // Same save again (its answer was lost): the order it created, not
+        // a second one with a second code.
+        const earlier = await Preorder.findOne({
+          where: { requestId },
+          transaction,
+        })
+        if (earlier) {
+          if (earlier.createdBy !== (req?.user?.id ?? null)) {
+            return failure<PreorderRecord>(
+              409,
+              'request_id_conflict',
+              'Diese Anfrage-ID gehört zu einer anderen Vorbestellung.'
+            )
+          }
+          const record = (await this.findRecord(
+            earlier.id,
+            transaction
+          )) as PreorderRecord
+          return { ok: true as const, status: 200, data: record }
+        }
+      }
       const points = await this.pickupPoints(transaction)
       const result = core.normalizeOrderInput(
         body,
@@ -912,6 +954,7 @@ export class PreordersService {
             : null,
           createdBy: userId,
           updatedBy: userId,
+          requestId,
         },
         { transaction }
       )

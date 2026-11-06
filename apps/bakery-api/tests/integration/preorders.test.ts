@@ -265,6 +265,56 @@ describe('paid amount and balance (W4-verify r2)', () => {
   })
 })
 
+describe('idempotent create with requestId (W4-verify r4)', () => {
+  const DAY = '2026-12-03'
+  it('a retried save after a lost answer returns the first order, not a second one', async () => {
+    const body = laden({
+      pickupDate: DAY,
+      customerName: 'Testkundin Wiederholung',
+      requestId: 'r4-0a1b2c3d-4e5f',
+    })
+    const first = await create(body)
+    expect(first.status).toBe(201)
+    const again = await create(body)
+    expect(again.status).toBe(200)
+    expect(again.body.data).toMatchObject({
+      id: first.body.data.id,
+      code: first.body.data.code,
+    })
+    const list = await request(api.app)
+      .get(`/api/preorders?from=${DAY}&to=${DAY}`)
+      .set(tokens['verkauf'])
+    expect(
+      list.body.data.filter(
+        (p: { customerName: string }) =>
+          p.customerName === 'Testkundin Wiederholung'
+      )
+    ).toHaveLength(1)
+    // another user cannot replay someone else's id
+    const other = await create(body, 'inhaber')
+    expect(other.status).toBe(409)
+    expect(other.body).toMatchObject({ error: 'request_id_conflict' })
+    // without requestId nothing changes: two saves, two orders
+    const a = await create(laden({ pickupDate: DAY }))
+    const b = await create(laden({ pickupDate: DAY }))
+    expect(a.body.data.id).not.toBe(b.body.data.id)
+  })
+
+  it('rejects a malformed requestId', async () => {
+    for (const requestId of [
+      'kurz',
+      'mit leerzeichen 123',
+      42,
+      'x'.repeat(65),
+    ]) {
+      const res = await create(laden({ pickupDate: DAY, requestId }))
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'invalid_request_id' })
+      expect(res.body.message).toEqual(expect.any(String))
+    }
+  })
+})
+
 describe('GET /api/preorders/variants (P1 variant chips)', () => {
   it('lists the Sorten per product for verkauf, fahrer and inhaber', async () => {
     for (const role of ['verkauf', 'fahrer', 'inhaber']) {
