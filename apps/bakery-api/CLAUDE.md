@@ -785,6 +785,70 @@ Tests: `tests/unit/backzettelDay.test.js` (46), `tests/integration/backzettel.te
 hq written to a temp dir from `tests/fixtures/backzettel.synthetic.js`, preorders inserted via the
 models). `tests/setup-ts.js` points `HQ_DIR`/`HQ_BACKZETTEL_CONFIG` nowhere, like the other hq paths.
 
+## Grundmengen (Z4): base write + reference
+
+Two additions to `/api/backzettel` (registered **before** `/:date`, which would otherwise read
+`reference` as a date). Both serve the management screen `/admin/backzettel/grundmengen`.
+
+| Endpoint                          | Who                | Body / answer                                                                                                                                                                              |
+| --------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /config` (extended)          | any session        | Z3's answer (approved = what the day computes with) **plus** `pendingApproval`, `writable`, `working { status, config, errors, warnings }` (the write-worktree version a save builds on)   |
+| `PUT /config/base`                | inhaber, backstube | `{ itemId, weekday, value }` or `{ itemId, weekday, variants: { <slug>: n \| null } }` → the `/config` view + `pending`, `changed`                                                         |
+| `GET /reference?weekday=&weeks=6` | inhaber, backstube | `{ status, available, today, weeks, basis, weekdays: [{ weekday, weekdayName, weeks, dates, skippedDates, items: [{ itemId, plu, median, samples, status: ok \| no_plu \| no_data }] }] }` |
+
+Errors (`sendError`): 400 `validation` (with `errors` for new config errors), `invalid_weekday`
+(also a weekday not in `days`), `invalid_quantity` (negative, > 10000, not a number; `"1,5"` is
+fine, `""` = `null`); 404 `unknown_item` / `unknown_variant`; 409 `no_config` /
+`config_unreadable` / `config_layout_unsupported` / `config_edit_failed`; 500 `hq_commit_failed`;
+503 `hq_write_unavailable` / `hq_write_wrong_branch` / `repo_locked`. Without a valid config the
+reference answers `status: 'no-config'` with `reasons`, never numbers.
+
+- **Semantics of a weekday value** (Z2): number = Grundmenge, `0` = not baked, `null` = not set yet,
+  missing key = 0, object = per variant. `variants` edits only the named slugs: from `null` the
+  others stay `null`; from a plain number the number is replaced by the map; from a missing key
+  the others are absent (0). Station (PIN) sessions may edit - the Backstube tablet is the point.
+- **Comment- and order-preserving edit** (`backzettel-config.editor.js`, `applyBaseEdit(text,
+edit)`): `yaml.parseDocument` only to find node ranges, then a **splice** of the original text
+  (replace a scalar, insert into a flow or block map sorted by weekday, turn a scalar into a flow
+  map); padding per node, trailing comments of a block map stay where they were. The result is
+  re-parsed with js-yaml `CORE_SCHEMA` (the loader's parser) and must deep-equal the intended
+  object, else `config_edit_failed` and nothing is written. Never re-serialise the whole document
+  (`toString()` changes flow padding everywhere). A no-op save returns `changed: false`, writes
+  and commits nothing - **zero diff**. An inline item without `base` key is
+  `config_layout_unsupported` (edit hq by hand).
+- **Validation before the commit:** `validateBackzettelConfig` on before and after; only errors
+  the edit **adds** (same path + message, `newErrors`) block - a config with an unrelated known
+  error stays editable. Rules in `backzettel-base.core.js` (`parseBaseEdit`, `nextDayValue`,
+  `commitMessage`).
+- **Write path = B5's.** `backzettel-config-write.ts`: with `HQ_WRITE_DIR` the file is
+  `${HQ_WRITE_DIR}/config/backzettel.yaml` (base text: that file, else the read clone's), branch
+  guard, `withRepoLock`, commit `config: Grundmenge <Name> (<id>) <Wochentag> geändert` +
+  `Co-authored-by: <displayName> <user-<id>@bakery.local>` with the pathspec, failure restores the
+  file and unstages (500). Then `afterCommit` → `HqEditsSync.notifyCommitted()` (push + rolling
+  PR, B5b). Without `HQ_WRITE_DIR` (development) it writes straight to the config path, no git;
+  production without it is 503. `writable` in `/config` says whether a save can succeed.
+- **pendingApproval** = the write-worktree YAML differs from `origin/main`
+  (`HqEditsSync.approvedTextFile('config/backzettel.yaml')`, read in `refreshApproved` with the
+  products; `APPROVED_TEXT_FILES`), falling back to the read clone before the first read or when
+  the sync is disabled. The Backzettel itself (Z3, reference, preorder variants) keeps computing
+  with the **approved** read clone until the PR is merged.
+- **Reference** (`backzettel-reference.core.js` + `backzettel-reference.ts`): per weekday the
+  last `weeks` (default 6, 1-26) same weekdays **before today (Berlin)** that have a report in
+  `HQ_REPORTS_DIR/converted` (`reports-files.core.js`); a day without a file is skipped and listed
+  in `skippedDates` (looks back at most 26 weeks), never counted as 0. Sold = Σ quantity over the
+  item's `plu` list, cancelled receipts out, storno lines negative (as `reports.core`); median to
+  one decimal. It counts **pieces sold at the register**, also for Liter/Blech items - the UI says
+  "St.". Info only: nothing ever writes it into the config.
+- **Bundling:** `yaml` is in `BUNDLED_PACKAGES` in `build.mjs` - it is only a transitive dev
+  dependency at the root, so `npm ci --omit=dev` would not install it. Add it to root
+  `dependencies` to make it external again.
+
+Tests: `tests/unit/backzettelBaseEdit.test.js` (parse rules, editor incl. comments, flow/block
+maps, no-op zero diff), `tests/unit/backzettelReference.test.js` (synthetic converted reports),
+`tests/integration/backzettelGrundmengen.test.ts` (dev mode, write worktree with temp git repo,
+B5b push + PR against a bare remote and the fake GitHub, merge clears `pendingApproval`, roles,
+reference route). Fixture: `tests/fixtures/backzettel-grundmengen.synthetic.js`.
+
 ## Schema (B2)
 
 One baseline migration creates the whole pilot schema: `users`, `refresh_tokens`, `audit_log`,
