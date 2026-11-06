@@ -45,3 +45,27 @@ describe('control-chars.core: unsichtbare Format- und Füllzeichen (W4-verify r4
     expect(hasNameControlChars('Muster 😀')).toBe(false)
   })
 })
+
+describe('control-chars.core: Unicode-Eigenschaften statt Liste (W4-verify r5)', () => {
+  it.each([
+    ['Khmer U+17B4', 'Ab឴c'],
+    ['Mongolischer FVS U+180B', 'Ab᠋c'],
+    ['Variantenselektor U+FE00', 'Ab︀c'],
+    ['Musik-Formatzeichen U+1D173', 'Ab\u{1d173}c'],
+    ['Objekt-Ersatzzeichen U+FFFC', 'Ab￼c'],
+    ['Arabisches Zahlzeichen U+0600 (Cf)', 'Ab؀c'],
+    ['Variantenselektor U+E0100', 'Ab\u{e0100}c'],
+    ['40 gestapelte Akzente', 'A' + '́'.repeat(40)],
+  ])('%s wird in Namen und Freitext abgelehnt', (_label, value) => {
+    expect(hasNameControlChars(value)).toBe(true)
+    expect(hasTextControlChars(value)).toBe(true)
+  })
+
+  it('Emoji-Darstellungsselektor, ZWJ und echte Akzente bleiben erlaubt', () => {
+    expect(hasNameControlChars('Kaffee ☕️ und ❤️')).toBe(false)
+    expect(hasNameControlChars('Backstube 👨‍🍳')).toBe(false)
+    expect(hasNameControlChars('Nguyễn Thị')).toBe(false)
+    expect(hasNameControlChars('Café mit Akzent')).toBe(false)
+    expect(hasTextControlChars('Zeile\nZeile\tmit Tab\r\n')).toBe(false)
+  })
+})
