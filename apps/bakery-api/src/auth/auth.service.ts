@@ -11,7 +11,9 @@
  *   again revokes its whole session (reuse = theft) - except within 10 s of
  *   the rotation while the successor is unused (parallel refresh, 409), and
  *   up to 15 min after it while the successor was never presented (the
- *   client lost the answer: rotated again, W4-verify r4).
+ *   client lost the answer: a new successor, W4-verify r4). The replaced
+ *   successor is revoked without a successor, so whoever presents it later
+ *   is reuse (W4-verify r5) - a stale copy cannot keep a parallel session.
  *   14 days, sliding.
  * - Station session: PIN at a registered station, ends hard 12 hours after the
  *   PIN; neither refresh nor access token outlives that.
@@ -371,8 +373,9 @@ export function createAuthService(options: AuthServiceOptions = {}) {
       if (!presented || !presented.sessionId) {
         return { ok: false as const, reuse: false }
       }
-      let row = presented
-      let reissued = false
+      const row = presented
+      // W4-verify r5: the unused successor a lost-answer reissue replaces.
+      let lostSuccessor: RefreshToken | null = null
       const session = await AuthSession.findByPk(row.sessionId, {
         transaction,
       })
@@ -397,15 +400,19 @@ export function createAuthService(options: AuthServiceOptions = {}) {
             }
           }
           // The successor was never presented: the client lost the answer
-          // (W4-verify r4). Rotate the unused successor instead.
+          // (W4-verify r4). Issue a new successor for the presented token
+          // and kill the unused one *without* a successor of its own
+          // (W4-verify r5): if someone does hold it after all, presenting
+          // it is reuse and ends the session. Rotating the successor
+          // instead let a stale copy and the real device take turns
+          // forever, each reissue re-qualifying the other's token.
           if (sinceRotation < REFRESH_LOST_RESPONSE_MS) {
-            row = successor
-            reissued = true
+            lostSuccessor = successor
           }
         }
       }
 
-      if (row.revokedAt) {
+      if (row.revokedAt && !lostSuccessor) {
         // A rotated token came back: someone holds a copy. End the chain.
         const wasOpen = !session.revokedAt
         await revokeSession(session, 'reuse', transaction)
@@ -417,7 +424,7 @@ export function createAuthService(options: AuthServiceOptions = {}) {
         }
       }
       if (
-        row.expiresAt.getTime() <= nowMs ||
+        (lostSuccessor ?? row).expiresAt.getTime() <= nowMs ||
         session.revokedAt ||
         session.expiresAt.getTime() <= nowMs
       ) {
@@ -438,8 +445,16 @@ export function createAuthService(options: AuthServiceOptions = {}) {
         truncate(userAgent),
         transaction
       )
-      row.revokedAt = new Date(nowMs)
-      row.replacedBy = next.row.id
+      if (lostSuccessor) {
+        lostSuccessor.revokedAt = new Date(nowMs)
+        lostSuccessor.replacedBy = null
+        await lostSuccessor.save({ transaction })
+        // `revokedAt` stays: the window counts from the first rotation.
+        row.replacedBy = next.row.id
+      } else {
+        row.revokedAt = new Date(nowMs)
+        row.replacedBy = next.row.id
+      }
       await row.save({ transaction })
 
       const access = signAccessToken(user, session)
@@ -447,7 +462,7 @@ export function createAuthService(options: AuthServiceOptions = {}) {
         ok: true as const,
         userId: user.id,
         sessionId: session.id,
-        ...(reissued ? { reissued: true } : {}),
+        ...(lostSuccessor ? { reissued: true } : {}),
         issued: {
           user: publicUser(user, session.kind),
           token: access.token,

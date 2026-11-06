@@ -378,6 +378,67 @@ describe('POST /api/auth/refresh - parallel refreshes (grace window)', () => {
     expect((await AuthSession.findByPk(sid))?.revokeReason).toBe('reuse')
   })
 
+  it('a stale copy and the real device cannot take turns: the second holder is reuse (W4-verify r5)', async () => {
+    const first = await login(api.app, 'test.verkauf')
+    // The device refreshes and keeps the answer (rt1); it will not refresh
+    // again until its access token runs out.
+    const device = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(device.status).toBe(200)
+    // A copy of the old token shows up - indistinguishable from a lost
+    // answer, so it is served once.
+    clock += 11 * 1000
+    const copy = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(copy.status).toBe(200)
+    // Now the device refreshes with the token it really got: two holders
+    // of one chain - reuse, the whole session ends.
+    clock += 11 * 1000
+    const back = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: device.body.data.refreshToken })
+    expect(back.status).toBe(401)
+    expectErrorShape(back.body, 'unauthorized')
+    clock += 11 * 1000
+    const again = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: copy.body.data.refreshToken })
+    expect(again.status).toBe(401)
+    for (const token of [copy.body.data.token, device.body.data.token]) {
+      expect(
+        (await request(api.app).get('/api/auth/me').set(bearer(token))).status
+      ).toBe(401)
+    }
+    const sid = (jwt.decode(first.token) as { sid: number }).sid
+    expect((await AuthSession.findByPk(sid))?.revokeReason).toBe('reuse')
+    expect(
+      await AuditLog.findOne({
+        where: { action: 'refresh_reuse', entityId: String(sid) },
+      })
+    ).not.toBeNull()
+  })
+
+  it('a lost answer twice in a row still keeps the session', async () => {
+    const first = await login(api.app, 'test.verkauf')
+    for (let i = 0; i < 2; i++) {
+      const lost = await request(api.app)
+        .post('/api/auth/refresh')
+        .send({ refreshToken: first.refreshToken })
+      expect(lost.status).toBe(200)
+      clock += 15 * 1000
+    }
+    const retry = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: first.refreshToken })
+    expect(retry.status).toBe(200)
+    const next = await request(api.app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: retry.body.data.refreshToken })
+    expect(next.status).toBe(200)
+  })
+
   it('within the window, but the successor was already used: reuse', async () => {
     const first = await login(api.app, 'test.verkauf')
     const second = await request(api.app)

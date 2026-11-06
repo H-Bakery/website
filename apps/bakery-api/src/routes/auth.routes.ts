@@ -10,7 +10,8 @@
  *   POST /refresh         { refreshToken } -> { success, data: { user, token, refreshToken, expiresIn, sessionKind } }
  *                         409 refresh_superseded: a parallel refresh won (< 10 s ago);
  *                         a predecessor whose successor was never presented (lost answer)
- *                         is rotated again up to 15 min later (audit refresh_reissued)
+ *                         gets a new successor up to 15 min later (audit refresh_reissued;
+ *                         the unused successor then counts as reuse, W4-verify r5)
  *   POST /pin             X-Station-Token, { userId, pin } -> as /login, sessionKind 'station'
  *   GET  /station/users   X-Station-Token -> { success, data: [{ id, displayName, role }] }
  *   POST /logout          Bearer access token and/or { refreshToken }
