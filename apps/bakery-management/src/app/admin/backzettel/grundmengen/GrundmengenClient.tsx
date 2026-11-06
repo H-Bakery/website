@@ -117,13 +117,32 @@ function ReferenceHint({
           color: 'text.secondary',
           whiteSpace: 'nowrap',
           cursor: 'help',
-          minWidth: 36,
-          textAlign: 'right',
         }}
       >
         ≈ {text}
       </Typography>
     </Tooltip>
+  )
+}
+
+/** Feste Breite für den Referenzwert, damit die Felder einer Spalte fluchten. */
+const REFERENCE_SLOT = 56
+
+function ReferenceSlot(props: {
+  reference: ReferenceItem | null
+  unit: string
+}) {
+  return (
+    <Box
+      sx={{
+        width: REFERENCE_SLOT,
+        flexShrink: 0,
+        textAlign: 'left',
+        '@media print': { width: 'auto' },
+      }}
+    >
+      <ReferenceHint {...props} />
+    </Box>
   )
 }
 
@@ -183,7 +202,7 @@ function BaseCell({
   return (
     <Stack
       direction="row"
-      spacing={0.75}
+      spacing={0.5}
       alignItems="center"
       justifyContent="flex-end"
     >
@@ -214,9 +233,10 @@ function BaseCell({
               'data-changed': changed || undefined,
             }}
             sx={{
-              width: 72,
+              width: 68,
               minHeight: 44,
               px: 1,
+              pl: changed ? 3 : 1,
               borderRadius: 1,
               border: 1,
               borderColor: invalid
@@ -242,6 +262,24 @@ function BaseCell({
               aria-label="Speichert"
             />
           )}
+          {changed && !saving && (
+            <Tooltip
+              title={`Wartet auf Freigabe - freigegeben: ${approvedText}`}
+            >
+              <PendingIcon
+                aria-label={`Wartet auf Freigabe, freigegeben: ${approvedText}`}
+                sx={{
+                  position: 'absolute',
+                  left: 5,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  fontSize: 16,
+                  color: 'info.main',
+                  '@media print': { display: 'none' },
+                }}
+              />
+            </Tooltip>
+          )}
         </Box>
       ) : (
         <Typography
@@ -257,7 +295,7 @@ function BaseCell({
           {value === null ? 'offen' : displayValue(value)}
         </Typography>
       )}
-      {changed && (
+      {changed && !editable && (
         <Tooltip title={`Wartet auf Freigabe - freigegeben: ${approvedText}`}>
           <PendingIcon
             fontSize="small"
@@ -266,7 +304,7 @@ function BaseCell({
           />
         </Tooltip>
       )}
-      <ReferenceHint reference={reference} unit={unit} />
+      {editable && <ReferenceSlot reference={reference} unit={unit} />}
     </Stack>
   )
 }
@@ -296,6 +334,13 @@ function approvedCell(
   const norm = (v: number | null | undefined) => (v === undefined ? 0 : v)
   return norm(before) === norm(value) ? null : { value: before }
 }
+
+/**
+ * Einheit als eigene Spalte ab `sm`; auf dem Handy steht sie unter dem Namen,
+ * damit neben der festen Postenspalte noch ein Wochentag Platz hat.
+ */
+const UNIT_COLUMN = { display: { xs: 'none', sm: 'table-cell' } } as const
+const UNIT_INLINE = { display: { xs: 'inline', sm: 'none' } } as const
 
 function GrundmengenGrid(props: GridProps) {
   const { config, reference, editable, onSave } = props
@@ -341,7 +386,11 @@ function GrundmengenGrid(props: GridProps) {
             />
           ) : (
             <Stack direction="row" justifyContent="flex-end">
-              <ReferenceHint reference={ref} unit={item.unit} />
+              {editable ? (
+                <ReferenceSlot reference={ref} unit={item.unit} />
+              ) : (
+                <ReferenceHint reference={ref} unit={item.unit} />
+              )}
             </Stack>
           )}
         </TableCell>
@@ -368,9 +417,13 @@ function GrundmengenGrid(props: GridProps) {
             >
               Posten
             </TableCell>
-            <TableCell>Einheit</TableCell>
+            <TableCell sx={UNIT_COLUMN}>Einheit</TableCell>
             {days.map((wd) => (
-              <TableCell key={wd} align="right" sx={{ minWidth: 140 }}>
+              <TableCell
+                key={wd}
+                align="right"
+                sx={{ minWidth: editable ? 136 : 72 }}
+              >
                 <abbr
                   title={WEEKDAY_LONG[wd]}
                   style={{ textDecoration: 'none' }}
@@ -418,8 +471,15 @@ function GrundmengenGrid(props: GridProps) {
                           PLU {item.plu.join(', ')}
                         </Typography>
                       )}
+                      <Typography
+                        variant="caption"
+                        sx={{ color: 'text.secondary', ...UNIT_INLINE }}
+                      >
+                        {item.plu.length > 0 ? ' · ' : ''}
+                        {item.unit}
+                      </Typography>
                     </TableCell>
-                    <TableCell sx={{ color: 'text.secondary' }}>
+                    <TableCell sx={{ color: 'text.secondary', ...UNIT_COLUMN }}>
                       {item.unit}
                     </TableCell>
                     {dayCells(item, null)}
@@ -443,7 +503,9 @@ function GrundmengenGrid(props: GridProps) {
                           {variantLabel(config, variant)}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ color: 'text.secondary' }}>
+                      <TableCell
+                        sx={{ color: 'text.secondary', ...UNIT_COLUMN }}
+                      >
                         {item.unit}
                       </TableCell>
                       {dayCells(item, variant)}
@@ -542,7 +604,11 @@ export default function GrundmengenClient() {
         <Stack
           direction="row"
           spacing={1}
-          sx={{ '@media print': { display: 'none' } }}
+          sx={{
+            flexShrink: 0,
+            '& .MuiButton-root': { whiteSpace: 'nowrap' },
+            '@media print': { display: 'none' },
+          }}
         >
           <Button
             component={Link}
