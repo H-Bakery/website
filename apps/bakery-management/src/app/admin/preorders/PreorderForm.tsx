@@ -952,11 +952,18 @@ export default function PreorderForm({
                               onClick={() => selectProduct(product)}
                               sx={{
                                 minHeight: 52,
+                                minWidth: 0,
+                                px: 1,
                                 textTransform: 'none',
                                 justifyContent: 'flex-start',
                                 textAlign: 'left',
                                 lineHeight: 1.2,
+                                // W4-verify r3: lange Namen („Laugenbrötchen")
+                                // trennen statt über den Rand zu laufen.
+                                hyphens: 'auto',
+                                overflowWrap: 'anywhere',
                               }}
+                              lang="de"
                             >
                               {product.name}
                             </Button>
