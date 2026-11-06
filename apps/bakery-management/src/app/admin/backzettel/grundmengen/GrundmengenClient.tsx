@@ -24,6 +24,7 @@ import {
   HourglassTop as PendingIcon,
   Print as PrintIcon,
 } from '@mui/icons-material'
+import { ApiError } from '@bakery/shared/data-access'
 import { useOptionalSession } from '../../../../lib/session'
 import {
   cellValue,
@@ -45,11 +46,17 @@ import {
   type ReferenceItem,
   type ReferenceResponse,
 } from '../../../../lib/grundmengenApi'
+import GrundmengenPrint, { grundmengenPrintStyles } from './GrundmengenPrint'
 
 /** Wer Grundmengen ändern darf (wie `PUT /config/base`). */
 const EDIT_ROLES = ['inhaber', 'backstube']
 
 export const REFERENCE_TOOLTIP = 'Median verkauft, letzte 6 gleiche Wochentage'
+
+/** Schaltflächen in Hinweisen (Schließen, Erneut versuchen): Tablet-tauglich. */
+const ALERT_TOUCH = {
+  '& .MuiAlert-action .MuiButtonBase-root': { minHeight: 44, minWidth: 44 },
+} as const
 
 function errorMessage(error: unknown): string {
   if (error instanceof Error && error.message) return error.message
@@ -103,6 +110,13 @@ function ReferenceHint({
           {REFERENCE_TOOLTIP}
           <br />
           {detail}
+          {reference.plu.length > 1 && (
+            <>
+              <br />
+              PLU {reference.plu.join(', ')} zusammengezählt (verschiedene
+              Größen, ohne Umrechnung).
+            </>
+          )}
           <br />
           Nur zur Information - wird nie übernommen.
         </>
@@ -138,7 +152,6 @@ function ReferenceSlot(props: {
         width: REFERENCE_SLOT,
         flexShrink: 0,
         textAlign: 'left',
-        '@media print': { width: 'auto' },
       }}
     >
       <ReferenceHint {...props} />
@@ -233,7 +246,8 @@ function BaseCell({
               'data-changed': changed || undefined,
             }}
             sx={{
-              width: 68,
+              // Platz für „offen“ auch neben dem Freigabe-Symbol (pl 3).
+              width: changed ? 84 : 68,
               minHeight: 44,
               px: 1,
               pl: changed ? 3 : 1,
@@ -252,7 +266,6 @@ function BaseCell({
                 '&::placeholder': { fontStyle: 'italic', opacity: 0.8 },
               },
               '&.Mui-focused': { borderColor: 'primary.main', borderWidth: 2 },
-              '@media print': { border: 'none', minHeight: 0 },
             }}
           />
           {saving && (
@@ -275,7 +288,6 @@ function BaseCell({
                   transform: 'translateY(-50%)',
                   fontSize: 16,
                   color: 'info.main',
-                  '@media print': { display: 'none' },
                 }}
               />
             </Tooltip>
@@ -300,7 +312,7 @@ function BaseCell({
           <PendingIcon
             fontSize="small"
             aria-label={`Wartet auf Freigabe, freigegeben: ${approvedText}`}
-            sx={{ color: 'info.main', '@media print': { display: 'none' } }}
+            sx={{ color: 'info.main' }}
           />
         </Tooltip>
       )}
@@ -401,7 +413,8 @@ function GrundmengenGrid(props: GridProps) {
     <TableContainer
       component={Paper}
       variant="outlined"
-      sx={{ overflowX: 'auto', '@media print': { overflow: 'visible' } }}
+      className="grundmengen-screen-only"
+      sx={{ overflowX: 'auto' }}
     >
       <Table size="small" stickyHeader aria-label="Grundmengen je Wochentag">
         <TableHead>
@@ -534,6 +547,8 @@ export default function GrundmengenClient() {
   const [referenceError, setReferenceError] = useState<string | null>(null)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [savedNote, setSavedNote] = useState<string | null>(null)
+  /** Ein Speichern bekam 503 `hq_write_*`: ab jetzt nur lesen. */
+  const [writeBlocked, setWriteBlocked] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoadError(null)
@@ -569,13 +584,28 @@ export default function GrundmengenClient() {
       if (result.changed) setSavedNote(`Gespeichert: ${label}`)
     } catch (error) {
       setSaveError(`${label}: ${errorMessage(error)}`)
+      if (
+        error instanceof ApiError &&
+        typeof error.code === 'string' &&
+        error.code.startsWith('hq_write_')
+      ) {
+        setWriteBlocked(error.message)
+      }
       throw error
     }
   }, [])
 
   const working = view?.working ?? null
-  const config = working?.status === 'ok' ? working.config : null
-  const editable = mayEdit && Boolean(view?.writable)
+  // Auch bei Fehlern in der YAML (z. B. ein in hq gelöschtes Produkt) kommt
+  // die Tabelle: gespeichert wird, solange die Änderung keinen neuen Fehler
+  // hinzufügt (Server, `newErrors`).
+  const config = working?.config ?? null
+  const writable = Boolean(view?.writable) && writeBlocked === null
+  const editable = mayEdit && writable
+  const writeIssueText =
+    writeBlocked ??
+    view?.writeIssue?.message ??
+    'Das hq-Schreibverzeichnis fehlt.'
 
   const referenceDays = useMemo(() => {
     if (!reference || reference.status !== 'ok') return null
@@ -585,6 +615,7 @@ export default function GrundmengenClient() {
 
   return (
     <Box sx={{ maxWidth: 1400 }}>
+      {grundmengenPrintStyles}
       <Stack
         direction={{ xs: 'column', sm: 'row' }}
         justifyContent="space-between"
@@ -592,7 +623,7 @@ export default function GrundmengenClient() {
         spacing={1}
         sx={{ mb: 2 }}
       >
-        <Box>
+        <Box className="grundmengen-screen-only">
           <Typography variant="h4" component="h1" gutterBottom>
             Grundmengen
           </Typography>
@@ -629,95 +660,110 @@ export default function GrundmengenClient() {
         </Stack>
       </Stack>
 
-      {!view && !loadError && <LinearProgress aria-label="Lädt" />}
+      <Box className="grundmengen-screen-only">
+        {!view && !loadError && <LinearProgress aria-label="Lädt" />}
 
-      {loadError && (
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" onClick={() => void load()}>
-              Erneut versuchen
-            </Button>
-          }
-          sx={{ mb: 2 }}
-        >
-          Die Grundmengen konnten nicht geladen werden: {loadError}
-        </Alert>
-      )}
+        {loadError && (
+          <Alert
+            severity="error"
+            action={
+              <Button color="inherit" onClick={() => void load()}>
+                Erneut versuchen
+              </Button>
+            }
+            sx={{ mb: 2, ...ALERT_TOUCH }}
+          >
+            Die Grundmengen konnten nicht geladen werden: {loadError}
+          </Alert>
+        )}
 
-      {view?.pendingApproval && (
-        <Alert
-          severity="info"
-          icon={<PendingIcon />}
-          sx={{ mb: 2 }}
-          data-testid="pending-banner"
-        >
-          <AlertTitle>Wartet auf Freigabe</AlertTitle>
-          Geänderte Grundmengen liegen in der Freigabe-Anfrage an hq. Bis zur
-          Freigabe rechnet der Backzettel mit den bisherigen Werten; geänderte
-          Felder sind blau umrandet.
-        </Alert>
-      )}
+        {view?.pendingApproval && (
+          <Alert
+            severity="info"
+            icon={<PendingIcon />}
+            sx={{ mb: 2 }}
+            role="status"
+            data-testid="pending-banner"
+          >
+            <AlertTitle>Wartet auf Freigabe</AlertTitle>
+            Geänderte Grundmengen liegen in der Freigabe-Anfrage an hq. Bis zur
+            Freigabe rechnet der Backzettel mit den bisherigen Werten; geänderte
+            Felder sind blau umrandet.
+          </Alert>
+        )}
 
-      {view && working?.status !== 'ok' && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          <AlertTitle>Keine gültigen Backzettel-Stammdaten</AlertTitle>
-          {(working?.errors ?? []).length > 0 ? (
-            <Box component="ul" sx={{ m: 0, pl: 2 }}>
-              {(working?.errors ?? []).slice(0, 8).map((e) => (
-                <li key={`${e.path}-${e.message}`}>
-                  {e.path ? <code>{e.path}</code> : null}
-                  {e.path ? ': ' : ''}
-                  {e.message}
-                </li>
-              ))}
-            </Box>
-          ) : (
-            'Die Datei config/backzettel.yaml fehlt in hq.'
-          )}
-        </Alert>
-      )}
+        {view && working?.status !== 'ok' && (
+          <Alert severity="warning" sx={{ mb: 2 }} data-testid="config-errors">
+            <AlertTitle>
+              {config
+                ? 'Die Backzettel-Stammdaten in hq enthalten Fehler'
+                : 'Keine gültigen Backzettel-Stammdaten'}
+            </AlertTitle>
+            {config && (
+              <Typography variant="body2" sx={{ mb: 1 }}>
+                Grundmengen lassen sich trotzdem pflegen - ein Speichern wird
+                nur abgelehnt, wenn es selbst einen Fehler verursacht. Die
+                Fehler unten müssen in hq behoben werden.
+              </Typography>
+            )}
+            {(working?.errors ?? []).length > 0 ? (
+              <Box component="ul" sx={{ m: 0, pl: 2 }}>
+                {(working?.errors ?? []).slice(0, 8).map((e) => (
+                  <li key={`${e.path}-${e.message}`}>
+                    {e.path ? <code>{e.path}</code> : null}
+                    {e.path ? ': ' : ''}
+                    {e.message}
+                  </li>
+                ))}
+              </Box>
+            ) : (
+              'Die Datei config/backzettel.yaml fehlt in hq.'
+            )}
+          </Alert>
+        )}
 
-      {saveError && (
-        <Alert
-          severity="error"
-          onClose={() => setSaveError(null)}
-          sx={{ mb: 2 }}
-          role="alert"
-        >
-          Nicht gespeichert - {saveError}
-        </Alert>
-      )}
+        {saveError && (
+          <Alert
+            severity="error"
+            onClose={() => setSaveError(null)}
+            sx={{ mb: 2, ...ALERT_TOUCH }}
+            role="alert"
+          >
+            Nicht gespeichert - {saveError}
+          </Alert>
+        )}
 
-      {savedNote && !saveError && (
-        <Alert
-          severity="success"
-          onClose={() => setSavedNote(null)}
-          sx={{ mb: 2, '@media print': { display: 'none' } }}
-        >
-          {savedNote}
-          {view?.pendingApproval ? ' - wartet auf Freigabe.' : '.'}
-        </Alert>
-      )}
+        {savedNote && !saveError && (
+          <Alert
+            severity="success"
+            onClose={() => setSavedNote(null)}
+            sx={{ mb: 2, ...ALERT_TOUCH }}
+          >
+            {savedNote}
+            {view?.pendingApproval ? ' - wartet auf Freigabe.' : '.'}
+          </Alert>
+        )}
 
-      {view && mayEdit && !view.writable && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Speichern ist auf diesem Server nicht eingerichtet
-          (hq-Schreibverzeichnis fehlt). Die Werte sind nur zu lesen.
-        </Alert>
-      )}
+        {view && mayEdit && !writable && (
+          <Alert severity="info" sx={{ mb: 2 }} data-testid="read-only">
+            Speichern geht auf diesem Server gerade nicht: {writeIssueText} Die
+            Werte sind nur zu lesen.
+          </Alert>
+        )}
 
-      {view && !mayEdit && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Grundmengen ändern dürfen Inhaber und Backstube.
-        </Alert>
-      )}
+        {view && !mayEdit && (
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Grundmengen ändern dürfen Inhaber und Backstube.
+          </Alert>
+        )}
+      </Box>
 
       {config && (
         <>
           <Typography
             variant="caption"
             component="p"
+            className="grundmengen-screen-only"
             sx={{ color: 'text.secondary', mb: 1 }}
           >
             {mayEdit && reference?.status === 'ok' && reference.available
@@ -743,6 +789,7 @@ export default function GrundmengenClient() {
             <Typography
               variant="caption"
               component="p"
+              className="grundmengen-screen-only"
               sx={{ color: 'text.secondary', mt: 1 }}
             >
               Ausgewertete Tage:{' '}
@@ -758,6 +805,13 @@ export default function GrundmengenClient() {
                 .join(' · ')}
             </Typography>
           )}
+          <GrundmengenPrint
+            config={config}
+            approved={
+              view?.pendingApproval && view.status === 'ok' ? view.config : null
+            }
+            reference={mayEdit ? reference : null}
+          />
         </>
       )}
     </Box>

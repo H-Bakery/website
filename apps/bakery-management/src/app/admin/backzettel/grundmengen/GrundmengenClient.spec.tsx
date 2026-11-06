@@ -47,6 +47,11 @@ function mockGet(view: BackzettelConfigView = syntheticView()) {
   })
 }
 
+/** Das Bildschirm-Raster (das Druckbild ist `aria-hidden`). */
+function grid(): HTMLElement {
+  return screen.getByRole('table', { name: 'Grundmengen je Wochentag' })
+}
+
 function input(label: string): HTMLInputElement {
   return screen.getByRole('textbox', { name: label }) as HTMLInputElement
 }
@@ -61,15 +66,15 @@ describe('GrundmengenClient', () => {
   it('zeigt Posten × Di–So nach Abschnitt, Sorten-Zeilen und Einheit', async () => {
     mockGet()
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     for (const day of ['Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']) {
       expect(
         screen.getByRole('columnheader', { name: day })
       ).toBeInTheDocument()
     }
-    expect(screen.getByText('Brot')).toBeInTheDocument()
-    expect(screen.getByText('Brötchen')).toBeInTheDocument()
-    expect(screen.getByText('Hefeteig')).toBeInTheDocument()
+    expect(within(grid()).getByText('Brot')).toBeInTheDocument()
+    expect(within(grid()).getByText('Brötchen')).toBeInTheDocument()
+    expect(within(grid()).getByText('Hefeteig')).toBeInTheDocument()
     const brot = screen.getByTestId('row-testbrot')
     expect(within(brot).getByText('Liter')).toBeInTheDocument()
     expect(screen.getByTestId('row-testzopf-nuss')).toHaveTextContent(
@@ -90,7 +95,7 @@ describe('GrundmengenClient', () => {
   it('Referenz grau daneben, mit Tooltip-Text - nie übernommen', async () => {
     mockGet()
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     const row = screen.getByTestId('row-testweck')
     await waitFor(() =>
       expect(
@@ -128,7 +133,7 @@ describe('GrundmengenClient', () => {
     })
     const user = userEvent.setup()
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     const field = input('Testweck, Dienstag')
     await user.clear(field)
     await user.type(field, '45{Enter}')
@@ -142,9 +147,10 @@ describe('GrundmengenClient', () => {
         }
       )
     )
-    expect(await screen.findByTestId('pending-banner')).toHaveTextContent(
-      'Wartet auf Freigabe'
-    )
+    const banner = await screen.findByTestId('pending-banner')
+    expect(banner).toHaveTextContent('Wartet auf Freigabe')
+    // Hinweis, kein Alarm: Screenreader lesen ihn nicht bei jedem Laden vor
+    expect(banner).toHaveAttribute('role', 'status')
     expect(input('Testweck, Dienstag')).toHaveAttribute('data-changed', 'true')
     expect(
       screen.getByText(/Gespeichert: Testweck, Dienstag/)
@@ -159,7 +165,7 @@ describe('GrundmengenClient', () => {
     })
     const user = userEvent.setup()
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     const mohn = input('Testzopf gefüllt (Mohnfüllung), Samstag')
     await user.type(mohn, '2')
     await user.tab()
@@ -184,7 +190,7 @@ describe('GrundmengenClient', () => {
     mockGet()
     const user = userEvent.setup()
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     const field = input('Testweck, Freitag')
     await user.click(field)
     await user.tab()
@@ -207,7 +213,7 @@ describe('GrundmengenClient', () => {
     )
     const user = userEvent.setup()
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     const field = input('Testweck, Dienstag')
     await user.clear(field)
     await user.type(field, '40,5{Enter}')
@@ -221,7 +227,7 @@ describe('GrundmengenClient', () => {
     sessionState.user = { role: 'verkauf' }
     mockGet()
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     expect(screen.queryAllByRole('textbox')).toHaveLength(0)
     expect(screen.getByText(/dürfen Inhaber und Backstube/)).toBeInTheDocument()
     expect(apiClient.get).not.toHaveBeenCalledWith(
@@ -233,9 +239,107 @@ describe('GrundmengenClient', () => {
   it('ohne Schreibziel: nur lesen, mit Hinweis', async () => {
     mockGet(syntheticView({ writable: false }))
     renderWithTheme(<GrundmengenClient />)
-    await screen.findByText('Testweck')
+    await screen.findByTestId('row-testweck')
     expect(screen.queryAllByRole('textbox')).toHaveLength(0)
-    expect(screen.getByText(/nicht eingerichtet/)).toBeInTheDocument()
+    expect(screen.getByTestId('read-only')).toHaveTextContent(
+      'Speichern geht auf diesem Server gerade nicht'
+    )
+  })
+
+  it('Schreib-Worktree falsch eingerichtet: Grund vom Server, nur lesen', async () => {
+    mockGet(
+      syntheticView({
+        writable: false,
+        writeIssue: {
+          error: 'hq_write_wrong_branch',
+          message: 'Das Schreibverzeichnis steht auf dem falschen Branch.',
+        },
+      })
+    )
+    renderWithTheme(<GrundmengenClient />)
+    await screen.findByTestId('row-testweck')
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+    expect(screen.getByTestId('read-only')).toHaveTextContent('falschen Branch')
+  })
+
+  it('503 hq_write_* beim Speichern: Seite schaltet auf nur lesen', async () => {
+    mockGet()
+    apiClient.put.mockRejectedValue(
+      new ApiError(
+        'Das Schreibverzeichnis für hq ist kein git-Arbeitsverzeichnis.',
+        503,
+        'hq_write_unavailable'
+      )
+    )
+    const user = userEvent.setup()
+    renderWithTheme(<GrundmengenClient />)
+    await screen.findByTestId('row-testweck')
+    const field = input('Testweck, Dienstag')
+    await user.clear(field)
+    await user.type(field, '41{Enter}')
+    expect(await screen.findByTestId('read-only')).toHaveTextContent(
+      'kein git-Arbeitsverzeichnis'
+    )
+    expect(screen.queryAllByRole('textbox')).toHaveLength(0)
+  })
+
+  it('fremder Fehler in der YAML: Tabelle bleibt, mit Warnung darüber', async () => {
+    mockGet(
+      syntheticView({
+        status: 'no-config',
+        config: null,
+        working: {
+          status: 'no-config',
+          config: syntheticConfig(),
+          errors: [
+            {
+              path: 'items[0].products[0].id',
+              message: 'Unbekanntes Produkt „weg“.',
+            },
+          ],
+          warnings: [],
+        },
+      })
+    )
+    renderWithTheme(<GrundmengenClient />)
+    await screen.findByTestId('row-testweck')
+    const warning = screen.getByTestId('config-errors')
+    expect(warning).toHaveTextContent('enthalten Fehler')
+    expect(warning).toHaveTextContent('Unbekanntes Produkt')
+    expect(input('Testweck, Dienstag').value).toBe('40')
+  })
+
+  it('Druckbild: alle Wochentage, Werte und wartende Änderungen', async () => {
+    const after = syntheticConfig()
+    after.items[1].base = { ...after.items[1].base, 2: 45 }
+    mockGet(
+      syntheticView({
+        pendingApproval: true,
+        working: { status: 'ok', config: after, errors: [], warnings: [] },
+      })
+    )
+    renderWithTheme(<GrundmengenClient />)
+    await screen.findByTestId('row-testweck')
+    const print = screen.getByTestId('grundmengen-print')
+    expect(print).toHaveClass('grundmengen-print-only')
+    const heads = Array.from(print.querySelectorAll('thead th')).map(
+      (th) => th.textContent
+    )
+    expect(heads).toEqual([
+      'Posten',
+      'Einheit',
+      'Di',
+      'Mi',
+      'Do',
+      'Fr',
+      'Sa',
+      'So',
+    ])
+    expect(print).toHaveTextContent('45 * (40)')
+    expect(print).toHaveTextContent('wartet auf Freigabe')
+    expect(print).toHaveTextContent('Nussfüllung')
+    // Bildschirm-Raster wird im Druck ausgeblendet
+    expect(grid().closest('.grundmengen-screen-only')).not.toBeNull()
   })
 
   it('ungültige Stammdaten: Warnung mit den Fehlern, keine Tabelle', async () => {
@@ -268,6 +372,6 @@ describe('GrundmengenClient', () => {
     expect(await screen.findByText(/Netzwerkfehler/)).toBeInTheDocument()
     mockGet()
     await user.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
-    expect(await screen.findByText('Testweck')).toBeInTheDocument()
+    expect(await screen.findByTestId('row-testweck')).toBeInTheDocument()
   })
 })

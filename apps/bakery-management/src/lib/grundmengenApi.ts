@@ -45,6 +45,10 @@ export interface GrundmengenConfig {
 
 export interface WorkingConfig {
   status: 'ok' | 'no-config'
+  /**
+   * Auch bei `no-config` gesetzt, solange die YAML lesbar ist (dann mit
+   * `errors`) - fremde Fehler sperren das Pflegen der Grundmengen nicht.
+   */
   config: GrundmengenConfig | null
   errors: ConfigReason[]
   warnings: ConfigReason[]
@@ -58,8 +62,10 @@ export interface BackzettelConfigView {
   warnings: ConfigReason[]
   /** Die YAML im hq-Schreibverzeichnis wartet auf Freigabe (PR offen). */
   pendingApproval: boolean
-  /** Ob der Server speichern kann. */
+  /** Ob der Server speichern kann (Schreib-Worktree da und auf `app/edits`). */
   writable: boolean
+  /** Warum nicht: `error` wie die 503 beim Speichern, `message` deutsch. */
+  writeIssue?: { error: string; message: string } | null
   /** Stand, auf dem ein Speichern aufbaut (inkl. wartender Änderungen). */
   working: WorkingConfig
 }
