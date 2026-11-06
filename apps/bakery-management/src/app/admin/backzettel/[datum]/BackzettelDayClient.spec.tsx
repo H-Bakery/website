@@ -624,6 +624,10 @@ describe('Backzettel-Tagesplanung', () => {
       expect(p2.getByText('Testnussfüllung: 2,4 kg')).toBeInTheDocument()
       const p3 = within(sheet.getByTestId('print-page-3'))
       expect(p3.getByText('Testsauerteig (Misch)')).toBeInTheDocument()
+      // Jede Seite eines Entwurfs ist als Entwurf markiert (W4-verify r5).
+      expect(
+        p3.getByText('ENTWURF – noch nicht freigegeben')
+      ).toBeInTheDocument()
       expect(sheet.getByTestId('print-page-2')).toHaveClass('bz-break')
 
       fireEvent.click(screen.getByRole('button', { name: 'Drucken' }))

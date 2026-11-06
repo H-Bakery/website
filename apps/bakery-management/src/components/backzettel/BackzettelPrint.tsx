@@ -515,6 +515,11 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
               ? ' – der Vortag ist Ruhetag, wer vorbereitet ist noch offen'
               : ''}
           </p>
+          {/* Wird abgerissen und am Vortag abgearbeitet - auch hier muss
+              ein Entwurf als Entwurf erkennbar sein (W4-verify r5). */}
+          {!confirmed && (
+            <p className="banner">ENTWURF – noch nicht freigegeben</p>
+          )}
           <table>
             <tbody>
               {prep.map((t) => (
