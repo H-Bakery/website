@@ -984,12 +984,32 @@ function normalizeStatusChange(existing, body, options) {
       403
     )
   }
+  // Ebenso die Übergabe (W4-Verifikation Runde 3): eine abgeholte, oft schon
+  // bezahlte Bestellung darf der Fahrer nicht wieder auf „nicht abgeholt“
+  // oder „bereit“ setzen - sonst stünde kassiertes Geld bei einer Bestellung,
+  // die nie übergeben wurde. Zurücknehmen kann der Verkauf.
+  if (
+    Array.isArray(opts.allowedTargets) &&
+    base.status === 'abgeholt' &&
+    (status !== 'abgeholt' || notCollected === true)
+  ) {
+    return handoverUndoForbidden()
+  }
   const blocked = checkTransition(base.status, status)
   if (blocked) return blocked
 
   const changes = statusFields(base, status, notCollected, opts.now)
   if (source.paid !== undefined) changes.paid = source.paid
   return { changes }
+}
+
+/** 403, wenn der Fahrer eine Übergabe zurücknehmen will (auch über den Alias). */
+function handoverUndoForbidden() {
+  return fail(
+    'handover_undo_forbidden',
+    'Eine Übergabe zurücknehmen kann nur der Verkauf.',
+    403
+  )
 }
 
 function anonymizedError() {
@@ -1985,6 +2005,7 @@ module.exports = {
   summarizeDay,
   itemsTotal,
   paymentBalance,
+  handoverUndoForbidden,
   comparePickup,
   toLegacyStatus,
   fromLegacyStatus,

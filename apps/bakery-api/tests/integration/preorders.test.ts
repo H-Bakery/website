@@ -162,6 +162,36 @@ describe('session and roles', () => {
       .set(tokens['fahrer'])
       .send({ ids: [created.id], paid: false })
     expect(JSON.stringify(bulkUndo.body)).not.toMatch(/"paid":false/)
+    // W4-verify r3: nor does the Fahrer take the handover back - neither
+    // as „nicht abgeholt“ nor as „bereit“, single or bulk.
+    clock = new Date(`${TUESDAY}T12:00:00.000Z`)
+    try {
+      for (const change of [{ notCollected: true }, { status: 'bereit' }]) {
+        const back = await request(api.app)
+          .post(`/api/preorders/${created.id}/status`)
+          .set(tokens['fahrer'])
+          .send(change)
+        expect(back.status).toBe(403)
+        expect(back.body).toMatchObject({
+          error: expect.stringMatching(/handover_undo_forbidden|forbidden/),
+          message: expect.any(String),
+        })
+      }
+      const bulkBack = await request(api.app)
+        .post('/api/preorders/bulk-status')
+        .set(tokens['fahrer'])
+        .send({ ids: [created.id], notCollected: true })
+      expect(JSON.stringify(bulkBack.body)).not.toMatch(/"result":"ok"/)
+      const still = await request(api.app)
+        .get(`/api/preorders/${created.id}`)
+        .set(tokens['fahrer'])
+      expect(still.body.data).toMatchObject({
+        status: 'abgeholt',
+        notCollected: false,
+      })
+    } finally {
+      clock = NOW
+    }
     const byVerkauf = await request(api.app)
       .post(`/api/preorders/${created.id}/status`)
       .set(tokens['verkauf'])
@@ -1094,6 +1124,31 @@ describe('/api/deliveries alias (Mörsbach mock contract)', () => {
     expect(res.body.success).toBeUndefined()
     const row = await Preorder.findByPk(res.body.id)
     expect(row?.channel).toBe('sammelstelle')
+  })
+
+  it('fahrer cannot take a handover back through the alias (W4-verify r3)', async () => {
+    const p = (
+      await request(api.app)
+        .post('/api/deliveries/preorders')
+        .set(tokens['verkauf'])
+        .send(body)
+    ).body
+    const patch = (b: Record<string, unknown>, role = 'fahrer') =>
+      request(api.app)
+        .patch(`/api/deliveries/preorders/${p.id}`)
+        .set(tokens[role])
+        .send(b)
+    expect((await patch({ status: 'handed_over' })).status).toBe(200)
+    const undo = await patch({ status: 'not_collected' })
+    expect(undo.status).toBe(403)
+    expect(undo.body).toMatchObject({ error: 'handover_undo_forbidden' })
+    expect(undo.body.message).toMatch(/nur der Verkauf/)
+    expect((await Preorder.findByPk(p.id))?.status).toBe('abgeholt')
+    // idempotent re-tap stays fine, Verkauf may take it back
+    expect((await patch({ status: 'handed_over' })).status).toBe(200)
+    expect((await patch({ status: 'not_collected' }, 'verkauf')).status).toBe(
+      200
+    )
   })
 
   it('round-trips not_collected and keeps bereit on open', async () => {
