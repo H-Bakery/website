@@ -92,7 +92,23 @@ function Field({
  * setzen, stornieren (mit Rückfrage) - gelöscht wird nie. Fahrer sehen sie
  * nur; übergeben wird in der Abholliste (P2).
  */
-export default function PreorderDetailClient({ id }: { id: number }) {
+export interface PreorderDetailClientProps {
+  id: number
+  /**
+   * Zurück-Link (P2: die Mörsbach-Seite führt auf ihren Liefertag zurück).
+   * Bekommt die geladene Bestellung, solange es eine gibt.
+   */
+  backHref?: (preorder: Preorder | null) => string
+  backLabel?: string
+}
+
+const DEFAULT_BACK = () => '/admin/preorders'
+
+export default function PreorderDetailClient({
+  id,
+  backHref = DEFAULT_BACK,
+  backLabel = 'Alle Vorbestellungen',
+}: PreorderDetailClientProps) {
   const session = useOptionalSession()
   const role = session?.user?.role ?? null
   const canWrite = canWritePreorders(role)
@@ -229,7 +245,7 @@ export default function PreorderDetailClient({ id }: { id: number }) {
         </Alert>
         <Button
           component={NextLink}
-          href="/admin/preorders"
+          href={backHref(null)}
           startIcon={<BackIcon />}
         >
           Zur Liste
@@ -274,11 +290,11 @@ export default function PreorderDetailClient({ id }: { id: number }) {
     <Box>
       <Button
         component={NextLink}
-        href="/admin/preorders"
+        href={backHref(preorder)}
         startIcon={<BackIcon />}
         sx={{ mb: 1, minHeight: 44 }}
       >
-        Alle Vorbestellungen
+        {backLabel}
       </Button>
 
       <Stack
