@@ -35,7 +35,7 @@ describe('AdminLayout', () => {
   it('renders children and the app bar', () => {
     renderLayout()
     expect(screen.getByTestId('test-child')).toBeInTheDocument()
-    expect(screen.getByText('Management System')).toBeInTheDocument()
+    expect(screen.getByText('Verwaltung')).toBeInTheDocument()
   })
 
   it('renders the main navigation items', () => {

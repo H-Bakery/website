@@ -68,7 +68,7 @@ describe('Management RootLayout', () => {
   })
 
   it('exposes German metadata', () => {
-    expect(metadata.title).toBe('Bäckerei Heusser - Management System')
+    expect(metadata.title).toBe('Bäckerei Heusser - Verwaltung')
     expect(metadata.description).toContain('Verwaltungssystem')
   })
 

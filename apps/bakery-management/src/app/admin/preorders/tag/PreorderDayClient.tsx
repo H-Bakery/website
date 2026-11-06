@@ -405,7 +405,12 @@ export default function PreorderDayClient({
                         key={p.id}
                         sx={
                           p.status === 'storniert'
-                            ? { '& td': { color: 'text.disabled' } }
+                            ? {
+                                '& td': {
+                                  color: 'text.secondary',
+                                  textDecoration: 'line-through',
+                                },
+                              }
                             : undefined
                         }
                       >

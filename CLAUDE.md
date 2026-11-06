@@ -515,6 +515,12 @@ Metadaten/Viewport (`src/app/layout.tsx`) und Registrierung lesen von dort. Fün
   Worker löscht beim Aktivieren die Caches der alten. `/sw.js` geht mit `Cache-Control: no-cache,
 no-store` raus. Das Cache-Präfix steht in `sw.js` und `pwa.ts` - `pwa.spec.ts` prüft, dass beide
   gleich sind.
+- **Theme: `createManagementTheme(mode)` in `src/lib/muiTheme.ts`** (W4-Verifikation, Kontrast):
+  `contrastThreshold: 4.5` (Schrift auf `*.main` erst ab 4,5:1 weiß, sonst schwarz) und hell
+  `warning.main` #a14a00 / `info.main` #0277bd - das MUI-Orange #ed6c02 lag als Text und unter
+  weißer Schrift bei 3,1:1. `primary` und Hintergründe bleiben Standard. Gestrichene Zeilen
+  (storniert, Lücken im Kassenarchiv) mit `text.secondary`, nicht `text.disabled`/`opacity`.
+  Die AppBar heißt „Verwaltung", der Seitentitel „Bäckerei Heusser - Verwaltung".
 - **Statusleistenfarbe = AppBar-Farbe.** Hell `#1976d2` (`primary.main`), dunkel `#272727`
   (`background.paper` + Elevation-4-Overlay). `pwa.spec.ts` rechnet beides aus `createTheme` nach;
   wer das Theme ändert, zieht `PWA_THEME_COLORS` nach. Die Metadaten liefern je
