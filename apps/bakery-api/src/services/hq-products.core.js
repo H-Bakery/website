@@ -252,13 +252,16 @@ function oneLine(value, fallback) {
   return text || fallback
 }
 
-/** `Co-authored-by: Anna <anna@bakery.local>` für den Bearbeiter (D6). */
+/**
+ * `Co-authored-by: Anna Beispiel <user-7@bakery.local>` für den Bearbeiter
+ * (D6). Die Adresse trägt nur die interne Benutzer-ID, nie den Login: seit
+ * B5b landen die Commits auf GitHub, und Logins gehören nicht nach hq (D13).
+ */
 function coAuthorTrailer(user) {
-  const username = oneLine(user && user.username, 'unbekannt')
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-  const name = oneLine(user && user.displayName, username)
-  return `Co-authored-by: ${name} <${username}@bakery.local>`
+  const id = Number(user && user.id)
+  const mail = Number.isInteger(id) && id > 0 ? `user-${id}` : 'unbekannt'
+  const name = oneLine(user && user.displayName, 'unbekannt')
+  return `Co-authored-by: ${name} <${mail}@bakery.local>`
 }
 
 /**

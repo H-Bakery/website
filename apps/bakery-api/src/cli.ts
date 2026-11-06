@@ -30,10 +30,27 @@
  * runs nightly from `deploy/systemd/bakery-anonymize.timer` (23:45). It never
  * migrates: with pending migrations it stops (exit 1), so a deploy whose API
  * restart failed does not get its schema changed under the old process.
+ *
+ * Z9 (hq snapshots):
+ *
+ *   cli.js snapshot-preorders [--date YYYY-MM-DD]
+ *
+ * writes `data/production/vorbestellungen/<date>.json` (sums per
+ * product/variant, counts per channel and pickup point - no names) into the
+ * snapshot worktree `HQ_SNAPSHOT_DIR`, commits only `data/production/**` and
+ * pushes to `main`. Default date: today (Berlin) - the day that just ended
+ * when the timer runs at 22:15. Never migrates. Offline, the commit stays
+ * local and the server's retry timer pushes it (exit 0, noted on stderr).
  */
 import * as fs from 'fs'
 
-import { ConfigError, loadConfig, loadEnvFile } from './config/env'
+import {
+  ConfigError,
+  loadConfig,
+  loadEnvFile,
+  loadHqConfig,
+  loadHqSyncConfig,
+} from './config/env'
 import { openDatabase } from './db/database'
 import { pendingMigrations, runMigrations } from './db/migrate'
 import { initializeModels } from './models'
@@ -52,6 +69,15 @@ import {
   anonymizePreorders,
   importDeliveryStore,
 } from './services/preorders-maintenance'
+import { defaultProductsDir } from './services/hq-catalogue'
+import { HqSnapshotWriter } from './services/hq-snapshots.service'
+import { createVariantsHook } from './services/preorder-variants'
+import { isFailure, PreordersService } from './services/preorders.service'
+
+/* eslint-disable @typescript-eslint/no-var-requires */
+const snapshotsCore = require('./services/hq-snapshots.core')
+const shopOrders = require('./services/shop-orders.core')
+/* eslint-enable @typescript-eslint/no-var-requires */
 
 const USAGE = `Aufruf:
   cli.js create-user --username <name> --display-name <Anzeigename> --role <rolle>
@@ -80,7 +106,12 @@ const USAGE = `Aufruf:
   cli.js anonymize-preorders [--dry-run] [--days 90] [--today JJJJ-MM-TT]
     DSGVO: Name, Telefon und Anmerkung aller Vorbestellungen, deren
     Abholtag mehr als 90 Tage zurückliegt, werden gelöscht (in jedem
-    Status). Migriert nie: bei ausstehenden Migrationen bricht der Lauf ab.`
+    Status). Migriert nie: bei ausstehenden Migrationen bricht der Lauf ab.
+
+  cli.js snapshot-preorders [--date JJJJ-MM-TT]
+    Schreibt die Summen der Vorbestellungen eines Abholtags (Vorgabe: heute)
+    nach hq data/production/vorbestellungen/ (HQ_SNAPSHOT_DIR) und überträgt
+    sie nach main - ohne Namen, Telefonnummern oder Anmerkungen.`
 
 /** Options without a value. */
 const BOOLEAN_FLAGS = new Set(['dry-run', 'update-partners'])
@@ -362,6 +393,71 @@ async function anonymize(flags: Record<string, string>): Promise<void> {
   )
 }
 
+/** `snapshot-preorders` (Z9): 0 = geschrieben (auch: unverändert, Push folgt). */
+async function snapshotPreorders(
+  flags: Record<string, string>
+): Promise<number> {
+  onlyFlags(flags, ['date'])
+  const date = flags['date'] ?? shopOrders.berlinToday(new Date())
+  if (!snapshotsCore.isDate(date)) {
+    throw new UserInputError('--date muss ein gültiges Datum JJJJ-MM-TT sein.')
+  }
+  const hq = loadHqConfig()
+  if (!hq.snapshotDir) {
+    throw new UserInputError(
+      'HQ_SNAPSHOT_DIR ist nicht gesetzt - wohin soll der Snapshot geschrieben werden?'
+    )
+  }
+  const sync = loadHqSyncConfig()
+  const writer = new HqSnapshotWriter({
+    snapshotDir: hq.snapshotDir,
+    token: sync.token,
+    // The server holds the local lock for seconds only; wait generously
+    // rather than lose the night's snapshot (the timer does not re-run).
+    lockWaitMs: 5 * 60_000,
+    log: {
+      info: (...a) => console.error('[hq-snapshots]', ...a),
+      warn: (...a) => console.error('[hq-snapshots]', ...a),
+      error: (...a) => console.error('[hq-snapshots]', ...a),
+    },
+  })
+  const productsDir = hq.productsDir ?? defaultProductsDir()
+  const variants = createVariantsHook()
+  return withDatabase(
+    async () => {
+      const day = await new PreordersService({
+        productsDir,
+        variantsForProduct: variants,
+      }).day({ date })
+      if (isFailure(day)) throw new UserInputError(day.message)
+      const outcome = await writer.writePreorders(day.data, {
+        variantsOf: (productId) => variants(productId)?.variants ?? null,
+      })
+      console.log(JSON.stringify(outcome, null, 2))
+      if (!outcome.written) {
+        // Nothing on disk: the snapshot has to be made again.
+        console.error(
+          `Fehler: ${outcome.error?.message ?? 'Snapshot nicht geschrieben.'}`
+        )
+        return 1
+      }
+      // Written and committed: a push that has to wait (offline, the server
+      // is pushing, a conflict) is the API's retry timer's job.
+      console.error(
+        `Vorbestellungen ${date}: ` +
+          (outcome.committed ? 'neu geschrieben' : 'unverändert') +
+          (outcome.pushed
+            ? ', in hq (main).'
+            : `, noch nicht übertragen (${
+                outcome.error?.message ?? 'später'
+              }) - die API versucht es alle 15 Minuten erneut.`)
+      )
+      return 0
+    },
+    { migrate: false }
+  )
+}
+
 export async function main(argv: string[]): Promise<number> {
   try {
     loadEnvFile()
@@ -380,6 +476,9 @@ export async function main(argv: string[]): Promise<number> {
     if (command === 'anonymize-preorders') {
       await anonymize(flags)
       return 0
+    }
+    if (command === 'snapshot-preorders') {
+      return await snapshotPreorders(flags)
     }
     if (command === undefined || command === 'help' || command === '--help') {
       console.log(USAGE)

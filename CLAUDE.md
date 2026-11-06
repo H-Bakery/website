@@ -600,6 +600,49 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
 
+## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
+
+Tabelle Posten × Di–So (nach Abschnitt, Hefeteig-Posten mit Sorten-Zeilen) zum Pflegen der
+Grundmengen in `hq/config/backzettel.yaml`; PC zuerst, Inhaber und Backstube schreiben, alle
+anderen sehen nur Werte. API: `PUT /api/backzettel/config/base`, `GET /api/backzettel/reference`,
+erweitertes `GET /api/backzettel/config` - Details in `apps/bakery-api/CLAUDE.md`, Abschnitt
+„Grundmengen (Z4)". Was man von außen wissen muss:
+
+- **Geschrieben wird wie bei den Produkten (B5/B5b):** Schreib-Worktree `app/edits`, ein Commit je
+  Zelle, Push + rollende PR. Bis zum Merge rechnet der Backzettel mit dem **freigegebenen** Stand;
+  die Seite zeigt den Arbeitsstand, ein Banner „Wartet auf Freigabe" und je geänderter Zelle den
+  freigegebenen Wert im Tooltip. Ohne Schreibziel (`writable: false`, Grund in `writeIssue` -
+  auch ein Worktree, der nicht auf `app/edits` steht oder kein git-Repo ist) ist die Seite nur
+  lesbar; ebenso nach einer 503 `hq_write_*` beim Speichern.
+- **Kommentare und Reihenfolge der YAML bleiben**; die API ändert nur die eine Stelle
+  (`backzettel-config.editor.js`), ein Speichern ohne Änderung ist ein Null-Diff. Geprüft wird vor
+  dem Commit mit `validateBackzettelConfig`; nur Fehler, die die Änderung **neu** einführt, lehnen
+  ab (400 mit `errors`, die Seite zeigt sie an der Zelle). Deshalb liefert `working.config` die
+  normalisierte Config auch bei `status: 'no-config'`, solange die YAML lesbar ist: ein fremder
+  Fehler (z. B. ein in hq gelöschtes Produkt) zeigt eine Warnung über der Tabelle, sperrt sie aber
+  nicht.
+- **Zellen:** leer = `null` („noch nicht festgelegt"), `0` = wird nicht gebacken, kein Eintrag
+  zeigt „0". Komma geht. Gespeichert wird bei Enter/Verlassen nur, wenn sich der Wert geändert
+  hat; Escape verwirft.
+- **Referenzwert grau neben jeder Zelle:** Median der verkauften Stück an den letzten 6 gleichen
+  Wochentagen **mit Kassenbericht** (Tooltip „Median verkauft, letzte 6 gleiche Wochentage"),
+  über die `plu`-Liste des Postens. Tage ohne Bericht sind Lücken, nicht 0. Er wird **nie**
+  übernommen - nur Information. Bei Liter-/Blech-Posten steht „St." dahinter (Kasse zählt Stück);
+  mehrere PLUs (Größen) werden ohne Umrechnung zusammengezählt, der Tooltip sagt das.
+- **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage
+  Di–So, geänderte Werte mit `*` und dem freigegebenen in Klammern); das Bildschirm-Raster
+  (`grundmengen-screen-only`) und die App-Hülle fallen im Druck weg. Mit `page.pdf()` prüfen, nicht
+  mit einem Screenshot.
+- **Client:** `src/lib/grundmengenApi.ts` (getrennt von `backzettelApi.ts`, das gehört Z5),
+  Fixtures `grundmengenFixtures.ts` (erfunden). `admin/backzettel/page.tsx` leitet bis Z5 auf die
+  Grundmengen weiter - beim Zusammenführen gilt die Übersichtsseite aus Z5, die dann auf
+  Grundmengen verlinken sollte.
+- `yaml` wird ins API-Bundle gepackt (nur transitive Dev-Abhängigkeit im Root); `build.mjs`
+  bricht ab, wenn im Root nicht `yaml@2` liegt.
+
+Tests: `src/lib/grundmengenApi.spec.ts`, `admin/backzettel/grundmengen/GrundmengenClient.spec.tsx`
+und die API-Suites (`backzettelBaseEdit`, `backzettelReference`, `backzettelGrundmengen`).
+
 ## E2E-Suiten (Playwright)
 
 Drei Suiten, `apps/bakery-{shop,management,landing}-e2e`, nur Chromium (Desktop + Pixel 5).

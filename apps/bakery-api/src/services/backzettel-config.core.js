@@ -582,7 +582,10 @@ function validateBackzettelConfig(obj, options) {
         } else if (integerUnit && !Number.isInteger(value)) {
           err(
             path,
-            `Menge ${value} muss bei der Einheit ${unit} ganzzahlig sein.`
+            `Menge ${String(value).replace(
+              '.',
+              ','
+            )} muss bei der Einheit ${unit} ganzzahlig sein.`
           )
         }
       }

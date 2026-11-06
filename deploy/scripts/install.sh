@@ -39,8 +39,8 @@ BAKERY_ROOT="${BAKERY_ROOT:-/opt/bakery}"
 APP_USER="${APP_USER:-bakery}"
 NODE_BIN="/usr/bin/node"
 NODE_MIN_MAJOR=20
-UNITS="bakery-api.service bakery-management.service bakery-hq-sync.service bakery-hq-sync.timer bakery-backup.service bakery-backup.timer bakery-health.service bakery-health.timer bakery-anonymize.service bakery-anonymize.timer"
-TIMERS="bakery-hq-sync.timer bakery-backup.timer bakery-health.timer bakery-anonymize.timer"
+UNITS="bakery-api.service bakery-management.service bakery-hq-sync.service bakery-hq-sync.timer bakery-backup.service bakery-backup.timer bakery-health.service bakery-health.timer bakery-anonymize.service bakery-anonymize.timer bakery-snapshot-preorders.service bakery-snapshot-preorders.timer"
+TIMERS="bakery-hq-sync.timer bakery-backup.timer bakery-health.timer bakery-anonymize.timer bakery-snapshot-preorders.timer"
 
 mode="full"
 use_apt=0
@@ -343,6 +343,56 @@ ensure_hq_clone() {
   log "hq-Lese-Klon angelegt: $hq"
 }
 
+# Schreib-Klon (B5b): eigener Klon, Worktree auf app/edits (rollende PR), dazu
+# ein zweiter Worktree auf main für die Snapshots (Z9, data/production/**).
+# Wie beim Lese-Klon: nur selbst angelegte Klone werden markiert; einen
+# vorhandenen fasst install.sh nicht an.
+ensure_hq_write_clone() {
+  local w="${HQ_WRITE_DIR:-}"
+  local snap="${HQ_SNAPSHOT_DIR:-}"
+  local url="${HQ_REPO_URL:-https://github.com/H-Bakery/hq.git}"
+  if [ -z "$w" ]; then
+    warn "HQ_WRITE_DIR ist leer - kein hq-Schreib-Klon (B5b). Die API startet in Produktion ohne ihn nicht."
+    return 0
+  fi
+  if [ -d "$w/.git" ]; then
+    if [ "$(runuser -u "$APP_USER" -- git -C "$w" config --get bakery.role || true)" = "write-clone" ]; then
+      log "hq-Schreib-Klon vorhanden: $w"
+    else
+      problem "$w ist ein Git-Klon ohne Markierung als Schreib-Klon. Prüfen (Branch app/edits?), dann: sudo -u $APP_USER git -C $w config bakery.role write-clone"
+    fi
+  else
+    if [ -z "${HQ_GITHUB_TOKEN:-}" ]; then
+      warn "hq-Schreib-Klon fehlt und HQ_GITHUB_TOKEN ist leer (Q3). Nach dem Eintragen install.sh erneut ausführen."
+      return 0
+    fi
+    export HQ_GITHUB_TOKEN
+    # shellcheck disable=SC2016 # wertet der Credential-Helper aus
+    runuser -u "$APP_USER" -- env HQ_GITHUB_TOKEN="$HQ_GITHUB_TOKEN" GIT_TERMINAL_PROMPT=0 git \
+      -c credential.helper= \
+      -c 'credential.helper=!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=${HQ_GITHUB_TOKEN}"; }; f' \
+      clone --quiet --branch main "$url" "$w"
+    # main bleibt frei für den Snapshot-Worktree; geschrieben wird auf app/edits.
+    runuser -u "$APP_USER" -- git -C "$w" checkout --quiet -b app/edits origin/main
+    runuser -u "$APP_USER" -- git -C "$w" config bakery.role write-clone
+    log "hq-Schreib-Klon angelegt: $w (app/edits)"
+  fi
+  if [ -z "$snap" ]; then
+    warn "HQ_SNAPSHOT_DIR ist leer - keine Snapshots nach hq (Z9)."
+    return 0
+  fi
+  if [ -e "$snap" ]; then
+    [ -f "$snap/.git" ] ||
+      problem "$snap existiert, ist aber kein Worktree des Schreib-Klons (erwartet: git -C $w worktree add $snap main)"
+    log "hq-Snapshot-Worktree vorhanden: $snap"
+    return 0
+  fi
+  if [ -d "$w/.git" ]; then
+    runuser -u "$APP_USER" -- git -C "$w" worktree add --quiet "$snap" main
+    log "hq-Snapshot-Worktree angelegt: $snap (main)"
+  fi
+}
+
 # --- Ablauf ---
 
 case "$mode" in
@@ -380,6 +430,7 @@ load_env_files
 ensure_code_repo
 ensure_src_clone
 ensure_hq_clone
+ensure_hq_write_clone
 ensure_caddyfile
 install_units
 check_sqlite_release

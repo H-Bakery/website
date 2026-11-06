@@ -39,6 +39,9 @@ import { HqProductsOptions } from './services/hq-products.service'
 import { createPreorderRouters } from './routes/preorders.routes'
 import { PreordersOptions } from './services/preorders.service'
 import { BackzettelRouterOptions } from './routes/backzettel.routes'
+import { createHqSyncRouter } from './routes/hq-sync.routes'
+import { HqEditsSync } from './services/hq-edits-sync.service'
+import { HqSnapshotWriter } from './services/hq-snapshots.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
 
 export interface CreateAppOptions {
@@ -78,6 +81,14 @@ export interface CreateAppOptions {
    * `HQ_DIR`, `HQ_PRODUCTS_DIR`, else `<cwd>/../hq`.
    */
   backzettel?: BackzettelRouterOptions
+  /**
+   * B5b + Z9: the hq write-back (rolling PR of `app/edits`) and the snapshot
+   * writer (`data/production/**` on `main`). `server.ts` builds them from the
+   * environment and starts their retry timers; without them both are
+   * disabled (`/api/hq-sync/status` says so) and product saves only commit
+   * locally (B5).
+   */
+  hqSync?: { edits?: HqEditsSync; snapshots?: HqSnapshotWriter }
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -117,8 +128,23 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api/users', createUsersRouter(auth)) // inhaber only
 
   // --- Pilot domains -------------------------------------------------------
-  // B5: hq markdown; reads any session, writes inhaber (HQ_WRITE_DIR commit)
-  const hqProducts = createHqProductsRouters(options.hqProducts)
+  // B5b/Z9: write-back to hq; disabled unless server.ts passes configured ones
+  const edits =
+    options.hqSync?.edits ??
+    new HqEditsSync({
+      writeDir: options.hqProducts?.writeDir ?? null,
+      token: null,
+    })
+  const snapshots =
+    options.hqSync?.snapshots ?? new HqSnapshotWriter({ snapshotDir: null })
+  // B5: hq markdown; reads any session, writes inhaber (HQ_WRITE_DIR commit,
+  // then B5b pushes it); "wartet auf Freigabe" is measured against origin/main
+  const hqProducts = createHqProductsRouters({
+    approvedFiles: () => edits.approvedProductFiles(),
+    afterCommit: () => edits.notifyCommitted(),
+    ...options.hqProducts,
+  })
+  edits.onWorktreeChanged(() => hqProducts.service.invalidate())
   // B6: reads any session, visits inhaber/verkauf/fahrer, master data
   // inhaber; products of a visit come from the same hq catalogue (read clone)
   app.use(
@@ -140,7 +166,37 @@ export function createApp(options: CreateAppOptions = {}): Application {
   app.use('/api/preorders', preorders.preorders)
   app.use('/api/deliveries', preorders.deliveries)
   app.use('/api/orders', preorders.orders)
-  app.use('/api/backzettel', createBackzettelRouter(options.backzettel)) // Z3
+  // Z3; Z9 writes the confirmed day to hq data/production/backzettel/;
+  // Z4 writes Grundmengen like the products (write worktree, B5b PR) and
+  // reads the cash reports for the reference column
+  app.use(
+    '/api/backzettel',
+    createBackzettelRouter({
+      write: {
+        writeDir: hqProducts.service.writeDir,
+        writeBranch: hqProducts.service.writeBranch,
+        production: hqProducts.service.production,
+        afterCommit: () => edits.notifyCommitted(),
+        approvedFile: (rel) => edits.approvedTextFile(rel),
+      },
+      reference: {
+        reportsDir: options.hq?.reportsDir,
+        today: options.hq?.today,
+        log: options.hq?.log?.warn,
+      },
+      ...(snapshots.enabled
+        ? {
+            onConfirmed: (day, { role }) =>
+              snapshots.backzettelConfirmed(day, role),
+            onReopened: (date, { role }) =>
+              snapshots.backzettelReopened(date, role),
+          }
+        : {}),
+      ...options.backzettel,
+    })
+  )
+  // B5b/Z9 status + retry, inhaber only
+  app.use('/api/hq-sync', createHqSyncRouter({ edits, snapshots }))
 
   app.use(notFoundHandler)
   app.use(createErrorHandler())

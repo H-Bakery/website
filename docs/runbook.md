@@ -33,8 +33,10 @@ Caddy :443  ── /api/* ──► bakery-api         127.0.0.1:5000  (node, es
                                 │
                                 ├─ /var/lib/bakery/bakery.db      SQLite (WAL)
                                 ├─ /var/lib/bakery/hq             hq-Lese-Klon (main)
-                                └─ /var/lib/bakery/hq-write       hq-Schreib-Klon (B5b, Z9)
-Timer: hq-Sync alle 10 min + 14:50/17:50 · Backup 23:30 · Health alle 5 min
+                                ├─ /var/lib/bakery/hq-write       hq-Schreib-Klon, Branch app/edits (B5b)
+                                └─ /var/lib/bakery/hq-write-main  zweiter Worktree davon auf main (Z9)
+Timer: hq-Sync alle 10 min + 14:50/17:50 · Vorbestellungs-Snapshot 22:15 · Backup 23:30 ·
+       Anonymisierung 23:45 · Health alle 5 min · in der API: Push/PR + Snapshots alle 15 min
 ```
 
 | Ort                                 | Inhalt                                                         |
@@ -51,7 +53,8 @@ Timer: hq-Sync alle 10 min + 14:50/17:50 · Backup 23:30 · Health alle 5 min
 | `journalctl -u bakery-*`            | alle Logs                                                      |
 
 Dienste: `bakery-api`, `bakery-management` (laufen dauerhaft, `Restart=always`), dazu
-`bakery-hq-sync`, `bakery-backup`, `bakery-health`, `bakery-anonymize` als Timer. Alles läuft als
+`bakery-hq-sync`, `bakery-backup`, `bakery-health`, `bakery-anonymize`,
+`bakery-snapshot-preorders` als Timer. Alles läuft als
 Benutzer `bakery`.
 Die Zeitpläne stehen ausdrücklich in `Europe/Berlin`.
 
@@ -150,6 +153,9 @@ Das Skript legt an bzw. prüft (jeder Schritt ist wiederholbar):
   `HQ_GITHUB_TOKEN` gesetzt ist). Einen **schon vorhandenen** hq-Klon markiert `install.sh` nicht
   selbst als Lese-Klon (das würde die Schutzprüfung von `hq-sync.sh` aushebeln), sondern meldet
   ihn – Markierung dann von Hand, §6.
+- hq-Schreib-Klon `HQ_WRITE_DIR` auf Branch `app/edits` (Markierung `bakery.role=write-clone`)
+  und daneben der Snapshot-Worktree `HQ_SNAPSHOT_DIR` auf `main` (§6.1) – ebenfalls erst mit
+  `HQ_GITHUB_TOKEN`, einen vorhandenen Klon fasst `install.sh` nicht an.
 - Skripte nach `/opt/bakery/bin`, Units nach `/etc/systemd/system`, Timer aktiviert
 
 **Sofort danach:** den Inhalt von `/etc/bakery/restic-password` in den Passwort-Safe des Inhabers.
@@ -161,7 +167,7 @@ Ohne dieses Passwort ist jedes Off-site-Backup wertlos.
 sudoedit /etc/bakery/bakery.env    # Domain in CORS_ORIGIN / NEXT_PUBLIC_API_URL, HQ_GITHUB_TOKEN (Q3)
 sudoedit /etc/bakery/ops.env       # TELEGRAM_*, RESTIC_REPOSITORY + Zugang (Q4)
 sudoedit /etc/caddy/bakery.env     # BAKERY_DOMAIN, ACME_EMAIL, ACME_DNS_* (Q2)
-sudo /opt/bakery/bin/install.sh    # noch einmal: legt jetzt den hq-Lese-Klon an
+sudo /opt/bakery/bin/install.sh    # noch einmal: legt jetzt Lese-Klon, Schreib-Klon und Snapshot-Worktree an
 ```
 
 Format beider Dateien: `KEY=wert`, ohne `export`, ohne Leerzeichen um `=`. Sie werden von
@@ -456,6 +462,67 @@ cat /var/lib/bakery/state/hq-sync.ok      # Zeitpunkt + Commit des letzten Erfol
 
 Der Health-Check meldet, wenn der letzte erfolgreiche Sync älter als 90 Minuten ist.
 
+### 6.1 Schreiben nach hq (B5b, Z9)
+
+Die API schreibt an zwei Stellen, beide im **Schreib-Klon**, nie im Lese-Klon (roadmap §4a):
+
+| Was                                             | Worktree                                            | Branch      | Wie es in hq landet                                                                                                                                                                        |
+| ----------------------------------------------- | --------------------------------------------------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Produktänderungen (Verwaltung → Produkte)       | `HQ_WRITE_DIR` (`/var/lib/bakery/hq-write`)         | `app/edits` | Commit als „Verwaltung (App)“ + `Co-authored-by`, Rebase auf `origin/main`, `push --force-with-lease`, **eine** offene PR „Stammdaten aus der Verwaltung“; H2 mergt sie bei grüner Prüfung |
+| Freigegebener Backzettel, Vorbestellungs-Summen | `HQ_SNAPSHOT_DIR` (`/var/lib/bakery/hq-write-main`) | `main`      | Commit nur von `data/production/**`, Push direkt nach `main`; abgelehnt → `pull --rebase` + ein zweiter Versuch                                                                            |
+
+- Push und PR laufen nach jedem Speichern und **alle 15 Minuten** (`HQ_SYNC_RETRY_MS`); ohne
+  Internet bleiben die Commits auf der Box und gehen beim nächsten Versuch raus. Nichts geht
+  verloren, solange niemand die Klone löscht.
+- Snapshots: beim Freigeben des Backzettels `data/production/backzettel/<Tag>.json` + `.md`
+  (Mengen, Hefeteig-Wiegeliste, Füllungen, Vorbereitung; „Freigegeben (Backstube)“ – **nie ein
+  Name**), jede Nacht 22:15 `data/production/vorbestellungen/<Tag>.json` (Summen je Produkt/Sorte,
+  Zahl je Kanal und Sammelstelle – keine Kundendaten).
+- Ohne `HQ_GITHUB_TOKEN` ist die PR-Übertragung aus (Produktänderungen bleiben lokale Commits);
+  ohne `HQ_SNAPSHOT_DIR` gibt es keine Snapshots. Der Status sagt beides.
+
+Status (als Inhaber angemeldet; in der Oberfläche folgt er mit F4):
+
+```bash
+curl -s -H "Authorization: Bearer <token>" https://intern.<domain>/api/hq-sync/status
+# pendingCommits  noch nicht auf GitHub   unmergedCommits  wartet auf Freigabe (PR offen)
+# lastError.code  network | push_rejected | rebase_conflict | github_failed | wrong_branch | …
+# snapshots.*     dasselbe für data/production/**
+curl -s -X POST -H "Authorization: Bearer <token>" https://intern.<domain>/api/hq-sync/retry   # sofort statt in 15 min
+```
+
+Von Hand:
+
+```bash
+sudo systemctl start bakery-snapshot-preorders.service && journalctl -u bakery-snapshot-preorders -n 20
+# einen verpassten Tag nachholen (Box war um 22:15 und bis Mitternacht aus):
+sudo -u bakery bash -c 'set -a; . /etc/bakery/bakery.env; set +a; cd /opt/bakery/current &&
+  node dist/apps/bakery-api/bundle/cli.js snapshot-preorders --date 2026-11-28'
+sudo -u bakery git -C /var/lib/bakery/hq-write log --oneline origin/main..app/edits   # wartet auf Freigabe
+sudo -u bakery git -C /var/lib/bakery/hq-write-main log --oneline origin/main..main   # Snapshots noch nicht oben
+```
+
+| `lastError.code`                 | Bedeutung                                                                                                     | Abhilfe                                                                                                                                                                                       |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `network`                        | GitHub nicht erreichbar oder Token ungültig                                                                   | Internet? Token (Q3)? Wiederholt sich selbst                                                                                                                                                  |
+| `push_rejected`                  | jemand hat parallel geschrieben, auch der zweite Versuch scheiterte                                           | wiederholt sich selbst; bleibt es, Log ansehen                                                                                                                                                |
+| `rebase_conflict` (`files`)      | dieselbe Datei wurde in hq anders geändert                                                                    | Commits bleiben auf der Box. In `files` nachsehen, Konflikt im Schreib-Klon von Hand auflösen (`git rebase origin/main`, Dateien richten, `git rebase --continue`), dann `/api/hq-sync/retry` |
+| `github_failed`                  | Push ok, PR ließ sich nicht anlegen                                                                           | wiederholt sich selbst; Token braucht „Pull requests: write“                                                                                                                                  |
+| `wrong_branch`, `worktree_dirty` | jemand hat im Schreib-Klon gearbeitet                                                                         | `git status` im betroffenen Worktree, auf `app/edits` bzw. `main` zurück, nichts verwerfen ohne Rücksprache                                                                                   |
+| `foreign_conflict` (`files`)     | auf `app/edits` liegt ein Commit von Hand (nicht aus der App), der sich nicht mit den App-Änderungen verträgt | Nichts wird überschrieben, nichts gepusht. Im Schreib-Klon `git cherry-pick <commit>` von Hand auflösen oder den fremden Commit in die PR auf GitHub übernehmen, dann `/api/hq-sync/retry`    |
+| `repo_locked`                    | ein anderer Vorgang (Server/CLI) hielt das Verzeichnis zu lange                                               | wiederholt sich selbst; ein Snapshot ist dann schon lokal committet                                                                                                                           |
+
+Eine PR, die jemand **ohne Merge schließt**, öffnet die App beim nächsten Speichern neu – die
+Commits liegen ja weiter auf `app/edits`. Änderungen wirklich verwerfen: im Schreib-Klon
+`git reset --hard origin/main` auf `app/edits` (vorher `git log origin/main..` ansehen), dann
+`git push --force-with-lease origin app/edits`.
+
+Ein **Squash-Merge** der PR wird am Inhalt erkannt (die Dateien der App stehen gleich auf `main`),
+auch wenn `main` inzwischen weitergelaufen ist; spätere Änderungen werden neu aufgesetzt. Trotzdem
+lieber mit Merge-Commit mergen (H2). Wer auf `app/edits` von Hand einen Commit pusht (z. B. um die
+Prüfung grün zu machen), dem überschreibt die App ihn nicht: sie übernimmt ihn per Cherry-Pick
+(Merge-Commits aus der GitHub-Oberfläche nicht – Konfliktlösungen dort gehen verloren).
+
 ## 7. Fernwartung (O4, wartet auf Q8)
 
 Vorschlag: **Tailscale nur auf der Box** – keine Portfreigabe im Router, kein Subnet-Routing,
@@ -502,19 +569,21 @@ Minute der Störung.
 
 ### 8.2 Was tun bei …
 
-| Symptom                                               | Prüfen                                                        | Abhilfe                                                                                 |
-| ----------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Alarm „API": Seiten laden, aber Daten fehlen / Fehler | `journalctl -u bakery-api -n 100`                             | Absturzschleife nach Deploy → `deploy.sh --rollback`; DB gesperrt/kaputt → §5.4         |
-| Alarm „Verwaltung": Seite lädt nicht                  | `journalctl -u bakery-management -n 100`                      | `systemctl restart bakery-management`; nach Deploy → `--rollback`                       |
-| Seite lädt auf keinem Gerät, Box läuft                | `systemctl status caddy`, vom Handy `https://intern.<domain>` | Zertifikat (`journalctl -u caddy`), DNS-Rebind-Ausnahme (§3.2), feste IP geändert?      |
-| Browser warnt vor dem Zertifikat / Alarm „HTTPS"      | `journalctl -u caddy -g acme`                                 | DNS-Token abgelaufen/geändert (Q2) → `/etc/caddy/bakery.env`, `systemctl restart caddy` |
-| Box antwortet gar nicht (kein Ping, kein SSH)         | Strom, Kabel, LED                                             | Stromstecker ziehen und wieder einstecken; Papier-Fallback; Entwickler anrufen          |
-| Alarm „Backup"                                        | `journalctl -u bakery-backup -n 50`                           | Exit 10–13 siehe `backup.sh`; Ziel/Netz prüfen; `systemctl start bakery-backup`         |
-| Alarm „hq-Sync"                                       | `journalctl -u bakery-hq-sync -n 20`                          | §6; die App läuft mit dem letzten Stand weiter, kein Notfall                            |
-| Anonymisierung lief nicht / `unfinished` wächst       | `journalctl -u bakery-anonymize -n 50`                        | ausstehende Migration → API neu starten; dann `systemctl start bakery-anonymize`        |
-| Alarm „Speicherplatz"                                 | `df -h /var/lib/bakery`, `du -sh /opt/bakery/releases/*`      | `KEEP_RELEASES` senken, `journalctl --vacuum-time=14d`, alte `backup/snapshots` löschen |
-| Produkte/Preise geändert, App zeigt alten Stand       | `cat /var/lib/bakery/state/hq-sync.ok`                        | Änderung schon in hq `main` gemerged? Sonst „wartet auf Freigabe" (D6); Sync von Hand   |
-| Kein Telegram trotz Störung                           | `journalctl -u bakery-health -n 20`                           | Token/Chat-ID in `ops.env`; Telegram-Fehler werden beim nächsten Lauf erneut gesendet   |
+| Symptom                                               | Prüfen                                                                         | Abhilfe                                                                                 |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------- |
+| Alarm „API": Seiten laden, aber Daten fehlen / Fehler | `journalctl -u bakery-api -n 100`                                              | Absturzschleife nach Deploy → `deploy.sh --rollback`; DB gesperrt/kaputt → §5.4         |
+| Alarm „Verwaltung": Seite lädt nicht                  | `journalctl -u bakery-management -n 100`                                       | `systemctl restart bakery-management`; nach Deploy → `--rollback`                       |
+| Seite lädt auf keinem Gerät, Box läuft                | `systemctl status caddy`, vom Handy `https://intern.<domain>`                  | Zertifikat (`journalctl -u caddy`), DNS-Rebind-Ausnahme (§3.2), feste IP geändert?      |
+| Browser warnt vor dem Zertifikat / Alarm „HTTPS"      | `journalctl -u caddy -g acme`                                                  | DNS-Token abgelaufen/geändert (Q2) → `/etc/caddy/bakery.env`, `systemctl restart caddy` |
+| Box antwortet gar nicht (kein Ping, kein SSH)         | Strom, Kabel, LED                                                              | Stromstecker ziehen und wieder einstecken; Papier-Fallback; Entwickler anrufen          |
+| Alarm „Backup"                                        | `journalctl -u bakery-backup -n 50`                                            | Exit 10–13 siehe `backup.sh`; Ziel/Netz prüfen; `systemctl start bakery-backup`         |
+| Alarm „hq-Sync"                                       | `journalctl -u bakery-hq-sync -n 20`                                           | §6; die App läuft mit dem letzten Stand weiter, kein Notfall                            |
+| Anonymisierung lief nicht / `unfinished` wächst       | `journalctl -u bakery-anonymize -n 50`                                         | ausstehende Migration → API neu starten; dann `systemctl start bakery-anonymize`        |
+| Produkt „wartet auf Freigabe“ seit Stunden            | `/api/hq-sync/status` (§6.1)                                                   | `lastError`? PR offen, aber H2-Prüfung rot → PR auf GitHub ansehen                      |
+| Backzettel/Vorbestellungen fehlen in hq               | `/api/hq-sync/status` → `snapshots`, `journalctl -u bakery-snapshot-preorders` | §6.1; offline wird alle 15 min nachgeschoben                                            |
+| Alarm „Speicherplatz"                                 | `df -h /var/lib/bakery`, `du -sh /opt/bakery/releases/*`                       | `KEEP_RELEASES` senken, `journalctl --vacuum-time=14d`, alte `backup/snapshots` löschen |
+| Produkte/Preise geändert, App zeigt alten Stand       | `cat /var/lib/bakery/state/hq-sync.ok`                                         | Änderung schon in hq `main` gemerged? Sonst „wartet auf Freigabe" (D6); Sync von Hand   |
+| Kein Telegram trotz Störung                           | `journalctl -u bakery-health -n 20`                                            | Token/Chat-ID in `ops.env`; Telegram-Fehler werden beim nächsten Lauf erneut gesendet   |
 
 ## 9. Papier-Fallback
 
@@ -537,8 +606,10 @@ Liegt ausgedruckt im Laden und in der Backstube (P6):
   `apps/bakery-api/src/config/env.ts` abgeglichen.
 - **B3 (erledigt, `feat/B3-auth`):** `create-user`-CLI-Befehl steht in §3.9; `TRUST_PROXY`
   (Vorgabe `loopback`) in `deploy/bakery.env.example` dokumentiert.
-- **B5b/Z9:** Anlage des Schreib-Klons `HQ_WRITE_DIR` (und des `main`-Worktrees für Snapshots)
-  gehört zu diesen Aufgaben; `install.sh` legt nur den Lese-Klon an.
+- **B5b/Z9 (`feat/B5b-Z9-hq-writeback`):** `install.sh` legt jetzt auch Schreib-Klon und
+  Snapshot-Worktree an (§3.5, §6.1) – auf der Box noch nicht ausprobiert. Vor dem ersten Push:
+  H1 muss gemergt sein (die Pipeline committet sonst ohne Pfadangabe und scheitert an unseren
+  Pushes nach `main`), und H2 für das Automerge der PR.
 - Die Caddyfile ist ohne Caddy-Binary geschrieben und nicht maschinell geprüft; auf der Box
   nach dem Ausfüllen von `/etc/caddy/bakery.env` prüfen:
   `sudo bash -c 'set -a; . /etc/caddy/bakery.env; caddy validate --config /etc/caddy/Caddyfile'`.

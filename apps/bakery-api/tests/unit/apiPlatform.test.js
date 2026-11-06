@@ -94,17 +94,23 @@ describe('loadHqConfig (B5)', () => {
     expect(api.loadHqConfig({}, '/srv/x')).toEqual({
       productsDir: null,
       writeDir: null,
+      snapshotDir: null,
     })
     expect(api.loadHqConfig({ HQ_DIR: '/srv/hq' }, '/srv/x')).toEqual({
       productsDir: '/srv/hq/products',
       writeDir: null,
+      snapshotDir: null,
     })
     expect(
       api.loadHqConfig(
         { HQ_DIR: '/srv/hq', HQ_PRODUCTS_DIR: 'p', HQ_WRITE_DIR: 'w' },
         '/srv/x'
       )
-    ).toEqual({ productsDir: '/srv/x/p', writeDir: '/srv/x/w' })
+    ).toEqual({
+      productsDir: '/srv/x/p',
+      writeDir: '/srv/x/w',
+      snapshotDir: null,
+    })
   })
 
   test('production: read clone and write worktree required and absolute', () => {
@@ -135,7 +141,11 @@ describe('loadHqConfig (B5)', () => {
         HQ_DIR: '/var/hq',
         HQ_WRITE_DIR: '/var/hq-write',
       })
-    ).toEqual({ productsDir: '/var/hq/products', writeDir: '/var/hq-write' })
+    ).toEqual({
+      productsDir: '/var/hq/products',
+      writeDir: '/var/hq-write',
+      snapshotDir: null,
+    })
   })
 
   test('the write worktree may never be (inside) the read clone', () => {
@@ -160,6 +170,55 @@ describe('loadHqConfig (B5)', () => {
     ]) {
       expect(() => api.loadHqConfig(env, '/srv/x')).toThrow(/separate clone/)
     }
+  })
+
+  test('Z9: HQ_SNAPSHOT_DIR is its own worktree, absolute in production', () => {
+    const base = { HQ_DIR: '/var/hq', HQ_WRITE_DIR: '/var/hq-write' }
+    expect(
+      api.loadHqConfig({ ...base, HQ_SNAPSHOT_DIR: '/var/hq-write-main' })
+        .snapshotDir
+    ).toBe('/var/hq-write-main')
+    for (const snap of [
+      '/var/hq/s',
+      '/var/hq-write',
+      '/var/hq-write/s',
+      '/var',
+    ]) {
+      expect(() =>
+        api.loadHqConfig({ ...base, HQ_SNAPSHOT_DIR: snap }, '/srv/x')
+      ).toThrow(/HQ_SNAPSHOT_DIR/)
+    }
+    expect(() =>
+      api.loadHqConfig({
+        ...base,
+        NODE_ENV: 'production',
+        HQ_SNAPSHOT_DIR: 'snap',
+      })
+    ).toThrow(/HQ_SNAPSHOT_DIR must be absolute/)
+  })
+})
+
+describe('loadHqSyncConfig (B5b/Z9)', () => {
+  test('defaults, token fallback and validation', () => {
+    expect(api.loadHqSyncConfig({})).toEqual({
+      token: null,
+      githubRepo: 'H-Bakery/hq',
+      githubApiUrl: 'https://api.github.com',
+      retryMs: 900000,
+    })
+    expect(api.loadHqSyncConfig({ GITHUB_TOKEN: 'g' }).token).toBe('g')
+    expect(
+      api.loadHqSyncConfig({ GITHUB_TOKEN: 'g', HQ_GITHUB_TOKEN: 'h' }).token
+    ).toBe('h')
+    expect(() => api.loadHqSyncConfig({ HQ_GITHUB_REPO: 'nope' })).toThrow(
+      /owner\/repo/
+    )
+    expect(() =>
+      api.loadHqSyncConfig({ GITHUB_API_URL: 'file:///etc' })
+    ).toThrow(/GITHUB_API_URL/)
+    expect(() => api.loadHqSyncConfig({ HQ_SYNC_RETRY_MS: '5' })).toThrow(
+      /at least 1000/
+    )
   })
 })
 

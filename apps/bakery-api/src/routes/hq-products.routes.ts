@@ -41,8 +41,10 @@ export interface HqProductsRouters {
 
 function editorOf(req: Request) {
   return {
+    id: req.user?.id ?? null,
     username: req.user?.username ?? 'unbekannt',
-    displayName: req.user?.displayName ?? req.user?.username ?? 'unbekannt',
+    // Nie auf den Login zurückfallen: der Name geht nach hq (D13).
+    displayName: req.user?.displayName || 'unbekannt',
   }
 }
 

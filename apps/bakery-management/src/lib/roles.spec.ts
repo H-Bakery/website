@@ -141,9 +141,10 @@ describe('getNavigationForRole', () => {
     ])
   })
 
-  it('Backstube ohne gebaute Backstube-Seiten: Dashboard und Einstellungen', () => {
+  it('Backstube (vor Z6): Dashboard, Backzettel und Einstellungen', () => {
     expect(hrefs(getNavigationForRole('backstube', true))).toEqual([
       '/admin',
+      '/admin/backzettel',
       '/admin/settings',
     ])
   })
