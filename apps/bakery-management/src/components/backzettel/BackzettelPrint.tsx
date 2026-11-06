@@ -97,6 +97,13 @@ export const backzettelPrintStyles = (
           breakAfter: 'avoid',
         },
         '.bz-print .bz-section': { breakInside: 'avoid' },
+        '.bz-print th.bz-delta-head': {
+          fontSize: '11.5pt',
+          fontWeight: 700,
+          textAlign: 'left',
+          padding: '2.5mm 0 0.5mm',
+          borderBottom: '1.5pt solid #000',
+        },
         '.bz-print h3': { fontSize: '11pt', margin: '3mm 0 1mm' },
         '.bz-print table': {
           width: '100%',
@@ -309,9 +316,17 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
           </div>
         ))}
         {deltas.length > 0 && (
-          <div className="avoid">
-            <h2>Nachträge seit der Freigabe (nicht in den Mengen oben)</h2>
+          <div className="avoid" data-testid="print-deltas">
+            {/* Überschrift als Tabellenkopf: läuft die Liste auf die nächste
+                Seite, steht sie dort noch einmal (W4-verify r4). */}
             <table>
+              <thead>
+                <tr>
+                  <th colSpan={3} className="bz-delta-head">
+                    Nachträge seit der Freigabe (nicht in den Mengen oben)
+                  </th>
+                </tr>
+              </thead>
               <tbody>
                 {deltas.map((d) => (
                   <tr key={d.id}>

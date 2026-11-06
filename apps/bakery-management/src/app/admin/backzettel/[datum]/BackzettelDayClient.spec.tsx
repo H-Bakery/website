@@ -667,6 +667,12 @@ describe('Backzettel-Tagesplanung', () => {
         if (i > 0) expect(t.classList.contains('follow')).toBe(true)
         expect(t.querySelectorAll('colgroup col')).toHaveLength(8)
       })
+      // Die Überschrift der Nachträge steht im Tabellenkopf und wiederholt
+      // sich beim Seitenumbruch (W4-verify r4).
+      const deltaHead = sheet.querySelector(
+        '[data-testid="print-deltas"] thead'
+      )
+      expect(deltaHead).toHaveTextContent('Nachträge seit der Freigabe')
       expect(p1).toHaveTextContent('(Liste unten)')
       expect(p1).not.toHaveTextContent('siehe unten')
       expect(p1).toHaveTextContent(/bereits 50 erledigt - noch \+\d+/)

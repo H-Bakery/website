@@ -164,7 +164,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         title: 'Drucken',
         steps: [
           'Unten **Planung & Druck**, dann **Drucken**.',
-          'Seite 1 Backzettel, Samstag Seite 2 Abwiegen und Füllungen, dann die Vorbereitung.',
+          'Zuerst der Backzettel (mit vielen Nachträgen auch zwei Blätter), samstags dann Abwiegen und Füllungen, zuletzt die Vorbereitung.',
           'Den Ausdruck des freigegebenen Zettels aufheben – er ist der Ersatz bei einem Ausfall.',
         ],
       },
