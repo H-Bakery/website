@@ -149,6 +149,89 @@ describe('session and roles', () => {
       .send({ status: 'abgeholt', paid: true })
     expect(handover.status).toBe(200)
     expect(handover.body.data).toMatchObject({ status: 'abgeholt', paid: true })
+    // W4-verify r2: the Fahrer records payment but never takes it back
+    const undo = await request(api.app)
+      .post(`/api/preorders/${created.id}/status`)
+      .set(tokens['fahrer'])
+      .send({ paid: false })
+    expect(undo.status).toBe(403)
+    expect(undo.body).toMatchObject({ error: 'paid_undo_forbidden' })
+    expect(undo.body.message).toMatch(/nur der Verkauf/)
+    const bulkUndo = await request(api.app)
+      .post('/api/preorders/bulk-status')
+      .set(tokens['fahrer'])
+      .send({ ids: [created.id], paid: false })
+    expect(JSON.stringify(bulkUndo.body)).not.toMatch(/"paid":false/)
+    const byVerkauf = await request(api.app)
+      .post(`/api/preorders/${created.id}/status`)
+      .set(tokens['verkauf'])
+      .send({ paid: false })
+    expect(byVerkauf.status).toBe(200)
+    expect(byVerkauf.body.data.paid).toBe(false)
+  })
+})
+
+describe('paid amount and balance (W4-verify r2)', () => {
+  const DAY = '2026-12-02'
+  it('keeps what was paid, shows a balance after an edit and a refund after a cancel', async () => {
+    const created = (
+      await create(
+        laden({
+          pickupDate: DAY,
+          paid: true,
+          items: [{ productId: 'kornbrot-500g', quantity: 2 }],
+        })
+      )
+    ).body.data
+    expect(created.paidAmount).toBe(created.total)
+    expect(created.paymentBalance).toBe(0)
+    const price = created.total / 2
+
+    const edited = await request(api.app)
+      .patch(`/api/preorders/${created.id}`)
+      .set(tokens['verkauf'])
+      .send({ items: [{ productId: 'kornbrot-500g', quantity: 3 }] })
+    expect(edited.status).toBe(200)
+    expect(edited.body.data).toMatchObject({
+      paid: true,
+      paidAmount: created.total,
+      paymentBalance: price,
+    })
+    let day = await request(api.app)
+      .get(`/api/preorders/day?date=${DAY}`)
+      .set(tokens['verkauf'])
+    expect(day.body.data.summary).toMatchObject({
+      unpaidTotal: price,
+      topUpCount: 1,
+      topUpTotal: price,
+      refundCount: 0,
+    })
+
+    // "Bezahlt" again = the rest was collected
+    const settled = await request(api.app)
+      .post(`/api/preorders/${created.id}/status`)
+      .set(tokens['verkauf'])
+      .send({ paid: true })
+    expect(settled.status).toBe(200)
+    expect(settled.body.data).toMatchObject({
+      paidAmount: edited.body.data.total,
+      paymentBalance: 0,
+    })
+
+    const cancelled = await request(api.app)
+      .post(`/api/preorders/${created.id}/cancel`)
+      .set(tokens['verkauf'])
+      .send({})
+    expect(cancelled.status).toBe(200)
+    expect(cancelled.body.data.paymentBalance).toBe(-edited.body.data.total)
+    day = await request(api.app)
+      .get(`/api/preorders/day?date=${DAY}`)
+      .set(tokens['verkauf'])
+    expect(day.body.data.summary).toMatchObject({
+      unpaidTotal: 0,
+      refundCount: 1,
+      refundTotal: edited.body.data.total,
+    })
   })
 })
 

@@ -319,9 +319,39 @@ export default function PreorderDetailClient({
         {preorder.paid && (
           <Typography color="success.main" sx={{ fontWeight: 600 }}>
             bezahlt
+            {(preorder.paymentBalance ?? 0) !== 0 &&
+              preorder.paidAmount != null &&
+              ` (${formatCurrency(preorder.paidAmount)})`}
           </Typography>
         )}
       </Stack>
+
+      {/* W4-Verifikation Runde 2: bezahlt, aber der Betrag stimmt nicht mehr */}
+      {preorder.paid && (preorder.paymentBalance ?? 0) > 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }} data-testid="payment-balance">
+          Bereits bezahlt: {formatCurrency(preorder.paidAmount ?? 0)} - die
+          Bestellung kostet jetzt {formatCurrency(preorder.total)}. Bei der
+          Abholung noch{' '}
+          <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
+          kassieren.
+        </Alert>
+      )}
+      {preorder.paid && (preorder.paymentBalance ?? 0) < 0 && (
+        <Alert severity="warning" sx={{ mb: 2 }} data-testid="payment-balance">
+          {preorder.status === 'storniert'
+            ? `Storniert, aber bereits bezahlt: ${formatCurrency(
+                -(preorder.paymentBalance ?? 0)
+              )} an die Kundschaft zurückgeben.`
+            : `Bereits bezahlt: ${formatCurrency(
+                preorder.paidAmount ?? 0
+              )} - die Bestellung kostet jetzt ${formatCurrency(
+                preorder.total
+              )}. ${formatCurrency(
+                -(preorder.paymentBalance ?? 0)
+              )} zurückgeben.`}{' '}
+          Danach „Erstattet“ tippen.
+        </Alert>
+      )}
 
       {preorder.anonymizedAt && (
         <Alert severity="info" sx={{ mb: 2 }}>
@@ -421,6 +451,52 @@ export default function PreorderDetailClient({
               {preorder.paid ? 'Doch nicht bezahlt' : 'Bezahlt'}
             </Button>
           )}
+          {preorder.status === 'storniert' && preorder.paid && canWrite && (
+            <Button
+              variant="contained"
+              color="success"
+              startIcon={<PaidIcon />}
+              onClick={() =>
+                setStatus(
+                  { paid: false },
+                  'Erstattet - die Bestellung gilt nicht mehr als bezahlt.'
+                )
+              }
+              disabled={busy}
+              sx={actionSx}
+            >
+              {`Erstattet (${formatCurrency(
+                preorder.paidAmount ?? preorder.total
+              )})`}
+            </Button>
+          )}
+          {preorder.status !== 'storniert' &&
+            preorder.paid &&
+            (preorder.paymentBalance ?? 0) !== 0 && (
+              <Button
+                variant="contained"
+                color="success"
+                startIcon={<PaidIcon />}
+                onClick={() =>
+                  setStatus(
+                    { paid: true },
+                    (preorder.paymentBalance ?? 0) > 0
+                      ? 'Rest kassiert - jetzt voll bezahlt.'
+                      : 'Erstattet - der bezahlte Betrag stimmt wieder.'
+                  )
+                }
+                disabled={busy}
+                sx={actionSx}
+              >
+                {(preorder.paymentBalance ?? 0) > 0
+                  ? `Rest kassiert (${formatCurrency(
+                      preorder.paymentBalance ?? 0
+                    )})`
+                  : `Erstattet (${formatCurrency(
+                      -(preorder.paymentBalance ?? 0)
+                    )})`}
+              </Button>
+            )}
           {preorder.status !== 'offen' && preorder.status !== 'storniert' && (
             <Button
               variant="outlined"
@@ -576,6 +652,18 @@ export default function PreorderDetailClient({
             bleibt in der Liste sichtbar und zählt nicht mehr für die Backstube.
             Gelöscht wird nichts.
           </DialogContentText>
+          {preorder.paid && (
+            <Alert
+              severity="warning"
+              sx={{ mt: 2 }}
+              data-testid="cancel-refund"
+            >
+              Die Bestellung ist bereits bezahlt (
+              {formatCurrency(preorder.paidAmount ?? preorder.total)}). Das Geld
+              muss zurückgegeben werden - die Tagesübersicht führt es unter „Zu
+              erstatten“.
+            </Alert>
+          )}
           {actionError && (
             <Alert severity="error" sx={{ mt: 2 }}>
               {actionError}

@@ -5,6 +5,7 @@ import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   Chip,
@@ -55,6 +56,12 @@ import {
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../../lib/session'
 import {
+  clearLostActions,
+  readLostActions,
+  rememberLostAction,
+  type LostAction,
+} from '../../../../lib/lostActions'
+import {
   bulkPreorderStatus,
   changePreorderStatus,
   fetchPickupPoints,
@@ -95,6 +102,7 @@ import {
   isPickupPlace,
   isWaiting,
   matchesSearch,
+  owesRest,
   placeLabel,
   staleListMessage,
   stepPickupDay,
@@ -214,6 +222,18 @@ function Tile({
 }
 
 /** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
+/** „Übergabe", „Zahlung" … - für die Meldung über eine verlorene Aktion. */
+function describeChange(change: PreorderStatusChange): string {
+  if (change.status === 'abgeholt') {
+    return change.paid ? 'Die Übergabe mit Zahlung' : 'Die Übergabe'
+  }
+  if (change.notCollected) return '„Nicht abgeholt"'
+  if (change.paid !== undefined && change.status === undefined) {
+    return 'Die Zahlung'
+  }
+  return 'Die Änderung'
+}
+
 function handedOverUnpaidNote(
   summary: { handedOverUnpaidTotal?: number } | null | undefined
 ): string | null {
@@ -224,6 +244,17 @@ function handedOverUnpaidNote(
 }
 
 function PaidChip({ preorder }: { preorder: Preorder }) {
+  if (owesRest(preorder)) {
+    return (
+      <Chip
+        size="small"
+        color="warning"
+        variant="outlined"
+        label={`Rest ${formatCurrency(preorder.paymentBalance ?? 0)} offen`}
+        data-paid="rest"
+      />
+    )
+  }
   return preorder.paid ? (
     <Chip
       size="small"
@@ -251,7 +282,7 @@ interface Toast {
    * wenn weiter unten getippt wurde. Fehler bleiben stehen, bis man sie
    * schließt.
    */
-  severity?: 'success' | 'info' | 'error'
+  severity?: 'success' | 'info' | 'warning' | 'error'
 }
 
 type BulkKind = AbholBulkKind
@@ -310,6 +341,10 @@ export default function AbholListeClient({
 
   const [busyId, setBusyId] = useState<number | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  // Nicht gespeicherte Aktionen aus einer abgelaufenen Sitzung (siehe
+  // `lib/lostActions.ts`) - bleiben stehen, bis jemand sie wegklickt.
+  const [lostActions, setLostActions] = useState<LostAction[]>([])
+  useEffect(() => setLostActions(readLostActions()), [])
   const [conflict, setConflict] = useState<string | null>(null)
   const [toast, setToast] = useState<Toast | null>(null)
   const [handover, setHandover] = useState<Preorder | null>(null)
@@ -377,6 +412,18 @@ export default function AbholListeClient({
   /** Zuletzt erfolgreich geladener Tag - sofort nach `await load()` lesbar. */
   const loadedDayRef = useRef<PreorderDay | null>(null)
   /**
+   * Ein Tipp, dessen Ausgang offen ist (Antwort verloren, Liste nicht
+   * nachladbar). Das nächste erfolgreiche Laden - z. B. wenn das WLAN
+   * zurückkommt - löst ihn auf, statt die rote Meldung stehen zu lassen
+   * (W4-Verifikation Runde 2).
+   */
+  const uncertainRef = useRef<{
+    id: number
+    code: string
+    change: PreorderStatusChange
+    text: string
+  } | null>(null)
+  /**
    * Lädt den Tag. `silent`: ohne Ladeanzeige und **ohne die Liste zu
    * leeren** - scheitert es, bleibt der letzte Stand stehen und ein Hinweis
    * sagt, dass er veraltet sein kann. Liefert `true`, wenn neu geladen.
@@ -396,6 +443,26 @@ export default function AbholListeClient({
         setDay(next)
         setLoadError(null)
         setStaleNotice(null)
+        const open = uncertainRef.current
+        if (open) {
+          uncertainRef.current = null
+          const fresh = next.preorders.find((p) => p.id === open.id)
+          setActionError((current) => (current === open.text ? null : current))
+          if (fresh && changeAlreadyApplied(fresh, open.change)) {
+            setToast({
+              text: `${open.code}: Die Verbindung ist wieder da - gespeichert ist es.`,
+              severity: 'success',
+            })
+          } else if (fresh) {
+            const text = `${open.code}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
+            setActionError(text)
+            setToast({ text, severity: 'error' })
+          } else {
+            setToast((current) =>
+              current?.text === open.text ? null : current
+            )
+          }
+        }
         const now = new Date()
         setPrintedAt(
           now.toLocaleString('de-DE', {
@@ -513,13 +580,32 @@ export default function AbholListeClient({
     const reloaded = await load(true)
     const fresh = reloaded ? freshOf(preorder.id) : null
     // Der zweite Versuch nach einer verlorenen Antwort: schon erledigt.
-    const text =
-      fresh && change && changeAlreadyApplied(fresh, change)
-        ? `${preorder.code}: Das ist bereits gespeichert - nichts zu tun.`
-        : `${preorder.code}: ${preorderErrorMessage(
-            err,
-            'Die Bestellung wurde inzwischen geändert.'
-          )} Es wurde nichts überschrieben. ${afterReload(reloaded)}`
+    if (fresh && change && changeAlreadyApplied(fresh, change)) {
+      const text = `${preorder.code}: Das ist bereits gespeichert - nichts zu tun.`
+      setConflict(text)
+      setToast({ text, severity: 'info' })
+      return
+    }
+    // W4-verify r2: Übergabe mit Geld, aber jemand anders hat schon ohne
+    // Zahlung übergeben - das kassierte Geld ist NICHT erfasst. Das muss
+    // stehen bleiben und den nächsten Schritt nennen.
+    if (
+      fresh &&
+      change?.status === 'abgeholt' &&
+      change.paid === true &&
+      fresh.status === 'abgeholt' &&
+      !fresh.paid
+    ) {
+      const text = `${preorder.code}: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt" tippen.`
+      setConflict(text)
+      setActionError(text)
+      setToast({ text, severity: 'warning' })
+      return
+    }
+    const text = `${preorder.code}: ${preorderErrorMessage(
+      err,
+      'Die Bestellung wurde inzwischen geändert.'
+    )} Es wurde nichts überschrieben. ${afterReload(reloaded)}`
     setConflict(text)
     setToast({ text, severity: 'info' })
   }
@@ -552,7 +638,18 @@ export default function AbholListeClient({
       await load(true)
     } catch (err) {
       if (isPreorderConflict(err)) await onConflict(preorder, err, change)
-      else {
+      else if ((err as { status?: unknown } | null)?.status === 401) {
+        // Sitzung beendet (Refresh gescheitert): gleich geht es zur
+        // Anmeldung. Merken, was NICHT gespeichert wurde - sonst bliebe eine
+        // verlorene Übergabe unbemerkt (W4-Verifikation Runde 2).
+        const text = `${preorder.code}${
+          preorder.customerName ? ` (${preorder.customerName})` : ''
+        }: ${describeChange(
+          change
+        )} wurde NICHT gespeichert - die Sitzung war abgelaufen. Bitte wiederholen.`
+        rememberLostAction(text)
+        setActionError(text)
+      } else {
         const kind = requestFailureKind(err)
         if (kind === 'refused') {
           const text = `${preorder.code}: ${preorderErrorMessage(
@@ -576,6 +673,14 @@ export default function AbholListeClient({
               kind,
               reloaded
             )}`
+            if (!reloaded) {
+              uncertainRef.current = {
+                id: preorder.id,
+                code: preorder.code,
+                change,
+                text,
+              }
+            }
             setActionError(text)
             setToast({ text, severity: 'error' })
           }
@@ -610,7 +715,7 @@ export default function AbholListeClient({
   const startHandover = (preorder: Preorder) => {
     // Bezahlt und Verkauf: ein Tipp genügt (Rückgängig im Hinweis). Sonst
     // fragen - nach dem Geld, und Fahrer können nicht zurücknehmen.
-    if (preorder.paid && canWrite) handOver(preorder)
+    if (preorder.paid && !owesRest(preorder) && canWrite) handOver(preorder)
     else setHandover(preorder)
   }
 
@@ -889,9 +994,17 @@ export default function AbholListeClient({
                     size="large"
                     startIcon={<PaidIcon />}
                     onClick={() =>
-                      act(p, { paid: true }, `${name}: bezahlt.`, {
-                        paid: false,
-                      })
+                      act(
+                        p,
+                        { paid: true },
+                        owesRest(p)
+                          ? `${name}: Rest kassiert.`
+                          : `${name}: bezahlt.`,
+                        // Rückgängig nur für den Verkauf - eine erfasste
+                        // Zahlung zurücknehmen darf der Fahrer nicht (API
+                        // 403 paid_undo_forbidden, W4-Verifikation Runde 2).
+                        canWrite && !p.paid ? { paid: false } : undefined
+                      )
                     }
                     disabled={busy}
                     aria-label={`${name}: als bezahlt markieren`}
@@ -1155,6 +1268,28 @@ export default function AbholListeClient({
             onClose={() => setConflict(null)}
           >
             {conflict}
+          </Alert>
+        )}
+        {lostActions.length > 0 && (
+          <Alert
+            severity="error"
+            sx={{ mb: 2 }}
+            data-testid="lost-actions"
+            onClose={() => {
+              clearLostActions()
+              setLostActions([])
+            }}
+          >
+            <AlertTitle>Nicht gespeichert</AlertTitle>
+            {lostActions.map((a) => (
+              <Box
+                key={a.at + a.text}
+                component="span"
+                sx={{ display: 'block' }}
+              >
+                {a.text}
+              </Box>
+            ))}
           </Alert>
         )}
         {actionError && (
@@ -1582,10 +1717,24 @@ export default function AbholListeClient({
                 </Box>
               </DialogContentText>
               <Alert
-                severity={handover.paid ? 'success' : 'info'}
+                severity={
+                  owesRest(handover)
+                    ? 'warning'
+                    : handover.paid
+                    ? 'success'
+                    : 'info'
+                }
                 sx={{ mt: 2 }}
               >
-                {handover.paid
+                {owesRest(handover)
+                  ? `Bezahlt waren ${formatCurrency(
+                      handover.paidAmount ?? 0
+                    )}, die Bestellung kostet jetzt ${formatCurrency(
+                      handover.total
+                    )}: noch ${formatCurrency(
+                      handover.paymentBalance ?? 0
+                    )} kassieren.`
+                  : handover.paid
                   ? `Schon bezahlt (${formatCurrency(handover.total)}).`
                   : `Noch nicht bezahlt: ${formatCurrency(
                       handover.total
@@ -1625,6 +1774,15 @@ export default function AbholListeClient({
               Ohne Zahlung übergeben
             </Button>
           )}
+          {handover && owesRest(handover) && (
+            <Button
+              variant="outlined"
+              onClick={() => handOver(handover)}
+              sx={TOUCH}
+            >
+              Ohne Rest übergeben
+            </Button>
+          )}
           {handover && (
             <Button
               variant="contained"
@@ -1632,11 +1790,18 @@ export default function AbholListeClient({
               autoFocus
               startIcon={<HandoverIcon />}
               onClick={() =>
-                handOver(handover, handover.paid ? undefined : true)
+                handOver(
+                  handover,
+                  handover.paid && !owesRest(handover) ? undefined : true
+                )
               }
               sx={TOUCH}
             >
-              {handover.paid ? 'Übergeben' : 'Bezahlt und übergeben'}
+              {owesRest(handover)
+                ? 'Rest kassiert und übergeben'
+                : handover.paid
+                ? 'Übergeben'
+                : 'Bezahlt und übergeben'}
             </Button>
           )}
         </DialogActions>
@@ -1712,7 +1877,11 @@ export default function AbholListeClient({
 
       <Snackbar
         open={toast !== null}
-        autoHideDuration={toast?.severity === 'error' ? null : 6000}
+        autoHideDuration={
+          toast?.severity === 'error' || toast?.severity === 'warning'
+            ? null
+            : 6000
+        }
         onClose={(_event, reason) => {
           if (reason !== 'clickaway') setToast(null)
         }}

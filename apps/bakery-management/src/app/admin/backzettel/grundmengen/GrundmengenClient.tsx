@@ -83,6 +83,8 @@ interface CellProps {
   unit: string
   editable: boolean
   onSave: (value: number | null) => Promise<void>
+  /** Eingabe ist keine Zahl - die Statuszeile sagt es (W4-verify r2). */
+  onInvalid?: () => void
 }
 
 function ReferenceHint({
@@ -167,6 +169,7 @@ function BaseCell({
   unit,
   editable,
   onSave,
+  onInvalid,
 }: CellProps) {
   const initial = displayValue(value)
   const [draft, setDraft] = useState(initial)
@@ -191,6 +194,7 @@ function BaseCell({
     const parsed = parseInput(draft)
     if (parsed !== null && Number.isNaN(parsed)) {
       setInvalid(true)
+      onInvalid?.()
       return
     }
     setSaving(true)
@@ -260,7 +264,12 @@ function BaseCell({
                 : 'divider',
               borderWidth: invalid || changed ? 2 : 1,
               bgcolor: 'background.paper',
+              // W4-verify r2: auch das Eingabefeld selbst ist 44 px hoch,
+              // nicht nur der Rahmen darum.
               '& input': {
+                height: 44,
+                boxSizing: 'border-box',
+                py: 0,
                 textAlign: 'right',
                 fontVariantNumeric: 'tabular-nums',
                 '&::placeholder': { fontStyle: 'italic', opacity: 0.8 },
@@ -330,6 +339,7 @@ interface GridProps {
   reference: ReferenceResponse | null
   editable: boolean
   onSave: (edit: BaseEdit, label: string) => Promise<void>
+  onInvalid?: (label: string) => void
 }
 
 function approvedCell(
@@ -355,7 +365,19 @@ const UNIT_COLUMN = { display: { xs: 'none', sm: 'table-cell' } } as const
 const UNIT_INLINE = { display: { xs: 'inline', sm: 'none' } } as const
 
 function GrundmengenGrid(props: GridProps) {
-  const { config, reference, editable, onSave } = props
+  const { config, reference, editable, onSave, onInvalid } = props
+  // W4-verify r2: bei 1280 px passt der Sonntag nicht mehr; macOS blendet
+  // die Bildlaufleiste aus - deshalb ein sichtbarer Hinweis.
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [overflowing, setOverflowing] = useState(false)
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    const measure = () => setOverflowing(el.scrollWidth > el.clientWidth + 1)
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [config, editable, reference])
   const days = [...config.days].sort((a, b) => a - b)
   const sections = groupBySection(config)
 
@@ -383,6 +405,7 @@ function GrundmengenGrid(props: GridProps) {
               reference={ref}
               unit={item.unit}
               editable={editable}
+              onInvalid={() => onInvalid?.(label)}
               onSave={(v) =>
                 onSave(
                   variant === null
@@ -410,110 +433,108 @@ function GrundmengenGrid(props: GridProps) {
     })
 
   return (
-    <TableContainer
-      component={Paper}
-      variant="outlined"
-      className="grundmengen-screen-only"
-      sx={{ overflowX: 'auto' }}
-    >
-      <Table size="small" stickyHeader aria-label="Grundmengen je Wochentag">
-        <TableHead>
-          <TableRow>
-            <TableCell
-              sx={{
-                position: 'sticky',
-                left: 0,
-                zIndex: 3,
-                bgcolor: 'background.paper',
-                minWidth: 160,
-              }}
-            >
-              Posten
-            </TableCell>
-            <TableCell sx={UNIT_COLUMN}>Einheit</TableCell>
-            {days.map((wd) => (
+    <>
+      {overflowing && (
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          className="grundmengen-screen-only"
+          data-testid="grundmengen-scroll-hint"
+          sx={{ mb: 0.5 }}
+        >
+          Nicht alle Tage passen nebeneinander - die Tabelle seitlich
+          verschieben (bis {WEEKDAY_LONG[days[days.length - 1]]}).
+        </Typography>
+      )}
+      <TableContainer
+        ref={scrollRef}
+        component={Paper}
+        variant="outlined"
+        className="grundmengen-screen-only"
+        sx={{
+          overflowX: 'auto',
+          // sichtbare Bildlaufleiste auch dort, wo das System sie ausblendet
+          '&::-webkit-scrollbar': { height: 10 },
+          '&::-webkit-scrollbar-thumb': {
+            bgcolor: 'action.disabled',
+            borderRadius: 5,
+          },
+        }}
+      >
+        <Table size="small" stickyHeader aria-label="Grundmengen je Wochentag">
+          <TableHead>
+            <TableRow>
               <TableCell
-                key={wd}
-                align="right"
-                sx={{ minWidth: editable ? 136 : 72 }}
+                sx={{
+                  position: 'sticky',
+                  left: 0,
+                  zIndex: 3,
+                  bgcolor: 'background.paper',
+                  minWidth: 160,
+                }}
               >
-                <abbr
-                  title={WEEKDAY_LONG[wd]}
-                  style={{ textDecoration: 'none' }}
-                >
-                  {WEEKDAY_SHORT[wd]}
-                </abbr>
+                Posten
               </TableCell>
-            ))}
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {sections.map((section) => (
-            <React.Fragment key={section.id}>
-              <TableRow>
+              <TableCell sx={UNIT_COLUMN}>Einheit</TableCell>
+              {days.map((wd) => (
                 <TableCell
-                  colSpan={days.length + 2}
-                  sx={{
-                    bgcolor: 'action.hover',
-                    fontWeight: 700,
-                    py: 0.75,
-                  }}
+                  key={wd}
+                  align="right"
+                  sx={{ minWidth: editable ? 136 : 72 }}
                 >
-                  {section.label}
+                  <abbr
+                    title={WEEKDAY_LONG[wd]}
+                    style={{ textDecoration: 'none' }}
+                  >
+                    {WEEKDAY_SHORT[wd]}
+                  </abbr>
                 </TableCell>
-              </TableRow>
-              {section.items.map((item) => (
-                <React.Fragment key={item.id}>
-                  <TableRow hover data-testid={`row-${item.id}`}>
-                    <TableCell
-                      sx={{
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 1,
-                        bgcolor: 'background.paper',
-                      }}
-                    >
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                        {item.name}
-                      </Typography>
-                      {item.plu.length > 0 && (
-                        <Typography
-                          variant="caption"
-                          sx={{ color: 'text.secondary' }}
-                        >
-                          PLU {item.plu.join(', ')}
-                        </Typography>
-                      )}
-                      <Typography
-                        variant="caption"
-                        sx={{ color: 'text.secondary', ...UNIT_INLINE }}
-                      >
-                        {item.plu.length > 0 ? ' · ' : ''}
-                        {item.unit}
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ color: 'text.secondary', ...UNIT_COLUMN }}>
-                      {item.unit}
-                    </TableCell>
-                    {dayCells(item, null)}
-                  </TableRow>
-                  {item.variants.map((variant) => (
-                    <TableRow
-                      key={variant}
-                      hover
-                      data-testid={`row-${item.id}-${variant}`}
-                    >
+              ))}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {sections.map((section) => (
+              <React.Fragment key={section.id}>
+                <TableRow>
+                  <TableCell
+                    colSpan={days.length + 2}
+                    sx={{
+                      bgcolor: 'action.hover',
+                      fontWeight: 700,
+                      py: 0.75,
+                    }}
+                  >
+                    {section.label}
+                  </TableCell>
+                </TableRow>
+                {section.items.map((item) => (
+                  <React.Fragment key={item.id}>
+                    <TableRow hover data-testid={`row-${item.id}`}>
                       <TableCell
                         sx={{
                           position: 'sticky',
                           left: 0,
                           zIndex: 1,
                           bgcolor: 'background.paper',
-                          pl: 4,
                         }}
                       >
-                        <Typography variant="body2">
-                          {variantLabel(config, variant)}
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {item.name}
+                        </Typography>
+                        {item.plu.length > 0 && (
+                          <Typography
+                            variant="caption"
+                            sx={{ color: 'text.secondary' }}
+                          >
+                            PLU {item.plu.join(', ')}
+                          </Typography>
+                        )}
+                        <Typography
+                          variant="caption"
+                          sx={{ color: 'text.secondary', ...UNIT_INLINE }}
+                        >
+                          {item.plu.length > 0 ? ' · ' : ''}
+                          {item.unit}
                         </Typography>
                       </TableCell>
                       <TableCell
@@ -521,16 +542,43 @@ function GrundmengenGrid(props: GridProps) {
                       >
                         {item.unit}
                       </TableCell>
-                      {dayCells(item, variant)}
+                      {dayCells(item, null)}
                     </TableRow>
-                  ))}
-                </React.Fragment>
-              ))}
-            </React.Fragment>
-          ))}
-        </TableBody>
-      </Table>
-    </TableContainer>
+                    {item.variants.map((variant) => (
+                      <TableRow
+                        key={variant}
+                        hover
+                        data-testid={`row-${item.id}-${variant}`}
+                      >
+                        <TableCell
+                          sx={{
+                            position: 'sticky',
+                            left: 0,
+                            zIndex: 1,
+                            bgcolor: 'background.paper',
+                            pl: 4,
+                          }}
+                        >
+                          <Typography variant="body2">
+                            {variantLabel(config, variant)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell
+                          sx={{ color: 'text.secondary', ...UNIT_COLUMN }}
+                        >
+                          {item.unit}
+                        </TableCell>
+                        {dayCells(item, variant)}
+                      </TableRow>
+                    ))}
+                  </React.Fragment>
+                ))}
+              </React.Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </>
   )
 }
 
@@ -784,6 +832,12 @@ export default function GrundmengenClient() {
             reference={mayEdit ? reference : null}
             editable={editable}
             onSave={onSave}
+            onInvalid={(label) => {
+              setSavedNote(null)
+              setSaveError(
+                `${label}: Bitte eine Zahl eingeben (z. B. 12 oder 2,5) - leer lassen heißt „offen".`
+              )
+            }}
           />
           {reference?.status === 'ok' && reference.weekdays.length > 0 && (
             <Typography

@@ -277,9 +277,13 @@ describe('validateBackzettelConfig', () => {
     cfg.prep.push({ id: 'x', when_item: 'gibt-es-nicht' })
     cfg.prep.push({ id: 'y', by_weekday: { 1: 'misch', sonntag: 'x' } })
     cfg.prep.push({ id: 'z', days: [1] })
+    cfg.prep.push({ id: 'l1', variant_labels: ['groß'] })
+    cfg.prep.push({ id: 'l2', variant_labels: { gross: '  ' } })
     const p = paths(validate(cfg))
     expect(p).toEqual(
       expect.arrayContaining([
+        'prep[8].variant_labels',
+        'prep[9].variant_labels.gross',
         'prep[4].id',
         'prep[5].when_item',
         'prep[6].by_weekday.1',
@@ -499,6 +503,11 @@ describe('Fuellungsrezepte (hq-Markdown)', () => {
       scaled_g: null,
       raw: '1 Dose (ca. 2 kg)',
     })
+    // W4-verify r2: no factor from the readable part alone (200 g -> "× 2")
+    expect(a.factor).toBeNull()
+    expect(a.batch_g).toBeNull()
+    expect(a.ingredients.map((i) => i.scaled_g)).toEqual([null, null, null])
+    expect(a.ingredients[2]).toMatchObject({ raw: '200 g', g: 200 })
     expect(recipes.scaleRecipe(null, 100)).toBeNull()
   })
 })

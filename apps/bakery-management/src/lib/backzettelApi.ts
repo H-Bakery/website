@@ -47,7 +47,11 @@ export interface DeltaExtras {
     totalPieces: number
     dough_g: number
     totalDough_g: number
+    /** Chargen mit Nachträgen. */
     batches: number | null
+    /** Chargen bei der Freigabe; ältere Server: fehlt. */
+    batchesBefore?: number | null
+    batch_max_kg?: number | null
     weighing: Array<{ piece_g: number; pieces: number; total: number }>
   }>
   fillings: Array<{
@@ -55,6 +59,8 @@ export interface DeltaExtras {
     name: string
     grams: number
     totalGrams: number
+    /** Rezept für die zusätzliche Menge; `null`, wenn nicht hochrechenbar. */
+    recipe?: ScaledRecipe | null
   }>
 }
 
@@ -82,6 +88,11 @@ export interface BackzettelLine {
   correctionReason: string | null
   correctionBy: BackzettelUserRef | null
   total: number
+  /**
+   * `true`: die Korrektur drückt die Zeile unter 0, `total` ist auf 0 gekappt
+   * (nur Entwurf; dazu Warnung `correction_exceeds_line`).
+   */
+  correctionClamped?: boolean
   /** Blechangabe, z. B. „Blech 7-9" (nur Anzeige). */
   tray: string | null
   plu: number[]
@@ -89,6 +100,15 @@ export interface BackzettelLine {
   loavesEstimate?: number
   doneAt: string | null
   doneBy: BackzettelUserRef | null
+  /**
+   * Nur freigegeben, nur offene Zeilen: der Haken, den eine erneute Freigabe
+   * wegen geänderter Menge entfernt hat - `qty` war damals schon gebacken.
+   */
+  previouslyDone?: {
+    qty: number
+    at: string | null
+    by: BackzettelUserRef | null
+  } | null
   delta: BackzettelLineDelta | null
 }
 
@@ -141,9 +161,11 @@ export interface ScaledIngredient {
 
 export interface ScaledRecipe {
   title: string
-  batch_g: number
+  /** `null`: Rezept unvollständig, Chargengröße unbekannt. */
+  batch_g: number | null
   grams: number
-  factor: number
+  /** `null`: nicht skaliert, weil eine Zutat keine Grammangabe hat. */
+  factor: number | null
   complete: boolean
   ingredients: ScaledIngredient[]
 }
@@ -171,6 +193,8 @@ export interface PrepTask {
   id: string
   name: string
   variant: string | null
+  /** Anzeigename der Variante aus der YAML (`variant_labels`), sonst `null`. */
+  variantLabel?: string | null
   note?: string | null
 }
 

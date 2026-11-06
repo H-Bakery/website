@@ -23,7 +23,10 @@ export interface PrepCardProps {
 export function prepTaskLabel(task: PrepTask): string {
   // Die Ausprägung kommt als YAML-ID („misch“); groß geschrieben liest sie
   // sich wie der Rest der Seite („Sauerteig (Misch)“).
+  // W4-verify r2: Umlaute kann die ID nicht („gross"); dafür gibt es in der
+  // YAML `variant_labels` - steht dort ein Name, gilt er.
   if (!task.variant) return task.name
+  if (task.variantLabel) return `${task.name} (${task.variantLabel})`
   const v = task.variant.charAt(0).toUpperCase() + task.variant.slice(1)
   return `${task.name} (${v})`
 }

@@ -87,4 +87,19 @@ describe('createManagementTheme (W4-Verifikation: Kontrast)', () => {
       [TOUCH_MEDIA]: { minWidth: 44, minHeight: 44 },
     })
   })
+
+  it('Eingabefelder und Schalter auf Touch-Geräten mindestens 44 px (W4-verify r2)', () => {
+    const theme = createManagementTheme('dark')
+    expect(theme.components?.MuiInputBase?.styleOverrides?.root).toEqual({
+      [TOUCH_MEDIA]: { minHeight: 44 },
+    })
+    type Nested = Record<string, Record<string, Record<string, unknown>>>
+    const sw = (theme.components?.MuiSwitch?.styleOverrides?.root as Nested)[
+      TOUCH_MEDIA
+    ]['&.MuiSwitch-sizeMedium'] as Record<string, unknown>
+    // Schaltfläche (switchBase) 20 px Daumen + 2 × 12 = 44; Weg 64 − 44 = 20
+    // wie im MUI-Standard (translateX 20 px), Schiene 64 − 30 = 34 breit.
+    expect(sw).toMatchObject({ width: 64, height: 44, padding: 15 })
+    expect(sw['& .MuiSwitch-switchBase']).toEqual({ padding: 12 })
+  })
 })

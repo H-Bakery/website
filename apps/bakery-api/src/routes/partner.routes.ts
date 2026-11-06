@@ -49,6 +49,8 @@ import { logger } from '../utils/logger'
 // Der Core ist absichtlich CommonJS ohne Typen - deshalb per require geladen.
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const partnerRules = require('../services/partner-import.core')
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const controlChars = require('../services/control-chars.core')
 
 // ============================================================================
 // OPTIONEN UND ROLLEN
@@ -167,6 +169,28 @@ function textTooLong(
   return null
 }
 
+/** Freitextfelder: Zeilenumbruch und Tab erlaubt, sonst wie ein Name. */
+const MULTILINE_FIELDS = new Set(['notes', 'note'])
+
+/**
+ * Steuerzeichen (NUL, Bidi-Umkehr …) in Stammdaten und Besuchen - dieselbe
+ * Regel wie bei Vorbestellungen, Produkten und Benutzern (W4-verify r2).
+ */
+function textHasControlChars(
+  body: Record<string, unknown>,
+  limits: ReadonlyArray<[string, string, number]>
+): string | null {
+  for (const [field, label] of limits) {
+    const value = body[field]
+    if (typeof value !== 'string') continue
+    const bad = MULTILINE_FIELDS.has(field)
+      ? controlChars.hasTextControlChars(value)
+      : controlChars.hasNameControlChars(value)
+    if (bad) return `${label} enthält unzulässige Steuerzeichen.`
+  }
+  return null
+}
+
 /** Frühester und spätester Geschäftstag eines Besuchs (relativ zu heute). */
 const EARLIEST_VISIT_DATE = '2020-01-01'
 const MAX_VISIT_DAYS_AHEAD = 7
@@ -184,6 +208,33 @@ function visitDateOutOfRange(businessDate: string): string | null {
     )} liegt außerhalb des erlaubten Zeitraums (${formatDe(
       EARLIEST_VISIT_DATE
     )} bis ${formatDe(latest)}).`
+  }
+  return null
+}
+
+/** Wie weit der Zeitpunkt vom Geschäftstag abweichen darf (Tage). */
+const MAX_VISIT_AT_DRIFT_DAYS = 1
+
+/**
+ * W4-verify r2: `visitAt` 9999-12-31 auf dem Geschäftstag 11.11.2026 machte
+ * den Besuch für den Bestands-Automaten zum letzten des Tages. Der Zeitpunkt
+ * muss deshalb auf dem Geschäftstag liegen - einen Tag Spielraum für
+ * Nachträge um Mitternacht.
+ */
+function visitAtOffBusinessDate(
+  visitAt: Date,
+  businessDate: string
+): string | null {
+  const day = partnerStats.businessDateOf(visitAt) || ''
+  if (
+    day < shiftDate(businessDate, -MAX_VISIT_AT_DRIFT_DAYS) ||
+    day > shiftDate(businessDate, MAX_VISIT_AT_DRIFT_DAYS)
+  ) {
+    return `Der Zeitpunkt (${
+      day ? formatDe(day) : 'ungültig'
+    }) passt nicht zum Geschäftstag ${formatDe(
+      businessDate
+    )} - bitte Datum und Uhrzeit des Besuchs prüfen.`
   }
   return null
 }
@@ -633,6 +684,8 @@ export function createPartnerRouter(
       }
       const tooLong = textTooLong(body, PARTNER_TEXT_LIMITS)
       if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
+      const control = textHasControlChars(body, PARTNER_TEXT_LIMITS)
+      if (control) return sendError(res, 400, 'INVALID_TEXT', control)
 
       const slug = slugify(body.slug ? String(body.slug) : name)
       if (!slug) {
@@ -722,6 +775,8 @@ export function createPartnerRouter(
         const updates: any = {}
         const tooLong = textTooLong(body, PARTNER_TEXT_LIMITS)
         if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
+        const control = textHasControlChars(body, PARTNER_TEXT_LIMITS)
+        if (control) return sendError(res, 400, 'INVALID_TEXT', control)
 
         if (body.name !== undefined) {
           const name = partnerName(body.name)
@@ -1042,8 +1097,16 @@ export function createPartnerRouter(
         if (outOfRange) {
           return sendError(res, 400, 'INVALID_BUSINESS_DATE', outOfRange)
         }
+        // Ohne visitAt gilt „jetzt" - eine Nacherfassung für einen früheren
+        // Tag bleibt erlaubt; geprüft wird nur ein ausdrücklicher Zeitpunkt.
+        if (body.visitAt) {
+          const offDay = visitAtOffBusinessDate(visitAt, businessDate)
+          if (offDay) return sendError(res, 400, 'INVALID_VISIT_AT', offDay)
+        }
         const tooLong = textTooLong(body, VISIT_TEXT_LIMITS)
         if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
+        const control = textHasControlChars(body, VISIT_TEXT_LIMITS)
+        if (control) return sendError(res, 400, 'INVALID_TEXT', control)
 
         const parsedItems = normalizeVisitItems(body.items, catalogue())
         if (parsedItems.ok === false) {
@@ -1189,9 +1252,18 @@ export function createPartnerRouter(
           }
           updates.businessDate = body.businessDate
         }
+        if (updates.visitAt) {
+          const offDay = visitAtOffBusinessDate(
+            updates.visitAt ?? new Date(visit.visitAt),
+            updates.businessDate ?? String(visit.businessDate).slice(0, 10)
+          )
+          if (offDay) return sendError(res, 400, 'INVALID_VISIT_AT', offDay)
+        }
 
         const tooLong = textTooLong(body, VISIT_TEXT_LIMITS)
         if (tooLong) return sendError(res, 400, 'TEXT_TOO_LONG', tooLong)
+        const control = textHasControlChars(body, VISIT_TEXT_LIMITS)
+        if (control) return sendError(res, 400, 'INVALID_TEXT', control)
         if (body.note !== undefined) updates.note = optionalString(body.note)
         if (body.staffName !== undefined) {
           updates.staffName = optionalString(body.staffName)

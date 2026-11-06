@@ -46,6 +46,7 @@ import {
   MAX_ITEMS,
   MAX_QTY_PER_ITEM,
   formatCurrency,
+  formatDateWithWeekday,
   formatShortDate,
   isBusinessDate,
   isProductionDay,
@@ -402,6 +403,8 @@ export default function PreorderForm({
   const datePast = Boolean(
     today && isBusinessDate(pickupDate) && pickupDate < today
   )
+  /** Abholtag in der Vergangenheit, für den die Rückfrage bestätigt ist. */
+  const [pastAck, setPastAck] = useState<string | null>(null)
 
   /* ---------------------------------------------------------------- *
    * Produkte, Sorten, Menge
@@ -504,6 +507,12 @@ export default function PreorderForm({
   const removeLine = (key: string) =>
     setLines((current) => current.filter((line) => line.key !== key))
 
+  // Bereits bezahlter Betrag einer bezahlten Bestellung (W4-Verifikation
+  // Runde 2): ändert sich die Summe, sagt das Formular, was zu kassieren oder
+  // zu erstatten ist - „bezahlt“ bleibt stehen, der Betrag nicht.
+  const paidBefore = preorder?.paid
+    ? preorder.paidAmount ?? preorder.total
+    : null
   const total = roundCents(
     lines.reduce(
       (sum, line) => sum + roundCents(line.quantity * line.unitPrice),
@@ -521,8 +530,30 @@ export default function PreorderForm({
 
   const submit = async () => {
     setShowErrors(true)
+    // Eine alte Server-Meldung gilt nicht mehr, sobald neu gespeichert wird -
+    // sonst stünde „Telefonnummer ungültig“ neben einem leeren Feld
+    // (W4-Verifikation Runde 2).
+    if (!saving) setError(null)
     if (!valid || saving) {
       if (nameError) nameRef.current?.focus()
+      return
+    }
+    // Abholtag in der Vergangenheit (meist ein Tippfehler, 01.11. statt
+    // 11.11.): die Bestellung fiele aus jeder Liste „ab heute“, aus
+    // Abholliste und Backzettel. Deshalb erst nach Rückfrage speichern.
+    if (
+      datePast &&
+      pastAck !== pickupDate &&
+      (!preorder || preorder.pickupDate !== pickupDate)
+    ) {
+      setPastAck(pickupDate)
+      setError(
+        `Der Abholtag ${formatDateWithWeekday(
+          pickupDate
+        )} liegt in der Vergangenheit - die Bestellung erscheint dann in keiner Liste ab heute und auf keinem Backzettel. Bitte den Tag prüfen. Nur zum Nachtragen noch einmal „${
+          preorder ? 'Änderungen speichern' : 'Vorbestellung speichern'
+        }“ tippen.`
+      )
       return
     }
     const input: PreorderInput = {
@@ -1191,6 +1222,24 @@ export default function PreorderForm({
                 label={paid ? 'Bezahlt' : 'Noch nicht bezahlt'}
                 sx={{ mb: 1, minHeight: 44 }}
               />
+              {paidBefore != null &&
+                paid &&
+                roundCents(total - paidBefore) !== 0 && (
+                  <Alert
+                    severity="warning"
+                    sx={{ mb: 1 }}
+                    data-testid="paid-difference"
+                  >
+                    Bereits bezahlt: {formatCurrency(paidBefore)}.{' '}
+                    {total > paidBefore
+                      ? `Differenz ${formatCurrency(
+                          roundCents(total - paidBefore)
+                        )} bei der Abholung kassieren.`
+                      : `${formatCurrency(
+                          roundCents(paidBefore - total)
+                        )} an die Kundschaft zurückgeben.`}
+                  </Alert>
+                )}
               <TextField
                 label="Notiz (optional)"
                 value={note}

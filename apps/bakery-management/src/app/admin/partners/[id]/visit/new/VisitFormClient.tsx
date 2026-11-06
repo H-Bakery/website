@@ -450,6 +450,8 @@ export default function VisitFormClient({
   const [formError, setFormError] = useState<string | null>(null)
   /** Produkte mit Bestand, deren Rest bei der Abholung nicht gezählt wurde. */
   const [missingRest, setMissingRest] = useState<CatalogueProduct[]>([])
+  /** Bestätigte Überzählung (Signatur der Zeilen) - zweites Tippen speichert. */
+  const [excessAck, setExcessAck] = useState<string | null>(null)
   const [templateInfo, setTemplateInfo] = useState<string | null>(null)
   const [draftInfo, setDraftInfo] = useState<string | null>(null)
 
@@ -1068,6 +1070,38 @@ export default function VisitFormClient({
             .join(
               ', '
             )}. Bitte zählen – oder auf 0 setzen, wenn das Fach leer war.`
+        )
+        return
+      }
+    }
+
+    // Mehr gezählt, als laut Tagesverlauf im Schrank sein kann: das ist eine
+    // Fehlzählung oder eine nicht erfasste Lieferung, keine Retoure. Der Core
+    // bucht es als Abweichung; hier gibt es vorher eine Rückfrage
+    // (W4-Verifikation Runde 2). Beim Bearbeiten eines alten Besuchs fehlt der
+    // Bestand davor - dann keine Rückfrage.
+    if (sameDayAsLoaded && !editedVisit) {
+      const excess = items.filter(
+        (item) =>
+          item.countedQty != null &&
+          item.countedQty > (expectedStock.get(item.productSlug) ?? 0)
+      )
+      const signature = excess
+        .map((item) => `${item.productSlug}:${item.countedQty}`)
+        .join('|')
+      if (excess.length > 0 && excessAck !== signature) {
+        setExcessAck(signature)
+        setFormError(
+          `Mehr gezählt, als im Schrank sein kann: ${excess
+            .map(
+              (item) =>
+                `${item.productName} ${item.countedQty} (möglich ${
+                  expectedStock.get(item.productSlug) ?? 0
+                })`
+            )
+            .join(
+              ', '
+            )}. Das wird als Abweichung gebucht, nicht als Retoure. Fehlt eine Lieferung (Erstbestückung oder Nachlieferung)? Dann bitte zuerst die erfassen - sonst noch einmal „Besuch speichern“ tippen.`
         )
         return
       }

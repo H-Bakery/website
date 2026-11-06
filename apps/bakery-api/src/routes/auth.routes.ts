@@ -115,12 +115,21 @@ export function createPublicAuthRouter(
       }
       const user = await service.checkPassword(username, password)
       if (!user) {
+        // W4-verify r2: wer sein Passwort ins Benutzerfeld tippt, soll es
+        // nicht im audit_log (und in jedem Backup) wiederfinden. Den Namen
+        // behalten wir nur, wenn es ein vorhandenes Konto ist.
+        const known = await User.findOne({
+          where: { username },
+          attributes: ['id', 'username'],
+        })
         await auditQuietly(
           req,
           'login_failed',
           'user',
-          null,
-          { username: username.slice(0, 64), ip: req.ip, kind: 'personal' },
+          known ? known.id : null,
+          known
+            ? { username: known.username, ip: req.ip, kind: 'personal' }
+            : { unknownUser: true, ip: req.ip, kind: 'personal' },
           { userId: null }
         )
         sendError(res, 401, 'invalid_credentials', INVALID_CREDENTIALS)

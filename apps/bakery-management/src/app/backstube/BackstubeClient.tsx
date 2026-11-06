@@ -71,6 +71,31 @@ const STALE_CODES = new Set([
   'ruhetag',
 ])
 
+function codeOf(error: unknown): string | null {
+  const code = (error as { code?: unknown } | null)?.code
+  return typeof code === 'string' ? code : null
+}
+
+/** Hat das Neuladen den Zustand erreicht, auf den ein 409 verwies? */
+export function staleResolved(
+  code: string | null,
+  res: BackzettelDayResult
+): boolean {
+  if (!code) return false
+  const day = isBackzettelDay(res) ? res : null
+  switch (code) {
+    case 'not_confirmed':
+      return day?.status === 'confirmed'
+    case 'confirmed':
+      return day?.status === 'draft'
+    case 'no_config':
+    case 'ruhetag':
+      return !!day
+    default:
+      return false
+  }
+}
+
 function messageOf(error: unknown, fallback: string): string {
   return describeBackstubeError(error, fallback).text
 }
@@ -144,6 +169,17 @@ export default function BackstubeClient({
   } | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
+  // W4-verify r2: der 409-Code eines „veralteten" Fehlers. Zeigt ein späteres
+  // Neuladen den Stand, auf den der Fehler wartete (z. B. wieder
+  // freigegeben), verschwindet die Meldung - sonst widersprach sie dem Zettel.
+  const staleCodeRef = React.useRef<string | null>(null)
+  const showActionError = React.useCallback(
+    (text: string | null, staleCode: string | null = null) => {
+      staleCodeRef.current = text ? staleCode : null
+      setActionError(text)
+    },
+    []
+  )
   const [pendingIds, setPendingIds] = React.useState<Set<number>>(new Set())
   const [ackingId, setAckingId] = React.useState<number | null>(null)
 
@@ -217,6 +253,7 @@ export default function BackstubeClient({
       setResult(res)
       setLoadedAt(clockRef.current())
       setLoadError(null)
+      if (staleResolved(staleCodeRef.current, res)) showActionError(null)
     } catch (error) {
       if (dateRef.current !== target) return
       setLoadError(
@@ -229,7 +266,7 @@ export default function BackstubeClient({
       loadingRef.current = false
       setRefreshing(false)
     }
-  }, [])
+  }, [showActionError])
 
   const loadPrep = React.useCallback(async () => {
     const target = prepDateRef.current
@@ -339,7 +376,7 @@ export default function BackstubeClient({
     mutationSeq.current += 1
     pendingRef.current += 1
     setPendingIds((ids) => new Set(ids).add(lineId))
-    setActionError(null)
+    showActionError(null)
     updateDay(target, (d) =>
       patchLines(
         d,
@@ -382,10 +419,11 @@ export default function BackstubeClient({
         error,
         'Der Haken konnte nicht gespeichert werden.'
       )
-      setActionError(
+      showActionError(
         stale
           ? `${text} Der Backzettel wird neu geladen.`
-          : `Nicht gespeichert: ${text}`
+          : `Nicht gespeichert: ${text}`,
+        stale ? codeOf(error) : null
       )
     } finally {
       pendingRef.current -= 1
@@ -406,7 +444,7 @@ export default function BackstubeClient({
     const target = day.date
     mutationSeq.current += 1
     setAckingId(delta.id)
-    setActionError(null)
+    showActionError(null)
     try {
       const res = await acknowledgeDelta(target, delta.id)
       updateDay(target, (d) => {
@@ -441,8 +479,9 @@ export default function BackstubeClient({
         error,
         'Der Nachtrag konnte nicht quittiert werden.'
       )
-      setActionError(
-        isStale(error) ? `${text} Der Backzettel wird neu geladen.` : text
+      showActionError(
+        isStale(error) ? `${text} Der Backzettel wird neu geladen.` : text,
+        isStale(error) ? codeOf(error) : null
       )
       if (isStale(error)) {
         mutationSeq.current += 1
@@ -503,7 +542,11 @@ export default function BackstubeClient({
             color: '#000 !important',
             boxShadow: 'none !important',
             opacity: '1 !important',
+            // W4-verify r2: Rahmen in `text.primary`/`divider` sind im
+            // dunklen Modus weiß - auf Papier fehlten die leeren Kästchen.
+            borderColor: '#888 !important',
           },
+          '& [role="checkbox"]': { borderColor: '#000 !important' },
         },
       }}
     >
@@ -658,7 +701,7 @@ export default function BackstubeClient({
           value={tab}
           onChange={(_, value: TabId) => {
             setTab(value)
-            setActionError(null)
+            showActionError(null)
           }}
           aria-label="Ansicht"
           data-print="hide"
@@ -683,7 +726,7 @@ export default function BackstubeClient({
         {actionError && (
           <Alert
             severity="error"
-            onClose={() => setActionError(null)}
+            onClose={() => showActionError(null)}
             sx={{ mb: 2, fontSize: '1.15rem', alignItems: 'center' }}
           >
             {actionError}

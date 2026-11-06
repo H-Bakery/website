@@ -42,6 +42,21 @@ describe('Management RootLayout', () => {
     expect(screen.getByTestId('test-child')).toBeInTheDocument()
   })
 
+  it('lädt nichts von fremden Hosts (keine Google Fonts, W4-verify r2)', () => {
+    const { container } = render(
+      <RootLayout>
+        <div>Content</div>
+      </RootLayout>
+    )
+    const external = Array.from(
+      container.ownerDocument.querySelectorAll('link[href], script[src]')
+    )
+      .map((el) => el.getAttribute('href') ?? el.getAttribute('src') ?? '')
+      .filter((url) => /^https?:\/\//.test(url))
+    expect(external).toEqual([])
+    expect(container.innerHTML).not.toMatch(/googleapis|gstatic/)
+  })
+
   it('declares German language', () => {
     const { container } = render(
       <RootLayout>

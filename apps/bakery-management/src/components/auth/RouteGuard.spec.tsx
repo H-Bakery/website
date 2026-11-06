@@ -120,5 +120,18 @@ describe('RouteGuard', () => {
     )
     expect(anonymousRedirect('/admin/users', true)).toBe('/station')
     expect(anonymousRedirect('/admin/users', false, true)).toBe('/admin/login')
+    // W4-verify r2: the query survives (Abholliste day + place)
+    expect(
+      anonymousRedirect(
+        '/admin/preorders/abholliste',
+        false,
+        false,
+        '?date=2026-11-07&point=laden'
+      )
+    ).toBe(
+      `/admin/login?next=${encodeURIComponent(
+        '/admin/preorders/abholliste?date=2026-11-07&point=laden'
+      )}`
+    )
   })
 })

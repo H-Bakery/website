@@ -221,4 +221,18 @@ describe('Station (PIN-Sitzung)', () => {
     expect(navHrefs('personal')).toContain('/admin/users')
     expect(navHrefs('station')).not.toContain('/admin/users')
   })
+
+  it('Finanzen und Tagesziel wie die API nur mit persönlicher Sitzung (W4-verify r2)', () => {
+    for (const path of ['/admin/finance', '/admin/finance/tagesziel']) {
+      expect(isPathAllowedForRole(path, 'inhaber', 'station')).toBe(false)
+      expect(isPathAllowedForRole(path, 'inhaber', 'personal')).toBe(true)
+    }
+    const station = hrefs(getNavigationForRole('inhaber', true, 'station'))
+    expect(station.some((h) => h.startsWith('/admin/finance'))).toBe(false)
+    expect(
+      hrefs(getNavigationForRole('inhaber', true, 'personal')).some((h) =>
+        h.startsWith('/admin/finance')
+      )
+    ).toBe(true)
+  })
 })

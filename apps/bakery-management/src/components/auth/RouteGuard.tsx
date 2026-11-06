@@ -20,13 +20,16 @@ import NoAccess from './NoAccess'
 export function anonymousRedirect(
   pathname: string,
   isStation: boolean,
-  loggedOut = false
+  loggedOut = false,
+  search = ''
 ) {
   if (isStation) return '/station'
   // Nach „Abmelden" kein `?next=`: sonst landet die nächste Person auf der
   // letzten Seite der vorigen (LogoutButton und Wache führen so zum selben Ziel).
   if (loggedOut) return '/admin/login'
-  return `/admin/login?next=${encodeURIComponent(pathname)}`
+  // Mit Query (W4-Verifikation Runde 2): sonst landet der Fahrer nach dem
+  // erneuten Anmelden auf der Mörsbach-Liste statt auf `?point=laden`.
+  return `/admin/login?next=${encodeURIComponent(pathname + search)}`
 }
 
 /**
@@ -72,7 +75,12 @@ export default function RouteGuard({
   React.useEffect(() => {
     if (isProtected && status === 'anonymous') {
       router.replace(
-        anonymousRedirect(pathname, loadStation() !== null, loggedOut)
+        anonymousRedirect(
+          pathname,
+          loadStation() !== null,
+          loggedOut,
+          typeof window === 'undefined' ? '' : window.location.search
+        )
       )
     }
   }, [isProtected, status, pathname, router, loggedOut])

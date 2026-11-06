@@ -68,7 +68,17 @@ interface Props {
   reportsAvailable: boolean
 }
 
-const quickLinks = [
+interface QuickLink {
+  title: string
+  description: string
+  /** Text für Rollen, die nur lesen (W4-verify r2: Verkauf am Backzettel). */
+  readOnly?: { roles: readonly string[]; description: string }
+  icon: React.ReactNode
+  href: string
+  color: string
+}
+
+const quickLinks: QuickLink[] = [
   // Pilot-Bildschirme zuerst (W4-Verifikation: Verkauf und Backstube hatten
   // keinen einzigen Schnellzugriff); `allowed()` filtert nach Rolle.
   {
@@ -88,6 +98,7 @@ const quickLinks = [
   {
     title: 'Backzettel',
     description: 'Planen, freigeben, drucken',
+    readOnly: { roles: ['verkauf'], description: 'Tagesplan ansehen, drucken' },
     icon: <BackzettelIcon fontSize="large" />,
     href: '/admin/backzettel',
     color: '#8D6E63',
@@ -701,7 +712,9 @@ export default function DashboardClient({
                   color="text.secondary"
                   sx={{ display: { xs: 'none', sm: 'block' } }}
                 >
-                  {link.description}
+                  {role && link.readOnly?.roles.includes(role)
+                    ? link.readOnly.description
+                    : link.description}
                 </Typography>
               </CardContent>
             </Card>

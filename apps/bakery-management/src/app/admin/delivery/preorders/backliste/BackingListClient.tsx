@@ -346,7 +346,13 @@ export default function BackingListClient({
               {summary
                 ? ` · ${formatCurrency(summary.total)} Summe · ${formatCurrency(
                     summary.unpaidTotal
-                  )} noch zu kassieren`
+                  )} noch zu kassieren${
+                    (summary.refundTotal ?? 0) > 0
+                      ? ` · ${formatCurrency(
+                          summary.refundTotal ?? 0
+                        )} zu erstatten`
+                      : ''
+                  }`
                 : ''}
               {summary && summary.byStatus.storniert > 0
                 ? ` · ${summary.byStatus.storniert} storniert (nicht enthalten)`

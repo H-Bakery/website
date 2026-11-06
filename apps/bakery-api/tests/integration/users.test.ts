@@ -67,6 +67,19 @@ describe('POST /api/users', () => {
     expectNoSecrets(row?.data)
   })
 
+  it('400 for control or bidi characters in the display name (W4-verify r2)', async () => {
+    for (const displayName of ['Vera\u0000', 'Vera\u202eX']) {
+      const res = await asOwner.post('/api/users').send({
+        username: 'test.steuer',
+        displayName,
+        role: 'verkauf',
+        password: 'Anfang-2026!',
+      })
+      expect(res.status).toBe(400)
+      expect(res.body.message).toMatch(/Steuerzeichen/)
+    }
+  })
+
   it('409 for an existing username (case-insensitive)', async () => {
     const res = await asOwner.post('/api/users').send({
       username: 'TEST.NEU',

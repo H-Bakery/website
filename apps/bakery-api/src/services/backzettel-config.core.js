@@ -75,6 +75,7 @@ const PREP_KEYS = new Set([
   'id',
   'name',
   'by_weekday',
+  'variant_labels',
   'when_item',
   'days',
   'note',
@@ -736,6 +737,23 @@ function validateBackzettelConfig(obj, options) {
         ) {
           err(`${p}.note`, 'note muss ein Text sein.')
         }
+        // W4-verify r2: Anzeigename je Variante („gross" → „groß")
+        if (task.variant_labels !== undefined && task.variant_labels !== null) {
+          if (!isPlainObject(task.variant_labels)) {
+            err(
+              `${p}.variant_labels`,
+              'variant_labels muss eine Zuordnung Variante → Anzeigename sein.'
+            )
+          } else {
+            for (const [key, value] of Object.entries(task.variant_labels)) {
+              if (typeof value !== 'string' || !value.trim())
+                err(
+                  `${p}.variant_labels.${key}`,
+                  'Anzeigename muss ein nicht-leerer Text sein.'
+                )
+            }
+          }
+        }
       })
     }
   }
@@ -861,6 +879,13 @@ function normalizeConfig(obj) {
         when_item: typeof task.when_item === 'string' ? task.when_item : null,
         days: Array.isArray(task.days) ? [...task.days] : null,
         note: typeof task.note === 'string' ? task.note : null,
+        variant_labels: isPlainObject(task.variant_labels)
+          ? Object.fromEntries(
+              Object.entries(task.variant_labels).filter(
+                ([, v]) => typeof v === 'string' && v.trim()
+              )
+            )
+          : null,
       }
     })
   return {

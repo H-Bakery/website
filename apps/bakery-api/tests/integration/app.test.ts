@@ -48,6 +48,7 @@ describe('createTestApp', () => {
       '20261106000000-auth-sessions-stations.js',
       '20261112000000-backzettel-z3.js',
       '20261113000000-preorders-b7.js',
+      '20261114000000-preorders-paid-amount.js',
     ])
   })
 })
@@ -86,6 +87,21 @@ describe('error shape', () => {
   it('does not reveal the framework', async () => {
     const res = await request(api.app).get('/health')
     expect(res.headers['x-powered-by']).toBeUndefined()
+  })
+})
+
+describe('no HTTP caching of API answers (W4-verify r2)', () => {
+  it('sends Cache-Control: no-store on /api, also on 401 and with a session', async () => {
+    const anon = await request(api.app).get('/api/partners')
+    expect(anon.status).toBe(401)
+    expect(anon.headers['cache-control']).toBe('no-store')
+    const res = await authed().get('/api/partners')
+    expect(res.status).toBe(200)
+    expect(res.headers['cache-control']).toBe('no-store')
+    const login = await request(api.app)
+      .post('/api/auth/login')
+      .send({ username: 'x', password: 'y' })
+    expect(login.headers['cache-control']).toBe('no-store')
   })
 })
 

@@ -11,6 +11,7 @@ import BackstubeClient from './BackstubeClient'
 import { fakeSession, WithSession } from '../../lib/testing/fakeSession'
 import type { SessionContextValue } from '../../lib/session'
 import * as api from '../../lib/backzettelApi'
+import { formatTimestamp } from '../../lib/backzettelFormat'
 import {
   CONFIG_RESPONSE,
   SAT,
@@ -247,6 +248,28 @@ describe('Backstube-Tablet', () => {
     )
   })
 
+  it('zeigt nach erneuter Freigabe, was schon gebacken war (W4-verify r2)', async () => {
+    const confirmed = saturdayConfirmed()
+    const weck = confirmed.sections[1].lines[0]
+    weck.previouslyDone = {
+      qty: weck.total - 8,
+      at: '2026-11-28T03:00:00.000Z',
+      by: { id: 3, displayName: 'Test Bäcker' },
+    }
+    mocked.fetchBackzettelDay.mockResolvedValue(confirmed)
+    renderTablet()
+    const hint = await screen.findByTestId(`bs-previously-done-${WECK}`)
+    expect(hint).toHaveTextContent(
+      `bereits ${weck.total - 8} erledigt (${formatTimestamp(
+        '2026-11-28T03:00:00.000Z'
+      )} · Test Bäcker) - noch +8`
+    )
+    expect(screen.getByTestId(`bs-tick-${WECK}`)).toHaveAttribute(
+      'aria-checked',
+      'false'
+    )
+  })
+
   it('Haken entfernen schickt undone', async () => {
     const confirmed = saturdayConfirmed()
     const weck = confirmed.sections[1].lines[0]
@@ -291,6 +314,34 @@ describe('Backstube-Tablet', () => {
         'Der Backzettel ist nicht freigegeben. Der Backzettel wird neu geladen.'
       )
     ).toBeInTheDocument()
+  })
+
+  it('die Meldung verschwindet, sobald ein Neuladen den Tag wieder freigegeben zeigt (W4-verify r2)', async () => {
+    mocked.setLineDone.mockRejectedValue(
+      apiError(409, 'not_confirmed', 'Der Backzettel ist nicht freigegeben.')
+    )
+    renderTablet()
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: 'Testweck abhaken' })
+    )
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
+    expect(await screen.findByTestId('bs-draft-banner')).toBeInTheDocument()
+    const text =
+      'Der Backzettel ist nicht freigegeben. Der Backzettel wird neu geladen.'
+    expect(screen.getByText(text)).toBeInTheDocument()
+    // wieder freigegeben: das nächste Neuladen (60 s / Zurückkommen)
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+    await act(async () => {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await waitFor(() =>
+      expect(screen.queryByTestId('bs-draft-banner')).not.toBeInTheDocument()
+    )
+    expect(screen.queryByText(text)).not.toBeInTheDocument()
   })
 
   it('ein Neuladen während des Abhakens überschreibt den Haken nicht', async () => {

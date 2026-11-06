@@ -81,6 +81,7 @@ describe('pilot baseline on a fresh database', () => {
       '20261106000000-auth-sessions-stations.js',
       '20261112000000-backzettel-z3.js',
       '20261113000000-preorders-b7.js',
+      '20261114000000-preorders-paid-amount.js',
     ])
   })
 

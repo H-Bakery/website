@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Alert,
+  AlertTitle,
   Box,
   Button,
   Paper,
@@ -18,6 +19,7 @@ import {
 } from '@mui/icons-material'
 import { useSession } from '../../../lib/session'
 import { loadStation } from '../../../lib/authSession'
+import { readLostActions, type LostAction } from '../../../lib/lostActions'
 import { ROLE_LABELS, resolvePostLoginPath } from '../../../lib/roles'
 
 /**
@@ -46,6 +48,10 @@ function LoginForm() {
   // Erst nach dem Mount lesen: localStorage gibt es beim Server-Rendern nicht.
   const [isStation, setIsStation] = useState(false)
   React.useEffect(() => setIsStation(loadStation() !== null), [])
+  // Was beim Ablauf der Sitzung nicht gespeichert wurde (W4-Verifikation
+  // Runde 2) - hier nur anzeigen; weggeklickt wird es auf der Abholliste.
+  const [lostActions, setLostActions] = useState<LostAction[]>([])
+  React.useEffect(() => setLostActions(readLostActions()), [])
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
@@ -114,6 +120,20 @@ function LoginForm() {
         <Paper elevation={2} sx={{ p: 3 }}>
           <form onSubmit={handleSubmit} noValidate>
             <Stack spacing={2}>
+              {lostActions.length > 0 && (
+                <Alert severity="error" data-testid="lost-actions">
+                  <AlertTitle>Nicht gespeichert</AlertTitle>
+                  {lostActions.map((a) => (
+                    <Box
+                      key={a.at + a.text}
+                      component="span"
+                      sx={{ display: 'block' }}
+                    >
+                      {a.text}
+                    </Box>
+                  ))}
+                </Alert>
+              )}
               {endReason && !error && (
                 <Alert severity="info" onClose={clearEndReason}>
                   {endReason}

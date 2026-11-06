@@ -22,6 +22,7 @@ import { Op, Transaction } from 'sequelize'
 
 import { audit } from '../auth/audit'
 import {
+  AuditLog,
   BackzettelDay,
   BackzettelDelta,
   BackzettelLine,
@@ -184,7 +185,7 @@ function computeDraft(
   inputs: {
     snapshot: PreorderSnapshotItem[]
     templates: unknown[]
-    rows: BackzettelLine[]
+    rows: Array<BackzettelLine | Record<string, unknown>>
     seasonFactor: number
   }
 ) {
@@ -194,7 +195,9 @@ function computeDraft(
     preorderItems: dayCore.toCorePreorderItems(inputs.snapshot, date),
     capTemplate: inputs.templates,
     corrections: dayCore.correctionsFromRows(
-      inputs.rows.map((r) => r.get({ plain: true }))
+      inputs.rows.map((r) =>
+        r instanceof BackzettelLine ? r.get({ plain: true }) : r
+      )
     ),
     seasonFactor: inputs.seasonFactor,
     recipes: loaded.recipes,
@@ -343,14 +346,46 @@ export function createBackzettelService(
   ) {
     const weekday = core.isoWeekday(date)
     const config = loaded.ok ? loaded.config : null
-    const [rows, deltaRows] = await Promise.all([
+    const [rows, deltaRows, confirmAudits] = await Promise.all([
       BackzettelLine.findAll({ where: { date }, order: [['id', 'ASC']] }),
       BackzettelDelta.findAll({ where: { date }, order: [['id', 'ASC']] }),
+      AuditLog.findAll({
+        where: { action: 'confirm', entity: 'backzettel_day', entityId: date },
+        order: [['id', 'ASC']],
+        attributes: ['data'],
+      }),
     ])
+    // W4 verification round 2: a re-confirm that changed a line dropped its
+    // tick (`clearedTicks` in the audit). Without a trace the Backstube saw
+    // "78, open" after baking 70 - so the latest cleared tick per line comes
+    // back as `previouslyDone` while the line is still unticked.
+    const cleared = new Map<
+      string,
+      { qty: number; doneBy: number | null; doneAt: string | null }
+    >()
+    for (const a of confirmAudits) {
+      const list = (a.data as { clearedTicks?: unknown } | null)?.clearedTicks
+      for (const t of Array.isArray(list) ? list : []) {
+        const tick = t as Record<string, unknown>
+        if (typeof tick['itemId'] !== 'string') continue
+        cleared.set(
+          core.lineKey(
+            tick['itemId'],
+            dayCore.apiVariant(tick['variant'] as string | null)
+          ),
+          {
+            qty: toNumber(tick['from'] as number),
+            doneBy: typeof tick['doneBy'] === 'number' ? tick['doneBy'] : null,
+            doneAt: typeof tick['doneAt'] === 'string' ? tick['doneAt'] : null,
+          }
+        )
+      }
+    }
     const users = await usersById([
       day.confirmedBy,
       ...rows.flatMap((r) => [r.correctionBy, r.doneBy]),
       ...deltaRows.map((d) => d.acknowledgedBy),
+      ...[...cleared.values()].map((c) => c.doneBy),
     ])
     const preorderIds = [
       ...new Set(
@@ -426,6 +461,17 @@ export function createBackzettelService(
               : null,
           doneAt: row.doneAt,
           doneBy: userRef(users, row.doneBy),
+          previouslyDone:
+            row.doneAt === null && cleared.has(line.key)
+              ? (() => {
+                  const c = cleared.get(line.key)!
+                  return {
+                    qty: c.qty,
+                    at: c.doneAt,
+                    by: userRef(users, c.doneBy),
+                  }
+                })()
+              : null,
           delta: deltaByKey.get(line.key) ?? null,
         }
       }),
@@ -814,6 +860,79 @@ export function createBackzettelService(
     return getDay(date)
   }
 
+  /**
+   * W4 verification round 2: a correction that pushes its line below 0 is
+   * refused. Stored, it clamped the line to 0 without a word, and every later
+   * Vorbestellung on that line vanished in the negative remainder.
+   */
+  async function assertCorrectionFits(
+    date: string,
+    day: BackzettelDay,
+    loaded: Loaded,
+    next: {
+      itemId: string
+      variant: string | null
+      correction: number
+      reason: string | null
+    },
+    transaction: Transaction
+  ) {
+    const weekday = core.isoWeekday(date)
+    const [snapshot, templates, rows] = await Promise.all([
+      loadPreorderSnapshot(date, transaction),
+      loadCapTemplates(weekday, transaction),
+      BackzettelLine.findAll({ where: { date }, transaction }),
+    ])
+    const plain: Record<string, unknown>[] = rows
+      .map((r) => r.get({ plain: true }) as Record<string, unknown>)
+      .filter(
+        (r) =>
+          !(
+            r.itemId === next.itemId &&
+            dayCore.apiVariant(r.variant) === dayCore.apiVariant(next.variant)
+          )
+      )
+    plain.push({
+      itemId: next.itemId,
+      variant: next.variant,
+      correction: next.correction,
+      correctionReason: next.reason,
+    })
+    const result = computeDraft(loaded, date, {
+      snapshot,
+      templates,
+      rows: plain,
+      seasonFactor: toNumber(day.seasonFactor) || 1,
+    })
+    const key = core.lineKey(next.itemId, dayCore.apiVariant(next.variant))
+    const hit = (result.lines as Array<Record<string, unknown>>).find(
+      (l) => l.key === key
+    )
+    if (hit && hit.correctionClamped) {
+      const without = Number(
+        (
+          (Number(hit.preorders) || 0) +
+          (Number(hit.cap) || 0) +
+          (Number(hit.base) || 0) +
+          (Number(hit.seasonal) || 0)
+        ).toFixed(2)
+      )
+      const fmt = (n: number) => String(n).replace('.', ',')
+      throw new BackzettelError(
+        400,
+        'correction_exceeds_line',
+        `Die Korrektur (${fmt(next.correction).replace(
+          '-',
+          '−'
+        )}) ist größer als die geplante Menge (${fmt(
+          without
+        )}). Höchstens −${fmt(
+          without
+        )} - sonst stünde 0 auf dem Backzettel, und spätere Vorbestellungen fielen weg.`
+      )
+    }
+  }
+
   async function setCorrection(
     date: string,
     itemId: string,
@@ -828,9 +947,18 @@ export function createBackzettelService(
     if (!line.ok) throw new BackzettelError(404, line.error, line.message)
     const parsed = dayCore.parseCorrection(body, line.item)
     if (!parsed.ok) throw new BackzettelError(400, parsed.error, parsed.message)
-    await writeDraft(date, async (_day, _loaded, transaction) => {
+    await writeDraft(date, async (day, loadedNow, transaction) => {
       const where = { date, itemId, variant: line.variant }
       const row = await BackzettelLine.findOne({ where, transaction })
+      if (parsed.value.correction < 0) {
+        await assertCorrectionFits(
+          date,
+          day,
+          loadedNow,
+          { itemId, variant: line.variant, ...parsed.value },
+          transaction
+        )
+      }
       const from = row
         ? {
             correction: toNumber(row.correction),
@@ -909,6 +1037,10 @@ export function createBackzettelService(
               itemId: row.itemId,
               variant: row.variant,
               doneBy: row.doneBy,
+              doneAt:
+                row.doneAt instanceof Date
+                  ? row.doneAt.toISOString()
+                  : row.doneAt ?? null,
               from: toNumber(row.total),
               to: values.total,
             })

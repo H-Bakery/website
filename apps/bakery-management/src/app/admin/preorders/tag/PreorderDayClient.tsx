@@ -328,13 +328,31 @@ export default function PreorderDayClient({
                 label="Noch zu kassieren"
                 value={formatCurrency(summary.unpaidTotal)}
                 note={
-                  (summary.handedOverUnpaidTotal ?? 0) > 0
-                    ? `+ ${formatCurrency(
-                        summary.handedOverUnpaidTotal ?? 0
-                      )} ohne Zahlung übergeben`
-                    : null
+                  [
+                    (summary.topUpTotal ?? 0) > 0
+                      ? `davon ${formatCurrency(
+                          summary.topUpTotal ?? 0
+                        )} Rest bezahlter`
+                      : null,
+                    (summary.handedOverUnpaidTotal ?? 0) > 0
+                      ? `+ ${formatCurrency(
+                          summary.handedOverUnpaidTotal ?? 0
+                        )} ohne Zahlung übergeben`
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || null
                 }
               />
+              {(summary.refundTotal ?? 0) > 0 && (
+                <Tile
+                  label="Zu erstatten"
+                  value={formatCurrency(summary.refundTotal ?? 0)}
+                  note={`${
+                    summary.refundCount ?? 0
+                  } bezahlt und storniert oder billiger geworden`}
+                />
+              )}
             </Box>
 
             <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
@@ -474,7 +492,7 @@ export default function PreorderDayClient({
               sx={{ mt: 1, display: 'block' }}
             >
               ✓ = bezahlt. Stornierte stehen grau in der Liste und zählen in
-              keiner Summe.
+              keiner Summe - außer schon Bezahltes unter „Zu erstatten“.
             </Typography>
           </>
         )

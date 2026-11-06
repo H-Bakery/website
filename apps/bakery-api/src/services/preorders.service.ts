@@ -85,6 +85,8 @@ export interface PreorderRecord {
   pickupPointId: string | null
   status: string
   paid: boolean
+  /** Amount recorded as paid; `null` with `paid` = paid in full (legacy). */
+  paidAmount: number | null
   note: string | null
   pickedUpAt: Date | string | null
   notCollectedAt: Date | string | null
@@ -183,6 +185,10 @@ export function toRecord(row: Preorder): PreorderRecord {
     pickupPointId: p.pickupPointId ?? null,
     status: p.status,
     paid: !!p.paid,
+    paidAmount:
+      p.paid && p.paidAmount != null && p.paidAmount !== ''
+        ? Number(p.paidAmount)
+        : null,
     note: p.note ?? null,
     pickedUpAt: p.pickedUpAt ?? null,
     notCollectedAt: p.notCollectedAt ?? null,
@@ -223,6 +229,10 @@ export function toDto(
     notCollected: !!record.notCollectedAt,
     notCollectedAt: iso(record.notCollectedAt),
     paid: record.paid,
+    // W4 verification round 2: what was paid, and what is still owed (> 0)
+    // or must be refunded (< 0) - after an edit or a cancellation.
+    paidAmount: record.paid ? record.paidAmount ?? record.total : null,
+    paymentBalance: core.paymentBalance(record),
     note: record.note,
     items: record.items,
     total: record.total,
@@ -264,6 +274,7 @@ function changedFields(
     'pickupPointId',
     'status',
     'paid',
+    'paidAmount',
     'note',
     'notCollectedAt',
   ]
@@ -860,6 +871,7 @@ export class PreordersService {
           pickupPointId: input.pickupPointId,
           status: input.status,
           paid: input.paid,
+          paidAmount: input.paid ? core.itemsTotal(input.items) : null,
           note: input.note,
           pickedUpAt: input.pickedUpAt ? new Date(input.pickedUpAt) : null,
           notCollectedAt: input.notCollectedAt
@@ -931,7 +943,15 @@ export class PreordersService {
         )
       }
       const next = result.preorder
-      const changed = changedFields(current, next)
+      // Paid amount: recorded when payment is first recorded, kept while the
+      // order stays paid (an edit then shows a balance), cleared with `paid`.
+      const itemsChanged = changedFields(current, next).includes('items')
+      const paidAmount = !next.paid
+        ? null
+        : current.paid
+        ? current.paidAmount ?? (itemsChanged ? current.total : null)
+        : core.itemsTotal(next.items ?? current.items)
+      const changed = changedFields(current, { ...next, paidAmount })
       if (changed.length === 0) {
         return { ok: true as const, status: 200, data: current }
       }
@@ -953,6 +973,7 @@ export class PreordersService {
           pickupPointId: next.pickupPointId,
           status: next.status,
           paid: next.paid,
+          paidAmount,
           note: next.note,
           pickedUpAt: next.pickedUpAt ? new Date(next.pickedUpAt) : null,
           notCollectedAt: next.notCollectedAt
@@ -1053,7 +1074,24 @@ export class PreordersService {
       ) as Failure
     }
     const changes = result.changes as Record<string, unknown>
-    const changed = changedFields(current, { ...current, ...changes })
+    // An explicit `paid: true` means the full current total was collected -
+    // also on an order already paid with a balance left (W4-verify r2).
+    const explicitPaid =
+      input && typeof input === 'object'
+        ? (input as Record<string, unknown>)['paid']
+        : undefined
+    const paidAfter =
+      changes['paid'] !== undefined ? !!changes['paid'] : current.paid
+    const paidAmount = !paidAfter
+      ? null
+      : explicitPaid === true || !current.paid
+      ? current.total
+      : current.paidAmount
+    const changed = changedFields(current, {
+      ...current,
+      ...changes,
+      paidAmount,
+    })
     if (changed.length === 0) {
       return { ok: true, status: 200, data: current, changed: false }
     }
@@ -1069,6 +1107,7 @@ export class PreordersService {
         ...(changes['paid'] !== undefined
           ? { paid: changes['paid'] as boolean }
           : {}),
+        paidAmount,
         updatedBy: req?.user?.id ?? null,
       },
       { where: { id: current.id }, transaction }

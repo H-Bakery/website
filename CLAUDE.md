@@ -178,6 +178,13 @@ Drei Dinge, die man wissen muss, bevor man hier etwas ändert:
 - **`csvCell()` maskiert Formelzellen.** Partner- und Produktnamen landen im CSV-Report; eine
   Zelle, die mit `=`, `+`, `-`, `@`, Tab oder CR beginnt, bekommt ein Apostroph voran und wird
   eingefasst, sonst führt Excel sie aus. Schlichte Zahlen (`-5`) bleiben Zahlen.
+- **Mehr gezählt als möglich ist Abweichung, nie Retoure** (seit W4-Verifikation Runde 2). Liegt
+  ein gezählter Rest über dem errechneten Bestand, bucht der Core den Überschuss als
+  `discrepancyQty`; die Retoure einer Abholung ist höchstens der Bestand. Tageskarte und Report
+  zeigen die Abweichung, die Erfassungsmaske fragt vorher nach, das CSV hat eine Spalte
+  `Abweichung`. Ändert sich ein Preis im Zeitraum, trägt `byProduct` `unitPriceMin`/`unitPriceMax`
+  und der Report zeigt die Spanne (`1,60–1,80 €`) - sonst ergäbe Einzelpreis × Verkauft nicht den
+  Umsatz.
 
 Die Tagesformel aus der Aufgabe (`Σ Geliefert − Rest bei der Abholung`) stimmt nur, wenn der
 letzte Besuch eine Abholung ohne Lieferung ist. Der Core rechnet stattdessen je Produkt einen
@@ -230,7 +237,10 @@ Die 14 Partner-Routen der TypeScript-API (`apps/bakery-api/src/routes/partner.ro
   `{ id, deleted: true, message }` statt 204. **Bewusst anders als der Mock:** eigene
   Fehlercodes (`INVALID_ITEMS` statt `Invalid items`, plus `success: false` - das Frontend liest
   nur `message`), `GET …/templates` legt beim Lesen keine leeren Vorlagen an, `from > to` ist 400,
-  ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (die Erfassungsmaske schickt
+  ein PATCH nur mit `visitAt` verschiebt den Geschäftstag nicht (ein ausdrücklicher `visitAt` muss
+  aber höchstens einen Tag neben dem Geschäftstag liegen, sonst 400 `INVALID_VISIT_AT`; Steuer- und
+  Bidi-Zeichen in Stammdaten, `staffName` und Notiz sind 400 `INVALID_TEXT` - Regel einmal in
+  `src/services/control-chars.core.js`, auch für Vorbestellungen, hq-Produkte und Anzeigenamen) (die Erfassungsmaske schickt
   `businessDate` immer mit), ungültiges `settlementModel` ist 400 statt stillschweigend
   `commission`; seit der W4-Verifikation prüft die Vorlage ihre Positionen wie ein Besuch (Menge
   ganzzahlig 0…10000, Produkt im Katalog oder schon in der Vorlage, sonst 400 `INVALID_ITEMS`),
@@ -572,8 +582,21 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
   `null`-Zeile erscheint mit `baseUnset: true` (Warnung `base_unset`); nicht zu 0 zusammenlegen.
   Gefüllte Posten (`filling_g`) brauchen die Grundmenge je Variante, sonst fehlt sie im
   Füllungsbedarf (der Validator lehnt eine bloße Zahl ab).
+- **Vorbereitungen mit Variante** (`by_weekday: { 6: gross }`) zeigen die ID nur als Notbehelf
+  („Gross"); den deutschen Namen trägt `variant_labels: { gross: groß }` an der Aufgabe, die API
+  liefert ihn als `variantLabel`.
 - **Rezeptpfade nur relativ unter `data/recipes/` und `.md`** - Validator und Loader prüfen das
   beide; die YAML schreibt später die App (B5b).
+- **Ein unvollständiges Rezept wird nicht hochgerechnet** (W4-Verifikation Runde 2): hat eine
+  Zutat keine Grammangabe (`1 Dose (ca. 2 kg)`, `2–4 g`), liefert `scaleRecipe` `factor: null`,
+  `batch_g: null` und keine skalierten Mengen; Tablet, Planung und Druck zeigen das Grundrezept
+  mit Hinweis. Sonst entstand aus der Summe der lesbaren Zutaten ein falscher Faktor.
+- **Nachträge und Chargen:** `deltaExtras.doughs[]` trägt `batchesBefore` und `batch_max_kg`,
+  `deltaExtras.fillings[].recipe` das Rezept für die Zusatzmenge; der Hinweis nennt „jetzt 4
+  Chargen statt 3“ und, wenn der Zusatzteig größer als eine Charge ist, wie viele Chargen er braucht.
+- **Eine Korrektur darf die Zeile nicht unter 0 drücken** (400 `correction_exceeds_line`). Wird
+  eine Zeile später kleiner (Grundmenge, Storno), steht sie mit `correctionClamped` und der
+  Warnung `correction_exceeds_line` da - nie still auf 0.
 - **Variante = Füllungs-ID.** Gefüllte Ware ohne Variante zählt im Teig, aber nicht in der Füllung
   (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
 - `formatTrayInfo` ist ein **Duplikat** von `feature-daily-prep/.../utils/trayInfo.ts`; beide
@@ -627,7 +650,10 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
   - nie still. Nur der Inhaber kann
     wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
     Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
-    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
+    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke. Was damals schon
+    gebacken war, steht danach als `previouslyDone: { qty, at, by }` an der offenen Zeile (aus dem
+    `confirm`-Audit, bis sie wieder abgehakt ist); Tablet, Planung und Druck zeigen „bereits 30
+    erledigt … - noch +10".
 - `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
   `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
 - **Was Nachträge für Ofen, Teig und Füllung heißen** (W4-Verifikation): je Zeile
@@ -949,7 +975,15 @@ anonymisation (P4)". Von außen wichtig:
   fremde Bestellung.
 - **Rollen:** `verkauf` (und `inhaber`) alles, `fahrer` lesen und nur übergeben bzw. „nicht
   abgeholt", `backstube` nur `/sums` (und dort ohne `summary`, also ohne Beträge und
-  Bezahlstand).
+  Bezahlstand). Der Fahrer darf „bezahlt" setzen, aber nie zurücknehmen (403
+  `paid_undo_forbidden`, auch über `bulk-status`).
+- **Bezahlter Betrag** (`paid_amount`, Migration 20261114, W4-Verifikation Runde 2): wird beim
+  Erfassen der Zahlung auf die Summe gesetzt (Anlegen mit `paid`, `paid` false → true, ein
+  ausdrückliches `paid: true` am Status-Endpunkt = „Rest kassiert"), bleibt beim Bearbeiten stehen
+  und fällt mit `paid: false` weg. DTO: `paidAmount`, `paymentBalance` (> 0 noch kassieren, < 0
+  erstatten; storniert + bezahlt = −bezahlt). `/day`-Summary: `unpaidTotal` enthält Nachzahlungen
+  (`topUpTotal`), dazu `refundCount`/`refundTotal` - auch über stornierte. `NULL` bei `paid` heißt
+  „voll bezahlt" (Altbestand, Importe).
 - **Shop:** `POST /api/orders` legt eine Vorbestellung mit Kanal `shop` an, **bleibt aber hinter
   der Anmeldung** - ein öffentlicher Bestellweg ist noch nicht entschieden. Die E-Mail wird nicht
   gespeichert.
@@ -1139,7 +1173,9 @@ Sieben Dinge, die man wissen muss:
 - **Client-Wache: `components/auth/RouteGuard.tsx`, in `Providers.tsx`.** Solange `status`
   `loading` ist (Start, `GET /api/auth/me`) oder eine Weiterleitung läuft, steht nur
   `SessionLoading` da - auch im Server-HTML, also kein Aufblitzen geschützter Inhalte. Ohne
-  Sitzung: `/admin/login?next=…`, auf einem Gerät mit Stations-Token `/station`; nach „Abmelden"
+  Sitzung: `/admin/login?next=…` (mit Query, z. B. Tag und Ort der Abholliste; `?next=` prüft
+  `isSafeInternalPath()` in `src/lib/safePath.ts` - keine `..`-Segmente, kein `//`, kein `%` im
+  Pfad, kein Backslash), auf einem Gerät mit Stations-Token `/station`; nach „Abmelden"
   (`loggedOut` im Sitzungskontext) **ohne** `?next=`, damit die nächste Person nicht auf der
   letzten Seite der vorigen landet. Sie sitzt nicht
   im Admin-Layout, weil `/backstube` keins hat (und F2s `pilotMode.spec.ts` ein Verzeichnis
@@ -1158,7 +1194,7 @@ Sieben Dinge, die man wissen muss:
   `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
   Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
   eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
-  (`/admin/users`) sind an einer Station (PIN-Sitzung) auch für den Inhaber gesperrt - wie
+  (`/admin/users`, `/admin/finance` samt Tagesziel) sind an einer Station (PIN-Sitzung) auch für den Inhaber gesperrt - wie
   `requirePersonalSession` der API; Navigation, Layout („Kein Zugriff" mit Begründung) und Proxy
   fragen `isPathAllowedForRole(path, role, sessionKind)`.
 - **Station (`/station`, außerhalb `/admin`, ohne Seitenleiste).** Ohne Token richtet ein mit

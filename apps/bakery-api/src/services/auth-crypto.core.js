@@ -22,6 +22,7 @@
 'use strict'
 
 const crypto = require('crypto')
+const { hasNameControlChars } = require('./control-chars.core')
 
 const SCRYPT_PREFIX = 'scrypt'
 /** Cost parameters for new hashes: N = 2^14, r = 8, p = 1 (16 MiB, ~50 ms). */
@@ -233,6 +234,9 @@ function validateDisplayName(displayName) {
   if (value.length === 0) return 'Bitte einen Anzeigenamen angeben.'
   if (value.length > DISPLAY_NAME_MAX_LENGTH) {
     return `Der Anzeigename darf höchstens ${DISPLAY_NAME_MAX_LENGTH} Zeichen lang sein.`
+  }
+  if (hasNameControlChars(value)) {
+    return 'Der Anzeigename enthält unzulässige Steuerzeichen.'
   }
   return null
 }

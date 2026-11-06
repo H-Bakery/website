@@ -164,6 +164,11 @@ describe('DashboardClient', () => {
     expect(
       screen.getByRole('button', { name: 'Produkte ansehen' })
     ).toBeInTheDocument()
+    // W4-verify r2: der Backzettel ist für den Verkauf nur zum Ansehen
+    expect(screen.getByText('Tagesplan ansehen, drucken')).toBeInTheDocument()
+    expect(
+      screen.queryByText('Planen, freigeben, drucken')
+    ).not.toBeInTheDocument()
   })
 
   it('Backstube: Schnellzugriff auf Backzettel und Backstube (W4-Verifikation)', async () => {
@@ -182,5 +187,6 @@ describe('DashboardClient', () => {
     expect(
       screen.queryByRole('heading', { level: 2, name: 'Vorbestellungen' })
     ).not.toBeInTheDocument()
+    expect(screen.getByText('Planen, freigeben, drucken')).toBeInTheDocument()
   })
 })

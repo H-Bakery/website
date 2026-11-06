@@ -53,6 +53,8 @@ import {
   formatCurrency,
   formatDate,
   formatPercent,
+  formatUnitPrice,
+  plural,
   shiftDate,
   toBusinessDate,
   weekdayOf,
@@ -604,9 +606,18 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                 </Typography>
                 <Typography variant="body2">{settlementText}</Typography>
                 <Typography variant="body2" color="text.secondary">
-                  {formatQty(stats.totals.dayCount)} Geschäftstage ·{' '}
-                  {formatQty(stats.totals.visitCount)} Besuche · davon{' '}
-                  {formatQty(stats.totals.refillCount)} Nachlieferungen
+                  {plural(
+                    stats.totals.dayCount,
+                    'Geschäftstag',
+                    'Geschäftstage'
+                  )}{' '}
+                  · {plural(stats.totals.visitCount, 'Besuch', 'Besuche')} ·
+                  davon{' '}
+                  {plural(
+                    stats.totals.refillCount,
+                    'Nachlieferung',
+                    'Nachlieferungen'
+                  )}
                 </Typography>
                 {createdAt && (
                   <Typography variant="body2" color="text.secondary">
@@ -652,6 +663,28 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   </strong>
                 </Box>
               )}
+            </Alert>
+          )}
+
+          {(stats.totals.discrepancyQty ?? 0) > 0 && (
+            <Alert
+              severity="warning"
+              sx={{ mb: { xs: 2, md: 3 } }}
+              data-testid="report-discrepancy"
+            >
+              <AlertTitle>
+                Abweichung: {stats.totals.discrepancyQty} Stück mehr gezählt,
+                als im Schrank sein konnten
+              </AlertTitle>
+              Sie sind weder als verkauft noch als Retoure gebucht. Meist fehlt
+              eine Lieferung, oder es wurde verzählt - bitte die Besuche dieser
+              Tage prüfen:{' '}
+              <strong>
+                {stats.byDay
+                  .filter((d) => d.discrepancyQty > 0)
+                  .map((d) => formatDate(d.businessDate))
+                  .join(', ')}
+              </strong>
             </Alert>
           )}
 
@@ -725,6 +758,13 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   <Typography variant="body2" color="text.secondary">
                     Umsatz = verkaufte Menge × Einzelpreis zum Zeitpunkt der
                     Lieferung
+                    {stats.byProduct.some(
+                      (p) =>
+                        p.unitPriceMin != null &&
+                        p.unitPriceMax != null &&
+                        p.unitPriceMin !== p.unitPriceMax
+                    ) &&
+                      '. Eine Preisspanne (von–bis) heißt: der Preis hat sich im Zeitraum geändert, jedes Stück zählt zu seinem Preis.'}
                   </Typography>
                 </Box>
                 <TableContainer>
@@ -773,13 +813,24 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                                 {product.uncountedQty} Stück ungezählt
                               </Typography>
                             )}
+                            {(product.discrepancyQty ?? 0) > 0 && (
+                              <Typography
+                                component="span"
+                                variant="caption"
+                                color="text.secondary"
+                                sx={{ display: 'block' }}
+                              >
+                                {product.discrepancyQty} Stück Abweichung (mehr
+                                gezählt als möglich)
+                              </Typography>
+                            )}
                           </TableCell>
                           <TableCell
                             align="right"
                             className="report-col-md"
                             sx={mdOnlyCell}
                           >
-                            {formatCurrency(product.unitPrice)}
+                            {formatUnitPrice(product)}
                           </TableCell>
                           <TableCell align="right">
                             {formatQty(product.deliveredQty)}

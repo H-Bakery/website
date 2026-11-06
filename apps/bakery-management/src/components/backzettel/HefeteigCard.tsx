@@ -21,7 +21,13 @@ import type {
   Hefeteig,
   HefeteigDough,
 } from '../../lib/backzettelApi'
-import { formatGrams, formatNumber } from '../../lib/backzettelFormat'
+import {
+  formatGrams,
+  formatNumber,
+  ingredientAmount,
+  recipeHeading,
+  recipeIncompleteNote,
+} from '../../lib/backzettelFormat'
 import type { DeltaExtras } from '../../lib/backzettelApi'
 import { DeltaExtrasNote } from './DeltaExtrasNote'
 
@@ -151,11 +157,19 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
       {filling.recipe ? (
         <Box sx={{ mt: 1 }}>
           <Typography variant="body2">
-            Rezept „{filling.recipe.title}“ auf{' '}
-            {formatGrams(filling.recipe.grams)} (Faktor{' '}
-            {formatNumber(filling.recipe.factor)}, Grundrezept{' '}
-            {formatGrams(filling.recipe.batch_g)})
+            {filling.recipe.factor === null || filling.recipe.batch_g === null
+              ? recipeHeading(filling.recipe)
+              : `Rezept „${filling.recipe.title}“ auf ${formatGrams(
+                  filling.recipe.grams
+                )} (Faktor ${formatNumber(
+                  filling.recipe.factor
+                )}, Grundrezept ${formatGrams(filling.recipe.batch_g)})`}
           </Typography>
+          {recipeIncompleteNote(filling.recipe) && (
+            <Alert severity="warning" sx={{ mt: 1, mb: 1 }}>
+              {recipeIncompleteNote(filling.recipe)}
+            </Alert>
+          )}
           <Table size="small" aria-label={`Rezept ${filling.name}`}>
             <TableBody>
               {filling.recipe.ingredients.map((ing, idx) => (
@@ -168,7 +182,7 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
                         variant="body2"
                         color="text.secondary"
                       >
-                        {ing.raw} (nicht skaliert)
+                        {ingredientAmount(ing, filling.recipe).text}
                       </Typography>
                     ) : (
                       <strong>{formatGrams(ing.scaled_g)}</strong>
@@ -178,11 +192,6 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
               ))}
             </TableBody>
           </Table>
-          {!filling.recipe.complete && (
-            <Typography variant="caption" color="text.secondary">
-              Rezept unvollständig – Zutaten ohne Grammangabe bitte nach Gefühl.
-            </Typography>
-          )}
         </Box>
       ) : filling.recipeMissing ? (
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

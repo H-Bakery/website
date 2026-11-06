@@ -58,18 +58,11 @@ export default function RootLayout({
     // nach oben rollt - aber nur, wenn es per data-scroll-behavior davon weiß;
     // sonst warnt es im Dev-Modus bei jedem Seitenwechsel.
     <html lang="de" data-scroll-behavior="smooth">
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=Lora:wght@400;500;600&family=Ubuntu:wght@300;400;500;700&display=swap"
-          rel="stylesheet"
-        />
-      </head>
+      {/* Keine Webfonts von fonts.googleapis.com (W4-Verifikation Runde 2):
+          jeder Seitenaufruf schickte die IP des Geräts an Google (DSGVO), und
+          die App braucht im LAN kein Internet. Die Oberfläche nutzt Roboto
+          bzw. die Systemschrift; die Social-Media-Grafik fällt auf `serif`
+          zurück. */}
       <body>
         <AppRouterCacheProvider>
           <Providers>{children}</Providers>

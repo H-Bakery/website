@@ -584,9 +584,35 @@ describe('Backzettel-Tagesplanung', () => {
       renderDay()
       const sheet = within(await screen.findByTestId('bz-print'))
       expect(sheet.getByTestId('print-done-test-weck|')).toHaveTextContent('✓')
+      // W4-verify r2: Kürzel statt Name - der Name lief über den Rand
+      expect(
+        sheet.getByTestId('print-done-test-weck|').parentElement
+      ).toHaveTextContent('✓TB')
       expect(
         sheet.queryByTestId('print-done-test-kornbrot|')
       ).not.toBeInTheDocument()
+    })
+
+    it('Nachträge bleiben auf Blatt 1: Spaltenköpfe nur einmal, Nachtrag einzeilig (W4-verify r2)', async () => {
+      const confirmed = saturdayConfirmed()
+      confirmed.sections[1].lines[0] = {
+        ...confirmed.sections[1].lines[0],
+        previouslyDone: { qty: 50, at: null, by: null },
+      }
+      mocked.fetchBackzettelDay.mockResolvedValue(confirmed)
+      renderDay()
+      const sheet = await screen.findByTestId('bz-print')
+      const p1 = sheet.querySelector('[data-testid="print-page-1"]') as Element
+      const tables = p1.querySelectorAll('table.lines')
+      expect(tables.length).toBeGreaterThan(1)
+      expect(tables[0].classList.contains('follow')).toBe(false)
+      tables.forEach((t, i) => {
+        if (i > 0) expect(t.classList.contains('follow')).toBe(true)
+        expect(t.querySelectorAll('colgroup col')).toHaveLength(8)
+      })
+      expect(p1).toHaveTextContent('(Liste unten)')
+      expect(p1).not.toHaveTextContent('siehe unten')
+      expect(p1).toHaveTextContent(/bereits 50 erledigt - noch \+\d+/)
     })
 
     it('ohne Hefeteig und Vorbereitung nur eine Seite', async () => {

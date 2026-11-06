@@ -31,6 +31,7 @@ import {
   formatQty,
   formatSigned,
   lineLabel,
+  previouslyDoneText,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
 
@@ -116,6 +117,16 @@ function LineName({
         )}
         <DeltaChip line={line} />
       </Stack>
+      {previouslyDoneText(line) && (
+        <Typography
+          variant="caption"
+          component="div"
+          data-testid={`previously-done-${line.key}`}
+          sx={{ fontWeight: 600, whiteSpace: 'normal' }}
+        >
+          {previouslyDoneText(line)}
+        </Typography>
+      )}
       <Typography variant="caption" color="text.secondary" component="div">
         {[
           line.unit && line.unit !== 'Stück' ? `in ${line.unit}` : null,
@@ -147,16 +158,30 @@ function CorrectionValue({
       alignItems="center"
       justifyContent="flex-end"
     >
-      <Box sx={{ textAlign: 'right' }}>
+      {/* Die Zelle erbt `nowrap` (NUM): der Grund muss ausdruecklich
+          umbrechen, sonst laeuft er unter die Nachbarspalten (W4-Verifikation
+          Runde 2). */}
+      <Box sx={{ textAlign: 'right', minWidth: 0, flex: '1 1 auto' }}>
         <Typography component="span">
           {formatSigned(line.correction)}
         </Typography>
+        {line.correctionClamped && (
+          <Typography
+            variant="caption"
+            component="div"
+            color="error"
+            sx={{ whiteSpace: 'normal', fontWeight: 600 }}
+          >
+            größer als die Menge
+          </Typography>
+        )}
         {line.correctionReason && (
           <Typography
             variant="caption"
             color="text.secondary"
             component="div"
-            sx={{ maxWidth: 220, overflowWrap: 'anywhere' }}
+            sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}
+            data-testid={`correction-reason-${line.key}`}
           >
             {line.correctionReason}
             {line.correctionBy ? ` (${line.correctionBy.displayName})` : ''}
@@ -381,6 +406,17 @@ export function BackzettelSectionView({
                 <Box sx={{ minWidth: 0 }}>
                   <Typography variant="body2">
                     Korrektur: {formatSigned(line.correction)}
+                    {line.correctionClamped && (
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        color="error"
+                        fontWeight={600}
+                      >
+                        {' '}
+                        - größer als die Menge
+                      </Typography>
+                    )}
                   </Typography>
                   {line.correctionReason && (
                     <Typography

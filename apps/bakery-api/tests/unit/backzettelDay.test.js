@@ -680,11 +680,80 @@ describe('Nachträge in Backmengen (W4-Verifikation)', () => {
           dough_g: 1200,
           totalDough_g: 7200,
           batches: 1,
+          batchesBefore: 1,
+          batch_max_kg: null,
           weighing: [{ piece_g: 600, pieces: 2, total: 12 }],
         },
       ],
       fillings: [
-        { id: 'nuss', name: 'Nussfüllung', grams: 1000, totalGrams: 6000 },
+        {
+          id: 'nuss',
+          name: 'Nussfüllung',
+          grams: 1000,
+          totalGrams: 6000,
+          recipe: null,
+        },
+      ],
+    })
+  })
+
+  it('nennt die Chargen vor den Nachträgen und das Rezept für die Zusatzfüllung (W4-verify r2)', () => {
+    const before = {
+      hefeteig: {
+        doughs: [
+          {
+            id: 'h',
+            name: 'Hefeteig',
+            batch_max_kg: 10,
+            pieces: 35,
+            dough_g: 20900,
+            batches: 3,
+            weighing: [],
+          },
+        ],
+      },
+      fillings: [],
+    }
+    const after = {
+      hefeteig: {
+        doughs: [
+          {
+            ...before.hefeteig.doughs[0],
+            pieces: 52,
+            dough_g: 31000,
+            batches: 4,
+          },
+        ],
+      },
+      fillings: [
+        {
+          id: 'nuss',
+          name: 'Nussfüllung',
+          grams: 6000,
+          recipe: {
+            title: 'Nussfüllung',
+            batch_g: 2000,
+            complete: true,
+            ingredients: [
+              { name: 'Nüsse', g: 1000, unit: 'g', raw: '1.000 g' },
+              { name: 'Zucker', g: 1000, unit: 'g', raw: '1.000 g' },
+            ],
+          },
+        },
+      ],
+    }
+    const diff = day.hefeteigFillingsDiff(before, after)
+    expect(diff.doughs[0]).toMatchObject({
+      batches: 4,
+      batchesBefore: 3,
+      batch_max_kg: 10,
+      dough_g: 10100,
+    })
+    expect(diff.fillings[0].recipe).toMatchObject({
+      factor: 3,
+      ingredients: [
+        expect.objectContaining({ name: 'Nüsse', scaled_g: 3000 }),
+        expect.objectContaining({ name: 'Zucker', scaled_g: 3000 }),
       ],
     })
   })

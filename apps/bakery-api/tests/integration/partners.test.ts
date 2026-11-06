@@ -584,6 +584,68 @@ describe('mock contract details (D3)', () => {
     expect(max.status).toBe(200)
   })
 
+  it('control and bidi characters in master data and visits are 400 (W4-verify r2)', async () => {
+    const nul = await as('inhaber')
+      .put('/api/partners/1')
+      .send({ name: 'Cap\u0000Markt' })
+    expectError(nul, 400, 'INVALID_TEXT')
+    expect(nul.body.message).toMatch(/Steuerzeichen/)
+    expectError(
+      await as('inhaber')
+        .post('/api/partners')
+        .send({ name: 'Testmarkt', contactName: 'Ve\u202era' }),
+      400,
+      'INVALID_TEXT'
+    )
+    // Zeilenumbruch in der Notiz bleibt erlaubt
+    const ok = await as('inhaber')
+      .put('/api/partners/1')
+      .send({ notes: 'Zeile 1\nZeile 2' })
+    expect(ok.status).toBe(200)
+    expectError(
+      await as('verkauf')
+        .post('/api/partners/1/visits')
+        .send({
+          businessDate: freshDay(),
+          visitType: 'refill',
+          staffName: 'Vera\u202eX',
+          items: [{ ...KORNBROT, countedQty: 1 }],
+        }),
+      400,
+      'INVALID_TEXT'
+    )
+  })
+
+  it('visitAt must fall on the business day (W4-verify r2)', async () => {
+    const day = freshDay()
+    const far = await as('verkauf')
+      .post('/api/partners/1/visits')
+      .send({
+        businessDate: day,
+        visitAt: '9999-12-31T00:00:00Z',
+        visitType: 'refill',
+        items: [{ ...KORNBROT, deliveredQty: 1 }],
+      })
+    expectError(far, 400, 'INVALID_VISIT_AT')
+    expect(far.body.message).toMatch(/passt nicht zum Geschäftstag/)
+    const ok = await as('verkauf')
+      .post('/api/partners/1/visits')
+      .send({
+        businessDate: day,
+        visitAt: `${day}T08:00:00.000Z`,
+        visitType: 'refill',
+        items: [],
+      })
+    expect(ok.status).toBe(201)
+    expectError(
+      await as('verkauf')
+        .patch(`/api/partners/1/visits/${ok.body.id}`)
+        .send({ visitAt: '9999-12-31T00:00:00Z' }),
+      400,
+      'INVALID_VISIT_AT'
+    )
+  })
+
   it('text limits and the business-day window (W4-verify)', async () => {
     const huge = await as('inhaber')
       .post('/api/partners')

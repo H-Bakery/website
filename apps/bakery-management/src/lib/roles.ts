@@ -23,6 +23,7 @@ import {
   type NavItem,
 } from '../app/admin/navigation'
 import { isPilotMode } from './pilotMode'
+import { isSafeInternalPath } from './safePath'
 
 export const PILOT_ROLES = [
   'inhaber',
@@ -180,7 +181,13 @@ function matchesRule(path: string, rule: RouteRule): boolean {
  * `requirePersonalSession`); hier wird daraus Bedienführung statt
  * Fehlermeldung.
  */
-export const PERSONAL_ONLY_ROUTES: readonly string[] = ['/admin/users']
+export const PERSONAL_ONLY_ROUTES: readonly string[] = [
+  '/admin/users',
+  // Finanzen und Tagesziel (B4: `inhaber` mit Passwort-Sitzung) - vorher
+  // standen sie an der Station im Menü und antworteten dann mit 403
+  // (W4-verify r2). `/admin/finance` schließt `/admin/finance/tagesziel` ein.
+  '/admin/finance',
+]
 
 /** Sitzungsart, wie sie `authSession.ts` speichert (hier ohne Import-Zyklus). */
 export type AccessSessionKind = 'personal' | 'station'
@@ -236,7 +243,7 @@ export function resolvePostLoginPath(
   role: PilotRole,
   next: string | null | undefined
 ): string {
-  if (!next || !next.startsWith('/') || next.startsWith('//')) {
+  if (!isSafeInternalPath(next)) {
     return startPathForRole(role)
   }
   // Der Inhaber meldet sich an, um ein Tablet als Station einzurichten.

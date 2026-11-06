@@ -209,7 +209,14 @@ export default function SettingsPage() {
                       href="/admin/users"
                       variant="outlined"
                       size="small"
-                      sx={{ minHeight: 44 }}
+                      // W4-verify r2: neben dem langen Hinweistext wurde der
+                      // Knopf bei 1280 px schmaler als sein Text.
+                      sx={{
+                        minHeight: 44,
+                        flexShrink: 0,
+                        whiteSpace: 'nowrap',
+                        ml: 1,
+                      }}
                     >
                       Benutzer
                     </Button>

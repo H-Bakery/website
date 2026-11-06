@@ -122,12 +122,10 @@ function daysBetween(a, b) {
  * ein Name in der Abholliste optisch umdrehen liesse. Die Anmerkung darf
  * Zeilenumbrueche und Tabs behalten.
  */
-// eslint-disable-next-line no-control-regex
-const NAME_CONTROL_CHARS =
-  /[\u0000-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
-// eslint-disable-next-line no-control-regex
-const NOTE_CONTROL_CHARS =
-  /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u200e\u200f\u202a-\u202e\u2066-\u2069]/
+const {
+  NAME_CONTROL_CHARS,
+  TEXT_CONTROL_CHARS: NOTE_CONTROL_CHARS,
+} = require('./control-chars.core')
 
 /** Wochentag eines Geschaeftsdatums nach `Date.getDay()`, sonst `null`. */
 function weekdayOf(iso) {
@@ -972,6 +970,20 @@ function normalizeStatusChange(existing, body, options) {
       }
     }
   }
+  // Der Fahrer (allowedTargets gesetzt) darf eine Zahlung erfassen, aber nie
+  // zurücknehmen - sonst ließe sich kassiertes Geld wieder auf „unbezahlt“
+  // setzen (W4-Verifikation Runde 2). Zurücknehmen kann der Verkauf.
+  if (
+    Array.isArray(opts.allowedTargets) &&
+    source.paid === false &&
+    base.paid
+  ) {
+    return fail(
+      'paid_undo_forbidden',
+      'Eine erfasste Zahlung zurücknehmen kann nur der Verkauf.',
+      403
+    )
+  }
   const blocked = checkTransition(base.status, status)
   if (blocked) return blocked
 
@@ -1570,6 +1582,39 @@ function sumByProductVariant(list) {
   )
 }
 
+/** Summe von Positionen `{ quantity|qty, unitPrice }` (oder `lineTotal`). */
+function itemsTotal(items) {
+  return orderTotal(
+    (Array.isArray(items) ? items : []).map((item) =>
+      item && item.lineTotal !== undefined
+        ? item
+        : {
+            qty:
+              item && (item.quantity !== undefined ? item.quantity : item.qty),
+            unitPrice: item && item.unitPrice,
+          }
+    )
+  )
+}
+
+/**
+ * Offener Betrag einer bezahlten Bestellung (W4-Verifikation Runde 2):
+ * `> 0` noch zu kassieren (nach einer Änderung ist sie teurer geworden),
+ * `< 0` zu erstatten (billiger geworden oder storniert). Unbezahlt: 0 - der
+ * ganze Betrag steht dann ohnehin in `unpaidTotal`. `paidAmount: null` bei
+ * `paid` heisst „voll bezahlt“ (Bestand vor der Spalte).
+ */
+function paymentBalance(p) {
+  if (!p || !p.paid) return 0
+  const total = roundCents(p.total)
+  const paid =
+    p.paidAmount == null || p.paidAmount === ''
+      ? total
+      : roundCents(p.paidAmount)
+  if (p.status === 'storniert') return roundCents(-paid)
+  return roundCents(total - paid)
+}
+
 /** Kopfzahlen eines Tages (`GET /api/preorders/day`). */
 function summarizeDay(list) {
   const all = Array.isArray(list) ? list : []
@@ -1588,19 +1633,49 @@ function summarizeDay(list) {
     byStatus,
     notCollected: active.filter((p) => p.notCollectedAt).length,
     paid: active.filter((p) => p.paid).length,
+    // Noch zu kassieren: unbezahlte Bestellungen plus der Rest bezahlter, die
+    // seit der Zahlung teurer geworden sind (W4-Verifikation Runde 2).
     unpaidTotal: roundCents(
       active
         .filter((p) => !p.paid && p.status !== 'abgeholt')
-        .reduce((sum, p) => sum + roundCents(p.total), 0)
+        .reduce((sum, p) => sum + roundCents(p.total), 0) +
+        active
+          .filter((p) => p.status !== 'abgeholt')
+          .reduce((sum, p) => sum + Math.max(0, paymentBalance(p)), 0)
+    ),
+    // Davon Nachzahlungen bezahlter Bestellungen
+    topUpCount: active.filter(
+      (p) => p.status !== 'abgeholt' && paymentBalance(p) > 0
+    ).length,
+    topUpTotal: roundCents(
+      active
+        .filter((p) => p.status !== 'abgeholt')
+        .reduce((sum, p) => sum + Math.max(0, paymentBalance(p)), 0)
+    ),
+    // Zu erstatten: bezahlt und storniert oder billiger geworden - auch
+    // stornierte zählen hier, sonst stünde vorab Bezahltes in keiner Summe.
+    refundCount: all.filter((p) => p && paymentBalance(p) < 0).length,
+    refundTotal: roundCents(
+      all
+        .filter((p) => p)
+        .reduce((sum, p) => sum + Math.max(0, -paymentBalance(p)), 0)
     ),
     // „Ohne Zahlung übergeben“: die Ware ist weg, das Geld fehlt. Steht für
     // sich, damit es nicht aus jeder Summe verschwindet (W4-Verifikation).
-    handedOverUnpaid: active.filter((p) => !p.paid && p.status === 'abgeholt')
-      .length,
+    // Eine bezahlte, danach teurer gewordene Bestellung, die ohne den Rest
+    // übergeben wurde, zählt mit ihrem Rest dazu.
+    handedOverUnpaid: active.filter(
+      (p) => p.status === 'abgeholt' && (!p.paid || paymentBalance(p) > 0)
+    ).length,
     handedOverUnpaidTotal: roundCents(
       active
-        .filter((p) => !p.paid && p.status === 'abgeholt')
-        .reduce((sum, p) => sum + roundCents(p.total), 0)
+        .filter((p) => p.status === 'abgeholt')
+        .reduce(
+          (sum, p) =>
+            sum +
+            (!p.paid ? roundCents(p.total) : Math.max(0, paymentBalance(p))),
+          0
+        )
     ),
     byChannel,
   }
@@ -1908,6 +1983,8 @@ module.exports = {
   codeNeedsRenewal,
   sumByProductVariant,
   summarizeDay,
+  itemsTotal,
+  paymentBalance,
   comparePickup,
   toLegacyStatus,
   fromLegacyStatus,

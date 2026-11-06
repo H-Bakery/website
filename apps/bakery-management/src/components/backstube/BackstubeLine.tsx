@@ -14,6 +14,7 @@ import {
   formatSigned,
   formatTimestamp,
   lineLabel,
+  previouslyDoneText,
 } from '../../lib/backzettelFormat'
 import { useBackstubeColors } from './backstubeColors'
 
@@ -66,6 +67,7 @@ export function BackstubeLine({
   const done = !draft && !!line.doneAt
   const openDelta = !!line.delta && line.delta.open > 0
   const tickable = !draft && canTick && line.id !== null
+  const previously = draft ? null : previouslyDoneText(line)
 
   return (
     <Box
@@ -113,6 +115,20 @@ export function BackstubeLine({
         >
           {[line.tray, lineBreakdown(line)].filter(Boolean).join(' · ')}
         </Typography>
+        {previously && (
+          <Typography
+            component="div"
+            data-testid={`bs-previously-done-${line.key}`}
+            sx={{
+              fontSize: { xs: '1rem', sm: '1.15rem' },
+              fontWeight: 700,
+              color: 'text.primary',
+              mt: 0.5,
+            }}
+          >
+            {previously}
+          </Typography>
+        )}
         {(openDelta || (line.delta && line.delta.count > 0) || done) && (
           <Box
             sx={{

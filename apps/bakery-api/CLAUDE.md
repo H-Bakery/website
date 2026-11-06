@@ -262,7 +262,8 @@ What to know before changing it:
   legacy marker `!legacy-user-disabled`, and refuses parameters outside bounds.
 - **`audit(req, action, entity, entityId, data, { transaction, userId })`** in `src/auth/audit.ts`
   writes `audit_log`; pass the write's transaction. Logged: `login`, `login_failed` (userId null,
-  username + IP, never the password), `logout`, `refresh_reuse`, user `create`/`update` (diff)/
+  IP; the username and `entityId` only for an existing account - a typed unknown name is often the
+  password and is stored as `unknownUser: true`, never the text; never the password), `logout`, `refresh_reuse`, user `create`/`update` (diff)/
   `set_password`/`set_pin`/`clear_pin`, station `register`/`revoke`, `cli_create`/`cli_reset`,
   `bootstrap_create`.
 - **User admin rails:** users are deactivated (`active: false`), never deleted; nobody can

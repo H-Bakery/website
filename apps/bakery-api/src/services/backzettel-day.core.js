@@ -10,6 +10,7 @@
 
 const core = require('./backzettel.core')
 const configCore = require('./backzettel-config.core')
+const recipesCore = require('./backzettel-recipes.core')
 
 const { INTEGER_UNITS, SECTION_LABELS } = configCore
 
@@ -527,7 +528,12 @@ function hefeteigFillingsDiff(before, after) {
     ])
   )
   for (const d of (after && after.hefeteig && after.hefeteig.doughs) || []) {
-    const b = beforeDoughs.get(d.id) || { pieces: 0, dough_g: 0, weighing: [] }
+    const b = beforeDoughs.get(d.id) || {
+      pieces: 0,
+      dough_g: 0,
+      weighing: [],
+      batches: null,
+    }
     const bw = new Map((b.weighing || []).map((w) => [w.piece_g, w.pieces]))
     const weighing = (d.weighing || [])
       .map((w) => ({
@@ -546,6 +552,11 @@ function hefeteigFillingsDiff(before, after) {
       dough_g: round2(d.dough_g - (b.dough_g || 0)),
       totalDough_g: d.dough_g,
       batches: d.batches,
+      // W4-Verifikation Runde 2: Chargen vor den Nachtraegen und die
+      // Chargengroesse - sonst sieht die Backstube nicht, dass es jetzt eine
+      // Charge mehr ist.
+      batchesBefore: b.batches === undefined ? null : b.batches,
+      batch_max_kg: d.batch_max_kg === undefined ? null : d.batch_max_kg,
       weighing,
     })
   }
@@ -557,7 +568,19 @@ function hefeteigFillingsDiff(before, after) {
     const b = beforeFillings.get(f.id)
     const grams = round2((f.grams || 0) - ((b && b.grams) || 0))
     if (grams === 0) continue
-    fillings.push({ id: f.id, name: f.name, grams, totalGrams: f.grams })
+    // Das Rezept fuer die zusaetzliche Menge (nur bei mehr, nur wenn es sich
+    // hochrechnen laesst) - sonst rechnet die Backstube von Hand.
+    const recipe =
+      grams > 0 && f.recipe && f.recipe.complete !== false
+        ? recipesCore.scaleRecipe(f.recipe, grams)
+        : null
+    fillings.push({
+      id: f.id,
+      name: f.name,
+      grams,
+      totalGrams: f.grams,
+      recipe,
+    })
   }
   return doughs.length || fillings.length ? { doughs, fillings } : null
 }

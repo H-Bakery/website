@@ -412,6 +412,38 @@ describe('season factor and corrections (draft)', () => {
   })
 })
 
+describe('correction larger than the line (W4 verification round 2)', () => {
+  it('refuses a correction that would push the line below 0', async () => {
+    // Sunday: weck base 80 (season 1.5 from the test above -> 120)
+    const res = await as('inhaber')
+      .put(`/api/backzettel/${SUN}/lines/weck/correction`)
+      .send({ correction: -200, reason: 'Stadtfest' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('correction_exceeds_line')
+    expect(res.body.message).toMatch(/größer als die geplante Menge \(120\)/)
+    // exactly the line is fine
+    const ok = await as('inhaber')
+      .put(`/api/backzettel/${SUN}/lines/weck/correction`)
+      .send({ correction: -120, reason: 'Stadtfest' })
+    expect(ok.status).toBe(200)
+    expect(line(ok.body.data, 'weck')).toMatchObject({ total: 0 })
+    expect(line(ok.body.data, 'weck').correctionClamped).toBeUndefined()
+    // a later preorder raises the total again
+    const p = await preorder(SUN, [{ productId: 'test-weck', quantity: 7 }])
+    const after = await as('inhaber').get(`/api/backzettel/${SUN}`)
+    expect(line(after.body.data, 'weck')).toMatchObject({
+      preorders: 7,
+      total: 7,
+    })
+    // reset for later tests
+    await PreorderItem.destroy({ where: { preorderId: p.id } })
+    await p.destroy()
+    await as('inhaber')
+      .put(`/api/backzettel/${SUN}/lines/weck/correction`)
+      .send({ correction: 0 })
+  })
+})
+
 describe('confirm, deltas, ticks, reopen', () => {
   let confirmed: any
 
@@ -790,6 +822,22 @@ describe('re-confirm and the frozen snapshot', () => {
       total: 8,
       doneBy: { displayName: 'Test test.backstube' },
     })
+    // W4 verification round 2: the Backstube sees what was already baked
+    expect(line(again.body.data, 'weck').previouslyDone).toEqual({
+      qty: 30,
+      at: expect.any(String),
+      by: expect.objectContaining({ displayName: 'Test test.backstube' }),
+    })
+    expect(line(again.body.data, 'plunder').previouslyDone).toBeNull()
+    const reticked = await as('backstube').post(
+      `/api/backzettel/${WED2}/lines/${weck.id}/done`
+    )
+    expect(reticked.status).toBe(200)
+    const after = await as('backstube').get(`/api/backzettel/${WED2}`)
+    expect(line(after.body.data, 'weck').previouslyDone).toBeNull()
+    await as('backstube').post(
+      `/api/backzettel/${WED2}/lines/${weck.id}/undone`
+    )
     const row = await BackzettelLine.findByPk(weck.id)
     expect(row?.doneAt).toBeNull()
     expect(row?.doneBy).toBeNull()
@@ -800,7 +848,12 @@ describe('re-confirm and the frozen snapshot', () => {
     })
     expect((confirms[0].data as any).clearedTicks).toEqual([])
     expect((confirms[1].data as any).clearedTicks).toEqual([
-      expect.objectContaining({ itemId: 'weck', from: 30, to: 40 }),
+      expect.objectContaining({
+        itemId: 'weck',
+        from: 30,
+        to: 40,
+        doneAt: expect.any(String),
+      }),
     ])
   })
 

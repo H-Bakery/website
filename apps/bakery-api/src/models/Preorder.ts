@@ -52,6 +52,11 @@ export class Preorder extends Model<
   declare pickupPointId: CreationOptional<string | null>
   declare status: CreationOptional<PreorderStatus>
   declare paid: CreationOptional<boolean>
+  /**
+   * Amount paid when payment was recorded; `null` = not paid, or paid before
+   * the column existed (then: in full). See migration 20261114.
+   */
+  declare paidAmount: CreationOptional<string | number | null>
   declare note: CreationOptional<string | null>
   declare pickedUpAt: CreationOptional<Date | null>
   /** "nicht abgeholt" = status `bereit` + this timestamp (migration B7). */
@@ -88,6 +93,7 @@ export class Preorder extends Model<
           allowNull: false,
           defaultValue: false,
         },
+        paidAmount: { type: DataTypes.DECIMAL(10, 2), allowNull: true },
         note: { type: DataTypes.TEXT, allowNull: true },
         pickedUpAt: { type: DataTypes.DATE, allowNull: true },
         notCollectedAt: { type: DataTypes.DATE, allowNull: true },

@@ -137,6 +137,35 @@ describe('PreorderDetailClient (P3)', () => {
     expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
   })
 
+  it('bezahlt und teurer geworden: Rest kassieren; Storno nennt die Erstattung (W4-verify r2)', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValue(
+      preorder({ paid: true, paidAmount: 10, total: 10.9, paymentBalance: 0.9 })
+    )
+    mockStatus.mockResolvedValue(
+      preorder({ paid: true, paidAmount: 10.9, total: 10.9, paymentBalance: 0 })
+    )
+    renderAs('verkauf')
+    expect(await screen.findByTestId('payment-balance')).toHaveTextContent(
+      /Bei der Abholung noch\s*0,90\s*€\s*kassieren/
+    )
+    await user.click(screen.getByRole('button', { name: 'Stornieren' }))
+    const dialog = await screen.findByRole('dialog')
+    expect(within(dialog).getByTestId('cancel-refund')).toHaveTextContent(
+      /bereits bezahlt.*zurückgegeben/
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Behalten' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    await user.click(screen.getByRole('button', { name: /Rest kassiert/ }))
+    await waitFor(() =>
+      expect(mockStatus).toHaveBeenCalledWith(
+        7,
+        expect.objectContaining({ paid: true }),
+        expect.anything()
+      )
+    )
+  })
+
   it('setzt Status und bezahlt; zeigt Fehler des Servers', async () => {
     const user = userEvent.setup()
     mockStatus.mockRejectedValueOnce(
