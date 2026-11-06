@@ -336,7 +336,12 @@ export async function stubOrderEndpoint(page: Page): Promise<void> {
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
     'Access-Control-Allow-Headers': 'content-type,accept',
   }
-  await page.route('**/api/orders**', async (route) => {
+  // Ein Prädikat statt '**/api/orders**': in Playwrights Glob wirkt `**`
+  // direkt hinter Text wie `*` und trifft `/api/orders/<code>` nicht - die
+  // Bestätigungsseite fragte dann die echte API (401).
+  const isOrderUrl = (url: URL) =>
+    url.pathname === '/api/orders' || url.pathname.startsWith('/api/orders/')
+  await page.route(isOrderUrl, async (route) => {
     const req = route.request()
     if (req.method() === 'OPTIONS') {
       await route.fulfill({ status: 204, headers: cors })
