@@ -87,6 +87,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
           'Menü › **Abholliste**. Tag und **Abholort** prüfen.',
           'Name oder Code ins Suchfeld tippen.',
           '**Übergeben** tippen. Noch nicht bezahlt: kassieren, dann **Bezahlt und übergeben**.',
+          'Bezahlt, aber seitdem geändert: teurer – Rest kassieren, **Rest kassiert und übergeben**; billiger – Differenz zurückgeben, **Erstattet und übergeben**. Storniert: Geld zurückgeben, dann **Erstattet**.',
           'Vertippt? **⋮** › **Übergabe zurücknehmen** – die Zahlung steht dann wieder wie vorher.',
           'Nachmittags die Liste für morgen **drucken** – falls morgen die Technik streikt.',
         ],
@@ -221,6 +222,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         steps: [
           'In der App: **Übergeben** tippen.',
           'Noch nicht bezahlt: Geld nehmen, dann **Bezahlt und übergeben**.',
+          'Schon bezahlt, aber teurer geworden: den Rest nehmen, **Rest kassiert und übergeben**. Billiger geworden: den Betrag aus dem Hinweis zurückgeben, **Erstattet und übergeben**.',
           '**Ohne Zahlung übergeben** nur, wenn das so abgesprochen ist.',
           'Auf Papier: Haken bei „übergeben“, „bezahlt“ ankreuzen.',
         ],
