@@ -95,6 +95,7 @@ import {
   isPickupPlace,
   isWaiting,
   matchesSearch,
+  owesRest,
   placeLabel,
   staleListMessage,
   stepPickupDay,
@@ -224,6 +225,17 @@ function handedOverUnpaidNote(
 }
 
 function PaidChip({ preorder }: { preorder: Preorder }) {
+  if (owesRest(preorder)) {
+    return (
+      <Chip
+        size="small"
+        color="warning"
+        variant="outlined"
+        label={`Rest ${formatCurrency(preorder.paymentBalance ?? 0)} offen`}
+        data-paid="rest"
+      />
+    )
+  }
   return preorder.paid ? (
     <Chip
       size="small"
@@ -610,7 +622,7 @@ export default function AbholListeClient({
   const startHandover = (preorder: Preorder) => {
     // Bezahlt und Verkauf: ein Tipp genügt (Rückgängig im Hinweis). Sonst
     // fragen - nach dem Geld, und Fahrer können nicht zurücknehmen.
-    if (preorder.paid && canWrite) handOver(preorder)
+    if (preorder.paid && !owesRest(preorder) && canWrite) handOver(preorder)
     else setHandover(preorder)
   }
 
@@ -889,9 +901,17 @@ export default function AbholListeClient({
                     size="large"
                     startIcon={<PaidIcon />}
                     onClick={() =>
-                      act(p, { paid: true }, `${name}: bezahlt.`, {
-                        paid: false,
-                      })
+                      act(
+                        p,
+                        { paid: true },
+                        owesRest(p)
+                          ? `${name}: Rest kassiert.`
+                          : `${name}: bezahlt.`,
+                        // Rückgängig nur für den Verkauf - eine erfasste
+                        // Zahlung zurücknehmen darf der Fahrer nicht (API
+                        // 403 paid_undo_forbidden, W4-Verifikation Runde 2).
+                        canWrite && !p.paid ? { paid: false } : undefined
+                      )
                     }
                     disabled={busy}
                     aria-label={`${name}: als bezahlt markieren`}
@@ -1582,10 +1602,24 @@ export default function AbholListeClient({
                 </Box>
               </DialogContentText>
               <Alert
-                severity={handover.paid ? 'success' : 'info'}
+                severity={
+                  owesRest(handover)
+                    ? 'warning'
+                    : handover.paid
+                    ? 'success'
+                    : 'info'
+                }
                 sx={{ mt: 2 }}
               >
-                {handover.paid
+                {owesRest(handover)
+                  ? `Bezahlt waren ${formatCurrency(
+                      handover.paidAmount ?? 0
+                    )}, die Bestellung kostet jetzt ${formatCurrency(
+                      handover.total
+                    )}: noch ${formatCurrency(
+                      handover.paymentBalance ?? 0
+                    )} kassieren.`
+                  : handover.paid
                   ? `Schon bezahlt (${formatCurrency(handover.total)}).`
                   : `Noch nicht bezahlt: ${formatCurrency(
                       handover.total
@@ -1625,6 +1659,15 @@ export default function AbholListeClient({
               Ohne Zahlung übergeben
             </Button>
           )}
+          {handover && owesRest(handover) && (
+            <Button
+              variant="outlined"
+              onClick={() => handOver(handover)}
+              sx={TOUCH}
+            >
+              Ohne Rest übergeben
+            </Button>
+          )}
           {handover && (
             <Button
               variant="contained"
@@ -1632,11 +1675,18 @@ export default function AbholListeClient({
               autoFocus
               startIcon={<HandoverIcon />}
               onClick={() =>
-                handOver(handover, handover.paid ? undefined : true)
+                handOver(
+                  handover,
+                  handover.paid && !owesRest(handover) ? undefined : true
+                )
               }
               sx={TOUCH}
             >
-              {handover.paid ? 'Übergeben' : 'Bezahlt und übergeben'}
+              {owesRest(handover)
+                ? 'Rest kassiert und übergeben'
+                : handover.paid
+                ? 'Übergeben'
+                : 'Bezahlt und übergeben'}
             </Button>
           )}
         </DialogActions>

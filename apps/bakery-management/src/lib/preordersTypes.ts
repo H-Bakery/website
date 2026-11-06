@@ -93,6 +93,13 @@ export interface Preorder {
   notCollected: boolean
   notCollectedAt: string | null
   paid: boolean
+  /** Bezahlter Betrag (bei `paid`); ältere Server: fehlt. */
+  paidAmount?: number | null
+  /**
+   * Offener Betrag einer bezahlten Bestellung: `> 0` noch kassieren (teurer
+   * geworden), `< 0` erstatten (billiger geworden oder storniert).
+   */
+  paymentBalance?: number
   note: string | null
   items: PreorderItem[]
   total: number
@@ -215,8 +222,14 @@ export interface PreorderDaySummary {
   byStatus: Record<PreorderStatus, number>
   notCollected: number
   paid: number
-  /** Noch nicht bezahlt und noch nicht abgeholt. */
+  /** Noch nicht bezahlt und noch nicht abgeholt, plus Nachzahlungen. */
   unpaidTotal: number
+  /** Davon Nachzahlungen bezahlter, teurer gewordener Bestellungen. */
+  topUpCount?: number
+  topUpTotal?: number
+  /** Zu erstatten: bezahlt und storniert oder billiger geworden. */
+  refundCount?: number
+  refundTotal?: number
   /** Übergeben, aber nicht bezahlt („Ohne Zahlung übergeben“). Ältere Server: fehlt. */
   handedOverUnpaid?: number
   handedOverUnpaidTotal?: number

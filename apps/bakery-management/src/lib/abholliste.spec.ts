@@ -1,6 +1,7 @@
 import {
   CANCELLED_GROUP,
   abholActions,
+  owesRest,
   abhollisteHref,
   bulkRequestFailedMessage,
   changeAlreadyApplied,
@@ -341,5 +342,22 @@ describe('verlorene Antworten (W4-Verifikation)', () => {
     expect(singleRequestFailedMessage('offline', true)).toMatch(
       /nichts gespeichert/
     )
+  })
+})
+
+describe('bezahlt, aber teurer geworden (W4-verify r2)', () => {
+  it('bietet „Bezahlt“ für den Rest an, auch dem Fahrer', () => {
+    const p = preorder({
+      paid: true,
+      paidAmount: 10,
+      total: 10.9,
+      paymentBalance: 0.9,
+    })
+    expect(owesRest(p)).toBe(true)
+    expect(abholActions(p, 'fahrer').markPaid).toBe(true)
+    expect(abholActions(p, 'fahrer').markUnpaid).toBe(false)
+    const full = preorder({ paid: true, paymentBalance: 0 })
+    expect(owesRest(full)).toBe(false)
+    expect(abholActions(full, 'verkauf').markPaid).toBe(false)
   })
 })

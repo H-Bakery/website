@@ -504,6 +504,12 @@ export default function PreorderForm({
   const removeLine = (key: string) =>
     setLines((current) => current.filter((line) => line.key !== key))
 
+  // Bereits bezahlter Betrag einer bezahlten Bestellung (W4-Verifikation
+  // Runde 2): ändert sich die Summe, sagt das Formular, was zu kassieren oder
+  // zu erstatten ist - „bezahlt“ bleibt stehen, der Betrag nicht.
+  const paidBefore = preorder?.paid
+    ? preorder.paidAmount ?? preorder.total
+    : null
   const total = roundCents(
     lines.reduce(
       (sum, line) => sum + roundCents(line.quantity * line.unitPrice),
@@ -1191,6 +1197,24 @@ export default function PreorderForm({
                 label={paid ? 'Bezahlt' : 'Noch nicht bezahlt'}
                 sx={{ mb: 1, minHeight: 44 }}
               />
+              {paidBefore != null &&
+                paid &&
+                roundCents(total - paidBefore) !== 0 && (
+                  <Alert
+                    severity="warning"
+                    sx={{ mb: 1 }}
+                    data-testid="paid-difference"
+                  >
+                    Bereits bezahlt: {formatCurrency(paidBefore)}.{' '}
+                    {total > paidBefore
+                      ? `Differenz ${formatCurrency(
+                          roundCents(total - paidBefore)
+                        )} bei der Abholung kassieren.`
+                      : `${formatCurrency(
+                          roundCents(paidBefore - total)
+                        )} an die Kundschaft zurückgeben.`}
+                  </Alert>
+                )}
               <TextField
                 label="Notiz (optional)"
                 value={note}

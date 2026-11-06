@@ -43,4 +43,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20261113000000-preorders-b7.js',
     module: require('../../migrations/20261113000000-preorders-b7.js'),
   },
+  {
+    // W4 verification round 2: preorders.paid_amount
+    name: '20261114000000-preorders-paid-amount.js',
+    module: require('../../migrations/20261114000000-preorders-paid-amount.js'),
+  },
 ]

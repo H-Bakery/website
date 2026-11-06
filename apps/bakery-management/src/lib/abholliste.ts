@@ -173,6 +173,15 @@ const NONE: AbholActions = {
   undoHandover: false,
 }
 
+/** Bezahlt, aber seitdem teurer geworden - der Rest ist noch offen. */
+export function owesRest(preorder: Preorder): boolean {
+  return (
+    preorder.paid &&
+    preorder.status !== 'storniert' &&
+    (preorder.paymentBalance ?? 0) > 0
+  )
+}
+
 /**
  * Was die Rolle an dieser Bestellung tun darf - so, wie die API es zulässt
  * (`POST /api/preorders/:id/status`): Fahrer nur übergeben, „nicht
@@ -203,7 +212,9 @@ export function abholActions(
       !preorder.notCollected &&
       isDayEndAllowed(preorder.pickupDate, today ?? ''),
     clearNotCollected: writer && preorder.notCollected,
-    markPaid: !preorder.paid,
+    // Bezahlt, aber teurer geworden: der Rest ist noch zu kassieren
+    // (W4-Verifikation Runde 2).
+    markPaid: !preorder.paid || owesRest(preorder),
     markUnpaid: writer && preorder.paid,
     undoHandover: writer && preorder.status === 'abgeholt',
   }
