@@ -282,7 +282,7 @@ interface Toast {
    * wenn weiter unten getippt wurde. Fehler bleiben stehen, bis man sie
    * schließt.
    */
-  severity?: 'success' | 'info' | 'error'
+  severity?: 'success' | 'info' | 'warning' | 'error'
 }
 
 type BulkKind = AbholBulkKind
@@ -412,6 +412,18 @@ export default function AbholListeClient({
   /** Zuletzt erfolgreich geladener Tag - sofort nach `await load()` lesbar. */
   const loadedDayRef = useRef<PreorderDay | null>(null)
   /**
+   * Ein Tipp, dessen Ausgang offen ist (Antwort verloren, Liste nicht
+   * nachladbar). Das nächste erfolgreiche Laden - z. B. wenn das WLAN
+   * zurückkommt - löst ihn auf, statt die rote Meldung stehen zu lassen
+   * (W4-Verifikation Runde 2).
+   */
+  const uncertainRef = useRef<{
+    id: number
+    code: string
+    change: PreorderStatusChange
+    text: string
+  } | null>(null)
+  /**
    * Lädt den Tag. `silent`: ohne Ladeanzeige und **ohne die Liste zu
    * leeren** - scheitert es, bleibt der letzte Stand stehen und ein Hinweis
    * sagt, dass er veraltet sein kann. Liefert `true`, wenn neu geladen.
@@ -431,6 +443,26 @@ export default function AbholListeClient({
         setDay(next)
         setLoadError(null)
         setStaleNotice(null)
+        const open = uncertainRef.current
+        if (open) {
+          uncertainRef.current = null
+          const fresh = next.preorders.find((p) => p.id === open.id)
+          setActionError((current) => (current === open.text ? null : current))
+          if (fresh && changeAlreadyApplied(fresh, open.change)) {
+            setToast({
+              text: `${open.code}: Die Verbindung ist wieder da - gespeichert ist es.`,
+              severity: 'success',
+            })
+          } else if (fresh) {
+            const text = `${open.code}: Die Verbindung ist wieder da - das wurde NICHT gespeichert. Bitte jetzt erneut tippen.`
+            setActionError(text)
+            setToast({ text, severity: 'error' })
+          } else {
+            setToast((current) =>
+              current?.text === open.text ? null : current
+            )
+          }
+        }
         const now = new Date()
         setPrintedAt(
           now.toLocaleString('de-DE', {
@@ -548,13 +580,32 @@ export default function AbholListeClient({
     const reloaded = await load(true)
     const fresh = reloaded ? freshOf(preorder.id) : null
     // Der zweite Versuch nach einer verlorenen Antwort: schon erledigt.
-    const text =
-      fresh && change && changeAlreadyApplied(fresh, change)
-        ? `${preorder.code}: Das ist bereits gespeichert - nichts zu tun.`
-        : `${preorder.code}: ${preorderErrorMessage(
-            err,
-            'Die Bestellung wurde inzwischen geändert.'
-          )} Es wurde nichts überschrieben. ${afterReload(reloaded)}`
+    if (fresh && change && changeAlreadyApplied(fresh, change)) {
+      const text = `${preorder.code}: Das ist bereits gespeichert - nichts zu tun.`
+      setConflict(text)
+      setToast({ text, severity: 'info' })
+      return
+    }
+    // W4-verify r2: Übergabe mit Geld, aber jemand anders hat schon ohne
+    // Zahlung übergeben - das kassierte Geld ist NICHT erfasst. Das muss
+    // stehen bleiben und den nächsten Schritt nennen.
+    if (
+      fresh &&
+      change?.status === 'abgeholt' &&
+      change.paid === true &&
+      fresh.status === 'abgeholt' &&
+      !fresh.paid
+    ) {
+      const text = `${preorder.code}: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt" tippen.`
+      setConflict(text)
+      setActionError(text)
+      setToast({ text, severity: 'warning' })
+      return
+    }
+    const text = `${preorder.code}: ${preorderErrorMessage(
+      err,
+      'Die Bestellung wurde inzwischen geändert.'
+    )} Es wurde nichts überschrieben. ${afterReload(reloaded)}`
     setConflict(text)
     setToast({ text, severity: 'info' })
   }
@@ -622,6 +673,14 @@ export default function AbholListeClient({
               kind,
               reloaded
             )}`
+            if (!reloaded) {
+              uncertainRef.current = {
+                id: preorder.id,
+                code: preorder.code,
+                change,
+                text,
+              }
+            }
             setActionError(text)
             setToast({ text, severity: 'error' })
           }
@@ -1818,7 +1877,11 @@ export default function AbholListeClient({
 
       <Snackbar
         open={toast !== null}
-        autoHideDuration={toast?.severity === 'error' ? null : 6000}
+        autoHideDuration={
+          toast?.severity === 'error' || toast?.severity === 'warning'
+            ? null
+            : 6000
+        }
         onClose={(_event, reason) => {
           if (reason !== 'clickaway') setToast(null)
         }}

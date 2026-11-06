@@ -660,6 +660,76 @@ describe('AbholListeClient (P2)', () => {
     ).toHaveLength(2)
   })
 
+  it('WLAN wieder da: die frische Liste löst „unklar" auf (W4-verify r2)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(new Error('Failed to fetch'))
+    mockDay.mockRejectedValueOnce(new Error('Failed to fetch'))
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    await screen.findAllByText(/ob das gespeichert wurde, ist unklar/)
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        { ...max, status: 'abgeholt', paid: true },
+        paula,
+        storno,
+      ])
+    )
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+    })
+    expect(
+      await screen.findByText(
+        'LA-2026-11-12-02: Die Verbindung ist wieder da - gespeichert ist es.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText(/ob das gespeichert wurde, ist unklar/)
+    ).toBeNull()
+  })
+
+  it('Übergabe mit Geld, aber schon ohne Zahlung übergeben: Zahlung NICHT erfasst, bleibt stehen (W4-verify r2)', async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
+    renderAs('fahrer')
+    await screen.findByTestId('abhol-LA-2026-11-12-02')
+    mockStatus.mockRejectedValueOnce(stale())
+    mockDay.mockResolvedValue(
+      ladenDay([
+        erika,
+        { ...max, status: 'abgeholt', paid: false },
+        paula,
+        storno,
+      ])
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Max Muster übergeben' })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Bezahlt und übergeben',
+      })
+    )
+    const notes = await screen.findAllByText(
+      /LA-2026-11-12-02: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst/
+    )
+    expect(notes.length).toBeGreaterThanOrEqual(2)
+    await act(async () => {
+      jest.advanceTimersByTime(20_000)
+    })
+    expect(
+      screen.getAllByText(/die Zahlung ist NICHT erfasst/).length
+    ).toBeGreaterThanOrEqual(2)
+    expect(screen.queryByText(/erneut speichern/)).toBeNull()
+  })
+
   it('Übergabe ohne Antwort, aber am Server gespeichert: sagt das statt „nichts gespeichert" (W4-Verifikation)', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
     renderAs('verkauf')
