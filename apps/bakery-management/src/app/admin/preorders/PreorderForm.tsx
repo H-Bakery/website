@@ -34,6 +34,7 @@ import {
   fetchCatalogue,
   fetchPickupPoints,
   fetchPreorderVariants,
+  isPreorderConflict,
   listPreorders,
   preorderErrorMessage,
   updatePreorder,
@@ -52,6 +53,7 @@ import {
   nextProductionDate,
   nextProductionDates,
   pickupPointDates,
+  preorderPatch,
   shiftDate,
   toBusinessDate,
   variantLabel,
@@ -130,6 +132,22 @@ const chipSx = {
   '& .MuiChip-label': { px: 1.75 },
 } as const
 
+/**
+ * Sorten-Chips: Fokus als abgesetzter Ring, nicht als Flächenfarbe. MUI
+ * färbt einen fokussierten Outlined-Chip grau ein - im Dunkelmodus sah die
+ * erste Sorte (die nach der Produktwahl den Fokus bekommt) dann schon
+ * gewählt aus, obwohl „Hinzufügen" noch gesperrt war.
+ */
+const variantChipSx = {
+  ...chipSx,
+  '&.Mui-focusVisible, &:focus-visible': {
+    outline: '3px solid',
+    outlineColor: 'secondary.main',
+    outlineOffset: '2px',
+  },
+  '&.MuiChip-outlined.Mui-focusVisible': { backgroundColor: 'transparent' },
+} as const
+
 function Section({
   title,
   children,
@@ -157,6 +175,12 @@ export interface PreorderFormProps {
   preorder?: Preorder
   onSaved: (preorder: Preorder) => void
   onCancel?: () => void
+  /**
+   * Beim Bearbeiten: der Server lehnt ab, weil die Bestellung seit dem Laden
+   * an anderer Stelle geändert wurde (409 `stale_preorder`). Die Seite lädt
+   * dann neu; ohne Handler steht die Meldung in der Maske.
+   */
+  onConflict?: (message: string) => void
   /** Vorbelegter Abholtag (z. B. aus der Tagesübersicht). */
   initialDate?: string
   /** Vorbelegte Sammelstelle. */
@@ -176,6 +200,7 @@ export default function PreorderForm({
   preorder,
   onSaved,
   onCancel,
+  onConflict,
   initialDate,
   initialPickupPointId,
 }: PreorderFormProps) {
@@ -401,11 +426,13 @@ export default function PreorderForm({
     ? variants[pending.product.productId] ?? []
     : []
   const pendingQty = pending ? Number(pending.qty) : 0
+  const needsVariant =
+    pending !== null && pendingVariants.length > 0 && pending.variant === ''
   const canAdd =
     pending !== null &&
     Number.isInteger(pendingQty) &&
     pendingQty >= 1 &&
-    (pendingVariants.length === 0 || pending.variant !== '')
+    !needsVariant
 
   const pressKey = useCallback((key: string) => {
     setPending((current) =>
@@ -516,13 +543,29 @@ export default function PreorderForm({
     setSaving(true)
     setError(null)
     try {
+      // Beim Bearbeiten nur Geändertes, mit der geladenen Version - so
+      // überschreibt eine offene Maske nie, was ein anderes Gerät inzwischen
+      // gesetzt hat (übergeben, bezahlt, storniert).
       const saved = preorder
-        ? await updatePreorder(preorder.id, input)
+        ? await updatePreorder(
+            preorder.id,
+            preorderPatch(preorder, input),
+            preorder.updatedAt
+          )
         : await createPreorder(input)
       rememberRecentProducts(lines.map((line) => line.productId))
       if (!point) rememberChannel(channel)
       onSaved(saved)
     } catch (err) {
+      if (preorder && onConflict && isPreorderConflict(err)) {
+        onConflict(
+          preorderErrorMessage(
+            err,
+            'Diese Vorbestellung wurde inzwischen an anderer Stelle geändert.'
+          )
+        )
+        return
+      }
       setError(
         preorderErrorMessage(
           err,
@@ -930,10 +973,10 @@ export default function PreorderForm({
                     <Box sx={{ mb: 1.5 }}>
                       <Typography
                         variant="body2"
-                        color="text.secondary"
-                        sx={{ mb: 0.75 }}
+                        color={needsVariant ? 'text.primary' : 'text.secondary'}
+                        sx={{ mb: 0.75, fontWeight: needsVariant ? 600 : 400 }}
                       >
-                        Sorte wählen
+                        {needsVariant ? 'Sorte wählen (Pflicht)' : 'Sorte'}
                       </Typography>
                       <Box
                         role="radiogroup"
@@ -961,7 +1004,7 @@ export default function PreorderForm({
                               setPending({ ...pending, variant })
                               qtyRef.current?.focus()
                             }}
-                            sx={chipSx}
+                            sx={variantChipSx}
                           />
                         ))}
                       </Box>
@@ -1007,7 +1050,9 @@ export default function PreorderForm({
                           disabled={!canAdd}
                           sx={{ minHeight: 52, flex: 1 }}
                         >
-                          Hinzufügen
+                          {/* Grund direkt am gesperrten Knopf - der Hinweis
+                              unter dem Ziffernblock liegt am Handy außer Sicht */}
+                          {needsVariant ? 'Erst Sorte wählen' : 'Hinzufügen'}
                         </Button>
                         <Button
                           variant="text"

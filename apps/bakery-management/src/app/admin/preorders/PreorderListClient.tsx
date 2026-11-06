@@ -41,6 +41,7 @@ import {
   listPreorders,
   preorderErrorMessage,
   preorderListQuery,
+  preorderPageQuery,
 } from '../../../lib/preordersApi'
 import {
   CHANNEL_LABELS,
@@ -139,8 +140,7 @@ export default function PreorderListClient({
   // Filter in die URL, ohne neuen Verlaufseintrag.
   useEffect(() => {
     if (!filters) return
-    const query = preorderListQuery(filters)
-    router.replace(`/admin/preorders${query ? `?${query}` : ''}`, {
+    router.replace(`/admin/preorders?${preorderPageQuery(filters)}`, {
       scroll: false,
     })
   }, [filters, router])
@@ -202,7 +202,7 @@ export default function PreorderListClient({
       : ''
   }`
 
-  const chipSx = { minHeight: 40 }
+  const chipSx = { minHeight: 44 }
 
   return (
     <Box>

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderListClient from './PreorderListClient'
 import { fetchPickupPoints, listPreorders } from '../../../lib/preordersApi'
+import { filtersFromQuery } from '../../../lib/preordersTypes'
 import {
   ONLY_DATE,
   POINT,
@@ -118,6 +119,33 @@ describe('PreorderListClient (P3)', () => {
       date: '2026-11-14',
       channel: 'whatsapp',
     })
+  })
+
+  it('„Alle Tage" steht in der URL und überlebt das Neuladen', async () => {
+    const user = userEvent.setup()
+    const first = renderAs('verkauf')
+    await screen.findByText('Erika Beispiel')
+    await user.click(screen.getByRole('button', { name: 'Alle Tage' }))
+    await waitFor(() =>
+      expect(mockReplace).toHaveBeenLastCalledWith(
+        '/admin/preorders?range=alle',
+        { scroll: false }
+      )
+    )
+    expect(mockList).toHaveBeenLastCalledWith({})
+    first.unmount()
+
+    // neu geladen: die Seite liest dieselbe URL
+    mockList.mockClear()
+    renderAs('verkauf', {
+      initialFilters: filtersFromQuery({ range: 'alle' }),
+    })
+    await screen.findByText('Erika Beispiel')
+    expect(mockList).toHaveBeenCalledWith({})
+    expect(screen.getByRole('button', { name: 'Alle Tage' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
   })
 
   it('Fahrer sehen keine Erfassung', async () => {

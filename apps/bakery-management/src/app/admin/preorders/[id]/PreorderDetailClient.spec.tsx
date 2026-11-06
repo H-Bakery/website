@@ -96,14 +96,15 @@ describe('PreorderDetailClient (P3)', () => {
     await user.click(
       screen.getByRole('button', { name: 'Änderungen speichern' })
     )
+    // nur Geändertes, mit der geladenen Version
     await waitFor(() =>
       expect(mockUpdate).toHaveBeenCalledWith(
         7,
-        expect.objectContaining({
+        {
           pickupDate: '2026-11-14',
-          pickupTime: '08:30',
           items: [{ productId: 'kornbrot-500g', variant: '', quantity: 3 }],
-        })
+        },
+        '2026-11-12T09:00:00.000Z'
       )
     )
     expect(
@@ -129,27 +130,143 @@ describe('PreorderDetailClient (P3)', () => {
         name: 'Stornieren',
       })
     )
-    await waitFor(() => expect(mockCancel).toHaveBeenCalledWith(7))
+    await waitFor(() =>
+      expect(mockCancel).toHaveBeenCalledWith(7, '2026-11-12T09:00:00.000Z')
+    )
     expect(await screen.findByText('Storniert')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
   })
 
-  it('setzt Status und bezahlt; zeigt den 409 des Servers', async () => {
+  it('setzt Status und bezahlt; zeigt Fehler des Servers', async () => {
     const user = userEvent.setup()
     mockStatus.mockRejectedValueOnce(
-      Object.assign(new Error('Diese Vorbestellung wurde storniert.'), {
-        code: 'cancelled',
+      Object.assign(new Error('Status muss „offen" … sein.'), {
+        code: 'invalid_status',
       })
     )
     mockStatus.mockResolvedValueOnce(preorder({ paid: true }))
     renderAs('verkauf')
     await user.click(await screen.findByRole('button', { name: 'Abgeholt' }))
     expect(
-      await screen.findByText('Diese Vorbestellung wurde storniert.')
+      await screen.findByText('Status muss „offen" … sein.')
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Bezahlt' }))
     await waitFor(() =>
-      expect(mockStatus).toHaveBeenLastCalledWith(7, { paid: true })
+      expect(mockStatus).toHaveBeenLastCalledWith(
+        7,
+        { paid: true },
+        '2026-11-12T09:00:00.000Z'
+      )
+    )
+  })
+
+  it('veraltete Anzeige: 409 stale_preorder lädt neu und überschreibt nichts', async () => {
+    const user = userEvent.setup()
+    // inzwischen hat der Fahrer übergeben und kassiert
+    const handedOver = preorder({
+      status: 'abgeholt',
+      paid: true,
+      updatedAt: '2026-11-12T09:05:00.000Z',
+    })
+    mockStatus.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'Diese Vorbestellung wurde inzwischen an anderer Stelle geändert.'
+        ),
+        { code: 'stale_preorder', status: 409 }
+      )
+    )
+    renderAs('verkauf')
+    const pickedUp = await screen.findByRole('button', { name: 'Abgeholt' })
+    mockGet.mockResolvedValue(handedOver)
+    await user.click(pickedUp)
+    expect(await screen.findByTestId('preorder-conflict')).toHaveTextContent(
+      /inzwischen an anderer Stelle geändert.*nichts überschrieben/
+    )
+    expect(mockGet).toHaveBeenCalledTimes(2)
+    // neu geladen: abgeholt + bezahlt, also kein Bearbeiten mehr
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
+    )
+    expect(
+      screen.getByRole('button', { name: 'Doch nicht bezahlt' })
+    ).toBeInTheDocument()
+    expect(mockStatus).toHaveBeenCalledTimes(1)
+  })
+
+  it('Bearbeiten: 409 stale_preorder schließt die Maske und zeigt den neuen Stand', async () => {
+    const user = userEvent.setup()
+    mockUpdate.mockRejectedValueOnce(
+      Object.assign(
+        new Error(
+          'Diese Vorbestellung wurde inzwischen an anderer Stelle geändert.'
+        ),
+        { code: 'stale_preorder', status: 409 }
+      )
+    )
+    renderAs('verkauf')
+    await user.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    await screen.findByRole('heading', { name: /bearbeiten/ })
+    // nur die Anmerkung ergänzt: `paid` und Positionen gehen nicht mit
+    const note = screen.getByLabelText(/Notiz/)
+    await user.type(note, 'Bitte schneiden')
+    mockGet.mockResolvedValue(
+      preorder({
+        status: 'abgeholt',
+        paid: true,
+        updatedAt: '2026-11-12T09:05:00.000Z',
+      })
+    )
+    await user.click(
+      screen.getByRole('button', { name: 'Änderungen speichern' })
+    )
+    await waitFor(() =>
+      expect(mockUpdate).toHaveBeenCalledWith(
+        7,
+        { note: 'Bitte schneiden' },
+        '2026-11-12T09:00:00.000Z'
+      )
+    )
+    expect(await screen.findByTestId('preorder-conflict')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /bearbeiten/ })).toBeNull()
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
+    )
+    expect(
+      screen.getByRole('button', { name: 'Doch nicht bezahlt' })
+    ).toBeInTheDocument()
+  })
+
+  it('storniert: „Storno aufheben" erst nach Rückfrage', async () => {
+    const user = userEvent.setup()
+    mockGet.mockResolvedValue(preorder({ status: 'storniert' }))
+    mockStatus.mockResolvedValue(preorder({ status: 'offen' }))
+    renderAs('verkauf')
+    await user.click(
+      await screen.findByRole('button', { name: 'Storno aufheben' })
+    )
+    const dialog = await screen.findByRole('dialog')
+    expect(
+      within(dialog).getByText(/wieder für die Backstube/)
+    ).toBeInTheDocument()
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Storniert lassen' })
+    )
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    expect(mockStatus).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: 'Storno aufheben' }))
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Storno aufheben',
+      })
+    )
+    await waitFor(() =>
+      expect(mockStatus).toHaveBeenCalledWith(
+        7,
+        { status: 'offen' },
+        '2026-11-12T09:00:00.000Z'
+      )
     )
   })
 

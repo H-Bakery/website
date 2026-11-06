@@ -41,6 +41,7 @@ import {
   cancelPreorder,
   changePreorderStatus,
   getPreorder,
+  isPreorderConflict,
   preorderErrorMessage,
 } from '../../../../lib/preordersApi'
 import {
@@ -103,6 +104,10 @@ export default function PreorderDetailClient({ id }: { id: number }) {
   const [busy, setBusy] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  const [confirmUncancel, setConfirmUncancel] = useState(false)
+  // Die geladene Fassung war überholt (anderes Gerät) - neu geladen, nichts
+  // überschrieben. Steht als Hinweis, bis jemand ihn schließt.
+  const [conflict, setConflict] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
 
   const load = useCallback(async () => {
@@ -126,17 +131,37 @@ export default function PreorderDetailClient({ id }: { id: number }) {
     load()
   }, [load])
 
+  const onConflict = async (message: string) => {
+    setEditing(false)
+    setConfirmCancel(false)
+    setConfirmUncancel(false)
+    setConflict(
+      `${message} Es wurde nichts überschrieben - unten steht jetzt der aktuelle Stand.`
+    )
+    await load()
+  }
+
   const act = async (
     work: () => Promise<Preorder>,
     success: string
   ): Promise<boolean> => {
     setBusy(true)
     setActionError(null)
+    setConflict(null)
     try {
       setPreorder(await work())
       setToast(success)
       return true
     } catch (err) {
+      if (isPreorderConflict(err)) {
+        await onConflict(
+          preorderErrorMessage(
+            err,
+            'Diese Vorbestellung wurde inzwischen an anderer Stelle geändert.'
+          )
+        )
+        return false
+      }
       setActionError(
         preorderErrorMessage(
           err,
@@ -149,16 +174,31 @@ export default function PreorderDetailClient({ id }: { id: number }) {
     }
   }
 
+  // Jede Aktion schickt die geladene Version mit: ein Klick auf veralteter
+  // Anzeige (z. B. „Doch nicht bezahlt", nachdem der Fahrer kassiert hat)
+  // wird abgelehnt statt still übernommen.
   const setStatus = (change: PreorderStatusChange, success: string) =>
-    preorder && act(() => changePreorderStatus(preorder.id, change), success)
+    preorder &&
+    act(
+      () => changePreorderStatus(preorder.id, change, preorder.updatedAt),
+      success
+    )
 
   const doCancel = async () => {
     if (!preorder) return
     const ok = await act(
-      () => cancelPreorder(preorder.id),
+      () => cancelPreorder(preorder.id, preorder.updatedAt),
       'Die Vorbestellung wurde storniert.'
     )
     if (ok) setConfirmCancel(false)
+  }
+
+  const doUncancel = async () => {
+    const ok = await setStatus(
+      { status: 'offen' },
+      'Storno aufgehoben - die Bestellung ist wieder offen.'
+    )
+    if (ok) setConfirmUncancel(false)
   }
 
   if (loading && !preorder) {
@@ -213,6 +253,7 @@ export default function PreorderDetailClient({ id }: { id: number }) {
         <PreorderForm
           preorder={preorder}
           onCancel={() => setEditing(false)}
+          onConflict={onConflict}
           onSaved={(saved) => {
             setToast(
               saved.code !== preorder.code
@@ -275,6 +316,16 @@ export default function PreorderDetailClient({ id }: { id: number }) {
         <Alert severity="info" sx={{ mb: 2 }}>
           Abgeholt - Positionen, Tag und Ort bleiben so stehen. Für eine
           Korrektur zuerst auf „Offen" zurücksetzen.
+        </Alert>
+      )}
+      {conflict && (
+        <Alert
+          severity="warning"
+          sx={{ mb: 2 }}
+          onClose={() => setConflict(null)}
+          data-testid="preorder-conflict"
+        >
+          {conflict}
         </Alert>
       )}
       {actionError && (
@@ -353,7 +404,7 @@ export default function PreorderDetailClient({ id }: { id: number }) {
               {preorder.paid ? 'Doch nicht bezahlt' : 'Bezahlt'}
             </Button>
           )}
-          {preorder.status !== 'offen' && (
+          {preorder.status !== 'offen' && preorder.status !== 'storniert' && (
             <Button
               variant="outlined"
               startIcon={<ReopenIcon />}
@@ -364,6 +415,17 @@ export default function PreorderDetailClient({ id }: { id: number }) {
               sx={actionSx}
             >
               Auf „Offen" zurück
+            </Button>
+          )}
+          {preorder.status === 'storniert' && (
+            <Button
+              variant="outlined"
+              startIcon={<ReopenIcon />}
+              onClick={() => setConfirmUncancel(true)}
+              disabled={busy}
+              sx={actionSx}
+            >
+              Storno aufheben
             </Button>
           )}
           {isCancellable(preorder) && (
@@ -518,6 +580,42 @@ export default function PreorderDetailClient({ id }: { id: number }) {
             sx={{ minHeight: 44 }}
           >
             Stornieren
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={confirmUncancel}
+        onClose={() => !busy && setConfirmUncancel(false)}
+      >
+        <DialogTitle>Storno aufheben?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {preorder.code} für {preorder.customerName} am{' '}
+            {formatDateWithWeekday(preorder.pickupDate)} wird wieder „Offen" und
+            zählt dann wieder für die Backstube.
+          </DialogContentText>
+          {actionError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              {actionError}
+            </Alert>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => setConfirmUncancel(false)}
+            disabled={busy}
+            sx={{ minHeight: 44 }}
+          >
+            Storniert lassen
+          </Button>
+          <Button
+            variant="contained"
+            onClick={doUncancel}
+            disabled={busy}
+            sx={{ minHeight: 44 }}
+          >
+            Storno aufheben
           </Button>
         </DialogActions>
       </Dialog>

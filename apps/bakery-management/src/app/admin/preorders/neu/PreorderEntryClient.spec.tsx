@@ -132,13 +132,14 @@ describe('PreorderEntryClient (P1)', () => {
     await user.type(screen.getByLabelText('Produkt suchen'), 'semmel')
     await user.click(screen.getByRole('button', { name: /Mustersemmel/ }))
 
-    const add = screen.getByRole('button', { name: 'Hinzufügen' })
+    const add = screen.getByRole('button', { name: 'Erst Sorte wählen' })
     expect(add).toBeDisabled()
     expect(
       screen.getByText('Für dieses Produkt muss eine Sorte gewählt werden.')
     ).toBeInTheDocument()
 
     await user.click(screen.getByRole('radio', { name: 'Nuss' }))
+    expect(screen.getByRole('button', { name: 'Hinzufügen' })).toBe(add)
     const pad = screen.getByRole('group', { name: 'Ziffernblock Menge' })
     await user.click(within(pad).getByRole('button', { name: '1' }))
     await user.click(within(pad).getByRole('button', { name: '2' }))

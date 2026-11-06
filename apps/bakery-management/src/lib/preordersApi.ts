@@ -11,6 +11,7 @@
  */
 
 import { apiClient } from '@bakery/shared/data-access'
+import { ALL_DAYS_PARAM, ALL_DAYS_VALUE } from './preordersTypes'
 import type {
   CatalogueProduct,
   PickupPoint,
@@ -52,6 +53,18 @@ export function preorderListQuery(filters: PreorderListFilters = {}): string {
   return params.toString()
 }
 
+/**
+ * Query-String der Listen-*Seite*: wie `preorderListQuery`, ohne Zeitraum
+ * aber mit `range=alle` - sonst läse `filtersFromQuery` „Alle Tage" nach dem
+ * Neuladen als „keine Filter" und zeigte wieder „ab heute".
+ */
+export function preorderPageQuery(filters: PreorderListFilters = {}): string {
+  const query = preorderListQuery(filters)
+  if (filters.date || filters.from || filters.to) return query
+  const marker = `${ALL_DAYS_PARAM}=${ALL_DAYS_VALUE}`
+  return query ? `${query}&${marker}` : marker
+}
+
 export async function listPreorders(
   filters: PreorderListFilters = {}
 ): Promise<Preorder[]> {
@@ -73,29 +86,75 @@ export async function createPreorder(input: PreorderInput): Promise<Preorder> {
 }
 
 /**
- * Ändert eine Vorbestellung (teilweise). Positionen ersetzen die bisherigen;
- * bestehende Positionen behalten ihren Preis-Snapshot. Ändern sich Tag oder
- * Ort, vergibt der Server einen neuen Code.
+ * Maschinen-Code, wenn eine Vorbestellung seit dem Laden an anderer Stelle
+ * geändert wurde (`expectedUpdatedAt` passt nicht mehr) - die Seite lädt
+ * dann neu, statt die fremde Änderung zu überschreiben.
+ */
+export const STALE_PREORDER = 'stale_preorder'
+
+/**
+ * `true`, wenn der Fehler heißt: die geladene Fassung ist überholt. Dazu
+ * zählen neben `stale_preorder` die Sperren, die nur eine veraltete Maske
+ * auslösen kann (inzwischen abgeholt oder storniert).
+ */
+export function isPreorderConflict(error: unknown): boolean {
+  const code = preorderErrorCode(error)
+  return (
+    code === STALE_PREORDER ||
+    code === 'already_picked_up' ||
+    code === 'cancelled'
+  )
+}
+
+/** `expectedUpdatedAt` nur mitschicken, wenn die geladene Fassung einen hat. */
+function versioned<T extends object>(
+  body: T,
+  expectedUpdatedAt: string | null | undefined
+): T & { expectedUpdatedAt?: string } {
+  return expectedUpdatedAt ? { ...body, expectedUpdatedAt } : body
+}
+
+/**
+ * Ändert eine Vorbestellung (teilweise - nur die mitgeschickten Felder).
+ * Positionen ersetzen die bisherigen; bestehende Positionen behalten ihren
+ * Preis-Snapshot. Ändern sich Tag oder Ort, vergibt der Server einen neuen
+ * Code. Mit `expectedUpdatedAt` (der `updatedAt` der geladenen Fassung)
+ * antwortet der Server 409 `stale_preorder`, wenn sie inzwischen geändert
+ * wurde.
  */
 export async function updatePreorder(
   id: number | string,
-  patch: Partial<PreorderInput>
+  patch: Partial<PreorderInput>,
+  expectedUpdatedAt?: string | null
 ): Promise<Preorder> {
-  const res = await apiClient.patch<Preorder>(idPath(id), patch)
+  const res = await apiClient.patch<Preorder>(
+    idPath(id),
+    versioned(patch, expectedUpdatedAt)
+  )
   return unwrap(res, null as unknown as Preorder)
 }
 
 export async function changePreorderStatus(
   id: number | string,
-  change: PreorderStatusChange
+  change: PreorderStatusChange,
+  expectedUpdatedAt?: string | null
 ): Promise<Preorder> {
-  const res = await apiClient.post<Preorder>(`${idPath(id)}/status`, change)
+  const res = await apiClient.post<Preorder>(
+    `${idPath(id)}/status`,
+    versioned(change, expectedUpdatedAt)
+  )
   return unwrap(res, null as unknown as Preorder)
 }
 
 /** Storniert - gelöscht wird nie. */
-export async function cancelPreorder(id: number | string): Promise<Preorder> {
-  const res = await apiClient.post<Preorder>(`${idPath(id)}/cancel`, {})
+export async function cancelPreorder(
+  id: number | string,
+  expectedUpdatedAt?: string | null
+): Promise<Preorder> {
+  const res = await apiClient.post<Preorder>(
+    `${idPath(id)}/cancel`,
+    versioned({}, expectedUpdatedAt)
+  )
   return unwrap(res, null as unknown as Preorder)
 }
 

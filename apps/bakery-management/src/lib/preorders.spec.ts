@@ -8,8 +8,11 @@ import {
   pickupPointDates,
   variantLabel,
   canWritePreorders,
+  preorderPatch,
+  type PreorderInput,
 } from './preordersTypes'
-import { preorderListQuery } from './preordersApi'
+import { preorderListQuery, preorderPageQuery } from './preordersApi'
+import { preorder } from './testing/preorderFixtures'
 import {
   frequentProducts,
   matchRank,
@@ -101,6 +104,79 @@ describe('Listenfilter', () => {
       'from=2026-11-01&to=2026-11-30'
     )
     expect(preorderListQuery({ q: '  ' })).toBe('')
+  })
+
+  it('„Alle Tage" überlebt den Weg über die URL', () => {
+    expect(preorderPageQuery({})).toBe('range=alle')
+    expect(preorderPageQuery({ status: ['offen'] })).toBe(
+      'status=offen&range=alle'
+    )
+    expect(preorderPageQuery({ from: '2026-11-12' })).toBe('from=2026-11-12')
+    expect(filtersFromQuery({ range: 'alle' })).toEqual({})
+    expect(filtersFromQuery({ status: 'offen', range: 'alle' })).toEqual({
+      status: ['offen'],
+    })
+    // ein Zeitraum schlägt den Marker
+    expect(filtersFromQuery({ from: '2026-11-12', range: 'alle' })).toEqual({
+      from: '2026-11-12',
+    })
+    expect(filtersFromQuery({ range: 'quatsch' })).toBeUndefined()
+  })
+})
+
+describe('Ändern schickt nur Geändertes (preorderPatch)', () => {
+  const loaded = preorder()
+  const unchanged: PreorderInput = {
+    channel: loaded.channel,
+    customerName: loaded.customerName ?? '',
+    customerPhone: loaded.customerPhone,
+    pickupDate: loaded.pickupDate,
+    pickupPointId: loaded.pickupPointId,
+    pickupTime: loaded.pickupTime,
+    items: loaded.items.map((i) => ({
+      productId: i.productId,
+      variant: i.variant,
+      quantity: i.quantity,
+    })),
+    paid: loaded.paid,
+    note: loaded.note,
+  }
+
+  it('nur die Notiz: kein paid, keine Positionen, kein Tag', () => {
+    expect(preorderPatch(loaded, unchanged)).toEqual({})
+    expect(
+      preorderPatch(loaded, { ...unchanged, note: 'Bitte schneiden' })
+    ).toEqual({ note: 'Bitte schneiden' })
+  })
+
+  it('Positionen nur bei echter Änderung, Reihenfolge egal', () => {
+    const items = [
+      { productId: 'musterweck', variant: '', quantity: 1 },
+      ...unchanged.items,
+    ]
+    expect(preorderPatch(loaded, { ...unchanged, items })).toEqual({ items })
+    expect(
+      preorderPatch(loaded, { ...unchanged, items: [...unchanged.items] })
+    ).toEqual({})
+  })
+
+  it('Wechsel an die Sammelstelle nimmt Uhrzeit und Bestellweg mit', () => {
+    expect(
+      preorderPatch(loaded, {
+        ...unchanged,
+        channel: 'sammelstelle',
+        pickupPointId: 'kita-test',
+        pickupTime: null,
+        pickupDate: '2026-11-14',
+        paid: true,
+      })
+    ).toEqual({
+      channel: 'sammelstelle',
+      pickupPointId: 'kita-test',
+      pickupTime: null,
+      pickupDate: '2026-11-14',
+      paid: true,
+    })
   })
 })
 

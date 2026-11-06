@@ -762,7 +762,20 @@ Status, Bestellweg, Abholort - alles in der URL), `/admin/preorders/neu` (Erfass
   vorhandene Positionen ihren damaligen Preis (Server). Ändert sich Tag oder Ort, vergibt der
   Server einen neuen Code - die Oberfläche sagt das an.
 - **Nie löschen:** Stornieren nur über die Rückfrage, `offen`/`bereit` sind bearbeitbar,
-  abgeholt nur zurück auf „Offen".
+  abgeholt nur zurück auf „Offen". Auch „Storno aufheben" fragt nach - die Bestellung zählt
+  danach wieder für die Backstube.
+- **Keine verlorenen Änderungen (zweites Gerät).** Bearbeiten schickt nur die geänderten Felder
+  (`preorderPatch()` in `preordersTypes.ts`), und jede Schreibaktion der Ansicht (Bearbeiten,
+  Status, bezahlt, Stornieren, Storno aufheben) schickt den geladenen `updatedAt` als
+  `expectedUpdatedAt`. Hat inzwischen jemand anderes übergeben, kassiert oder storniert, antwortet
+  die API 409 `stale_preorder`; die Seite schließt dann die Maske, lädt neu und sagt per Hinweis,
+  dass nichts überschrieben wurde (`isPreorderConflict()` zählt auch `already_picked_up` und
+  `cancelled` dazu). Sonst setzte eine offene Maske, in der nur eine Notiz ergänzt wird, `paid`
+  einer schon bezahlt übergebenen Bestellung wieder auf `false`. Neue Schreibaktionen: genauso.
+- **„Alle Tage" steht als `range=alle` in der URL** (`preorderPageQuery()`); eine URL ganz ohne
+  Zeitraum heißt „Vorgabe ab heute". Die API kennt den Parameter nicht.
+- **Sorten-Chips:** Fokus ist ein abgesetzter Ring, keine Flächenfarbe (sonst sieht die erste
+  Sorte im Dunkelmodus gewählt aus); solange die Sorte fehlt, heißt der Knopf „Erst Sorte wählen".
 - **Rollen:** `verkauf` und `inhaber` schreiben; `fahrer` sieht Liste, Ansicht und Tag nur lesend
   (`/admin/preorders/neu` ist für ihn gesperrt - `RouteRule` mit `except` in `src/lib/roles.ts`).
   Verkauf startet nach der Anmeldung in `/admin/preorders`.
@@ -773,7 +786,8 @@ Status, Bestellweg, Abholort - alles in der URL), `/admin/preorders/neu` (Erfass
 
 Tests: `src/lib/preorders.spec.ts` (Formatierung, Produktionstage, Suche, Ziffernblock) und RTL-Specs
 neben den Seiten (`admin/preorders/**/*.spec.tsx`, Fixtures `src/lib/testing/preorderFixtures.ts`,
-erfunden); API: `tests/integration/preorders.test.ts` (`GET /variants`) und
+erfunden); API: `tests/integration/preorders.test.ts` (`GET /variants`, veraltete Schreibzugriffe,
+Storno-Sperre), `tests/unit/preordersModel.test.js` (`lockCancelled`) und
 `tests/unit/backzettelCore.test.js`.
 
 ## Anmeldung, Stationen und Rollen in der Management-App (F1)

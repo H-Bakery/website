@@ -128,7 +128,7 @@ export interface PreorderItemInput {
   quantity: number
 }
 
-/** Body von `POST /api/preorders` (und ganz, nicht teilweise, beim Ändern). */
+/** Body von `POST /api/preorders`; beim Ändern nur die geänderten Felder (`preorderPatch`). */
 export interface PreorderInput {
   channel: PreorderChannel
   customerName: string
@@ -391,6 +391,59 @@ export function isEditable(
   )
 }
 
+function itemsSignature(
+  items: ReadonlyArray<{
+    productId: string
+    variant?: string
+    quantity: number
+  }>
+): string {
+  return items
+    .map((i) => `${i.productId}|${i.variant ?? ''}|${Number(i.quantity)}`)
+    .sort()
+    .join(';')
+}
+
+/**
+ * Nur die Felder, die die Maske gegenüber der geladenen Fassung geändert hat.
+ * Wer nur eine Anmerkung ergänzt, schickt nicht `paid`, Positionen und Tag
+ * aus der alten Fassung mit - sonst überschriebe das still, was ein anderes
+ * Gerät inzwischen gesetzt hat (übergeben + bezahlt). Zusätzlich geht
+ * `expectedUpdatedAt` mit (`updatePreorder`), damit der Server veraltete
+ * Fassungen ganz ablehnt.
+ */
+export function preorderPatch(
+  before: Preorder,
+  after: PreorderInput
+): Partial<PreorderInput> {
+  const patch: Partial<PreorderInput> = {}
+  const same = (a: unknown, b: unknown) => (a ?? null) === (b ?? null)
+  if (after.channel !== before.channel) patch.channel = after.channel
+  if (!same(after.customerName, before.customerName)) {
+    patch.customerName = after.customerName
+  }
+  if (!same(after.customerPhone, before.customerPhone)) {
+    patch.customerPhone = after.customerPhone ?? null
+  }
+  if (after.pickupDate !== before.pickupDate) {
+    patch.pickupDate = after.pickupDate
+  }
+  if (!same(after.pickupPointId, before.pickupPointId)) {
+    patch.pickupPointId = after.pickupPointId ?? null
+  }
+  if (!same(after.pickupTime, before.pickupTime)) {
+    patch.pickupTime = after.pickupTime ?? null
+  }
+  if (after.paid !== undefined && after.paid !== before.paid) {
+    patch.paid = after.paid
+  }
+  if (!same(after.note, before.note)) patch.note = after.note ?? null
+  if (itemsSignature(after.items) !== itemsSignature(before.items)) {
+    patch.items = after.items
+  }
+  return patch
+}
+
 /** Ob sich die Bestellung stornieren lässt (`abgeholt ↔ storniert` gesperrt). */
 export function isCancellable(
   preorder: Pick<Preorder, 'status' | 'anonymizedAt'>
@@ -411,7 +464,19 @@ export function canWritePreorders(role: string | null | undefined): boolean {
 
 export type PreorderQuery = Record<string, string | string[] | undefined>
 
-/** Listenfilter aus der URL; Ungültiges fällt still weg. `undefined` = keine. */
+/**
+ * „Alle Tage" in der Seiten-URL. Ohne Marker hieße eine URL ohne Zeitraum
+ * „keine Filter" und fiele beim Neuladen oder Zurückkommen auf „ab heute"
+ * zurück. Nur für die Seite - die API kennt den Parameter nicht.
+ */
+export const ALL_DAYS_PARAM = 'range'
+export const ALL_DAYS_VALUE = 'alle'
+
+/**
+ * Listenfilter aus der URL; Ungültiges fällt still weg. `undefined` = keine
+ * (Vorgabe „ab heute"); mit `range=alle` und ohne Zeitraum `{}` bzw. die
+ * übrigen Filter ohne Zeitraum.
+ */
 export function filtersFromQuery(
   query: PreorderQuery
 ): PreorderListFilters | undefined {
@@ -442,5 +507,10 @@ export function filtersFromQuery(
   if (point && /^[a-z0-9-]{1,64}$/.test(point)) filters.pickupPointId = point
   const q = first('q')?.trim()
   if (q) filters.q = q.slice(0, 100)
-  return Object.keys(filters).length > 0 ? filters : undefined
+  const allDays =
+    first(ALL_DAYS_PARAM) === ALL_DAYS_VALUE &&
+    !filters.date &&
+    !filters.from &&
+    !filters.to
+  return allDays || Object.keys(filters).length > 0 ? filters : undefined
 }
