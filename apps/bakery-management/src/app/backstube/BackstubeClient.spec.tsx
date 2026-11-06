@@ -423,6 +423,30 @@ describe('Backstube-Tablet', () => {
     }
   })
 
+  it('holt die Stammdaten nach, wenn der erste Abruf scheiterte (W4-Verifikation)', async () => {
+    jest.useFakeTimers()
+    try {
+      mocked.fetchBackzettelConfig
+        .mockReset()
+        .mockRejectedValueOnce(new Error('Netzwerkfehler'))
+        .mockResolvedValue(CONFIG_RESPONSE)
+      renderTablet()
+      await screen.findByTestId('bs-progress')
+      expect(mocked.fetchBackzettelConfig).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        jest.advanceTimersByTime(60 * 1000)
+      })
+      expect(mocked.fetchBackzettelConfig).toHaveBeenCalledTimes(2)
+      // Einmal geladen, wird nicht bei jedem Lauf erneut gefragt.
+      await act(async () => {
+        jest.advanceTimersByTime(60 * 1000)
+      })
+      expect(mocked.fetchBackzettelConfig).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('noch nicht erfasste Nachträge: Hinweis und Nachladen nach 5 s (W4)', async () => {
     jest.useFakeTimers()
     try {
@@ -599,7 +623,7 @@ describe('Backstube-Tablet', () => {
     )
     expect(prep).toHaveTextContent('Für Sonntag, 29.11.2026')
     expect(prep).toHaveTextContent('Heute ab 14 Uhr vorbereiten.')
-    expect(prep).toHaveTextContent('Testsauerteig (misch)')
+    expect(prep).toHaveTextContent('Testsauerteig (Misch)')
     expect(prep).toHaveTextContent('Testbrühstück')
     expect(prep).toHaveTextContent('noch nicht freigegeben')
   })

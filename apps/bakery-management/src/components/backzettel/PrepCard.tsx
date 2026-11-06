@@ -21,7 +21,11 @@ export interface PrepCardProps {
 
 /** Text einer Vorbereitung: „Sauerteig (Buttermilch)". */
 export function prepTaskLabel(task: PrepTask): string {
-  return task.variant ? `${task.name} (${task.variant})` : task.name
+  // Die Ausprägung kommt als YAML-ID („misch“); groß geschrieben liest sie
+  // sich wie der Rest der Seite („Sauerteig (Misch)“).
+  if (!task.variant) return task.name
+  const v = task.variant.charAt(0).toUpperCase() + task.variant.slice(1)
+  return `${task.name} (${v})`
 }
 
 /** Vorbereitungen für den Tag - erledigt am Vortag um 14 Uhr. */

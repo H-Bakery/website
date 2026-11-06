@@ -106,7 +106,7 @@ describe('Backzettel-Tagesplanung', () => {
     expect(filling.getByText('Testnüsse')).toBeInTheDocument()
     expect(filling.getAllByText('1,2 kg')).toHaveLength(2)
     expect(screen.getByTestId('prep-card')).toHaveTextContent(
-      'Testsauerteig (misch)'
+      'Testsauerteig (Misch)'
     )
   })
 
@@ -566,7 +566,7 @@ describe('Backzettel-Tagesplanung', () => {
       expect(p2.getByText('Abwiegeliste')).toBeInTheDocument()
       expect(p2.getByText('Testnussfüllung: 2,4 kg')).toBeInTheDocument()
       const p3 = within(sheet.getByTestId('print-page-3'))
-      expect(p3.getByText('Testsauerteig (misch)')).toBeInTheDocument()
+      expect(p3.getByText('Testsauerteig (Misch)')).toBeInTheDocument()
       expect(sheet.getByTestId('print-page-2')).toHaveClass('bz-break')
 
       fireEvent.click(screen.getByRole('button', { name: 'Drucken' }))
