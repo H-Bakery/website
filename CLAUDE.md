@@ -459,7 +459,7 @@ Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
   aufrufen und umleiten. Durchgesetzt wird Zugriff von F1 und den Rollen-Guards der API.
 - **Kommende Bildschirme schalten sich über `ready` frei.** `PILOT_UPCOMING_NAVIGATION` in
   `admin/navigation.ts` führt `/admin/preorders` (M1), `/admin/backzettel` und `/backstube` (M2) mit
-  `ready: false`; ein Eintrag erscheint (direkt unter dem Dashboard) erst mit `ready: true`.
+  `ready` (seit Z5/Z6 `true` für Backzettel und Backstube); ein Eintrag erscheint (direkt unter dem Dashboard) erst mit `ready: true`.
   `src/lib/pilotMode.spec.ts` fällt um, wenn `ready` und die Existenz der `page.tsx` **genau unter
   `href`** auseinanderlaufen, und auch, wenn es Unterseiten ohne diese Index-Seite gibt - M2 braucht
   also neben `backzettel/grundmengen` und `backzettel/[datum]` eine `admin/backzettel/page.tsx`
@@ -654,6 +654,44 @@ wissen muss:
 Tests: `src/lib/backzettel{Api,Format}.spec.ts`, `admin/backzettel/BackzettelOverviewClient.spec.tsx`,
 `admin/backzettel/[datum]/BackzettelDayClient.spec.tsx` (Fixtures erfunden:
 `src/lib/backzettelFixtures.ts`).
+
+## Backstube-Tablet (`/backstube`, Z6, Management-App)
+
+Die Stationsansicht der Backstube: Startseite der Rolle `backstube` nach der PIN (der Eintrag in
+`PILOT_UPCOMING_NAVIGATION` ist `ready: true`). Liegt außerhalb `/admin` - keine Seitenleiste,
+deshalb mit eigenem „Abmelden" (`LogoutButton`, auf der Station zurück zu den Namenskacheln).
+Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube). Was man wissen muss:
+
+- **Welcher Tag:** `src/lib/backstubeDay.ts` (rein, getestet). Vor **12 Uhr** (Ortszeit des Tablets,
+  `BACKSTUBE_SWITCH_HOUR`) heute - die Schicht ab 2 Uhr läuft -, ab 12 Uhr der nächste
+  Produktionstag; ist heute kein Produktionstag (`config.days`), immer der nächste. Der Umschalter
+  „Heute"/„Morgen" zeigt den anderen; liegt der nächste Backtag nicht auf morgen (So → Di), heißt
+  der Knopf wie der Tag. Springt die Regel um (12 Uhr, Mitternacht), folgt die Ansicht ihr wieder.
+- **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube` (sonst kein Haken; die API
+  sagt dasselbe): ein 72-px-Haken je Zeile, sofort gesetzt (`POST …/lines/:id/done|undone`), bei
+  einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409 `not_confirmed`/`confirmed`/… lädt
+  den Tag neu. Ein Neuladen, das während eines laufenden Hakens zurückkommt, wird verworfen
+  (`mutationSeq`) - sonst spränge der Haken kurz zurück.
+- **Entwurf:** großes Banner „Noch nicht freigegeben", Zahlen grau, gestrichelte Zeilen, keine Haken.
+- **Nachträge:** Karte oben mit je einem großen „Gesehen" (`POST …/deltas/:id/ack`), an der Zeile ein
+  Badge „Nachtrag +N" (offen farbig, quittiert „· gesehen"). Nachträge stehen nie im Gesamt.
+- **Samstag:** Hefeteig & Füllungen (`components/backstube/BackstubeHefeteig.tsx`) **vor** den Zeilen,
+  sonst danach. Dieselben Server-Zahlen wie die Tagesplanung, nur groß.
+- **„Vorbereitung heute":** `GET /api/backzettel/:datum/prep` für den nächsten Produktionstag nach heute
+  (vorbereitet am Kalender-Vortag ab 14 Uhr); ist der Vortag Ruhetag, steht der Hinweis aus
+  `prepDateProvisional` da. Dort kein Umschalter - die Vorbereitung gilt immer dem nächsten Backtag.
+- **Neu geladen** wird alle 60 s (`BACKSTUBE_REFRESH_MS`), bei `focus` und `visibilitychange`.
+  Scheitert ein Neuladen, bleibt der letzte Stand stehen mit „Keine Verbindung zum Server … Stand von
+  HH:MM" (WLAN in der Backstube). Das Lesen eines freigegebenen Tages schreibt Deltas (Z3).
+- **Kontrast:** feste Farbpaare je Modus in `components/backstube/backstubeColors.ts` (Banner,
+  Nachtrag, Haken ≥ 7:1, geprüft in `backstubeColors.spec.ts`), keine MUI-`*.main`-Texte. Die Seite
+  schaltet das `section`-Einblenden aus `global.css` ab, sonst stünde der Zettel nach jedem
+  Tageswechsel 0,8 s blass da.
+- **Kein eigener Druck:** gedruckt wird über „Planung & Druck" (`/admin/backzettel/[datum]`, Z7).
+
+Tests: `src/lib/backstubeDay.spec.ts`, `src/app/backstube/BackstubeClient.spec.tsx`,
+`src/components/backstube/backstubeColors.spec.ts`. Die Fixtures in `backzettelFixtures.ts` haben
+seit Z6 eindeutige Zeilen-IDs (vorher teilten sich zwei Zeilen eine).
 
 ## E2E-Suiten (Playwright)
 
@@ -857,7 +895,7 @@ Sieben Dinge, die man wissen muss:
   (ohne Neu/Bearbeiten), Backschrank, Backzettel nur lesen (Z5); Backstube Dashboard, `/admin/backzettel`, `/backstube`;
   Fahrer nur `/admin/delivery/preorders`; alle `/admin/settings`. Startseite = erste _gebaute_
   aus `start` (`ready` aus `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` → bis M1
-  `/admin`, Backstube `/backstube` → bis M2 `/admin`. `getNavigationForRole()` filtert
+  `/admin`, Backstube `/backstube` (seit Z6 gebaut, also Start nach der PIN). `getNavigationForRole()` filtert
   `getNavigation()` aus F2, Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse,
   Tagesziel und Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. Wer eine Seite für
   eine Rolle freigibt, ändert nur `ROLE_ACCESS` (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
