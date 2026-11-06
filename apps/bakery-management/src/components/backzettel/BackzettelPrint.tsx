@@ -20,7 +20,10 @@ import {
   formatSignedQty,
   formatTimestamp,
   hasHefeteig,
+  ingredientAmount,
   lineLabel,
+  recipeHeading,
+  recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
 import { batchText } from './HefeteigCard'
 import { prepTaskLabel } from './PrepCard'
@@ -414,10 +417,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                 <table>
                   <thead>
                     <tr>
-                      <th>
-                        Rezept „{f.recipe.title}“ ×{' '}
-                        {formatNumber(f.recipe.factor)}
-                      </th>
+                      <th>{recipeHeading(f.recipe)}</th>
                       <th className="num">Menge</th>
                     </tr>
                   </thead>
@@ -427,7 +427,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                         <td>{ing.name}</td>
                         <td className="num">
                           {ing.scaled_g === null ? (
-                            `${ing.raw} (nicht skaliert)`
+                            ingredientAmount(ing, f.recipe).text
                           ) : (
                             <strong>{formatGrams(ing.scaled_g)}</strong>
                           )}
@@ -438,6 +438,11 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                 </table>
               ) : (
                 <p className="small">Kein Rezept hinterlegt.</p>
+              )}
+              {f.recipe && recipeIncompleteNote(f.recipe) && (
+                <p className="small">
+                  <strong>{recipeIncompleteNote(f.recipe)}</strong>
+                </p>
               )}
             </div>
           ))}

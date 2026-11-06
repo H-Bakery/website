@@ -581,6 +581,16 @@ seasonFactor, recipes, catalog})` liefert Zeilen (Basis | Saison | Vorbestellt |
   Füllungsbedarf (der Validator lehnt eine bloße Zahl ab).
 - **Rezeptpfade nur relativ unter `data/recipes/` und `.md`** - Validator und Loader prüfen das
   beide; die YAML schreibt später die App (B5b).
+- **Ein unvollständiges Rezept wird nicht hochgerechnet** (W4-Verifikation Runde 2): hat eine
+  Zutat keine Grammangabe (`1 Dose (ca. 2 kg)`, `2–4 g`), liefert `scaleRecipe` `factor: null`,
+  `batch_g: null` und keine skalierten Mengen; Tablet, Planung und Druck zeigen das Grundrezept
+  mit Hinweis. Sonst entstand aus der Summe der lesbaren Zutaten ein falscher Faktor.
+- **Nachträge und Chargen:** `deltaExtras.doughs[]` trägt `batchesBefore` und `batch_max_kg`,
+  `deltaExtras.fillings[].recipe` das Rezept für die Zusatzmenge; der Hinweis nennt „jetzt 4
+  Chargen statt 3“ und, wenn der Zusatzteig größer als eine Charge ist, wie viele Chargen er braucht.
+- **Eine Korrektur darf die Zeile nicht unter 0 drücken** (400 `correction_exceeds_line`). Wird
+  eine Zeile später kleiner (Grundmenge, Storno), steht sie mit `correctionClamped` und der
+  Warnung `correction_exceeds_line` da - nie still auf 0.
 - **Variante = Füllungs-ID.** Gefüllte Ware ohne Variante zählt im Teig, aber nicht in der Füllung
   (`filling_unassigned`); unbekannte Produkte/Varianten werden als Warnung gemeldet, nie verschluckt.
 - `formatTrayInfo` ist ein **Duplikat** von `feature-daily-prep/.../utils/trayInfo.ts`; beide

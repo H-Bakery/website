@@ -499,6 +499,11 @@ describe('Fuellungsrezepte (hq-Markdown)', () => {
       scaled_g: null,
       raw: '1 Dose (ca. 2 kg)',
     })
+    // W4-verify r2: no factor from the readable part alone (200 g -> "× 2")
+    expect(a.factor).toBeNull()
+    expect(a.batch_g).toBeNull()
+    expect(a.ingredients.map((i) => i.scaled_g)).toEqual([null, null, null])
+    expect(a.ingredients[2]).toMatchObject({ raw: '200 g', g: 200 })
     expect(recipes.scaleRecipe(null, 100)).toBeNull()
   })
 })

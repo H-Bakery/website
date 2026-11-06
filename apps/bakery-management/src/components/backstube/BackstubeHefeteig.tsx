@@ -9,7 +9,13 @@ import type {
   HefeteigDough,
 } from '../../lib/backzettelApi'
 import { DeltaExtrasNote } from '../backzettel/DeltaExtrasNote'
-import { formatGrams, formatNumber } from '../../lib/backzettelFormat'
+import {
+  formatGrams,
+  formatNumber,
+  ingredientAmount,
+  recipeHeading,
+  recipeIncompleteNote,
+} from '../../lib/backzettelFormat'
 import { batchText } from '../backzettel/HefeteigCard'
 
 const BIG = { xs: '1.75rem', sm: '2.25rem' }
@@ -176,9 +182,16 @@ function Filling({ filling, muted }: { filling: FillingNeed; muted: boolean }) {
       {filling.recipe ? (
         <Box sx={{ mt: 1 }}>
           <Typography sx={{ fontSize: SMALL, color: 'text.secondary' }}>
-            Rezept „{filling.recipe.title}“ ×{' '}
-            {formatNumber(filling.recipe.factor)}
+            {recipeHeading(filling.recipe)}
           </Typography>
+          {recipeIncompleteNote(filling.recipe) && (
+            <Typography
+              sx={{ fontSize: SMALL, fontWeight: 700, mt: 0.5 }}
+              data-testid="recipe-incomplete"
+            >
+              {recipeIncompleteNote(filling.recipe)}
+            </Typography>
+          )}
           <Box
             component="dl"
             sx={{
@@ -205,9 +218,7 @@ function Filling({ filling, muted }: { filling: FillingNeed; muted: boolean }) {
                     fontVariantNumeric: 'tabular-nums',
                   }}
                 >
-                  {ing.scaled_g === null
-                    ? `${ing.raw} (nicht skaliert)`
-                    : formatGrams(ing.scaled_g)}
+                  {ingredientAmount(ing, filling.recipe).text}
                 </Box>
               </React.Fragment>
             ))}

@@ -13,6 +13,8 @@ import type {
   BackzettelLineDelta,
   BackzettelUnit,
   DeltaExtras,
+  ScaledIngredient,
+  ScaledRecipe,
 } from './backzettelApi'
 
 /** ISO-Wochentage, an denen gebacken wird, solange keine Stammdaten da sind (Di–So). */
@@ -237,19 +239,48 @@ export function deltaExtrasLines(
     const dough = `${d.dough_g < 0 ? '−' : '+'}${formatGrams(
       Math.abs(d.dough_g)
     )} Teig`
+    // Chargen (W4-Verifikation Runde 2): ändert sich ihre Zahl, steht es
+    // da - und ist der Zusatzteig selbst größer als eine Charge, wie er sich
+    // aufteilt.
+    const max = d.batch_max_kg ?? null
+    const batchNote =
+      d.batches != null &&
+      d.batchesBefore != null &&
+      d.batches !== d.batchesBefore
+        ? `; jetzt ${formatNumber(d.batches)} Chargen statt ${formatNumber(
+            d.batchesBefore
+          )}${max ? ` (je max. ${formatNumber(max)} kg)` : ''}`
+        : ''
+    const extraBatches =
+      max && d.dough_g > max * 1000
+        ? `; den Zusatzteig in ${formatNumber(
+            Math.ceil(d.dough_g / (max * 1000) - 1e-9)
+          )} Chargen ansetzen`
+        : ''
     out.push(
       `${d.name}: ${formatSigned(d.pieces)} Teigstücke (${dough})${
         weighing ? ` - ${weighing}` : ''
       }; mit Nachträgen ${formatNumber(
         d.totalPieces
-      )} Teigstücke, ${formatGrams(d.totalDough_g)}`
+      )} Teigstücke, ${formatGrams(d.totalDough_g)}${batchNote}${extraBatches}`
     )
   }
   for (const f of extras.fillings) {
+    const recipe =
+      f.recipe && f.recipe.factor !== null
+        ? `; dafür Rezept „${f.recipe.title}“ × ${formatNumber(
+            f.recipe.factor
+          )}: ${f.recipe.ingredients
+            .map(
+              (ing) =>
+                `${ing.name} ${ingredientAmount(ing, f.recipe ?? null).text}`
+            )
+            .join(', ')}`
+        : ''
     out.push(
       `${f.name}: ${f.grams > 0 ? '+' : '−'}${formatGrams(
         Math.abs(f.grams)
-      )}; mit Nachträgen ${formatGrams(f.totalGrams)}`
+      )}; mit Nachträgen ${formatGrams(f.totalGrams)}${recipe}`
     )
   }
   return out
@@ -447,4 +478,45 @@ export function hasHefeteig(
   return (
     (day.hefeteig?.doughs?.length ?? 0) > 0 || (day.fillings?.length ?? 0) > 0
   )
+}
+
+/**
+ * Kopfzeile eines Füllungsrezepts: „Rezept „Nussfüllung“ × 1,5“ - oder, wenn
+ * es sich nicht hochrechnen lässt (Zutat ohne Grammangabe), ohne Faktor.
+ */
+export function recipeHeading(recipe: ScaledRecipe): string {
+  return recipe.factor === null
+    ? `Rezept „${recipe.title}“ – Grundrezept, nicht hochgerechnet`
+    : `Rezept „${recipe.title}“ × ${formatNumber(recipe.factor)}`
+}
+
+/**
+ * Hinweis zu einem unvollständigen Rezept (W4-Verifikation Runde 2): früher
+ * wurde es nur mit den lesbaren Zutaten hochgerechnet - aus „1 Dose Äpfel +
+ * 200 g Zucker“ und 400 g Bedarf wurde „× 2“ mit doppeltem Zucker.
+ */
+export function recipeIncompleteNote(recipe: ScaledRecipe): string | null {
+  if (recipe.complete) return null
+  return recipe.factor === null
+    ? `Rezept unvollständig – nicht jede Zutat hat eine Grammangabe, deshalb nicht hochgerechnet. Unten das Grundrezept; gebraucht werden ${formatGrams(
+        recipe.grams
+      )} Füllung.`
+    : 'Rezept unvollständig – Zutaten ohne Grammangabe bitte nach Gefühl.'
+}
+
+/** Menge einer Zutat: skaliert, sonst die Angabe aus dem Rezept. */
+export function ingredientAmount(
+  ing: ScaledIngredient,
+  recipe: ScaledRecipe | null
+): { text: string; scaled: boolean } {
+  if (ing.scaled_g !== null) {
+    return { text: formatGrams(ing.scaled_g), scaled: true }
+  }
+  return {
+    text:
+      recipe && recipe.factor === null
+        ? ing.raw
+        : `${ing.raw} (nicht skaliert)`,
+    scaled: false,
+  }
 }

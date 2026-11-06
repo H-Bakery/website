@@ -10,7 +10,10 @@ import {
   formatQty,
   formatSigned,
   hasHefeteig,
+  ingredientAmount,
   isIsoDate,
+  recipeHeading,
+  recipeIncompleteNote,
   isoWeekday,
   lineLabel,
   neighbourProductionDay,
@@ -215,5 +218,81 @@ describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
       'Hefeteig: +4 Teigstücke (+2,4 kg Teig) - +4 × 600 g abwiegen; mit Nachträgen 51 Teigstücke, 30,6 kg',
       'Mohnfüllung: +1,6 kg; mit Nachträgen 5,2 kg',
     ])
+  })
+
+  it('deltaExtrasLines nennt neue Chargen und das Rezept der Zusatzfüllung (W4-verify r2)', () => {
+    expect(
+      deltaExtrasLines({
+        doughs: [
+          {
+            id: 'h',
+            name: 'Hefeteig',
+            pieces: 17,
+            totalPieces: 64,
+            dough_g: 10100,
+            totalDough_g: 31000,
+            batches: 4,
+            batchesBefore: 3,
+            batch_max_kg: 10,
+            weighing: [],
+          },
+        ],
+        fillings: [
+          {
+            id: 'nuss',
+            name: 'Nussfüllung',
+            grams: 6000,
+            totalGrams: 9000,
+            recipe: {
+              title: 'Nussfüllung',
+              batch_g: 2000,
+              grams: 6000,
+              factor: 3,
+              complete: true,
+              ingredients: [
+                {
+                  name: 'Nüsse',
+                  g: 1000,
+                  unit: 'g',
+                  raw: '1 kg',
+                  scaled_g: 3000,
+                },
+              ],
+            },
+          },
+        ],
+      })
+    ).toEqual([
+      'Hefeteig: +17 Teigstücke (+10,1 kg Teig); mit Nachträgen 64 Teigstücke, 31 kg; jetzt 4 Chargen statt 3 (je max. 10 kg); den Zusatzteig in 2 Chargen ansetzen',
+      'Nussfüllung: +6 kg; mit Nachträgen 9 kg; dafür Rezept „Nussfüllung“ × 3: Nüsse 3 kg',
+    ])
+  })
+
+  it('rechnet ein unvollständiges Rezept nicht hoch (W4-verify r2)', () => {
+    const recipe = {
+      title: 'Apfelfüllung',
+      batch_g: null,
+      grams: 400,
+      factor: null,
+      complete: false,
+      ingredients: [
+        {
+          name: 'Äpfel',
+          g: null,
+          unit: null,
+          raw: '1 Dose (ca. 2 kg)',
+          scaled_g: null,
+        },
+      ],
+    }
+    expect(recipeHeading(recipe)).toBe(
+      'Rezept „Apfelfüllung“ – Grundrezept, nicht hochgerechnet'
+    )
+    expect(recipeIncompleteNote(recipe)).toMatch(
+      /nicht hochgerechnet.*400 g Füllung/
+    )
+    expect(ingredientAmount(recipe.ingredients[0], recipe).text).toBe(
+      '1 Dose (ca. 2 kg)'
+    )
   })
 })

@@ -47,7 +47,11 @@ export interface DeltaExtras {
     totalPieces: number
     dough_g: number
     totalDough_g: number
+    /** Chargen mit Nachträgen. */
     batches: number | null
+    /** Chargen bei der Freigabe; ältere Server: fehlt. */
+    batchesBefore?: number | null
+    batch_max_kg?: number | null
     weighing: Array<{ piece_g: number; pieces: number; total: number }>
   }>
   fillings: Array<{
@@ -55,6 +59,8 @@ export interface DeltaExtras {
     name: string
     grams: number
     totalGrams: number
+    /** Rezept für die zusätzliche Menge; `null`, wenn nicht hochrechenbar. */
+    recipe?: ScaledRecipe | null
   }>
 }
 
@@ -146,9 +152,11 @@ export interface ScaledIngredient {
 
 export interface ScaledRecipe {
   title: string
-  batch_g: number
+  /** `null`: Rezept unvollständig, Chargengröße unbekannt. */
+  batch_g: number | null
   grams: number
-  factor: number
+  /** `null`: nicht skaliert, weil eine Zutat keine Grammangabe hat. */
+  factor: number | null
   complete: boolean
   ingredients: ScaledIngredient[]
 }

@@ -7,8 +7,8 @@
 //
 // Was nicht in Gramm umzurechnen ist (`1 Dose (ca. 3 kg)`, `2–5 g`), bleibt
 // mit `g: null` und dem Originaltext stehen; das Rezept heisst dann
-// `complete: false` und wird nicht still mit einer falschen Chargengroesse
-// skaliert. Milliliter zaehlen wie Gramm (Wasser) - so hat es auch der
+// `complete: false` und wird gar nicht skaliert (`factor: null`) statt mit
+// einer falschen Chargengroesse. Milliliter zaehlen wie Gramm (Wasser) - so hat es auch der
 // bisherige `FillingPreparation`-Rechner gemacht.
 
 const AMOUNT =
@@ -174,6 +174,28 @@ function scaleRecipe(recipe, grams, options) {
   const roundTo = (options && options.roundTo) || 10
   if (!recipe || !(recipe.batch_g > 0)) return null
   const target = Number(grams) > 0 ? Number(grams) : 0
+  // Unvollstaendig (eine Zutat ohne Grammangabe, `1 Dose (ca. 2 kg)`):
+  // `batch_g` ist dann nur die Summe der lesbaren Zutaten, der Faktor waere
+  // falsch - aus 200 g lesbarer Masse und 400 g Bedarf wurde „× 2“ mit der
+  // doppelten Zuckermenge zu einer ganzen Dose Aepfel (W4-Verifikation
+  // Runde 2). Deshalb kein Faktor, keine skalierten Mengen; die Oberflaeche
+  // zeigt das Grundrezept mit Hinweis.
+  if (recipe.complete === false) {
+    return {
+      title: recipe.title,
+      batch_g: null,
+      grams: target,
+      factor: null,
+      complete: false,
+      ingredients: recipe.ingredients.map((ing) => ({
+        name: ing.name,
+        g: ing.g === undefined ? null : ing.g,
+        unit: ing.unit || null,
+        raw: ing.raw,
+        scaled_g: null,
+      })),
+    }
+  }
   const factor = target / recipe.batch_g
   return {
     title: recipe.title,
