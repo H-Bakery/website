@@ -166,7 +166,7 @@ describe('PreorderEntryClient (P1)', () => {
     )
   })
 
-  it('Sammelstelle: Kanal „Sammelstelle", nur Liefertage, keine Uhrzeit', async () => {
+  it('Sammelstelle: Kanal „Sammelstelle“, nur Liefertage, keine Uhrzeit', async () => {
     const user = userEvent.setup()
     mockCreate.mockResolvedValue(preorder())
     await ready()
@@ -185,7 +185,7 @@ describe('PreorderEntryClient (P1)', () => {
     expect(screen.getByText(/Übergabe 09:00-09:30 Uhr/)).toBeInTheDocument()
 
     await user.type(screen.getByLabelText(/^Name/), 'Kita Kind')
-    // Schnellknopf aus „häufig vorbestellt"
+    // Schnellknopf aus „häufig vorbestellt“
     const quick = screen.getByRole('group', { name: 'Häufig vorbestellt' })
     await user.click(
       within(quick).getByRole('button', { name: 'Kornbrot 500g' })
@@ -233,7 +233,7 @@ describe('PreorderEntryClient (P1)', () => {
   it('zeigt die deutsche Meldung des Servers', async () => {
     const user = userEvent.setup()
     mockCreate.mockRejectedValue(
-      Object.assign(new Error('„Mustersemmel" gibt es nicht in Sorten.'), {
+      Object.assign(new Error('„Mustersemmel“ gibt es nicht in Sorten.'), {
         code: 'invalid_variant',
       })
     )
@@ -243,7 +243,7 @@ describe('PreorderEntryClient (P1)', () => {
       screen.getByRole('button', { name: 'Vorbestellung speichern' })
     )
     expect(
-      await screen.findByText('„Mustersemmel" gibt es nicht in Sorten.')
+      await screen.findByText('„Mustersemmel“ gibt es nicht in Sorten.')
     ).toBeInTheDocument()
 
     // W4-verify r2: an invalid field afterwards replaces the stale server message
@@ -254,7 +254,7 @@ describe('PreorderEntryClient (P1)', () => {
       screen.getByRole('button', { name: 'Vorbestellung speichern' })
     )
     expect(
-      screen.queryByText('„Mustersemmel" gibt es nicht in Sorten.')
+      screen.queryByText('„Mustersemmel“ gibt es nicht in Sorten.')
     ).toBeNull()
   })
 

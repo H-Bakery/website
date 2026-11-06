@@ -34,7 +34,7 @@ export function isNavItemActive(
     pathname === candidate || pathname.startsWith(`${candidate}/`)
   if (!matches(href)) return false
   // Ein genauerer Eintrag gewinnt: auf /admin/preorders/abholliste ist
-  // „Abholliste" markiert, nicht zusätzlich „Vorbestellungen".
+  // „Abholliste“ markiert, nicht zusätzlich „Vorbestellungen“.
   return !siblings.some(
     (other) =>
       !!other &&
@@ -136,7 +136,7 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Lieferverwaltung',
   },
   {
-    // Nicht „Vorbestellungen": so heißt der kommende allgemeine Bildschirm
+    // Nicht „Vorbestellungen“: so heißt der kommende allgemeine Bildschirm
     // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
     label: 'Sammelstelle Mörsbach',
     href: '/admin/delivery/preorders',
@@ -254,7 +254,7 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
  * braucht zusätzlich `admin/backzettel/page.tsx` (z. B. Weiterleitung auf den
  * nächsten Produktionstag), sonst führte der Menüeintrag ins Leere.
  * `/admin/preorders` (P1/P3) und `/admin/preorders/abholliste` (P2) sind seit
- * M1 gebaut. „Sammelstelle Mörsbach" (/admin/delivery/preorders) bleibt
+ * M1 gebaut. „Sammelstelle Mörsbach“ (/admin/delivery/preorders) bleibt
  * daneben stehen: die Seiten laufen seit P2 auf `/api/preorders` (Liste,
  * Backliste, Lieferstelle); erfasst und bearbeitet wird mit der allgemeinen
  * Maske, übergeben in der Abholliste.

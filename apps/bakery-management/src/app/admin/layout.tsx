@@ -162,7 +162,7 @@ function getBreadcrumb(pathname: string): string[] {
       }
       // W4-verify r2: Produkt-ID (Slug) und Backzettel-Datum nicht roh zeigen
       if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
-      // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026"
+      // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026“
       if (isIsoDate(segment)) return formatDateLong(segment)
       return segment
     })

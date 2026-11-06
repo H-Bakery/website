@@ -13,7 +13,7 @@ export interface BackstubePrepProps {
 }
 
 /**
- * „Vorbereitung heute": die Vorbereitungen für den nächsten Produktionstag,
+ * „Vorbereitung heute“: die Vorbereitungen für den nächsten Produktionstag,
  * erledigt am Vortag ab 14 Uhr (roadmap §5.4). Gerechnet hat der Server
  * (`GET /api/backzettel/:datum/prep`).
  */

@@ -112,7 +112,7 @@ describe('ProductListClient (admin/products)', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('markiert wartende Änderungen mit „wartet auf Freigabe" (F4)', () => {
+  it('markiert wartende Änderungen mit „wartet auf Freigabe“ (F4)', () => {
     renderWithTheme(<ProductListClient products={products} />)
     const chips = screen.getAllByText('wartet auf Freigabe')
     expect(chips).toHaveLength(1)

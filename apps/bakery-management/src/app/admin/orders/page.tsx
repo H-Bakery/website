@@ -106,7 +106,7 @@ const formatDate = (iso: string) => {
   })
 }
 
-/** „Sa., 05.09.2026, 09:30 Uhr" – oder „–", wenn keine Abholung hinterlegt ist. */
+/** „Sa., 05.09.2026, 09:30 Uhr“ – oder „–“, wenn keine Abholung hinterlegt ist. */
 const formatPickup = (order: Pick<Order, 'pickupDate' | 'pickupTime'>) => {
   if (!order.pickupDate) return '–'
   const d = new Date(`${order.pickupDate}T00:00:00`)
@@ -127,8 +127,8 @@ const pickupSortKey = (order: Order) =>
     : order.createdAt
 
 /**
- * `tel:`-Link aus der eingegebenen Nummer: nur Ziffern und ein führendes „+".
- * Der Shop erlaubt auch „(06841) 12/34-56"; ein „/" gehört nicht in eine
+ * `tel:`-Link aus der eingegebenen Nummer: nur Ziffern und ein führendes „+“.
+ * Der Shop erlaubt auch „(06841) 12/34-56“; ein „/“ gehört nicht in eine
  * tel-URI und würde auf manchen Geräten das Wählen abbrechen.
  */
 const telHref = (phone: string) =>

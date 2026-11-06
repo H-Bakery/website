@@ -119,7 +119,7 @@ describe('Hilfe (/admin/hilfe, P6)', () => {
     await screen.findByText(/die Posten stehen schon da/)
   })
 
-  it('ohne Sitzung: Verkauf zuerst, ohne „Ihre Rolle"', async () => {
+  it('ohne Sitzung: Verkauf zuerst, ohne „Ihre Rolle“', async () => {
     renderFor(null)
     const tabs = screen.getAllByRole('tab')
     expect(tabs[0]).toHaveAttribute('data-testid', 'tab-verkauf')
@@ -127,7 +127,7 @@ describe('Hilfe (/admin/hilfe, P6)', () => {
     await screen.findByText(/die Posten stehen schon da/)
   })
 
-  it('„Drucken" druckt genau das gezeigte Blatt und räumt nach afterprint auf', async () => {
+  it('„Drucken“ druckt genau das gezeigte Blatt und räumt nach afterprint auf', async () => {
     renderFor('backstube')
     await screen.findByText(/die Posten stehen schon da/)
     fireEvent.click(screen.getByTestId('print-spickzettel-backstube'))

@@ -33,7 +33,7 @@ export const SESSION_STORAGE_KEY = 'bakery-management-session'
 export const ACTIVITY_STORAGE_KEY = 'bakery-management-activity'
 export const STATION_STORAGE_KEY = 'bakery-management-station'
 /**
- * W4-Verifikation: „unbeaufsichtigt auf /backstube" überlebt ein Neuladen.
+ * W4-Verifikation: „unbeaufsichtigt auf /backstube“ überlebt ein Neuladen.
  * Wert = `startedAt` der Sitzung, die es betrifft.
  */
 export const UNATTENDED_STORAGE_KEY = 'bakery-management-unattended'
@@ -189,7 +189,7 @@ export function loadUnattended(startedAt: number): boolean {
   return readJson<unknown>(UNATTENDED_STORAGE_KEY) === startedAt
 }
 
-/** Markiert (`startedAt`) oder vergisst (`null`) „unbeaufsichtigt". */
+/** Markiert (`startedAt`) oder vergisst (`null`) „unbeaufsichtigt“. */
 export function saveUnattended(startedAt: number | null): void {
   write(
     UNATTENDED_STORAGE_KEY,

@@ -33,7 +33,7 @@ export const TOUCH_LINK_STYLE = {
  * `primary`, Hintergründe und Papier bleiben MUI-Standard - `pwa.spec.ts`
  * rechnet die Statusleistenfarben daraus nach.
  *
- * Sprache: MUI-Locale `deDE` - sonst heißt das X einer Meldung „Close"
+ * Sprache: MUI-Locale `deDE` - sonst heißt das X einer Meldung „Close“
  * (W4-Verifikation Runde 3), ebenso Autocomplete und Tabellen-Blättern.
  */
 export function createManagementTheme(mode: 'light' | 'dark'): Theme {

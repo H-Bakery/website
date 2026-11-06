@@ -108,7 +108,7 @@ function StatTile({
 }
 
 /**
- * Was „Noch zu kassieren" nicht enthält (W4-Verifikation Runde 3, wie die
+ * Was „Noch zu kassieren“ nicht enthält (W4-Verifikation Runde 3, wie die
  * Abholliste): ohne Zahlung Übergebenes und zu Erstattendes.
  */
 export function moneyNotes(summary: {
@@ -498,7 +498,7 @@ export default function PreorderListClient({
         <Alert severity={notice.passed ? 'warning' : 'info'} sx={{ mb: 2 }}>
           {notice.text}
           {notice.passed
-            ? ' Später erfasste Bestellungen sind trotzdem gültig - sie werden als „Nach Bestellschluss" markiert.'
+            ? ' Später erfasste Bestellungen sind trotzdem gültig - sie werden als „Nach Bestellschluss“ markiert.'
             : ''}
         </Alert>
       )}
@@ -691,7 +691,7 @@ export default function PreorderListClient({
                       {/* Eine übergebene Bestellung wird nicht storniert:
                           die Ware ist raus, das Geld ist kassiert. Wer das
                           wirklich rückgängig machen will, setzt sie zuerst
-                          auf „Offen" zurück. */}
+                          auf „Offen“ zurück. */}
                       {canWrite &&
                         !isCancelled &&
                         (isCancellable(preorder) ? (
@@ -710,7 +710,7 @@ export default function PreorderListClient({
                         ) : (
                           <Tooltip
                             title={
-                              'Bereits übergeben - zum Stornieren zuerst auf „Offen" zurücksetzen'
+                              'Bereits übergeben - zum Stornieren zuerst auf „Offen“ zurücksetzen'
                             }
                           >
                             <span>

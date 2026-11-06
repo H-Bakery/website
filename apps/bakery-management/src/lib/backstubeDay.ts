@@ -9,7 +9,7 @@
  *   vorbereitet, und nachts steht er schon da, wenn die Schicht beginnt.
  * - Ist heute kein Produktionstag (Montag), gilt immer der nächste.
  *
- * Mit dem Umschalter „Heute"/„Morgen" sieht man den anderen Tag. „Morgen"
+ * Mit dem Umschalter „Heute“/„Morgen“ sieht man den anderen Tag. „Morgen“
  * ist der nächste Produktionstag nach heute; liegt er nicht auf dem
  * Kalender-Morgen (Sonntag → Dienstag), heißt der Knopf wie der Tag.
  *
@@ -78,7 +78,7 @@ export function dateForChoice(
   return choice === 'heute' ? dates.today : dates.next
 }
 
-/** „Morgen" - oder „Di 24.11.", wenn der nächste Produktionstag später liegt. */
+/** „Morgen“ - oder „Di 24.11.“, wenn der nächste Produktionstag später liegt. */
 export function nextLabel(dates: BackstubeDates): string {
   if (dates.next === addDays(dates.today, 1)) return 'Morgen'
   const [, m, d] = dates.next.split('-')

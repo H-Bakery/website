@@ -16,7 +16,7 @@ type State =
 /**
  * Lädt ein Produkt über `GET /api/hq-products/:id` (F4) - den Stand im
  * Schreib-Worktree, also auch ein eben angelegtes oder ein auf Freigabe
- * wartendes. 404 → „nicht gefunden" im Formular.
+ * wartendes. 404 → „nicht gefunden“ im Formular.
  */
 export default function ProductEditLoader({
   productId,

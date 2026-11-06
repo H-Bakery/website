@@ -343,7 +343,7 @@ export default function DashboardClient({
 
       {loading && <LinearProgress sx={{ mb: 2 }} />}
 
-      {/* Statistics Cards (im Pilotbetrieb ohne „Offene Bestellungen") */}
+      {/* Statistics Cards (im Pilotbetrieb ohne „Offene Bestellungen“) */}
       <Grid
         container
         spacing={{ xs: 1.5, md: 3 }}
@@ -378,7 +378,7 @@ export default function DashboardClient({
               />
             </Box>
             {/* Nur für Rollen, die die Produktliste öffnen dürfen (Backstube
-                landete sonst auf „Kein Zugriff"). */}
+                landete sonst auf „Kein Zugriff“). */}
             {allowed('/admin/products') ? (
               <Button
                 size="small"

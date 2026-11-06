@@ -140,7 +140,7 @@ export default function BackzettelOverviewClient({
   // (Inhaber, Backstube) - Verkauf liest den Backzettel ohne den Link.
   const role = session?.user?.role ?? null
   // W4-verify r3: wie die Tagesseite - planen dürfen Inhaber und Backstube;
-  // für alle anderen heißt der Knopf „Ansehen", nicht „Planen".
+  // für alle anderen heißt der Knopf „Ansehen“, nicht „Planen“.
   const canPlan = role === 'inhaber' || role === 'backstube'
   const showGrundmengen =
     role !== null &&

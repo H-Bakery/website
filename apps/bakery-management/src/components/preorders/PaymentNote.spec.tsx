@@ -34,7 +34,7 @@ describe('PaymentNote (W4-verify r3)', () => {
     expect(container.textContent).toBe('')
   })
 
-  it('Sammelstelle: „Noch zu kassieren" nennt ohne Zahlung Übergebenes und Erstattungen', () => {
+  it('Sammelstelle: „Noch zu kassieren“ nennt ohne Zahlung Übergebenes und Erstattungen', () => {
     expect(moneyNotes({})).toBeNull()
     expect(
       moneyNotes({ handedOverUnpaidTotal: 3.6, refundTotal: 5.4 })

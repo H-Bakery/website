@@ -5,7 +5,7 @@
  * echten Bildschirmen (Station, Vorbestellung, Abholliste, Backstube,
  * Backzettel, Benutzer); wer dort eine Beschriftung ändert, zieht sie hier nach.
  *
- * Schreibregeln: kurze Sätze, Anweisungen im Infinitiv („Namen antippen."),
+ * Schreibregeln: kurze Sätze, Anweisungen im Infinitiv („Namen antippen.“),
  * Beschriftungen der App in `**…**` (werden fett gedruckt). Jeder Zettel muss
  * gedruckt auf EINE A4-Seite passen - `spickzettel.spec.ts` begrenzt die
  * Länge grob, der Smoke prüft es mit einem echten PDF.
@@ -14,7 +14,7 @@
 import type { PilotRole } from '../../lib/roles'
 
 export interface HilfeBlock {
-  /** Überschrift des Abschnitts, z. B. „Vorbestellung erfassen". */
+  /** Überschrift des Abschnitts, z. B. „Vorbestellung erfassen“. */
   title: string
   /** Schritte in Reihenfolge; `**Knopf**` wird fett. */
   steps: readonly string[]
@@ -104,7 +104,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
         steps: [
           'Bestellung öffnen: in **Vorbestellungen** antippen oder **⋮** › **Bestellung öffnen**.',
           '**Stornieren** tippen und bestätigen. Gelöscht wird nichts.',
-          'Schon abgeholt? Erst **Auf „Offen" zurück**, dann stornieren.',
+          'Schon abgeholt? Erst **Auf „Offen“ zurück**, dann stornieren.',
         ],
       },
       {

@@ -38,7 +38,7 @@ export interface MoersbachNewPreorderClientProps {
 /**
  * Vorbestellung für die Sammelstelle erfassen (P2): die allgemeine Maske
  * (P1, mit Sorten) mit vorbelegter Sammelstelle. Danach zurück auf den
- * Liefertag der Mörsbach-Liste mit „gespeichert" - wie früher.
+ * Liefertag der Mörsbach-Liste mit „gespeichert“ - wie früher.
  */
 export function MoersbachNewPreorderClient({
   initialDate,
@@ -49,7 +49,7 @@ export function MoersbachNewPreorderClient({
   const [error, setError] = useState<string | null>(null)
 
   // Ohne Sammelstelle in der URL die erste aktive - sonst stünde die Maske
-  // auf „Laden".
+  // auf „Laden“.
   useEffect(() => {
     if (initialPickupPointId) return
     let active = true

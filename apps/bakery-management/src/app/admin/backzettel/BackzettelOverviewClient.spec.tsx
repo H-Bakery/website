@@ -118,7 +118,7 @@ describe('Backzettel-Übersicht', () => {
     expect(sat.getByText('Hefeteig')).toBeInTheDocument()
   })
 
-  it('Entwurf: „Planen" nur für Inhaber/Backstube, Verkauf bekommt „Ansehen" (W4-verify r3)', async () => {
+  it('Entwurf: „Planen“ nur für Inhaber/Backstube, Verkauf bekommt „Ansehen“ (W4-verify r3)', async () => {
     const { unmount } = render(
       <WithSession value={fakeSession({ role: 'backstube' })}>
         <BackzettelOverviewClient today={TODAY} />
@@ -139,7 +139,7 @@ describe('Backzettel-Übersicht', () => {
     expect(asVerkauf.queryByRole('link', { name: /Planen/ })).toBeNull()
   })
 
-  it('ohne Stammdaten: Hinweis und Tage als „Keine Stammdaten"', async () => {
+  it('ohne Stammdaten: Hinweis und Tage als „Keine Stammdaten“', async () => {
     mocked.fetchBackzettelConfig.mockResolvedValue({
       ...CONFIG_RESPONSE,
       status: 'no-config',

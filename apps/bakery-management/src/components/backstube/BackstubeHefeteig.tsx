@@ -243,7 +243,7 @@ export interface BackstubeHefeteigProps {
 }
 
 /**
- * „Hefeteig & Füllungen" für das Tablet - am Samstag die erste Karte.
+ * „Hefeteig & Füllungen“ für das Tablet - am Samstag die erste Karte.
  * Dieselben Server-Zahlen wie `HefeteigCard` (Tagesplanung), nur groß.
  */
 export function BackstubeHefeteig({

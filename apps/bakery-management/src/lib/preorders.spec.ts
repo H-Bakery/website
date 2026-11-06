@@ -131,7 +131,7 @@ describe('Listenfilter', () => {
     expect(preorderListQuery({ q: '  ' })).toBe('')
   })
 
-  it('„Alle Tage" überlebt den Weg über die URL', () => {
+  it('„Alle Tage“ überlebt den Weg über die URL', () => {
     expect(preorderPageQuery({})).toBe('range=alle')
     expect(preorderPageQuery({ status: ['offen'] })).toBe(
       'status=offen&range=alle'

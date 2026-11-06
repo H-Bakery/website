@@ -122,7 +122,7 @@ export default function PinPad({
         </Button>
         <Button
           variant="contained"
-          // W4-verify r3: „ANMELDEN" in Versalien war breiter als die Taste
+          // W4-verify r3: „ANMELDEN“ in Versalien war breiter als die Taste
           // (115 px Text in 112 px) - normal geschrieben, ohne Sperrung und mit
           // schmalem Innenabstand passt es auch auf 320 px.
           sx={{

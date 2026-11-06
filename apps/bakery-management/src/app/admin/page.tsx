@@ -8,7 +8,7 @@ import DashboardClient, { type LatestReportTile } from './DashboardClient'
 /**
  * Dashboard. Server-Komponente: die Kassen-Kacheln (Umsatz, Bons, Ø Bon)
  * kommen aus dem jüngsten Kassenbericht in `hq/data/reports` - mit sichtbarem
- * Datum, weil „jüngster Tag" nicht „heute" ist. Alles andere lädt die
+ * Datum, weil „jüngster Tag“ nicht „heute“ ist. Alles andere lädt die
  * Client-Komponente zur Laufzeit über die API.
  *
  * `force-dynamic`, damit die Kacheln bei jedem Aufruf neu gelesen werden und

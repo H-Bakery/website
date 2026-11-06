@@ -6,7 +6,7 @@ import { MAX_QTY_PER_ITEM } from '../../lib/preordersTypes'
 
 /**
  * Nächster Mengen-Text nach einer Taste - wie am Taschenrechner: ist die
- * Anzeige „frisch" (gerade vorbelegt), ersetzt die erste Ziffer sie. Führende
+ * Anzeige „frisch“ (gerade vorbelegt), ersetzt die erste Ziffer sie. Führende
  * Nullen fallen weg, mehr als `max` nimmt die Anzeige nicht an.
  *
  * @param key `'0'`-`'9'`, `'Backspace'` oder `'Clear'`
@@ -38,7 +38,7 @@ const PAD_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'Clear', '0']
  * 56 px hoch. Die Tastatur am PC bedient das Mengenfeld der Maske direkt -
  * die Tasten hier nehmen deshalb keinen Fokus (`tabIndex -1`, kein
  * Fokuswechsel beim Klick), sonst landete Enter auf der zuletzt getippten
- * Taste statt auf „Hinzufügen".
+ * Taste statt auf „Hinzufügen“.
  */
 export default function QuantityPad({
   onKey,

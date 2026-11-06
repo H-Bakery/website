@@ -76,7 +76,7 @@ import {
 export const CHANNEL_STORAGE_KEY = 'bakery-management-preorder-channel'
 const DEFAULT_CHANNEL: PreorderChannel = 'telefon'
 
-/** Wie weit „häufig vorbestellt" zurückschaut. */
+/** Wie weit „häufig vorbestellt“ zurückschaut. */
 const FREQUENT_DAYS = 28
 
 interface DraftLine {
@@ -137,7 +137,7 @@ const chipSx = {
  * Sorten-Chips: Fokus als abgesetzter Ring, nicht als Flächenfarbe. MUI
  * färbt einen fokussierten Outlined-Chip grau ein - im Dunkelmodus sah die
  * erste Sorte (die nach der Produktwahl den Fokus bekommt) dann schon
- * gewählt aus, obwohl „Hinzufügen" noch gesperrt war.
+ * gewählt aus, obwohl „Hinzufügen“ noch gesperrt war.
  */
 const variantChipSx = {
   ...chipSx,
@@ -267,7 +267,7 @@ export default function PreorderForm({
   const firstVariantRef = useRef<HTMLDivElement>(null)
 
   /* ---------------------------------------------------------------- *
-   * Laden: Sortiment, Sammelstellen, Sorten; „häufig" nebenher
+   * Laden: Sortiment, Sammelstellen, Sorten; „häufig“ nebenher
    * ---------------------------------------------------------------- */
   useEffect(() => {
     const now = toBusinessDate(new Date())
@@ -288,7 +288,7 @@ export default function PreorderForm({
         setCatalogue(products)
         setPoints(pointList)
         setVariants(variantInfo.products)
-        // „Häufig" ist Beiwerk: scheitert es, fehlen nur die Knöpfe.
+        // „Häufig“ ist Beiwerk: scheitert es, fehlen nur die Knöpfe.
         if (!preorder) {
           listPreorders({ from: shiftDate(now, -FREQUENT_DAYS) })
             .then((list) => {
@@ -313,7 +313,7 @@ export default function PreorderForm({
     return () => {
       active = false
     }
-    // Einmal beim Öffnen - die Maske bleibt bis „Nächste Bestellung" stehen.
+    // Einmal beim Öffnen - die Maske bleibt bis „Nächste Bestellung“ stehen.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -326,7 +326,7 @@ export default function PreorderForm({
     [points, pickupPointId]
   )
 
-  // „Sammelstelle" ohne gefundene Stelle (veralteter Link) gibt es nicht.
+  // „Sammelstelle“ ohne gefundene Stelle (veralteter Link) gibt es nicht.
   useEffect(() => {
     if (!loading && !point && channel === 'sammelstelle') {
       setChannel(readChannel())
@@ -344,7 +344,7 @@ export default function PreorderForm({
     }
   }, [today, pickupDate, point, loading])
 
-  // Fokus: Name zuerst (Telefon: „Wer spricht?").
+  // Fokus: Name zuerst (Telefon: „Wer spricht?“).
   useEffect(() => {
     if (!editing && !loading) nameRef.current?.focus()
   }, [editing, loading])
@@ -958,7 +958,7 @@ export default function PreorderForm({
                                 justifyContent: 'flex-start',
                                 textAlign: 'left',
                                 lineHeight: 1.2,
-                                // W4-verify r3: lange Namen („Laugenbrötchen")
+                                // W4-verify r3: lange Namen („Laugenbrötchen“)
                                 // trennen statt über den Rand zu laufen.
                                 hyphens: 'auto',
                                 overflowWrap: 'anywhere',

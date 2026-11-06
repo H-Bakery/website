@@ -127,7 +127,7 @@ describe('reports loader', () => {
     ])
   })
 
-  it('listet Lücken als „kein Bericht" und addiert den zweiten Abschluss', () => {
+  it('listet Lücken als „kein Bericht“ und addiert den zweiten Abschluss', () => {
     writeDay('2026-05-05_4711.json', '2026-05-05', [tx([BROT])])
     writeDay('2026-05-05_4711_2.json', '2026-05-05', [tx([BROT])])
     writeDay('2026-05-07_4711.json', '2026-05-07', [

@@ -68,7 +68,7 @@ import {
 const SEARCH_DELAY_MS = 300
 
 export interface PreorderListClientProps {
-  /** Aus der URL; `undefined` = Vorgabe „ab heute". */
+  /** Aus der URL; `undefined` = Vorgabe „ab heute“. */
   initialFilters?: PreorderListFilters
 }
 

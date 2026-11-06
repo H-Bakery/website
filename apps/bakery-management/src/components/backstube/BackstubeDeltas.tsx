@@ -24,8 +24,8 @@ export interface BackstubeDeltasProps {
 
 /**
  * Offene Nachträge (Vorbestellungen nach der Freigabe) oben auf dem Tablet,
- * je Eintrag ein großer „Gesehen"-Knopf. Quittierte stehen nur als Zahl da -
- * an der Zeile bleibt ihr Badge „gesehen".
+ * je Eintrag ein großer „Gesehen“-Knopf. Quittierte stehen nur als Zahl da -
+ * an der Zeile bleibt ihr Badge „gesehen“.
  */
 export function BackstubeDeltas({
   deltas,

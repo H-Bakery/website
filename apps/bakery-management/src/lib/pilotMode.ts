@@ -1,5 +1,5 @@
 /**
- * Pilotbetrieb (roadmap §2 D7, §3 „Management app, route by route", Task F2).
+ * Pilotbetrieb (roadmap §2 D7, §3 „Management app, route by route“, Task F2).
  *
  * Mit `NEXT_PUBLIC_PILOT_MODE=1` zeigt die Management-App nur die Seiten, die
  * echte Daten tragen, plus die kommenden Pilot-Bildschirme. Alles andere
@@ -34,7 +34,7 @@ export function isPilotMode(
  * andere Route schließt ihre Unterseiten ein (`/admin/finance` deckt
  * `/admin/finance/tagesziel`, `/admin/products` deckt `/admin/products/new`).
  *
- * „Keep"-Spalte aus roadmap §3 plus die Anmeldung und die kommenden
+ * „Keep“-Spalte aus roadmap §3 plus die Anmeldung und die kommenden
  * Pilot-Bildschirme (Vorbestellungen, Backzettel, Backstube), damit diese nicht
  * gesperrt sind, sobald es sie gibt.
  */

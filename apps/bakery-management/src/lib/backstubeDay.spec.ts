@@ -42,7 +42,7 @@ describe('Backstube: welcher Tag steht auf dem Tablet', () => {
     expect(nextLabel(sunday)).toBe('Di 01.12.')
   })
 
-  it('heißt „Morgen", wenn der nächste Backtag morgen ist', () => {
+  it('heißt „Morgen“, wenn der nächste Backtag morgen ist', () => {
     expect(nextLabel(backstubeDates(at('2026-11-27', 15)))).toBe('Morgen')
   })
 

@@ -166,7 +166,7 @@ describe('PreorderDetailClient (P3)', () => {
     )
   })
 
-  it('schon übergeben mit Rest: kein „bei der Abholung kassieren"; Fahrer ohne Knopf bekommt keinen „Erstattet"-Auftrag (W4-verify r3)', async () => {
+  it('schon übergeben mit Rest: kein „bei der Abholung kassieren“; Fahrer ohne Knopf bekommt keinen „Erstattet“-Auftrag (W4-verify r3)', async () => {
     mockGet.mockResolvedValue(
       preorder({
         status: 'abgeholt',
@@ -199,7 +199,7 @@ describe('PreorderDetailClient (P3)', () => {
   it('setzt Status und bezahlt; zeigt Fehler des Servers', async () => {
     const user = userEvent.setup()
     mockStatus.mockRejectedValueOnce(
-      Object.assign(new Error('Status muss „offen" … sein.'), {
+      Object.assign(new Error('Status muss „offen“ … sein.'), {
         code: 'invalid_status',
       })
     )
@@ -207,7 +207,7 @@ describe('PreorderDetailClient (P3)', () => {
     renderAs('verkauf')
     await user.click(await screen.findByRole('button', { name: 'Abgeholt' }))
     expect(
-      await screen.findByText('Status muss „offen" … sein.')
+      await screen.findByText('Status muss „offen“ … sein.')
     ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Bezahlt' }))
     await waitFor(() =>
@@ -296,7 +296,7 @@ describe('PreorderDetailClient (P3)', () => {
     ).toBeInTheDocument()
   })
 
-  it('storniert: „Storno aufheben" erst nach Rückfrage', async () => {
+  it('storniert: „Storno aufheben“ erst nach Rückfrage', async () => {
     const user = userEvent.setup()
     mockGet.mockResolvedValue(preorder({ status: 'storniert' }))
     mockStatus.mockResolvedValue(preorder({ status: 'offen' }))
@@ -329,11 +329,11 @@ describe('PreorderDetailClient (P3)', () => {
     )
   })
 
-  it('abgeholt: kein Bearbeiten, kein Stornieren, nur zurück auf „Offen"', async () => {
+  it('abgeholt: kein Bearbeiten, kein Stornieren, nur zurück auf „Offen“', async () => {
     mockGet.mockResolvedValue(preorder({ status: 'abgeholt' }))
     renderAs('verkauf')
     expect(
-      await screen.findByRole('button', { name: /Auf „Offen" zurück/ })
+      await screen.findByRole('button', { name: /Auf „Offen“ zurück/ })
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Stornieren' })).toBeNull()

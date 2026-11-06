@@ -20,10 +20,10 @@ export const SESSION_CHECK_FAILURE_DELAY_MS = 1500
  * bei 401, `saveSession` schreibt das Cookie neu), dann die Original-URL neu
  * vom Server holen (`router.refresh()`). Darf der Server die Seite jetzt
  * rendern, ersetzt sie diese Komponente. Steht sie danach immer noch da,
- * kommt ein Hinweis mit „Erneut versuchen" statt einer Endlosschleife.
+ * kommt ein Hinweis mit „Erneut versuchen“ statt einer Endlosschleife.
  *
  * Ohne Sitzung rendert der RouteGuard diese Seite gar nicht (Weiterleitung
- * zur Anmeldung); bei fehlender Rolle zeigt das Admin-Layout „Kein Zugriff".
+ * zur Anmeldung); bei fehlender Rolle zeigt das Admin-Layout „Kein Zugriff“.
  */
 export default function SessionCheckPending() {
   const router = useRouter()

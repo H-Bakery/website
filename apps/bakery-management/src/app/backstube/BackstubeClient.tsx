@@ -160,9 +160,9 @@ export interface BackstubeClientProps {
 /**
  * Backstube-Tablet (Z6, roadmap §5.5 Nr. 3): der Backzettel des aktuellen
  * bzw. nächsten Backtags in sehr großer Schrift, ein Haken je Zeile,
- * Nachträge mit „Gesehen", am Samstag zuerst Hefeteig & Füllungen, dazu der
- * Reiter „Vorbereitung heute". Läuft an der PIN-Station (Startseite der
- * Rolle Backstube) ohne Admin-Layout - deshalb mit eigenem „Abmelden".
+ * Nachträge mit „Gesehen“, am Samstag zuerst Hefeteig & Füllungen, dazu der
+ * Reiter „Vorbereitung heute“. Läuft an der PIN-Station (Startseite der
+ * Rolle Backstube) ohne Admin-Layout - deshalb mit eigenem „Abmelden“.
  *
  * Gerechnet wird nichts: alle Zahlen kommen von `/api/backzettel`. Neu
  * geladen wird alle 60 s und sobald das Tablet wieder in den Vordergrund
@@ -196,7 +196,7 @@ export default function BackstubeClient({
   } | null>(null)
   const [refreshing, setRefreshing] = React.useState(false)
   const [actionError, setActionError] = React.useState<string | null>(null)
-  // W4-verify r2: der 409-Code eines „veralteten" Fehlers. Zeigt ein späteres
+  // W4-verify r2: der 409-Code eines „veralteten“ Fehlers. Zeigt ein späteres
   // Neuladen den Stand, auf den der Fehler wartete (z. B. wieder
   // freigegeben), verschwindet die Meldung - sonst widersprach sie dem Zettel.
   const staleCodeRef = React.useRef<string | null>(null)
@@ -561,7 +561,7 @@ export default function BackstubeClient({
         // global.css blendet jedes <section> beim Einhängen 0,8 s ein. Auf
         // dem Tablet (Tag wechseln, Neuladen) stünde der Zettel dann blass da.
         '& section, & .MuiChip-root': { animation: 'none' },
-        // Gedruckt wird über „Planung & Druck" (Z7); Strg+P hier soll
+        // Gedruckt wird über „Planung & Druck“ (Z7); Strg+P hier soll
         // wenigstens keine Bedienelemente und keinen dunklen Grund drucken.
         '@media print': {
           minHeight: 0,

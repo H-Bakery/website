@@ -29,7 +29,7 @@ describe('Backzettel-Notfallblatt (P6)', () => {
     ])
   })
 
-  it('lässt „Vorbereitung" und leere Abschnitte weg', () => {
+  it('lässt „Vorbereitung“ und leere Abschnitte weg', () => {
     const sections = notfallSections({
       ...TEST_CONFIG,
       sections: ['vorbereitung', 'brot', 'kuchen'],

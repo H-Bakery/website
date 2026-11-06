@@ -33,7 +33,7 @@ export interface PreorderEntryClientProps {
 /**
  * P1: Vorbestellung erfassen. Nach dem Speichern steht der Code groß da (für
  * den Abholzettel oder zum Durchsagen am Telefon), dazu ein Hinweis unten und
- * „Nächste Bestellung" - Enter genügt, der Knopf hat den Fokus.
+ * „Nächste Bestellung“ - Enter genügt, der Knopf hat den Fokus.
  */
 export default function PreorderEntryClient({
   initialDate,

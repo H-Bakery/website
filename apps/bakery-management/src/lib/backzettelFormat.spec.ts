@@ -229,7 +229,7 @@ describe('Nachträge mit Einheit und Backmenge (W4-Verifikation)', () => {
     ])
   })
 
-  it('deltaExtrasLines: eine Abnahme heißt „weniger", ohne Minus vor „abwiegen" (W4-verify r3)', () => {
+  it('deltaExtrasLines: eine Abnahme heißt „weniger“, ohne Minus vor „abwiegen“ (W4-verify r3)', () => {
     const [line] = deltaExtrasLines({
       doughs: [
         {

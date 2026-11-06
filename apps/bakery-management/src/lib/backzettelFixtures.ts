@@ -1,6 +1,6 @@
 /**
  * Erfundene Backzettel-Antworten für die Specs (Z5/Z6/Z7). Kein Wert stammt
- * aus `hq`: Namen tragen „Test", Mengen sind rund, damit man sie nachrechnen
+ * aus `hq`: Namen tragen „Test“, Mengen sind rund, damit man sie nachrechnen
  * kann. Form = `GET /api/backzettel/:datum` der echten API (Z3).
  */
 

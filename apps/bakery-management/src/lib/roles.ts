@@ -95,7 +95,7 @@ const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings', '/admin/hilfe']
  *   Grundmengen). Start: /admin/preorders (P3); das Dashboard bleibt
  *   Ausweichstart.
  * - backstube: Backzettel, Backstube-Tablet; Ausweichstart Dashboard.
- * - fahrer: Abholliste (P2, Start: übergeben, bezahlt, „nicht abgeholt");
+ * - fahrer: Abholliste (P2, Start: übergeben, bezahlt, „nicht abgeholt“);
  *   Sammelstelle Mörsbach lesen (Liste, Bestellung, Backliste - ohne Erfassen
  *   und Lieferstelle); Vorbestellungen nur lesen (ohne die Erfassung
  *   `/admin/preorders/neu`; die API lässt Fahrer nur übergeben).
@@ -198,7 +198,7 @@ export function isPersonalOnlyPath(pathname: string): boolean {
   return PERSONAL_ONLY_ROUTES.some((prefix) => underPrefix(path, prefix))
 }
 
-/** Begründung für „Kein Zugriff" an einer Station (deutsch). */
+/** Begründung für „Kein Zugriff“ an einer Station (deutsch). */
 export const STATION_NO_ACCESS_REASON =
   'Diese Seite ist an einer Station nicht verfügbar. Bitte an einem eigenen Gerät mit Benutzername und Passwort anmelden.'
 

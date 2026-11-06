@@ -24,7 +24,7 @@ export function anonymousRedirect(
   search = ''
 ) {
   if (isStation) return '/station'
-  // Nach „Abmelden" kein `?next=`: sonst landet die nächste Person auf der
+  // Nach „Abmelden“ kein `?next=`: sonst landet die nächste Person auf der
   // letzten Seite der vorigen (LogoutButton und Wache führen so zum selben Ziel).
   if (loggedOut) return '/admin/login'
   // Mit Query (W4-Verifikation Runde 2): sonst landet der Fahrer nach dem

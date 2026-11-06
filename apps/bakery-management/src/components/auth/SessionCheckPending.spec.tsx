@@ -54,7 +54,7 @@ describe('SessionCheckPending (Ersatzseite des Proxys)', () => {
     expect(mockRefresh).not.toHaveBeenCalled()
   })
 
-  it('bleibt die Ersatzseite stehen: Hinweis mit „Erneut versuchen" statt Schleife', async () => {
+  it('bleibt die Ersatzseite stehen: Hinweis mit „Erneut versuchen“ statt Schleife', async () => {
     jest.useFakeTimers()
     try {
       renderPending(fakeSession({ role: 'inhaber' }))

@@ -44,7 +44,7 @@ function bulkAnswer(results: BulkStatusResult[]): BulkStatusAnswer {
   return { counts, results }
 }
 
-const DATE = '2026-11-12' // Donnerstag = „heute" in den Tests
+const DATE = '2026-11-12' // Donnerstag = „heute“ in den Tests
 
 const erika = preorder({
   id: 1,
@@ -201,7 +201,7 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.getByText('Noch zu kassieren')).toBeInTheDocument()
   })
 
-  it('bezahlt: ein Tipp übergibt, „Rückgängig" stellt den alten Stand her', async () => {
+  it('bezahlt: ein Tipp übergibt, „Rückgängig“ stellt den alten Stand her', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-01')
@@ -226,7 +226,7 @@ describe('AbholListeClient (P2)', () => {
     expect(mockDay.mock.calls.length).toBeGreaterThanOrEqual(2)
   })
 
-  it('nicht bezahlt: fragt nach dem Geld, „Bezahlt und übergeben"', async () => {
+  it('nicht bezahlt: fragt nach dem Geld, „Bezahlt und übergeben“', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-02')
@@ -272,7 +272,7 @@ describe('AbholListeClient (P2)', () => {
     )
   })
 
-  it('Fahrer: „Bezahlt" ohne „Rückgängig" - eine Zahlung nimmt nur der Verkauf zurück (W4-verify r2)', async () => {
+  it('Fahrer: „Bezahlt“ ohne „Rückgängig“ - eine Zahlung nimmt nur der Verkauf zurück (W4-verify r2)', async () => {
     const user = userEvent.setup()
     renderAs('fahrer', {})
     await screen.findByTestId('abhol-LA-2026-11-12-03')
@@ -288,7 +288,7 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull()
   })
 
-  it('Sitzung endet mitten in der Übergabe: „Nicht gespeichert" bleibt stehen (W4-verify r2)', async () => {
+  it('Sitzung endet mitten in der Übergabe: „Nicht gespeichert“ bleibt stehen (W4-verify r2)', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-02')
@@ -310,7 +310,7 @@ describe('AbholListeClient (P2)', () => {
     ).toBeInTheDocument()
   })
 
-  it('meldet „bereit" über das Menü und bündelt „Alle offenen als bereit"', async () => {
+  it('meldet „bereit“ über das Menü und bündelt „Alle offenen als bereit“', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-02')
@@ -342,7 +342,7 @@ describe('AbholListeClient (P2)', () => {
     ).toBeVisible()
   })
 
-  it('Tagesabschluss: alle Wartenden als „nicht abgeholt" - erst am Abholtag', async () => {
+  it('Tagesabschluss: alle Wartenden als „nicht abgeholt“ - erst am Abholtag', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-01')
@@ -407,7 +407,7 @@ describe('AbholListeClient (P2)', () => {
     expect(notice.textContent).toContain('Die Liste ist neu geladen.')
   })
 
-  it('Sammelaktion: Neuladen scheitert - kein „neu geladen", Liste bleibt, Hinweis offline', async () => {
+  it('Sammelaktion: Neuladen scheitert - kein „neu geladen“, Liste bleibt, Hinweis offline', async () => {
     const user = userEvent.setup()
     mockBulk.mockResolvedValueOnce(
       bulkAnswer([
@@ -483,7 +483,7 @@ describe('AbholListeClient (P2)', () => {
     ).toBeInTheDocument()
   })
 
-  it('Ladefehler: Meldung mit „Erneut versuchen", danach die Liste', async () => {
+  it('Ladefehler: Meldung mit „Erneut versuchen“, danach die Liste', async () => {
     const user = userEvent.setup()
     mockDay.mockRejectedValueOnce(
       new ApiError('Die Abholliste ist gerade nicht verfügbar.', 500, 'x')
@@ -513,7 +513,7 @@ describe('AbholListeClient (P2)', () => {
     ).toBeVisible()
   })
 
-  it('stilles Nachladen scheitert: Liste bleibt, Hinweis, „Erneut laden" holt sie', async () => {
+  it('stilles Nachladen scheitert: Liste bleibt, Hinweis, „Erneut laden“ holt sie', async () => {
     const user = userEvent.setup()
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-01')
@@ -540,7 +540,7 @@ describe('AbholListeClient (P2)', () => {
     expect(link).toHaveStyle({ display: 'inline-flex' })
   })
 
-  it('„heute" rollt weiter: Tagesabschluss wird am Abholtag frei (Fokus/Sichtbarkeit)', async () => {
+  it('„heute“ rollt weiter: Tagesabschluss wird am Abholtag frei (Fokus/Sichtbarkeit)', async () => {
     const tomorrow = '2026-11-13'
     mockDay.mockResolvedValue({ ...ladenDay(), date: tomorrow } as PreorderDay)
     renderAs('verkauf', { initialDate: tomorrow, initialPlace: 'laden' })
@@ -556,7 +556,7 @@ describe('AbholListeClient (P2)', () => {
     await waitFor(() => expect(button()).toBeEnabled())
   })
 
-  it('„Nicht abgeholt" im Menü erst ab dem Abholtag', async () => {
+  it('„Nicht abgeholt“ im Menü erst ab dem Abholtag', async () => {
     const user = userEvent.setup()
     const tomorrow = '2026-11-13'
     const later = preorder({
@@ -633,7 +633,7 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.queryByRole('button', { name: 'Rückgängig' })).toBeNull()
   })
 
-  it('Übergabe ohne Antwort und ohne frische Liste: „unklar", unten am Bildschirm, bleibt stehen (W4-Verifikation)', async () => {
+  it('Übergabe ohne Antwort und ohne frische Liste: „unklar“, unten am Bildschirm, bleibt stehen (W4-Verifikation)', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-02')
@@ -660,7 +660,7 @@ describe('AbholListeClient (P2)', () => {
     ).toHaveLength(2)
   })
 
-  it('WLAN wieder da: die frische Liste löst „unklar" auf (W4-verify r2)', async () => {
+  it('WLAN wieder da: die frische Liste löst „unklar“ auf (W4-verify r2)', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-02')
@@ -730,7 +730,7 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.queryByText(/erneut speichern/)).toBeNull()
   })
 
-  it('Übergabe ohne Antwort, aber am Server gespeichert: sagt das statt „nichts gespeichert" (W4-Verifikation)', async () => {
+  it('Übergabe ohne Antwort, aber am Server gespeichert: sagt das statt „nichts gespeichert“ (W4-Verifikation)', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-02')
@@ -759,7 +759,7 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.queryByText(/nichts gespeichert/)).toBeNull()
   })
 
-  it('zweiter Versuch nach verlorener Antwort: 409, aber schon so gespeichert - „nichts zu tun" (W4-Verifikation)', async () => {
+  it('zweiter Versuch nach verlorener Antwort: 409, aber schon so gespeichert - „nichts zu tun“ (W4-Verifikation)', async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime })
     renderAs('verkauf')
     await screen.findByTestId('abhol-LA-2026-11-12-02')
@@ -788,7 +788,7 @@ describe('AbholListeClient (P2)', () => {
     expect(screen.queryByText(/erneut speichern/)).toBeNull()
   })
 
-  it('Fahrer: startet an der Sammelstelle, bestätigt jede Übergabe, kein „bereit"', async () => {
+  it('Fahrer: startet an der Sammelstelle, bestätigt jede Übergabe, kein „bereit“', async () => {
     const user = userEvent.setup()
     const kita = preorder({
       id: 9,
@@ -837,7 +837,7 @@ describe('AbholListeClient (P2)', () => {
     expect(
       screen.queryByRole('menuitem', { name: 'Bereit (gepackt)' })
     ).not.toBeInTheDocument()
-    // Samstag ist noch nicht da („heute" = Donnerstag): erst ab dem Abholtag.
+    // Samstag ist noch nicht da („heute“ = Donnerstag): erst ab dem Abholtag.
     expect(
       screen.queryByRole('menuitem', { name: 'Nicht abgeholt' })
     ).not.toBeInTheDocument()
@@ -875,7 +875,7 @@ describe('AbholListeClient (P2)', () => {
       }
     }
 
-    it('Karte zeigt „Erstattung … offen", Kachel „Zu erstatten", Verkauf übergibt nicht mit einem Tipp', async () => {
+    it('Karte zeigt „Erstattung … offen“, Kachel „Zu erstatten“, Verkauf übergibt nicht mit einem Tipp', async () => {
       const user = userEvent.setup()
       mockDay.mockResolvedValue(refundDay())
       renderAs('verkauf')
@@ -889,7 +889,7 @@ describe('AbholListeClient (P2)', () => {
         within(row('LA-2026-11-12-02')).getByText(/^Rest 1,80\s€ offen$/)
       ).toBeInTheDocument()
       expect(screen.getByText('Zu erstatten')).toBeInTheDocument()
-      // Stornierte mit Zahlung: Hinweis + „Erstattet" (Verkauf).
+      // Stornierte mit Zahlung: Hinweis + „Erstattet“ (Verkauf).
       const cancelledCard = row('LA-2026-11-12-04')
       expect(
         within(cancelledCard).getByTestId('refund-hint')
@@ -912,7 +912,7 @@ describe('AbholListeClient (P2)', () => {
       )
     })
 
-    it('Fahrer: Dialog nennt den tatsächlich bezahlten Betrag, „Ohne Erstattung übergeben" ändert die Zahlung nicht', async () => {
+    it('Fahrer: Dialog nennt den tatsächlich bezahlten Betrag, „Ohne Erstattung übergeben“ ändert die Zahlung nicht', async () => {
       const user = userEvent.setup()
       mockDay.mockResolvedValue(refundDay())
       renderAs('fahrer')
@@ -943,7 +943,7 @@ describe('AbholListeClient (P2)', () => {
       )
     })
 
-    it('„Erstattet" auf der Karte: nicht storniert → paid true, storniert → paid false', async () => {
+    it('„Erstattet“ auf der Karte: nicht storniert → paid true, storniert → paid false', async () => {
       const user = userEvent.setup()
       mockDay.mockResolvedValue(refundDay())
       renderAs('verkauf')
@@ -1115,7 +1115,7 @@ describe('AbholListeClient (P2)', () => {
     expect(sheet.textContent).toMatch(/\(\+ 6,40\s€ ohne Zahlung übergeben\)/)
   })
 
-  it('ohne Bestellungen: Hinweis und für den Verkauf „Vorbestellung erfassen"', async () => {
+  it('ohne Bestellungen: Hinweis und für den Verkauf „Vorbestellung erfassen“', async () => {
     mockDay.mockResolvedValue(ladenDay([]))
     renderAs('verkauf')
     expect(

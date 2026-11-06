@@ -7,7 +7,7 @@ import {
 } from '../../lib/preordersTypes'
 
 /**
- * „bezahlt" unter dem Betrag einer Listenzeile - bei einem Rest oder einer
+ * „bezahlt“ unter dem Betrag einer Listenzeile - bei einem Rest oder einer
  * Erstattung mit Betrag und hervorgehoben (W4-Verifikation Runde 3: eine
  * teilbezahlte Bestellung las sich sonst wie voll bezahlt). Unbezahlt: nichts.
  */

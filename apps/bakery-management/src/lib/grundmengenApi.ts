@@ -192,7 +192,7 @@ export function isPerVariant(
   return isRecord(item.base ? item.base[String(weekday)] : undefined)
 }
 
-/** Text im Eingabefeld: kein Eintrag = „0", offen = leer. */
+/** Text im Eingabefeld: kein Eintrag = „0“, offen = leer. */
 export function displayValue(value: number | null | undefined): string {
   if (value === null) return ''
   if (value === undefined) return '0'
@@ -212,7 +212,7 @@ export function parseInput(text: string): number | null {
 
 /**
  * Warum eine Eingabe nicht gilt - als Satz für die Meldung (W4-Verifikation
- * Runde 3: „-5" ist eine Zahl, nur keine erlaubte Menge).
+ * Runde 3: „-5“ ist eine Zahl, nur keine erlaubte Menge).
  */
 export function inputProblem(text: string): string {
   const t = text.trim().replace(',', '.')

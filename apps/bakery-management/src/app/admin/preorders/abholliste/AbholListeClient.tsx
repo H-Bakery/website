@@ -224,12 +224,12 @@ function Tile({
 }
 
 /** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
-/** „Übergabe", „Zahlung" … - für die Meldung über eine verlorene Aktion. */
+/** „Übergabe“, „Zahlung“ … - für die Meldung über eine verlorene Aktion. */
 function describeChange(change: PreorderStatusChange): string {
   if (change.status === 'abgeholt') {
     return change.paid ? 'Die Übergabe mit Zahlung' : 'Die Übergabe'
   }
-  if (change.notCollected) return '„Nicht abgeholt"'
+  if (change.notCollected) return '„Nicht abgeholt“'
   if (change.paid !== undefined && change.status === undefined) {
     return 'Die Zahlung'
   }
@@ -245,7 +245,7 @@ function handedOverUnpaidNote(
     : null
 }
 
-/** „1 Bestellung" / „2 Bestellungen" bezahlt und storniert oder billiger. */
+/** „1 Bestellung“ / „2 Bestellungen“ bezahlt und storniert oder billiger. */
 function refundNote(
   summary: { refundCount?: number } | null | undefined
 ): string | null {
@@ -268,7 +268,7 @@ function PaidChip({ preorder }: { preorder: Preorder }) {
     )
   }
   // W4-Verifikation Runde 3: zu viel bezahlt (billiger geworden oder
-  // storniert) - sonst stünde hier „Bezahlt" und das Geld bliebe im Laden.
+  // storniert) - sonst stünde hier „Bezahlt“ und das Geld bliebe im Laden.
   if (payment.kind === 'refund') {
     return (
       <Chip
@@ -298,7 +298,7 @@ function PaidChip({ preorder }: { preorder: Preorder }) {
   )
 }
 
-/** Spalte „Bezahlt" des Ausdrucks: Rest und Erstattung mit Betrag. */
+/** Spalte „Bezahlt“ des Ausdrucks: Rest und Erstattung mit Betrag. */
 function printPaidText(preorder: Preorder): string {
   const payment = paymentState(preorder)
   if (payment.kind === 'rest') return `☐ Rest ${formatCurrency(payment.amount)}`
@@ -349,7 +349,7 @@ export interface AbholListeClientProps {
 /**
  * P2: Abholliste je Tag und Abholort. An der Theke (Tablet) und an der
  * Sammelstelle (Fahrer): großer Haken bei der Übergabe, bezahlt ja/nein,
- * „bereit" beim Packen, am Tagesende „nicht abgeholt". Jede Schreibaktion
+ * „bereit“ beim Packen, am Tagesende „nicht abgeholt“. Jede Schreibaktion
  * schickt den geladenen `updatedAt` mit - hat ein anderes Gerät die
  * Bestellung inzwischen geändert, lädt die Liste neu statt zu überschreiben.
  */
@@ -463,11 +463,11 @@ export default function AbholListeClient({
   /*
    * W4-Verifikation Runde 3: mehrere Tipps hintereinander im Funkloch - jeder
    * bleibt offen, bis die Liste wieder lädt, und jeder bekommt sein Ergebnis
-   * („gespeichert" oder „NICHT gespeichert"). Vorher hielt die Seite nur den
+   * („gespeichert“ oder „NICHT gespeichert“). Vorher hielt die Seite nur den
    * letzten, und der erste verschwand ohne Meldung.
    */
   const uncertainRef = useRef<UncertainAction[]>([])
-  /** Offene und nicht gespeicherte Tipps - bleiben stehen bis „Schließen". */
+  /** Offene und nicht gespeicherte Tipps - bleiben stehen bis „Schließen“. */
   const [openActions, setOpenActions] = useState<string[]>([])
   /**
    * Lädt den Tag. `silent`: ohne Ladeanzeige und **ohne die Liste zu
@@ -585,7 +585,7 @@ export default function AbholListeClient({
     load()
   }, [load])
 
-  // URL mitführen: Neuladen und „Zurück" landen auf demselben Tag und Ort.
+  // URL mitführen: Neuladen und „Zurück“ landen auf demselben Tag und Ort.
   useEffect(() => {
     if (!isBusinessDate(date) || !place) return
     router.replace(abhollisteHref(date, place), { scroll: false })
@@ -596,8 +596,8 @@ export default function AbholListeClient({
   quietRef.current =
     busyId === null && handover === null && menu === null && bulk === null
   // Der Geschäftstag rollt mit: ein Tablet, das über Nacht offen bleibt,
-  // bietet sonst am nächsten Morgen den Tagesabschluss für „gestern" nicht
-  // an bzw. „nicht abgeholt" für den Abholtag nicht (W4).
+  // bietet sonst am nächsten Morgen den Tagesabschluss für „gestern“ nicht
+  // an bzw. „nicht abgeholt“ für den Abholtag nicht (W4).
   useEffect(() => {
     const refresh = () => {
       setToday(toBusinessDate(new Date()))
@@ -638,7 +638,7 @@ export default function AbholListeClient({
     )
   }
 
-  /** Satz nach einem Konflikt - „neu geladen" nur, wenn es auch stimmt. */
+  /** Satz nach einem Konflikt - „neu geladen“ nur, wenn es auch stimmt. */
   const afterReload = (reloaded: boolean) =>
     reloaded
       ? 'Die Liste ist neu geladen.'
@@ -672,7 +672,7 @@ export default function AbholListeClient({
       fresh.status === 'abgeholt' &&
       !fresh.paid
     ) {
-      const text = `${preorder.code}: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt" tippen.`
+      const text = `${preorder.code}: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt“ tippen.`
       setConflict(text)
       setActionError(text)
       setToast({ text, severity: 'warning' })
@@ -701,7 +701,7 @@ export default function AbholListeClient({
         preorder.updatedAt
       )
       if (updated) replaceLocal(updated)
-      // Ein erneuter Tipp hat geklappt: die alte „unklar"-Meldung ist erledigt.
+      // Ein erneuter Tipp hat geklappt: die alte „unklar“-Meldung ist erledigt.
       uncertainRef.current = uncertainRef.current.filter(
         (a) => a.id !== preorder.id
       )
@@ -785,7 +785,7 @@ export default function AbholListeClient({
     }
   }
 
-  /** Vorheriger Stand - für „Rückgängig" nach dem Abhaken. */
+  /** Vorheriger Stand - für „Rückgängig“ nach dem Abhaken. */
   const previousOf = (p: Preorder): PreorderStatusChange => ({
     status: p.status,
     paid: p.paid,
@@ -821,7 +821,7 @@ export default function AbholListeClient({
     else setHandover(preorder)
   }
 
-  /** „Erstattet": storniert → nicht mehr bezahlt, sonst Betrag stimmt wieder. */
+  /** „Erstattet“: storniert → nicht mehr bezahlt, sonst Betrag stimmt wieder. */
   const markRefunded = (preorder: Preorder) => {
     const payment = paymentState(preorder)
     const name = preorder.customerName ?? preorder.code
@@ -1116,7 +1116,7 @@ export default function AbholListeClient({
                 spacing={1}
                 justifyContent={{ xs: 'stretch', md: 'flex-end' }}
                 // Auf 320 px passen drei Knöpfe nicht nebeneinander - dann
-                // rutscht „⋮" in die nächste Zeile statt aus dem Bild.
+                // rutscht „⋮“ in die nächste Zeile statt aus dem Bild.
                 flexWrap="wrap"
                 useFlexGap
               >

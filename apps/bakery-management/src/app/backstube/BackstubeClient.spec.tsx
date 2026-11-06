@@ -178,7 +178,7 @@ describe('Backstube-Tablet', () => {
     expect(mocked.fetchBackzettelDay).toHaveBeenLastCalledWith('2026-11-27')
   })
 
-  it('Entwurf: Banner „Noch nicht freigegeben", Zahlen da, kein Haken', async () => {
+  it('Entwurf: Banner „Noch nicht freigegeben“, Zahlen da, kein Haken', async () => {
     mocked.fetchBackzettelDay.mockResolvedValue(saturdayDraft())
     renderTablet()
     expect(await screen.findByTestId('bs-draft-banner')).toHaveTextContent(
@@ -401,7 +401,7 @@ describe('Backstube-Tablet', () => {
     )
   })
 
-  it('Nachtrag: Badge an der Zeile und „Gesehen" quittiert', async () => {
+  it('Nachtrag: Badge an der Zeile und „Gesehen“ quittiert', async () => {
     mocked.acknowledgeDelta.mockResolvedValue({
       ...saturdayConfirmed().deltas[0],
       acknowledgedAt: '2026-11-28T03:05:00.000Z',
@@ -633,7 +633,7 @@ describe('Backstube-Tablet', () => {
       )
     })
 
-    it('12 Uhr: eine Wahl „Heute" vom Vormittag weicht dem nächsten Backtag', async () => {
+    it('12 Uhr: eine Wahl „Heute“ vom Vormittag weicht dem nächsten Backtag', async () => {
       jest.useFakeTimers()
       try {
         const clock = renderWithClock(at('2026-11-27', 11))
@@ -662,7 +662,7 @@ describe('Backstube-Tablet', () => {
       }
     })
 
-    it('Mitternacht: „Heute" vom Sonntag zeigt am Montag nicht den Ruhetag', async () => {
+    it('Mitternacht: „Heute“ vom Sonntag zeigt am Montag nicht den Ruhetag', async () => {
       jest.useFakeTimers()
       try {
         const clock = renderWithClock(at('2026-11-29', 15))
@@ -775,7 +775,7 @@ describe('Backstube-Tablet', () => {
     ).toHaveAttribute('href', `/admin/backzettel/${SAT}`)
   })
 
-  it('„Zur Verwaltung" nur mit persönlicher Sitzung, nicht an der Station', async () => {
+  it('„Zur Verwaltung“ nur mit persönlicher Sitzung, nicht an der Station', async () => {
     const { unmount } = renderTablet()
     await screen.findByTestId('bs-progress')
     expect(
@@ -792,7 +792,7 @@ describe('Backstube-Tablet', () => {
     ).toHaveAttribute('href', '/admin')
   })
 
-  it('Verkauf (nur lesen) bekommt weder Haken noch „Gesehen"', async () => {
+  it('Verkauf (nur lesen) bekommt weder Haken noch „Gesehen“', async () => {
     renderTablet({ role: 'verkauf' })
     await screen.findByTestId('bs-progress')
     expect(screen.queryAllByRole('checkbox')).toHaveLength(0)

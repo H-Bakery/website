@@ -47,7 +47,7 @@ describe('RevenueAnalyticsPage', () => {
     expect(screen.queryByText(/€/)).not.toBeInTheDocument()
   })
 
-  it('sagt bei 403 „Nur für Inhaber" statt „API liefert nichts" (F4)', async () => {
+  it('sagt bei 403 „Nur für Inhaber“ statt „API liefert nichts“ (F4)', async () => {
     analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
       data: [],
       available: false,
@@ -62,7 +62,7 @@ describe('RevenueAnalyticsPage', () => {
     expect(screen.queryByRole('button', { name: /Export/ })).toBeNull()
   })
 
-  it('unterscheidet „kein Bericht im Zeitraum" vom Ausfall', async () => {
+  it('unterscheidet „kein Bericht im Zeitraum“ vom Ausfall', async () => {
     analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
       data: [],
       available: true,
