@@ -30,6 +30,7 @@ import QuantityPad, {
   nextQuantity,
 } from '../../../components/preorders/QuantityPad'
 import {
+  changePreorderStatus,
   createPreorder,
   fetchCatalogue,
   fetchPickupPoints,
@@ -44,9 +45,12 @@ import {
 } from '../../../lib/preordersApi'
 import {
   clearPreorderDraft,
+  clearPreorderEditDraft,
   newRequestId,
   readPreorderDraft,
+  readPreorderEditDraft,
   savePreorderDraft,
+  savePreorderEditDraft,
   type PreorderDraftFields,
 } from '../../../lib/preorderDraft'
 import { useOptionalSession } from '../../../lib/session'
@@ -209,6 +213,29 @@ export interface PreorderFormProps {
   initialPickupPointId?: string
 }
 
+/** Die Maskenfelder einer gespeicherten Bestellung (Ausgangsstand beim Bearbeiten). */
+function fieldsOf(preorder: Preorder): PreorderDraftFields {
+  return {
+    customerName: preorder.customerName ?? '',
+    customerPhone: preorder.customerPhone ?? '',
+    channel: preorder.channel,
+    pickupPointId: preorder.pickupPointId ?? '',
+    pickupDate: preorder.pickupDate,
+    pickupTime: preorder.pickupTime ?? '',
+    paid: preorder.paid,
+    note: preorder.note ?? '',
+    lines: preorder.items.map((item) => ({
+      key: lineKey(item.productId, item.variant),
+      productId: item.productId,
+      name: item.name,
+      variant: item.variant,
+      unit: item.unit,
+      unitPrice: item.unitPrice,
+      quantity: item.quantity,
+    })),
+  }
+}
+
 /**
  * Die Vorbestell-Maske (P1): schnell, per Touch und per Tastatur.
  *
@@ -289,6 +316,10 @@ export default function PreorderForm({
   // W4-Verifikation Runde 4: Entwurf (nur Erfassen) und Kennung des
   // Speicherns - siehe `lib/preorderDraft.ts`.
   const requestIdRef = useRef<string | null>(null)
+  // W4-Verifikation Runde 6: auch Änderungen an einer gespeicherten
+  // Bestellung überstehen das Ende der Sitzung - mit der Version, auf der
+  // sie beruhen (`baseVersionRef`), damit nichts still überschrieben wird.
+  const baseVersionRef = useRef<string | null>(preorder?.updatedAt ?? null)
   const [draftReady, setDraftReady] = useState(false)
   const [restoredAt, setRestoredAt] = useState<string | null>(null)
   const [restoredAfterAttempt, setRestoredAfterAttempt] = useState(false)
@@ -387,6 +418,24 @@ export default function PreorderForm({
         setRestoredAfterAttempt(Boolean(draft.requestId))
       }
       setDraftReady(true)
+    } else {
+      const draft = readPreorderEditDraft(sessionUserId, preorder.id)
+      if (draft) {
+        const f = draft.fields
+        setCustomerName(f.customerName)
+        setCustomerPhone(f.customerPhone)
+        setChannel(f.channel)
+        setPickupPointId(f.pickupPointId)
+        setPickupDate(f.pickupDate)
+        setPickupTime(f.pickupTime)
+        setPaid(f.paid)
+        setNote(f.note)
+        setLines(f.lines)
+        baseVersionRef.current = draft.baseUpdatedAt
+        setRestoredAt(draft.savedAt)
+        setRestoredAfterAttempt(false)
+      }
+      setDraftReady(true)
     }
 
     loadData()
@@ -415,7 +464,20 @@ export default function PreorderForm({
   // Jede Änderung landet im Entwurf - erst nach dem Wiederherstellen, sonst
   // überschriebe die leere Maske ihn.
   useEffect(() => {
-    if (editing || !draftReady) return
+    if (!draftReady) return
+    if (preorder) {
+      if (JSON.stringify(draftFields) === JSON.stringify(fieldsOf(preorder))) {
+        clearPreorderEditDraft(sessionUserId, preorder.id)
+      } else {
+        savePreorderEditDraft(
+          sessionUserId,
+          preorder.id,
+          baseVersionRef.current,
+          draftFields
+        )
+      }
+      return
+    }
     savePreorderDraft(sessionUserId, draftFields, requestIdRef.current)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
@@ -434,6 +496,26 @@ export default function PreorderForm({
   ])
 
   const discardDraft = () => {
+    if (preorder) {
+      // Bearbeiten: zurück auf den gespeicherten Stand.
+      clearPreorderEditDraft(sessionUserId, preorder.id)
+      baseVersionRef.current = preorder.updatedAt
+      const f = fieldsOf(preorder)
+      setRestoredAt(null)
+      setCustomerName(f.customerName)
+      setCustomerPhone(f.customerPhone)
+      setChannel(f.channel)
+      setPickupPointId(f.pickupPointId)
+      setPickupDate(f.pickupDate)
+      setPickupTime(f.pickupTime)
+      setPaid(f.paid)
+      setNote(f.note)
+      setLines(f.lines)
+      setPending(null)
+      setError(null)
+      setShowErrors(false)
+      return
+    }
     clearPreorderDraft(sessionUserId)
     requestIdRef.current = null
     setRestoredAt(null)
@@ -502,12 +584,24 @@ export default function PreorderForm({
       : nextProductionDates(today, 6)
   }, [today, point])
 
+  // W4-verify r6: hat die Verkäuferin den Bestellweg schon angetippt
+  // (Telefon, WhatsApp, Laden - so die Reihenfolge der Kurzanleitung), bleibt
+  // er beim Wählen der Sammelstelle stehen; sonst stimmen die Zahlen je
+  // Bestellweg nicht. Nur ohne eigene Wahl wird „Sammelstelle“ vorbelegt.
+  const channelChosenRef = useRef(false)
+  const chooseChannel = (value: PreorderChannel) => {
+    channelChosenRef.current = true
+    setChannel(value)
+  }
+
   const choosePickup = (id: string) => {
     if (id === pickupPointId) return
     const next = points.find((p) => p.id === id) ?? null
     setPickupPointId(id)
     if (next) {
-      setChannel('sammelstelle')
+      if (!channelChosenRef.current || channel === 'shop') {
+        setChannel('sammelstelle')
+      }
       setPickupTime('')
       if (jsWeekdayOf(pickupDate) !== next.weekday && today) {
         setPickupDate(pickupPointDates(next, today, 1)[0] ?? '')
@@ -718,13 +812,19 @@ export default function PreorderForm({
       attemptedPatch = patch
       const saved =
         preorder && patch
-          ? await updatePreorder(preorder.id, patch, preorder.updatedAt)
+          ? await updatePreorder(
+              preorder.id,
+              patch,
+              baseVersionRef.current ?? preorder.updatedAt
+            )
           : await createPreorder(input)
       finishSaved(saved)
     } catch (err) {
       if (preorder && onConflict && isPreorderConflict(err)) {
         // Was getippt wurde, geht mit - die Seite sagt, dass es NICHT
-        // gespeichert ist, und zeigt es (W4-verify r4).
+        // gespeichert ist, und zeigt es (W4-verify r4). Der Entwurf beruht
+        // auf der überholten Fassung und gilt nicht mehr.
+        clearPreorderEditDraft(sessionUserId, preorder.id)
         onConflict(
           preorderErrorMessage(
             err,
@@ -757,6 +857,8 @@ export default function PreorderForm({
     if (!preorder) {
       clearPreorderDraft(sessionUserId)
       requestIdRef.current = null
+    } else {
+      clearPreorderEditDraft(sessionUserId, preorder.id)
     }
     setEarlier(null)
     onSaved(saved)
@@ -770,7 +872,38 @@ export default function PreorderForm({
     setSaving(true)
     setError(null)
     try {
-      const saved = await updatePreorder(earlier.id, fields, earlier.updatedAt)
+      let saved = await updatePreorder(earlier.id, fields, earlier.updatedAt)
+      // W4-verify r6: „Bezahlt“ in der neuen Maske heißt, die ganze Summe
+      // der Maske ist kassiert. Ein PATCH mit `paid: true` auf eine schon
+      // bezahlte Bestellung behält aber deren alten Betrag (richtig beim
+      // Bearbeiten, wo das Formular den Rest nennt) - sonst verlangte die
+      // Abholliste den Rest ein zweites Mal. Also die Zahlung ausdrücklich
+      // auf den jetzigen Betrag setzen.
+      if (
+        fields.paid &&
+        saved.paid &&
+        Math.round((saved.paymentBalance ?? 0) * 100) !== 0
+      ) {
+        try {
+          saved = await changePreorderStatus(
+            saved.id,
+            { paid: true },
+            saved.updatedAt
+          )
+        } catch (err) {
+          setError(
+            `Die Änderungen sind in ${
+              saved.code
+            } übernommen, aber als bezahlt gelten nur ${formatCurrency(
+              saved.paidAmount ?? 0
+            )} von ${formatCurrency(saved.total)}. ${preorderErrorMessage(
+              err,
+              'Die Zahlung konnte nicht gespeichert werden.'
+            )} Bitte die Bestellung unter „Alle Vorbestellungen“ öffnen und die Zahlung prüfen.`
+          )
+          return
+        }
+      }
       finishSaved(saved)
     } catch (err) {
       setError(
@@ -990,7 +1123,7 @@ export default function PreorderForm({
                     label={CHANNEL_LABELS[value]}
                     color={channel === value ? 'primary' : 'default'}
                     variant={channel === value ? 'filled' : 'outlined'}
-                    onClick={() => setChannel(value)}
+                    onClick={() => chooseChannel(value)}
                     sx={chipSx}
                   />
                 ))}
@@ -1564,7 +1697,15 @@ export default function PreorderForm({
           )}
         </Box>
         {onCancel && (
-          <Button onClick={onCancel} sx={{ minHeight: 48 }} disabled={saving}>
+          <Button
+            onClick={() => {
+              // „Abbrechen“ verwirft die Änderungen bewusst.
+              if (preorder) clearPreorderEditDraft(sessionUserId, preorder.id)
+              onCancel()
+            }}
+            sx={{ minHeight: 48 }}
+            disabled={saving}
+          >
             Abbrechen
           </Button>
         )}

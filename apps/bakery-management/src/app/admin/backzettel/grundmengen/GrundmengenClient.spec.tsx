@@ -116,6 +116,33 @@ describe('GrundmengenClient', () => {
     })
   })
 
+  it('umgerechnete Referenz steht in der Einheit des Postens, ohne „St.“ (W4-verify r6)', async () => {
+    const ref = syntheticReference()
+    for (const day of ref.weekdays) {
+      for (const it of day.items) {
+        if (it.itemId === 'testbrot' && it.median !== null) {
+          it.median = 2.5
+          it.samples = [2.5, 3]
+          it.converted = true
+        }
+      }
+    }
+    apiClient.get.mockImplementation(async (url: string) => {
+      if (url === '/api/backzettel/config') {
+        return { success: true, data: syntheticView() }
+      }
+      return { success: true, data: ref }
+    })
+    renderWithTheme(<GrundmengenClient />)
+    const row = await screen.findByTestId('row-testbrot')
+    await waitFor(() =>
+      expect(
+        within(row).getAllByLabelText(`${REFERENCE_TOOLTIP}: 2,5`).length
+      ).toBeGreaterThan(0)
+    )
+    expect(within(row).queryByLabelText(/St\.$/)).toBeNull()
+  })
+
   it('speichert eine Zelle mit Enter und übernimmt den neuen Stand', async () => {
     mockGet()
     const after = syntheticConfig()

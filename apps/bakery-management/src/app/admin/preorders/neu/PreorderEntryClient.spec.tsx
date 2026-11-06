@@ -6,6 +6,7 @@ import { renderWithTheme } from '@bakery/shared/test-utils'
 import PreorderEntryClient from './PreorderEntryClient'
 import { LOAD_RETRY_MS } from '../PreorderForm'
 import {
+  changePreorderStatus,
   createPreorder,
   fetchCatalogue,
   fetchPickupPoints,
@@ -23,6 +24,7 @@ import { WithSession, fakeSession } from '../../../../lib/testing/fakeSession'
 
 jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
+  changePreorderStatus: jest.fn(),
   createPreorder: jest.fn(),
   fetchCatalogue: jest.fn(),
   fetchPickupPoints: jest.fn(),
@@ -249,6 +251,22 @@ describe('PreorderEntryClient (P1)', () => {
           items: [{ productId: 'kornbrot-500g', variant: '', quantity: 1 }],
         })
       )
+    )
+  })
+
+  it('erst Bestellweg, dann Sammelstelle (Kurzanleitung): der Bestellweg bleibt (W4-verify r6)', async () => {
+    const user = userEvent.setup()
+    mockCreate.mockResolvedValue(preorder())
+    await ready()
+    await user.click(screen.getByRole('radio', { name: 'Telefon' }))
+    await user.click(screen.getByRole('radio', { name: POINT.name }))
+    expect(screen.getByRole('radio', { name: 'Telefon' })).toHaveAttribute(
+      'aria-checked',
+      'true'
+    )
+    expect(screen.getByRole('radio', { name: 'Sammelstelle' })).toHaveAttribute(
+      'aria-checked',
+      'false'
     )
   })
 
@@ -484,6 +502,76 @@ describe('Entwurf und Wiederholen (W4-verify r4)', () => {
       { productId: 'musterweck', variant: '', quantity: 4 },
     ])
     expect(stored.has(DRAFT_7)).toBe(false)
+  })
+
+  it('übernehmen mit „Bezahlt“: die ganze Summe gilt als bezahlt, nicht nur der erste Versuch (W4-verify r6)', async () => {
+    const user = userEvent.setup()
+    const conflict = new ApiError('schon angekommen', 409, 'request_id_changed')
+    conflict.details = {
+      preorder: {
+        id: 42,
+        code: 'LA-2026-11-13-04',
+        updatedAt: '2026-11-12T09:00:00.000Z',
+      },
+    }
+    mockCreate
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(conflict)
+    const mockUpdate = updatePreorder as jest.MockedFunction<
+      typeof updatePreorder
+    >
+    const mockStatus = changePreorderStatus as jest.MockedFunction<
+      typeof changePreorderStatus
+    >
+    mockUpdate.mockReset()
+    mockStatus.mockReset()
+    // Der Server behält beim PATCH den Betrag des ersten Versuchs.
+    mockUpdate.mockResolvedValue(
+      preorder({
+        id: 42,
+        code: 'LA-2026-11-13-04',
+        paid: true,
+        paidAmount: 2.6,
+        total: 4.6,
+        paymentBalance: 2,
+        updatedAt: '2026-11-12T09:05:00.000Z',
+      })
+    )
+    mockStatus.mockResolvedValue(
+      preorder({
+        id: 42,
+        code: 'LA-2026-11-13-04',
+        paid: true,
+        paidAmount: 4.6,
+        total: 4.6,
+        paymentBalance: 0,
+      })
+    )
+    await readyAs(7)
+    await user.keyboard('Erika{Enter}{Enter}korn{Enter}{Enter}')
+    await user.click(screen.getByLabelText('Noch nicht bezahlt'))
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    await screen.findByText(/Ob die Bestellung schon angekommen ist/)
+    await user.click(screen.getByLabelText('Produkt suchen'))
+    await user.keyboard('weck{Enter}4{Enter}')
+    await user.click(
+      screen.getByRole('button', { name: 'Vorbestellung speichern' })
+    )
+    const notice = await screen.findByTestId('preorder-earlier')
+    await user.click(
+      within(notice).getByRole('button', {
+        name: 'Änderungen in LA-2026-11-13-04 übernehmen',
+      })
+    )
+    expect(await screen.findByTestId('preorder-saved')).toBeInTheDocument()
+    expect(mockUpdate.mock.calls[0][1].paid).toBe(true)
+    expect(mockStatus).toHaveBeenCalledWith(
+      42,
+      { paid: true },
+      '2026-11-12T09:05:00.000Z'
+    )
   })
 
   it('„Als neue Vorbestellung speichern“ schickt eine neue Kennung (nächste Kundin über dem Entwurf)', async () => {

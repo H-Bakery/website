@@ -36,7 +36,7 @@ function writeDay(date, transactions, suffix = '') {
 }
 
 /** Wie `backzettel-reference.ts`: Tage finden, Berichte lesen, rechnen. */
-function reference(weekday, today, weeks = 6) {
+function reference(weekday, today, weeks = 6, catalog = undefined) {
   const have = new Set(files.listReportDates(dir, () => undefined))
   const { dates, skipped } = core.referenceDates({
     weekday,
@@ -53,6 +53,7 @@ function reference(weekday, today, weeks = 6) {
     dates,
     skipped,
     reports,
+    catalog,
   })
 }
 
@@ -188,6 +189,46 @@ describe('computeWeekdayReference', () => {
       median: 4,
       samples: [4, 5, 4],
     })
+  })
+
+  it('rechnet mit dem Faktor des Backzettels in die Einheit des Postens (W4-verify r6)', () => {
+    // Kassennummer = numeric_id des hq-Produkts; 500-g-Laib = 0,5 l.
+    const catalog = [
+      { id: 'kornbrot-500g', numeric_id: 901 },
+      { id: 'kornbrot-1000g', numeric_id: 902 },
+      { id: 'musterweck', numeric_id: 903 },
+    ]
+    writeDay('2026-11-28', [
+      {
+        items: [
+          [901, 3],
+          [902, 1],
+          [903, 50],
+        ],
+      },
+    ])
+    writeDay('2026-11-21', [{ items: [[901, 5]] }])
+    writeDay('2026-11-14', [
+      {
+        items: [
+          [901, 2],
+          [902, 2],
+        ],
+      },
+    ])
+    const ref = reference(6, '2026-12-02', 6, catalog)
+    // 3 × 0,5 + 1 = 2,5 l; 5 × 0,5 = 2,5 l; 2 × 0,5 + 2 = 3 l
+    expect(item(ref, 'kornbrot')).toMatchObject({
+      samples: [2.5, 2.5, 3],
+      median: 2.5,
+      converted: true,
+    })
+    expect(item(ref, 'musterweck')).toMatchObject({
+      samples: [50, 0, 0],
+      converted: true,
+    })
+    // Kassennummer ohne zugeordnetes Produkt: Stück laut Kasse, wie bisher
+    expect(item(ref, 'zopf-gefuellt').converted).toBe(false)
   })
 
   it('ein Tag ohne Bericht ist eine Lücke, kein 0', () => {

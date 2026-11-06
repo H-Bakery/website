@@ -485,6 +485,42 @@ export function changeAlreadyApplied(
 }
 
 /**
+ * Ist eine Übergabe aus dem Stand `before` am frischen Stand `fresh` noch
+ * dieselbe Übergabe (W4-Verifikation Runde 6)? Ja, wenn sich nur geändert
+ * hat, was für Ware und Geld keine Rolle spielt - `offen → bereit`,
+ * „nicht abgeholt“, die Anmerkung, Name oder Telefon. Nein, sobald die
+ * Bestellung übergeben oder storniert ist, Artikel, Betrag oder Zahlung
+ * anders sind oder sie auf einen anderen Tag/Ort gewandert ist. Nur dann
+ * darf die Abholliste die Übergabe nach einem 409 still mit der frischen
+ * Fassung wiederholen.
+ */
+export function handoverStillMatches(
+  before: Preorder,
+  fresh: Preorder
+): boolean {
+  const waiting = (s: Preorder['status']) => s === 'offen' || s === 'bereit'
+  if (!waiting(before.status) || !waiting(fresh.status)) return false
+  const cents = (n: number | null | undefined) =>
+    n === null || n === undefined ? null : Math.round(n * 100)
+  if (cents(before.total) !== cents(fresh.total)) return false
+  if (Boolean(before.paid) !== Boolean(fresh.paid)) return false
+  if (cents(before.paidAmount) !== cents(fresh.paidAmount)) return false
+  if (cents(before.paymentBalance) !== cents(fresh.paymentBalance)) {
+    return false
+  }
+  if (before.pickupDate !== fresh.pickupDate) return false
+  if ((before.pickupPointId ?? null) !== (fresh.pickupPointId ?? null)) {
+    return false
+  }
+  const items = (p: Preorder) =>
+    p.items
+      .map((i) => `${i.productId}|${i.variant}|${i.quantity}`)
+      .sort()
+      .join(',')
+  return items(before) === items(fresh)
+}
+
+/**
  * Meldung, wenn ein einzelner Tipp ohne Antwort blieb (`offline`) oder der
  * Server 5xx meldete. `reloaded`: ob die Liste danach frisch geladen werden
  * konnte - nur dann ist sicher, dass nichts gespeichert wurde. Ohne frische

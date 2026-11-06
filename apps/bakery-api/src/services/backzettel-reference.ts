@@ -83,6 +83,7 @@ export function createBackzettelReference(
         dates,
         skipped,
         reports,
+        catalog: loaded.catalog,
       })
     })
     return {
@@ -91,7 +92,7 @@ export function createBackzettelReference(
       today: day,
       weeks: weeks.weeks,
       basis:
-        'Median der verkauften Stück (Kassennummern), letzte gleiche Wochentage mit Kassenbericht; Tage ohne Bericht zählen nicht.',
+        'Median verkauft (Kassennummern, mit dem Faktor des Backzettels in die Einheit des Postens umgerechnet), letzte gleiche Wochentage mit Kassenbericht; Tage ohne Bericht zählen nicht.',
       weekdays: result,
     }
   }

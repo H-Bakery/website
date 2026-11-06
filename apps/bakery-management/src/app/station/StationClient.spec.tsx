@@ -2,7 +2,10 @@ import React from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import StationClient, { stationReturnPath } from './StationClient'
 import { rememberLostAction } from '../../lib/lostActions'
-import { savePreorderDraft } from '../../lib/preorderDraft'
+import {
+  savePreorderDraft,
+  savePreorderEditDraft,
+} from '../../lib/preorderDraft'
 import { fakeSession, WithSession } from '../../lib/testing/fakeSession'
 import { useMemoryStorage } from '../../lib/testing/memoryStorage'
 import { loadStation, saveStation } from '../../lib/authSession'
@@ -240,6 +243,26 @@ describe('Station', () => {
         )
         expect(stationReturnPath({ id: 2, role: 'verkauf' }, [])).toBe(
           '/admin/preorders/neu'
+        )
+      })
+
+      it('nicht gespeicherte Änderungen an einer Bestellung führen zu ihr zurück (W4-verify r6)', () => {
+        savePreorderEditDraft(2, 5, '2026-11-06T09:00:00.000Z', {
+          customerName: 'Testkundin Geändert',
+          customerPhone: '',
+          channel: 'telefon',
+          pickupPointId: '',
+          pickupDate: '2026-11-07',
+          pickupTime: '',
+          paid: false,
+          note: 'Kunde ruft an: eine mehr',
+          lines: [],
+        })
+        expect(stationReturnPath({ id: 2, role: 'verkauf' }, [])).toBe(
+          '/admin/preorders/5'
+        )
+        expect(stationReturnPath({ id: 3, role: 'verkauf' }, [])).toBe(
+          '/admin/preorders'
         )
       })
     })

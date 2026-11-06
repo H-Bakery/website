@@ -583,7 +583,7 @@ export function createBackzettelService(
     const frozen = snap ?? recomputed
     const hefeteig = frozen ? frozen.hefeteig : null
     const fillings = frozen ? frozen.fillings : null
-    const prep = frozen ? frozen.prep : null
+    let prep = frozen ? frozen.prep : null
     const warnings =
       frozen && Array.isArray(frozen.warnings) ? frozen.warnings : []
     const configChangedSinceConfirm =
@@ -594,13 +594,34 @@ export function createBackzettelService(
     // the change in Hefeteig/Füllungen - the frozen figures stay as they are.
     let deltaExtras: unknown = null
     if (deltaByKey.size > 0) {
+      // W4-verify r6: a Nachtrag for an item/variant not baked at confirm
+      // time has no frozen line - give it an empty one, so it gets an oven
+      // figure and reaches Hefeteig and Füllungen.
+      const deltaLines = dayCore.linesForDeltas(lines, deltas, config)
       const extras = dayCore.deltaBakeExtras(
-        lines,
+        deltaLines,
         Object.fromEntries(deltaByKey),
         snap?.preordersExact ?? null,
         snap?.subtotalExact ?? null
       )
       for (const [key, entry] of deltaByKey) entry.bake = extras[key] ?? 0
+      // W4-verify r6: the tray hint follows what is now to bake - 24 + 4
+      // croissants do not fit on „2 Bleche à 12“.
+      for (const section of viewSections) {
+        for (const l of section.lines) {
+          const extra = extras[l.key]
+          const item = extra ? itemsById.get(l.itemId) : null
+          if (!item || !l.tray) continue
+          const after = core.trayText(
+            item.tray,
+            Math.max(0, l.total + extra),
+            l.unit
+          )
+          if (after && after !== l.tray) {
+            l.tray = `${l.tray} · mit Nachträgen: ${after}`
+          }
+        }
+      }
       // W4-verify r5: the Backstube panel lists only the open Nachträge and
       // needs *their* oven figure, not the raw quarter sum (+6,5 Kranz is 7
       // to bake). Open = all − already acknowledged, both after rounding.
@@ -611,7 +632,7 @@ export function createBackzettelService(
         ])
       )
       const ackedExtras = dayCore.deltaBakeExtras(
-        lines,
+        deltaLines,
         ackedByKey,
         snap?.preordersExact ?? null,
         snap?.subtotalExact ?? null
@@ -621,7 +642,16 @@ export function createBackzettelService(
           Math.round(((entry.bake ?? 0) - (ackedExtras[key] ?? 0)) * 100) / 100
       }
       if (config && recomputed) {
-        const adjusted = dayCore.linesWithExtras(lines, extras)
+        const adjusted = dayCore.linesWithExtras(deltaLines, extras)
+        // W4-verify r6: a Nachtrag that brings an item onto the day brings
+        // its prep task (Brühstück for Vollkorn) - added, marked, never
+        // removed from the frozen list.
+        if (Array.isArray(prep)) {
+          prep = dayCore.prepWithDeltas(
+            prep,
+            core.computePrep(config, adjusted, weekday)
+          )
+        }
         deltaExtras = dayCore.hefeteigFillingsDiff(recomputed, {
           hefeteig: core.computeHefeteig(config, adjusted),
           fillings: core.computeFillings(
@@ -649,6 +679,8 @@ export function createBackzettelService(
       ...dayCore.prepDateFor(date, config ? config.days : null),
       deltas,
       deltaExtras,
+      // W4-verify r6: per key incl. items without a frozen line.
+      deltaTotals: Object.fromEntries(deltaByKey),
       warnings,
       configStatus: loaded.ok ? ('ok' as const) : ('no-config' as const),
       configChangedSinceConfirm,

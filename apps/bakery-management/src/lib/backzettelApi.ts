@@ -207,6 +207,8 @@ export interface PrepTask {
   /** Anzeigename der Variante aus der YAML (`variant_labels`), sonst `null`. */
   variantLabel?: string | null
   note?: string | null
+  /** Kam erst durch einen Nachtrag dazu (W4-Verifikation Runde 6). */
+  fromDelta?: boolean
 }
 
 export interface BackzettelWarning {
@@ -269,6 +271,12 @@ export interface BackzettelDay {
   deltas: BackzettelDeltaEntry[]
   /** Nur freigegebene Tage mit Nachträgen, die Teig oder Füllung ändern. */
   deltaExtras?: DeltaExtras | null
+  /**
+   * Nachträge je Zeilen-Schlüssel mit Backmenge (W4-Verifikation Runde 6) -
+   * auch für Posten/Varianten ohne freigegebene Zeile, die `sections` nicht
+   * enthält. Ältere Server: fehlt.
+   */
+  deltaTotals?: Record<string, BackzettelLineDelta>
   warnings: BackzettelWarning[]
   configStatus: 'ok' | 'no-config'
   /** Nur freigegeben: aktuelle Stammdaten ergäben jetzt etwas anderes. */
@@ -527,3 +535,23 @@ export async function acknowledgeDeltas(
  */
 export const DELTAS_PENDING_RELOAD_MS = 5000
 export const DELTAS_PENDING_MAX_RELOADS = 6
+
+/**
+ * Nachträge je Zeilen-Schlüssel: aus `deltaTotals`, ergänzt um die Angaben
+ * an den Zeilen (ältere Server). Auch Nachträge zu Posten, die bei der
+ * Freigabe nicht gebacken wurden, bekommen so ihre Backmenge.
+ */
+export function deltaTotalsByKey(
+  day: Pick<BackzettelDay, 'sections' | 'deltaTotals'>
+): Record<string, BackzettelLineDelta | null | undefined> {
+  return {
+    ...(day.deltaTotals ?? {}),
+    ...Object.fromEntries(
+      day.sections.flatMap((section) =>
+        section.lines
+          .filter((l) => l.delta)
+          .map((l) => [l.key, l.delta] as const)
+      )
+    ),
+  }
+}

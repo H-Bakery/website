@@ -226,8 +226,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
   // Start: gespeicherte Sitzung prüfen, Refresh-Handler einhängen.
   React.useEffect(() => {
     let cancelled = false
+    // Ausgang des letzten Refresh: scheiterte er nur am Netz oder Server
+    // (`ended: false`), ist die 401 auf /me kein Ende der Sitzung.
+    let lastRefresh: RefreshOutcome | null = null
     apiClient.setUnauthorizedHandler(async () => {
       const outcome = await refreshSession()
+      lastRefresh = outcome
       if (cancelled) return outcome.ok
       if (outcome.ok) {
         setSession(outcome.session)
@@ -263,7 +267,21 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
           .catch((error) => {
             if (cancelled) return
             const code = statusOf(error)
-            if (code === 401 || code === 403) {
+            // W4-verify r6: Access-Token über Nacht abgelaufen, der Refresh
+            // scheitert am Netz (Antwort verloren, 502 beim Deploy) - der
+            // Refresh-Token gilt noch. Die Sitzung bleibt, die nächste
+            // Anfrage erneuert noch einmal; sonst müsste der Fahrer an der
+            // Sammelstelle Benutzer und Passwort neu tippen.
+            const refreshPending =
+              code === 401 &&
+              lastRefresh !== null &&
+              !lastRefresh.ok &&
+              !lastRefresh.ended &&
+              loadSession()?.refreshToken
+            if (refreshPending) {
+              setSession(loadSession() ?? stored)
+              setStatus('authenticated')
+            } else if (code === 401 || code === 403) {
               clearSession()
               becomeAnonymous(SESSION_END_MESSAGES.expired)
             } else {
