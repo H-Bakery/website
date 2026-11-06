@@ -212,6 +212,17 @@ describe('ProductDetailPage', () => {
     )
   })
 
+  it('gibt den Mengenknöpfen mindestens 44 px (Abschluss-Verifikation next)', () => {
+    render(
+      <ProductDetailPage pid="kornbrot-500g" initialProduct={makeProduct()} />
+    )
+    for (const id of ['quantity-decrease', 'quantity-increase']) {
+      const style = window.getComputedStyle(screen.getByTestId(id))
+      expect(style.minWidth).toBe('44px')
+      expect(style.minHeight).toBe('44px')
+    }
+  })
+
   it('zeigt für `null` den ehrlichen Leerzustand statt der Seite', () => {
     render(<ProductDetailPage pid="gibt-es-nicht" initialProduct={null} />)
 
