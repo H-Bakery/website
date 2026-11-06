@@ -1064,7 +1064,7 @@ Sieben Dinge, die man wissen muss:
   (ohne Neu/Bearbeiten), Backschrank, Backzettel nur lesen (Z5, ohne `/admin/backzettel/grundmengen`);
   Backstube Dashboard, `/admin/backzettel`, `/backstube`; Fahrer `/admin/delivery/preorders` (ohne
   `/new` und `/lieferstelle`) und `/admin/preorders` lesend (ohne `/neu`), dort die Abholliste mit
-  Übergeben; alle `/admin/settings`. Startseite = erste _gebaute_ aus `start` (`ready` aus
+  Übergeben; alle `/admin/settings` und `/admin/hilfe` (P6). Startseite = erste _gebaute_ aus `start` (`ready` aus
   `PILOT_UPCOMING_NAVIGATION`): Verkauf `/admin/preorders` (seit P1/P3), Fahrer
   `/admin/preorders/abholliste` (seit P2), Backstube `/backstube` (seit Z6, also Start nach der PIN).
   `getNavigationForRole()` filtert
@@ -1164,6 +1164,40 @@ Tests: `src/lib/apiBase.spec.ts`, `src/proxy.spec.ts` (Weiterleitung `/api`),
 `admin/partners/**/{Report,PartnerDetail,Templates}Client.spec.tsx`, `src/lib/financeApi.spec.ts`,
 `admin/finance/**/*.spec.tsx`, `admin/analytics/revenue/page.spec.tsx`, `admin/settings/page.spec.tsx`,
 `libs/shared/data-access/src/lib/{api-client,services/analytics.service}.spec.ts`.
+
+## Hilfe und Papierbetrieb (`/admin/hilfe`, P6)
+
+Kurzanleitung je Rolle und die Papier-Vordrucke, für **jede** Rolle erreichbar (`ROLE_ACCESS`:
+`COMMON_ROUTES`, `PILOT_ALLOWED_ROUTES`), Menüeintrag „Hilfe" ganz unten. Einweisung und
+Go-live-Checkliste fürs Personal: `docs/onboarding.md`; Regel und Vordrucke im Runbook §9.
+Vier Dinge, die man wissen muss:
+
+- **Text nur in `src/content/hilfe/`** (`spickzettel.ts` je Rolle, `papierbetrieb.ts` für die
+  Regel) - reiner Text, `**fett**` für Beschriftungen der App. Geschrieben nach den echten
+  Bildschirmen: wer dort einen Knopf umbenennt („Vorbestellung speichern", „Bezahlt und
+  übergeben", „Gesehen", „Jetzt freigeben" …), zieht den Text nach; `spickzettel.spec.ts` prüft
+  die wichtigsten Begriffe und eine Längengrenze je Blatt.
+- **Jedes Blatt druckt auf genau EINE A4-Seite.** Mehrere Blätter auf einer Seite: jedes ist ein
+  `.hilfe-sheet[data-sheet=<id>]`; „Drucken" setzt `data-hilfe-print=<id>` an `<html>`, ruft
+  `window.print()` und nimmt das Attribut bei `afterprint` wieder weg (`components/hilfe/hilfePrint.tsx`).
+  Strg+P ohne Knopf druckt den gezeigten Spickzettel (`data-print-default`). Vorbestellschein und
+  Notfallblatt sind seitenhoch mit fester Höhe in mm (270) - deshalb nimmt das Druckbild jeden
+  Abstand davor weg (Pfadzeile, Ränder). In GlobalStyles **einen** Schlüssel je Selektor: ein
+  zweiter `'.hilfe-sheet'` im selben Objekt ersetzte den ersten (so fiel einmal `display: none`
+  weg). `global.css` blendet jedes `<section>` ein (`sectionFadeIn`) - auf den Blättern ist das
+  abgeschaltet, sonst druckt ein gerade gewechselter Reiter halb durchsichtig.
+- **Vorbestellschein** (2 oder 4 je Seite, Schnittlinien) spiegelt die Erfassungsmaske; unten
+  „in App übertragen" + Code. **Backzettel-Notfallblatt** holt die Posten (je Sorte eine Zeile)
+  aus `GET /api/backzettel/config`, ohne Stammdaten leere Zeilen; `notfallLayout()` wählt
+  Zeilenhöhe (4–7 mm) und zwei bzw. ab ~80 Zeilen drei Spalten, damit es eine Seite bleibt.
+- **Keine Telefonnummern, keine echten Namen** in den Texten - der Aushang hat Leerzeilen für
+  Inhaber und Technik, die von Hand ausgefüllt werden.
+
+Tests: `src/content/hilfe/spickzettel.spec.ts`, `admin/hilfe/HilfeClient.spec.tsx` (je Rolle,
+Drucken, Vordrucke), `components/hilfe/BackzettelNotfallblatt.spec.tsx`. Die Ein-Seiten-Prüfung
+geht nur im Browser: `page.pdf()` je Blatt, Seitenzahl 1 (Achtung: nach
+`emulateMedia({ media: 'screen' })` druckt `page.pdf()` das Bildschirm-CSS - mit `media: null`
+zurücksetzen; `page.pdf()` löst `afterprint` aus).
 
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 
