@@ -35,6 +35,8 @@ jest.setTimeout(30000)
 
 const MON = '2026-11-23'
 const TUE = '2026-11-24'
+/** "Today" for the planning window - the fixed dates above stay inside it. */
+const PINNED_NOW = new Date('2026-11-20T09:00:00Z')
 const WED = '2026-11-25'
 const THU = '2026-11-26'
 const FRI = '2026-11-27'
@@ -162,7 +164,8 @@ beforeAll(async () => {
   api = await createTestApp({
     seedPartners: true,
     app: {
-      backzettel: { hqDir, cacheMs: 0 },
+      // Pinned clock for the planning window (today − 7 … today + 90).
+      backzettel: { hqDir, cacheMs: 0, now: () => PINNED_NOW },
       // W4: deltas come from the preorder write path, so the tests write
       // preorders through the API (prices from the synthetic catalogue).
       preorders: {
@@ -442,6 +445,30 @@ describe('confirm, deltas, ticks, reopen', () => {
       unit: 'Stück',
     })
     expect(await auditActions(TUE)).toEqual(['confirm'])
+  })
+
+  it('planning writes outside today − 7 … today + 90 are 400 date_out_of_range (W4-verify)', async () => {
+    for (const date of [
+      '9999-12-31',
+      '1970-01-03',
+      '2026-11-12',
+      '2027-02-19',
+    ]) {
+      const res = await as('backstube').post(`/api/backzettel/${date}/confirm`)
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'date_out_of_range' })
+      expect(res.body.message).toMatch(/außerhalb des Planungszeitraums/)
+      const season = await as('backstube')
+        .put(`/api/backzettel/${date}/season`)
+        .send({ factor: 1.2 })
+      expect(season.status).toBe(400)
+      expect(await BackzettelDay.findByPk(date)).toBeNull()
+    }
+    // The edges are inside: today − 7 (Fri 13.11.) and today + 90 (Thu 18.02.).
+    const edge = await as('backstube')
+      .put('/api/backzettel/2026-11-13/season')
+      .send({ factor: 1 })
+    expect(edge.status).not.toBe(400)
   })
 
   it('a confirmed day is final for corrections, season and confirm', async () => {

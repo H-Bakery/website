@@ -830,7 +830,11 @@ null in a draft without a stored row), `correctionBy`, `doneAt`, `doneBy`, `delt
 count } | null`. `variant` is `null` for "none" in JSON, `''` in the tables and in the URL (omit
 the segment). Errors: 400 `invalid_date` / `validation` / `reason_required`, 404 `unknown_item` /
 `unknown_variant` / `not_found`, 409 `ruhetag` (weekday not in `config.days`), `no_config` (with
-`reasons`), `confirmed`, `not_confirmed`.
+`reasons`), `confirmed`, `not_confirmed`. **Planning window (W4 verification):** season,
+correction and confirm only for today − 7 … today + 90 days (Berlin, `PLANNING_DAYS_BACK` /
+`PLANNING_DAYS_AHEAD` in `backzettel.service.ts`), otherwise 400 `date_out_of_range` - a URL typo
+(`9999-12-31`) used to confirm a day and commit its snapshot to hq `main`. Reads, reopen, ticks and
+acks are not limited. Tests pin the clock with `createApp({ backzettel: { now: () => … } })`.
 
 What to know before changing it:
 

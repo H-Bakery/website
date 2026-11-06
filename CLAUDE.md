@@ -623,6 +623,9 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
   `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
   Jede Änderung steht im `audit_log`.
+- **Planen und Freigeben nur von heute − 7 bis heute + 90 Tage** (400 `date_out_of_range`,
+  W4-Verifikation) - ein Tippfehler in der URL committete sonst einen Backzettel für 9999-12-31
+  nach hq `main`.
 
 ## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
 

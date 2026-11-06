@@ -20,6 +20,8 @@
  * Missing or invalid master data: GET answers `status: 'no-config'` with
  * `reasons` (a confirmed day stays readable, with `configStatus: 'no-config'`);
  * writes answer 409 `no_config`. A non-production weekday is 409 `ruhetag`.
+ * Planning writes (season, correction, confirm) outside today − 7 … today + 90
+ * days (Berlin) are 400 `date_out_of_range` (W4 verification).
  */
 import { NextFunction, Request, Response, Router } from 'express'
 
@@ -90,6 +92,7 @@ export function createBackzettel(options: BackzettelRouterOptions = {}): {
   const service = createBackzettelService(source, {
     onConfirmed: options.onConfirmed,
     onReopened: options.onReopened,
+    now: options.now,
   })
   const writer = createBackzettelConfigWriter(source, options.write)
   const reference = createBackzettelReference(source, options.reference)
