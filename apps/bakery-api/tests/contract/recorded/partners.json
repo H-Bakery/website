@@ -1,0 +1,690 @@
+{
+  "suite": "partners",
+  "exchanges": [
+    {
+      "method": "GET",
+      "url": "/api/partners",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"name\":\"CAP-Markt Homburg-Kirrberg\",\"slug\":\"cap-markt-homburg-kirrberg\",\"street\":\"\",\"zip\":\"\",\"city\":\"Homburg\",\"contactName\":null,\"phone\":null,\"email\":null,\"deliveryDays\":[2,3,4,5,6],\"settlementModel\":\"commission\",\"active\":true,\"notes\":\"Backschrank mit Brot, Brötchen und Kaffeestückchen. Belieferung Dienstag bis Samstag morgens, Nachlieferungen nach Bedarf.\"}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners?active=true",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"name\":\"CAP-Markt Homburg-Kirrberg\",\"slug\":\"cap-markt-homburg-kirrberg\",\"street\":\"\",\"zip\":\"\",\"city\":\"Homburg\",\"contactName\":null,\"phone\":null,\"email\":null,\"deliveryDays\":[2,3,4,5,6],\"settlementModel\":\"commission\",\"active\":true,\"notes\":\"Backschrank mit Brot, Brötchen und Kaffeestückchen. Belieferung Dienstag bis Samstag morgens, Nachlieferungen nach Bedarf.\"}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners?active=false",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/1",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"name\":\"CAP-Markt Homburg-Kirrberg\",\"slug\":\"cap-markt-homburg-kirrberg\",\"street\":\"\",\"zip\":\"\",\"city\":\"Homburg\",\"contactName\":null,\"phone\":null,\"email\":null,\"deliveryDays\":[2,3,4,5,6],\"settlementModel\":\"commission\",\"active\":true,\"notes\":\"Backschrank mit Brot, Brötchen und Kaffeestückchen. Belieferung Dienstag bis Samstag morgens, Nachlieferungen nach Bedarf.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/999",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/abc",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner nicht gefunden - die Kennung muss eine Zahl sein.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners",
+      "body": "{\"name\":\"Testmarkt Parität\",\"street\":\"Musterstraße 1\",\"zip\":\"00000\",\"city\":\"Musterstadt\",\"contactName\":\"Test Kontakt\",\"deliveryDays\":[2,4,6],\"settlementModel\":\"firm_sale\",\"notes\":\"Synthetischer Partner für den Abgleich.\"}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"name\":\"Testmarkt Parität\",\"slug\":\"testmarkt-paritaet\",\"street\":\"Musterstraße 1\",\"zip\":\"00000\",\"city\":\"Musterstadt\",\"contactName\":\"Test Kontakt\",\"phone\":null,\"email\":null,\"deliveryDays\":[2,4,6],\"settlementModel\":\"firm_sale\",\"active\":true,\"notes\":\"Synthetischer Partner für den Abgleich.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners",
+      "body": "{\"name\":\"Testmarkt Parität\"}",
+      "status": 409,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Slug already exists\",\"message\":\"Ein Partner mit diesem Kürzel existiert bereits.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Name is required\",\"message\":\"Der Name des Partners ist erforderlich.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners",
+      "body": "{\"name\":7}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Name is required\",\"message\":\"Der Name des Partners ist erforderlich.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners",
+      "body": "{\"name\":\"X\",\"active\":\"ja\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid active flag\",\"message\":\"Das Feld \\\"active\\\" muss true oder false sein (kein Text).\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2",
+      "body": "{\"city\":\"Teststadt\",\"phone\":\"0000 000000\",\"notes\":\"Geändert.\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"name\":\"Testmarkt Parität\",\"slug\":\"testmarkt-paritaet\",\"street\":\"Musterstraße 1\",\"zip\":\"00000\",\"city\":\"Teststadt\",\"contactName\":\"Test Kontakt\",\"phone\":\"0000 000000\",\"email\":null,\"deliveryDays\":[2,4,6],\"settlementModel\":\"firm_sale\",\"active\":true,\"notes\":\"Geändert.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2",
+      "body": "{\"active\":false}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"name\":\"Testmarkt Parität\",\"slug\":\"testmarkt-paritaet\",\"street\":\"Musterstraße 1\",\"zip\":\"00000\",\"city\":\"Teststadt\",\"contactName\":\"Test Kontakt\",\"phone\":\"0000 000000\",\"email\":null,\"deliveryDays\":[2,4,6],\"settlementModel\":\"firm_sale\",\"active\":false,\"notes\":\"Geändert.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2",
+      "body": "{\"active\":true}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"name\":\"Testmarkt Parität\",\"slug\":\"testmarkt-paritaet\",\"street\":\"Musterstraße 1\",\"zip\":\"00000\",\"city\":\"Teststadt\",\"contactName\":\"Test Kontakt\",\"phone\":\"0000 000000\",\"email\":null,\"deliveryDays\":[2,4,6],\"settlementModel\":\"firm_sale\",\"active\":true,\"notes\":\"Geändert.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2",
+      "body": "{\"name\":\"  \"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Name is required\",\"message\":\"Der Name des Partners darf nicht leer sein.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2",
+      "body": "{\"slug\":\"cap-markt-homburg-kirrberg\"}",
+      "status": 409,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Slug already exists\",\"message\":\"Ein Partner mit diesem Kürzel existiert bereits.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2",
+      "body": "{\"active\":\"false\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid active flag\",\"message\":\"Das Feld \\\"active\\\" muss true oder false sein (kein Text).\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/999",
+      "body": "{\"name\":\"X\"}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/templates",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"partnerId\":2,\"weekday\":2,\"items\":[],\"active\":true},{\"id\":2,\"partnerId\":2,\"weekday\":4,\"items\":[],\"active\":true},{\"id\":3,\"partnerId\":2,\"weekday\":6,\"items\":[],\"active\":true}]"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2/templates/4",
+      "body": "{\"items\":[{\"productSlug\":\"kornbrot-500g\",\"quantity\":3},{\"productId\":13,\"quantity\":2},{\"productSlug\":\"mustersemmel\",\"quantity\":0}]}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"partnerId\":2,\"weekday\":4,\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"quantity\":3},{\"productId\":13,\"productSlug\":\"musterweck\",\"quantity\":2}],\"active\":true}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2/templates/4",
+      "body": "{\"active\":false}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"partnerId\":2,\"weekday\":4,\"items\":[],\"active\":false}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2/templates/4",
+      "body": "{\"items\":[{\"productSlug\":\"kornbrot-500g\",\"quantity\":1}]}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"partnerId\":2,\"weekday\":4,\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"quantity\":1}],\"active\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/templates",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"partnerId\":2,\"weekday\":2,\"items\":[],\"active\":true},{\"id\":2,\"partnerId\":2,\"weekday\":4,\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"quantity\":1}],\"active\":false},{\"id\":3,\"partnerId\":2,\"weekday\":6,\"items\":[],\"active\":true}]"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2/templates/8",
+      "body": "{\"items\":[]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid weekday\",\"message\":\"Ungültiger Wochentag. Erlaubt sind 1 (Montag) bis 7 (Sonntag).\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2/templates/0",
+      "body": "{\"items\":[]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid weekday\",\"message\":\"Ungültiger Wochentag. Erlaubt sind 1 (Montag) bis 7 (Sonntag).\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2/templates/4",
+      "body": "{\"items\":\"kornbrot\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid items\",\"message\":\"Die Vorlage braucht eine Liste von Positionen.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/2/templates/4",
+      "body": "{\"items\":[],\"active\":1}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid active flag\",\"message\":\"Das Feld \\\"active\\\" muss true oder false sein (kein Text).\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/partners/999/templates/4",
+      "body": "{\"items\":[]}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"visitType\":\"initial\",\"staffName\":\"Test Fahrer\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"deliveredQty\":10},{\"productId\":13,\"productSlug\":\"musterweck\",\"deliveredQty\":20}]}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"visitType\":\"initial\",\"sequence\":1,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":null,\"deliveredQty\":10},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":null,\"deliveredQty\":20}],\"createdAt\":\"2026-11-06T12:47:51.910Z\",\"updatedAt\":\"2026-11-06T12:47:51.910Z\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"countedQty\":3,\"deliveredQty\":5},{\"productId\":13,\"productSlug\":\"musterweck\",\"countedQty\":0,\"deliveredQty\":10}]}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"sequence\":2,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10}],\"createdAt\":\"2026-11-06T12:47:51.924Z\",\"updatedAt\":\"2026-11-06T12:47:51.924Z\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"visitType\":\"pickup\",\"staffName\":\"Test Fahrer\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"countedQty\":2}]}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"visitType\":\"pickup\",\"sequence\":3,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":2,\"deliveredQty\":0}],\"createdAt\":\"2026-11-06T12:47:51.936Z\",\"updatedAt\":\"2026-11-06T12:47:51.936Z\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits?from=2026-03-03&to=2026-03-03",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"visitType\":\"initial\",\"sequence\":1,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":null,\"deliveredQty\":10},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":null,\"deliveredQty\":20}],\"createdAt\":\"2026-11-06T12:47:51.910Z\",\"updatedAt\":\"2026-11-06T12:47:51.910Z\"},{\"id\":2,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"sequence\":2,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10}],\"createdAt\":\"2026-11-06T12:47:51.924Z\",\"updatedAt\":\"2026-11-06T12:47:51.924Z\"},{\"id\":3,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"visitType\":\"pickup\",\"sequence\":3,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":2,\"deliveredQty\":0}],\"createdAt\":\"2026-11-06T12:47:51.936Z\",\"updatedAt\":\"2026-11-06T12:47:51.936Z\"}]"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"visitType\":\"initial\",\"staffName\":\"Test Fahrer\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"deliveredQty\":10},{\"productId\":13,\"productSlug\":\"musterweck\",\"deliveredQty\":20}]}",
+      "status": 409,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Initial visit already exists\",\"message\":\"Für diesen Geschäftstag ist bereits eine Erstbestückung erfasst.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productSlug\":\"gibt-es-nicht\",\"deliveredQty\":1}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid items\",\"message\":\"Position 1 (gibt-es-nicht): Unbekanntes Produkt - es steht nicht im Katalog.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"besuch\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"countedQty\":3,\"deliveredQty\":5},{\"productId\":13,\"productSlug\":\"musterweck\",\"countedQty\":0,\"deliveredQty\":10}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid visit type\",\"message\":\"Unbekannter Besuchstyp. Erlaubt sind: initial, refill, pickup.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-02-30\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"countedQty\":3,\"deliveredQty\":5},{\"productId\":13,\"productSlug\":\"musterweck\",\"countedQty\":0,\"deliveredQty\":10}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid business date\",\"message\":\"Ungültiger Geschäftstag. Erwartet wird ein gültiges Datum im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"gestern\",\"visitType\":\"refill\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"countedQty\":3,\"deliveredQty\":5},{\"productId\":13,\"productSlug\":\"musterweck\",\"countedQty\":0,\"deliveredQty\":10}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid visitAt\",\"message\":\"Der Zeitpunkt des Besuchs ist ungültig.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productSlug\":\"kornbrot-500g\",\"countedQty\":\"abc\"}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid items\",\"message\":\"Position 1 (kornbrot-500g): Der Rest muss eine ganze Zahl zwischen 0 und 10000 sein (leer = nicht gezählt).\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/2/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productSlug\":\"kornbrot-500g\",\"unitPrice\":-1}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid items\",\"message\":\"Position 1 (kornbrot-500g): Der Einzelpreis muss zwischen 0 und 10000 EUR liegen.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/partners/999/visits",
+      "body": "{\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"countedQty\":3,\"deliveredQty\":5},{\"productId\":13,\"productSlug\":\"musterweck\",\"countedQty\":0,\"deliveredQty\":10}]}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"visitType\":\"initial\",\"sequence\":1,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":null,\"deliveredQty\":10},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":null,\"deliveredQty\":20}],\"createdAt\":\"2026-11-06T12:47:51.910Z\",\"updatedAt\":\"2026-11-06T12:47:51.910Z\"},{\"id\":2,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"sequence\":2,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10}],\"createdAt\":\"2026-11-06T12:47:51.924Z\",\"updatedAt\":\"2026-11-06T12:47:51.924Z\"},{\"id\":3,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"visitType\":\"pickup\",\"sequence\":3,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":2,\"deliveredQty\":0}],\"createdAt\":\"2026-11-06T12:47:51.936Z\",\"updatedAt\":\"2026-11-06T12:47:51.936Z\"}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits?from=2026-03-04",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits?to=2026-03-03",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"visitType\":\"initial\",\"sequence\":1,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":null,\"deliveredQty\":10},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":null,\"deliveredQty\":20}],\"createdAt\":\"2026-11-06T12:47:51.910Z\",\"updatedAt\":\"2026-11-06T12:47:51.910Z\"},{\"id\":2,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"sequence\":2,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10}],\"createdAt\":\"2026-11-06T12:47:51.924Z\",\"updatedAt\":\"2026-11-06T12:47:51.924Z\"},{\"id\":3,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"visitType\":\"pickup\",\"sequence\":3,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":2,\"deliveredQty\":0}],\"createdAt\":\"2026-11-06T12:47:51.936Z\",\"updatedAt\":\"2026-11-06T12:47:51.936Z\"}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits?from=2026-02-30",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid range\",\"message\":\"Ungültiger Zeitraum. Erwartet werden gültige Datumsangaben im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits?to=03.03.2026",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid range\",\"message\":\"Ungültiger Zeitraum. Erwartet werden gültige Datumsangaben im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/999/visits",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits/today?date=2026-03-03",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"businessDate\":\"2026-03-03\",\"isOpen\":false,\"isComplete\":false,\"uncountedQty\":10,\"uncountedProducts\":[{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"stockQty\":10}],\"timeline\":[{\"visitId\":1,\"visitType\":\"initial\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"sequence\":1,\"staffName\":\"Test Fahrer\",\"note\":null,\"countedQty\":0,\"deliveredQty\":30,\"soldSinceLastQty\":0,\"soldSinceLastRevenue\":0,\"stockAfterQty\":30,\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":null,\"deliveredQty\":10,\"soldSinceLastQty\":0,\"stockAfterQty\":10},{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":null,\"deliveredQty\":20,\"soldSinceLastQty\":0,\"stockAfterQty\":20}]},{\"visitId\":2,\"visitType\":\"refill\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"sequence\":2,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"countedQty\":3,\"deliveredQty\":15,\"soldSinceLastQty\":27,\"soldSinceLastRevenue\":26.5,\"stockAfterQty\":18,\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5,\"soldSinceLastQty\":7,\"stockAfterQty\":8},{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10,\"soldSinceLastQty\":20,\"stockAfterQty\":10}]},{\"visitId\":3,\"visitType\":\"pickup\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"sequence\":3,\"staffName\":\"Test Fahrer\",\"note\":null,\"countedQty\":2,\"deliveredQty\":0,\"soldSinceLastQty\":6,\"soldSinceLastRevenue\":15,\"stockAfterQty\":12,\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":2,\"deliveredQty\":0,\"soldSinceLastQty\":6,\"stockAfterQty\":2}]}],\"totals\":{\"dayCount\":1,\"openDayCount\":0,\"incompleteDayCount\":1,\"visitCount\":3,\"refillCount\":1,\"deliveredQty\":45,\"soldQty\":33,\"returnedQty\":2,\"discrepancyQty\":0,\"uncountedQty\":10,\"revenue\":41.5,\"returnValue\":5,\"openQty\":0,\"sellThroughRate\":0.7333,\"returnRate\":0.0444},\"byProduct\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"unitPriceMin\":2.5,\"unitPriceMax\":2.5,\"deliveredQty\":15,\"soldQty\":13,\"returnedQty\":2,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":32.5,\"returnValue\":5,\"openQty\":0,\"sellThroughRate\":0.8667},{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"unitPriceMin\":0.45,\"unitPriceMax\":0.45,\"deliveredQty\":30,\"soldQty\":20,\"returnedQty\":0,\"discrepancyQty\":0,\"uncountedQty\":10,\"revenue\":9,\"returnValue\":0,\"openQty\":0,\"sellThroughRate\":0.6667}],\"visits\":[{\"id\":1,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T05:30:00.000Z\",\"visitType\":\"initial\",\"sequence\":1,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":null,\"deliveredQty\":10},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":null,\"deliveredQty\":20}],\"createdAt\":\"2026-11-06T12:47:51.910Z\",\"updatedAt\":\"2026-11-06T12:47:51.910Z\"},{\"id\":2,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"sequence\":2,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10}],\"createdAt\":\"2026-11-06T12:47:51.924Z\",\"updatedAt\":\"2026-11-06T12:47:51.924Z\"},{\"id\":3,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"visitType\":\"pickup\",\"sequence\":3,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":null,\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":2,\"deliveredQty\":0}],\"createdAt\":\"2026-11-06T12:47:51.936Z\",\"updatedAt\":\"2026-11-06T12:47:51.936Z\"}]}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits/today?date=2026-03-04",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"businessDate\":\"2026-03-04\",\"isOpen\":true,\"isComplete\":true,\"uncountedQty\":0,\"uncountedProducts\":[],\"timeline\":[],\"totals\":{\"dayCount\":0,\"openDayCount\":0,\"incompleteDayCount\":0,\"visitCount\":0,\"refillCount\":0,\"deliveredQty\":0,\"soldQty\":0,\"returnedQty\":0,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":0,\"returnValue\":0,\"openQty\":0,\"sellThroughRate\":null,\"returnRate\":null},\"byProduct\":[],\"visits\":[]}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits/today",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"businessDate\":\"2026-11-06\",\"isOpen\":true,\"isComplete\":true,\"uncountedQty\":0,\"uncountedProducts\":[],\"timeline\":[],\"totals\":{\"dayCount\":0,\"openDayCount\":0,\"incompleteDayCount\":0,\"visitCount\":0,\"refillCount\":0,\"deliveredQty\":0,\"soldQty\":0,\"returnedQty\":0,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":0,\"returnValue\":0,\"openQty\":0,\"sellThroughRate\":null,\"returnRate\":null},\"byProduct\":[],\"visits\":[]}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/visits/today?date=2026-02-30",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid date\",\"message\":\"Ungültiges Datum. Erwartet wird ein gültiges Datum im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/3",
+      "body": "{\"note\":\"Nachgezählt\",\"items\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"countedQty\":2},{\"productId\":13,\"productSlug\":\"musterweck\",\"countedQty\":4}]}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T18:00:00.000Z\",\"visitType\":\"pickup\",\"sequence\":3,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachgezählt\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":2,\"deliveredQty\":0},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":4,\"deliveredQty\":0}],\"createdAt\":\"2026-11-06T12:47:51.936Z\",\"updatedAt\":\"2026-11-06T12:47:52.106Z\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/2",
+      "body": "{\"businessDate\":\"2026-03-04\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"partnerId\":2,\"businessDate\":\"2026-03-04\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"sequence\":1,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10}],\"createdAt\":\"2026-11-06T12:47:51.924Z\",\"updatedAt\":\"2026-11-06T12:47:52.120Z\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/2",
+      "body": "{\"businessDate\":\"2026-03-03\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"partnerId\":2,\"businessDate\":\"2026-03-03\",\"visitAt\":\"2026-03-03T10:00:00.000Z\",\"visitType\":\"refill\",\"sequence\":4,\"staffId\":null,\"staffName\":\"Test Fahrer\",\"note\":\"Nachschub\",\"items\":[{\"id\":1,\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"countedQty\":3,\"deliveredQty\":5},{\"id\":2,\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"countedQty\":0,\"deliveredQty\":10}],\"createdAt\":\"2026-11-06T12:47:51.924Z\",\"updatedAt\":\"2026-11-06T12:47:52.131Z\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/2",
+      "body": "{\"visitType\":\"initial\"}",
+      "status": 409,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Initial visit already exists\",\"message\":\"Für diesen Geschäftstag ist bereits eine Erstbestückung erfasst.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/2",
+      "body": "{\"visitType\":\"besuch\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid visit type\",\"message\":\"Unbekannter Besuchstyp. Erlaubt sind: initial, refill, pickup.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/2",
+      "body": "{\"businessDate\":\"2026-02-30\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid business date\",\"message\":\"Ungültiger Geschäftstag. Erwartet wird ein gültiges Datum im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/2",
+      "body": "{\"visitAt\":\"nie\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid visitAt\",\"message\":\"Der Zeitpunkt des Besuchs ist ungültig.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/2",
+      "body": "{\"items\":[{\"productSlug\":\"gibt-es-nicht\",\"deliveredQty\":1}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid items\",\"message\":\"Position 1 (gibt-es-nicht): Unbekanntes Produkt - es steht nicht im Katalog.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/999",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"VISIT_NOT_FOUND\",\"message\":\"Besuch mit der Kennung 999 wurde für diesen Verkaufspartner nicht gefunden.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/2/visits/abc",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"VISIT_NOT_FOUND\",\"message\":\"Besuch nicht gefunden - die Kennung muss eine Zahl sein.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/1/visits/2",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"VISIT_NOT_FOUND\",\"message\":\"Besuch mit der Kennung 2 wurde für diesen Verkaufspartner nicht gefunden.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/partners/999/visits/2",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/stats?from=2026-03-03&to=2026-03-04",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"range\":{\"from\":\"2026-03-03\",\"to\":\"2026-03-04\"},\"totals\":{\"dayCount\":1,\"openDayCount\":0,\"incompleteDayCount\":0,\"visitCount\":3,\"refillCount\":1,\"deliveredQty\":45,\"soldQty\":28,\"returnedQty\":6,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":29,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.6222,\"returnRate\":0.1333},\"isProvisional\":false,\"openDates\":[],\"incompleteDates\":[],\"byProduct\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"unitPriceMin\":2.5,\"unitPriceMax\":2.5,\"deliveredQty\":15,\"soldQty\":8,\"returnedQty\":2,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":20,\"returnValue\":5,\"openQty\":0,\"sellThroughRate\":0.5333},{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"unitPriceMin\":0.45,\"unitPriceMax\":0.45,\"deliveredQty\":30,\"soldQty\":20,\"returnedQty\":4,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":9,\"returnValue\":1.8,\"openQty\":0,\"sellThroughRate\":0.6667}],\"byDay\":[{\"businessDate\":\"2026-03-03\",\"weekday\":2,\"isOpen\":false,\"isComplete\":true,\"visitCount\":3,\"refillCount\":1,\"deliveredQty\":45,\"soldQty\":28,\"returnedQty\":6,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":29,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.6222}],\"byWeekday\":[{\"weekday\":2,\"weekdayLabel\":\"Dienstag\",\"dayCount\":1,\"openDayCount\":0,\"avgDeliveredQty\":45,\"avgSoldQty\":28,\"avgReturnedQty\":6,\"avgRevenue\":29,\"sellThroughRate\":0.6222}]}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/stats",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"range\":{\"from\":null,\"to\":null},\"totals\":{\"dayCount\":1,\"openDayCount\":0,\"incompleteDayCount\":0,\"visitCount\":3,\"refillCount\":1,\"deliveredQty\":45,\"soldQty\":28,\"returnedQty\":6,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":29,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.6222,\"returnRate\":0.1333},\"isProvisional\":false,\"openDates\":[],\"incompleteDates\":[],\"byProduct\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"unitPriceMin\":2.5,\"unitPriceMax\":2.5,\"deliveredQty\":15,\"soldQty\":8,\"returnedQty\":2,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":20,\"returnValue\":5,\"openQty\":0,\"sellThroughRate\":0.5333},{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"unitPriceMin\":0.45,\"unitPriceMax\":0.45,\"deliveredQty\":30,\"soldQty\":20,\"returnedQty\":4,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":9,\"returnValue\":1.8,\"openQty\":0,\"sellThroughRate\":0.6667}],\"byDay\":[{\"businessDate\":\"2026-03-03\",\"weekday\":2,\"isOpen\":false,\"isComplete\":true,\"visitCount\":3,\"refillCount\":1,\"deliveredQty\":45,\"soldQty\":28,\"returnedQty\":6,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":29,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.6222}],\"byWeekday\":[{\"weekday\":2,\"weekdayLabel\":\"Dienstag\",\"dayCount\":1,\"openDayCount\":0,\"avgDeliveredQty\":45,\"avgSoldQty\":28,\"avgReturnedQty\":6,\"avgRevenue\":29,\"sellThroughRate\":0.6222}]}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/stats?from=2026-13-01",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid range\",\"message\":\"Ungültiger Zeitraum. Erwartet werden gültige Datumsangaben im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/999/stats",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/report?from=2026-03-03&to=2026-03-04",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"partner\":{\"id\":2,\"name\":\"Testmarkt Parität\",\"slug\":\"testmarkt-paritaet\",\"street\":\"Musterstraße 1\",\"zip\":\"00000\",\"city\":\"Teststadt\",\"contactName\":\"Test Kontakt\",\"phone\":\"0000 000000\",\"email\":null,\"deliveryDays\":[2,4,6],\"settlementModel\":\"firm_sale\",\"active\":true,\"notes\":\"Geändert.\"},\"generatedAt\":\"2026-11-06T12:47:52.257Z\",\"stats\":{\"range\":{\"from\":\"2026-03-03\",\"to\":\"2026-03-04\"},\"totals\":{\"dayCount\":1,\"openDayCount\":0,\"incompleteDayCount\":0,\"visitCount\":3,\"refillCount\":1,\"deliveredQty\":45,\"soldQty\":28,\"returnedQty\":6,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":29,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.6222,\"returnRate\":0.1333},\"isProvisional\":false,\"openDates\":[],\"incompleteDates\":[],\"byProduct\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"unitPriceMin\":2.5,\"unitPriceMax\":2.5,\"deliveredQty\":15,\"soldQty\":8,\"returnedQty\":2,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":20,\"returnValue\":5,\"openQty\":0,\"sellThroughRate\":0.5333},{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"unitPriceMin\":0.45,\"unitPriceMax\":0.45,\"deliveredQty\":30,\"soldQty\":20,\"returnedQty\":4,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":9,\"returnValue\":1.8,\"openQty\":0,\"sellThroughRate\":0.6667}],\"byDay\":[{\"businessDate\":\"2026-03-03\",\"weekday\":2,\"isOpen\":false,\"isComplete\":true,\"visitCount\":3,\"refillCount\":1,\"deliveredQty\":45,\"soldQty\":28,\"returnedQty\":6,\"discrepancyQty\":1,\"uncountedQty\":0,\"revenue\":29,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.6222}],\"byWeekday\":[{\"weekday\":2,\"weekdayLabel\":\"Dienstag\",\"dayCount\":1,\"openDayCount\":0,\"avgDeliveredQty\":45,\"avgSoldQty\":28,\"avgReturnedQty\":6,\"avgRevenue\":29,\"sellThroughRate\":0.6222}]}}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/report?to=2026-02-30",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid range\",\"message\":\"Ungültiger Zeitraum. Erwartet werden gültige Datumsangaben im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/999/report",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/report.csv?from=2026-03-03&to=2026-03-04",
+      "body": "{}",
+      "status": 200,
+      "contentType": "text/csv; charset=utf-8",
+      "contentDisposition": "attachment; filename=\"partner-report-testmarkt-paritaet-2026-03-03-bis-2026-03-04.csv\"",
+      "text": "﻿Partner-Report\r\nPartner;Testmarkt Parität\r\nAbrechnungsmodell;Festkauf\r\nZeitraum;2026-03-03 bis 2026-03-04\r\n\r\nJe Produkt\r\nProdukt;Einzelpreis;Geliefert;Verkauft;Retoure;Offen;Abverkaufsquote;Umsatz;Ungezählt;Abweichung\r\nKornbrot 500g;2,50;15;8;2;0;53,3%;20,00;0;1\r\nMusterweck;0,45;30;20;4;0;66,7%;9,00;0;0\r\n\r\nJe Geschäftstag\r\nDatum;Wochentag;Status;Besuche;Geliefert;Verkauft;Retoure;Offen;Abverkaufsquote;Umsatz;Ungezählt;Abweichung\r\n2026-03-03;Di;abgeschlossen;3;45;28;6;0;62,2%;29,00;0;1\r\n\r\nGesamt\r\nGeliefert;45\r\nVerkauft;28\r\nRetoure;6\r\nOffen (ohne Abholung);0\r\nAbverkaufsquote;62,2%\r\nUmsatz;29,00\r\nRetourenwert;6,80\r\nUngezählt;0\r\nAbweichung;1"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/report.csv?from=gestern",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid range\",\"message\":\"Ungültiger Zeitraum. Erwartet werden gültige Datumsangaben im Format JJJJ-MM-TT.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/999/report.csv",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"PARTNER_NOT_FOUND\",\"message\":\"Verkaufspartner mit der Kennung 999 wurde nicht gefunden.\"}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/partners/2/visits/2",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"deleted\":true,\"message\":\"Besuch gelöscht.\"}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/partners/2/visits/2",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"VISIT_NOT_FOUND\",\"message\":\"Besuch mit der Kennung 2 wurde für diesen Verkaufspartner nicht gefunden.\"}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/partners/2/visits/abc",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"VISIT_NOT_FOUND\",\"message\":\"Besuch nicht gefunden - die Kennung muss eine Zahl sein.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/partners/2/stats?from=2026-03-03&to=2026-03-03",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"range\":{\"from\":\"2026-03-03\",\"to\":\"2026-03-03\"},\"totals\":{\"dayCount\":1,\"openDayCount\":0,\"incompleteDayCount\":0,\"visitCount\":2,\"refillCount\":0,\"deliveredQty\":30,\"soldQty\":24,\"returnedQty\":6,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":27.2,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.8,\"returnRate\":0.2},\"isProvisional\":false,\"openDates\":[],\"incompleteDates\":[],\"byProduct\":[{\"productId\":1,\"productSlug\":\"kornbrot-500g\",\"productName\":\"Kornbrot 500g\",\"unitPrice\":2.5,\"unitPriceMin\":2.5,\"unitPriceMax\":2.5,\"deliveredQty\":10,\"soldQty\":8,\"returnedQty\":2,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":20,\"returnValue\":5,\"openQty\":0,\"sellThroughRate\":0.8},{\"productId\":13,\"productSlug\":\"musterweck\",\"productName\":\"Musterweck\",\"unitPrice\":0.45,\"unitPriceMin\":0.45,\"unitPriceMax\":0.45,\"deliveredQty\":20,\"soldQty\":16,\"returnedQty\":4,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":7.2,\"returnValue\":1.8,\"openQty\":0,\"sellThroughRate\":0.8}],\"byDay\":[{\"businessDate\":\"2026-03-03\",\"weekday\":2,\"isOpen\":false,\"isComplete\":true,\"visitCount\":2,\"refillCount\":0,\"deliveredQty\":30,\"soldQty\":24,\"returnedQty\":6,\"discrepancyQty\":0,\"uncountedQty\":0,\"revenue\":27.2,\"returnValue\":6.8,\"openQty\":0,\"sellThroughRate\":0.8}],\"byWeekday\":[{\"weekday\":2,\"weekdayLabel\":\"Dienstag\",\"dayCount\":1,\"openDayCount\":0,\"avgDeliveredQty\":30,\"avgSoldQty\":24,\"avgReturnedQty\":6,\"avgRevenue\":27.2,\"sellThroughRate\":0.8}]}"
+    }
+  ],
+  "values": {}
+}

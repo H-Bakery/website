@@ -1,18 +1,17 @@
 /**
- * Parity (D3, B6): every partner route of the real API answers like the mock
- * server (`simple-server.js`), with sessions.
+ * Contract (D3, B6, B12): every partner route of the real API answers like
+ * the mock server did, with sessions. The mock's answers are recorded in
+ * `recorded/partners.json` (see recorded.ts).
  *
  * Both servers start from their seed (the CAP-Markt as partner 1) and read
- * the same synthetic hq catalogue (`tools/e2e/hq-products`); the mock reads
- * `HQ_PRODUCTS_DIR` when it is loaded, so the variable is set first. The
- * same scenario runs in lockstep on both: a new partner, its master data,
+ * the same synthetic hq catalogue. The same scenario runs on both: a new partner, its master data,
  * a template, visits (initial, refill, pickup, a correction, a move to
  * another day, a deletion), stats, report and CSV. Every step compares
  * status and shape (`compare`), and - where both servers hold the same data -
  * the values too (`same`), ids included: both number partners, templates
  * and visits from 1 in creation order.
  *
- * Sessions: the real API needs one (B3/B6); the mock ignores the header.
+ * Sessions: the real API needs one (B3/B6); the mock ignored the header.
  * Master data runs as `inhaber`, visits as `verkauf`.
  *
  * Deliberate deviations, asserted below so they stay visible:
@@ -28,9 +27,6 @@
  *   - PATCH with `visitAt` alone keeps the business day on the real API
  *     (the mock moves it; the visit form always sends `businessDate`).
  */
-import * as fs from 'fs'
-import * as os from 'os'
-import * as path from 'path'
 import request from 'supertest'
 import type { Application } from 'express'
 
@@ -42,22 +38,19 @@ import {
   ParityResult,
   compare,
   diffShapes,
-  loadMockServer,
+  loadRecordedMock,
   shapeOf,
-} from './parity'
+} from './recorded'
 
 let real: TestApp
 let mock: Application
-let dataDir: string
+const SUITE = 'partners'
 let owner: Record<string, string>
 let seller: Record<string, string>
-const savedDir = process.env['HQ_PRODUCTS_DIR']
 
 beforeAll(async () => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-parity-'))
   const productsDir = makeProductsDir()
-  process.env['HQ_PRODUCTS_DIR'] = productsDir
-  mock = loadMockServer(dataDir)
+  mock = loadRecordedMock(SUITE)
   real = await createTestApp({
     seedPartners: true,
     app: { hqProducts: { productsDir, writeDir: null } },
@@ -77,9 +70,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  process.env['HQ_PRODUCTS_DIR'] = savedDir
   await real.close()
-  fs.rmSync(dataDir, { recursive: true, force: true })
   removeTempDirs()
 })
 
@@ -618,9 +609,5 @@ describe('diffShapes', () => {
     expect(
       diffShapes(mockShape, realShape, { ignore: ['[].id', '[].name'] })
     ).toEqual([])
-  })
-
-  it('kept the mock store out of the repo data dir', () => {
-    expect(fs.existsSync(path.join(dataDir, 'partner-store.json'))).toBe(true)
   })
 })

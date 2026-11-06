@@ -1,70 +1,125 @@
 /**
- * Parity runner (roadmap B1, D3): sends the same request to the mock server
- * (`simple-server.js`, the contract the frontends were built against) and to
- * the real API (`createApp()`), and compares status and JSON shape.
+ * Recorded mock contract (B12, D3).
  *
- *   const mock = loadMockServer(tmpDir)
- *   const real = (await createTestApp({ seedPartners: true })).app
- *   const result = await compare({ method: 'get', path: '/api/partners' }, { mock, real })
+ * Until the cutover the frontends were built against `simple-server.js`, and
+ * the parity suites sent every request to it and to the real API in lockstep.
+ * B12 deleted the mock server. Its answers to those scenarios were recorded
+ * once (2026-11, before the deletion) into `recorded/<suite>.json`, so the
+ * contract suites keep comparing the real API with exactly what the mock
+ * answered - status, JSON shape and, where the suites compare values, the
+ * values. The recordings contain only synthetic data (the fixtures of the
+ * scenarios).
+ *
+ *   const mock = loadRecordedMock('partners')     // an Express app
+ *   const result = await compare(req, { mock, real })
  *   expect(result.differences).toEqual([])
  *
- * "Shape" means keys and value types, not values: the two servers seed
- * different example data. Rules (see `diffShapes`):
+ * `loadRecordedMock()` replays the recorded answers: a request is matched by
+ * method, URL and body; identical requests get their answers in recording
+ * order. A request that was never recorded answers 599 `not_recorded`, so a
+ * changed scenario fails loudly instead of comparing against nothing. The
+ * recordings are the contract now - change a scenario only together with a
+ * deliberate decision about the contract, and never re-record from the real
+ * API (it would compare the real API with itself).
+ *
+ * "Shape" means keys and value types (`diffShapes`):
  *   - a key the mock has and the real API lacks is a difference (the
  *     frontend reads it);
  *   - an extra key on the real API is allowed unless `strictKeys` is set;
  *   - `null` is compatible with every type (nullable fields);
  *   - arrays compare the merged shape of their elements; an empty array is
  *     compatible with any array.
- *
- * The mock server keeps its stores in `apps/bakery-api/data/*.json`, the only
- * record of a developer's mock data. `loadMockServer()` therefore loads a
- * fresh copy of it with `json-store.core.js` redirected into a temp dir, so a
- * parity test never reads or writes the real store files.
  */
+import * as fs from 'fs'
 import * as path from 'path'
+import express from 'express'
 import request from 'supertest'
 import type { Application } from 'express'
 
-const APP_DIR = path.resolve(__dirname, '../..')
-const MOCK_DATA_DIR = path.join(APP_DIR, 'data')
-const JSON_STORE = path.join(APP_DIR, 'src/services/json-store.core.js')
+const RECORDED_DIR = path.join(__dirname, 'recorded')
 
-type Store = {
-  writeJsonAtomic: (file: string, data: unknown) => void
-  readJsonOrQuarantine: (file: string) => unknown
-  quarantinePath: (file: string, now?: Date) => string
+/** One recorded request/answer pair of the mock server. */
+export interface RecordedExchange {
+  method: string
+  url: string
+  /** Request body, normalised by `bodyKey()`. */
+  body: string
+  status: number
+  contentType: string | null
+  contentDisposition: string | null
+  /** Raw response text (JSON or CSV). */
+  text: string
+}
+
+export interface Recording {
+  suite: string
+  exchanges: RecordedExchange[]
+  /** Side results the suites compare besides HTTP answers (e.g. written files). */
+  values: Record<string, unknown>
+}
+
+/** Request body as a stable key: parsed JSON re-serialised, `{}` when empty. */
+export function bodyKey(raw: Buffer | string | undefined): string {
+  const text = raw === undefined ? '' : raw.toString()
+  if (!text.trim()) return '{}'
+  try {
+    return JSON.stringify(JSON.parse(text))
+  } catch {
+    return text
+  }
+}
+
+function exchangeKey(method: string, url: string, body: string): string {
+  return `${method.toUpperCase()} ${url} ${body}`
+}
+
+export function readRecording(suite: string): Recording {
+  const file = path.join(RECORDED_DIR, `${suite}.json`)
+  return JSON.parse(fs.readFileSync(file, 'utf-8')) as Recording
+}
+
+/** A recorded side value (see `Recording.values`). */
+export function recordedValue<T>(suite: string, key: string): T {
+  const values = readRecording(suite).values
+  if (!(key in values)) {
+    throw new Error(`recorded value "${key}" missing in ${suite}.json`)
+  }
+  return values[key] as T
 }
 
 /**
- * Loads `simple-server.js` with its JSON stores in `dataDir`. Each call
- * returns a fresh mock server (own module state, own stores).
+ * The mock server as recorded: an Express app that answers each request with
+ * the next recorded answer for the same method, URL and body.
  */
-export function loadMockServer(dataDir: string): Application {
-  const redirect = (file: string) =>
-    path.dirname(path.resolve(file)) === MOCK_DATA_DIR
-      ? path.join(dataDir, path.basename(file))
-      : file
+export function loadRecordedMock(suite: string): Application {
+  const queues = new Map<string, RecordedExchange[]>()
+  for (const exchange of readRecording(suite).exchanges) {
+    const key = exchangeKey(exchange.method, exchange.url, exchange.body)
+    const queue = queues.get(key) ?? []
+    queue.push(exchange)
+    queues.set(key, queue)
+  }
 
-  let app: Application | undefined
-  jest.isolateModules(() => {
-    jest.doMock(JSON_STORE, () => {
-      const actual = jest.requireActual(JSON_STORE) as Store
-      return {
-        ...actual,
-        writeJsonAtomic: (file: string, data: unknown) =>
-          actual.writeJsonAtomic(redirect(file), data),
-        readJsonOrQuarantine: (file: string) =>
-          actual.readJsonOrQuarantine(redirect(file)),
-        quarantinePath: (file: string, now?: Date) =>
-          actual.quarantinePath(redirect(file), now),
-      }
-    })
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    app = require(path.join(APP_DIR, 'simple-server.js')) as Application
+  const app = express()
+  app.use(express.raw({ type: () => true, limit: '10mb' }))
+  app.use((req, res) => {
+    const body = bodyKey(Buffer.isBuffer(req.body) ? req.body : undefined)
+    const key = exchangeKey(req.method, req.originalUrl, body)
+    const next = queues.get(key)?.shift()
+    if (!next) {
+      res.status(599).json({
+        error: 'not_recorded',
+        message: `Keine Aufzeichnung des Mock-Servers für ${key}`,
+      })
+      return
+    }
+    res.status(next.status)
+    if (next.contentType) res.setHeader('Content-Type', next.contentType)
+    if (next.contentDisposition) {
+      res.setHeader('Content-Disposition', next.contentDisposition)
+    }
+    res.send(next.text)
   })
-  jest.dontMock(JSON_STORE)
-  if (!app) throw new Error('simple-server.js did not export an app')
   return app
 }
 
@@ -186,14 +241,14 @@ export interface ParityRequest {
   /** Sent to both servers. */
   headers?: Record<string, string>
   /**
-   * Sent to one side only, on top of `headers` - e.g. a mock login token for
-   * the mock and a B3 session for the real API (B4).
+   * Sent to one side only, on top of `headers` - e.g. the mock's recorded
+   * login token for the mock and a B3 session for the real API (B4).
    */
   mockHeaders?: Record<string, string>
   realHeaders?: Record<string, string>
   /**
    * Path for one side only, instead of `path` - for ids the two servers hand
-   * out differently (B8: the mock numbers stops per tour, the real API
+   * out differently (B8: the mock numbered stops per tour, the real API
    * globally).
    */
   mockPath?: string
@@ -235,6 +290,10 @@ async function send(
   return { status: res.status, body: res.body, shape: shapeOf(res.body) }
 }
 
+/**
+ * Sends `req` to the recorded mock and to the real API and compares status
+ * and shape. The mock side is the recording (see the file comment).
+ */
 export async function compare(
   req: ParityRequest,
   apps: { mock: Application; real: Application },

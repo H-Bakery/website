@@ -1,7 +1,10 @@
 /**
- * Parity (D3, B7): the Mörsbach alias `/api/deliveries/*` of the real API
- * answers like `simple-server.js`. Both read the same synthetic catalogue;
- * the same request sequence runs against both, and status, shape and the
+ * Contract (D3, B7, B12): the Mörsbach alias `/api/deliveries/*` of the real
+ * API answers like the mock server did. The mock's answers on the same
+ * synthetic catalogue are recorded in `recorded/preorders.json` (see
+ * recorded.ts); the same request sequence runs against the real API, whose
+ * clock is pinned to the recording moment (`RECORDED_AT`) so deadlines and
+ * date windows stay comparable. Status, shape and the
  * values the Mörsbach screens show (reference, items, totals, status,
  * deadline, error texts) must match.
  *
@@ -9,47 +12,45 @@
  * looks for a tour stop (its seed tour is on the *next* Saturday); the real
  * API has no tours (D11) and answers "the point is served on that day".
  */
-import * as fs from 'fs'
-import * as os from 'os'
-import * as path from 'path'
 import type { Application } from 'express'
 
 import { createApp } from '../../src/app'
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { makeProductsDir, removeTempDirs } from '../helpers/hqProducts'
-import { compare, loadMockServer, ParityRequest } from './parity'
+import { compare, loadRecordedMock, ParityRequest } from './recorded'
 
 let real: TestApp
 let realApp: Application
 let mock: Application
 let auth: Record<string, string>
-let dataDir: string
-const savedDir = process.env['HQ_PRODUCTS_DIR']
+const SUITE = 'preorders'
+/** When the mock's answers were recorded. */
+const RECORDED_AT = new Date('2026-11-06T13:45:00+01:00')
 
 // A Saturday far enough ahead that the Friday-12:00 deadline has not passed.
 const SATURDAY = '2027-01-09'
 const FRIDAY = '2027-01-08'
 
 beforeAll(async () => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-parity-b7-'))
   const productsDir = makeProductsDir()
-  process.env['HQ_PRODUCTS_DIR'] = productsDir
-  mock = loadMockServer(dataDir)
+  mock = loadRecordedMock(SUITE)
   real = await createTestApp()
   realApp = createApp({
     logRequests: false,
     sequelize: real.sequelize,
     hqProducts: { productsDir, writeDir: null },
-    preorders: { productsDir, variantsForProduct: () => null },
+    preorders: {
+      productsDir,
+      variantsForProduct: () => null,
+      now: () => new Date(RECORDED_AT),
+    },
   })
   auth = bearer(await sessionFor(real.app, 'test.inhaber', 'inhaber'))
 })
 
 afterAll(async () => {
-  process.env['HQ_PRODUCTS_DIR'] = savedDir
   await real.close()
-  fs.rmSync(dataDir, { recursive: true, force: true })
   removeTempDirs()
 })
 
@@ -98,7 +99,7 @@ const ORDER = {
   ],
 }
 
-describe('Mörsbach alias parity (mock vs. real API)', () => {
+describe('Mörsbach alias contract (recorded mock vs. real API)', () => {
   it('GET /api/deliveries/pickup-points: same point', async () => {
     const result = await send({
       method: 'get',
@@ -403,9 +404,5 @@ describe('Mörsbach alias parity (mock vs. real API)', () => {
     expect(result.differences).toEqual([])
     const message = (b: unknown) => (b as { message: string }).message
     expect(message(result.real.body)).toBe(message(result.mock.body))
-  })
-
-  it('kept the mock store out of the repo data dir', () => {
-    expect(fs.existsSync(path.join(dataDir, 'delivery-store.json'))).toBe(true)
   })
 })

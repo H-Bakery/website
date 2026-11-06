@@ -1,13 +1,15 @@
 /**
- * Parity (B4, D3): reports, analytics, finance and Tagesziel answer on the
- * real API exactly as on the mock server. Both read the same synthetic hq
- * tree in a temp dir (`tests/fixtures/hq-data.synthetic.js`); the mock gets
- * its own login (`auth.mock.js`, role `admin`), the real API a B3 session of
- * an `inhaber`.
+ * Contract (B4, D3, B12): reports, analytics, finance and Tagesziel answer on
+ * the real API exactly as the mock server did. The mock's answers on the
+ * synthetic hq tree (`tests/fixtures/hq-data.synthetic.js`) are recorded in
+ * `recorded/hq-data.json` (see recorded.ts) - including its own login
+ * (`admin` role); the real API gets a B3 session of an `inhaber`.
  *
- * Both servers run the same modules on the same files, so beyond the shape
+ * Both servers ran the same modules on the same files, so beyond the shape
  * check every success body must be deep-equal - a difference would mean the
- * mount (paths, options, dirs) is wrong, not the data.
+ * mount (paths, options, dirs) is wrong, not the data. The recording was
+ * made on RECORDED_ON; the real API runs with that "today", so the
+ * Tagesziel answers without a date stay comparable.
  */
 import * as fs from 'fs'
 import * as os from 'os'
@@ -17,7 +19,7 @@ import type { Application } from 'express'
 
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
-import { compare, loadMockServer } from './parity'
+import { compare, loadRecordedMock } from './recorded'
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { writeSyntheticHq } = require('../fixtures/hq-data.synthetic')
@@ -29,18 +31,11 @@ const quiet = {
   warn: () => undefined,
   error: () => undefined,
 }
-const ENV_KEYS = [
-  'HQ_REPORTS_DIR',
-  'HQ_FINANCE_DIR',
-  'MOCK_ADMIN_USER',
-  'MOCK_ADMIN_PASSWORD',
-  'MOCK_STAFF_USER',
-  'MOCK_STAFF_PASSWORD',
-] as const
-const savedEnv: Record<string, string | undefined> = {}
+const SUITE = 'hq-data'
+/** The day the mock's answers were recorded (Europe/Berlin). */
+const RECORDED_ON = '2026-11-06'
 
 let root: string
-let dataDir: string
 let mock: Application
 let real: TestApp
 let mockAdmin: Record<string, string>
@@ -57,35 +52,23 @@ async function mockToken(username: string, password: string): Promise<string> {
 }
 
 beforeAll(async () => {
-  for (const key of ENV_KEYS) savedEnv[key] = process.env[key]
-  root = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-b4-parity-'))
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-b4-store-'))
+  root = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-b4-contract-'))
   const hq = writeSyntheticHq(root)
 
-  // The mock reads its dirs and users from the environment when loaded.
-  process.env.HQ_REPORTS_DIR = hq.reportsDir
-  process.env.HQ_FINANCE_DIR = hq.financeDir
-  process.env.MOCK_ADMIN_USER = 'test.chefin'
-  process.env.MOCK_ADMIN_PASSWORD = 'mock-pass-1'
-  process.env.MOCK_STAFF_USER = 'test.laden'
-  process.env.MOCK_STAFF_PASSWORD = 'mock-pass-2'
-  const log = console.log
-  const warn = console.warn
-  console.log = () => undefined
-  console.warn = () => undefined
-  try {
-    mock = loadMockServer(dataDir)
-  } finally {
-    console.log = log
-    console.warn = warn
-  }
+  mock = loadRecordedMock(SUITE)
+  // The recorded mock logins (`admin` = test.chefin, `staff` = test.laden).
   mockAdmin = bearer(await mockToken('test.chefin', 'mock-pass-1'))
   mockStaff = bearer(await mockToken('test.laden', 'mock-pass-2'))
 
   // The real API gets the dirs explicitly (as server.ts passes the config).
   real = await createTestApp({
     app: {
-      hq: { reportsDir: hq.reportsDir, financeDir: hq.financeDir, log: quiet },
+      hq: {
+        reportsDir: hq.reportsDir,
+        financeDir: hq.financeDir,
+        today: RECORDED_ON,
+        log: quiet,
+      },
     },
   })
   realOwner = bearer(await sessionFor(real.app, 'test.inhaber', 'inhaber'))
@@ -94,12 +77,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await real?.close()
-  for (const key of ENV_KEYS) {
-    if (savedEnv[key] === undefined) delete process.env[key]
-    else process.env[key] = savedEnv[key]
-  }
   fs.rmSync(root, { recursive: true, force: true })
-  fs.rmSync(dataDir, { recursive: true, force: true })
 })
 
 /** As the owner on both sides. */
@@ -110,7 +88,7 @@ function asOwner(p: string) {
   )
 }
 
-describe('reports + analytics parity (mock vs. real API)', () => {
+describe('reports + analytics contract (recorded mock vs. real API)', () => {
   it.each([
     '/api/reports/daily?from=2026-03-01&to=2026-03-08',
     '/api/reports/daily/2026-03-07',
@@ -161,7 +139,7 @@ describe('reports + analytics parity (mock vs. real API)', () => {
   })
 })
 
-describe('finance + Tagesziel parity (mock vs. real API)', () => {
+describe('finance + Tagesziel contract (recorded mock vs. real API)', () => {
   it.each([
     '/api/finance/summary',
     '/api/finance/months',

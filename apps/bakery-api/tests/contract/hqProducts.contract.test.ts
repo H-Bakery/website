@@ -1,16 +1,15 @@
 /**
- * Parity (D3, B5): the real API serves hq products like the mock server.
- * Both read the same synthetic fixture dir; the mock reads
- * `HQ_PRODUCTS_DIR` when it is loaded, so the variable is set first.
+ * Contract (D3, B5, B12): the real API serves hq products like the mock
+ * server did. The mock's answers to this scenario on the synthetic fixture
+ * catalogue are recorded in `recorded/hqProducts.json` (see recorded.ts),
+ * including the bytes it wrote for each save.
  *
  * Values are compared too, not only shapes: same files, same products.
  * The real API adds `pendingApproval` (D6) and, on the management view
  * `/api/hq-products[/:id]`, `rawDescription` (F4) - extra keys, allowed.
- * Writes are compared on two separate copies of the fixture dir, file by
- * file: the same request must leave the same bytes on disk.
+ * Writes must leave the same bytes on disk as the mock wrote.
  */
 import * as fs from 'fs'
-import * as os from 'os'
 import * as path from 'path'
 import request from 'supertest'
 import type { Application } from 'express'
@@ -19,23 +18,19 @@ import { createApp } from '../../src/app'
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, TestApp } from '../helpers/createTestApp'
 import { makeProductsDir, removeTempDirs } from '../helpers/hqProducts'
-import { compare, loadMockServer } from './parity'
+import { compare, loadRecordedMock, recordedValue } from './recorded'
 
 let real: TestApp
 let realApp: Application
 let mock: Application
 let auth: Record<string, string>
-let dataDir: string
-let mockDir: string
 let realDir: string
-const savedDir = process.env['HQ_PRODUCTS_DIR']
+
+const SUITE = 'hqProducts'
 
 beforeAll(async () => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-parity-'))
-  mockDir = makeProductsDir()
   realDir = makeProductsDir()
-  process.env['HQ_PRODUCTS_DIR'] = mockDir
-  mock = loadMockServer(dataDir)
+  mock = loadRecordedMock(SUITE)
   real = await createTestApp()
   realApp = createApp({
     logRequests: false,
@@ -46,13 +41,15 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  process.env['HQ_PRODUCTS_DIR'] = savedDir
   await real.close()
-  fs.rmSync(dataDir, { recursive: true, force: true })
   removeTempDirs()
 })
 
 const apps = () => ({ mock, real: realApp })
+/** What the mock server wrote for `name` (recorded, see recorded.ts). */
+function mockFile(name: string, tag = ''): string {
+  return recordedValue<string>(SUITE, `file:${tag}${tag ? ':' : ''}${name}`)
+}
 
 function withoutPending(body: unknown): unknown {
   return JSON.parse(JSON.stringify(body), (key, value) =>
@@ -60,7 +57,7 @@ function withoutPending(body: unknown): unknown {
   )
 }
 
-describe('hq products parity (mock vs. real API)', () => {
+describe('hq products contract (recorded mock vs. real API)', () => {
   it.each(['/api/products', '/api/products?category=brot'])(
     'GET %s: same status, shape and products',
     async (url) => {
@@ -139,7 +136,7 @@ describe('hq products parity (mock vs. real API)', () => {
       })
       expect(
         fs.readFileSync(path.join(realDir, '13-musterweck.md'), 'utf-8')
-      ).toBe(fs.readFileSync(path.join(mockDir, '13-musterweck.md'), 'utf-8'))
+      ).toBe(mockFile('13-musterweck.md', _label))
     }
   )
 
@@ -183,7 +180,7 @@ describe('hq products parity (mock vs. real API)', () => {
     })
     const file = '22-paritaetsbrot.md'
     expect(fs.readFileSync(path.join(realDir, file), 'utf-8')).toBe(
-      fs.readFileSync(path.join(mockDir, file), 'utf-8')
+      mockFile(file)
     )
 
     const dup = await compare(
@@ -220,7 +217,7 @@ describe('hq products parity (mock vs. real API)', () => {
     })
     const file = '23-paritaetsleer.md'
     expect(fs.readFileSync(path.join(realDir, file), 'utf-8')).toBe(
-      fs.readFileSync(path.join(mockDir, file), 'utf-8')
+      mockFile(file)
     )
   })
 })

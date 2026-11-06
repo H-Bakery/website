@@ -1,0 +1,330 @@
+{
+  "suite": "preorders",
+  "exchanges": [
+    {
+      "method": "GET",
+      "url": "/api/deliveries/pickup-points",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"}]"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/pickup-points/kindergarten-moersbach",
+      "body": "{\"window\":\"09:00-09:45\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:45\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/pickup-points/kindergarten-moersbach",
+      "body": "{\"window\":\"09:00-09:30\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":\"kindergarten-moersbach\",\"name\":\"Kindergarten Mörsbach\",\"street\":\"Höhenstraße 24\",\"zip\":\"66482\",\"city\":\"Zweibrücken-Mörsbach\",\"weekday\":6,\"window\":\"09:00-09:30\",\"orderDeadline\":{\"weekday\":5,\"time\":\"12:00\"},\"notes\":\"Städt. Kita \\\"Hand in Hand\\\". Übergabe vor dem Eingang.\",\"active\":true,\"lat\":49.302619,\"lon\":7.3937453,\"geocodeSource\":\"nominatim\",\"geocodePrecision\":\"house\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3},{\"productId\":\"kornbrot-500g\",\"qty\":1,\"unitPrice\":0.01}]}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.642Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders?date=2027-01-09",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.642Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders?pickupPointId=kindergarten-moersbach",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.642Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders?status=open",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.642Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders?pickupPointId=nirgendwo",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "[]"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders/1",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.642Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders/summary?date=2027-01-09",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"date\":\"2027-01-09\",\"pickupPointId\":null,\"deadline\":\"2027-01-08T11:00:00.000Z\",\"hasPickupStop\":false,\"count\":1,\"total\":3.85,\"open\":1,\"handedOver\":0,\"notCollected\":0,\"cancelled\":0,\"byProduct\":[{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"unit\":\"Stück\",\"qty\":1},{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":3}]}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/preorders/1",
+      "body": "{\"items\":[{\"productId\":\"musterweck\",\"qty\":5},{\"productId\":\"mustersemmel\",\"qty\":2}]}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":5,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":2.25},{\"productId\":\"mustersemmel\",\"name\":\"Mustersemmel\",\"qty\":2,\"unit\":\"Stück\",\"unitPrice\":0.5,\"lineTotal\":1}],\"total\":3.25,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.719Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/preorders/1",
+      "body": "{\"status\":\"not_collected\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":5,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":2.25},{\"productId\":\"mustersemmel\",\"name\":\"Mustersemmel\",\"qty\":2,\"unit\":\"Stück\",\"unitPrice\":0.5,\"lineTotal\":1}],\"total\":3.25,\"note\":\"Bitte klingeln\",\"status\":\"not_collected\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.732Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/preorders/1",
+      "body": "{\"status\":\"open\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":5,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":2.25},{\"productId\":\"mustersemmel\",\"name\":\"Mustersemmel\",\"qty\":2,\"unit\":\"Stück\",\"unitPrice\":0.5,\"lineTotal\":1}],\"total\":3.25,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.745Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/preorders/1",
+      "body": "{\"status\":\"handed_over\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":5,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":2.25},{\"productId\":\"mustersemmel\",\"name\":\"Mustersemmel\",\"qty\":2,\"unit\":\"Stück\",\"unitPrice\":0.5,\"lineTotal\":1}],\"total\":3.25,\"note\":\"Bitte klingeln\",\"status\":\"handed_over\",\"handedOverAt\":\"2026-11-06T12:47:52.756Z\",\"updatedAt\":\"2026-11-06T12:47:52.756Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/preorders/1",
+      "body": "{\"customer\":\"Erika B.\",\"phone\":\"\"}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":1,\"reference\":\"MO-2027-01-09-01\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Erika B.\",\"phone\":null,\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":5,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":2.25},{\"productId\":\"mustersemmel\",\"name\":\"Mustersemmel\",\"qty\":2,\"unit\":\"Stück\",\"unitPrice\":0.5,\"lineTotal\":1}],\"total\":3.25,\"note\":\"Bitte klingeln\",\"status\":\"handed_over\",\"handedOverAt\":\"2026-11-06T12:47:52.756Z\",\"updatedAt\":\"2026-11-06T12:47:52.767Z\",\"createdAt\":\"2026-11-06T12:47:52.642Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/deliveries/preorders/1",
+      "body": "{}",
+      "status": 409,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Preorder already handed over\",\"message\":\"Diese Vorbestellung wurde bereits übergeben und kann nicht storniert werden — bitte zuerst auf „Offen\\\" zurücksetzen.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Max Muster\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3},{\"productId\":\"kornbrot-500g\",\"qty\":1,\"unitPrice\":0.01}]}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"reference\":\"MO-2027-01-09-02\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Max Muster\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.789Z\",\"createdAt\":\"2026-11-06T12:47:52.789Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/deliveries/preorders/2",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":2,\"reference\":\"MO-2027-01-09-02\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Max Muster\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"cancelled\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.801Z\",\"createdAt\":\"2026-11-06T12:47:52.789Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/preorders/2",
+      "body": "{\"status\":\"handed_over\"}",
+      "status": 409,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Preorder cancelled\",\"message\":\"Diese Vorbestellung wurde storniert — bitte zuerst auf „Offen\\\" zurücksetzen.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Paula Probe\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3},{\"productId\":\"kornbrot-500g\",\"qty\":1,\"unitPrice\":0.01}]}",
+      "status": 201,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"id\":3,\"reference\":\"MO-2027-01-09-03\",\"pickupPointId\":\"kindergarten-moersbach\",\"date\":\"2027-01-09\",\"customer\":\"Paula Probe\",\"phone\":\"01701112223\",\"items\":[{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"qty\":3,\"unit\":\"Stück\",\"unitPrice\":0.45,\"lineTotal\":1.35},{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"qty\":1,\"unit\":\"Stück\",\"unitPrice\":2.5,\"lineTotal\":2.5}],\"total\":3.85,\"note\":\"Bitte klingeln\",\"status\":\"open\",\"handedOverAt\":null,\"updatedAt\":\"2026-11-06T12:47:52.822Z\",\"createdAt\":\"2026-11-06T12:47:52.822Z\",\"deadline\":\"2027-01-08T11:00:00.000Z\",\"afterDeadline\":false}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders/summary?date=2027-01-09",
+      "body": "{}",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"date\":\"2027-01-09\",\"pickupPointId\":null,\"deadline\":\"2027-01-08T11:00:00.000Z\",\"hasPickupStop\":false,\"count\":2,\"total\":7.1,\"open\":1,\"handedOver\":1,\"notCollected\":0,\"cancelled\":1,\"byProduct\":[{\"productId\":\"kornbrot-500g\",\"name\":\"Kornbrot 500g\",\"unit\":\"Stück\",\"qty\":1},{\"productId\":\"mustersemmel\",\"name\":\"Mustersemmel\",\"unit\":\"Stück\",\"qty\":2},{\"productId\":\"musterweck\",\"name\":\"Musterweck\",\"unit\":\"Stück\",\"qty\":8}]}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-08\",\"customer\":\"Erika Beispiel\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3},{\"productId\":\"kornbrot-500g\",\"qty\":1,\"unitPrice\":0.01}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid delivery day\",\"message\":\"Der 08.01.2027 ist kein Samstag — an diesem Tag wird nicht nach Mörsbach geliefert.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\" \",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3},{\"productId\":\"kornbrot-500g\",\"qty\":1,\"unitPrice\":0.01}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Customer is required\",\"message\":\"Der Name des Kunden ist erforderlich.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Items are required\",\"message\":\"Eine Vorbestellung braucht mindestens eine Position.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"gibt-es-nicht\",\"qty\":1}]}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Unknown product\",\"message\":\"„gibt-es-nicht“ steht nicht im Sortiment.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3},{\"productId\":\"kornbrot-500g\",\"qty\":1,\"unitPrice\":0.01}],\"status\":\"weg\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid status\",\"message\":\"Status muss \\\"open\\\", \\\"handed_over\\\", \\\"not_collected\\\" oder \\\"cancelled\\\" sein.\"}"
+    },
+    {
+      "method": "POST",
+      "url": "/api/deliveries/preorders",
+      "body": "{\"date\":\"2027-01-09\",\"customer\":\"Erika Beispiel\",\"phone\":\"0170 1112223\",\"note\":\"Bitte klingeln\",\"items\":[{\"productId\":\"musterweck\",\"qty\":3},{\"productId\":\"kornbrot-500g\",\"qty\":1,\"unitPrice\":0.01}],\"pickupPointId\":\"nirgendwo\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Pickup point not found\",\"message\":\"Diese Lieferstelle existiert nicht.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders?date=2027-02-30",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid date\",\"message\":\"Das Datum muss im Format JJJJ-MM-TT angegeben werden.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders?status=weg",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid status\",\"message\":\"Status muss \\\"open\\\", \\\"handed_over\\\", \\\"not_collected\\\" oder \\\"cancelled\\\" sein.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders/summary",
+      "body": "{}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid date\",\"message\":\"Für die Backliste wird ein Datum im Format JJJJ-MM-TT gebraucht.\"}"
+    },
+    {
+      "method": "GET",
+      "url": "/api/deliveries/preorders/999",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Preorder not found\",\"message\":\"Diese Vorbestellung existiert nicht.\"}"
+    },
+    {
+      "method": "PATCH",
+      "url": "/api/deliveries/preorders/999",
+      "body": "{\"status\":\"open\"}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Preorder not found\",\"message\":\"Diese Vorbestellung existiert nicht.\"}"
+    },
+    {
+      "method": "DELETE",
+      "url": "/api/deliveries/preorders/999",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Preorder not found\",\"message\":\"Diese Vorbestellung existiert nicht.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/pickup-points/nirgendwo",
+      "body": "{}",
+      "status": 404,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Pickup point not found\",\"message\":\"Diese Lieferstelle existiert nicht.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/pickup-points/kindergarten-moersbach",
+      "body": "{\"window\":\"9 Uhr\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Invalid window\",\"message\":\"Das Übergabefenster muss im Format HH:MM-HH:MM angegeben werden.\"}"
+    },
+    {
+      "method": "PUT",
+      "url": "/api/deliveries/pickup-points/kindergarten-moersbach",
+      "body": "{\"notes\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+      "status": 400,
+      "contentType": "application/json; charset=utf-8",
+      "contentDisposition": null,
+      "text": "{\"error\":\"Text too long\",\"message\":\"Die Notizen dürfen höchstens 2000 Zeichen lang sein.\"}"
+    }
+  ],
+  "values": {}
+}

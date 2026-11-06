@@ -1,6 +1,8 @@
 /**
- * Parity (D3, B8): the tour endpoints `/api/deliveries/{depot,drivers,tours,
- * geocode}` of the real API answer like `simple-server.js`. One scenario -
+ * Contract (D3, B8, B12): the tour endpoints `/api/deliveries/{depot,drivers,
+ * tours,geocode}` of the real API answer like the mock server did (its
+ * answers are recorded in `recorded/deliveries.json`, see recorded.ts). One
+ * scenario -
  * drivers, a Saturday tour with the Sammelstelle and its handover list,
  * stops, reorder, ticks, recalculation without OSRM, position, delete - runs
  * against both, from the same starting state (depot, Mörsbach point, two
@@ -21,12 +23,9 @@
  * unknown `pickupPointId` on a stop (400 vs. stored), an invalid
  * `completedAt` (400 vs. stored).
  *
- * No network: `tests/setup-ts.js` points the mock's Nominatim/OSRM at a
- * closed local port, the real API gets an offline geo stub.
+ * No network: the mock was recorded without Nominatim/OSRM (closed local
+ * port), the real API gets an offline geo stub.
  */
-import * as fs from 'fs'
-import * as os from 'os'
-import * as path from 'path'
 import type { Application } from 'express'
 import request from 'supertest'
 
@@ -34,23 +33,24 @@ import { createApp } from '../../src/app'
 import { bearer, sessionFor } from '../helpers/auth'
 import { createTestApp, OFFLINE_GEO, TestApp } from '../helpers/createTestApp'
 import { makeProductsDir, removeTempDirs } from '../helpers/hqProducts'
-import { compare, loadMockServer, ParityRequest, ParityResult } from './parity'
+import {
+  compare,
+  loadRecordedMock,
+  ParityRequest,
+  ParityResult,
+} from './recorded'
 
 let real: TestApp
 let realApp: Application
 let mock: Application
 let auth: Record<string, string>
-let dataDir: string
-const savedDir = process.env['HQ_PRODUCTS_DIR']
-
+const SUITE = 'deliveries'
 const SATURDAY = '2027-01-09'
 const MOERSBACH = 'kindergarten-moersbach'
 const QUIET = { warn: () => undefined }
 
 beforeAll(async () => {
-  dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'bakery-parity-b8-'))
   const productsDir = makeProductsDir()
-  process.env['HQ_PRODUCTS_DIR'] = productsDir
   real = await createTestApp()
   realApp = createApp({
     logRequests: false,
@@ -61,45 +61,19 @@ beforeAll(async () => {
   })
   auth = bearer(await sessionFor(real.app, 'test.inhaber', 'inhaber'))
 
-  // Same starting state on both sides: the real seed (depot, Mörsbach) and
-  // the mock's two seed drivers; no tours.
-  const depot = (await request(realApp).get('/api/deliveries/depot').set(auth))
-    .body
-  const points = (
-    await request(realApp).get('/api/deliveries/pickup-points').set(auth)
-  ).body
-  const drivers = []
+  // Same starting state as the recorded mock: the real seed (depot,
+  // Mörsbach) and the mock's two seed drivers; no tours.
   for (const name of ['Fahrer 1', 'Fahrer 2']) {
-    const res = await request(realApp)
+    await request(realApp)
       .post('/api/deliveries/drivers')
       .set(auth)
       .send({ name })
-    drivers.push({
-      id: res.body.id,
-      name,
-      phone: null,
-      vehicle: 'car',
-      active: true,
-    })
   }
-  fs.writeFileSync(
-    path.join(dataDir, 'delivery-store.json'),
-    JSON.stringify({
-      depot,
-      pickupPoints: points,
-      preorders: [],
-      drivers,
-      tours: [],
-      geocache: {},
-    })
-  )
-  mock = loadMockServer(dataDir)
+  mock = loadRecordedMock(SUITE)
 })
 
 afterAll(async () => {
-  process.env['HQ_PRODUCTS_DIR'] = savedDir
   await real.close()
-  fs.rmSync(dataDir, { recursive: true, force: true })
   removeTempDirs()
 })
 
@@ -196,7 +170,7 @@ function stopIds(
 
 // --------------------------------------------------------------- scenario
 
-describe('delivery tours parity (mock vs. real API)', () => {
+describe('delivery tours contract (recorded mock vs. real API)', () => {
   let tour = 0
   let latest: ParityResult
 
