@@ -87,6 +87,13 @@ export interface DeliveryToursOptions {
   /** How long a failed address search is not repeated (default 5 min). */
   geocodeRetryMs?: number
   log?: { warn: (...args: unknown[]) => void }
+  /**
+   * The clock for ETAs, time windows, the default tour date and the
+   * `startedAt`/`finishedAt`/`completedAt`/`routedAt`/position stamps
+   * (default: wall clock). Tests pin it to a fixed moment (B12: the contract
+   * suite replays answers recorded on one day).
+   */
+  now?: () => Date
 }
 
 export interface PlainDepot {
@@ -496,6 +503,7 @@ export class DeliveryToursService {
   private readonly budgetMs: number
   private readonly retryMs: number
   private readonly log: { warn: (...args: unknown[]) => void }
+  private readonly now: () => Date
   /** Address key → time of the failed search (5-min negative cache). */
   private readonly misses = new Map<string, number>()
   /** Address key → running search (concurrent requests share one). */
@@ -509,6 +517,11 @@ export class DeliveryToursService {
     this.budgetMs = options.hydrateBudgetMs ?? HYDRATE_BUDGET_MS
     this.retryMs = options.geocodeRetryMs ?? GEOCODE_RETRY_MS
     this.log = options.log ?? { warn: (...a) => console.warn(...a) }
+    this.now = options.now ?? (() => new Date())
+  }
+
+  private nowIso(): string {
+    return this.now().toISOString()
   }
 
   /** Resolves once the address searches still running in the background are done. */
@@ -620,7 +633,7 @@ export class DeliveryToursService {
       }
     }
     return tours.map((tour) =>
-      decorateTour(tour, depot, drivers, points, handover)
+      decorateTour(tour, depot, drivers, points, handover, this.now().getTime())
     )
   }
 
@@ -1202,7 +1215,7 @@ export class DeliveryToursService {
 
   async createTour(body: unknown, req: Request): Promise<Result<PlainTour>> {
     const input = (body ?? {}) as Record<string, unknown>
-    const date = (input['date'] as string) || core.nextWeekday(new Date(), 6)
+    const date = (input['date'] as string) || core.nextWeekday(this.now(), 6)
     if (!core.isBusinessDate(date)) {
       return fail(
         400,
@@ -1322,7 +1335,7 @@ export class DeliveryToursService {
     }
     return this.mutateTour(id, req, async (tour, transaction) => {
       const changed: string[] = []
-      const nowIso = new Date().toISOString()
+      const nowIso = this.nowIso()
       if (input['status'] !== undefined) {
         const status = input['status'] as string
         if (status === 'active' && !tour.startedAt) tour.startedAt = nowIso
@@ -1426,7 +1439,7 @@ export class DeliveryToursService {
   ): Promise<Result<PlainTour>> {
     const exists = await DeliveryTour.findByPk(tourId)
     if (!exists) return tourNotFound().toResult()
-    const result = core.normalizeStopInput(body, null)
+    const result = core.normalizeStopInput(body, null, this.nowIso())
     if (result.error) return fail(400, result.error, result.message)
     const draft: PlainStop = {
       id: 0,
@@ -1472,7 +1485,7 @@ export class DeliveryToursService {
         createdId = row.id
         tour.stops.push(toPlainStop(row))
         // Ein nachgeschobener Stopp macht eine abgeschlossene Tour wieder auf.
-        core.syncTourStatus(tour)
+        core.syncTourStatus(tour, this.nowIso())
         return {
           action: 'add_stop',
           data: { stopId: row.id, pickupPointId: draft.pickupPointId ?? null },
@@ -1541,7 +1554,7 @@ export class DeliveryToursService {
       async (tour) => {
         const stop = tour.stops.find((s) => s.id === stopId)
         if (!stop) throw stopNotFound()
-        const result = core.normalizeStopInput(input, stop)
+        const result = core.normalizeStopInput(input, stop, this.nowIso())
         if (result.error) {
           throw new DeliveryRouteError(400, result.error, result.message)
         }
@@ -1561,7 +1574,7 @@ export class DeliveryToursService {
         }
         // Erster abgehakter Stopp startet die Tour, der letzte schließt sie,
         // ein zurückgesetzter macht sie wieder auf.
-        core.syncTourStatus(tour)
+        core.syncTourStatus(tour, this.nowIso())
         if (!core.hasCoordinates(stop)) {
           relocate = { stop, force: addressChanged }
         }
@@ -1601,7 +1614,7 @@ export class DeliveryToursService {
       tour.stops = tour.stops.filter((s) => s.id !== stop.id)
       await DeliveryStop.destroy({ where: { id: stop.id }, transaction })
       // War das der letzte offene Stopp, ist die Tour jetzt fertig.
-      core.syncTourStatus(tour)
+      core.syncTourStatus(tour, this.nowIso())
       return {
         action: 'remove_stop',
         data: {
@@ -1639,7 +1652,7 @@ export class DeliveryToursService {
       if (!snapshot) return tourNotFound().toResult()
       const computed = offline
         ? null
-        : await recalculateTour(snapshot, depot, optimize, this.geo)
+        : await recalculateTour(snapshot, depot, optimize, this.geo, this.now())
       const outcome = await this.mutateTour(
         tourId,
         req,
@@ -1647,7 +1660,13 @@ export class DeliveryToursService {
           let next = computed
           if (!next || routeFingerprint(tour) !== routeFingerprint(snapshot)) {
             if (!offline) throw new RetryRoute()
-            next = await recalculateTour(tour, depot, optimize, OFFLINE_GEO)
+            next = await recalculateTour(
+              tour,
+              depot,
+              optimize,
+              OFFLINE_GEO,
+              this.now()
+            )
           }
           const byId = new Map(tour.stops.map((s) => [s.id, s]))
           tour.stops = next.stops.map((s) => byId.get(s.id) as PlainStop)
@@ -1696,7 +1715,7 @@ export class DeliveryToursService {
         ? Number(input['accuracy'])
         : null,
       speed: core.isNumber(input['speed']) ? Number(input['speed']) : null,
-      at: new Date().toISOString(),
+      at: this.nowIso(),
     }
     // Telemetrie alle 30 s je Fahrer: nicht im audit_log (s. CLAUDE.md).
     try {
@@ -1821,7 +1840,8 @@ export async function recalculateTour(
   source: PlainTour,
   depot: PlainDepot,
   optimize: boolean,
-  geo: GeoServices
+  geo: GeoServices,
+  now: Date = new Date()
 ): Promise<PlainTour> {
   const tour: PlainTour = JSON.parse(JSON.stringify(source))
   const open = tour.stops.filter((s) => s.status === 'open')
@@ -1829,7 +1849,7 @@ export async function recalculateTour(
   const windowed =
     reorder && open.some((s) => core.parseTimeWindow(s.timeWindow) !== null)
   if (windowed) {
-    const baseline = core.arrivalBaseline(depot, tour)
+    const baseline = core.arrivalBaseline(depot, tour, now.getTime())
     const ordered = core.orderStopsNearestNeighbour(baseline.origin, open, {
       startedAt: baseline.startedAt,
       vehicleType: tour.vehicleType,
@@ -1863,7 +1883,7 @@ export async function recalculateTour(
     tour.isEstimate = false
   } else {
     if (reorder && !windowed) {
-      const baseline = core.arrivalBaseline(depot, tour)
+      const baseline = core.arrivalBaseline(depot, tour, now.getTime())
       const ordered = core.orderStopsNearestNeighbour(baseline.origin, open, {
         startedAt: baseline.startedAt,
         vehicleType: tour.vehicleType,
@@ -1884,7 +1904,7 @@ export async function recalculateTour(
     tour.geometry = null
     tour.isEstimate = true
   }
-  tour.routedAt = new Date().toISOString()
+  tour.routedAt = now.toISOString()
   return tour
 }
 
@@ -1894,11 +1914,12 @@ function decorateTour(
   depot: PlainDepot,
   drivers: Map<number, PlainDriver>,
   points: Map<string, PickupPointDto>,
-  handover: Map<string, Record<string, unknown>[]>
+  handover: Map<string, Record<string, unknown>[]>,
+  now: number
 ): DecoratedTour {
   const progress = core.tourProgress(tour)
   const next = core.nextOpenStop(tour)
-  const baseline = core.arrivalBaseline(depot, tour)
+  const baseline = core.arrivalBaseline(depot, tour, now)
   const arrivals = core.estimateArrivalDetails(
     baseline.origin,
     tour.stops.filter((s) => s.status === 'open'),

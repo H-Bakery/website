@@ -626,10 +626,13 @@ function toBusinessDate(date) {
 /**
  * Prueft und normalisiert einen Stopp aus dem Request-Body.
  * Rueckgabe: `{ stop }` oder `{ error, message }` mit deutschem Text.
+ * `nowIso` (optional) ist die Uhr fuer `completedAt` ohne Angabe im Body -
+ * die echte API reicht ihre injizierbare Uhr durch, sonst gilt jetzt.
  */
-function normalizeStopInput(body, existing) {
+function normalizeStopInput(body, existing, nowIso) {
   const source = body || {}
   const base = existing || {}
+  const completedNow = () => nowIso || new Date().toISOString()
 
   const customer = String(
     source.customer === undefined ? base.customer || '' : source.customer
@@ -761,12 +764,12 @@ function normalizeStopInput(body, existing) {
   }
 
   if (status === 'done' && base.status !== 'done') {
-    stop.completedAt = source.completedAt || new Date().toISOString()
+    stop.completedAt = source.completedAt || completedNow()
     stop.failureReason = null
     stop.goodsDisposition = null
   }
   if (status === 'failed') {
-    stop.completedAt = source.completedAt || new Date().toISOString()
+    stop.completedAt = source.completedAt || completedNow()
     stop.failureReason =
       String(source.failureReason || base.failureReason || '').trim() ||
       'Nicht angetroffen'

@@ -1098,7 +1098,10 @@ objects like the mock's (no `{ success, data }`); errors via `sendError`, so the
   (results land in `delivery_geocache` and on the stop); misses are not retried for
   `GEOCODE_RETRY_MS` (5 min); concurrent searches for one address share one lookup. Explicit
   actions (create stop, address change, optimize, depot change, `/geocode`) search with `force`.
-  Options `createApp({ deliveries: { geo, hydrateBudgetMs, geocodeRetryMs, log } })`;
+  Options `createApp({ deliveries: { geo, hydrateBudgetMs, geocodeRetryMs, log, now } })`
+  (`now`: the clock for ETAs, time windows, the default tour date and the
+  `startedAt`/`finishedAt`/`completedAt`/`routedAt`/position stamps - tests pin it; the geocode
+  negative cache keeps the wall clock);
   `createTestApp()` passes `OFFLINE_GEO` (no network) and `tests/setup-ts.js` points
   `NOMINATIM_URL`/`OSRM_URL` at a closed port.
 - **Fahrer = own tours.** A driver row may name its account (`delivery_drivers.user_id`, unique:
@@ -1302,8 +1305,8 @@ their models use `underscored: true` and camelCase attributes.
 
 ## Tests
 
-Two jest projects in `jest.config.js`, both run by `npx jest -c apps/bakery-api/jest.config.js`
-and `npx nx test bakery-api` (`--selectProjects js|ts`):
+Three jest projects in `jest.config.js`, all run by `npx jest -c apps/bakery-api/jest.config.js`
+and `npx nx test bakery-api` (`--selectProjects js|ts|contract-later`):
 
 - `js`: plain-JS tests under `tests/**/*.test.js` (the `*.core.js` business rules, the `*.routes.js` modules).
   TS sources can be pulled in with `tests/helpers/loadTs.js` (esbuild, same settings as
@@ -1318,7 +1321,10 @@ and `npx nx test bakery-api` (`--selectProjects js|ts`):
   recorded in `tests/contract/recorded/<suite>.json`. `loadRecordedMock(suite)` replays them,
   `compare()` checks status, shape and mostly values against the real API; an unrecorded request
   answers 599 `not_recorded`. Changing a scenario means editing the recording by hand - there is
-  no mock left to re-record from. See `tests/README.md`.
+  no mock left to re-record from. The real side's clocks are pinned to the recording moment
+  (`now` of preorders and deliveries, `today` of hq data); the third jest project
+  `contract-later` reruns all five suites with the wall clock in 2028 so a forgotten pin fails
+  today. See `tests/README.md`.
 - `scripts/boot-smoke.sh`: bundle → `cli.js create-user` twice (create, idempotent reset) on a
   fresh SQLite → start (production mode) → `/health` → 401 without session → login → `/me`,
   `/api/partners`, JSON 404 → restart without re-running migrations → login. Runs in CI in the

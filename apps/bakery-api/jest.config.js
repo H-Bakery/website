@@ -9,6 +9,10 @@
  *      `typecheck` target's job). `@bakery/*` resolves via the
  *      tsconfig.base.json paths. Integration tests drive `createApp()` on an
  *      in-memory SQLite with the pilot baseline (tests/helpers/createTestApp.ts).
+ * contract-later - the recorded-mock contract suites (tests/contract) once
+ *      more with the wall clock shifted to 2028 (tests/helpers/shiftedClock.js),
+ *      so a suite that depends on "now" fails today instead of on the day its
+ *      recorded dates pass (B12: there is no mock left to re-record from).
  */
 const path = require('path')
 const { pathsToModuleNameMapper } = require('ts-jest')
@@ -44,8 +48,16 @@ const ts = {
   }),
 }
 
+/** @type {import('jest').Config} */
+const contractLater = {
+  ...ts,
+  displayName: 'contract-later',
+  setupFiles: [...ts.setupFiles, '<rootDir>/tests/helpers/shiftedClock.js'],
+  testMatch: ['<rootDir>/tests/contract/**/*.test.ts'],
+}
+
 module.exports = {
-  projects: [js, ts],
+  projects: [js, ts, contractLater],
   collectCoverageFrom: [
     '**/*.js',
     '!**/node_modules/**',

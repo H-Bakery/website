@@ -25,6 +25,13 @@
  *
  * No network: the mock was recorded without Nominatim/OSRM (closed local
  * port), the real API gets an offline geo stub.
+ *
+ * The real API's clocks (tours and preorders) are pinned to the recording
+ * moment (`RECORDED_AT`): arrival estimates never start before "now" and the
+ * handover list carries `afterDeadline`, so on the wall clock the Saturday
+ * tour's ETAs, time-window flags and deadlines would drift away from the
+ * recording once that week comes (there is no mock left to re-record from).
+ * The jest project `contract-later` runs this suite with the clock in 2028.
  */
 import type { Application } from 'express'
 import request from 'supertest'
@@ -48,6 +55,8 @@ const SUITE = 'deliveries'
 const SATURDAY = '2027-01-09'
 const MOERSBACH = 'kindergarten-moersbach'
 const QUIET = { warn: () => undefined }
+/** When the mock's answers were recorded (first server stamp in the file). */
+const RECORDED_AT = new Date('2026-11-06T12:47:47.500Z')
 
 beforeAll(async () => {
   const productsDir = makeProductsDir()
@@ -56,8 +65,16 @@ beforeAll(async () => {
     logRequests: false,
     sequelize: real.sequelize,
     hqProducts: { productsDir, writeDir: null },
-    preorders: { productsDir, variantsForProduct: () => null },
-    deliveries: { geo: OFFLINE_GEO, log: QUIET },
+    preorders: {
+      productsDir,
+      variantsForProduct: () => null,
+      now: () => new Date(RECORDED_AT),
+    },
+    deliveries: {
+      geo: OFFLINE_GEO,
+      log: QUIET,
+      now: () => new Date(RECORDED_AT),
+    },
   })
   auth = bearer(await sessionFor(real.app, 'test.inhaber', 'inhaber'))
 

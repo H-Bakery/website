@@ -43,7 +43,11 @@ tests/
   (missing keys and type changes count; extra keys on the real API and `null` are tolerated unless
   `strictKeys`), most tests also the values. A request that was never recorded answers 599
   `not_recorded`, so a changed scenario fails loudly instead of comparing against nothing. The
-  hq-data suite pins `today`, the preorders suite `now` to the recording day. **Changing a
+  hq-data suite pins `today`, the preorders and deliveries suites `now` (preorders and tours) to
+  the recording moment. The jest project **`contract-later`** runs every contract suite a second
+  time with the wall clock shifted to 2028 (`helpers/shiftedClock.js`, `CONTRACT_CLOCK_SHIFT_TO`
+  overrides): a suite whose real side reads the wall clock fails now, not on the day its
+  scenario dates pass (the deliveries suite did, before the B12 fixup). **Changing a
   scenario means changing the contract**: there is no mock left to re-record from - edit the
   recording by hand and say so in the commit.
 - **`migrations/pilotBaseline.test.ts`** - fresh schema, every model attribute has its column,
