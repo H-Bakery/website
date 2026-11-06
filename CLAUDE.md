@@ -743,7 +743,12 @@ path })` in `sessionPolicy.ts`, gelesen bei jeder Prüfung aus `window.location.
   `backstube` gehört, länger als die Stations-Grenze unberührt, markiert die nächste Berührung die
   Sitzung (`unattendedAtBackstube` in `session.tsx`); auf `/backstube` geht es weiter, beim
   Verlassen meldet der `RouteGuard` wegen Inaktivität ab (`endUnattended`), statt die nächste Seite
-  zu zeigen. Ob der Inhaber am Tablet überhaupt die lange Grenze bekommt, bleibt Owner-Entscheidung.
+  zu zeigen. **Ein Neuladen ist keine Bedienung** (W4-Verifikation): der Leerlauf-Effekt übernimmt
+  die gespeicherte letzte Bedienung, statt sie auf „jetzt" zu setzen, ein Neuladen nach langer Ruhe
+  markiert selbst, und die Markierung steht in `localStorage` (`bakery-management-unattended`,
+  Wert = `startedAt` der Sitzung; `clearSession()`/neue Anmeldung löschen sie) - sonst setzte ein
+  Wischen zum Aktualisieren alles zurück. Ob der Inhaber am Tablet überhaupt die lange Grenze
+  bekommt, bleibt Owner-Entscheidung.
 - **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube` (sonst kein Haken; die API
   sagt dasselbe): ein 72-px-Haken je Zeile, sofort gesetzt (`POST …/lines/:id/done|undone`), bei
   einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409 `not_confirmed`/`confirmed`/… lädt

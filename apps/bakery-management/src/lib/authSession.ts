@@ -31,6 +31,11 @@ import { writeSessionCookie } from './sessionCookie'
 export const SESSION_STORAGE_KEY = 'bakery-management-session'
 export const ACTIVITY_STORAGE_KEY = 'bakery-management-activity'
 export const STATION_STORAGE_KEY = 'bakery-management-station'
+/**
+ * W4-Verifikation: „unbeaufsichtigt auf /backstube" überlebt ein Neuladen.
+ * Wert = `startedAt` der Sitzung, die es betrifft.
+ */
+export const UNATTENDED_STORAGE_KEY = 'bakery-management-unattended'
 /** Altschlüssel (Mock-Login vor F1): nur noch zum Aufräumen. */
 export const LEGACY_TOKEN_STORAGE_KEY = 'bakery-management-auth-token'
 
@@ -141,6 +146,7 @@ export function saveSession(session: StoredSession): void {
 export function clearSession(): void {
   write(SESSION_STORAGE_KEY, null)
   write(ACTIVITY_STORAGE_KEY, null)
+  write(UNATTENDED_STORAGE_KEY, null)
   write(LEGACY_TOKEN_STORAGE_KEY, null)
   writeSessionCookie(null)
   apiClient.clearAuthToken()
@@ -175,6 +181,19 @@ export function loadLastActivity(): number | null {
 
 export function saveLastActivity(at: number): void {
   write(ACTIVITY_STORAGE_KEY, JSON.stringify(at))
+}
+
+/** Ist die Sitzung mit diesem `startedAt` als unbeaufsichtigt markiert? */
+export function loadUnattended(startedAt: number): boolean {
+  return readJson<unknown>(UNATTENDED_STORAGE_KEY) === startedAt
+}
+
+/** Markiert (`startedAt`) oder vergisst (`null`) „unbeaufsichtigt". */
+export function saveUnattended(startedAt: number | null): void {
+  write(
+    UNATTENDED_STORAGE_KEY,
+    startedAt === null ? null : JSON.stringify(startedAt)
+  )
 }
 
 export function loadStation(): StoredStation | null {
