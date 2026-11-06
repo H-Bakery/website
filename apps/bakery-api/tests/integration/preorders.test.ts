@@ -942,7 +942,32 @@ describe('list, sums, day', () => {
     expect((await get('q=muster&date=2026-11-28')).count).toBe(1)
     expect((await get('q=555123')).count).toBe(1)
     expect((await get('q=MO-2026-11-28')).count).toBe(2)
-    expect((await get('q=%25')).count).toBeGreaterThan(3) // wildcard stripped
+    // W4-verify r3: `%` / `_` are literal now, not „everything“.
+    expect((await get('q=%25')).count).toBe(0)
+    expect((await get('q=_')).count).toBe(0)
+    expect((await get('q=mo-2026-11-28')).count).toBe(2)
+  })
+
+  it('search ignores case for umlauts too (W4-verify r3)', async () => {
+    const day = '2026-12-01'
+    await create(
+      laden({
+        customerName: 'Öztürk Ümit',
+        customerPhone: null,
+        pickupDate: day,
+      })
+    ).then((r) => expect(r.status).toBe(201))
+    const count = async (q: string) =>
+      (
+        await request(api.app)
+          .get(`/api/preorders?date=${day}&q=${encodeURIComponent(q)}`)
+          .set(tokens['verkauf'])
+      ).body.count
+    for (const q of ['öztürk', 'ÖZTÜRK', 'Öztürk', 'ümit', 'ztür', 'Ö']) {
+      expect([q, await count(q)]).toEqual([q, 1])
+    }
+    expect(await count('oztürk')).toBe(0)
+    expect(await count('[ö]')).toBe(0)
   })
 
   it.each([
