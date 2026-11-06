@@ -16,6 +16,8 @@ const tokens: Record<string, Record<string, string>> = {}
 
 // Thursday 2026-11-12 10:00 Berlin; Tue 17.11., Sat 21.11.
 const NOW = new Date('2026-11-12T09:00:00.000Z')
+/** The service clock; a test that needs "on the pickup day" moves it back after. */
+let clock = NOW
 const TUESDAY = '2026-11-17'
 const SATURDAY = '2026-11-21'
 const MOERSBACH = 'kindergarten-moersbach'
@@ -38,7 +40,7 @@ beforeAll(async () => {
         productsDir,
         variantsForProduct,
         variantsMap,
-        now: () => NOW,
+        now: () => clock,
       },
     },
   })
@@ -94,13 +96,22 @@ describe('session and roles', () => {
           .set(tokens['backstube'])
       ).status
     ).toBe(403)
-    expect(
-      (
-        await request(api.app)
-          .get(`/api/preorders/sums?date=${TUESDAY}`)
-          .set(tokens['backstube'])
-      ).status
-    ).toBe(200)
+    const sums = await request(api.app)
+      .get(`/api/preorders/sums?date=${TUESDAY}`)
+      .set(tokens['backstube'])
+    expect(sums.status).toBe(200)
+    // quantities only: no `summary` (amounts, paid state) for the Backstube
+    expect(sums.body.data).toEqual(
+      expect.objectContaining({ items: expect.any(Array) })
+    )
+    expect(sums.body.data).not.toHaveProperty('summary')
+    expect(JSON.stringify(sums.body)).not.toMatch(/total|paid/i)
+    const forSale = await request(api.app)
+      .get(`/api/preorders/sums?date=${TUESDAY}`)
+      .set(tokens['verkauf'])
+    expect(forSale.body.data.summary).toEqual(
+      expect.objectContaining({ total: expect.any(Number) })
+    )
     expect((await create(laden(), 'backstube')).status).toBe(403)
   })
 
@@ -506,7 +517,18 @@ describe('/api/preorders CRUD', () => {
         .send(body)
 
     expect((await status({ status: 'bereit' })).body.data.status).toBe('bereit')
-    const nc = (await status({ notCollected: true })).body.data
+    // „nicht abgeholt" only on/after the pickup day (W4)
+    const early = await status({ notCollected: true })
+    expect(early.status).toBe(409)
+    expect(early.body).toMatchObject({ error: 'not_collected_too_early' })
+    expect(early.body.message).toMatch(/erst ab dem Abholtag \(17\.11\.2026\)/)
+    clock = new Date(`${TUESDAY}T15:00:00.000Z`)
+    let nc
+    try {
+      nc = (await status({ notCollected: true })).body.data
+    } finally {
+      clock = NOW
+    }
     expect(nc).toMatchObject({ status: 'bereit', notCollected: true })
     const picked = (await status({ status: 'abgeholt', paid: true })).body.data
     expect(picked).toMatchObject({
@@ -767,9 +789,10 @@ describe('list, sums, day', () => {
   })
 
   it('sums per product and variant without cancelled preorders', async () => {
+    // verkauf (Backliste) gets the summary; backstube the same without it
     const res = await request(api.app)
       .get('/api/preorders/sums?date=2026-11-28')
-      .set(tokens['backstube'])
+      .set(tokens['verkauf'])
     expect(res.status).toBe(200)
     expect(res.body.data).toEqual({
       date: '2026-11-28',
@@ -795,7 +818,22 @@ describe('list, sums, day', () => {
           preorders: 1,
         }),
       ],
+      // W4: the Backliste's head figures, same as /day (cancelled counted
+      // only in byStatus)
+      summary: expect.objectContaining({
+        count: 2,
+        byStatus: { offen: 2, bereit: 0, abgeholt: 0, storniert: 1 },
+        total: expect.any(Number),
+        unpaidTotal: expect.any(Number),
+      }),
     })
+    // no customer data in /sums
+    const raw = JSON.stringify(res.body)
+    expect(raw).not.toMatch(/customerName|customerPhone|Erika|0170/)
+    const day = await request(api.app)
+      .get('/api/preorders/day?date=2026-11-28')
+      .set(tokens['verkauf'])
+    expect(res.body.data.summary).toEqual(day.body.data.summary)
     expect(
       (
         await request(api.app)
@@ -1284,5 +1322,295 @@ describe('PUT /api/preorders/pickup-points/:id (P2 Lieferstelle)', () => {
       .set(tokens['inhaber'])
       .send({ notes: before.notes })
       .expect(200)
+  })
+
+  it('limits the text fields (W4), also on the Mörsbach alias', async () => {
+    const put = (path: string, body: Record<string, unknown>) =>
+      request(api.app).put(path).set(tokens['inhaber']).send(body)
+    const notes = await put(`/api/preorders/pickup-points/${MOERSBACH}`, {
+      notes: 'x'.repeat(2001),
+    })
+    expect(notes.status).toBe(400)
+    expect(notes.body).toMatchObject({
+      success: false,
+      error: 'text_too_long',
+      message: 'Die Notizen dürfen höchstens 2000 Zeichen lang sein.',
+    })
+    const name = await put(`/api/deliveries/pickup-points/${MOERSBACH}`, {
+      name: 'N'.repeat(101),
+    })
+    expect(name.status).toBe(400)
+    expect(name.body).toMatchObject({
+      error: 'Text too long',
+      message: 'Der Name darf höchstens 100 Zeichen lang sein.',
+    })
+    for (const [field, max] of [
+      ['street', 200],
+      ['zip', 10],
+      ['city', 100],
+    ] as const) {
+      const res = await put(`/api/preorders/pickup-points/${MOERSBACH}`, {
+        [field]: 'a'.repeat(max + 1),
+      })
+      expect(res.status).toBe(400)
+      expect(res.body.message).toMatch(`höchstens ${max} Zeichen`)
+    }
+    const ok = await put(`/api/preorders/pickup-points/${MOERSBACH}`, {
+      notes: 'x'.repeat(2000),
+    })
+    expect(ok.status).toBe(200)
+    await put(`/api/preorders/pickup-points/${MOERSBACH}`, {
+      notes: null,
+    }).expect(200)
+  })
+
+  it('expectedUpdatedAt: 409 stale_pickup_point instead of a silent overwrite (W4)', async () => {
+    const list = await request(api.app)
+      .get('/api/preorders/pickup-points')
+      .set(tokens['verkauf'])
+    const loaded = list.body.data.find(
+      (p: { id: string }) => p.id === MOERSBACH
+    )
+    expect(loaded.updatedAt).toEqual(expect.any(String))
+
+    const first = await request(api.app)
+      .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+      .set(tokens['inhaber'])
+      .send({ notes: 'Erster Stand', expectedUpdatedAt: loaded.updatedAt })
+    expect(first.status).toBe(200)
+    expect(first.body.data.updatedAt).toEqual(expect.any(String))
+    expect(first.body.data.updatedAt).not.toBe(loaded.updatedAt)
+
+    // the second form still holds the old version
+    const second = await request(api.app)
+      .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+      .set(tokens['inhaber'])
+      .send({ notes: 'Zweiter Stand', expectedUpdatedAt: loaded.updatedAt })
+    expect(second.status).toBe(409)
+    expect(second.body).toMatchObject({
+      success: false,
+      error: 'stale_pickup_point',
+      updatedAt: first.body.data.updatedAt,
+    })
+    expect(second.body.message).toMatch(/inzwischen/)
+    const bad = await request(api.app)
+      .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+      .set(tokens['inhaber'])
+      .send({ notes: 'x', expectedUpdatedAt: 'gestern' })
+    expect(bad.status).toBe(400)
+    expect(bad.body.error).toBe('invalid_expected_updated_at')
+
+    const after = (
+      await request(api.app)
+        .get('/api/preorders/pickup-points')
+        .set(tokens['verkauf'])
+    ).body.data.find((p: { id: string }) => p.id === MOERSBACH)
+    expect(after.notes).toBe('Erster Stand')
+    // the alias keeps the mock shape: no updatedAt
+    const alias = await request(api.app)
+      .get('/api/deliveries/pickup-points')
+      .set(tokens['verkauf'])
+    expect(alias.body[0]).not.toHaveProperty('updatedAt')
+    await request(api.app)
+      .put(`/api/preorders/pickup-points/${MOERSBACH}`)
+      .set(tokens['inhaber'])
+      .send({ notes: null })
+      .expect(200)
+  })
+})
+
+describe('POST /api/preorders/bulk-status (W4)', () => {
+  const bulk = (body: Record<string, unknown>, role = 'verkauf') =>
+    request(api.app)
+      .post('/api/preorders/bulk-status')
+      .set(tokens[role])
+      .send(body)
+  const fresh = async () => (await create(laden())).body.data
+
+  it('validates the body; backstube may not', async () => {
+    const p = await fresh()
+    expect(
+      (await bulk({ ids: [p.id], status: 'bereit' }, 'backstube')).status
+    ).toBe(403)
+    for (const ids of [
+      undefined,
+      [],
+      ['01'],
+      ['x'],
+      [0],
+      [1.5],
+      new Array(201).fill(1),
+    ]) {
+      const res = await bulk({ ids, status: 'bereit' })
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error: 'invalid_ids' })
+      expect(res.body.message).toMatch(/\S/)
+    }
+    const nothing = await bulk({ ids: [p.id] })
+    expect(nothing.status).toBe(400)
+    expect(nothing.body.error).toBe('invalid_status')
+    // values wrong for every preorder: one 400, not `refused` per id
+    for (const [body, error] of [
+      [{ status: 'quatsch' }, 'invalid_status'],
+      [{ paid: 'ja' }, 'invalid_paid'],
+      [{ notCollected: 'ja' }, 'invalid_not_collected'],
+      [{ status: 'offen', notCollected: true }, 'invalid_not_collected'],
+    ] as const) {
+      const res = await bulk({ ids: [p.id], ...body })
+      expect(res.status).toBe(400)
+      expect(res.body).toMatchObject({ error })
+      expect(res.body.message).toMatch(/\S/)
+    }
+    // ids as digit strings, like `/:id`
+    const asString = await bulk({ ids: [String(p.id)], status: 'bereit' })
+    expect(asString.status).toBe(200)
+    expect(asString.body.data.results).toEqual([
+      expect.objectContaining({ id: p.id, result: 'ok' }),
+    ])
+    const badMap = await bulk({
+      ids: [p.id],
+      status: 'bereit',
+      expectedUpdatedAt: 'gestern',
+    })
+    expect(badMap.status).toBe(400)
+    expect(badMap.body.error).toBe('invalid_expected_updated_at')
+  })
+
+  it('answers per id: ok / conflict / anonymized / not_found / refused, with audit lines', async () => {
+    const ok = await fresh()
+    const stale = await fresh()
+    const cancelled = await fresh()
+    await request(api.app)
+      .post(`/api/preorders/${cancelled.id}/cancel`)
+      .set(tokens['verkauf'])
+      .expect(200)
+    const anon = await fresh()
+    await Preorder.update(
+      { anonymizedAt: new Date(), customerName: 'anonymisiert' },
+      { where: { id: anon.id } }
+    )
+    // someone else touched `stale` after the list was loaded
+    await request(api.app)
+      .post(`/api/preorders/${stale.id}/status`)
+      .set(tokens['verkauf'])
+      .send({ paid: true })
+      .expect(200)
+
+    const res = await bulk({
+      ids: [ok.id, stale.id, cancelled.id, anon.id, 999999, ok.id],
+      status: 'bereit',
+      expectedUpdatedAt: {
+        [ok.id]: ok.updatedAt,
+        [stale.id]: stale.updatedAt,
+      },
+    })
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    const byId = Object.fromEntries(
+      res.body.data.results.map((r: { id: number }) => [r.id, r])
+    )
+    expect(res.body.data.results).toHaveLength(5) // duplicates once
+    expect(byId[ok.id]).toMatchObject({
+      result: 'ok',
+      data: { id: ok.id, status: 'bereit' },
+    })
+    expect(byId[stale.id]).toMatchObject({
+      result: 'conflict',
+      error: 'stale_preorder',
+      data: { id: stale.id, status: 'offen', paid: true },
+    })
+    expect(byId[stale.id].message).toMatch(/inzwischen/)
+    expect(byId[cancelled.id]).toMatchObject({
+      result: 'conflict',
+      error: 'cancelled',
+    })
+    expect(byId[anon.id]).toMatchObject({
+      result: 'anonymized',
+      error: 'anonymized',
+    })
+    expect(byId[999999]).toMatchObject({
+      result: 'not_found',
+      error: 'not_found',
+    })
+    expect(res.body.data.counts).toEqual({
+      ok: 1,
+      conflict: 2,
+      anonymized: 1,
+      not_found: 1,
+      refused: 0,
+    })
+    // no customer data of refused ids leaks beyond what the list shows
+    expect(byId[anon.id].data).toBeUndefined()
+
+    const audit = await AuditLog.findAll({
+      where: { entity: 'preorder', entityId: String(ok.id), action: 'status' },
+    })
+    expect(audit).toHaveLength(1)
+    expect(audit[0].data).toMatchObject({ bulk: true, status: 'bereit' })
+    expect(
+      await AuditLog.count({
+        where: {
+          entity: 'preorder',
+          entityId: String(stale.id),
+          action: 'status',
+        },
+      })
+    ).toBe(1) // only the earlier single change
+  })
+
+  it('same role rules as a single change: fahrer only hands over', async () => {
+    const a = await fresh()
+    const b = await fresh()
+    const ready = await bulk({ ids: [a.id], status: 'bereit' }, 'fahrer')
+    expect(ready.status).toBe(200)
+    expect(ready.body.data.results[0]).toMatchObject({
+      result: 'refused',
+      error: 'forbidden',
+    })
+    const handed = await bulk(
+      { ids: [a.id, b.id], status: 'abgeholt' },
+      'fahrer'
+    )
+    expect(handed.body.data.counts.ok).toBe(2)
+    expect((await Preorder.findByPk(b.id))?.status).toBe('abgeholt')
+  })
+
+  it('„nicht abgeholt" only from the pickup day on', async () => {
+    const a = await fresh()
+    const early = await bulk({ ids: [a.id], notCollected: true })
+    expect(early.body.data.results[0]).toMatchObject({
+      result: 'refused',
+      error: 'not_collected_too_early',
+    })
+    expect(early.body.data.results[0].message).toMatch(/Abholtag/)
+    clock = new Date(`${TUESDAY}T12:00:00.000Z`)
+    try {
+      const onDay = await bulk({ ids: [a.id], notCollected: true }, 'fahrer')
+      expect(onDay.body.data.results[0]).toMatchObject({
+        result: 'ok',
+        data: { status: 'bereit', notCollected: true },
+      })
+    } finally {
+      clock = NOW
+    }
+  })
+
+  it('runs serialised: two parallel bulk calls with the same versions → one wins per id', async () => {
+    const list = [await fresh(), await fresh(), await fresh()]
+    const body = (status: string) => ({
+      ids: list.map((p) => p.id),
+      status,
+      expectedUpdatedAt: Object.fromEntries(
+        list.map((p) => [p.id, p.updatedAt])
+      ),
+    })
+    const [one, two] = await Promise.all([
+      bulk(body('bereit')),
+      bulk(body('abgeholt')),
+    ])
+    const counts = [one.body.data.counts, two.body.data.counts]
+    // the first transaction takes all three, the second finds them changed
+    expect(counts.map((c) => c.ok).sort()).toEqual([0, 3])
+    expect(counts.map((c) => c.conflict).sort()).toEqual([0, 3])
   })
 })

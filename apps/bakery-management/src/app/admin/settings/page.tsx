@@ -22,7 +22,7 @@ import DarkModeIcon from '@mui/icons-material/DarkMode'
 import LanguageIcon from '@mui/icons-material/Language'
 import SecurityIcon from '@mui/icons-material/Security'
 import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto'
-import { useTheme, ThemeMode } from '@bakery/shared/contexts'
+import { useNotifications, useTheme, ThemeMode } from '@bakery/shared/contexts'
 import { NotificationPreferences } from '@bakery/management/feature-settings'
 import { isPilotMode } from '../../../lib/pilotMode'
 import { isPathAllowedForRole } from '../../../lib/roles'
@@ -34,6 +34,9 @@ export default function SettingsPage() {
   // Im Pilotbetrieb (F4) gibt es weder /api/notifications noch E-Mail-Versand
   // auf der echten API - die Karten würden ewig laden bzw. nur vertrösten.
   const pilot = isPilotMode()
+  // Auch ohne Pilotbetrieb kann die API die echte sein (W4): antwortet sie auf
+  // /api/notifications mit 404, verschwindet der Abschnitt still.
+  const notificationsAvailable = useNotifications().available
   const role = session?.user?.role
   const mayManageUsers =
     !!role && isPathAllowedForRole('/admin/users', role, session?.sessionKind)
@@ -140,20 +143,22 @@ export default function SettingsPage() {
 
         {!pilot && (
           <>
-            <Grid item xs={12}>
-              <Card>
-                <CardContent>
-                  <Typography
-                    variant="h6"
-                    component="h2"
-                    sx={{ mb: 2, fontWeight: 'bold' }}
-                  >
-                    Benachrichtigungen
-                  </Typography>
-                  <NotificationPreferences />
-                </CardContent>
-              </Card>
-            </Grid>
+            {notificationsAvailable !== false && (
+              <Grid item xs={12}>
+                <Card>
+                  <CardContent>
+                    <Typography
+                      variant="h6"
+                      component="h2"
+                      sx={{ mb: 2, fontWeight: 'bold' }}
+                    >
+                      Benachrichtigungen
+                    </Typography>
+                    <NotificationPreferences />
+                  </CardContent>
+                </Card>
+              </Grid>
+            )}
 
             <Grid item xs={12} md={6}>
               <Card sx={{ height: '100%' }}>

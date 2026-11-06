@@ -32,18 +32,19 @@ const watch = process.argv.includes('--watch')
  * other bare import stays external.
  */
 /**
- * Pure-JS packages without dependencies that are bundled anyway: `yaml` (Z4,
- * comment-preserving Backzettel edits) is only a transitive *dev* dependency
- * in the root lockfile (via nx/lint-staged), so `npm ci --omit=dev` on the
- * box would not install it. Bundled, the server does not need it at runtime.
+ * Pure-JS packages that are bundled although they are packages. Empty since
+ * W4: `yaml` (Z4, comment-preserving Backzettel edits) used to be only a
+ * transitive *dev* dependency, so `npm ci --omit=dev` on the box would not
+ * have installed it; it is a root `dependency` (^2) now and stays external
+ * like every other runtime package.
  */
-const BUNDLED_PACKAGES = new Set(['yaml'])
+const BUNDLED_PACKAGES = new Set()
 
 /**
- * The hoisted `yaml` is whatever npm picks: several dependencies pin
- * yaml@1.x, whose API lacks `isScalar`/`isMap`/`isSeq` that the editor
- * uses. Fail the build instead of the first Grundmengen save at runtime.
- * (Follow-up: `yaml` ^2 in the root `dependencies`.)
+ * `yaml` must be 2.x at the root: several dependencies pin yaml@1.x, whose
+ * API lacks `isScalar`/`isMap`/`isSeq` that the editor uses. The root
+ * dependency makes npm hoist 2.x; this check fails the build instead of the
+ * first Grundmengen save at runtime if that ever changes.
  */
 const REQUIRED_MAJOR = { yaml: 2 }
 for (const [name, major] of Object.entries(REQUIRED_MAJOR)) {

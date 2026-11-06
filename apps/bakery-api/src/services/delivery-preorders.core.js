@@ -55,6 +55,19 @@ const MAX_ITEMS = 50
 const MAX_QTY_PER_ITEM = 99
 const MAX_TEXT_LENGTH = 500
 
+/**
+ * Hoechstlaengen der Sammelstellen-Stammdaten (`PUT /pickup-points/:id`,
+ * W4). Ohne Grenze landete ein beliebig langer Text in der Datenbank und auf
+ * jeder Abholliste; die 200-kB-Grenze des JSON-Parsers ist dafuer zu grob.
+ */
+const PICKUP_POINT_LIMITS = {
+  name: { max: 100, label: 'Der Name darf' },
+  street: { max: 200, label: 'Die Straße darf' },
+  zip: { max: 10, label: 'Die PLZ darf' },
+  city: { max: 100, label: 'Der Ort darf' },
+  notes: { max: 2000, label: 'Die Notizen dürfen' },
+}
+
 /** Rundet auf ganze Cent - `3 * 4.1` ist in Fliesskomma nicht exakt `12.3`. */
 function roundCents(value) {
   const n = Number(value)
@@ -588,6 +601,25 @@ function normalizePickupPointInput(body, existing) {
     source.city === undefined ? base.city || '' : source.city
   )
 
+  const notes =
+    source.notes === undefined
+      ? base.notes || null
+      : trimmed(source.notes) || null
+
+  // Nur was der Aufrufer schickt, wird gemessen - ein Altbestand ueber der
+  // Grenze bleibt speicherbar, solange niemand das Feld anfasst.
+  const texts = { name, street, zip, city, notes: notes || '' }
+  for (const key of Object.keys(PICKUP_POINT_LIMITS)) {
+    if (source[key] === undefined) continue
+    const limit = PICKUP_POINT_LIMITS[key]
+    if (texts[key].length > limit.max) {
+      return fail(
+        'Text too long',
+        `${limit.label} höchstens ${limit.max} Zeichen lang sein.`
+      )
+    }
+  }
+
   const pickupPoint = {
     ...base,
     name,
@@ -597,10 +629,7 @@ function normalizePickupPointInput(body, existing) {
     weekday,
     window: window || null,
     orderDeadline,
-    notes:
-      source.notes === undefined
-        ? base.notes || null
-        : trimmed(source.notes) || null,
+    notes,
     active:
       source.active === undefined ? base.active !== false : !!source.active,
   }
@@ -856,7 +885,8 @@ function statusFields(base, status, notCollected, now) {
  * @param {object} existing bisherige Vorbestellung
  * @param {object} body `{ status, notCollected?, paid? }`
  * @param {object} [options] `{ allowedTargets?: string[], now? }` - der Fahrer
- *   darf nur `abgeholt` und "nicht abgeholt" setzen.
+ *   darf nur `abgeholt` und "nicht abgeholt" setzen; `notCollectedFrom`
+ *   (heute, JJJJ-MM-TT) verbietet "nicht abgeholt" vor dem Abholtag (409).
  * @returns {{ changes: object } | { error, message, status }}
  */
 function normalizeStatusChange(existing, body, options) {
@@ -888,6 +918,25 @@ function normalizeStatusChange(existing, body, options) {
   }
   if (source.paid !== undefined && typeof source.paid !== 'boolean') {
     return fail('invalid_paid', '„Bezahlt" muss ja oder nein sein.')
+  }
+  // „Nicht abgeholt" erst ab dem Abholtag (W4): vorher kann die Kundschaft
+  // noch kommen, und ein vorschnelles Markieren sieht in der Liste aus wie
+  // ein Tagesabschluss. Nur wenn der Aufrufer `notCollectedFrom` (heute,
+  // JJJJ-MM-TT) mitgibt - der Mock-Alias kennt die Regel nicht (D3).
+  if (
+    notCollected === true &&
+    !base.notCollectedAt &&
+    typeof opts.notCollectedFrom === 'string' &&
+    typeof base.pickupDate === 'string' &&
+    base.pickupDate > opts.notCollectedFrom
+  ) {
+    return fail(
+      'not_collected_too_early',
+      `„Nicht abgeholt" geht erst ab dem Abholtag (${formatGermanDate(
+        base.pickupDate
+      )}) - bis dahin kann noch jemand kommen.`,
+      409
+    )
   }
   if (Array.isArray(opts.allowedTargets)) {
     const target = notCollected ? 'nicht_abgeholt' : status
@@ -1709,6 +1758,7 @@ module.exports = {
   WEEKDAY_LABELS,
   MAX_ITEMS,
   MAX_QTY_PER_ITEM,
+  PICKUP_POINT_LIMITS,
   roundCents,
   lineTotal,
   orderTotal,

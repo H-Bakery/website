@@ -11,14 +11,20 @@
  *   Uhrzeit erreicht ist ("Abmeldung bei Ladenschluss", roadmap F1). Ohne
  *   Wert gibt es keine feste Uhrzeit - die Backstube arbeitet nachmittags
  *   (Vorbereitung 14-15 Uhr), ein Ladenschluss passt nicht für jede Station.
- * - **Backstube-Tablet** (Z6): eine Stationssitzung der Rolle `backstube`
- *   auf `/backstube` steht dauerhaft offen - mit Teig an den Händen tippt
- *   niemand alle 10 min aufs Tablet, und der Zettel lädt von selbst neu.
- *   Dort gilt `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (Vorgabe 720 = 12 h, also
- *   praktisch nur die 12-h-Grenze nach der PIN und ein gesetztes
- *   `NEXT_PUBLIC_STATION_LOGOUT_AT`). Jede andere Rolle oder Seite an der
- *   Station behält die 10 min: ein Inhaber, der per PIN am Backstube-Tablet
- *   steht, trägt mehr Rechte als die Backstube.
+ * - **Backstube-Tablet** (Z6, W4): eine Stationssitzung auf `/backstube`
+ *   steht dauerhaft offen - mit Teig an den Händen tippt niemand alle 10 min
+ *   aufs Tablet, und der Zettel lädt von selbst neu. Dort gilt
+ *   `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (Vorgabe 720 = 12 h, also praktisch
+ *   nur die 12-h-Grenze nach der PIN und ein gesetztes
+ *   `NEXT_PUBLIC_STATION_LOGOUT_AT`) - **für jede Rolle**, die die Seite
+ *   öffnen darf (Backstube und Inhaber): wer per PIN am Tablet in der
+ *   Backstube steht, hat genauso Teig an den Händen. Die Seite selbst kann
+ *   nichts verwalten; auf jeder anderen Seite gelten an der Station wieder
+ *   die 10 min, sobald man sie öffnet.
+ *   Lag die Seite in einer Sitzung, die nicht der Rolle `backstube` gehört,
+ *   länger als die Stations-Grenze unberührt, meldet das Verlassen von
+ *   `/backstube` ab (`unattendedAtBackstube` in `session.tsx`, W4-Fixup):
+ *   sonst erbte, wer das liegen gelassene Tablet berührt, die Inhaber-Rechte.
  * - **Persönlich** (Benutzername + Passwort): nach
  *   `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (Vorgabe 12) Stunden ohne Bedienung.
  *
@@ -48,8 +54,9 @@ export function isBackstubePath(path: string | null | undefined): boolean {
 }
 
 /**
- * Leerlauf-Grenze in ms - je Sitzungsart, und für die Backstube-Rolle an der
- * Station auf `/backstube` die eigene, lange Grenze (siehe oben).
+ * Leerlauf-Grenze in ms - je Sitzungsart, und an der Station auf
+ * `/backstube` (jede Rolle) die eigene, lange Grenze (siehe oben). `role`
+ * bleibt im Signatur-Objekt, damit Aufrufer nichts ändern müssen.
  */
 export function idleLimitMs(
   kind: SessionKind,
@@ -67,7 +74,7 @@ export function idleLimitMs(
   if (kind !== 'station') {
     return positive(env.personalHours, DEFAULT_PERSONAL_IDLE_HOURS) * HOUR
   }
-  if (where.role === 'backstube' && isBackstubePath(where.path)) {
+  if (isBackstubePath(where.path)) {
     return (
       positive(env.backstubeMinutes, DEFAULT_BACKSTUBE_IDLE_MINUTES) * MINUTE
     )

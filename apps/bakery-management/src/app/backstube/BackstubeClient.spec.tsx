@@ -379,6 +379,46 @@ describe('Backstube-Tablet', () => {
     }
   })
 
+  it('noch nicht erfasste Nachträge: Hinweis und Nachladen nach 5 s (W4)', async () => {
+    jest.useFakeTimers()
+    try {
+      mocked.fetchBackzettelDay
+        .mockResolvedValueOnce(saturdayConfirmed({ deltasPending: true }))
+        .mockResolvedValue(saturdayConfirmed({ deltasPending: false }))
+      renderTablet()
+      expect(await screen.findByTestId('bs-deltas-pending')).toHaveTextContent(
+        'gerade übernommen'
+      )
+      const calls = mocked.fetchBackzettelDay.mock.calls.length
+      await act(async () => {
+        jest.advanceTimersByTime(api.DELTAS_PENDING_RELOAD_MS)
+      })
+      expect(mocked.fetchBackzettelDay.mock.calls.length).toBe(calls + 1)
+      await waitFor(() =>
+        expect(
+          screen.queryByTestId('bs-deltas-pending')
+        ).not.toBeInTheDocument()
+      )
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
+  it('freigegeben ohne Stammdaten: sagt, dass Nachträge fehlen können', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(
+      saturdayConfirmed({
+        configStatus: 'no-config',
+        configChangedSinceConfirm: null,
+        deltasPending: null,
+      })
+    )
+    renderTablet()
+    expect(
+      await screen.findByTestId('bs-confirmed-no-config')
+    ).toHaveTextContent('nicht als Nachtrag')
+    expect(screen.queryByTestId('bs-deltas-pending')).not.toBeInTheDocument()
+  })
+
   it('behält den Zettel, wenn ein Neuladen scheitert', async () => {
     renderTablet()
     await screen.findByTestId('bs-progress')

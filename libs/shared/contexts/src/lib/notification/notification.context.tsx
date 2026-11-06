@@ -86,6 +86,12 @@ export interface NotificationContextType {
   isLoading: boolean
   /** Whether real-time updates are connected */
   isConnected: boolean
+  /**
+   * Whether the API serves `/api/notifications`: `null` until the first
+   * answer, `false` after a 404/501 (the real pilot API has no such
+   * endpoint) - screens hide their notification UI then.
+   */
+  available: boolean | null
   /** Apply filters */
   setFilters: (filters: NotificationFilters) => void
   /** Mark notification as read */
@@ -249,6 +255,36 @@ const filterNotifications = (
   })
 }
 
+/** sessionStorage key: this tab's API has no `/api/notifications`. */
+export const NOTIFICATIONS_UNAVAILABLE_KEY = 'bakery-notifications-unavailable'
+
+/** 404/501 = the API has no notifications endpoint (real pilot API). */
+function isMissingEndpoint(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status
+  return status === 404 || status === 501
+}
+
+function readUnavailableMark(): boolean {
+  try {
+    return (
+      typeof window !== 'undefined' &&
+      window.sessionStorage.getItem(NOTIFICATIONS_UNAVAILABLE_KEY) === '1'
+    )
+  } catch {
+    return false
+  }
+}
+
+function writeUnavailableMark(): void {
+  try {
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(NOTIFICATIONS_UNAVAILABLE_KEY, '1')
+    }
+  } catch {
+    // private mode / blocked storage: the in-memory flag still holds
+  }
+}
+
 /**
  * Enhanced notification provider component
  */
@@ -268,6 +304,10 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
   const [filters, setFilters] = useState<NotificationFilters>({})
   const [isLoading, setIsLoading] = useState(loadOnMount)
   const [isConnected, setIsConnected] = useState(false)
+  const [available, setAvailable] = useState<boolean | null>(null)
+  // Once the API said "no such endpoint", stop asking (no polling, no
+  // console noise) - also after a reload in the same tab.
+  const unavailableRef = useRef(false)
 
   const wsRef = useRef<WebSocket | null>(null)
   const pollingRef = useRef<NodeJS.Timeout | null>(null)
@@ -307,12 +347,19 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
 
   // Load initial data
   const loadNotifications = useCallback(async () => {
+    if (unavailableRef.current || readUnavailableMark()) {
+      unavailableRef.current = true
+      setAvailable(false)
+      setIsLoading(false)
+      return
+    }
     try {
       setIsLoading(true)
       const [notifs, prefs] = await Promise.all([
         notificationService.getNotifications(),
         notificationService.getPreferences(),
       ])
+      setAvailable(true)
       if (notifs.success && notifs.data) {
         setNotifications(notifs.data)
       }
@@ -320,7 +367,18 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
         setPreferences(prefs.data)
       }
     } catch (error) {
-      console.error('Failed to load notifications:', error)
+      if (isMissingEndpoint(error)) {
+        // Expected on the real pilot API: not an error, just no feature.
+        unavailableRef.current = true
+        writeUnavailableMark()
+        setAvailable(false)
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current)
+          pollingRef.current = null
+        }
+      } else {
+        console.error('Failed to load notifications:', error)
+      }
     } finally {
       setIsLoading(false)
     }
@@ -463,6 +521,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
     if (enableRealTime || pollingInterval <= 0) return
 
     const poll = () => {
+      if (unavailableRef.current) return
       loadNotifications()
     }
 
@@ -706,6 +765,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       preferences,
       isLoading,
       isConnected,
+      available,
       setFilters,
       markAsRead,
       markAllAsRead,
@@ -727,6 +787,7 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({
       preferences,
       isLoading,
       isConnected,
+      available,
       markAsRead,
       markAllAsRead,
       deleteNotification,

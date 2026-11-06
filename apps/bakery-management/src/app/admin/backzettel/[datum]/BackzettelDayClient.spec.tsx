@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -476,6 +477,36 @@ describe('Backzettel-Tagesplanung', () => {
     expect(screen.getByTestId('prep-provisional')).toHaveTextContent(
       'ist Ruhetag'
     )
+  })
+
+  it('noch nicht erfasste Nachträge: Hinweis, kurz danach neu laden (W4)', async () => {
+    jest.useFakeTimers()
+    try {
+      mocked.fetchBackzettelDay
+        .mockResolvedValueOnce(saturdayConfirmed({ deltasPending: true }))
+        .mockResolvedValue(saturdayConfirmed({ deltasPending: false }))
+      renderDay()
+      expect(await screen.findByTestId('deltas-pending')).toHaveTextContent(
+        'gerade übernommen'
+      )
+      expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(1)
+      await act(async () => {
+        jest.advanceTimersByTime(api.DELTAS_PENDING_RELOAD_MS)
+      })
+      await waitFor(() =>
+        expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+      )
+      await waitFor(() =>
+        expect(screen.queryByTestId('deltas-pending')).not.toBeInTheDocument()
+      )
+      // erledigt: kein weiteres Nachladen
+      await act(async () => {
+        jest.advanceTimersByTime(api.DELTAS_PENDING_RELOAD_MS * 3)
+      })
+      expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+    } finally {
+      jest.useRealTimers()
+    }
   })
 
   it('ohne Stammdaten: Erklärung, keine Zahlen, kein Drucken', async () => {

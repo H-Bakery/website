@@ -27,6 +27,8 @@ import RefreshIcon from '@mui/icons-material/Refresh'
 import LockOpenIcon from '@mui/icons-material/LockOpen'
 import TaskAltIcon from '@mui/icons-material/TaskAlt'
 import {
+  DELTAS_PENDING_MAX_RELOADS,
+  DELTAS_PENDING_RELOAD_MS,
   acknowledgeDelta,
   confirmDay,
   fetchBackzettelConfig,
@@ -158,6 +160,24 @@ export default function BackzettelDayClient({
 
   const days = config?.days ?? null
   const day = isBackzettelDay(result) ? result : null
+
+  // Noch nicht erfasste Änderungen an Vorbestellungen: die API trägt sie im
+  // Hintergrund nach - kurz danach noch einmal laden (begrenzt).
+  const pendingReloads = React.useRef(0)
+  const deltasPending =
+    day?.status === 'confirmed' && day.deltasPending === true
+  React.useEffect(() => {
+    if (!deltasPending) {
+      pendingReloads.current = 0
+      return
+    }
+    if (pendingReloads.current >= DELTAS_PENDING_MAX_RELOADS) return
+    const timer = window.setTimeout(() => {
+      pendingReloads.current += 1
+      void load()
+    }, DELTAS_PENDING_RELOAD_MS)
+    return () => window.clearTimeout(timer)
+  }, [deltasPending, result, load])
   const isDraft = day?.status === 'draft'
   const editable = canPlan && isDraft && day?.configStatus === 'ok'
 
@@ -480,10 +500,19 @@ export default function BackzettelDayClient({
               will, lässt ihn vom Inhaber wieder öffnen und gibt ihn neu frei.
             </Alert>
           )}
+          {deltasPending && (
+            <Alert severity="warning" data-testid="deltas-pending">
+              Vorbestellungen haben sich geändert, die Änderungen stehen noch
+              nicht unten bei den Nachträgen. Sie werden gerade übernommen - die
+              Seite lädt gleich neu.
+            </Alert>
+          )}
           {day.configStatus === 'no-config' && (
             <Alert severity="warning">
               Die Backzettel-Stammdaten fehlen derzeit oder sind ungültig. Der
               freigegebene Zettel bleibt lesbar.
+              {day.status === 'confirmed' &&
+                ' Spätere Änderungen an Vorbestellungen können solange nicht als Nachtrag erscheinen - sie werden übernommen, sobald die Stammdaten wieder stimmen.'}
             </Alert>
           )}
           {day.prepDateProvisional && (

@@ -55,11 +55,14 @@ import {
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../../lib/session'
 import {
+  bulkPreorderStatus,
   changePreorderStatus,
   fetchPickupPoints,
   fetchPreorderDay,
   isPreorderConflict,
   preorderErrorMessage,
+  requestFailureKind,
+  type RequestFailureKind,
 } from '../../../../lib/preordersApi'
 import {
   LADEN_PICKUP,
@@ -80,8 +83,10 @@ import {
   CANCELLED_GROUP,
   abholActions,
   abhollisteHref,
+  bulkRequestFailedMessage,
   defaultPickupDate,
   defaultPickupPlace,
+  describeBulkResults,
   formatClock,
   groupPreorders,
   isDayEndAllowed,
@@ -89,8 +94,10 @@ import {
   isWaiting,
   matchesSearch,
   placeLabel,
+  staleListMessage,
   stepPickupDay,
   wrongWeekdayNotice,
+  type AbholBulkKind,
   type AbholSort,
 } from '../../../../lib/abholliste'
 
@@ -207,7 +214,17 @@ interface Toast {
   undo?: () => void
 }
 
-type BulkKind = 'ready' | 'dayEnd'
+type BulkKind = AbholBulkKind
+
+/** Telefonnummer antippbar: mindestens 44 × 44 px (W4). */
+const PHONE_LINK_STYLE: React.CSSProperties = {
+  color: 'inherit',
+  display: 'inline-flex',
+  alignItems: 'center',
+  minHeight: 44,
+  minWidth: 44,
+  padding: '0 4px',
+}
 
 export interface AbholListeClientProps {
   initialDate?: string
@@ -240,7 +257,12 @@ export default function AbholListeClient({
   const [day, setDay] = useState<PreorderDay | null>(null)
   const [loading, setLoading] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
+  /** Stilles Nachladen gescheitert: die Liste bleibt, kann aber veraltet sein. */
+  const [staleNotice, setStaleNotice] = useState<RequestFailureKind | null>(
+    null
+  )
   const [printedAt, setPrintedAt] = useState('')
+  const [loadedAt, setLoadedAt] = useState('')
 
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<AbholSort | null>(null)
@@ -257,6 +279,7 @@ export default function AbholListeClient({
   } | null>(null)
   const [bulk, setBulk] = useState<BulkKind | null>(null)
   const [bulkRunning, setBulkRunning] = useState(false)
+  const [bulkError, setBulkError] = useState<string | null>(null)
 
   const point = useMemo(
     () => points.find((p) => p.id === place) ?? null,
@@ -309,9 +332,16 @@ export default function AbholListeClient({
    * Laden
    * ---------------------------------------------------------------- */
   const requestRef = useRef(0)
+  const dayRef = useRef<PreorderDay | null>(null)
+  dayRef.current = day
+  /**
+   * Lädt den Tag. `silent`: ohne Ladeanzeige und **ohne die Liste zu
+   * leeren** - scheitert es, bleibt der letzte Stand stehen und ein Hinweis
+   * sagt, dass er veraltet sein kann. Liefert `true`, wenn neu geladen.
+   */
   const load = useCallback(
-    async (silent = false) => {
-      if (!isBusinessDate(date) || !place) return
+    async (silent = false): Promise<boolean> => {
+      if (!isBusinessDate(date) || !place) return false
       const request = ++requestRef.current
       if (!silent) {
         setLoading(true)
@@ -319,11 +349,13 @@ export default function AbholListeClient({
       }
       try {
         const next = await fetchPreorderDay(date, place)
-        if (request !== requestRef.current) return
+        if (request !== requestRef.current) return false
         setDay(next)
         setLoadError(null)
+        setStaleNotice(null)
+        const now = new Date()
         setPrintedAt(
-          new Date().toLocaleString('de-DE', {
+          now.toLocaleString('de-DE', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -331,15 +363,31 @@ export default function AbholListeClient({
             minute: '2-digit',
           })
         )
-      } catch (err) {
-        if (request !== requestRef.current) return
-        if (!silent) setDay(null)
-        setLoadError(
-          preorderErrorMessage(
-            err,
-            'Die Abholliste konnte nicht geladen werden.'
-          )
+        setLoadedAt(
+          now.toLocaleTimeString('de-DE', {
+            hour: '2-digit',
+            minute: '2-digit',
+          })
         )
+        return true
+      } catch (err) {
+        if (request !== requestRef.current) return false
+        const kind: RequestFailureKind = requestFailureKind(err)
+        if (silent && dayRef.current) {
+          setStaleNotice(kind)
+        } else {
+          setDay(null)
+          setStaleNotice(null)
+          setLoadError(
+            kind === 'offline'
+              ? 'Keine Verbindung zum Server - die Abholliste konnte nicht geladen werden. Bitte WLAN prüfen.'
+              : preorderErrorMessage(
+                  err,
+                  'Die Abholliste konnte nicht geladen werden.'
+                )
+          )
+        }
+        return false
       } finally {
         if (request === requestRef.current) setLoading(false)
       }
@@ -361,17 +409,26 @@ export default function AbholListeClient({
   const quietRef = useRef(true)
   quietRef.current =
     busyId === null && handover === null && menu === null && bulk === null
+  // Der Geschäftstag rollt mit: ein Tablet, das über Nacht offen bleibt,
+  // bietet sonst am nächsten Morgen den Tagesabschluss für „gestern" nicht
+  // an bzw. „nicht abgeholt" für den Abholtag nicht (W4).
   useEffect(() => {
     const refresh = () => {
+      setToday(toBusinessDate(new Date()))
       if (document.visibilityState === 'visible' && quietRef.current) {
         load(true)
       }
     }
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refresh()
+    }
     const timer = window.setInterval(refresh, REFRESH_MS)
     window.addEventListener('focus', refresh)
+    document.addEventListener('visibilitychange', onVisibility)
     return () => {
       window.clearInterval(timer)
       window.removeEventListener('focus', refresh)
+      document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [load])
 
@@ -391,14 +448,20 @@ export default function AbholListeClient({
     )
   }
 
+  /** Satz nach einem Konflikt - „neu geladen" nur, wenn es auch stimmt. */
+  const afterReload = (reloaded: boolean) =>
+    reloaded
+      ? 'Die Liste ist neu geladen.'
+      : 'Die Liste konnte nicht neu geladen werden - bitte gleich erneut versuchen.'
+
   const onConflict = async (preorder: Preorder, err: unknown) => {
+    const reloaded = await load(true)
     setConflict(
       `${preorder.code}: ${preorderErrorMessage(
         err,
         'Die Bestellung wurde inzwischen geändert.'
-      )} Die Liste ist neu geladen - es wurde nichts überschrieben.`
+      )} Es wurde nichts überschrieben. ${afterReload(reloaded)}`
     )
-    await load(true)
   }
 
   const act = async (
@@ -430,11 +493,16 @@ export default function AbholListeClient({
     } catch (err) {
       if (isPreorderConflict(err)) await onConflict(preorder, err)
       else {
+        const kind = requestFailureKind(err)
         setActionError(
-          `${preorder.code}: ${preorderErrorMessage(
-            err,
-            'Das hat nicht geklappt. Bitte erneut versuchen.'
-          )}`
+          `${preorder.code}: ${
+            kind === 'refused'
+              ? preorderErrorMessage(
+                  err,
+                  'Das hat nicht geklappt. Bitte erneut versuchen.'
+                )
+              : bulkRequestFailedMessage(kind)
+          }`
         )
       }
     } finally {
@@ -470,39 +538,57 @@ export default function AbholListeClient({
     else setHandover(preorder)
   }
 
+  /**
+   * Sammelaktion über `POST /api/preorders/bulk-status` (W4): eine
+   * Transaktion, Ergebnis je Bestellung. Scheitert der Request als Ganzes,
+   * ist nichts gespeichert - das sagt die Meldung, und der Dialog bleibt
+   * offen zum erneuten Versuch.
+   */
   const runBulk = async (kind: BulkKind, list: Preorder[]) => {
     setBulkRunning(true)
+    setBulkError(null)
     setActionError(null)
-    let done = 0
-    let failed = 0
-    for (const p of list) {
-      try {
-        await changePreorderStatus(
-          p.id,
-          kind === 'ready' ? { status: 'bereit' } : { notCollected: true },
-          p.updatedAt
+    setConflict(null)
+    let answer
+    try {
+      answer = await bulkPreorderStatus(
+        list,
+        kind === 'ready' ? { status: 'bereit' } : { notCollected: true }
+      )
+    } catch (err) {
+      const failure = requestFailureKind(err)
+      setBulkError(
+        bulkRequestFailedMessage(
+          failure,
+          preorderErrorMessage(err, '') || undefined
         )
-        done++
-      } catch {
-        failed++
-      }
+      )
+      setBulkRunning(false)
+      return
+    }
+    for (const r of answer.results) {
+      if (r.result === 'ok' && r.data) replaceLocal(r.data)
     }
     setBulkRunning(false)
     setBulk(null)
-    const what = kind === 'ready' ? 'als bereit' : 'als nicht abgeholt'
-    setToast({
-      text: `${done} ${
-        done === 1 ? 'Bestellung' : 'Bestellungen'
-      } ${what} markiert.`,
-    })
-    if (failed > 0) {
+    const report = describeBulkResults(
+      kind,
+      answer.results,
+      new Map(list.map((p) => [p.id, p.code]))
+    )
+    if (report.done) setToast({ text: report.done })
+    const reloaded = await load(true)
+    if (report.problems.length > 0) {
+      const changedElsewhere = answer.results.some(
+        (r) => r.result === 'conflict'
+      )
       setConflict(
-        `${failed} ${
-          failed === 1 ? 'Bestellung wurde' : 'Bestellungen wurden'
-        } inzwischen an anderer Stelle geändert und nicht angefasst. Die Liste ist neu geladen.`
+        [
+          ...report.problems,
+          ...(changedElsewhere ? [afterReload(reloaded)] : []),
+        ].join(' ')
       )
     }
-    await load(true)
   }
 
   /* ---------------------------------------------------------------- *
@@ -568,7 +654,7 @@ export default function AbholListeClient({
    * Darstellung
    * ---------------------------------------------------------------- */
   const renderRow = (p: Preorder) => {
-    const actions = abholActions(p, role)
+    const actions = abholActions(p, role, today)
     const busy = busyId === p.id || bulkRunning
     const done = p.status === 'abgeholt'
     const cancelled = p.status === 'storniert'
@@ -657,7 +743,7 @@ export default function AbholListeClient({
                 Tel.{' '}
                 <a
                   href={`tel:${p.customerPhone.replace(/[^\d+]/g, '')}`}
-                  style={{ color: 'inherit' }}
+                  style={PHONE_LINK_STYLE}
                 >
                   {p.customerPhone}
                 </a>
@@ -777,7 +863,9 @@ export default function AbholListeClient({
   }
 
   const menuPreorder = menu?.preorder ?? null
-  const menuActions = menuPreorder ? abholActions(menuPreorder, role) : null
+  const menuActions = menuPreorder
+    ? abholActions(menuPreorder, role, today)
+    : null
   const menuName = menuPreorder?.customerName ?? menuPreorder?.code ?? ''
   const closeMenu = () => setMenu(null)
 
@@ -1000,6 +1088,25 @@ export default function AbholListeClient({
             onClose={() => setActionError(null)}
           >
             {actionError}
+          </Alert>
+        )}
+        {staleNotice && !loadError && (
+          <Alert
+            severity="warning"
+            sx={{ mb: 2 }}
+            data-testid="abholliste-stale"
+            action={
+              <Button
+                color="inherit"
+                size="small"
+                onClick={() => load(true)}
+                sx={TOUCH}
+              >
+                Erneut laden
+              </Button>
+            }
+          >
+            {staleListMessage(staleNotice, loadedAt)}
           </Alert>
         )}
         {loadError && (
@@ -1441,7 +1548,11 @@ export default function AbholListeClient({
 
       <Dialog
         open={bulk !== null}
-        onClose={() => !bulkRunning && setBulk(null)}
+        onClose={() => {
+          if (bulkRunning) return
+          setBulkError(null)
+          setBulk(null)
+        }}
         fullWidth
         maxWidth="sm"
       >
@@ -1469,10 +1580,18 @@ export default function AbholListeClient({
               ))}
             </Box>
           </DialogContentText>
+          {bulkError && (
+            <Alert severity="error" sx={{ mt: 2 }} role="alert">
+              {bulkError}
+            </Alert>
+          )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button
-            onClick={() => setBulk(null)}
+            onClick={() => {
+              setBulkError(null)
+              setBulk(null)
+            }}
             disabled={bulkRunning}
             sx={TOUCH}
           >

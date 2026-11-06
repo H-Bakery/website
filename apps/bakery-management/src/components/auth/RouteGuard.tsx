@@ -3,6 +3,7 @@ import React from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { useSession } from '../../lib/session'
 import { loadStation } from '../../lib/authSession'
+import { isBackstubePath } from '../../lib/sessionPolicy'
 import {
   ROLE_LABELS,
   isPathAllowedForRole,
@@ -47,8 +48,26 @@ export default function RouteGuard({
 }) {
   const pathname = usePathname() || '/'
   const router = useRouter()
-  const { status, user, sessionKind, loggedOut } = useSession()
+  const {
+    status,
+    user,
+    sessionKind,
+    loggedOut,
+    unattendedAtBackstube,
+    endUnattended,
+  } = useSession()
   const isProtected = isProtectedPath(pathname)
+  // W4-Fixup: vom unbeaufsichtigten Backstube-Tablet weg (siehe
+  // `unattendedAtBackstube`) - abmelden statt die nächste Seite zu zeigen.
+  const leavingUnattended =
+    isProtected &&
+    status === 'authenticated' &&
+    unattendedAtBackstube === true &&
+    !isBackstubePath(pathname)
+
+  React.useEffect(() => {
+    if (leavingUnattended) endUnattended?.()
+  }, [leavingUnattended, endUnattended])
 
   React.useEffect(() => {
     if (isProtected && status === 'anonymous') {
@@ -59,6 +78,9 @@ export default function RouteGuard({
   }, [isProtected, status, pathname, router, loggedOut])
 
   if (!isProtected) return <>{children}</>
+  if (leavingUnattended) {
+    return <SessionLoading label="Wegen Inaktivität abgemeldet …" />
+  }
   if (status !== 'authenticated' || !user) {
     return (
       <SessionLoading

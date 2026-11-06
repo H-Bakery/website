@@ -1,12 +1,16 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
+import { ApiError } from '@bakery/shared/data-access'
 import AbholListeClient from './AbholListeClient'
 import {
+  bulkPreorderStatus,
   changePreorderStatus,
   fetchPickupPoints,
   fetchPreorderDay,
+  type BulkStatusAnswer,
+  type BulkStatusResult,
 } from '../../../../lib/preordersApi'
 import {
   ONLY_DATE,
@@ -20,6 +24,7 @@ import type { Preorder, PreorderDay } from '../../../../lib/preordersTypes'
 
 jest.mock('../../../../lib/preordersApi', () => ({
   ...jest.requireActual('../../../../lib/preordersApi'),
+  bulkPreorderStatus: jest.fn(),
   changePreorderStatus: jest.fn(),
   fetchPickupPoints: jest.fn(),
   fetchPreorderDay: jest.fn(),
@@ -29,6 +34,15 @@ const mockDay = fetchPreorderDay as jest.MockedFunction<typeof fetchPreorderDay>
 const mockStatus = changePreorderStatus as jest.MockedFunction<
   typeof changePreorderStatus
 >
+const mockBulk = bulkPreorderStatus as jest.MockedFunction<
+  typeof bulkPreorderStatus
+>
+
+function bulkAnswer(results: BulkStatusResult[]): BulkStatusAnswer {
+  const counts = { ok: 0, conflict: 0, anonymized: 0, not_found: 0, refused: 0 }
+  for (const r of results) counts[r.result]++
+  return { counts, results }
+}
 
 const DATE = '2026-11-12' // Donnerstag = „heute" in den Tests
 
@@ -141,6 +155,20 @@ beforeEach(() => {
       updatedAt: '2026-11-12T09:14:00.000Z',
     }
   })
+  mockBulk.mockImplementation(async (list, change) =>
+    bulkAnswer(
+      list.map((p) => ({
+        id: p.id,
+        result: 'ok' as const,
+        data: {
+          ...([erika, max, paula].find((x) => x.id === p.id) as Preorder),
+          ...(change.status ? { status: change.status } : {}),
+          notCollected: change.notCollected ?? false,
+          updatedAt: '2026-11-12T09:20:00.000Z',
+        },
+      }))
+    )
+  )
 })
 
 afterEach(() => jest.useRealTimers())
@@ -265,8 +293,15 @@ describe('AbholListeClient (P2)', () => {
     await user.click(
       within(dialog).getByRole('button', { name: 'Als bereit markieren' })
     )
-    await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(2))
-    expect(mockStatus.mock.calls.map((c) => c[0]).sort()).toEqual([1, 2])
+    // Ein Request für alle (W4), mit der geladenen Fassung je Bestellung.
+    await waitFor(() => expect(mockBulk).toHaveBeenCalledTimes(1))
+    expect(mockStatus).not.toHaveBeenCalled()
+    const [list, change] = mockBulk.mock.calls[0]
+    expect(list.map((p) => p.id).sort()).toEqual([1, 2])
+    expect(change).toEqual({ status: 'bereit' })
+    expect(
+      await screen.findByText('2 Bestellungen als bereit markiert.')
+    ).toBeVisible()
   })
 
   it('Tagesabschluss: alle Wartenden als „nicht abgeholt" - erst am Abholtag', async () => {
@@ -283,12 +318,225 @@ describe('AbholListeClient (P2)', () => {
         name: 'Als nicht abgeholt markieren',
       })
     )
-    await waitFor(() => expect(mockStatus).toHaveBeenCalledTimes(3))
-    expect(mockStatus).toHaveBeenCalledWith(
-      3,
-      { notCollected: true },
-      '2026-11-12T08:02:00.000Z'
+    await waitFor(() => expect(mockBulk).toHaveBeenCalledTimes(1))
+    const [list, change] = mockBulk.mock.calls[0]
+    expect(change).toEqual({ notCollected: true })
+    expect(list.map((p) => [p.id, p.updatedAt])).toEqual(
+      expect.arrayContaining([[3, '2026-11-12T08:02:00.000Z']])
     )
+    expect(list).toHaveLength(3)
+  })
+
+  it('Sammelaktion: Konflikt, anonymisiert und abgelehnt - je eine eigene Meldung', async () => {
+    const user = userEvent.setup()
+    mockBulk.mockResolvedValueOnce(
+      bulkAnswer([
+        { id: 1, result: 'ok', data: { ...erika, notCollected: true } },
+        {
+          id: 2,
+          result: 'conflict',
+          error: 'stale_preorder',
+          message: 'Die Vorbestellung wurde inzwischen geändert.',
+        },
+        {
+          id: 3,
+          result: 'anonymized',
+          error: 'anonymized',
+          message: 'anonymisiert',
+        },
+      ])
+    )
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.click(
+      screen.getByRole('button', { name: /Tagesabschluss: Rest/ })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Als nicht abgeholt markieren',
+      })
+    )
+    expect(
+      await screen.findByText('1 Bestellung als nicht abgeholt markiert.')
+    ).toBeVisible()
+    const notice = await screen.findByText(/inzwischen an anderer Stelle/)
+    expect(notice.textContent).toContain(
+      '1 Bestellung wurde inzwischen an anderer Stelle geändert und nicht angefasst.'
+    )
+    expect(notice.textContent).toContain(
+      '1 Bestellung ist schon anonymisiert (Datenschutz)'
+    )
+    expect(notice.textContent).toContain('Die Liste ist neu geladen.')
+  })
+
+  it('Sammelaktion: Neuladen scheitert - kein „neu geladen", Liste bleibt, Hinweis offline', async () => {
+    const user = userEvent.setup()
+    mockBulk.mockResolvedValueOnce(
+      bulkAnswer([
+        { id: 1, result: 'ok', data: { ...erika, status: 'bereit' } },
+        { id: 2, result: 'conflict', error: 'stale_preorder' },
+      ])
+    )
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    mockDay.mockRejectedValue(new Error('Failed to fetch'))
+    await user.click(
+      screen.getByRole('button', { name: /Alle offenen als bereit markieren/ })
+    )
+    await user.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Als bereit markieren',
+      })
+    )
+    const notice = await screen.findByText(/inzwischen an anderer Stelle/)
+    expect(notice.textContent).not.toContain('Die Liste ist neu geladen')
+    expect(notice.textContent).toContain(
+      'Die Liste konnte nicht neu geladen werden'
+    )
+    // letzter Stand bleibt sichtbar, mit Hinweis
+    expect(screen.getByTestId('abhol-LA-2026-11-12-02')).toBeInTheDocument()
+    expect(screen.getByTestId('abholliste-stale')).toHaveTextContent(
+      /Keine Verbindung zum Server - die Liste konnte nicht neu geladen werden\. Angezeigt wird der Stand von \d\d:\d\d\./
+    )
+  })
+
+  it('Sammelaktion ohne Verbindung: nichts gespeichert, Dialog bleibt offen', async () => {
+    const user = userEvent.setup()
+    mockBulk.mockRejectedValueOnce(new Error('Failed to fetch'))
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    await user.click(
+      screen.getByRole('button', { name: /Alle offenen als bereit markieren/ })
+    )
+    const dialog = await screen.findByRole('dialog')
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Als bereit markieren' })
+    )
+    expect(
+      await within(dialog).findByText(
+        'Keine Verbindung zum Server - es wurde nichts gespeichert. Bitte WLAN prüfen und erneut versuchen.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.getByRole('dialog')).toBeInTheDocument()
+    expect(screen.queryByText(/als bereit markiert\./)).toBeNull()
+
+    // 5xx: eigener Satz, auch hier nichts gespeichert
+    mockBulk.mockRejectedValueOnce(
+      new ApiError('Interner Fehler.', 502, 'bad_gateway')
+    )
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Als bereit markieren' })
+    )
+    expect(
+      await within(dialog).findByText(
+        /Der Server hat einen Fehler gemeldet - es wurde nichts gespeichert/
+      )
+    ).toBeInTheDocument()
+
+    // 4xx: die deutsche Meldung der API
+    mockBulk.mockRejectedValueOnce(
+      new ApiError('Keine Berechtigung.', 403, 'forbidden')
+    )
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Als bereit markieren' })
+    )
+    expect(
+      await within(dialog).findByText('Keine Berechtigung.')
+    ).toBeInTheDocument()
+  })
+
+  it('Ladefehler: Meldung mit „Erneut versuchen", danach die Liste', async () => {
+    const user = userEvent.setup()
+    mockDay.mockRejectedValueOnce(
+      new ApiError('Die Abholliste ist gerade nicht verfügbar.', 500, 'x')
+    )
+    renderAs('verkauf')
+    const alert = await screen.findByText(
+      'Die Abholliste ist gerade nicht verfügbar.'
+    )
+    expect(alert).toBeVisible()
+    expect(screen.queryByTestId('abhol-LA-2026-11-12-01')).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+    expect(
+      await screen.findByTestId('abhol-LA-2026-11-12-01')
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Die Abholliste ist gerade nicht verfügbar.')
+    ).toBeNull()
+  })
+
+  it('Ladefehler ohne Verbindung: sagt es so', async () => {
+    mockDay.mockRejectedValueOnce(new Error('Failed to fetch'))
+    renderAs('verkauf')
+    expect(
+      await screen.findByText(
+        'Keine Verbindung zum Server - die Abholliste konnte nicht geladen werden. Bitte WLAN prüfen.'
+      )
+    ).toBeVisible()
+  })
+
+  it('stilles Nachladen scheitert: Liste bleibt, Hinweis, „Erneut laden" holt sie', async () => {
+    const user = userEvent.setup()
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    mockDay.mockRejectedValueOnce(new Error('Request timeout'))
+    act(() => {
+      fireEvent.focus(window)
+    })
+    expect(await screen.findByTestId('abholliste-stale')).toBeVisible()
+    expect(screen.getByTestId('abhol-LA-2026-11-12-01')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Erneut laden' }))
+    await waitFor(() =>
+      expect(screen.queryByTestId('abholliste-stale')).toBeNull()
+    )
+  })
+
+  it('Telefonnummer ist ein Touch-Ziel von mindestens 44 px', async () => {
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    const link = within(row('LA-2026-11-12-01')).getByRole('link', {
+      name: erika.customerPhone as string,
+    })
+    expect(link.getAttribute('href')).toMatch(/^tel:\+?\d+$/)
+    expect(link).toHaveStyle({ minHeight: '44px', minWidth: '44px' })
+    expect(link).toHaveStyle({ display: 'inline-flex' })
+  })
+
+  it('„heute" rollt weiter: Tagesabschluss wird am Abholtag frei (Fokus/Sichtbarkeit)', async () => {
+    const tomorrow = '2026-11-13'
+    mockDay.mockResolvedValue({ ...ladenDay(), date: tomorrow } as PreorderDay)
+    renderAs('verkauf', { initialDate: tomorrow, initialPlace: 'laden' })
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    const button = () =>
+      screen.getByRole('button', { name: /Tagesabschluss: Rest/ })
+    expect(button()).toBeDisabled()
+    // Tablet bleibt über Nacht offen
+    jest.setSystemTime(new Date(2026, 10, 13, 7, 30))
+    act(() => {
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    await waitFor(() => expect(button()).toBeEnabled())
+  })
+
+  it('„Nicht abgeholt" im Menü erst ab dem Abholtag', async () => {
+    const user = userEvent.setup()
+    const tomorrow = '2026-11-13'
+    const later = preorder({
+      ...paula,
+      pickupDate: tomorrow,
+      code: 'LA-2026-11-13-01',
+    })
+    mockDay.mockResolvedValue(
+      day({ date: tomorrow, pickupPointId: 'laden', preorders: [later] })
+    )
+    renderAs('verkauf', { initialDate: tomorrow, initialPlace: 'laden' })
+    await screen.findByTestId('abhol-LA-2026-11-13-01')
+    await user.click(
+      screen.getByRole('button', { name: 'Weitere Aktionen für Paula Probe' })
+    )
+    expect(
+      screen.queryByRole('menuitem', { name: 'Nicht abgeholt' })
+    ).not.toBeInTheDocument()
   })
 
   it('Tagesabschluss ist vor dem Abholtag gesperrt', async () => {
@@ -339,7 +587,7 @@ describe('AbholListeClient (P2)', () => {
     )
     expect(
       await screen.findByText(
-        /LA-2026-11-12-01: Die Vorbestellung wurde inzwischen geändert\. Die Liste ist neu geladen/
+        /LA-2026-11-12-01: Die Vorbestellung wurde inzwischen geändert\. Es wurde nichts überschrieben\. Die Liste ist neu geladen/
       )
     ).toBeInTheDocument()
     expect(mockDay.mock.calls.length).toBeGreaterThan(loadsBefore)
@@ -395,9 +643,10 @@ describe('AbholListeClient (P2)', () => {
     expect(
       screen.queryByRole('menuitem', { name: 'Bereit (gepackt)' })
     ).not.toBeInTheDocument()
+    // Samstag ist noch nicht da („heute" = Donnerstag): erst ab dem Abholtag.
     expect(
-      screen.getByRole('menuitem', { name: 'Nicht abgeholt' })
-    ).toBeInTheDocument()
+      screen.queryByRole('menuitem', { name: 'Nicht abgeholt' })
+    ).not.toBeInTheDocument()
   })
 
   it('druckt eine eigene A4-Tabelle: ganze Liste ohne Stornierte, mit Unterschrift', async () => {

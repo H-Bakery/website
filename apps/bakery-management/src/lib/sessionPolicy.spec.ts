@@ -48,17 +48,50 @@ describe('Backstube-Tablet (Z6): eigene Leerlauf-Grenze', () => {
     )
   })
 
-  it('andere Seite, andere Rolle oder persönliche Sitzung: unverändert', () => {
+  it('/backstube an der Station: lange Grenze für jede Rolle (W4)', () => {
+    for (const role of ['inhaber', 'backstube', 'verkauf', 'fahrer', null]) {
+      expect(idleLimitMs('station', {}, { role, path: '/backstube' })).toBe(
+        12 * HOUR
+      )
+      expect(
+        idleLimitMs('station', {}, { role, path: '/backstube/2026-11-14' })
+      ).toBe(12 * HOUR)
+    }
+    expect(
+      idleLimitMs(
+        'station',
+        { backstubeMinutes: '90' },
+        { role: 'inhaber', path: '/backstube' }
+      )
+    ).toBe(90 * MIN)
+  })
+
+  it('andere Seite oder persönliche Sitzung: unverändert', () => {
     expect(
       idleLimitMs('station', {}, { role: 'backstube', path: '/admin' })
     ).toBe(10 * MIN)
     expect(
-      idleLimitMs('station', {}, { role: 'inhaber', path: '/backstube' })
+      idleLimitMs('station', {}, { role: 'inhaber', path: '/admin/backzettel' })
     ).toBe(10 * MIN)
+    // Kein Präfix-Treffer auf ähnlich benannte Pfade
     expect(
-      idleLimitMs('station', {}, { role: 'verkauf', path: '/backstube' })
+      idleLimitMs('station', {}, { role: 'inhaber', path: '/backstubex' })
     ).toBe(10 * MIN)
     expect(idleLimitMs('personal', {}, backstube)).toBe(12 * HOUR)
+  })
+
+  it('12-h-Grenze nach der PIN gilt auch für den Inhaber an /backstube', () => {
+    const start = new Date(2026, 10, 6, 1, 30).getTime()
+    const limit = idleLimitMs(
+      'station',
+      {},
+      { role: 'inhaber', path: '/backstube' }
+    )
+    const s = { sessionKind: 'station' as const, startedAt: start }
+    expect(sessionEndReason(s, start + 11 * HOUR, limit, null)).toBeNull()
+    expect(
+      sessionEndReason(s, start + STATION_MAX_SESSION_MS, limit, null)
+    ).toBe('max_age')
   })
 
   it('die 12-h-Grenze nach der PIN und das Tagesende gelten weiter', () => {

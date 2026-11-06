@@ -10,8 +10,9 @@
  *   draft      computed live; only season factor and corrections are stored
  *   confirmed  lines frozen in backzettel_lines, Hefeteig/fillings/prep/
  *              warnings frozen in computed_snapshot, preorder snapshot;
- *              reading the day records new preorder changes as
- *              backzettel_deltas (audited as a system action)
+ *              every preorder write of that day records its changes as
+ *              backzettel_deltas in the same transaction (W4,
+ *              `recordPreorderDeltas`); reading never writes
  *   reopen     (inhaber) back to draft; deltas are folded into the live
  *              draft and discarded, the audit log keeps them. A re-confirm
  *              that changes a line's quantity clears its tick.
@@ -41,6 +42,7 @@ import type {
 const core = require('./backzettel.core')
 const dayCore = require('./backzettel-day.core')
 const { WEEKDAY_NAMES } = require('./backzettel-config.core')
+const shopOrders = require('./shop-orders.core')
 /* eslint-enable @typescript-eslint/no-var-requires */
 
 /** An expected failure: answered with `status`, `error`, German `message`. */
@@ -204,10 +206,12 @@ function computeDraft(
   return result
 }
 
-export interface GetDayOptions {
-  /** Persist new preorder deltas of a confirmed day (default true). */
-  recordDeltas?: boolean
-  req?: Request | null
+/** Berlin calendar day before today (`YYYY-MM-DD`). */
+function berlinYesterday(now: Date): string {
+  const today: string = shopOrders.berlinToday(now)
+  const d = new Date(`${today}T12:00:00Z`)
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
 }
 
 export interface BackzettelHooks {
@@ -442,86 +446,225 @@ export function createBackzettelService(
     }
   }
 
-  /**
-   * Records preorder changes since confirmation as delta rows. The cheap
-   * check runs outside the write queue; the real one is repeated inside the
-   * serialised transaction (preorders and recorded deltas read there), so two
-   * readers at once cannot record the same change twice.
-   */
-  async function syncDeltas(
-    date: string,
-    day: BackzettelDay,
+  /** Delta rows that are not recorded yet (pure; `dayCore.reconcileDeltas`). */
+  function unrecordedDeltas(
     loaded: Loaded,
-    req: Request | null
-  ): Promise<void> {
-    const reconcile = (
-      current: PreorderSnapshotItem[],
-      recorded: BackzettelDelta[],
-      snapshot: unknown
-    ) =>
-      dayCore.reconcileDeltas({
-        config: loaded.config,
-        date,
-        snapshot,
-        current,
-        recorded: recorded.map((r) => ({
-          itemId: r.itemId,
-          variant: r.variant,
-          preorderId: r.preorderId,
-          qty: toNumber(r.qty),
-        })),
-        catalog: loaded.catalog,
-      })
-    const quick = reconcile(
-      await loadPreorderSnapshot(date),
-      await BackzettelDelta.findAll({ where: { date } }),
+    date: string,
+    current: PreorderSnapshotItem[],
+    recorded: BackzettelDelta[],
+    snapshot: unknown
+  ) {
+    return dayCore.reconcileDeltas({
+      config: loaded.config,
+      date,
+      snapshot,
+      current,
+      recorded: recorded.map((r) => ({
+        itemId: r.itemId,
+        variant: r.variant,
+        preorderId: r.preorderId,
+        qty: toNumber(r.qty),
+      })),
+      catalog: loaded.catalog,
+    })
+  }
+
+  /** Days whose deltas could not be recorded (no master data) - logged once. */
+  const warnedPending = new Set<string>()
+
+  /**
+   * Records the preorder changes of a confirmed day as delta rows, inside the
+   * caller's write transaction (W4). Since the write transactions are
+   * serialised, two writes cannot record the same change twice, and the
+   * comparison is a full diff (snapshot + recorded rows vs. the preorders
+   * now), so a run after a missed one catches up everything.
+   *
+   * Returns the number of new rows, or `null` when the day is confirmed but
+   * the master data cannot be loaded (nothing recorded; the next write of
+   * that day, a confirm/reopen or a server start reconciles it).
+   */
+  async function recordDeltasIn(
+    date: string,
+    transaction: Transaction,
+    req: Request | null,
+    via: string,
+    system: boolean
+  ): Promise<number | null> {
+    const day = await BackzettelDay.findByPk(date, { transaction })
+    if (!day || day.status !== 'confirmed') return 0
+    const loaded = source.load()
+    if (!loaded.ok) {
+      if (!warnedPending.has(date)) {
+        warnedPending.add(date)
+        console.warn(
+          `[backzettel] ${date}: Änderungen an Vorbestellungen nicht als Delta erfasst - Stammdaten fehlen (${loaded.reasons
+            .map((r: unknown) =>
+              typeof r === 'string'
+                ? r
+                : (r as { message?: string } | null)?.message ?? String(r)
+            )
+            .join(
+              '; '
+            )}). Nachgeholt beim nächsten Lesen mit Stammdaten, Schreiben, Freigeben/Öffnen oder Neustart.`
+        )
+      }
+      return null
+    }
+    warnedPending.delete(date)
+    const rows = unrecordedDeltas(
+      loaded,
+      date,
+      await loadPreorderSnapshot(date, transaction),
+      await BackzettelDelta.findAll({ where: { date }, transaction }),
       day.preorderSnapshot || []
     )
-    if (quick.length === 0) return
+    if (rows.length === 0) return 0
+    const created = await BackzettelDelta.bulkCreate(
+      rows.map((r: any) => ({ date, ...r })),
+      { transaction }
+    )
+    // A preorder write is attributed to its writer; the reconciliation sweep
+    // is a system action (user null). createdAt = recorded at.
+    await audit(
+      req,
+      'deltas_recorded',
+      'backzettel_day',
+      date,
+      {
+        via,
+        deltas: rows,
+        ids: created.map((d) => d.id),
+      },
+      system ? { transaction, userId: null } : { transaction }
+    )
+    return rows.length
+  }
 
-    await getSequelize().transaction(async (transaction) => {
-      const fresh = await BackzettelDay.findByPk(date, { transaction })
-      if (!fresh || fresh.status !== 'confirmed') return
-      const rows = reconcile(
-        await loadPreorderSnapshot(date, transaction),
-        await BackzettelDelta.findAll({ where: { date }, transaction }),
-        fresh.preorderSnapshot || []
-      )
-      if (rows.length === 0) return
-      const created = await BackzettelDelta.bulkCreate(
-        rows.map((r: any) => ({ date, ...r })),
-        { transaction }
-      )
-      // A system action: the reader only triggered the detection, the
-      // change itself came from the preorder. createdAt = detected at.
-      await audit(
-        req,
-        'deltas_recorded',
-        'backzettel_day',
+  /**
+   * Preorder write hook (`PreordersService.onWrite`, app.ts): records the
+   * deltas of every touched confirmed day in the preorder's transaction.
+   */
+  async function recordPreorderDeltas(
+    dates: string[],
+    context: { transaction: Transaction; req: Request | null; via: string }
+  ): Promise<void> {
+    for (const date of dates) {
+      if (!core.isValidDate(date)) continue
+      await recordDeltasIn(
         date,
-        {
-          via: 'read',
-          readerId: req?.user?.id ?? null,
-          deltas: rows,
-          ids: created.map((d) => d.id),
-        },
-        { transaction, userId: null }
+        context.transaction,
+        context.req,
+        `preorder_${context.via}`,
+        false
       )
+    }
+  }
+
+  /**
+   * One-shot reconciliation (W4): every confirmed day from `from` on gets
+   * its missed deltas recorded, each day in its own serialised transaction.
+   * Catches preorders written while the master data could not be loaded, or
+   * written by a path without the hook (CLI import). Called at server start
+   * and after every confirm/reopen; never by a GET.
+   */
+  async function reconcileConfirmedDays(
+    options: { from?: string; req?: Request | null } = {}
+  ): Promise<{ date: string; recorded: number | null }[]> {
+    const from = options.from ?? berlinYesterday(new Date())
+    const days = await BackzettelDay.findAll({
+      where: { status: 'confirmed', date: { [Op.gte]: from } },
+      attributes: ['date'],
+      order: [['date', 'ASC']],
     })
+    const out: { date: string; recorded: number | null }[] = []
+    for (const d of days) {
+      const recorded = await getSequelize().transaction((transaction) =>
+        recordDeltasIn(
+          d.date,
+          transaction,
+          options.req ?? null,
+          'reconcile',
+          true
+        )
+      )
+      out.push({ date: d.date, recorded })
+    }
+    return out
+  }
+
+  /** After confirm/reopen: the sweep must never fail the request. */
+  async function reconcileQuietly(req: Request): Promise<void> {
+    try {
+      await reconcileConfirmedDays({ req })
+    } catch (error) {
+      console.error('[backzettel] Delta-Abgleich fehlgeschlagen:', error)
+    }
+  }
+
+  /** Background catch-ups started by a read, per date (W4 fixup). */
+  const catchUps = new Map<string, Promise<void>>()
+
+  /**
+   * A read found unrecorded deltas while the master data load again (the
+   * preorder was written while they did not, or by the CLI import): record
+   * them in the background, in their own serialised transaction - the GET
+   * itself stays free of writes, and the tablet's next reload (60 s, or the
+   * short follow-up the screens do while `deltasPending`) shows them. One
+   * run per date at a time.
+   */
+  function scheduleCatchUp(date: string): void {
+    if (catchUps.has(date)) return
+    const run = new Promise<void>((resolve) => setImmediate(resolve))
+      .then(() =>
+        getSequelize().transaction((transaction) =>
+          recordDeltasIn(date, transaction, null, 'reconcile', true)
+        )
+      )
+      .then(
+        () => undefined,
+        (error) => {
+          console.error(
+            `[backzettel] ${date}: Delta-Nachtrag fehlgeschlagen:`,
+            error
+          )
+        }
+      )
+      .finally(() => catchUps.delete(date))
+    catchUps.set(date, run)
+  }
+
+  /** Tests: wait for every background catch-up started so far. */
+  async function idle(): Promise<void> {
+    while (catchUps.size > 0) await Promise.all([...catchUps.values()])
   }
 
   // ------------------------------------------------------------- reads
 
-  async function getDay(date: string, options: GetDayOptions = {}) {
+  /**
+   * Free of writes in the request (W4): reading never records deltas itself.
+   * `deltasPending` says whether preorder changes exist that are not
+   * recorded yet (only after a write without loadable master data, or an
+   * import) - `null` without master data. When it is `true`, a background
+   * catch-up is started (`scheduleCatchUp`), so nothing stays unrecorded
+   * until the next preorder write or a restart.
+   */
+  async function getDay(date: string) {
     assertDate(date)
     const loaded = source.load()
-    let day = await BackzettelDay.findByPk(date)
+    const day = await BackzettelDay.findByPk(date)
     if (day && day.status === 'confirmed') {
-      if (loaded.ok && options.recordDeltas !== false) {
-        await syncDeltas(date, day, loaded, options.req ?? null)
-        day = (await BackzettelDay.findByPk(date)) ?? day
-      }
-      if (day.status === 'confirmed') return confirmedView(date, day, loaded)
+      const view = await confirmedView(date, day, loaded)
+      const deltasPending = loaded.ok
+        ? unrecordedDeltas(
+            loaded,
+            date,
+            await loadPreorderSnapshot(date),
+            await BackzettelDelta.findAll({ where: { date } }),
+            day.preorderSnapshot || []
+          ).length > 0
+        : null
+      if (deltasPending === true) scheduleCatchUp(date)
+      return { ...view, deltasPending }
     }
     if (!loaded.ok) {
       return {
@@ -536,7 +679,7 @@ export function createBackzettelService(
   }
 
   async function getPrep(date: string) {
-    const day: any = await getDay(date, { recordDeltas: false })
+    const day: any = await getDay(date)
     if (day.status === 'no-config') return day
     return {
       date: day.date,
@@ -606,7 +749,7 @@ export function createBackzettelService(
         { transaction }
       )
     })
-    return getDay(date, { recordDeltas: false })
+    return getDay(date)
   }
 
   async function setCorrection(
@@ -663,7 +806,7 @@ export function createBackzettelService(
         { transaction }
       )
     })
-    return getDay(date, { recordDeltas: false })
+    return getDay(date)
   }
 
   async function confirm(date: string, req: Request) {
@@ -770,7 +913,10 @@ export function createBackzettelService(
         { transaction }
       )
     })
-    const confirmed = await getDay(date, { recordDeltas: false })
+    // One-shot catch-up of the other confirmed days (W4, see
+    // reconcileConfirmedDays); this day's snapshot is fresh anyway.
+    await reconcileQuietly(req)
+    const confirmed = await getDay(date)
     if (hooks.onConfirmed) {
       try {
         hooks.onConfirmed(confirmed, { role: req.user?.role ?? null })
@@ -852,6 +998,7 @@ export function createBackzettelService(
         { transaction }
       )
     })
+    await reconcileQuietly(req)
     if (hooks.onReopened) {
       try {
         hooks.onReopened(date, { role: req.user?.role ?? null })
@@ -859,7 +1006,7 @@ export function createBackzettelService(
         console.error('[backzettel] onReopened hook failed:', error)
       }
     }
-    return getDay(date, { recordDeltas: false })
+    return getDay(date)
   }
 
   async function setDone(
@@ -976,6 +1123,9 @@ export function createBackzettelService(
     reopen,
     setDone,
     acknowledgeDelta,
+    recordPreorderDeltas,
+    reconcileConfirmedDays,
+    idle,
   }
 }
 

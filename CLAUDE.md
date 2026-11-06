@@ -472,7 +472,11 @@ Variable (lokal, CI) ändert sich nichts. Fünf Dinge, die man wissen muss:
   „Produktionsübersicht" und „Letzte Aktivitäten" aus und fragt `/api/orders` und `/api/production`
   nicht an. Der `NotificationProvider` bleibt (das Dashboard ruft `useNotifications()`), lädt aber
   dank `loadOnMount={false}` nichts, pollt nicht und fragt nicht nach Browser-Mitteilungen - die
-  echte API hat kein `/api/notifications`.
+  echte API hat kein `/api/notifications`. **Ohne Pilotbetrieb gegen die echte API** (W4) fragt er
+  einmal; ein 404/501 setzt `available: false` im Kontext, beendet das Pollen ohne
+  `console.error` und merkt sich das im `sessionStorage` des Tabs
+  (`bakery-notifications-unavailable`) - die Einstellungen blenden „Benachrichtigungen" dann
+  still aus. Die eine 404-Zeile im Netzwerk-Log des Browsers bleibt.
 
 Tests: `src/lib/pilotMode.spec.ts`, `src/app/admin/layout.pilot.spec.tsx`,
 `src/app/admin/DashboardClient.spec.tsx` (Management-App) und
@@ -593,10 +597,19 @@ einem synthetischen hq-Baum (`tests/fixtures/hq-data.synthetic.js`) bis aufs Byt
   ändert einen freigegebenen Zettel nicht; `configChangedSinceConfirm: true` sagt nur, dass die
   aktuellen Stammdaten jetzt etwas anderes ergäben. Danach kommen spätere
   Vorbestellungen als **Deltas** dazu - je Vorbestellung und Änderung eine Zeile, hervorgehoben,
-  von der Backstube quittiert (`ack`), nie still in die Zeilen gemischt. Nur der Inhaber kann
-  wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
-  Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
-  sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
+  von der Backstube quittiert (`ack`), nie still in die Zeilen gemischt. **Seit W4 schreibt sie
+  der Schreibweg der Vorbestellung** (Anlegen, Ändern, Status, Storno, Sammelaktion - in derselben
+  Transaktion), nicht mehr das Lesen: `GET /api/backzettel/:datum` schreibt in der Anfrage nichts und sagt
+  mit `deltasPending`, ob noch etwas nachzutragen ist. Was geschrieben wurde, während die
+  Stammdaten fehlten (oder per CLI-Import), trägt ein Abgleich nach (Serverstart, Freigabe,
+  Wiederöffnen, nächste Änderung des Tages - und **im Hintergrund, sobald ein Lesen
+  `deltasPending: true` findet**; Details in `apps/bakery-api/CLAUDE.md`). Tablet und
+  Planungsseite zeigen `deltasPending` als Hinweis und laden nach 5 s nach (höchstens 6-mal);
+  fehlen die Stammdaten an einem freigegebenen Tag, sagt das Tablet, dass Nachträge fehlen können
+  - nie still. Nur der Inhaber kann
+    wieder öffnen; Abhaken (`done`/`undone`) geht nur an freigegebenen Tagen. **Ändert eine erneute
+    Freigabe die Menge einer Zeile, fällt ihr Haken weg** (steht als `clearedTicks` im Audit) - sonst
+    sähe die Backstube eine erledigte Zeile und übersähe die zusätzlichen Stücke.
 - `prepDate` ist der Kalender-Vortag; ist der selbst Ruhetag (Dienstag), steht
   `prepDateProvisional: true` - wer dann vorbereitet, ist offen (Q-B2).
 - Rollen: lesen jede Sitzung; planen, freigeben, abhaken, quittieren `inhaber` + `backstube`.
@@ -674,8 +687,8 @@ wissen muss:
   entfernen.
 - **Übersicht:** heute bis heute + 6 Tage, nur `config.days` (ohne Stammdaten Di–So); oben groß der
   **nächste Produktionstag = der erste nach heute** (heute wird schon gebacken). Je Tag ein
-  `GET /api/backzettel/:datum` - das Lesen eines freigegebenen Tages schreibt dabei Deltas (so ist
-  Z3 gebaut).
+  `GET /api/backzettel/:datum` - seit W4 ohne Nebenwirkung (Deltas schreibt der Schreibweg der
+  Vorbestellungen).
 - **Bildschirm:** ab `md` eine Tabelle je Abschnitt (feste Spaltenbreiten), darunter Karten; beide
   stehen im DOM und werden per CSS umgeschaltet (Specs greifen über `table-<abschnitt>` /
   `line-card-<key>`). Offene Nachträge: Zeile mit Warnrand + Chip, Karte „Nachträge seit der
@@ -713,13 +726,19 @@ Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhaber, Backstube). Was man 
   der Knopf wie der Tag. Springt die Regel um (12 Uhr, Mitternacht), folgt die Ansicht ihr wieder:
   eine Wahl gilt nur für die Regel-Lage (`today|auto`), in der sie getroffen wurde - abgeleitet im
   Render, nicht per Effekt, damit nicht erst der alte Tag (am Montag der Ruhetag) geladen wird.
-- **Leerlauf: das Tablet bleibt angemeldet.** Eine Stationssitzung der Rolle `backstube` auf
-  `/backstube` endet nicht nach den 10 min der Station (mit Teig an den Händen tippt niemand), sondern
-  nach `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (Vorgabe 720 = 12 h, `idleLimitMs(kind, env, { role,
+- **Leerlauf: das Tablet bleibt angemeldet.** Eine Stationssitzung auf `/backstube` endet nicht
+  nach den 10 min der Station (mit Teig an den Händen tippt niemand), sondern nach
+  `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (Vorgabe 720 = 12 h, `idleLimitMs(kind, env, { role,
 path })` in `sessionPolicy.ts`, gelesen bei jeder Prüfung aus `window.location.pathname`) -
-  praktisch also mit der 12-h-Grenze nach der PIN oder `NEXT_PUBLIC_STATION_LOGOUT_AT`. Andere
-  Seiten und Rollen an der Station behalten 10 min; auch ein **Inhaber per PIN** auf `/backstube`
-  (er trägt mehr Rechte). Wer am Backstube-Tablet bäckt, meldet sich mit einem `backstube`-Konto an.
+  praktisch also mit der 12-h-Grenze nach der PIN oder `NEXT_PUBLIC_STATION_LOGOUT_AT`. **Seit W4
+  für jede Rolle**, auch für den **Inhaber per PIN** (er backt dort genauso; `/backstube` kann
+  nichts verwalten). Jede andere Seite an der Station behält die 10 min, sobald sie offen ist; die
+  12-h-Grenze nach der PIN gilt immer. **Damit niemand die Inhaber-Rechte eines liegen
+  gelassenen Tablets erbt:** lag `/backstube` in einer Stationssitzung, die nicht der Rolle
+  `backstube` gehört, länger als die Stations-Grenze unberührt, markiert die nächste Berührung die
+  Sitzung (`unattendedAtBackstube` in `session.tsx`); auf `/backstube` geht es weiter, beim
+  Verlassen meldet der `RouteGuard` wegen Inaktivität ab (`endUnattended`), statt die nächste Seite
+  zu zeigen. Ob der Inhaber am Tablet überhaupt die lange Grenze bekommt, bleibt Owner-Entscheidung.
 - **Abhaken** nur an freigegebenen Tagen und nur `inhaber`/`backstube` (sonst kein Haken; die API
   sagt dasselbe): ein 72-px-Haken je Zeile, sofort gesetzt (`POST …/lines/:id/done|undone`), bei
   einem Fehler zurückgenommen mit „Nicht gespeichert: …"; 409 `not_confirmed`/`confirmed`/… lädt
@@ -739,7 +758,8 @@ path })` in `sessionPolicy.ts`, gelesen bei jeder Prüfung aus `window.location.
   (fetch-Fehler, Zeitüberschreitung, 502-504 ohne JSON-Kennung von Caddy) → „Keine Verbindung zum
   Server – bitte WLAN prüfen."; 4xx mit deutscher API-`message` → diese („Neu laden fehlgeschlagen: …"
   bzw. „Nicht gespeichert: …"); sonst ein deutscher Text mit Statuscode. `Failed to fetch` oder
-  `HTTP 502: Bad Gateway` erscheinen nie. Das Lesen eines freigegebenen Tages schreibt Deltas (Z3).
+  `HTTP 502: Bad Gateway` erscheinen nie. Das Neuladen schreibt nichts (seit W4 entstehen Deltas
+  beim Speichern der Vorbestellung).
 - **Kontrast:** feste Farbpaare je Modus in `components/backstube/backstubeColors.ts` (Banner,
   Nachtrag, Haken ≥ 7:1, geprüft in `backstubeColors.spec.ts`), keine MUI-`*.main`-Texte. Die Seite
   schaltet das `section`-Einblenden aus `global.css` ab, sonst stünde der Zettel nach jedem
@@ -821,7 +841,11 @@ Abschnitt „Auth (B3)". Was man von außen wissen muss:
   (403 `personal_session_required`, auch als `inhaber`) - das geht nur mit Benutzername und
   Passwort. `userId` an `/pin` nur als ganze Zahl oder `"7"` (sonst 400).
 - **Rate-Limit** (Fehlversuche je 5 min → 429): 5 je IP + Benutzer, 30 je IP über alle Benutzer
-  (Passwort-Spraying), bei der PIN zusätzlich 10 je Benutzer über alle IPs. `req.ip` kommt hinter Caddy aus
+  (Passwort-Spraying), bei der PIN zusätzlich 10 je Benutzer über alle IPs. Seit W4 zählen **nur
+  Fehlversuche** - gleichzeitige erfolgreiche Anmeldungen bekommen nie ein 429; laufende Anfragen,
+  die das Limit sprengen könnten, warten kurz (höchstens 5 s, dann 429 mit `Retry-After`). Ein
+  Client, der während des Wartens auflegt, gibt seinen Platz sofort frei und zählt nicht; ein
+  abgebrochener, schon geprüfter Fehlversuch zählt trotzdem. `req.ip` kommt hinter Caddy aus
   `X-Forwarded-For` (`TRUST_PROXY`, Vorgabe `loopback`).
 
 ## hq-Produkte auf der echten API (B5)
@@ -884,7 +908,8 @@ anonymisation (P4)". Von außen wichtig:
   anderen Tag/Ort umzieht (Register `preorder_codes`); ein alter Abholzettel zeigt nie auf eine
   fremde Bestellung.
 - **Rollen:** `verkauf` (und `inhaber`) alles, `fahrer` lesen und nur übergeben bzw. „nicht
-  abgeholt", `backstube` nur `/sums`.
+  abgeholt", `backstube` nur `/sums` (und dort ohne `summary`, also ohne Beträge und
+  Bezahlstand).
 - **Shop:** `POST /api/orders` legt eine Vorbestellung mit Kanal `shop` an, **bleibt aber hinter
   der Anmeldung** - ein öffentlicher Bestellweg ist noch nicht entschieden. Die E-Mail wird nicht
   gespeichert.
@@ -971,12 +996,22 @@ Was man wissen muss:
   (stellt Status, `paid` und `notCollected` von vorher wieder her). Sonst ein Dialog:
   „Bezahlt und übergeben" / „Ohne Zahlung übergeben". Fahrer bekommen immer den Dialog und kein
   Rückgängig - die API lässt sie nur `abgeholt`/`nicht_abgeholt` setzen; Zurücknehmen kann der
-  Verkauf. Welche Aktion wer sieht, steht einmal in `abholActions(preorder, role)` und spiegelt
-  die Rollenregeln der API.
+  Verkauf. Welche Aktion wer sieht, steht einmal in `abholActions(preorder, role, today)` und
+  spiegelt die Rollenregeln der API - auch „Nicht abgeholt" je Zeile erst ab dem Abholtag (die API
+  sagt davor 409 `not_collected_too_early`, W4).
 - **Tagesabschluss** („Rest nicht abgeholt") erst ab dem Abholtag (`isDayEndAllowed`), „Alle
-  offenen als bereit" nur für Verkauf/Inhaber; beide mit Rückfrage, je Bestellung ein Aufruf.
-- **Stilles Nachladen** alle 60 s und beim Zurückkehren ins Fenster - aber nie, solange ein
-  Dialog, ein Menü oder eine Aktion offen ist.
+  offenen als bereit" nur für Verkauf/Inhaber; beide mit Rückfrage. **Seit W4 ein Aufruf für alle**
+  (`POST /api/preorders/bulk-status`, eine Transaktion, Ergebnis je Bestellung). Meldungen je Art
+  getrennt (`describeBulkResults`): inzwischen geändert (Konflikt), anonymisiert, nicht mehr da,
+  abgelehnt (mit API-Text). Scheitert der Aufruf als Ganzes, ist nichts gespeichert - „Keine
+  Verbindung …" bzw. „Der Server hat einen Fehler gemeldet …" im offenen Dialog
+  (`requestFailureKind`: keine Antwort / 5xx / 4xx).
+- **Stilles Nachladen** alle 60 s und beim Zurückkehren ins Fenster (`focus`,
+  `visibilitychange`) - aber nie, solange ein Dialog, ein Menü oder eine Aktion offen ist. Dabei
+  wird auch **„heute" neu bestimmt** (ein Tablet, das über Nacht offen bleibt). Scheitert es,
+  bleibt die letzte Liste mit Hinweis „… Angezeigt wird der Stand von HH:MM." stehen; „Die Liste ist
+  neu geladen" steht nur da, wenn das Neuladen wirklich geklappt hat.
+- **Telefonnummern** sind `tel:`-Links mit mindestens 44 × 44 px.
 - **Druck (A4 hoch):** gedruckt wird eine eigene Tabelle `.abholliste-print`, nicht die Karten -
   immer der ganze Tag ohne Stornierte, unabhängig von Suche und Filter, mit ☐/☑, Code, Name
   (+ Telefon), Artikel mit Sorte, Summe, Bezahlt ja/nein, Unterschrift; Kopf mit „Stand … Uhr".
@@ -993,7 +1028,11 @@ sind die P1-Maske bzw. die P3-Ansicht mit vorbelegter Sammelstelle und Rückweg 
 Code und bezahlt, verlinkt auf die Abholliste und storniert mit `expectedUpdatedAt`. Die Warnung
 „kein Tourstopp angelegt" ist weg (die Fahrer-App ist nicht im Pilot, D11).
 `PUT /api/preorders/pickup-points/:id` (neu in P2, nur `inhaber`) ändert die Sammelstelle; die
-Seite zeigt Verkauf und Fahrer die Daten nur lesend.
+Seite zeigt allen anderen die Felder **schreibgeschützt** (W4: `readOnly`, Schalter gesperrt, kein
+„Speichern"), schickt `expectedUpdatedAt` mit (409 `stale_pickup_point` → Hinweis mit „Neu
+laden") und begrenzt die Texte wie der Core (Notizen 2000 Zeichen). Die **Backliste** liest seit W4
+`GET /api/preorders/sums?date=&pickupPointId=` (Summen + Kopfzahlen, ohne Namen und Telefon),
+nicht mehr `/day`.
 
 Tests: `src/lib/abholliste.spec.ts`, `admin/preorders/abholliste/AbholListeClient.spec.tsx`,
 `admin/delivery/preorders/**/*.spec.tsx`, `admin/layout.navigation.spec.tsx`; API:
@@ -1084,7 +1123,7 @@ Sieben Dinge, die man wissen muss:
   Kacheln, spätestens 12 h nach der PIN; optional zur Uhrzeit `NEXT_PUBLIC_STATION_LOGOUT_AT`
   (`HH:MM`, Ortszeit, z. B. Ladenschluss - ohne Wert keine feste Uhrzeit, weil die Backstube
   nachmittags vorbereitet); persönlich nach `NEXT_PUBLIC_IDLE_LOGOUT_HOURS` (12 h). Ausnahme
-  Backstube-Tablet (Z6): Rolle `backstube` auf `/backstube` nach
+  Backstube-Tablet (Z6): jede Rolle auf `/backstube` (seit W4, vorher nur `backstube`) nach
   `NEXT_PUBLIC_BACKSTUBE_IDLE_MINUTES` (720), siehe dort.
   „Abmelden" (`components/auth/LogoutButton.tsx`) steht in der Kopfzeile, auf Stationen groß -
   Z6 (`/backstube`, ohne Admin-Layout) muss ihn selbst einbinden.

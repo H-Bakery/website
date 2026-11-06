@@ -120,7 +120,21 @@ export interface PickupPoint {
   orderDeadline: { weekday: number; time: string } | null
   notes: string | null
   active: boolean
+  /**
+   * Stand der Stammdaten (ISO) - nur `/api/preorders/pickup-points` liefert
+   * ihn (W4); die Lieferstelle schickt ihn als `expectedUpdatedAt` zurück.
+   */
+  updatedAt?: string | null
 }
+
+/** Höchstlängen der Sammelstellen-Texte - wie `PICKUP_POINT_LIMITS` im Core. */
+export const PICKUP_POINT_MAX_LENGTH = {
+  name: 100,
+  street: 200,
+  zip: 10,
+  city: 100,
+  notes: 2000,
+} as const
 
 /** Body von `PUT /api/preorders/pickup-points/:id` (Lieferstelle, Inhaber). */
 export interface PickupPointInput {
@@ -187,6 +201,11 @@ export interface PreorderSums {
   pickupPointId: string | null
   preorderCount: number
   items: PreorderSumItem[]
+  /**
+   * Kopfzahlen wie `/day` (W4) - ohne Namen und Telefonnummern, damit die
+   * Backliste nicht die ganze Abholliste laden muss. Ältere Server: fehlt.
+   */
+  summary?: PreorderDaySummary
 }
 
 export interface PreorderDaySummary {

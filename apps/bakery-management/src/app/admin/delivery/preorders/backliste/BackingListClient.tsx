@@ -27,10 +27,10 @@ import {
 } from '@mui/icons-material'
 import {
   fetchPickupPoints,
-  fetchPreorderDay,
+  fetchPreorderSums,
   preorderErrorMessage,
 } from '../../../../../lib/preordersApi'
-import { itemName, type PreorderDay } from '../../../../../lib/preordersTypes'
+import { itemName, type PreorderSums } from '../../../../../lib/preordersTypes'
 import {
   DELIVERY_WEEKDAY_LABELS,
   PickupPoint,
@@ -103,8 +103,9 @@ export interface BackingListClientProps {
  *
  * Das ist das Blatt, das samstags früh in der Backstube hängt - deshalb große
  * Zahlen und ein Druckbild ohne Bedienelemente. Gezählt wird auf dem Server
- * (`GET /api/preorders/day?date=&pickupPointId=`, je Produkt und Sorte),
- * hier wird nur angezeigt.
+ * (`GET /api/preorders/sums?date=&pickupPointId=`, je Produkt und Sorte, mit
+ * Kopfzahlen), hier wird nur angezeigt. Bewusst nicht `/day` (W4): die
+ * Backliste braucht keine Namen und Telefonnummern, also lädt sie keine.
  */
 export default function BackingListClient({
   initialDate,
@@ -116,7 +117,7 @@ export default function BackingListClient({
   const [pointId, setPointId] = useState(initialPickupPointId ?? '')
   // Leer starten - der Vorgabetag kommt aus der Uhr (Hydration).
   const [date, setDate] = useState(initialDate ?? '')
-  const [day, setDay] = useState<PreorderDay | null>(null)
+  const [day, setDay] = useState<PreorderSums | null>(null)
   const [pointsLoaded, setPointsLoaded] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -170,7 +171,7 @@ export default function BackingListClient({
     setLoading(true)
     setError(null)
     try {
-      setDay(await fetchPreorderDay(date, pointId))
+      setDay(await fetchPreorderSums(date, pointId))
     } catch (err) {
       setDay(null)
       setError(
@@ -188,8 +189,9 @@ export default function BackingListClient({
   }, [load, pointsLoaded])
 
   const weekday = isBusinessDate(date) ? deliveryWeekdayOf(date) : null
-  const sums = day?.sums ?? []
+  const sums = day?.items ?? []
   const summary = day?.summary ?? null
+  const count = summary ? summary.count : day?.preorderCount ?? 0
   const totalQty = sums.reduce((sum, entry) => sum + entry.quantity, 0)
 
   return (
@@ -291,7 +293,7 @@ export default function BackingListClient({
           >
             <CircularProgress />
           </Box>
-        ) : !summary || sums.length === 0 ? (
+        ) : !day || sums.length === 0 ? (
           !error && (
             <Typography color="text.secondary" sx={{ py: 4 }}>
               Für diesen Tag ist nichts vorbestellt.
@@ -340,10 +342,13 @@ export default function BackingListClient({
             </TableContainer>
 
             <Typography variant="body1" sx={{ mt: 3 }}>
-              {summary.count} Vorbestellung{summary.count === 1 ? '' : 'en'} ·{' '}
-              {totalQty} Stück · {formatCurrency(summary.total)} Summe ·{' '}
-              {formatCurrency(summary.unpaidTotal)} noch zu kassieren
-              {summary.byStatus.storniert > 0
+              {count} Vorbestellung{count === 1 ? '' : 'en'} · {totalQty} Stück
+              {summary
+                ? ` · ${formatCurrency(summary.total)} Summe · ${formatCurrency(
+                    summary.unpaidTotal
+                  )} noch zu kassieren`
+                : ''}
+              {summary && summary.byStatus.storniert > 0
                 ? ` · ${summary.byStatus.storniert} storniert (nicht enthalten)`
                 : ''}
             </Typography>

@@ -365,11 +365,83 @@ export async function registerCode(
   )
 }
 
+/**
+ * Called inside the write transaction of every preorder write that can change
+ * what is baked (create, edit, status, cancel, bulk) with the pickup dates it
+ * touched (before and after). The Backzettel (Z3) records its deltas here
+ * (W4) - in the same transaction, so a preorder write and its delta commit or
+ * roll back together. Must not throw for a missing config (it remembers the
+ * day instead); a database error rolls the preorder write back.
+ */
+export type PreorderWriteHook = (
+  dates: string[],
+  context: { transaction: Transaction; req: Request | null; via: string }
+) => Promise<void>
+
+/** Per-id outcome of `POST /api/preorders/bulk-status` (W4). */
+export type BulkStatusOutcome =
+  | 'ok'
+  | 'conflict'
+  | 'anonymized'
+  | 'not_found'
+  | 'refused'
+
+export interface BulkStatusResult {
+  id: number
+  result: BulkStatusOutcome
+  /** Machine code of a failure (`stale_preorder`, `forbidden`, …). */
+  error?: string
+  message?: string
+  /** The preorder after the write (`ok`) or as it stands now (conflict). */
+  data?: PreorderRecord
+}
+
+export type BulkCounts = Record<BulkStatusOutcome, number>
+
+export interface StatusChangeOptions {
+  /** fahrer: only these targets (`abgeholt`, `nicht_abgeholt`). */
+  allowedTargets?: string[]
+  /** Today (Berlin): „nicht abgeholt" is refused before the pickup day (W4). */
+  notCollectedFrom?: string
+  action?: string
+  guard?: (current: PreorderRecord) => Result<never> | null
+  mapBody?: (current: PreorderRecord) => unknown
+}
+
+/** Codes that mean "the copy the client loaded is out of date". */
+const CONFLICT_CODES = new Set([
+  'stale_preorder',
+  'already_picked_up',
+  'cancelled',
+])
+
+export const BULK_STATUS_MAX_IDS = 200
+
 export class PreordersService {
   private readonly productsDir: string
   private readonly variants: VariantsForProduct
   private readonly allVariants: () => VariantsMap | null
   private readonly clock: () => Date
+  private writeHook: PreorderWriteHook | null = null
+
+  /** Registers the Backzettel delta recorder (app.ts, W4). */
+  onWrite(hook: PreorderWriteHook | null): void {
+    this.writeHook = hook
+  }
+
+  private async notifyWrite(
+    dates: Array<string | null | undefined>,
+    transaction: Transaction,
+    req: Request | null,
+    via: string
+  ): Promise<void> {
+    if (!this.writeHook) return
+    const unique = [
+      ...new Set(dates.filter((d): d is string => typeof d === 'string')),
+    ].sort()
+    if (unique.length === 0) return
+    await this.writeHook(unique, { transaction, req, via })
+  }
 
   constructor(options: PreordersOptions = {}) {
     this.productsDir = options.productsDir ?? defaultProductsDir()
@@ -597,10 +669,8 @@ export class PreordersService {
       pickupPointId: query.pickupPointId,
     })
     if (isFailure(filters)) return filters
-    const records = await this.findRecords({
-      ...(filters.data.where as object),
-      status: { [Op.ne]: 'storniert' },
-    })
+    const all = await this.findRecords(filters.data.where)
+    const records = all.filter((r) => r.status !== 'storniert')
     return {
       ok: true as const,
       status: 200,
@@ -610,6 +680,9 @@ export class PreordersService {
           typeof query.pickupPointId === 'string' ? query.pickupPointId : null,
         preorderCount: records.length,
         items: core.sumByProductVariant(records),
+        // Kopfzahlen der Backliste (W4) - dieselben wie `/day`, aber ohne
+        // Namen und Telefonnummern: die Backliste braucht keine Kundendaten.
+        summary: core.summarizeDay(all),
       },
     }
   }
@@ -778,6 +851,7 @@ export class PreordersService {
         auditData(record),
         { transaction }
       )
+      await this.notifyWrite([record.pickupDate], transaction, req, 'create')
       return { ok: true as const, status: 201, data: record }
     })
   }
@@ -872,6 +946,14 @@ export class PreordersService {
         }),
         { transaction }
       )
+      if (changed.some((k) => ['items', 'pickupDate', 'status'].includes(k))) {
+        await this.notifyWrite(
+          [current.pickupDate, record.pickupDate],
+          transaction,
+          req,
+          'update'
+        )
+      }
       return { ok: true as const, status: 200, data: record }
     })
   }
@@ -881,65 +963,229 @@ export class PreordersService {
     id: unknown,
     body: unknown,
     req: Request | null,
-    options: {
-      allowedTargets?: string[]
-      action?: string
-      guard?: (current: PreorderRecord) => Result<never> | null
-      mapBody?: (current: PreorderRecord) => unknown
-    } = {}
+    options: StatusChangeOptions = {}
   ): Promise<Result<PreorderRecord>> {
     return getSequelize().transaction(async (transaction) => {
-      const current = await this.findRecord(id, transaction)
-      if (!current) return notFound<PreorderRecord>()
-      // Inside the transaction: no window between check and write.
-      const refused = options.guard?.(current)
-      if (refused) return refused
-      const input = options.mapBody ? options.mapBody(current) : body
-      const result = core.normalizeStatusChange(current, input, {
-        allowedTargets: options.allowedTargets,
-        now: this.now(),
-      })
-      if (result.error) {
-        return failure<PreorderRecord>(
-          result.status,
-          result.error,
-          result.message
+      const result = await this.changeStatusIn(
+        transaction,
+        id,
+        body,
+        req,
+        options
+      )
+      if (result.ok && result.changed) {
+        await this.notifyWrite(
+          [result.data.pickupDate],
+          transaction,
+          req,
+          options.action ?? 'status'
         )
       }
-      const changes = result.changes as Record<string, unknown>
-      const changed = changedFields(current, { ...current, ...changes })
-      if (changed.length === 0) {
-        return { ok: true as const, status: 200, data: current }
+      return result
+    })
+  }
+
+  /**
+   * One status change inside a running transaction. `changed` says whether
+   * the status itself moved (the caller notifies the Backzettel then).
+   */
+  private async changeStatusIn(
+    transaction: Transaction,
+    id: unknown,
+    body: unknown,
+    req: Request | null,
+    options: StatusChangeOptions & { auditExtra?: Record<string, unknown> }
+  ): Promise<
+    | { ok: true; status: number; data: PreorderRecord; changed: boolean }
+    | Failure
+  > {
+    const current = await this.findRecord(id, transaction)
+    if (!current) return notFound<PreorderRecord>() as Failure
+    // Inside the transaction: no window between check and write.
+    const refused = options.guard?.(current)
+    if (refused) return refused as Failure
+    const input = options.mapBody ? options.mapBody(current) : body
+    const result = core.normalizeStatusChange(current, input, {
+      allowedTargets: options.allowedTargets,
+      notCollectedFrom: options.notCollectedFrom,
+      now: this.now(),
+    })
+    if (result.error) {
+      return failure<PreorderRecord>(
+        result.status,
+        result.error,
+        result.message
+      ) as Failure
+    }
+    const changes = result.changes as Record<string, unknown>
+    const changed = changedFields(current, { ...current, ...changes })
+    if (changed.length === 0) {
+      return { ok: true, status: 200, data: current, changed: false }
+    }
+    await Preorder.update(
+      {
+        status: changes['status'] as Preorder['status'],
+        pickedUpAt: changes['pickedUpAt']
+          ? new Date(changes['pickedUpAt'] as string)
+          : null,
+        notCollectedAt: changes['notCollectedAt']
+          ? new Date(changes['notCollectedAt'] as string)
+          : null,
+        ...(changes['paid'] !== undefined
+          ? { paid: changes['paid'] as boolean }
+          : {}),
+        updatedBy: req?.user?.id ?? null,
+      },
+      { where: { id: current.id }, transaction }
+    )
+    const record = (await this.findRecord(
+      current.id,
+      transaction
+    )) as PreorderRecord
+    await audit(
+      req,
+      options.action ?? 'status',
+      'preorder',
+      record.id,
+      auditData(record, {
+        changed,
+        from: current.status,
+        ...(options.auditExtra ?? {}),
+      }),
+      { transaction }
+    )
+    return {
+      ok: true,
+      status: 200,
+      data: record,
+      changed: changed.includes('status'),
+    }
+  }
+
+  /**
+   * `POST /api/preorders/bulk-status` (W4): one status change for many
+   * preorders in **one** serialised write transaction - the Abholliste's
+   * "alle bereit" and "Tagesabschluss". Each id is checked like a single
+   * `POST /:id/status` (same core rules, same role targets, its own
+   * `expectedUpdatedAt` from the map) and answered on its own; a refused id
+   * never stops the others. Only an unexpected error rolls everything back.
+   * Each change writes its own `status` audit row (`bulk: true`).
+   */
+  async bulkStatus(
+    body: unknown,
+    req: Request | null,
+    options: Pick<StatusChangeOptions, 'allowedTargets' | 'notCollectedFrom'>
+  ): Promise<Result<{ results: BulkStatusResult[]; counts: BulkCounts }>> {
+    const b =
+      body && typeof body === 'object' && !Array.isArray(body)
+        ? (body as Record<string, unknown>)
+        : {}
+    // Integers or canonical digit strings ("7"), like the single routes'
+    // `/:id` parameter; anything else ("07", 2.5, "x") makes the list invalid.
+    const rawIds = b['ids']
+    const ids = Array.isArray(rawIds)
+      ? rawIds.map((id) =>
+          typeof id === 'string' && /^[1-9][0-9]{0,15}$/.test(id)
+            ? Number(id)
+            : id
+        )
+      : null
+    if (
+      !ids ||
+      ids.length === 0 ||
+      ids.length > BULK_STATUS_MAX_IDS ||
+      ids.some((id) => !Number.isSafeInteger(id) || (id as number) <= 0)
+    ) {
+      return failure(
+        400,
+        'invalid_ids',
+        `„ids" muss eine Liste von 1 bis ${BULK_STATUS_MAX_IDS} Bestellnummern (ganze Zahlen) sein.`
+      )
+    }
+    const unique = [...new Set(ids as number[])]
+    const expected = b['expectedUpdatedAt']
+    if (
+      expected !== undefined &&
+      expected !== null &&
+      (typeof expected !== 'object' || Array.isArray(expected))
+    ) {
+      return failure(
+        400,
+        'invalid_expected_updated_at',
+        '„expectedUpdatedAt" muss eine Zuordnung Bestellnummer → Zeitstempel sein.'
+      )
+    }
+    const versions = (expected ?? {}) as Record<string, unknown>
+    const change: Record<string, unknown> = {}
+    for (const key of ['status', 'notCollected', 'paid']) {
+      if (b[key] !== undefined) change[key] = b[key]
+    }
+    if (Object.keys(change).length === 0) {
+      return failure(
+        400,
+        'invalid_status',
+        'Es fehlt, was geändert werden soll (status, notCollected oder paid).'
+      )
+    }
+    // Values that are wrong for every preorder (unknown status, paid not a
+    // boolean, "nicht abgeholt" with another status) are one 400 for the
+    // request, not a `refused` per id. Checked against a neutral open
+    // preorder; record-dependent rules stay per id.
+    const shape = core.normalizeStatusChange({ status: 'offen' }, change, {})
+    if (
+      shape.error &&
+      ['invalid_status', 'invalid_not_collected', 'invalid_paid'].includes(
+        shape.error
+      )
+    ) {
+      return failure(400, shape.error, shape.message)
+    }
+
+    return getSequelize().transaction(async (transaction) => {
+      const results: BulkStatusResult[] = []
+      const dates: string[] = []
+      for (const id of unique) {
+        const result = await this.changeStatusIn(transaction, id, change, req, {
+          ...options,
+          guard: expectedVersionGuard({
+            expectedUpdatedAt: versions[String(id)],
+          }),
+          auditExtra: { bulk: true },
+        })
+        if (result.ok) {
+          if (result.changed) dates.push(result.data.pickupDate)
+          results.push({ id, result: 'ok', data: result.data })
+          continue
+        }
+        const refused = result as Failure
+        const outcome: BulkStatusOutcome =
+          refused.status === 404
+            ? 'not_found'
+            : refused.error === 'anonymized'
+            ? 'anonymized'
+            : CONFLICT_CODES.has(refused.error)
+            ? 'conflict'
+            : 'refused'
+        const now =
+          outcome === 'conflict' ? await this.findRecord(id, transaction) : null
+        results.push({
+          id,
+          result: outcome,
+          error: refused.error,
+          message: refused.message,
+          ...(now ? { data: now } : {}),
+        })
       }
-      await Preorder.update(
-        {
-          status: changes['status'] as Preorder['status'],
-          pickedUpAt: changes['pickedUpAt']
-            ? new Date(changes['pickedUpAt'] as string)
-            : null,
-          notCollectedAt: changes['notCollectedAt']
-            ? new Date(changes['notCollectedAt'] as string)
-            : null,
-          ...(changes['paid'] !== undefined
-            ? { paid: changes['paid'] as boolean }
-            : {}),
-          updatedBy: req?.user?.id ?? null,
-        },
-        { where: { id: current.id }, transaction }
-      )
-      const record = (await this.findRecord(
-        current.id,
-        transaction
-      )) as PreorderRecord
-      await audit(
-        req,
-        options.action ?? 'status',
-        'preorder',
-        record.id,
-        auditData(record, { changed, from: current.status }),
-        { transaction }
-      )
-      return { ok: true as const, status: 200, data: record }
+      await this.notifyWrite(dates, transaction, req, 'bulk_status')
+      const counts: BulkCounts = {
+        ok: 0,
+        conflict: 0,
+        anonymized: 0,
+        not_found: 0,
+        refused: 0,
+      }
+      for (const r of results) counts[r.result] += 1
+      return { ok: true as const, status: 200, data: { results, counts } }
     })
   }
 
@@ -970,6 +1216,11 @@ export class PreordersService {
         )
       }
       const before = toPickupPointDto(row)
+      // Optimistische Sperre wie bei den Vorbestellungen (W4): zwei offene
+      // Formulare überschreiben sich nicht still. Ohne das Feld keine Prüfung
+      // (Mock-Alias, Altclients).
+      const stale = pickupPointVersionGuard(body, row.updatedAt)
+      if (stale) return stale
       const result = core.normalizePickupPointInput(body, before)
       if (result.error) {
         return failure<PickupPointDto>(400, result.error, result.message)
@@ -1012,6 +1263,57 @@ export class PreordersService {
       return { ok: true as const, status: 200, data: after }
     })
   }
+
+  /**
+   * Sammelstellen mit `updatedAt` - nur für `/api/preorders` (P2-Formular,
+   * `expectedUpdatedAt`). Der Mörsbach-Alias bleibt beim Mock-Vertrag ohne
+   * das Feld (Parity).
+   */
+  async listPickupPointsVersioned(): Promise<
+    Array<PickupPointDto & { updatedAt: string | null }>
+  > {
+    const rows = await PickupPoint.findAll({ order: [['id', 'ASC']] })
+    return rows.map((r) => ({
+      ...toPickupPointDto(r),
+      updatedAt: iso(r.updatedAt),
+    }))
+  }
+
+  async pickupPointVersion(id: string): Promise<string | null> {
+    const row = await PickupPoint.findByPk(id, { attributes: ['updatedAt'] })
+    return row ? iso(row.updatedAt) : null
+  }
+}
+
+/** 409 `stale_pickup_point`, wenn `expectedUpdatedAt` nicht mehr passt. */
+function pickupPointVersionGuard(
+  body: unknown,
+  updatedAt: Date | string | null | undefined
+): Failure | null {
+  const expected =
+    body && typeof body === 'object'
+      ? (body as Record<string, unknown>)['expectedUpdatedAt']
+      : undefined
+  if (expected === undefined || expected === null) return null
+  const wanted =
+    typeof expected === 'string' ? new Date(expected).getTime() : NaN
+  if (!Number.isFinite(wanted)) {
+    return failure<never>(
+      400,
+      'invalid_expected_updated_at',
+      '„expectedUpdatedAt" muss ein Zeitstempel (ISO 8601) sein.'
+    ) as Failure
+  }
+  const actual = updatedAt ? new Date(updatedAt).getTime() : NaN
+  if (actual !== wanted) {
+    return failure<never>(
+      409,
+      'stale_pickup_point',
+      'Die Sammelstelle wurde inzwischen an anderer Stelle geändert. Bitte neu laden und die Änderung dann erneut speichern.',
+      { updatedAt: iso(updatedAt) }
+    ) as Failure
+  }
+  return null
 }
 
 /**

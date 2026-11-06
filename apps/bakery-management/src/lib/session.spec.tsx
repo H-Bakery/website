@@ -57,6 +57,9 @@ function Probe() {
       <span data-testid="status">{ctx.status}</span>
       <span data-testid="user">{ctx.user?.displayName ?? '-'}</span>
       <span data-testid="reason">{ctx.endReason ?? '-'}</span>
+      <span data-testid="unattended">
+        {String(ctx.unattendedAtBackstube ?? false)}
+      </span>
     </div>
   )
 }
@@ -279,7 +282,7 @@ describe('SessionProvider', () => {
       }
     })
 
-    it('ein Inhaber per PIN auf /backstube wird nach 10 min abgemeldet', async () => {
+    it('auch ein Inhaber per PIN auf /backstube bleibt angemeldet - bis 12 h nach der PIN (W4)', async () => {
       jest.useFakeTimers()
       try {
         await startStation(
@@ -287,7 +290,78 @@ describe('SessionProvider', () => {
           '/backstube'
         )
         await idleFor(10 * 60 * 1000 + 20 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+        await idleFor(3 * 3600 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+        await idleFor(9 * 3600 * 1000)
         expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+        expect(screen.getByTestId('reason')).toHaveTextContent('12 Stunden')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('ein Inhaber per PIN, der /backstube verlässt: wieder 10 min', async () => {
+      jest.useFakeTimers()
+      try {
+        await startStation(
+          { ...INHABER, id: 1 } as typeof BACKSTUBE,
+          '/backstube'
+        )
+        window.history.replaceState({}, '', '/admin')
+        await idleFor(10 * 60 * 1000 + 20 * 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+        expect(screen.getByTestId('reason')).toHaveTextContent('Inaktivität')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('Inhaber per PIN: wer nach > 10 min Ruhe auf /backstube tippt, ist „unbeaufsichtigt" (W4-Fixup)', async () => {
+      jest.useFakeTimers()
+      try {
+        await startStation(
+          { ...INHABER, id: 1 } as typeof BACKSTUBE,
+          '/backstube'
+        )
+        // kurze Pause: nichts
+        await idleFor(5 * 60 * 1000)
+        await act(async () => {
+          window.dispatchEvent(new Event('pointerdown'))
+        })
+        expect(screen.getByTestId('unattended')).toHaveTextContent('false')
+        // lange Pause: die nächste Berührung markiert die Sitzung
+        await idleFor(10 * 60 * 1000 + 1000)
+        expect(screen.getByTestId('status')).toHaveTextContent('authenticated')
+        await act(async () => {
+          window.dispatchEvent(new Event('pointerdown'))
+        })
+        expect(screen.getByTestId('unattended')).toHaveTextContent('true')
+        // endUnattended meldet wegen Inaktivität ab (der RouteGuard ruft es
+        // beim Verlassen von /backstube)
+        await act(async () => {
+          ctx.endUnattended?.()
+        })
+        await act(async () => {
+          await Promise.resolve()
+        })
+        expect(screen.getByTestId('status')).toHaveTextContent('anonymous')
+        expect(screen.getByTestId('reason')).toHaveTextContent('Inaktivität')
+        expect(screen.getByTestId('unattended')).toHaveTextContent('false')
+      } finally {
+        jest.useRealTimers()
+      }
+    })
+
+    it('die Rolle Backstube wird nach langer Ruhe nicht „unbeaufsichtigt"', async () => {
+      jest.useFakeTimers()
+      try {
+        await startStation(BACKSTUBE, '/backstube')
+        await idleFor(2 * 3600 * 1000)
+        await act(async () => {
+          window.dispatchEvent(new Event('pointerdown'))
+        })
+        expect(screen.getByTestId('unattended')).toHaveTextContent('false')
       } finally {
         jest.useRealTimers()
       }

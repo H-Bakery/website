@@ -714,6 +714,102 @@ describe('status transitions', () => {
   })
 })
 
+describe('„nicht abgeholt" not before the pickup day (W4)', () => {
+  const ready = { status: 'bereit', pickupDate: '2026-11-21', items: [] }
+
+  it('409 before the pickup day when notCollectedFrom is given', () => {
+    const early = core.normalizeStatusChange(
+      ready,
+      { notCollected: true },
+      { notCollectedFrom: '2026-11-20' }
+    )
+    expect(early).toMatchObject({
+      error: 'not_collected_too_early',
+      status: 409,
+    })
+    expect(early.message).toBe(
+      '„Nicht abgeholt" geht erst ab dem Abholtag (21.11.2026) - bis dahin kann noch jemand kommen.'
+    )
+  })
+
+  it('allowed on and after the pickup day', () => {
+    for (const today of ['2026-11-21', '2026-11-22']) {
+      expect(
+        core.normalizeStatusChange(
+          ready,
+          { notCollected: true },
+          { notCollectedFrom: today }
+        ).changes
+      ).toMatchObject({ status: 'bereit', notCollectedAt: expect.any(String) })
+    }
+  })
+
+  it('without the option (mock alias) there is no check; clearing is always allowed', () => {
+    expect(
+      core.normalizeStatusChange(ready, { notCollected: true }).changes
+    ).toBeDefined()
+    const marked = { ...ready, notCollectedAt: NOW }
+    expect(
+      core.normalizeStatusChange(
+        marked,
+        { status: 'bereit', notCollected: false },
+        { notCollectedFrom: '2026-11-01' }
+      ).changes
+    ).toMatchObject({ notCollectedAt: null })
+    // already marked: re-sending stays idempotent
+    expect(
+      core.normalizeStatusChange(
+        marked,
+        { notCollected: true },
+        { notCollectedFrom: '2026-11-01' }
+      ).changes
+    ).toBeDefined()
+  })
+})
+
+describe('pickup point text limits (W4)', () => {
+  const base = {
+    id: 'p',
+    name: 'Stelle',
+    street: '',
+    zip: '',
+    city: '',
+    weekday: 6,
+    window: null,
+    orderDeadline: null,
+    notes: null,
+    active: true,
+  }
+
+  it.each([
+    ['name', 100, 'Der Name darf höchstens 100 Zeichen lang sein.'],
+    ['street', 200, 'Die Straße darf höchstens 200 Zeichen lang sein.'],
+    ['zip', 10, 'Die PLZ darf höchstens 10 Zeichen lang sein.'],
+    ['city', 100, 'Der Ort darf höchstens 100 Zeichen lang sein.'],
+    ['notes', 2000, 'Die Notizen dürfen höchstens 2000 Zeichen lang sein.'],
+  ])('%s: %i chars ok, one more is 400', (field, max, message) => {
+    expect(
+      core.normalizePickupPointInput({ [field]: 'a'.repeat(max) }, base)
+        .pickupPoint
+    ).toBeDefined()
+    expect(
+      core.normalizePickupPointInput({ [field]: 'a'.repeat(max + 1) }, base)
+    ).toEqual({ error: 'Text too long', message, status: 400 })
+  })
+
+  it('measures after trimming and only fields the caller sends', () => {
+    expect(
+      core.normalizePickupPointInput({ notes: `  ${'a'.repeat(2000)}  ` }, base)
+        .pickupPoint.notes
+    ).toHaveLength(2000)
+    const legacy = { ...base, notes: 'a'.repeat(3000) }
+    expect(
+      core.normalizePickupPointInput({ window: '09:00-09:30' }, legacy)
+        .pickupPoint
+    ).toBeDefined()
+  })
+})
+
 describe('codes', () => {
   it('uses the point prefix or LA for the Laden and counts per prefix and day', () => {
     expect(core.codePrefixFor(null)).toBe('LA')

@@ -147,6 +147,68 @@ export async function changePreorderStatus(
   return unwrap(res, null as unknown as Preorder)
 }
 
+/** Ergebnis einer Bestellung in `POST /api/preorders/bulk-status` (W4). */
+export type BulkStatusOutcome =
+  | 'ok'
+  | 'conflict'
+  | 'anonymized'
+  | 'not_found'
+  | 'refused'
+
+export interface BulkStatusResult {
+  id: number
+  result: BulkStatusOutcome
+  /** Maschinen-Code bei Fehlschlag (`stale_preorder`, `forbidden`, …). */
+  error?: string
+  message?: string
+  /** Fassung nach dem Schreiben (`ok`) bzw. aktuelle Fassung (Konflikt). */
+  data?: Preorder
+}
+
+export interface BulkStatusAnswer {
+  counts: Record<BulkStatusOutcome, number>
+  results: BulkStatusResult[]
+}
+
+/**
+ * Mehrere Bestellungen auf einmal umstellen (Abholliste: „alle bereit",
+ * Tagesabschluss) - **eine** Schreib-Transaktion auf dem Server, Ergebnis
+ * je Bestellung. `versions` = `updatedAt` der geladenen Fassungen; wer
+ * seither woanders geändert wurde, kommt als `conflict` zurück und bleibt
+ * unberührt.
+ */
+export async function bulkPreorderStatus(
+  preorders: Pick<Preorder, 'id' | 'updatedAt'>[],
+  change: PreorderStatusChange
+): Promise<BulkStatusAnswer> {
+  const expectedUpdatedAt: Record<string, string> = {}
+  for (const p of preorders) {
+    if (p.updatedAt) expectedUpdatedAt[String(p.id)] = p.updatedAt
+  }
+  const res = await apiClient.post<BulkStatusAnswer>(`${BASE}/bulk-status`, {
+    ids: preorders.map((p) => p.id),
+    ...change,
+    expectedUpdatedAt,
+  })
+  return unwrap(res, {
+    counts: { ok: 0, conflict: 0, anonymized: 0, not_found: 0, refused: 0 },
+    results: [],
+  })
+}
+
+/**
+ * Art eines gescheiterten Requests: `offline` (keine Antwort - WLAN,
+ * Server aus, Zeitüberschreitung), `server` (5xx, auch Caddys 502-504),
+ * `refused` (4xx - die API hat geantwortet und abgelehnt).
+ */
+export type RequestFailureKind = 'offline' | 'server' | 'refused'
+
+export function requestFailureKind(error: unknown): RequestFailureKind {
+  const status = (error as { status?: unknown } | null)?.status
+  if (typeof status !== 'number' || status <= 0) return 'offline'
+  return status >= 500 ? 'server' : 'refused'
+}
+
 /** Storniert - gelöscht wird nie. */
 export async function cancelPreorder(
   id: number | string,
@@ -193,14 +255,26 @@ export async function fetchPickupPoints(): Promise<PickupPoint[]> {
   return unwrap(res, [])
 }
 
-/** Stammdaten einer Sammelstelle ändern (nur Inhaber; keine Adresssuche). */
+/**
+ * Maschinen-Code, wenn die Sammelstelle seit dem Laden an anderer Stelle
+ * geändert wurde (`expectedUpdatedAt` passt nicht mehr, W4).
+ */
+export const STALE_PICKUP_POINT = 'stale_pickup_point'
+
+/**
+ * Stammdaten einer Sammelstelle ändern (nur Inhaber; keine Adresssuche).
+ * Mit `expectedUpdatedAt` (Stand der geladenen Fassung) antwortet der
+ * Server 409 `stale_pickup_point`, statt eine zwischenzeitliche Änderung
+ * zu überschreiben.
+ */
 export async function savePickupPoint(
   id: string,
-  input: PickupPointInput
+  input: PickupPointInput,
+  expectedUpdatedAt?: string | null
 ): Promise<PickupPoint> {
   const res = await apiClient.put<PickupPoint>(
     `${BASE}/pickup-points/${encodeURIComponent(id)}`,
-    input
+    versioned(input, expectedUpdatedAt)
   )
   return unwrap(res, null as unknown as PickupPoint)
 }

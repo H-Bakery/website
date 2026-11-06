@@ -56,6 +56,7 @@ const POINT: PickupPoint = {
   orderDeadline: { weekday: 5, time: '12:00' },
   notes: null,
   active: true,
+  updatedAt: '2026-11-01T10:00:00.000Z',
 }
 
 describe('PickupPointFormClient', () => {
@@ -89,17 +90,22 @@ describe('PickupPointFormClient', () => {
     await user.click(screen.getByRole('button', { name: 'Speichern' }))
 
     await waitFor(() =>
-      expect(mockSave).toHaveBeenCalledWith('kindergarten-moersbach', {
-        name: 'Kindergarten Mörsbach',
-        street: 'Hauptstraße 1',
-        zip: '66482',
-        city: 'Zweibrücken-Mörsbach',
-        weekday: 6,
-        window: '09:00-09:30',
-        orderDeadline: { weekday: 5, time: '12:00' },
-        notes: null,
-        active: true,
-      })
+      expect(mockSave).toHaveBeenCalledWith(
+        'kindergarten-moersbach',
+        {
+          name: 'Kindergarten Mörsbach',
+          street: 'Hauptstraße 1',
+          zip: '66482',
+          city: 'Zweibrücken-Mörsbach',
+          weekday: 6,
+          window: '09:00-09:30',
+          orderDeadline: { weekday: 5, time: '12:00' },
+          notes: null,
+          active: true,
+        },
+        // Stand beim Laden - der Server lehnt sonst eine überholte Fassung ab
+        '2026-11-01T10:00:00.000Z'
+      )
     )
     expect(
       await screen.findByText(/Die Sammelstelle wurde gespeichert/)
@@ -121,13 +127,86 @@ describe('PickupPointFormClient', () => {
     ).toBeInTheDocument()
   })
 
-  it('nur der Inhaber speichert (API: 403), alle anderen sehen die Stammdaten', async () => {
-    renderAs('verkauf')
+  it.each<PilotRole>(['verkauf', 'fahrer', 'backstube'])(
+    '%s: Felder schreibgeschützt, kein Speichern (W4)',
+    async (role) => {
+      const user = userEvent.setup()
+      renderAs(role)
+      await screen.findByDisplayValue('Kindergarten Mörsbach')
+      expect(
+        screen.getByText('Nur der Inhaber kann die Sammelstelle ändern.')
+      ).toBeInTheDocument()
+      for (const label of [
+        /^Name/,
+        /Straße und Hausnummer/,
+        'PLZ',
+        'Ort',
+        'Übergabefenster',
+        'Bestellschluss um',
+        'Notizen',
+      ]) {
+        expect(screen.getByLabelText(label)).toHaveAttribute('readonly')
+      }
+      // Tippen ändert nichts
+      await user.type(screen.getByLabelText('PLZ'), '12345')
+      expect(screen.getByLabelText('PLZ')).toHaveValue('')
+      expect(screen.getByRole('checkbox', { name: 'Aktiv' })).toBeDisabled()
+      // Auswahlfelder öffnen sich nicht
+      await user.click(screen.getByLabelText('Liefertag'))
+      expect(screen.queryByRole('listbox')).toBeNull()
+      expect(
+        screen.queryByRole('button', { name: 'Speichern' })
+      ).not.toBeInTheDocument()
+      expect(
+        screen.getAllByRole('button', { name: 'Zurück zur Liste' })
+      ).toHaveLength(2)
+      expect(mockSave).not.toHaveBeenCalled()
+    }
+  )
+
+  it('Inhaber: Felder bearbeitbar, Notizen auf 2000 Zeichen begrenzt', async () => {
+    renderAs('inhaber')
     await screen.findByDisplayValue('Kindergarten Mörsbach')
+    expect(screen.getByLabelText('PLZ')).not.toHaveAttribute('readonly')
+    expect(screen.getByLabelText('Notizen')).toHaveAttribute(
+      'maxlength',
+      '2000'
+    )
+    expect(screen.getByText('0 / 2000 Zeichen')).toBeInTheDocument()
+  })
+
+  it('inzwischen woanders geändert: Hinweis mit „Neu laden", nichts überschrieben', async () => {
+    const user = userEvent.setup()
+    const stale = Object.assign(
+      new Error(
+        'Die Sammelstelle wurde inzwischen an anderer Stelle geändert. Bitte neu laden und die Änderung dann erneut speichern.'
+      ),
+      { code: 'stale_pickup_point', status: 409 }
+    )
+    mockSave.mockRejectedValueOnce(stale)
+    renderAs('inhaber')
+    await user.type(await screen.findByLabelText('PLZ'), '66482')
+    await user.click(screen.getByRole('button', { name: 'Speichern' }))
     expect(
-      screen.getByText('Nur der Inhaber kann die Sammelstelle ändern.')
+      await screen.findByText(/inzwischen an anderer Stelle geändert/)
     ).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled()
+    const fresh = {
+      ...POINT,
+      street: 'Musterweg 2',
+      updatedAt: '2026-11-02T10:00:00.000Z',
+    }
+    mockFetchPickupPoints.mockResolvedValue([fresh])
+    await user.click(screen.getByRole('button', { name: 'Neu laden' }))
+    expect(await screen.findByDisplayValue('Musterweg 2')).toBeInTheDocument()
+    expect(screen.queryByText(/inzwischen an anderer Stelle/)).toBeNull()
+    await user.click(screen.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(mockSave).toHaveBeenLastCalledWith(
+        'kindergarten-moersbach',
+        expect.objectContaining({ street: 'Musterweg 2' }),
+        '2026-11-02T10:00:00.000Z'
+      )
+    )
   })
 
   it('meldet, wenn die Sammelstellen nicht geladen werden können', async () => {

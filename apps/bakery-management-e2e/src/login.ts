@@ -11,13 +11,11 @@
  * - `station`: der Inhaber an einer PIN-Station (Station registrieren, PIN
  *   setzen, `POST /api/auth/pin`).
  *
- * Warum nicht je Worker: das Login-Limit der API (5 Fehlversuche je IP +
- * Benutzer) zählt jede Anfrage beim Eingang und nimmt erfolgreiche erst nach
- * der Antwort wieder heraus - sechs Worker, die sich gleichzeitig als
- * derselbe Inhaber anmelden, bekommen ein 429, und jedes 429 zählt dann als
- * Fehlversuch (fünf Minuten Sperre). Und eine neue PIN beendet die
- * Stations-Sitzungen des Benutzers - zwei Projekte, die je eine eigene PIN
- * setzen, würden sich gegenseitig abmelden.
+ * Warum nicht je Worker: eine neue PIN beendet die Stations-Sitzungen des
+ * Benutzers - zwei Projekte, die je eine eigene PIN setzen, würden sich
+ * gegenseitig abmelden. (Das Login-Limit der API zählt seit W4 nur noch
+ * Fehlversuche; gleichzeitige erfolgreiche Anmeldungen bekämen kein 429
+ * mehr.)
  *
  * Die Sitzungen reisen als JSON in `E2E_SESSIONS` zu den Workern (Playwright
  * gibt Umgebungsvariablen aus dem Global Setup weiter). `useSession()` legt
@@ -244,6 +242,31 @@ export async function apiGet<T = unknown>(path: string): Promise<T> {
     const response = await expectOk(
       await api.get(path, { headers: { Authorization: `Bearer ${token}` } }),
       `GET ${path}`
+    )
+    return (await response.json()) as T
+  })
+}
+
+/**
+ * Schreibender Aufruf an der API mit dem Token des Inhabers (Testdaten
+ * anlegen, W4). Wirft bei einem anderen Status als `ok`.
+ */
+export async function apiSend<T = unknown>(
+  method: 'POST' | 'PATCH' | 'PUT',
+  path: string,
+  data: unknown,
+  ok: number[] = [200, 201]
+): Promise<T> {
+  const { token } = session('inhaber')
+  return withApi(async (api) => {
+    const response = await expectOk(
+      await api.fetch(path, {
+        method,
+        data,
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      `${method} ${path}`,
+      ok
     )
     return (await response.json()) as T
   })

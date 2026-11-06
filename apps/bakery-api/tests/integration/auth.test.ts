@@ -506,6 +506,57 @@ describe('rate limit (5 failed attempts / 5 min per IP + username)', () => {
     expectErrorShape(blocked.body, 'too_many_requests')
   })
 
+  it('parallel successful logins never count as failures (W4)', async () => {
+    await createUser({ username: 'test.parallel', role: 'verkauf' })
+    const login = () =>
+      request(api.app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', '203.0.113.20')
+        .send({ username: 'test.parallel', password: TEST_PASSWORD })
+    // more at once than the limit (5) - before W4 the sixth got a 429
+    const results = await Promise.all(Array.from({ length: 12 }, login))
+    expect(results.map((r) => r.status)).toEqual(new Array(12).fill(200))
+    // and they left nothing behind: five failures still lock as usual
+    for (let i = 0; i < 5; i++) {
+      const res = await request(api.app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', '203.0.113.20')
+        .send({ username: 'test.parallel', password: 'falsch-falsch' })
+      expect(res.status).toBe(401)
+    }
+    expect((await login()).status).toBe(429)
+  })
+
+  it('parallel wrong guesses cannot get past the limit (in-flight attempts wait)', async () => {
+    await createUser({ username: 'test.burst', role: 'verkauf' })
+    const guess = () =>
+      request(api.app)
+        .post('/api/auth/login')
+        .set('X-Forwarded-For', '203.0.113.21')
+        .send({ username: 'test.burst', password: 'falsch-falsch' })
+    const results = await Promise.all(Array.from({ length: 12 }, guess))
+    const statuses = results.map((r) => r.status).sort()
+    expect(statuses.filter((s) => s === 401)).toHaveLength(5)
+    expect(statuses.filter((s) => s === 429)).toHaveLength(7)
+    const blocked = await request(api.app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.21')
+      .send({ username: 'test.burst', password: TEST_PASSWORD })
+    expect(blocked.status).toBe(429)
+    expect(blocked.headers['retry-after']).toMatch(/^\d+$/)
+    // the per-IP counter (30) took only the five real failures
+    const other = await request(api.app)
+      .post('/api/auth/login')
+      .set('X-Forwarded-For', '203.0.113.21')
+      .send({ username: 'test.inhaber', password: TEST_PASSWORD })
+    // status + code together: a flake here (seen once under full-suite load)
+    // must say which answer it was
+    expect({ status: other.status, error: other.body.error }).toEqual({
+      status: 200,
+      error: undefined,
+    })
+  })
+
   it('successful logins do not count', async () => {
     await createUser({ username: 'test.oft', role: 'verkauf' })
     for (let i = 0; i < 7; i++) {
