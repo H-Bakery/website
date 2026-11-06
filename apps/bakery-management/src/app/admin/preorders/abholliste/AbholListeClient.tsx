@@ -717,7 +717,9 @@ export default function AbholListeClient({
       !fresh.paid
     ) {
       const text = `${preorder.code}: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst. Wenn Sie das Geld genommen haben: jetzt bei der Bestellung „Bezahlt“ tippen.`
-      setConflict(text)
+      // Einmal oben (bleibt stehen) und einmal unten, wo getippt wurde -
+      // nicht zusätzlich als blauer Hinweis (W4-verify r4: dreimal derselbe
+      // Text schob am Handy die Liste aus dem Bild).
       setActionError(text)
       setToast({ text, severity: 'warning' })
       return

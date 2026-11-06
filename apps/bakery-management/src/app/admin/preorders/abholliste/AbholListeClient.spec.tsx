@@ -724,7 +724,8 @@ describe('AbholListeClient (P2)', () => {
     const notes = await screen.findAllByText(
       /LA-2026-11-12-02: Wurde inzwischen schon übergeben - die Zahlung ist NICHT erfasst/
     )
-    expect(notes.length).toBeGreaterThanOrEqual(2)
+    // Einmal oben, einmal als Meldung unten - nicht dreimal (W4-verify r4).
+    expect(notes).toHaveLength(2)
     await act(async () => {
       jest.advanceTimersByTime(20_000)
     })
