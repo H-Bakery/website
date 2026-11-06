@@ -1253,7 +1253,17 @@ bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not count
   test checks that summary and day view agree on "baked" with an acknowledged Nachtrag.
 - **Averages** (`weekdayRestAverages`) use the same completeness rule as the summary and only
   days with a confirmed Backzettel (`backzettelByDate`): a Sorte baked but not counted makes the
-  day unusable instead of lowering the mean.
+  day unusable instead of lowering the mean. A day whose rest exceeds `baked − cap` (the
+  "Zählung prüfen" case) is left out of the mean too and listed in `excludedDates`; the summary
+  keeps such days but marks them (`restExceedsDates` per item, `restExceedsItems` per day and per
+  unit total, CSV column `Zählung prüfen` on item and day rows).
+- **Count lines as they were** (`rest_counts.line_rows`, migration
+  `20270106000000-rest-count-line-rows.js`): every save writes the line's product ids from the
+  config of that moment onto all rows of the touched Posten × Sorte; completeness
+  (`expectedRowsForLine`) and the day view's rows follow that snapshot, not today's YAML. Without
+  it, adding a product to a Posten turned every earlier fully counted day into `partial` and
+  dropped its history out of summary and Rest Ø. Rows from before the column (`NULL`) fall back
+  to the current config.
 - **Z9 snapshot:** with `HQ_SNAPSHOT_DIR` set, every save with changes calls
   `snapshots.restCounted(view)` in the background → `data/production/rest/<date>.json`
   (`restSnapshot` in `hq-snapshots.core.js`: baked, cap, rest and counts per line - no user, no

@@ -576,3 +576,41 @@ describe('summary reads the light Backzettel view', () => {
     ).toMatchObject({ baked, cap: 12 })
   })
 })
+
+describe('a later product in backzettel.yaml (Abschluss-Verifikation next)', () => {
+  it('keeps a day counted under the old product list counted', async () => {
+    const yamlPath = path.join(hqDir, 'config', 'backzettel.yaml')
+    const original = fs.readFileSync(yamlPath, 'utf8')
+    const before = await as('inhaber').get(
+      `/api/rest/summary?from=${TUE}&to=${TUE}`
+    )
+    const plunderBefore = before.body.data.items.find(
+      (i: any) => i.itemId === 'plunder'
+    )
+    expect(plunderBefore).toMatchObject({ days: 1, uncountedDays: 0 })
+    // Plunder gets a second product (a new size) after the count.
+    const grown = fixture.config()
+    grown.items
+      .find((i: any) => i.id === 'plunder')
+      .products.push({ id: 'test-alt', factor: 1 })
+    fs.writeFileSync(yamlPath, JSON.stringify(grown, null, 2))
+    try {
+      const config = await as('backstube').get('/api/backzettel/config')
+      expect(config.body.data.status).toBe('ok')
+      const after = await as('inhaber').get(
+        `/api/rest/summary?from=${TUE}&to=${TUE}`
+      )
+      expect(
+        after.body.data.items.find((i: any) => i.itemId === 'plunder')
+      ).toMatchObject({ days: 1, uncountedDays: 0, rest: plunderBefore.rest })
+      const day = await as('verkauf').get(`/api/rest?date=${TUE}`)
+      expect(line(day.body.data, 'plunder')).toMatchObject({ counted: true })
+      const avg = await as('backstube').get('/api/rest/averages?weeks=6')
+      expect(avg.status).toBe(200)
+      const tue = avg.body.data.weekdays.find((w: any) => w.weekday === 2)
+      expect(tue.items.map((i: any) => i.itemId)).toContain('plunder')
+    } finally {
+      fs.writeFileSync(yamlPath, original)
+    }
+  })
+})
