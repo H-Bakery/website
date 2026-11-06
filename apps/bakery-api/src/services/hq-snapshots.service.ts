@@ -227,6 +227,31 @@ export class HqSnapshotWriter {
     )
   }
 
+  /**
+   * Hook for „Rest am Abend“ (M4): after a save that changed counts, the
+   * day's rest goes to `data/production/rest/<date>.json`. Background, never
+   * throws, never delays the save (like `backzettelConfirmed`). No timestamp
+   * in the file, so several saves of the same numbers commit once.
+   */
+  restCounted(view: unknown): void {
+    if (!this.enabled) return
+    void this.track(
+      this.writeRest(view).catch((error) => {
+        this.log.error('Rest snapshot failed:', error)
+      })
+    )
+  }
+
+  /** Writes and pushes the rest of one day. */
+  async writeRest(view: unknown): Promise<SnapshotOutcome> {
+    const snapshot = core.restSnapshot(view)
+    const paths = core.snapshotPaths(snapshot.date)
+    return this.commitFiles(
+      [{ rel: paths.restJson, content: core.toJsonFile(snapshot) }],
+      core.restCommitMessage(snapshot.date)
+    )
+  }
+
   async writeBackzettelReopened(
     date: string,
     role: string | null | undefined

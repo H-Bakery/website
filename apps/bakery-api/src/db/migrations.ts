@@ -54,6 +54,11 @@ export const MIGRATIONS: MigrationEntry[] = [
     module: require('../../migrations/20261116000000-preorders-request-id.js'),
   },
   {
+    // M4 (after the pilot): rest_counts - „Rest am Abend“
+    name: '20261201000000-rest-am-abend.js',
+    module: require('../../migrations/20261201000000-rest-am-abend.js'),
+  },
+  {
     // B8: delivery tours on the real API (depot, drivers, tours, stops, geocache)
     name: '20270105000000-delivery-tours-b8.js',
     module: require('../../migrations/20270105000000-delivery-tours-b8.js'),

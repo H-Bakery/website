@@ -116,6 +116,54 @@ describe('GrundmengenClient', () => {
     })
   })
 
+  it('Rest am Abend Ø (M4) steht zusätzlich im Hinweis, sofern gezählt', async () => {
+    apiClient.get.mockImplementation(async (url: string) => {
+      if (url === '/api/backzettel/config') {
+        return { success: true, data: syntheticView() }
+      }
+      if (url === '/api/backzettel/reference') {
+        return { success: true, data: syntheticReference() }
+      }
+      if (url === '/api/rest/averages') {
+        const reference = syntheticReference()
+        return {
+          success: true,
+          data: {
+            status: 'ok',
+            weekdays: reference.weekdays.map((w) => ({
+              weekday: w.weekday,
+              weekdayName: null,
+              items:
+                w.weekday === 2
+                  ? [
+                      {
+                        itemId: 'testweck',
+                        mean: 3.5,
+                        samples: [3, 4],
+                        dates: ['2026-11-17', '2026-11-24'],
+                      },
+                    ]
+                  : [],
+            })),
+          },
+        }
+      }
+      throw new Error(`unexpected ${url}`)
+    })
+    renderWithTheme(<GrundmengenClient />)
+    const row = await screen.findByTestId('row-testweck')
+    await waitFor(() =>
+      expect(
+        within(row).getByLabelText(
+          `${REFERENCE_TOOLTIP}: 38; Rest am Abend Ø 3,5`
+        )
+      ).toBeInTheDocument()
+    )
+    expect(apiClient.get).toHaveBeenCalledWith('/api/rest/averages', {
+      weeks: 6,
+    })
+  })
+
   it('umgerechnete Referenz steht in der Einheit des Postens, ohne „St.“ (W4-verify r6)', async () => {
     const ref = syntheticReference()
     for (const day of ref.weekdays) {

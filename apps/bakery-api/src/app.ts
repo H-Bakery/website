@@ -7,8 +7,8 @@
  *
  * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
  * data (B4: reports, analytics, finance, targets), products (B5), preorders
- * (B7), the Backzettel (Z3) and the delivery tours (B8). The other pilot
- * domains get their mount points below as their tasks land.
+ * (B7), the Backzettel (Z3), the delivery tours (B8) and Rest am Abend (M4).
+ * The other pilot domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
  * endpoints and health. That is structural, not an allow-list: the public
@@ -47,6 +47,7 @@ import {
   createBackzettel,
 } from './routes/backzettel.routes'
 import { createHqSyncRouter } from './routes/hq-sync.routes'
+import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
@@ -102,6 +103,11 @@ export interface CreateAppOptions {
    * 2.5 s read budget and the 5-min negative cache.
    */
   deliveries?: Omit<DeliveryToursOptions, 'preorders'>
+  /**
+   * „Rest am Abend“ (M4, after the pilot): clock and reports dir for tests.
+   * Default: `hq.reportsDir` / `hq.today`, the Backzettel's master data.
+   */
+  rest?: RestRouterOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -227,6 +233,23 @@ export function createApp(options: CreateAppOptions = {}): Application {
     ...options.backzettel,
   })
   app.use('/api/backzettel', backzettel.router)
+  // M4 „Rest am Abend“: counts at closing (verkauf), evaluation (inhaber);
+  // „gebacken“ comes from the Backzettel service, sold from the cash reports.
+  // The daily rest goes to hq data/production/rest/ like the Z9 snapshots.
+  app.use(
+    '/api/rest',
+    createRestRouter(backzettel.source, backzettel.service, {
+      reportsDir: options.hq?.reportsDir,
+      today: options.hq?.today,
+      log: options.hq?.log?.warn,
+      ...(snapshots.enabled
+        ? {
+            onCounted: (view: unknown) => snapshots.restCounted(view),
+          }
+        : {}),
+      ...options.rest,
+    })
+  )
   // W4: deltas of a confirmed Backzettel day are recorded on the preorder
   // write path (same transaction), not by reading the day.
   preorders.service.onWrite((dates, context) =>

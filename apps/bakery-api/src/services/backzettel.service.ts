@@ -397,21 +397,37 @@ export function createBackzettelService(
     }
   }
 
+  /**
+   * The confirmed day. `light` (evaluations such as Rest am Abend, which
+   * read many days at once) keeps the lines, the deltas and their oven
+   * figures (`delta.bake` / `bakeOpen`, `deltaTotals`) exactly as the full
+   * view has them, and skips what only the screens need: the confirm audits
+   * (`previouslyDone`), user names, preorder codes and the recompute of
+   * Hefeteig/Füllungen (`configChangedSinceConfirm`, `deltaExtras` are
+   * `null`).
+   */
   async function confirmedView(
     date: string,
     day: BackzettelDay,
-    loaded: Loaded
+    loaded: Loaded,
+    { light = false }: { light?: boolean } = {}
   ) {
     const weekday = core.isoWeekday(date)
     const config = loaded.ok ? loaded.config : null
     const [rows, deltaRows, confirmAudits] = await Promise.all([
       BackzettelLine.findAll({ where: { date }, order: [['id', 'ASC']] }),
       BackzettelDelta.findAll({ where: { date }, order: [['id', 'ASC']] }),
-      AuditLog.findAll({
-        where: { action: 'confirm', entity: 'backzettel_day', entityId: date },
-        order: [['id', 'ASC']],
-        attributes: ['data'],
-      }),
+      light
+        ? Promise.resolve([] as AuditLog[])
+        : AuditLog.findAll({
+            where: {
+              action: 'confirm',
+              entity: 'backzettel_day',
+              entityId: date,
+            },
+            order: [['id', 'ASC']],
+            attributes: ['data'],
+          }),
     ])
     // W4 verification round 2: a re-confirm that changed a line dropped its
     // tick (`clearedTicks` in the audit). Without a trace the Backstube saw
@@ -439,12 +455,14 @@ export function createBackzettelService(
         )
       }
     }
-    const users = await usersById([
-      day.confirmedBy,
-      ...rows.flatMap((r) => [r.correctionBy, r.doneBy]),
-      ...deltaRows.map((d) => d.acknowledgedBy),
-      ...[...cleared.values()].map((c) => c.doneBy),
-    ])
+    const users = light
+      ? new Map<number, UserRef>()
+      : await usersById([
+          day.confirmedBy,
+          ...rows.flatMap((r) => [r.correctionBy, r.doneBy]),
+          ...deltaRows.map((d) => d.acknowledgedBy),
+          ...[...cleared.values()].map((c) => c.doneBy),
+        ])
     const preorderIds = [
       ...new Set(
         deltaRows
@@ -453,7 +471,7 @@ export function createBackzettelService(
       ),
     ]
     const codes = new Map(
-      preorderIds.length
+      preorderIds.length && !light
         ? (
             await Preorder.findAll({
               where: { id: preorderIds },
@@ -563,22 +581,23 @@ export function createBackzettelService(
     // Frozen at confirm; the current master data only says whether it would
     // now compute something else (`configChangedSinceConfirm`). Days
     // confirmed before the snapshot column existed fall back to recomputing.
-    const recomputed = config
-      ? (() => {
-          const w: unknown[] = []
-          return {
-            hefeteig: core.computeHefeteig(config, lines),
-            fillings: core.computeFillings(
-              config,
-              lines,
-              loaded.recipes || {},
-              w
-            ),
-            prep: core.computePrep(config, lines, weekday),
-            warnings: w,
-          }
-        })()
-      : null
+    const recomputed =
+      config && !light
+        ? (() => {
+            const w: unknown[] = []
+            return {
+              hefeteig: core.computeHefeteig(config, lines),
+              fillings: core.computeFillings(
+                config,
+                lines,
+                loaded.recipes || {},
+                w
+              ),
+              prep: core.computePrep(config, lines, weekday),
+              warnings: w,
+            }
+          })()
+        : null
     const snap = day.computedSnapshot
     const frozen = snap ?? recomputed
     const hefeteig = frozen ? frozen.hefeteig : null
@@ -921,6 +940,19 @@ export function createBackzettelService(
     }
     assertProductionDay(loaded, date)
     return draftView(date, day, loaded)
+  }
+
+  /**
+   * The confirmed day for evaluations over many days (Rest am Abend):
+   * `confirmedView` in `light` mode, `null` unless the day is confirmed. No
+   * `deltasPending` check and no background catch-up - an unrecorded delta
+   * is never acknowledged, so it cannot change „gebacken“.
+   */
+  async function getConfirmedLines(date: string) {
+    assertDate(date)
+    const day = await BackzettelDay.findByPk(date)
+    if (!day || day.status !== 'confirmed') return null
+    return confirmedView(date, day, source.load(), { light: true })
   }
 
   async function getPrep(date: string) {
@@ -1644,6 +1676,7 @@ export function createBackzettelService(
 
   return {
     getDay,
+    getConfirmedLines,
     getPrep,
     getConfig,
     setSeasonFactor,

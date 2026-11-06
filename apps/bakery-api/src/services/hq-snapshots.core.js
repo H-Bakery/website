@@ -9,6 +9,8 @@
  *   data/production/vorbestellungen/YYYY-MM-DD.json  preorder sums per
  *                                                 product/variant, counts per
  *                                                 channel and pickup point
+ *   data/production/rest/YYYY-MM-DD.json         „Rest am Abend“ (M4): baked,
+ *                                                 rest and counts per line
  *
  * **No personal data (D13).** Every field is picked by a whitelist - a new
  * field in the day view or the preorder answer stays out until it is added
@@ -25,6 +27,8 @@ const SNAPSHOT_SCHEMA_VERSION = 1
 const SNAPSHOT_ROOT = 'data/production'
 const BACKZETTEL_DIR = `${SNAPSHOT_ROOT}/backzettel`
 const PREORDERS_DIR = `${SNAPSHOT_ROOT}/vorbestellungen`
+/** M4 „Rest am Abend“ (after the pilot): what was left at closing. */
+const REST_DIR = `${SNAPSHOT_ROOT}/rest`
 
 const ROLE_LABELS = {
   inhaber: 'Inhaber',
@@ -66,6 +70,7 @@ function snapshotPaths(date) {
     backzettelJson: `${BACKZETTEL_DIR}/${date}.json`,
     backzettelMd: `${BACKZETTEL_DIR}/${date}.md`,
     preordersJson: `${PREORDERS_DIR}/${date}.json`,
+    restJson: `${REST_DIR}/${date}.json`,
   }
 }
 
@@ -595,6 +600,53 @@ function preorderSnapshot(dayData, options) {
   }
 }
 
+/**
+ * „Rest am Abend“ of one day (M4) from the `/api/rest` day view
+ * (`rest-am-abend.core.js` `buildDayView`): per Backzettel line the baked
+ * amount, CAP, the rest in the item's unit and the count per product.
+ * Whitelist: no counter (name or id), no times, no revision - and only
+ * variants of the master data (the API refuses others). No timestamp: an
+ * unchanged day writes the same bytes and commits nothing.
+ */
+function restSnapshot(view) {
+  const date = view && view.date
+  if (!isDate(date)) throw new Error('Ungültiges Datum für den Rest-Snapshot.')
+  const lines = (Array.isArray(view.lines) ? view.lines : []).map((l) => ({
+    itemId: str(l.itemId),
+    variant: l.variant ? str(l.variant) : null,
+    name: str(l.name),
+    section: str(l.section),
+    unit: str(l.unit),
+    baked: numOrNull(l.baked),
+    cap: num(l.cap),
+    counted: l.counted === true,
+    rest: l.counted === true ? numOrNull(l.rest) : null,
+    counts: (Array.isArray(l.rows) ? l.rows : [])
+      .filter((r) => r && r.qty !== null && r.qty !== undefined)
+      .map((r) => ({
+        productId: r.productId ? str(r.productId) : null,
+        name: str(r.label),
+        unit: str(r.unit),
+        qty: num(r.qty),
+        factor: num(r.factor),
+      })),
+  }))
+  return {
+    schema_version: SNAPSHOT_SCHEMA_VERSION,
+    kind: 'rest',
+    date,
+    backzettel: view.backzettelStatus === 'confirmed' ? 'confirmed' : 'draft',
+    countedLines: lines.filter((l) => l.counted).length,
+    lines: lines.length,
+    items: lines,
+    source: 'Verwaltung (App)',
+  }
+}
+
+function restCommitMessage(date) {
+  return `chore(production): Rest am Abend ${date} (App)\n`
+}
+
 /** Commit messages (German, no names, D13). */
 function backzettelCommitMessage(date) {
   return `chore(production): Backzettel ${date} (App)\n`
@@ -616,6 +668,9 @@ function toJsonFile(value) {
 module.exports = {
   BACKZETTEL_DIR,
   PREORDERS_DIR,
+  REST_DIR,
+  restSnapshot,
+  restCommitMessage,
   ROLE_LABELS,
   SNAPSHOT_ROOT,
   SNAPSHOT_SCHEMA_VERSION,

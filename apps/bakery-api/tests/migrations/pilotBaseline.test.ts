@@ -15,6 +15,7 @@ const baseline = require('../../migrations/20261105000000-pilot-baseline.js')
 const authMigration = require('../../migrations/20261106000000-auth-sessions-stations.js')
 const preordersMigration = require('../../migrations/20261113000000-preorders-b7.js')
 const deliveriesMigration = require('../../migrations/20270105000000-delivery-tours-b8.js')
+const restMigration = require('../../migrations/20261201000000-rest-am-abend.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -76,7 +77,7 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders and B8 tours', () => {
+  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders, M4 rest and B8 tours', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
       '20261106000000-auth-sessions-stations.js',
@@ -84,17 +85,19 @@ describe('pilot baseline on a fresh database', () => {
       '20261113000000-preorders-b7.js',
       '20261114000000-preorders-paid-amount.js',
       '20261116000000-preorders-request-id.js',
+      '20261201000000-rest-am-abend.js',
       '20270105000000-delivery-tours-b8.js',
     ])
   })
 
-  it('creates exactly the pilot tables (with the B3 auth, B7 and B8 tables)', async () => {
+  it('creates exactly the pilot tables (with the B3 auth, B7, M4 and B8 tables)', async () => {
     expect(await tableNames(sequelize)).toEqual(
       [
         ...baseline.TABLES,
         ...authMigration.TABLES,
         ...preordersMigration.TABLES,
         ...deliveriesMigration.TABLES,
+        ...restMigration.TABLES,
         'SequelizeMeta',
       ].sort()
     )
@@ -624,6 +627,7 @@ describe('pilot baseline down()', () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
     await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)
+    await restMigration.down(sequelize.getQueryInterface(), Sequelize)
     await preordersMigration.down(sequelize.getQueryInterface(), Sequelize)
     await authMigration.down(sequelize.getQueryInterface(), Sequelize)
     expect(
@@ -633,6 +637,60 @@ describe('pilot baseline down()', () => {
     ).not.toContain('session_id')
     await baseline.down(sequelize.getQueryInterface(), Sequelize)
     expect(await tableNames(sequelize)).toEqual(['SequelizeMeta'])
+    await sequelize.close()
+  })
+})
+
+describe('M4 Rest am Abend migration (rest_counts)', () => {
+  it('creates rest_counts with one row per day, item, variant and product, idempotently', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    expect(await columns(sequelize, 'rest_counts')).toEqual(
+      [
+        'business_date',
+        'counted_by',
+        'created_at',
+        'factor',
+        'id',
+        'item_id',
+        'item_name',
+        'item_unit',
+        'name',
+        'product_id',
+        'qty',
+        'revision',
+        'unit',
+        'updated_at',
+        'variant',
+      ].sort()
+    )
+    const insert = (variant?: string, productId?: string) =>
+      sequelize.query(
+        `INSERT INTO rest_counts (business_date, item_id${
+          variant === undefined ? '' : ', variant'
+        }${
+          productId === undefined ? '' : ', product_id'
+        }, unit, item_unit, qty, created_at, updated_at) VALUES ('2026-12-01', 'testbrot'${
+          variant === undefined ? '' : ', :variant'
+        }${
+          productId === undefined ? '' : ', :productId'
+        }, 'Stück', 'Stück', 2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+        { replacements: { variant, productId } }
+      )
+    await insert()
+    await insert('nuss')
+    await insert('', 'testbrot-klein')
+    await expect(insert('', '')).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    })
+    await expect(insert('nuss')).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    })
+    const before = await tableNames(sequelize)
+    await restMigration.up(sequelize.getQueryInterface(), Sequelize)
+    expect(await tableNames(sequelize)).toEqual(before)
+    await restMigration.down(sequelize.getQueryInterface(), Sequelize)
+    expect(await tableNames(sequelize)).not.toContain('rest_counts')
     await sequelize.close()
   })
 })

@@ -13,6 +13,7 @@
  *   BackzettelDelta                              backzettel_days/_lines/_deltas (Z3)
  *   DeliveryDepot, DeliveryDriver, DeliveryTour,
  *   DeliveryStop, DeliveryGeocache               delivery_* (B8 migration)
+ *   RestCount                                    rest_counts (M4 „Rest am Abend“ migration)
  *
  * Legacy models (Cash, Chat, Product, Order, OrderItem, Inventory, Recipe,
  * Notification*, Production*, StockAdjustment, UnsoldProduct) are still
@@ -42,6 +43,7 @@ import { default as DeliveryDriver } from './DeliveryDriver'
 import { default as DeliveryTour } from './DeliveryTour'
 import { default as DeliveryStop } from './DeliveryStop'
 import { default as DeliveryGeocache } from './DeliveryGeocache'
+import { default as RestCount } from './RestCount'
 
 // --- Legacy, unused in the pilot (not initialised, no table) --------------
 import { default as Cash } from './Cash'
@@ -94,6 +96,7 @@ export {
   DeliveryTour,
   DeliveryStop,
   DeliveryGeocache,
+  RestCount,
 }
 
 /** @deprecated legacy alias, the pilot has staff users only. */
@@ -140,6 +143,7 @@ export const PILOT_MODELS = [
   DeliveryTour,
   DeliveryStop,
   DeliveryGeocache,
+  RestCount,
 ] as const
 
 export async function initializeModels(seq: Sequelize): Promise<void> {

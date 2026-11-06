@@ -11,7 +11,7 @@ import * as os from 'os'
 import * as path from 'path'
 import request from 'supertest'
 
-import { Preorder, PreorderItem } from '../../src/models'
+import { Preorder, PreorderItem, RestCount, User } from '../../src/models'
 import { commonGitDir, NETWORK_LOCK_FILE } from '../../src/services/hq-git'
 import { HqSnapshotWriter } from '../../src/services/hq-snapshots.service'
 import { bearer, createUser, login } from '../helpers/auth'
@@ -442,5 +442,59 @@ describe('reopen and locks', () => {
     expect(
       originFile(fresh, 'main', `data/production/vorbestellungen/${SAT}.json`)
     ).not.toBeNull()
+  })
+})
+
+describe('Rest am Abend → hq (M4)', () => {
+  it('writes data/production/rest/<date>.json - figures only, no names, no times - and commits once', async () => {
+    const fresh = makeHqRemote()
+    const w = new HqSnapshotWriter({ snapshotDir: fresh.snapshot, log: QUIET })
+    const counter = await User.findOne({ where: { username: 'test.geheim' } })
+    await RestCount.create({
+      businessDate: TUE2,
+      itemId: 'weck',
+      variant: '',
+      productId: 'test-weck',
+      name: 'Test test-weck',
+      itemName: 'Weck',
+      unit: 'Stück',
+      itemUnit: 'Stück',
+      factor: 1,
+      qty: 4,
+      countedBy: counter!.id,
+    })
+    const view = await request(api.app).get(`/api/rest?date=${TUE2}`).set(baker)
+    expect(view.status).toBe(200)
+    const outcome = await w.writeRest(view.body.data)
+    expect(outcome).toMatchObject({
+      committed: true,
+      pushed: true,
+      error: null,
+    })
+    const file = originFile(fresh, 'main', `data/production/rest/${TUE2}.json`)
+    expect(file).not.toBeNull()
+    const json = JSON.parse(file as string)
+    expect(json).toMatchObject({ kind: 'rest', date: TUE2 })
+    expect(json.items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ itemId: 'weck' })])
+    )
+    expect(file).not.toContain('Geheim')
+    expect(file).not.toContain('test.geheim')
+    expect(file).not.toMatch(/countedAt|countedBy|T\d{2}:\d{2}/)
+    expect(git(fresh.bare, 'log', '-1', '--format=%s', 'main')).toBe(
+      `chore(production): Rest am Abend ${TUE2} (App)`
+    )
+    expect(
+      git(fresh.bare, 'show', '--name-only', '--format=', 'main').trim()
+    ).toBe(`data/production/rest/${TUE2}.json`)
+    // The same numbers again: nothing to commit.
+    const before = git(fresh.bare, 'rev-list', '--count', 'main')
+    expect(await w.writeRest(view.body.data)).toMatchObject({
+      committed: false,
+      pushed: true,
+      error: null,
+    })
+    expect(git(fresh.bare, 'rev-list', '--count', 'main')).toBe(before)
+    await w.idle()
   })
 })

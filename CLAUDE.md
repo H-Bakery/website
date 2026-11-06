@@ -1402,6 +1402,62 @@ geht nur im Browser: `page.pdf()` je Blatt, Seitenzahl 1 (Achtung: nach
 `emulateMedia({ media: 'screen' })` druckt `page.pdf()` das Bildschirm-CSS - mit `media: null`
 zurücksetzen; `page.pdf()` löst `afterprint` aus).
 
+## Rest am Abend (`/admin/rest`, M4 - nach dem Pilot)
+
+Der Verkauf zählt bei Ladenschluss am Laden-Tablet (PIN-Station), was übrig ist; der Inhaber sieht
+unter `/admin/rest/auswertung` gebacken / verkauft / Rest / Restquote je Posten. API: `/api/rest`
+der echten TypeScript-API (Details: `apps/bakery-api/CLAUDE.md`, Abschnitt „Rest am Abend (M4)").
+Fünf Dinge, die man wissen muss:
+
+- **Die Rechnung steht genau einmal**, in `apps/bakery-api/src/services/rest-am-abend.core.js`
+  (dependency-frei). Die Verkaufszahlen nehmen die Z4-Helfer aus `backzettel-reference.core.js`
+  (`itemSoldInfo`, `soldOnDay`, `soldResolver`) und `reports-files.core.js`, das CSV `csvCell`
+  aus `partner-stats.core.js`. Die Management-App rechnet nichts (`src/lib/restApi.ts` verwaltet
+  nur den Entwurf am Tablet).
+- **Gezählt wird je Backzettel-Posten × Sorte × hq-Produkt**, nicht je Produkt allein: der
+  Backzettel rechnet in Liter/Blech, im Laden liegen Stücke. Ein Posten mit `products` wird je
+  Produkt in Stück gezählt und mit dessen `factor` umgerechnet (Marmorkuchen ganz = 1 Blech,
+  1 Stück = ¼), ein Liter-Posten ohne Produkte mit `pieces_per_liter` in Stück (Faktor
+  1/ppl), sonst in seiner eigenen Einheit. Der Faktor wird beim Zählen mitgespeichert.
+- **Restquote = Rest ÷ (gebacken − CAP).** Gebacken = Gesamt des **freigegebenen** Backzettels
+  plus quittierte Nachträge; CAP-Ware verlässt den Laden und kann dort nicht übrig sein. Ohne
+  Freigabe zeigt die Zählliste „geplant" und die Auswertung zählt den Tag nicht. **Ein Tag ohne
+  vollständige Zählung ist eine Lücke, keine 0** (`partial` / `not_counted`, gestrichelt im
+  Verlauf, `uncountedDates` je Posten) - nicht wegoptimieren, sonst liest sich eine vergessene
+  Zählung wie „alles verkauft".
+- **Zwei Tablets, ein Tag:** `PUT /api/rest/:date` nimmt je Zeile `expected` (was der Bildschirm
+  kannte); weicht der Server ab, kommt 409 `rest_changed` mit `current` und **nichts** wird
+  gespeichert. Die Seite zeigt, wer was gezählt hat, lädt neu und behält die Eingaben.
+  **`expected` ist die Grundlage der Eingabe, nicht der gerade geladene Stand:** jeder
+  Entwurfs-Eintrag hält `{ qty, base }` (`base` = Server-Wert beim ersten Tipp,
+  `setDraftEntry`). Findet ein Neuladen oder Tageswechsel einen anderen Server-Wert
+  (`draftConflicts`), zeigt die Seite den Konflikt wie bei einer 409 und setzt die Grundlage erst
+  dann neu (`rebaseDraft`) - sonst überschriebe ein aufgehobener Entwurf still die Zählung eines
+  anderen Tablets. Korrekturen
+  stehen mit altem und neuem Wert im `audit_log` (`rest_count`), `revision` zählt mit. Gezählt und
+  korrigiert wird nur heute bis 7 Tage zurück (Berlin), nie am Ruhetag.
+- **Nicht im Pilotbetrieb.** `/admin/rest` steht in `ROLE_ACCESS` (Verkauf zählt, Backstube liest,
+  Auswertung nur Inhaber), aber **bewusst nicht** in `PILOT_ALLOWED_ROUTES` - mit
+  `NEXT_PUBLIC_PILOT_MODE=1` fehlt die Seite, bis der Inhaber sie freigibt (Eintrag dort ergänzen,
+  `pilotMode.spec.ts` und `roles.spec.ts` prüfen den heutigen Stand).
+
+Bedienung: große −/+ (56 px), Zahl antippen öffnet einen Ziffernblock (Komma nur bei Liter/kg),
+„Nichts übrig" je Zeile setzt alle Produkte der Zeile auf 0, eine feste Leiste unten speichert alle
+Änderungen auf einmal. Ungespeicherte Eingaben liegen je **Benutzer** und Tag im `localStorage`
+(`bakery-rest-draft:<userId>:<datum>`, nur Komfort) - an der PIN-Station erbt die nächste Person
+weder die Zahlen der vorigen noch speichert sie sie unter eigenem Namen; wer nur lesen darf
+(Backstube), sieht immer den Server-Stand. 28 Posten = 61 Fingertipps im Smoke (≈ 1,5 min).
+Ein Posten mit Sorten wird je Sorte gezählt (400 `variant_required`, wie bei Vorbestellungen).
+Mehr Rest als für den Laden gebacken (`restExceedsShop`) steht an der Zeile als „bitte
+nachzählen", in der Auswertung je Posten mit den Tagen (`restExceedsDates`).
+In den Grundmengen (Z4) steht „Rest am Abend Ø" zusätzlich im Hinweis der Referenz
+(`GET /api/rest/averages`, nur Information). Nach jeder Zählung schreibt Z9 (falls
+`HQ_SNAPSHOT_DIR` gesetzt) `hq/data/production/rest/<datum>.json` - ohne Namen und Uhrzeiten.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/restAmAbend.test.js
+apps/bakery-api/tests/integration/rest.test.ts` und in der Management-App `src/lib/restApi.spec.ts`,
+`admin/rest/RestClient.spec.tsx`, `admin/rest/auswertung/RestAuswertungClient.spec.tsx`.
+
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 
 Pilot-Betrieb auf einem Rechner in der Bäckerei: systemd-Units, Caddy (LAN-HTTPS über DNS-01),

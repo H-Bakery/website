@@ -1010,6 +1010,7 @@ module.exports = {
   validateTemplateItems,
   snapshotLookup,
   csvCell,
+  deNumber,
   sortVisits,
   groupByBusinessDate,
   computeDay,
