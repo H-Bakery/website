@@ -30,6 +30,7 @@ import QuantityPad, {
   nextQuantity,
 } from '../../../components/preorders/QuantityPad'
 import {
+  changePreorderStatus,
   createPreorder,
   fetchCatalogue,
   fetchPickupPoints,
@@ -770,7 +771,38 @@ export default function PreorderForm({
     setSaving(true)
     setError(null)
     try {
-      const saved = await updatePreorder(earlier.id, fields, earlier.updatedAt)
+      let saved = await updatePreorder(earlier.id, fields, earlier.updatedAt)
+      // W4-verify r6: „Bezahlt“ in der neuen Maske heißt, die ganze Summe
+      // der Maske ist kassiert. Ein PATCH mit `paid: true` auf eine schon
+      // bezahlte Bestellung behält aber deren alten Betrag (richtig beim
+      // Bearbeiten, wo das Formular den Rest nennt) - sonst verlangte die
+      // Abholliste den Rest ein zweites Mal. Also die Zahlung ausdrücklich
+      // auf den jetzigen Betrag setzen.
+      if (
+        fields.paid &&
+        saved.paid &&
+        Math.round((saved.paymentBalance ?? 0) * 100) !== 0
+      ) {
+        try {
+          saved = await changePreorderStatus(
+            saved.id,
+            { paid: true },
+            saved.updatedAt
+          )
+        } catch (err) {
+          setError(
+            `Die Änderungen sind in ${
+              saved.code
+            } übernommen, aber als bezahlt gelten nur ${formatCurrency(
+              saved.paidAmount ?? 0
+            )} von ${formatCurrency(saved.total)}. ${preorderErrorMessage(
+              err,
+              'Die Zahlung konnte nicht gespeichert werden.'
+            )} Bitte die Bestellung unter „Alle Vorbestellungen“ öffnen und die Zahlung prüfen.`
+          )
+          return
+        }
+      }
       finishSaved(saved)
     } catch (err) {
       setError(
