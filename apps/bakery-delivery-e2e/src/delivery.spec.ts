@@ -163,6 +163,7 @@ test.describe('Liefertour', () => {
   test('rendert eine Genauigkeit von 0 m als Text, nicht als nackte Null', async ({
     page,
     context,
+    request,
   }) => {
     // Regression: `{location.accuracy && <p/>}` liess React bei 0 eine nackte
     // 0 in die Seite schreiben.
@@ -171,14 +172,38 @@ test.describe('Liefertour', () => {
       longitude: 7.3389,
       accuracy: 0,
     })
-    await page.goto('/')
-
-    await expect(page.getByText('49.32260, 7.33890 · ±0 m')).toBeVisible({
-      timeout: 15_000,
+    // Die Koordinaten stehen in der Karte einer Tour. Die echte API seedet
+    // keine Touren (B12, vorher lag eine im Mock-Store) - also eine eigene,
+    // je Projekt an einem eigenen Werktag.
+    const workday =
+      test.info().project.name === 'chromium' ? '2026-09-22' : '2026-09-23'
+    await resetTours(request, workday)
+    const created = await request.post(`${API}/api/deliveries/tours`, {
+      data: {
+        date: workday,
+        driverId: await driverId(request),
+        name: 'E2E-Standort',
+      },
     })
+    expect(created.ok()).toBeTruthy()
+    const tour = await created.json()
 
-    const lines = (await page.locator('body').innerText()).split('\n')
-    expect(lines.filter((line) => line.trim() === '0')).toHaveLength(0)
+    try {
+      await page.goto('/')
+      await page.getByLabel('Tag', { exact: true }).fill(workday)
+      await expect(
+        page.getByRole('heading', { name: 'E2E-Standort', level: 2 })
+      ).toBeVisible({ timeout: 20_000 })
+
+      await expect(page.getByText('49.32260, 7.33890 · ±0 m')).toBeVisible({
+        timeout: 15_000,
+      })
+
+      const lines = (await page.locator('body').innerText()).split('\n')
+      expect(lines.filter((line) => line.trim() === '0')).toHaveLength(0)
+    } finally {
+      await request.delete(`${API}/api/deliveries/tours/${tour.id}`)
+    }
   })
 
   test('bleibt bedienbar, wenn ein Tag ohne Tour gewählt wird', async ({
