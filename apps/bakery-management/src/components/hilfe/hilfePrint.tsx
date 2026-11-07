@@ -69,6 +69,9 @@ export const hilfePrintStyles = (
         'html, body': {
           background: '#fff !important',
           color: '#000 !important',
+          // CssBaseline enableColorScheme setzt im Dunkelmodus color-scheme:
+          // dark - Chrome färbt dann den Seitenrand des Ausdrucks dunkel.
+          colorScheme: 'light !important',
         },
         '.MuiAppBar-root, nav, .MuiDrawer-root, [aria-label="Pfad"]': {
           display: 'none !important',
@@ -88,6 +91,27 @@ export const hilfePrintStyles = (
         '.hilfe-wrap, .hilfe-wrap > *': {
           padding: '0 !important',
           margin: '0 !important',
+        },
+        // Seitenrahmen (Layout-Kit: Kopf, Abschnitte, Karten, „Details“)
+        // fällt weg: alles in `.hilfe-wrap`, das weder ein Blatt ist, in
+        // einem Blatt steht noch ein Blatt enthält. Die Hüllen um ein Blatt
+        // (Abschnitt, Karte, zugeklappte Details) werden zu schlichten
+        // Blöcken ohne Abstand - sonst rutschte ein seitenhohes Blatt auf
+        // Seite 2, und ein Blatt in zugeklappten Details bliebe unsichtbar.
+        '.hilfe-wrap *:not(:has(.hilfe-sheet)):not(.hilfe-sheet):not(.hilfe-sheet *)':
+          { display: 'none !important' },
+        '.hilfe-wrap *:has(.hilfe-sheet)': {
+          display: 'block !important',
+          padding: '0 !important',
+          margin: '0 !important',
+          border: 'none !important',
+          background: 'transparent !important',
+          boxShadow: 'none !important',
+          height: 'auto !important',
+          minHeight: '0 !important',
+          maxWidth: 'none !important',
+          overflow: 'visible !important',
+          visibility: 'visible !important',
         },
         // Alle Blätter aus; das gewählte (höhere Spezifität) wieder an. Nur EIN
         // Schlüssel `.hilfe-sheet` in diesem Objekt - ein zweiter ersetzte ihn.
