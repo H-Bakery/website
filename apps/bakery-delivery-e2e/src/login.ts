@@ -79,6 +79,8 @@ export const test = base.extend<object, { apiToken: string }>({
 /**
  * Id des E2E-Fahrers. Die echte API legt keine Fahrer an (der Mock hatte zwei
  * im Seed) - der erste Aufruf legt „E2E-Fahrer“ an, danach wird er gefunden.
+ * Der erste Aufruf ist `global-setup.ts`, vor allen Workern; sonst legten zwei
+ * Worker gleichzeitig je einen an.
  */
 export async function driverId(request: APIRequestContext): Promise<number> {
   const list = (await (
