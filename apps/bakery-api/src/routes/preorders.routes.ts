@@ -496,14 +496,15 @@ function createDeliveriesRouter(service: PreordersService): Router {
         return
       }
       if (req.user?.role === 'fahrer') {
-        // Neben dem Status darf der Fahrer bei der Übergabe `paid: true`
-        // schicken: Rest kassiert bzw. Erstattung ausgezahlt. Zurücknehmen
-        // (`paid: false`) bleibt dem Verkauf.
+        // Neben dem Status darf der Fahrer bei der Übergabe `paid` schicken:
+        // `true` = bezahlt bzw. Rest kassiert / Erstattung ausgezahlt,
+        // `false` = „ohne Zahlung übergeben“ (nur an einer noch unbezahlten
+        // Bestellung, sonst fiele die Übergabe ungefragt auf „bezahlt“).
+        // Eine erfasste Zahlung zurücknehmen bleibt dem Verkauf (Guard unten).
         const keys = Object.keys(body)
         if (
           keys.some((k) => k !== 'status' && k !== 'paid') ||
-          (body['paid'] !== undefined &&
-            (body['paid'] !== true || body['status'] !== 'handed_over')) ||
+          (body['paid'] !== undefined && body['status'] !== 'handed_over') ||
           !['handed_over', 'not_collected'].includes(String(body['status']))
         ) {
           sendError(
@@ -532,6 +533,20 @@ function createDeliveriesRouter(service: PreordersService): Router {
             status: refused.status,
             error: refused.error,
             message: refused.message,
+          }
+        }
+        // „Ohne Zahlung übergeben“ ja, eine erfasste Zahlung zurücknehmen
+        // nein - wie `paid_undo_forbidden` am Status-Endpunkt.
+        if (
+          req.user?.role === 'fahrer' &&
+          body['paid'] === false &&
+          current.paid !== false
+        ) {
+          return {
+            ok: false,
+            status: 403,
+            error: 'paid_undo_forbidden',
+            message: 'Eine erfasste Zahlung zurücknehmen kann nur der Verkauf.',
           }
         }
         if (body['status'] !== undefined) {

@@ -184,11 +184,14 @@ test.describe('Sammelstelle', () => {
         .filter({ hasText: 'E2E Familie Roth' })
         .first()
 
+      // Unbezahlt: „Übergeben" fragt erst, ob das Geld geflossen ist.
       await row.getByRole('button', { name: 'Übergeben' }).click()
+      await row.getByRole('button', { name: 'Bezahlt und übergeben' }).click()
       await expect(stop.getByText('1 von 1 übergeben')).toBeVisible({
         timeout: 15_000,
       })
-      await expect(stop.getByText('Bar zu kassieren: 0,00 €')).toBeVisible()
+      // Nichts mehr offen: kein „Bar zu kassieren: 0,00 €" in der Kopfzeile.
+      await expect(stop.getByText(/Bar zu kassieren/)).toHaveCount(0)
 
       // Der Server hat es wirklich - nicht nur der Bildschirm. Der Tag steht
       // nach dem Neuladen wieder auf heute, also noch einmal hinstellen.
@@ -232,9 +235,13 @@ test.describe('Sammelstelle', () => {
 
       await stop.getByRole('button', { name: 'Stopp abschließen' }).click()
       await stop.getByRole('button', { name: 'Trotzdem abschließen' }).click()
-      await expect(stop.getByText('Abgeschlossen')).toBeVisible({
-        timeout: 15_000,
-      })
+      // Erledigte Stopps stehen zugeklappt unter „Erledigt (n)".
+      await page.getByText(/^Erledigt \(/).click()
+      await expect(
+        page
+          .getByRole('region', { name: 'Erledigte Stopps' })
+          .getByText('Abgeschlossen')
+      ).toBeVisible({ timeout: 15_000 })
     } finally {
       await cleanup(request, tour.id, [preorder.id])
     }

@@ -216,8 +216,12 @@ export interface Tour {
 /** Was die Übergabeliste an die API schickt. */
 export interface PreorderUpdate {
   status: PreorderStatus
-  /** Rest kassiert bzw. Erstattung ausgezahlt - nur mit `handed_over`. */
-  paid?: true
+  /**
+   * Nur mit `handed_over`: `true` = bezahlt bzw. Rest kassiert / Erstattung
+   * ausgezahlt, `false` = ohne Zahlung übergeben (nur an einer unbezahlten).
+   * Fehlt es, bucht der Server eine unbezahlte Übergabe als bezahlt.
+   */
+  paid?: boolean
 }
 
 /** Was die Erfassungsmaske an die API schickt. */

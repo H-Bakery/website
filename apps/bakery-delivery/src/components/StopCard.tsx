@@ -52,7 +52,7 @@ interface StopCardProps {
   onPreorderStatusChange?: (
     preorderId: number,
     status: PreorderStatus,
-    paid?: true
+    paid?: boolean
   ) => void
   /** Vorbestellungen, deren eigener Statuswechsel gerade unterwegs ist. */
   busyPreorderIds?: ReadonlySet<number>

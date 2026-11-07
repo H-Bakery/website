@@ -588,6 +588,59 @@ describe('DeliveryDashboard beim Abhaken', () => {
     ])
   })
 
+  it('zeigt erledigte Stopps zugeklappt und nummeriert in Fahrtreihenfolge', async () => {
+    // Regression (UI-Runde 1): nach „Route berechnen" liess der Server
+    // erledigte Stopps auf ihrem Platz - die Liste stand „1 offen, 2 offen,
+    // 3 geliefert, 4 nicht angetroffen, 5 offen", der Fahrer scrollte an
+    // erledigten Karten vorbei, und die Nummer hiess nicht „so wird gefahren".
+    const finished = (
+      id: number,
+      customer: string,
+      status: 'done' | 'failed',
+      at: string
+    ): Stop => ({ ...stop(id, customer), status, completedAt: at })
+    api.tours.mockResolvedValue([
+      {
+        ...twoStops,
+        stops: [
+          stop(1, 'Kunde Fink'),
+          stop(2, 'Kunde Drossel'),
+          finished(3, 'Kunde Amsel', 'done', '2026-09-12T07:10:00.000Z'),
+          finished(4, 'Kunde Buchfink', 'failed', '2026-09-12T07:20:00.000Z'),
+          stop(5, 'Kunde Mörsbach'),
+        ],
+        progress: { total: 5, done: 1, failed: 1, open: 3, isComplete: false },
+        nextStopId: 1,
+      },
+    ])
+
+    render(<DeliveryDashboard />)
+    const next = await screen.findByRole('region', { name: 'Nächster Stopp' })
+    const numbers = (region: HTMLElement) =>
+      Array.from(region.querySelectorAll('li')).map(
+        (li) =>
+          `${li.querySelector('span')?.textContent} ${
+            li.querySelector('h3')?.textContent
+          }`
+      )
+
+    expect(numbers(next)).toEqual(['3 Kunde Fink'])
+    expect(
+      numbers(screen.getByRole('region', { name: 'Weitere Stopps' }))
+    ).toEqual(['4 Kunde Drossel', '5 Kunde Mörsbach'])
+    const done = screen.getByRole('region', { name: 'Erledigte Stopps' })
+    expect(numbers(done)).toEqual(['1 Kunde Amsel', '2 Kunde Buchfink'])
+    // Zugeklappt: nachsehen und zurücksetzen geht, im Weg sind sie nicht.
+    expect(done.querySelector('details')?.open).toBe(false)
+    expect(
+      within(done).getByText('Erledigt (2, davon 1 nicht angetroffen)')
+    ).toBeTruthy()
+    // Der nächste Stopp kommt kein zweites Mal.
+    expect(screen.getAllByRole('heading', { name: 'Kunde Fink' })).toHaveLength(
+      1
+    )
+  })
+
   it('schickt Grund und Verbleib der Ware mit „Nicht angetroffen" und zeigt sie an', async () => {
     api.updateStop.mockImplementation(async (_tourId, stopId, body) => ({
       ...twoStops,
@@ -627,10 +680,15 @@ describe('DeliveryDashboard beim Abhaken', () => {
         completedAt: expect.any(String),
       })
     )
+    // Die Karte wandert nach „Erledigt" - also frisch suchen.
     expect(
-      await a.findByText('Grund: Adresse nicht gefunden · Ware abgestellt')
+      await within(card('Kunde A')).findByText(
+        'Grund: Adresse nicht gefunden · Ware abgestellt'
+      )
     ).toBeTruthy()
-    expect(screen.getByText(/1 nicht angetroffen/)).toBeTruthy()
+    expect(
+      screen.getByText(/0 von 2 geliefert, 1 nicht angetroffen/)
+    ).toBeTruthy()
   })
 
   it('legt Grund und Verbleib im Funkloch mit in die Warteschlange', async () => {
@@ -662,7 +720,9 @@ describe('DeliveryDashboard beim Abhaken', () => {
     ])
     // Die lokale Vorschau zeigt den Grund schon, bevor der Server ihn kennt.
     expect(
-      a.getByText('Grund: Annahme verweigert · Ware mitgenommen')
+      within(card('Kunde A')).getByText(
+        'Grund: Annahme verweigert · Ware mitgenommen'
+      )
     ).toBeTruthy()
   })
 
@@ -692,7 +752,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
 
     fireEvent.click(a.getByRole('button', { name: 'Zurücksetzen' }))
     await screen.findByText(/Kein Netz/)
-    expect(a.queryByText(/Grund:/)).toBeNull()
+    expect(within(card('Kunde A')).queryByText(/Grund:/)).toBeNull()
     expect(pendingUpdates()[0]).toEqual(
       expect.objectContaining({
         body: { status: 'open' },
@@ -792,10 +852,9 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
   it('zeigt die Übergabeliste mit Kopfzeile statt „Geliefert / Nicht angetroffen"', async () => {
     render(<DeliveryDashboard />)
 
-    // Der Stopp steht zweimal auf der Seite („Nächster Stopp" und die Liste).
-    expect(
-      (await screen.findAllByText(/0 von 2 übergeben/)).length
-    ).toBeGreaterThan(0)
+    // Der Stopp steht einmal auf der Seite: als „Nächster Stopp", nicht
+    // zusätzlich in der Liste darunter (UI-Runde 1: acht Familien doppelt).
+    expect((await screen.findAllByText(/0 von 2 übergeben/)).length).toBe(1)
     expect(
       screen.getAllByText(/Bar zu kassieren: 12,30/).length
     ).toBeGreaterThan(0)
@@ -821,6 +880,10 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
 
     const buttons = await screen.findAllByRole('button', { name: 'Übergeben' })
     fireEvent.click(buttons[0])
+    // Unbezahlt: erst die Frage nach dem Geld.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Bezahlt und übergeben' })
+    )
 
     expect(
       await screen.findByText('Diese Übergabe ist nicht erlaubt.')
@@ -946,6 +1009,9 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     fireEvent.click(
       (await screen.findAllByRole('button', { name: 'Übergeben' }))[0]
     )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Bezahlt und übergeben' })
+    )
     await waitFor(() =>
       expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
     )
@@ -966,6 +1032,49 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     expect(await screen.findByText('Abgeschlossen')).toBeTruthy()
     expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/0 von 2 übergeben/)).toBeNull()
+  })
+
+  it('fragt beim Übergeben einer unbezahlten nach dem Geld und bucht „ohne Zahlung" nicht als bezahlt', async () => {
+    // Regression (UI-Runde 1): ein Tipp auf „Übergeben" schickte nur
+    // `{ status }`, und der Server buchte die unbezahlte Bestellung als
+    // bezahlt - Bargeld, das nie geflossen ist.
+    api.updatePreorder.mockImplementation(async (id, body) => ({
+      ...preorder({ id, reference: 'MO-2026-09-12-01', total: 6.1 }),
+      status: body.status,
+      handedOverAt: '2026-09-12T07:15:00.000Z',
+      paid: false,
+      paidAmount: null,
+      paymentBalance: 0,
+    }))
+
+    render(<DeliveryDashboard />)
+    const next = within(
+      await screen.findByRole('region', { name: 'Nächster Stopp' })
+    )
+    fireEvent.click(next.getAllByRole('button', { name: 'Übergeben' })[0])
+
+    // Kein PATCH ohne Antwort auf die Geldfrage; der Betrag steht da.
+    expect(api.updatePreorder).not.toHaveBeenCalled()
+    expect(next.getByText(/Noch nicht bezahlt: 6,10/)).toBeTruthy()
+    fireEvent.click(
+      next.getByRole('button', { name: 'Ohne Zahlung übergeben' })
+    )
+
+    await waitFor(() =>
+      expect(api.updatePreorder).toHaveBeenCalledWith(101, {
+        status: 'handed_over',
+        paid: false,
+      })
+    )
+    expect((await next.findByTestId('payment-101')).textContent).toMatch(
+      /^Ohne Zahlung übergeben – 6,10\s€ offen$/
+    )
+    // Die Kopfzeile verliert das Geld nicht: es steht für sich.
+    expect(
+      next.getByText(
+        /1 von 2 übergeben · Bar zu kassieren: 6,20\s€ · Ohne Zahlung übergeben: 6,10\s€/
+      )
+    ).toBeTruthy()
   })
 
   it('legt die Warteschlange über die Offline-Kopie der Tour', async () => {
@@ -995,6 +1104,9 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     fireEvent.click(
       (await screen.findAllByRole('button', { name: 'Übergeben' }))[0]
     )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Bezahlt und übergeben' })
+    )
 
     // Sofort umgeschaltet - der Fahrer wartet nicht auf das Netz.
     await waitFor(() =>
@@ -1005,7 +1117,7 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
       expect.objectContaining({
         kind: 'preorder',
         preorderId: 101,
-        body: { status: 'handed_over' },
+        body: { status: 'handed_over', paid: true },
       }),
     ])
 
@@ -1093,7 +1205,8 @@ describe('DeliveryDashboard nach Rolle', () => {
     expect(
       await screen.findByRole('heading', { name: 'Samstagstour' })
     ).toBeTruthy()
-    expect(screen.getAllByRole('heading', { name: 'Kunde A' }).length).toBe(2)
+    // Einmal: der nächste Stopp steht nicht noch einmal in der Liste.
+    expect(screen.getAllByRole('heading', { name: 'Kunde A' }).length).toBe(1)
     expect(screen.queryByRole('button', { name: 'Tour planen' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Route berechnen' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Geliefert' })).toBeNull()

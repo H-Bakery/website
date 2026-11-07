@@ -45,6 +45,7 @@ import {
   TOUR_STATUS_LABEL,
 } from '../lib/format'
 import { permissionsFor, useDeliverySession } from '../lib/session'
+import { displayOrder, stopPositions } from '../lib/stop-order'
 import { AccountBar } from '../components/AccountBar'
 import { AddStopForm, type NewStopInput } from '../components/AddStopForm'
 import { StopCard } from '../components/StopCard'
@@ -492,7 +493,7 @@ export default function DeliveryDashboard() {
   const changePreorderStatus = async (
     preorderId: number,
     status: PreorderStatus,
-    paid?: true
+    paid?: boolean
   ) => {
     if (!tour) return
     if (busyPreorders.has(preorderId)) return
@@ -502,8 +503,11 @@ export default function DeliveryDashboard() {
     // Die Vorbestellungen haengen an der Tour: die Antwort auf einen
     // Stopp-PATCH braechte sonst eine eben uebergebene Bestellung wieder
     // auf „Offen", solange ihr eigener PATCH noch haengt.
-    // `paid: true` = Rest kassiert bzw. Erstattung ausgezahlt.
-    const body: PreorderUpdate = paid ? { status, paid } : { status }
+    // `paid: true` = bezahlt bzw. Rest kassiert / Erstattung ausgezahlt,
+    // `paid: false` = ohne Zahlung übergeben. Ohne `paid` bucht der Server
+    // eine unbezahlte Übergabe als bezahlt - die Oberfläche fragt deshalb.
+    const body: PreorderUpdate =
+      paid === undefined ? { status } : { status, paid }
     const key = inFlightKey('preorder', preorderId)
     inFlightRef.current.set(key, {
       kind: 'preorder',
@@ -608,7 +612,9 @@ export default function DeliveryDashboard() {
 
   const moveStop = async (stopId: number, direction: -1 | 1) => {
     if (!tour) return
-    const order = tour.stops.map((stop) => stop.id)
+    // Verschoben wird in der Reihenfolge, die die Liste zeigt (erledigte
+    // zuerst) - sonst sprang ein Stopp über einen unsichtbaren Nachbarn.
+    const order = displayOrder(tour.stops).map((stop) => stop.id)
     const from = order.indexOf(stopId)
     const to = from + direction
     if (from < 0 || to < 0 || to >= order.length) return
@@ -701,6 +707,19 @@ export default function DeliveryDashboard() {
 
   const nextStop =
     tour?.stops.find((stop) => stop.id === tour.nextStopId) ?? null
+  // Eine Nummer je Stopp für Liste, „Nächster Stopp" und Karte: erledigte
+  // zuerst, dann die offenen in Fahrtreihenfolge (`stop-order.ts`).
+  const orderedStops = useMemo(
+    () => (tour ? displayOrder(tour.stops) : []),
+    [tour]
+  )
+  const positions = useMemo(() => stopPositions(orderedStops), [orderedStops])
+  const finishedStops = orderedStops.filter((stop) => stop.status !== 'open')
+  // „Weitere Stopps": die offenen ohne den nächsten - der steht oben schon
+  // ausführlich und kam sonst ein zweites Mal.
+  const upcomingStops = orderedStops.filter(
+    (stop) => stop.status === 'open' && stop.id !== nextStop?.id
+  )
 
   const distanceTo = (stop: Stop): number | null => {
     if (!currentLocation || !hasCoordinates(stop)) return null
@@ -712,6 +731,21 @@ export default function DeliveryDashboard() {
       { latitude: stop.lat, longitude: stop.lon }
     )
   }
+
+  /** Was jede Stopp-Karte in den Listen bekommt. */
+  const stopCardProps = (stop: Stop) => ({
+    stop,
+    position: positions.get(stop.id) ?? 0,
+    isNext: stop.id === tour?.nextStopId,
+    distance: distanceTo(stop),
+    busy: busy || busyStops.has(stop.id),
+    busyPreorderIds: busyPreorders,
+    onStatusChange: changeStopStatus,
+    onPreorderStatusChange: changePreorderStatus,
+    readOnly: !can.drive,
+    canUndoHandover: can.undoHandover,
+    collapseHandover: true,
+  })
 
   const navigateAllUrl = useMemo(() => {
     const open = (tour?.stops ?? []).filter(
@@ -1088,7 +1122,7 @@ export default function DeliveryDashboard() {
               <ul className={styles.stopList}>
                 <StopCard
                   stop={nextStop}
-                  position={tour.stops.indexOf(nextStop) + 1}
+                  position={positions.get(nextStop.id) ?? 0}
                   isNext
                   distance={distanceTo(nextStop)}
                   busy={busy || busyStops.has(nextStop.id)}
@@ -1102,44 +1136,94 @@ export default function DeliveryDashboard() {
             </section>
           )}
 
-          <section className={styles.plainSection} aria-label="Alle Stopps">
-            <div className={styles.sectionHead}>
-              <h2>Alle Stopps ({tour.stops.length})</h2>
-              {tour.stops.length > 0 && (
-                <span className={styles.count}>{tour.progress.open} offen</span>
+          {planning && can.plan ? (
+            // Planung: alle Stopps flach, mit „Nach oben" / „Nach unten".
+            <section className={styles.plainSection} aria-label="Alle Stopps">
+              <div className={styles.sectionHead}>
+                <h2>Alle Stopps ({tour.stops.length})</h2>
+                {tour.stops.length > 0 && (
+                  <span className={styles.count}>
+                    {tour.progress.open} offen
+                  </span>
+                )}
+              </div>
+              {tour.stops.length === 0 ? (
+                <p className={styles.placeholder}>
+                  Noch keine Stopps. Über „Tour planen“ hinzufügen.
+                </p>
+              ) : (
+                <ul className={styles.stopList}>
+                  {orderedStops.map((stop, index) => (
+                    <StopCard
+                      key={stop.id}
+                      {...stopCardProps(stop)}
+                      onRemove={removeStop}
+                      onMove={moveStop}
+                      isFirst={index === 0}
+                      isLast={index === orderedStops.length - 1}
+                    />
+                  ))}
+                </ul>
               )}
-            </div>
-            {tour.stops.length === 0 ? (
-              <p className={styles.placeholder}>
-                {can.plan
-                  ? 'Noch keine Stopps. Über „Tour planen“ hinzufügen.'
-                  : 'Noch keine Stopps.'}
-              </p>
-            ) : (
-              <ul className={styles.stopList}>
-                {tour.stops.map((stop, index) => (
-                  <StopCard
-                    key={stop.id}
-                    stop={stop}
-                    position={index + 1}
-                    isNext={stop.id === tour.nextStopId}
-                    distance={distanceTo(stop)}
-                    busy={busy || busyStops.has(stop.id)}
-                    busyPreorderIds={busyPreorders}
-                    onStatusChange={changeStopStatus}
-                    onPreorderStatusChange={changePreorderStatus}
-                    onRemove={planning && can.plan ? removeStop : undefined}
-                    onMove={planning && can.plan ? moveStop : undefined}
-                    isFirst={index === 0}
-                    isLast={index === tour.stops.length - 1}
-                    readOnly={!can.drive}
-                    canUndoHandover={can.undoHandover}
-                    collapseHandover
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
+            </section>
+          ) : (
+            <>
+              {tour.stops.length === 0 && (
+                <section
+                  className={styles.plainSection}
+                  aria-label="Alle Stopps"
+                >
+                  <div className={styles.sectionHead}>
+                    <h2>Alle Stopps (0)</h2>
+                  </div>
+                  <p className={styles.placeholder}>
+                    {can.plan
+                      ? 'Noch keine Stopps. Über „Tour planen“ hinzufügen.'
+                      : 'Noch keine Stopps.'}
+                  </p>
+                </section>
+              )}
+
+              {upcomingStops.length > 0 && (
+                <section
+                  className={styles.plainSection}
+                  aria-label="Weitere Stopps"
+                >
+                  <div className={styles.sectionHead}>
+                    <h2>Weitere Stopps ({upcomingStops.length})</h2>
+                  </div>
+                  <ul className={styles.stopList}>
+                    {upcomingStops.map((stop) => (
+                      <StopCard key={stop.id} {...stopCardProps(stop)} />
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {/* Erledigte zugeklappt: nachsehen oder zurücksetzen geht,
+                  aber der Fahrer scrollt nicht an ihnen vorbei. */}
+              {finishedStops.length > 0 && (
+                <section
+                  className={styles.plainSection}
+                  aria-label="Erledigte Stopps"
+                >
+                  <details className={styles.disclosure}>
+                    <summary>
+                      Erledigt ({finishedStops.length}
+                      {tour.progress.failed > 0 &&
+                        `, davon ${tour.progress.failed} nicht angetroffen`}
+                      )
+                    </summary>
+                    <ul className={`${styles.stopList} ${styles.finishedList}`}>
+                      {finishedStops.map((stop) => (
+                        <StopCard key={stop.id} {...stopCardProps(stop)} />
+                      ))}
+                    </ul>
+                  </details>
+                </section>
+              )}
+            </>
+          )}
 
           <section className={styles.card} aria-label="Karte">
             <h2>Karte</h2>
@@ -1319,16 +1403,23 @@ function applyPreorderStatus(
 ): Tour {
   const { status } = body
   return mapPreorder(tour, preorderId, (preorder) => {
-    // Wie der Server: eine unbezahlte gilt mit der Übergabe als bezahlt,
-    // eine vorab bezahlte nur mit `paid: true` als ausgeglichen.
+    // Wie der Server: `paid: true` gleicht aus (auch nachträglich an einer
+    // schon übergebenen), `paid: false` lässt das Geld offen, und ohne `paid`
+    // gilt eine unbezahlte mit der Übergabe als bezahlt.
     const settles =
       status === 'handed_over' &&
-      preorder.status !== 'handed_over' &&
-      (body.paid === true || preorder.paid === false)
+      (body.paid === true ||
+        (body.paid === undefined &&
+          preorder.status !== 'handed_over' &&
+          preorder.paid === false))
     return {
       ...preorder,
       status,
-      handedOverAt: status === 'handed_over' ? new Date().toISOString() : null,
+      handedOverAt:
+        status === 'handed_over'
+          ? (preorder.status === 'handed_over' && preorder.handedOverAt) ||
+            new Date().toISOString()
+          : null,
       ...(settles
         ? { paid: true, paidAmount: preorder.total, paymentBalance: 0 }
         : {}),
