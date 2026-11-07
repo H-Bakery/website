@@ -41,3 +41,25 @@ export function describeBackstubeError(
   }
   return { text: `${fallback} (Fehler ${status})`, offline: false }
 }
+
+/** Was Browser und Proxy statt einer Antwort melden - nie so anzeigen. */
+const NETWORK_MESSAGE =
+  /^(Failed to fetch|NetworkError when attempting to fetch resource\.?|Load failed|Network request failed|Request timeout)$/i
+
+/**
+ * Fehlertext für die Backzettel-Seiten der Verwaltung (Übersicht,
+ * Tagesplanung, Grundmengen): dieselbe Regel wie am Tablet, aber Fehler
+ * ohne HTTP-Status, die schon deutsch sind (eigene Prüfungen), bleiben
+ * stehen. Vorher stand dort „Failed to fetch“, sobald das WLAN weg war.
+ */
+export function backzettelErrorText(error: unknown, fallback: string): string {
+  const e = error as { status?: unknown; message?: unknown } | null
+  if (typeof e?.status === 'number') {
+    return describeBackstubeError(error, fallback).text
+  }
+  const message = typeof e?.message === 'string' ? e.message.trim() : ''
+  if (!message || NETWORK_MESSAGE.test(message) || RAW_HTTP.test(message)) {
+    return OFFLINE_TEXT
+  }
+  return message
+}

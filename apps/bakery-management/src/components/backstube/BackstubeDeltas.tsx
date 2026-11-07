@@ -14,6 +14,7 @@ import {
   formatTimestamp,
   lineLabel,
 } from '../../lib/backzettelFormat'
+import { BS_SECTION_TITLE_SX } from './backstubeType'
 import { useBackstubeColors } from './backstubeColors'
 
 /** Schlüssel für „Alle gesehen“ (`ackingKey`). */
@@ -167,8 +168,9 @@ export function BackstubeDeltas({
       >
         <Typography
           id="bs-deltas-title"
+          variant="h2"
           component="h2"
-          sx={{ fontSize: { xs: '1.5rem', sm: '1.9rem' }, fontWeight: 800 }}
+          sx={BS_SECTION_TITLE_SX}
         >
           {open.length === 1
             ? '1 Nachtrag seit der Freigabe'

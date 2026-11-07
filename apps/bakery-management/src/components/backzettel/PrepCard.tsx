@@ -1,15 +1,8 @@
 'use client'
 
 import React from 'react'
-import {
-  Alert,
-  Card,
-  CardContent,
-  List,
-  ListItem,
-  ListItemText,
-  Typography,
-} from '@mui/material'
+import { Alert, List, ListItem, ListItemText, Typography } from '@mui/material'
+import { PageSection } from '../layout'
 import type { PrepTask } from '../../lib/backzettelApi'
 import { formatDateLong } from '../../lib/backzettelFormat'
 
@@ -38,39 +31,36 @@ export function PrepCard({
   prepDateProvisional,
 }: PrepCardProps) {
   const tasks = prep ?? []
+  // „Vorbereitung am Vortag“, nicht nur „Vorbereitung“: der Zettel hat oft
+  // selbst einen Abschnitt „Vorbereitung“ (Sauerteig-Ansatz) - zwei gleiche
+  // Überschriften auf einer Seite lasen sich wie ein Fehler.
   return (
-    <Card variant="outlined" sx={{ mb: 2 }} data-testid="prep-card">
-      <CardContent>
-        <Typography variant="h6" component="h2">
-          Vorbereitung
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          am Vortag, {formatDateLong(prepDate)}, ab 14 Uhr
-        </Typography>
-        {prepDateProvisional && (
-          <Alert severity="info" sx={{ mt: 1 }}>
-            Der Vortag ist Ruhetag. Wann und von wem diese Vorbereitung erledigt
-            wird, ist noch nicht festgelegt.
-          </Alert>
-        )}
-        {tasks.length === 0 ? (
-          <Typography variant="body2" sx={{ mt: 1 }}>
-            Keine Vorbereitung eingetragen.
-          </Typography>
-        ) : (
-          <List dense disablePadding>
-            {tasks.map((t) => (
-              <ListItem key={t.id} disableGutters>
-                <ListItemText
-                  primary={prepTaskLabel(t)}
-                  secondary={t.note || undefined}
-                />
-              </ListItem>
-            ))}
-          </List>
-        )}
-      </CardContent>
-    </Card>
+    <PageSection
+      title="Vorbereitung am Vortag"
+      description={`${formatDateLong(prepDate)}, ab 14 Uhr`}
+      data-testid="prep-card"
+    >
+      {prepDateProvisional && (
+        <Alert severity="info" sx={{ mb: 1 }} data-testid="prep-provisional">
+          Der Vortag ist Ruhetag. Wann und von wem diese Vorbereitung erledigt
+          wird, ist noch nicht festgelegt.
+        </Alert>
+      )}
+      {tasks.length === 0 ? (
+        <Typography variant="body2">Keine Vorbereitung eingetragen.</Typography>
+      ) : (
+        <List dense disablePadding>
+          {tasks.map((t) => (
+            <ListItem key={t.id} disableGutters>
+              <ListItemText
+                primary={prepTaskLabel(t)}
+                secondary={t.note || undefined}
+              />
+            </ListItem>
+          ))}
+        </List>
+      )}
+    </PageSection>
   )
 }
 

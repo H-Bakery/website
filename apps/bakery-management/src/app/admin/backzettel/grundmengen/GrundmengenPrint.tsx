@@ -45,6 +45,9 @@ export const grundmengenPrintStyles = (
         },
         'main > .MuiToolbar-root': { display: 'none !important' },
         '.grundmengen-screen-only': { display: 'none !important' },
+        // Kopf des Layout-Kits (Titel, Rücklink): das Druckbild hat einen
+        // eigenen Titel.
+        '[data-testid="page-header"]': { display: 'none !important' },
         '.grundmengen-print-only': { display: 'block !important' },
         '.grundmengen-print, .grundmengen-print *': {
           color: '#000 !important',

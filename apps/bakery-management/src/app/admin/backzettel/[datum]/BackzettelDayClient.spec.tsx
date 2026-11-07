@@ -487,6 +487,59 @@ describe('Backzettel-Tagesplanung', () => {
     expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
   })
 
+  it('ein Nachtrag, den es nicht mehr gibt (404), lädt den Tag neu', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
+    mocked.acknowledgeDelta.mockRejectedValue(
+      Object.assign(new Error('Dieser Nachtrag ist nicht mehr offen.'), {
+        status: 404,
+        code: 'not_found',
+      })
+    )
+    renderDay('backstube')
+    const card = within(await screen.findByTestId('deltas-card'))
+    fireEvent.click(card.getByRole('button', { name: 'Gesehen' }))
+    expect(
+      await screen.findByText(
+        'Dieser Nachtrag ist nicht mehr offen. Der Backzettel wurde neu geladen.'
+      )
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mocked.fetchBackzettelDay).toHaveBeenCalledTimes(2)
+    )
+  })
+
+  it('ein langsames Neuladen überschreibt eine Freigabe nicht', async () => {
+    renderDay('backstube')
+    await screen.findByRole('button', { name: 'Freigeben' })
+    // „Aktualisieren“ läuft noch, als freigegeben wird ...
+    let resolveSlow: (day: api.BackzettelDayResult) => void = () => undefined
+    mocked.fetchBackzettelDay.mockImplementationOnce(
+      () =>
+        new Promise<api.BackzettelDayResult>((resolve) => {
+          resolveSlow = resolve
+        })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }))
+    mocked.confirmDay.mockResolvedValue(saturdayConfirmed({ deltas: [] }))
+    fireEvent.click(screen.getByRole('button', { name: 'Freigeben' }))
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Jetzt freigeben',
+      })
+    )
+    await screen.findByText('Backzettel freigegeben.')
+    // ... und kommt erst danach mit dem alten Entwurf zurück.
+    await act(async () => {
+      resolveSlow(saturdayDraft())
+    })
+    expect(
+      screen.queryByRole('button', { name: 'Freigeben' })
+    ).not.toBeInTheDocument()
+    expect(
+      within(screen.getByTestId('page-status')).getByText('Freigegeben')
+    ).toBeInTheDocument()
+  })
+
   it('Wieder öffnen nur für den Inhaber, mit optionalem Grund', async () => {
     mocked.fetchBackzettelDay.mockResolvedValue(saturdayConfirmed())
     mocked.reopenDay.mockResolvedValue(saturdayDraft())

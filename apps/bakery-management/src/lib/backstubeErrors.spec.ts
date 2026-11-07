@@ -1,5 +1,9 @@
 import { ApiError } from '@bakery/shared/data-access'
-import { OFFLINE_TEXT, describeBackstubeError } from './backstubeErrors'
+import {
+  OFFLINE_TEXT,
+  backzettelErrorText,
+  describeBackstubeError,
+} from './backstubeErrors'
 
 const FALLBACK = 'Der Backzettel konnte nicht geladen werden.'
 
@@ -55,5 +59,36 @@ describe('describeBackstubeError', () => {
       FALLBACK
     )
     expect(hq.offline).toBe(false)
+  })
+})
+
+describe('backzettelErrorText (Verwaltung)', () => {
+  it('„Failed to fetch“ und Co. werden zum deutschen WLAN-Hinweis', () => {
+    for (const raw of [
+      'Failed to fetch',
+      'Load failed',
+      'NetworkError when attempting to fetch resource.',
+      'Request timeout',
+      'HTTP 502: Bad Gateway',
+    ]) {
+      expect(backzettelErrorText(new TypeError(raw), FALLBACK)).toBe(
+        OFFLINE_TEXT
+      )
+    }
+  })
+
+  it('deutsche Meldungen ohne Status und API-Meldungen bleiben stehen', () => {
+    expect(backzettelErrorText(new Error('Netzwerkfehler'), FALLBACK)).toBe(
+      'Netzwerkfehler'
+    )
+    expect(
+      backzettelErrorText(
+        new ApiError('Keine Berechtigung.', 403, 'forbidden'),
+        FALLBACK
+      )
+    ).toBe('Keine Berechtigung.')
+    expect(
+      backzettelErrorText(new ApiError('Internal error', 500), FALLBACK)
+    ).toContain('Fehler auf dem Server (500)')
   })
 })

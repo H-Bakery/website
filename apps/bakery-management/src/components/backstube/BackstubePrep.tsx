@@ -4,6 +4,7 @@ import React from 'react'
 import { Box, Paper, Stack, Typography } from '@mui/material'
 import type { PrepView } from '../../lib/backzettelApi'
 import { formatDateLong } from '../../lib/backzettelFormat'
+import { BS_SECTION_TITLE_SX } from './backstubeType'
 import { prepTaskLabel } from '../backzettel/PrepCard'
 
 export interface BackstubePrepProps {
@@ -30,8 +31,9 @@ export function BackstubePrep({ prep, today }: BackstubePrepProps) {
     >
       <Typography
         id="bs-prep-title"
+        variant="h2"
         component="h2"
-        sx={{ fontSize: { xs: '1.5rem', sm: '1.9rem' }, fontWeight: 800 }}
+        sx={BS_SECTION_TITLE_SX}
       >
         Für {formatDateLong(prep.date)}
       </Typography>
