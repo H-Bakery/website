@@ -1,21 +1,11 @@
 'use client'
-import React, { useCallback, useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import NextLink from 'next/link'
 import {
-  Alert,
   Box,
   Button,
-  Card,
-  CardActions,
-  CardContent,
-  Chip,
-  CircularProgress,
-  Divider,
-  Grid,
   IconButton,
   Link,
-  Paper,
-  Stack,
   Tooltip,
   Typography,
 } from '@mui/material'
@@ -23,44 +13,37 @@ import {
   AddCircleOutline as NewVisitIcon,
   Assessment as ReportIcon,
   EventNote as TemplateIcon,
-  Handshake as PartnersIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material'
 import { fetchPartners, fetchToday } from '../../../lib/partnerApi'
 import {
   DayDetail,
   Partner,
-  PartnerStats,
-  SettlementModel,
   WEEKDAY_LABELS,
-  WEEKDAY_SHORT,
   formatCurrency,
   formatDate,
   formatPercent,
+  plural,
   toBusinessDate,
   weekdayOf,
 } from '../../../lib/partnerTypes'
-
-const SETTLEMENT_LABELS: Record<SettlementModel, string> = {
-  commission: 'Kommission',
-  firm_sale: 'Festkauf',
-}
-
-/** Nullwerte, solange der Tag noch keine Besuche hat oder nicht geladen werden konnte. */
-const EMPTY_TOTALS: PartnerStats['totals'] = {
-  dayCount: 0,
-  openDayCount: 0,
-  visitCount: 0,
-  refillCount: 0,
-  deliveredQty: 0,
-  soldQty: 0,
-  returnedQty: 0,
-  discrepancyQty: 0,
-  revenue: 0,
-  returnValue: 0,
-  sellThroughRate: null,
-  returnRate: null,
-}
+import {
+  EmptyState,
+  ErrorState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../components/layout'
+import {
+  DayStateChip,
+  ProvisionalBadge,
+  SETTLEMENT_LABELS,
+  dayStateOf,
+  deliveryDaysText,
+  isProvisionalState,
+  type DayState,
+} from './partnerUi'
 
 interface PartnerCard {
   partner: Partner
@@ -72,23 +55,191 @@ function messageOf(err: unknown, fallback: string): string {
   return err instanceof Error && err.message ? err.message : fallback
 }
 
-function StatTile({ label, value }: { label: string; value: string }) {
+/** Ein Satz zur Lage des Tages - „vorläufig“ steht immer dabei, wo es gilt. */
+function stateSentence(
+  state: DayState,
+  visitCount: number,
+  uncountedQty: number,
+  weekdayLabel: string
+): string {
+  const visits = `${plural(visitCount, 'Besuch', 'Besuche')} erfasst`
+  switch (state) {
+    case 'no-delivery':
+      return `${weekdayLabel} ist kein Liefertag für diesen Partner.`
+    case 'no-visit':
+      return 'Liefertag - es ist noch kein Besuch erfasst.'
+    case 'open':
+      return `${visits} - die Abholung fehlt noch, die Zahlen sind vorläufig.`
+    case 'incomplete':
+      return `${visits}, aber ${uncountedQty} Stück bei der Abholung nicht gezählt - die Zahlen sind vorläufig.`
+    default:
+      return `${visits}, Abholung gebucht - der Tag ist abgeschlossen.`
+  }
+}
+
+function PartnerToday({
+  card,
+  todayWeekday,
+  onRetry,
+  loading,
+}: {
+  card: PartnerCard
+  todayWeekday: number | null
+  onRetry: () => void
+  loading: boolean
+}) {
+  const { partner, today, todayError } = card
+  const visitCount = today?.timeline?.length ?? 0
+  const isDeliveryDay =
+    todayWeekday != null &&
+    Array.isArray(partner.deliveryDays) &&
+    partner.deliveryDays.includes(todayWeekday)
+  const state = dayStateOf({
+    visitCount,
+    isOpen: today ? today.isOpen !== false : true,
+    // Abholung gebucht, aber nicht jedes Produkt mit Bestand gezählt
+    isComplete: today ? today.isComplete !== false : true,
+    isDeliveryDay,
+  })
+  const provisional = isProvisionalState(state)
+  const totals = today?.totals
+  const base = `/admin/partners/${partner.id}`
+
   return (
-    <Box
-      sx={{
-        p: 1.5,
-        height: '100%',
-        borderRadius: 1,
-        bgcolor: 'action.hover',
-      }}
+    <PageSection
+      data-testid={`partner-card-${partner.id}`}
+      title={
+        <Link
+          component={NextLink}
+          href={base}
+          underline="hover"
+          color="inherit"
+          // Einziger Weg zur Detailseite neben den Knöpfen: Touch-Ziel 44 px.
+          sx={{ display: 'inline-flex', alignItems: 'center', minHeight: 44 }}
+        >
+          {partner.name}
+        </Link>
+      }
+      description={[
+        partner.city || 'Ort noch nicht hinterlegt',
+        SETTLEMENT_LABELS[partner.settlementModel] ?? 'Kommission',
+        `Liefertage ${deliveryDaysText(partner.deliveryDays)}`,
+      ].join(' · ')}
+      actions={
+        <Tooltip title="Aktualisieren">
+          <span>
+            <IconButton
+              aria-label="Verkaufspartner aktualisieren"
+              onClick={onRetry}
+              disabled={loading}
+              sx={{ minWidth: 44, minHeight: 44, mr: -1, mt: -1 }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+      }
     >
-      <Typography variant="caption" color="text.secondary" display="block">
-        {label}
-      </Typography>
-      <Typography variant="h6" sx={{ fontSize: '1.15rem', lineHeight: 1.4 }}>
-        {value}
-      </Typography>
-    </Box>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+        {todayError ? (
+          <ErrorState message={todayError} onRetry={onRetry} />
+        ) : (
+          <>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: 1,
+              }}
+            >
+              <Typography variant="subtitle2" component="span">
+                Heute
+              </Typography>
+              <DayStateChip state={state} />
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ flexBasis: { xs: '100%', sm: 'auto' } }}
+              >
+                {stateSentence(
+                  state,
+                  visitCount,
+                  today?.uncountedQty ?? 0,
+                  todayWeekday ? WEEKDAY_LABELS[todayWeekday] : 'Heute'
+                )}
+              </Typography>
+            </Box>
+
+            {visitCount > 0 && totals && (
+              <KeyFigures
+                aria-label={`Kennzahlen heute, ${partner.name}`}
+                items={[
+                  {
+                    label: 'Geliefert',
+                    value: `${totals.deliveredQty} Stk.`,
+                  },
+                  {
+                    label: 'Verkauft',
+                    value: `${totals.soldQty} Stk.`,
+                    badge: provisional ? <ProvisionalBadge /> : undefined,
+                  },
+                  {
+                    label: 'Umsatz',
+                    value: formatCurrency(totals.revenue),
+                    badge: provisional ? <ProvisionalBadge /> : undefined,
+                  },
+                  {
+                    label: 'Abverkaufsquote',
+                    value: formatPercent(totals.sellThroughRate),
+                    badge: provisional ? <ProvisionalBadge /> : undefined,
+                  },
+                ]}
+              />
+            )}
+          </>
+        )}
+
+        <Box
+          sx={{
+            display: 'grid',
+            gap: 1,
+            gridTemplateColumns: {
+              xs: '1fr 1fr',
+              sm: 'auto auto auto',
+            },
+            justifyContent: { sm: 'start' },
+            '@media print': { display: 'none' },
+          }}
+        >
+          <Button
+            component={NextLink}
+            href={`${base}/visit/new`}
+            variant="contained"
+            startIcon={<NewVisitIcon />}
+            sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
+          >
+            Besuch erfassen
+          </Button>
+          <Button
+            component={NextLink}
+            href={`${base}/templates`}
+            variant="outlined"
+            startIcon={<TemplateIcon />}
+          >
+            Standard-Bestückung
+          </Button>
+          <Button
+            component={NextLink}
+            href={`${base}/report`}
+            variant="outlined"
+            startIcon={<ReportIcon />}
+          >
+            Report
+          </Button>
+        </Box>
+      </Box>
+    </PageSection>
   )
 }
 
@@ -96,13 +247,19 @@ export default function PartnerOverviewClient() {
   const [cards, setCards] = useState<PartnerCard[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  // Leer bis nach dem Mount: das Datum im SSR-HTML wiche über Mitternacht
+  // vom Browser ab (Hydration).
+  const [businessDate, setBusinessDate] = useState('')
+  /** Nur die jüngste Anfrage darf den Zustand setzen (Doppeltipp auf „Aktualisieren“). */
+  const requestRef = useRef(0)
 
-  const businessDate = toBusinessDate()
-  const todayWeekday = weekdayOf(businessDate)
+  const todayWeekday = businessDate ? weekdayOf(businessDate) : null
 
   const load = useCallback(async () => {
+    const request = ++requestRef.current
     setLoading(true)
     setError(null)
+    setBusinessDate(toBusinessDate())
     try {
       const partners = await fetchPartners()
       const loaded = await Promise.all(
@@ -122,12 +279,14 @@ export default function PartnerOverviewClient() {
           }
         })
       )
+      if (request !== requestRef.current) return
       setCards(loaded)
     } catch (err) {
+      if (request !== requestRef.current) return
       setCards([])
       setError(messageOf(err, 'Verkaufspartner konnten nicht geladen werden'))
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) setLoading(false)
     }
   }, [])
 
@@ -136,344 +295,33 @@ export default function PartnerOverviewClient() {
   }, [load])
 
   return (
-    <Box>
-      <Box sx={{ mb: { xs: 2, md: 4 } }}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            justifyContent: 'space-between',
-            alignItems: { xs: 'stretch', sm: 'center' },
-            gap: 1.5,
-            mb: 1,
-          }}
-        >
-          <Typography
-            variant="h4"
-            component="h1"
-            sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
-          >
-            <PartnersIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Verkaufspartner
-          </Typography>
-          <Tooltip title="Aktualisieren">
-            <span>
-              <IconButton
-                aria-label="Verkaufspartner aktualisieren"
-                onClick={load}
-                disabled={loading}
-              >
-                <RefreshIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Box>
-        <Typography variant="subtitle1" color="text.secondary">
-          Backschrank-Bestückung und Abverkauf je Partner -{' '}
-          {formatDate(businessDate)}
-          {todayWeekday ? ` (${WEEKDAY_LABELS[todayWeekday]})` : ''}
-        </Typography>
-      </Box>
+    <PageLayout
+      title="Verkaufspartner"
+      subtitle={
+        businessDate
+          ? `Backschrank heute - ${
+              todayWeekday ? `${WEEKDAY_LABELS[todayWeekday]}, ` : ''
+            }${formatDate(businessDate)}`
+          : 'Backschrank-Bestückung und Abverkauf je Partner'
+      }
+    >
+      {error && <ErrorState message={error} onRetry={load} />}
 
-      {error && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      )}
-
-      {loading ? (
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Verkaufspartner werden geladen"
-        >
-          <CircularProgress />
-        </Box>
+      {loading && cards.length === 0 ? (
+        <LoadingState label="Verkaufspartner werden geladen …" />
       ) : cards.length === 0 ? (
-        !error && (
-          <Paper elevation={2} sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              Noch kein Verkaufspartner angelegt.
-            </Typography>
-          </Paper>
-        )
+        !error && <EmptyState title="Noch kein Verkaufspartner angelegt." />
       ) : (
-        <Grid container spacing={{ xs: 2, md: 3 }}>
-          {cards.map(({ partner, today, todayError }) => {
-            const totals = today?.totals ?? EMPTY_TOTALS
-            const visitCount = today?.timeline?.length ?? 0
-            const isDeliveryDay =
-              todayWeekday != null &&
-              Array.isArray(partner.deliveryDays) &&
-              partner.deliveryDays.includes(todayWeekday)
-            const isOpen = today ? today.isOpen !== false : true
-            // Abholung gebucht, aber nicht jedes Produkt mit Bestand gezählt
-            const isComplete = today ? today.isComplete !== false : true
-            const isProvisional = visitCount > 0 && (isOpen || !isComplete)
-
-            return (
-              <Grid item xs={12} lg={6} key={partner.id}>
-                <Card
-                  variant="outlined"
-                  sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                  }}
-                >
-                  <CardContent sx={{ flexGrow: 1 }}>
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'flex-start',
-                        justifyContent: 'space-between',
-                        gap: 1,
-                      }}
-                    >
-                      <Box>
-                        <Link
-                          component={NextLink}
-                          href={`/admin/partners/${partner.id}`}
-                          underline="hover"
-                          color="inherit"
-                          variant="h6"
-                          // Einziger Weg zur Detailseite: Touch-Ziel 44 px
-                          // statt 32 (W4-verify r4).
-                          sx={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            minHeight: 44,
-                          }}
-                        >
-                          {partner.name}
-                        </Link>
-                        <Typography variant="body2" color="text.secondary">
-                          {partner.city
-                            ? partner.city
-                            : 'Ort noch nicht hinterlegt'}
-                        </Typography>
-                      </Box>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        color="primary"
-                        label={
-                          SETTLEMENT_LABELS[partner.settlementModel] ??
-                          'Kommission'
-                        }
-                      />
-                    </Box>
-
-                    <Stack
-                      direction="row"
-                      spacing={0.75}
-                      alignItems="center"
-                      flexWrap="wrap"
-                      useFlexGap
-                      sx={{ mt: 2 }}
-                    >
-                      <Typography variant="body2" color="text.secondary">
-                        Liefertage:
-                      </Typography>
-                      {(partner.deliveryDays ?? []).length === 0 ? (
-                        <Typography variant="body2" color="text.secondary">
-                          keine hinterlegt
-                        </Typography>
-                      ) : (
-                        (partner.deliveryDays ?? []).map((day) => (
-                          <Chip
-                            key={day}
-                            size="small"
-                            label={WEEKDAY_SHORT[day] ?? day}
-                            color={day === todayWeekday ? 'primary' : 'default'}
-                            variant={
-                              day === todayWeekday ? 'filled' : 'outlined'
-                            }
-                          />
-                        ))
-                      )}
-                    </Stack>
-
-                    <Divider sx={{ my: 2 }} />
-
-                    <Box
-                      sx={{
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        alignItems: 'center',
-                        gap: 1,
-                        mb: 1.5,
-                      }}
-                    >
-                      <Typography variant="subtitle2">Heute</Typography>
-                      {!isDeliveryDay && visitCount === 0 ? (
-                        <Chip size="small" label="Kein Liefertag" />
-                      ) : visitCount === 0 ? (
-                        <Chip
-                          size="small"
-                          color="warning"
-                          label="Noch kein Besuch"
-                        />
-                      ) : isOpen ? (
-                        <Chip
-                          size="small"
-                          color="warning"
-                          label="Abholung fehlt"
-                        />
-                      ) : !isComplete ? (
-                        <Chip
-                          size="small"
-                          color="warning"
-                          label="Abholung unvollständig"
-                        />
-                      ) : (
-                        <Chip
-                          size="small"
-                          color="success"
-                          label="Abgeschlossen"
-                        />
-                      )}
-                    </Box>
-
-                    {todayError ? (
-                      <Alert
-                        severity="error"
-                        sx={{ mb: 2 }}
-                        action={
-                          <Button color="inherit" size="small" onClick={load}>
-                            Erneut versuchen
-                          </Button>
-                        }
-                      >
-                        {todayError}
-                      </Alert>
-                    ) : (
-                      <>
-                        <Typography
-                          variant="body2"
-                          color={
-                            isDeliveryDay && visitCount === 0
-                              ? 'warning.main'
-                              : 'text.secondary'
-                          }
-                          sx={{ mb: 1.5 }}
-                        >
-                          {!isDeliveryDay && visitCount === 0
-                            ? `${
-                                todayWeekday
-                                  ? WEEKDAY_LABELS[todayWeekday]
-                                  : 'Heute'
-                              } ist kein Liefertag für diesen Partner.`
-                            : visitCount === 0
-                            ? 'Liefertag - es ist noch kein Besuch erfasst.'
-                            : isOpen
-                            ? `${visitCount} Besuch${
-                                visitCount === 1 ? '' : 'e'
-                              } erfasst - die Abholung fehlt noch, die Zahlen sind vorläufig.`
-                            : !isComplete
-                            ? `${visitCount} Besuch${
-                                visitCount === 1 ? '' : 'e'
-                              } erfasst, Abholung gebucht - aber ${
-                                today?.uncountedQty ?? 0
-                              } Stück wurden dabei nicht gezählt, die Zahlen sind vorläufig.`
-                            : `${visitCount} Besuch${
-                                visitCount === 1 ? '' : 'e'
-                              } erfasst, Abholung gebucht - der Geschäftstag ist abgeschlossen.`}
-                        </Typography>
-
-                        <Grid container spacing={1.5}>
-                          <Grid item xs={6} sm={4}>
-                            <StatTile
-                              label="Besuche"
-                              value={String(visitCount)}
-                            />
-                          </Grid>
-                          <Grid item xs={6} sm={4}>
-                            <StatTile
-                              label="Geliefert"
-                              value={`${totals.deliveredQty} Stk.`}
-                            />
-                          </Grid>
-                          <Grid item xs={6} sm={4}>
-                            <StatTile
-                              label={
-                                isProvisional ? 'Verkauft (vorl.)' : 'Verkauft'
-                              }
-                              value={`${totals.soldQty} Stk.`}
-                            />
-                          </Grid>
-                          <Grid item xs={6} sm={4}>
-                            <StatTile
-                              label={
-                                isProvisional ? 'Umsatz (vorl.)' : 'Umsatz'
-                              }
-                              value={formatCurrency(totals.revenue)}
-                            />
-                          </Grid>
-                          <Grid item xs={6} sm={4}>
-                            <StatTile
-                              label="Abverkaufsquote"
-                              value={formatPercent(totals.sellThroughRate)}
-                            />
-                          </Grid>
-                        </Grid>
-
-                        {isProvisional && (
-                          <Typography
-                            variant="caption"
-                            color="warning.main"
-                            sx={{ display: 'block', mt: 1.5 }}
-                          >
-                            {isOpen
-                              ? 'Vorläufige Zahlen: ohne erfasste Abholung ist der Schrankinhalt noch weder verkauft noch Retoure.'
-                              : 'Vorläufige Zahlen: bei der Abholung wurde nicht jedes Produkt gezählt.'}
-                          </Typography>
-                        )}
-                      </>
-                    )}
-                  </CardContent>
-
-                  <CardActions sx={{ px: 2, pb: 2, gap: 1, flexWrap: 'wrap' }}>
-                    <Button
-                      component={NextLink}
-                      href={`/admin/partners/${partner.id}/visit/new`}
-                      variant="contained"
-                      startIcon={<NewVisitIcon />}
-                    >
-                      Besuch erfassen
-                    </Button>
-                    <Button
-                      component={NextLink}
-                      href={`/admin/partners/${partner.id}/templates`}
-                      variant="outlined"
-                      startIcon={<TemplateIcon />}
-                    >
-                      Standard-Bestückung
-                    </Button>
-                    <Button
-                      component={NextLink}
-                      href={`/admin/partners/${partner.id}/report`}
-                      variant="outlined"
-                      startIcon={<ReportIcon />}
-                    >
-                      Report
-                    </Button>
-                  </CardActions>
-                </Card>
-              </Grid>
-            )
-          })}
-        </Grid>
+        cards.map((card) => (
+          <PartnerToday
+            key={card.partner.id}
+            card={card}
+            todayWeekday={todayWeekday}
+            onRetry={load}
+            loading={loading}
+          />
+        ))
       )}
-    </Box>
+    </PageLayout>
   )
 }

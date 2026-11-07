@@ -249,7 +249,7 @@ const INCOMPLETE_DAY: DayView = {
 
 /** Kennzahlen-Kachel über ihr Label greifen. */
 function kpi(label: string) {
-  const tile = screen.getByText(label).closest('.MuiCard-root')
+  const tile = screen.getByText(label).closest('[data-testid^="kpi-"]')
   if (!tile) throw new Error(`Kennzahlen-Kachel "${label}" nicht gefunden`)
   return within(tile as HTMLElement)
 }
@@ -298,8 +298,10 @@ describe('PartnerDetailClient', () => {
     expect(kpi('Geliefert').getByText('60')).toBeInTheDocument()
     expect(kpi('Geliefert').queryByText('vorläufig')).toBeNull()
     expect(
-      kpi('Retoure').getByText('erst mit der Abholung')
+      kpi('Abverkaufsquote').getByText('Retoure erst mit der Abholung')
     ).toBeInTheDocument()
+    // Höchstens vier Kennzahlen (Layout-Kit)
+    expect(screen.getAllByTestId(/^kpi-/)).toHaveLength(4)
   })
 
   it('shows a closed day as final without the provisional marking', async () => {
@@ -314,8 +316,9 @@ describe('PartnerDetailClient', () => {
     expect(kpi('Umsatz').getByText('94,50 €')).toBeInTheDocument()
     expect(kpi('Abverkaufsquote').getByText('75 %')).toBeInTheDocument()
     // Abgeschlossen: die Retoure ist beziffert statt angekündigt
-    expect(kpi('Retoure').getByText('15')).toBeInTheDocument()
-    expect(kpi('Retoure').getByText('31,50 €')).toBeInTheDocument()
+    expect(
+      kpi('Abverkaufsquote').getByText('Retoure 15 Stück · 31,50 €')
+    ).toBeInTheDocument()
   })
 
   it('warns about a pickup that left a product uncounted and keeps the KPIs provisional', async () => {
@@ -332,7 +335,7 @@ describe('PartnerDetailClient', () => {
     expect(screen.getAllByText('vorläufig')).toHaveLength(3)
     expect(kpi('Verkauft').getByText('vorläufig')).toBeInTheDocument()
     expect(
-      kpi('Retoure').getByText('unvollständig gezählt')
+      kpi('Abverkaufsquote').getByText('Retoure unvollständig gezählt')
     ).toBeInTheDocument()
   })
 
@@ -487,6 +490,31 @@ describe('PartnerDetailClient', () => {
       `/admin/partners/1?date=${PAST_DATE}`,
       { scroll: false }
     )
+  })
+
+  it('zeigt beim schnellen Blättern nie den Tag einer älteren Antwort', async () => {
+    const user = userEvent.setup()
+    await renderDetail()
+    mockFetchToday.mockClear()
+
+    // Erste Anfrage (gestern) hängt, die zweite (vorgestern) kommt sofort.
+    let resolveYesterday: (day: DayView) => void = () => undefined
+    const yesterday = new Promise<DayView>((resolve) => {
+      resolveYesterday = resolve
+    })
+    mockFetchToday
+      .mockImplementationOnce(() => yesterday)
+      .mockResolvedValueOnce(CLOSED_DAY)
+    await user.click(screen.getByRole('button', { name: 'Vorheriger Tag' }))
+    await user.click(screen.getByRole('button', { name: 'Vorheriger Tag' }))
+    expect(await screen.findByText('Tag abgeschlossen')).toBeInTheDocument()
+
+    // Die verspätete Antwort für gestern darf den Tag nicht überschreiben.
+    resolveYesterday(OPEN_DAY)
+    await waitFor(() => expect(mockFetchToday).toHaveBeenCalledTimes(2))
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    expect(screen.getByText('Tag abgeschlossen')).toBeInTheDocument()
+    expect(screen.queryByText(/Tag noch offen/)).toBeNull()
   })
 
   it('shows the German error message when the day cannot be loaded', async () => {
