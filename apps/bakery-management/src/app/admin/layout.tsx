@@ -63,6 +63,12 @@ import {
 import NoAccess from '../../components/auth/NoAccess'
 import LogoutButton from '../../components/auth/LogoutButton'
 import { formatDateLong, isIsoDate } from '../../lib/backzettelFormat'
+import { useFocusNotObscured } from '../../components/layout/focusNotObscured'
+import { FOCUS_RING_COLOR } from '../../lib/muiTheme'
+
+/** Ziel des Sprunglinks „Zum Inhalt springen“ (`<main>`). */
+const MAIN_CONTENT_ID = 'inhalt'
+const MOBILE_NAV_ID = 'navigation-mobil'
 
 const drawerWidth = 280
 
@@ -91,6 +97,14 @@ const navTextProps = {
   primaryTypographyProps: { variant: 'body2' as const, fontWeight: 500 },
   secondaryTypographyProps: { variant: 'caption' as const, noWrap: true },
 }
+
+/**
+ * Im Druck weg (Review r2): AppBar („Verwaltung · Pilotbetrieb · Name“),
+ * Seitenleiste und ihr Platzhalter. Vorher kam das nur bei Seiten mit
+ * eigener Druckansicht weg; der Kassentag druckte die blaue Leiste und die
+ * leere Seitenleiste deckte die erste Karte halb zu.
+ */
+const PRINT_HIDDEN = { '@media print': { display: 'none' } } as const
 
 /** Kennzeichen rechts in der AppBar: nie umbrechen, nie gequetscht. */
 const statusLabelSx = { ml: 1, flexShrink: 0, whiteSpace: 'nowrap' } as const
@@ -221,6 +235,9 @@ function AdminShell({
   pathname,
 }: AdminLayoutProps & { pathname: string }) {
   const [mobileOpen, setMobileOpen] = React.useState(false)
+  // Klebende Speichern-Leisten und die AppBar decken ein Feld beim Tabben
+  // nicht mehr zu (Layout-Kit, Review r2).
+  useFocusNotObscured()
   // Rolle (F1): Navigation und Seiten-Sperre nach ROLE_ACCESS
   // (src/lib/roles.ts). Ohne SessionProvider (Layout-Tests) gilt die volle
   // Navigation - in der App rendert der RouteGuard das Layout nur mit
@@ -422,18 +439,60 @@ function AdminShell({
 
   return (
     <Box sx={{ display: 'flex' }}>
+      {/* Sprunglink (Review r2): sonst führt Tab am PC erst durch Abmelden
+          und 15 Navigationseinträge, bevor die Seite kommt. Unsichtbar, bis
+          er den Fokus hat. */}
+      <Box
+        component="a"
+        href={`#${MAIN_CONTENT_ID}`}
+        data-testid="skip-link"
+        sx={{
+          position: 'fixed',
+          top: 8,
+          left: 8,
+          zIndex: (theme: Theme) => theme.zIndex.tooltip + 1,
+          px: 2,
+          py: 1.5,
+          borderRadius: 1,
+          bgcolor: 'background.paper',
+          color: 'text.primary',
+          boxShadow: 8,
+          fontWeight: 600,
+          transform: 'translateY(-200%)',
+          // ohne Übergang (global.css blendet `transform` bei :focus über
+          // 0,2 s): der Link stünde sonst kurz halb unter der AppBar
+          transition: 'none',
+          '&:focus': {
+            transform: 'none',
+            transition: 'none',
+            // derselbe Ring wie an Knöpfen (lib/muiTheme.ts), nicht das
+            // Magenta aus global.css
+            outline: '2px solid',
+            outlineColor: (theme: Theme) =>
+              FOCUS_RING_COLOR[theme.palette.mode],
+            outlineOffset: 2,
+          },
+          '&::after': { display: 'none' },
+          '@media print': { display: 'none' },
+        }}
+      >
+        Zum Inhalt springen
+      </Box>
       {/* App Bar */}
       <AppBar
         position="fixed"
         sx={{
           width: { md: `calc(100% - ${drawerWidth}px)` },
           ml: { md: `${drawerWidth}px` },
+          ...PRINT_HIDDEN,
         }}
       >
         <Toolbar>
           <IconButton
             color="inherit"
             aria-label="Navigation öffnen"
+            aria-expanded={mobileOpen}
+            aria-controls={MOBILE_NAV_ID}
             edge="start"
             onClick={handleDrawerToggle}
             // W4-Verifikation: 48 px statt 40 px - Touch-Ziel am Handy/Tablet.
@@ -510,7 +569,12 @@ function AdminShell({
       {/* Navigation Drawer */}
       <Box
         component="nav"
-        sx={{ width: { md: drawerWidth }, flexShrink: { md: 0 } }}
+        aria-label="Hauptnavigation"
+        sx={{
+          width: { md: drawerWidth },
+          flexShrink: { md: 0 },
+          ...PRINT_HIDDEN,
+        }}
       >
         {/* Mobile drawer */}
         <Drawer
@@ -520,6 +584,7 @@ function AdminShell({
           ModalProps={{
             keepMounted: true, // Better open performance on mobile
           }}
+          PaperProps={{ id: MOBILE_NAV_ID }}
           sx={{
             display: { xs: 'block', md: 'none' },
             '& .MuiDrawer-paper': {
@@ -550,7 +615,11 @@ function AdminShell({
       {/* Main content */}
       <Box
         component="main"
+        id={MAIN_CONTENT_ID}
+        tabIndex={-1}
         sx={{
+          // Ziel des Sprunglinks: kein Fokusrahmen um die ganze Seite
+          '&:focus': { outline: 'none' },
           flexGrow: 1,
           // Der einzige Seitenrand (Gutter) der App: 16 px am Handy, 24 px ab
           // Tablet. Seiten (PageLayout) geben keinen eigenen dazu.
@@ -562,9 +631,17 @@ function AdminShell({
           // scrollt - jedes `position: sticky` darunter (Speichern-Leisten,
           // Tabellenköpfe) klebte dann nie. `clip` schneidet nur ab.
           overflowX: 'clip',
+          // Druck jeder Seite (Review r2): ohne AppBar und Seitenleiste
+          // steht der Inhalt ab dem oberen Rand über die ganze Breite.
+          // Seiten mit eigener Druckansicht setzen dasselbe noch einmal.
+          '@media print': {
+            p: 0,
+            width: '100%',
+            overflow: 'visible',
+          },
         }}
       >
-        <Toolbar />
+        <Toolbar sx={PRINT_HIDDEN} />
 
         {/* Pfad - leise über dem Seitentitel, im Druck ausgeblendet. Am
             Handy weg: dort stehen Rücklink und h1 schon untereinander, der

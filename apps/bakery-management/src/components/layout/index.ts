@@ -4,6 +4,8 @@ export {
   PAGE_MAX_WIDTH,
   SECTION_GAP,
   HEADER_TITLE_MIN_WIDTH,
+  DOCUMENT_TITLE_SUFFIX,
+  pageDocumentTitle,
   type PageLayoutProps,
   type PageHeaderProps,
   type PageBackLink,
@@ -36,3 +38,8 @@ export {
   shiftIsoDate,
   type DayNavigatorProps,
 } from './DayNavigator'
+export {
+  useFocusNotObscured,
+  obscuredScrollDelta,
+  FOCUS_CLEARANCE,
+} from './focusNotObscured'

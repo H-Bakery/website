@@ -273,4 +273,12 @@ img {
     transition: none !important;
     animation: none !important;
   }
+
+  /* Schatten kommen als graue Schlieren aufs Papier (Review r2, Kassentag).
+     Die hellen Farben selbst setzt das Theme: Providers.tsx rendert beim
+     Drucken mit dem hellen Theme (lib/printMode.ts) - `color-scheme` allein
+     ändert MUIs Palettenfarben nicht. */
+  .MuiPaper-root {
+    box-shadow: none !important;
+  }
 }

@@ -33,6 +33,37 @@ export const HEADER_TITLE_MIN_WIDTH = '25rem'
 /** Abstand zwischen Abschnitten (MUI-Spacing-Einheiten, 8 px). */
 export const SECTION_GAP = { xs: 2, md: 3 } as const
 
+/** Endung des Fenstertitels, wie die Metadaten der Seiten (`Benutzer - …`). */
+export const DOCUMENT_TITLE_SUFFIX = ' - Bäckerei Heusser'
+
+/**
+ * Fenstertitel aus dem Seitentitel (Review r2: 28 von 35 Pilot-Seiten hießen
+ * im Reiter, im Verlauf und für Screenreader gleich). Nur Text - ein Titel
+ * mit Elementen ergibt keinen Fenstertitel.
+ */
+export function pageDocumentTitle(title: React.ReactNode): string | null {
+  if (typeof title !== 'string' && typeof title !== 'number') return null
+  const text = String(title).replace(/\s+/g, ' ').trim()
+  return text ? `${text}${DOCUMENT_TITLE_SUFFIX}` : null
+}
+
+/**
+ * Setzt `document.title`, solange die Seite steht, und stellt beim Verlassen
+ * den vorigen wieder her - sonst bliebe er auf Seiten ohne `PageLayout`
+ * (Station, Backstube) stehen: Next.js schreibt den gleichbleibenden
+ * Metadaten-Titel der Wurzel nicht neu.
+ */
+function useDocumentTitle(title: string | null) {
+  React.useEffect(() => {
+    if (!title || typeof document === 'undefined') return undefined
+    const previous = document.title
+    document.title = title
+    return () => {
+      document.title = previous
+    }
+  }, [title])
+}
+
 export interface PageBackLink {
   href: string
   /** Sichtbarer Text, z. B. „Alle Vorbestellungen“. */
@@ -54,6 +85,11 @@ export interface PageHeaderProps {
   actions?: React.ReactNode
   /** Status-Chips direkt neben dem Titel (z. B. „Freigegeben“). */
   status?: React.ReactNode
+  /**
+   * Fenstertitel ohne Endung, wenn er vom Seitentitel abweichen soll (oder
+   * der Seitentitel kein reiner Text ist). Standard: der Seitentitel.
+   */
+  documentTitle?: string
 }
 
 export function PageHeader({
@@ -62,7 +98,9 @@ export function PageHeader({
   back,
   actions,
   status,
+  documentTitle,
 }: PageHeaderProps) {
+  useDocumentTitle(pageDocumentTitle(documentTitle ?? title))
   return (
     <Box component="header" data-testid="page-header" sx={{ mb: SECTION_GAP }}>
       {back && (

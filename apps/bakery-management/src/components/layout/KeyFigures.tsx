@@ -93,8 +93,15 @@ export function KeyFigures({
               : { p: { xs: 1.5, md: 2 }, minWidth: 0 }
           }
         >
+          {/* Eine Kennzahl = eine Fläche (`div`) mit genau einem <dt> und
+              ihren <dd>. Der Badge („vorläufig“) steht IM <dt>: ein <dl>
+              erlaubt nur dt/dd direkt in seinem einen div - ein Zwischen-
+              Box um <dt> + Badge brach die Begriff-Wert-Paare für
+              Screenreader (axe: definition-list, dlitem; Review r2). */}
           <Box
+            component="dt"
             sx={{
+              m: 0,
               display: 'flex',
               alignItems: 'center',
               flexWrap: 'wrap',
@@ -102,7 +109,7 @@ export function KeyFigures({
             }}
           >
             <Typography
-              component="dt"
+              component="span"
               variant="body2"
               color="text.secondary"
               sx={{ minWidth: 0 }}

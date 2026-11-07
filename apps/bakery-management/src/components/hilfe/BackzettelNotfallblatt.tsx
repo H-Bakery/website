@@ -47,8 +47,10 @@ export function notfallSections(
       rows: Array.from({ length: BLANK_ROWS_WITHOUT_CONFIG }, () => ''),
     }))
   }
+  // Auch „Vorbereitung“ (Sauerteig-Ansatz): das sind Zeilen des Backzettels
+  // mit Gesamt und Haken, keine Aufgaben für morgen (Review r2) - die stehen
+  // unten im Kasten „Vorbereitung für morgen“.
   return config.sections
-    .filter((id) => id !== 'vorbereitung')
     .map((id) => {
       const rows = config.items
         .filter((item) => item.section === id)
@@ -106,6 +108,25 @@ function rowLines(row: string, columns: number): number {
 const SECTION_OVERHEAD_MM = 10
 const MIN_ROW_MM = 4
 const MAX_ROW_MM = 7
+/**
+ * Kurze Abschnitte (Hefeteig: Kranz, Zopf) brechen nicht über zwei Spalten
+ * um (Review r2: „HEFETEIG“ stand zweimal da und las sich wie zwei
+ * Abschnitte). Lange dürfen weiter umbrechen, sonst bliebe unten in einer
+ * Spalte viel Platz frei.
+ */
+export const KEEP_TOGETHER_MAX_LINES = 8
+
+function sectionLines(section: NotfallSection, columns: number): number {
+  return section.rows.reduce((n, row) => n + rowLines(row, columns), 0)
+}
+
+/** Steht der Abschnitt am Stück in einer Spalte? */
+export function keepSectionTogether(
+  section: NotfallSection,
+  columns: number
+): boolean {
+  return sectionLines(section, columns) <= KEEP_TOGETHER_MAX_LINES
+}
 
 /**
  * Spalten und Zeilenhöhe, damit alles auf EINE Seite passt: zwei Spalten,
@@ -117,14 +138,22 @@ export function notfallLayout(sections: NotfallSection[]): {
   rowHeightMm: number
 } {
   const height = (columns: number) => {
-    const rows = sections.reduce(
-      (sum, s) =>
-        sum + s.rows.reduce((n, row) => n + rowLines(row, columns), 0),
-      0
+    const rows = sections.reduce((sum, s) => sum + sectionLines(s, columns), 0)
+    // Ein Abschnitt am Stück kann am Spaltenende höchstens seine eigene
+    // Höhe frei lassen - je Spaltenwechsel einmal den größten einplanen.
+    const keepLines = Math.max(
+      0,
+      ...sections
+        .filter((s) => keepSectionTogether(s, columns))
+        .map((s) => sectionLines(s, columns))
     )
+    const breaks = columns - 1
     const available =
-      columns * COLUMN_HEIGHT_MM - sections.length * SECTION_OVERHEAD_MM
-    return rows > 0 ? available / rows : MAX_ROW_MM
+      columns * COLUMN_HEIGHT_MM -
+      sections.length * SECTION_OVERHEAD_MM -
+      (keepLines > 0 ? breaks * SECTION_OVERHEAD_MM : 0)
+    const lines = rows + breaks * keepLines
+    return lines > 0 ? available / lines : MAX_ROW_MM
   }
   const columns = height(2) >= MIN_ROW_MM ? 2 : 3
   const raw = Math.floor(height(columns) * 10) / 10
@@ -190,6 +219,7 @@ const styles = (
       // wiederholt sich), sonst bliebe unten in Spalte 1 Platz frei und der
       // letzte Abschnitt fiele in eine dritte, abgeschnittene Spalte.
       '.nfb-section': { marginBottom: '2mm' },
+      '.nfb-section.nfb-keep': { breakInside: 'avoid' },
       '.nfb tr': { breakInside: 'avoid' },
       '.nfb thead': { display: 'table-header-group' },
       // Die Überschrift steht als erste Kopfzeile in der Tabelle: bricht ein
@@ -288,7 +318,15 @@ export default function BackzettelNotfallblatt({
           </div>
           <div className="nfb-cols" style={{ columnCount: columns }}>
             {sections.map((section) => (
-              <div className="nfb-section" key={section.id}>
+              <div
+                className={
+                  keepSectionTogether(section, columns)
+                    ? 'nfb-section nfb-keep'
+                    : 'nfb-section'
+                }
+                data-section={section.id}
+                key={section.id}
+              >
                 <table>
                   <colgroup>
                     <col />

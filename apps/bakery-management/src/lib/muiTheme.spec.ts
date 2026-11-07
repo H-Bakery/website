@@ -1,4 +1,9 @@
+import React from 'react'
+import { render, screen } from '@testing-library/react'
+import { ThemeProvider } from '@mui/material/styles'
+import { Switch } from '@mui/material'
 import {
+  FOCUS_RING_COLOR,
   LIGHT_PRIMARY_TEXT,
   TOUCH_MEDIA,
   createManagementTheme,
@@ -167,4 +172,65 @@ describe('Layout-Kit: Überschriften (src/components/layout)', () => {
       expect(desktop(h1)).toBeLessThanOrEqual(2)
     }
   )
+})
+
+describe('Tastatur-Fokus (Review r2)', () => {
+  it.each(['light', 'dark'] as const)(
+    '%s: der Fokusring hebt sich von Karte und Hintergrund ab (>= 3:1)',
+    (mode) => {
+      const theme = createManagementTheme(mode)
+      const ring = FOCUS_RING_COLOR[mode]
+      expect(
+        contrast(ring, expand(theme.palette.background.paper))
+      ).toBeGreaterThanOrEqual(3)
+      expect(
+        contrast(ring, expand(theme.palette.background.default))
+      ).toBeGreaterThanOrEqual(3)
+    }
+  )
+
+  it('jedes ButtonBase bekommt bei Tastaturfokus einen Ring, in der AppBar in Schriftfarbe', () => {
+    const root = createManagementTheme('light').components?.MuiButtonBase
+      ?.styleOverrides?.root as Record<string, Record<string, unknown>>
+    expect(root['&.Mui-focusVisible']).toMatchObject({
+      outline: '2px solid',
+      outlineColor: FOCUS_RING_COLOR.light,
+    })
+    expect(root['.MuiAppBar-root &.Mui-focusVisible']).toEqual({
+      outlineColor: 'currentColor',
+    })
+  })
+
+  it('ein ungeschalteter Switch zeigt den Fokus am Daumen, auch hell auf Weiß', () => {
+    // Vorher: weißer Ripple (0,3) auf weißer Karte - unsichtbar.
+    const theme = createManagementTheme('light')
+    render(
+      React.createElement(
+        ThemeProvider,
+        { theme },
+        React.createElement(Switch, {
+          inputProps: { 'aria-label': 'Tage ohne Bericht ausblenden' },
+        })
+      )
+    )
+    const root = screen
+      .getByRole('checkbox', { name: 'Tage ohne Bericht ausblenden' })
+      .closest('.MuiSwitch-root') as HTMLElement
+    const cls = Array.from(root.classList).find((c) => c.startsWith('css-'))
+    expect(cls).toBeDefined()
+    const rules = Array.from(document.styleSheets).flatMap((sheet) =>
+      Array.from(sheet.cssRules)
+    ) as CSSStyleRule[]
+    const thumbRule = rules.find(
+      (rule) =>
+        rule.selectorText?.includes(`.${cls}`) &&
+        rule.selectorText.includes(
+          '.MuiSwitch-switchBase.Mui-focusVisible .MuiSwitch-thumb'
+        )
+    )
+    expect(thumbRule).toBeDefined()
+    expect(thumbRule?.style.getPropertyValue('outline-color')).toMatch(
+      /#1565c0|rgb\(21, 101, 192\)/i
+    )
+  })
 })
