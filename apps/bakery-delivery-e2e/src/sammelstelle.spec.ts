@@ -156,8 +156,10 @@ test.describe('Sammelstelle', () => {
       await expect(stop.getByText('E2E Familie Klein')).toBeVisible()
       // Referenz statt Adresse: an der Sammelstelle wird aufgerufen, nicht gefahren.
       await expect(stop.getByText(first.reference)).toBeVisible()
-      // Preise kommen aus hq, nicht aus dem Formular: 2 x 2,50 EUR.
-      await expect(stop.getByText('5,00 €')).toBeVisible()
+      // Preise kommen aus hq, nicht aus dem Formular: 2 x 2,50 EUR. Der
+      // Betrag steht für sich, daneben „5,00 € kassieren“ als Bezahlstand.
+      await expect(stop.getByText('5,00 €', { exact: true })).toBeVisible()
+      await expect(stop.getByText('5,00 € kassieren')).toBeVisible()
       await expect(stop.getByText('0 von 2 übergeben')).toBeVisible()
       // Summe der offenen Beträge, sauber gerundet.
       await expect(stop.getByText('Bar zu kassieren: 7,50 €')).toBeVisible()
