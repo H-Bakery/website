@@ -447,6 +447,17 @@ export default function VisitFormClient({
     (DayDetail & { visits: PartnerVisit[] }) | null
   >(null)
   const [editedVisit, setEditedVisit] = useState<PartnerVisit | null>(null)
+  /**
+   * Tagesstand eines anderen Geschäftstags als des geladenen - wenn im Büro
+   * über „Zeitpunkt des Besuchs“ nacherfasst wird. `detail: null` heißt: der
+   * Abruf ist gescheitert, die Art bleibt dann, wie sie ist.
+   */
+  const [otherDay, setOtherDay] = useState<{
+    date: string
+    detail: (DayDetail & { visits: PartnerVisit[] }) | null
+  } | null>(null)
+  /** Art von Hand gewählt - dann stellt der Tageswechsel sie nicht mehr um. */
+  const [typeChosen, setTypeChosen] = useState(false)
 
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -663,6 +674,53 @@ export default function VisitFormClient({
   const weekday = useMemo(() => weekdayOf(businessDate), [businessDate])
   const sameDayAsLoaded = businessDate === initialBusinessDate
 
+  // Anderer Geschäftstag im Zeitfeld: dessen Tagesstand nachladen (kurz
+  // entprellt - beim Tippen ändert sich das Datum Ziffer für Ziffer). Sonst
+  // blieb nach dem Wechsel vom 07.11. (mit Erstbestückung) auf einen leeren
+  // Tag die Art „Nachlieferung“ stehen und die Vorlage kam nicht.
+  useEffect(() => {
+    if (isEditing || sameDayAsLoaded) return
+    if (otherDay?.date === businessDate) return
+    let cancelled = false
+    const timer = window.setTimeout(() => {
+      fetchToday(partnerId, businessDate)
+        .then((detail) => {
+          if (!cancelled) setOtherDay({ date: businessDate, detail })
+        })
+        .catch(() => {
+          if (!cancelled) setOtherDay({ date: businessDate, detail: null })
+        })
+    }, 300)
+    return () => {
+      cancelled = true
+      window.clearTimeout(timer)
+    }
+  }, [isEditing, sameDayAsLoaded, businessDate, otherDay, partnerId])
+
+  /** Tagesstand des Geschäftstags im Zeitfeld (`null`: unbekannt). */
+  const activeDay = sameDayAsLoaded
+    ? dayDetail
+    : otherDay?.date === businessDate
+    ? otherDay.detail
+    : null
+  /** Ist der Tagesstand für diesen Tag geladen (oder gescheitert)? */
+  const dayKnown = sameDayAsLoaded
+    ? !loading
+    : isEditing || otherDay?.date === businessDate
+  const dayHasInitial = (activeDay?.visits ?? []).some(
+    (visit) => visit.visitType === 'initial'
+  )
+  const autoType = !isEditing && !typeChosen
+
+  // Ohne Wahl von Hand folgt die Art dem Tag: Erstbestückung, solange es an
+  // diesem Tag keine gibt, sonst Nachlieferung. Ein wiederhergestellter
+  // Entwurf behält seine Art.
+  useEffect(() => {
+    if (!autoType || draftRestoredRef.current || loadError) return
+    if (!dayKnown || !activeDay) return
+    setVisitType(dayHasInitial ? 'refill' : 'initial')
+  }, [autoType, loadError, dayKnown, activeDay, dayHasInitial])
+
   /**
    * Zurück zur Detailseite - auf dem Geschäftstag des Besuchs, nicht auf
    * "heute". Sonst landet eine Nacherfassung im Büro auf dem falschen Tag und
@@ -673,31 +731,31 @@ export default function VisitFormClient({
   /** Erwarteter Bestand je Produkt aus dem bisherigen Tagesverlauf. */
   const expectedStock = useMemo(() => {
     const map = new Map<string, number>()
-    if (!dayDetail || !sameDayAsLoaded) return map
-    for (const entry of dayDetail.timeline ?? []) {
+    if (!activeDay) return map
+    for (const entry of activeDay.timeline ?? []) {
       for (const item of entry.items ?? []) {
         map.set(item.productSlug, item.stockAfterQty)
       }
     }
     return map
-  }, [dayDetail, sameDayAsLoaded])
+  }, [activeDay])
 
   /** Abverkauf seit dem letzten Besuch - sortiert die Nachlieferung. */
   const salesRanking = useMemo(() => {
     const sinceLast = new Map<string, number>()
     const today = new Map<string, number>()
-    if (dayDetail && sameDayAsLoaded) {
-      const timeline = dayDetail.timeline ?? []
+    if (activeDay) {
+      const timeline = activeDay.timeline ?? []
       const last = timeline[timeline.length - 1]
       for (const item of last?.items ?? []) {
         sinceLast.set(item.productSlug, item.soldSinceLastQty)
       }
-      for (const product of dayDetail.byProduct ?? []) {
+      for (const product of activeDay.byProduct ?? []) {
         today.set(product.productSlug, product.soldQty)
       }
     }
     return { sinceLast, today }
-  }, [dayDetail, sameDayAsLoaded])
+  }, [activeDay])
 
   /** Katalog plus Produkte, die nur noch in Entwurf oder Besuch vorkommen. */
   const displayGroups = useMemo(() => {
@@ -920,6 +978,12 @@ export default function VisitFormClient({
     // stand „keine Standard-Bestückung hinterlegt“ da, obwohl es eine gibt.
     if (loading || isEditing || loadError) return
     if (visitType !== 'initial' || weekday == null) return
+    // Folgt die Art noch dem Tag, erst dessen Stand abwarten - hat er schon
+    // eine Erstbestückung, wird gleich auf Nachlieferung umgestellt.
+    if (autoType && !draftRestoredRef.current) {
+      if (!dayKnown) return
+      if (dayHasInitial) return
+    }
     if (appliedWeekdayRef.current === weekday) return
     appliedWeekdayRef.current = weekday
 
@@ -947,6 +1011,9 @@ export default function VisitFormClient({
     weekday,
     templateForWeekday,
     applyTemplate,
+    autoType,
+    dayKnown,
+    dayHasInitial,
   ])
 
   /* ------------------------------------------------------------------ *
@@ -1048,7 +1115,7 @@ export default function VisitFormClient({
     // Abholung: jedes Produkt, das laut Tagesverlauf noch im Schrank liegt,
     // braucht einen gezählten Rest. Sonst gilt der Tag als abgeschlossen,
     // obwohl diese Stücke weder verkauft noch Retoure sind.
-    if (visitType === 'pickup' && sameDayAsLoaded) {
+    if (visitType === 'pickup' && activeDay) {
       const missing = allProducts.filter(
         (product) =>
           (expectedStock.get(product.productSlug) ?? 0) > 0 &&
@@ -1084,7 +1151,7 @@ export default function VisitFormClient({
     // bucht es als Abweichung; hier gibt es vorher eine Rückfrage
     // (W4-Verifikation Runde 2). Beim Bearbeiten eines alten Besuchs fehlt der
     // Bestand davor - dann keine Rückfrage.
-    if (sameDayAsLoaded && !editedVisit) {
+    if (activeDay && !editedVisit) {
       const excess = items.filter(
         (item) =>
           item.countedQty != null &&
@@ -1229,7 +1296,9 @@ export default function VisitFormClient({
           fullWidth
           aria-label="Art des Besuchs"
           onChange={(_event, value) => {
-            if (value) setVisitType(value as VisitType)
+            if (!value) return
+            setTypeChosen(true)
+            setVisitType(value as VisitType)
           }}
         >
           {VISIT_TYPE_OPTIONS.map((type) => (
@@ -1456,22 +1525,6 @@ export default function VisitFormClient({
         )}
       </PageSection>
 
-      {formError && (
-        <Alert
-          severity="warning"
-          action={
-            missingRest.length > 0 ? (
-              <Button color="inherit" size="small" onClick={applyZeroRest}>
-                Rest auf 0 setzen
-              </Button>
-            ) : undefined
-          }
-        >
-          {formError}
-        </Alert>
-      )}
-      {saveError && <Alert severity="error">{saveError}</Alert>}
-
       {/* Sticky Speichern-Leiste - am Handy immer erreichbar */}
       <Box
         sx={{
@@ -1487,6 +1540,42 @@ export default function VisitFormClient({
           boxShadow: 6,
         }}
       >
+        {/* Rückfragen und Fehler stehen IN der Leiste, direkt über dem
+            Knopf - unter einer langen Produktliste lagen sie außer Sicht,
+            und „Besuch speichern“ schien nicht zu reagieren. */}
+        {(formError || saveError) && (
+          <Box
+            data-testid="visit-save-messages"
+            sx={{
+              mb: 1.5,
+              maxHeight: '40vh',
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+            }}
+          >
+            {formError && (
+              <Alert
+                severity="warning"
+                action={
+                  missingRest.length > 0 ? (
+                    <Button
+                      color="inherit"
+                      size="small"
+                      onClick={applyZeroRest}
+                    >
+                      Rest auf 0 setzen
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {formError}
+              </Alert>
+            )}
+            {saveError && <Alert severity="error">{saveError}</Alert>}
+          </Box>
+        )}
         <Box
           sx={{
             display: 'flex',

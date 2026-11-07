@@ -261,9 +261,14 @@ export default function TemplatesClient({
 
   const applyCopy = (source: number) => {
     if (weekday == null || source === weekday) return
-    setDrafts((prev) => ({ ...prev, [weekday]: { ...(prev[source] ?? {}) } }))
+    const copied = { ...(drafts[source] ?? {}) }
+    setDrafts((prev) => ({ ...prev, [weekday]: copied }))
+    // Stimmt das Ergebnis mit der gespeicherten Vorlage überein, gibt es
+    // nichts zu speichern - dann nicht „nicht gespeichert“ melden.
     setNotice({
-      message: `Von ${WEEKDAY_LABELS[source]} übernommen - nicht gespeichert`,
+      message: sameQuantities(copied, saved[weekday] ?? {})
+        ? `Von ${WEEKDAY_LABELS[source]} übernommen - entspricht der gespeicherten Vorlage`
+        : `Von ${WEEKDAY_LABELS[source]} übernommen - nicht gespeichert`,
       severity: 'info',
     })
   }
@@ -271,6 +276,14 @@ export default function TemplatesClient({
   const handleCopySelect = (source: number) => {
     setCopyAnchor(null)
     if (!Number.isFinite(source) || source === weekday) return
+    // Gleiche Mengen: keine Rückfrage, nichts ändern - nur sagen, warum.
+    if (sameQuantities(drafts[source] ?? {}, currentDraft)) {
+      setNotice({
+        message: `${WEEKDAY_LABELS[source]} hat dieselben Mengen - nichts geändert`,
+        severity: 'info',
+      })
+      return
+    }
     if (summary.positions > 0) {
       setPendingCopy(source)
       return

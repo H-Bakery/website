@@ -291,4 +291,25 @@ describe('TemplatesClient - nur die Positionen des Tages (r1)', () => {
       'Von Dienstag übernommen - nicht gespeichert'
     )
   })
+
+  it('übernimmt gleiche Mengen ohne Rückfrage und meldet nicht „nicht gespeichert“ (ui r2)', async () => {
+    const same = { productId: 1, productSlug: 'musterbrot', quantity: 4 }
+    mockFetchTemplates.mockResolvedValue([
+      { id: 1, partnerId: 1, weekday: 2, active: true, items: [same] },
+      { id: 2, partnerId: 1, weekday: 3, active: true, items: [same] },
+    ])
+    renderTwo()
+    await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Von anderem Tag übernehmen' })
+    )
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Mittwoch (1 Position)' })
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Mittwoch hat dieselben Mengen - nichts geändert'
+    )
+    expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled()
+  })
 })

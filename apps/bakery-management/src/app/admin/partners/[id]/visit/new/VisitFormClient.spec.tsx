@@ -1,5 +1,5 @@
 import React from 'react'
-import { act, fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import VisitFormClient from './VisitFormClient'
@@ -794,5 +794,97 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(
       screen.getByRole('button', { name: 'Besuch speichern' })
     ).toBeEnabled()
+  })
+  it('shows save errors and the pickup question inside the sticky save bar, next to the button (ui r2)', async () => {
+    const user = userEvent.setup()
+    await renderForm({ initialDate: BUSINESS_DATE })
+
+    // Leer speichern: die Rückfrage steht in der Leiste, nicht unter der Liste.
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    const messages = await screen.findByTestId('visit-save-messages')
+    expect(
+      within(messages).getByText(/Bitte mindestens ein Produkt erfassen/)
+    ).toBeInTheDocument()
+    const bar = messages.parentElement as HTMLElement
+    expect(
+      within(bar).getByRole('button', { name: 'Besuch speichern' })
+    ).toBeInTheDocument()
+
+    // Verbindungsfehler beim Speichern: ebenfalls direkt über dem Knopf.
+    mockCreateVisit.mockRejectedValueOnce(
+      new Error('Keine Verbindung zum Server – bitte WLAN prüfen.')
+    )
+    await user.click(screen.getByLabelText('Neu erhöhen: Roggenbrot'))
+    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    const saveMessages = await screen.findByTestId('visit-save-messages')
+    expect(
+      await within(saveMessages).findByText(
+        'Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      within(saveMessages).queryByText(/Bitte mindestens ein Produkt/)
+    ).toBeNull()
+  })
+
+  it('switches to Erstbestückung with the template when the time moves to a day without one (ui r2)', async () => {
+    const WEDNESDAY = '2026-08-26'
+    mockFetchTemplates.mockResolvedValue([
+      TUESDAY_TEMPLATE,
+      { ...TUESDAY_TEMPLATE, id: 8, weekday: 3 },
+    ])
+    mockFetchToday.mockImplementation(async (_partner, date) =>
+      date === BUSINESS_DATE
+        ? { ...DAY_DETAIL, visits: [{ ...SAVED_VISIT, id: 5 }] }
+        : { ...DAY_DETAIL, businessDate: date ?? null, visits: [] }
+    )
+    await renderForm({ initialDate: BUSINESS_DATE })
+    const pressed = (name: string) =>
+      screen.getByRole('button', { name }).getAttribute('aria-pressed')
+    expect(pressed('Nachlieferung')).toBe('true')
+
+    // Im Büro nacherfassen: Mittwoch hat noch keine Erstbestückung.
+    fireEvent.change(screen.getByLabelText('Zeitpunkt des Besuchs'), {
+      target: { value: `${WEDNESDAY}T08:00` },
+    })
+    await waitFor(() => expect(pressed('Erstbestückung')).toBe('true'))
+    expect(mockFetchToday).toHaveBeenCalledWith(PARTNER_ID, WEDNESDAY)
+    expect(
+      await screen.findByText(/Vorlage für Mittwoch übernommen/)
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('6')
+
+    // Zurück auf Dienstag (mit Erstbestückung): wieder Nachlieferung, die
+    // Vorlagenmengen fliegen aus „Neu“.
+    fireEvent.change(screen.getByLabelText('Zeitpunkt des Besuchs'), {
+      target: { value: `${BUSINESS_DATE}T09:00` },
+    })
+    await waitFor(() => expect(pressed('Nachlieferung')).toBe('true'))
+    expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('')
+  })
+
+  it('keeps a visit type chosen by hand when the time moves to another day (ui r2)', async () => {
+    const user = userEvent.setup()
+    mockFetchToday.mockImplementation(async (_partner, date) =>
+      date === BUSINESS_DATE
+        ? { ...DAY_DETAIL, visits: [{ ...SAVED_VISIT, id: 5 }] }
+        : { ...DAY_DETAIL, businessDate: date ?? null, visits: [] }
+    )
+    await renderForm({ initialDate: BUSINESS_DATE })
+    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+
+    fireEvent.change(screen.getByLabelText('Zeitpunkt des Besuchs'), {
+      target: { value: '2026-08-26T18:00' },
+    })
+    await waitFor(() =>
+      expect(mockFetchToday).toHaveBeenCalledWith(PARTNER_ID, '2026-08-26')
+    )
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+    expect(screen.getByRole('button', { name: 'Abholung' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
   })
 })
