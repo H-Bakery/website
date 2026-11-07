@@ -263,9 +263,16 @@ Vier Regeln, die man kennen muss, bevor man hier etwas ändert:
   die Übergabeliste hinter einem zweiten Aufruf, wäre sie im Funkloch weg. Stornierte sind nur dabei,
   wenn Geld zurückzugeben ist (`paymentBalance < 0`). **Bezahlstand:** jede Bestellung trägt `paid`,
   `paidAmount` und `paymentBalance`; `HandoverList` zeigt je Zeile „Geld" (nichts / X kassieren /
-  Rest X / X zurückgeben), die Kopfzeile kassiert Vorkasse nicht ein zweites Mal und nennt
-  „Zurückzugeben". Bei Rest oder Erstattung fragen zwei Knöpfe, ob das Geld geflossen ist (`paid:
-true` mit der Übergabe) - der Alias setzt `paid` nur bei einer **unbezahlten** Bestellung selbst.
+  Rest X / X zurückgeben / ohne Zahlung übergeben – X offen), die Kopfzeile kassiert Vorkasse
+  nicht ein zweites Mal, nennt „Ohne Zahlung übergeben: X" (wie `handedOverUnpaidTotal` der
+  Abholliste) und „Zurückzugeben" und lässt 0,00-€-Teile weg. **„Übergeben" fragt immer, wenn Geld
+  offen ist** (UI-Runde 1): unbezahlt „Bezahlt und übergeben" (`paid: true`) / „Ohne Zahlung
+  übergeben" (`paid: false`), bei Rest bzw. Erstattung „… und übergeben" (`paid: true`) / „Ohne …
+  übergeben" (ohne `paid`). Vorher schickte ein Tipp nur `{ status }`, und der Alias buchte jede
+  unbezahlte Übergabe als bezahlt - Bargeld, das nie geflossen war. Der Alias setzt `paid` nur
+  noch ohne Angabe selbst (alte Warteschlangen). Der Fahrer darf `paid: false` nur an einer
+  unbezahlten schicken (sonst 403 `paid_undo_forbidden`) und an einer übergebenen mit offenem
+  Geld „Nachträglich kassiert/erstattet" (`paid: true`).
 - **Preise und Namen sind ein Snapshot** aus `hq`, wie bei `PartnerVisitItem`. Der Client schickt nur
   `productId` und `qty`; ein mitgeschickter Preis wird ignoriert. Beim **Bearbeiten** wird der
   Snapshot bereits erfasster Positionen aus der gespeicherten Bestellung übernommen, nicht neu aus
@@ -543,17 +550,28 @@ nur in CSS-Variablen statt MUI; Kommentar am Kopf von `page.module.css`:
 - Reihenfolge: Kopf + Anmeldung, Auswahl (Fahrer/Tag nebeneinander, „Heute"/„Nächster Samstag"
   als Chips), Tourkarte (Fortschritt, Kennzahlen Strecke/Dauer/Abfahrt), **Planung direkt
   darunter** (sonst klappte „Tour planen" am Handy unsichtbar unter der Stoppliste auf),
-  „Nächster Stopp", „Alle Stopps" (ohne Kartenrahmen - die Stopps sind selbst Karten), Karte,
-  Fußzeile mit dem Farbschema (`AppFooter`, auch auf der Anmeldung).
+  „Nächster Stopp", „Weitere Stopps" (die offenen ohne den nächsten, ohne Kartenrahmen - die
+  Stopps sind selbst Karten), „Erledigt (n)" zugeklappt, Karte, Fußzeile mit dem Farbschema
+  (`AppFooter`, auch auf der Anmeldung). In der Planung (Inhaber) stattdessen eine flache Liste
+  „Alle Stopps" mit „Nach oben"/„Nach unten".
+- **Eine Nummer je Stopp** (`src/lib/stop-order.ts`): erledigte zuerst (nach Abhakzeit), dann die
+  offenen in Tourreihenfolge - in Liste, „Nächster Stopp" und auf der Karte gleich. Der Server lässt
+  erledigte beim „Route berechnen" auf ihrem Platz; die Karte zählte früher nur Stopps mit
+  Koordinaten (fehlte dem ersten die Adresse, trug Stopp 2 die 1). „Nach oben/unten" verschiebt in
+  dieser Reihenfolge.
 - **Je Karte eine gefüllte Hauptaktion:** „Geliefert"/„Übergeben"/„Stopp abschließen" (Erfolg),
-  „Ganze Tour navigieren" (Akzent). „Nicht angetroffen"/„Nicht abgeholt" sind umrandet
-  (`buttonWarn`), gefüllt rot nur die Bestätigung einer Rückfrage (`buttonDanger`). „Navigation"
+  „Ganze Tour navigieren" (Akzent). „Nicht angetroffen" ist umrandet (`buttonWarn`), „Nicht
+  abgeholt" in der Übergabezeile ruhig neutral (`buttonGhost`, zweitrangig neben „Übergeben"),
+  gefüllt rot nur die Bestätigung einer Rückfrage (`buttonDanger`). „Navigation"
   ist akzent-umrandet, „Anrufen" neutral. Je Stopp zwei Reihen à zwei Spalten (Wege zum Kunden,
   dann Status); ein einzelner letzter Knopf nimmt die ganze Breite. Ab 768 px natürliche Breite.
-- **Die Übergabeliste einer Sammelstelle steht nur im Block „Nächster Stopp" offen.** In „Alle
-  Stopps" ist sie ein `<details>` „Übergabeliste (N)" (`collapseHandover`); die Kopfzeile
+- **Die Übergabeliste einer Sammelstelle steht nur im Block „Nächster Stopp" offen.** Sonst ist
+  sie ein `<details>` „Übergabeliste (N)" (`collapseHandover`); die Kopfzeile
   „X von Y übergeben · Bar zu kassieren …" bleibt sichtbar. Vorher stand sie zweimal da - am
-  Samstag mit 14 Familien rund 12.000 px Seite am Handy.
+  Samstag mit 14 Familien rund 12.000 px Seite am Handy. Je Familie eine knappe Zeile: Name +
+  Code, Status + Betrag, die Geldzeile, Artikel, ein Hauptknopf „Übergeben", daneben „Nicht
+  abgeholt" (umrandet) und Anrufen als 44-px-Symbol (`aria-label="Anrufen"`). Sortiert nach Name,
+  stornierte zuletzt - wie die Abholliste der Verwaltung an einer Sammelstelle.
 - „Nach Bestellschluss aufgenommen" ist eine schmale Zeile (`inlineWarning`) statt eines Kastens;
   der Text bleibt. Warnungen an Stopps (Zeitfenster, Adresse nicht gefunden) bleiben Kästen.
 - Planung je Stopp („Nach oben", „Nach unten", „Entfernen") steht in einer eigenen, gestrichelt

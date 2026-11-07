@@ -906,6 +906,42 @@ describe('Sammelstelle: payment on the handover list (Abschluss-Verifikation nex
     })
   })
 
+  it('lets the driver hand over without payment and collect it later (UI round 1)', async () => {
+    // Regression: the Fahrer-App had only „Übergeben“, and the alias booked
+    // every unpaid handover as paid - cash that was never received.
+    const unpaid = await order('Testfamilie Ohnegeld', 2, false)
+    const patch = (body: Record<string, unknown>) =>
+      as('fahrer').patch(`/api/deliveries/preorders/${unpaid.id}`, body)
+
+    const res = await patch({ status: 'handed_over', paid: false })
+    expect(res.status).toBe(200)
+    expect(res.body).toMatchObject({ status: 'handed_over', paid: false })
+    expect(await stored(unpaid.id)).toMatchObject({
+      status: 'abgeholt',
+      paid: false,
+      paidAmount: null,
+    })
+
+    // The family pays a minute later: „Nachträglich kassiert“.
+    const later = await patch({ status: 'handed_over', paid: true })
+    expect(later.status).toBe(200)
+    expect(await stored(unpaid.id)).toMatchObject({
+      paid: true,
+      paidAmount: unpaid.total,
+      paymentBalance: 0,
+    })
+
+    // Taking the recorded payment back stays with Verkauf.
+    const undo = await patch({ status: 'handed_over', paid: false })
+    expect(undo.status).toBe(403)
+    expect(undo.body).toMatchObject({ error: 'paid_undo_forbidden' })
+    expect(await stored(unpaid.id)).toMatchObject({ paid: true })
+    // `paid` only goes with a handover.
+    expect((await patch({ status: 'not_collected', paid: false })).status).toBe(
+      403
+    )
+  })
+
   it('names a Sorte like the management screens', () => {
     const core = require('../../src/services/delivery-preorders.core')
     const legacy = core.toLegacyPreorder(
