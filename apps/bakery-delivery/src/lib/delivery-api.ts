@@ -287,6 +287,21 @@ export function describeError(error: unknown, fallback: string): string {
 }
 
 /**
+ * Der Server hat geantwortet, aber mit einem Fehler (5xx, auch die Fehlerseite
+ * eines Proxys davor). Das ist kein Funkloch: der Fahrer soll nicht an seinem
+ * Handy suchen. Die Änderung wird trotzdem erneut gesendet - ein 5xx ist meist
+ * vorübergehend, und verwerfen darf die App ein Abhaken nicht.
+ */
+export function isServerError(error: unknown): boolean {
+  return error instanceof ApiError && error.status >= 500
+}
+
+/** Fachlich abgelehnt (4xx): erneut senden ändert nichts. */
+export function isRejection(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500
+}
+
+/**
  * Nach so vielen Millisekunden gilt eine Anfrage als gescheitert. Im Funkloch
  * haengt `fetch` sonst minutenlang - und solange es haengt, sind alle Knoepfe
  * gesperrt und die Warteschlange kommt nicht zum Zug.
@@ -516,6 +531,12 @@ export interface QueuedPreorderUpdate extends QueuedBase {
 
 export type QueuedUpdate = QueuedStopUpdate | QueuedPreorderUpdate
 
+/** Ein Eintrag, den der Server beim Nachsenden abgelehnt hat, mit seinem Grund. */
+export type RejectedUpdate = QueuedUpdate & {
+  /** Die deutsche `message` des Servers. */
+  reason: string
+}
+
 /**
  * Liest einen gespeicherten Eintrag - auch einen aus der Zeit vor den
  * Vorbestellungen. Damals hatte die Schlange kein `kind`; ein solcher Eintrag
@@ -661,9 +682,12 @@ export async function flushQueue(): Promise<{
   tour: Tour | null
   preorders: Preorder[]
   remaining: QueuedUpdate[]
-  rejected: QueuedUpdate[]
-  /** true, wenn der Server nicht erreichbar war und Eintraege liegen blieben. */
+  /** Verworfen, weil der Server sie fachlich abgelehnt hat (4xx) - mit Grund. */
+  rejected: RejectedUpdate[]
+  /** true, wenn Eintraege liegen blieben (kein Netz oder Serverfehler). */
   offline: boolean
+  /** true, wenn der Server geantwortet hat, aber mit 5xx - kein Funkloch. */
+  serverError: boolean
 }> {
   // Nur eine Momentaufnahme dessen, was abzuarbeiten ist. Geschrieben wird
   // immer auf den *aktuellen* Stand des Speichers: ein Abhaken, das während
@@ -672,8 +696,9 @@ export async function flushQueue(): Promise<{
   const snapshot = readQueue()
   let tour: Tour | null = null
   const confirmed: Preorder[] = []
-  const rejected: QueuedUpdate[] = []
+  const rejected: RejectedUpdate[] = []
   let offline = false
+  let serverError = false
   const drop = (id: string) =>
     writeQueue(readQueue().filter((q) => q.id !== id))
 
@@ -695,17 +720,14 @@ export async function flushQueue(): Promise<{
       }
       drop(entry.id)
     } catch (error) {
-      if (
-        error instanceof ApiError &&
-        error.status >= 400 &&
-        error.status < 500
-      ) {
-        rejected.push(entry)
+      if (isRejection(error)) {
+        rejected.push({ ...entry, reason: error.message })
         drop(entry.id)
         continue
       }
       offline = true
-      break // Netzproblem: der Rest wartet auf den naechsten Versuch.
+      serverError = isServerError(error)
+      break // Netz- oder Serverproblem: der Rest wartet auf den naechsten Versuch.
     }
   }
 
@@ -715,6 +737,7 @@ export async function flushQueue(): Promise<{
     remaining: readQueue(),
     rejected,
     offline,
+    serverError,
   }
 }
 

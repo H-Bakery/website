@@ -48,9 +48,8 @@ export function AccountBar({
         <div className={styles.accountConfirm} role="alert">
           <p>
             {pendingCount === 1
-              ? '1 Änderung ist noch nicht beim Server angekommen'
-              : `${pendingCount} Änderungen sind noch nicht beim Server angekommen`}{' '}
-            und gehen beim Abmelden verloren.
+              ? '1 Änderung ist noch nicht beim Server angekommen und geht beim Abmelden verloren.'
+              : `${pendingCount} Änderungen sind noch nicht beim Server angekommen und gehen beim Abmelden verloren.`}
           </p>
           <div className={styles.buttonGroup}>
             <button

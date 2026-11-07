@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react'
 import DeliveryDashboard from './page'
 import {
+  ApiError,
   deliveryApi,
   rememberDrivers,
   rememberTours,
@@ -67,7 +68,9 @@ const driver: Driver = {
 
 const tour: Tour = {
   id: 7,
-  date: '2026-09-05',
+  // Ein Tag, an dem abgehakt werden darf (`markWindow`): sonst hinge jeder
+  // Test mit „Geliefert“ am Kalender.
+  date: nextSaturdayIso(),
   driverId: 1,
   driver,
   depot: {
@@ -1067,7 +1070,7 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
       })
     )
     expect((await next.findByTestId('payment-101')).textContent).toMatch(
-      /^Ohne Zahlung übergeben – 6,10\s€ offen$/
+      /^Nicht bezahlt – 6,10\s€ offen$/
     )
     // Die Kopfzeile verliert das Geld nicht: es steht für sich.
     expect(
@@ -1424,5 +1427,277 @@ describe('DeliveryDashboard: Tageswechsel und Meldungen', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     // Der Zustand der Seite bleibt: nur die Meldung ist weg.
     expect(screen.getByRole('button', { name: 'Erneut laden' })).toBeTruthy()
+  })
+})
+
+/**
+ * UI-Runde 2 (Fahrer-App): abgelehnte Nachsendungen, Serverfehler, Planung
+ * und Abhaken nur am Tourtag.
+ */
+describe('DeliveryDashboard - UI-Runde 2', () => {
+  const date = nextSaturdayIso()
+  const paidPreorder: Preorder = {
+    id: 201,
+    reference: 'MO-2026-09-12-07',
+    pickupPointId: 'kindergarten-moersbach',
+    date,
+    customer: 'Testkundin Faulbaum',
+    phone: null,
+    items: [],
+    total: 16.4,
+    note: null,
+    status: 'open',
+    handedOverAt: null,
+    createdAt: '2026-09-10T08:00:00.000Z',
+    updatedAt: '2026-09-10T08:00:00.000Z',
+    deadline: null,
+    afterDeadline: false,
+    paid: true,
+    paidAmount: 16.4,
+    paymentBalance: 0,
+  }
+  const pickupStop: Stop = {
+    id: 1,
+    customer: 'Kindergarten Mörsbach',
+    street: 'Höhenstraße 24',
+    zip: '66482',
+    city: 'Zweibrücken',
+    address: 'Höhenstraße 24, 66482 Zweibrücken',
+    phone: null,
+    timeWindow: '09:00-09:30',
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    lat: 49.25,
+    lon: 7.36,
+    geocodeSource: null,
+    geocodePrecision: 'house',
+    estimatedArrival: null,
+    pickupPointId: 'kindergarten-moersbach',
+    preorders: [paidPreorder],
+  }
+  const homeStop: Stop = {
+    ...pickupStop,
+    id: 2,
+    customer: 'Testkundin Amsel',
+    pickupPointId: null,
+    preorders: undefined,
+    timeWindow: '07:30-08:00',
+  }
+  const twoStops: Tour = {
+    ...tour,
+    date,
+    stops: [pickupStop, homeStop],
+    progress: { total: 2, done: 0, failed: 0, open: 2, isComplete: false },
+    nextStopId: 1,
+  }
+  const respond = (status: number, body: unknown) =>
+    jest.fn().mockResolvedValue({
+      ok: status < 400,
+      status,
+      text: async () => JSON.stringify(body),
+    })
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    api.drivers.mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    delete (global as { fetch?: unknown }).fetch
+  })
+
+  it('nimmt eine beim Nachsenden abgelehnte Übergabe zurück und nennt Kundin und Grund', async () => {
+    // Regression: ohne Netz übergeben, das Büro storniert inzwischen, der
+    // Server lehnt das Nachsenden mit 409 ab. Die Karte zeigte danach weiter
+    // „Abgeholt · Bezahlt“, die einzige Meldung war „1 Änderung(en) …
+    // verworfen“ - ohne Namen, ohne Grund.
+    signIn('fahrer', 42)
+    api.drivers.mockResolvedValue([{ ...driver, userId: 42 }])
+    api.tours.mockResolvedValue([twoStops])
+    api.updatePreorder.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+    // Erst wenn der eigene Fahrer gewählt ist (zweiter Ladevorgang).
+    await waitFor(() =>
+      expect(api.tours).toHaveBeenLastCalledWith(
+        expect.objectContaining({ driverId: 1 })
+      )
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Übergeben' }))
+    await waitFor(() =>
+      expect(screen.getAllByText(/1 von 1 übergeben/).length).toBeGreaterThan(0)
+    )
+    expect(pendingUpdates()).toHaveLength(1)
+
+    // Der Server kennt die Bestellung inzwischen als storniert.
+    const cancelled = {
+      ...paidPreorder,
+      status: 'cancelled' as const,
+      paymentBalance: -16.4,
+    }
+    api.tours.mockResolvedValue([
+      {
+        ...twoStops,
+        stops: [{ ...pickupStop, preorders: [cancelled] }, homeStop],
+      },
+    ])
+    ;(global as { fetch?: unknown }).fetch = respond(409, {
+      error: 'cancelled',
+      message: 'Die Bestellung wurde storniert.',
+    })
+    const loadsBefore = api.tours.mock.calls.length
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(pendingUpdates()).toEqual([])
+    // Neu geladen: der Stand des Servers steht da, nicht die Vorschau.
+    expect(api.tours.mock.calls.length).toBeGreaterThan(loadsBefore)
+    await waitFor(() =>
+      expect(screen.getByTestId('payment-201').textContent).toMatch(
+        /^Erstattung 16,40\s€ offen$/
+      )
+    )
+    expect(screen.queryByText(/1 von 1 übergeben/)).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Übergabe an Testkundin Faulbaum nicht gespeichert: Die Bestellung wurde storniert.'
+    )
+  })
+
+  it('meldet einen Serverfehler (5xx) nicht als „Kein Netz“', async () => {
+    // Regression: auf ein 500 hieß es „Kein Netz …“ - der Fahrer suchte den
+    // Fehler am Handy. Gemerkt wird die Änderung trotzdem.
+    signIn('inhaber')
+    api.tours.mockResolvedValue([twoStops])
+    api.updateStop.mockRejectedValue(new ApiError('Interner Fehler', 500))
+
+    render(<DeliveryDashboard />)
+    // Erst den Stopp der Sammelstelle ohne offene Bestellung abschließen …
+    // einfacher: der Hausstopp in „Weitere Stopps“.
+    const weitere = await screen.findByRole('region', {
+      name: 'Weitere Stopps',
+    })
+    fireEvent.click(within(weitere).getByRole('button', { name: 'Geliefert' }))
+
+    const notice = await screen.findByText(
+      /Der Server hat einen Fehler gemeldet/
+    )
+    expect(notice.textContent).toContain('(1 offen)')
+    expect(screen.queryByText(/Kein Netz/)).toBeNull()
+    expect(pendingUpdates()).toHaveLength(1)
+  })
+
+  it('zeigt in der Planung jeden Stopp einmal und kompakt, ohne Fahrer-Bedienung', async () => {
+    // Regression: „Nächster Stopp“ blieb mit voller Übergabeliste stehen,
+    // darunter derselbe Stopp noch einmal - bis zu 7 Knöpfe je Stopp.
+    signIn('inhaber')
+    api.tours.mockResolvedValue([twoStops])
+
+    render(<DeliveryDashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
+
+    expect(screen.queryByRole('region', { name: 'Nächster Stopp' })).toBeNull()
+    const list = screen.getByRole('region', { name: 'Alle Stopps' })
+    expect(
+      within(list).getAllByRole('heading', { name: 'Kindergarten Mörsbach' })
+    ).toHaveLength(1)
+    for (const name of [
+      'Geliefert',
+      'Nicht angetroffen',
+      'Stopp abschließen',
+      'Übergeben',
+      'Navigation',
+    ]) {
+      expect(within(list).queryByRole('button', { name })).toBeNull()
+      expect(within(list).queryByRole('link', { name })).toBeNull()
+    }
+    expect(
+      within(list).getAllByRole('button', { name: 'Nach unten' })
+    ).toHaveLength(2)
+    expect(
+      within(list).getByText(/1 Vorbestellung · 0 von 1 übergeben/)
+    ).toBeTruthy()
+  })
+
+  it('lässt Name und geplante Abfahrt der Tour einstellen', async () => {
+    // Regression: jede Tour hieß „Samstagstour“ und fuhr fest um 06:30 ab -
+    // alle Ankunftszeiten hingen daran, ändern ließ es sich in der App nicht.
+    signIn('inhaber')
+    api.tours.mockResolvedValue([twoStops])
+    api.updateTour.mockImplementation(async (_id, body) => ({
+      ...twoStops,
+      ...(body as Partial<Tour>),
+    }))
+
+    render(<DeliveryDashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
+
+    const start = screen.getByLabelText('Abfahrt geplant') as HTMLInputElement
+    expect(start.value).toBe('06:30')
+    fireEvent.change(start, { target: { value: '08:15' } })
+    fireEvent.blur(start)
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, { plannedStart: '08:15' })
+    )
+    expect(await screen.findByText('08:15')).toBeTruthy()
+
+    const name = screen.getByLabelText('Name der Tour')
+    fireEvent.change(name, { target: { value: 'Samstagstour Süd' } })
+    fireEvent.keyDown(name, { key: 'Enter' })
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, {
+        name: 'Samstagstour Süd',
+      })
+    )
+  })
+
+  it('benennt eine neue Tour nach dem Wochentag und nummeriert die zweite', async () => {
+    signIn('inhaber')
+    api.tours.mockResolvedValue([])
+    api.createTour.mockResolvedValue({ ...twoStops, id: 9, stops: [] })
+
+    render(<DeliveryDashboard />)
+    fireEvent.change(await screen.findByLabelText('Tag'), {
+      target: { value: '2026-11-13' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour anlegen' }))
+    await waitFor(() =>
+      expect(api.createTour).toHaveBeenCalledWith(
+        expect.objectContaining({ date: '2026-11-13', name: 'Freitagstour' })
+      )
+    )
+  })
+
+  it('bietet an einer Tour der nächsten Woche kein Abhaken an (API: 400)', async () => {
+    // Regression: „Geliefert“ an einer künftigen Tour endete mit „Der
+    // Zeitpunkt muss zum Tourtag passen.“
+    signIn('inhaber')
+    const later = new Date(`${date}T12:00:00`)
+    later.setDate(later.getDate() + 7)
+    const iso = `${later.getFullYear()}-${String(later.getMonth() + 1).padStart(
+      2,
+      '0'
+    )}-${String(later.getDate()).padStart(2, '0')}`
+    api.tours.mockResolvedValue([{ ...twoStops, date: iso }])
+
+    render(<DeliveryDashboard />)
+    expect(await screen.findByTestId('mark-window')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Geliefert' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Stopp abschließen' })
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Nicht angetroffen' })
+    ).toBeNull()
+    // Die Übergabe einzelner Vorbestellungen prüft die API nicht am Tourtag.
+    expect(screen.getByRole('button', { name: 'Übergeben' })).toBeTruthy()
+    // Planen geht weiter.
+    expect(screen.getByRole('button', { name: 'Tour planen' })).toBeTruthy()
   })
 })

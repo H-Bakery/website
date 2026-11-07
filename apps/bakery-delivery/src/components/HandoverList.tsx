@@ -45,6 +45,12 @@ export interface HandoverSummary {
   /** Zurückzugeben: billiger gewordene und stornierte, schon bezahlte. */
   refundTotal: number
   refundCount: number
+  /**
+   * Stornierte - zählen nicht in `total`, stehen aber in der Liste. Die
+   * Kopfzeile nennt sie, sonst las sich „0 von 7 übergeben“ unter
+   * „Übergabeliste (8)“ wie ein Rechenfehler.
+   */
+  cancelled: number
 }
 
 /**
@@ -85,6 +91,7 @@ export function summarizeHandover(preorders: Preorder[]): HandoverSummary {
       refunds.reduce((sum, preorder) => sum - moneyDue(preorder), 0)
     ),
     refundCount: refunds.length,
+    cancelled: all.length - list.length,
   }
 }
 
@@ -105,27 +112,34 @@ export function sortForHandover(preorders: Preorder[]): Preorder[] {
   })
 }
 
-/** Eine Zeile zum Geld: was der Fahrer an dieser Bestellung tun muss. */
-function paymentNote(preorder: Preorder): string {
+/**
+ * Eine Zeile zum Geld. Vorn steht der Zahlungsstand mit denselben Worten wie
+ * auf der Abholliste der Verwaltung („Nicht bezahlt“, „Bezahlt“, „Rest X
+ * offen“, „Erstattung X offen“) - der Fahrer benutzt beide -, dahinter, was
+ * er an dieser Bestellung jetzt tun muss.
+ */
+export function paymentNote(preorder: Preorder): string {
   const due = moneyDue(preorder)
+  const state = !preorder.paid
+    ? 'Nicht bezahlt'
+    : due > 0
+    ? `Rest ${formatCurrency(due)} offen`
+    : due < 0
+    ? `Erstattung ${formatCurrency(-due)} offen`
+    : 'Bezahlt'
   if (preorder.status === 'cancelled') {
-    return `Storniert – ${formatCurrency(-due)} zurückgeben`
+    return due < 0 ? state : 'Nichts zu kassieren'
   }
   if (preorder.status === 'handed_over') {
-    if (due > 0) {
-      return preorder.paid
-        ? `Ohne Rest übergeben – ${formatCurrency(due)} offen`
-        : `Ohne Zahlung übergeben – ${formatCurrency(due)} offen`
-    }
-    if (due < 0) {
-      return `Übergeben – ${formatCurrency(-due)} noch zurückgeben`
-    }
-    return 'Bezahlt'
+    return !preorder.paid ? `${state} – ${formatCurrency(due)} offen` : state
   }
-  if (due < 0) return `${formatCurrency(-due)} zurückgeben`
-  if (!preorder.paid) return `${formatCurrency(due)} kassieren`
-  if (due > 0) return `Bezahlt – Rest ${formatCurrency(due)} kassieren`
-  return 'Bezahlt – nichts zu kassieren'
+  const later =
+    preorder.status === 'not_collected' ? ', falls doch abgeholt' : ''
+  if (!preorder.paid)
+    return `${state} – ${formatCurrency(due)} kassieren${later}`
+  if (due > 0) return `${state} – kassieren${later}`
+  if (due < 0) return `${state} – zurückgeben${later}`
+  return state
 }
 
 function roundCents(value: number): number {
@@ -296,9 +310,12 @@ export function HandoverList({
         } else if (preorder.status === 'cancelled') {
           actions = (
             <>
-              <p className={styles.placeholder}>
-                Erfassen kann das der Verkauf.
-              </p>
+              {due < 0 && (
+                <p className={styles.placeholder}>
+                  Die Erstattung trägt der Verkauf ein. Bar auszahlen nur nach
+                  Rücksprache mit dem Laden.
+                </p>
+              )}
               {callLink}
             </>
           )
@@ -394,7 +411,7 @@ export function HandoverList({
                   {preorder.reference}
                   {preorder.status === 'handed_over' &&
                     preorder.handedOverAt &&
-                    ` · übergeben ${formatTime(preorder.handedOverAt)}`}
+                    ` · Übergeben um ${formatTime(preorder.handedOverAt)} Uhr`}
                 </p>
               </div>
               <div className={styles.handoverAside}>
@@ -428,7 +445,9 @@ export function HandoverList({
             {preorder.note && (
               <p className={styles.stopNotes}>{preorder.note}</p>
             )}
-            {preorder.afterDeadline && (
+            {/* Nur solange die Tüte noch herausgegeben wird - an einer
+                übergebenen oder stornierten hilft der Hinweis nicht mehr. */}
+            {preorder.afterDeadline && canHandOver && (
               <p className={styles.inlineWarning}>
                 Nach Bestellschluss aufgenommen – bitte prüfen, ob die Ware
                 dabei ist.
@@ -502,6 +521,9 @@ export function handoverHeadline(summary: HandoverSummary): string {
   const parts = [`${summary.handedOver} von ${summary.total} übergeben`]
   if (summary.notCollected > 0) {
     parts.push(`${summary.notCollected} nicht abgeholt`)
+  }
+  if (summary.cancelled > 0) {
+    parts.push(`${summary.cancelled} storniert`)
   }
   if (summary.openTotal > 0) {
     parts.push(`Bar zu kassieren: ${formatCurrency(summary.openTotal)}`)
