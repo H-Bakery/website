@@ -221,6 +221,11 @@ describe('PickupPointFormClient', () => {
     expect(
       await screen.findByText('Keine Verbindung zur Bäckerei-API.')
     ).toBeInTheDocument()
+    // Nicht „Keine Sammelstelle angelegt“ darüber - das klänge, als sei sie
+    // gelöscht (UI-Runde 2).
+    expect(
+      screen.queryByText(/Keine Sammelstelle angelegt/i)
+    ).not.toBeInTheDocument()
   })
 })
 

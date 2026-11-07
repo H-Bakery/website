@@ -178,6 +178,38 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers())
 
 describe('AbholListeClient (P2)', () => {
+  it('zeigt schon während der ersten Anfrage „wird geladen“ (UI-Runde 2)', async () => {
+    // Langsames WLAN: solange die Sammelstellen laden, stand unter den
+    // Filtern eine leere Fläche ohne Hinweis.
+    let resolvePoints: (points: unknown[]) => void = () => undefined
+    ;(fetchPickupPoints as jest.Mock).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePoints = resolve
+      })
+    )
+    renderAs('verkauf')
+    expect(screen.getByText('Abholliste wird geladen …')).toBeInTheDocument()
+    expect(mockDay).not.toHaveBeenCalled()
+
+    resolvePoints([POINT])
+    expect(await screen.findByTestId('abhol-LA-2026-11-12-01')).toBeVisible()
+    expect(
+      screen.queryByText('Abholliste wird geladen …')
+    ).not.toBeInTheDocument()
+  })
+
+  it('Tab-Reihenfolge der Filter folgt den Zeilen: Sortierung vor der Suche (UI-Runde 2)', async () => {
+    renderAs('verkauf')
+    await screen.findByTestId('abhol-LA-2026-11-12-01')
+    const sort = screen.getByRole('group', { name: 'Sortierung' })
+    const search = screen.getByRole('textbox', {
+      name: 'Name oder Code suchen',
+    })
+    expect(
+      sort.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
   it('lädt Tag und Ort, gruppiert nach Uhrzeit, Stornierte am Ende', async () => {
     renderAs('verkauf')
     expect(

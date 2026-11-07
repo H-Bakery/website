@@ -449,10 +449,33 @@ export default function PreorderListClient({
       ]
     : []
 
+  // Solange die Sammelstelle noch nicht da ist (Laden, Fehler), heißt die
+  // Seite wie der Menüpunkt - nicht nur „Sammelstelle“ (UI-Runde 2).
+  const fallbackTitle =
+    !initialPointId || initialPointId === MOERSBACH_POINT_ID
+      ? 'Sammelstelle Mörsbach'
+      : 'Sammelstelle'
+  const pageTitle = point ? `Sammelstelle ${point.name}` : fallbackTitle
+
+  // Erst die Sammelstelle laden, dann die Seite zeigen: sonst stand eine
+  // leere Fläche ohne Hinweis da, und Titel, Adresse und Bestellschluss
+  // schoben den Tagwähler danach um ~100 px nach unten (UI-Runde 2).
+  if (loadingPoints) {
+    return (
+      <PageLayout width="wide" title={pageTitle}>
+        <LoadingState label="Sammelstelle wird geladen …" />
+      </PageLayout>
+    )
+  }
+
+  // Leer erst, wenn der Server für diesen Tag geantwortet hat.
+  const showLoading =
+    loading || (!day && !error && Boolean(pointId) && isBusinessDate(date))
+
   return (
     <PageLayout
       width="wide"
-      title={point ? `Sammelstelle ${point.name}` : 'Sammelstelle'}
+      title={pageTitle}
       subtitle={[
         point?.window ? `Übergabe ${point.window} Uhr` : null,
         address || null,
@@ -648,7 +671,7 @@ export default function PreorderListClient({
         <KeyFigures items={figures} aria-label="Stand des Liefertags" />
       )}
 
-      {loading ? (
+      {showLoading ? (
         <LoadingState label="Vorbestellungen werden geladen …" />
       ) : preorders.length === 0 ? (
         !error &&

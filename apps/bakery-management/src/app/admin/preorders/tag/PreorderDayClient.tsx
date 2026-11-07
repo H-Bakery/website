@@ -23,6 +23,7 @@ import {
   useTheme,
 } from '@mui/material'
 import {
+  AddCircleOutline as NewIcon,
   ChevronLeft as PrevIcon,
   ChevronRight as NextIcon,
   ExpandMore as ExpandMoreIcon,
@@ -30,6 +31,7 @@ import {
 } from '@mui/icons-material'
 import ItemsSummary from '../../../../components/preorders/ItemsSummary'
 import {
+  EmptyState,
   ErrorState,
   KeyFigures,
   LoadingState,
@@ -43,8 +45,10 @@ import {
   fetchPreorderDay,
   preorderErrorMessage,
 } from '../../../../lib/preordersApi'
+import { useOptionalSession } from '../../../../lib/session'
 import {
   CHANNEL_LABELS,
+  canWritePreorders,
   formatCurrency,
   formatDateWithWeekday,
   formatItems,
@@ -91,12 +95,26 @@ const printStyles = (
         '.preorder-day-root .MuiPaper-root': {
           border: '1px solid #bbb !important',
         },
+        // Die Fläche eines Abschnitts nicht umranden: über mehrere Seiten
+        // blieb von ihr je Seite nur eine einzelne linke Linie stehen
+        // (UI-Runde 2). Die Tabellen tragen ihre eigenen Linien.
+        '.preorder-day-root section > .MuiPaper-root': {
+          border: 'none !important',
+          borderRadius: '0 !important',
+        },
         '.preorder-day-root .MuiChip-root': {
           border: '1px solid #000 !important',
         },
         '.preorder-day-root .MuiTableCell-root': {
           borderBottom: '1px solid #bbb',
-          padding: '4px 6px',
+          padding: '3px 6px',
+        },
+        // Die Fußnote passt noch aufs Blatt, statt allein eine zweite Seite
+        // zu füllen (UI-Runde 2, Sonntag 08.11.).
+        '.preorder-day-root .preorder-day-legend': {
+          padding: '1.5mm 6px 0 !important',
+          fontSize: '8pt',
+          lineHeight: 1.3,
         },
         '.preorder-day-root tr': { pageBreakInside: 'avoid' },
         '.preorder-day-root thead': { display: 'table-header-group' },
@@ -117,23 +135,46 @@ const printStyles = (
         '.preorder-day-orders .preorder-day-items-full': {
           display: 'inline !important',
         },
+        // Silbentrennung statt Bruch an beliebiger Stelle („Gänsefingerkrau|t“,
+        // UI-Runde 2); nur ein Wort, das gar nicht passt, bricht noch hart.
         '.preorder-day-orders td, .preorder-day-orders th': {
-          overflowWrap: 'anywhere',
+          overflowWrap: 'break-word',
+          hyphens: 'auto',
           fontSize: '9pt',
         },
         // Code | Status | Kunde | Abholung | Artikel (Rest) | Summe - der
         // Status steht vorn (UI-Runde 1: rechts war er am Tablet quer
         // abgeschnitten).
-        '.preorder-day-orders th:nth-of-type(1)': { width: '32mm' },
-        '.preorder-day-orders th:nth-of-type(2)': { width: '24mm' },
-        '.preorder-day-orders th:nth-of-type(3)': { width: '28mm' },
-        '.preorder-day-orders th:nth-of-type(4)': { width: '22mm' },
-        '.preorder-day-orders th:nth-of-type(6)': { width: '24mm' },
+        // Code: 16 Zeichen in 8 pt brauchen 31 mm, der Status-Chip
+        // „Storniert“ 22 mm; Kunde und Abholung etwas breiter, die Summe
+        // schmaler (UI-Runde 2: „Gemeindeha|us Oberdorf“ bei 22 mm).
+        '.preorder-day-orders th:nth-of-type(1)': { width: '31mm' },
+        '.preorder-day-orders th:nth-of-type(2)': { width: '22mm' },
+        '.preorder-day-orders th:nth-of-type(3)': { width: '29mm' },
+        '.preorder-day-orders th:nth-of-type(4)': { width: '24mm' },
+        '.preorder-day-orders th:nth-of-type(6)': { width: '22mm' },
+        // Namen nicht silbentrennen (wie auf der Abholliste).
+        '.preorder-day-orders td:nth-of-type(3)': { hyphens: 'manual' },
         // Codes sind am Bildschirm Links - auf Papier nicht unterstreichen.
         '.preorder-day-orders a': { textDecoration: 'none !important' },
         '.preorder-day-orders td:first-of-type': {
           fontSize: '8pt',
           overflowWrap: 'normal',
+          hyphens: 'manual',
+        },
+        // Der Code-Link ist am Bildschirm 44 px hoch (Touch) - auf Papier
+        // stand er dadurch tiefer als die Nachbarzellen.
+        '.preorder-day-orders td:first-of-type a': {
+          display: 'inline !important',
+          minHeight: '0 !important',
+        },
+        // „nicht bezahlt“ in einer Zeile unter dem Betrag, nicht in drei.
+        '.preorder-day-orders .preorder-money [data-payment]': {
+          fontSize: '8pt !important',
+          hyphens: 'manual',
+        },
+        '.preorder-day-orders .preorder-money [data-payment="unpaid"]': {
+          whiteSpace: 'nowrap !important',
         },
         '.preorder-day-orders .MuiChip-root': {
           height: 'auto',
@@ -185,6 +226,8 @@ export default function PreorderDayClient({
   initialDate?: string
 }) {
   const router = useRouter()
+  const session = useOptionalSession()
+  const canWrite = canWritePreorders(session?.user?.role ?? null)
   const theme = useTheme()
   const wide = useMediaQuery(theme.breakpoints.up('md'))
   // Leer starten: der Vorgabetag kommt aus der Uhr (Hydration).
@@ -232,6 +275,8 @@ export default function PreorderDayClient({
   }
 
   const summary = day?.summary
+  /** Gar nichts bestellt (auch nichts storniert): ein Satz statt vier Flächen voller Nullen. */
+  const emptyDay = day !== null && day.preorders.length === 0
   const ladenCount = day
     ? day.preorders.filter((p) => !p.pickupPointId && p.status !== 'storniert')
         .length
@@ -362,8 +407,12 @@ export default function PreorderDayClient({
     <Box className="preorder-day-root">
       {printStyles}
       <PageLayout
+        // Das Datum bleibt zusammen („Mi, 18.11.2026“) - bei 1180 px brach
+        // der Titel sonst nach „Mi,“ um (UI-Runde 2).
         title={`Vorbestellungen ${
-          isBusinessDate(date) ? formatDateWithWeekday(date) : ''
+          isBusinessDate(date)
+            ? formatDateWithWeekday(date).replace(/ /g, '\u00a0')
+            : ''
         }`.trim()}
         back={{ href: '/admin/preorders', label: 'Alle Vorbestellungen' }}
         actions={
@@ -373,7 +422,7 @@ export default function PreorderDayClient({
               variant="outlined"
               startIcon={<PrintIcon />}
               onClick={() => window.print()}
-              disabled={!day}
+              disabled={!day || emptyDay}
             >
               Drucken
             </Button>
@@ -394,6 +443,23 @@ export default function PreorderDayClient({
 
         {loading && !day ? (
           <LoadingState label="Tagesübersicht wird geladen …" />
+        ) : emptyDay ? (
+          <EmptyState
+            data-testid="preorder-day-empty"
+            title="Für diesen Tag ist nichts vorbestellt."
+            action={
+              canWrite && isProductionDay(date) ? (
+                <Button
+                  component={NextLink}
+                  href={`/admin/preorders/neu?date=${date}`}
+                  variant="contained"
+                  startIcon={<NewIcon />}
+                >
+                  Vorbestellung erfassen
+                </Button>
+              ) : undefined
+            }
+          />
         ) : (
           day &&
           summary && (
@@ -462,8 +528,10 @@ export default function PreorderDayClient({
                 disablePadding={day.sums.length > 0}
               >
                 {day.sums.length === 0 ? (
+                  // Nur noch, wenn alles storniert ist - ein Tag ganz ohne
+                  // Bestellungen zeigt oben den Leerzustand.
                   <Typography color="text.secondary">
-                    Für diesen Tag ist nichts vorbestellt.
+                    Nichts zu backen - alle Bestellungen sind storniert.
                   </Typography>
                 ) : (
                   <TableContainer>
@@ -597,6 +665,9 @@ export default function PreorderDayClient({
                                   style={{
                                     color: 'inherit',
                                     ...TOUCH_LINK_STYLE,
+                                    // Text oben wie in den Nachbarzellen,
+                                    // die Tippfläche bleibt 44 px.
+                                    alignItems: 'flex-start',
                                   }}
                                 >
                                   {p.code}
@@ -652,6 +723,7 @@ export default function PreorderDayClient({
                     <Typography
                       variant="caption"
                       color="text.secondary"
+                      className="preorder-day-legend"
                       sx={{ px: { xs: 2, md: 3 }, py: 1.5, display: 'block' }}
                     >
                       ✓ = bezahlt, Betrag stimmt. Ein offener Rest oder eine
