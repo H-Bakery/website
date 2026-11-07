@@ -283,9 +283,12 @@ export default function DashboardClient({
     {
       label: 'Produkte gesamt',
       value: figure(stats?.productsTotal),
-      // Wie die Produktliste: verfügbar und saisonal getrennt gezählt.
+      // Wie der Filter „Verfügbar“ der Produktliste: Saisonware zählt mit
+      // (Review r1: hier stand „55 verfügbar“, dort „Verfügbar 56“).
       hint: stats
-        ? `${stats.productsActive} verfügbar · ${stats.productsSeasonal} saisonal`
+        ? `${stats.productsActive + stats.productsSeasonal} verfügbar, davon ${
+            stats.productsSeasonal
+          } saisonal`
         : 'Freigegebener Stand',
       'data-testid': 'dashboard-products-total',
     },
@@ -321,32 +324,39 @@ export default function DashboardClient({
       ]
     : []
 
+  // „API erreichbar“ ist Technik - nur für den Inhaber. Fällt die API aus,
+  // sehen es alle (Chip + Warnung unten).
+  const showApiStatus =
+    role === null || role === 'inhaber' || apiStatus === 'offline'
+
   const statusChip = (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-      <Tooltip
-        title={
-          lastCheck
-            ? `Zuletzt geprüft: ${lastCheck.toLocaleTimeString('de-DE', {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}`
-            : ''
-        }
-      >
-        <Chip
-          size="small"
-          variant="outlined"
-          label={API_STATUS_LABEL[apiStatus]}
-          color={
-            apiStatus === 'online'
-              ? 'success'
-              : apiStatus === 'offline'
-              ? 'error'
-              : 'default'
+      {showApiStatus && (
+        <Tooltip
+          title={
+            lastCheck
+              ? `Zuletzt geprüft: ${lastCheck.toLocaleTimeString('de-DE', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}`
+              : ''
           }
-          data-testid="api-status"
-        />
-      </Tooltip>
+        >
+          <Chip
+            size="small"
+            variant="outlined"
+            label={API_STATUS_LABEL[apiStatus]}
+            color={
+              apiStatus === 'online'
+                ? 'success'
+                : apiStatus === 'offline'
+                ? 'error'
+                : 'default'
+            }
+            data-testid="api-status"
+          />
+        </Tooltip>
+      )}
       {/* Neben dem Status statt im Aktionsbereich: am Handy stünde der
           Knopf sonst allein in einer eigenen Zeile. */}
       <Tooltip title="Aktualisieren">
@@ -365,34 +375,41 @@ export default function DashboardClient({
     </Box>
   )
 
+  // Nur ohne feste Seitenleiste (unter md, 900 px): daneben wiederholten die
+  // Kacheln am PC und am Tablet quer nur die Navigation (Review r1).
   const quickLinkSection = visibleQuickLinks.length > 0 && (
-    <PageSection title="Schnellzugriff" variant="plain">
-      <Box
-        component="nav"
-        aria-label="Schnellzugriff"
-        sx={{
-          display: 'grid',
-          gap: { xs: 1, md: 2 },
-          gridTemplateColumns: {
-            xs: '1fr',
-            sm: 'repeat(2, minmax(0, 1fr))',
-            lg: 'repeat(3, minmax(0, 1fr))',
-          },
-        }}
-      >
-        {visibleQuickLinks.map((link) => (
-          <QuickLinkCard
-            key={link.href}
-            link={link}
-            description={
-              role && link.readOnly?.roles.includes(role)
-                ? link.readOnly.description
-                : link.description
-            }
-          />
-        ))}
-      </Box>
-    </PageSection>
+    <Box
+      data-testid="dashboard-quick-links"
+      sx={{ display: { xs: 'block', md: 'none' } }}
+    >
+      <PageSection title="Schnellzugriff" variant="plain">
+        <Box
+          component="nav"
+          aria-label="Schnellzugriff"
+          sx={{
+            display: 'grid',
+            gap: { xs: 1, md: 2 },
+            gridTemplateColumns: {
+              xs: '1fr',
+              sm: 'repeat(2, minmax(0, 1fr))',
+              lg: 'repeat(3, minmax(0, 1fr))',
+            },
+          }}
+        >
+          {visibleQuickLinks.map((link) => (
+            <QuickLinkCard
+              key={link.href}
+              link={link}
+              description={
+                role && link.readOnly?.roles.includes(role)
+                  ? link.readOnly.description
+                  : link.description
+              }
+            />
+          ))}
+        </Box>
+      </PageSection>
+    </Box>
   )
 
   return (

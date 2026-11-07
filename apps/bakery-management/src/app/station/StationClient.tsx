@@ -116,6 +116,7 @@ export default function StationClient() {
           station={station}
           onRevoked={handleRevoked}
           notice={notice}
+          onNoticeSeen={() => setNotice(null)}
           onDone={(path) => router.replace(path)}
         />
       ) : (
@@ -159,7 +160,9 @@ function StationSetup({
       await logout()
       onRegistered(
         next,
-        `Station „${next.name}“ ist eingerichtet. Ihre persönliche Anmeldung auf diesem Gerät wurde beendet.`
+        // Unpersönlich: die Kacheln danach duzen („Wer bist du?“), diese
+        // Meldung gilt dem Inhaber - kein Sie neben dem Du.
+        `Station „${next.name}“ ist eingerichtet. Die persönliche Anmeldung auf diesem Gerät ist beendet.`
       )
     } catch (err) {
       setError(messageOf(err, 'Die Station konnte nicht eingerichtet werden.'))
@@ -254,11 +257,14 @@ export function stationReturnPath(
 function StationLogin({
   station,
   notice,
+  onNoticeSeen,
   onRevoked,
   onDone,
 }: {
   station: StoredStation
   notice: string | null
+  /** Die Einrichtungsmeldung gilt dem Inhaber, nicht der nächsten Person. */
+  onNoticeSeen: () => void
   onRevoked: () => void
   onDone: (path: string) => void
 }) {
@@ -307,6 +313,7 @@ function StationLogin({
   }, [selected, pin])
 
   const choose = (user: StationUser) => {
+    onNoticeSeen()
     setSelected(user)
     setPin('')
     setPinError(null)
@@ -382,8 +389,8 @@ function StationLogin({
         )}
       </Box>
 
-      {notice && (
-        <Alert severity="success" sx={{ mb: 3 }}>
+      {notice && !selected && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={onNoticeSeen}>
           {notice}
         </Alert>
       )}
