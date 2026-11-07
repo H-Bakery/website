@@ -313,6 +313,22 @@ describe('Station', () => {
       expect(loadStation()).toBeNull()
     })
 
+    it('ohne Verbindung: WLAN-Hinweis mit „Erneut versuchen“, kein „Failed to fetch“', async () => {
+      api.fetchStationUsers.mockRejectedValue(new TypeError('Failed to fetch'))
+      renderStation(fakeSession())
+      expect(
+        await screen.findByText(
+          'Keine Verbindung zum Server – bitte WLAN prüfen.'
+        )
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
+      expect(
+        screen.getByRole('button', { name: 'Erneut versuchen' })
+      ).toBeInTheDocument()
+      // Die Station bleibt eingerichtet - nur das Netz fehlt.
+      expect(loadStation()).not.toBeNull()
+    })
+
     it('zeigt eine laufende Sitzung mit Abmelden', async () => {
       api.fetchStationUsers.mockResolvedValue(USERS)
       renderStation(fakeSession({ role: 'verkauf', sessionKind: 'station' }))

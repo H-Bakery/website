@@ -1,8 +1,9 @@
 'use client'
 import React from 'react'
-import { Box, Button, Paper, Typography } from '@mui/material'
+import { Button } from '@mui/material'
 import { Lock as LockIcon } from '@mui/icons-material'
 import Link from 'next/link'
+import { EmptyState, PageLayout } from '../layout'
 
 /**
  * Ersatz für eine Seite, die die Rolle des angemeldeten Benutzers nicht
@@ -20,29 +21,19 @@ export default function NoAccess({
   reason?: string
 }) {
   return (
-    <Paper
-      component="section"
-      aria-labelledby="no-access-title"
-      sx={{ p: { xs: 3, md: 4 }, maxWidth: 640 }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-        <LockIcon color="disabled" fontSize="large" aria-hidden />
-        <Typography
-          id="no-access-title"
-          variant="h5"
-          component="h1"
-          sx={{ fontSize: { xs: '1.25rem', md: '1.5rem' } }}
-        >
-          Kein Zugriff
-        </Typography>
-      </Box>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        {reason ??
-          `Diese Seite ist für die Rolle „${roleLabel}“ nicht freigegeben.`}
-      </Typography>
-      <Button variant="contained" component={Link} href={startPath}>
-        Zur Startseite
-      </Button>
-    </Paper>
+    <PageLayout title="Kein Zugriff" width="narrow">
+      <EmptyState
+        icon={<LockIcon />}
+        title={
+          reason ??
+          `Diese Seite ist für die Rolle „${roleLabel}“ nicht freigegeben.`
+        }
+        action={
+          <Button variant="contained" component={Link} href={startPath}>
+            Zur Startseite
+          </Button>
+        }
+      />
+    </PageLayout>
   )
 }

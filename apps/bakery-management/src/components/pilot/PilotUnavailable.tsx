@@ -1,8 +1,9 @@
 'use client'
 import React from 'react'
-import { Box, Button, Paper, Typography } from '@mui/material'
+import { Button } from '@mui/material'
 import { Block as BlockIcon } from '@mui/icons-material'
 import Link from 'next/link'
+import { EmptyState, PageLayout } from '../layout'
 
 /**
  * Ersatzseite für Routen, die im Pilotbetrieb gesperrt sind
@@ -11,28 +12,16 @@ import Link from 'next/link'
  */
 export default function PilotUnavailable() {
   return (
-    <Paper
-      component="section"
-      aria-labelledby="pilot-unavailable-title"
-      sx={{ p: { xs: 3, md: 4 }, maxWidth: 640 }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-        <BlockIcon color="disabled" fontSize="large" aria-hidden />
-        <Typography
-          id="pilot-unavailable-title"
-          variant="h5"
-          component="h1"
-          sx={{ fontSize: { xs: '1.25rem', md: '1.5rem' } }}
-        >
-          Im Pilotbetrieb nicht verfügbar
-        </Typography>
-      </Box>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Diese Seite ist während des Pilotbetriebs noch nicht freigegeben.
-      </Typography>
-      <Button variant="contained" component={Link} href="/admin">
-        Zum Dashboard
-      </Button>
-    </Paper>
+    <PageLayout title="Im Pilotbetrieb nicht verfügbar" width="narrow">
+      <EmptyState
+        icon={<BlockIcon />}
+        title="Diese Seite ist während des Pilotbetriebs noch nicht freigegeben."
+        action={
+          <Button variant="contained" component={Link} href="/admin">
+            Zum Dashboard
+          </Button>
+        }
+      />
+    </PageLayout>
   )
 }

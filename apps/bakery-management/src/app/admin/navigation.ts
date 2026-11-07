@@ -53,34 +53,15 @@ export function navHrefs(items: readonly NavItem[]): string[] {
   ])
 }
 
-// Navigation items with submenu support
+// Reihenfolge: Tagesgeschäft (Verkauf, Laden) → Auswertungen (Inhaber) →
+// Verwaltung. Die fertigen Pilot-Bildschirme setzt `getNavigation()` direkt
+// unter das Dashboard.
 export const MANAGEMENT_NAVIGATION: NavItem[] = [
   {
     label: 'Dashboard',
     href: '/admin',
     icon: 'dashboard',
     description: 'Übersicht',
-  },
-  {
-    label: 'Produkte',
-    href: '/admin/products',
-    icon: 'products',
-    description: 'Produktverwaltung',
-  },
-  {
-    // M4: Zählung bei Ladenschluss (Verkauf, Laden-Tablet). Nicht in
-    // PILOT_ALLOWED_ROUTES - im Pilotbetrieb erst nach Freigabe sichtbar.
-    label: 'Rest am Abend',
-    href: '/admin/rest',
-    icon: 'unsold',
-    description: 'Was bei Ladenschluss übrig ist',
-  },
-  {
-    // M4: nur Inhaber (ROLE_ACCESS; API: GET /api/rest/summary).
-    label: 'Rest-Auswertung',
-    href: '/admin/rest/auswertung',
-    icon: 'analytics',
-    description: 'Gebacken, verkauft, übrig',
   },
   {
     // Nicht „Vorbestellungen“: so heißt der kommende allgemeine Bildschirm
@@ -93,16 +74,30 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Vorbestellungen Kindergarten',
   },
   {
+    // M4: Zählung bei Ladenschluss (Verkauf, Laden-Tablet). Nicht in
+    // PILOT_ALLOWED_ROUTES - im Pilotbetrieb erst nach Freigabe sichtbar.
+    label: 'Rest am Abend',
+    href: '/admin/rest',
+    icon: 'unsold',
+    description: 'Was bei Ladenschluss übrig ist',
+  },
+  {
     label: 'Verkaufspartner',
     href: '/admin/partners',
     icon: 'partners',
     description: 'Backschrank & Lieferpartner',
   },
   {
+    label: 'Produkte',
+    href: '/admin/products',
+    icon: 'products',
+    description: 'Produktverwaltung',
+  },
+  {
     label: 'Kassenberichte',
     href: '/admin/reports',
     icon: 'reports',
-    description: 'Kassenberichte aus dem HQ-Archiv',
+    description: 'Tagesabschlüsse der Kasse',
   },
   {
     label: 'Analysen',
@@ -111,16 +106,23 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Umsatz & Produkte',
   },
   {
+    // M4: nur Inhaber (ROLE_ACCESS; API: GET /api/rest/summary).
+    label: 'Rest-Auswertung',
+    href: '/admin/rest/auswertung',
+    icon: 'analytics',
+    description: 'Gebacken, verkauft, übrig',
+  },
+  {
     label: 'Finanzen',
     href: '/admin/finance',
     icon: 'finance',
-    description: 'Kontobewegungen (nur Inhaber)',
+    description: 'Einnahmen und Ausgaben',
   },
   {
     label: 'Tagesziel',
     href: '/admin/finance/tagesziel',
     icon: 'target',
-    description: 'Break-even-Ampel (nur Inhaber)',
+    description: 'Break-even-Ampel',
   },
   {
     label: 'Social Media',
@@ -140,7 +142,7 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     label: 'Einstellungen',
     href: '/admin/settings',
     icon: 'settings',
-    description: 'Systemeinstellungen',
+    description: 'Darstellung, Passwort & PIN',
   },
   {
     label: 'Anmeldung',
@@ -193,7 +195,7 @@ export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
     label: 'Vorbestellungen',
     href: '/admin/preorders',
     icon: 'orders',
-    description: 'Laden, Telefon, WhatsApp & Sammelstelle',
+    description: 'Erfassen, Liste, Tagesübersicht',
     ready: true,
   },
   {

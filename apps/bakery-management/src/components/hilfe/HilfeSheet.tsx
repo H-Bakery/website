@@ -46,10 +46,7 @@ export default function HilfeSheet({
         p: { xs: 2, sm: 3 },
       }}
     >
-      <Box
-        component="h2"
-        sx={{ typography: 'h5', fontWeight: 700, m: 0, mb: 0.5 }}
-      >
+      <Box component="h2" sx={{ typography: 'h2', m: 0, mb: 0.5 }}>
         {title}
       </Box>
       <Box
@@ -71,9 +68,6 @@ export default function HilfeSheet({
               block.tone === 'warning' ? ' sz-warning' : ''
             }`}
             sx={{
-              // Kein Einblenden (global.css: section → sectionFadeIn): beim
-              // Reiterwechsel stünde der Text sonst kurz halb durchsichtig da.
-              animation: 'none',
               breakInside: 'avoid',
               border: block.tone === 'warning' ? 2 : 1,
               borderColor:
