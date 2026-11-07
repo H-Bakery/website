@@ -20,6 +20,7 @@ export {
   LoadingState,
   EmptyState,
   ErrorState,
+  displayErrorMessage,
   type LoadingStateProps,
   type EmptyStateProps,
   type ErrorStateProps,

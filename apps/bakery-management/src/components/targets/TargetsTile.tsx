@@ -11,7 +11,8 @@ import {
   Stack,
   Typography,
 } from '@mui/material'
-import { Login as LoginIcon, Flag as TargetIcon } from '@mui/icons-material'
+import { Login as LoginIcon } from '@mui/icons-material'
+import { PageSection } from '../layout'
 import { useSession } from '../../lib/session'
 import {
   classifyFinanceError,
@@ -131,41 +132,33 @@ export default function TargetsTile() {
     load()
   }, [authLoading, isAuthenticated, load])
 
-  const heading = (
-    <Typography
-      variant="h5"
-      gutterBottom
-      sx={{ mb: { xs: 1.5, md: 2 }, fontSize: { xs: '1.25rem', md: '1.5rem' } }}
+  // Abschnitt des Layout-Kits (h2 „Tagesziel“), wie die übrigen Blöcke des
+  // Dashboards - vorher eigene h5 mit Symbol und eigenem Abstand.
+  const frame = (children: React.ReactNode, actions?: React.ReactNode) => (
+    <PageSection
+      title="Tagesziel"
+      variant="plain"
+      data-testid="targets-tile"
+      description={
+        state.phase === 'ok' && state.data.last_evaluated_date
+          ? `Zuletzt ausgewertet: ${formatReportDate(
+              state.data.last_evaluated_date
+            )}`
+          : undefined
+      }
+      actions={actions}
     >
-      <TargetIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-      Tagesziel
-      {state.phase === 'ok' && state.data.last_evaluated_date && (
-        <Typography
-          component="span"
-          variant="body2"
-          color="text.secondary"
-          sx={{ ml: 1.5 }}
-        >
-          Zuletzt ausgewertet:{' '}
-          {formatReportDate(state.data.last_evaluated_date)}
-        </Typography>
-      )}
-    </Typography>
+      {children}
+    </PageSection>
   )
 
   if (state.phase === 'loading') {
-    return (
-      <Box sx={{ mb: { xs: 2, md: 4 } }} data-testid="targets-tile">
-        {heading}
-        <LinearProgress aria-label="Tagesziel wird geladen" />
-      </Box>
-    )
+    return frame(<LinearProgress aria-label="Tagesziel wird geladen" />)
   }
 
   if (state.phase === 'access') {
-    return (
-      <Box sx={{ mb: { xs: 2, md: 4 } }} data-testid="targets-tile">
-        {heading}
+    return frame(
+      <>
         {state.kind === 'unauthenticated' ? (
           <Paper sx={{ p: { xs: 2, md: 3 } }}>
             <Stack
@@ -201,16 +194,13 @@ export default function TargetsTile() {
             Das Tagesziel konnte nicht geladen werden. {state.message}
           </Alert>
         )}
-      </Box>
+      </>
     )
   }
 
   if (state.phase === 'no-target') {
-    return (
-      <Box sx={{ mb: { xs: 2, md: 4 } }} data-testid="targets-tile">
-        {heading}
-        <Alert severity="info">Kein Tagesziel verfügbar. {state.reason}</Alert>
-      </Box>
+    return frame(
+      <Alert severity="info">Kein Tagesziel verfügbar. {state.reason}</Alert>
     )
   }
 
@@ -258,36 +248,28 @@ export default function TargetsTile() {
     },
   ]
 
-  return (
-    <Box sx={{ mb: { xs: 2, md: 4 } }} data-testid="targets-tile">
-      {heading}
-      <Grid container spacing={{ xs: 1.5, md: 3 }}>
-        {tiles.map((tile) => (
-          <Grid item xs={12} sm={6} md={4} key={tile.key}>
-            <Paper sx={{ p: { xs: 2, md: 3 }, height: '100%' }}>
-              <Typography color="text.secondary" variant="body2">
-                {tile.title}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                {tile.subtitle}
-              </Typography>
-              <Box sx={{ mt: 1 }}>
-                <ValueLine evaluation={tile.evaluation} />
-              </Box>
-              {tile.extra}
-              <LevelRows levels={tile.levels} meta={levels_meta} />
-            </Paper>
-          </Grid>
-        ))}
-      </Grid>
-      <Button
-        size="small"
-        component={Link}
-        href="/admin/finance/tagesziel"
-        sx={{ mt: 1.5 }}
-      >
-        Tagesziel im Detail
-      </Button>
-    </Box>
+  return frame(
+    <Grid container spacing={{ xs: 1.5, md: 3 }}>
+      {tiles.map((tile) => (
+        <Grid item xs={12} sm={6} md={4} key={tile.key}>
+          <Paper sx={{ p: { xs: 2, md: 3 }, height: '100%' }}>
+            <Typography color="text.secondary" variant="body2">
+              {tile.title}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              {tile.subtitle}
+            </Typography>
+            <Box sx={{ mt: 1 }}>
+              <ValueLine evaluation={tile.evaluation} />
+            </Box>
+            {tile.extra}
+            <LevelRows levels={tile.levels} meta={levels_meta} />
+          </Paper>
+        </Grid>
+      ))}
+    </Grid>,
+    <Button size="small" component={Link} href="/admin/finance/tagesziel">
+      Tagesziel im Detail
+    </Button>
   )
 }

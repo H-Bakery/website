@@ -96,6 +96,28 @@ klickbare Flächen selbst auf 44 px bringen.
 (Backzettel, Abholliste, Grundmengen, Hilfe) behalten ihr `@media print`; ein
 Bildschirm-Layout darf dort nicht hineinwirken.
 
+## Für Specs
+
+- `PageSection` ist ein `<section aria-labelledby>`. `getByLabelText(/Notiz/)`
+  trifft deshalb auch die Überschrift „Zahlung & Notiz“ - Felder über
+  `getByRole('textbox', { name: … })` suchen.
+- Zugeklappte `details` stehen im DOM, sind aber unsichtbar und für
+  `getByRole` nicht da: erst den Details-Knopf klicken, dann suchen.
+- `ErrorState` übersetzt rohe Browser-/Proxy-Meldungen („Failed to fetch“,
+  „HTTP 502 …“, „Request timeout“) in „Keine Verbindung zum Server – bitte
+  WLAN prüfen.“ (`displayErrorMessage`). Das ist nur ein Netz - Seiten
+  übersetzen ihre Fehler weiter selbst (`describeBackstubeError`,
+  `backzettelErrorText`, `partners/errorText`, `describeAuthError`).
+
+## Zusätze
+
+- `PageSection printHidden`: Abschnitt nur am Bildschirm (Filter, Knöpfe).
+- `KeyFigures variant="plain"`: Kennzahlen ohne eigene Fläche, für die
+  Verwendung in einer `PageSection` (keine Fläche in der Fläche);
+  `dense`: kleinere Werte für dichte Seiten.
+- `global.css` druckt immer hell (`color-scheme: light`) und ohne Übergänge
+  oder Animationen - auch aus dem Dunkelmodus.
+
 ## Theme
 
 `lib/muiTheme.ts` setzt dafür: `h1` 1,625 rem (Handy) / 2 rem (ab `md`),

@@ -445,23 +445,7 @@ export default function DashboardClient({
       )}
 
       {/* Tagesziel-Ampel (TASK-039): nur nach Anmeldung als Admin */}
-      {showTargets && (
-        // Die Kachel (components/targets) bringt eigenen Abstand und eine
-        // h5-Überschrift mit Symbol mit; hier an die Abschnitte des
-        // Layout-Kits angeglichen (Abstand macht PageLayout, Überschrift wie h2).
-        <Box
-          sx={(theme) => ({
-            '& > [data-testid="targets-tile"]': { mb: 0 },
-            '& > [data-testid="targets-tile"] > h5': {
-              ...theme.typography.h2,
-              mb: 1.5,
-            },
-            '& > [data-testid="targets-tile"] > h5 > svg': { display: 'none' },
-          })}
-        >
-          <TargetsTile />
-        </Box>
-      )}
+      {showTargets && <TargetsTile />}
 
       {quickLinkSection}
 

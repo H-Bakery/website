@@ -114,6 +114,13 @@ describe('PageSection', () => {
     )
     expect(container.querySelector('.MuiPaper-root')).toBeNull()
   })
+
+  it('printHidden: Abschnitt ist als Bildschirm-only markiert', () => {
+    renderWithTheme(
+      <PageSection title="Filter" printHidden data-testid="filter" />
+    )
+    expect(screen.getByTestId('filter')).toHaveAttribute('data-print', 'hide')
+  })
 })
 
 describe('KeyFigures', () => {
@@ -132,6 +139,20 @@ describe('KeyFigures', () => {
     expect(within(list).getAllByRole('term')).toHaveLength(2)
     expect(within(list).getByText('259,80 €')).toBeInTheDocument()
     expect(within(list).getByText('Freitag')).toBeInTheDocument()
+  })
+
+  it('plain: ohne Schatten-Fläche, für Kennzahlen in einer Karte', () => {
+    renderWithTheme(
+      <KeyFigures
+        aria-label="Tag"
+        variant="plain"
+        dense
+        items={[{ label: 'Bestellungen', value: '12' }]}
+      />
+    )
+    const list = screen.getByLabelText('Tag')
+    expect(list.querySelector('.MuiPaper-elevation0')).not.toBeNull()
+    expect(within(list).getByText('12')).toBeInTheDocument()
   })
 })
 
@@ -163,6 +184,23 @@ describe('Zustände', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Keine Verbindung.')
     fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
     expect(onRetry).toHaveBeenCalledTimes(1)
+  })
+
+  it.each([
+    'Failed to fetch',
+    'Load failed',
+    'HTTP 502: Bad Gateway',
+    'Request timeout',
+  ])('ErrorState zeigt statt „%s“ den deutschen Verbindungssatz', (raw) => {
+    renderWithTheme(<ErrorState message={raw} />)
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Keine Verbindung zum Server – bitte WLAN prüfen.'
+    )
+  })
+
+  it('ErrorState lässt deutsche API-Meldungen stehen', () => {
+    renderWithTheme(<ErrorState message="PIN falsch." />)
+    expect(screen.getByRole('alert')).toHaveTextContent('PIN falsch.')
   })
 })
 

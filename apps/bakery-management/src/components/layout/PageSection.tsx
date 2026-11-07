@@ -28,6 +28,8 @@ export interface PageSectionProps {
   /** Beschriftung des Details-Knopfs. Standard: „Details“. */
   detailsLabel?: string
   defaultDetailsOpen?: boolean
+  /** Nur am Bildschirm: der ganze Abschnitt fällt im Druck weg. */
+  printHidden?: boolean
   children?: React.ReactNode
   id?: string
   'data-testid'?: string
@@ -43,6 +45,7 @@ export function PageSection({
   details,
   detailsLabel = 'Details',
   defaultDetailsOpen = false,
+  printHidden = false,
   children,
   id,
   'data-testid': testId,
@@ -162,7 +165,11 @@ export function PageSection({
       component="section"
       aria-labelledby={title ? headingId : undefined}
       data-testid={testId}
-      sx={{ minWidth: 0 }}
+      data-print={printHidden ? 'hide' : undefined}
+      sx={{
+        minWidth: 0,
+        ...(printHidden ? { '@media print': { display: 'none' } } : {}),
+      }}
     >
       {card ? <Paper sx={{ overflow: 'hidden' }}>{body}</Paper> : body}
     </Box>

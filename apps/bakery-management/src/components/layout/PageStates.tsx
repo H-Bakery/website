@@ -8,6 +8,7 @@ import {
   CircularProgress,
   Typography,
 } from '@mui/material'
+import { OFFLINE_TEXT } from '../../lib/backstubeErrors'
 
 /**
  * Lade-, Leer- und Fehlerzustand einer Seite oder eines Abschnitts
@@ -103,6 +104,24 @@ export function EmptyState({
   )
 }
 
+/** Was Browser und Proxy statt einer Antwort melden - nie so anzeigen. */
+const RAW_NETWORK_MESSAGE =
+  /^(TypeError: )?(Failed to fetch|fetch failed|Load failed|NetworkError( when attempting to fetch resource)?\.?|Network request failed|Request timeout|HTTP 50[234]\b.*)$/i
+
+/**
+ * Sicherheitsnetz für `ErrorState`: eine rohe Browser-/Proxy-Meldung
+ * („Failed to fetch“, „HTTP 502: Bad Gateway“) wird zum deutschen Satz des
+ * Backstube-Tablets. Seiten sollten ihre Fehler selbst übersetzen
+ * (`describeBackstubeError`, `backzettelErrorText`, `errorText`,
+ * `describeAuthError`); was durchrutscht, landet nicht englisch beim Personal.
+ */
+export function displayErrorMessage(message: React.ReactNode): React.ReactNode {
+  if (typeof message === 'string' && RAW_NETWORK_MESSAGE.test(message.trim())) {
+    return OFFLINE_TEXT
+  }
+  return message
+}
+
 export interface ErrorStateProps {
   /** Deutsche Meldung (bei API-Fehlern deren `message`). */
   message: React.ReactNode
@@ -137,7 +156,7 @@ export function ErrorState({
       }
     >
       {title && <AlertTitle>{title}</AlertTitle>}
-      {message}
+      {displayErrorMessage(message)}
     </Alert>
   )
 }

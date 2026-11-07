@@ -27,6 +27,14 @@ export interface KeyFiguresProps {
   items: KeyFigure[]
   /** Spalten ab `md`; Standard = Anzahl der Werte, höchstens 4. */
   columns?: 1 | 2 | 3 | 4
+  /**
+   * `card` (Standard): jede Kennzahl auf eigener Fläche. `plain`: ohne
+   * Fläche, mit Trennlinie - für Kennzahlen innerhalb einer
+   * `PageSection variant="card"` (sonst Fläche in Fläche).
+   */
+  variant?: 'card' | 'plain'
+  /** Kleinere Werte für dichte Seiten (Tagesübersicht, Tabellenköpfe). */
+  dense?: boolean
   /** Beschriftung der Gruppe für Screenreader. */
   'aria-label'?: string
   'data-testid'?: string
@@ -44,6 +52,8 @@ function toneColor(tone: KeyFigureTone | undefined): string | undefined {
 export function KeyFigures({
   items,
   columns,
+  variant = 'card',
+  dense = false,
   'aria-label': ariaLabel,
   'data-testid': testId,
 }: KeyFiguresProps) {
@@ -67,7 +77,21 @@ export function KeyFigures({
         <Paper
           key={index}
           data-testid={item['data-testid']}
-          sx={{ p: { xs: 1.5, md: 2 }, minWidth: 0 }}
+          elevation={variant === 'plain' ? 0 : undefined}
+          sx={
+            variant === 'plain'
+              ? {
+                  p: 0,
+                  pl: 1.5,
+                  minWidth: 0,
+                  bgcolor: 'transparent',
+                  backgroundImage: 'none',
+                  borderLeft: 2,
+                  borderColor: 'divider',
+                  borderRadius: 0,
+                }
+              : { p: { xs: 1.5, md: 2 }, minWidth: 0 }
+          }
         >
           <Box
             sx={{
@@ -94,7 +118,9 @@ export function KeyFigures({
               m: 0,
               mt: 0.5,
               fontWeight: 600,
-              fontSize: { xs: '1.25rem', md: '1.5rem' },
+              fontSize: dense
+                ? { xs: '1.0625rem', md: '1.125rem' }
+                : { xs: '1.25rem', md: '1.5rem' },
               lineHeight: 1.25,
               overflowWrap: 'anywhere',
               fontVariantNumeric: 'tabular-nums',
