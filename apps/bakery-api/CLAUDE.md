@@ -123,12 +123,12 @@ plus tours, stops, drivers and depot.)
 global guard (its paths are absolute `/api/...`). It mounts three CommonJS route modules that
 until B12 also served the mock server (`*.mock.js` then, renamed at the cutover); don't fork them:
 
-| Module                     | Endpoints                                                                                             | Access                               |
-| -------------------------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------ |
-| `routes/reports.routes.js` | `GET /api/reports/daily?from=&to=`, `/daily/:date`, `/monthly/:month`                                 | `inhaber` (also at a PIN station)    |
-|                            | `GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}?startDate=&endDate=` | `inhaber` (also at a PIN station)    |
-| `routes/finance.routes.js` | `GET /api/finance/summary`, `/api/finance/months?from=&to=`                                           | `inhaber`, **personal session only** |
-| `routes/targets.routes.js` | `GET /api/finance/targets`, `/targets/status?date=`, `/targets/period?from=&to=`                      | `inhaber`, **personal session only** |
+| Module                     | Endpoints                                                                                                      | Access                               |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| `routes/reports.routes.js` | `GET /api/reports/daily?from=&to=`, `/daily/:date`, `/monthly/:month`                                          | `inhaber` (also at a PIN station)    |
+|                            | `GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}?startDate=&endDate=`          | `inhaber` (also at a PIN station)    |
+| `routes/finance.routes.js` | `GET /api/finance/summary`, `/months?from=&to=`, `/year[/:year]`, `/month[/:month]` (`finance-report.core.js`) | `inhaber`, **personal session only** |
+| `routes/targets.routes.js` | `GET /api/finance/targets`, `/targets/status?date=`, `/targets/period?from=&to=`                               | `inhaber`, **personal session only** |
 
 Shapes are exactly the mock's (pinned by `tests/contract/hq-data.contract.test.ts`, deep-equal bodies),
 including the module-local error bodies (`{ error, message }` for reports, `{ success: false,

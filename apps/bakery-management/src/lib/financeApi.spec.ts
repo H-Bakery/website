@@ -3,7 +3,13 @@ import {
   classifyFinanceError,
   fetchFinanceMonths,
   fetchFinanceSummary,
+  fetchMonthReport,
+  fetchYearReport,
 } from './financeApi'
+import {
+  completeMonthFixture,
+  provisionalYearFixture,
+} from './financeReportFixtures'
 
 jest.mock('@bakery/shared/data-access', () => {
   const actual = jest.requireActual('@bakery/shared/data-access')
@@ -44,6 +50,56 @@ describe('financeApi', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/api/finance/months', {
       from: '2026-01',
     })
+  })
+
+  it('holt den Jahresabschluss mit und ohne Jahr', async () => {
+    const report = provisionalYearFixture()
+    apiClient.get.mockResolvedValue({
+      success: true,
+      status: 'ok',
+      data: report,
+    })
+    expect(await fetchYearReport()).toEqual({ status: 'ok', data: report })
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/finance/year')
+    await fetchYearReport('2025')
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/finance/year/2025')
+  })
+
+  it('holt die Monatsanalyse mit und ohne Monat', async () => {
+    const report = completeMonthFixture()
+    apiClient.get.mockResolvedValue({
+      success: true,
+      status: 'ok',
+      data: report,
+    })
+    expect(await fetchMonthReport()).toEqual({ status: 'ok', data: report })
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/finance/month')
+    await fetchMonthReport('2026-09')
+    expect(apiClient.get).toHaveBeenLastCalledWith('/api/finance/month/2026-09')
+  })
+
+  it('reicht no-data der Berichte mit Grund durch', async () => {
+    apiClient.get.mockResolvedValue({
+      success: true,
+      status: 'no-data',
+      data: null,
+      message: 'Für 2019 gibt es keine Bankdaten.',
+    })
+    expect(await fetchYearReport('2019')).toEqual({
+      status: 'no-data',
+      reason: 'Für 2019 gibt es keine Bankdaten.',
+    })
+    apiClient.get.mockResolvedValue({ success: true, status: 'no-data' })
+    expect(await fetchMonthReport('2019-01')).toEqual({
+      status: 'no-data',
+      reason: 'Keine Finanzdaten vorhanden.',
+    })
+  })
+
+  it('wirft Zugriffsfehler der Berichte weiter', async () => {
+    apiClient.get.mockRejectedValue(new ApiError('Bitte anmelden.', 401))
+    await expect(fetchYearReport()).rejects.toMatchObject({ status: 401 })
+    await expect(fetchMonthReport()).rejects.toMatchObject({ status: 401 })
   })
 
   it('unterscheidet 401, 403 und sonstige Fehler', () => {

@@ -136,6 +136,18 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Break-even-Ampel',
   },
   {
+    label: 'Jahresabschluss',
+    href: '/admin/finance/jahr',
+    icon: 'yearreport',
+    description: 'Einnahmen und Ausgaben im Jahr',
+  },
+  {
+    label: 'Monatsanalyse',
+    href: '/admin/finance/monat',
+    icon: 'monthreport',
+    description: 'Auffälligkeiten im Monat',
+  },
+  {
     label: 'Social Media',
     href: '/admin/social-media',
     icon: 'socialmedia',

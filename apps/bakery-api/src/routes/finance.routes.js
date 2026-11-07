@@ -4,8 +4,15 @@
  *   GET /api/finance/summary            bereinigtes finance-summary.json
  *                                       + abgeleitete Reihen (`derived`)
  *   GET /api/finance/months?from=&to=   Monatsreihe Einnahmen/Ausgaben/Ergebnis
+ *   GET /api/finance/year[/:year]       Jahresabschluss (vorläufig), ohne Jahr
+ *                                       das jüngste mit Bankdaten
+ *   GET /api/finance/month[/:month]     Monatsanalyse, ohne Monat der jüngste
+ *                                       vollständige
  *
- * Beide nur mit Rolle `inhaber` (401 ohne Sitzung, 403 mit anderer Rolle). Die
+ * Jahr und Monat rechnet `src/services/finance-report.core.js`; dazu kommen
+ * die Monatssummen der Kasse (`HQ_REPORTS_DIR`) für den Kassenabgleich.
+ *
+ * Alle nur mit Rolle `inhaber` (401 ohne Sitzung, 403 mit anderer Rolle). Die
  * Rechen- und Bereinigungslogik steht ausschließlich in
  * `src/services/finance.core.js`; hier wird nur gelesen und geantwortet.
  *
@@ -24,6 +31,9 @@
 const fs = require('fs')
 const path = require('path')
 const finance = require('../services/finance.core')
+const report = require('../services/finance-report.core')
+const reportsCore = require('../services/reports.core')
+const reportsFiles = require('../services/reports-files.core')
 
 const SUMMARY_FILENAME = 'finance-summary.json'
 
@@ -92,7 +102,35 @@ function install(app, auth, options = {}) {
   const log = options.log || console
   const financeDir =
     options.financeDir || process.env.HQ_FINANCE_DIR || defaultFinanceDir()
+  const reportsDir =
+    options.reportsDir ||
+    reportsFiles.resolveReportsDir(path.join(__dirname, '..', '..', '..', '..'))
   const ownerOnly = auth.requireRole('inhaber')
+
+  /** Monatssummen der Kasse für `months` (`JJJJ-MM`), je Monat oder fehlend. */
+  function kasseFor(months) {
+    const wanted = months.filter(reportsCore.isValidMonth).sort()
+    if (wanted.length === 0) return {}
+    const from = reportsCore.monthBounds(wanted[0]).from
+    const to = reportsCore.monthBounds(wanted[wanted.length - 1]).to
+    const reports = reportsFiles.readDailyReportsInRange(
+      reportsDir,
+      from,
+      to,
+      log.error
+    )
+    const out = {}
+    for (const month of wanted) {
+      const agg = reportsCore.aggregateMonth(month, reports)
+      if (agg.status === 'ok') out[month] = agg
+    }
+    return out
+  }
+
+  function sendReport(res, built) {
+    if (built.status !== 'ok') return sendNoData(res, built.reason)
+    res.json({ success: true, status: 'ok', data: built.data })
+  }
 
   app.get('/api/finance/summary', ownerOnly, (req, res) => {
     const loaded = loadSummary(financeDir, log)
@@ -137,6 +175,58 @@ function install(app, auth, options = {}) {
       },
     })
   })
+
+  const yearHandler = (req, res) => {
+    const loaded = loadSummary(financeDir, log)
+    if (loaded.status !== 'ok') return sendNoData(res, loaded.reason)
+    const years = report.availableYears(loaded.summary)
+    const year = req.params.year || years[0]
+    if (req.params.year && !report.isValidYear(req.params.year)) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: 'Jahr bitte vierstellig angeben (JJJJ).',
+      })
+    }
+    if (!year) return sendNoData(res, 'Keine Monate in den Finanzdaten.')
+    const months = Array.from(
+      { length: 12 },
+      (_, i) => `${year}-${String(i + 1).padStart(2, '0')}`
+    )
+    sendReport(
+      res,
+      report.buildYearReport(loaded.summary, year, {
+        kasseByMonth: kasseFor(months),
+      })
+    )
+  }
+  app.get('/api/finance/year', ownerOnly, yearHandler)
+  app.get('/api/finance/year/:year', ownerOnly, yearHandler)
+
+  const monthHandler = (req, res) => {
+    if (req.params.month && !report.isValidMonth(req.params.month)) {
+      return res.status(400).json({
+        success: false,
+        error: 'validation',
+        message: 'Monat bitte im Format JJJJ-MM angeben.',
+      })
+    }
+    const loaded = loadSummary(financeDir, log)
+    if (loaded.status !== 'ok') return sendNoData(res, loaded.reason)
+    const month = req.params.month || report.latestCompleteMonth(loaded.summary)
+    if (!month) return sendNoData(res, 'Keine Monate in den Finanzdaten.')
+    const lastYear = report.addMonths(month, -12)
+    const kasse = kasseFor([lastYear, month])
+    sendReport(
+      res,
+      report.buildMonthReport(loaded.summary, month, {
+        kasse: kasse[month],
+        kassePreviousYear: kasse[lastYear],
+      })
+    )
+  }
+  app.get('/api/finance/month', ownerOnly, monthHandler)
+  app.get('/api/finance/month/:month', ownerOnly, monthHandler)
 
   log.log(`[finance] Endpunkte aktiv, Datenquelle: ${financeDir}`)
   return app

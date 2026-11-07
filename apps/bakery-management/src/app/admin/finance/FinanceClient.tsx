@@ -27,6 +27,8 @@ import {
   CheckCircleOutline as OkIcon,
   ErrorOutline as WarnIcon,
   Login as LoginIcon,
+  Summarize as YearReportIcon,
+  CalendarMonth as MonthReportIcon,
 } from '@mui/icons-material'
 import {
   Bar,
@@ -647,6 +649,26 @@ export default function FinanceClient() {
       title={TITLE}
       subtitle={SUBTITLE}
       status={<InvariantBadge invariant={summary.derived.invariant} />}
+      actions={
+        <>
+          <Button
+            component={Link}
+            href="/admin/finance/jahr"
+            variant="outlined"
+            startIcon={<YearReportIcon />}
+          >
+            Jahresabschluss
+          </Button>
+          <Button
+            component={Link}
+            href="/admin/finance/monat"
+            variant="outlined"
+            startIcon={<MonthReportIcon />}
+          >
+            Monatsanalyse
+          </Button>
+        </>
+      }
     >
       <PageSection
         detailsLabel="Was diese Zahlen sind"

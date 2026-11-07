@@ -13,9 +13,11 @@
 import { apiClient, ApiError } from '@bakery/shared/data-access'
 import { backzettelErrorText } from './backstubeErrors'
 import type {
+  FinanceMonthReport,
   FinanceMonthsResponse,
   FinanceResult,
   FinanceSummaryResponse,
+  FinanceYearReport,
 } from './financeTypes'
 
 interface FinanceEnvelope<T> {
@@ -53,6 +55,39 @@ export async function fetchFinanceMonths(
     '/api/finance/months',
     range
   )) as FinanceEnvelope<FinanceMonthsResponse>
+  return toResult(res)
+}
+
+/**
+ * Jahresabschluss (vorläufig) eines Jahres (`JJJJ`); ohne Jahr das jüngste
+ * mit Bankdaten. Gerechnet wird ausschließlich auf dem Server
+ * (`finance-report.core.js`).
+ */
+export async function fetchYearReport(
+  year?: string
+): Promise<FinanceResult<FinanceYearReport>> {
+  const path = year
+    ? `/api/finance/year/${encodeURIComponent(year)}`
+    : '/api/finance/year'
+  const res = (await apiClient.get<FinanceYearReport>(
+    path
+  )) as FinanceEnvelope<FinanceYearReport>
+  return toResult(res)
+}
+
+/**
+ * Monatsanalyse eines Monats (`JJJJ-MM`); ohne Monat der jüngste
+ * vollständige.
+ */
+export async function fetchMonthReport(
+  month?: string
+): Promise<FinanceResult<FinanceMonthReport>> {
+  const path = month
+    ? `/api/finance/month/${encodeURIComponent(month)}`
+    : '/api/finance/month'
+  const res = (await apiClient.get<FinanceMonthReport>(
+    path
+  )) as FinanceEnvelope<FinanceMonthReport>
   return toResult(res)
 }
 

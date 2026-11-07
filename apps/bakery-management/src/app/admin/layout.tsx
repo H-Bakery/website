@@ -32,6 +32,8 @@ import {
   RemoveShoppingCart as UnsoldIcon,
   AccountBalance as FinanceIcon,
   Flag as TargetIcon,
+  Summarize as YearReportIcon,
+  CalendarMonth as MonthReportIcon,
   Login as LoginIcon,
   ManageAccounts as UsersIcon,
   Checklist as PickupIcon,
@@ -63,6 +65,7 @@ import {
 import NoAccess from '../../components/auth/NoAccess'
 import LogoutButton from '../../components/auth/LogoutButton'
 import { formatDateLong, isIsoDate } from '../../lib/backzettelFormat'
+import { formatMonth } from '../../lib/reportFormat'
 import { useFocusNotObscured } from '../../components/layout/focusNotObscured'
 import { FOCUS_RING_COLOR } from '../../lib/muiTheme'
 
@@ -128,6 +131,8 @@ const iconMap: Record<string, React.ReactElement> = {
   analytics: <AnalyticsIcon />,
   finance: <FinanceIcon />,
   target: <TargetIcon />,
+  yearreport: <YearReportIcon />,
+  monthreport: <MonthReportIcon />,
   login: <LoginIcon />,
   users: <UsersIcon />,
   pickup: <PickupIcon />,
@@ -201,6 +206,8 @@ function getBreadcrumb(pathname: string, includeRoot = true): string[] {
       if (/^\/admin\/products\/[^/]+$/.test(href)) return 'Bearbeiten'
       // Tage (Backzettel, Kassenbericht …) als „Donnerstag, 05.11.2026“
       if (isIsoDate(segment)) return formatDateLong(segment)
+      // Monate (Monatsanalyse) als „Oktober 2026“
+      if (/^\d{4}-(0[1-9]|1[0-2])$/.test(segment)) return formatMonth(segment)
       return segment
     })
     .filter((label): label is string => label !== null)

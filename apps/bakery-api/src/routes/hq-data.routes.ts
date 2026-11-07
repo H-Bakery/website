@@ -8,7 +8,8 @@
  *         /api/reports/monthly/:month
  *     GET /api/analytics/{revenue-trends,product-performance,payment-methods,summary}
  *   src/routes/finance.routes.js   install(app, auth, { financeDir })
- *     GET /api/finance/summary, /api/finance/months?from=&to=
+ *     GET /api/finance/summary, /api/finance/months?from=&to=,
+ *         /api/finance/year[/:year], /api/finance/month[/:month]
  *   src/routes/targets.routes.js   install(app, auth, { financeDir, reportsDir })
  *     GET /api/finance/targets, /targets/status?date=, /targets/period?from=&to=
  *
@@ -132,6 +133,7 @@ export function createHqDataRouter(options: HqDataOptions = {}): Router {
   })
   financeRoutes.install(router, auth, {
     financeDir: options.financeDir,
+    reportsDir: options.reportsDir,
     log,
   })
   targetsRoutes.install(router, auth, {

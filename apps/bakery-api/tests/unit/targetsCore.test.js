@@ -203,6 +203,32 @@ describe('targets.core - Konfiguration', () => {
 // ---------------------------------------------------------------------------
 
 describe('targets.core - computeCostBase', () => {
+  it('lässt angebrochene Monate (laufend, Datenbeginn) aus dem Kostenfenster', () => {
+    const config = core.validateConfig(derivedConfig()).config
+    const summary = syntheticSummary()
+    // Februar beginnt erst am 20., Juni läuft noch (bis 06.06.) - beide mit
+    // fast keinen Kosten; sie dürfen die Monatsmittel nicht drücken.
+    const tiny = {
+      month: '',
+      transactions: 1,
+      operating_income: 500,
+      operating_expense: -100,
+      operating_result: 400,
+      neutral: 0,
+      net_change: 400,
+      categories: { umsatz: bucket(500, { bar: 500 }), personal: bucket(-100) },
+    }
+    summary.months = [
+      { ...tiny, month: '2026-02' },
+      ...summary.months,
+      { ...tiny, month: '2026-06' },
+    ]
+    summary.period = { from: '2026-02-20', to: '2026-06-06' }
+    const base = core.computeCostBase(summary, config)
+    expect(base.window).toEqual({ from: '2026-03', to: '2026-05', months: 3 })
+    expect(base.fixed_costs_monthly).toBe(4000)
+  })
+
   it('leitet Fixkosten, Kostenquote und Deckungsbeitrag aus dem Fenster ab', () => {
     const config = core.validateConfig(derivedConfig()).config
     const base = core.computeCostBase(syntheticSummary(), config)

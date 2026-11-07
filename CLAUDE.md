@@ -450,6 +450,37 @@ der Oberfläche. Nicht zugeordnete Buchungen sind gewollt und ein Info-Hinweis, 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/finance*.test.js` (Core,
 Auth und Routen) und `npx nx test bakery-management` (`src/lib/finance.spec.ts`, `FinanceClient.spec.tsx`).
 
+## Jahresabschluss und Monatsanalyse (`/admin/finance/jahr`, `/admin/finance/monat/[JJJJ-MM]`)
+
+Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse:
+`GET /api/finance/year[/:year]` und `/api/finance/month[/:month]` (`finance.routes.js`, Rechte wie
+`/api/finance/summary`). Gerechnet wird **nur** in `apps/bakery-api/src/services/finance-report.core.js`
+(dependency-freies CommonJS); die Seiten zeigen an, auch die Hinweistexte kommen vom Server.
+
+- **„Vorläufig“ ist ein Status, kein Etikett:** `final` nur, wenn die Bankdaten das ganze Jahr
+  abdecken; `provisional` für ein laufendes Jahr (mit Hochrechnung: Ist + Vorjahresmonat, sonst Ø
+  der letzten 12 vollständigen Monate, der laufende Monat anteilig nach Tagen); `incomplete`, wenn
+  die Bankdaten erst im Jahr beginnen - dann **keine** Hochrechnung. Es bleibt eine Cashflow-Sicht
+  (Zuflussprinzip), kein steuerlicher Abschluss; was fehlt (AfA, Bestand, offene Rechnungen,
+  Barausgaben aus der Kasse, Kosten über das Verrechnungskonto), steht als `notes` in jeder Antwort.
+- **Nur vollständige Monate zählen in Durchschnitten** (`monthCoverage` gegen `period`). Ein
+  angebrochener Monat hat in der Monatsanalyse keine Vergleiche (`comparison.*`, `average`, `diff`
+  sind `null`, `highlights_reason: 'partial'`). Dieselbe Regel gilt seit diesem Stand für das
+  Kostenfenster des Tagesziels (`lastMonths` in `targets.core.js`) - vorher drückte der laufende
+  Monat mit wenigen Tagen Kosten die Fixkosten je Monat.
+- **Auffälligkeiten** messen Ausgaben am **Abfluss** (`expense`), nicht am Netto - sonst sähe eine
+  Steuererstattung wie eine neue Ausgabe aus. Regeln und Schwellen (1,5 × Ø und ≥ 300 €, „fehlt“
+  nur bei regelmäßigen Posten) im Kopf von `highlightsOf`; erst ab 6 Vergleichsmonaten.
+- **Kassenabgleich** (Kasse bar + Karte gegen Bareinzahlungen + Kartenabrechnungen) nur über
+  vollständige Monate. Bekannte Kleinigkeit: die Kasse zählt Bons „ohne Zahlung“ mit Betrag zum
+  Umsatz, der Kassenabschluss nicht (wenige Euro im Jahr) - eine Änderung bräche die
+  aufgezeichneten Antworten in `tests/contract/recorded/hq-data.json` und braucht eine bewusste
+  Vertragsentscheidung.
+
+Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/financeReport` (Core
+und Routen, Fixture `tests/fixtures/finance-report.synthetic.js`) und in der Management-App
+`admin/finance/{jahr,monat}/**/*.spec.tsx` (Fixtures `src/lib/financeReportFixtures.ts`, erfunden).
+
 ## Tagesziel-Ampel (`/admin/finance/tagesziel`, TASK-039)
 
 Break-even als Tagesziel je Wochentag, rückblickend aus den Tagesabschlüssen der Kasse; Dashboard-Kachel
