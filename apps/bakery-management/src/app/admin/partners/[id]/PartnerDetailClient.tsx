@@ -80,6 +80,7 @@ import {
   deliveryDaysText,
   isProvisionalState,
 } from '../partnerUi'
+import { errorText } from '../errorText'
 
 type DayView = DayDetail & { visits: PartnerVisit[] }
 type Totals = PartnerStats['totals']
@@ -373,9 +374,7 @@ export default function PartnerDetailClient({
     if (failed) {
       setDay(null)
       setError(
-        failed instanceof Error && failed.message
-          ? failed.message
-          : 'Die Partnerdaten konnten nicht geladen werden.'
+        errorText(failed, 'Die Partnerdaten konnten nicht geladen werden.')
       )
     } else if (dayResult.status === 'fulfilled') {
       setDay(dayResult.value)
@@ -429,10 +428,7 @@ export default function PartnerDetailClient({
       await load()
     } catch (err) {
       setFeedback({
-        message:
-          err instanceof Error
-            ? err.message
-            : 'Der Besuch konnte nicht gelöscht werden.',
+        message: errorText(err, 'Der Besuch konnte nicht gelöscht werden.'),
         severity: 'error',
       })
     } finally {

@@ -7,6 +7,7 @@ import { apiClient } from '@bakery/shared/data-access'
 import { PageLayout } from '../../../../components/layout'
 import ProductForm, { type ProductFormValues } from '../ProductForm'
 import { PRICE_INPUT_ERROR, parsePriceInput } from '../priceInput'
+import { errorText } from '../../partners/errorText'
 
 const EMPTY: ProductFormValues = {
   name: '',
@@ -66,7 +67,7 @@ export default function NewProductPage() {
       router.push(newId ? `/admin/products/${newId}` : '/admin/products')
     } catch (err) {
       setFeedback({
-        message: err instanceof Error ? err.message : 'Fehler beim Anlegen',
+        message: errorText(err, 'Fehler beim Anlegen'),
         severity: 'error',
       })
       setSaving(false)

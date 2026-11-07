@@ -44,15 +44,12 @@ import {
   isProvisionalState,
   type DayState,
 } from './partnerUi'
+import { errorText } from './errorText'
 
 interface PartnerCard {
   partner: Partner
   today: DayDetail | null
   todayError: string | null
-}
-
-function messageOf(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback
 }
 
 /** Ein Satz zur Lage des Tages - „vorläufig“ steht immer dabei, wo es gilt. */
@@ -271,7 +268,7 @@ export default function PartnerOverviewClient() {
             return {
               partner,
               today: null,
-              todayError: messageOf(
+              todayError: errorText(
                 err,
                 'Tagesdaten konnten nicht geladen werden'
               ),
@@ -284,7 +281,7 @@ export default function PartnerOverviewClient() {
     } catch (err) {
       if (request !== requestRef.current) return
       setCards([])
-      setError(messageOf(err, 'Verkaufspartner konnten nicht geladen werden'))
+      setError(errorText(err, 'Verkaufspartner konnten nicht geladen werden'))
     } finally {
       if (request === requestRef.current) setLoading(false)
     }

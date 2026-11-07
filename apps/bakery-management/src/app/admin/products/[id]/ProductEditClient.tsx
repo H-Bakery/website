@@ -22,6 +22,7 @@ import {
   formatPriceInput,
   parsePriceInput,
 } from '../priceInput'
+import { errorText } from '../../partners/errorText'
 
 const BACK = { href: '/admin/products', label: 'Alle Produkte' }
 
@@ -142,7 +143,7 @@ export default function ProductEditClient({
       })
     } catch (err) {
       setFeedback({
-        message: err instanceof Error ? err.message : 'Fehler beim Speichern',
+        message: errorText(err, 'Fehler beim Speichern'),
         severity: 'error',
       })
     } finally {

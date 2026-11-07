@@ -49,6 +49,7 @@ import {
   PageSection,
 } from '../../../../../components/layout'
 import { useConfirmLeave } from '../../partnerUi'
+import { errorText } from '../../errorText'
 
 interface CategoryGroup {
   category: string
@@ -156,11 +157,7 @@ export default function TemplatesClient({
       setSaved(stored)
       setDrafts(cloneMap(stored))
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Vorlagen konnten nicht geladen werden'
-      )
+      setError(errorText(err, 'Vorlagen konnten nicht geladen werden'))
     } finally {
       setLoading(false)
     }
@@ -319,11 +316,7 @@ export default function TemplatesClient({
         severity: 'success',
       })
     } catch (err) {
-      setSaveError(
-        err instanceof Error
-          ? err.message
-          : 'Vorlage konnte nicht gespeichert werden'
-      )
+      setSaveError(errorText(err, 'Vorlage konnte nicht gespeichert werden'))
     } finally {
       setSaving(false)
     }

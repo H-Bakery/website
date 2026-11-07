@@ -11,6 +11,7 @@ import {
   LoadingState,
   PageLayout,
 } from '../../../components/layout'
+import { errorText } from '../partners/errorText'
 
 type State =
   | { phase: 'loading' }
@@ -32,10 +33,7 @@ export default function ProductsPageClient() {
     } catch (err) {
       setState({
         phase: 'error',
-        message:
-          err instanceof Error && err.message
-            ? err.message
-            : 'Die Produkte konnten nicht geladen werden.',
+        message: errorText(err, 'Die Produkte konnten nicht geladen werden.'),
       })
     }
   }, [])

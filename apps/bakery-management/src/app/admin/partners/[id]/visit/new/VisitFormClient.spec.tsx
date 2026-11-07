@@ -752,6 +752,21 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(mockPush).toHaveBeenCalledWith(DETAIL_AFTER_SAVE)
   })
 
+  it('behauptet ohne erreichbare API nicht, es gäbe keine Standard-Bestückung', async () => {
+    mockFetchTemplates.mockRejectedValue(new TypeError('Failed to fetch'))
+    await renderForm({ initialDate: BUSINESS_DATE })
+
+    expect(
+      await screen.findByText(
+        'Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).toBeNull()
+    expect(
+      screen.queryByText(/keine Standard-Bestückung hinterlegt/)
+    ).toBeNull()
+  })
+
   it('shows the German error message and keeps the draft when saving fails', async () => {
     mockCreateVisit.mockRejectedValueOnce(
       new Error('Der Besuch konnte nicht gespeichert werden - Server offline')

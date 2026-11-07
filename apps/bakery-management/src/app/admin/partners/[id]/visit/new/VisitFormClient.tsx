@@ -68,6 +68,7 @@ import {
   PageLayout,
   PageSection,
 } from '../../../../../../components/layout'
+import { errorText } from '../../../errorText'
 
 export interface CatalogueGroup {
   category: string
@@ -641,11 +642,7 @@ export default function VisitFormClient({
         applyVisit(visit)
       }
     } catch (err) {
-      setLoadError(
-        err instanceof Error
-          ? err.message
-          : 'Die Daten konnten nicht geladen werden'
-      )
+      setLoadError(errorText(err, 'Die Daten konnten nicht geladen werden'))
     } finally {
       setLoading(false)
     }
@@ -919,7 +916,9 @@ export default function VisitFormClient({
   }, [visitType])
 
   useEffect(() => {
-    if (loading || isEditing) return
+    // Ohne geladene Vorlagen (API nicht erreichbar) nichts behaupten - sonst
+    // stand „keine Standard-Bestückung hinterlegt“ da, obwohl es eine gibt.
+    if (loading || isEditing || loadError) return
     if (visitType !== 'initial' || weekday == null) return
     if (appliedWeekdayRef.current === weekday) return
     appliedWeekdayRef.current = weekday
@@ -943,6 +942,7 @@ export default function VisitFormClient({
   }, [
     loading,
     isEditing,
+    loadError,
     visitType,
     weekday,
     templateForWeekday,
@@ -1139,11 +1139,7 @@ export default function VisitFormClient({
       router.push(`${detailHref}&saved=1`)
       router.refresh()
     } catch (err) {
-      setSaveError(
-        err instanceof Error
-          ? err.message
-          : 'Der Besuch konnte nicht gespeichert werden'
-      )
+      setSaveError(errorText(err, 'Der Besuch konnte nicht gespeichert werden'))
       setSaving(false)
     }
   }

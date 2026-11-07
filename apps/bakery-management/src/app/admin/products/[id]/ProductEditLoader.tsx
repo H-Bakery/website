@@ -11,6 +11,7 @@ import {
   LoadingState,
   PageLayout,
 } from '../../../../components/layout'
+import { errorText } from '../../partners/errorText'
 
 const BACK = { href: '/admin/products', label: 'Alle Produkte' }
 
@@ -41,10 +42,7 @@ export default function ProductEditLoader({
     } catch (err) {
       setState({
         phase: 'error',
-        message:
-          err instanceof Error && err.message
-            ? err.message
-            : 'Das Produkt konnte nicht geladen werden.',
+        message: errorText(err, 'Das Produkt konnte nicht geladen werden.'),
       })
     }
   }, [productId])

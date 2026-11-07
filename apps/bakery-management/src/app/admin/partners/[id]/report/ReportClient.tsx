@@ -65,6 +65,7 @@ import {
   PageSection,
 } from '../../../../../components/layout'
 import { ProvisionalBadge } from '../../partnerUi'
+import { errorText } from '../../errorText'
 
 /* ------------------------------------------------------------------ *
  * Zeitraum
@@ -345,11 +346,7 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
       setStats(statsData)
     } catch (err) {
       if (request !== requestRef.current) return
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Der Report konnte nicht geladen werden'
-      )
+      setError(errorText(err, 'Der Report konnte nicht geladen werden'))
     } finally {
       if (request === requestRef.current) setLoading(false)
     }
@@ -410,11 +407,7 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
     try {
       await downloadReportCsv(partnerId, range)
     } catch (err) {
-      setCsvError(
-        err instanceof Error && err.message
-          ? err.message
-          : 'Der CSV-Export ist fehlgeschlagen.'
-      )
+      setCsvError(errorText(err, 'Der CSV-Export ist fehlgeschlagen.'))
     } finally {
       setCsvBusy(false)
     }
