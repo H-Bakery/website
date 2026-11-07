@@ -14,6 +14,11 @@
  *      so a suite that depends on "now" fails today instead of on the day its
  *      recorded dates pass (B12: there is no mock left to re-record from).
  */
+// The API runs in Europe/Berlin on the box (deploy/bakery.env.example TZ=, checked by install.sh):
+// business days and delivery time windows ("09:00-09:30") are local times. CI runners are UTC, so
+// pin the zone here - set before any worker starts, they inherit it.
+process.env.TZ = 'Europe/Berlin'
+
 const path = require('path')
 const { pathsToModuleNameMapper } = require('ts-jest')
 const { compilerOptions } = require('../../tsconfig.base.json')
