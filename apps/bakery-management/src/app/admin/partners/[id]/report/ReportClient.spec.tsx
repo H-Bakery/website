@@ -2,7 +2,7 @@ import React from 'react'
 import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import ReportClient from './ReportClient'
+import ReportClient, { PRINT_CHART_WIDTH } from './ReportClient'
 import {
   fetchPartner,
   fetchStats,
@@ -44,10 +44,11 @@ jest.mock('recharts', () => {
   }
   return {
     ResponsiveContainer: stub('responsive-container'),
-    BarChart: (props: { data?: unknown[] }) =>
+    BarChart: (props: { data?: unknown[]; width?: number }) =>
       react.createElement('div', {
         'data-testid': 'bar-chart',
         'data-point-count': String(props.data ? props.data.length : 0),
+        'data-width': props.width == null ? '' : String(props.width),
       }),
     Bar: stub('bar'),
     Cell: stub('cell'),
@@ -363,6 +364,33 @@ describe('ReportClient', () => {
     expect(
       screen.getByText(/Die Abverkaufsquote rechnet nur Tage mit Abholung/)
     ).toBeInTheDocument()
+  })
+
+  it('druckt das Diagramm mit fester Papierbreite statt der Bildschirmbreite (ui r2)', async () => {
+    mockFetchStats.mockResolvedValue(STATS_COMPLETE)
+    await renderReport()
+
+    const chart = screen.getByTestId('report-chart')
+    expect(chart).toHaveAttribute('data-layout', 'screen')
+    expect(screen.getByTestId('responsive-container')).toBeInTheDocument()
+
+    // Am Büro-PC (1440 px) behielt ResponsiveContainer beim Drucken seine
+    // Bildschirmbreite: Achsen ~4 pt, Legende rechts abgeschnitten.
+    act(() => {
+      window.dispatchEvent(new Event('beforeprint'))
+    })
+    expect(chart).toHaveAttribute('data-layout', 'print')
+    expect(screen.queryByTestId('responsive-container')).toBeNull()
+    expect(screen.getByTestId('bar-chart')).toHaveAttribute(
+      'data-width',
+      String(PRINT_CHART_WIDTH)
+    )
+
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'))
+    })
+    expect(chart).toHaveAttribute('data-layout', 'screen')
+    expect(screen.getByTestId('responsive-container')).toBeInTheDocument()
   })
 
   it('does not warn about provisional figures for a completed period', async () => {

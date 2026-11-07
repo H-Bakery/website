@@ -1,5 +1,6 @@
 'use client'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import {
   Alert,
   AlertTitle,
@@ -286,12 +287,51 @@ const COMPACT_TABLE = {
 /** Spalten, die auf schmalen Bildschirmen wegfallen - im Druck aber bleiben. */
 const mdOnlyCell = { display: { xs: 'none', md: 'table-cell' } }
 
+/**
+ * Breite des Diagramms auf dem Papier (A4 hoch, 14 mm Rand, abzüglich des
+ * Kartenrands) in CSS-Pixeln.
+ */
+export const PRINT_CHART_WIDTH = 620
+const PRINT_CHART_HEIGHT = 300
+
+/**
+ * `true`, solange gedruckt wird. `ResponsiveContainer` misst beim Drucken
+ * nicht neu: am Büro-PC (1440 px) behielt das Diagramm seine Bildschirmbreite,
+ * wurde aufs Blatt verkleinert (Achsen ~4 pt) und die Legende lief rechts aus
+ * der Karte. Deshalb rendert der Druck das Diagramm mit fester Breite -
+ * synchron (`flushSync`) in `beforeprint`, sonst stünde beim Layout fürs
+ * Papier noch der alte Stand.
+ */
+function usePrinting(): boolean {
+  const [printing, setPrinting] = useState(false)
+  useEffect(() => {
+    const start = () => flushSync(() => setPrinting(true))
+    const stop = () => setPrinting(false)
+    const media =
+      typeof window.matchMedia === 'function'
+        ? window.matchMedia('print')
+        : null
+    const onMediaChange = (event: MediaQueryListEvent) =>
+      event.matches ? start() : stop()
+    window.addEventListener('beforeprint', start)
+    window.addEventListener('afterprint', stop)
+    media?.addEventListener?.('change', onMediaChange)
+    return () => {
+      window.removeEventListener('beforeprint', start)
+      window.removeEventListener('afterprint', stop)
+      media?.removeEventListener?.('change', onMediaChange)
+    }
+  }, [])
+  return printing
+}
+
 /* ------------------------------------------------------------------ *
  * Seite
  * ------------------------------------------------------------------ */
 
 export default function ReportClient({ partnerId }: { partnerId: string }) {
   const theme = useTheme()
+  const printing = usePrinting()
 
   const [range, setRange] = useState<DateRange>({ from: '', to: '' })
   const [preset, setPreset] = useState<PresetKey | null>('thisWeek')
@@ -383,6 +423,149 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
 
   const deliveredColor = theme.palette.primary.main
   const soldColor = theme.palette.success.main
+
+  /** Ohne `size` setzt `ResponsiveContainer` Breite und Höhe (Bildschirm). */
+  const renderChart = (size?: { width: number; height: number }) => (
+    <BarChart
+      {...size}
+      data={chartData}
+      // Bei ein, zwei Tagen sonst handbreite Balken. Feste
+      // Breite statt `maxBarSize`: die setzt jeden Balken
+      // einzeln in die Mitte seines Platzes, das Paar fällt
+      // auseinander. Ab drei Tagen reicht der Platz am Handy
+      // dafür nicht mehr.
+      barSize={chartData.length <= 2 ? 40 : undefined}
+      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+    >
+      <defs>
+        <pattern
+          id={PATTERN_DELIVERED}
+          patternUnits="userSpaceOnUse"
+          width="6"
+          height="6"
+          patternTransform="rotate(45)"
+        >
+          <rect width="6" height="6" fill={deliveredColor} fillOpacity={0.18} />
+          <line
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="6"
+            stroke={deliveredColor}
+            strokeWidth="3"
+          />
+        </pattern>
+        <pattern
+          id={PATTERN_SOLD}
+          patternUnits="userSpaceOnUse"
+          width="6"
+          height="6"
+          patternTransform="rotate(45)"
+        >
+          <rect width="6" height="6" fill={soldColor} fillOpacity={0.18} />
+          <line
+            x1="0"
+            y1="0"
+            x2="0"
+            y2="6"
+            stroke={soldColor}
+            strokeWidth="3"
+          />
+        </pattern>
+      </defs>
+      <CartesianGrid
+        strokeDasharray="3 3"
+        stroke={theme.palette.divider}
+        vertical={false}
+      />
+      <XAxis
+        dataKey="label"
+        stroke={theme.palette.text.secondary}
+        tick={{
+          fill: theme.palette.text.secondary,
+          fontSize: 12,
+        }}
+      />
+      <YAxis
+        allowDecimals={false}
+        stroke={theme.palette.text.secondary}
+        tick={{
+          fill: theme.palette.text.secondary,
+          fontSize: 12,
+        }}
+      />
+      <Tooltip
+        cursor={{ fill: theme.palette.action.hover }}
+        content={({ active, payload }) => (
+          <DayTooltip
+            active={active}
+            datum={
+              payload && payload.length
+                ? (payload[0].payload as DayDatum)
+                : undefined
+            }
+          />
+        )}
+      />
+      <Legend
+        wrapperStyle={{ fontSize: 12 }}
+        payload={[
+          {
+            id: 'delivered',
+            value: 'Geliefert',
+            type: 'square',
+            color: deliveredColor,
+          },
+          {
+            id: 'sold',
+            value: 'Verkauft',
+            type: 'square',
+            color: soldColor,
+          },
+          {
+            id: 'open',
+            value: 'Schraffiert: Abholung fehlt oder unvollständig (vorläufig)',
+            type: 'square',
+            color: theme.palette.text.secondary,
+          },
+        ]}
+      />
+      <Bar
+        dataKey="delivered"
+        name="Geliefert"
+        fill={deliveredColor}
+        radius={[3, 3, 0, 0]}
+      >
+        {chartData.map((day) => (
+          <Cell
+            key={`delivered-${day.fullLabel}`}
+            fill={
+              day.isOpen || day.isIncomplete
+                ? `url(#${PATTERN_DELIVERED})`
+                : deliveredColor
+            }
+          />
+        ))}
+      </Bar>
+      <Bar
+        dataKey="sold"
+        name="Verkauft"
+        fill={soldColor}
+        radius={[3, 3, 0, 0]}
+      >
+        {chartData.map((day) => (
+          <Cell
+            key={`sold-${day.fullLabel}`}
+            fill={
+              day.isOpen || day.isIncomplete
+                ? `url(#${PATTERN_SOLD})`
+                : soldColor
+            }
+          />
+        ))}
+      </Bar>
+    </BarChart>
+  )
 
   const addressLines = partner
     ? [partner.street, [partner.zip, partner.city].filter(Boolean).join(' ')]
@@ -613,7 +796,7 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   gap: 2,
                 }}
               >
-                <Box>
+                <Box sx={{ flex: '1 1 0', minWidth: 0 }}>
                   <Typography variant="overline">Partner-Report</Typography>
                   <Typography variant="h5" component="p">
                     {partner.name}
@@ -629,7 +812,16 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     </Typography>
                   )}
                 </Box>
-                <Box sx={{ textAlign: 'right' }}>
+                {/* Rechte Spalte breiter als die linke und je Angabe eine
+                    Zeile - sonst brach sie mitten im Satz um
+                    („…verkaufte / Ware“, „Nachlieferungen: / 0)“). */}
+                <Box
+                  sx={{
+                    textAlign: 'right',
+                    flex: '0 1 auto',
+                    maxWidth: '62%',
+                  }}
+                >
                   <Typography variant="body2">
                     <strong>Zeitraum:</strong> {periodText}
                   </Typography>
@@ -637,8 +829,10 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   {/* Im Druck fehlt die Zeitraumwahl - die Eckdaten stehen
                       deshalb hier, als Liste statt als Fließtext. */}
                   <Typography variant="body2">
-                    Geschäftstage: {stats.totals.dayCount} · Besuche:{' '}
-                    {stats.totals.visitCount} (davon Nachlieferungen:{' '}
+                    Geschäftstage: {stats.totals.dayCount}
+                  </Typography>
+                  <Typography variant="body2" sx={{ whiteSpace: 'nowrap' }}>
+                    Besuche: {stats.totals.visitCount} (davon Nachlieferungen:{' '}
                     {stats.totals.refillCount})
                   </Typography>
                   {createdAt && (
@@ -934,158 +1128,21 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                   title="Tagesverlauf"
                   description="Gelieferte und verkaufte Stückzahl je Geschäftstag"
                 >
-                  <Box sx={{ width: '100%', height: 320 }}>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart
-                        data={chartData}
-                        // Bei ein, zwei Tagen sonst handbreite Balken. Feste
-                        // Breite statt `maxBarSize`: die setzt jeden Balken
-                        // einzeln in die Mitte seines Platzes, das Paar fällt
-                        // auseinander. Ab drei Tagen reicht der Platz am Handy
-                        // dafür nicht mehr.
-                        barSize={chartData.length <= 2 ? 40 : undefined}
-                        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
-                      >
-                        <defs>
-                          <pattern
-                            id={PATTERN_DELIVERED}
-                            patternUnits="userSpaceOnUse"
-                            width="6"
-                            height="6"
-                            patternTransform="rotate(45)"
-                          >
-                            <rect
-                              width="6"
-                              height="6"
-                              fill={deliveredColor}
-                              fillOpacity={0.18}
-                            />
-                            <line
-                              x1="0"
-                              y1="0"
-                              x2="0"
-                              y2="6"
-                              stroke={deliveredColor}
-                              strokeWidth="3"
-                            />
-                          </pattern>
-                          <pattern
-                            id={PATTERN_SOLD}
-                            patternUnits="userSpaceOnUse"
-                            width="6"
-                            height="6"
-                            patternTransform="rotate(45)"
-                          >
-                            <rect
-                              width="6"
-                              height="6"
-                              fill={soldColor}
-                              fillOpacity={0.18}
-                            />
-                            <line
-                              x1="0"
-                              y1="0"
-                              x2="0"
-                              y2="6"
-                              stroke={soldColor}
-                              strokeWidth="3"
-                            />
-                          </pattern>
-                        </defs>
-                        <CartesianGrid
-                          strokeDasharray="3 3"
-                          stroke={theme.palette.divider}
-                          vertical={false}
-                        />
-                        <XAxis
-                          dataKey="label"
-                          stroke={theme.palette.text.secondary}
-                          tick={{
-                            fill: theme.palette.text.secondary,
-                            fontSize: 12,
-                          }}
-                        />
-                        <YAxis
-                          allowDecimals={false}
-                          stroke={theme.palette.text.secondary}
-                          tick={{
-                            fill: theme.palette.text.secondary,
-                            fontSize: 12,
-                          }}
-                        />
-                        <Tooltip
-                          cursor={{ fill: theme.palette.action.hover }}
-                          content={({ active, payload }) => (
-                            <DayTooltip
-                              active={active}
-                              datum={
-                                payload && payload.length
-                                  ? (payload[0].payload as DayDatum)
-                                  : undefined
-                              }
-                            />
-                          )}
-                        />
-                        <Legend
-                          wrapperStyle={{ fontSize: 12 }}
-                          payload={[
-                            {
-                              id: 'delivered',
-                              value: 'Geliefert',
-                              type: 'square',
-                              color: deliveredColor,
-                            },
-                            {
-                              id: 'sold',
-                              value: 'Verkauft',
-                              type: 'square',
-                              color: soldColor,
-                            },
-                            {
-                              id: 'open',
-                              value:
-                                'Schraffiert: Abholung fehlt oder unvollständig (vorläufig)',
-                              type: 'square',
-                              color: theme.palette.text.secondary,
-                            },
-                          ]}
-                        />
-                        <Bar
-                          dataKey="delivered"
-                          name="Geliefert"
-                          fill={deliveredColor}
-                          radius={[3, 3, 0, 0]}
-                        >
-                          {chartData.map((day) => (
-                            <Cell
-                              key={`delivered-${day.fullLabel}`}
-                              fill={
-                                day.isOpen || day.isIncomplete
-                                  ? `url(#${PATTERN_DELIVERED})`
-                                  : deliveredColor
-                              }
-                            />
-                          ))}
-                        </Bar>
-                        <Bar
-                          dataKey="sold"
-                          name="Verkauft"
-                          fill={soldColor}
-                          radius={[3, 3, 0, 0]}
-                        >
-                          {chartData.map((day) => (
-                            <Cell
-                              key={`sold-${day.fullLabel}`}
-                              fill={
-                                day.isOpen || day.isIncomplete
-                                  ? `url(#${PATTERN_SOLD})`
-                                  : soldColor
-                              }
-                            />
-                          ))}
-                        </Bar>
-                      </BarChart>
-                    </ResponsiveContainer>
+                  <Box
+                    data-testid="report-chart"
+                    data-layout={printing ? 'print' : 'screen'}
+                    sx={{ width: '100%', height: 320 }}
+                  >
+                    {printing ? (
+                      renderChart({
+                        width: PRINT_CHART_WIDTH,
+                        height: PRINT_CHART_HEIGHT,
+                      })
+                    ) : (
+                      <ResponsiveContainer width="100%" height="100%">
+                        {renderChart()}
+                      </ResponsiveContainer>
+                    )}
                   </Box>
                 </PageSection>
 

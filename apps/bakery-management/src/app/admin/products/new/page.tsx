@@ -4,7 +4,10 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { apiClient } from '@bakery/shared/data-access'
 import { PageLayout } from '../../../../components/layout'
-import ProductForm, { type ProductFormValues } from '../ProductForm'
+import ProductForm, {
+  type ProductFormValues,
+  productNameError,
+} from '../ProductForm'
 import { PRICE_INPUT_ERROR, parsePriceInput } from '../priceInput'
 import { errorText } from '../../partners/errorText'
 
@@ -32,6 +35,13 @@ export default function NewProductPage() {
     if (!values.name.trim()) {
       setFeedback({
         message: 'Bitte einen Produktnamen angeben',
+        severity: 'error',
+      })
+      return
+    }
+    if (productNameError(values.name)) {
+      setFeedback({
+        message: 'Nicht gespeichert: der Produktname ist zu lang.',
         severity: 'error',
       })
       return

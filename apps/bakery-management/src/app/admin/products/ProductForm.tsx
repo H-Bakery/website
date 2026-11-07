@@ -35,6 +35,20 @@ export interface ProductFormValues {
   description: string
 }
 
+/** Höchstlänge des Namens wie in der API (`product-input.core.js`). */
+export const MAX_PRODUCT_NAME_LENGTH = 120
+
+/**
+ * Fehler am Namensfeld schon beim Tippen - die API lehnt längere Namen ab,
+ * und deren Meldung stand sonst erst nach dem Absenden unten am Knopf.
+ */
+export function productNameError(name: string): string | null {
+  const length = name.trim().length
+  return length > MAX_PRODUCT_NAME_LENGTH
+    ? `Höchstens ${MAX_PRODUCT_NAME_LENGTH} Zeichen - jetzt ${length}.`
+    : null
+}
+
 export const STATUS_LABELS: Record<ProductStatus, string> = {
   active: 'Verfügbar',
   seasonal: 'Saisonal',
@@ -85,6 +99,8 @@ export default function ProductForm({
     (value: ProductFormValues[K]) =>
       onChange({ ...values, [key]: value })
   const preview = displayImage(values.image.trim(), values.category)
+  const nameError = productNameError(values.name)
+  const nameLength = values.name.trim().length
 
   return (
     <>
@@ -98,6 +114,13 @@ export default function ProductForm({
               onChange={(e) => set('name')(e.target.value)}
               fullWidth
               disabled={readOnly}
+              error={Boolean(nameError)}
+              helperText={
+                nameError ||
+                (nameLength > MAX_PRODUCT_NAME_LENGTH - 20
+                  ? `${nameLength}/${MAX_PRODUCT_NAME_LENGTH} Zeichen`
+                  : undefined)
+              }
             />
           </Grid>
           <Grid item xs={12} sm={6}>

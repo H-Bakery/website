@@ -15,6 +15,7 @@ import { useOptionalSession } from '../../../../lib/session'
 import { EmptyState, PageLayout } from '../../../../components/layout'
 import ProductForm, {
   STATUS_LABELS,
+  productNameError,
   type ProductFormValues,
 } from '../ProductForm'
 import {
@@ -76,6 +77,13 @@ export default function ProductEditClient({
     if (!values.name.trim()) {
       setFeedback({
         message: 'Bitte einen Produktnamen angeben',
+        severity: 'error',
+      })
+      return
+    }
+    if (productNameError(values.name)) {
+      setFeedback({
+        message: 'Nicht gespeichert: der Produktname ist zu lang.',
         severity: 'error',
       })
       return

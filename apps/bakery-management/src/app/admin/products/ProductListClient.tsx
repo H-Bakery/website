@@ -21,6 +21,7 @@ import type { ManagementProduct } from '../../../lib/products'
 import { PENDING_APPROVAL_LABEL } from '../../../lib/products'
 import { useOptionalSession } from '../../../lib/session'
 import { formatCurrency } from '../../../lib/partnerTypes'
+import { TOUCH_MEDIA } from '../../../lib/muiTheme'
 import {
   EmptyState,
   PageLayout,
@@ -58,6 +59,16 @@ function matchesFilter(product: ManagementProduct, filter: StatusFilter) {
       return true
   }
 }
+
+/**
+ * Filter-Chips sind Knöpfe: am Laden-Tablet und Handy mindestens 44 px hoch
+ * wie die übrigen Bedienelemente (das Theme hebt nur Button, IconButton,
+ * ToggleButton … an, nicht Chip - der lag bei 32 px).
+ */
+const STATUS_FILTER_CHIP_SX = {
+  fontVariantNumeric: 'tabular-nums',
+  [TOUCH_MEDIA]: { height: 44, borderRadius: 22, px: 0.5 },
+} as const
 
 /**
  * Status als Text, nicht als 56 gleiche farbige Chips: nur die Ausnahmen
@@ -307,7 +318,7 @@ export default function ProductListClient({
                     variant={filter === key ? 'filled' : 'outlined'}
                     onClick={() => setFilter(key)}
                     label={`${FILTER_LABELS[key]} ${counts[key]}`}
-                    sx={{ fontVariantNumeric: 'tabular-nums' }}
+                    sx={STATUS_FILTER_CHIP_SX}
                   />
                 ))}
               </Box>

@@ -268,4 +268,22 @@ describe('ProductEditLoader', () => {
     ).not.toHaveLength(0)
     expect(apiClient.put).not.toHaveBeenCalled()
   })
+
+  it('zu langer Name: Hinweis am Feld schon beim Tippen, nichts gesendet (ui r2)', async () => {
+    apiClient.get.mockResolvedValue({ success: true, data: musterbrot })
+    renderWithTheme(<ProductEditLoader productId="musterbrot" />)
+    const name = await screen.findByLabelText(/^Produktname/)
+    fireEvent.change(name, { target: { value: 'B'.repeat(110) } })
+    expect(screen.getByText('110/120 Zeichen')).toBeInTheDocument()
+    fireEvent.change(name, { target: { value: 'B'.repeat(163) } })
+    expect(name).toHaveAttribute('aria-invalid', 'true')
+    expect(
+      screen.getByText('Höchstens 120 Zeichen - jetzt 163.')
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+    expect(
+      await screen.findByText('Nicht gespeichert: der Produktname ist zu lang.')
+    ).toBeInTheDocument()
+    expect(apiClient.put).not.toHaveBeenCalled()
+  })
 })
