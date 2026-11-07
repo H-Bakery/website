@@ -5,7 +5,6 @@ import {
   Box,
   Chip,
   IconButton,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -34,6 +33,7 @@ import {
   previouslyDoneText,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
+import { PageSection } from '../layout'
 
 export interface BackzettelSectionViewProps {
   section: BackzettelSection
@@ -201,7 +201,60 @@ function CorrectionValue({
   )
 }
 
-const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
+const NUM = {
+  textAlign: 'right' as const,
+  whiteSpace: 'nowrap' as const,
+  fontVariantNumeric: 'tabular-nums',
+}
+
+/** Gesamt: die Zahl, nach der gebacken wird - groß, aber keine Überschrift. */
+const TOTAL_SX = {
+  fontSize: '1.25rem',
+  fontWeight: 700,
+  lineHeight: 1.3,
+  fontVariantNumeric: 'tabular-nums',
+}
+
+/**
+ * Herkunft einer Zeile für die Karte am Handy: nur Quellen mit Wert
+ * („Basis 80 · Vorbestellt 20“) statt eines Rasters aus vier Feldern mit
+ * drei Strichen. Basis steht immer da - „offen“ ist keine 0.
+ */
+function SourcesLine({ line }: { line: BackzettelLine }) {
+  const parts: React.ReactNode[] = []
+  const add = (label: string, value: number | null, signed = false) => {
+    if (value === null || value === 0) return
+    parts.push(
+      <span key={label}>
+        {label} {signed ? formatSigned(value) : formatNumber(value)}
+      </span>
+    )
+  }
+  add('Saison', line.seasonal, true)
+  add('Vorbestellt', line.preorders)
+  add('CAP', line.cap)
+  return (
+    <Typography
+      variant="body2"
+      color="text.secondary"
+      component="div"
+      sx={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        alignItems: 'center',
+        columnGap: 1,
+        rowGap: 0.5,
+        mt: 0.5,
+        '& > span + span::before': { content: '"· "' },
+      }}
+    >
+      <span>
+        Basis <BaseValue line={line} />
+      </span>
+      {parts}
+    </Typography>
+  )
+}
 
 /**
  * Ein Abschnitt des Backzettels (Brot, Brötchen, Hefeteig, …): ab `md` als
@@ -221,17 +274,11 @@ export function BackzettelSectionView({
     onSaveCorrection(line, c, r)
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{ mb: 2, overflow: 'hidden' }}
+    <PageSection
+      title={section.label}
+      disablePadding
       data-testid={`section-${section.id}`}
     >
-      <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}>
-        <Typography variant="h6" component="h2">
-          {section.label}
-        </Typography>
-      </Box>
-
       {/* Tabelle ab md */}
       <TableContainer
         sx={{ display: { xs: 'none', md: 'block' } }}
@@ -298,8 +345,7 @@ export function BackzettelSectionView({
                     <TableCell sx={NUM}>
                       <Typography
                         component="span"
-                        variant="h6"
-                        fontWeight={700}
+                        sx={TOTAL_SX}
                         data-testid={`line-total-${line.key}`}
                       >
                         {formatQty(line.total, line.unit)}
@@ -357,90 +403,62 @@ export function BackzettelSectionView({
               >
                 <LineName line={line} config={config} />
                 <Typography
-                  variant="h5"
                   component="div"
-                  fontWeight={700}
-                  sx={{ whiteSpace: 'nowrap' }}
+                  sx={{ ...TOTAL_SX, fontSize: '1.5rem', whiteSpace: 'nowrap' }}
                   aria-label={`Gesamt ${label}`}
                 >
                   {formatQty(line.total, line.unit)}
                 </Typography>
               </Stack>
-              <Box
-                component="dl"
-                sx={{
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
-                  gap: 0.5,
-                  m: 0,
-                  mt: 1,
-                  '& dt': { typography: 'caption', color: 'text.secondary' },
-                  '& dd': { m: 0, typography: 'body2' },
-                }}
-              >
-                <div>
-                  <dt>Basis</dt>
-                  <dd>
-                    <BaseValue line={line} />
-                  </dd>
-                </div>
-                <div>
-                  <dt>Saison</dt>
-                  <dd>{formatSigned(line.seasonal)}</dd>
-                </div>
-                <div>
-                  <dt>Vorbest.</dt>
-                  <dd>{formatOrDash(line.preorders)}</dd>
-                </div>
-                <div>
-                  <dt>CAP</dt>
-                  <dd>{formatOrDash(line.cap)}</dd>
-                </div>
-              </Box>
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ mt: 0.5, minHeight: 44 }}
-              >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="body2">
-                    Korrektur: {formatSigned(line.correction)}
-                    {line.correctionClamped && (
+              <SourcesLine line={line} />
+              {(editable ||
+                line.correction !== 0 ||
+                line.correctionClamped) && (
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  sx={{ mt: 0.5, minHeight: editable ? 44 : 0 }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography variant="body2">
+                      Korrektur: {formatSigned(line.correction)}
+                      {line.correctionClamped && (
+                        <Typography
+                          component="span"
+                          variant="body2"
+                          color="error"
+                          fontWeight={600}
+                        >
+                          {' '}
+                          - größer als die Menge
+                        </Typography>
+                      )}
+                    </Typography>
+                    {line.correctionReason && (
                       <Typography
-                        component="span"
-                        variant="body2"
-                        color="error"
-                        fontWeight={600}
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ overflowWrap: 'anywhere' }}
                       >
-                        {' '}
-                        - größer als die Menge
+                        {line.correctionReason}
+                        {line.correctionBy
+                          ? ` (${line.correctionBy.displayName})`
+                          : ''}
                       </Typography>
                     )}
-                  </Typography>
-                  {line.correctionReason && (
-                    <Typography
-                      variant="caption"
-                      color="text.secondary"
-                      sx={{ overflowWrap: 'anywhere' }}
+                  </Box>
+                  {editable && !editing && (
+                    <IconButton
+                      onClick={() => onEdit(line.key)}
+                      aria-label={`Korrektur ${label} bearbeiten`}
+                      sx={{ width: 44, height: 44 }}
                     >
-                      {line.correctionReason}
-                      {line.correctionBy
-                        ? ` (${line.correctionBy.displayName})`
-                        : ''}
-                    </Typography>
+                      <EditIcon fontSize="small" />
+                    </IconButton>
                   )}
-                </Box>
-                {editable && !editing && (
-                  <IconButton
-                    onClick={() => onEdit(line.key)}
-                    aria-label={`Korrektur ${label} bearbeiten`}
-                    sx={{ width: 44, height: 44 }}
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </Stack>
+                </Stack>
+              )}
               {editing && (
                 <CorrectionEditor
                   idPrefix="card"
@@ -454,7 +472,7 @@ export function BackzettelSectionView({
           )
         })}
       </Box>
-    </Paper>
+    </PageSection>
   )
 }
 

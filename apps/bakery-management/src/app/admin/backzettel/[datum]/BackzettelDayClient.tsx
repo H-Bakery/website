@@ -7,18 +7,18 @@ import {
   AlertTitle,
   Box,
   Button,
-  CircularProgress,
+  Chip,
+  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
   IconButton,
-  Paper,
   Snackbar,
   Stack,
   TextField,
-  Typography,
+  Tooltip,
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
@@ -53,10 +53,10 @@ import {
   formatTimestamp,
   isIsoDate,
   neighbourProductionDay,
-  openDeltas,
   parseDecimal,
 } from '../../../../lib/backzettelFormat'
 import { useOptionalSession } from '../../../../lib/session'
+import { backzettelErrorText } from '../../../../lib/backstubeErrors'
 import { BackzettelSectionView } from '../../../../components/backzettel/BackzettelSectionView'
 import { HefeteigCard } from '../../../../components/backzettel/HefeteigCard'
 import { PrepCard } from '../../../../components/backzettel/PrepCard'
@@ -66,11 +66,17 @@ import {
   BackzettelPrint,
   backzettelPrintStyles,
 } from '../../../../components/backzettel/BackzettelPrint'
+import {
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../components/layout'
 
 const MIN_TOUCH = { minHeight: 44 }
 
 function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return backzettelErrorText(error, fallback)
 }
 
 /**
@@ -94,6 +100,64 @@ function isStaleError(error: unknown): boolean {
 }
 
 const STALE_SUFFIX = ' Der Backzettel wurde neu geladen.'
+
+/** So viele Hinweise stehen offen da; der Rest hinter „Alle anzeigen“. */
+const WARNINGS_SHOWN = 2
+
+/**
+ * Hinweise des Tages (offene Grundmengen, unbekannte Produkte …): die ersten
+ * zwei sichtbar, der Rest aufklappbar - sechs Zeilen Gelb über dem Zettel
+ * drängten die Mengen am Handy aus dem Bild (Layout-Kit: höchstens zwei
+ * Hinweise oben). Weg ist keiner: die Zahl steht im Titel.
+ */
+function WarningsAlert({
+  warnings,
+}: {
+  warnings: { code: string; message: string }[]
+}) {
+  const [open, setOpen] = React.useState(false)
+  const first = warnings.slice(0, WARNINGS_SHOWN)
+  const rest = warnings.slice(WARNINGS_SHOWN)
+  return (
+    <Alert severity="warning" data-testid="warnings">
+      <AlertTitle>
+        {warnings.length === 1 ? 'Hinweis' : `Hinweise (${warnings.length})`}
+      </AlertTitle>
+      <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+        {first.map((w, i) => (
+          <li key={`${w.code}-${i}`}>{w.message}</li>
+        ))}
+      </Box>
+      {rest.length > 0 && (
+        <>
+          <Collapse in={open} id="bz-warnings-more">
+            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+              {rest.map((w, i) => (
+                <li key={`${w.code}-more-${i}`}>{w.message}</li>
+              ))}
+            </Box>
+          </Collapse>
+          <Button
+            size="small"
+            color="inherit"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-controls="bz-warnings-more"
+            sx={{
+              mt: 0.5,
+              px: 0,
+              minHeight: 36,
+              textTransform: 'none',
+              textDecoration: 'underline',
+            }}
+          >
+            {open ? 'Weniger anzeigen' : `Alle ${warnings.length} anzeigen`}
+          </Button>
+        </>
+      )}
+    </Alert>
+  )
+}
 
 export interface BackzettelDayClientProps {
   date: string
@@ -132,26 +196,40 @@ export default function BackzettelDayClient({
     ChangedTotal[] | null
   >(null)
 
+  // Reihenfolge der Antworten: ein Laden, das vor einer Änderung (Freigabe,
+  // Korrektur, Saisonfaktor, Wieder öffnen) losging und erst danach
+  // zurückkommt, trägt den alten Stand - er darf den neuen nicht
+  // überschreiben (sonst stünde nach „Freigeben“ wieder ein Entwurf mit
+  // aktiven Knöpfen da). Ebenso überholt jedes neuere Laden ein älteres.
+  const dataVersion = React.useRef(0)
+  const loadSeq = React.useRef(0)
+
   const applyDay = React.useCallback((day: BackzettelDayResult) => {
+    dataVersion.current += 1
     setResult(day)
     if (isBackzettelDay(day)) setSeasonInput(formatFactor(day.seasonFactor))
   }, [])
 
   const load = React.useCallback(async () => {
     if (!validDate) return
+    const seq = ++loadSeq.current
+    const version = dataVersion.current
     setLoading(true)
     setLoadError(null)
     const [cfg, day] = await Promise.allSettled([
       fetchBackzettelConfig(),
       fetchBackzettelDay(date),
     ])
+    if (seq !== loadSeq.current) return
+    setLoading(false)
     if (cfg.status === 'fulfilled') setConfig(cfg.value?.config ?? null)
+    // Inzwischen hat eine Änderung einen neueren Stand gebracht.
+    if (version !== dataVersion.current) return
     if (day.status === 'fulfilled') applyDay(day.value)
     else
       setLoadError(
         messageOf(day.reason, 'Der Backzettel konnte nicht geladen werden.')
       )
-    setLoading(false)
   }, [applyDay, date, validDate])
 
   React.useEffect(() => {
@@ -320,9 +398,23 @@ export default function BackzettelDayClient({
       const fresh = await fetchBackzettelDay(date)
       applyDay(fresh)
     } catch (error) {
-      setActionError(
-        messageOf(error, 'Der Nachtrag konnte nicht quittiert werden.')
+      const message = messageOf(
+        error,
+        'Der Nachtrag konnte nicht quittiert werden.'
       )
+      // 404 not_found: der Nachtrag ist nicht mehr offen (anderes Gerät hat
+      // wieder geöffnet/neu freigegeben). Dann neu laden - sonst blieben
+      // „Gesehen“-Knöpfe für Nachträge stehen, die es nicht mehr gibt.
+      const e = error as { status?: number; code?: string } | null
+      if (
+        isStaleError(error) ||
+        (e?.status === 404 && e.code === 'not_found')
+      ) {
+        setActionError(message + STALE_SUFFIX)
+        void load()
+      } else {
+        setActionError(message)
+      }
     } finally {
       setAckingId(null)
     }
@@ -331,37 +423,14 @@ export default function BackzettelDayClient({
   const previous = validDate ? neighbourProductionDay(date, -1, days) : null
   const next = validDate ? neighbourProductionDay(date, 1, days) : null
 
-  const header = (
-    <Stack
-      direction={{ xs: 'column', sm: 'row' }}
-      spacing={1.5}
-      alignItems={{ xs: 'stretch', sm: 'center' }}
-      justifyContent="space-between"
-      sx={{ mb: 2 }}
-    >
-      <Box sx={{ minWidth: 0 }}>
-        <Typography
-          variant="h4"
-          component="h1"
-          sx={{ fontSize: { xs: '1.6rem', sm: '2rem' } }}
+  // Kopf: eine Hauptaktion (Freigeben), Drucken und Wieder öffnen umrandet,
+  // Blättern und Neuladen als Symbole (Layout-Kit).
+  const navButtons = (
+    <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+      {previous && (
+        <Tooltip
+          title={`Voriger Produktionstag (${formatDateShort(previous)})`}
         >
-          Backzettel
-        </Typography>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
-          <Typography variant="h6" component="p">
-            {validDate ? formatDateLong(date) : date}
-          </Typography>
-          {day && <BackzettelStatusChip status={day.status} size="medium" />}
-        </Stack>
-      </Box>
-      <Stack
-        direction="row"
-        spacing={1}
-        alignItems="center"
-        flexWrap="wrap"
-        useFlexGap
-      >
-        {previous && (
           <IconButton
             component={Link}
             href={`/admin/backzettel/${previous}`}
@@ -370,8 +439,10 @@ export default function BackzettelDayClient({
           >
             <ChevronLeftIcon />
           </IconButton>
-        )}
-        {next && (
+        </Tooltip>
+      )}
+      {next && (
+        <Tooltip title={`Nächster Produktionstag (${formatDateShort(next)})`}>
           <IconButton
             component={Link}
             href={`/admin/backzettel/${next}`}
@@ -380,31 +451,94 @@ export default function BackzettelDayClient({
           >
             <ChevronRightIcon />
           </IconButton>
-        )}
-        <Button component={Link} href="/admin/backzettel" sx={MIN_TOUCH}>
-          Übersicht
-        </Button>
-        <IconButton
-          onClick={() => void load()}
-          aria-label="Aktualisieren"
-          disabled={loading}
-          sx={{ width: 44, height: 44 }}
-        >
-          <RefreshIcon />
-        </IconButton>
-        {day && (
-          <Button
-            variant="outlined"
-            startIcon={<PrintIcon />}
-            onClick={() => window.print()}
-            sx={MIN_TOUCH}
-          >
-            Drucken
-          </Button>
-        )}
-      </Stack>
+        </Tooltip>
+      )}
+      {validDate && (
+        <Tooltip title="Aktualisieren">
+          <span>
+            <IconButton
+              onClick={() => void load()}
+              aria-label="Aktualisieren"
+              disabled={loading}
+              sx={{ width: 44, height: 44 }}
+            >
+              <RefreshIcon />
+            </IconButton>
+          </span>
+        </Tooltip>
+      )}
     </Stack>
   )
+
+  const headerActions = (
+    <>
+      {navButtons}
+      {day && (
+        <Button
+          variant="outlined"
+          startIcon={<PrintIcon />}
+          onClick={() => window.print()}
+          sx={MIN_TOUCH}
+        >
+          Drucken
+        </Button>
+      )}
+      {day && canReopen && day.status === 'confirmed' && (
+        <Button
+          variant="outlined"
+          startIcon={<LockOpenIcon />}
+          onClick={() => setReopenOpen(true)}
+          disabled={busy}
+          sx={MIN_TOUCH}
+        >
+          Wieder öffnen
+        </Button>
+      )}
+      {day && canPlan && isDraft && (
+        <Button
+          variant="contained"
+          color="success"
+          startIcon={<TaskAltIcon />}
+          onClick={() => setConfirmOpen(true)}
+          disabled={busy || day.configStatus !== 'ok'}
+          sx={MIN_TOUCH}
+        >
+          Freigeben
+        </Button>
+      )}
+    </>
+  )
+
+  // Eine Zeile unter dem Datum: wer freigegeben hat bzw. was ein Entwurf
+  // heißt, dazu der Saisonfaktor (lesend; ändern im Abschnitt „Planung“).
+  let subtitle: React.ReactNode = validDate ? 'Backzettel' : undefined
+  if (day) {
+    const season = editable
+      ? null
+      : `Saisonfaktor ${formatFactor(day.seasonFactor)}`
+    const state =
+      day.status === 'confirmed'
+        ? `Freigegeben${
+            day.confirmedBy ? ` von ${day.confirmedBy.displayName}` : ''
+          }${day.confirmedAt ? ` am ${formatTimestamp(day.confirmedAt)}` : ''}`
+        : 'Entwurf - rechnet live mit den Vorbestellungen'
+    subtitle = [state, season].filter(Boolean).join(' · ')
+  }
+
+  const status = day ? (
+    <>
+      <BackzettelStatusChip status={day.status} size="medium" />
+      {!canPlan && (
+        <Tooltip title="Planen und freigeben können Inhaber und Backstube.">
+          <Chip
+            variant="outlined"
+            label="Nur Ansicht"
+            data-testid="read-only"
+          />
+        </Tooltip>
+      )}
+    </>
+  ) : undefined
 
   let body: React.ReactNode
   if (!validDate) {
@@ -415,24 +549,9 @@ export default function BackzettelDayClient({
       </Alert>
     )
   } else if (loading && !result) {
-    body = (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-        <CircularProgress aria-label="Backzettel wird geladen" />
-      </Box>
-    )
+    body = <LoadingState label="Backzettel wird geladen …" />
   } else if (loadError && !result) {
-    body = (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" onClick={() => void load()} sx={MIN_TOUCH}>
-            Erneut versuchen
-          </Button>
-        }
-      >
-        {loadError}
-      </Alert>
-    )
+    body = <ErrorState message={loadError} onRetry={() => void load()} />
   } else if (result?.status === 'ruhetag') {
     body = (
       <Alert severity="info" data-testid="ruhetag">
@@ -475,112 +594,66 @@ export default function BackzettelDayClient({
       </Alert>
     )
   } else if (day) {
-    const openCount = openDeltas(day).length
     body = (
       <>
-        <Stack spacing={1.5} sx={{ mb: 2 }}>
-          {day.status === 'confirmed' && (
-            <Alert severity="success" icon={<TaskAltIcon />}>
-              Freigegeben
-              {day.confirmedBy ? ` von ${day.confirmedBy.displayName}` : ''}
-              {day.confirmedAt ? ` am ${formatTimestamp(day.confirmedAt)}` : ''}
-              . Die Mengen sind eingefroren
-              {openCount > 0
-                ? `; ${openCount} ${
-                    openCount === 1 ? 'Nachtrag ist' : 'Nachträge sind'
-                  } noch offen.`
-                : '.'}
-            </Alert>
-          )}
-          {confirmChanges && day.status === 'confirmed' && (
-            <Alert
-              severity="warning"
-              data-testid="confirm-changes"
-              onClose={() => setConfirmChanges(null)}
-            >
-              <AlertTitle>
-                Freigegeben mit dem aktuellen Stand – abweichend von der Anzeige
-              </AlertTitle>
-              Seit dem Laden der Seite hat sich etwas geändert (z. B. eine neue
-              Vorbestellung). Eingefroren wurde:
-              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-                {confirmChanges.map((c) => (
-                  <li key={c.line.key}>
-                    {lineLabel(c.line, config)}:{' '}
-                    {c.before === null ? '–' : formatQty(c.before, c.line.unit)}{' '}
-                    →{' '}
-                    <strong>
-                      {c.after === null ? '–' : formatQty(c.after, c.line.unit)}
-                    </strong>
-                  </li>
-                ))}
-              </Box>
-            </Alert>
-          )}
-          {day.configChangedSinceConfirm && (
-            <Alert severity="info" data-testid="config-changed">
-              Die Stammdaten haben sich seit der Freigabe geändert. Dieser
-              Zettel bleibt so, wie er freigegeben wurde; wer die neuen Werte
-              will, lässt ihn vom Inhaber wieder öffnen und gibt ihn neu frei.
-            </Alert>
-          )}
-          {deltasPending && (
-            <Alert severity="warning" data-testid="deltas-pending">
-              Vorbestellungen haben sich geändert, die Änderungen stehen noch
-              nicht unten bei den Nachträgen. Sie werden gerade übernommen - die
-              Seite lädt gleich neu.
-            </Alert>
-          )}
-          {day.configStatus === 'no-config' && (
-            <Alert severity="warning">
-              Die Backzettel-Stammdaten fehlen derzeit oder sind ungültig. Der
-              freigegebene Zettel bleibt lesbar.
-              {day.status === 'confirmed' &&
-                ' Spätere Änderungen an Vorbestellungen können solange nicht als Nachtrag erscheinen - sie werden übernommen, sobald die Stammdaten wieder stimmen.'}
-            </Alert>
-          )}
-          {day.prepDateProvisional && (
-            <Alert severity="info" data-testid="prep-provisional">
-              Der Vortag ({formatDateLong(day.prepDate)}) ist Ruhetag. Wann und
-              von wem die Vorbereitung für diesen Tag erledigt wird, ist noch
-              offen.
-            </Alert>
-          )}
-          {day.warnings.length > 0 && (
-            <Alert severity="warning" data-testid="warnings">
-              <AlertTitle>Hinweise</AlertTitle>
-              <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-                {day.warnings.map((w, i) => (
-                  <li key={`${w.code}-${i}`}>{w.message}</li>
-                ))}
-              </Box>
-            </Alert>
-          )}
-          {!canPlan && (
-            <Alert severity="info" data-testid="read-only">
-              Nur Ansicht – planen und freigeben können Inhaber und Backstube.
-            </Alert>
-          )}
-          {actionError && (
-            <Alert severity="error" onClose={() => setActionError(null)}>
-              {actionError}
-            </Alert>
-          )}
-        </Stack>
+        {actionError && (
+          <Alert severity="error" onClose={() => setActionError(null)}>
+            {actionError}
+          </Alert>
+        )}
+        {confirmChanges && day.status === 'confirmed' && (
+          <Alert
+            severity="warning"
+            data-testid="confirm-changes"
+            onClose={() => setConfirmChanges(null)}
+          >
+            <AlertTitle>
+              Freigegeben mit dem aktuellen Stand – abweichend von der Anzeige
+            </AlertTitle>
+            Seit dem Laden der Seite hat sich etwas geändert (z. B. eine neue
+            Vorbestellung). Eingefroren wurde:
+            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
+              {confirmChanges.map((c) => (
+                <li key={c.line.key}>
+                  {lineLabel(c.line, config)}:{' '}
+                  {c.before === null ? '–' : formatQty(c.before, c.line.unit)} →{' '}
+                  <strong>
+                    {c.after === null ? '–' : formatQty(c.after, c.line.unit)}
+                  </strong>
+                </li>
+              ))}
+            </Box>
+          </Alert>
+        )}
+        {deltasPending && (
+          <Alert severity="warning" data-testid="deltas-pending">
+            Vorbestellungen haben sich geändert, die Änderungen stehen noch
+            nicht unten bei den Nachträgen. Sie werden gerade übernommen - die
+            Seite lädt gleich neu.
+          </Alert>
+        )}
+        {day.configStatus === 'no-config' && (
+          <Alert severity="warning">
+            Die Backzettel-Stammdaten fehlen derzeit oder sind ungültig. Der
+            freigegebene Zettel bleibt lesbar.
+            {day.status === 'confirmed' &&
+              ' Spätere Änderungen an Vorbestellungen können solange nicht als Nachtrag erscheinen - sie werden übernommen, sobald die Stammdaten wieder stimmen.'}
+          </Alert>
+        )}
+        {day.configChangedSinceConfirm && (
+          <Alert severity="info" data-testid="config-changed">
+            Die Stammdaten haben sich seit der Freigabe geändert. Dieser Zettel
+            bleibt so, wie er freigegeben wurde; wer die neuen Werte will, lässt
+            ihn vom Inhaber wieder öffnen und gibt ihn neu frei.
+          </Alert>
+        )}
+        {day.warnings.length > 0 && <WarningsAlert warnings={day.warnings} />}
 
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 2,
-            mb: 2,
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: 2,
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          {editable ? (
+        {editable && (
+          <PageSection
+            title="Planung"
+            description="Der Saisonfaktor wirkt auf alle Grundmengen; 1,0 = normal."
+          >
             <Box
               component="form"
               onSubmit={saveSeason}
@@ -600,7 +673,7 @@ export default function BackzettelDayClient({
                   'aria-label': 'Saisonfaktor',
                 }}
                 error={!!seasonError}
-                helperText={seasonError ?? '1,0 = normal'}
+                helperText={seasonError ?? undefined}
                 sx={{ width: 180 }}
               />
               <Button
@@ -612,38 +685,8 @@ export default function BackzettelDayClient({
                 Übernehmen
               </Button>
             </Box>
-          ) : (
-            <Typography>
-              Saisonfaktor <strong>{formatFactor(day.seasonFactor)}</strong>
-            </Typography>
-          )}
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {canPlan && isDraft && (
-              <Button
-                variant="contained"
-                color="success"
-                size="large"
-                startIcon={<TaskAltIcon />}
-                onClick={() => setConfirmOpen(true)}
-                disabled={busy || day.configStatus !== 'ok'}
-                sx={MIN_TOUCH}
-              >
-                Freigeben
-              </Button>
-            )}
-            {canReopen && day.status === 'confirmed' && (
-              <Button
-                variant="outlined"
-                startIcon={<LockOpenIcon />}
-                onClick={() => setReopenOpen(true)}
-                disabled={busy}
-                sx={MIN_TOUCH}
-              >
-                Wieder öffnen
-              </Button>
-            )}
-          </Stack>
-        </Paper>
+          </PageSection>
+        )}
 
         <DeltasCard
           deltas={day.deltas}
@@ -654,7 +697,7 @@ export default function BackzettelDayClient({
         />
 
         {day.sections.length === 0 ? (
-          <Alert severity="info" sx={{ mb: 2 }}>
+          <Alert severity="info">
             Für diesen Tag steht nichts auf dem Backzettel – keine Grundmengen,
             Vorbestellungen oder CAP-Lieferungen.
           </Alert>
@@ -762,8 +805,15 @@ export default function BackzettelDayClient({
     <Box className="backzettel-root">
       {backzettelPrintStyles}
       <Box className="bz-screen" data-testid="bz-screen">
-        {header}
-        {body}
+        <PageLayout
+          title={validDate ? formatDateLong(date) : date}
+          subtitle={subtitle}
+          status={status}
+          back={{ href: '/admin/backzettel', label: 'Alle Backzettel' }}
+          actions={headerActions}
+        >
+          {body}
+        </PageLayout>
       </Box>
       {day && <BackzettelPrint day={day} config={config} />}
       <Snackbar

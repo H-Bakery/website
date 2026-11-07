@@ -4,8 +4,6 @@ import React from 'react'
 import {
   Alert,
   Box,
-  Card,
-  CardContent,
   Divider,
   Grid,
   Stack,
@@ -30,6 +28,7 @@ import {
 } from '../../lib/backzettelFormat'
 import type { DeltaExtras } from '../../lib/backzettelApi'
 import { DeltaExtrasNote } from './DeltaExtrasNote'
+import { PageSection } from '../layout'
 
 const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
 
@@ -39,7 +38,15 @@ function Figure({ label, value }: { label: string; value: string }) {
       <Typography variant="caption" color="text.secondary" component="div">
         {label}
       </Typography>
-      <Typography variant="h5" component="div" fontWeight={700}>
+      <Typography
+        component="div"
+        sx={{
+          fontSize: { xs: '1.25rem', md: '1.5rem' },
+          fontWeight: 700,
+          lineHeight: 1.25,
+          fontVariantNumeric: 'tabular-nums',
+        }}
+      >
         {value}
       </Typography>
     </Box>
@@ -79,10 +86,14 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
           </Typography>
         </Grid>
       </Grid>
-      <Typography variant="subtitle2" sx={{ mt: 2 }}>
+      <Typography
+        variant="subtitle2"
+        component="h4"
+        sx={{ mt: 2, mb: 0.5, fontWeight: 600 }}
+      >
         Abwiegeliste
       </Typography>
-      <Box sx={{ overflowX: 'auto' }}>
+      <Box sx={{ overflowX: 'auto', maxWidth: 720 }}>
         <Table size="small" aria-label={`Abwiegeliste ${dough.name}`}>
           <TableHead>
             <TableRow>
@@ -134,7 +145,15 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
         <Typography variant="subtitle1" component="h3" fontWeight={700}>
           {filling.name}
         </Typography>
-        <Typography variant="h6" component="div" fontWeight={700}>
+        <Typography
+          component="div"
+          sx={{
+            fontSize: '1.25rem',
+            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
+            whiteSpace: 'nowrap',
+          }}
+        >
           {formatGrams(filling.grams)}
         </Typography>
       </Stack>
@@ -223,31 +242,38 @@ export function HefeteigCard({
   const list = fillings ?? []
   if (doughs.length === 0 && list.length === 0 && !deltaExtras) return null
   return (
-    <Card variant="outlined" sx={{ mb: 2 }} data-testid="hefeteig-card">
-      <CardContent>
-        <Typography variant="h6" component="h2" gutterBottom>
-          Hefeteig &amp; Füllungen
-        </Typography>
-        <DeltaExtrasNote extras={deltaExtras} />
-        <Stack spacing={3} divider={<Divider flexItem />} sx={{ mt: 1 }}>
-          {doughs.map((d) => (
-            <DoughBlock key={d.id} dough={d} />
-          ))}
-          {list.length > 0 && (
-            <Box>
-              <Typography variant="subtitle1" component="h3" fontWeight={700}>
-                Füllungen
-              </Typography>
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                {list.map((f) => (
-                  <FillingBlock key={f.id} filling={f} />
-                ))}
-              </Stack>
+    <PageSection title="Hefeteig & Füllungen" data-testid="hefeteig-card">
+      <DeltaExtrasNote extras={deltaExtras} />
+      <Stack spacing={3} divider={<Divider flexItem />} sx={{ mt: 1 }}>
+        {doughs.map((d) => (
+          <DoughBlock key={d.id} dough={d} />
+        ))}
+        {list.length > 0 && (
+          <Box>
+            <Typography variant="subtitle1" component="h3" fontWeight={700}>
+              Füllungen
+            </Typography>
+            {/* Ab großem Bildschirm nebeneinander - jede Füllung ist ein
+                eigener Arbeitsgang mit eigenem Rezept. */}
+            <Box
+              sx={{
+                mt: 1,
+                display: 'grid',
+                gap: { xs: 2, md: 3 },
+                gridTemplateColumns: {
+                  xs: 'minmax(0, 1fr)',
+                  lg: 'repeat(auto-fill, minmax(340px, 1fr))',
+                },
+              }}
+            >
+              {list.map((f) => (
+                <FillingBlock key={f.id} filling={f} />
+              ))}
             </Box>
-          )}
-        </Stack>
-      </CardContent>
-    </Card>
+          </Box>
+        )}
+      </Stack>
+    </PageSection>
   )
 }
 
