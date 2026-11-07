@@ -9,12 +9,14 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   formatNumber,
+  deltaAfterDoneText,
   deltaBadgeText,
   formatQty,
   formatSigned,
   formatTimestamp,
   lineLabel,
   previouslyDoneText,
+  type DeltaAfterDone,
 } from '../../lib/backzettelFormat'
 import { useBackstubeColors } from './backstubeColors'
 
@@ -39,6 +41,11 @@ export function lineBreakdown(line: BackzettelLine): string {
 
 export interface BackstubeLineProps {
   line: BackzettelLine
+  /**
+   * Nachträge nach dem Haken (`deltaAfterDone`). Heißen sie mehr backen,
+   * ist die Zeile wieder offen, auch wenn sie „gesehen“ sind (UI-Runde 1).
+   */
+  afterDone?: DeltaAfterDone | null
   config: BackzettelConfigData | null
   /** Entwurf: Zahlen ausgegraut, kein Haken. */
   draft: boolean
@@ -56,6 +63,7 @@ export interface BackstubeLineProps {
  */
 export function BackstubeLine({
   line,
+  afterDone = null,
   config,
   draft,
   canTick,
@@ -64,15 +72,32 @@ export function BackstubeLine({
 }: BackstubeLineProps) {
   const colors = useBackstubeColors()
   const label = lineLabel(line, config)
-  const done = !draft && !!line.doneAt
+  const ticked = !draft && !!line.doneAt
+  // Abgehakt, aber danach kam ein Nachtrag mit mehr zu backen: offen.
+  const reopened = ticked && !!afterDone && afterDone.bake > 0
+  const done = ticked && !reopened
   const openDelta = !!line.delta && line.delta.open > 0
+  // Grundmenge offen: es stehen nur Vorbestellungen/CAP im Gesamt - aus
+  // Armlänge sichtbar wie ein Nachtrag (UI-Runde 1), nicht nur grau klein.
+  const baseUnset = line.baseUnset
+  const warn = openDelta || reopened || baseUnset
   const tickable = !draft && canTick && line.id !== null
   const previously = draft ? null : previouslyDoneText(line)
+  const badgeSx = {
+    px: 1.25,
+    py: 0.25,
+    borderRadius: 1,
+    fontWeight: 800,
+    fontSize: { xs: '1rem', sm: '1.15rem' },
+    bgcolor: colors.deltaBg,
+    color: colors.deltaFg,
+  }
 
   return (
     <Box
       data-testid={`bs-line-${line.key}`}
       data-done={done ? 'true' : 'false'}
+      data-reopened={reopened ? 'true' : undefined}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -82,10 +107,10 @@ export function BackstubeLine({
         minHeight: 88,
         borderRadius: 2,
         border: '2px solid',
-        borderColor: openDelta ? colors.deltaEdge : 'divider',
+        borderColor: warn ? colors.deltaEdge : 'divider',
         borderStyle: draft ? 'dashed' : 'solid',
-        borderLeftWidth: openDelta ? 8 : 2,
-        bgcolor: openDelta
+        borderLeftWidth: warn ? 8 : 2,
+        bgcolor: warn
           ? colors.deltaRow
           : done
           ? colors.doneRow
@@ -129,7 +154,7 @@ export function BackstubeLine({
             {previously}
           </Typography>
         )}
-        {(openDelta || (line.delta && line.delta.count > 0) || done) && (
+        {(baseUnset || (line.delta && line.delta.count > 0) || ticked) && (
           <Box
             sx={{
               display: 'flex',
@@ -139,6 +164,15 @@ export function BackstubeLine({
               alignItems: 'center',
             }}
           >
+            {baseUnset && (
+              <Box
+                component="span"
+                data-testid={`bs-base-unset-${line.key}`}
+                sx={badgeSx}
+              >
+                Grundmenge offen
+              </Box>
+            )}
             {line.delta && line.delta.count > 0 && (
               <Box
                 component="span"
@@ -163,14 +197,32 @@ export function BackstubeLine({
                 {openDelta ? '' : ' · gesehen'}
               </Box>
             )}
-            {done && (
+            {reopened && afterDone ? (
+              <Box
+                component="span"
+                data-testid={`bs-after-done-${line.key}`}
+                sx={badgeSx}
+              >
+                {deltaAfterDoneText(line, afterDone)}
+              </Box>
+            ) : ticked && afterDone ? (
               <Typography
                 component="span"
+                data-testid={`bs-after-done-${line.key}`}
                 sx={{ fontSize: '1rem', color: 'text.secondary' }}
               >
-                erledigt {formatTimestamp(line.doneAt)}
-                {line.doneBy ? ` · ${line.doneBy.displayName}` : ''}
+                {deltaAfterDoneText(line, afterDone)}
               </Typography>
+            ) : (
+              ticked && (
+                <Typography
+                  component="span"
+                  sx={{ fontSize: '1rem', color: 'text.secondary' }}
+                >
+                  erledigt {formatTimestamp(line.doneAt)}
+                  {line.doneBy ? ` · ${line.doneBy.displayName}` : ''}
+                </Typography>
+              )
             )}
           </Box>
         )}
@@ -185,11 +237,32 @@ export function BackstubeLine({
             fontWeight: 800,
             lineHeight: 1,
             fontVariantNumeric: 'tabular-nums',
-            color: draft || done ? 'text.secondary' : 'text.primary',
+            color: draft || ticked ? 'text.secondary' : 'text.primary',
           }}
         >
           {formatQty(line.total, line.unit)}
         </Typography>
+        {reopened && afterDone && (
+          <Typography
+            component="div"
+            data-testid={`bs-after-done-qty-${line.key}`}
+            aria-label={`noch ${formatQty(afterDone.bake, line.unit)} backen`}
+            sx={{
+              mt: 0.5,
+              px: 1,
+              borderRadius: 1,
+              display: 'inline-block',
+              fontSize: { xs: '1.5rem', sm: '1.9rem' },
+              fontWeight: 800,
+              lineHeight: 1.2,
+              fontVariantNumeric: 'tabular-nums',
+              bgcolor: colors.deltaBg,
+              color: colors.deltaFg,
+            }}
+          >
+            +{formatQty(afterDone.bake, line.unit)}
+          </Typography>
+        )}
         {line.loavesEstimate !== undefined && (
           <Typography
             component="div"
@@ -203,8 +276,12 @@ export function BackstubeLine({
       {tickable && (
         <ButtonBase
           role="checkbox"
-          aria-checked={done}
-          aria-label={`${label} ${done ? 'erledigt' : 'abhaken'}`}
+          aria-checked={reopened ? 'mixed' : done}
+          aria-label={
+            reopened
+              ? `${label}: Nachtrag gebacken – abhaken`
+              : `${label} ${done ? 'erledigt' : 'abhaken'}`
+          }
           disabled={pending}
           onClick={() => onToggle(line)}
           data-testid={`bs-tick-${line.key}`}
@@ -214,7 +291,11 @@ export function BackstubeLine({
             flexShrink: 0,
             borderRadius: 2,
             border: '3px solid',
-            borderColor: done ? colors.doneBg : 'text.primary',
+            borderColor: done
+              ? colors.doneBg
+              : reopened
+              ? colors.deltaEdge
+              : 'text.primary',
             bgcolor: done ? colors.doneBg : 'transparent',
             color: done ? colors.doneFg : 'text.primary',
             opacity: pending ? 0.7 : 1,

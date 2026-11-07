@@ -158,7 +158,7 @@ describe('Nachträge im Ausdruck: gesehen und ohne Zeile (W4-verify r6)', () => 
     expect(weckRow).toHaveTextContent('noch offen - von +48, 39 schon gesehen')
     expect(weckRow.querySelector('.box.done')).toBeNull()
     const kranz = getByTestId('print-delta-test-kranz|mohn')
-    expect(kranz).toHaveTextContent('quittiert')
+    expect(kranz).toHaveTextContent('gesehen')
     expect(getByTestId('print-delta-done-test-kranz|mohn')).toHaveTextContent(
       '✓'
     )
@@ -167,7 +167,7 @@ describe('Nachträge im Ausdruck: gesehen und ohne Zeile (W4-verify r6)', () => 
     expect(page1).toContain(
       'Nachtrag offen +9 l (von +48 l, Rest schon gesehen; Liste unten)'
     )
-    expect(page1).toContain('Nachtrag +1 l · schon gesehen (Liste unten)')
+    expect(page1).toContain('Nachtrag +1 l · gesehen')
   })
 
   it('ein Nachtrag ohne freigegebene Zeile bekommt seine Backmenge aus deltaTotals', () => {
@@ -194,5 +194,51 @@ describe('Nachträge im Ausdruck: gesehen und ohne Zeile (W4-verify r6)', () => 
     const kranz = getByTestId('print-delta-test-kranz|mohn')
     expect(kranz).toHaveTextContent(/^\+1/)
     expect(kranz).toHaveTextContent('Nachtrag +0,5 · 1 mehr backen')
+  })
+})
+
+describe('Nachtrag nach dem Abhaken im Ausdruck (UI-Runde 1)', () => {
+  it('gesehen, aber nach dem Haken: Zeile sagt „noch +12 backen“, Nachtrag ohne Haken', () => {
+    const base = saturdayConfirmed()
+    const { getByTestId } = render(
+      <BackzettelPrint
+        config={null}
+        day={{
+          ...base,
+          sections: base.sections.map((s) => ({
+            ...s,
+            lines: s.lines.map((l) =>
+              l.key === 'test-weck|'
+                ? {
+                    ...l,
+                    doneAt: '2026-11-28T03:00:00.000Z',
+                    doneBy: { id: 2, displayName: 'Test Backstube' },
+                    delta: { qty: 12, open: 0, count: 1, bake: 12 },
+                  }
+                : l
+            ),
+          })),
+          deltas: [
+            delta(30, 12, {
+              key: 'test-weck|',
+              itemId: 'test-weck',
+              name: 'Testweck',
+              variant: null,
+              createdAt: '2026-11-28T03:30:00.000Z',
+              acknowledgedAt: '2026-11-28T03:40:00.000Z',
+              acknowledgedBy: { id: 2, displayName: 'Test Backstube' },
+            }),
+          ],
+        }}
+      />
+    )
+    const page1 = getByTestId('print-page-1')
+    expect(page1).toHaveTextContent('danach Nachtrag: noch +12 backen')
+    // Die 65 sind gebacken - der Haken der Zeile bleibt.
+    expect(getByTestId('print-done-test-weck|')).toHaveTextContent('✓')
+    const row = getByTestId('print-delta-test-weck|')
+    expect(row).toHaveTextContent('+12')
+    expect(row).toHaveTextContent('nach dem Abhaken – noch backen')
+    expect(row.querySelector('.box.done')).toBeNull()
   })
 })

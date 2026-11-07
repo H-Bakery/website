@@ -8,7 +8,6 @@ import {
   Box,
   Button,
   Chip,
-  Collapse,
   Dialog,
   DialogActions,
   DialogContent,
@@ -61,6 +60,7 @@ import { BackzettelSectionView } from '../../../../components/backzettel/Backzet
 import { HefeteigCard } from '../../../../components/backzettel/HefeteigCard'
 import { PrepCard } from '../../../../components/backzettel/PrepCard'
 import { DeltasCard } from '../../../../components/backzettel/DeltasCard'
+import { BackzettelWarnings } from '../../../../components/backzettel/BackzettelWarnings'
 import { BackzettelStatusChip } from '../../../../components/backzettel/BackzettelStatusChip'
 import {
   BackzettelPrint,
@@ -100,64 +100,6 @@ function isStaleError(error: unknown): boolean {
 }
 
 const STALE_SUFFIX = ' Der Backzettel wurde neu geladen.'
-
-/** So viele Hinweise stehen offen da; der Rest hinter „Alle anzeigen“. */
-const WARNINGS_SHOWN = 2
-
-/**
- * Hinweise des Tages (offene Grundmengen, unbekannte Produkte …): die ersten
- * zwei sichtbar, der Rest aufklappbar - sechs Zeilen Gelb über dem Zettel
- * drängten die Mengen am Handy aus dem Bild (Layout-Kit: höchstens zwei
- * Hinweise oben). Weg ist keiner: die Zahl steht im Titel.
- */
-function WarningsAlert({
-  warnings,
-}: {
-  warnings: { code: string; message: string }[]
-}) {
-  const [open, setOpen] = React.useState(false)
-  const first = warnings.slice(0, WARNINGS_SHOWN)
-  const rest = warnings.slice(WARNINGS_SHOWN)
-  return (
-    <Alert severity="warning" data-testid="warnings">
-      <AlertTitle>
-        {warnings.length === 1 ? 'Hinweis' : `Hinweise (${warnings.length})`}
-      </AlertTitle>
-      <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-        {first.map((w, i) => (
-          <li key={`${w.code}-${i}`}>{w.message}</li>
-        ))}
-      </Box>
-      {rest.length > 0 && (
-        <>
-          <Collapse in={open} id="bz-warnings-more">
-            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-              {rest.map((w, i) => (
-                <li key={`${w.code}-more-${i}`}>{w.message}</li>
-              ))}
-            </Box>
-          </Collapse>
-          <Button
-            size="small"
-            color="inherit"
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            aria-controls="bz-warnings-more"
-            sx={{
-              mt: 0.5,
-              px: 0,
-              minHeight: 36,
-              textTransform: 'none',
-              textDecoration: 'underline',
-            }}
-          >
-            {open ? 'Weniger anzeigen' : `Alle ${warnings.length} anzeigen`}
-          </Button>
-        </>
-      )}
-    </Alert>
-  )
-}
 
 export interface BackzettelDayClientProps {
   date: string
@@ -400,7 +342,7 @@ export default function BackzettelDayClient({
     } catch (error) {
       const message = messageOf(
         error,
-        'Der Nachtrag konnte nicht quittiert werden.'
+        'Der Nachtrag konnte nicht als gesehen gespeichert werden.'
       )
       // 404 not_found: der Nachtrag ist nicht mehr offen (anderes Gerät hat
       // wieder geöffnet/neu freigegeben). Dann neu laden - sonst blieben
@@ -521,7 +463,7 @@ export default function BackzettelDayClient({
         ? `Freigegeben${
             day.confirmedBy ? ` von ${day.confirmedBy.displayName}` : ''
           }${day.confirmedAt ? ` am ${formatTimestamp(day.confirmedAt)}` : ''}`
-        : 'Entwurf - rechnet live mit den Vorbestellungen'
+        : 'Entwurf – rechnet live mit den Vorbestellungen'
     subtitle = [state, season].filter(Boolean).join(' · ')
   }
 
@@ -647,7 +589,9 @@ export default function BackzettelDayClient({
             ihn vom Inhaber wieder öffnen und gibt ihn neu frei.
           </Alert>
         )}
-        {day.warnings.length > 0 && <WarningsAlert warnings={day.warnings} />}
+        {/* Planen: Hinweise oben, man kann sie beheben. Nur Ansicht (Verkauf):
+            ans Ende - beheben kann sie dort niemand, die Mengen gehen vor. */}
+        {canPlan && <BackzettelWarnings warnings={day.warnings} />}
 
         {editable && (
           <PageSection
@@ -707,6 +651,7 @@ export default function BackzettelDayClient({
               key={section.id}
               section={section}
               config={config}
+              deltas={day.status === 'confirmed' ? day.deltas : undefined}
               editable={editable}
               editingKey={editingKey}
               onEdit={setEditingKey}
@@ -725,6 +670,7 @@ export default function BackzettelDayClient({
           prepDate={day.prepDate}
           prepDateProvisional={day.prepDateProvisional}
         />
+        {!canPlan && <BackzettelWarnings warnings={day.warnings} />}
 
         <Dialog
           open={confirmOpen}

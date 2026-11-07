@@ -1,5 +1,12 @@
 import React from 'react'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
+import { ApiError } from '@bakery/shared/data-access'
 import BackzettelOverviewClient from './BackzettelOverviewClient'
 import * as api from '../../../lib/backzettelApi'
 import {
@@ -164,16 +171,18 @@ describe('Backzettel-Übersicht', () => {
     expect(await within(list).findAllByText('Keine Stammdaten')).toHaveLength(6)
   })
 
-  it('ein Fehler an einem Tag lässt die anderen stehen', async () => {
+  it('ein Fehler an einem Tag lässt die anderen stehen - der Grund steht einmal oben', async () => {
     mocked.fetchBackzettelDay.mockImplementation(async (date: string) => {
       if (date === '2026-11-29') throw new Error('Keine Verbindung zum Server')
       return saturdayDraft({ date, warnings: [] })
     })
     render(<BackzettelOverviewClient today={TODAY} />)
     const sun = within(await screen.findByTestId('day-2026-11-29'))
-    expect(
-      await sun.findByText('Keine Verbindung zum Server')
-    ).toBeInTheDocument()
+    expect(await sun.findByText('Nicht geladen')).toBeInTheDocument()
+    expect(sun.queryByText(/Keine Verbindung/)).not.toBeInTheDocument()
+    expect(screen.getByTestId('overview-error')).toHaveTextContent(
+      'Keine Verbindung zum Server'
+    )
     expect(
       within(screen.getByTestId('day-2026-11-28')).getByText('Entwurf')
     ).toBeInTheDocument()
@@ -187,10 +196,39 @@ describe('Backzettel-Übersicht', () => {
       new TypeError('Failed to fetch')
     )
     render(<BackzettelOverviewClient today={TODAY} />)
-    const sun = within(await screen.findByTestId('day-2026-11-29'))
     expect(
-      await sun.findByText('Keine Verbindung zum Server – bitte WLAN prüfen.')
+      await screen.findByText(
+        'Keine Verbindung zum Server – bitte WLAN prüfen.'
+      )
     ).toBeInTheDocument()
     expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
+  })
+
+  it('UI-Runde 1: geht gar nichts, steht der Fehler genau einmal da - ohne Tageskarten und ohne „Öffnen“', async () => {
+    mocked.fetchBackzettelConfig.mockRejectedValue(
+      new ApiError('Interner Fehler', 500, 'internal')
+    )
+    mocked.fetchBackzettelDay.mockRejectedValue(
+      new ApiError('Interner Fehler', 500, 'internal')
+    )
+    render(<BackzettelOverviewClient today={TODAY} />)
+    const error = await screen.findByTestId('overview-error')
+    expect(error).toHaveTextContent('Fehler auf dem Server (500)')
+    expect(screen.getAllByText(/Fehler auf dem Server/)).toHaveLength(1)
+    expect(screen.queryByTestId('next-day')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('day-list')).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: /Öffnen|Planen/ })
+    ).not.toBeInTheDocument()
+
+    mocked.fetchBackzettelConfig.mockResolvedValue(CONFIG_RESPONSE)
+    mocked.fetchBackzettelDay.mockImplementation(async (date: string) =>
+      saturdayDraft({ date, warnings: [] })
+    )
+    fireEvent.click(
+      within(error).getByRole('button', { name: 'Erneut versuchen' })
+    )
+    expect(await screen.findByTestId('day-list')).toBeInTheDocument()
+    expect(screen.queryByTestId('overview-error')).not.toBeInTheDocument()
   })
 })

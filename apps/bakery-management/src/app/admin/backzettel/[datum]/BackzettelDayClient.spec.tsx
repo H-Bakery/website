@@ -472,9 +472,7 @@ describe('Backzettel-Tagesplanung', () => {
     const card = within(await screen.findByTestId('deltas-card'))
     expect(card.getByText('1 offen')).toBeInTheDocument()
     expect(card.getByText(/LA-2026-11-28-03/)).toBeInTheDocument()
-    expect(
-      card.getByText(/quittiert .* von Test Backstube/)
-    ).toBeInTheDocument()
+    expect(card.getByText(/gesehen .* von Test Backstube/)).toBeInTheDocument()
     expect(
       within(screen.getByTestId('line-row-test-zopf|nuss')).getByTestId(
         'delta-chip-test-zopf|nuss'

@@ -103,7 +103,7 @@ function DeltaRow({
           d.preorderCode ? `Vorbestellung ${deltaCodeText(d)}` : null,
           `bemerkt ${formatTimestamp(d.createdAt)}`,
           d.acknowledgedAt
-            ? `quittiert ${formatTimestamp(d.acknowledgedAt)}${
+            ? `gesehen ${formatTimestamp(d.acknowledgedAt)}${
                 d.acknowledgedBy ? ` von ${d.acknowledgedBy.displayName}` : ''
               }`
             : null,
@@ -187,8 +187,8 @@ export function DeltasCard({
           sx={{ mt: 0.5, mb: 2 }}
         >
           {open > 0
-            ? 'Nicht in den Mengen unten enthalten – zusätzlich backen bzw. weglassen und mit „Gesehen“ quittieren.'
-            : 'Alle Nachträge sind quittiert.'}
+            ? 'Nicht in den Mengen unten enthalten – zusätzlich backen bzw. weglassen und mit „Gesehen“ bestätigen.'
+            : 'Alle Nachträge sind gesehen.'}
         </Typography>
         {open > 0 && (
           <Box component="ul" sx={listSx}>
@@ -212,8 +212,8 @@ export function DeltasCard({
               sx={{ ml: -1 }}
             >
               {doneList.length === 1
-                ? '1 quittierter Nachtrag'
-                : `${doneList.length} quittierte Nachträge`}
+                ? '1 gesehener Nachtrag'
+                : `${doneList.length} gesehene Nachträge`}
             </Button>
             <Collapse in={showDone}>
               <Box component="ul" sx={{ ...listSx, mt: 1 }}>
