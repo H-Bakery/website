@@ -144,7 +144,7 @@ jobs:
   test-e2e-shop:
     needs: [changes, quality]
     if: needs.changes.outputs.shop == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
     steps:
       - uses: actions/checkout@v4
 
@@ -192,7 +192,7 @@ jobs:
   test-e2e-management:
     needs: [changes, quality]
     if: needs.changes.outputs.management == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
     steps:
       - uses: actions/checkout@v4
 
@@ -240,7 +240,7 @@ jobs:
   test-e2e-landing:
     needs: [changes, quality]
     if: needs.changes.outputs.landing == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.54 has no chromium build for ubuntu-latest (26.04)
     steps:
       - uses: actions/checkout@v4
 
