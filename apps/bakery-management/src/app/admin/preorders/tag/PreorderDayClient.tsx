@@ -7,10 +7,8 @@ import {
   Alert,
   Box,
   Button,
-  CircularProgress,
   GlobalStyles,
   IconButton,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -21,13 +19,24 @@ import {
   TextField,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import {
   ChevronLeft as PrevIcon,
   ChevronRight as NextIcon,
-  ListAlt as ListIcon,
+  ExpandMore as ExpandMoreIcon,
   Print as PrintIcon,
 } from '@mui/icons-material'
+import ItemsSummary from '../../../../components/preorders/ItemsSummary'
+import {
+  ErrorState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+  type KeyFigure,
+} from '../../../../components/layout'
 import PaymentNote from '../../../../components/preorders/PaymentNote'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import {
@@ -75,9 +84,13 @@ const printStyles = (
         '.preorder-day-root, .preorder-day-root *': {
           color: '#000 !important',
           backgroundColor: 'transparent !important',
+          // Paper im Dunkelmodus: Elevation-Verlauf als backgroundImage.
+          backgroundImage: 'none !important',
           boxShadow: 'none !important',
         },
-        '.preorder-day-root .MuiPaper-root': { border: 'none !important' },
+        '.preorder-day-root .MuiPaper-root': {
+          border: '1px solid #bbb !important',
+        },
         '.preorder-day-root .MuiChip-root': {
           border: '1px solid #000 !important',
         },
@@ -88,10 +101,22 @@ const printStyles = (
         '.preorder-day-root tr': { pageBreakInside: 'avoid' },
         '.preorder-day-root thead': { display: 'table-header-group' },
         '.preorder-day-noprint': { display: 'none !important' },
+        // Am Handy zugeklappt - gedruckt wird die Liste immer, mit allen
+        // Artikeln statt der Kurzform.
+        '.preorder-day-orders-wrap': { display: 'block !important' },
+        '.preorder-day-root [aria-controls="preorder-day-orders"]': {
+          display: 'none !important',
+        },
         // Bestellungen auf A4 (W4-verify r4): feste Spalten, Artikel bekommt
         // den Rest - vorher 13 % Breite, 13 Seiten für 56 Bestellungen, und
         // ein langer Name schob den Status-Chip über den Rand.
         '.preorder-day-orders': { tableLayout: 'fixed', width: '100%' },
+        '.preorder-day-orders .preorder-day-items-short': {
+          display: 'none !important',
+        },
+        '.preorder-day-orders .preorder-day-items-full': {
+          display: 'inline !important',
+        },
         '.preorder-day-orders td, .preorder-day-orders th': {
           overflowWrap: 'anywhere',
           fontSize: '9pt',
@@ -100,7 +125,7 @@ const printStyles = (
         '.preorder-day-orders th:nth-of-type(2)': { width: '28mm' },
         '.preorder-day-orders th:nth-of-type(3)': { width: '22mm' },
         '.preorder-day-orders th:nth-of-type(5)': { width: '24mm' },
-        '.preorder-day-orders th:nth-of-type(6)': { width: '20mm' },
+        '.preorder-day-orders th:nth-of-type(6)': { width: '22mm' },
         '.preorder-day-orders td:first-of-type': {
           fontSize: '8pt',
           overflowWrap: 'normal',
@@ -112,40 +137,29 @@ const printStyles = (
         '.preorder-day-orders .MuiChip-label': {
           padding: '0 4px',
           whiteSpace: 'normal',
+          // „Abgeh|olt“: Status nur an Wortgrenzen umbrechen.
+          overflowWrap: 'normal',
+        },
+        // Telefon und Zahlungshinweis (Typography body2) nicht größer als
+        // der Name daneben.
+        '.preorder-day-orders td .MuiTypography-root': {
+          fontSize: 'inherit',
         },
       },
     }}
   />
 )
 
-/** Schmalere Zellen am Telefon; die Summen-Tabelle passt so auf 390 px. */
-const COMPACT_TABLE = { '& td, & th': { px: { xs: 1, sm: 2 } } } as const
-
-function Tile({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string
-  note?: string | null
-}) {
-  return (
-    <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
-      <Typography variant="caption" color="text.secondary" display="block">
-        {label}
-      </Typography>
-      <Typography variant="h6" component="p" sx={{ fontSize: '1.15rem' }}>
-        {value}
-      </Typography>
-      {note ? (
-        <Typography variant="caption" color="text.secondary" display="block">
-          {note}
-        </Typography>
-      ) : null}
-    </Box>
-  )
-}
+/**
+ * Schmalere Zellen am Telefon; die Summen-Tabelle passt so auf 390 px. Am
+ * Bildschirm stehen die Artikel kurz (erste drei), gedruckt alle.
+ */
+const COMPACT_TABLE = {
+  '& td, & th': { px: { xs: 1, sm: 2 } },
+  '& td:first-of-type, & th:first-of-type': { pl: { xs: 2, md: 3 } },
+  '& td:last-of-type, & th:last-of-type': { pr: { xs: 2, md: 3 } },
+  '& .preorder-day-items-full': { display: 'none' },
+} as const
 
 /** Vorheriger/nächster Produktionstag (Montag übersprungen). */
 function stepDay(date: string, direction: 1 | -1): string {
@@ -166,6 +180,8 @@ export default function PreorderDayClient({
   initialDate?: string
 }) {
   const router = useRouter()
+  const theme = useTheme()
+  const wide = useMediaQuery(theme.breakpoints.up('md'))
   // Leer starten: der Vorgabetag kommt aus der Uhr (Hydration).
   const [date, setDate] = useState(initialDate ?? '')
   const [day, setDay] = useState<PreorderDay | null>(null)
@@ -221,344 +237,394 @@ export default function PreorderDayClient({
         .map(([c, n]) => `${CHANNEL_LABELS[c] ?? c} ${n}`)
         .join(' · ')
     : ''
+  // Bestellungen am Handy erst auf Tipp (die Summen sind die Hauptsache,
+  // die Liste war dort ~10.000 px lang). Gedruckt wird sie immer.
+  const [ordersChoice, setOrdersChoice] = useState<boolean | null>(null)
+  const ordersOpen = ordersChoice ?? wide
+
+  const figures: KeyFigure[] = summary
+    ? [
+        {
+          label: 'Bestellungen',
+          value: String(summary.count),
+          hint: `${summary.byStatus.offen} offen · ${summary.byStatus.bereit} bereit · ${summary.byStatus.abgeholt} abgeholt`,
+        },
+        { label: 'Summe', value: formatCurrency(summary.total) },
+        {
+          label: 'Noch zu kassieren',
+          value: formatCurrency(summary.unpaidTotal),
+          tone: summary.unpaidTotal > 0 ? 'warning' : 'default',
+          hint:
+            [
+              (summary.topUpTotal ?? 0) > 0
+                ? `davon ${formatCurrency(
+                    summary.topUpTotal ?? 0
+                  )} Rest bezahlter`
+                : null,
+              (summary.handedOverUnpaidTotal ?? 0) > 0
+                ? `+ ${formatCurrency(
+                    summary.handedOverUnpaidTotal ?? 0
+                  )} ohne Zahlung übergeben`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || undefined,
+        },
+        ...((summary.refundTotal ?? 0) > 0
+          ? [
+              {
+                label: 'Zu erstatten',
+                value: formatCurrency(summary.refundTotal ?? 0),
+                tone: 'warning' as const,
+                hint: `${
+                  summary.refundCount ?? 0
+                } bezahlt und storniert oder billiger geworden`,
+              },
+            ]
+          : []),
+      ]
+    : []
+
+  const dateNav = (
+    <Stack
+      direction="row"
+      spacing={0.5}
+      alignItems="center"
+      sx={{ flex: { xs: '1 1 100%', sm: 'none' } }}
+    >
+      <Tooltip title="Vorheriger Backtag">
+        <span>
+          <IconButton
+            aria-label="Vorheriger Backtag"
+            onClick={() => changeDate(stepDay(date, -1))}
+            disabled={!isBusinessDate(date)}
+          >
+            <PrevIcon />
+          </IconButton>
+        </span>
+      </Tooltip>
+      <TextField
+        label="Abholtag"
+        type="date"
+        size="small"
+        value={date}
+        onChange={(event) => changeDate(event.target.value)}
+        InputLabelProps={{ shrink: true }}
+        sx={{ minWidth: 160, flex: { xs: 1, sm: 'none' } }}
+      />
+      <Tooltip title="Nächster Backtag">
+        <span>
+          <IconButton
+            aria-label="Nächster Backtag"
+            onClick={() => changeDate(stepDay(date, 1))}
+            disabled={!isBusinessDate(date)}
+          >
+            <NextIcon />
+          </IconButton>
+        </span>
+      </Tooltip>
+    </Stack>
+  )
 
   return (
     <Box className="preorder-day-root">
       {printStyles}
-
-      <Stack
-        className="preorder-day-noprint"
-        direction={{ xs: 'column', md: 'row' }}
-        spacing={1.5}
-        alignItems={{ xs: 'stretch', md: 'center' }}
-        sx={{ mb: 2 }}
-      >
-        <Stack direction="row" spacing={0.5} alignItems="center">
-          <Tooltip title="Vorheriger Backtag">
-            <span>
-              <IconButton
-                aria-label="Vorheriger Backtag"
-                onClick={() => changeDate(stepDay(date, -1))}
-                disabled={!isBusinessDate(date)}
-                sx={{ width: 48, height: 48 }}
-              >
-                <PrevIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <TextField
-            label="Abholtag"
-            type="date"
-            size="small"
-            value={date}
-            onChange={(event) => changeDate(event.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 170, flex: { xs: 1, md: 'none' } }}
-          />
-          <Tooltip title="Nächster Backtag">
-            <span>
-              <IconButton
-                aria-label="Nächster Backtag"
-                onClick={() => changeDate(stepDay(date, 1))}
-                disabled={!isBusinessDate(date)}
-                sx={{ width: 48, height: 48 }}
-              >
-                <NextIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Stack>
-        <Box sx={{ flexGrow: 1 }} />
-        <Button
-          component={NextLink}
-          href="/admin/preorders"
-          startIcon={<ListIcon />}
-          sx={{ minHeight: 48 }}
-        >
-          Alle Vorbestellungen
-        </Button>
-        <Button
-          variant="contained"
-          startIcon={<PrintIcon />}
-          onClick={() => window.print()}
-          disabled={!day}
-          sx={{ minHeight: 48 }}
-        >
-          Drucken
-        </Button>
-      </Stack>
-
-      <Typography
-        variant="h4"
-        component="h1"
-        sx={{ fontSize: { xs: '1.5rem', md: '2rem' } }}
-      >
-        Vorbestellungen{' '}
-        {isBusinessDate(date) ? formatDateWithWeekday(date) : ''}
-      </Typography>
-      {isBusinessDate(date) && !isProductionDay(date) && (
-        <Alert severity="info" sx={{ mt: 1 }} className="preorder-day-noprint">
-          Montag ist Ruhetag - an diesem Tag wird nicht gebacken.
-        </Alert>
-      )}
-
-      {error && (
-        <Alert
-          severity="error"
-          sx={{ my: 2 }}
-          className="preorder-day-noprint"
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      )}
-
-      {loading && !day ? (
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Tagesübersicht wird geladen"
-        >
-          <CircularProgress />
-        </Box>
-      ) : (
-        day &&
-        summary && (
+      <PageLayout
+        title={`Vorbestellungen ${
+          isBusinessDate(date) ? formatDateWithWeekday(date) : ''
+        }`.trim()}
+        back={{ href: '/admin/preorders', label: 'Alle Vorbestellungen' }}
+        actions={
           <>
-            <Typography color="text.secondary" sx={{ mb: 2 }}>
-              {summary.count}{' '}
-              {summary.count === 1 ? 'Bestellung' : 'Bestellungen'}
-              {channels ? ` · Bestellweg: ${channels}` : ''}
-            </Typography>
-
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: {
-                  xs: 'repeat(2, minmax(0, 1fr))',
-                  sm: 'repeat(3, minmax(0, 1fr))',
-                  lg: 'repeat(6, minmax(0, 1fr))',
-                },
-                gap: 1.5,
-                mb: 3,
-              }}
+            {dateNav}
+            <Button
+              variant="outlined"
+              startIcon={<PrintIcon />}
+              onClick={() => window.print()}
+              disabled={!day}
             >
-              <Tile label="Bestellungen" value={String(summary.count)} />
-              <Tile label="Summe" value={formatCurrency(summary.total)} />
-              <Tile label="Offen" value={String(summary.byStatus.offen)} />
-              <Tile label="Bereit" value={String(summary.byStatus.bereit)} />
-              <Tile
-                label="Abgeholt"
-                value={String(summary.byStatus.abgeholt)}
-              />
-              <Tile
-                label="Noch zu kassieren"
-                value={formatCurrency(summary.unpaidTotal)}
-                note={
-                  [
-                    (summary.topUpTotal ?? 0) > 0
-                      ? `davon ${formatCurrency(
-                          summary.topUpTotal ?? 0
-                        )} Rest bezahlter`
-                      : null,
-                    (summary.handedOverUnpaidTotal ?? 0) > 0
-                      ? `+ ${formatCurrency(
-                          summary.handedOverUnpaidTotal ?? 0
-                        )} ohne Zahlung übergeben`
-                      : null,
-                  ]
-                    .filter(Boolean)
-                    .join(' · ') || null
-                }
-              />
-              {(summary.refundTotal ?? 0) > 0 && (
-                <Tile
-                  label="Zu erstatten"
-                  value={formatCurrency(summary.refundTotal ?? 0)}
-                  note={`${
-                    summary.refundCount ?? 0
-                  } bezahlt und storniert oder billiger geworden`}
-                />
-              )}
-            </Box>
-
-            <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
-              Summen je Produkt
-            </Typography>
-            {day.sums.length === 0 ? (
-              <Typography color="text.secondary" sx={{ mb: 3 }}>
-                Für diesen Tag ist nichts vorbestellt.
-              </Typography>
-            ) : (
-              <TableContainer
-                component={Paper}
-                variant="outlined"
-                sx={{ mb: 3 }}
-              >
-                <Table
-                  size="small"
-                  aria-label="Summen je Produkt und Sorte"
-                  sx={COMPACT_TABLE}
-                >
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Produkt</TableCell>
-                      <TableCell>Sorte</TableCell>
-                      <TableCell align="right">Menge</TableCell>
-                      <TableCell align="right">Bestellungen</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {day.sums.map((sum) => (
-                      <TableRow key={`${sum.productId}|${sum.variant}`}>
-                        <TableCell>{sum.name}</TableCell>
-                        <TableCell>
-                          {variantLabel(sum.variant) || '–'}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          sx={{ fontWeight: 700, fontSize: '1.05rem' }}
-                        >
-                          {sum.quantity}
-                          {sum.unit === 'Stück' ? '' : ` ${sum.unit}`}
-                        </TableCell>
-                        <TableCell align="right">{sum.preorders}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-
-            {day.pickupPoints.length > 0 && (
-              <Typography
-                color="text.secondary"
-                sx={{ mb: 2 }}
-                data-testid="preorder-day-places"
-              >
-                {/* W4-Verifikation Runde 5: Abholorte samt Laden - „Laden 18“
-                    oben ist der Bestellweg, nicht die Zahl an der Theke. */}
-                Abholung:{' '}
-                {[
-                  ...(ladenCount > 0 || !day.pickupPointId
-                    ? [
-                        `Laden: ${ladenCount} ${
-                          ladenCount === 1 ? 'Bestellung' : 'Bestellungen'
-                        }`,
-                      ]
-                    : []),
-                  ...day.pickupPoints.map(
-                    (p) =>
-                      `${p.name}${p.active === false ? ' (inaktiv)' : ''}: ${
-                        p.preorderCount
-                      } ${
-                        p.preorderCount === 1 ? 'Bestellung' : 'Bestellungen'
-                      }${p.window ? ` (Übergabe ${p.window})` : ''}`
-                  ),
-                ].join(' · ')}
-              </Typography>
-            )}
-
-            <Typography variant="h6" component="h2" sx={{ mb: 1 }}>
-              Bestellungen
-            </Typography>
-            {day.preorders.length === 0 ? (
-              <Typography color="text.secondary">Keine.</Typography>
-            ) : (
-              <TableContainer component={Paper} variant="outlined">
-                <Table
-                  size="small"
-                  aria-label="Bestellungen des Tages"
-                  className="preorder-day-orders"
-                  sx={COMPACT_TABLE}
-                >
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Code</TableCell>
-                      <TableCell>Kunde</TableCell>
-                      <TableCell>Abholung</TableCell>
-                      <TableCell>Artikel</TableCell>
-                      <TableCell align="right">Summe</TableCell>
-                      <TableCell>Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {day.preorders.map((p) => (
-                      <TableRow
-                        key={p.id}
-                        sx={
-                          p.status === 'storniert'
-                            ? {
-                                '& td': { color: 'text.secondary' },
-                                // Durchgestrichen wird die Bestellung, nicht
-                                // die Erstattung daneben: „37,00 € erstatten“
-                                // ist eine offene Aufgabe (W4-verify r4).
-                                '& td:not(.preorder-money), & .preorder-total':
-                                  { textDecoration: 'line-through' },
-                              }
-                            : undefined
-                        }
-                      >
-                        <TableCell
-                          sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}
-                        >
-                          <NextLink
-                            href={`/admin/preorders/${p.id}`}
-                            style={{ color: 'inherit', ...TOUCH_LINK_STYLE }}
-                          >
-                            {p.code}
-                          </NextLink>
-                        </TableCell>
-                        <TableCell>
-                          {p.customerName}
-                          {p.customerPhone && (
-                            <Typography variant="body2" color="text.secondary">
-                              {p.customerPhone}
-                            </Typography>
-                          )}
-                        </TableCell>
-                        <TableCell>{formatPickupPlace(p)}</TableCell>
-                        <TableCell>{formatItems(p.items)}</TableCell>
-                        <TableCell
-                          align="right"
-                          className="preorder-money"
-                          sx={{ whiteSpace: 'nowrap' }}
-                        >
-                          <span className="preorder-total">
-                            {formatCurrency(p.total)}
-                          </span>
-                          {paymentState(p).kind === 'paid' ? (
-                            ' ✓'
-                          ) : (
-                            <PaymentNote preorder={p} />
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <PreorderStatusChip preorder={p} />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            )}
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              sx={{ mt: 1, display: 'block' }}
-            >
-              ✓ = bezahlt, Betrag stimmt. Ein offener Rest oder eine Erstattung
-              steht mit Betrag in der Zeile. Stornierte stehen grau in der Liste
-              und zählen in keiner Summe - außer schon Bezahltes unter „Zu
-              erstatten“.
-            </Typography>
+              Drucken
+            </Button>
           </>
-        )
-      )}
+        }
+      >
+        {isBusinessDate(date) && !isProductionDay(date) && (
+          <Alert severity="info" className="preorder-day-noprint">
+            Montag ist Ruhetag - an diesem Tag wird nicht gebacken.
+          </Alert>
+        )}
+
+        {error && (
+          <Box className="preorder-day-noprint">
+            <ErrorState message={error} onRetry={load} />
+          </Box>
+        )}
+
+        {loading && !day ? (
+          <LoadingState label="Tagesübersicht wird geladen …" />
+        ) : (
+          day &&
+          summary && (
+            <>
+              <Box>
+                <KeyFigures items={figures} aria-label="Kennzahlen des Tages" />
+                {day.pickupPoints.length > 0 && (
+                  <Box
+                    sx={{ mt: 1.5 }}
+                    data-testid="preorder-day-places"
+                    className="preorder-day-places"
+                  >
+                    {/* W4-Verifikation Runde 5: Abholorte samt Laden - „Laden 18“
+                        im Bestellweg ist nicht die Zahl an der Theke. Je Ort eine
+                        Zeile statt eines Fließtexts über fünf Zeilen. */}
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      id="preorder-day-places-label"
+                    >
+                      Abholung:
+                    </Typography>
+                    <Box
+                      component="ul"
+                      aria-labelledby="preorder-day-places-label"
+                      sx={{
+                        listStyle: 'none',
+                        m: 0,
+                        p: 0,
+                        display: 'grid',
+                        gap: 0.25,
+                      }}
+                    >
+                      {[
+                        ...(ladenCount > 0 || !day.pickupPointId
+                          ? [{ key: 'laden', name: 'Laden', count: ladenCount }]
+                          : []),
+                        ...day.pickupPoints.map((p) => ({
+                          key: `point-${p.id}`,
+                          name: `${p.name}${
+                            p.active === false ? ' (inaktiv)' : ''
+                          }`,
+                          count: p.preorderCount,
+                          window: p.window,
+                        })),
+                      ].map((place) => (
+                        <Typography
+                          component="li"
+                          variant="body2"
+                          key={place.key}
+                        >
+                          {place.name}:{' '}
+                          <Box component="strong" sx={{ fontWeight: 600 }}>
+                            {place.count}{' '}
+                            {place.count === 1 ? 'Bestellung' : 'Bestellungen'}
+                          </Box>
+                          {'window' in place && place.window && (
+                            <Box
+                              component="span"
+                              sx={{ color: 'text.secondary' }}
+                            >
+                              {' '}
+                              (Übergabe {place.window})
+                            </Box>
+                          )}
+                        </Typography>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+              </Box>
+
+              <PageSection
+                title="Summen je Produkt"
+                description="Stornierte zählen nicht mit."
+                disablePadding={day.sums.length > 0}
+              >
+                {day.sums.length === 0 ? (
+                  <Typography color="text.secondary">
+                    Für diesen Tag ist nichts vorbestellt.
+                  </Typography>
+                ) : (
+                  <TableContainer>
+                    <Table
+                      size="small"
+                      aria-label="Summen je Produkt und Sorte"
+                      sx={COMPACT_TABLE}
+                    >
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Produkt</TableCell>
+                          <TableCell>Sorte</TableCell>
+                          <TableCell align="right">Menge</TableCell>
+                          <TableCell align="right">Bestellungen</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {day.sums.map((sum) => (
+                          <TableRow key={`${sum.productId}|${sum.variant}`}>
+                            <TableCell>{sum.name}</TableCell>
+                            <TableCell>
+                              {variantLabel(sum.variant) || '–'}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              sx={{
+                                fontWeight: 700,
+                                fontSize: '1.05rem',
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                            >
+                              {sum.quantity}
+                              {sum.unit === 'Stück' ? '' : ` ${sum.unit}`}
+                            </TableCell>
+                            <TableCell align="right">{sum.preorders}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </PageSection>
+
+              <PageSection
+                title={`Bestellungen (${day.preorders.length})`}
+                description={channels ? `Bestellweg: ${channels}` : undefined}
+                disablePadding={day.preorders.length > 0 && ordersOpen}
+                actions={
+                  day.preorders.length > 0 ? (
+                    <Button
+                      onClick={() => setOrdersChoice(!ordersOpen)}
+                      aria-expanded={ordersOpen}
+                      aria-controls="preorder-day-orders"
+                      endIcon={
+                        <ExpandMoreIcon
+                          sx={{
+                            transition: 'transform 0.2s',
+                            transform: ordersOpen ? 'rotate(180deg)' : 'none',
+                          }}
+                        />
+                      }
+                    >
+                      {ordersOpen ? 'Ausblenden' : 'Anzeigen'}
+                    </Button>
+                  ) : undefined
+                }
+              >
+                {day.preorders.length === 0 ? (
+                  <Typography color="text.secondary">Keine.</Typography>
+                ) : (
+                  <Box
+                    id="preorder-day-orders"
+                    className="preorder-day-orders-wrap"
+                    sx={{ display: ordersOpen ? 'block' : 'none' }}
+                  >
+                    <TableContainer>
+                      <Table
+                        size="small"
+                        aria-label="Bestellungen des Tages"
+                        className="preorder-day-orders"
+                        sx={COMPACT_TABLE}
+                      >
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Code</TableCell>
+                            <TableCell>Kunde</TableCell>
+                            <TableCell>Abholung</TableCell>
+                            <TableCell>Artikel</TableCell>
+                            <TableCell align="right">Summe</TableCell>
+                            <TableCell>Status</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {day.preorders.map((p) => (
+                            <TableRow
+                              key={p.id}
+                              sx={{
+                                verticalAlign: 'top',
+                                ...(p.status === 'storniert' && {
+                                  '& td': { color: 'text.secondary' },
+                                  // Durchgestrichen wird die Bestellung, nicht
+                                  // die Erstattung daneben: „37,00 € erstatten“
+                                  // ist eine offene Aufgabe (W4-verify r4).
+                                  '& td:not(.preorder-money), & .preorder-total':
+                                    { textDecoration: 'line-through' },
+                                }),
+                              }}
+                            >
+                              <TableCell
+                                sx={{
+                                  fontFamily: 'monospace',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                <NextLink
+                                  href={`/admin/preorders/${p.id}`}
+                                  style={{
+                                    color: 'inherit',
+                                    ...TOUCH_LINK_STYLE,
+                                  }}
+                                >
+                                  {p.code}
+                                </NextLink>
+                              </TableCell>
+                              <TableCell sx={{ minWidth: 140 }}>
+                                {p.customerName}
+                                {p.customerPhone && (
+                                  <Typography
+                                    variant="body2"
+                                    color="text.secondary"
+                                  >
+                                    {p.customerPhone}
+                                  </Typography>
+                                )}
+                              </TableCell>
+                              <TableCell>{formatPickupPlace(p)}</TableCell>
+                              <TableCell sx={{ minWidth: 200 }}>
+                                <span className="preorder-day-items-full">
+                                  {formatItems(p.items)}
+                                </span>
+                                <span className="preorder-day-items-short">
+                                  <ItemsSummary items={p.items} max={3} />
+                                </span>
+                              </TableCell>
+                              <TableCell
+                                align="right"
+                                className="preorder-money"
+                                sx={{ whiteSpace: 'nowrap' }}
+                              >
+                                <span className="preorder-total">
+                                  {formatCurrency(p.total)}
+                                </span>
+                                {paymentState(p).kind === 'paid' ? (
+                                  ' ✓'
+                                ) : (
+                                  <PaymentNote preorder={p} />
+                                )}
+                              </TableCell>
+                              <TableCell>
+                                <PreorderStatusChip preorder={p} />
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                    <Typography
+                      variant="caption"
+                      color="text.secondary"
+                      sx={{ px: { xs: 2, md: 3 }, py: 1.5, display: 'block' }}
+                    >
+                      ✓ = bezahlt, Betrag stimmt. Ein offener Rest oder eine
+                      Erstattung steht mit Betrag in der Zeile. Stornierte
+                      stehen grau in der Liste und zählen in keiner Summe -
+                      außer schon Bezahltes unter „Zu erstatten“.
+                    </Typography>
+                  </Box>
+                )}
+              </PageSection>
+            </>
+          )
+        )}
+      </PageLayout>
     </Box>
   )
 }
