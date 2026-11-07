@@ -41,11 +41,15 @@ describe('PreorderDayClient (P3)', () => {
     expect(screen.getByText('Noch zu kassieren')).toBeInTheDocument()
     // Bestellweg und Abholort stehen getrennt - "Laden" im Bestellweg ist
     // keine Abholzahl (W4-verify r5).
+    // Seit UI-Runde 1 ein eigener Abschnitt statt eines losen Textblocks.
+    const section = screen.getByRole('region', { name: 'Abholorte' })
     const places = within(
-      screen.getByRole('list', { name: 'Abholung:' })
+      within(section).getByRole('list', { name: 'Abholorte' })
     ).getAllByRole('listitem')
-    expect(places[0]).toHaveTextContent(/^Laden: 1 Bestellung$/)
-    expect(places[1]).toHaveTextContent(/^Kita Teststraße: 1 Bestellung/)
+    expect(places[0]).toHaveTextContent(/^Laden1 Bestellung$/)
+    expect(places[1]).toHaveTextContent(
+      /^Kita Teststraße · Übergabe 09:00-09:30 Uhr1 Bestellung$/
+    )
     expect(screen.getByText(/Bestellweg:/)).toBeInTheDocument()
   })
 

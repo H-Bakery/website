@@ -14,6 +14,10 @@ import {
   preorderErrorMessage,
 } from '../../../../lib/preordersApi'
 import { type Preorder } from '../../../../lib/preordersTypes'
+import {
+  MOERSBACH_POINT_ID,
+  preferredPickupPoint,
+} from '../../../../lib/abholliste'
 import { moersbachListHref } from './preorderTypes'
 
 export { MOERSBACH_LIST_HREF, moersbachListHref } from './preorderTypes'
@@ -37,7 +41,7 @@ export function MoersbachNewPreorderClient({
   const [pointName, setPointName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  // Ohne Sammelstelle in der URL die erste aktive - sonst stünde die Maske
+  // Ohne Sammelstelle in der URL Mörsbach (wie die Liste) - sonst stünde die Maske
   // auf „Laden“. Der Name steht im Untertitel.
   useEffect(() => {
     let active = true
@@ -49,7 +53,11 @@ export function MoersbachNewPreorderClient({
           if (chosen) setPointName(chosen.name)
           return
         }
-        const first = points.find((p) => p.active !== false) ?? points[0]
+        const first =
+          preferredPickupPoint(points, {
+            date: initialDate,
+            preferId: MOERSBACH_POINT_ID,
+          }) ?? points[0]
         if (first) {
           setPointId(first.id)
           setPointName(first.name)
@@ -69,7 +77,7 @@ export function MoersbachNewPreorderClient({
     return () => {
       active = false
     }
-  }, [initialPickupPointId])
+  }, [initialPickupPointId, initialDate])
 
   const back = () => router.push(moersbachListHref(initialDate, false, pointId))
 

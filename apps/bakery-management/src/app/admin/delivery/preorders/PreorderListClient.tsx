@@ -35,6 +35,7 @@ import {
   ChevronRight as NextWeekIcon,
   Checklist as PickupListIcon,
   Edit as EditIcon,
+  ChevronRight as OpenIcon,
   EventBusy as CancelIcon,
   ListAlt as BackingListIcon,
   Place as AddressIcon,
@@ -67,7 +68,11 @@ import {
   type Preorder,
   type PreorderDay,
 } from '../../../../lib/preordersTypes'
-import { abhollisteHref } from '../../../../lib/abholliste'
+import {
+  abhollisteHref,
+  MOERSBACH_POINT_ID,
+  preferredPickupPoint,
+} from '../../../../lib/abholliste'
 import {
   DELIVERY_WEEKDAY_LABELS,
   PickupPoint,
@@ -114,7 +119,7 @@ export function moneyNotes(summary: {
 interface PreorderListClientProps {
   /** Liefertag aus der URL - z. B. nach dem Speichern einer Bestellung. */
   initialDate?: string
-  /** Sammelstelle aus der URL (`?point=`), sonst die erste aktive. */
+  /** Sammelstelle aus der URL (`?point=`), sonst Mörsbach (`preferredPickupPoint`). */
   initialPointId?: string
   /** Gesetzt, wenn gerade gespeichert wurde (`?saved=1`). */
   saved?: boolean
@@ -187,8 +192,16 @@ export default function PreorderListClient({
         const fromUrl = initialPointId
           ? list.find((p) => p.id === initialPointId)
           : undefined
+        // Ohne `?point=` die Sammelstelle, nach der der Menüpunkt heißt
+        // (Mörsbach) - nicht die erste in API-Reihenfolge (alphabetisch).
         const first =
-          fromUrl ?? list.find((p) => p.active !== false) ?? list[0] ?? null
+          fromUrl ??
+          preferredPickupPoint(list, {
+            date: initialDate,
+            preferId: MOERSBACH_POINT_ID,
+          }) ??
+          list[0] ??
+          null
         if (first) setPointId(first.id)
         setDate((current) =>
           isBusinessDate(current)
@@ -339,7 +352,13 @@ export default function PreorderListClient({
             href={`/admin/delivery/preorders/${preorder.id}`}
             sx={{ minWidth: 44, minHeight: 44 }}
           >
-            <EditIcon fontSize="small" />
+            {/* Nur-Lesen (Fahrer): kein Stift - die Detailseite hat für ihn
+                keine Bearbeiten-Aktionen (UI-Runde 1). */}
+            {canWrite ? (
+              <EditIcon fontSize="small" />
+            ) : (
+              <OpenIcon fontSize="small" />
+            )}
           </IconButton>
         </Tooltip>
         {/* Eine übergebene Bestellung wird nicht storniert:
@@ -575,8 +594,14 @@ export default function PreorderListClient({
 
           <Stack direction="row" spacing={0.5} alignItems="center">
             {mayEditPoint && (
-              <Button component={NextLink} href={pickupPointHref}>
-                {canEditPoint ? 'Sammelstelle bearbeiten' : 'Sammelstelle'}
+              <Button
+                component={NextLink}
+                href={pickupPointHref}
+                startIcon={<AddressIcon />}
+              >
+                {canEditPoint
+                  ? 'Sammelstelle bearbeiten'
+                  : 'Sammelstelle ansehen'}
               </Button>
             )}
             <Tooltip title="Aktualisieren">

@@ -286,14 +286,30 @@ export const PREORDER_STATUS_LABELS: Record<PreorderStatus, string> = {
  * Hell und Dunkel lesbar. Kein `warning`: dessen Kontrast ist im hellen
  * Modus zu schwach (CLAUDE.md, Tagesziel).
  */
+/**
+ * Farbe je Status. „Offen“ (noch packen) und „Bereit“ (gepackt) waren zwei
+ * fast gleiche Blautöne (UI-Runde 1) - jetzt Blau gegen Violett, und
+ * `PREORDER_STATUS_VARIANTS` setzt „Offen“ zusätzlich umrandet ab.
+ */
 export const PREORDER_STATUS_COLORS: Record<
   PreorderStatus,
-  'info' | 'primary' | 'success' | 'default'
+  'info' | 'secondary' | 'success' | 'default'
 > = {
   offen: 'info',
-  bereit: 'primary',
+  bereit: 'secondary',
   abgeholt: 'success',
   storniert: 'default',
+}
+
+/** Gefüllt = erledigt oder gepackt; umrandet = steht noch aus bzw. storniert. */
+export const PREORDER_STATUS_VARIANTS: Record<
+  PreorderStatus,
+  'filled' | 'outlined'
+> = {
+  offen: 'outlined',
+  bereit: 'filled',
+  abgeholt: 'filled',
+  storniert: 'outlined',
 }
 
 export const CHANNEL_LABELS: Record<PreorderChannel, string> = {

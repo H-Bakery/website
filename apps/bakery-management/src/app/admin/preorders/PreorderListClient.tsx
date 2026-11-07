@@ -234,13 +234,14 @@ export default function PreorderListClient({
     ...(filters?.status ?? []).map((s) => PREORDER_STATUS_LABELS[s]),
   ].filter((part): part is string => Boolean(part))
 
+  // Zahlen sind keine Überschrift (Layout-Kit): Anzahl im Titel, Summe und
+  // Stornierte als Beschreibung darunter (UI-Runde 1).
+  const countTitle = `Bestellungen (${active.length})`
   const countLine = !loading && !error && (
     <span data-testid="preorder-count">
-      {active.length}{' '}
-      {active.length === 1 ? 'Vorbestellung' : 'Vorbestellungen'} ·{' '}
-      {formatCurrency(total)}
+      Summe {formatCurrency(total)}
       {preorders.length > active.length
-        ? ` · ${preorders.length - active.length} storniert`
+        ? ` · dazu ${preorders.length - active.length} storniert`
         : ''}
     </span>
   )
@@ -457,7 +458,8 @@ export default function PreorderListClient({
         />
       ) : (
         <PageSection
-          title={countLine}
+          title={countTitle}
+          description={countLine}
           variant={wide ? 'card' : 'plain'}
           disablePadding
           actions={
@@ -479,12 +481,14 @@ export default function PreorderListClient({
               <Table size="small" aria-label="Vorbestellungen">
                 <TableHead>
                   <TableRow>
+                    {/* Status gleich hinter dem Code: am Laden-Tablet quer
+                        (1180 px) war er rechts abgeschnitten (UI-Runde 1). */}
                     <TableCell>Code</TableCell>
+                    <TableCell>Status</TableCell>
                     <TableCell>Abholung</TableCell>
                     <TableCell>Kunde</TableCell>
                     <TableCell>Artikel</TableCell>
                     <TableCell align="right">Summe</TableCell>
-                    <TableCell>Status</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -517,7 +521,10 @@ export default function PreorderListClient({
                           {p.code}
                         </NextLink>
                       </TableCell>
-                      <TableCell sx={{ minWidth: 150, maxWidth: 220 }}>
+                      <TableCell>
+                        <PreorderStatusChip preorder={p} />
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 130, maxWidth: 220 }}>
                         <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
                           {formatDateWithWeekday(p.pickupDate)}
                         </Box>
@@ -525,7 +532,7 @@ export default function PreorderListClient({
                           {formatPickupPlace(p)}
                         </Typography>
                       </TableCell>
-                      <TableCell sx={{ minWidth: 180, maxWidth: 280 }}>
+                      <TableCell sx={{ minWidth: 140, maxWidth: 280 }}>
                         <Box sx={{ overflowWrap: 'break-word' }}>
                           {p.customerName}
                         </Box>
@@ -535,15 +542,12 @@ export default function PreorderListClient({
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell sx={{ minWidth: 220, maxWidth: 360 }}>
+                      <TableCell sx={{ minWidth: 180, maxWidth: 360 }}>
                         <ItemsSummary items={p.items} />
                       </TableCell>
                       <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                         {formatCurrency(p.total)}
                         <PaymentNote preorder={p} />
-                      </TableCell>
-                      <TableCell>
-                        <PreorderStatusChip preorder={p} />
                       </TableCell>
                     </TableRow>
                   ))}

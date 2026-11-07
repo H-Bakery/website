@@ -1304,10 +1304,11 @@ export default function PreorderForm({
                           aria-label="Häufig vorbestellt"
                           sx={{
                             display: 'grid',
-                            gridTemplateColumns: {
-                              xs: 'repeat(2, minmax(0, 1fr))',
-                              sm: 'repeat(4, minmax(0, 1fr))',
-                            },
+                            // Nach der Breite des Felds, nicht des Bildschirms:
+                            // quer am Tablet steht es in der halben Spalte, und
+                            // 4 Spalten trennten jeden Namen (UI-Runde 1).
+                            gridTemplateColumns:
+                              'repeat(auto-fill, minmax(136px, 1fr))',
                             gap: 1,
                           }}
                         >

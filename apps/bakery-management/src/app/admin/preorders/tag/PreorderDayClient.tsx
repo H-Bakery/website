@@ -121,11 +121,16 @@ const printStyles = (
           overflowWrap: 'anywhere',
           fontSize: '9pt',
         },
+        // Code | Status | Kunde | Abholung | Artikel (Rest) | Summe - der
+        // Status steht vorn (UI-Runde 1: rechts war er am Tablet quer
+        // abgeschnitten).
         '.preorder-day-orders th:nth-of-type(1)': { width: '32mm' },
-        '.preorder-day-orders th:nth-of-type(2)': { width: '28mm' },
-        '.preorder-day-orders th:nth-of-type(3)': { width: '22mm' },
-        '.preorder-day-orders th:nth-of-type(5)': { width: '24mm' },
-        '.preorder-day-orders th:nth-of-type(6)': { width: '22mm' },
+        '.preorder-day-orders th:nth-of-type(2)': { width: '24mm' },
+        '.preorder-day-orders th:nth-of-type(3)': { width: '28mm' },
+        '.preorder-day-orders th:nth-of-type(4)': { width: '22mm' },
+        '.preorder-day-orders th:nth-of-type(6)': { width: '24mm' },
+        // Codes sind am Bildschirm Links - auf Papier nicht unterstreichen.
+        '.preorder-day-orders a': { textDecoration: 'none !important' },
         '.preorder-day-orders td:first-of-type': {
           fontSize: '8pt',
           overflowWrap: 'normal',
@@ -231,6 +236,33 @@ export default function PreorderDayClient({
     ? day.preorders.filter((p) => !p.pickupPointId && p.status !== 'storniert')
         .length
     : 0
+  const places: Array<{
+    key: string
+    name: string
+    count: number
+    detail: string | null
+  }> = day
+    ? [
+        ...(ladenCount > 0 || !day.pickupPointId
+          ? [{ key: 'laden', name: 'Laden', count: ladenCount, detail: null }]
+          : []),
+        ...day.pickupPoints.map((p) => ({
+          key: `point-${p.id}`,
+          name: p.name,
+          count: p.preorderCount,
+          detail:
+            [
+              p.window ? `Übergabe ${p.window} Uhr` : null,
+              p.active === false ? 'inaktiv' : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || null,
+        })),
+      ]
+    : []
+  const cancelledCount = day
+    ? day.preorders.filter((p) => p.status === 'storniert').length
+    : 0
   const channels = summary
     ? (Object.entries(summary.byChannel) as Array<[PreorderChannel, number]>)
         .filter(([, n]) => n > 0)
@@ -259,7 +291,7 @@ export default function PreorderDayClient({
               (summary.topUpTotal ?? 0) > 0
                 ? `davon ${formatCurrency(
                     summary.topUpTotal ?? 0
-                  )} Rest bezahlter`
+                  )} Rest aus schon bezahlten Bestellungen`
                 : null,
               (summary.handedOverUnpaidTotal ?? 0) > 0
                 ? `+ ${formatCurrency(
@@ -366,73 +398,63 @@ export default function PreorderDayClient({
           day &&
           summary && (
             <>
-              <Box>
-                <KeyFigures items={figures} aria-label="Kennzahlen des Tages" />
-                {day.pickupPoints.length > 0 && (
+              <KeyFigures items={figures} aria-label="Kennzahlen des Tages" />
+
+              {places.length > 0 && (
+                // W4-Verifikation Runde 5: Abholorte samt Laden - „Laden 18“
+                // im Bestellweg ist nicht die Zahl an der Theke. Seit UI-Runde 1
+                // ein eigener Abschnitt statt eines losen Textblocks.
+                <PageSection
+                  title="Abholorte"
+                  data-testid="preorder-day-places"
+                >
                   <Box
-                    sx={{ mt: 1.5 }}
-                    data-testid="preorder-day-places"
+                    component="ul"
+                    aria-label="Abholorte"
                     className="preorder-day-places"
+                    sx={{ listStyle: 'none', m: 0, p: 0 }}
                   >
-                    {/* W4-Verifikation Runde 5: Abholorte samt Laden - „Laden 18“
-                        im Bestellweg ist nicht die Zahl an der Theke. Je Ort eine
-                        Zeile statt eines Fließtexts über fünf Zeilen. */}
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      id="preorder-day-places-label"
-                    >
-                      Abholung:
-                    </Typography>
-                    <Box
-                      component="ul"
-                      aria-labelledby="preorder-day-places-label"
-                      sx={{
-                        listStyle: 'none',
-                        m: 0,
-                        p: 0,
-                        display: 'grid',
-                        gap: 0.25,
-                      }}
-                    >
-                      {[
-                        ...(ladenCount > 0 || !day.pickupPointId
-                          ? [{ key: 'laden', name: 'Laden', count: ladenCount }]
-                          : []),
-                        ...day.pickupPoints.map((p) => ({
-                          key: `point-${p.id}`,
-                          name: `${p.name}${
-                            p.active === false ? ' (inaktiv)' : ''
-                          }`,
-                          count: p.preorderCount,
-                          window: p.window,
-                        })),
-                      ].map((place) => (
-                        <Typography
-                          component="li"
-                          variant="body2"
-                          key={place.key}
-                        >
-                          {place.name}:{' '}
-                          <Box component="strong" sx={{ fontWeight: 600 }}>
-                            {place.count}{' '}
-                            {place.count === 1 ? 'Bestellung' : 'Bestellungen'}
-                          </Box>
-                          {'window' in place && place.window && (
-                            <Box
+                    {places.map((place) => (
+                      <Box
+                        component="li"
+                        key={place.key}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'baseline',
+                          justifyContent: 'space-between',
+                          gap: 2,
+                          py: 0.75,
+                          '&:not(:last-of-type)': {
+                            borderBottom: 1,
+                            borderColor: 'divider',
+                          },
+                        }}
+                      >
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography component="span">{place.name}</Typography>
+                          {place.detail && (
+                            <Typography
                               component="span"
-                              sx={{ color: 'text.secondary' }}
+                              variant="body2"
+                              color="text.secondary"
                             >
                               {' '}
-                              (Übergabe {place.window})
-                            </Box>
+                              · {place.detail}
+                            </Typography>
                           )}
+                        </Box>
+                        <Typography
+                          component="span"
+                          sx={{ fontWeight: 600, whiteSpace: 'nowrap' }}
+                        >
+                          {place.count}{' '}
+                          {place.count === 1 ? 'Bestellung' : 'Bestellungen'}
                         </Typography>
-                      ))}
-                    </Box>
+                      </Box>
+                    ))}
                   </Box>
-                )}
-              </Box>
+                </PageSection>
+              )}
 
               <PageSection
                 title="Summen je Produkt"
@@ -486,8 +508,21 @@ export default function PreorderDayClient({
               </PageSection>
 
               <PageSection
-                title={`Bestellungen (${day.preorders.length})`}
-                description={channels ? `Bestellweg: ${channels}` : undefined}
+                // Wie die Kachel ohne Stornierte; die stehen grau in der
+                // Tabelle und als „dazu … storniert“ (UI-Runde 1: 62 gegen 69).
+                title={`Bestellungen (${
+                  day.preorders.length - cancelledCount
+                })`}
+                description={
+                  [
+                    cancelledCount > 0
+                      ? `dazu ${cancelledCount} storniert`
+                      : null,
+                    channels ? `Bestellweg: ${channels}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ') || undefined
+                }
                 disablePadding={day.preorders.length > 0 && ordersOpen}
                 actions={
                   day.preorders.length > 0 ? (
@@ -527,11 +562,11 @@ export default function PreorderDayClient({
                         <TableHead>
                           <TableRow>
                             <TableCell>Code</TableCell>
+                            <TableCell>Status</TableCell>
                             <TableCell>Kunde</TableCell>
                             <TableCell>Abholung</TableCell>
                             <TableCell>Artikel</TableCell>
                             <TableCell align="right">Summe</TableCell>
-                            <TableCell>Status</TableCell>
                           </TableRow>
                         </TableHead>
                         <TableBody>
@@ -553,6 +588,7 @@ export default function PreorderDayClient({
                               <TableCell
                                 sx={{
                                   fontFamily: 'monospace',
+                                  fontSize: '0.8125rem',
                                   whiteSpace: 'nowrap',
                                 }}
                               >
@@ -566,7 +602,15 @@ export default function PreorderDayClient({
                                   {p.code}
                                 </NextLink>
                               </TableCell>
-                              <TableCell sx={{ minWidth: 140 }}>
+                              <TableCell>
+                                <PreorderStatusChip preorder={p} />
+                              </TableCell>
+                              {/* Schmaler als vorher, damit die Tabelle quer am
+                                  Laden-Tablet (1180 px) bis „Summe“ passt
+                                  (UI-Runde 1); lange Namen brechen um. */}
+                              <TableCell
+                                sx={{ minWidth: 120, overflowWrap: 'anywhere' }}
+                              >
                                 {p.customerName}
                                 {p.customerPhone && (
                                   <Typography
@@ -578,7 +622,7 @@ export default function PreorderDayClient({
                                 )}
                               </TableCell>
                               <TableCell>{formatPickupPlace(p)}</TableCell>
-                              <TableCell sx={{ minWidth: 200 }}>
+                              <TableCell sx={{ minWidth: 160 }}>
                                 <span className="preorder-day-items-full">
                                   {formatItems(p.items)}
                                 </span>
@@ -599,9 +643,6 @@ export default function PreorderDayClient({
                                 ) : (
                                   <PaymentNote preorder={p} />
                                 )}
-                              </TableCell>
-                              <TableCell>
-                                <PreorderStatusChip preorder={p} />
                               </TableCell>
                             </TableRow>
                           ))}
