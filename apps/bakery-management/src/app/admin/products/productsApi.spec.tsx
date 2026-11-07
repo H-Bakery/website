@@ -169,7 +169,7 @@ describe('ProductEditLoader', () => {
       data: { ...musterbrot, price: 3.5, pendingApproval: true },
     })
     renderWithTheme(<ProductEditLoader productId="musterbrot" />)
-    const price = await screen.findByLabelText('Preis (EUR)')
+    const price = await screen.findByLabelText(/^Preis \(EUR\)/)
     expect(screen.queryByText('wartet auf Freigabe')).toBeNull()
     fireEvent.change(price, { target: { value: '3.5' } })
     fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
@@ -189,6 +189,17 @@ describe('ProductEditLoader', () => {
     expect(
       screen.getByText(/freigegebene Stand: Musterbrot/)
     ).toBeInTheDocument()
+
+    // Rückmeldung steht über dem Knopf (keine Snackbar, die am Handy den
+    // Speichern-Knopf verdeckt) und geht mit der nächsten Eingabe weg.
+    expect(document.querySelector('.MuiSnackbar-root')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Gespeichert - die Änderung wartet auf Freigabe.'
+    )
+    fireEvent.change(price, { target: { value: '3,60' } })
+    expect(
+      screen.queryByText('Gespeichert - die Änderung wartet auf Freigabe.')
+    ).toBeNull()
   })
 
   it('Produkt ohne Beschreibung: unverändertes Speichern schickt keinen Kurztext als Beschreibung', async () => {
@@ -224,5 +235,37 @@ describe('ProductEditLoader', () => {
       screen.getByText(/Produkte ändert nur der Inhaber/)
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Speichern/ })).toBeNull()
+  })
+
+  it('zeigt den Preis deutsch und speichert „3,80“ als 3,80 € (nicht 3 €)', async () => {
+    apiClient.get.mockResolvedValue({ success: true, data: musterbrot })
+    apiClient.put.mockResolvedValue({
+      success: true,
+      pending: false,
+      data: { ...musterbrot, price: 3.8 },
+    })
+    renderWithTheme(<ProductEditLoader productId="musterbrot" />)
+    const price = await screen.findByLabelText(/^Preis \(EUR\)/)
+    expect(price).toHaveValue('3,20')
+    fireEvent.change(price, { target: { value: '3,80' } })
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+    await waitFor(() =>
+      expect(apiClient.put).toHaveBeenCalledWith(
+        '/api/hq-products/musterbrot',
+        expect.objectContaining({ price: 3.8 })
+      )
+    )
+  })
+
+  it('ungültiger Preis wird nicht gesendet', async () => {
+    apiClient.get.mockResolvedValue({ success: true, data: musterbrot })
+    renderWithTheme(<ProductEditLoader productId="musterbrot" />)
+    const price = await screen.findByLabelText(/^Preis \(EUR\)/)
+    fireEvent.change(price, { target: { value: '3,80,1' } })
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+    expect(
+      await screen.findAllByText(/Bitte einen gültigen Preis angeben/)
+    ).not.toHaveLength(0)
+    expect(apiClient.put).not.toHaveBeenCalled()
   })
 })

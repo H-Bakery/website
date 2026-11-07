@@ -110,4 +110,51 @@ describe('TemplatesClient - Rollen (F4)', () => {
     // Gruppenkopf in richtiger Einzahl.
     expect(screen.getByText('1 Position · 250000 Stück')).toBeInTheDocument()
   })
+
+  it('fragt nach, bevor ein Link ungespeicherte Mengen verwirft', async () => {
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        <>
+          {renderTemplates()}
+          <a href="/admin/partners">Seitenleiste</a>
+        </>
+      </WithSession>
+    )
+    const input = await screen.findByLabelText('Menge Musterbrot')
+    const link = screen.getByRole('link', { name: 'Seitenleiste' })
+
+    // Ohne Änderung: keine Rückfrage.
+    fireEvent.click(link)
+    expect(confirm).not.toHaveBeenCalled()
+
+    fireEvent.change(input, { target: { value: '12' } })
+    // „Abbrechen“ in der Rückfrage: der Klick wird verworfen (vorher
+    // wechselte die Seite still, die Mengen waren weg).
+    expect(fireEvent.click(link)).toBe(false)
+    expect(confirm).toHaveBeenCalledTimes(1)
+
+    confirm.mockReturnValue(true)
+    expect(fireEvent.click(link)).toBe(true)
+    confirm.mockRestore()
+  })
+
+  it('meldet das Speichern in der Leiste, ohne Snackbar über den Knöpfen', async () => {
+    ;(saveTemplate as jest.Mock).mockResolvedValue({})
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        {renderTemplates()}
+      </WithSession>
+    )
+    const input = await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.change(input, { target: { value: '12' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Nicht gespeichert')
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+
+    expect(await screen.findByText('Dienstag gespeichert')).toBeInTheDocument()
+    expect(document.querySelector('.MuiSnackbar-root')).toBeNull()
+    expect(saveTemplate).toHaveBeenCalledWith('1', 2, [
+      { productId: 1, productSlug: 'musterbrot', quantity: 12 },
+    ])
+  })
 })

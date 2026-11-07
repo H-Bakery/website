@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import ReportClient from './ReportClient'
@@ -281,8 +281,12 @@ describe('ReportClient', () => {
     await renderReport()
 
     expect(mockFetchStats).toHaveBeenCalledWith(PARTNER_ID, THIS_WEEK)
+    // Partner und Zeitraum stehen im Seitenkopf unter „Partner-Report“.
     expect(
-      screen.getByRole('heading', { name: 'CAP-Markt Homburg-Kirrberg' })
+      screen.getByRole('heading', { level: 1, name: 'Partner-Report' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/^CAP-Markt Homburg-Kirrberg · \d{2}\.\d{2}\.\d{4} bis /)
     ).toBeInTheDocument()
     expect(
       screen.getByText(
@@ -337,8 +341,11 @@ describe('ReportClient', () => {
     })
     await renderReport()
 
-    const tile = screen.getByText('Offen (ohne Abholung)')
-    expect(tile.parentElement).toHaveTextContent('24 Stück')
+    // Geliefert = Verkauft + Retoure + Offen: der offene Teil steht als
+    // Hinweis an „Geliefert“, damit höchstens vier Kennzahlen dastehen.
+    expect(screen.getByTestId('report-kpi-geliefert')).toHaveTextContent(
+      'davon 24 Stück offen (ohne Abholung)'
+    )
     expect(
       screen.getByText('Abverkaufsquote (Tage mit Abholung)')
     ).toBeInTheDocument()
@@ -405,6 +412,32 @@ describe('ReportClient', () => {
       'Abweichung: 3 Stück mehr gezählt, als im Schrank sein konnten'
     )
     expect(screen.getByText(/1 Besuch ·/)).toBeInTheDocument()
+  })
+
+  it('zeigt beim schnellen Umschalten nie den Zeitraum einer älteren Antwort', async () => {
+    const user = userEvent.setup()
+    await renderReport()
+
+    // „Letzter Monat“ antwortet langsam, „Letzte Woche“ danach sofort.
+    let resolveSlow: (value: typeof STATS_PROVISIONAL) => void = () => undefined
+    mockFetchStats.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSlow = resolve
+        })
+    )
+    mockFetchStats.mockResolvedValueOnce(STATS_COMPLETE)
+    await user.click(screen.getByRole('button', { name: 'Letzter Monat' }))
+    await user.click(screen.getByRole('button', { name: 'Letzte Woche' }))
+    await waitFor(() =>
+      expect(screen.queryByText('Vorläufige Zahlen')).toBeNull()
+    )
+
+    // Die veraltete Antwort kommt zuletzt - sie darf nichts mehr ändern.
+    await act(async () => {
+      resolveSlow(STATS_PROVISIONAL)
+    })
+    expect(screen.queryByText('Vorläufige Zahlen')).toBeNull()
   })
 
   it('reloads the report for a different range when a quick filter is used', async () => {

@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, fireEvent } from '@testing-library/react'
+import { screen, fireEvent, within } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import ProductListClient from './ProductListClient'
 import type { ManagementProduct } from '../../../lib/products'
@@ -56,13 +56,15 @@ const products: ManagementProduct[] = [
   },
 ]
 
+const row = (id: string) => screen.getByTestId(`product-row-${id}`)
+
 describe('ProductListClient (admin/products)', () => {
   beforeEach(() => mockPush.mockClear())
 
   it('renders heading, statistics and product rows', () => {
     renderWithTheme(<ProductListClient products={products} />)
     expect(
-      screen.getByRole('heading', { name: /Produktverwaltung/ })
+      screen.getByRole('heading', { level: 1, name: 'Produkte' })
     ).toBeInTheDocument()
     expect(screen.getByText('Produktliste (3)')).toBeInTheDocument()
     expect(screen.getByText('Roggenbrot')).toBeInTheDocument()
@@ -70,9 +72,9 @@ describe('ProductListClient (admin/products)', () => {
     // Deutsches Zahlformat (W4-Verifikation), nicht „4.50 €“.
     expect(screen.getByText(/^4,50\s€$/)).toBeInTheDocument()
     expect(screen.queryByText('4.50 €')).not.toBeInTheDocument()
-    expect(
-      screen.getByText('Verfügbar', { selector: '.MuiChip-label' })
-    ).toBeInTheDocument()
+    // Nur die Ausnahmen als Chip, der Normalfall als ruhiger Text.
+    expect(within(row('roggenbrot')).getByText('Verfügbar')).toBeInTheDocument()
+    expect(row('roggenbrot').querySelector('.MuiChip-root')).toBeNull()
     expect(
       screen.getByText('Saisonal', { selector: '.MuiChip-label' })
     ).toBeInTheDocument()
@@ -116,7 +118,7 @@ describe('ProductListClient (admin/products)', () => {
     renderWithTheme(<ProductListClient products={products} />)
     const chips = screen.getAllByText('wartet auf Freigabe')
     expect(chips).toHaveLength(1)
-    expect(chips[0].closest('tr')).toHaveTextContent('Christstollen')
+    expect(row('stollen')).toContainElement(chips[0])
     expect(
       screen.getByText(/1 Änderung wartet auf Freigabe/)
     ).toBeInTheDocument()
@@ -131,5 +133,28 @@ describe('ProductListClient (admin/products)', () => {
     expect(
       screen.queryByRole('button', { name: 'Roggenbrot bearbeiten' })
     ).not.toBeInTheDocument()
+  })
+
+  it('filtert nach Status - „Verfügbar“ zählt Saisonware mit wie das Dashboard', () => {
+    renderWithTheme(<ProductListClient products={products} />)
+    const filter = screen.getByRole('group', { name: 'Nach Status filtern' })
+    expect(within(filter).getByText('Alle 3')).toBeInTheDocument()
+    expect(within(filter).getByText('Verfügbar 2')).toBeInTheDocument()
+    expect(within(filter).getByText('Saisonal 1')).toBeInTheDocument()
+    expect(within(filter).getByText('Nicht verfügbar 1')).toBeInTheDocument()
+
+    fireEvent.click(within(filter).getByText('Nicht verfügbar 1'))
+    expect(screen.getByText('Produktliste (1 von 3)')).toBeInTheDocument()
+    expect(screen.getByTestId('product-row-altbrot')).toBeInTheDocument()
+    expect(screen.queryByTestId('product-row-roggenbrot')).toBeNull()
+  })
+
+  it('sucht im Namen', () => {
+    renderWithTheme(<ProductListClient products={products} />)
+    fireEvent.change(screen.getByLabelText('Produkt suchen'), {
+      target: { value: 'stoll' },
+    })
+    expect(screen.getByText('Produktliste (1 von 3)')).toBeInTheDocument()
+    expect(screen.getByTestId('product-row-stollen')).toBeInTheDocument()
   })
 })
