@@ -92,3 +92,6 @@ apps/bakery-api/data/
 
 # SQLite of the TS API in development (DB_PATH default ./data/bakery.db, relative to cwd)
 /data/
+
+# Claude Code: agent worktrees (skills under .claude/skills are tracked)
+.claude/worktrees/

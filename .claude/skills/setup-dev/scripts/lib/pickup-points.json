@@ -1,0 +1,50 @@
+{
+  "pickupPoints": [
+    {
+      "id": "gemeindehaus-oberdorf",
+      "name": "Gemeindehaus Oberdorf (Test)",
+      "street": "Teststraße 7",
+      "zip": "66999",
+      "city": "Oberdorf-Test",
+      "weekday": 6,
+      "window": "10:00-10:30",
+      "orderDeadline": {
+        "weekday": 5,
+        "time": "18:00"
+      },
+      "notes": "Synthetische zweite Sammelstelle (bakery-dev).\nÜbergabe im Foyer.",
+      "active": true
+    },
+    {
+      "id": "turnhalle-altdorf",
+      "name": "Turnhalle Altdorf (Test, inaktiv)",
+      "street": "Probeweg 3",
+      "zip": "66998",
+      "city": "Altdorf-Test",
+      "weekday": 3,
+      "window": "16:00-16:30",
+      "orderDeadline": {
+        "weekday": 2,
+        "time": "12:00"
+      },
+      "notes": "Synthetisch, inaktiv - neue Vorbestellungen dorthin müssen abgelehnt werden.",
+      "active": false
+    },
+    {
+      "id": "pfarrheim-test",
+      "name": "Pfarrheim Teststadt (Test, wird deaktiviert)",
+      "street": "Kirchgasse 1",
+      "zip": "66997",
+      "city": "Teststadt",
+      "weekday": 6,
+      "window": "09:30-10:00",
+      "orderDeadline": {
+        "weekday": 5,
+        "time": "12:00"
+      },
+      "notes": "Synthetisch (bakery-dev): bekommt Samstags-Bestellungen und wird danach deaktiviert.",
+      "active": true
+    }
+  ],
+  "preorders": []
+}
