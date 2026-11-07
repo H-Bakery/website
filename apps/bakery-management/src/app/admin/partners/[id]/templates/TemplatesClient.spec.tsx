@@ -138,4 +138,23 @@ describe('TemplatesClient - Rollen (F4)', () => {
     expect(fireEvent.click(link)).toBe(true)
     confirm.mockRestore()
   })
+
+  it('meldet das Speichern in der Leiste, ohne Snackbar über den Knöpfen', async () => {
+    ;(saveTemplate as jest.Mock).mockResolvedValue({})
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        {renderTemplates()}
+      </WithSession>
+    )
+    const input = await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.change(input, { target: { value: '12' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Nicht gespeichert')
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+
+    expect(await screen.findByText('Dienstag gespeichert')).toBeInTheDocument()
+    expect(document.querySelector('.MuiSnackbar-root')).toBeNull()
+    expect(saveTemplate).toHaveBeenCalledWith('1', 2, [
+      { productId: 1, productSlug: 'musterbrot', quantity: 12 },
+    ])
+  })
 })

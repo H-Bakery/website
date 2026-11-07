@@ -15,7 +15,6 @@ import {
   FormControlLabel,
   InputAdornment,
   MenuItem,
-  Snackbar,
   Stack,
   Switch,
   Tab,
@@ -123,7 +122,7 @@ export default function TemplatesClient({
   const [onlyStocked, setOnlyStocked] = useState(false)
   const [copySource, setCopySource] = useState('')
   const [pendingCopy, setPendingCopy] = useState<number | null>(null)
-  const [snackbar, setSnackbar] = useState<{
+  const [notice, setNotice] = useState<{
     message: string
     severity: 'success' | 'info'
   } | null>(null)
@@ -242,6 +241,7 @@ export default function TemplatesClient({
 
   const setQuantity = (slug: string, value: number) => {
     if (weekday == null) return
+    setNotice(null)
     setDrafts((prev) => {
       const day = { ...(prev[weekday] ?? {}) }
       if (value > 0) day[slug] = value
@@ -253,8 +253,8 @@ export default function TemplatesClient({
   const applyCopy = (source: number) => {
     if (weekday == null || source === weekday) return
     setDrafts((prev) => ({ ...prev, [weekday]: { ...(prev[source] ?? {}) } }))
-    setSnackbar({
-      message: `Mengen von ${WEEKDAY_LABELS[source]} übernommen – noch nicht gespeichert`,
+    setNotice({
+      message: `Von ${WEEKDAY_LABELS[source]} übernommen - nicht gespeichert`,
       severity: 'info',
     })
   }
@@ -311,8 +311,8 @@ export default function TemplatesClient({
       for (const item of items) persisted[item.productSlug] = item.quantity
       setSaved((prev) => ({ ...prev, [weekday]: persisted }))
       setDrafts((prev) => ({ ...prev, [weekday]: { ...persisted } }))
-      setSnackbar({
-        message: `Standard-Bestückung für ${WEEKDAY_LABELS[weekday]} gespeichert`,
+      setNotice({
+        message: `${WEEKDAY_LABELS[weekday]} gespeichert`,
         severity: 'success',
       })
     } catch (err) {
@@ -399,7 +399,10 @@ export default function TemplatesClient({
       >
         <Tabs
           value={weekday ?? false}
-          onChange={(_event, value: number) => setWeekday(value)}
+          onChange={(_event, value: number) => {
+            setWeekday(value)
+            setNotice(null)
+          }}
           variant="scrollable"
           scrollButtons="auto"
           allowScrollButtonsMobile
@@ -665,12 +668,22 @@ export default function TemplatesClient({
                 {saveError}
               </Alert>
             )}
+            {/* Rückmeldung in der Leiste statt als Snackbar - die lag sonst
+                4 s lang über Speichern/Zurücksetzen. */}
             <Typography
               variant="body2"
-              color={isDirty ? 'warning.main' : 'text.secondary'}
-              sx={{ mr: 'auto' }}
+              role="status"
+              color={
+                notice?.severity === 'success'
+                  ? 'success.main'
+                  : isDirty
+                  ? 'warning.main'
+                  : 'text.secondary'
+              }
+              sx={{ mr: 'auto', minWidth: 0 }}
             >
-              {isDirty ? 'Nicht gespeichert' : 'Gespeichert'}
+              {notice?.message ??
+                (isDirty ? 'Nicht gespeichert' : 'Gespeichert')}
             </Typography>
             <Button
               startIcon={<UndoIcon />}
@@ -739,22 +752,6 @@ export default function TemplatesClient({
           </Button>
         </DialogActions>
       </Dialog>
-
-      <Snackbar
-        open={snackbar != null}
-        autoHideDuration={4000}
-        onClose={() => setSnackbar(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          onClose={() => setSnackbar(null)}
-          severity={snackbar?.severity ?? 'success'}
-          variant="filled"
-          sx={{ width: '100%' }}
-        >
-          {snackbar?.message}
-        </Alert>
-      </Snackbar>
     </PageLayout>
   )
 }
