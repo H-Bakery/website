@@ -1501,4 +1501,17 @@ describe('deaktivierte Sammelstelle (W4-verify r4)', () => {
       /^Abholliste Gemeindehaus Test \(inaktiv\) · /
     )
   })
+
+  it('sagt bei einem Serverausfall nur einmal „Keine Verbindung“', async () => {
+    // Regression: Sammelstellen- und Listenfehler standen untereinander.
+    ;(fetchPickupPoints as jest.Mock).mockRejectedValueOnce(
+      new Error('Failed to fetch')
+    )
+    mockDay.mockRejectedValue(new Error('Failed to fetch'))
+    renderAs('verkauf')
+    expect(
+      await screen.findByRole('button', { name: 'Erneut versuchen' })
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+  })
 })

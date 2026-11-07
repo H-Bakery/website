@@ -54,6 +54,15 @@ import {
   Undo as UndoIcon,
 } from '@mui/icons-material'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
+import {
+  EmptyState,
+  ErrorState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+  type KeyFigure,
+} from '../../../../components/layout'
 import { useOptionalSession } from '../../../../lib/session'
 import {
   clearLostActions,
@@ -233,32 +242,6 @@ const printStyles = <GlobalStyles styles={ABHOL_PRINT_CSS} />
 
 /** Touch-Ziel: mindestens 48 px hoch (Tablet an der Theke). */
 const TOUCH = { minHeight: 48 } as const
-
-function Tile({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string
-  note?: string | null
-}) {
-  return (
-    <Box sx={{ p: 1.5, borderRadius: 1, bgcolor: 'action.hover' }}>
-      <Typography variant="caption" color="text.secondary" display="block">
-        {label}
-      </Typography>
-      <Typography variant="h6" component="p" sx={{ fontSize: '1.15rem' }}>
-        {value}
-      </Typography>
-      {note ? (
-        <Typography variant="caption" color="text.secondary" display="block">
-          {note}
-        </Typography>
-      ) : null}
-    </Box>
-  )
-}
 
 /** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
 /** „Übergabe“, „Zahlung“ … - für die Meldung über eine verlorene Aktion. */
@@ -1516,460 +1499,459 @@ export default function AbholListeClient({
   const menuName = menuPreorder?.customerName ?? menuPreorder?.code ?? ''
   const closeMenu = () => setMenu(null)
 
+  const address =
+    point && point.street
+      ? [point.street, [point.zip, point.city].filter(Boolean).join(' ')]
+          .filter(Boolean)
+          .join(', ')
+      : ''
+  const figures: KeyFigure[] = summary
+    ? [
+        {
+          label: 'Übergeben',
+          value: `${summary.byStatus.abgeholt} von ${summary.count}`,
+          'data-testid': 'figure-handed-over',
+        },
+        {
+          label: 'Warten noch',
+          value: String(waiting.length),
+          hint:
+            refundTotal > 0 && summary.notCollected > 0
+              ? `${summary.notCollected} nicht abgeholt`
+              : undefined,
+        },
+        {
+          label: 'Noch zu kassieren',
+          value: formatCurrency(summary.unpaidTotal),
+          tone: summary.unpaidTotal > 0 ? 'warning' : 'default',
+          hint: handedOverUnpaidNote(summary) ?? undefined,
+        },
+        refundTotal > 0
+          ? {
+              label: 'Zu erstatten',
+              value: formatCurrency(refundTotal),
+              tone: 'warning',
+              hint: refundNote(summary) ?? undefined,
+            }
+          : {
+              label: 'Nicht abgeholt',
+              value: String(summary.notCollected),
+              tone: summary.notCollected > 0 ? 'error' : 'default',
+            },
+      ]
+    : []
+  const showBulk =
+    Boolean(day) &&
+    (canWrite || role === 'fahrer') &&
+    ((canWrite && toReady.length > 0) || waiting.length > 0)
+
   return (
     <Box>
       {printStyles}
 
       <Box className="abholliste-screen">
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          justifyContent="space-between"
-          alignItems={{ xs: 'stretch', md: 'center' }}
-          spacing={1}
-          sx={{ mb: 1 }}
-        >
-          <Typography
-            variant="h4"
-            component="h1"
-            sx={{ fontSize: { xs: '1.5rem', md: '2rem' } }}
-          >
-            {title}
-          </Typography>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            <Button
-              component={NextLink}
-              href={`/admin/preorders/tag${
-                isBusinessDate(date) ? `?date=${date}` : ''
-              }`}
-              startIcon={<DayIcon />}
-              sx={TOUCH}
-            >
-              Tagesübersicht
-            </Button>
-            <Tooltip title="Aktualisieren">
-              <span>
-                <IconButton
-                  aria-label="Abholliste aktualisieren"
-                  onClick={() => load()}
-                  disabled={loading || !place}
-                  sx={{ width: 48, height: 48 }}
+        <PageLayout
+          title={title}
+          subtitle={
+            <>
+              {dateLabel}
+              {point?.window ? ` · Übergabe ${point.window} Uhr` : ''}
+              {address && (
+                <Box
+                  component="span"
+                  sx={{ display: { xs: 'block', sm: 'inline' } }}
                 >
-                  <RefreshIcon />
-                </IconButton>
-              </span>
-            </Tooltip>
-            <Button
-              variant="contained"
-              startIcon={<PrintIcon />}
-              onClick={() => window.print()}
-              disabled={!day}
-              sx={TOUCH}
-            >
-              Drucken
-            </Button>
-          </Stack>
-        </Stack>
-        <Typography color="text.secondary" sx={{ mb: 2 }}>
-          {dateLabel}
-          {point?.window ? ` · Übergabe ${point.window} Uhr` : ''}
-          {point && point.street
-            ? ` · ${[
-                point.street,
-                [point.zip, point.city].filter(Boolean).join(' '),
-              ]
-                .filter(Boolean)
-                .join(', ')}`
-            : ''}
-        </Typography>
-
-        {/* Tag, Ort, Suche */}
-        <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-          <Box
-            sx={{
-              display: 'grid',
-              gap: 1.5,
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'auto minmax(0, 1fr)',
-                lg: 'auto minmax(180px, 240px) minmax(0, 1fr) auto',
-              },
-              alignItems: 'center',
-            }}
-          >
-            <Stack direction="row" spacing={0.5} alignItems="center">
-              <Tooltip title="Vorheriger Abholtag">
-                <span>
-                  <IconButton
-                    aria-label="Vorheriger Abholtag"
-                    onClick={() => changeDate(stepPickupDay(date, -1, point))}
-                    disabled={!isBusinessDate(date)}
-                    sx={{ width: 48, height: 48 }}
+                  <Box
+                    component="span"
+                    sx={{ display: { xs: 'none', sm: 'inline' } }}
                   >
-                    <PrevIcon />
-                  </IconButton>
-                </span>
-              </Tooltip>
-              <TextField
-                label="Abholtag"
-                type="date"
-                size="small"
-                value={date}
-                onChange={(event) => changeDate(event.target.value)}
-                InputLabelProps={{ shrink: true }}
-                sx={{ minWidth: 160, flex: 1 }}
-              />
-              <Tooltip title="Nächster Abholtag">
-                <span>
-                  <IconButton
-                    aria-label="Nächster Abholtag"
-                    onClick={() => changeDate(stepPickupDay(date, 1, point))}
-                    disabled={!isBusinessDate(date)}
-                    sx={{ width: 48, height: 48 }}
-                  >
-                    <NextIcon />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Stack>
-            <TextField
-              select
-              label="Abholort"
-              size="small"
-              value={place}
-              onChange={(event) => changePlace(event.target.value)}
-              disabled={!place}
-              SelectProps={{ native: false }}
-            >
-              <MenuItem value={LADEN_PICKUP} sx={TOUCH}>
-                Laden
-              </MenuItem>
-              {points
-                .filter(
-                  (p) =>
-                    p.active !== false ||
-                    p.id === place ||
-                    bookedPointIds.has(p.id)
-                )
-                .map((p) => (
-                  <MenuItem key={p.id} value={p.id} sx={TOUCH}>
-                    {p.active === false ? `${p.name} (inaktiv)` : p.name}
-                  </MenuItem>
-                ))}
-            </TextField>
-            <TextField
-              size="small"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Name oder Code, z. B. „Müller“ oder „3“"
-              inputProps={{ 'aria-label': 'Name oder Code suchen' }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-                endAdornment: query ? (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="Suche leeren"
-                      onClick={() => setQuery('')}
-                      edge="end"
-                      sx={{ width: 44, height: 44 }}
-                    >
-                      <ClearIcon />
-                    </IconButton>
-                  </InputAdornment>
-                ) : undefined,
-              }}
-              sx={{ gridColumn: { sm: '1 / -1', lg: 'auto' } }}
-            />
-            <ToggleButtonGroup
-              exclusive
-              size="small"
-              value={effectiveSort}
-              onChange={(_e, value: AbholSort | null) =>
-                value && setSort(value)
-              }
-              aria-label="Sortierung"
-              sx={{ '& .MuiToggleButton-root': { minHeight: 44, px: 2 } }}
-            >
-              <ToggleButton value="zeit">Nach Uhrzeit</ToggleButton>
-              <ToggleButton value="name">Nach Name</ToggleButton>
-            </ToggleButtonGroup>
-          </Box>
-          <FormControlLabel
-            sx={{ mt: 1, minHeight: 44 }}
-            control={
-              <Switch
-                checked={hideDone}
-                onChange={(event) => setHideDone(event.target.checked)}
-              />
-            }
-            label="Abgeholte und stornierte ausblenden"
-          />
-        </Paper>
-
-        {pointsError && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            {pointsError}
-          </Alert>
-        )}
-        {weekdayNotice && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            {weekdayNotice} Am {formatDate(date)} gibt es dort keine Übergabe.
-          </Alert>
-        )}
-        {!point && isBusinessDate(date) && !isProductionDay(date) && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Montag ist Ruhetag - im Laden wird nichts abgeholt.
-          </Alert>
-        )}
-        {conflict && (
-          <Alert
-            severity="info"
-            sx={{ mb: 2 }}
-            onClose={() => setConflict(null)}
-          >
-            {conflict}
-          </Alert>
-        )}
-        {lostActions.length > 0 && (
-          <Alert
-            severity="error"
-            sx={{ mb: 2 }}
-            data-testid="lost-actions"
-            onClose={() => {
-              clearLostActions()
-              setLostActions([])
-            }}
-          >
-            <AlertTitle>Nicht gespeichert</AlertTitle>
-            {lostActions.map((a) => (
-              <Box
-                key={a.at + a.text}
-                component="span"
-                sx={{ display: 'block' }}
-              >
-                {a.text}
-              </Box>
-            ))}
-          </Alert>
-        )}
-        {openActions.length > 0 && (
-          <Alert
-            severity="error"
-            sx={{ mb: 2 }}
-            data-testid="open-actions"
-            onClose={() => setOpenActions([])}
-          >
-            {openActions.map((text) => (
-              <Box key={text} component="span" sx={{ display: 'block' }}>
-                {text}
-              </Box>
-            ))}
-          </Alert>
-        )}
-        {actionError && (
-          <Alert
-            severity="error"
-            sx={{ mb: 2 }}
-            onClose={() => setActionError(null)}
-          >
-            {actionError}
-          </Alert>
-        )}
-        {staleNotice && !loadError && (
-          <Alert
-            severity="warning"
-            sx={{ mb: 2 }}
-            data-testid="abholliste-stale"
-            action={
-              <Button
-                color="inherit"
-                size="small"
-                onClick={() => load(true)}
-                sx={TOUCH}
-              >
-                Erneut laden
-              </Button>
-            }
-          >
-            {staleListMessage(staleNotice, loadedAt)}
-          </Alert>
-        )}
-        {loadError && (
-          <Alert
-            severity="error"
-            sx={{ mb: 2 }}
-            action={
-              <Button color="inherit" size="small" onClick={() => load()}>
-                Erneut versuchen
-              </Button>
-            }
-          >
-            {loadError}
-          </Alert>
-        )}
-
-        {summary && (
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: 'repeat(2, minmax(0, 1fr))',
-                sm: 'repeat(3, minmax(0, 1fr))',
-                lg: `repeat(${refundTotal > 0 ? 6 : 5}, minmax(0, 1fr))`,
-              },
-              gap: 1.5,
-              mb: 2,
-            }}
-          >
-            <Tile label="Bestellungen" value={String(summary.count)} />
-            <Tile
-              label="Übergeben"
-              value={`${summary.byStatus.abgeholt} von ${summary.count}`}
-            />
-            <Tile label="Warten noch" value={String(waiting.length)} />
-            <Tile label="Nicht abgeholt" value={String(summary.notCollected)} />
-            <Tile
-              label="Noch zu kassieren"
-              value={formatCurrency(summary.unpaidTotal)}
-              note={handedOverUnpaidNote(summary)}
-            />
-            {refundTotal > 0 && (
-              <Tile
-                label="Zu erstatten"
-                value={formatCurrency(refundTotal)}
-                note={refundNote(summary)}
-              />
-            )}
-          </Box>
-        )}
-
-        {day && (canWrite || role === 'fahrer') && (
-          <Stack
-            direction={{ xs: 'column', sm: 'row' }}
-            spacing={1}
-            sx={{ mb: 2 }}
-          >
-            {canWrite && toReady.length > 0 && (
+                    {' · '}
+                  </Box>
+                  {address}
+                </Box>
+              )}
+            </>
+          }
+          actions={
+            <>
               <Button
                 variant="outlined"
-                startIcon={<ReadyIcon />}
-                onClick={() => setBulk('ready')}
-                disabled={bulkRunning}
-                sx={TOUCH}
+                startIcon={<PrintIcon />}
+                onClick={() => window.print()}
+                disabled={!day}
               >
-                Alle offenen als bereit markieren ({toReady.length})
+                Drucken
               </Button>
-            )}
-            {waiting.length > 0 && (
-              <Tooltip
-                title={
-                  dayEndAllowed
-                    ? ''
-                    : 'Erst am Abholtag - vorher kann noch jemand kommen.'
-                }
+              <Button
+                component={NextLink}
+                href={`/admin/preorders/tag${
+                  isBusinessDate(date) ? `?date=${date}` : ''
+                }`}
+                startIcon={<DayIcon />}
               >
-                <span>
-                  <Button
-                    variant="outlined"
-                    startIcon={<DayEndIcon />}
-                    onClick={() => setBulk('dayEnd')}
-                    disabled={!dayEndAllowed || bulkRunning}
-                    sx={{ ...TOUCH, width: { xs: '100%', sm: 'auto' } }}
-                  >
-                    Tagesabschluss: Rest „nicht abgeholt“ ({waiting.length})
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-          </Stack>
-        )}
+                Tagesübersicht
+              </Button>
+            </>
+          }
+        >
+          {/* Tag, Ort, Suche - eine Karte, am Handy ohne Leerlauf */}
+          <PageSection>
+            <Box
+              sx={{
+                display: 'grid',
+                gap: 1.5,
+                gridTemplateColumns: {
+                  xs: 'minmax(0, 1fr)',
+                  sm: 'auto minmax(0, 1fr)',
+                },
+                alignItems: 'center',
+              }}
+            >
+              <Stack direction="row" spacing={0.5} alignItems="center">
+                <Tooltip title="Vorheriger Abholtag">
+                  <span>
+                    <IconButton
+                      aria-label="Vorheriger Abholtag"
+                      onClick={() => changeDate(stepPickupDay(date, -1, point))}
+                      disabled={!isBusinessDate(date)}
+                    >
+                      <PrevIcon />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+                <TextField
+                  label="Abholtag"
+                  type="date"
+                  size="small"
+                  value={date}
+                  onChange={(event) => changeDate(event.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ minWidth: 150, flex: 1 }}
+                />
+                <Tooltip title="Nächster Abholtag">
+                  <span>
+                    <IconButton
+                      aria-label="Nächster Abholtag"
+                      onClick={() => changeDate(stepPickupDay(date, 1, point))}
+                      disabled={!isBusinessDate(date)}
+                    >
+                      <NextIcon />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Stack>
+              <Stack direction="row" spacing={1} alignItems="center">
+                <TextField
+                  select
+                  label="Abholort"
+                  size="small"
+                  value={place}
+                  onChange={(event) => changePlace(event.target.value)}
+                  disabled={!place}
+                  SelectProps={{ native: false }}
+                  sx={{ flex: 1, minWidth: 0, maxWidth: { sm: 320 } }}
+                >
+                  <MenuItem value={LADEN_PICKUP} sx={TOUCH}>
+                    Laden
+                  </MenuItem>
+                  {points
+                    .filter(
+                      (p) =>
+                        p.active !== false ||
+                        p.id === place ||
+                        bookedPointIds.has(p.id)
+                    )
+                    .map((p) => (
+                      <MenuItem key={p.id} value={p.id} sx={TOUCH}>
+                        {p.active === false ? `${p.name} (inaktiv)` : p.name}
+                      </MenuItem>
+                    ))}
+                </TextField>
+                <Tooltip title="Aktualisieren">
+                  <span>
+                    <IconButton
+                      aria-label="Abholliste aktualisieren"
+                      onClick={() => load()}
+                      disabled={loading || !place}
+                    >
+                      <RefreshIcon />
+                    </IconButton>
+                  </span>
+                </Tooltip>
+              </Stack>
+              <TextField
+                size="small"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Name oder Code, z. B. „Müller“ oder „3“"
+                inputProps={{ 'aria-label': 'Name oder Code suchen' }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon />
+                    </InputAdornment>
+                  ),
+                  endAdornment: query ? (
+                    <InputAdornment position="end">
+                      <IconButton
+                        aria-label="Suche leeren"
+                        onClick={() => setQuery('')}
+                        edge="end"
+                        sx={{ width: 44, height: 44 }}
+                      >
+                        <ClearIcon />
+                      </IconButton>
+                    </InputAdornment>
+                  ) : undefined,
+                }}
+                sx={{ gridColumn: { sm: '1 / -1' } }}
+              />
+              <Box
+                sx={{
+                  gridColumn: { sm: '1 / -1' },
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  columnGap: 2,
+                  rowGap: 1,
+                }}
+              >
+                <ToggleButtonGroup
+                  exclusive
+                  size="small"
+                  value={effectiveSort}
+                  onChange={(_e, value: AbholSort | null) =>
+                    value && setSort(value)
+                  }
+                  aria-label="Sortierung"
+                  sx={{ '& .MuiToggleButton-root': { minHeight: 44, px: 2 } }}
+                >
+                  <ToggleButton value="zeit">Nach Uhrzeit</ToggleButton>
+                  <ToggleButton value="name">Nach Name</ToggleButton>
+                </ToggleButtonGroup>
+                <FormControlLabel
+                  sx={{ minHeight: 44, mr: 0 }}
+                  control={
+                    <Switch
+                      checked={hideDone}
+                      onChange={(event) => setHideDone(event.target.checked)}
+                    />
+                  }
+                  label="Abgeholte und stornierte ausblenden"
+                />
+              </Box>
+            </Box>
+          </PageSection>
 
-        {loading && !day ? (
-          <Box
-            sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-            role="status"
-            aria-label="Abholliste wird geladen"
-          >
-            <CircularProgress />
-          </Box>
-        ) : (
-          day &&
-          (preorders.length === 0 ? (
-            <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
-              <Typography color="text.secondary" sx={{ mb: canWrite ? 2 : 0 }}>
-                Für diesen Tag ist hier nichts vorbestellt.
-              </Typography>
-              {canWrite && (
+          {/* Fällt der Server ganz aus, sagt das die Fehlermeldung der Liste -
+              nicht zweimal „Keine Verbindung“ untereinander. */}
+          {pointsError && !loadError && (
+            <Alert severity="warning">{pointsError}</Alert>
+          )}
+          {weekdayNotice && (
+            <Alert severity="info">
+              {weekdayNotice} Am {formatDate(date)} gibt es dort keine Übergabe.
+            </Alert>
+          )}
+          {!point && isBusinessDate(date) && !isProductionDay(date) && (
+            <Alert severity="info">
+              Montag ist Ruhetag - im Laden wird nichts abgeholt.
+            </Alert>
+          )}
+          {conflict && (
+            <Alert severity="info" onClose={() => setConflict(null)}>
+              {conflict}
+            </Alert>
+          )}
+          {lostActions.length > 0 && (
+            <Alert
+              severity="error"
+              data-testid="lost-actions"
+              onClose={() => {
+                clearLostActions()
+                setLostActions([])
+              }}
+            >
+              <AlertTitle>Nicht gespeichert</AlertTitle>
+              {lostActions.map((a) => (
+                <Box
+                  key={a.at + a.text}
+                  component="span"
+                  sx={{ display: 'block' }}
+                >
+                  {a.text}
+                </Box>
+              ))}
+            </Alert>
+          )}
+          {openActions.length > 0 && (
+            <Alert
+              severity="error"
+              data-testid="open-actions"
+              onClose={() => setOpenActions([])}
+            >
+              {openActions.map((text) => (
+                <Box key={text} component="span" sx={{ display: 'block' }}>
+                  {text}
+                </Box>
+              ))}
+            </Alert>
+          )}
+          {actionError && (
+            <Alert severity="error" onClose={() => setActionError(null)}>
+              {actionError}
+            </Alert>
+          )}
+          {staleNotice && !loadError && (
+            <Alert
+              severity="warning"
+              data-testid="abholliste-stale"
+              action={
                 <Button
-                  component={NextLink}
-                  href={newHref}
-                  variant="contained"
-                  startIcon={<NewIcon />}
+                  color="inherit"
+                  size="small"
+                  onClick={() => load(true)}
                   sx={TOUCH}
                 >
-                  Vorbestellung erfassen
+                  Erneut laden
+                </Button>
+              }
+            >
+              {staleListMessage(staleNotice, loadedAt)}
+            </Alert>
+          )}
+          {loadError && (
+            <ErrorState message={loadError} onRetry={() => load()} />
+          )}
+
+          {summary && (
+            <KeyFigures items={figures} aria-label="Stand der Übergabe" />
+          )}
+
+          {showBulk && (
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              spacing={1}
+              useFlexGap
+              flexWrap="wrap"
+            >
+              {canWrite && toReady.length > 0 && (
+                <Button
+                  variant="outlined"
+                  startIcon={<ReadyIcon />}
+                  onClick={() => setBulk('ready')}
+                  disabled={bulkRunning}
+                  sx={TOUCH}
+                >
+                  Alle offenen als bereit markieren ({toReady.length})
                 </Button>
               )}
-            </Paper>
-          ) : groups.length === 0 ? (
-            <Typography color="text.secondary" sx={{ py: 3 }}>
-              {searching
-                ? `Keine Bestellung zu „${query.trim()}“.`
-                : 'Alles abgeholt.'}
-            </Typography>
-          ) : (
-            groups.map((group) => (
-              <Box
-                key={group.key}
-                component="section"
-                aria-label={group.label}
-                sx={{ mb: 2.5 }}
-              >
-                <Typography
-                  variant="subtitle1"
-                  component="h2"
-                  sx={{
-                    fontWeight: 700,
-                    mb: 1,
-                    color:
-                      group.key === CANCELLED_GROUP
-                        ? 'text.secondary'
-                        : 'text.primary',
-                  }}
+              {waiting.length > 0 && (
+                <Tooltip
+                  title={
+                    dayEndAllowed
+                      ? ''
+                      : 'Erst am Abholtag - vorher kann noch jemand kommen.'
+                  }
                 >
-                  {group.label}{' '}
-                  <Typography component="span" color="text.secondary">
-                    · {group.preorders.length}
-                  </Typography>
-                </Typography>
-                <Stack component="ul" spacing={1} sx={{ m: 0, p: 0 }}>
-                  {group.preorders.map(renderRow)}
-                </Stack>
+                  <span>
+                    <Button
+                      variant="outlined"
+                      startIcon={<DayEndIcon />}
+                      onClick={() => setBulk('dayEnd')}
+                      disabled={!dayEndAllowed || bulkRunning}
+                      sx={{ ...TOUCH, width: { xs: '100%', sm: 'auto' } }}
+                    >
+                      Tagesabschluss: Rest „nicht abgeholt“ ({waiting.length})
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+            </Stack>
+          )}
+
+          {loading && !day ? (
+            <LoadingState label="Abholliste wird geladen …" />
+          ) : (
+            day &&
+            (preorders.length === 0 ? (
+              <EmptyState
+                title="Für diesen Tag ist hier nichts vorbestellt."
+                action={
+                  canWrite ? (
+                    <Button
+                      component={NextLink}
+                      href={newHref}
+                      variant="contained"
+                      startIcon={<NewIcon />}
+                      sx={TOUCH}
+                    >
+                      Vorbestellung erfassen
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : groups.length === 0 ? (
+              <EmptyState
+                title={
+                  searching
+                    ? `Keine Bestellung zu „${query.trim()}“.`
+                    : 'Alles abgeholt.'
+                }
+              />
+            ) : (
+              <Box>
+                {groups.map((group) => (
+                  <Box
+                    key={group.key}
+                    component="section"
+                    aria-label={group.label}
+                    sx={{ '&:not(:last-of-type)': { mb: 2.5 } }}
+                  >
+                    <Typography
+                      variant="subtitle1"
+                      component="h2"
+                      sx={{
+                        fontWeight: 700,
+                        mb: 1,
+                        color:
+                          group.key === CANCELLED_GROUP
+                            ? 'text.secondary'
+                            : 'text.primary',
+                      }}
+                    >
+                      {group.label}{' '}
+                      <Typography component="span" color="text.secondary">
+                        · {group.preorders.length}
+                      </Typography>
+                    </Typography>
+                    <Stack component="ul" spacing={1} sx={{ m: 0, p: 0 }}>
+                      {group.preorders.map(renderRow)}
+                    </Stack>
+                  </Box>
+                ))}
               </Box>
             ))
-          ))
-        )}
+          )}
 
-        {day && cancelledCount > 0 && (
-          <Typography variant="caption" color="text.secondary">
-            Stornierte stehen nicht auf dem Ausdruck und zählen in keiner Summe
-            - außer schon bezahlte: die stehen unter „Zu erstatten“.
-          </Typography>
-        )}
-        {/* W4-Verifikation Runde 3: die Meldung unten (Fehler bleiben stehen)
-            lag am Handy über den Knöpfen der letzten Bestellung. Solange sie
-            offen ist, lässt sich die Liste so weit schieben, dass die letzte
-            Karte darüber steht. */}
-        {toast && (
-          <Box
-            aria-hidden="true"
-            data-testid="toast-spacer"
-            sx={{ height: { xs: 280, md: 140 } }}
-          />
-        )}
+          {day && cancelledCount > 0 && (
+            <Typography variant="caption" color="text.secondary">
+              Stornierte stehen nicht auf dem Ausdruck und zählen in keiner
+              Summe - außer schon bezahlte: die stehen unter „Zu erstatten“.
+            </Typography>
+          )}
+          {/* W4-Verifikation Runde 3: die Meldung unten (Fehler bleiben stehen)
+              lag am Handy über den Knöpfen der letzten Bestellung. Solange sie
+              offen ist, lässt sich die Liste so weit schieben, dass die letzte
+              Karte darüber steht. */}
+          {toast && (
+            <Box
+              aria-hidden="true"
+              data-testid="toast-spacer"
+              sx={{ height: { xs: 280, md: 140 } }}
+            />
+          )}
+        </PageLayout>
       </Box>
 
       {/* ------------------------------ Druck ------------------------------ */}
