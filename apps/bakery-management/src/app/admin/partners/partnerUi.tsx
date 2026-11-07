@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Chip, type ChipProps } from '@mui/material'
 import { WEEKDAY_SHORT, type SettlementModel } from '../../../lib/partnerTypes'
 
@@ -129,4 +129,56 @@ export function ProvisionalBadge() {
       sx={{ height: 20, '& .MuiChip-label': { px: 0.75, fontSize: 12 } }}
     />
   )
+}
+
+/**
+ * Ungespeicherte Eingaben nicht still verlieren: solange `active`, fragt ein
+ * Klick auf einen internen Link (Rücklink, Seitenleiste, Brotkrumen) nach,
+ * und Neuladen/Schließen zeigt die Browser-Rückfrage.
+ *
+ * `beforeunload` allein reicht nicht - Links des App-Routers wechseln die
+ * Seite ohne Neuladen. Der Klick wird deshalb im Capture-Schritt am
+ * `document` abgefangen, bevor Next.js ihn bekommt.
+ */
+export function useConfirmLeave(active: boolean, message: string) {
+  useEffect(() => {
+    if (!active) return undefined
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return
+      }
+      const target = event.target as Element | null
+      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null
+      if (
+        !anchor ||
+        anchor.target === '_blank' ||
+        anchor.hasAttribute('download')
+      ) {
+        return
+      }
+      const url = new URL(anchor.href, window.location.href)
+      if (url.origin !== window.location.origin) return
+      if (
+        url.pathname === window.location.pathname &&
+        url.search === window.location.search
+      ) {
+        return
+      }
+      if (!window.confirm(message)) {
+        event.preventDefault()
+        event.stopPropagation()
+      }
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    document.addEventListener('click', onClick, true)
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload)
+      document.removeEventListener('click', onClick, true)
+    }
+  }, [active, message])
 }

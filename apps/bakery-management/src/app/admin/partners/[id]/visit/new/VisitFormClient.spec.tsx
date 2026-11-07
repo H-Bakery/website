@@ -298,11 +298,11 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('leaves the form on the business day of the visit, not on today', async () => {
-    const user = userEvent.setup()
     await renderForm({ initialDate: BUSINESS_DATE })
 
-    await user.click(screen.getByRole('button', { name: 'Zurück zum Partner' }))
-    expect(mockPush).toHaveBeenLastCalledWith(
+    const back = () => screen.getByRole('link', { name: 'Zurück zum Partner' })
+    expect(back()).toHaveAttribute(
+      'href',
       `/admin/partners/${PARTNER_ID}?date=${BUSINESS_DATE}`
     )
 
@@ -310,8 +310,8 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     fireEvent.change(screen.getByLabelText('Zeitpunkt des Besuchs'), {
       target: { value: '2026-08-24T08:00' },
     })
-    await user.click(screen.getByRole('button', { name: 'Zurück zum Partner' }))
-    expect(mockPush).toHaveBeenLastCalledWith(
+    expect(back()).toHaveAttribute(
+      'href',
       `/admin/partners/${PARTNER_ID}?date=2026-08-24`
     )
   })

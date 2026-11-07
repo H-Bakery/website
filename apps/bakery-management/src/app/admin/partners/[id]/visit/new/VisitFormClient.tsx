@@ -18,8 +18,6 @@ import {
   CircularProgress,
   Collapse,
   IconButton,
-  LinearProgress,
-  Paper,
   Stack,
   TextField,
   ToggleButton,
@@ -30,7 +28,6 @@ import {
 import {
   Add as AddIcon,
   AddCircleOutline as RefillIcon,
-  ArrowBack as ArrowBackIcon,
   Backspace as ClearRowIcon,
   DoneAll as PickupIcon,
   ExpandLess as ExpandLessIcon,
@@ -64,6 +61,13 @@ import {
   fetchVisits,
   updateVisit,
 } from '../../../../../../lib/partnerApi'
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../../../components/layout'
 
 export interface CatalogueGroup {
   category: string
@@ -350,7 +354,7 @@ const ProductRow = memo(function ProductRow({
   return (
     <Box
       sx={{
-        px: { xs: 1, sm: 1.5 },
+        px: { xs: 2, md: 3 },
         py: 1,
         borderTop: 1,
         borderColor: 'divider',
@@ -1144,6 +1148,22 @@ export default function VisitFormClient({
     }
   }
 
+  /* Name und Notiz: zugeklappt, bis jemand sie braucht - aber offen, sobald
+   * etwas drinsteht (Entwurf, Korrektur), damit nichts versteckt mitgespeichert wird. */
+  const [extrasOpen, setExtrasOpen] = useState(false)
+  const hasExtras = Boolean(staffName.trim() || note.trim())
+  useEffect(() => {
+    if (hasExtras) setExtrasOpen(true)
+  }, [hasExtras])
+  const showExtras = extrasOpen
+  const extrasSummary = showExtras
+    ? 'Name und Notiz ausblenden'
+    : hasExtras
+    ? `Name und Notiz · ${[staffName.trim(), note.trim() && 'Notiz vorhanden']
+        .filter(Boolean)
+        .join(' · ')}`
+    : 'Name und Notiz hinzufügen'
+
   /* ------------------------------------------------------------------ *
    * Darstellung
    * ------------------------------------------------------------------ */
@@ -1169,60 +1189,31 @@ export default function VisitFormClient({
   const emphasis: 'rest' | 'neu' | 'none' =
     visitType === 'pickup' ? 'rest' : visitType === 'initial' ? 'neu' : 'none'
 
+  const visitTypeHint =
+    visitType === 'refill'
+      ? `${VISIT_TYPE_DESCRIPTIONS.refill}: zuerst zählen, was noch da ist (Rest), dann eintragen, was neu eingeräumt wird (Neu). Der stärkste Abverkauf seit dem letzten Besuch steht je Kategorie oben.`
+      : VISIT_TYPE_DESCRIPTIONS[visitType]
+
   return (
-    <Box sx={{ maxWidth: 900, mx: 'auto' }}>
-      {/* Kopf */}
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mb: 2 }}>
-        <IconButton
-          aria-label="Zurück zum Partner"
-          onClick={() => router.push(detailHref)}
-          sx={{ minWidth: 44, minHeight: 44 }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography
-            variant="h5"
-            component="h1"
-            sx={{ fontSize: { xs: '1.35rem', md: '1.75rem' } }}
-          >
-            {isEditing ? 'Besuch korrigieren' : 'Besuch erfassen'}
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {weekday != null ? `${WEEKDAY_LABELS[weekday]}, ` : ''}
-            {formatDate(businessDate)}
-            {editedVisit ? ` · Besuch ${editedVisit.sequence}` : ''}
-          </Typography>
-        </Box>
-      </Box>
-
+    <PageLayout
+      width="narrow"
+      title={isEditing ? 'Besuch korrigieren' : 'Besuch erfassen'}
+      subtitle={`${
+        weekday != null ? `${WEEKDAY_LABELS[weekday]}, ` : ''
+      }${formatDate(businessDate)}${
+        editedVisit ? ` · Besuch ${editedVisit.sequence}` : ''
+      }`}
+      back={{ href: detailHref, label: 'Zurück zum Partner' }}
+    >
       {loading && (
-        <Box sx={{ mb: 2 }}>
-          <LinearProgress aria-label="Vorlagen und Tagesstand werden geladen" />
-          <Typography variant="caption" color="text.secondary">
-            Vorlagen und Tagesstand werden geladen …
-          </Typography>
-        </Box>
+        <LoadingState label="Vorlagen und Tagesstand werden geladen …" />
       )}
 
-      {loadError && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {loadError}
-        </Alert>
-      )}
+      {loadError && <ErrorState message={loadError} onRetry={load} />}
 
       {draftInfo && (
         <Alert
           severity="info"
-          sx={{ mb: 2 }}
           onClose={() => setDraftInfo(null)}
           action={
             <Button color="inherit" size="small" onClick={discardDraft}>
@@ -1235,12 +1226,11 @@ export default function VisitFormClient({
       )}
 
       {/* Besuchstyp */}
-      <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
+      <PageSection title="Art des Besuchs" description={visitTypeHint}>
         <ToggleButtonGroup
           value={visitType}
           exclusive
           fullWidth
-          size="large"
           aria-label="Art des Besuchs"
           onChange={(_event, value) => {
             if (value) setVisitType(value as VisitType)
@@ -1252,13 +1242,13 @@ export default function VisitFormClient({
               value={type}
               aria-label={VISIT_TYPE_LABELS[type]}
               sx={{
-                flexDirection: 'column',
-                gap: 0.25,
-                minHeight: 64,
+                flexDirection: { xs: 'column', sm: 'row' },
+                gap: { xs: 0.25, sm: 1 },
+                minHeight: { xs: 56, sm: 48 },
                 px: 0.5,
                 lineHeight: 1.2,
                 textTransform: 'none',
-                fontSize: { xs: '0.7rem', sm: '0.85rem' },
+                fontSize: { xs: '0.75rem', sm: '0.9rem' },
               }}
             >
               {VISIT_TYPE_ICONS[type]}
@@ -1266,16 +1256,9 @@ export default function VisitFormClient({
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ mt: 1.5, display: 'block' }}
-        >
-          {VISIT_TYPE_DESCRIPTIONS[visitType]}
-        </Typography>
 
         {visitType === 'pickup' && (
-          <Alert severity="warning" sx={{ mt: 1.5 }}>
+          <Alert severity="warning" sx={{ mt: 2 }}>
             Diese Abholung schließt den Geschäftstag ab. Bitte je Produkt den
             Rest zählen - daraus ergeben sich Retoure, Tagesverkauf und Umsatz.
             Ohne Abholung bleibt der Tag offen und alle Zahlen vorläufig.
@@ -1289,7 +1272,7 @@ export default function VisitFormClient({
         {visitType === 'initial' && templateInfo && (
           <Alert
             severity="info"
-            sx={{ mt: 1.5 }}
+            sx={{ mt: 2 }}
             onClose={() => setTemplateInfo(null)}
             action={
               templateForWeekday &&
@@ -1315,155 +1298,171 @@ export default function VisitFormClient({
         {visitType !== 'initial' && templateClearedInfo && (
           <Alert
             severity="info"
-            sx={{ mt: 1.5 }}
+            sx={{ mt: 2 }}
             onClose={() => setTemplateClearedInfo(null)}
           >
             {templateClearedInfo}
           </Alert>
         )}
-        {visitType === 'refill' && (
-          <Alert severity="info" sx={{ mt: 1.5 }}>
-            Zuerst zählen, was noch da ist (Rest), dann eintragen, was neu
-            eingeräumt wird (Neu). Produkte mit dem stärksten Abverkauf seit dem
-            letzten Besuch stehen in jeder Kategorie oben.
-          </Alert>
-        )}
-      </Paper>
+      </PageSection>
 
-      {/* Zeitpunkt und Person */}
-      <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
-        <Stack spacing={2}>
-          <TextField
-            label="Zeitpunkt des Besuchs"
-            type="datetime-local"
-            value={visitAt}
-            onChange={(event) => setVisitAt(event.target.value)}
-            fullWidth
-            InputLabelProps={{ shrink: true }}
-            helperText="Frei änderbar - so lässt sich ein Besuch auch später im Büro nacherfassen."
-          />
-          <TextField
-            label="Erfasst von (optional)"
-            value={staffName}
-            onChange={(event) => setStaffName(event.target.value)}
-            fullWidth
-            placeholder="Name"
-          />
-          <TextField
-            label="Notiz (optional)"
-            value={note}
-            onChange={(event) => setNote(event.target.value)}
-            fullWidth
-            multiline
-            minRows={2}
-            placeholder="z. B. Brot war um 10 Uhr komplett leer"
-          />
-        </Stack>
-      </Paper>
-
-      {/* Produkte */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 1,
-          alignItems: 'center',
-          mb: 1,
-        }}
-      >
+      {/* Zeitpunkt; Name und Notiz nur auf Wunsch (oder wenn schon etwas drinsteht) */}
+      <PageSection title="Zeitpunkt">
         <TextField
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="Produkt suchen"
-          size="small"
-          sx={{ flex: '1 1 180px' }}
-          inputProps={{ 'aria-label': 'Produkt suchen' }}
+          label="Zeitpunkt des Besuchs"
+          type="datetime-local"
+          value={visitAt}
+          onChange={(event) => setVisitAt(event.target.value)}
+          fullWidth
+          InputLabelProps={{ shrink: true }}
+          helperText="Frei änderbar - so lässt sich ein Besuch auch später im Büro nacherfassen."
         />
         <Button
           size="small"
-          onClick={() => setAllGroups(!allOpen)}
-          sx={{ minHeight: 44 }}
+          onClick={() => setExtrasOpen((open) => !open)}
+          aria-expanded={showExtras}
+          aria-controls="visit-extras"
+          endIcon={showExtras ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+          sx={{ mt: 1.5, ml: -1, minHeight: 44 }}
         >
-          {allOpen ? 'Alle einklappen' : 'Alle ausklappen'}
+          {extrasSummary}
         </Button>
-      </Box>
+        <Collapse in={showExtras} id="visit-extras">
+          <Stack spacing={2} sx={{ pt: 1.5 }}>
+            <TextField
+              label="Erfasst von (optional)"
+              value={staffName}
+              onChange={(event) => setStaffName(event.target.value)}
+              fullWidth
+              placeholder="Name"
+            />
+            <TextField
+              label="Notiz (optional)"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              fullWidth
+              multiline
+              minRows={2}
+              placeholder="z. B. Brot war um 10 Uhr komplett leer"
+            />
+          </Stack>
+        </Collapse>
+      </PageSection>
 
-      {visibleGroups.length === 0 ? (
-        <Paper sx={{ p: 3, textAlign: 'center', mb: 2 }}>
-          <Typography color="text.secondary">
-            Keine Produkte gefunden.
-          </Typography>
-        </Paper>
-      ) : (
-        visibleGroups.map((group, index) => {
-          const open = isGroupOpen(group.category, index)
-          const filledInGroup = group.products.filter((product) =>
-            hasContent(rows[product.productSlug])
-          ).length
-          return (
-            <Paper key={group.category} sx={{ mb: 1.5, overflow: 'hidden' }}>
-              <ButtonBase
-                onClick={() => toggleGroup(group.category, open)}
-                aria-expanded={open}
-                sx={{
-                  width: '100%',
-                  minHeight: 52,
-                  px: { xs: 1.5, sm: 2 },
-                  py: 1,
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  gap: 1,
-                  textAlign: 'left',
-                }}
+      {/* Produkte */}
+      <PageSection
+        title="Produkte"
+        description={`${totals.products} Produkt(e) erfasst`}
+        disablePadding
+      >
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: 1,
+            alignItems: 'center',
+            px: { xs: 2, md: 3 },
+            pb: 1.5,
+          }}
+        >
+          <TextField
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Produkt suchen"
+            size="small"
+            sx={{ flex: '1 1 180px' }}
+            inputProps={{ 'aria-label': 'Produkt suchen' }}
+          />
+          <Button
+            size="small"
+            onClick={() => setAllGroups(!allOpen)}
+            sx={{ minHeight: 44 }}
+          >
+            {allOpen ? 'Alle einklappen' : 'Alle ausklappen'}
+          </Button>
+        </Box>
+
+        {visibleGroups.length === 0 ? (
+          <Box sx={{ px: { xs: 2, md: 3 }, pb: 3 }}>
+            <EmptyState title="Keine Produkte gefunden." />
+          </Box>
+        ) : (
+          visibleGroups.map((group, index) => {
+            const open = isGroupOpen(group.category, index)
+            const filledInGroup = group.products.filter((product) =>
+              hasContent(rows[product.productSlug])
+            ).length
+            return (
+              <Box
+                key={group.category}
+                sx={{ borderTop: 1, borderColor: 'divider' }}
               >
-                <Box sx={{ minWidth: 0 }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                    {group.label}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {group.products.length} Produkte
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {filledInGroup > 0 && (
-                    <Chip
-                      size="small"
-                      color="primary"
-                      label={`${filledInGroup} erfasst`}
-                    />
-                  )}
-                  {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                </Box>
-              </ButtonBase>
-              <Collapse in={open} unmountOnExit>
-                <Box>
-                  {group.products.map((product) => (
-                    <ProductRow
-                      key={product.productSlug}
-                      product={product}
-                      row={rows[product.productSlug] ?? EMPTY_ROW}
-                      expected={
-                        expectedStock.has(product.productSlug)
-                          ? (expectedStock.get(product.productSlug) as number)
-                          : null
-                      }
-                      emphasis={emphasis}
-                      onChange={handleRowChange}
-                      onStep={handleRowStep}
-                      onClear={handleRowClear}
-                    />
-                  ))}
-                </Box>
-              </Collapse>
-            </Paper>
-          )
-        })
-      )}
+                <ButtonBase
+                  onClick={() => toggleGroup(group.category, open)}
+                  aria-expanded={open}
+                  sx={{
+                    width: '100%',
+                    minHeight: 52,
+                    px: { xs: 2, md: 3 },
+                    py: 1,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    textAlign: 'left',
+                  }}
+                >
+                  <Box sx={{ minWidth: 0 }}>
+                    <Typography
+                      variant="subtitle1"
+                      component="h3"
+                      sx={{ fontWeight: 600 }}
+                    >
+                      {group.label}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {group.products.length} Produkte
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    {filledInGroup > 0 && (
+                      <Chip
+                        size="small"
+                        color="primary"
+                        label={`${filledInGroup} erfasst`}
+                      />
+                    )}
+                    {open ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                  </Box>
+                </ButtonBase>
+                <Collapse in={open} unmountOnExit>
+                  <Box>
+                    {group.products.map((product) => (
+                      <ProductRow
+                        key={product.productSlug}
+                        product={product}
+                        row={rows[product.productSlug] ?? EMPTY_ROW}
+                        expected={
+                          expectedStock.has(product.productSlug)
+                            ? (expectedStock.get(product.productSlug) as number)
+                            : null
+                        }
+                        emphasis={emphasis}
+                        onChange={handleRowChange}
+                        onStep={handleRowStep}
+                        onClear={handleRowClear}
+                      />
+                    ))}
+                  </Box>
+                </Collapse>
+              </Box>
+            )
+          })
+        )}
+      </PageSection>
 
       {formError && (
         <Alert
           severity="warning"
-          sx={{ mt: 2 }}
           action={
             missingRest.length > 0 ? (
               <Button color="inherit" size="small" onClick={applyZeroRest}>
@@ -1475,11 +1474,7 @@ export default function VisitFormClient({
           {formError}
         </Alert>
       )}
-      {saveError && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {saveError}
-        </Alert>
-      )}
+      {saveError && <Alert severity="error">{saveError}</Alert>}
 
       {/* Sticky Speichern-Leiste - am Handy immer erreichbar */}
       <Box
@@ -1487,7 +1482,6 @@ export default function VisitFormClient({
           position: 'sticky',
           bottom: 0,
           zIndex: 2,
-          mt: 2,
           mx: { xs: -1.5, sm: -2, md: -3 },
           px: { xs: 1.5, sm: 2, md: 3 },
           py: 1.5,
@@ -1512,13 +1506,6 @@ export default function VisitFormClient({
           </Typography>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Button
-              onClick={() => router.push(detailHref)}
-              disabled={saving}
-              sx={{ display: { xs: 'none', sm: 'inline-flex' }, minHeight: 48 }}
-            >
-              Abbrechen
-            </Button>
-            <Button
               variant="contained"
               size="large"
               fullWidth
@@ -1542,6 +1529,6 @@ export default function VisitFormClient({
           </Box>
         </Box>
       </Box>
-    </Box>
+    </PageLayout>
   )
 }

@@ -1,7 +1,6 @@
 'use client'
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import NextLink from 'next/link'
 import {
   Alert,
   Box,
@@ -13,11 +12,9 @@ import {
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Divider,
   FormControlLabel,
   InputAdornment,
   MenuItem,
-  Paper,
   Snackbar,
   Stack,
   Switch,
@@ -26,7 +23,6 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import SaveIcon from '@mui/icons-material/Save'
 import SearchIcon from '@mui/icons-material/Search'
@@ -45,6 +41,14 @@ import {
   saveTemplate,
 } from '../../../../../lib/partnerApi'
 import { useOptionalSession } from '../../../../../lib/session'
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../../components/layout'
+import { useConfirmLeave } from '../../partnerUi'
 
 interface CategoryGroup {
   category: string
@@ -204,16 +208,12 @@ export default function TemplatesClient({
   )
   const isDirty = weekday != null && dirtyDays.includes(weekday)
 
-  // Ungespeicherte Mengen nicht stillschweigend verlieren.
-  useEffect(() => {
-    if (dirtyDays.length === 0) return undefined
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault()
-      event.returnValue = ''
-    }
-    window.addEventListener('beforeunload', handleBeforeUnload)
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload)
-  }, [dirtyDays])
+  // Ungespeicherte Mengen nicht stillschweigend verlieren - auch nicht über
+  // den Rücklink oder die Seitenleiste (beforeunload greift dort nicht).
+  useConfirmLeave(
+    dirtyDays.length > 0,
+    'Es gibt ungespeicherte Mengen. Seite trotzdem verlassen?'
+  )
 
   const positionsOf = useCallback(
     (day: number) => Object.keys(withoutEmpty(drafts[day] ?? {})).length,
@@ -344,91 +344,66 @@ export default function TemplatesClient({
       .filter((group) => group.products.length > 0)
   }, [groups, currentDraft, onlyStocked, needle])
 
-  const header = (
-    <Box sx={{ mb: { xs: 2, md: 3 } }}>
-      <Button
-        component={NextLink}
-        href={`/admin/partners/${partnerId}`}
-        startIcon={<ArrowBackIcon />}
-        size="small"
-        sx={{ mb: 1 }}
-      >
-        Zurück zum Partner
-      </Button>
-      <Typography
-        variant="h4"
-        component="h1"
-        sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
-      >
-        Standard-Bestückung
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary">
-        {partner?.name
-          ? `${partner.name} – feste Liefermengen je Wochentag`
-          : 'Feste Liefermengen je Wochentag'}
-      </Typography>
-    </Box>
-  )
+  const subtitle = partner?.name
+    ? canEdit
+      ? `${partner.name} · feste Liefermengen je Wochentag`
+      : `${partner.name} · nur zum Nachschlagen - die Standard-Bestückung ändert nur der Inhaber.`
+    : 'Feste Liefermengen je Wochentag'
+  const layoutProps = {
+    title: 'Standard-Bestückung',
+    width: 'narrow' as const,
+    back: { href: `/admin/partners/${partnerId}`, label: 'Zurück zum Partner' },
+  }
 
   if (loading) {
     return (
-      <Box>
-        {header}
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Vorlagen werden geladen"
-        >
-          <CircularProgress />
-        </Box>
-      </Box>
+      <PageLayout {...layoutProps} subtitle="Feste Liefermengen je Wochentag">
+        <LoadingState label="Vorlagen werden geladen …" />
+      </PageLayout>
     )
   }
 
   if (error) {
     return (
-      <Box>
-        {header}
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      </Box>
+      <PageLayout {...layoutProps} subtitle="Feste Liefermengen je Wochentag">
+        <ErrorState message={error} onRetry={load} />
+      </PageLayout>
     )
   }
 
+  const summaryText = `${positionsLabel(summary.positions)} · ${
+    summary.units
+  } Stück · Warenwert ${formatCurrency(summary.value)}`
+
   return (
-    <Box>
-      {header}
-
-      {!canEdit && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Die Standard-Bestückung ändert nur der Inhaber - hier nur zum
-          Nachschlagen.
-        </Alert>
-      )}
-
+    <PageLayout
+      {...layoutProps}
+      subtitle={subtitle}
+      status={
+        canEdit ? undefined : (
+          <Chip size="small" variant="outlined" label="Nur Ansicht" />
+        )
+      }
+    >
       {!hasDeliveryDays && (
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <Alert severity="info">
           Für diesen Partner sind keine Liefertage hinterlegt – es stehen alle
           Wochentage zur Auswahl.
         </Alert>
       )}
 
       {catalogue.length === 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
+        <Alert severity="warning">
           Es sind keine lieferbaren Produkte aus HQ verfügbar. Ohne Katalog
           lässt sich keine Bestückung pflegen.
         </Alert>
       )}
 
-      <Paper sx={{ mb: 2 }}>
+      <PageSection
+        title={weekday != null ? WEEKDAY_LABELS[weekday] : 'Wochentag'}
+        description={`${summaryText} (HQ-Preise)`}
+        disablePadding
+      >
         <Tabs
           value={weekday ?? false}
           onChange={(_event, value: number) => setWeekday(value)}
@@ -436,6 +411,7 @@ export default function TemplatesClient({
           scrollButtons="auto"
           allowScrollButtonsMobile
           aria-label="Wochentage"
+          sx={{ borderBottom: 1, borderColor: 'divider', px: { md: 1 } }}
         >
           {weekdays.map((day) => (
             <Tab
@@ -443,22 +419,12 @@ export default function TemplatesClient({
               value={day}
               id={`weekday-tab-${day}`}
               aria-controls={`weekday-panel-${day}`}
+              sx={{ minHeight: 48, minWidth: { xs: 64, sm: 90 } }}
               label={
                 <Stack direction="row" spacing={0.75} alignItems="center">
-                  <Box
-                    component="span"
-                    sx={{ display: { xs: 'none', sm: 'inline' } }}
-                  >
-                    {WEEKDAY_LABELS[day]}
-                  </Box>
-                  <Box
-                    component="span"
-                    sx={{ display: { xs: 'inline', sm: 'none' } }}
-                  >
-                    {WEEKDAY_SHORT[day]}
-                  </Box>
-                  <Box component="span" sx={{ opacity: 0.7 }}>
-                    ({positionsOf(day)})
+                  <Box component="span">{WEEKDAY_SHORT[day]}</Box>
+                  <Box component="span" sx={{ color: 'text.secondary' }}>
+                    {positionsOf(day)}
                   </Box>
                   {dirtyDays.includes(day) && (
                     <Box
@@ -477,135 +443,24 @@ export default function TemplatesClient({
             />
           ))}
         </Tabs>
-      </Paper>
 
-      <Paper sx={{ p: { xs: 2, md: 2.5 }, mb: 2 }}>
-        <Stack
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'stretch', md: 'center' }}
-          divider={
-            <Divider
-              orientation="vertical"
-              flexItem
-              sx={{ display: { xs: 'none', md: 'block' } }}
-            />
-          }
+        {/* Werkzeuge: suchen, filtern, von einem anderen Tag übernehmen */}
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1.5,
+            px: { xs: 2, md: 3 },
+            py: 2,
+          }}
         >
-          <Box sx={{ minWidth: 120 }}>
-            <Typography variant="overline" color="text.secondary">
-              Positionen
-            </Typography>
-            <Typography variant="h5">{summary.positions}</Typography>
-          </Box>
-          <Box sx={{ minWidth: 120 }}>
-            <Typography variant="overline" color="text.secondary">
-              Stück gesamt
-            </Typography>
-            <Typography variant="h5">{summary.units}</Typography>
-          </Box>
-          <Box sx={{ minWidth: 160 }}>
-            <Typography variant="overline" color="text.secondary">
-              Warenwert (HQ-Preise)
-            </Typography>
-            <Typography variant="h5">
-              {formatCurrency(summary.value)}
-            </Typography>
-          </Box>
-          <Box sx={{ flexGrow: 1 }} />
-          {canEdit && (
-            <Stack
-              direction="row"
-              spacing={1}
-              alignItems="center"
-              justifyContent={{ xs: 'space-between', md: 'flex-end' }}
-            >
-              {isDirty && (
-                <Chip
-                  size="small"
-                  color="warning"
-                  variant="outlined"
-                  label="Ungespeicherte Änderungen"
-                />
-              )}
-              <Button
-                startIcon={<UndoIcon />}
-                onClick={handleReset}
-                disabled={!isDirty || saving}
-              >
-                Zurücksetzen
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<SaveIcon />}
-                onClick={handleSave}
-                disabled={!isDirty || saving || weekday == null}
-              >
-                {saving ? 'Speichert …' : 'Speichern'}
-              </Button>
-            </Stack>
-          )}
-        </Stack>
-      </Paper>
-
-      {saveError && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={handleSave}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {saveError}
-        </Alert>
-      )}
-
-      {unknownSlugs.length > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {unknownSlugs.length} Position(en) der gespeicherten Vorlage stehen
-          nicht mehr im HQ-Katalog ({unknownSlugs.join(', ')}) und werden beim
-          Speichern entfernt.
-        </Alert>
-      )}
-
-      <Paper sx={{ p: { xs: 2, md: 2.5 }, mb: 2 }}>
-        <Stack
-          direction={{ xs: 'column', sm: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'stretch', sm: 'center' }}
-        >
-          <TextField
-            select
-            size="small"
-            label="Von anderem Wochentag übernehmen"
-            value={copySource}
-            onChange={(event) => handleCopySelect(event.target.value)}
-            disabled={!canEdit || weekdays.length < 2 || saving}
-            sx={{ minWidth: 260 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <ContentCopyIcon fontSize="small" />
-                </InputAdornment>
-              ),
-            }}
-          >
-            {weekdays
-              .filter((day) => day !== weekday)
-              .map((day) => (
-                <MenuItem key={day} value={String(day)}>
-                  {WEEKDAY_LABELS[day]} ({positionsLabel(positionsOf(day))})
-                </MenuItem>
-              ))}
-          </TextField>
           <TextField
             size="small"
             label="Produkt suchen"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            sx={{ minWidth: 220 }}
+            sx={{ flex: '1 1 200px' }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -614,6 +469,32 @@ export default function TemplatesClient({
               ),
             }}
           />
+          {canEdit && (
+            <TextField
+              select
+              size="small"
+              label="Von anderem Tag übernehmen"
+              value={copySource}
+              onChange={(event) => handleCopySelect(event.target.value)}
+              disabled={weekdays.length < 2 || saving}
+              sx={{ flex: '1 1 200px' }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <ContentCopyIcon fontSize="small" />
+                  </InputAdornment>
+                ),
+              }}
+            >
+              {weekdays
+                .filter((day) => day !== weekday)
+                .map((day) => (
+                  <MenuItem key={day} value={String(day)}>
+                    {WEEKDAY_LABELS[day]} ({positionsLabel(positionsOf(day))})
+                  </MenuItem>
+                ))}
+            </TextField>
+          )}
           <FormControlLabel
             control={
               <Switch
@@ -621,127 +502,217 @@ export default function TemplatesClient({
                 onChange={(event) => setOnlyStocked(event.target.checked)}
               />
             }
-            label="Nur bestückte Produkte"
+            label="Nur bestückte"
+            sx={{ mr: 0, minHeight: 44 }}
           />
-        </Stack>
-      </Paper>
+        </Box>
 
-      <Box
-        role="tabpanel"
-        id={`weekday-panel-${weekday ?? 'none'}`}
-        aria-labelledby={`weekday-tab-${weekday ?? 'none'}`}
-      >
-        {visibleGroups.length === 0 ? (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              {onlyStocked || needle
-                ? 'Keine Produkte für diese Filter.'
-                : 'Keine Produkte im Katalog.'}
-            </Typography>
-          </Paper>
-        ) : (
-          visibleGroups.map((group) => {
-            const groupUnits = group.products.reduce(
-              (sum, product) => sum + (currentDraft[product.productSlug] ?? 0),
-              0
-            )
-            const groupPositions = group.products.filter(
-              (product) => (currentDraft[product.productSlug] ?? 0) > 0
-            ).length
+        {unknownSlugs.length > 0 && (
+          <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+            <Alert severity="warning">
+              {unknownSlugs.length} Position(en) der gespeicherten Vorlage
+              stehen nicht mehr im HQ-Katalog ({unknownSlugs.join(', ')}) und
+              werden beim Speichern entfernt.
+            </Alert>
+          </Box>
+        )}
 
-            return (
-              <Paper key={group.category} sx={{ mb: 2, overflow: 'hidden' }}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 1,
-                    px: { xs: 1.5, md: 2 },
-                    py: 1.25,
-                    bgcolor: 'action.selected',
-                  }}
-                >
-                  <Typography variant="subtitle1" fontWeight={600}>
-                    {group.label}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {positionsLabel(groupPositions)} · {groupUnits} Stück
-                  </Typography>
-                </Box>
+        <Box
+          role="tabpanel"
+          id={`weekday-panel-${weekday ?? 'none'}`}
+          aria-labelledby={`weekday-tab-${weekday ?? 'none'}`}
+        >
+          {visibleGroups.length === 0 ? (
+            <Box sx={{ px: { xs: 2, md: 3 }, pb: 3 }}>
+              <EmptyState
+                title={
+                  onlyStocked || needle
+                    ? 'Keine Produkte für diese Filter.'
+                    : 'Keine Produkte im Katalog.'
+                }
+              />
+            </Box>
+          ) : (
+            visibleGroups.map((group) => {
+              const groupUnits = group.products.reduce(
+                (sum, product) =>
+                  sum + (currentDraft[product.productSlug] ?? 0),
+                0
+              )
+              const groupPositions = group.products.filter(
+                (product) => (currentDraft[product.productSlug] ?? 0) > 0
+              ).length
 
-                {group.products.map((product) => {
-                  const quantity = currentDraft[product.productSlug] ?? 0
-                  return (
-                    <Box
-                      key={product.productSlug}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: { xs: 1, md: 2 },
-                        px: { xs: 1.5, md: 2 },
-                        py: 1,
-                        borderTop: '1px solid',
-                        borderColor: 'divider',
-                        bgcolor: quantity > 0 ? 'action.hover' : 'transparent',
-                      }}
+              return (
+                <Box key={group.category} component="section">
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      px: { xs: 2, md: 3 },
+                      pt: 2,
+                      pb: 1,
+                      borderTop: 1,
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <Typography
+                      variant="subtitle1"
+                      component="h3"
+                      fontWeight={600}
                     >
-                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={500} noWrap>
-                          {product.productName}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatCurrency(product.unitPrice)} je Stück
-                        </Typography>
-                      </Box>
-                      <TextField
-                        type="number"
-                        size="small"
-                        value={quantity > 0 ? String(quantity) : ''}
-                        placeholder="0"
-                        disabled={!canEdit}
-                        error={quantity > MAX_TEMPLATE_QTY}
-                        onChange={(event) => {
-                          const parsed = parseInt(event.target.value, 10)
-                          setQuantity(
-                            product.productSlug,
-                            Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-                          )
-                        }}
-                        inputProps={{
-                          min: 0,
-                          max: MAX_TEMPLATE_QTY,
-                          step: 1,
-                          inputMode: 'numeric',
-                          readOnly: !canEdit,
-                          'aria-label': `Menge ${product.productName}`,
-                          style: { textAlign: 'right' },
-                        }}
-                        sx={{ width: 96, flexShrink: 0 }}
-                      />
-                      <Typography
-                        variant="body2"
-                        // „–“ ist Inhalt (kein Betrag), keine deaktivierte
-                        // Schrift: text.disabled stand bei 2,7:1 (W4-verify r4).
-                        color={quantity > 0 ? 'text.primary' : 'text.secondary'}
+                      {group.label}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {positionsLabel(groupPositions)} · {groupUnits} Stück
+                    </Typography>
+                  </Box>
+
+                  {group.products.map((product) => {
+                    const quantity = currentDraft[product.productSlug] ?? 0
+                    return (
+                      <Box
+                        key={product.productSlug}
                         sx={{
-                          width: { xs: 72, md: 96 },
-                          flexShrink: 0,
-                          textAlign: 'right',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: { xs: 1.5, md: 2 },
+                          px: { xs: 2, md: 3 },
+                          py: 1,
                         }}
                       >
-                        {quantity > 0
-                          ? formatCurrency(product.unitPrice * quantity)
-                          : '–'}
-                      </Typography>
-                    </Box>
-                  )
-                })}
-              </Paper>
-            )
-          })
+                        <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                          <Typography
+                            variant="body2"
+                            fontWeight={quantity > 0 ? 600 : 400}
+                            noWrap
+                          >
+                            {product.productName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {formatCurrency(product.unitPrice)} je Stück
+                            {quantity > 0 &&
+                              ` · ${formatCurrency(
+                                product.unitPrice * quantity
+                              )}`}
+                          </Typography>
+                        </Box>
+                        <TextField
+                          type="number"
+                          size="small"
+                          value={quantity > 0 ? String(quantity) : ''}
+                          placeholder="0"
+                          disabled={!canEdit}
+                          error={quantity > MAX_TEMPLATE_QTY}
+                          onChange={(event) => {
+                            const parsed = parseInt(event.target.value, 10)
+                            setQuantity(
+                              product.productSlug,
+                              Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+                            )
+                          }}
+                          inputProps={{
+                            min: 0,
+                            max: MAX_TEMPLATE_QTY,
+                            step: 1,
+                            inputMode: 'numeric',
+                            readOnly: !canEdit,
+                            'aria-label': `Menge ${product.productName}`,
+                            style: { textAlign: 'right' },
+                          }}
+                          sx={{
+                            width: 96,
+                            flexShrink: 0,
+                            '& .MuiInputBase-root': { minHeight: 44 },
+                          }}
+                        />
+                      </Box>
+                    )
+                  })}
+                </Box>
+              )
+            })
+          )}
+        </Box>
+
+        {canEdit && (
+          // Speichern bleibt am Handy in Reichweite, auch am Ende einer
+          // langen Liste.
+          <Box
+            sx={{
+              position: 'sticky',
+              bottom: 0,
+              zIndex: 2,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              gap: 1,
+              px: { xs: 2, md: 3 },
+              py: 1.5,
+              borderTop: 1,
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+              backgroundImage: 'inherit',
+              '@media print': { display: 'none' },
+            }}
+          >
+            {saveError && (
+              <Alert
+                severity="error"
+                sx={{ flexBasis: '100%' }}
+                action={
+                  <Button color="inherit" size="small" onClick={handleSave}>
+                    Erneut versuchen
+                  </Button>
+                }
+              >
+                {saveError}
+              </Alert>
+            )}
+            <Typography
+              variant="body2"
+              color={isDirty ? 'warning.main' : 'text.secondary'}
+              sx={{ mr: 'auto' }}
+            >
+              {isDirty ? 'Nicht gespeichert' : 'Gespeichert'}
+            </Typography>
+            <Button
+              startIcon={<UndoIcon />}
+              onClick={handleReset}
+              disabled={!isDirty || saving}
+              aria-label="Zurücksetzen"
+              sx={{
+                minWidth: 44,
+                '& .MuiButton-startIcon': { mr: { xs: 0, sm: 1 } },
+              }}
+            >
+              <Box
+                component="span"
+                sx={{ display: { xs: 'none', sm: 'inline' } }}
+              >
+                Zurücksetzen
+              </Box>
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={
+                saving ? (
+                  <CircularProgress size={18} color="inherit" />
+                ) : (
+                  <SaveIcon />
+                )
+              }
+              onClick={handleSave}
+              disabled={!isDirty || saving || weekday == null}
+            >
+              {saving ? 'Speichert …' : 'Speichern'}
+            </Button>
+          </Box>
         )}
-      </Box>
+      </PageSection>
 
       <Dialog
         open={pendingCopy != null}
@@ -791,6 +762,6 @@ export default function TemplatesClient({
           {snackbar?.message}
         </Alert>
       </Snackbar>
-    </Box>
+    </PageLayout>
   )
 }
