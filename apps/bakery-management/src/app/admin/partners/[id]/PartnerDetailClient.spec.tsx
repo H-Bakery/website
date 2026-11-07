@@ -399,6 +399,24 @@ describe('PartnerDetailClient', () => {
     ).toBeInTheDocument()
   })
 
+  it('zeigt einen Besuch ohne Zählung als „nicht gezählt“, nicht als 0', async () => {
+    const uncounted = {
+      ...INITIAL,
+      items: INITIAL.items.map((item) => ({ ...item, countedQty: null })),
+    }
+    mockFetchToday.mockResolvedValue({
+      ...OPEN_DAY,
+      timeline: [uncounted, REFILL],
+    })
+    await renderDetail()
+
+    const figures = screen.getAllByText('Rest gezählt')
+    // Erstbestückung ohne Zählung: null heißt „nicht gezählt“, 0 hieße
+    // „Schrank war leer“.
+    expect(figures[0].parentElement).toHaveTextContent('nicht gezählt')
+    expect(figures[1].parentElement).toHaveTextContent('10')
+  })
+
   it('asks for confirmation in a dialog before deleting a visit', async () => {
     const user = userEvent.setup()
     await renderDetail()

@@ -90,6 +90,19 @@ function formatQty(value: number | null | undefined): string {
 }
 
 /** Zahl mit Bezeichnung in einer Besuchszeile. */
+/**
+ * „Rest gezählt“ eines Besuchs. `countedQty` des Eintrags ist eine Summe, in
+ * der „nicht gezählt“ (`null`) als 0 steckt - eine Erstbestückung ohne
+ * Zählung stand so als „0“ da, als wäre der Schrank leer gewesen.
+ */
+function countedText(entry: TimelineEntry): string {
+  const items = entry.items ?? []
+  const uncounted = items.filter((item) => item.countedQty == null).length
+  if (items.length > 0 && uncounted === items.length) return 'nicht gezählt'
+  if (uncounted > 0) return `${entry.countedQty} · ${uncounted} nicht gezählt`
+  return String(entry.countedQty)
+}
+
 function VisitFigure({ label, value }: { label: string; value: string }) {
   return (
     <Box sx={{ minWidth: 0 }}>
@@ -220,7 +233,7 @@ function VisitRow({
             maxWidth: 720,
           }}
         >
-          <VisitFigure label="Rest gezählt" value={String(entry.countedQty)} />
+          <VisitFigure label="Rest gezählt" value={countedText(entry)} />
           <VisitFigure
             label="Neu geliefert"
             value={String(entry.deliveredQty)}
