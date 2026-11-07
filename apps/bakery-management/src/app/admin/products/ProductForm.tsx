@@ -2,6 +2,7 @@
 
 import React from 'react'
 import {
+  Alert,
   Avatar,
   Box,
   Button,
@@ -57,6 +58,13 @@ export interface ProductFormProps {
   onSubmit: () => void
   /** Kennung für die Label-IDs der Auswahlfelder. */
   idPrefix: string
+  /**
+   * Rückmeldung zum letzten Speichern - direkt über dem Knopf statt als
+   * Snackbar: die lag am Handy 4 s lang über dem breiten Speichern-Knopf
+   * und schluckte jeden Tipp darauf.
+   */
+  feedback?: { message: string; severity: 'success' | 'error' } | null
+  onDismissFeedback?: () => void
 }
 
 export default function ProductForm({
@@ -69,6 +77,8 @@ export default function ProductForm({
   busy,
   onSubmit,
   idPrefix,
+  feedback,
+  onDismissFeedback,
 }: ProductFormProps) {
   const set =
     <K extends keyof ProductFormValues>(key: K) =>
@@ -202,6 +212,16 @@ export default function ProductForm({
           </Grid>
         </Grid>
       </PageSection>
+
+      {feedback && (
+        <Alert
+          severity={feedback.severity}
+          onClose={onDismissFeedback}
+          role={feedback.severity === 'error' ? 'alert' : 'status'}
+        >
+          {feedback.message}
+        </Alert>
+      )}
 
       {!readOnly && (
         <Box

@@ -189,6 +189,17 @@ describe('ProductEditLoader', () => {
     expect(
       screen.getByText(/freigegebene Stand: Musterbrot/)
     ).toBeInTheDocument()
+
+    // Rückmeldung steht über dem Knopf (keine Snackbar, die am Handy den
+    // Speichern-Knopf verdeckt) und geht mit der nächsten Eingabe weg.
+    expect(document.querySelector('.MuiSnackbar-root')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Gespeichert - die Änderung wartet auf Freigabe.'
+    )
+    fireEvent.change(price, { target: { value: '3,60' } })
+    expect(
+      screen.queryByText('Gespeichert - die Änderung wartet auf Freigabe.')
+    ).toBeNull()
   })
 
   it('Produkt ohne Beschreibung: unverändertes Speichern schickt keinen Kurztext als Beschreibung', async () => {

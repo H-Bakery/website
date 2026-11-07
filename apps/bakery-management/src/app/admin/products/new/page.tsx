@@ -2,7 +2,6 @@
 
 import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Alert, Snackbar } from '@mui/material'
 import { apiClient } from '@bakery/shared/data-access'
 import { PageLayout } from '../../../../components/layout'
 import ProductForm, { type ProductFormValues } from '../ProductForm'
@@ -40,7 +39,10 @@ export default function NewProductPage() {
     const parsedPrice = parsePriceInput(values.price)
     if (parsedPrice == null) {
       setPriceError(PRICE_INPUT_ERROR)
-      setFeedback({ message: PRICE_INPUT_ERROR, severity: 'error' })
+      setFeedback({
+        message: 'Nicht gespeichert: bitte den Preis prüfen.',
+        severity: 'error',
+      })
       return
     }
     setPriceError(null)
@@ -86,31 +88,17 @@ export default function NewProductPage() {
         values={values}
         onChange={(next) => {
           setValues(next)
+          setFeedback(null)
           if (priceError && next.price !== values.price) setPriceError(null)
         }}
+        feedback={feedback}
+        onDismissFeedback={() => setFeedback(null)}
         priceError={priceError}
         submitLabel="Produkt anlegen"
         busyLabel="Wird angelegt …"
         busy={saving}
         onSubmit={handleCreate}
       />
-
-      <Snackbar
-        open={feedback !== null}
-        autoHideDuration={4000}
-        onClose={() => setFeedback(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        {feedback ? (
-          <Alert
-            severity={feedback.severity}
-            onClose={() => setFeedback(null)}
-            variant="filled"
-          >
-            {feedback.message}
-          </Alert>
-        ) : undefined}
-      </Snackbar>
     </PageLayout>
   )
 }
