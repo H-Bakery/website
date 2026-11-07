@@ -35,17 +35,31 @@ export const CANCELLED_GROUP = 'storniert'
 
 const NO_TIME = 'ohne-uhrzeit'
 
+/**
+ * Anrede vorn weg: „Frau Müller“, „Familie Schmidt“, „Hr. Dr. Weber“ stehen
+ * unter M, S, W - sonst landete in „Nach Name“ alles unter F und H
+ * (UI-Runde 1). Bleibt nichts übrig, zählt der ganze Name.
+ */
+const SALUTATION =
+  /^(?:(?:frau|herrn?|familie|fam\.?|fr\.|hr\.|dr\.|prof\.)\s+)+/i
+
+export function nameSortKey(name: string | null): string {
+  const trimmed = (name ?? '').trim()
+  return trimmed.replace(SALUTATION, '') || trimmed
+}
+
 function byName(a: Preorder, b: Preorder): number {
   return (
-    (a.customerName ?? '').localeCompare(b.customerName ?? '', 'de', {
-      sensitivity: 'base',
-    }) || a.code.localeCompare(b.code)
+    nameSortKey(a.customerName).localeCompare(
+      nameSortKey(b.customerName),
+      'de',
+      { sensitivity: 'base' }
+    ) || a.code.localeCompare(b.code)
   )
 }
 
 function initialOf(name: string | null): string {
-  const letter = (name ?? '')
-    .trim()
+  const letter = nameSortKey(name)
     .charAt(0)
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
@@ -61,7 +75,7 @@ function initialOf(name: string | null): string {
  * - `zeit`: je Abholzeit (`08:30 Uhr`), Bestellungen ohne Uhrzeit danach;
  *   an einer Sammelstelle gibt es keine Uhrzeit, dort heißt die Gruppe nach
  *   dem Übergabefenster.
- * - `name`: je Anfangsbuchstabe.
+ * - `name`: je Anfangsbuchstabe (ohne Anrede, `nameSortKey`).
  */
 export function groupPreorders(
   preorders: readonly Preorder[],
@@ -270,9 +284,47 @@ export function defaultPickupDate(
   return day
 }
 
+/** Kennung der Sammelstelle, nach der der Menüpunkt „Sammelstelle Mörsbach“ heißt. */
+export const MOERSBACH_POINT_ID = 'kindergarten-moersbach'
+
+/** Beginn des Übergabefensters in Minuten (`09:00-09:30` → 540), sonst `null`. */
+function windowStart(window: string | null | undefined): number | null {
+  const match = /^\s*(\d{1,2})[:.](\d{2})/.exec(window ?? '')
+  return match ? Number(match[1]) * 60 + Number(match[2]) : null
+}
+
+/**
+ * Vorgabe-Sammelstelle: aktiv, an `date` beliefert (wenn eine das ist), dann
+ * `preferId` (der Menüpunkt nennt Mörsbach), dann das früheste
+ * Übergabefenster, dann der Name. Die API liefert alphabetisch - „die erste“
+ * war deshalb an einem Samstag mit zwei Stellen die spätere (UI-Runde 1:
+ * der Fahrer landete in Oberdorf statt in Mörsbach).
+ */
+export function preferredPickupPoint<
+  P extends Pick<PickupPoint, 'id' | 'name' | 'weekday' | 'window' | 'active'>
+>(
+  points: readonly P[],
+  { date, preferId }: { date?: string; preferId?: string } = {}
+): P | null {
+  const active = points.filter((p) => p.active !== false)
+  if (active.length === 0) return null
+  const weekday = date && isBusinessDate(date) ? jsWeekdayOf(date) : null
+  const served = active.filter((p) => p.weekday === weekday)
+  const candidates = served.length > 0 ? served : active
+  const preferred = preferId
+    ? candidates.find((p) => p.id === preferId)
+    : undefined
+  if (preferred) return preferred
+  return [...candidates].sort((a, b) => {
+    const sa = windowStart(a.window) ?? Number.POSITIVE_INFINITY
+    const sb = windowStart(b.window) ?? Number.POSITIVE_INFINITY
+    return sa !== sb ? sa - sb : a.name.localeCompare(b.name, 'de')
+  })[0]
+}
+
 /**
  * Vorgabe-Abholort: Fahrer fahren zur Sammelstelle (die an `date` beliefert
- * wird, sonst die erste aktive), alle anderen stehen im Laden.
+ * wird, mit dem frühesten Übergabefenster), alle anderen stehen im Laden.
  */
 export function defaultPickupPlace(
   role: string | null | undefined,
@@ -280,10 +332,7 @@ export function defaultPickupPlace(
   date?: string
 ): string {
   if (role !== 'fahrer') return LADEN_PICKUP
-  const active = points.filter((p) => p.active !== false)
-  const weekday = date && isBusinessDate(date) ? jsWeekdayOf(date) : null
-  const served = active.find((p) => p.weekday === weekday)
-  return (served ?? active[0])?.id ?? LADEN_PICKUP
+  return preferredPickupPoint(points, { date })?.id ?? LADEN_PICKUP
 }
 
 /** Gültiger Ort aus der URL: `laden` oder eine bekannte Sammelstelle. */

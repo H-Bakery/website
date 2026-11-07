@@ -68,8 +68,11 @@ describe('PreorderListClient (P3)', () => {
     renderAs('verkauf')
     expect(await screen.findByText('Erika Beispiel')).toBeInTheDocument()
     expect(mockList).toHaveBeenCalledWith({ from: '2026-11-12' })
+    expect(
+      screen.getByRole('heading', { name: 'Bestellungen (1)' })
+    ).toBeInTheDocument()
     expect(screen.getByTestId('preorder-count')).toHaveTextContent(
-      '1 Vorbestellung · 4,80 € · 1 storniert'
+      'Summe 4,80 € · dazu 1 storniert'
     )
     expect(document.querySelector('[data-status="storniert"]')).not.toBeNull()
     expect(

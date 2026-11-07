@@ -238,6 +238,27 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     )
   })
 
+  it('öffnet ohne `?point=` Mörsbach, auch wenn die API eine andere Stelle zuerst nennt (UI-Runde 1)', async () => {
+    // Alphabetisch zuerst, übergibt später - vorher landete der Menüpunkt
+    // „Sammelstelle Mörsbach“ hier.
+    const OBERDORF: PickupPoint = {
+      ...POINT,
+      id: 'gemeindehaus-oberdorf',
+      name: 'Gemeindehaus Oberdorf',
+      window: '10:00-10:30',
+    }
+    mockFetchPickupPoints.mockResolvedValue([OBERDORF, POINT])
+    renderAs()
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Sammelstelle Kindergarten Mörsbach',
+      })
+    ).toBeInTheDocument()
+    await waitFor(() => expect(mockDay).toHaveBeenCalledWith(DATE, POINT.id))
+    expect(mockDay).not.toHaveBeenCalledWith(DATE, OBERDORF.id)
+  })
+
   it('nennt den Bestellschluss und markiert danach erfasste Bestellungen', async () => {
     renderAs()
     expect(
@@ -346,6 +367,8 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
         name: 'Vorbestellung MO-2026-09-12-01 ansehen',
       })
     ).toHaveAttribute('href', '/admin/delivery/preorders/1')
+    // Nur-Lesen: kein Stift-Symbol (UI-Runde 1).
+    expect(screen.queryByTestId('EditIcon')).not.toBeInTheDocument()
   })
 
   it('warnt, wenn der gewählte Tag kein Liefertag der Sammelstelle ist', async () => {

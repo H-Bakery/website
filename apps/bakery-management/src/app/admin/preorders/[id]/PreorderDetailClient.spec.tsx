@@ -80,6 +80,8 @@ describe('PreorderDetailClient (P3)', () => {
       await screen.findByRole('heading', { name: 'LA-2026-11-13-01' })
     ).toBeInTheDocument()
     expect(screen.getByText('Offen')).toBeInTheDocument()
+    // Unbezahlt steht da, nicht nur ein fehlender Chip (UI-Runde 1).
+    expect(screen.getByTestId('unpaid-chip')).toHaveTextContent('nicht bezahlt')
     expect(screen.getByText('Erika Beispiel')).toBeInTheDocument()
     const table = screen.getByRole('table', { name: 'Positionen' })
     expect(within(table).getByText('Kornbrot 500g')).toBeInTheDocument()

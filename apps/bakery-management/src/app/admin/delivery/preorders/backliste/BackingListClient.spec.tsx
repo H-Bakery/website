@@ -143,8 +143,17 @@ describe('BackingListClient', () => {
       <BackingListClient initialDate={DATE} initialPickupPointId={POINT.id} />
     )
 
+    // Geschütztes Leerzeichen vor „·“: keine Zeile beginnt mit dem Punkt
+    // (UI-Runde 1). Die Teile stehen in eigenen Spans.
+    const subtitle = /Samstag, 12\.09\.2026\u00a0· Kindergarten Mörsbach/
     expect(
-      await screen.findByText(/Samstag, 12\.09\.2026 · Kindergarten Mörsbach/)
+      await screen.findByText(
+        (_content, el) =>
+          subtitle.test(el?.textContent ?? '') &&
+          Array.from(el?.children ?? []).every(
+            (child) => !subtitle.test(child.textContent ?? '')
+          )
+      )
     ).toBeInTheDocument()
   })
 

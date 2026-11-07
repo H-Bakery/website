@@ -8,6 +8,9 @@ import {
   singleRequestFailedMessage,
   defaultPickupDate,
   defaultPickupPlace,
+  MOERSBACH_POINT_ID,
+  nameSortKey,
+  preferredPickupPoint,
   describeBulkResults,
   groupPreorders,
   isDayEndAllowed,
@@ -261,6 +264,69 @@ describe('Tage und Orte', () => {
     expect(
       defaultPickupPlace('fahrer', [{ ...POINT, active: false }], '2026-11-14')
     ).toBe('laden')
+  })
+
+  it('Nach Name: Anreden zählen nicht (UI-Runde 1)', () => {
+    expect(nameSortKey('Frau Müller')).toBe('Müller')
+    expect(nameSortKey('Familie Schmidt')).toBe('Schmidt')
+    expect(nameSortKey('Hr. Dr. Weber')).toBe('Weber')
+    expect(nameSortKey('Herrmann Kurz')).toBe('Herrmann Kurz')
+    expect(nameSortKey('Frau')).toBe('Frau')
+    const groups = groupPreorders(
+      [
+        preorder({ id: 11, code: 'LA-1', customerName: 'Frau Zander' }),
+        preorder({ id: 12, code: 'LA-2', customerName: 'Familie Albers' }),
+        preorder({ id: 13, code: 'LA-3', customerName: 'Anna Ahorn' }),
+      ],
+      'name'
+    )
+    expect(groups.map((g) => g.key)).toEqual(['A', 'Z'])
+    expect(groups[0].preorders.map((p) => p.customerName)).toEqual([
+      'Familie Albers',
+      'Anna Ahorn',
+    ])
+  })
+
+  it('Vorgabeort: früheste Übergabe des Tages, nicht die alphabetisch erste (UI-Runde 1)', () => {
+    // Die API liefert alphabetisch: „Gemeindehaus …“ (10:00) vor „Kita …“ (09:00).
+    const later = {
+      ...POINT,
+      id: 'gemeindehaus-test',
+      name: 'Gemeindehaus Test',
+      window: '10:00-10:30',
+    }
+    expect(defaultPickupPlace('fahrer', [later, POINT], '2026-11-14')).toBe(
+      POINT.id
+    )
+    expect(preferredPickupPoint([later, POINT])?.id).toBe(POINT.id)
+    // Ohne Fenster nach hinten, bei Gleichstand nach Namen.
+    expect(preferredPickupPoint([{ ...POINT, window: null }, later])?.id).toBe(
+      later.id
+    )
+    // Der Menüpunkt „Sammelstelle Mörsbach“ öffnet Mörsbach, auch wenn eine
+    // andere Stelle früher übergibt.
+    const moersbach = {
+      ...later,
+      id: MOERSBACH_POINT_ID,
+      name: 'Kindergarten Mörsbach',
+    }
+    expect(
+      preferredPickupPoint([POINT, moersbach], { preferId: MOERSBACH_POINT_ID })
+        ?.id
+    ).toBe(MOERSBACH_POINT_ID)
+    // … aber nur, wenn sie aktiv ist und an dem Tag beliefert wird.
+    expect(
+      preferredPickupPoint([POINT, { ...moersbach, active: false }], {
+        preferId: MOERSBACH_POINT_ID,
+      })?.id
+    ).toBe(POINT.id)
+    expect(
+      preferredPickupPoint([POINT, { ...moersbach, weekday: 3 }], {
+        date: '2026-11-14',
+        preferId: MOERSBACH_POINT_ID,
+      })?.id
+    ).toBe(POINT.id)
+    expect(preferredPickupPoint([])).toBeNull()
   })
 
   it('prüft Orte aus der URL und benennt sie', () => {

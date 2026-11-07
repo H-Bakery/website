@@ -52,6 +52,7 @@ import {
   Search as SearchIcon,
   Summarize as DayIcon,
   Undo as UndoIcon,
+  Tune as FilterIcon,
 } from '@mui/icons-material'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import {
@@ -144,10 +145,12 @@ export const PRINT_COLUMNS: ReadonlyArray<{
   widthMm: number | null
 }> = [
   { key: 'tick', widthMm: 8 },
-  { key: 'who', widthMm: 34 },
+  // UI-Runde 1: 34 mm trennten Kundennamen mitten im Wort („Lär-chenzweig“) -
+  // auf Papier sucht man über den Namen. Die Spalte „Bezahlt“ gibt 3 mm ab.
+  { key: 'who', widthMm: 40 },
   { key: 'items', widthMm: null },
   { key: 'sum', widthMm: 19 },
-  { key: 'paid', widthMm: 25 },
+  { key: 'paid', widthMm: 22 },
   { key: 'na', widthMm: 11 },
   { key: 'sign', widthMm: 30 },
 ]
@@ -210,7 +213,7 @@ export const ABHOL_PRINT_CSS = {
       fontWeight: 700,
     },
     '.abholliste-print .tick': { textAlign: 'center', fontSize: '13pt' },
-    // 16 Zeichen „MO-2026-11-07-03“ in 8 pt passen in 31 mm (Spalte 34 mm
+    // 16 Zeichen „MO-2026-11-07-03“ in 8 pt passen in 31 mm (Spalte 40 mm
     // abzüglich Innenabstand); der Name steht darunter.
     '.abholliste-print .code': {
       fontFamily: 'monospace',
@@ -219,6 +222,8 @@ export const ABHOL_PRINT_CSS = {
       overflowWrap: 'normal',
       hyphens: 'manual',
     },
+    // Namen nicht silbentrennen - ein sehr langer bricht trotzdem um.
+    '.abholliste-print .name': { hyphens: 'manual' },
     '.abholliste-print .num': { textAlign: 'right' },
     // Kästchen zum Ankreuzen so groß wie der Übergabe-Haken; der Text
     // daneben („Rest 9,50 €“, „37,00 € zurück“) bricht um, statt die
@@ -242,6 +247,11 @@ const printStyles = <GlobalStyles styles={ABHOL_PRINT_CSS} />
 
 /** Touch-Ziel: mindestens 48 px hoch (Tablet an der Theke). */
 const TOUCH = { minHeight: 48 } as const
+/**
+ * Unter 400 px (360er Handys) passen „Übergeben“, „Bezahlt“ und „⋮“ nur ohne
+ * Symbole in eine Zeile - sonst rutschte „⋮“ allein in die nächste.
+ */
+const NARROW_PHONE = '@media (max-width: 399.95px)'
 
 /** „+ 6,40 € ohne Zahlung übergeben“ - sonst fiele der Betrag aus jeder Summe. */
 /** „Übergabe“, „Zahlung“ … - für die Meldung über eine verlorene Aktion. */
@@ -517,6 +527,10 @@ export default function AbholListeClient({
     preorder: Preorder
   } | null>(null)
   const [bulk, setBulk] = useState<BulkKind | null>(null)
+  /** Fahrer: „Bezahlt“ erst nach Rückfrage - zurücknehmen kann er es nicht. */
+  const [payConfirm, setPayConfirm] = useState<Preorder | null>(null)
+  /** Handy: Tag, Ort, Sortierung hinter „Filter“ - die Liste steht oben. */
+  const [filtersOpen, setFiltersOpen] = useState(false)
   const [bulkRunning, setBulkRunning] = useState(false)
   const [bulkError, setBulkError] = useState<string | null>(null)
 
@@ -899,7 +913,12 @@ export default function AbholListeClient({
           undo && updated
             ? () => {
                 setToast(null)
-                act(updated, undo, `${updated.code}: rückgängig gemacht.`)
+                act(
+                  updated,
+                  undo,
+                  // Wie die Meldung davor mit Namen (UI-Runde 1).
+                  `${updated.customerName ?? updated.code}: rückgängig gemacht.`
+                )
               }
             : undefined,
       })
@@ -1036,7 +1055,7 @@ export default function AbholListeClient({
       </td>
       <td>
         <div className="code">{p.code}</div>
-        {p.customerName}
+        <span className="name">{p.customerName}</span>
         {p.customerPhone ? (
           <>
             <br />
@@ -1084,6 +1103,19 @@ export default function AbholListeClient({
   }
 
   /** „Erstattet“: storniert → nicht mehr bezahlt, sonst Betrag stimmt wieder. */
+  const markPaid = (preorder: Preorder) => {
+    const name = preorder.customerName ?? preorder.code
+    act(
+      preorder,
+      { paid: true },
+      owesRest(preorder) ? `${name}: Rest kassiert.` : `${name}: bezahlt.`,
+      // Rückgängig nur für den Verkauf - eine erfasste Zahlung zurücknehmen
+      // darf der Fahrer nicht (API 403 paid_undo_forbidden, W4-Verifikation
+      // Runde 2). Deshalb fragt die Seite ihn vorher (UI-Runde 1).
+      canWrite && !preorder.paid ? { paid: false } : undefined
+    )
+  }
+
   const markRefunded = (preorder: Preorder) => {
     const payment = paymentState(preorder)
     const name = preorder.customerName ?? preorder.code
@@ -1250,7 +1282,7 @@ export default function AbholListeClient({
             : cancelled
             ? 'divider'
             : p.status === 'bereit'
-            ? 'primary.main'
+            ? 'secondary.main'
             : 'info.main',
         }}
       >
@@ -1270,12 +1302,15 @@ export default function AbholListeClient({
               flexWrap="wrap"
               useFlexGap
             >
+              {/* Name unter der Gruppen-Überschrift (h2): nie größer als sie
+                  (UI-Runde 1 - vorher 20,8 px unter 16 px). */}
               <Typography
-                variant="h6"
+                variant="subtitle1"
                 component="h3"
                 sx={{
-                  fontSize: { xs: '1.15rem', sm: '1.3rem' },
+                  fontSize: { xs: '1.05rem', sm: '1.1rem' },
                   fontWeight: 700,
+                  lineHeight: 1.3,
                   textDecoration: cancelled ? 'line-through' : 'none',
                   color: cancelled ? 'text.secondary' : 'text.primary',
                   overflowWrap: 'anywhere',
@@ -1387,8 +1422,12 @@ export default function AbholListeClient({
                 useFlexGap
               >
                 {actions.handover && (
+                  // Umrandet, nicht gefüllt: die eine Hauptaktion der Seite
+                  // (README Layout-Kit) - 40 grüne Flächen untereinander
+                  // übertönten Namen und Beträge (UI-Runde 1). Der dicke
+                  // Rand hält den Knopf trotzdem als wichtigsten der Karte.
                   <Button
-                    variant="contained"
+                    variant="outlined"
                     color="success"
                     size="large"
                     startIcon={<HandoverIcon />}
@@ -1397,10 +1436,16 @@ export default function AbholListeClient({
                     aria-label={`${name} übergeben`}
                     sx={{
                       minHeight: 56,
-                      flex: { xs: '1 1 150px', md: 'none' },
+                      flex: { xs: '1 1 120px', md: 'none' },
                       minWidth: { xs: 0, md: 180 },
-                      px: { xs: 1.5, sm: 2.75 },
+                      px: { xs: 1, sm: 2.75 },
                       fontSize: { xs: '1rem', sm: '1.05rem' },
+                      borderWidth: 2,
+                      '&:hover': { borderWidth: 2 },
+                      '&.Mui-disabled': { borderWidth: 2 },
+                      [NARROW_PHONE]: {
+                        '& .MuiButton-startIcon': { display: 'none' },
+                      },
                     }}
                   >
                     Übergeben
@@ -1411,26 +1456,14 @@ export default function AbholListeClient({
                     variant="outlined"
                     size="large"
                     startIcon={<PaidIcon />}
-                    onClick={() =>
-                      act(
-                        p,
-                        { paid: true },
-                        owesRest(p)
-                          ? `${name}: Rest kassiert.`
-                          : `${name}: bezahlt.`,
-                        // Rückgängig nur für den Verkauf - eine erfasste
-                        // Zahlung zurücknehmen darf der Fahrer nicht (API
-                        // 403 paid_undo_forbidden, W4-Verifikation Runde 2).
-                        canWrite && !p.paid ? { paid: false } : undefined
-                      )
-                    }
+                    onClick={() => (canWrite ? markPaid(p) : setPayConfirm(p))}
                     disabled={busy}
                     aria-label={`${name}: als bezahlt markieren`}
                     sx={{
                       minHeight: 56,
-                      flex: { xs: '1 1 90px', md: 'none' },
+                      flex: { xs: '1 1 80px', md: 'none' },
                       minWidth: 0,
-                      px: { xs: 1.5, sm: 2.75 },
+                      px: { xs: 1, sm: 2.75 },
                       '& .MuiButton-startIcon': {
                         display: { xs: 'none', sm: 'inherit' },
                       },
@@ -1545,6 +1578,9 @@ export default function AbholListeClient({
     (canWrite || role === 'fahrer') &&
     ((canWrite && toReady.length > 0) || waiting.length > 0)
 
+  /** Am Handy nur bei offenem „Filter“, ab `sm` immer. */
+  const filterDisplay = { xs: filtersOpen ? 'flex' : 'none', sm: 'flex' }
+
   return (
     <Box>
       {printStyles}
@@ -1587,6 +1623,7 @@ export default function AbholListeClient({
                 href={`/admin/preorders/tag${
                   isBusinessDate(date) ? `?date=${date}` : ''
                 }`}
+                variant="outlined"
                 startIcon={<DayIcon />}
               >
                 Tagesübersicht
@@ -1594,20 +1631,50 @@ export default function AbholListeClient({
             </>
           }
         >
-          {/* Tag, Ort, Suche - eine Karte, am Handy ohne Leerlauf */}
+          {/* Tag, Ort, Suche - eine Karte. Am Handy steht nur die Suche
+              (Tag und Ort nennt der Titel), der Rest hinter „Filter“ - sonst
+              begann die erste Bestellung erst nach einer Bildschirmhöhe
+              (UI-Runde 1). Am Tablet zwei Zeilen statt vier. */}
           <PageSection>
             <Box
+              id="abholliste-filters"
+              // Flex mit Umbruch statt festem Raster: neben der Seitenleiste
+              // schwankt die Breite (572 px bei 900, 852 px bei 1180) - ein
+              // festes Raster quetschte den Abholort auf „La…“.
               sx={{
-                display: 'grid',
+                display: 'flex',
+                flexWrap: 'wrap',
                 gap: 1.5,
-                gridTemplateColumns: {
-                  xs: 'minmax(0, 1fr)',
-                  sm: 'auto minmax(0, 1fr)',
-                },
                 alignItems: 'center',
               }}
             >
-              <Stack direction="row" spacing={0.5} alignItems="center">
+              <Button
+                variant="outlined"
+                startIcon={<FilterIcon />}
+                onClick={() => setFiltersOpen((open) => !open)}
+                aria-expanded={filtersOpen}
+                aria-controls="abholliste-filters"
+                sx={{
+                  order: -1,
+                  flex: '0 0 auto',
+                  display: { xs: 'inline-flex', sm: 'none' },
+                  minHeight: 44,
+                  px: 1.25,
+                  '& .MuiButton-startIcon': { mr: 0.5 },
+                }}
+              >
+                {hideDone ? 'Filter (1)' : 'Filter'}
+              </Button>
+              <Stack
+                direction="row"
+                spacing={0.5}
+                alignItems="center"
+                sx={{
+                  display: filterDisplay,
+                  order: { xs: 0, sm: 1 },
+                  flex: { xs: '1 1 100%', sm: '0 0 auto' },
+                }}
+              >
                 <Tooltip title="Vorheriger Abholtag">
                   <span>
                     <IconButton
@@ -1640,7 +1707,17 @@ export default function AbholListeClient({
                   </span>
                 </Tooltip>
               </Stack>
-              <Stack direction="row" spacing={1} alignItems="center">
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="center"
+                sx={{
+                  display: filterDisplay,
+                  order: { xs: 0, sm: 2 },
+                  flex: { xs: '1 1 100%', sm: '1 1 180px' },
+                  minWidth: 0,
+                }}
+              >
                 <TextField
                   select
                   label="Abholort"
@@ -1679,11 +1756,22 @@ export default function AbholListeClient({
                   </span>
                 </Tooltip>
               </Stack>
+              {/* Ab Tablet (über `order`): Tag, Ort, Sortierung | Umbruch |
+                  Suche, Schalter. Am Handy: Suche, Filter, dann der Rest. */}
+              <Box
+                aria-hidden="true"
+                sx={{
+                  display: { xs: 'none', sm: 'block' },
+                  order: 4,
+                  flexBasis: '100%',
+                  height: 0,
+                }}
+              />
               <TextField
                 size="small"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                placeholder="Name oder Code, z. B. „Müller“ oder „3“"
+                placeholder="Name oder Code"
                 inputProps={{ 'aria-label': 'Name oder Code suchen' }}
                 InputProps={{
                   startAdornment: (
@@ -1704,42 +1792,47 @@ export default function AbholListeClient({
                     </InputAdornment>
                   ) : undefined,
                 }}
-                sx={{ gridColumn: { sm: '1 / -1' } }}
-              />
-              <Box
                 sx={{
-                  gridColumn: { sm: '1 / -1' },
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  columnGap: 2,
-                  rowGap: 1,
+                  // Am Handy vorn, neben „Filter“; ab Tablet in Zeile 2.
+                  order: { xs: -2, sm: 5 },
+                  flex: { xs: '1 1 0', sm: '1 1 260px' },
+                  minWidth: 0,
+                }}
+              />
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={effectiveSort}
+                onChange={(_e, value: AbholSort | null) =>
+                  value && setSort(value)
+                }
+                aria-label="Sortierung"
+                sx={{
+                  display: filterDisplay,
+                  order: { xs: 0, sm: 3 },
+                  flex: '0 0 auto',
+                  '& .MuiToggleButton-root': { minHeight: 44, px: 2 },
                 }}
               >
-                <ToggleButtonGroup
-                  exclusive
-                  size="small"
-                  value={effectiveSort}
-                  onChange={(_e, value: AbholSort | null) =>
-                    value && setSort(value)
-                  }
-                  aria-label="Sortierung"
-                  sx={{ '& .MuiToggleButton-root': { minHeight: 44, px: 2 } }}
-                >
-                  <ToggleButton value="zeit">Nach Uhrzeit</ToggleButton>
-                  <ToggleButton value="name">Nach Name</ToggleButton>
-                </ToggleButtonGroup>
-                <FormControlLabel
-                  sx={{ minHeight: 44, mr: 0 }}
-                  control={
-                    <Switch
-                      checked={hideDone}
-                      onChange={(event) => setHideDone(event.target.checked)}
-                    />
-                  }
-                  label="Abgeholte und stornierte ausblenden"
-                />
-              </Box>
+                <ToggleButton value="zeit">Nach Uhrzeit</ToggleButton>
+                <ToggleButton value="name">Nach Name</ToggleButton>
+              </ToggleButtonGroup>
+              <FormControlLabel
+                sx={{
+                  display: filterDisplay,
+                  order: { xs: 0, sm: 6 },
+                  flex: '0 0 auto',
+                  minHeight: 44,
+                  mr: 0,
+                }}
+                control={
+                  <Switch
+                    checked={hideDone}
+                    onChange={(event) => setHideDone(event.target.checked)}
+                  />
+                }
+                label="Abgeholte und stornierte ausblenden"
+              />
             </Box>
           </PageSection>
 
@@ -1825,49 +1918,7 @@ export default function AbholListeClient({
           )}
 
           {summary && (
-            <KeyFigures items={figures} aria-label="Stand der Übergabe" />
-          )}
-
-          {showBulk && (
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              spacing={1}
-              useFlexGap
-              flexWrap="wrap"
-            >
-              {canWrite && toReady.length > 0 && (
-                <Button
-                  variant="outlined"
-                  startIcon={<ReadyIcon />}
-                  onClick={() => setBulk('ready')}
-                  disabled={bulkRunning}
-                  sx={TOUCH}
-                >
-                  Alle offenen als bereit markieren ({toReady.length})
-                </Button>
-              )}
-              {waiting.length > 0 && (
-                <Tooltip
-                  title={
-                    dayEndAllowed
-                      ? ''
-                      : 'Erst am Abholtag - vorher kann noch jemand kommen.'
-                  }
-                >
-                  <span>
-                    <Button
-                      variant="outlined"
-                      startIcon={<DayEndIcon />}
-                      onClick={() => setBulk('dayEnd')}
-                      disabled={!dayEndAllowed || bulkRunning}
-                      sx={{ ...TOUCH, width: { xs: '100%', sm: 'auto' } }}
-                    >
-                      Tagesabschluss: Rest „nicht abgeholt“ ({waiting.length})
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
-            </Stack>
+            <KeyFigures items={figures} dense aria-label="Stand der Übergabe" />
           )}
 
           {loading && !day ? (
@@ -1909,10 +1960,8 @@ export default function AbholListeClient({
                     sx={{ '&:not(:last-of-type)': { mb: 2.5 } }}
                   >
                     <Typography
-                      variant="subtitle1"
-                      component="h2"
+                      variant="h2"
                       sx={{
-                        fontWeight: 700,
                         mb: 1,
                         color:
                           group.key === CANCELLED_GROUP
@@ -1932,6 +1981,56 @@ export default function AbholListeClient({
                 ))}
               </Box>
             ))
+          )}
+
+          {/* Sammelaktionen am Listenende (UI-Runde 1): oben verdrängten sie
+              die Liste, und der Tagesabschluss kommt ohnehin zuletzt. */}
+          {showBulk && (
+            <PageSection
+              title="Für alle Bestellungen"
+              description="Gilt für alle Bestellungen dieses Tages und Abholorts."
+              printHidden
+            >
+              <Stack
+                direction={{ xs: 'column', sm: 'row' }}
+                spacing={1}
+                useFlexGap
+                flexWrap="wrap"
+              >
+                {canWrite && toReady.length > 0 && (
+                  <Button
+                    variant="outlined"
+                    startIcon={<ReadyIcon />}
+                    onClick={() => setBulk('ready')}
+                    disabled={bulkRunning}
+                    sx={TOUCH}
+                  >
+                    Alle offenen als bereit markieren ({toReady.length})
+                  </Button>
+                )}
+                {waiting.length > 0 && (
+                  <Tooltip
+                    title={
+                      dayEndAllowed
+                        ? ''
+                        : 'Erst am Abholtag - vorher kann noch jemand kommen.'
+                    }
+                  >
+                    <span>
+                      <Button
+                        variant="outlined"
+                        startIcon={<DayEndIcon />}
+                        onClick={() => setBulk('dayEnd')}
+                        disabled={!dayEndAllowed || bulkRunning}
+                        sx={{ ...TOUCH, width: { xs: '100%', sm: 'auto' } }}
+                      >
+                        Tagesabschluss: Rest „nicht abgeholt“ ({waiting.length})
+                      </Button>
+                    </span>
+                  </Tooltip>
+                )}
+              </Stack>
+            </PageSection>
           )}
 
           {day && cancelledCount > 0 && (
@@ -2290,6 +2389,62 @@ export default function AbholListeClient({
                 : handover.paid
                 ? 'Übergeben'
                 : 'Bezahlt und übergeben'}
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      <Dialog
+        open={payConfirm !== null}
+        onClose={() => setPayConfirm(null)}
+        aria-labelledby="pay-confirm-title"
+        fullWidth
+        maxWidth="xs"
+      >
+        <DialogTitle id="pay-confirm-title">Zahlung erfassen?</DialogTitle>
+        <DialogContent>
+          {payConfirm && (
+            <>
+              <DialogContentText sx={{ color: 'text.primary' }}>
+                {owesRest(payConfirm) ? 'Rest von ' : ''}
+                <strong>
+                  {formatCurrency(paymentState(payConfirm).amount)}
+                </strong>{' '}
+                von {payConfirm.customerName ?? payConfirm.code} erhalten?
+              </DialogContentText>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                Zurücknehmen kann danach nur der Verkauf.
+              </Typography>
+            </>
+          )}
+        </DialogContent>
+        <DialogActions
+          sx={{
+            flexDirection: { xs: 'column', sm: 'row' },
+            alignItems: 'stretch',
+            gap: 1,
+            px: 3,
+            pb: 2,
+            '& > :not(style) ~ :not(style)': { ml: { xs: 0, sm: 1 } },
+          }}
+        >
+          <Button onClick={() => setPayConfirm(null)} sx={TOUCH}>
+            Abbrechen
+          </Button>
+          {payConfirm && (
+            <Button
+              variant="contained"
+              color="success"
+              autoFocus
+              startIcon={<PaidIcon />}
+              onClick={() => {
+                const target = payConfirm
+                setPayConfirm(null)
+                markPaid(target)
+              }}
+              sx={TOUCH}
+            >
+              {formatCurrency(paymentState(payConfirm).amount)} kassiert
             </Button>
           )}
         </DialogActions>

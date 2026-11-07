@@ -30,6 +30,10 @@ import {
 } from '../../../../../lib/preordersApi'
 import { toBusinessDate } from '../../../../../lib/partnerTypes'
 import {
+  MOERSBACH_POINT_ID,
+  preferredPickupPoint,
+} from '../../../../../lib/abholliste'
+import {
   PICKUP_POINT_MAX_LENGTH,
   formatShortDate,
   type PickupPointInput,
@@ -133,7 +137,8 @@ export default function PickupPointFormClient({
       const first =
         list.find((p) => p.id === pointIdRef.current) ??
         list.find((p) => p.id === initialPickupPointId) ??
-        list.find((p) => p.active !== false) ??
+        // Ohne Kennung Mörsbach wie die Liste (UI-Runde 1).
+        preferredPickupPoint(list, { preferId: MOERSBACH_POINT_ID }) ??
         list[0] ??
         null
       if (first) apply(first)

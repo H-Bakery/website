@@ -27,9 +27,16 @@ describe('PaymentNote (W4-verify r3)', () => {
     expect(screen.getByText('bezahlt')).toBeInTheDocument()
   })
 
-  it('unbezahlt: nichts', () => {
-    const { container } = renderWithTheme(
+  it('unbezahlt: „nicht bezahlt“, storniert und unbezahlt: nichts (UI-Runde 1)', () => {
+    const { container, rerender } = renderWithTheme(
       <PaymentNote preorder={preorder({ paid: false })} />
+    )
+    expect(screen.getByText('nicht bezahlt')).toHaveAttribute(
+      'data-payment',
+      'unpaid'
+    )
+    rerender(
+      <PaymentNote preorder={preorder({ paid: false, status: 'storniert' })} />
     )
     expect(container.textContent).toBe('')
   })

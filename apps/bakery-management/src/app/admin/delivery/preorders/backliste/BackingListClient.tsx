@@ -24,6 +24,10 @@ import {
 } from '../../../../../lib/preordersApi'
 import { itemName, type PreorderSums } from '../../../../../lib/preordersTypes'
 import {
+  MOERSBACH_POINT_ID,
+  preferredPickupPoint,
+} from '../../../../../lib/abholliste'
+import {
   EmptyState,
   ErrorState,
   LoadingState,
@@ -145,7 +149,8 @@ export default function BackingListClient({
         setPoints(list)
         const first =
           list.find((p) => p.id === initialPickupPointId) ??
-          list.find((p) => p.active !== false) ??
+          // Ohne Kennung Mörsbach wie die Liste (UI-Runde 1).
+          preferredPickupPoint(list, { preferId: MOERSBACH_POINT_ID }) ??
           list[0] ??
           null
         if (first && !initialPickupPointId) setPointId(first.id)
@@ -219,8 +224,25 @@ export default function BackingListClient({
                   weekday != null ? `${DELIVERY_WEEKDAY_LABELS[weekday]}, ` : ''
                 }${formatDate(date)}`
               : 'Kein gültiger Liefertag gewählt'}
-            {point ? ` · ${point.name}` : ''}
-            {point?.window ? ` · Übergabe ${point.window} Uhr` : ''}
+            {/* Je Teil ohne Umbruch - sonst begann eine Zeile mit „· Übergabe“
+                (UI-Runde 1). */}
+            {point && (
+              <>
+                {'\u00a0· '}
+                <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+                  {point.name}
+                  {point.window ? '\u00a0·' : ''}
+                </Box>
+              </>
+            )}
+            {point?.window && (
+              <>
+                {' '}
+                <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+                  Übergabe {point.window} Uhr
+                </Box>
+              </>
+            )}
           </>
         }
         actions={
@@ -272,7 +294,10 @@ export default function BackingListClient({
             <EmptyState title="Für diesen Tag ist nichts vorbestellt." />
           )
         ) : (
-          <PageSection disablePadding>
+          <PageSection
+            title={`Menge je Produkt (${sums.length})`}
+            disablePadding
+          >
             <TableContainer>
               <Table
                 aria-label="Menge je Produkt"

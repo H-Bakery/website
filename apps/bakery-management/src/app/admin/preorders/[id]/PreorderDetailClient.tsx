@@ -537,7 +537,7 @@ export default function PreorderDetailClient({
       status={
         <>
           <PreorderStatusChip preorder={preorder} size="medium" />
-          {preorder.paid && (
+          {preorder.paid ? (
             <Chip
               variant="outlined"
               color="success"
@@ -548,6 +548,16 @@ export default function PreorderDetailClient({
               }
               data-testid="paid-chip"
             />
+          ) : (
+            preorder.status !== 'storniert' && (
+              // Wie auf der Abholliste: unbezahlt steht da, nicht nur ein
+              // fehlender Chip (UI-Runde 1).
+              <Chip
+                variant="outlined"
+                label="nicht bezahlt"
+                data-testid="unpaid-chip"
+              />
+            )
           )}
         </>
       }
