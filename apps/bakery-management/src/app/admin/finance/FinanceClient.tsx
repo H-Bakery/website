@@ -8,30 +8,28 @@ import {
   Button,
   Chip,
   FormControl,
-  Grid,
   InputLabel,
   LinearProgress,
   MenuItem,
-  Paper,
   Select,
-  Stack,
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
+  Tooltip as MuiTooltip,
   Typography,
+  useMediaQuery,
   useTheme,
 } from '@mui/material'
 import {
-  AccountBalance as FinanceIcon,
   CheckCircleOutline as OkIcon,
   ErrorOutline as WarnIcon,
   Login as LoginIcon,
 } from '@mui/icons-material'
 import {
   Bar,
-  BarChart,
   CartesianGrid,
   ComposedChart,
   Legend,
@@ -57,6 +55,12 @@ import type {
   FinanceStructureRow,
   FinanceSummaryResponse,
 } from '../../../lib/financeTypes'
+import {
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../components/layout'
 
 // ---------------------------------------------------------------------------
 // Formatierung
@@ -144,258 +148,202 @@ function useSeriesColors() {
 // Bausteine
 // ---------------------------------------------------------------------------
 
-function StatTile({
-  label,
-  value,
-  hint,
-}: {
-  label: string
-  value: string
-  hint?: string
-}) {
-  return (
-    <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
-      <Typography variant="body2" color="text.secondary" gutterBottom>
-        {label}
-      </Typography>
-      <Typography variant="h5" component="p">
-        {value}
-      </Typography>
-      {hint && (
-        <Typography variant="caption" color="text.secondary">
-          {hint}
-        </Typography>
-      )}
-    </Paper>
-  )
+const SERIES_NAMES: Record<string, string> = {
+  income: 'Einnahmen',
+  expense: 'Ausgaben',
+  result: 'Ergebnis',
 }
 
 function MonthlyChart({ series }: { series: FinanceMonthPoint[] }) {
   const colors = useSeriesColors()
+  const theme = useTheme()
+  const phone = useMediaQuery(theme.breakpoints.down('sm'))
   const data = series.map((m) => ({
     ...m,
     label: formatMonth(m.month),
   }))
-  const names: Record<string, string> = {
-    income: 'Einnahmen',
-    expense: 'Ausgaben',
-    result: 'Ergebnis',
-  }
   return (
-    <Paper elevation={3} sx={{ p: 3 }}>
-      <Typography variant="h6" component="h2" gutterBottom>
-        Monatsverlauf
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Betriebliche Einnahmen und Ausgaben je Monat; die Linie ist das Ergebnis
-        (Einnahmen + Ausgaben). Neutrale Bewegungen sind nicht enthalten.
-      </Typography>
-      <Box sx={{ width: '100%', height: 380 }}>
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ left: 8, right: 8 }}>
-            <CartesianGrid stroke={colors.grid} vertical={false} />
-            <XAxis
-              dataKey="label"
-              tick={{ fill: colors.axis, fontSize: 12 }}
-              stroke={colors.grid}
-            />
-            <YAxis
-              width={90}
-              tickFormatter={(v: number) => currencyNoCents.format(v)}
-              tick={{ fill: colors.axis, fontSize: 12 }}
-              stroke={colors.grid}
-            />
-            <ReferenceLine y={0} stroke={colors.axis} />
-            <Tooltip
-              formatter={(value: number | string, name: string) => [
-                formatEuro(Number(value)),
-                names[name] ?? name,
-              ]}
-              labelFormatter={(label) => String(label)}
-              contentStyle={{
-                backgroundColor: colors.tooltipBg,
-                color: colors.tooltipText,
-                borderColor: colors.grid,
-              }}
-              itemStyle={{ color: colors.tooltipText }}
-              labelStyle={{ color: colors.tooltipText }}
-            />
-            <Legend
-              formatter={(value) => (
-                <span style={{ color: colors.tooltipText }}>
-                  {names[value] ?? value}
-                </span>
-              )}
-            />
-            <Bar
-              dataKey="income"
-              fill={colors.income}
-              radius={[4, 4, 0, 0]}
-              maxBarSize={36}
-              isAnimationActive={false}
-            />
-            <Bar
-              dataKey="expense"
-              fill={colors.expense}
-              radius={[0, 0, 4, 4]}
-              maxBarSize={36}
-              isAnimationActive={false}
-            />
-            <Line
-              type="monotone"
-              dataKey="result"
-              stroke={colors.result}
-              strokeWidth={2}
-              dot={{ r: 4, strokeWidth: 2, fill: colors.tooltipBg }}
-              isAnimationActive={false}
-            />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </Box>
-    </Paper>
+    <Box sx={{ width: '100%', height: phone ? 260 : 340 }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <ComposedChart data={data} margin={{ top: 8, left: 0, right: 8 }}>
+          <CartesianGrid stroke={colors.grid} vertical={false} />
+          <XAxis
+            dataKey="label"
+            tick={{ fill: colors.axis, fontSize: 12 }}
+            stroke={colors.grid}
+          />
+          <YAxis
+            width={phone ? 64 : 84}
+            tickFormatter={(v: number) => currencyNoCents.format(v)}
+            tick={{ fill: colors.axis, fontSize: 12 }}
+            stroke={colors.grid}
+          />
+          <ReferenceLine y={0} stroke={colors.axis} />
+          <Tooltip
+            formatter={(value: number | string, name: string) => [
+              formatEuro(Number(value)),
+              SERIES_NAMES[name] ?? name,
+            ]}
+            labelFormatter={(label) => String(label)}
+            contentStyle={{
+              backgroundColor: colors.tooltipBg,
+              color: colors.tooltipText,
+              borderColor: colors.grid,
+              borderRadius: 8,
+            }}
+            itemStyle={{ color: colors.tooltipText }}
+            labelStyle={{ color: colors.tooltipText }}
+          />
+          <Legend
+            formatter={(value) => (
+              <span style={{ color: colors.tooltipText }}>
+                {SERIES_NAMES[value] ?? value}
+              </span>
+            )}
+          />
+          <Bar
+            dataKey="income"
+            fill={colors.income}
+            radius={[4, 4, 0, 0]}
+            maxBarSize={36}
+            isAnimationActive={false}
+          />
+          <Bar
+            dataKey="expense"
+            fill={colors.expense}
+            radius={[0, 0, 4, 4]}
+            maxBarSize={36}
+            isAnimationActive={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="result"
+            stroke={colors.result}
+            strokeWidth={2}
+            dot={{ r: 4, strokeWidth: 2, fill: colors.tooltipBg }}
+            isAnimationActive={false}
+          />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </Box>
   )
 }
 
-function CostStructure({ rows }: { rows: FinanceStructureRow[] }) {
-  const colors = useSeriesColors()
-  const data = rows.map((r) => ({
-    ...r,
-    // Für das Diagramm der Betrag als positive Länge - die Tabelle daneben
-    // zeigt das Vorzeichen, wie es gebucht ist.
-    outflow: Math.abs(r.expense),
-  }))
-  const chartHeight = Math.max(200, 32 * data.length + 40)
+/**
+ * Kostenstruktur als eine Tabelle mit Anteilsbalken - vorher standen
+ * daneben noch ein Balkendiagramm mit denselben Zahlen.
+ */
+function CostTable({ rows }: { rows: FinanceStructureRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <Typography color="text.secondary" sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+        Keine Ausgaben im gewählten Zeitraum.
+      </Typography>
+    )
+  }
   return (
-    <Paper elevation={3} sx={{ p: 3 }}>
-      <Typography variant="h6" component="h2" gutterBottom>
-        Kostenstruktur
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Abflüsse nach Kategorie im gewählten Zeitraum. „Nicht zugeordnet“ zählt
-        hier mit, solange die Buchungen keiner Kategorie zugewiesen sind.
-      </Typography>
-      {data.length === 0 ? (
-        <Typography color="text.secondary">
-          Keine Ausgaben im gewählten Zeitraum.
-        </Typography>
-      ) : (
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Box sx={{ width: '100%', height: chartHeight }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart
-                  data={data}
-                  layout="vertical"
-                  margin={{ left: 8, right: 16 }}
+    <TableContainer sx={{ overflowX: 'auto' }}>
+      <Table size="small" aria-label="Kostenstruktur nach Kategorie">
+        <TableHead>
+          <TableRow>
+            <TableCell>Kategorie</TableCell>
+            <TableCell align="right">Abfluss</TableCell>
+            <TableCell align="right" sx={{ width: { sm: 180 } }}>
+              Anteil
+            </TableCell>
+            <TableCell
+              align="right"
+              sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+            >
+              Buchungen
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => (
+            <TableRow key={row.category}>
+              <TableCell>
+                {row.label}
+                {row.kind === 'offen' && (
+                  <Chip
+                    label="offen"
+                    size="small"
+                    variant="outlined"
+                    sx={{ ml: 1 }}
+                  />
+                )}
+              </TableCell>
+              <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                {formatEuro(row.expense)}
+              </TableCell>
+              <TableCell align="right">
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    gap: 1,
+                  }}
                 >
-                  <CartesianGrid stroke={colors.grid} horizontal={false} />
-                  <XAxis
-                    type="number"
-                    tickFormatter={(v: number) => currencyNoCents.format(v)}
-                    tick={{ fill: colors.axis, fontSize: 12 }}
-                    stroke={colors.grid}
-                  />
-                  <YAxis
-                    type="category"
-                    dataKey="label"
-                    width={150}
-                    tick={{ fill: colors.axis, fontSize: 12 }}
-                    stroke={colors.grid}
-                  />
-                  <Tooltip
-                    formatter={(value: number | string) => [
-                      formatEuro(-Number(value)),
-                      'Abfluss',
-                    ]}
-                    contentStyle={{
-                      backgroundColor: colors.tooltipBg,
-                      color: colors.tooltipText,
-                      borderColor: colors.grid,
+                  <LinearProgress
+                    variant="determinate"
+                    value={Math.max(0, Math.min(100, row.share * 100))}
+                    aria-hidden
+                    sx={{
+                      flex: 1,
+                      maxWidth: 96,
+                      height: 6,
+                      borderRadius: 3,
+                      display: { xs: 'none', sm: 'block' },
                     }}
-                    itemStyle={{ color: colors.tooltipText }}
-                    labelStyle={{ color: colors.tooltipText }}
                   />
-                  <Bar
-                    dataKey="outflow"
-                    fill={colors.expense}
-                    radius={[0, 4, 4, 0]}
-                    maxBarSize={20}
-                    isAnimationActive={false}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            </Box>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Box sx={{ overflowX: 'auto' }}>
-              <Table size="small" aria-label="Kostenstruktur nach Kategorie">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>Kategorie</TableCell>
-                    <TableCell align="right">Abfluss</TableCell>
-                    <TableCell align="right">Anteil</TableCell>
-                    <TableCell align="right">Buchungen</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {rows.map((row) => (
-                    <TableRow key={row.category}>
-                      <TableCell>
-                        {row.label}
-                        {row.kind === 'offen' && (
-                          <Chip
-                            label="offen"
-                            size="small"
-                            variant="outlined"
-                            sx={{ ml: 1 }}
-                          />
-                        )}
-                      </TableCell>
-                      <TableCell align="right">
-                        {formatEuro(row.expense)}
-                      </TableCell>
-                      <TableCell align="right">
-                        {percent.format(row.share)}
-                      </TableCell>
-                      <TableCell align="right">{row.count}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Box>
-          </Grid>
-        </Grid>
-      )}
-    </Paper>
+                  <span>{percent.format(row.share)}</span>
+                </Box>
+              </TableCell>
+              <TableCell
+                align="right"
+                sx={{ display: { xs: 'none', sm: 'table-cell' } }}
+              >
+                {row.count}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableContainer>
   )
 }
 
 function InvariantBadge({ invariant }: { invariant: FinanceInvariant }) {
   if (invariant.ok) {
     return (
-      <Chip
-        icon={<OkIcon />}
-        color="success"
-        variant="outlined"
-        size="small"
-        label="Summenprüfung stimmig"
-        title="Einnahmen + Ausgaben + Neutral = Kontoveränderung, in jedem Monat"
-      />
+      <MuiTooltip title="Einnahmen + Ausgaben + Neutral = Kontoveränderung, in jedem Monat">
+        <Chip
+          icon={<OkIcon />}
+          color="success"
+          variant="outlined"
+          size="small"
+          label="Summenprüfung stimmig"
+        />
+      </MuiTooltip>
     )
   }
   return (
-    <Chip
-      icon={<WarnIcon />}
-      color="warning"
-      variant="outlined"
-      size="small"
-      label={`Summenprüfung: ${invariant.violations.length} Abweichung(en)`}
+    <MuiTooltip
       title={invariant.violations
         .map(
           (v) => `${v.month ?? 'gesamt'}: ${v.rule} (Δ ${formatEuro(v.diff)})`
         )
-        .join('\n')}
-    />
+        .join(' · ')}
+    >
+      <Chip
+        icon={<WarnIcon />}
+        color="warning"
+        variant="outlined"
+        size="small"
+        label={`Summenprüfung: ${invariant.violations.length} Abweichung(en)`}
+      />
+    </MuiTooltip>
   )
 }
 
@@ -459,6 +407,43 @@ function AccessNotice({
   )
 }
 
+function MonthSelect({
+  id,
+  label,
+  value,
+  empty,
+  months,
+  isDisabled,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  empty: string
+  months: string[]
+  isDisabled: (month: string) => boolean
+  onChange: (month: string) => void
+}) {
+  return (
+    <FormControl size="small" sx={{ flex: '1 1 9rem', maxWidth: { sm: 200 } }}>
+      <InputLabel id={id}>{label}</InputLabel>
+      <Select
+        labelId={id}
+        label={label}
+        value={value}
+        onChange={(e) => onChange(String(e.target.value))}
+      >
+        <MenuItem value="">{empty}</MenuItem>
+        {months.map((m) => (
+          <MenuItem key={m} value={m} disabled={isDisabled(m)}>
+            {formatMonthLong(m)}
+          </MenuItem>
+        ))}
+      </Select>
+    </FormControl>
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Seite
 // ---------------------------------------------------------------------------
@@ -474,6 +459,9 @@ interface RangeView {
   overview: FinanceOverview
   costs: FinanceStructureRow[]
 }
+
+const TITLE = 'Finanzen'
+const SUBTITLE = 'Cashflow-Sicht nach Buchungsdatum, keine GuV'
 
 export default function FinanceClient() {
   const { isAuthenticated, isLoading: authLoading } = useSession()
@@ -523,6 +511,10 @@ export default function FinanceClient() {
     if (!from && !to) {
       setRange(null)
       setRangeError(null)
+      // Eine noch laufende Anfrage ist abgebrochen (cancelled) und setzt
+      // ihr „Lädt …“ nicht mehr zurück - sonst stand es nach „Gesamter
+      // Zeitraum“ für immer da.
+      setRangeLoading(false)
       return
     }
     let cancelled = false
@@ -555,47 +547,32 @@ export default function FinanceClient() {
     }
   }, [state.phase, from, to])
 
-  const header = (
-    <Box sx={{ mb: 3 }}>
-      <Typography variant="h4" component="h1">
-        <FinanceIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-        Finanzen
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary">
-        Kontobewegungen des Geschäftskontos, kategorisiert
-      </Typography>
-    </Box>
-  )
-
   if (state.phase === 'loading') {
     return (
-      <Box>
-        {header}
-        <LinearProgress aria-label="Finanzdaten werden geladen" />
-      </Box>
+      <PageLayout title={TITLE} subtitle={SUBTITLE}>
+        <LoadingState label="Finanzdaten werden geladen" />
+      </PageLayout>
     )
   }
 
   if (state.phase === 'access') {
     return (
-      <Box>
-        {header}
+      <PageLayout title={TITLE} subtitle={SUBTITLE}>
         <AccessNotice kind={state.kind} message={state.message} />
-      </Box>
+      </PageLayout>
     )
   }
 
   if (state.phase === 'no-data') {
     return (
-      <Box>
-        {header}
+      <PageLayout title={TITLE} subtitle={SUBTITLE}>
         <Alert severity="info">
           <AlertTitle>Keine Finanzdaten vorhanden</AlertTitle>
           {state.reason} Die Daten entstehen im hq-Repo unter data/finance
           (Import der Kontoauszüge); es werden bewusst keine Beispielwerte
           angezeigt.
         </Alert>
-      </Box>
+      </PageLayout>
     )
   }
 
@@ -609,145 +586,129 @@ export default function FinanceClient() {
   const filtered = Boolean(from || to)
 
   return (
-    <Box>
-      {header}
-
-      <Stack
-        direction="row"
-        spacing={1}
-        flexWrap="wrap"
-        alignItems="center"
-        useFlexGap
-        sx={{ mb: 2 }}
+    <PageLayout
+      title={TITLE}
+      subtitle={SUBTITLE}
+      status={<InvariantBadge invariant={summary.derived.invariant} />}
+    >
+      <PageSection
+        detailsLabel="Was diese Zahlen sind"
+        details={
+          <Typography variant="body2" color="text.secondary">
+            Zuordnung nach Zahlungs-, nicht nach Leistungsdatum; keine
+            Abschreibungen, Rückstellungen oder Umsatzsteuer-Abgrenzung; nur
+            dieses eine Konto. Neutrale Bewegungen (Geldtransit, Privat,
+            Finanzierung) zählen nur in der Kontoveränderung.
+          </Typography>
+        }
       >
-        <Typography variant="body2" color="text.secondary">
-          Stand: {formatTimestamp(summary.generated_at)} · Zeitraum{' '}
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 1.5,
+          }}
+        >
+          <MonthSelect
+            id="finance-from-label"
+            label="Von"
+            value={from}
+            empty="Anfang"
+            months={availableMonths}
+            isDisabled={(m) => Boolean(to) && m > to}
+            onChange={setFrom}
+          />
+          <MonthSelect
+            id="finance-to-label"
+            label="Bis"
+            value={to}
+            empty="Ende"
+            months={availableMonths}
+            isDisabled={(m) => Boolean(from) && m < from}
+            onChange={setTo}
+          />
+          {filtered && (
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setFrom('')
+                setTo('')
+              }}
+            >
+              Gesamter Zeitraum
+            </Button>
+          )}
+          {rangeLoading && (
+            <Typography variant="body2" color="text.secondary" role="status">
+              Lädt …
+            </Typography>
+          )}
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+          Stand: {formatTimestamp(summary.generated_at)} · Daten{' '}
           {formatDate(summary.period.from)} – {formatDate(summary.period.to)} ·{' '}
           {summary.transaction_count.toLocaleString('de-DE')} Buchungen
         </Typography>
-        <InvariantBadge invariant={summary.derived.invariant} />
-      </Stack>
+      </PageSection>
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Cashflow-Sicht nach Buchungsdatum, keine GuV: Zuordnung nach Zahlungs-,
-        nicht nach Leistungsdatum; keine Abschreibungen, Rückstellungen oder
-        Umsatzsteuer-Abgrenzung; nur dieses eine Konto.
-      </Alert>
+      {rangeError && <Alert severity="error">{rangeError}</Alert>}
 
-      <Stack
-        direction="row"
-        spacing={2}
-        flexWrap="wrap"
-        alignItems="center"
-        useFlexGap
-        sx={{ mb: 3 }}
+      <KeyFigures
+        aria-label="Kennzahlen des Zeitraums"
+        items={[
+          {
+            label: 'Einnahmen',
+            value: formatEuro(overview.income),
+            hint: `${overview.months} Monat${overview.months === 1 ? '' : 'e'}`,
+          },
+          { label: 'Ausgaben', value: formatEuro(overview.expense) },
+          {
+            label: 'Ergebnis',
+            value: formatEuro(overview.result),
+            hint: 'Einnahmen + Ausgaben',
+          },
+          {
+            label: 'Kontoveränderung',
+            value: formatEuro(overview.net_change),
+            hint: `inkl. neutral ${formatEuro(overview.neutral)}`,
+          },
+        ]}
+      />
+
+      <PageSection
+        title="Monatsverlauf"
+        description="Balken: Einnahmen und Ausgaben, Linie: Ergebnis."
       >
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel id="finance-from-label">Von</InputLabel>
-          <Select
-            labelId="finance-from-label"
-            label="Von"
-            value={from}
-            onChange={(e) => setFrom(e.target.value)}
-          >
-            <MenuItem value="">Anfang</MenuItem>
-            {availableMonths.map((m) => (
-              <MenuItem key={m} value={m} disabled={Boolean(to) && m > to}>
-                {formatMonthLong(m)}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        <FormControl size="small" sx={{ minWidth: 160 }}>
-          <InputLabel id="finance-to-label">Bis</InputLabel>
-          <Select
-            labelId="finance-to-label"
-            label="Bis"
-            value={to}
-            onChange={(e) => setTo(e.target.value)}
-          >
-            <MenuItem value="">Ende</MenuItem>
-            {availableMonths.map((m) => (
-              <MenuItem key={m} value={m} disabled={Boolean(from) && m < from}>
-                {formatMonthLong(m)}
-              </MenuItem>
-            ))}
-          </Select>
-        </FormControl>
-        {filtered && (
-          <Button
-            size="small"
-            onClick={() => {
-              setFrom('')
-              setTo('')
-            }}
-          >
-            Gesamter Zeitraum
-          </Button>
-        )}
-        {rangeLoading && (
-          <Typography variant="body2" color="text.secondary">
-            Lädt …
-          </Typography>
-        )}
-      </Stack>
-
-      {rangeError && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {rangeError}
-        </Alert>
-      )}
-
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatTile
-            label="Einnahmen"
-            value={formatEuro(overview.income)}
-            hint={`${overview.months} Monat${overview.months === 1 ? '' : 'e'}`}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatTile label="Ausgaben" value={formatEuro(overview.expense)} />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatTile
-            label="Ergebnis"
-            value={formatEuro(overview.result)}
-            hint="Einnahmen + Ausgaben"
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatTile
-            label="Kontoveränderung"
-            value={formatEuro(overview.net_change)}
-            hint={`inkl. neutral ${formatEuro(
-              overview.neutral
-            )} (Geldtransit, Privat, Finanzierung)`}
-          />
-        </Grid>
-      </Grid>
-
-      <Stack spacing={3}>
         {view.series.length === 0 ? (
-          <Alert severity="info">Keine Monate im gewählten Zeitraum.</Alert>
+          <Typography color="text.secondary">
+            Keine Monate im gewählten Zeitraum.
+          </Typography>
         ) : (
           <MonthlyChart series={view.series} />
         )}
+      </PageSection>
 
-        <CostStructure rows={view.costs} />
-
+      <PageSection
+        title="Kostenstruktur"
+        description="Abflüsse nach Kategorie im gewählten Zeitraum"
+        disablePadding
+      >
+        <CostTable rows={view.costs} />
         {summary.uncategorized.count > 0 && (
-          <Alert severity="info">
-            <AlertTitle>Nicht zugeordnete Buchungen</AlertTitle>
-            {summary.uncategorized.count} Buchung
-            {summary.uncategorized.count === 1 ? '' : 'en'} mit zusammen{' '}
-            {formatEuro(summary.uncategorized.amount)} sind im gesamten Zeitraum
-            keiner Kategorie zugeordnet. Das ist gewollt: lieber sichtbar als
-            geraten. Die Zuordnung wird im hq-Repo gepflegt
-            (data/finance/config/categories.json).
-          </Alert>
+          <Box sx={{ p: { xs: 2, md: 3 } }}>
+            <Alert severity="info">
+              <AlertTitle>Nicht zugeordnete Buchungen</AlertTitle>
+              {summary.uncategorized.count} Buchung
+              {summary.uncategorized.count === 1 ? '' : 'en'} mit zusammen{' '}
+              {formatEuro(summary.uncategorized.amount)} sind im gesamten
+              Zeitraum keiner Kategorie zugeordnet. Das ist gewollt: lieber
+              sichtbar als geraten. Die Zuordnung wird im hq-Repo gepflegt
+              (data/finance/config/categories.json).
+            </Alert>
+          </Box>
         )}
-      </Stack>
-    </Box>
+      </PageSection>
+    </PageLayout>
   )
 }

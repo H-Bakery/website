@@ -216,7 +216,11 @@ describe('TagesZielClient', () => {
       /10 % über dem Tagesziel \(110 %/
     )
 
-    // Tagesverlauf: Ruhetag und laufender Tag sind offen, nicht rot
+    // Tagesverlauf: Ruhetag und laufender Tag sind offen, nicht rot. Die
+    // Tabelle steht zugeklappt unter dem Diagramm.
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Tage als Tabelle' })
+    )
     await waitFor(() =>
       expect(
         screen.getByRole('table', { name: 'Tagesverlauf' })
@@ -257,6 +261,9 @@ describe('TagesZielClient', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/inkl\. Entnahme/)).toBeInTheDocument()
     // Die Tageszahlen der zweiten Stufe: Ziel 25 % höher, alle drei Tage rot
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Tage als Tabelle' })
+    )
     const dayTable = screen.getByRole('table', { name: 'Tagesverlauf' })
     expect(dayTable.querySelectorAll('[data-status="red"]').length).toBe(3)
   })
@@ -286,9 +293,11 @@ describe('TagesZielClient', () => {
         }
       )
     )
-    expect(
-      await screen.findByText('Mai 2026', { selector: 'h6' })
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('month-view-title')).toHaveTextContent(
+        'Mai 2026'
+      )
+    )
   })
 
   it('formatiert Abweichungen mit Vorzeichen', () => {
