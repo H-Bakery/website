@@ -102,13 +102,21 @@ describe('TargetsTile', () => {
     })
     renderWithTheme(<TargetsTile />)
 
-    expect(await screen.findByText('Letzter Tag')).toBeInTheDocument()
+    expect(await screen.findByTestId('targets-figure-day')).toHaveTextContent(
+      'Letzter Tag'
+    )
     expect(
       screen.getByText(/Zuletzt ausgewertet: 02\.06\.2026/)
     ).toBeInTheDocument()
-    expect(screen.getByText('Dienstag, 02.06.2026')).toBeInTheDocument()
-    expect(screen.getByText('Woche bis 02.06.')).toBeInTheDocument()
-    expect(screen.getByText('Monat bis 02.06.')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Dienstag, 02\.06\.2026 · Ziel/)
+    ).toBeInTheDocument()
+    expect(screen.getByTestId('targets-figure-week')).toHaveTextContent(
+      'Woche bis 02.06.'
+    )
+    expect(screen.getByTestId('targets-figure-month')).toHaveTextContent(
+      'Monat bis 02.06.'
+    )
     expect(screen.getByText(/Hochrechnung Monatsende/)).toBeInTheDocument()
 
     // Ampel je Stufe: Farbe nie allein - Label und Verhältnis stehen im Chip
@@ -118,7 +126,10 @@ describe('TargetsTile', () => {
       0
     )
     expect(screen.getAllByText(/Unter Ziel · 84 %/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/\(Annahme\)/).length).toBe(3)
+    // Die zweite Stufe ist eine Annahme - das steht am Details-Knopf.
+    expect(
+      screen.getByRole('button', { name: 'Inklusive Entnahme (Annahme)' })
+    ).toBeInTheDocument()
 
     expect(
       screen.getByRole('link', { name: /Tagesziel im Detail/ })
@@ -127,6 +138,28 @@ describe('TargetsTile', () => {
       '/api/finance/targets/status',
       undefined
     )
+  })
+
+  it('zeigt die Zahlen wie Kasse und Sortiment als KeyFigures (Review r1)', async () => {
+    authState.isAuthenticated = true
+    apiClient.get.mockResolvedValue({
+      success: true,
+      status: 'ok',
+      data: syntheticStatus(),
+    })
+    renderWithTheme(<TargetsTile />)
+    const group = await screen.findByLabelText('Tagesziel je Zeitraum')
+    expect(group.tagName).toBe('DL')
+    // je Zeitraum eine Kennzahl, der Ampel-Chip der ersten Stufe als Badge
+    ;['day', 'week', 'month'].forEach((key) => {
+      const figure = screen.getByTestId(`targets-figure-${key}`)
+      expect(figure.querySelectorAll('[data-status]')).toHaveLength(1)
+      expect(figure.querySelector('dd')).toHaveTextContent(/€|–/)
+    })
+    // die zweite Stufe steht zugeklappt in „Details“
+    const drawLevel = screen.getByTestId('targets-draw-level')
+    expect(drawLevel.querySelectorAll('[data-status]')).toHaveLength(3)
+    expect(drawLevel).not.toBeVisible()
   })
 
   it('wartet, bis der AuthProvider ein gespeichertes Token geprüft hat', () => {

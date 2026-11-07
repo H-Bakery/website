@@ -30,6 +30,7 @@ import { PageLayout, PageSection, KeyFigures, ResponsiveList, LoadingState,
 | `KeyFigures`                                 | Kennzahlen-Reihe, **höchstens 4** Werte: Bezeichnung, Wert, Hinweis.                                                                                                                                |
 | `ResponsiveList`                             | Tabelle am PC, Karten unter `sm` (600 px) - die Aktionen bleiben am Handy sichtbar.                                                                                                                 |
 | `LoadingState` / `EmptyState` / `ErrorState` | Laden, „nichts da“, „geht nicht“ - überall gleich.                                                                                                                                                  |
+| `DayNavigator`                               | Tageswechsel einer Tagesseite: ‹ Datumsfeld › (+ „Heute“). Immer ganz vorne im `actions`-Slot des Kopfes.                                                                                           |
 
 ## Regeln
 
@@ -53,7 +54,16 @@ als Überschrift und keine Icons im Seitentitel. Große Zahlen sind keine
 im `actions`-Slot des Kopfes - Desktop rechts, Handy volle Breite darunter.
 Weitere Aktionen `outlined` oder `text`; selten Gebrauchtes ins `⋮`-Menü.
 Aktionen eines Abschnitts in `PageSection actions`. Rücksprung über
-`back={{ href, label }}`, nicht als eigener Knopf im Inhalt.
+`back={{ href, label }}`, nicht als eigener Knopf im Inhalt. Passen Titel
+(mindestens `HEADER_TITLE_MIN_WIDTH`, 25 rem) und Aktionen nicht
+nebeneinander (Tablet hochkant, drei Knöpfe), rutschen die Aktionen von
+selbst unter den Titel - keine eigene Umbruch-Logik in der Seite.
+
+**Tageswechsel.** Jede Seite, die einen Tag zeigt (Tagesübersicht,
+Abholliste, Backzettel, Kassentag, Rest, Backschrank), wechselt den Tag mit
+`DayNavigator` als **erstem** Element im `actions`-Slot - nicht in einer
+Filterfläche, nicht als beschriftete Knöpfe. Ruhetage überspringt `step`,
+Grenzen setzen `min`/`max`, „Heute“ kommt mit `today`.
 
 **Weniger auf einmal.** Untertitel eine Zeile. Erklärungen, Annahmen,
 Rechenwege in `details` (zugeklappt) oder als Tooltip. Höchstens 4 Kennzahlen
@@ -90,6 +100,14 @@ klickbare Flächen selbst auf 44 px bringen.
 - Farbe ist nie der einzige Träger (Label + Farbe), Kontrast ≥ 4,5:1 in hell
   und dunkel.
 - Flächen: `PageSection`/`Paper` (Theme-Elevation), keine festen Farben.
+
+**Sticky.** Speichern-Leisten und Tabellenköpfe kleben am Fenster
+(`position: sticky`). Das geht nur, wenn kein Vorfahr `overflow: hidden`
+oder `auto` hat, ohne selbst zu scrollen: `<main>` (`admin/layout.tsx`) und
+die Fläche von `PageSection` schneiden deshalb mit `overflow: clip` ab. Um
+eine Speichern-Leiste kein `overflow: hidden` legen; braucht eine Tabelle
+einen eigenen Scroll-Container, klebt ihr Kopf nur darin (dann
+`maxHeight` setzen).
 
 **Druck.** Kopf-Aktionen und Details-Knöpfe sind im Druck ausgeblendet,
 `PageLayout` nimmt im Druck die Breitenbegrenzung weg. Eigene Druckansichten

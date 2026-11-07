@@ -28,6 +28,17 @@ function renderLayout(pathname = '/admin/reports') {
 }
 
 describe('AdminLayout', () => {
+  it('lässt position: sticky unter <main> kleben (kein overflow hidden/auto)', () => {
+    // Review r1: `overflow-x: hidden` machte <main> zum Scroll-Container, der
+    // nie scrollt - Speichern-Leisten und Tabellenköpfe klebten nie.
+    renderLayout()
+    const main = document.querySelector('main') as HTMLElement
+    const style = getComputedStyle(main)
+    expect(['hidden', 'auto', 'scroll']).not.toContain(style.overflowX)
+    expect(['hidden', 'auto', 'scroll']).not.toContain(style.overflowY)
+    expect(style.overflowX).toBe('clip')
+  })
+
   it('renders children and the app bar', () => {
     renderLayout()
     expect(screen.getByTestId('test-child')).toBeInTheDocument()
@@ -119,14 +130,15 @@ describe('AdminLayout', () => {
   it('names the partner sub-pages in the breadcrumb and drops the id', () => {
     renderLayout('/admin/partners/1/visit/new')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
-      'Dashboard \u203a Verkaufspartner \u203a Besuch erfassen'
+      'Dashboard \u203a Verkaufspartner \u203a Partner \u203a Besuch erfassen'
     )
   })
 
   it('does not leave a bare id in the partner breadcrumb', () => {
     renderLayout('/admin/partners/1')
+    // Review r1: endet wie jede Detailseite mit der aktuellen Seite
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
-      'Dashboard \u203a Verkaufspartner'
+      'Dashboard \u203a Verkaufspartner \u203a Partner'
     )
     expect(screen.getByLabelText('Pfad').textContent).not.toMatch(/\b1\b/)
   })
@@ -179,5 +191,30 @@ describe('AdminLayout', () => {
       'Dashboard › Sammelstelle Mörsbach › Backliste'
     )
     expect(screen.getByLabelText('Pfad').textContent).not.toContain('delivery')
+  })
+
+  it('zeigt auf dem Dashboard keinen Pfad „Dashboard“ über der h1 (Review r1)', () => {
+    renderLayout('/admin')
+    expect(screen.queryByLabelText('Pfad')).toBeNull()
+  })
+
+  it('endet bei Vorbestellungen mit der aktuellen Seite (Review r1)', () => {
+    renderLayout('/admin/preorders/17')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Vorbestellungen › Vorbestellung'
+    )
+  })
+
+  it('gibt Sammelstelle und Rest-Auswertung eigene Symbole (Review r1)', () => {
+    renderLayout('/admin')
+    const nav = getDesktopNav()
+    const iconOf = (label: string) =>
+      nav
+        .getByText(label)
+        .closest('a')
+        ?.querySelector('svg')
+        ?.getAttribute('data-testid')
+    expect(iconOf('Sammelstelle Mörsbach')).not.toBe(iconOf('Vorbestellungen'))
+    expect(iconOf('Rest-Auswertung')).not.toBe(iconOf('Analysen'))
   })
 })

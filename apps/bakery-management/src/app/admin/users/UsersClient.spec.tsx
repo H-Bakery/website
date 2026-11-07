@@ -211,6 +211,25 @@ describe('Benutzerverwaltung', () => {
     confirm.mockRestore()
   })
 
+  it('zeigt bei einem Ladefehler keine leeren Listen, sondern „Erneut versuchen“ (Review r1)', async () => {
+    api.fetchUsers.mockRejectedValueOnce(new Error('Interner Testfehler.'))
+    renderUsers()
+    expect(await screen.findByText('Interner Testfehler.')).toBeInTheDocument()
+    // Nie behaupten, es gäbe keine Konten oder Stationen
+    expect(screen.queryByText(/Konten \(0\)/)).toBeNull()
+    expect(screen.queryByText('Noch keine Benutzer.')).toBeNull()
+    expect(screen.queryByText(/Stationen \(0 aktiv\)/)).toBeNull()
+    expect(screen.queryByText('Noch keine Station.')).toBeNull()
+    // Kopf bleibt gleich
+    expect(
+      screen.getByRole('button', { name: 'Neuer Benutzer' })
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+    expect(await screen.findByText('Konten (2)')).toBeInTheDocument()
+    expect(screen.queryByText('Interner Testfehler.')).toBeNull()
+  })
+
   it('zeigt einen Ladefehler (z. B. PIN-Sitzung) als Meldung', async () => {
     api.fetchUsers.mockRejectedValue(
       new Error('Nur mit persönlicher Anmeldung (Benutzername und Passwort).')

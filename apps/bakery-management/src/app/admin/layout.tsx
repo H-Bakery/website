@@ -36,6 +36,8 @@ import {
   ManageAccounts as UsersIcon,
   Checklist as PickupIcon,
   HelpOutline as HelpIcon,
+  Place as PickupPointIcon,
+  QueryStats as RestSummaryIcon,
 } from '@mui/icons-material'
 import type { Theme } from '@mui/material/styles'
 import Link from 'next/link'
@@ -116,6 +118,8 @@ const iconMap: Record<string, React.ReactElement> = {
   users: <UsersIcon />,
   pickup: <PickupIcon />,
   help: <HelpIcon />,
+  pickuppoint: <PickupPointIcon />,
+  restsummary: <RestSummaryIcon />,
 }
 
 /**
@@ -125,7 +129,9 @@ const iconMap: Record<string, React.ReactElement> = {
  * sagt im Pfad niemandem etwas.
  */
 const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
-  '/admin/partners/[id]': null,
+  // Review r1: der Pfad endet überall mit der aktuellen Seite - der Name des
+  // Partners / der Code der Vorbestellung steht als h1 darunter.
+  '/admin/partners/[id]': 'Partner',
   '/admin/partners/[id]/visit': null,
   '/admin/partners/[id]/visit/new': 'Besuch erfassen',
   '/admin/partners/[id]/templates': 'Standard-Bestückung',
@@ -134,13 +140,13 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   // die Referenz (MO-…) steht auf der Seite selbst.
   // `/admin/delivery` selbst ist keine Seite mehr (B12, Weiterleitung).
   '/admin/delivery': null,
-  '/admin/delivery/preorders/[id]': null,
+  '/admin/delivery/preorders/[id]': 'Vorbestellung',
   '/admin/delivery/preorders/new': 'Neue Vorbestellung',
   '/admin/delivery/preorders/backliste': 'Backliste',
   '/admin/delivery/preorders/lieferstelle': 'Lieferstelle',
   '/admin/backzettel/grundmengen': 'Grundmengen',
   // Vorbestellungen (P1/P3): der Code steht auf der Seite selbst.
-  '/admin/preorders/[id]': null,
+  '/admin/preorders/[id]': 'Vorbestellung',
   '/admin/preorders/neu': 'Neue Vorbestellung',
   '/admin/preorders/tag': 'Tagesübersicht',
   '/admin/products/new': 'Neues Produkt',
@@ -151,8 +157,12 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/sitzung-pruefen': 'Anmeldung prüfen',
 }
 
-/** Human readable breadcrumb segments for the current path. */
-function getBreadcrumb(pathname: string): string[] {
+/**
+ * Human readable breadcrumb segments for the current path. Ohne
+ * `includeRoot` fällt „Dashboard“ weg - für Rollen, die das Dashboard nicht
+ * öffnen dürfen (Fahrer), wäre es ein toter Anfang.
+ */
+function getBreadcrumb(pathname: string, includeRoot = true): string[] {
   const segments = pathname.split('/').filter(Boolean)
   const flat: NavItem[] = [
     ...MANAGEMENT_NAVIGATION.flatMap((item) => [item, ...(item.submenu ?? [])]),
@@ -180,6 +190,7 @@ function getBreadcrumb(pathname: string): string[] {
       return segment
     })
     .filter((label): label is string => label !== null)
+    .filter((_label, index) => includeRoot || index > 0)
 }
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
@@ -236,6 +247,15 @@ function AdminShell({
   const forbidden =
     role !== null && !isPathAllowedForRole(pathname, role, sessionKind)
   const isStation = session?.sessionKind === 'station'
+  // Pfad: nicht auf dem Dashboard selbst (stünde „Dashboard“ über „Dashboard“)
+  // und ohne „Dashboard“ für Rollen, die es nicht öffnen dürfen.
+  const breadcrumb =
+    pathname === '/admin'
+      ? []
+      : getBreadcrumb(
+          pathname,
+          role === null || isPathAllowedForRole('/admin', role, sessionKind)
+        )
   const [openSubmenus, setOpenSubmenus] = React.useState<
     Record<string, boolean>
   >(() =>
@@ -537,23 +557,38 @@ function AdminShell({
           p: { xs: 2, sm: 3 },
           minWidth: 0,
           width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
-          overflowX: 'hidden',
+          // `clip`, nicht `hidden`: `overflow-x: hidden` macht <main> zum
+          // Scroll-Container (overflow-y wird `auto`), ohne dass <main> selbst
+          // scrollt - jedes `position: sticky` darunter (Speichern-Leisten,
+          // Tabellenköpfe) klebte dann nie. `clip` schneidet nur ab.
+          overflowX: 'clip',
         }}
       >
         <Toolbar />
 
-        {/* Pfad - leise über dem Seitentitel, im Druck ausgeblendet. */}
-        <Box sx={{ mb: 1 }}>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            noWrap
-            aria-label="Pfad"
-            sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
+        {/* Pfad - leise über dem Seitentitel, im Druck ausgeblendet. Am
+            Handy weg: dort stehen Rücklink und h1 schon untereinander, der
+            Pfad schob den Inhalt nur weiter nach unten (Review r1). */}
+        {breadcrumb.length > 0 && (
+          <Box
+            data-testid="breadcrumb"
+            sx={{
+              mb: 1,
+              display: { xs: 'none', sm: 'block' },
+              '@media print': { display: 'none' },
+            }}
           >
-            {getBreadcrumb(pathname).join(' › ')}
-          </Typography>
-        </Box>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              noWrap
+              aria-label="Pfad"
+              sx={{ overflow: 'hidden', textOverflow: 'ellipsis' }}
+            >
+              {breadcrumb.join(' › ')}
+            </Typography>
+          </Box>
+        )}
 
         {blocked ? (
           <PilotUnavailable />

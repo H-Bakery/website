@@ -2,7 +2,9 @@ import React from 'react'
 import { fireEvent, screen, within } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import {
+  DayNavigator,
   EmptyState,
+  HEADER_TITLE_MIN_WIDTH,
   ErrorState,
   KeyFigures,
   LoadingState,
@@ -10,6 +12,7 @@ import {
   PageLayout,
   PageSection,
   ResponsiveList,
+  shiftIsoDate,
   type ResponsiveColumn,
 } from './index'
 
@@ -288,5 +291,101 @@ describe('ResponsiveList', () => {
     expect(
       within(card).getByRole('button', { name: 'Vera bearbeiten' })
     ).toBeInTheDocument()
+  })
+})
+
+describe('Kopf und Abschnitte: sticky und Umbruch (Review r1)', () => {
+  it('die Fläche von PageSection schneidet mit clip ab, nicht mit hidden', () => {
+    // `overflow: hidden` auf der Fläche fing jedes `position: sticky` darin
+    // ein (Speichern-Leiste der Standard-Bestückung blieb am Seitenende).
+    renderWithTheme(
+      <PageSection title="Bestückung" data-testid="sec">
+        <div style={{ position: 'sticky', bottom: 0 }}>Speichern</div>
+      </PageSection>
+    )
+    const paper = screen
+      .getByTestId('sec')
+      .querySelector('.MuiPaper-root') as HTMLElement
+    expect(getComputedStyle(paper).overflow).toBe('clip')
+  })
+
+  it('Aktionen rutschen unter den Titel, statt ihn zu zerquetschen', () => {
+    renderWithTheme(
+      <PageLayout
+        title="LA-2026-11-14-01"
+        actions={
+          <>
+            <button type="button">Rest kassiert</button>
+            <button type="button">Bearbeiten</button>
+            <button type="button">Bereitgestellt</button>
+          </>
+        }
+      />
+    )
+    const title = getComputedStyle(screen.getByTestId('page-title-block'))
+    // Mindestbreite des Titels als flex-basis, Umbruch im Kopf erlaubt
+    expect(title.flexBasis).toBe(HEADER_TITLE_MIN_WIDTH)
+    const row = screen.getByTestId('page-title-block')
+      .parentElement as HTMLElement
+    expect(getComputedStyle(row).flexWrap).toBe('wrap')
+    // der Aktionsblock darf schrumpfen (kein flexShrink 0 mehr)
+    expect(
+      getComputedStyle(screen.getByTestId('page-actions')).flexShrink
+    ).not.toBe('0')
+  })
+})
+
+describe('DayNavigator', () => {
+  it('rechnet Kalendertage ohne Zeitzone, auch über Monats- und Zeitumstellung', () => {
+    expect(shiftIsoDate('2026-11-07', 1)).toBe('2026-11-08')
+    expect(shiftIsoDate('2026-11-01', -1)).toBe('2026-10-31')
+    expect(shiftIsoDate('2026-10-25', 1)).toBe('2026-10-26')
+    expect(shiftIsoDate('2026-02-30', 1)).toBeNull()
+    expect(shiftIsoDate('kein Datum', 1)).toBeNull()
+  })
+
+  it('Pfeile wechseln den Tag, Grenzen sperren sie', () => {
+    const onChange = jest.fn()
+    renderWithTheme(
+      <DayNavigator
+        value="2026-11-07"
+        onChange={onChange}
+        label="Abholtag"
+        max="2026-11-07"
+      />
+    )
+    expect(
+      screen.getByRole('group', { name: 'Abholtag wechseln' })
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Tag' }))
+    expect(onChange).toHaveBeenCalledWith('2026-11-06')
+    expect(screen.getByRole('button', { name: 'Nächster Tag' })).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Abholtag'), {
+      target: { value: '2026-11-03' },
+    })
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-03')
+  })
+
+  it('step überspringt Ruhetage, null sperrt; „Heute“ nur mit today', () => {
+    const onChange = jest.fn()
+    const { rerender } = renderWithTheme(
+      <DayNavigator
+        value="2026-11-10"
+        onChange={onChange}
+        prevLabel="Vorheriger Backtag"
+        nextLabel="Nächster Backtag"
+        step={(date, direction) => (direction === -1 ? '2026-11-08' : null)}
+        today="2026-11-07"
+      />
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Vorheriger Backtag' }))
+    expect(onChange).toHaveBeenCalledWith('2026-11-08')
+    expect(
+      screen.getByRole('button', { name: 'Nächster Backtag' })
+    ).toBeDisabled()
+    fireEvent.click(screen.getByRole('button', { name: 'Heute' }))
+    expect(onChange).toHaveBeenLastCalledWith('2026-11-07')
+    rerender(<DayNavigator value="2026-11-07" onChange={onChange} />)
+    expect(screen.queryByRole('button', { name: 'Heute' })).toBeNull()
   })
 })

@@ -3,6 +3,7 @@ export {
   PageHeader,
   PAGE_MAX_WIDTH,
   SECTION_GAP,
+  HEADER_TITLE_MIN_WIDTH,
   type PageLayoutProps,
   type PageHeaderProps,
   type PageBackLink,
@@ -30,3 +31,8 @@ export {
   type ResponsiveListProps,
   type ResponsiveColumn,
 } from './ResponsiveList'
+export {
+  DayNavigator,
+  shiftIsoDate,
+  type DayNavigatorProps,
+} from './DayNavigator'
