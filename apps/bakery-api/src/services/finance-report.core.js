@@ -513,11 +513,14 @@ function buildNotes(statement, ctx) {
       `Kasse ${formatEuroDe(
         r.kasse_cash + r.kasse_card
       )} (bar + Karte), auf dem Konto angekommen ` +
-        `${formatEuroDe(r.bank_cash + r.bank_card)} – Differenz ${formatEuroDe(
-          r.diff_total
-        )}. ` +
-        'Gründe: Bargeld bleibt als Wechselgeld im Laden oder wird bar ausgegeben, ' +
-        'Einzahlungen und Kartenabrechnungen kommen ein paar Tage später.'
+        `${formatEuroDe(r.bank_cash + r.bank_card)} – Differenz ${
+          r.diff_total > 0 ? '+' : ''
+        }${formatEuroDe(r.diff_total)}. ` +
+        (r.diff_total > 0
+          ? 'Mehr auf dem Konto als in der Kasse: etwa Wechselgeld, das vom Konto geholt und ' +
+            'wieder eingezahlt wurde, oder Einnahmen vom Monat davor, die erst jetzt gebucht wurden.'
+          : 'Weniger auf dem Konto als in der Kasse: Bargeld bleibt als Wechselgeld im Laden oder ' +
+            'wird bar ausgegeben, Einzahlungen und Kartenabrechnungen kommen ein paar Tage später.')
     )
   }
   add(
@@ -822,6 +825,7 @@ function highlightsOf(statement, reference, avg, summary) {
     ? summary.category_labels
     : {}
   const outflow = categoryAverages(reference, 'expense')
+  const net = categoryAverages(reference)
   const presence = categoryPresence(reference, outflow)
   const n = reference.length
 
@@ -853,9 +857,18 @@ function highlightsOf(statement, reference, avg, summary) {
         ...base,
         kind: 'expense_high',
         ratio,
-        text: `${row.label}: ${formatEuroDe(spent)} statt üblich ${formatEuroDe(
-          usual
-        )} (${String(ratio).replace('.', ',')}× so viel).`,
+        // Hat die Kategorie Erstattungen, weicht der Ø „gezahlt“ vom Ø in der
+        // Tabelle (netto) ab - der Text sagt dann, wie gerechnet ist.
+        text: `${row.label}: ${formatEuroDe(
+          spent
+        )} gezahlt statt üblich ${formatEuroDe(usual)} (${String(ratio).replace(
+          '.',
+          ','
+        )}× so viel${
+          Math.abs(num(net[row.category]) - num(outflow[row.category])) >= 1
+            ? '; Erstattungen nicht mitgerechnet'
+            : ''
+        }).`,
       })
     }
   }

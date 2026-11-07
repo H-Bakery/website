@@ -190,7 +190,9 @@ describe('finance-report.core - Jahresabschluss', () => {
     })
     expect(data.kasse.revenue).toBe(47500)
     expect(data.months[0].kasse).toMatchObject({ revenue: 9500, days: 25 })
-    expect(data.notes.find((n) => n.key === 'kasse_bank')).toBeTruthy()
+    expect(data.notes.find((n) => n.key === 'kasse_bank').text).toContain(
+      'Differenz −4.700,00 €. Weniger auf dem Konto als in der Kasse'
+    )
   })
 
   it('kein Jahr ohne Daten, kein ungültiges Jahr', () => {
@@ -244,7 +246,7 @@ describe('finance-report.core - Monatsanalyse', () => {
       average: -1000,
     })
     expect(data.highlights[0].text).toBe(
-      'Energie & Wasser: 3.000,00 € statt üblich 1.000,00 € (3× so viel).'
+      'Energie & Wasser: 3.000,00 € gezahlt statt üblich 1.000,00 € (3× so viel).'
     )
   })
 

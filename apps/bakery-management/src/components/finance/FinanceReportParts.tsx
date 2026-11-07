@@ -481,7 +481,9 @@ export function ReconciliationTable({ rec }: { rec: FinanceReconciliation }) {
             textAlign: 'right',
             whiteSpace: 'nowrap',
           },
-          '& th:first-of-type, & td:first-of-type': { textAlign: 'left' },
+          // Nur die Zeilenbeschriftung links - `td:first-of-type` träfe in den
+          // Datenzeilen (Beschriftung ist dort ein `th`) die Kasse-Spalte.
+          '& tr > :first-child': { textAlign: 'left' },
           '& thead th': { color: 'text.secondary', fontWeight: 500 },
         }}
       >
