@@ -1,5 +1,5 @@
 'use client'
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   AlertTitle,
@@ -8,7 +8,6 @@ import {
   Chip,
   CircularProgress,
   GlobalStyles,
-  Grid,
   LinearProgress,
   Paper,
   Stack,
@@ -19,15 +18,14 @@ import {
   TableHead,
   TableRow,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
   useTheme,
 } from '@mui/material'
 import {
-  ArrowBack as BackIcon,
-  Assessment as ReportIcon,
   Download as DownloadIcon,
   Print as PrintIcon,
-  Refresh as RefreshIcon,
 } from '@mui/icons-material'
 import {
   Bar,
@@ -40,7 +38,6 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import Link from 'next/link'
 import {
   fetchPartner,
   fetchStats,
@@ -59,6 +56,15 @@ import {
   toBusinessDate,
   weekdayOf,
 } from '../../../../../lib/partnerTypes'
+import {
+  EmptyState,
+  ErrorState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../../components/layout'
+import { ProvisionalBadge } from '../../partnerUi'
 
 /* ------------------------------------------------------------------ *
  * Zeitraum
@@ -234,6 +240,12 @@ const printStyles = (
         },
         'main > .MuiToolbar-root': { display: 'none !important' },
         '.report-no-print': { display: 'none !important' },
+        // Seitenkopf der App (Rücklink, Knöpfe) gehört nicht aufs Papier -
+        // den Kopf des Dokuments liefert `.report-print-only`.
+        '.report-root [data-testid="page-header"]': {
+          display: 'none !important',
+        },
+        '.report-print-only': { display: 'block !important' },
         '.report-root, .report-root *': {
           color: '#000 !important',
           backgroundColor: 'transparent !important',
@@ -247,12 +259,28 @@ const printStyles = (
         '.report-root .MuiAlert-root': { border: '1px solid #666' },
         '.report-col-md': { display: 'table-cell !important' },
         '.report-table': { pageBreakInside: 'auto' },
+        // A4 ist schmaler als die Tabelle mit Bildschirm-Abständen - sonst
+        // fehlt rechts die Spalte „Umsatz“.
+        '.report-table .MuiTableCell-root': {
+          padding: '4px 6px !important',
+        },
+        // Achsenbeschriftung des Diagramms: im (Standard-)Dunkelmodus hell
+        // eingefärbt und damit auf Papier unsichtbar.
+        '.report-root svg text': { fill: '#000 !important' },
+        '.report-root .recharts-cartesian-axis-line, .report-root .recharts-cartesian-axis-tick-line':
+          { stroke: '#000 !important' },
         '.report-table thead': { display: 'table-header-group' },
         '.report-table tr': { pageBreakInside: 'avoid' },
       },
     }}
   />
 )
+
+/** Am Handy schmalere Zellränder, damit „Umsatz“ nicht aus dem Bild rutscht. */
+const COMPACT_TABLE = {
+  '& .MuiTableCell-root': { px: { xs: 1, sm: 2 } },
+  '& .MuiTableCell-root:first-of-type': { pl: { xs: 2, sm: 2 } },
+}
 
 /** Spalten, die auf schmalen Bildschirmen wegfallen - im Druck aber bleiben. */
 const mdOnlyCell = { display: { xs: 'none', md: 'table-cell' } }
@@ -293,8 +321,12 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
   const rangeReady = Boolean(range.from && range.to)
   const rangeInvalid = rangeReady && range.from > range.to
 
+  /** Nur die jüngste Anfrage darf den Zustand setzen (schnelles Umschalten). */
+  const requestRef = useRef(0)
+
   const load = useCallback(async () => {
     if (!range.from || !range.to) return
+    const request = ++requestRef.current
     // Ungültiger Zeitraum: nichts laden, aber auch nicht im Ladezustand hängen
     // bleiben - die Warnung oberhalb erklärt, was zu tun ist.
     if (range.from > range.to) {
@@ -308,16 +340,18 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
         fetchPartner(partnerId),
         fetchStats(partnerId, range),
       ])
+      if (request !== requestRef.current) return
       setPartner(partnerData)
       setStats(statsData)
     } catch (err) {
+      if (request !== requestRef.current) return
       setError(
         err instanceof Error
           ? err.message
           : 'Der Report konnte nicht geladen werden'
       )
     } finally {
-      setLoading(false)
+      if (request === requestRef.current) setLoading(false)
     }
   }, [partnerId, range])
 
@@ -386,60 +420,32 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
     }
   }
 
+  const periodText = rangeReady
+    ? `${formatDate(stats?.range.from ?? range.from)} bis ${formatDate(
+        stats?.range.to ?? range.to
+      )}`
+    : ''
+  const provisional = Boolean(stats?.isProvisional)
+  const openQty = stats?.totals.openQty ?? 0
+
   return (
     <Box className="report-root">
       {printStyles}
 
-      {/* Kopfzeile der Seite - gehört zur App, nicht zum Dokument */}
-      <Box className="report-no-print" sx={{ mb: { xs: 2, md: 3 } }}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', md: 'row' },
-            justifyContent: 'space-between',
-            alignItems: { xs: 'stretch', md: 'center' },
-            gap: 1.5,
-          }}
-        >
-          <Box>
-            <Typography
-              variant="h4"
-              component="h1"
-              sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
-            >
-              <ReportIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-              Partner-Report
-            </Typography>
-            <Typography variant="subtitle1" color="text.secondary">
-              Gelieferte Ware, Abverkauf und Umsatz je Zeitraum - so
-              aufbereitet, dass der Ausdruck an den Partner gehen kann
-            </Typography>
-          </Box>
-          <Stack
-            direction="row"
-            spacing={1}
-            flexWrap="wrap"
-            useFlexGap
-            sx={{ alignItems: 'center' }}
-          >
+      <PageLayout
+        title="Partner-Report"
+        subtitle={
+          partner
+            ? `${partner.name}${periodText ? ` · ${periodText}` : ''}`
+            : 'Abverkauf und Umsatz je Zeitraum - zum Ausdrucken für den Partner'
+        }
+        back={{
+          href: `/admin/partners/${partnerId}`,
+          label: 'Zurück zum Partner',
+        }}
+        actions={
+          <>
             <Button
-              size="small"
-              startIcon={<BackIcon />}
-              component={Link}
-              href={`/admin/partners/${partnerId}`}
-            >
-              Zum Partner
-            </Button>
-            <Button
-              size="small"
-              startIcon={<RefreshIcon />}
-              onClick={load}
-              disabled={loading || !rangeReady || rangeInvalid}
-            >
-              Aktualisieren
-            </Button>
-            <Button
-              size="small"
               variant="outlined"
               startIcon={
                 csvBusy ? <CircularProgress size={16} /> : <DownloadIcon />
@@ -450,7 +456,6 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
               CSV exportieren
             </Button>
             <Button
-              size="small"
               variant="contained"
               startIcon={<PrintIcon />}
               onClick={() => window.print()}
@@ -458,738 +463,716 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
             >
               Drucken / PDF
             </Button>
-          </Stack>
-        </Box>
-      </Box>
-
-      {/* Zeitraumwahl */}
-      <Paper
-        className="report-no-print"
-        sx={{ p: { xs: 2, md: 2.5 }, mb: { xs: 2, md: 3 } }}
+          </>
+        }
       >
-        <Typography variant="subtitle2" gutterBottom>
-          Zeitraum
-        </Typography>
-        <Stack
-          direction="row"
-          spacing={1}
-          flexWrap="wrap"
-          useFlexGap
-          sx={{ mb: 2 }}
-        >
-          {PRESETS.map((key) => (
-            <Button
-              key={key}
-              size="small"
-              variant={preset === key ? 'contained' : 'outlined'}
-              onClick={() => applyPreset(key)}
+        {/* Zeitraumwahl - gehört zur App, nicht zum Dokument */}
+        <Box className="report-no-print">
+          <PageSection title="Zeitraum">
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 2,
+              }}
             >
-              {PRESET_LABELS[key]}
-            </Button>
-          ))}
-        </Stack>
-        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-          <TextField
-            label="Von"
-            type="date"
-            size="small"
-            value={range.from}
-            onChange={(event) => changeRange('from', event.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 190 }}
-          />
-          <TextField
-            label="Bis"
-            type="date"
-            size="small"
-            value={range.to}
-            onChange={(event) => changeRange('to', event.target.value)}
-            InputLabelProps={{ shrink: true }}
-            sx={{ minWidth: 190 }}
-          />
-        </Stack>
-      </Paper>
-
-      {rangeInvalid && (
-        <Alert severity="warning" className="report-no-print" sx={{ mb: 2 }}>
-          Das Startdatum liegt nach dem Enddatum - bitte den Zeitraum
-          korrigieren.
-        </Alert>
-      )}
-
-      {csvError && (
-        <Alert
-          severity="error"
-          className="report-no-print"
-          sx={{ mb: 2 }}
-          onClose={() => setCsvError(null)}
-        >
-          CSV-Export fehlgeschlagen: {csvError}
-        </Alert>
-      )}
-
-      {error && (
-        <Alert
-          severity="error"
-          className="report-no-print"
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      )}
-
-      {loading && !stats && (
-        <Box
-          className="report-no-print"
-          sx={{ display: 'flex', justifyContent: 'center', py: 6 }}
-        >
-          <Stack alignItems="center" spacing={2}>
-            <CircularProgress />
-            <Typography variant="body2" color="text.secondary">
-              Report wird geladen …
-            </Typography>
-          </Stack>
-        </Box>
-      )}
-
-      {loading && stats && (
-        <LinearProgress className="report-no-print" sx={{ mb: 2 }} />
-      )}
-
-      {stats && partner && !rangeInvalid && (
-        <>
-          {/* Report-Kopf - das ist der Teil, den CAP zu sehen bekommt */}
-          <Paper sx={{ p: { xs: 2, md: 3 }, mb: { xs: 2, md: 3 } }}>
-            <Stack
-              direction={{ xs: 'column', sm: 'row' }}
-              justifyContent="space-between"
-              spacing={2}
-            >
-              <Box>
-                <Typography variant="overline" color="text.secondary">
-                  Partner-Report
-                </Typography>
-                <Typography variant="h5" component="h2">
-                  {partner.name}
-                </Typography>
-                {addressLines.map((line) => (
-                  <Typography key={line} variant="body2" color="text.secondary">
-                    {line}
-                  </Typography>
-                ))}
-                {addressLines.length === 0 && (
-                  <Typography
-                    className="report-no-print"
-                    variant="caption"
-                    color="text.secondary"
-                  >
-                    Adresse ist noch nicht hinterlegt - bitte in den
-                    Partner-Stammdaten ergänzen.
-                  </Typography>
-                )}
-                {partner.contactName && (
-                  <Typography variant="body2" color="text.secondary">
-                    Ansprechpartner: {partner.contactName}
-                  </Typography>
-                )}
-              </Box>
-              <Box sx={{ textAlign: { xs: 'left', sm: 'right' } }}>
-                <Typography variant="body2">
-                  <strong>Zeitraum:</strong>{' '}
-                  {formatDate(stats.range.from ?? range.from)} bis{' '}
-                  {formatDate(stats.range.to ?? range.to)}
-                </Typography>
-                <Typography variant="body2">{settlementText}</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {plural(
-                    stats.totals.dayCount,
-                    'Geschäftstag',
-                    'Geschäftstage'
-                  )}{' '}
-                  · {plural(stats.totals.visitCount, 'Besuch', 'Besuche')} ·
-                  davon{' '}
-                  {plural(
-                    stats.totals.refillCount,
-                    'Nachlieferung',
-                    'Nachlieferungen'
-                  )}
-                </Typography>
-                {createdAt && (
-                  <Typography variant="body2" color="text.secondary">
-                    Erstellt am {createdAt}
-                  </Typography>
-                )}
-              </Box>
-            </Stack>
-          </Paper>
-
-          {stats.isProvisional && (
-            <Alert severity="warning" sx={{ mb: { xs: 2, md: 3 } }}>
-              <AlertTitle>Vorläufige Zahlen</AlertTitle>
-              {stats.openDates.length > 0 && (
-                <Box component="span" sx={{ display: 'block' }}>
-                  {stats.openDates.length === 1
-                    ? 'Ein Geschäftstag in diesem Zeitraum ist noch offen'
-                    : `${stats.openDates.length} Geschäftstage in diesem Zeitraum sind noch offen`}{' '}
-                  - dort wurde noch keine Abholung erfasst. Verkauf, Retoure und
-                  Umsatz sind an diesen Tagen deshalb vorläufig und können sich
-                  noch ändern:{' '}
-                  <strong>{stats.openDates.map(formatDate).join(', ')}</strong>.
-                  Die Abverkaufsquote rechnet nur Tage mit Abholung
-                  {(stats.totals.openQty ?? 0) > 0 &&
-                    `; ${formatQty(
-                      stats.totals.openQty ?? 0
-                    )} Stück aus diesen Tagen liegen noch im Schrank (Kachel „Offen“)`}
-                  .
-                </Box>
-              )}
-              {(stats.incompleteDates ?? []).length > 0 && (
-                <Box
-                  component="span"
-                  sx={{
-                    display: 'block',
-                    mt: stats.openDates.length > 0 ? 1 : 0,
-                  }}
-                >
-                  {(stats.incompleteDates ?? []).length === 1
-                    ? 'An einem Geschäftstag'
-                    : `An ${
-                        (stats.incompleteDates ?? []).length
-                      } Geschäftstagen`}{' '}
-                  wurde bei der Abholung nicht jedes Produkt gezählt;{' '}
-                  {stats.totals.uncountedQty ?? 0} Stück sind weder als verkauft
-                  noch als Retoure erfasst:{' '}
-                  <strong>
-                    {(stats.incompleteDates ?? []).map(formatDate).join(', ')}
-                  </strong>
-                </Box>
-              )}
-            </Alert>
-          )}
-
-          {(stats.totals.discrepancyQty ?? 0) > 0 && (
-            <Alert
-              severity="warning"
-              sx={{ mb: { xs: 2, md: 3 } }}
-              data-testid="report-discrepancy"
-            >
-              <AlertTitle>
-                Abweichung: {stats.totals.discrepancyQty} Stück mehr gezählt,
-                als im Schrank sein konnten
-              </AlertTitle>
-              Sie sind weder als verkauft noch als Retoure gebucht. Meist fehlt
-              eine Lieferung, oder es wurde verzählt - bitte die Besuche dieser
-              Tage prüfen:{' '}
-              <strong>
-                {stats.byDay
-                  .filter((d) => d.discrepancyQty > 0)
-                  .map((d) => formatDate(d.businessDate))
-                  .join(', ')}
-              </strong>
-            </Alert>
-          )}
-
-          {isEmpty ? (
-            <Paper sx={{ p: { xs: 3, md: 5 }, textAlign: 'center' }}>
-              <Typography variant="h6" gutterBottom>
-                Keine Daten im gewählten Zeitraum
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Für diesen Zeitraum wurden noch keine Besuche erfasst.
-              </Typography>
-            </Paper>
-          ) : (
-            <>
-              {/* Kennzahlen */}
-              <Grid
-                container
-                spacing={{ xs: 1.5, md: 2 }}
-                sx={{ mb: { xs: 2, md: 3 } }}
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={preset}
+                onChange={(_event, key: PresetKey | null) =>
+                  key && applyPreset(key)
+                }
+                aria-label="Schnellauswahl Zeitraum"
+                sx={(t) => ({
+                  // Am Handy 2 × 2 statt einer umbrechenden Leiste mit
+                  // abgeschnittenem Rahmen.
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: 1,
+                  width: '100%',
+                  '& .MuiToggleButton-root': { textTransform: 'none', px: 1.5 },
+                  '& .MuiToggleButtonGroup-grouped': {
+                    m: 0,
+                    border: `1px solid ${t.palette.divider}`,
+                    borderRadius: `${t.shape.borderRadius}px`,
+                  },
+                  [t.breakpoints.up('sm')]: {
+                    display: 'inline-flex',
+                    gap: 0,
+                    width: 'auto',
+                    '& .MuiToggleButtonGroup-grouped:not(:first-of-type)': {
+                      borderTopLeftRadius: 0,
+                      borderBottomLeftRadius: 0,
+                      borderLeft: 0,
+                    },
+                    '& .MuiToggleButtonGroup-grouped:not(:last-of-type)': {
+                      borderTopRightRadius: 0,
+                      borderBottomRightRadius: 0,
+                    },
+                  },
+                })}
               >
-                {[
-                  {
-                    label: 'Geliefert',
-                    value: `${formatQty(stats.totals.deliveredQty)} Stück`,
-                  },
-                  {
-                    label: 'Verkauft',
-                    value: `${formatQty(stats.totals.soldQty)} Stück`,
-                  },
-                  {
-                    label: 'Retoure',
-                    value: `${formatQty(stats.totals.returnedQty)} Stück`,
-                  },
-                  // W4-verify r5: Geliefert = Verkauft + Retoure + Offen.
-                  ...((stats.totals.openQty ?? 0) > 0
-                    ? [
-                        {
-                          label: 'Offen (ohne Abholung)',
-                          value: `${formatQty(
-                            stats.totals.openQty ?? 0
-                          )} Stück`,
-                        },
-                      ]
-                    : []),
-                  {
-                    label:
-                      stats.openDates.length > 0
-                        ? 'Abverkaufsquote (Tage mit Abholung)'
-                        : 'Abverkaufsquote',
-                    value: formatPercent(stats.totals.sellThroughRate),
-                  },
-                  {
-                    label: 'Umsatz (Abrechnung)',
-                    value: formatCurrency(stats.totals.revenue),
-                  },
-                  {
-                    label: 'Retourenwert',
-                    value: formatCurrency(stats.totals.returnValue),
-                  },
-                ].map((tile) => (
-                  <Grid item xs={6} sm={4} md={2} key={tile.label}>
-                    <Paper sx={{ p: { xs: 1.5, md: 2 }, height: '100%' }}>
-                      <Typography variant="caption" color="text.secondary">
-                        {tile.label}
-                      </Typography>
-                      <Typography
-                        sx={{
-                          fontWeight: 600,
-                          fontSize: { xs: '1.05rem', md: '1.25rem' },
-                        }}
-                      >
-                        {tile.value}
-                      </Typography>
-                    </Paper>
-                  </Grid>
+                {PRESETS.map((key) => (
+                  <ToggleButton key={key} value={key}>
+                    {PRESET_LABELS[key]}
+                  </ToggleButton>
                 ))}
-              </Grid>
+              </ToggleButtonGroup>
+              <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+                <TextField
+                  label="Von"
+                  type="date"
+                  size="small"
+                  value={range.from}
+                  onChange={(event) => changeRange('from', event.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 170 }}
+                />
+                <TextField
+                  label="Bis"
+                  type="date"
+                  size="small"
+                  value={range.to}
+                  onChange={(event) => changeRange('to', event.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  sx={{ width: 170 }}
+                />
+              </Box>
+            </Box>
+          </PageSection>
+        </Box>
 
-              {/* Je Produkt */}
-              <Paper sx={{ mb: { xs: 2, md: 3 } }}>
-                <Box sx={{ p: { xs: 2, md: 3 }, pb: 1 }}>
-                  <Typography variant="h6" component="h3">
-                    Abrechnung je Produkt
+        {rangeInvalid && (
+          <Alert severity="warning" className="report-no-print">
+            Das Startdatum liegt nach dem Enddatum - bitte den Zeitraum
+            korrigieren.
+          </Alert>
+        )}
+
+        {csvError && (
+          <Alert
+            severity="error"
+            className="report-no-print"
+            onClose={() => setCsvError(null)}
+          >
+            CSV-Export fehlgeschlagen: {csvError}
+          </Alert>
+        )}
+
+        {error && (
+          <Box className="report-no-print">
+            <ErrorState message={error} onRetry={load} />
+          </Box>
+        )}
+
+        {loading && !stats && (
+          <Box className="report-no-print">
+            <LoadingState label="Report wird geladen …" />
+          </Box>
+        )}
+
+        {loading && stats && <LinearProgress className="report-no-print" />}
+
+        {stats && partner && !rangeInvalid && (
+          <>
+            {/* Kopf des Ausdrucks - das bekommt der Partner zu sehen. Am
+                Bildschirm stehen Partner und Zeitraum schon im Seitenkopf. */}
+            <Box
+              className="report-print-only"
+              data-testid="report-print-head"
+              sx={{ display: 'none' }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Typography variant="overline">Partner-Report</Typography>
+                  <Typography variant="h5" component="p">
+                    {partner.name}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Umsatz = verkaufte Menge × Einzelpreis zum Zeitpunkt der
-                    Lieferung
-                    {stats.byProduct.some(
+                  {addressLines.map((line) => (
+                    <Typography key={line} variant="body2">
+                      {line}
+                    </Typography>
+                  ))}
+                  {partner.contactName && (
+                    <Typography variant="body2">
+                      Ansprechpartner: {partner.contactName}
+                    </Typography>
+                  )}
+                </Box>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="body2">
+                    <strong>Zeitraum:</strong> {periodText}
+                  </Typography>
+                  <Typography variant="body2">{settlementText}</Typography>
+                  {createdAt && (
+                    <Typography variant="body2">
+                      Erstellt am {createdAt}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              data-testid="report-counts"
+            >
+              {plural(stats.totals.dayCount, 'Geschäftstag', 'Geschäftstage')} ·{' '}
+              {plural(stats.totals.visitCount, 'Besuch', 'Besuche')} · davon{' '}
+              {plural(
+                stats.totals.refillCount,
+                'Nachlieferung',
+                'Nachlieferungen'
+              )}
+              <Box component="span" className="report-no-print">
+                {' '}
+                · {settlementText}
+                {addressLines.length === 0 &&
+                  ' · Adresse fehlt in den Partner-Stammdaten'}
+              </Box>
+            </Typography>
+
+            {provisional && (
+              <Alert severity="warning">
+                <AlertTitle>Vorläufige Zahlen</AlertTitle>
+                {stats.openDates.length > 0 && (
+                  <Box component="span" sx={{ display: 'block' }}>
+                    {stats.openDates.length === 1
+                      ? 'Ein Geschäftstag in diesem Zeitraum ist noch offen'
+                      : `${stats.openDates.length} Geschäftstage in diesem Zeitraum sind noch offen`}{' '}
+                    (keine Abholung erfasst):{' '}
+                    <strong>
+                      {stats.openDates.map(formatDate).join(', ')}
+                    </strong>
+                    . Die Abverkaufsquote rechnet nur Tage mit Abholung
+                    {openQty > 0 &&
+                      `; ${formatQty(
+                        openQty
+                      )} Stück aus diesen Tagen liegen noch im Schrank`}
+                    .
+                  </Box>
+                )}
+                {(stats.incompleteDates ?? []).length > 0 && (
+                  <Box
+                    component="span"
+                    sx={{
+                      display: 'block',
+                      mt: stats.openDates.length > 0 ? 1 : 0,
+                    }}
+                  >
+                    {(stats.incompleteDates ?? []).length === 1
+                      ? 'An einem Geschäftstag'
+                      : `An ${
+                          (stats.incompleteDates ?? []).length
+                        } Geschäftstagen`}{' '}
+                    wurde bei der Abholung nicht jedes Produkt gezählt;{' '}
+                    {stats.totals.uncountedQty ?? 0} Stück sind weder als
+                    verkauft noch als Retoure erfasst:{' '}
+                    <strong>
+                      {(stats.incompleteDates ?? []).map(formatDate).join(', ')}
+                    </strong>
+                  </Box>
+                )}
+              </Alert>
+            )}
+
+            {(stats.totals.discrepancyQty ?? 0) > 0 && (
+              <Alert severity="warning" data-testid="report-discrepancy">
+                <AlertTitle>
+                  Abweichung: {stats.totals.discrepancyQty} Stück mehr gezählt,
+                  als im Schrank sein konnten
+                </AlertTitle>
+                Weder verkauft noch Retoure - meist fehlt eine Lieferung, oder
+                es wurde verzählt. Bitte die Besuche dieser Tage prüfen:{' '}
+                <strong>
+                  {stats.byDay
+                    .filter((d) => d.discrepancyQty > 0)
+                    .map((d) => formatDate(d.businessDate))
+                    .join(', ')}
+                </strong>
+              </Alert>
+            )}
+
+            {isEmpty ? (
+              <EmptyState
+                title="Keine Daten im gewählten Zeitraum"
+                description="Für diesen Zeitraum wurden noch keine Besuche erfasst."
+              />
+            ) : (
+              <>
+                {/* Kennzahlen - höchstens vier; Geliefert = Verkauft +
+                    Retoure + Offen (W4-verify r5) steht in den Hinweisen. */}
+                <KeyFigures
+                  aria-label="Kennzahlen des Zeitraums"
+                  items={[
+                    {
+                      label: 'Geliefert',
+                      value: `${formatQty(stats.totals.deliveredQty)} Stück`,
+                      hint:
+                        openQty > 0
+                          ? `davon ${formatQty(
+                              openQty
+                            )} Stück offen (ohne Abholung)`
+                          : undefined,
+                      'data-testid': 'report-kpi-geliefert',
+                    },
+                    {
+                      label: 'Verkauft',
+                      value: `${formatQty(stats.totals.soldQty)} Stück`,
+                      hint: `Retoure ${formatQty(
+                        stats.totals.returnedQty
+                      )} Stück · ${formatCurrency(stats.totals.returnValue)}`,
+                      badge: provisional ? <ProvisionalBadge /> : undefined,
+                      'data-testid': 'report-kpi-verkauft',
+                    },
+                    {
+                      label:
+                        stats.openDates.length > 0
+                          ? 'Abverkaufsquote (Tage mit Abholung)'
+                          : 'Abverkaufsquote',
+                      value: formatPercent(stats.totals.sellThroughRate),
+                      'data-testid': 'report-kpi-quote',
+                    },
+                    {
+                      label: 'Umsatz (Abrechnung)',
+                      value: formatCurrency(stats.totals.revenue),
+                      badge: provisional ? <ProvisionalBadge /> : undefined,
+                      'data-testid': 'report-kpi-umsatz',
+                    },
+                  ]}
+                />
+
+                {/* Je Produkt */}
+                <PageSection
+                  title="Abrechnung je Produkt"
+                  description={`Umsatz = verkaufte Menge × Einzelpreis zum Zeitpunkt der Lieferung${
+                    stats.byProduct.some(
                       (p) =>
                         p.unitPriceMin != null &&
                         p.unitPriceMax != null &&
                         p.unitPriceMin !== p.unitPriceMax
-                    ) &&
-                      '. Eine Preisspanne (von–bis) heißt: der Preis hat sich im Zeitraum geändert, jedes Stück zählt zu seinem Preis.'}
-                  </Typography>
-                </Box>
-                <TableContainer>
-                  <Table size="small" className="report-table">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Produkt</TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        >
-                          Einzelpreis
-                        </TableCell>
-                        <TableCell align="right">Geliefert</TableCell>
-                        <TableCell align="right">Verkauft</TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        >
-                          Retoure
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        >
-                          Abverkaufsquote
-                        </TableCell>
-                        <TableCell align="right">Umsatz</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {stats.byProduct.map((product) => (
-                        <TableRow key={product.productSlug} hover>
-                          <TableCell>
-                            {product.productName}
-                            {(product.uncountedQty ?? 0) > 0 && (
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                color="warning.main"
-                                sx={{ display: 'block' }}
-                              >
-                                {product.uncountedQty} Stück ungezählt
-                              </Typography>
-                            )}
-                            {(product.openQty ?? 0) > 0 && (
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: 'block' }}
-                              >
-                                {product.openQty} Stück noch offen (Tag ohne
-                                Abholung)
-                              </Typography>
-                            )}
-                            {(product.discrepancyQty ?? 0) > 0 && (
-                              <Typography
-                                component="span"
-                                variant="caption"
-                                color="text.secondary"
-                                sx={{ display: 'block' }}
-                              >
-                                {product.discrepancyQty} Stück Abweichung (mehr
-                                gezählt als möglich)
-                              </Typography>
-                            )}
-                          </TableCell>
-                          <TableCell
-                            align="right"
-                            className="report-col-md"
-                            sx={mdOnlyCell}
-                          >
-                            {formatUnitPrice(product)}
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatQty(product.deliveredQty)}
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatQty(product.soldQty)}
-                          </TableCell>
-                          <TableCell
-                            align="right"
-                            className="report-col-md"
-                            sx={mdOnlyCell}
-                          >
-                            {formatQty(product.returnedQty)}
-                          </TableCell>
-                          <TableCell
-                            align="right"
-                            className="report-col-md"
-                            sx={mdOnlyCell}
-                          >
-                            {formatPercent(product.sellThroughRate)}
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatCurrency(product.revenue)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      <TableRow
-                        sx={{
-                          '& td': {
-                            fontWeight: 700,
-                            borderTop: '2px solid',
-                            borderTopColor: 'divider',
-                          },
-                        }}
-                      >
-                        <TableCell>Gesamt</TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        />
-                        <TableCell align="right">
-                          {formatQty(stats.totals.deliveredQty)}
-                        </TableCell>
-                        <TableCell align="right">
-                          {formatQty(stats.totals.soldQty)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        >
-                          {formatQty(stats.totals.returnedQty)}
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        >
-                          {formatPercent(stats.totals.sellThroughRate)}
-                        </TableCell>
-                        <TableCell align="right">
-                          {formatCurrency(stats.totals.revenue)}
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-
-              {/* Tagesverlauf */}
-              <Paper sx={{ p: { xs: 2, md: 3 }, mb: { xs: 2, md: 3 } }}>
-                <Typography variant="h6" component="h3">
-                  Tagesverlauf
-                </Typography>
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{ mb: 2 }}
+                    )
+                      ? '. Eine Preisspanne (von–bis) heißt: der Preis hat sich im Zeitraum geändert, jedes Stück zählt zu seinem Preis.'
+                      : ''
+                  }`}
+                  disablePadding
                 >
-                  Gelieferte und verkaufte Stückzahl je Geschäftstag
-                </Typography>
-                <Box sx={{ width: '100%', height: 320 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart
-                      data={chartData}
-                      margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                  <TableContainer>
+                    <Table
+                      size="small"
+                      className="report-table"
+                      sx={COMPACT_TABLE}
                     >
-                      <defs>
-                        <pattern
-                          id={PATTERN_DELIVERED}
-                          patternUnits="userSpaceOnUse"
-                          width="6"
-                          height="6"
-                          patternTransform="rotate(45)"
-                        >
-                          <rect
-                            width="6"
-                            height="6"
-                            fill={deliveredColor}
-                            fillOpacity={0.18}
-                          />
-                          <line
-                            x1="0"
-                            y1="0"
-                            x2="0"
-                            y2="6"
-                            stroke={deliveredColor}
-                            strokeWidth="3"
-                          />
-                        </pattern>
-                        <pattern
-                          id={PATTERN_SOLD}
-                          patternUnits="userSpaceOnUse"
-                          width="6"
-                          height="6"
-                          patternTransform="rotate(45)"
-                        >
-                          <rect
-                            width="6"
-                            height="6"
-                            fill={soldColor}
-                            fillOpacity={0.18}
-                          />
-                          <line
-                            x1="0"
-                            y1="0"
-                            x2="0"
-                            y2="6"
-                            stroke={soldColor}
-                            strokeWidth="3"
-                          />
-                        </pattern>
-                      </defs>
-                      <CartesianGrid
-                        strokeDasharray="3 3"
-                        stroke={theme.palette.divider}
-                        vertical={false}
-                      />
-                      <XAxis
-                        dataKey="label"
-                        stroke={theme.palette.text.secondary}
-                        tick={{
-                          fill: theme.palette.text.secondary,
-                          fontSize: 12,
-                        }}
-                      />
-                      <YAxis
-                        allowDecimals={false}
-                        stroke={theme.palette.text.secondary}
-                        tick={{
-                          fill: theme.palette.text.secondary,
-                          fontSize: 12,
-                        }}
-                      />
-                      <Tooltip
-                        cursor={{ fill: theme.palette.action.hover }}
-                        content={({ active, payload }) => (
-                          <DayTooltip
-                            active={active}
-                            datum={
-                              payload && payload.length
-                                ? (payload[0].payload as DayDatum)
-                                : undefined
-                            }
-                          />
-                        )}
-                      />
-                      <Legend
-                        wrapperStyle={{ fontSize: 12 }}
-                        payload={[
-                          {
-                            id: 'delivered',
-                            value: 'Geliefert',
-                            type: 'square',
-                            color: deliveredColor,
-                          },
-                          {
-                            id: 'sold',
-                            value: 'Verkauft',
-                            type: 'square',
-                            color: soldColor,
-                          },
-                          {
-                            id: 'open',
-                            value:
-                              'Schraffiert: Abholung fehlt oder unvollständig (vorläufig)',
-                            type: 'square',
-                            color: theme.palette.text.secondary,
-                          },
-                        ]}
-                      />
-                      <Bar
-                        dataKey="delivered"
-                        name="Geliefert"
-                        fill={deliveredColor}
-                        radius={[3, 3, 0, 0]}
-                      >
-                        {chartData.map((day) => (
-                          <Cell
-                            key={`delivered-${day.fullLabel}`}
-                            fill={
-                              day.isOpen || day.isIncomplete
-                                ? `url(#${PATTERN_DELIVERED})`
-                                : deliveredColor
-                            }
-                          />
-                        ))}
-                      </Bar>
-                      <Bar
-                        dataKey="sold"
-                        name="Verkauft"
-                        fill={soldColor}
-                        radius={[3, 3, 0, 0]}
-                      >
-                        {chartData.map((day) => (
-                          <Cell
-                            key={`sold-${day.fullLabel}`}
-                            fill={
-                              day.isOpen || day.isIncomplete
-                                ? `url(#${PATTERN_SOLD})`
-                                : soldColor
-                            }
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Box>
-              </Paper>
-
-              {/* Wochentags-Mittel */}
-              <Paper sx={{ mb: { xs: 2, md: 3 } }}>
-                <Box sx={{ p: { xs: 2, md: 3 }, pb: 1 }}>
-                  <Typography variant="h6" component="h3">
-                    Durchschnitt je Wochentag
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Mittelwerte über die abgeschlossenen Geschäftstage des
-                    Zeitraums (mit Abholung) - die Grundlage für spätere
-                    Mengenempfehlungen (&bdquo;dienstags werden im Schnitt 12
-                    von 20 Broten verkauft, also 14 liefern&ldquo;). Offene Tage
-                    zählen erst nach der Abholung mit.
-                  </Typography>
-                </Box>
-                <TableContainer>
-                  <Table size="small" className="report-table">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Wochentag</TableCell>
-                        <TableCell align="right">Tage</TableCell>
-                        <TableCell align="right">Ø Geliefert</TableCell>
-                        <TableCell align="right">Ø Verkauft</TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        >
-                          Ø Retoure
-                        </TableCell>
-                        <TableCell
-                          align="right"
-                          className="report-col-md"
-                          sx={mdOnlyCell}
-                        >
-                          Abverkaufsquote
-                        </TableCell>
-                        <TableCell align="right">Ø Umsatz</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {stats.byWeekday.map((day) => (
-                        <TableRow key={day.weekday} hover>
-                          <TableCell>
-                            <Stack
-                              direction="row"
-                              spacing={1}
-                              alignItems="center"
-                            >
-                              <span>{day.weekdayLabel}</span>
-                              {day.openDayCount > 0 && (
-                                <Chip
-                                  size="small"
-                                  color="warning"
-                                  variant="outlined"
-                                  label={`${day.openDayCount} offen`}
-                                />
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Produkt</TableCell>
+                          <TableCell
+                            align="right"
+                            className="report-col-md"
+                            sx={mdOnlyCell}
+                          >
+                            Einzelpreis
+                          </TableCell>
+                          <TableCell align="right">Geliefert</TableCell>
+                          <TableCell align="right">Verkauft</TableCell>
+                          <TableCell
+                            align="right"
+                            className="report-col-md"
+                            sx={mdOnlyCell}
+                          >
+                            Retoure
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            className="report-col-md"
+                            sx={mdOnlyCell}
+                          >
+                            Abverkaufsquote
+                          </TableCell>
+                          <TableCell align="right">Umsatz</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {stats.byProduct.map((product) => (
+                          <TableRow key={product.productSlug} hover>
+                            <TableCell>
+                              {product.productName}
+                              {(product.uncountedQty ?? 0) > 0 && (
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  color="warning.main"
+                                  sx={{ display: 'block' }}
+                                >
+                                  {product.uncountedQty} Stück ungezählt
+                                </Typography>
                               )}
-                            </Stack>
+                              {(product.openQty ?? 0) > 0 && (
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: 'block' }}
+                                >
+                                  {product.openQty} Stück noch offen (Tag ohne
+                                  Abholung)
+                                </Typography>
+                              )}
+                              {(product.discrepancyQty ?? 0) > 0 && (
+                                <Typography
+                                  component="span"
+                                  variant="caption"
+                                  color="text.secondary"
+                                  sx={{ display: 'block' }}
+                                >
+                                  {product.discrepancyQty} Stück Abweichung
+                                  (mehr gezählt als möglich)
+                                </Typography>
+                              )}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              className="report-col-md"
+                              sx={mdOnlyCell}
+                            >
+                              {formatUnitPrice(product)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatQty(product.deliveredQty)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatQty(product.soldQty)}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              className="report-col-md"
+                              sx={mdOnlyCell}
+                            >
+                              {formatQty(product.returnedQty)}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              className="report-col-md"
+                              sx={mdOnlyCell}
+                            >
+                              {formatPercent(product.sellThroughRate)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatCurrency(product.revenue)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                        <TableRow
+                          sx={{
+                            '& td': {
+                              fontWeight: 700,
+                              borderTop: '2px solid',
+                              borderTopColor: 'divider',
+                            },
+                          }}
+                        >
+                          <TableCell>Gesamt</TableCell>
+                          <TableCell
+                            align="right"
+                            className="report-col-md"
+                            sx={mdOnlyCell}
+                          />
+                          <TableCell align="right">
+                            {formatQty(stats.totals.deliveredQty)}
                           </TableCell>
                           <TableCell align="right">
-                            {formatQty(day.dayCount)}
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatAvg(day.avgDeliveredQty)}
-                          </TableCell>
-                          <TableCell align="right">
-                            {formatAvg(day.avgSoldQty)}
+                            {formatQty(stats.totals.soldQty)}
                           </TableCell>
                           <TableCell
                             align="right"
                             className="report-col-md"
                             sx={mdOnlyCell}
                           >
-                            {formatAvg(day.avgReturnedQty)}
+                            {formatQty(stats.totals.returnedQty)}
                           </TableCell>
                           <TableCell
                             align="right"
                             className="report-col-md"
                             sx={mdOnlyCell}
                           >
-                            {formatPercent(day.sellThroughRate)}
+                            {formatPercent(stats.totals.sellThroughRate)}
                           </TableCell>
                           <TableCell align="right">
-                            {day.avgRevenue == null
-                              ? '–'
-                              : formatCurrency(day.avgRevenue)}
+                            {formatCurrency(stats.totals.revenue)}
                           </TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              </Paper>
-            </>
-          )}
-        </>
-      )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </PageSection>
+
+                {/* Tagesverlauf */}
+                <PageSection
+                  title="Tagesverlauf"
+                  description="Gelieferte und verkaufte Stückzahl je Geschäftstag"
+                >
+                  <Box sx={{ width: '100%', height: 320 }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={chartData}
+                        margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+                      >
+                        <defs>
+                          <pattern
+                            id={PATTERN_DELIVERED}
+                            patternUnits="userSpaceOnUse"
+                            width="6"
+                            height="6"
+                            patternTransform="rotate(45)"
+                          >
+                            <rect
+                              width="6"
+                              height="6"
+                              fill={deliveredColor}
+                              fillOpacity={0.18}
+                            />
+                            <line
+                              x1="0"
+                              y1="0"
+                              x2="0"
+                              y2="6"
+                              stroke={deliveredColor}
+                              strokeWidth="3"
+                            />
+                          </pattern>
+                          <pattern
+                            id={PATTERN_SOLD}
+                            patternUnits="userSpaceOnUse"
+                            width="6"
+                            height="6"
+                            patternTransform="rotate(45)"
+                          >
+                            <rect
+                              width="6"
+                              height="6"
+                              fill={soldColor}
+                              fillOpacity={0.18}
+                            />
+                            <line
+                              x1="0"
+                              y1="0"
+                              x2="0"
+                              y2="6"
+                              stroke={soldColor}
+                              strokeWidth="3"
+                            />
+                          </pattern>
+                        </defs>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          stroke={theme.palette.divider}
+                          vertical={false}
+                        />
+                        <XAxis
+                          dataKey="label"
+                          stroke={theme.palette.text.secondary}
+                          tick={{
+                            fill: theme.palette.text.secondary,
+                            fontSize: 12,
+                          }}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          stroke={theme.palette.text.secondary}
+                          tick={{
+                            fill: theme.palette.text.secondary,
+                            fontSize: 12,
+                          }}
+                        />
+                        <Tooltip
+                          cursor={{ fill: theme.palette.action.hover }}
+                          content={({ active, payload }) => (
+                            <DayTooltip
+                              active={active}
+                              datum={
+                                payload && payload.length
+                                  ? (payload[0].payload as DayDatum)
+                                  : undefined
+                              }
+                            />
+                          )}
+                        />
+                        <Legend
+                          wrapperStyle={{ fontSize: 12 }}
+                          payload={[
+                            {
+                              id: 'delivered',
+                              value: 'Geliefert',
+                              type: 'square',
+                              color: deliveredColor,
+                            },
+                            {
+                              id: 'sold',
+                              value: 'Verkauft',
+                              type: 'square',
+                              color: soldColor,
+                            },
+                            {
+                              id: 'open',
+                              value:
+                                'Schraffiert: Abholung fehlt oder unvollständig (vorläufig)',
+                              type: 'square',
+                              color: theme.palette.text.secondary,
+                            },
+                          ]}
+                        />
+                        <Bar
+                          dataKey="delivered"
+                          name="Geliefert"
+                          fill={deliveredColor}
+                          radius={[3, 3, 0, 0]}
+                        >
+                          {chartData.map((day) => (
+                            <Cell
+                              key={`delivered-${day.fullLabel}`}
+                              fill={
+                                day.isOpen || day.isIncomplete
+                                  ? `url(#${PATTERN_DELIVERED})`
+                                  : deliveredColor
+                              }
+                            />
+                          ))}
+                        </Bar>
+                        <Bar
+                          dataKey="sold"
+                          name="Verkauft"
+                          fill={soldColor}
+                          radius={[3, 3, 0, 0]}
+                        >
+                          {chartData.map((day) => (
+                            <Cell
+                              key={`sold-${day.fullLabel}`}
+                              fill={
+                                day.isOpen || day.isIncomplete
+                                  ? `url(#${PATTERN_SOLD})`
+                                  : soldColor
+                              }
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </Box>
+                </PageSection>
+
+                {/* Wochentags-Mittel */}
+                <PageSection
+                  title="Durchschnitt je Wochentag"
+                  description="Mittelwerte über die Geschäftstage mit Abholung. Offene Tage zählen erst nach der Abholung mit."
+                  disablePadding
+                >
+                  <TableContainer>
+                    <Table
+                      size="small"
+                      className="report-table"
+                      sx={COMPACT_TABLE}
+                    >
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Wochentag</TableCell>
+                          <TableCell
+                            align="right"
+                            className="report-col-md"
+                            sx={mdOnlyCell}
+                          >
+                            Tage
+                          </TableCell>
+                          <TableCell align="right">Ø Geliefert</TableCell>
+                          <TableCell align="right">Ø Verkauft</TableCell>
+                          <TableCell
+                            align="right"
+                            className="report-col-md"
+                            sx={mdOnlyCell}
+                          >
+                            Ø Retoure
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            className="report-col-md"
+                            sx={mdOnlyCell}
+                          >
+                            Abverkaufsquote
+                          </TableCell>
+                          <TableCell align="right">Ø Umsatz</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {stats.byWeekday.map((day) => (
+                          <TableRow key={day.weekday} hover>
+                            <TableCell>
+                              <Stack
+                                direction="row"
+                                spacing={1}
+                                alignItems="center"
+                              >
+                                <span>{day.weekdayLabel}</span>
+                                {day.openDayCount > 0 && (
+                                  <Chip
+                                    size="small"
+                                    color="warning"
+                                    variant="outlined"
+                                    label={`${day.openDayCount} offen`}
+                                  />
+                                )}
+                              </Stack>
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              className="report-col-md"
+                              sx={mdOnlyCell}
+                            >
+                              {formatQty(day.dayCount)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatAvg(day.avgDeliveredQty)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {formatAvg(day.avgSoldQty)}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              className="report-col-md"
+                              sx={mdOnlyCell}
+                            >
+                              {formatAvg(day.avgReturnedQty)}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              className="report-col-md"
+                              sx={mdOnlyCell}
+                            >
+                              {formatPercent(day.sellThroughRate)}
+                            </TableCell>
+                            <TableCell align="right">
+                              {day.avgRevenue == null
+                                ? '–'
+                                : formatCurrency(day.avgRevenue)}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </PageSection>
+              </>
+            )}
+          </>
+        )}
+      </PageLayout>
     </Box>
   )
 }
