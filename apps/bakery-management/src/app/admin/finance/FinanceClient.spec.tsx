@@ -305,6 +305,31 @@ describe('FinanceClient', () => {
     expect(screen.getByText('Gesamter Zeitraum')).toBeInTheDocument()
   })
 
+  it('nimmt „Lädt …“ zurück, wenn der Filter während einer Anfrage zurückgesetzt wird', async () => {
+    // Regression: die abgebrochene Monatsanfrage setzte ihr „Lädt …“ nie
+    // zurück - nach „Gesamter Zeitraum“ stand es für immer da.
+    apiClient.get.mockImplementation((url: string) =>
+      url === '/api/finance/summary'
+        ? Promise.resolve({
+            success: true,
+            status: 'ok',
+            data: syntheticSummary(),
+          })
+        : new Promise(() => undefined)
+    )
+    renderWithTheme(<FinanceClient />)
+    await screen.findByText('Einnahmen')
+
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { fireEvent } = require('@testing-library/react')
+    fireEvent.mouseDown(screen.getByLabelText('Von'))
+    fireEvent.click(await screen.findByRole('option', { name: 'Februar 2026' }))
+    expect(await screen.findByText('Lädt …')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Gesamter Zeitraum' }))
+    await waitFor(() => expect(screen.queryByText('Lädt …')).toBeNull())
+  })
+
   it('wartet mit dem Laden, bis die Anmeldung geprüft ist', () => {
     authState.isLoading = true
     renderWithTheme(<FinanceClient />)

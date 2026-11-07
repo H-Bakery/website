@@ -1,320 +1,191 @@
 'use client'
 import React, { useState } from 'react'
-import {
-  Typography,
-  Box,
-  Paper,
-  ToggleButton,
-  ToggleButtonGroup,
-  Grid,
-  Button,
-  LinearProgress,
-  Alert,
-} from '@mui/material'
-import {
-  Inventory as InventoryIcon,
-  ArrowBack as ArrowBackIcon,
-} from '@mui/icons-material'
-import Link from 'next/link'
-import {
-  ProductRankingTable,
-  DateRangePicker,
-} from '@bakery/management/feature-analytics'
+import { Alert, Button, Typography } from '@mui/material'
 import { analyticsService } from '@bakery/shared/data-access'
+import type { ProductAnalyticsPerformance } from '@bakery/shared/types'
 import OwnerOnlyNotice from '../../../../components/analytics/OwnerOnlyNotice'
-import type {
-  ProductAnalyticsPerformance,
-  DateRange,
-} from '@bakery/shared/types'
+import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
+import ProductRanking from '../../../../components/analytics/ProductRanking'
+import useLatestRequest from '../../../../components/analytics/useLatestRequest'
+import {
+  ANALYTICS_MAX_DAYS,
+  addDaysIso,
+  localIsoDate,
+  standardPresets,
+} from '../../../../components/analytics/dateRange'
+import {
+  EmptyState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../components/layout'
+import { formatEuro } from '../../../../lib/reportFormat'
+
+interface ProductsResult {
+  all: ProductAnalyticsPerformance[]
+  bottom: ProductAnalyticsPerformance[]
+  available: boolean
+  forbidden: boolean
+}
+
+const NET_QUANTITY_NOTE =
+  'Mengen sind Nettomengen aus den Bons. Fehleingaben werden an der Kasse durch eine negative Gegenbuchung ausgeglichen, die auch an einem anderen Tag liegen kann - über kurze Zeiträume können einzelne Stückzahlen deshalb abweichen. Umsätze stimmen mit dem Kassenabschluss überein.'
 
 export default function ProductAnalyticsPage() {
-  const [loading, setLoading] = useState(false)
-  const [viewType, setViewType] = useState<'top' | 'all'>('top')
-  const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: getDefaultStartDate(),
-    endDate: getDefaultEndDate(),
+  const today = localIsoDate()
+  const [range, setRange] = useState({
+    from: addDaysIso(today, -29),
+    to: today,
   })
 
-  const [topProducts, setTopProducts] = useState<ProductAnalyticsPerformance[]>(
-    []
-  )
-  const [bottomProducts, setBottomProducts] = useState<
-    ProductAnalyticsPerformance[]
-  >([])
-  const [allProducts, setAllProducts] = useState<ProductAnalyticsPerformance[]>(
-    []
-  )
-  const [available, setAvailable] = useState(true)
-  // F4: 403 = falsche Rolle (Analysen nur für den Inhaber, B4).
-  const [forbidden, setForbidden] = useState(false)
-
-  React.useEffect(() => {
-    fetchProductData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange])
-
-  function getDefaultStartDate() {
-    const date = new Date()
-    date.setDate(date.getDate() - 30)
-    return date.toISOString().split('T')[0]
-  }
-
-  function getDefaultEndDate() {
-    return new Date().toISOString().split('T')[0]
-  }
-
-  const fetchProductData = async () => {
-    try {
-      setLoading(true)
-      const [top, bottom, all] = await Promise.all([
+  const { data, loading, error, reload } =
+    useLatestRequest<ProductsResult>(async () => {
+      const params = { startDate: range.from, endDate: range.to }
+      const [all, bottom] = await Promise.all([
         analyticsService.getProductPerformanceWithSource({
-          ...dateRange,
-          type: 'top',
-          limit: 20,
-        }),
-        analyticsService.getProductPerformanceWithSource({
-          ...dateRange,
-          type: 'bottom',
-          limit: 10,
-        }),
-        analyticsService.getProductPerformanceWithSource({
-          ...dateRange,
+          ...params,
           type: 'top',
           limit: 200,
         }),
+        analyticsService.getProductPerformanceWithSource({
+          ...params,
+          type: 'bottom',
+          limit: 10,
+        }),
       ])
-      setTopProducts(top.data)
-      setBottomProducts(bottom.data)
-      setAllProducts(all.data)
-      setAvailable(top.available && bottom.available && all.available)
-      setForbidden(Boolean(top.forbidden || bottom.forbidden || all.forbidden))
-    } catch (error) {
-      console.error('Error fetching product data:', error)
-      setTopProducts([])
-      setBottomProducts([])
-      setAllProducts([])
-      setAvailable(false)
-    } finally {
-      setLoading(false)
-    }
+      return {
+        all: all.data,
+        bottom: bottom.data,
+        available: all.available && bottom.available,
+        forbidden: Boolean(all.forbidden || bottom.forbidden),
+      }
+    }, [range.from, range.to])
+
+  const all = data?.all ?? []
+  const hasData = Boolean(data?.available && all.length > 0)
+
+  let body: React.ReactNode = null
+  if (!data && loading) {
+    body = <LoadingState label="Produktdaten werden geladen …" />
+  } else if (error || !data) {
+    body = (
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={reload}>
+            Erneut versuchen
+          </Button>
+        }
+      >
+        Produktdaten konnten nicht geladen werden.
+      </Alert>
+    )
+  } else if (data.forbidden) {
+    body = <OwnerOnlyNotice />
+  } else if (!data.available) {
+    body = (
+      <Alert severity="error">
+        Die API liefert keine Produktdaten. Es werden keine Zahlen angezeigt -
+        Beispieldaten gibt es hier bewusst nicht.
+      </Alert>
+    )
+  } else if (all.length === 0) {
+    body = (
+      <EmptyState
+        title="Für den gewählten Zeitraum liegt kein Kassenbericht vor."
+        description="Tage ohne Bericht sind Lücken, kein Umsatz von 0 €."
+      />
+    )
   }
 
-  const calculateStats = (products: ProductAnalyticsPerformance[]) => {
-    if (products.length === 0)
-      return { totalRevenue: 0, totalQuantity: 0, avgPrice: 0 }
-
-    const totalRevenue = products.reduce((sum, p) => sum + p.revenue, 0)
-    const totalQuantity = products.reduce((sum, p) => sum + p.quantitySold, 0)
-    const avgPrice = totalQuantity > 0 ? totalRevenue / totalQuantity : 0
-
-    return { totalRevenue, totalQuantity, avgPrice }
-  }
-
-  const topStats = calculateStats(topProducts)
-  const hasData = available && allProducts.length > 0
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('de-DE', {
-      style: 'currency',
-      currency: 'EUR',
-    }).format(amount)
+  let figures: React.ReactNode = null
+  if (hasData) {
+    const revenue = all.reduce((sum, p) => sum + p.revenue, 0)
+    const byQuantity = all.reduce((a, b) =>
+      b.quantitySold > a.quantitySold ? b : a
+    )
+    const byRevenue = all.reduce((a, b) => (b.revenue > a.revenue ? b : a))
+    figures = (
+      <KeyFigures
+        aria-label="Kennzahlen des Zeitraums"
+        items={[
+          {
+            label: 'Umsatz aller Produkte',
+            value: formatEuro(revenue),
+          },
+          {
+            label: 'Verkaufte Produkte',
+            value: all.length.toLocaleString('de-DE'),
+            hint: 'mit mindestens einem Verkauf',
+          },
+          {
+            label: 'Umsatzstärkstes Produkt',
+            value: byRevenue.productName,
+            hint: formatEuro(byRevenue.revenue),
+          },
+          {
+            label: 'Meistverkauft',
+            value: byQuantity.productName,
+            hint: `${byQuantity.quantitySold.toLocaleString('de-DE')} Stück`,
+          },
+        ]}
+      />
+    )
   }
 
   return (
-    <Box>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Button
-          component={Link}
-          href="/admin/analytics"
-          startIcon={<ArrowBackIcon />}
-          size="small"
-          sx={{ mb: 1 }}
-        >
-          Zurück zur Analyse-Übersicht
-        </Button>
-        <Typography variant="h4" component="h1">
-          <InventoryIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Produktanalyse
-        </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
-          Verkaufte Mengen je Produkt aus den Kassenberichten
-        </Typography>
-      </Box>
+    <PageLayout
+      title="Produktanalyse"
+      subtitle="Verkaufte Mengen je Produkt aus den Kassenberichten"
+      back={{ href: '/admin/analytics', label: 'Analysen' }}
+    >
+      <DateRangeFilter
+        from={range.from}
+        to={range.to}
+        onApply={(from, to) => setRange({ from, to })}
+        presets={standardPresets(today)}
+        max={today}
+        maxDays={ANALYTICS_MAX_DAYS}
+      />
 
-      {loading && <LinearProgress sx={{ mb: 2 }} />}
+      {body}
+      {figures}
 
-      {/* Controls */}
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={4}
-        flexWrap="wrap"
-        gap={2}
-      >
-        <Box display="flex" gap={2} alignItems="center">
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
-          <ToggleButtonGroup
-            value={viewType}
-            exclusive
-            onChange={(_, value) => value && setViewType(value)}
-            size="small"
-          >
-            <ToggleButton value="top">Top Produkte</ToggleButton>
-            <ToggleButton value="all">Alle Produkte</ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
-      </Box>
-
-      {forbidden && !loading && <OwnerOnlyNotice />}
-
-      {!available && !forbidden && !loading && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Die API liefert keine Produktdaten. Es werden keine Zahlen angezeigt -
-          Beispieldaten gibt es hier bewusst nicht.
-        </Alert>
-      )}
-
-      {available && !loading && allProducts.length === 0 && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          Für den gewählten Zeitraum liegt kein Kassenbericht vor.
-        </Alert>
-      )}
-
-      {hasData && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          Mengen sind Nettomengen aus den Bons. Fehleingaben werden an der Kasse
-          durch eine negative Gegenbuchung ausgeglichen, die auch an einem
-          anderen Tag liegen kann - über kurze Zeiträume können einzelne
-          Stückzahlen deshalb abweichen. Umsätze stimmen mit dem Kassenabschluss
-          überein.
-        </Alert>
-      )}
-
-      {hasData && (
+      {hasData && data && (
         <>
-          {/* Statistics for Top Products */}
-          {viewType === 'top' && (
-            <Grid container spacing={3} sx={{ mb: 4 }}>
-              <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={2} sx={{ p: 3 }}>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    gutterBottom
-                  >
-                    Gesamtumsatz Top 20
-                  </Typography>
-                  <Typography variant="h5">
-                    {formatCurrency(topStats.totalRevenue)}
-                  </Typography>
-                </Paper>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={2} sx={{ p: 3 }}>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    gutterBottom
-                  >
-                    Verkaufte Menge
-                  </Typography>
-                  <Typography variant="h5">
-                    {topStats.totalQuantity} Stück
-                  </Typography>
-                </Paper>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={2} sx={{ p: 3 }}>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    gutterBottom
-                  >
-                    Ø Verkaufspreis
-                  </Typography>
-                  <Typography variant="h5">
-                    {formatCurrency(topStats.avgPrice)}
-                  </Typography>
-                </Paper>
-              </Grid>
-              <Grid item xs={12} sm={6} md={3}>
-                <Paper elevation={2} sx={{ p: 3 }}>
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    gutterBottom
-                  >
-                    Umsatzstärkstes Produkt
-                  </Typography>
-                  <Typography variant="h5" noWrap>
-                    {topProducts[0]?.productName ?? '–'}
-                  </Typography>
-                </Paper>
-              </Grid>
-            </Grid>
-          )}
-
-          {/* Product Tables */}
-          {viewType === 'top' ? (
-            <Box>
-              <ProductRankingTable
-                products={topProducts}
-                title="Top 20 Produkte"
-                showRank={true}
-                pageSize={20}
-                height={600}
-              />
-
-              <Box mt={4}>
-                <Paper elevation={3} sx={{ p: 3 }}>
-                  <Typography variant="h6" component="h2" gutterBottom>
-                    Schwache Produkte - Handlungsbedarf
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Die Produkte mit den wenigsten verkauften Stück im Zeitraum
-                    (nur Produkte, die überhaupt verkauft wurden).
-                  </Typography>
-                  {bottomProducts.length === 0 && !loading && (
-                    <Typography color="text.secondary">
-                      Keine Daten für den gewählten Zeitraum.
-                    </Typography>
-                  )}
-                  <Grid container spacing={2} sx={{ mt: 1 }}>
-                    {bottomProducts.map((product) => (
-                      <Grid item xs={12} sm={6} md={4} key={product.productId}>
-                        <Paper
-                          elevation={1}
-                          sx={{ p: 2, bgcolor: 'action.hover' }}
-                        >
-                          <Typography variant="subtitle1" fontWeight="bold">
-                            {product.productName}
-                          </Typography>
-                          <Typography variant="body2">
-                            Nur {product.quantitySold} Stück verkauft
-                          </Typography>
-                          <Typography variant="body2">
-                            Umsatz: {formatCurrency(product.revenue)}
-                          </Typography>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Paper>
-              </Box>
-            </Box>
-          ) : (
-            <ProductRankingTable
-              products={allProducts}
-              title="Alle Produkte"
-              showRank={true}
-              pageSize={50}
-              height={600}
+          <PageSection
+            title={`Alle Produkte (${all.length})`}
+            description="Nach Umsatz sortiert"
+            disablePadding
+            detailsLabel="Hinweis zu den Mengen"
+            details={
+              <Typography variant="body2" color="text.secondary">
+                {NET_QUANTITY_NOTE}
+              </Typography>
+            }
+          >
+            <ProductRanking
+              products={all}
+              aria-label="Produkte nach Umsatz"
+              initialRows={20}
+              searchable
             />
-          )}
+          </PageSection>
+
+          <PageSection
+            title="Wenig verkauft"
+            description="Die wenigsten Stück im Zeitraum (nur Produkte, die überhaupt verkauft wurden)"
+            disablePadding
+          >
+            <ProductRanking
+              products={data.bottom}
+              aria-label="Wenig verkaufte Produkte"
+              showRank={false}
+            />
+          </PageSection>
         </>
       )}
-    </Box>
+    </PageLayout>
   )
 }

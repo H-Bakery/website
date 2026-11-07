@@ -8,26 +8,21 @@ import {
   Button,
   Chip,
   FormControl,
-  Grid,
   InputLabel,
-  LinearProgress,
   MenuItem,
-  Paper,
   Select,
-  Stack,
   Table,
   TableBody,
   TableCell,
   TableHead,
   TableRow,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Typography,
+  useMediaQuery,
   useTheme,
 } from '@mui/material'
 import {
-  Flag as TargetIcon,
   Login as LoginIcon,
   WarningAmber as StaleIcon,
 } from '@mui/icons-material'
@@ -68,6 +63,14 @@ import TargetStatusChip, {
   formatRatio,
   useTargetStatusColors,
 } from '../../../../components/targets/TargetStatusChip'
+import {
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../components/layout'
+import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
+import { monthStartIso } from '../../../../components/analytics/dateRange'
 
 // ---------------------------------------------------------------------------
 // Formatierung
@@ -161,6 +164,15 @@ function LevelToggle({
         if (next) onChange(next)
       }}
       aria-label="Zielstufe"
+      sx={{
+        width: { xs: '100%', sm: 'auto' },
+        '& .MuiToggleButton-root': {
+          flex: { xs: 1, sm: 'none' },
+          textTransform: 'none',
+          lineHeight: 1.25,
+          px: 1.5,
+        },
+      }}
     >
       <ToggleButton value="breakeven">{meta.breakeven.label}</ToggleButton>
       <ToggleButton value="draw">
@@ -178,42 +190,44 @@ function LevelToggle({
   )
 }
 
-function StatusTile({
-  title,
-  subtitle,
-  evaluation,
-  extra,
-}: {
-  title: string
-  subtitle?: string
+const HIDE_ON_PHONE = { display: { xs: 'none', sm: 'table-cell' } } as const
+
+/** Eine Kennzahl der Ampel: Ist groß, darunter Zeitraum, Ziel und Chip. */
+function statusFigure(
+  label: string,
+  context: string,
   evaluation: TargetEvaluation
-  extra?: React.ReactNode
-}) {
-  return (
-    <Paper elevation={2} sx={{ p: 3, height: '100%' }}>
-      <Typography variant="body2" color="text.secondary">
-        {title}
-      </Typography>
-      {subtitle && (
-        <Typography variant="caption" color="text.secondary" display="block">
-          {subtitle}
-        </Typography>
-      )}
-      <Typography variant="h5" component="p" sx={{ mt: 1 }}>
-        {evaluation.actual === null ? '–' : formatEuro(evaluation.actual)}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" display="block">
-        {evaluation.target === null
-          ? 'kein Ziel'
-          : `Ziel ${formatEuro(evaluation.target)}`}
-        {evaluation.diff !== null && ` · ${formatSignedEuro(evaluation.diff)}`}
-      </Typography>
-      <Box sx={{ mt: 1.5 }}>
-        <TargetStatusChip evaluation={evaluation} size="medium" />
-      </Box>
-      {extra}
-    </Paper>
-  )
+) {
+  return {
+    label,
+    value: evaluation.actual === null ? '–' : formatEuro(evaluation.actual),
+    hint: (
+      <>
+        <Box component="span" sx={{ display: 'block' }}>
+          {context}
+        </Box>
+        <Box component="span" sx={{ display: 'block' }}>
+          {evaluation.target === null
+            ? 'kein Ziel'
+            : `Ziel ${formatEuro(evaluation.target)}`}
+          {evaluation.diff !== null &&
+            ` · ${formatSignedEuro(evaluation.diff)}`}
+        </Box>
+        <Box
+          component="span"
+          sx={{
+            display: 'block',
+            mt: 1,
+            // In schmalen Kacheln darf der Chip umbrechen statt „…“.
+            '& .MuiChip-root': { height: 'auto', maxWidth: '100%', py: 0.25 },
+            '& .MuiChip-label': { whiteSpace: 'normal' },
+          }}
+        >
+          <TargetStatusChip evaluation={evaluation} />
+        </Box>
+      </>
+    ),
+  }
 }
 
 function WeekdayTable({
@@ -223,83 +237,66 @@ function WeekdayTable({
   targets: TargetsResponse
   level: TargetLevelKey
 }) {
-  const current = targets.levels[level]
-  const rows = current.weekdays
+  const rows = targets.levels[level].weekdays
   return (
-    <Paper elevation={3} sx={{ p: 3 }}>
-      <Typography variant="h6" component="h2" gutterBottom>
-        Ziel je Wochentag
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        Tagesbasis {formatEuro(current.daily_base)} × Wochentagsfaktor. Faktoren
-        aus {targets.factors.days_used ?? 0} Tagen vom{' '}
-        {formatReportDate(targets.factors.window?.from ?? '')} bis{' '}
-        {formatReportDate(targets.factors.window?.to ?? '')}, normiert auf
-        Mittelwert 1. Ø Ist ist der Durchschnitt derselben Tage.
-      </Typography>
-      <Box sx={{ overflowX: 'auto' }}>
-        <Table size="small" aria-label="Ziel je Wochentag">
-          <TableHead>
-            <TableRow>
-              <TableCell>Wochentag</TableCell>
-              <TableCell align="right">Faktor</TableCell>
-              <TableCell align="right">Ziel</TableCell>
-              <TableCell align="right">Ø Ist</TableCell>
-              <TableCell align="right">Abweichung</TableCell>
-              <TableCell align="right">Tage</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {rows.map((row) => {
-              return (
-                <TableRow key={row.iso}>
-                  <TableCell>
-                    {row.label}
-                    {row.closed && (
-                      <Chip
-                        label="Ruhetag"
-                        size="small"
-                        variant="outlined"
-                        sx={{ ml: 1 }}
-                      />
-                    )}
-                  </TableCell>
-                  <TableCell align="right">
-                    {row.factor === null
-                      ? '–'
-                      : factorFormat.format(row.factor)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {row.target === null ? '–' : formatEuro(row.target)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {row.average_revenue === null
-                      ? '–'
-                      : formatEuro(row.average_revenue)}
-                  </TableCell>
-                  <TableCell align="right">
-                    {row.deviation === null
-                      ? '–'
-                      : formatSignedEuro(row.deviation)}
-                  </TableCell>
-                  <TableCell align="right">{row.samples}</TableCell>
-                </TableRow>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </Box>
-      {current.average_ratio !== null && (
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ mt: 2 }}
-          data-testid="weekday-average-ratio"
-        >
-          {describeAverageRatio(current.average_ratio)}
-        </Typography>
-      )}
-    </Paper>
+    <Box sx={{ overflowX: 'auto' }}>
+      <Table size="small" aria-label="Ziel je Wochentag">
+        <TableHead>
+          <TableRow>
+            <TableCell>Wochentag</TableCell>
+            <TableCell align="right" sx={HIDE_ON_PHONE}>
+              Faktor
+            </TableCell>
+            <TableCell align="right">Ziel</TableCell>
+            <TableCell align="right">Ø Ist</TableCell>
+            <TableCell align="right" sx={HIDE_ON_PHONE}>
+              Abweichung
+            </TableCell>
+            <TableCell align="right" sx={HIDE_ON_PHONE}>
+              Tage
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {rows.map((row) => {
+            return (
+              <TableRow key={row.iso}>
+                <TableCell>
+                  {row.label}
+                  {row.closed && (
+                    <Chip
+                      label="Ruhetag"
+                      size="small"
+                      variant="outlined"
+                      sx={{ ml: 1 }}
+                    />
+                  )}
+                </TableCell>
+                <TableCell align="right" sx={HIDE_ON_PHONE}>
+                  {row.factor === null ? '–' : factorFormat.format(row.factor)}
+                </TableCell>
+                <TableCell align="right">
+                  {row.target === null ? '–' : formatEuro(row.target)}
+                </TableCell>
+                <TableCell align="right">
+                  {row.average_revenue === null
+                    ? '–'
+                    : formatEuro(row.average_revenue)}
+                </TableCell>
+                <TableCell align="right" sx={HIDE_ON_PHONE}>
+                  {row.deviation === null
+                    ? '–'
+                    : formatSignedEuro(row.deviation)}
+                </TableCell>
+                <TableCell align="right" sx={HIDE_ON_PHONE}>
+                  {row.samples}
+                </TableCell>
+              </TableRow>
+            )
+          })}
+        </TableBody>
+      </Table>
+    </Box>
   )
 }
 
@@ -319,8 +316,9 @@ function DayChart({ points }: { points: DayPoint[] }) {
   const axis = theme.palette.text.secondary
   const paper = theme.palette.background.paper
   const text = theme.palette.text.primary
+  const phone = useMediaQuery(theme.breakpoints.down('sm'))
   return (
-    <Box sx={{ width: '100%', height: 320 }}>
+    <Box sx={{ width: '100%', height: phone ? 240 : 300 }}>
       <ResponsiveContainer width="100%" height="100%">
         <ComposedChart data={points} margin={{ left: 8, right: 8 }}>
           <CartesianGrid stroke={grid} vertical={false} />
@@ -331,7 +329,7 @@ function DayChart({ points }: { points: DayPoint[] }) {
             interval="preserveStartEnd"
           />
           <YAxis
-            width={80}
+            width={phone ? 60 : 80}
             tickFormatter={(v: number) => currencyNoCents.format(v)}
             tick={{ fill: axis, fontSize: 12 }}
             stroke={grid}
@@ -381,7 +379,6 @@ function DayChart({ points }: { points: DayPoint[] }) {
     </Box>
   )
 }
-
 function DayTable({
   days,
   level,
@@ -396,8 +393,12 @@ function DayTable({
           <TableRow>
             <TableCell>Tag</TableCell>
             <TableCell align="right">Ist</TableCell>
-            <TableCell align="right">Ziel</TableCell>
-            <TableCell align="right">Abweichung</TableCell>
+            <TableCell align="right" sx={HIDE_ON_PHONE}>
+              Ziel
+            </TableCell>
+            <TableCell align="right" sx={HIDE_ON_PHONE}>
+              Abweichung
+            </TableCell>
             <TableCell>Ampel</TableCell>
           </TableRow>
         </TableHead>
@@ -406,16 +407,16 @@ function DayTable({
             const ev = day.levels[level]
             return (
               <TableRow key={day.date}>
-                <TableCell>
-                  {day.short}, {formatReportDate(day.date)}
+                <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                  {day.short}, {shortDate(day.date)}
                 </TableCell>
                 <TableCell align="right">
                   {ev.actual === null ? '–' : formatEuro(ev.actual)}
                 </TableCell>
-                <TableCell align="right">
+                <TableCell align="right" sx={HIDE_ON_PHONE}>
                   {ev.target === null ? '–' : formatEuro(ev.target)}
                 </TableCell>
-                <TableCell align="right">
+                <TableCell align="right" sx={HIDE_ON_PHONE}>
                   {ev.diff === null ? '–' : formatSignedEuro(ev.diff)}
                 </TableCell>
                 <TableCell>
@@ -429,7 +430,6 @@ function DayTable({
     </Box>
   )
 }
-
 function AccessNotice({
   kind,
   message,
@@ -618,54 +618,41 @@ export default function TagesZielClient() {
     return Array.from({ length: 12 }, (_v, i) => shiftMonth(last, -i))
   }, [state])
 
-  const header = (
-    <Box sx={{ mb: 3 }}>
-      <Typography variant="h4" component="h1">
-        <TargetIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-        Tagesziel
-      </Typography>
-      <Typography variant="subtitle1" color="text.secondary">
-        Break-even als Tagesziel je Wochentag - rückblickend aus den
-        Tagesabschlüssen der Kasse
-      </Typography>
-    </Box>
-  )
+  const title = 'Tagesziel'
+  const subtitle = 'Break-even je Wochentag, rückblickend aus der Kasse'
 
   if (state.phase === 'loading') {
     return (
-      <Box>
-        {header}
-        <LinearProgress aria-label="Tagesziel wird geladen" />
-      </Box>
+      <PageLayout title={title} subtitle={subtitle}>
+        <LoadingState label="Tagesziel wird geladen" />
+      </PageLayout>
     )
   }
 
   if (state.phase === 'access') {
     return (
-      <Box>
-        {header}
+      <PageLayout title={title} subtitle={subtitle}>
         <AccessNotice kind={state.kind} message={state.message} />
-      </Box>
+      </PageLayout>
     )
   }
 
   if (state.phase === 'no-target') {
     const cfg = state.partial?.config
     return (
-      <Box>
-        {header}
+      <PageLayout title={title} subtitle={subtitle}>
         <Alert severity="info">
           <AlertTitle>Kein Tagesziel verfügbar</AlertTitle>
           {state.reason} Es wird bewusst kein geschätzter Wert angezeigt. Die
           Parameter stehen im hq-Repo unter data/finance/config/targets.json.
         </Alert>
         {cfg && (
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+          <Typography variant="body2" color="text.secondary">
             Stand der Kostenbasis: {formatReportDate(cfg.updated)} · Modus:{' '}
             {cfg.mode === 'manual' ? 'manuell vorgegeben' : 'abgeleitet'}
           </Typography>
         )}
-      </Box>
+      </PageLayout>
     )
   }
 
@@ -677,6 +664,10 @@ export default function TagesZielClient() {
   const weekEval = status.week.levels[level]
   const monthEval = status.month.levels[level]
   const projection = status.month.projection[level]
+  const hasAssumptions = Boolean(
+    costBase.assumptions && costBase.assumptions.length > 0
+  )
+  const anchor = status.last_evaluated_date ?? status.today
 
   const points: DayPoint[] = (period?.days ?? []).map((d) => ({
     date: d.date,
@@ -687,20 +678,14 @@ export default function TagesZielClient() {
     statusLabel: d.levels[level].label,
   }))
 
-  return (
-    <Box>
-      {header}
+  const days = (n: number) => `${n} Tag${n === 1 ? '' : 'e'} bewertet`
 
-      {/* Kopfzeile: Stand der Kostenbasis und zuletzt ausgewerteter Tag */}
-      <Stack
-        direction="row"
-        spacing={1}
-        flexWrap="wrap"
-        alignItems="center"
-        useFlexGap
-        sx={{ mb: 2 }}
-      >
-        <Typography variant="body2" color="text.secondary">
+  return (
+    <PageLayout
+      title={title}
+      width="default"
+      subtitle={
+        <>
           Zuletzt ausgewertet:{' '}
           <strong>
             {targets.last_evaluated_date
@@ -709,17 +694,11 @@ export default function TagesZielClient() {
                 )}`
               : 'noch kein Tag'}
           </strong>{' '}
-          · Kostenbasis: Stand {formatReportDate(cfg.updated)} (
-          {cfg.mode === 'manual'
-            ? 'manuell vorgegeben'
-            : `abgeleitet aus ${
-                costBase.window?.months ?? 0
-              } Monaten Finanzdaten`}
-          ) · {cfg.business_days_per_month} Geschäftstage/Monat · Schwellen{' '}
-          {formatRatio(cfg.thresholds.green)} /{' '}
-          {formatRatio(cfg.thresholds.amber)}
-        </Typography>
-        {cfg.stale && (
+          · Kostenbasis: Stand {formatReportDate(cfg.updated)}
+        </>
+      }
+      status={
+        cfg.stale ? (
           <Chip
             icon={<StaleIcon />}
             color="warning"
@@ -727,11 +706,11 @@ export default function TagesZielClient() {
             size="small"
             label={`Kostenbasis ${cfg.age_months} Monate alt`}
           />
-        )}
-      </Stack>
-
+        ) : undefined
+      }
+    >
       {cfg.stale && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
+        <Alert severity="warning">
           <AlertTitle>Kostenbasis veraltet</AlertTitle>
           Der Stand der Kostenbasis ist {cfg.age_months} Monate alt (Warnung ab{' '}
           {cfg.stale_after_months}). Nach Personal- oder Preisänderungen ist ein
@@ -740,230 +719,256 @@ export default function TagesZielClient() {
         </Alert>
       )}
 
-      <Alert severity="info" sx={{ mb: 3 }}>
-        Cashflow-Sicht nach Buchungsdatum, keine GuV: Abschreibungen,
-        Rückstellungen und Rücklagen fehlen, das tatsächliche Plus liegt über
-        dieser Linie. Die Ampel blickt zurück - der frischeste Tag ist im
-        Regelfall gestern; der laufende Tag ist offen, nie rot. Einzeltage sind
-        Rauschen: Woche und Monat zählen.
-      </Alert>
-
-      <Stack
-        direction="row"
-        spacing={2}
-        alignItems="center"
-        flexWrap="wrap"
-        useFlexGap
-        sx={{ mb: 3 }}
-      >
-        <LevelToggle value={level} onChange={setLevel} meta={targets.levels} />
-        {levelInfo.assumed && (
+      <PageSection
+        variant="plain"
+        detailsLabel="So liest man die Ampel"
+        details={
           <Typography variant="body2" color="text.secondary">
-            Annahme: Die Privatentnahme ist{' '}
-            {levelInfo.private_draw_source === 'derived'
-              ? 'aus den neutralen Kategorien (Privat, Geldtransit) abgeleitet'
-              : 'nicht bekannt'}{' '}
-            - ob das Entnahmen sind, ist fachlich nicht geklärt.
+            Cashflow-Sicht nach Buchungsdatum, keine GuV: Abschreibungen,
+            Rückstellungen und Rücklagen fehlen, das tatsächliche Plus liegt
+            über dieser Linie. Die Ampel blickt zurück - der frischeste Tag ist
+            im Regelfall gestern; der laufende Tag ist offen, nie rot.
+            Einzeltage sind Rauschen: Woche und Monat zählen. Schwellen{' '}
+            {formatRatio(cfg.thresholds.green)} /{' '}
+            {formatRatio(cfg.thresholds.amber)} des Ziels.
           </Typography>
+        }
+      >
+        <Box sx={{ mb: 2 }}>
+          <LevelToggle
+            value={level}
+            onChange={setLevel}
+            meta={targets.levels}
+          />
+          {levelInfo.assumed && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Annahme: Die Privatentnahme ist{' '}
+              {levelInfo.private_draw_source === 'derived'
+                ? 'aus den neutralen Kategorien (Privat, Geldtransit) abgeleitet'
+                : 'nicht bekannt'}{' '}
+              - ob das Entnahmen sind, ist fachlich nicht geklärt.
+            </Typography>
+          )}
+        </Box>
+        <KeyFigures
+          aria-label="Ampel der gewählten Stufe"
+          items={[
+            statusFigure(
+              'Letzter Tag',
+              `${status.day.weekday}, ${formatReportDate(status.day.date)}`,
+              dayEval
+            ),
+            statusFigure(
+              `Woche bis ${shortDate(status.week.to)}`,
+              `KW ${status.week.iso_week.slice(-2)} · ${days(
+                weekEval.days_counted
+              )}`,
+              weekEval
+            ),
+            statusFigure(
+              `Monat bis ${shortDate(status.month.to)}`,
+              `${formatMonth(status.month.month)} · ${days(
+                monthEval.days_counted
+              )}`,
+              monthEval
+            ),
+            statusFigure(
+              'Hochrechnung Monatsende',
+              `${projection.remaining_days} Geschäftstag${
+                projection.remaining_days === 1 ? '' : 'e'
+              } offen`,
+              {
+                ...projection,
+                actual: projection.projected_actual,
+                target: projection.month_target,
+              }
+            ),
+          ]}
+        />
+      </PageSection>
+
+      <PageSection
+        title="Tagesverlauf"
+        description="Balken: Tagesumsatz in Ampelfarbe, gestrichelt: Ziel des Wochentags"
+        detailsLabel="Tage als Tabelle"
+        details={
+          period ? <DayTable days={period.days} level={level} /> : undefined
+        }
+      >
+        <DateRangeFilter
+          bare
+          from={from}
+          to={to}
+          onApply={(f, t) => {
+            setFrom(f)
+            setTo(t)
+          }}
+          max={status.today}
+          presets={[
+            { label: '7 Tage', from: addDaysIso(anchor, -6), to: anchor },
+            {
+              label: '4 Wochen',
+              from: addDaysIso(anchor, -(DEFAULT_RANGE_DAYS - 1)),
+              to: anchor,
+            },
+            { label: 'Dieser Monat', from: monthStartIso(anchor), to: anchor },
+          ]}
+        />
+        {periodLoading && !period && (
+          <LoadingState dense label="Tagesverlauf wird geladen …" />
         )}
-      </Stack>
-
-      {/* Kennzahlen der gewählten Stufe */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatusTile
-            title="Letzter Tag"
-            subtitle={`${status.day.weekday}, ${formatReportDate(
-              status.day.date
-            )}`}
-            evaluation={dayEval}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatusTile
-            title={`Woche bis ${shortDate(status.week.to)}`}
-            subtitle={`KW ${status.week.iso_week.slice(-2)} · ${
-              weekEval.days_counted
-            } Tag${weekEval.days_counted === 1 ? '' : 'e'} bewertet`}
-            evaluation={weekEval}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatusTile
-            title={`Monat bis ${shortDate(status.month.to)}`}
-            subtitle={`${formatMonth(status.month.month)} · ${
-              monthEval.days_counted
-            } Tag${monthEval.days_counted === 1 ? '' : 'e'} bewertet`}
-            evaluation={monthEval}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatusTile
-            title="Hochrechnung Monatsende"
-            subtitle={`${projection.remaining_days} Geschäftstag${
-              projection.remaining_days === 1 ? '' : 'e'
-            } offen · Restziel ${formatEuro(projection.remaining_target)}`}
-            evaluation={{
-              ...projection,
-              actual: projection.projected_actual,
-              target: projection.month_target,
-            }}
-          />
-        </Grid>
-      </Grid>
-
-      {/* Kostenbasis */}
-      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-        <Typography variant="h6" component="h2" gutterBottom>
-          Kostenbasis
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={6} md={3}>
-            <Typography variant="body2" color="text.secondary">
-              Variable Kostenquote
-            </Typography>
-            <Typography variant="h6" component="p">
-              {percent1.format(costBase.variable_cost_ratio ?? 0)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Deckungsbeitrag{' '}
-              {percent1.format(costBase.contribution_ratio ?? 0)}
-            </Typography>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <Typography variant="body2" color="text.secondary">
-              Fixkosten je Monat
-            </Typography>
-            <Typography variant="h6" component="p">
-              {formatEuro(levelInfo.fixed_costs_monthly)}
-            </Typography>
-            {level === 'draw' && (
-              <Typography variant="caption" color="text.secondary">
-                inkl. Entnahme {formatEuro(levelInfo.private_draw_monthly ?? 0)}
-              </Typography>
-            )}
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <Typography variant="body2" color="text.secondary">
-              Break-even je Monat
-            </Typography>
-            <Typography variant="h6" component="p">
-              {formatEuro(levelInfo.breakeven_monthly)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              davon Kasse {formatEuro(levelInfo.pos_target_monthly)}
-              {(costBase.non_pos_revenue_monthly ?? 0) > 0 &&
-                `, außer Kasse ${formatEuro(
-                  costBase.non_pos_revenue_monthly ?? 0
-                )}`}
-            </Typography>
-          </Grid>
-          <Grid item xs={6} md={3}>
-            <Typography variant="body2" color="text.secondary">
-              Tagesziel (Basis)
-            </Typography>
-            <Typography variant="h6" component="p">
-              {formatEuro(levelInfo.daily_base)}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              je Geschäftstag vor Wochentagsfaktor
-            </Typography>
-          </Grid>
-        </Grid>
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-          Ein Euro weniger Wareneinsatz wirkt stärker als ein Euro mehr Umsatz -
-          die Kostenquote gehört deshalb mit auf diese Seite.
-        </Typography>
-        {costBase.assumptions && costBase.assumptions.length > 0 && (
-          <Alert severity="info" sx={{ mt: 2 }}>
-            <AlertTitle>Annahmen</AlertTitle>
-            <Box component="ul" sx={{ m: 0, pl: 2.5 }}>
-              {costBase.assumptions.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </Box>
+        {periodError && (
+          <Alert severity="error" sx={{ mt: 2 }}>
+            {periodError}
           </Alert>
         )}
-      </Paper>
-
-      <Stack spacing={3}>
-        <WeekdayTable targets={targets} level={level} />
-
-        {/* Tagesverlauf */}
-        <Paper elevation={3} sx={{ p: 3 }}>
-          <Typography variant="h6" component="h2" gutterBottom>
-            Tagesverlauf
-          </Typography>
-          <Stack
-            direction="row"
-            spacing={2}
-            flexWrap="wrap"
-            alignItems="center"
-            useFlexGap
-            sx={{ mb: 2 }}
-          >
-            <TextField
-              label="Von"
-              type="date"
-              size="small"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ max: to }}
-            />
-            <TextField
-              label="Bis"
-              type="date"
-              size="small"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              inputProps={{ min: from }}
-            />
-            {periodLoading && (
-              <Typography variant="body2" color="text.secondary">
-                Lädt …
-              </Typography>
-            )}
-          </Stack>
-          {periodError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {periodError}
-            </Alert>
-          )}
-          {period && (
-            <>
-              <Typography
-                variant="body2"
-                component="div"
-                color="text.secondary"
-                sx={{ mb: 1 }}
-              >
-                Balken: Tagesumsatz in Ampelfarbe, gestrichelte Linie: Ziel des
-                Wochentags. Zeitraum gesamt:{' '}
-                {period.levels[level].actual === null
-                  ? '–'
-                  : formatEuro(period.levels[level].actual)}{' '}
+        {period && (
+          <>
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 1,
+                mt: 2,
+                mb: 1,
+              }}
+            >
+              <Typography variant="body2">
+                Zeitraum gesamt:{' '}
+                <strong>
+                  {period.levels[level].actual === null
+                    ? '–'
+                    : formatEuro(period.levels[level].actual)}
+                </strong>{' '}
                 von{' '}
                 {period.levels[level].target === null
                   ? '–'
-                  : formatEuro(period.levels[level].target)}{' '}
-                <TargetStatusChip evaluation={period.levels[level]} />
+                  : formatEuro(period.levels[level].target)}
               </Typography>
-              <DayChart points={points} />
-              <Box sx={{ mt: 2 }}>
-                <DayTable days={period.days} level={level} />
-              </Box>
-            </>
-          )}
-        </Paper>
+              <TargetStatusChip evaluation={period.levels[level]} />
+            </Box>
+            <DayChart points={points} />
+          </>
+        )}
+      </PageSection>
 
-        {/* Monatssicht */}
-        <Paper elevation={3} sx={{ p: 3 }}>
-          <Typography variant="h6" component="h2" gutterBottom>
-            Monatssicht
-          </Typography>
-          <FormControl size="small" sx={{ minWidth: 200, mb: 2 }}>
+      <PageSection
+        title="Ziel je Wochentag"
+        description={`Tagesbasis ${formatEuro(
+          levelInfo.daily_base
+        )} × Wochentagsfaktor`}
+        disablePadding
+        detailsLabel="Wie die Faktoren entstehen"
+        details={
+          <>
+            <Typography variant="body2" color="text.secondary">
+              Faktoren aus {targets.factors.days_used ?? 0} Tagen vom{' '}
+              {formatReportDate(targets.factors.window?.from ?? '')} bis{' '}
+              {formatReportDate(targets.factors.window?.to ?? '')}, normiert auf
+              Mittelwert 1. Ø Ist ist der Durchschnitt derselben Tage.
+            </Typography>
+            {levelInfo.average_ratio !== null && (
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mt: 1 }}
+                data-testid="weekday-average-ratio"
+              >
+                {describeAverageRatio(levelInfo.average_ratio)}
+              </Typography>
+            )}
+          </>
+        }
+      >
+        <WeekdayTable targets={targets} level={level} />
+      </PageSection>
+
+      <PageSection
+        title="Kostenbasis"
+        description={`${
+          cfg.mode === 'manual'
+            ? 'Manuell vorgegeben'
+            : `Abgeleitet aus ${
+                costBase.window?.months ?? 0
+              } Monaten Finanzdaten`
+        } · ${cfg.business_days_per_month} Geschäftstage/Monat`}
+        actions={
+          hasAssumptions ? (
+            <Chip label="Annahme" size="small" variant="outlined" />
+          ) : undefined
+        }
+        detailsLabel={hasAssumptions ? 'Rechenweg und Annahmen' : 'Rechenweg'}
+        details={
+          <>
+            <Typography variant="body2" color="text.secondary">
+              Ein Euro weniger Wareneinsatz wirkt stärker als ein Euro mehr
+              Umsatz - die Kostenquote gehört deshalb mit auf diese Seite.
+            </Typography>
+            {hasAssumptions && (
+              <Box sx={{ mt: 1 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  Annahmen
+                </Typography>
+                <Box
+                  component="ul"
+                  sx={{ m: 0, pl: 2.5, color: 'text.secondary' }}
+                >
+                  {(costBase.assumptions ?? []).map((a) => (
+                    <Typography component="li" variant="body2" key={a}>
+                      {a}
+                    </Typography>
+                  ))}
+                </Box>
+              </Box>
+            )}
+          </>
+        }
+      >
+        <CostFigures
+          items={[
+            {
+              label: 'Variable Kostenquote',
+              value: percent1.format(costBase.variable_cost_ratio ?? 0),
+              hint: `Deckungsbeitrag ${percent1.format(
+                costBase.contribution_ratio ?? 0
+              )}`,
+            },
+            {
+              label: 'Fixkosten je Monat',
+              value: formatEuro(levelInfo.fixed_costs_monthly),
+              hint:
+                level === 'draw'
+                  ? `inkl. Entnahme ${formatEuro(
+                      levelInfo.private_draw_monthly ?? 0
+                    )}`
+                  : undefined,
+            },
+            {
+              label: 'Break-even je Monat',
+              value: formatEuro(levelInfo.breakeven_monthly),
+              hint: `davon Kasse ${formatEuro(levelInfo.pos_target_monthly)}${
+                (costBase.non_pos_revenue_monthly ?? 0) > 0
+                  ? `, außer Kasse ${formatEuro(
+                      costBase.non_pos_revenue_monthly ?? 0
+                    )}`
+                  : ''
+              }`,
+            },
+            {
+              label: 'Tagesziel (Basis)',
+              value: formatEuro(levelInfo.daily_base),
+              hint: 'je Geschäftstag vor Wochentagsfaktor',
+            },
+          ]}
+        />
+      </PageSection>
+
+      <PageSection
+        title="Monatssicht"
+        description="Ein Monat bis zu seinem letzten ausgewerteten Tag"
+        actions={
+          <FormControl size="small" sx={{ minWidth: 180 }}>
             <InputLabel id="targets-month-label">Monat</InputLabel>
             <Select
               labelId="targets-month-label"
@@ -978,10 +983,73 @@ export default function TagesZielClient() {
               ))}
             </Select>
           </FormControl>
-          {monthError && <Alert severity="error">{monthError}</Alert>}
-          {monthView && <MonthSummary view={monthView} level={level} />}
-        </Paper>
-      </Stack>
+        }
+        detailsLabel="So wird hochgerechnet"
+        details={
+          <Typography variant="body2" color="text.secondary">
+            Hochrechnung: der bisherige Zielerreichungsgrad wird über die
+            Wochentagsfaktoren auf die restlichen Geschäftstage übertragen.
+            Vergangene Tage ohne Bericht zählen weder als Ist noch als Ziel.
+          </Typography>
+        }
+      >
+        {monthError && <Alert severity="error">{monthError}</Alert>}
+        {monthView && <MonthSummary view={monthView} level={level} />}
+      </PageSection>
+    </PageLayout>
+  )
+}
+
+/**
+ * Kennzahlen innerhalb eines Abschnitts (ohne eigene Karten - die
+ * `KeyFigures` sind Karten und stünden sonst als Karte in der Karte).
+ */
+function CostFigures({
+  items,
+}: {
+  items: Array<{ label: string; value: string; hint?: string }>
+}) {
+  return (
+    <Box
+      component="dl"
+      sx={{
+        m: 0,
+        display: 'grid',
+        gap: 2,
+        gridTemplateColumns: {
+          xs: 'repeat(2, minmax(0, 1fr))',
+          md: 'repeat(4, minmax(0, 1fr))',
+        },
+      }}
+    >
+      {items.map((item) => (
+        <Box key={item.label} sx={{ minWidth: 0 }}>
+          <Typography component="dt" variant="body2" color="text.secondary">
+            {item.label}
+          </Typography>
+          <Typography
+            component="dd"
+            sx={{
+              m: 0,
+              fontWeight: 600,
+              fontSize: '1.125rem',
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {item.value}
+          </Typography>
+          {item.hint && (
+            <Typography
+              component="dd"
+              variant="caption"
+              color="text.secondary"
+              sx={{ m: 0, display: 'block' }}
+            >
+              {item.hint}
+            </Typography>
+          )}
+        </Box>
+      ))}
     </Box>
   )
 }
@@ -996,7 +1064,7 @@ function MonthSummary({
   const m = view.month
   const toDate = m.levels[level]
   const proj = m.projection[level]
-  const rows: Array<[string, string]> = [
+  const rows: Array<[string, React.ReactNode]> = [
     [
       `Ist bis ${shortDate(m.to)}`,
       toDate.actual === null ? '–' : formatEuro(toDate.actual),
@@ -1004,6 +1072,10 @@ function MonthSummary({
     [
       `Ziel bis ${shortDate(m.to)}`,
       toDate.target === null ? '–' : formatEuro(toDate.target),
+    ],
+    [
+      `Ampel bis ${shortDate(m.to)}`,
+      <TargetStatusChip key="todate" evaluation={toDate} />,
     ],
     ['Bewertete Tage', String(toDate.days_counted)],
     [
@@ -1018,10 +1090,16 @@ function MonthSummary({
       'Hochrechnung Monatsende',
       proj.projected_actual === null ? '–' : formatEuro(proj.projected_actual),
     ],
+    ['Ampel Hochrechnung', <TargetStatusChip key="proj" evaluation={proj} />],
   ]
   return (
     <Box>
-      <Typography variant="subtitle1" sx={{ mb: 1 }}>
+      <Typography
+        variant="subtitle1"
+        component="p"
+        data-testid="month-view-title"
+        sx={{ fontWeight: 600, mb: 1 }}
+      >
         {formatMonth(m.month)}
       </Typography>
       <Box sx={{ overflowX: 'auto' }}>
@@ -1035,34 +1113,9 @@ function MonthSummary({
                 <TableCell align="right">{value}</TableCell>
               </TableRow>
             ))}
-            <TableRow>
-              <TableCell component="th" scope="row">
-                Ampel bis {shortDate(m.to)}
-              </TableCell>
-              <TableCell align="right">
-                <TargetStatusChip evaluation={toDate} />
-              </TableCell>
-            </TableRow>
-            <TableRow>
-              <TableCell component="th" scope="row">
-                Ampel Hochrechnung
-              </TableCell>
-              <TableCell align="right">
-                <TargetStatusChip evaluation={proj} />
-              </TableCell>
-            </TableRow>
           </TableBody>
         </Table>
       </Box>
-      <Typography
-        variant="caption"
-        color="text.secondary"
-        sx={{ mt: 1, display: 'block' }}
-      >
-        Hochrechnung: der bisherige Zielerreichungsgrad wird über die
-        Wochentagsfaktoren auf die restlichen Geschäftstage übertragen.
-        Vergangene Tage ohne Bericht zählen weder als Ist noch als Ziel.
-      </Typography>
     </Box>
   )
 }

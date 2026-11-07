@@ -216,7 +216,11 @@ describe('TagesZielClient', () => {
       /10 % über dem Tagesziel \(110 %/
     )
 
-    // Tagesverlauf: Ruhetag und laufender Tag sind offen, nicht rot
+    // Tagesverlauf: Ruhetag und laufender Tag sind offen, nicht rot. Die
+    // Tabelle steht zugeklappt unter dem Diagramm.
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Tage als Tabelle' })
+    )
     await waitFor(() =>
       expect(
         screen.getByRole('table', { name: 'Tagesverlauf' })
@@ -243,6 +247,48 @@ describe('TagesZielClient', () => {
     })
   })
 
+  it('blendet am Handy Kopf- und Datenzelle derselben Spalte gemeinsam aus', async () => {
+    // Regression: „Abweichung“ war nur im Kopf ausgeblendet - am Handy rutschte
+    // die Abweichung unter die Spalte „Ø Ist“ und ragte aus der Tabelle.
+    mockHappyPath()
+    renderWithTheme(<TagesZielClient />)
+    const table = await screen.findByRole('table', {
+      name: 'Ziel je Wochentag',
+    })
+    // jsdom wertet Media Queries nicht aus: an den Emotion-Regeln ablesen,
+    // ob eine Zelle am Handy (`xs`) `display: none` hat.
+    const phoneHidden = new Set<string>()
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of Array.from(sheet.cssRules)) {
+        // MUI schreibt `xs` als `@media (min-width:0px)` - das gilt am Handy.
+        if (
+          !(rule instanceof CSSMediaRule) ||
+          !/min-width:\s*0px/.test(rule.media.mediaText)
+        ) {
+          continue
+        }
+        for (const inner of Array.from(rule.cssRules)) {
+          if (inner instanceof CSSStyleRule && inner.style.display === 'none') {
+            phoneHidden.add(inner.selectorText)
+          }
+        }
+      }
+    }
+    const hiddenOnPhone = (el: Element) =>
+      Array.from(el.classList).some((name) => phoneHidden.has(`.${name}`))
+    const head = Array.from(table.querySelectorAll('thead th'))
+    expect(head.filter(hiddenOnPhone).length).toBeGreaterThan(0)
+    const rows = Array.from(table.querySelectorAll('tbody tr'))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const cells = Array.from(row.querySelectorAll('td'))
+      expect(cells).toHaveLength(head.length)
+      cells.forEach((cell, i) => {
+        expect([i, hiddenOnPhone(cell)]).toEqual([i, hiddenOnPhone(head[i])])
+      })
+    }
+  })
+
   it('schaltet auf die Entnahme-Stufe um und kennzeichnet sie als Annahme', async () => {
     mockHappyPath()
     renderWithTheme(<TagesZielClient />)
@@ -257,6 +303,9 @@ describe('TagesZielClient', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/inkl\. Entnahme/)).toBeInTheDocument()
     // Die Tageszahlen der zweiten Stufe: Ziel 25 % höher, alle drei Tage rot
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Tage als Tabelle' })
+    )
     const dayTable = screen.getByRole('table', { name: 'Tagesverlauf' })
     expect(dayTable.querySelectorAll('[data-status="red"]').length).toBe(3)
   })
@@ -286,9 +335,11 @@ describe('TagesZielClient', () => {
         }
       )
     )
-    expect(
-      await screen.findByText('Mai 2026', { selector: 'h6' })
-    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('month-view-title')).toHaveTextContent(
+        'Mai 2026'
+      )
+    )
   })
 
   it('formatiert Abweichungen mit Vorzeichen', () => {
