@@ -122,8 +122,9 @@ interface HandoverListProps {
   /** Nur ansehen (Rolle `verkauf`, B8): keine Statusknöpfe. */
   readOnly?: boolean
   /**
-   * Eine übergebene Bestellung zurück auf „Offen" setzen. Der Fahrer darf das
-   * nicht (403 `handover_undo_forbidden`); er sieht stattdessen einen Hinweis.
+   * Eine übergebene oder nicht abgeholte Bestellung zurück auf „Offen" setzen.
+   * Der Fahrer darf beides nicht (403); an einer übergebenen sieht er einen
+   * Hinweis, an einer nicht abgeholten nur „Übergeben".
    */
   canUndoHandover?: boolean
 }
@@ -154,7 +155,9 @@ export function HandoverList({
         return (
           <li
             key={preorder.id}
-            className={`${styles.stop} ${ROW_MODIFIER[preorder.status]}`}
+            className={`${styles.stop} ${styles.handoverItem} ${
+              ROW_MODIFIER[preorder.status]
+            }`}
           >
             <div className={styles.stopHead}>
               <span className={styles.stopNumber} aria-hidden="true">
@@ -195,61 +198,20 @@ export function HandoverList({
               <p className={styles.stopNotes}>{preorder.note}</p>
             )}
             {preorder.afterDeadline && (
-              <p className={styles.stopWarning}>
+              <p className={styles.inlineWarning}>
                 Nach Bestellschluss aufgenommen – bitte prüfen, ob die Ware
                 dabei ist.
               </p>
             )}
 
             <div className={styles.stopActions}>
-              {phoneLink && (
-                <a className={styles.buttonLinkGhost} href={phoneLink}>
-                  Anrufen
-                </a>
-              )}
               {readOnly ? null : preorder.status === 'cancelled' ? (
                 <p className={styles.placeholder}>
                   Erfassen kann das der Verkauf.
                 </p>
               ) : preorder.status === 'open' ? (
                 <>
-                  {preorder.paid && moneyDue(preorder) !== 0 ? (
-                    <>
-                      <button
-                        type="button"
-                        className={styles.buttonSuccess}
-                        disabled={rowBusy}
-                        onClick={() =>
-                          onStatusChange(preorder.id, 'handed_over', true)
-                        }
-                      >
-                        {moneyDue(preorder) > 0
-                          ? 'Rest kassiert und übergeben'
-                          : 'Erstattet und übergeben'}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.buttonGhost}
-                        disabled={rowBusy}
-                        onClick={() =>
-                          onStatusChange(preorder.id, 'handed_over')
-                        }
-                      >
-                        {moneyDue(preorder) > 0
-                          ? 'Ohne Rest übergeben'
-                          : 'Ohne Erstattung übergeben'}
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      className={styles.buttonSuccess}
-                      disabled={rowBusy}
-                      onClick={() => onStatusChange(preorder.id, 'handed_over')}
-                    >
-                      Übergeben
-                    </button>
-                  )}
+                  {handoverButtons(preorder, rowBusy, onStatusChange)}
                   <button
                     type="button"
                     className={styles.buttonWarn}
@@ -259,7 +221,25 @@ export function HandoverList({
                     Nicht abgeholt
                   </button>
                 </>
-              ) : preorder.status === 'handed_over' && !canUndoHandover ? (
+              ) : preorder.status === 'not_collected' ? (
+                // Die Familie kam doch noch: übergeben geht direkt, auch für
+                // den Fahrer. Zurück auf „Offen" setzen darf er nicht - die
+                // API lässt ihn nur übergeben oder „nicht abgeholt" setzen
+                // (403), der Knopf führte also nur zu einer Fehlermeldung.
+                <>
+                  {handoverButtons(preorder, rowBusy, onStatusChange)}
+                  {canUndoHandover && (
+                    <button
+                      type="button"
+                      className={styles.buttonGhost}
+                      disabled={rowBusy}
+                      onClick={() => onStatusChange(preorder.id, 'open')}
+                    >
+                      Zurücksetzen
+                    </button>
+                  )}
+                </>
+              ) : !canUndoHandover ? (
                 <p className={styles.placeholder}>
                   Zurücknehmen kann der Verkauf.
                 </p>
@@ -273,11 +253,60 @@ export function HandoverList({
                   Zurücksetzen
                 </button>
               )}
+              {phoneLink && (
+                <a className={styles.buttonLinkGhost} href={phoneLink}>
+                  Anrufen
+                </a>
+              )}
             </div>
           </li>
         )
       })}
     </ul>
+  )
+}
+
+/**
+ * „Übergeben" - bei Rest oder Erstattung zwei Knöpfe, damit der Fahrer sagt,
+ * ob das Geld geflossen ist (`paid: true`).
+ */
+function handoverButtons(
+  preorder: Preorder,
+  busy: boolean,
+  onStatusChange: HandoverListProps['onStatusChange']
+) {
+  const due = moneyDue(preorder)
+  if (preorder.paid && due !== 0) {
+    return (
+      <>
+        <button
+          type="button"
+          className={styles.buttonSuccess}
+          disabled={busy}
+          onClick={() => onStatusChange(preorder.id, 'handed_over', true)}
+        >
+          {due > 0 ? 'Rest kassiert und übergeben' : 'Erstattet und übergeben'}
+        </button>
+        <button
+          type="button"
+          className={styles.buttonGhost}
+          disabled={busy}
+          onClick={() => onStatusChange(preorder.id, 'handed_over')}
+        >
+          {due > 0 ? 'Ohne Rest übergeben' : 'Ohne Erstattung übergeben'}
+        </button>
+      </>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className={styles.buttonSuccess}
+      disabled={busy}
+      onClick={() => onStatusChange(preorder.id, 'handed_over')}
+    >
+      Übergeben
+    </button>
   )
 }
 

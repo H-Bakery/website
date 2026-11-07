@@ -48,7 +48,7 @@ import { permissionsFor, useDeliverySession } from '../lib/session'
 import { AccountBar } from '../components/AccountBar'
 import { AddStopForm, type NewStopInput } from '../components/AddStopForm'
 import { StopCard } from '../components/StopCard'
-import { ThemeToggle } from '../components/ThemeToggle'
+import { AppFooter } from '../components/AppFooter'
 import styles from './page.module.css'
 
 const Map = dynamic(() => import('../components/Map').then((mod) => mod.Map), {
@@ -84,6 +84,7 @@ export default function DeliveryDashboard() {
   const [tourId, setTourId] = useState<number | null>(null)
 
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
+  const [locationUnavailable, setLocationUnavailable] = useState(false)
   const [isTracking, setIsTracking] = useState(false)
   const [pending, setPending] = useState<QueuedUpdate[]>([])
   const [isOnline, setIsOnline] = useState(true)
@@ -121,6 +122,8 @@ export default function DeliveryDashboard() {
   // Beim Start laufen zwei Ladevorgaenge kurz hintereinander (erst ohne, dann
   // mit gemerktem Fahrer). Nur der juengste darf den Bildschirm setzen.
   const loadSeqRef = useRef(0)
+  // Zu welchem Tag und Fahrer die angezeigte Tourliste gehört.
+  const shownKeyRef = useRef<string | null>(null)
   // Solange ein Abhaken unterwegs ist, darf kein Nachladen der Offline-Kopie
   // die Liste ersetzen: die Aenderung steht noch nicht in der Warteschlange,
   // und der Server-Stand liesse den Stopp bis zum Nachsenden wieder "Offen".
@@ -165,8 +168,10 @@ export default function DeliveryDashboard() {
     async (targetDate: string, targetDriver: number | null) => {
       const seq = ++loadSeqRef.current
       setError(null)
+      const key = `${targetDate}|${targetDriver ?? ''}`
 
       const show = (list: Tour[]) => {
+        shownKeyRef.current = key
         setTours(list)
         setTourId((current) =>
           list.some((t) => t.id === current) ? current : list[0]?.id ?? null
@@ -182,6 +187,11 @@ export default function DeliveryDashboard() {
       const copy = remembered && remembered.tours.length > 0 ? remembered : null
       if (copy) {
         show(withInFlight(withPendingUpdates(copy.tours, pendingUpdates())))
+      } else if (shownKeyRef.current !== key) {
+        // Ein anderer Tag oder Fahrer ohne Offline-Kopie: die Tour von eben
+        // gehört nicht dazu. Sonst stand im Funkloch bis zu 15 s die
+        // Samstagstour unter „Sonntag" - samt Abhak-Knöpfen.
+        show([])
       }
 
       try {
@@ -307,13 +317,11 @@ export default function DeliveryDashboard() {
   // --- Standort ---
 
   useEffect(() => {
+    // Kein Standort beim Start ist kein Alarm: der Hinweis steht still unter
+    // der Karte, nicht als Meldung, die über jeder Seite schwebt.
     getCurrentLocation()
       .then(setCurrentLocation)
-      .catch(() =>
-        setHint(
-          'Standort nicht verfügbar. Die Tour funktioniert trotzdem, nur ohne Entfernungen.'
-        )
-      )
+      .catch(() => setLocationUnavailable(true))
 
     return () => {
       if (watchIdRef.current !== null) {
@@ -669,6 +677,16 @@ export default function DeliveryDashboard() {
     }
   }
 
+  /**
+   * Ein leeres Datumsfeld (iOS „Zurücksetzen", Android „Löschen") ist keine
+   * Wahl: die API lehnt `date=` mit 400 ab, und die Seite sagte dann
+   * „Ob für  eine Tour geplant ist …". Der bisherige Tag bleibt stehen.
+   */
+  const chooseDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return
+    setDate(value)
+  }
+
   const chooseDriver = (value: number | null) => {
     setDriverId(value)
     try {
@@ -733,14 +751,17 @@ export default function DeliveryDashboard() {
     .filter(Boolean)
     .join(' ')
 
+  const progressDone = tour ? tour.progress.done + tour.progress.failed : 0
+  const progressPercent =
+    tour && tour.progress.total > 0
+      ? (progressDone / tour.progress.total) * 100
+      : 0
+
   return (
     <main className={styles.main}>
       <header className={styles.header}>
-        <div>
-          <h1>Liefertour</h1>
-          <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
-        </div>
-        <ThemeToggle />
+        <p className={styles.eyebrow}>Bäckerei Heusser – Fahrer-App</p>
+        <h1>Liefertour</h1>
       </header>
 
       {session && (
@@ -753,7 +774,7 @@ export default function DeliveryDashboard() {
         </div>
       )}
 
-      <section className={styles.card}>
+      <section className={styles.card} aria-label="Tour auswählen">
         <div className={styles.selectRow}>
           <div className={styles.field}>
             <label htmlFor="driver-select">Fahrer</label>
@@ -784,23 +805,23 @@ export default function DeliveryDashboard() {
               id="tour-date"
               type="date"
               value={date}
-              onChange={(event) => setDate(event.target.value)}
+              onChange={(event) => chooseDate(event.target.value)}
             />
           </div>
         </div>
 
-        <div className={styles.buttonGroup}>
+        <div className={styles.chipGroup}>
           <button
             type="button"
-            className={styles.buttonGhost}
-            onClick={() => setDate(todayIso())}
+            aria-pressed={date === todayIso()}
+            onClick={() => chooseDate(todayIso())}
           >
             Heute
           </button>
           <button
             type="button"
-            className={styles.buttonGhost}
-            onClick={() => setDate(nextSaturdayIso())}
+            aria-pressed={date === nextSaturdayIso()}
+            onClick={() => chooseDate(nextSaturdayIso())}
           >
             Nächster Samstag
           </button>
@@ -824,7 +845,11 @@ export default function DeliveryDashboard() {
         )}
       </section>
 
-      {loading && <p className={styles.placeholder}>Tour wird geladen …</p>}
+      {loading && (
+        <p className={`${styles.placeholder} ${styles.loading}`} role="status">
+          Tour wird geladen …
+        </p>
+      )}
 
       {!loading && !tour && loadFailed && (
         <section className={styles.card}>
@@ -833,9 +858,15 @@ export default function DeliveryDashboard() {
             Ob für {formatDate(date)} eine Tour geplant ist, lässt sich gerade
             nicht prüfen.
           </p>
-          <button type="button" className={styles.button} onClick={reloadTours}>
-            Erneut laden
-          </button>
+          <div className={styles.buttonGroup}>
+            <button
+              type="button"
+              className={styles.button}
+              onClick={reloadTours}
+            >
+              Erneut laden
+            </button>
+          </div>
         </section>
       )}
 
@@ -850,14 +881,16 @@ export default function DeliveryDashboard() {
               : 'Für diesen Tag ist noch nichts geplant.'}
           </p>
           {can.plan && (
-            <button
-              type="button"
-              className={styles.button}
-              onClick={createTour}
-              disabled={busy}
-            >
-              Tour anlegen
-            </button>
+            <div className={styles.buttonGroup}>
+              <button
+                type="button"
+                className={styles.button}
+                onClick={createTour}
+                disabled={busy}
+              >
+                Tour anlegen
+              </button>
+            </div>
           )}
         </section>
       )}
@@ -873,7 +906,9 @@ export default function DeliveryDashboard() {
                 </p>
               </div>
               <span
-                className={`${styles.badge} ${styles[`badge_${tour.status}`]}`}
+                className={`${styles.badge} ${
+                  styles[`badge_${tour.status}`] ?? ''
+                }`}
               >
                 {TOUR_STATUS_LABEL[tour.status]}
               </span>
@@ -882,21 +917,14 @@ export default function DeliveryDashboard() {
             <div
               className={styles.progressBar}
               role="progressbar"
+              aria-label="Fortschritt der Tour"
               aria-valuemin={0}
               aria-valuemax={tour.progress.total}
-              aria-valuenow={tour.progress.done + tour.progress.failed}
+              aria-valuenow={progressDone}
             >
               <span
                 className={styles.progressFill}
-                style={{
-                  width: `${
-                    tour.progress.total === 0
-                      ? 0
-                      : ((tour.progress.done + tour.progress.failed) /
-                          tour.progress.total) *
-                        100
-                  }%`,
-                }}
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
             <p className={styles.progressLabel}>
@@ -905,14 +933,16 @@ export default function DeliveryDashboard() {
                 `, ${tour.progress.failed} nicht angetroffen`}
             </p>
 
-            <dl className={styles.stopFacts}>
+            <dl className={styles.keyFigures}>
               <div>
                 <dt>Strecke</dt>
                 <dd>
                   {tour.distance === null
                     ? '–'
                     : formatRouteDistance(tour.distance)}
-                  {tour.isEstimate && tour.distance !== null && ' (geschätzt)'}
+                  {tour.isEstimate && tour.distance !== null && (
+                    <span className={styles.keyFigureHint}>(geschätzt)</span>
+                  )}
                 </dd>
               </div>
               <div>
@@ -932,16 +962,6 @@ export default function DeliveryDashboard() {
             </dl>
 
             <div className={styles.buttonGroup}>
-              {can.drive && (
-                <button
-                  type="button"
-                  className={styles.button}
-                  onClick={runOptimize}
-                  disabled={anyInFlight || tour.stops.length === 0}
-                >
-                  Route berechnen
-                </button>
-              )}
               {navigateAllUrl && (
                 <a
                   className={styles.buttonLink}
@@ -952,10 +972,21 @@ export default function DeliveryDashboard() {
                   Ganze Tour navigieren
                 </a>
               )}
+              {can.drive && (
+                <button
+                  type="button"
+                  className={styles.buttonGhost}
+                  onClick={runOptimize}
+                  disabled={anyInFlight || tour.stops.length === 0}
+                >
+                  Route berechnen
+                </button>
+              )}
               {can.plan && (
                 <button
                   type="button"
                   className={styles.buttonGhost}
+                  aria-expanded={planning}
                   onClick={() => {
                     setConfirmDelete(false)
                     setPlanning((value) => !value)
@@ -965,106 +996,6 @@ export default function DeliveryDashboard() {
                 </button>
               )}
             </div>
-          </section>
-
-          {nextStop && (
-            <section className={`${styles.card} ${styles.nextCard}`}>
-              <h2>Nächster Stopp</h2>
-              <ul className={styles.stopList}>
-                <StopCard
-                  stop={nextStop}
-                  position={tour.stops.indexOf(nextStop) + 1}
-                  isNext
-                  distance={distanceTo(nextStop)}
-                  busy={busy || busyStops.has(nextStop.id)}
-                  busyPreorderIds={busyPreorders}
-                  onStatusChange={changeStopStatus}
-                  onPreorderStatusChange={changePreorderStatus}
-                  readOnly={!can.drive}
-                  canUndoHandover={can.undoHandover}
-                />
-              </ul>
-            </section>
-          )}
-
-          <section className={styles.card}>
-            <h2>Karte</h2>
-            <div className={styles.mapContainer}>
-              <Map
-                currentLocation={currentLocation ?? undefined}
-                depot={tour.depot}
-                stops={tour.stops}
-                geometry={tour.geometry}
-                activeStopId={tour.nextStopId}
-              />
-            </div>
-
-            {can.drive && (
-              <div className={styles.buttonGroup}>
-                {!isTracking ? (
-                  <button
-                    type="button"
-                    className={styles.buttonGhost}
-                    onClick={startTracking}
-                  >
-                    Standort verfolgen
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.buttonGhost}
-                    onClick={stopTracking}
-                  >
-                    Verfolgung stoppen
-                  </button>
-                )}
-              </div>
-            )}
-
-            {currentLocation && (
-              <p className={styles.coords}>
-                {currentLocation.latitude.toFixed(5)},{' '}
-                {currentLocation.longitude.toFixed(5)}
-                {/* `!= null`, nicht Truthiness: sonst rendert React bei 0 eine nackte 0. */}
-                {currentLocation.accuracy != null &&
-                  ` · ±${Math.round(currentLocation.accuracy)} m`}
-                {currentLocation.speed != null &&
-                  ` · ${Math.round(currentLocation.speed * 3.6)} km/h`}
-              </p>
-            )}
-          </section>
-
-          <section className={styles.card}>
-            <h2>Alle Stopps ({tour.stops.length})</h2>
-            {tour.stops.length === 0 ? (
-              <p className={styles.placeholder}>
-                {can.plan
-                  ? 'Noch keine Stopps. Über „Tour planen“ hinzufügen.'
-                  : 'Noch keine Stopps.'}
-              </p>
-            ) : (
-              <ul className={styles.stopList}>
-                {tour.stops.map((stop, index) => (
-                  <StopCard
-                    key={stop.id}
-                    stop={stop}
-                    position={index + 1}
-                    isNext={stop.id === tour.nextStopId}
-                    distance={distanceTo(stop)}
-                    busy={busy || busyStops.has(stop.id)}
-                    busyPreorderIds={busyPreorders}
-                    onStatusChange={changeStopStatus}
-                    onPreorderStatusChange={changePreorderStatus}
-                    onRemove={planning && can.plan ? removeStop : undefined}
-                    onMove={planning && can.plan ? moveStop : undefined}
-                    isFirst={index === 0}
-                    isLast={index === tour.stops.length - 1}
-                    readOnly={!can.drive}
-                    canUndoHandover={can.undoHandover}
-                  />
-                ))}
-              </ul>
-            )}
           </section>
 
           {planning && can.plan && (
@@ -1097,7 +1028,7 @@ export default function DeliveryDashboard() {
                 <div className={styles.buttonGroup}>
                   <button
                     type="button"
-                    className={styles.buttonGhost}
+                    className={styles.buttonWarn}
                     disabled={busy}
                     onClick={() => setConfirmDelete(true)}
                   >
@@ -1105,7 +1036,11 @@ export default function DeliveryDashboard() {
                   </button>
                 </div>
               ) : (
-                <div role="alertdialog" aria-label="Tour löschen?">
+                <div
+                  className={`${styles.panel} ${styles.panelWarning}`}
+                  role="alertdialog"
+                  aria-label="Tour löschen?"
+                >
                   <p>
                     Tour „{tour.name}“ mit {tour.stops.length} Stopp(s) wirklich
                     löschen? Vorbestellungen der Sammelstelle bleiben erhalten.
@@ -1113,7 +1048,7 @@ export default function DeliveryDashboard() {
                   <div className={styles.buttonGroup}>
                     <button
                       type="button"
-                      className={styles.button}
+                      className={styles.buttonDanger}
                       disabled={busy}
                       onClick={deleteTour}
                     >
@@ -1143,19 +1078,155 @@ export default function DeliveryDashboard() {
               <AddStopForm busy={busy} onSubmit={addStop} />
             </section>
           )}
+
+          {nextStop && (
+            <section
+              className={`${styles.card} ${styles.nextCard}`}
+              aria-label="Nächster Stopp"
+            >
+              <h2>Nächster Stopp</h2>
+              <ul className={styles.stopList}>
+                <StopCard
+                  stop={nextStop}
+                  position={tour.stops.indexOf(nextStop) + 1}
+                  isNext
+                  distance={distanceTo(nextStop)}
+                  busy={busy || busyStops.has(nextStop.id)}
+                  busyPreorderIds={busyPreorders}
+                  onStatusChange={changeStopStatus}
+                  onPreorderStatusChange={changePreorderStatus}
+                  readOnly={!can.drive}
+                  canUndoHandover={can.undoHandover}
+                />
+              </ul>
+            </section>
+          )}
+
+          <section className={styles.plainSection} aria-label="Alle Stopps">
+            <div className={styles.sectionHead}>
+              <h2>Alle Stopps ({tour.stops.length})</h2>
+              {tour.stops.length > 0 && (
+                <span className={styles.count}>{tour.progress.open} offen</span>
+              )}
+            </div>
+            {tour.stops.length === 0 ? (
+              <p className={styles.placeholder}>
+                {can.plan
+                  ? 'Noch keine Stopps. Über „Tour planen“ hinzufügen.'
+                  : 'Noch keine Stopps.'}
+              </p>
+            ) : (
+              <ul className={styles.stopList}>
+                {tour.stops.map((stop, index) => (
+                  <StopCard
+                    key={stop.id}
+                    stop={stop}
+                    position={index + 1}
+                    isNext={stop.id === tour.nextStopId}
+                    distance={distanceTo(stop)}
+                    busy={busy || busyStops.has(stop.id)}
+                    busyPreorderIds={busyPreorders}
+                    onStatusChange={changeStopStatus}
+                    onPreorderStatusChange={changePreorderStatus}
+                    onRemove={planning && can.plan ? removeStop : undefined}
+                    onMove={planning && can.plan ? moveStop : undefined}
+                    isFirst={index === 0}
+                    isLast={index === tour.stops.length - 1}
+                    readOnly={!can.drive}
+                    canUndoHandover={can.undoHandover}
+                    collapseHandover
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className={styles.card} aria-label="Karte">
+            <h2>Karte</h2>
+            <div className={styles.mapContainer}>
+              <Map
+                currentLocation={currentLocation ?? undefined}
+                depot={tour.depot}
+                stops={tour.stops}
+                geometry={tour.geometry}
+                activeStopId={tour.nextStopId}
+                height="300px"
+              />
+            </div>
+
+            {(can.drive || currentLocation || locationUnavailable) && (
+              <div className={styles.mapFooter}>
+                {can.drive &&
+                  (!isTracking ? (
+                    <button
+                      type="button"
+                      className={styles.buttonGhost}
+                      onClick={startTracking}
+                    >
+                      Standort verfolgen
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.buttonGhost}
+                      onClick={stopTracking}
+                    >
+                      Verfolgung stoppen
+                    </button>
+                  ))}
+                {!currentLocation && locationUnavailable && (
+                  <p className={styles.coords}>
+                    Standort nicht verfügbar. Die Tour funktioniert trotzdem,
+                    nur ohne Entfernungen.
+                  </p>
+                )}
+                {currentLocation && (
+                  <p className={styles.coords}>
+                    {currentLocation.latitude.toFixed(5)},{' '}
+                    {currentLocation.longitude.toFixed(5)}
+                    {/* `!= null`, nicht Truthiness: sonst rendert React bei 0 eine nackte 0. */}
+                    {currentLocation.accuracy != null &&
+                      ` · ±${Math.round(currentLocation.accuracy)} m`}
+                    {currentLocation.speed != null &&
+                      ` · ${Math.round(currentLocation.speed * 3.6)} km/h`}
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
         </>
       )}
 
-      {error && (
-        <div className={styles.error} role="alert">
-          <p>{error}</p>
-        </div>
-      )}
-      {hint && !error && (
-        <div className={styles.hint} role="status">
-          <p>{hint}</p>
-        </div>
-      )}
+      {/* Meldungen kleben am unteren Rand - die Seite ist am Samstag lang,
+          und eine Ablehnung ganz unten sah niemand. */}
+      <div className={styles.toasts}>
+        {error && (
+          <div className={styles.error} role="alert">
+            <p>{error}</p>
+            <button
+              type="button"
+              className={styles.dismiss}
+              onClick={() => setError(null)}
+            >
+              Schließen
+            </button>
+          </div>
+        )}
+        {hint && !error && (
+          <div className={styles.hint} role="status">
+            <p>{hint}</p>
+            <button
+              type="button"
+              className={styles.dismiss}
+              onClick={() => setHint(null)}
+            >
+              Schließen
+            </button>
+          </div>
+        )}
+      </div>
+
+      <AppFooter />
     </main>
   )
 }

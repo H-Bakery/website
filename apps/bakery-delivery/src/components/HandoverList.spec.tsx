@@ -170,11 +170,29 @@ describe('HandoverList', () => {
     )
 
     expect(screen.getByText('Zurücknehmen kann der Verkauf.')).toBeTruthy()
-    // „Nicht abgeholt" darf er weiter zurücksetzen - die Familie kam doch.
-    const reset = screen.getAllByRole('button', { name: 'Zurücksetzen' })
-    expect(reset).toHaveLength(1)
-    fireEvent.click(reset[0])
-    expect(onStatusChange).toHaveBeenCalledWith(2, 'open')
+    // Regression: auch „Nicht abgeholt" darf er nicht auf „Offen" setzen
+    // (API: Fahrer nur `abgeholt`/`nicht_abgeholt`, sonst 403) - der Knopf
+    // endete in einer Fehlermeldung. Kam die Familie doch, übergibt er direkt.
+    expect(screen.queryByRole('button', { name: 'Zurücksetzen' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Übergeben' }))
+    expect(onStatusChange).toHaveBeenCalledWith(2, 'handed_over')
+  })
+
+  it('lässt eine nicht abgeholte Bestellung doch noch übergeben (Inhaber auch zurücksetzen)', () => {
+    const onStatusChange = jest.fn()
+    render(
+      <HandoverList
+        preorders={[preorder({ status: 'not_collected' })]}
+        busy={false}
+        onStatusChange={onStatusChange}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Übergeben' }))
+    expect(onStatusChange).toHaveBeenCalledWith(1, 'handed_over')
+    fireEvent.click(screen.getByRole('button', { name: 'Zurücksetzen' }))
+    expect(onStatusChange).toHaveBeenCalledWith(1, 'open')
+    expect(screen.queryByRole('button', { name: 'Nicht abgeholt' })).toBeNull()
   })
 
   it('sperrt nur die Zeile, deren Abhaken noch unterwegs ist', () => {

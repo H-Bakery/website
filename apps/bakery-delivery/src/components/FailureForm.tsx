@@ -43,7 +43,7 @@ export function FailureForm({ busy, onSubmit, onCancel }: FailureFormProps) {
   }
 
   return (
-    <div className={styles.hint} role="group" aria-labelledby={`${id}-title`}>
+    <div className={styles.panel} role="group" aria-labelledby={`${id}-title`}>
       <p id={`${id}-title`} className={styles.choiceTitle}>
         Nicht angetroffen – was ist passiert?
       </p>
@@ -99,7 +99,7 @@ export function FailureForm({ busy, onSubmit, onCancel }: FailureFormProps) {
       <div className={styles.buttonGroup}>
         <button
           type="button"
-          className={styles.buttonWarn}
+          className={styles.buttonDanger}
           disabled={busy}
           onClick={submit}
         >

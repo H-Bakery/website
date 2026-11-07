@@ -86,7 +86,12 @@ steht.
   Position und darf „Route berechnen", aber nicht planen (kein „Tour anlegen", „Tour planen",
   Stopp entfernen) und eine **Übergabe nicht zurücknehmen** (`undoHandover`: an einer
   übergebenen Vorbestellung steht statt „Zurücksetzen" „Zurücknehmen kann der Verkauf." - die
-  API sagt sonst 403 `handover_undo_forbidden`; „Nicht abgeholt" darf er zurücksetzen).
+  API sagt sonst 403 `handover_undo_forbidden`). Auch „Nicht abgeholt" setzt er **nicht** auf
+  „Offen" zurück - die API lässt den Fahrer nur `abgeholt`/`nicht_abgeholt` setzen (403
+  „Fahrer können Vorbestellungen nur als übergeben oder nicht abgeholt markieren."). Kommt die
+  Familie doch noch, steht an der nicht abgeholten Bestellung wieder „Übergeben" (für alle
+  Rollen; „Zurücksetzen" nur mit `undoHandover`). Bis 2026-11 bot die Liste dem Fahrer dort
+  „Zurücksetzen" an, das nur in der 403-Meldung endete, und kein Übergeben.
   **Planen (nur Inhaber):** „Tour planen" öffnet „Tour bearbeiten" mit Fahrer-Zuordnung
   (`PATCH /tours/:id { driverId }` - eine unter „Alle" angelegte Tour hat sonst keinen Fahrer),
   „Nach oben"/„Nach unten" je Stopp (`stopOrder`) und „Tour löschen" mit Rückfrage in der Seite;
@@ -94,7 +99,10 @@ steht.
   beim Anmelden abgewiesen und gleich wieder abgemeldet.
 - **Abgelehnte Änderungen bleiben sichtbar.** Lehnt die API ein Abhaken oder eine Übergabe mit
   4xx ab, lädt die Seite die Tour neu und zeigt **danach** die `message` - `loadTours()` leert
-  die Fehlermeldung, vorher gesetzt verschwand sie sofort.
+  die Fehlermeldung, vorher gesetzt verschwand sie sofort. Fehler und Hinweise stehen in
+  `.toasts` am **unteren Bildrand** (`position: sticky`, mit „Schließen"); vorher standen sie am
+  Ende einer mehrere Bildschirme langen Seite, wo sie niemand sah. Damit `sticky` greift, trägt
+  `html, body` `overflow-x: clip` statt `hidden` (`hidden` macht `body` zum Scroll-Container).
 - **Die Form des früheren Mocks wird weiter gelesen** (`normalizeUser()`), falls eine alte
   Sitzung im Speicher liegt: `email`/`firstName` statt `displayName`, `admin` → `inhaber`,
   `staff` → `verkauf`. Die E2E-Suite meldet sich seit B12 als E2E-Inhaber an der echten API an.
@@ -378,6 +386,12 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js` (47).
   gefundene Adresse. `ensureStopCoordinates()` sucht deshalb ohne Straße gar nicht erst.
 - **`window.confirm` blockiert und sieht auf dem Handy aus wie ein Absturz.** Die Rückfrage vor dem
   Abschließen eines Stopps mit offenen Vorbestellungen steht deshalb in der Oberfläche.
+- **Tageswechsel zeigte die alte Tour.** Ohne Offline-Kopie des neuen Tages blieb die Tour des
+  vorigen Tages samt Abhak-Knöpfen stehen, bis die Antwort kam (im Funkloch bis 15 s), während
+  das Datumsfeld schon den neuen Tag zeigte. `loadTours()` merkt sich in `shownKeyRef`, zu welchem
+  Tag und Fahrer die Liste gehört, und leert sie beim Wechsel. Ein **geleertes** Datumsfeld (iOS
+  „Zurücksetzen") ist keine Wahl (`chooseDate()`): die API antwortet auf `date=` mit 400, und die
+  Seite sagte „Ob für eine Tour geplant ist".
 
 ## Der Build war kaputt, und warum
 
@@ -517,6 +531,34 @@ werden, das bricht die Hydration; beides passiert erst im Effect.
 Keine festen Farben mehr in `page.module.css`. Die Leaflet-Kacheln werden im Dunkelmodus per
 CSS-Filter abgedunkelt, die Marker bleiben davon ausgenommen. Status ist nie **nur** Farbe — der
 Text daneben bleibt.
+
+### Oberfläche (UI-Überarbeitung 2026-11)
+
+Dieselben Regeln wie das Layout-Kit der Verwaltung (`apps/bakery-management/src/components/layout/README.md`),
+nur in CSS-Variablen statt MUI; Kommentar am Kopf von `page.module.css`:
+
+- Eine Spalte (höchstens 760 px), Seitenrand 16 px am Handy, 24 px ab 768 px, derselbe Abstand
+  zwischen Abschnitten. Genau ein `h1` („Liefertour", darüber „Bäckerei Heusser – Fahrer-App"),
+  Abschnitte `h2`, Stopps `h3`, Vorbestellungen `h4`.
+- Reihenfolge: Kopf + Anmeldung, Auswahl (Fahrer/Tag nebeneinander, „Heute"/„Nächster Samstag"
+  als Chips), Tourkarte (Fortschritt, Kennzahlen Strecke/Dauer/Abfahrt), **Planung direkt
+  darunter** (sonst klappte „Tour planen" am Handy unsichtbar unter der Stoppliste auf),
+  „Nächster Stopp", „Alle Stopps" (ohne Kartenrahmen - die Stopps sind selbst Karten), Karte,
+  Fußzeile mit dem Farbschema (`AppFooter`, auch auf der Anmeldung).
+- **Je Karte eine gefüllte Hauptaktion:** „Geliefert"/„Übergeben"/„Stopp abschließen" (Erfolg),
+  „Ganze Tour navigieren" (Akzent). „Nicht angetroffen"/„Nicht abgeholt" sind umrandet
+  (`buttonWarn`), gefüllt rot nur die Bestätigung einer Rückfrage (`buttonDanger`). „Navigation"
+  ist akzent-umrandet, „Anrufen" neutral. Je Stopp zwei Reihen à zwei Spalten (Wege zum Kunden,
+  dann Status); ein einzelner letzter Knopf nimmt die ganze Breite. Ab 768 px natürliche Breite.
+- **Die Übergabeliste einer Sammelstelle steht nur im Block „Nächster Stopp" offen.** In „Alle
+  Stopps" ist sie ein `<details>` „Übergabeliste (N)" (`collapseHandover`); die Kopfzeile
+  „X von Y übergeben · Bar zu kassieren …" bleibt sichtbar. Vorher stand sie zweimal da - am
+  Samstag mit 14 Familien rund 12.000 px Seite am Handy.
+- „Nach Bestellschluss aufgenommen" ist eine schmale Zeile (`inlineWarning`) statt eines Kastens;
+  der Text bleibt. Warnungen an Stopps (Zeitfenster, Adresse nicht gefunden) bleiben Kästen.
+- Planung je Stopp („Nach oben", „Nach unten", „Entfernen") steht in einer eigenen, gestrichelt
+  abgesetzten Reihe; **„Entfernen" fragt nach** („Ja, entfernen").
+- „Standort nicht verfügbar" beim Start steht still unter der Karte, nicht als Meldung.
 
 ### Navigation
 
