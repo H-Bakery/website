@@ -171,7 +171,10 @@ export function PageSection({
         ...(printHidden ? { '@media print': { display: 'none' } } : {}),
       }}
     >
-      {card ? <Paper sx={{ overflow: 'hidden' }}>{body}</Paper> : body}
+      {/* `clip` statt `hidden`: schneidet an den runden Ecken ab, ohne einen
+          Scroll-Container zu bilden - sonst klebte ein `position: sticky` im
+          Abschnitt (Speichern-Leiste) nie am Bildschirmrand. */}
+      {card ? <Paper sx={{ overflow: 'clip' }}>{body}</Paper> : body}
     </Box>
   )
 }

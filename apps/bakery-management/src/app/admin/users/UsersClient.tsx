@@ -38,6 +38,7 @@ import { PILOT_ROLES, ROLE_LABELS, type PilotRole } from '../../../lib/roles'
 import { useOptionalSession } from '../../../lib/session'
 import { PIN_MAX_LENGTH, PIN_MIN_LENGTH } from '../../../components/auth/PinPad'
 import {
+  ErrorState,
   LoadingState,
   PageLayout,
   PageSection,
@@ -86,12 +87,16 @@ export default function UsersClient() {
   const session = useOptionalSession()
   const [users, setUsers] = React.useState<AdminUser[] | null>(null)
   const [stations, setStations] = React.useState<Station[] | null>(null)
+  // Ladefehler getrennt von Aktionsfehlern: ohne geladene Liste darf die
+  // Seite nicht „Konten (0) – Noch keine Benutzer.“ zeigen, als gäbe es
+  // keine Konten - dann steht nur der Fehler mit „Erneut versuchen“ da.
+  const [loadError, setLoadError] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
   const [success, setSuccess] = React.useState<string | null>(null)
   const [dialog, setDialog] = React.useState<DialogState>(null)
 
   const reload = React.useCallback(async () => {
-    setError(null)
+    setLoadError(null)
     try {
       const [userList, stationList] = await Promise.all([
         fetchUsers(),
@@ -100,9 +105,9 @@ export default function UsersClient() {
       setUsers(userList)
       setStations(stationList)
     } catch (err) {
-      setError(messageOf(err, 'Die Benutzer konnten nicht geladen werden.'))
-      setUsers((prev) => prev ?? [])
-      setStations((prev) => prev ?? [])
+      // Eine schon geladene Liste bleibt stehen (sie ist echt, nur nicht
+      // frisch); eine leere wird nie erfunden.
+      setLoadError(messageOf(err, 'Die Benutzer konnten nicht geladen werden.'))
     }
   }, [])
 
@@ -134,6 +139,8 @@ export default function UsersClient() {
   }
 
   const ownId = session?.user?.id
+  // Nichts geladen und Fehler: keine (leeren) Listen zeigen.
+  const showLists = !(loadError && users === null)
   const activeStations = stations?.filter((s) => !s.revokedAt).length ?? 0
 
   const userColumns: ResponsiveColumn<AdminUser>[] = [
@@ -241,6 +248,13 @@ export default function UsersClient() {
         </Button>
       }
     >
+      {loadError && (
+        <ErrorState
+          data-testid="users-load-error"
+          message={loadError}
+          onRetry={() => void reload()}
+        />
+      )}
       {error && (
         <Alert severity="error" onClose={() => setError(null)}>
           {error}
@@ -252,85 +266,89 @@ export default function UsersClient() {
         </Alert>
       )}
 
-      <PageSection
-        title={users ? `Konten (${users.length})` : 'Konten'}
-        description="Deaktivierte Konten bleiben stehen - gelöscht wird nie."
-        disablePadding
-      >
-        {users === null ? (
-          <LoadingState label="Benutzer werden geladen …" />
-        ) : (
-          <ResponsiveList
-            aria-label="Benutzer"
-            rows={users}
-            columns={userColumns}
-            rowKey={(user) => user.id}
-            rowTestId={(user) => `user-row-${user.username}`}
-            muted={(user) => !user.active}
-            empty="Noch keine Benutzer."
-            actions={(user) => (
-              <>
-                <Tooltip title="Bearbeiten">
-                  <IconButton
-                    aria-label={`${user.displayName} bearbeiten`}
-                    onClick={() => setDialog({ kind: 'edit', user })}
-                  >
-                    <EditIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Passwort setzen">
-                  <IconButton
-                    aria-label={`Passwort für ${user.displayName} setzen`}
-                    onClick={() => setDialog({ kind: 'password', user })}
-                  >
-                    <PasswordIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="PIN setzen">
-                  <IconButton
-                    aria-label={`PIN für ${user.displayName} setzen`}
-                    onClick={() => setDialog({ kind: 'pin', user })}
-                  >
-                    <PinIcon />
-                  </IconButton>
-                </Tooltip>
-              </>
-            )}
-          />
-        )}
-      </PageSection>
+      {showLists && (
+        <PageSection
+          title={users ? `Konten (${users.length})` : 'Konten'}
+          description="Deaktivierte Konten bleiben stehen - gelöscht wird nie."
+          disablePadding
+        >
+          {users === null ? (
+            <LoadingState label="Benutzer werden geladen …" />
+          ) : (
+            <ResponsiveList
+              aria-label="Benutzer"
+              rows={users}
+              columns={userColumns}
+              rowKey={(user) => user.id}
+              rowTestId={(user) => `user-row-${user.username}`}
+              muted={(user) => !user.active}
+              empty="Noch keine Benutzer."
+              actions={(user) => (
+                <>
+                  <Tooltip title="Bearbeiten">
+                    <IconButton
+                      aria-label={`${user.displayName} bearbeiten`}
+                      onClick={() => setDialog({ kind: 'edit', user })}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Passwort setzen">
+                    <IconButton
+                      aria-label={`Passwort für ${user.displayName} setzen`}
+                      onClick={() => setDialog({ kind: 'password', user })}
+                    >
+                      <PasswordIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="PIN setzen">
+                    <IconButton
+                      aria-label={`PIN für ${user.displayName} setzen`}
+                      onClick={() => setDialog({ kind: 'pin', user })}
+                    >
+                      <PinIcon />
+                    </IconButton>
+                  </Tooltip>
+                </>
+              )}
+            />
+          )}
+        </PageSection>
+      )}
 
-      <PageSection
-        title={stations ? `Stationen (${activeStations} aktiv)` : 'Stationen'}
-        description={
-          <>
-            Ein Tablet wird unter <strong>/station</strong> eingerichtet (als
-            Inhaber mit Passwort angemeldet).
-          </>
-        }
-        disablePadding
-      >
-        {stations === null ? (
-          <LoadingState label="Stationen werden geladen …" dense />
-        ) : (
-          <ResponsiveList
-            aria-label="Stationen"
-            rows={stations}
-            columns={stationColumns}
-            rowKey={(station) => station.id}
-            muted={(station) => Boolean(station.revokedAt)}
-            empty="Noch keine Station."
-            actionsHeader="Aktion"
-            actions={(station) =>
-              station.revokedAt ? null : (
-                <Button color="error" onClick={() => handleRevoke(station)}>
-                  Widerrufen
-                </Button>
-              )
-            }
-          />
-        )}
-      </PageSection>
+      {showLists && (
+        <PageSection
+          title={stations ? `Stationen (${activeStations} aktiv)` : 'Stationen'}
+          description={
+            <>
+              Ein Tablet wird unter <strong>/station</strong> eingerichtet (als
+              Inhaber mit Passwort angemeldet).
+            </>
+          }
+          disablePadding
+        >
+          {stations === null ? (
+            <LoadingState label="Stationen werden geladen …" dense />
+          ) : (
+            <ResponsiveList
+              aria-label="Stationen"
+              rows={stations}
+              columns={stationColumns}
+              rowKey={(station) => station.id}
+              muted={(station) => Boolean(station.revokedAt)}
+              empty="Noch keine Station."
+              actionsHeader="Aktion"
+              actions={(station) =>
+                station.revokedAt ? null : (
+                  <Button color="error" onClick={() => handleRevoke(station)}>
+                    Widerrufen
+                  </Button>
+                )
+              }
+            />
+          )}
+        </PageSection>
+      )}
 
       {dialog?.kind === 'create' && (
         <CreateUserDialog

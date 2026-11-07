@@ -16,6 +16,12 @@ export interface NavItem {
   description?: string
   external?: boolean
   submenu?: NavItem[]
+  /**
+   * Für Rollen, die `path` nicht öffnen dürfen, steht `description` statt der
+   * normalen Beschreibung da (der Fahrer liest Vorbestellungen nur - kein
+   * „Erfassen“ im Menü, wenn „Neue Vorbestellung“ für ihn gesperrt ist).
+   */
+  readOnly?: { path: string; description: string }
 }
 
 /**
@@ -68,9 +74,9 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     // /admin/preorders (M1) - zwei gleichnamige Einträge wären verwechselbar.
     label: 'Sammelstelle Mörsbach',
     href: '/admin/delivery/preorders',
-    // `iconMap` in layout.tsx kennt keinen eigenen Schlüssel dafür - ein
-    // unbekannter ließe die Zeile ohne Symbol stehen.
-    icon: 'orders',
+    // Eigenes Symbol (Ort) - der Warenkorb gehört „Vorbestellungen“. Der
+    // Schlüssel muss in `iconMap` (layout.tsx) stehen, sonst fehlt das Symbol.
+    icon: 'pickuppoint',
     description: 'Vorbestellungen Kindergarten',
   },
   {
@@ -79,7 +85,8 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     label: 'Rest am Abend',
     href: '/admin/rest',
     icon: 'unsold',
-    description: 'Was bei Ladenschluss übrig ist',
+    // kurz genug für die 280-px-Seitenleiste (sonst „…“)
+    description: 'Zählen bei Ladenschluss',
   },
   {
     label: 'Verkaufspartner',
@@ -92,6 +99,10 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     href: '/admin/products',
     icon: 'products',
     description: 'Produktverwaltung',
+    readOnly: {
+      path: '/admin/products/new',
+      description: 'Sortiment nachschlagen',
+    },
   },
   {
     label: 'Kassenberichte',
@@ -109,7 +120,7 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     // M4: nur Inhaber (ROLE_ACCESS; API: GET /api/rest/summary).
     label: 'Rest-Auswertung',
     href: '/admin/rest/auswertung',
-    icon: 'analytics',
+    icon: 'restsummary',
     description: 'Gebacken, verkauft, übrig',
   },
   {
@@ -195,7 +206,12 @@ export const PILOT_UPCOMING_NAVIGATION: UpcomingNavItem[] = [
     label: 'Vorbestellungen',
     href: '/admin/preorders',
     icon: 'orders',
-    description: 'Erfassen, Liste, Tagesübersicht',
+    // kurz genug für die 280-px-Seitenleiste (sonst „Tagesübersi…“)
+    description: 'Erfassen, Liste, Übersicht',
+    readOnly: {
+      path: '/admin/preorders/neu',
+      description: 'Liste und Tagesübersicht',
+    },
     ready: true,
   },
   {
@@ -241,11 +257,12 @@ export function filterNavigationForPilot(items: NavItem[]): NavItem[] {
 export function getNavigation(pilot: boolean = isPilotMode()): NavItem[] {
   const ready: NavItem[] = PILOT_UPCOMING_NAVIGATION.filter(
     (item) => item.ready
-  ).map(({ label, href, icon, description }) => ({
+  ).map(({ label, href, icon, description, readOnly }) => ({
     label,
     href,
     icon,
     description,
+    readOnly,
   }))
   const [dashboard, ...rest] = MANAGEMENT_NAVIGATION
   const items = [dashboard, ...ready, ...rest]

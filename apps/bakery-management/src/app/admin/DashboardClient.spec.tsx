@@ -118,7 +118,7 @@ describe('DashboardClient', () => {
         <DashboardClient latestReport={null} reportsAvailable={false} />
       </WithSession>
     )
-    await screen.findByText('API erreichbar')
+    await screen.findByText(/verfügbar, davon/)
     expect(screen.getByText('Produkte gesamt')).toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: 'Produkte verwalten' })
@@ -143,7 +143,7 @@ describe('DashboardClient', () => {
         <DashboardClient latestReport={null} reportsAvailable={false} />
       </WithSession>
     )
-    await screen.findByText('API erreichbar')
+    await screen.findByText(/verfügbar, davon/)
     expect(screen.getByText('Produkte gesamt')).toBeInTheDocument()
     expect(
       screen.queryByRole('heading', { name: /^Kasse/ })
@@ -181,7 +181,7 @@ describe('DashboardClient', () => {
         <DashboardClient latestReport={null} reportsAvailable={false} />
       </WithSession>
     )
-    await screen.findByText('API erreichbar')
+    await screen.findByText(/verfügbar, davon/)
     ;['Backzettel', 'Backstube'].forEach((title) =>
       expect(
         screen.getByRole('heading', { level: 3, name: title })
@@ -199,6 +199,32 @@ describe('DashboardClient', () => {
     await screen.findByText('API erreichbar')
     const link = screen.getByRole('link', { name: /Abholliste/ })
     expect(link).toHaveAttribute('href', '/admin/preorders/abholliste')
+  })
+
+  it('Sortiment: „verfügbar“ zählt Saisonware mit wie der Filter der Produktliste (Review r1)', async () => {
+    delete process.env.NEXT_PUBLIC_PILOT_MODE
+    apiClient.get.mockResolvedValue({
+      success: true,
+      data: [
+        { id: 'a', available: true },
+        { id: 'b', available: true, seasonal: true },
+        { id: 'c', available: false },
+      ],
+    })
+    renderDashboard()
+    expect(
+      await screen.findByText('2 verfügbar, davon 1 saisonal')
+    ).toBeInTheDocument()
+  })
+
+  it('zeigt Verkauf und Backstube keinen Technik-Chip, nur bei Ausfall (Review r1)', async () => {
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>
+        <DashboardClient latestReport={null} reportsAvailable={false} />
+      </WithSession>
+    )
+    await screen.findByText(/verfügbar, davon/)
+    expect(screen.queryByTestId('api-status')).toBeNull()
   })
 
   it('zählt das Sortiment wie die Produktliste (saisonal getrennt)', () => {

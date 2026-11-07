@@ -40,8 +40,9 @@ const MODE_OPTIONS: {
 export default function SettingsPage() {
   const { mode, setMode, colorScheme } = useTheme()
   const session = useOptionalSession()
-  // Im Pilotbetrieb (F4) gibt es weder /api/notifications noch E-Mail-Versand
-  // auf der echten API - die Karten würden ewig laden bzw. nur vertrösten.
+  // Im Pilotbetrieb (F4) gibt es kein /api/notifications auf der echten API -
+  // die Karte würde ewig laden. (Der Abschnitt „E-Mail-Versand“ ist ganz weg:
+  // ohne Schalter und ohne Wirkung war er nur Vertröstung, Review r1.)
   const pilot = isPilotMode()
   // Auch ohne Pilotbetrieb kann die API die echte sein (W4): antwortet sie auf
   // /api/notifications mit 404, verschwindet der Abschnitt still.
@@ -94,13 +95,6 @@ export default function SettingsPage() {
         <PageSection title="Benachrichtigungen">
           <NotificationPreferences />
         </PageSection>
-      )}
-
-      {!pilot && (
-        <PageSection
-          title="E-Mail-Versand"
-          description="Die Konfiguration des E-Mail-Versands (SMTP) ist noch nicht an die API angebunden."
-        />
       )}
 
       <PageSection

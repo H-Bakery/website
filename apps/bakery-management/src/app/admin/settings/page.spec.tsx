@@ -91,11 +91,12 @@ describe('Einstellungen (F4)', () => {
     expect(screen.getByText('Darstellung')).toBeInTheDocument()
   })
 
-  it('zeigt sie außerhalb des Pilotbetriebs weiter', () => {
+  it('zeigt Benachrichtigungen außerhalb des Pilotbetriebs weiter, E-Mail nie (Review r1)', () => {
     process.env.NEXT_PUBLIC_PILOT_MODE = '0'
     renderAs('inhaber')
     expect(screen.getByText('Benachrichtigungen')).toBeInTheDocument()
-    expect(screen.getByText('E-Mail-Versand')).toBeInTheDocument()
+    // ohne Schalter und ohne Wirkung - kein Abschnitt, der nur vertröstet
+    expect(screen.queryByText('E-Mail-Versand')).not.toBeInTheDocument()
   })
 
   it('verweist den Inhaber für Passwort und PIN auf „Benutzer“', () => {

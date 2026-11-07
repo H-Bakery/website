@@ -34,7 +34,7 @@ const TOUCH = { minHeight: 48 }
 function PrintButton({
   sheet,
   label = 'Drucken',
-  variant = 'contained',
+  variant = 'outlined',
 }: {
   sheet: SheetId
   label?: string
@@ -95,16 +95,16 @@ export default function HilfeClient() {
       <PageLayout
         title="Hilfe"
         subtitle="Kurzanleitung je Rolle und Papierbetrieb – jedes Blatt passt gedruckt auf eine A4-Seite."
+        // Wie auf jeder Seite: Drucken outlined im Kopf (Review r1), druckt
+        // die gezeigte Kurzanleitung.
+        actions={
+          <PrintButton sheet={`spickzettel-${tab}`} variant="outlined" />
+        }
       >
         <Box component="section" aria-label="Kurzanleitung">
           <Box
             className="hilfe-screen"
             sx={{
-              display: 'flex',
-              flexDirection: { xs: 'column', sm: 'row' },
-              alignItems: { xs: 'stretch', sm: 'flex-end' },
-              justifyContent: 'space-between',
-              gap: 1,
               mb: 2,
               borderBottom: 1,
               borderColor: 'divider',
@@ -136,9 +136,6 @@ export default function HilfeClient() {
                 />
               ))}
             </Tabs>
-            <Box sx={{ pb: { sm: 1 } }}>
-              <PrintButton sheet={`spickzettel-${tab}`} />
-            </Box>
           </Box>
 
           <HilfeSheet

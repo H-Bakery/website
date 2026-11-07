@@ -24,6 +24,12 @@ export const PAGE_MAX_WIDTH: Record<PageWidth, number | 'none'> = {
   full: 'none',
 }
 
+/**
+ * Mindestbreite des Titelblocks neben den Kopf-Aktionen. Passen Titel und
+ * Aktionen nicht nebeneinander, stehen die Aktionen darunter.
+ */
+export const HEADER_TITLE_MIN_WIDTH = '25rem'
+
 /** Abstand zwischen Abschnitten (MUI-Spacing-Einheiten, 8 px). */
 export const SECTION_GAP = { xs: 2, md: 3 } as const
 
@@ -73,13 +79,24 @@ export function PageHeader({
       <Box
         sx={{
           display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
-          alignItems: { xs: 'stretch', sm: 'flex-start' },
+          // Titel und Aktionen stehen nebeneinander - aber nur, solange der
+          // Titel dabei mindestens HEADER_TITLE_MIN_WIDTH behält. Sonst
+          // rutschen die Aktionen in die nächste Zeile (Tablet hochkant mit
+          // drei, vier Knöpfen), statt den Titel in Silben zu zerquetschen.
+          // Am Handy stehen sie immer darunter (volle Breite, s. u.).
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: 2,
         }}
       >
-        <Box sx={{ minWidth: 0 }}>
+        <Box
+          data-testid="page-title-block"
+          sx={{
+            minWidth: 0,
+            flex: `1 1 ${HEADER_TITLE_MIN_WIDTH}`,
+          }}
+        >
           <Box
             sx={{
               display: 'flex',
@@ -119,7 +136,10 @@ export function PageHeader({
               flexWrap: 'wrap',
               alignItems: 'center',
               gap: 1,
-              flexShrink: 0,
+              // nie breiter als die Zeile: steht der Block allein in einer
+              // Zeile, brechen seine Knöpfe um, statt überzustehen
+              flex: { xs: '1 1 100%', sm: '0 1 auto' },
+              maxWidth: '100%',
               // Am Handy füllen Knöpfe die Zeile (Daumen), ab sm natürliche Breite.
               '& > .MuiButton-root': { flexGrow: { xs: 1, sm: 0 } },
               '@media print': { display: 'none' },

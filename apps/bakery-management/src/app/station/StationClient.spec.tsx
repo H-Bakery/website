@@ -110,6 +110,13 @@ describe('Station', () => {
       expect(
         screen.getByText(/Station „Laden-Tablet“ ist eingerichtet/)
       ).toBeInTheDocument()
+      // Review r1: kein „Ihre“ neben „Wer bist du?“, und die Meldung des
+      // Inhabers steht nicht mehr über dem PIN-Block der nächsten Person.
+      expect(screen.queryByText(/Ihre persönliche Anmeldung/)).toBeNull()
+      fireEvent.click(screen.getByText('Test Verkauf'))
+      expect(
+        screen.queryByText(/Station „Laden-Tablet“ ist eingerichtet/)
+      ).toBeNull()
     })
   })
 
