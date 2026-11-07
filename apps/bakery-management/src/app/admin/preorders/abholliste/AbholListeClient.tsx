@@ -148,9 +148,11 @@ export const PRINT_COLUMNS: ReadonlyArray<{
   // UI-Runde 1: 34 mm trennten Kundennamen mitten im Wort („Lär-chenzweig“) -
   // auf Papier sucht man über den Namen. Die Spalte „Bezahlt“ gibt 3 mm ab.
   { key: 'who', widthMm: 40 },
+  // UI-Runde 2: „Bezahlt“ (☐ Rest 9,50 €) gibt 5 mm an die Artikel ab -
+  // fast jede Position brach sonst um. „n. a.“ braucht seine 11 mm.
   { key: 'items', widthMm: null },
   { key: 'sum', widthMm: 19 },
-  { key: 'paid', widthMm: 22 },
+  { key: 'paid', widthMm: 17 },
   { key: 'na', widthMm: 11 },
   { key: 'sign', widthMm: 30 },
 ]
@@ -188,7 +190,7 @@ export const ABHOL_PRINT_CSS = {
     },
     '.abholliste-print th, .abholliste-print td': {
       border: '0.5pt solid #555',
-      padding: '1.5mm',
+      padding: '1.2mm 1.5mm',
       verticalAlign: 'top',
       textAlign: 'left',
       overflowWrap: 'break-word',
@@ -1756,6 +1758,26 @@ export default function AbholListeClient({
                   </span>
                 </Tooltip>
               </Stack>
+              <ToggleButtonGroup
+                exclusive
+                size="small"
+                value={effectiveSort}
+                onChange={(_e, value: AbholSort | null) =>
+                  value && setSort(value)
+                }
+                aria-label="Sortierung"
+                // Im DOM vor der Suche, damit die Tab-Reihenfolge der
+                // Anzeige folgt (Zeile 1, dann Zeile 2 - UI-Runde 2).
+                sx={{
+                  display: filterDisplay,
+                  order: { xs: 0, sm: 3 },
+                  flex: '0 0 auto',
+                  '& .MuiToggleButton-root': { minHeight: 44, px: 2 },
+                }}
+              >
+                <ToggleButton value="zeit">Nach Uhrzeit</ToggleButton>
+                <ToggleButton value="name">Nach Name</ToggleButton>
+              </ToggleButtonGroup>
               {/* Ab Tablet (über `order`): Tag, Ort, Sortierung | Umbruch |
                   Suche, Schalter. Am Handy: Suche, Filter, dann der Rest. */}
               <Box
@@ -1799,24 +1821,6 @@ export default function AbholListeClient({
                   minWidth: 0,
                 }}
               />
-              <ToggleButtonGroup
-                exclusive
-                size="small"
-                value={effectiveSort}
-                onChange={(_e, value: AbholSort | null) =>
-                  value && setSort(value)
-                }
-                aria-label="Sortierung"
-                sx={{
-                  display: filterDisplay,
-                  order: { xs: 0, sm: 3 },
-                  flex: '0 0 auto',
-                  '& .MuiToggleButton-root': { minHeight: 44, px: 2 },
-                }}
-              >
-                <ToggleButton value="zeit">Nach Uhrzeit</ToggleButton>
-                <ToggleButton value="name">Nach Name</ToggleButton>
-              </ToggleButtonGroup>
               <FormControlLabel
                 sx={{
                   display: filterDisplay,
@@ -1921,7 +1925,9 @@ export default function AbholListeClient({
             <KeyFigures items={figures} dense aria-label="Stand der Übergabe" />
           )}
 
-          {loading && !day ? (
+          {/* Auch während der ersten Anfrage (Sammelstellen, noch kein Ort)
+              „wird geladen“ - nicht eine leere Fläche (UI-Runde 2). */}
+          {!day && !loadError && (loading || !place || isBusinessDate(date)) ? (
             <LoadingState label="Abholliste wird geladen …" />
           ) : (
             day &&

@@ -155,6 +155,41 @@ function rememberChannel(channel: PreorderChannel): void {
 }
 
 /** Touch-Chip: mindestens 44 px hoch. */
+/**
+ * Eine Chip-Gruppe (`role="radiogroup"`) ist **ein** Tab-Halt: nur die
+ * gewählte Chip (sonst die erste) ist per Tab erreichbar, die Pfeiltasten
+ * wählen die nächste bzw. vorige - wie bei echten Radio-Knöpfen. Vorher war
+ * jede Chip ein eigener Halt, 12 Halte bis zum Abholtag (UI-Runde 2).
+ */
+export function radioTabIndex(
+  checked: boolean,
+  isFirst: boolean,
+  anyChecked: boolean
+): number {
+  return checked || (!anyChecked && isFirst) ? 0 : -1
+}
+
+const RADIO_STEPS: Record<string, number> = {
+  ArrowRight: 1,
+  ArrowDown: 1,
+  ArrowLeft: -1,
+  ArrowUp: -1,
+}
+
+function radioGroupKeyDown(event: React.KeyboardEvent<HTMLElement>): void {
+  const step = RADIO_STEPS[event.key]
+  if (!step) return
+  const radios = Array.from(
+    event.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]')
+  )
+  const index = radios.indexOf(document.activeElement as HTMLElement)
+  if (index < 0) return
+  event.preventDefault()
+  const next = radios[(index + step + radios.length) % radios.length]
+  next.focus()
+  next.click()
+}
+
 const chipSx = {
   minHeight: 44,
   fontSize: '0.95rem',
@@ -1098,13 +1133,19 @@ export default function PreorderForm({
               <Box
                 role="radiogroup"
                 aria-label="Bestellweg"
+                onKeyDown={radioGroupKeyDown}
                 sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}
               >
-                {channelChoices.map((value) => (
+                {channelChoices.map((value, index) => (
                   <Chip
                     key={value}
                     role="radio"
                     aria-checked={channel === value}
+                    tabIndex={radioTabIndex(
+                      channel === value,
+                      index === 0,
+                      channelChoices.includes(channel)
+                    )}
                     label={CHANNEL_LABELS[value]}
                     color={channel === value ? 'primary' : 'default'}
                     variant={channel === value ? 'filled' : 'outlined'}
@@ -1119,11 +1160,13 @@ export default function PreorderForm({
               <Box
                 role="radiogroup"
                 aria-label="Abholort"
+                onKeyDown={radioGroupKeyDown}
                 sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}
               >
                 <Chip
                   role="radio"
                   aria-checked={!point}
+                  tabIndex={!point ? 0 : -1}
                   label="Im Laden"
                   color={!point ? 'primary' : 'default'}
                   variant={!point ? 'filled' : 'outlined'}
@@ -1135,6 +1178,7 @@ export default function PreorderForm({
                     key={p.id}
                     role="radio"
                     aria-checked={pickupPointId === p.id}
+                    tabIndex={pickupPointId === p.id ? 0 : -1}
                     label={p.name}
                     color={pickupPointId === p.id ? 'primary' : 'default'}
                     variant={pickupPointId === p.id ? 'filled' : 'outlined'}
@@ -1147,13 +1191,19 @@ export default function PreorderForm({
               <Box
                 role="radiogroup"
                 aria-label="Abholtag schnell wählen"
+                onKeyDown={radioGroupKeyDown}
                 sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 1.5 }}
               >
-                {dateChoices.map((date) => (
+                {dateChoices.map((date, index) => (
                   <Chip
                     key={date}
                     role="radio"
                     aria-checked={pickupDate === date}
+                    tabIndex={radioTabIndex(
+                      pickupDate === date,
+                      index === 0,
+                      dateChoices.includes(pickupDate)
+                    )}
                     label={formatShortDate(date)}
                     color={pickupDate === date ? 'primary' : 'default'}
                     variant={pickupDate === date ? 'filled' : 'outlined'}
@@ -1246,7 +1296,12 @@ export default function PreorderForm({
                       ),
                     }}
                     inputProps={{
-                      'aria-controls': 'preorder-product-results',
+                      // Nur, solange die Liste wirklich da ist - ein Verweis
+                      // auf eine fehlende ID ist für Screenreader ungültig.
+                      'aria-controls':
+                        query.trim() && results.length > 0
+                          ? 'preorder-product-results'
+                          : undefined,
                       'aria-autocomplete': 'list',
                     }}
                   />
@@ -1513,7 +1568,17 @@ export default function PreorderForm({
                       }}
                     >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography sx={{ fontWeight: 500 }} noWrap>
+                        {/* Umbrechen statt kürzen: am Handy standen sonst
+                            „Probebrötchen …“ zweimal untereinander, und man
+                            sah nicht, welche Zeile welche ist (UI-Runde 2). */}
+                        <Typography
+                          data-testid="preorder-line-name"
+                          sx={{
+                            fontWeight: 500,
+                            overflowWrap: 'break-word',
+                            hyphens: 'auto',
+                          }}
+                        >
                           {line.name}
                           {line.variant
                             ? ` (${variantLabel(line.variant)})`

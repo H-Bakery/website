@@ -239,7 +239,11 @@ export default function PickupPointFormClient({
       title="Sammelstelle"
       back={back}
       subtitle={
-        !point
+        // Bei einem Ladefehler wissen wir nicht, ob es eine gibt - kein
+        // „Keine Sammelstelle angelegt“ über „Keine Verbindung“ (UI-Runde 2).
+        loadError
+          ? undefined
+          : !point
           ? 'Keine Sammelstelle angelegt'
           : hasPickupAddress(point)
           ? `${point.name} · ${formatPickupAddress(point)}`

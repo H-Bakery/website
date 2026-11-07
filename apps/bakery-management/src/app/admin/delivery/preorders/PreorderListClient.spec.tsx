@@ -181,6 +181,43 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     )
   })
 
+  it('zeigt beim langsamen Laden „wird geladen“ statt einer leeren Fläche (UI-Runde 2)', async () => {
+    let resolvePoints: (points: PickupPoint[]) => void = () => undefined
+    mockFetchPickupPoints.mockReturnValue(
+      new Promise<PickupPoint[]>((resolve) => {
+        resolvePoints = resolve
+      })
+    )
+    let resolveDay: (day: PreorderDay) => void = () => undefined
+    mockDay.mockReturnValue(
+      new Promise<PreorderDay>((resolve) => {
+        resolveDay = resolve
+      })
+    )
+    renderAs()
+
+    // Erste Anfrage (Sammelstellen): Titel wie der Menüpunkt, ein
+    // Ladehinweis - und noch kein Tagwähler, der danach verrutscht.
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Sammelstelle Mörsbach' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Sammelstelle wird geladen …')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Liefertag')).not.toBeInTheDocument()
+
+    // Zweite Anfrage (Tag): Tagwähler steht, die Liste lädt sichtbar.
+    resolvePoints([POINT])
+    expect(
+      await screen.findByText('Vorbestellungen werden geladen …')
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Liefertag')).toBeInTheDocument()
+    expect(
+      screen.queryByText(/noch nichts vorbestellt/)
+    ).not.toBeInTheDocument()
+
+    resolveDay(dayWith([OPEN]))
+    expect(await screen.findByText('MO-2026-09-12-01')).toBeInTheDocument()
+  })
+
   it('warnt sichtbar, solange die Adresse der Sammelstelle fehlt', async () => {
     renderAs()
     expect(

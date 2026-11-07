@@ -209,6 +209,15 @@ export default function BackingListClient({
   const count = summary ? summary.count : day?.preorderCount ?? 0
   const pieces = pieceTotal(sums)
   const listHref = moersbachListHref(date, false, pointId)
+  // „Nichts vorbestellt“ nur sagen, wenn der Server das für genau diesen Tag
+  // und diese Sammelstelle geantwortet hat. Solange die Sammelstellen oder
+  // die Summen noch unterwegs sind, steht „wird geladen“ da - sonst hieße
+  // ein langsames WLAN am Samstag „nichts zu backen“ (UI-Runde 2).
+  const showLoading =
+    loading ||
+    (!error &&
+      !day &&
+      (!pointsLoaded || (Boolean(pointId) && isBusinessDate(date))))
 
   return (
     <Box className="backing-list-root">
@@ -287,12 +296,17 @@ export default function BackingListClient({
         {/* Das Blatt. Im Druck bewusst schwarz auf weiß: der Admin-Bereich ist
             dunkel, und ein dunkles Blatt kostet nur Toner. Die Farben stehen in
             `printStyles` - im `sx` erreichten sie die Tabellenzellen nicht. */}
-        {loading ? (
+        {showLoading ? (
           <LoadingState label="Backliste wird geladen …" />
         ) : !day || sums.length === 0 ? (
-          !error && (
+          !error &&
+          (day ? (
             <EmptyState title="Für diesen Tag ist nichts vorbestellt." />
-          )
+          ) : !pointId ? (
+            <EmptyState title="Es ist keine Sammelstelle angelegt." />
+          ) : (
+            <EmptyState title="Bitte einen gültigen Liefertag wählen." />
+          ))
         ) : (
           <PageSection
             title={`Menge je Produkt (${sums.length})`}
