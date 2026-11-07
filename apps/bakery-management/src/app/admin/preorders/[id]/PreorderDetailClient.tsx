@@ -1,41 +1,48 @@
 'use client'
 
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import NextLink from 'next/link'
 import {
   Alert,
   Box,
   Button,
-  CircularProgress,
+  Chip,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Grid,
+  IconButton,
   Link,
-  Paper,
+  ListItemIcon,
+  Menu,
+  MenuItem,
   Snackbar,
-  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import {
-  ArrowBack as BackIcon,
   CheckCircleOutline as PickedUpIcon,
   Edit as EditIcon,
   EventBusy as CancelIcon,
   Inventory2 as ReadyIcon,
+  MoreVert as MoreIcon,
   Payments as PaidIcon,
   Undo as ReopenIcon,
 } from '@mui/icons-material'
 import PreorderForm from '../PreorderForm'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
+import {
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../components/layout'
 import { useOptionalSession } from '../../../../lib/session'
 import { readPreorderEditDraft } from '../../../../lib/preorderDraft'
 import {
@@ -109,19 +116,151 @@ function formatTimestamp(iso: string | null): string {
 
 function Field({
   label,
+  wide = false,
   children,
 }: {
   label: string
+  /** Über beide Spalten (lange Notiz). */
+  wide?: boolean
   children: React.ReactNode
 }) {
   return (
-    <Box sx={{ mb: 1.5 }}>
-      <Typography variant="caption" color="text.secondary" display="block">
+    <Box sx={{ minWidth: 0, gridColumn: wide ? '1 / -1' : undefined }}>
+      <Typography
+        component="dt"
+        variant="body2"
+        color="text.secondary"
+        display="block"
+      >
         {label}
       </Typography>
-      <Box sx={{ typography: 'body1' }}>{children}</Box>
+      <Box
+        component="dd"
+        sx={{ typography: 'body1', m: 0, overflowWrap: 'anywhere' }}
+      >
+        {children}
+      </Box>
     </Box>
   )
+}
+
+export type DetailActionKey =
+  | 'edit'
+  | 'ready'
+  | 'pickedUp'
+  | 'paid'
+  | 'unpaid'
+  | 'refundCancelled'
+  | 'settle'
+  | 'reopen'
+  | 'uncancel'
+  | 'cancel'
+
+export interface DetailAction {
+  key: DetailActionKey
+  label: string
+  icon: React.ReactElement
+  /** Die eine Hauptaktion (contained). */
+  primary?: boolean
+  color?: 'primary' | 'success' | 'error'
+  /** Selten gebraucht: im „Weitere Aktionen“-Menü. */
+  inMenu?: boolean
+}
+
+/**
+ * Welche Aktionen die Ansicht zeigt - sichtbar höchstens der nächste
+ * Schritt, Bearbeiten und Kassieren, der Rest im ⋮-Menü (vorher bis zu
+ * sechs Knöpfe, am Handy drei Reihen). Genau eine Aktion ist `primary`:
+ * offenes Geld vor Bearbeiten vor Storno aufheben; „Auf „Offen“ zurück“
+ * ist es nie.
+ */
+export function detailActions(
+  preorder: Preorder,
+  editable: boolean
+): DetailAction[] {
+  const balance = preorder.paymentBalance ?? 0
+  const out: DetailAction[] = []
+  if (preorder.status === 'storniert') {
+    if (preorder.paid) {
+      out.push({
+        key: 'refundCancelled',
+        label: `Erstattet (${formatCurrency(
+          preorder.paidAmount ?? preorder.total
+        )})`,
+        icon: <PaidIcon />,
+        color: 'success',
+      })
+    }
+    out.push({
+      key: 'uncancel',
+      label: 'Storno aufheben',
+      icon: <ReopenIcon />,
+    })
+  } else {
+    if (preorder.paid && balance !== 0) {
+      out.push({
+        key: 'settle',
+        label:
+          balance > 0
+            ? `Rest kassiert (${formatCurrency(balance)})`
+            : `Erstattet (${formatCurrency(-balance)})`,
+        icon: <PaidIcon />,
+        color: 'success',
+      })
+    }
+    if (editable) {
+      out.push({ key: 'edit', label: 'Bearbeiten', icon: <EditIcon /> })
+    }
+    if (preorder.status === 'offen') {
+      out.push({
+        key: 'ready',
+        label: 'Bereitgestellt',
+        icon: <ReadyIcon />,
+      })
+    }
+    if (preorder.status === 'offen' || preorder.status === 'bereit') {
+      out.push({
+        key: 'pickedUp',
+        label: 'Abgeholt',
+        icon: <PickedUpIcon />,
+        color: 'success',
+        inMenu: preorder.status === 'offen',
+      })
+    }
+    out.push(
+      preorder.paid
+        ? {
+            key: 'unpaid',
+            label: 'Doch nicht bezahlt',
+            icon: <PaidIcon />,
+            inMenu: true,
+          }
+        : { key: 'paid', label: 'Bezahlt', icon: <PaidIcon /> }
+    )
+    if (preorder.status !== 'offen') {
+      out.push({
+        key: 'reopen',
+        label: 'Auf „Offen“ zurück',
+        icon: <ReopenIcon />,
+        inMenu: preorder.status === 'bereit',
+      })
+    }
+    if (isCancellable(preorder)) {
+      out.push({
+        key: 'cancel',
+        label: 'Stornieren',
+        icon: <CancelIcon />,
+        color: 'error',
+        inMenu: true,
+      })
+    }
+  }
+  // „Auf „Offen“ zurück“ nimmt eine Übergabe zurück - nie als gefüllter
+  // Hauptknopf, sonst sieht eine abgeholte Bestellung aus, als müsse man sie
+  // wieder öffnen.
+  const first = out.find((a) => !a.inMenu && a.key !== 'reopen')
+  if (first) first.primary = true
+  return out
 }
 
 /**
@@ -162,6 +301,7 @@ export default function PreorderDetailClient({
   // überschrieben. Steht als Hinweis, bis jemand ihn schließt.
   const [conflict, setConflict] = useState<string | null>(null)
   const [toast, setToast] = useState<string | null>(null)
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -274,38 +414,28 @@ export default function PreorderDetailClient({
 
   if (loading && !preorder) {
     return (
-      <Box
-        sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-        role="status"
-        aria-label="Vorbestellung wird geladen"
+      <PageLayout
+        width="narrow"
+        title="Vorbestellung"
+        back={{ href: backHref(null), label: backLabel }}
       >
-        <CircularProgress />
-      </Box>
+        <LoadingState label="Vorbestellung wird geladen …" />
+      </PageLayout>
     )
   }
 
   if (!preorder) {
     return (
-      <Box>
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-          sx={{ mb: 2 }}
-        >
-          {loadError ?? 'Diese Vorbestellung existiert nicht.'}
-        </Alert>
-        <Button
-          component={NextLink}
-          href={backHref(null)}
-          startIcon={<BackIcon />}
-        >
-          Zur Liste
-        </Button>
-      </Box>
+      <PageLayout
+        width="narrow"
+        title="Vorbestellung"
+        back={{ href: backHref(null), label: backLabel }}
+      >
+        <ErrorState
+          message={loadError ?? 'Diese Vorbestellung existiert nicht.'}
+          onRetry={load}
+        />
+      </PageLayout>
     )
   }
 
@@ -313,14 +443,10 @@ export default function PreorderDetailClient({
 
   if (editing && editable) {
     return (
-      <Box>
-        <Typography
-          variant="h4"
-          component="h1"
-          sx={{ fontSize: { xs: '1.5rem', md: '2rem' }, mb: 2 }}
-        >
-          {preorder.code} bearbeiten
-        </Typography>
+      <PageLayout
+        title={`${preorder.code} bearbeiten`}
+        subtitle={preorder.customerName}
+      >
         <PreorderForm
           preorder={preorder}
           onCancel={() => setEditing(false)}
@@ -335,86 +461,205 @@ export default function PreorderDetailClient({
             setEditing(false)
           }}
         />
-      </Box>
+      </PageLayout>
     )
   }
 
-  const actionSx = { minHeight: 48 }
+  const balance = preorder.paymentBalance ?? 0
+  const actions =
+    canWrite && !preorder.anonymizedAt ? detailActions(preorder, editable) : []
+  const visibleActions = actions.filter((a) => !a.inMenu)
+  const menuActions = actions.filter((a) => a.inMenu)
+  const run = (key: DetailActionKey) => {
+    setMenuAnchor(null)
+    switch (key) {
+      case 'edit':
+        setEditing(true)
+        break
+      case 'ready':
+        setStatus({ status: 'bereit' }, 'Als bereit markiert.')
+        break
+      case 'pickedUp':
+        setStatus({ status: 'abgeholt' }, 'Als abgeholt markiert.')
+        break
+      case 'paid':
+        setStatus({ paid: true }, 'Als bezahlt markiert.')
+        break
+      case 'unpaid':
+        setStatus({ paid: false }, 'Als nicht bezahlt markiert.')
+        break
+      case 'refundCancelled':
+        setStatus(
+          { paid: false },
+          'Erstattet - die Bestellung gilt nicht mehr als bezahlt.'
+        )
+        break
+      case 'settle':
+        setStatus(
+          { paid: true },
+          balance > 0
+            ? 'Rest kassiert - jetzt voll bezahlt.'
+            : 'Erstattet - der bezahlte Betrag stimmt wieder.'
+        )
+        break
+      case 'reopen':
+        setStatus({ status: 'offen' }, 'Wieder auf „Offen“ gesetzt.')
+        break
+      case 'uncancel':
+        setConfirmUncancel(true)
+        break
+      case 'cancel':
+        setConfirmCancel(true)
+        break
+    }
+  }
+
+  const fieldGrid = {
+    m: 0,
+    display: 'grid',
+    gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, minmax(0, 1fr))' },
+    columnGap: 3,
+    rowGap: 1.5,
+  } as const
 
   return (
-    <Box>
-      <Button
-        component={NextLink}
-        href={backHref(preorder)}
-        startIcon={<BackIcon />}
-        sx={{ mb: 1, minHeight: 44 }}
-      >
-        {backLabel}
-      </Button>
-
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={1.5}
-        sx={{ mb: 2 }}
-      >
-        <Typography
-          variant="h4"
-          component="h1"
-          sx={{
-            fontSize: { xs: '1.4rem', md: '2rem' },
-            fontFamily: 'monospace',
-            wordBreak: 'break-all',
-          }}
+    <PageLayout
+      width="narrow"
+      back={{ href: backHref(preorder), label: backLabel }}
+      title={
+        <Box
+          component="span"
+          sx={{ fontFamily: 'monospace', letterSpacing: '0.02em' }}
         >
           {preorder.code}
-        </Typography>
-        <PreorderStatusChip preorder={preorder} size="medium" />
-        {preorder.paid && (
-          <Typography color="success.main" sx={{ fontWeight: 600 }}>
-            bezahlt
-            {(preorder.paymentBalance ?? 0) !== 0 &&
-              preorder.paidAmount != null &&
-              ` (${formatCurrency(preorder.paidAmount)})`}
-          </Typography>
-        )}
-      </Stack>
-
+        </Box>
+      }
+      status={
+        <>
+          <PreorderStatusChip preorder={preorder} size="medium" />
+          {preorder.paid && (
+            <Chip
+              variant="outlined"
+              color="success"
+              label={
+                balance !== 0 && preorder.paidAmount != null
+                  ? `bezahlt (${formatCurrency(preorder.paidAmount)})`
+                  : 'bezahlt'
+              }
+              data-testid="paid-chip"
+            />
+          )}
+        </>
+      }
+      subtitle={`${formatDateWithWeekday(
+        preorder.pickupDate
+      )} · ${formatPickupPlace(preorder)}`}
+      actions={
+        actions.length > 0 ? (
+          <Box
+            role="group"
+            aria-label="Aktionen"
+            sx={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 1,
+              width: { xs: '100%', sm: 'auto' },
+              justifyContent: { sm: 'flex-end' },
+              '& > .MuiButton-root': { flexGrow: { xs: 1, sm: 0 } },
+            }}
+          >
+            {visibleActions.map((a) => (
+              <Button
+                key={a.key}
+                variant={a.primary ? 'contained' : 'outlined'}
+                color={a.color ?? 'primary'}
+                startIcon={a.icon}
+                onClick={() => run(a.key)}
+                disabled={busy}
+              >
+                {a.label}
+              </Button>
+            ))}
+            {menuActions.length > 0 && (
+              <>
+                <Tooltip title="Weitere Aktionen">
+                  <IconButton
+                    aria-label="Weitere Aktionen"
+                    aria-haspopup="menu"
+                    aria-controls={menuAnchor ? 'preorder-more' : undefined}
+                    aria-expanded={menuAnchor ? 'true' : undefined}
+                    onClick={(event) => setMenuAnchor(event.currentTarget)}
+                    disabled={busy}
+                    sx={{ border: 1, borderColor: 'divider' }}
+                  >
+                    <MoreIcon />
+                  </IconButton>
+                </Tooltip>
+                <Menu
+                  id="preorder-more"
+                  anchorEl={menuAnchor}
+                  open={Boolean(menuAnchor)}
+                  onClose={() => setMenuAnchor(null)}
+                  anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+                  transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+                >
+                  {menuActions.map((a) => (
+                    <MenuItem
+                      key={a.key}
+                      onClick={() => run(a.key)}
+                      sx={{
+                        minHeight: 48,
+                        color: a.color === 'error' ? 'error.main' : undefined,
+                      }}
+                    >
+                      <ListItemIcon
+                        sx={{
+                          color: a.color === 'error' ? 'error.main' : undefined,
+                        }}
+                      >
+                        {a.icon}
+                      </ListItemIcon>
+                      {a.label}
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </>
+            )}
+          </Box>
+        ) : undefined
+      }
+    >
       {/* W4-Verifikation Runde 2: bezahlt, aber der Betrag stimmt nicht mehr */}
-      {preorder.paid && (preorder.paymentBalance ?? 0) > 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }} data-testid="payment-balance">
+      {preorder.paid && balance > 0 && (
+        <Alert severity="warning" data-testid="payment-balance">
           Bereits bezahlt: {formatCurrency(preorder.paidAmount ?? 0)} - die
           Bestellung kostet jetzt {formatCurrency(preorder.total)}.{' '}
           {preorder.status === 'abgeholt' ? (
             // W4-verify r3: schon übergeben - „bei der Abholung“ ist vorbei.
             <>
               Ohne den Rest übergeben:{' '}
-              <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
-              stehen noch aus.
+              <strong>{formatCurrency(balance)}</strong> stehen noch aus.
               {canWrite ? ' Wenn das Geld da ist: „Rest kassiert“ tippen.' : ''}
             </>
           ) : (
             <>
-              Bei der Abholung noch{' '}
-              <strong>{formatCurrency(preorder.paymentBalance ?? 0)}</strong>{' '}
+              Bei der Abholung noch <strong>{formatCurrency(balance)}</strong>{' '}
               kassieren.
             </>
           )}
         </Alert>
       )}
-      {preorder.paid && (preorder.paymentBalance ?? 0) < 0 && (
-        <Alert severity="warning" sx={{ mb: 2 }} data-testid="payment-balance">
+      {preorder.paid && balance < 0 && (
+        <Alert severity="warning" data-testid="payment-balance">
           {preorder.status === 'storniert'
             ? `Storniert, aber bereits bezahlt: ${formatCurrency(
-                -(preorder.paymentBalance ?? 0)
+                -balance
               )} an die Kundschaft zurückgeben.`
             : `Bereits bezahlt: ${formatCurrency(
                 preorder.paidAmount ?? 0
               )} - die Bestellung kostet jetzt ${formatCurrency(
                 preorder.total
-              )}. ${formatCurrency(
-                -(preorder.paymentBalance ?? 0)
-              )} zurückgeben.`}{' '}
+              )}. ${formatCurrency(-balance)} zurückgeben.`}{' '}
           {canWrite
             ? 'Danach „Erstattet“ tippen.'
             : preorder.status === 'storniert'
@@ -424,21 +669,14 @@ export default function PreorderDetailClient({
       )}
 
       {preorder.anonymizedAt && (
-        <Alert severity="info" sx={{ mb: 2 }}>
+        <Alert severity="info">
           Diese Vorbestellung ist anonymisiert (90 Tage nach dem Abholtag) und
           lässt sich nicht mehr ändern.
-        </Alert>
-      )}
-      {preorder.status === 'abgeholt' && canWrite && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Abgeholt - Positionen, Tag und Ort bleiben so stehen. Für eine
-          Korrektur zuerst auf „Offen“ zurücksetzen.
         </Alert>
       )}
       {conflict && (
         <Alert
           severity="warning"
-          sx={{ mb: 2 }}
           onClose={() => setConflict(null)}
           data-testid="preorder-conflict"
         >
@@ -446,269 +684,123 @@ export default function PreorderDetailClient({
         </Alert>
       )}
       {actionError && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          onClose={() => setActionError(null)}
-        >
+        <Alert severity="error" onClose={() => setActionError(null)}>
           {actionError}
         </Alert>
       )}
 
-      {canWrite && !preorder.anonymizedAt && (
-        <Stack
-          direction="row"
-          flexWrap="wrap"
-          useFlexGap
-          spacing={1}
-          sx={{ mb: 2 }}
-          role="group"
-          aria-label="Aktionen"
-        >
-          {editable && (
-            <Button
-              variant="contained"
-              startIcon={<EditIcon />}
-              onClick={() => setEditing(true)}
-              disabled={busy}
-              sx={actionSx}
-            >
-              Bearbeiten
-            </Button>
-          )}
-          {preorder.status === 'offen' && (
-            <Button
-              variant="outlined"
-              startIcon={<ReadyIcon />}
-              onClick={() =>
-                setStatus({ status: 'bereit' }, 'Als bereit markiert.')
-              }
-              disabled={busy}
-              sx={actionSx}
-            >
-              Bereitgestellt
-            </Button>
-          )}
-          {(preorder.status === 'offen' || preorder.status === 'bereit') && (
-            <Button
-              variant="outlined"
-              color="success"
-              startIcon={<PickedUpIcon />}
-              onClick={() =>
-                setStatus({ status: 'abgeholt' }, 'Als abgeholt markiert.')
-              }
-              disabled={busy}
-              sx={actionSx}
-            >
-              Abgeholt
-            </Button>
-          )}
-          {preorder.status !== 'storniert' && (
-            <Button
-              variant="outlined"
-              startIcon={<PaidIcon />}
-              onClick={() =>
-                setStatus(
-                  { paid: !preorder.paid },
-                  preorder.paid
-                    ? 'Als nicht bezahlt markiert.'
-                    : 'Als bezahlt markiert.'
-                )
-              }
-              disabled={busy}
-              sx={actionSx}
-            >
-              {preorder.paid ? 'Doch nicht bezahlt' : 'Bezahlt'}
-            </Button>
-          )}
-          {preorder.status === 'storniert' && preorder.paid && canWrite && (
-            <Button
-              variant="contained"
-              color="success"
-              startIcon={<PaidIcon />}
-              onClick={() =>
-                setStatus(
-                  { paid: false },
-                  'Erstattet - die Bestellung gilt nicht mehr als bezahlt.'
-                )
-              }
-              disabled={busy}
-              sx={actionSx}
-            >
-              {`Erstattet (${formatCurrency(
-                preorder.paidAmount ?? preorder.total
-              )})`}
-            </Button>
-          )}
-          {preorder.status !== 'storniert' &&
-            preorder.paid &&
-            (preorder.paymentBalance ?? 0) !== 0 && (
-              <Button
-                variant="contained"
-                color="success"
-                startIcon={<PaidIcon />}
-                onClick={() =>
-                  setStatus(
-                    { paid: true },
-                    (preorder.paymentBalance ?? 0) > 0
-                      ? 'Rest kassiert - jetzt voll bezahlt.'
-                      : 'Erstattet - der bezahlte Betrag stimmt wieder.'
-                  )
-                }
-                disabled={busy}
-                sx={actionSx}
+      <PageSection title="Kunde und Abholung">
+        <Box component="dl" sx={fieldGrid}>
+          <Field label="Kunde">{preorder.customerName || '–'}</Field>
+          <Field label="Telefon">
+            {preorder.customerPhone ? (
+              <Link
+                href={`tel:${preorder.customerPhone.replace(/[^\d+]/g, '')}`}
+                sx={TOUCH_LINK_STYLE}
               >
-                {(preorder.paymentBalance ?? 0) > 0
-                  ? `Rest kassiert (${formatCurrency(
-                      preorder.paymentBalance ?? 0
-                    )})`
-                  : `Erstattet (${formatCurrency(
-                      -(preorder.paymentBalance ?? 0)
-                    )})`}
-              </Button>
+                {preorder.customerPhone}
+              </Link>
+            ) : (
+              '–'
             )}
-          {preorder.status !== 'offen' && preorder.status !== 'storniert' && (
-            <Button
-              variant="outlined"
-              startIcon={<ReopenIcon />}
-              onClick={() =>
-                setStatus({ status: 'offen' }, 'Wieder auf „Offen“ gesetzt.')
-              }
-              disabled={busy}
-              sx={actionSx}
-            >
-              Auf „Offen“ zurück
-            </Button>
+          </Field>
+          <Field label="Abholung">
+            {formatDateWithWeekday(preorder.pickupDate)} ·{' '}
+            {formatPickupPlace(preorder)}
+          </Field>
+          <Field label="Bestellweg">{CHANNEL_LABELS[preorder.channel]}</Field>
+          {preorder.afterDeadline && (
+            <Field label="Bestellschluss">Nach Bestellschluss erfasst</Field>
           )}
-          {preorder.status === 'storniert' && (
-            <Button
-              variant="outlined"
-              startIcon={<ReopenIcon />}
-              onClick={() => setConfirmUncancel(true)}
-              disabled={busy}
-              sx={actionSx}
-            >
-              Storno aufheben
-            </Button>
+          {preorder.note && (
+            <Field label="Notiz" wide>
+              {preorder.note}
+            </Field>
           )}
-          {isCancellable(preorder) && (
-            <Button
-              variant="outlined"
-              color="error"
-              startIcon={<CancelIcon />}
-              onClick={() => setConfirmCancel(true)}
-              disabled={busy}
-              sx={actionSx}
-            >
-              Stornieren
-            </Button>
+          <Field label="Erfasst">{formatTimestamp(preorder.createdAt)}</Field>
+          {preorder.pickedUpAt && (
+            <Field label="Abgeholt">
+              {formatTimestamp(preorder.pickedUpAt)}
+            </Field>
           )}
-        </Stack>
-      )}
+          {preorder.notCollectedAt && (
+            <Field label="Nicht abgeholt seit">
+              {formatTimestamp(preorder.notCollectedAt)}
+            </Field>
+          )}
+        </Box>
+      </PageSection>
 
-      <Grid container spacing={2}>
-        <Grid item xs={12} md={5}>
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Field label="Kunde">{preorder.customerName || '–'}</Field>
-            <Field label="Telefon">
-              {preorder.customerPhone ? (
-                <Link
-                  href={`tel:${preorder.customerPhone.replace(/[^\d+]/g, '')}`}
-                  sx={TOUCH_LINK_STYLE}
-                >
-                  {preorder.customerPhone}
-                </Link>
-              ) : (
-                '–'
-              )}
-            </Field>
-            <Field label="Abholung">
-              {formatDateWithWeekday(preorder.pickupDate)} ·{' '}
-              {formatPickupPlace(preorder)}
-            </Field>
-            <Field label="Bestellweg">{CHANNEL_LABELS[preorder.channel]}</Field>
-            {preorder.afterDeadline && (
-              <Field label="Bestellschluss">Nach Bestellschluss erfasst</Field>
-            )}
-            {preorder.note && <Field label="Notiz">{preorder.note}</Field>}
-            <Field label="Erfasst">{formatTimestamp(preorder.createdAt)}</Field>
-            {preorder.pickedUpAt && (
-              <Field label="Abgeholt">
-                {formatTimestamp(preorder.pickedUpAt)}
-              </Field>
-            )}
-            {preorder.notCollectedAt && (
-              <Field label="Nicht abgeholt seit">
-                {formatTimestamp(preorder.notCollectedAt)}
-              </Field>
-            )}
-          </Paper>
-        </Grid>
-        <Grid item xs={12} md={7}>
-          <TableContainer component={Paper} variant="outlined">
-            <Table
-              size="small"
-              aria-label="Positionen"
-              sx={{
-                // passt am Telefon (390 px) ohne seitliches Scrollen
-                '& td, & th': { px: { xs: 1, sm: 2 } },
-                '& td:not(:first-of-type), & th:not(:first-of-type)': {
-                  whiteSpace: 'nowrap',
-                },
-              }}
-            >
-              <TableHead>
-                <TableRow>
-                  <TableCell>Artikel</TableCell>
-                  <TableCell align="right">Menge</TableCell>
-                  <TableCell align="right">Preis</TableCell>
-                  <TableCell align="right">Summe</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {preorder.items.map((item) => (
-                  <TableRow key={`${item.productId}|${item.variant}`}>
-                    <TableCell>
-                      {item.name}
-                      {item.variant && (
-                        <Typography
-                          component="span"
-                          color="text.secondary"
-                          sx={{ ml: 0.5 }}
-                        >
-                          ({variantLabel(item.variant)})
-                        </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell align="right">{item.quantity}</TableCell>
-                    <TableCell align="right">
-                      {formatCurrency(item.unitPrice)}
-                    </TableCell>
-                    <TableCell align="right">
-                      {formatCurrency(item.lineTotal)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                <TableRow>
-                  <TableCell colSpan={3} sx={{ fontWeight: 600 }}>
-                    Gesamt
-                  </TableCell>
-                  <TableCell align="right" sx={{ fontWeight: 600 }}>
-                    {formatCurrency(preorder.total)}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </TableContainer>
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ mt: 1, display: 'block' }}
+      <PageSection
+        title={`Artikel (${preorder.items.length})`}
+        description={
+          preorder.status === 'abgeholt' && canWrite
+            ? 'Abgeholt - Positionen, Tag und Ort bleiben so stehen. Für eine Korrektur zuerst auf „Offen“ zurücksetzen.'
+            : 'Preise wie beim Bestellen festgehalten.'
+        }
+        disablePadding
+      >
+        <TableContainer>
+          <Table
+            size="small"
+            aria-label="Positionen"
+            sx={{
+              // passt am Telefon (390 px) ohne seitliches Scrollen
+              '& td, & th': { px: { xs: 1, sm: 2 } },
+              '& td:first-of-type, & th:first-of-type': {
+                pl: { xs: 2, md: 3 },
+              },
+              '& td:last-of-type, & th:last-of-type': { pr: { xs: 2, md: 3 } },
+              '& td:not(:first-of-type), & th:not(:first-of-type)': {
+                whiteSpace: 'nowrap',
+                fontVariantNumeric: 'tabular-nums',
+              },
+            }}
           >
-            Preise wie beim Bestellen festgehalten.
-          </Typography>
-        </Grid>
-      </Grid>
+            <TableHead>
+              <TableRow>
+                <TableCell>Artikel</TableCell>
+                <TableCell align="right">Menge</TableCell>
+                <TableCell align="right">Preis</TableCell>
+                <TableCell align="right">Summe</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {preorder.items.map((item) => (
+                <TableRow key={`${item.productId}|${item.variant}`}>
+                  <TableCell>
+                    {item.name}
+                    {item.variant && (
+                      <Typography
+                        component="span"
+                        color="text.secondary"
+                        sx={{ ml: 0.5 }}
+                      >
+                        ({variantLabel(item.variant)})
+                      </Typography>
+                    )}
+                  </TableCell>
+                  <TableCell align="right">{item.quantity}</TableCell>
+                  <TableCell align="right">
+                    {formatCurrency(item.unitPrice)}
+                  </TableCell>
+                  <TableCell align="right">
+                    {formatCurrency(item.lineTotal)}
+                  </TableCell>
+                </TableRow>
+              ))}
+              <TableRow sx={{ '& td': { borderBottom: 0 } }}>
+                <TableCell colSpan={3} sx={{ fontWeight: 600 }}>
+                  Gesamt
+                </TableCell>
+                <TableCell align="right" sx={{ fontWeight: 600 }}>
+                  {formatCurrency(preorder.total)}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </PageSection>
 
       <Dialog
         open={confirmCancel}
@@ -810,6 +902,6 @@ export default function PreorderDetailClient({
           {toast}
         </Alert>
       </Snackbar>
-    </Box>
+    </PageLayout>
   )
 }
