@@ -1,12 +1,18 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { Alert, Box, Button, Container, LinearProgress } from '@mui/material'
 import {
   fetchManagementProduct,
   type ManagementProduct,
 } from '../../../../lib/products'
 import ProductEditClient from './ProductEditClient'
+import {
+  ErrorState,
+  LoadingState,
+  PageLayout,
+} from '../../../../components/layout'
+
+const BACK = { href: '/admin/products', label: 'Alle Produkte' }
 
 type State =
   | { phase: 'loading' }
@@ -49,25 +55,16 @@ export default function ProductEditLoader({
 
   if (state.phase === 'loading') {
     return (
-      <Box sx={{ py: 4 }}>
-        <LinearProgress aria-label="Produkt wird geladen" />
-      </Box>
+      <PageLayout title="Produkt" back={BACK} width="narrow">
+        <LoadingState label="Produkt wird geladen …" />
+      </PageLayout>
     )
   }
   if (state.phase === 'error') {
     return (
-      <Container sx={{ mt: 4 }}>
-        <Alert
-          severity="error"
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {state.message}
-        </Alert>
-      </Container>
+      <PageLayout title="Produkt" back={BACK} width="narrow">
+        <ErrorState message={state.message} onRetry={load} />
+      </PageLayout>
     )
   }
   return (

@@ -1,12 +1,16 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react'
-import { Alert, Box, Button, LinearProgress } from '@mui/material'
 import {
   fetchManagementProducts,
   type ManagementProduct,
 } from '../../../lib/products'
-import ProductListClient from './ProductListClient'
+import ProductListClient, { PRODUCTS_TITLE } from './ProductListClient'
+import {
+  ErrorState,
+  LoadingState,
+  PageLayout,
+} from '../../../components/layout'
 
 type State =
   | { phase: 'loading' }
@@ -42,23 +46,16 @@ export default function ProductsPageClient() {
 
   if (state.phase === 'loading') {
     return (
-      <Box sx={{ py: 4 }}>
-        <LinearProgress aria-label="Produkte werden geladen" />
-      </Box>
+      <PageLayout title={PRODUCTS_TITLE}>
+        <LoadingState label="Produkte werden geladen …" />
+      </PageLayout>
     )
   }
   if (state.phase === 'error') {
     return (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={load}>
-            Erneut versuchen
-          </Button>
-        }
-      >
-        {state.message}
-      </Alert>
+      <PageLayout title={PRODUCTS_TITLE}>
+        <ErrorState message={state.message} onRetry={load} />
+      </PageLayout>
     )
   }
   return <ProductListClient products={state.products} />
