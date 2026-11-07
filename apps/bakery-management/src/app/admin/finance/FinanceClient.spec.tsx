@@ -330,6 +330,36 @@ describe('FinanceClient', () => {
     await waitFor(() => expect(screen.queryByText('Lädt …')).toBeNull())
   })
 
+  it('zeigt den gewählten Zeitraum in Von/Bis, auch ohne Filter', async () => {
+    // Regression: beide Felder zeigten nur ihre Beschriftung als
+    // Platzhalter - es sah aus, als sei nichts gewählt.
+    apiClient.get.mockResolvedValue({
+      success: true,
+      status: 'ok',
+      data: syntheticSummary(),
+    })
+    renderWithTheme(<FinanceClient />)
+    await screen.findByText('Einnahmen')
+    expect(screen.getByLabelText('Von')).toHaveTextContent('Januar 2026')
+    expect(screen.getByLabelText('Bis')).toHaveTextContent('Februar 2026')
+    expect(
+      screen.getByRole('button', { name: 'Gesamter Zeitraum' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    // Schnellwahl wie auf den anderen Zahlen-Seiten
+    const last = screen.getByRole('button', { name: 'Letzter Monat' })
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { fireEvent } = require('@testing-library/react')
+    fireEvent.click(last)
+    await waitFor(() =>
+      expect(apiClient.get).toHaveBeenCalledWith('/api/finance/months', {
+        from: '2026-02',
+        to: undefined,
+      })
+    )
+    expect(last).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Von')).toHaveTextContent('Februar 2026')
+  })
+
   it('wartet mit dem Laden, bis die Anmeldung geprüft ist', () => {
     authState.isLoading = true
     renderWithTheme(<FinanceClient />)

@@ -2,7 +2,7 @@ import React from 'react'
 import { act, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import RevenueAnalyticsPage from './page'
+import RevenueAnalyticsPage from './RevenueAnalyticsClient'
 
 // Das Ranking-Tabellenmodul zieht @mui/x-data-grid nach, das in jsdom an
 // TextEncoder scheitert; die Tabelle ist hier nicht Gegenstand des Tests.
@@ -34,6 +34,36 @@ describe('RevenueAnalyticsPage', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     analyticsService.getRevenueTrendsWithSource.mockReset()
+  })
+
+  it('rechnet „30 Tage“ bis zum letzten Bericht, wie das Berichtsarchiv', async () => {
+    // Regression: Analysen endeten an „heute“ (ohne Bericht), das Archiv am
+    // letzten Bericht - dieselbe Schnellwahl ergab zwei Umsätze. Vorgabe
+    // war hier außerdem 90 statt 30 Tage.
+    analyticsService.getRevenueTrendsWithSource.mockResolvedValue({
+      data: revenue,
+      available: true,
+    })
+    renderWithTheme(
+      <RevenueAnalyticsPage
+        latestReportDate="2026-03-06"
+        earliestReportDate="2026-01-02"
+      />
+    )
+    await waitFor(() =>
+      expect(analyticsService.getRevenueTrendsWithSource).toHaveBeenCalledWith(
+        expect.objectContaining({
+          startDate: '2026-02-05',
+          endDate: '2026-03-06',
+        })
+      )
+    )
+    expect(
+      await screen.findByRole('button', { name: '30 Tage' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      screen.getByText('Kassenberichte vorhanden vom 02.01.2026 bis 06.03.2026')
+    ).toBeInTheDocument()
   })
 
   it('zeigt gar keine Zahlen, wenn die API nicht antwortet', async () => {

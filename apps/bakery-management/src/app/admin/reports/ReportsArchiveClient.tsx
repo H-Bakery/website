@@ -35,6 +35,7 @@ import {
 import DateRangeFilter from '../../../components/analytics/DateRangeFilter'
 import {
   formatIsoRange,
+  reportArchiveNote,
   standardPresets,
 } from '../../../components/analytics/dateRange'
 
@@ -335,13 +336,7 @@ export default function ReportsArchiveClient({
         onApply={navigate}
         presets={standardPresets(anchor)}
         min={earliestDate ?? undefined}
-        note={
-          latestDate && earliestDate
-            ? `Berichte vorhanden vom ${formatReportDate(
-                earliestDate
-              )} bis ${formatReportDate(latestDate)}`
-            : undefined
-        }
+        note={reportArchiveNote(earliestDate, latestDate)}
       />
 
       {summary.status === 'ok' ? (

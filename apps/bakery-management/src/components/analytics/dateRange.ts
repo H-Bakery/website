@@ -60,18 +60,80 @@ export interface RangePreset {
 }
 
 /**
- * Die üblichen Zeiträume bis `anchor` (jüngster Tag mit Daten oder heute):
- * 7 Tage, 30 Tage, dieser Monat (bis `anchor`), Vormonat. Beide Grenzen
- * zählen mit - „7 Tage“ sind sieben Kalendertage.
+ * Die eine Regel für alle Zahlen-Seiten, die aus den Kassenberichten
+ * rechnen: Zeiträume enden am **jüngsten Tag mit Kassenbericht**, nicht an
+ * „heute“. Heute hat fast nie einen Bericht (der Tagesabschluss kommt am
+ * Nachmittag), und „30 Tage“ bis heute zählte dann nur 29 Tage mit - die
+ * Kassenberichte und die Analysen zeigten für dieselbe Schnellwahl
+ * verschiedene Umsätze. Ohne Bericht (leeres Archiv) gilt heute.
+ */
+export function reportAnchor(
+  latestReportDate: string | null | undefined,
+  today: string = localIsoDate()
+): string {
+  if (!latestReportDate) return today
+  return latestReportDate < today ? latestReportDate : today
+}
+
+/** Was die Server-Hülle einer Analyse-Seite an den Client gibt. */
+export interface AnalyticsRangeProps {
+  /** Jüngster Tag mit Kassenbericht (`null`: keine Berichte). */
+  latestReportDate?: string | null
+  /** Ältester Tag mit Kassenbericht. */
+  earliestReportDate?: string | null
+}
+
+/**
+ * Standard-Zeitraum der Kassen-Seiten (Kassenberichte, Analysen): 30 Tage
+ * bis `anchor`, beide Grenzen eingeschlossen - entspricht der Schnellwahl
+ * „30 Tage“.
+ */
+export function defaultReportRange(anchor: string): {
+  from: string
+  to: string
+} {
+  return { from: addDaysIso(anchor, -29), to: anchor }
+}
+
+/**
+ * Die üblichen Zeiträume bis `anchor` (jüngster Tag mit Bericht, siehe
+ * `reportAnchor`): 7, 30 und 90 Tage, dieser Monat (bis `anchor`), Vormonat.
+ * Beide Grenzen zählen mit - „7 Tage“ sind sieben Kalendertage. Dieselbe
+ * Liste auf Kassenberichten und allen Analysen: gleiches Label, gleicher
+ * Zeitraum, gleiche Summe.
  */
 export function standardPresets(anchor: string): RangePreset[] {
   const prevStart = previousMonthStartIso(anchor)
   return [
     { label: '7 Tage', from: addDaysIso(anchor, -6), to: anchor },
     { label: '30 Tage', from: addDaysIso(anchor, -29), to: anchor },
+    { label: '90 Tage', from: addDaysIso(anchor, -89), to: anchor },
     { label: 'Dieser Monat', from: monthStartIso(anchor), to: anchor },
     { label: 'Letzter Monat', from: prevStart, to: monthEndIso(prevStart) },
   ]
+}
+
+/**
+ * Zeiträume der Seiten, die Wochentage vergleichen (Tagesziel,
+ * Rest-Auswertung): ganze Wochen, damit jeder Wochentag gleich oft vorkommt.
+ */
+export function weekPresets(anchor: string): RangePreset[] {
+  return [
+    { label: '7 Tage', from: addDaysIso(anchor, -6), to: anchor },
+    { label: '4 Wochen', from: addDaysIso(anchor, -27), to: anchor },
+    { label: '12 Wochen', from: addDaysIso(anchor, -83), to: anchor },
+  ]
+}
+
+/** Hinweis unter dem Zeitraum: welche Berichte es überhaupt gibt. */
+export function reportArchiveNote(
+  earliest: string | null | undefined,
+  latest: string | null | undefined
+): string | undefined {
+  if (!earliest || !latest) return undefined
+  return `Kassenberichte vorhanden vom ${formatIsoDate(
+    earliest
+  )} bis ${formatIsoDate(latest)}`
 }
 
 /** `2026-11-06` → `06.11.2026` */

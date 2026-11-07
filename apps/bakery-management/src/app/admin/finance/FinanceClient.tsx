@@ -56,11 +56,13 @@ import type {
   FinanceSummaryResponse,
 } from '../../../lib/financeTypes'
 import {
+  EmptyState,
   KeyFigures,
   LoadingState,
   PageLayout,
   PageSection,
 } from '../../../components/layout'
+import { PresetButtons } from '../../../components/analytics/DateRangeFilter'
 
 // ---------------------------------------------------------------------------
 // Formatierung
@@ -407,11 +409,17 @@ function AccessNotice({
   )
 }
 
+/**
+ * Monatsauswahl. `value` `''` heißt „offenes Ende“ (erster bzw. letzter Monat
+ * mit Daten) - angezeigt wird dann genau dieser Monat, nicht ein leeres Feld
+ * mit der Beschriftung als Platzhalter (vorher sah der Filter aus, als sei
+ * nichts gewählt, obwohl drei Monate zu sehen waren).
+ */
 function MonthSelect({
   id,
   label,
   value,
-  empty,
+  boundary,
   months,
   isDisabled,
   onChange,
@@ -419,29 +427,65 @@ function MonthSelect({
   id: string
   label: string
   value: string
-  empty: string
+  /** Monat, für den `''` steht. */
+  boundary: string
   months: string[]
   isDisabled: (month: string) => boolean
   onChange: (month: string) => void
 }) {
+  const shown = value || boundary
   return (
-    <FormControl size="small" sx={{ flex: '1 1 9rem', maxWidth: { sm: 200 } }}>
-      <InputLabel id={id}>{label}</InputLabel>
+    <FormControl
+      size="small"
+      sx={{ flex: '1 1 9.5rem', minWidth: 0, maxWidth: { sm: 200 } }}
+    >
+      <InputLabel id={id} shrink>
+        {label}
+      </InputLabel>
       <Select
         labelId={id}
         label={label}
         value={value}
+        displayEmpty
+        notched
+        renderValue={() => (shown ? formatMonthLong(shown) : '–')}
         onChange={(e) => onChange(String(e.target.value))}
       >
-        <MenuItem value="">{empty}</MenuItem>
         {months.map((m) => (
-          <MenuItem key={m} value={m} disabled={isDisabled(m)}>
+          <MenuItem
+            key={m}
+            value={m === boundary ? '' : m}
+            disabled={isDisabled(m)}
+          >
             {formatMonthLong(m)}
           </MenuItem>
         ))}
       </Select>
     </FormControl>
   )
+}
+
+/**
+ * Schnellwahl der Finanzen: die jüngsten n Monate mit Daten. Nur Längen,
+ * die kürzer als der ganze Zeitraum sind - sonst stünden zwei Knöpfe für
+ * dasselbe da.
+ */
+export function financePresets(
+  months: string[]
+): { label: string; from: string; to: string }[] {
+  const presets: { label: string; from: string; to: string }[] = []
+  const n = months.length
+  const lengths: [number, string][] = [
+    [1, 'Letzter Monat'],
+    [3, '3 Monate'],
+    [6, '6 Monate'],
+    [12, '12 Monate'],
+  ]
+  for (const [len, label] of lengths) {
+    if (len < n) presets.push({ label, from: months[n - len], to: '' })
+  }
+  presets.push({ label: 'Gesamter Zeitraum', from: '', to: '' })
+  return presets
 }
 
 // ---------------------------------------------------------------------------
@@ -566,12 +610,10 @@ export default function FinanceClient() {
   if (state.phase === 'no-data') {
     return (
       <PageLayout title={TITLE} subtitle={SUBTITLE}>
-        <Alert severity="info">
-          <AlertTitle>Keine Finanzdaten vorhanden</AlertTitle>
-          {state.reason} Die Daten entstehen im hq-Repo unter data/finance
-          (Import der Kontoauszüge); es werden bewusst keine Beispielwerte
-          angezeigt.
-        </Alert>
+        <EmptyState
+          title="Keine Finanzdaten vorhanden"
+          description={`${state.reason} Die Daten entstehen im hq-Repo unter data/finance (Import der Kontoauszüge); es werden bewusst keine Beispielwerte angezeigt.`}
+        />
       </PageLayout>
     )
   }
@@ -583,7 +625,8 @@ export default function FinanceClient() {
     costs: summary.derived.cost_structure,
   }
   const { overview } = view
-  const filtered = Boolean(from || to)
+  const firstMonth = availableMonths[0] ?? ''
+  const lastMonth = availableMonths[availableMonths.length - 1] ?? ''
 
   return (
     <PageLayout
@@ -614,36 +657,37 @@ export default function FinanceClient() {
             id="finance-from-label"
             label="Von"
             value={from}
-            empty="Anfang"
+            boundary={firstMonth}
             months={availableMonths}
-            isDisabled={(m) => Boolean(to) && m > to}
-            onChange={setFrom}
+            isDisabled={(m) => m > (to || lastMonth)}
+            onChange={(m) => setFrom(m === firstMonth ? '' : m)}
           />
           <MonthSelect
             id="finance-to-label"
             label="Bis"
             value={to}
-            empty="Ende"
+            boundary={lastMonth}
             months={availableMonths}
-            isDisabled={(m) => Boolean(from) && m < from}
-            onChange={setTo}
+            isDisabled={(m) => m < (from || firstMonth)}
+            onChange={(m) => setTo(m === lastMonth ? '' : m)}
           />
-          {filtered && (
-            <Button
-              variant="outlined"
-              onClick={() => {
-                setFrom('')
-                setTo('')
-              }}
-            >
-              Gesamter Zeitraum
-            </Button>
-          )}
           {rangeLoading && (
             <Typography variant="body2" color="text.secondary" role="status">
               Lädt …
             </Typography>
           )}
+        </Box>
+        <Box sx={{ mt: 1.5 }}>
+          <PresetButtons
+            presets={financePresets(availableMonths).map((p) => ({
+              label: p.label,
+              active: p.from === from && p.to === to,
+              onClick: () => {
+                setFrom(p.from)
+                setTo(p.to)
+              },
+            }))}
+          />
         </Box>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
           Stand: {formatTimestamp(summary.generated_at)} · Daten{' '}

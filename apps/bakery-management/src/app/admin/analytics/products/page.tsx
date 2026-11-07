@@ -1,191 +1,21 @@
-'use client'
-import React, { useState } from 'react'
-import { Alert, Button, Typography } from '@mui/material'
-import { analyticsService } from '@bakery/shared/data-access'
-import type { ProductAnalyticsPerformance } from '@bakery/shared/types'
-import OwnerOnlyNotice from '../../../../components/analytics/OwnerOnlyNotice'
-import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
-import ProductRanking from '../../../../components/analytics/ProductRanking'
-import useLatestRequest from '../../../../components/analytics/useLatestRequest'
-import {
-  ANALYTICS_MAX_DAYS,
-  addDaysIso,
-  localIsoDate,
-  standardPresets,
-} from '../../../../components/analytics/dateRange'
-import {
-  EmptyState,
-  KeyFigures,
-  LoadingState,
-  PageLayout,
-  PageSection,
-} from '../../../../components/layout'
-import { formatEuro } from '../../../../lib/reportFormat'
+import React from 'react'
+import { listReportDates } from '../../../../lib/reports'
+import ProductAnalyticsClient from './ProductAnalyticsClient'
 
-interface ProductsResult {
-  all: ProductAnalyticsPerformance[]
-  bottom: ProductAnalyticsPerformance[]
-  available: boolean
-  forbidden: boolean
-}
+export const dynamic = 'force-dynamic'
 
-const NET_QUANTITY_NOTE =
-  'Mengen sind Nettomengen aus den Bons. Fehleingaben werden an der Kasse durch eine negative Gegenbuchung ausgeglichen, die auch an einem anderen Tag liegen kann - über kurze Zeiträume können einzelne Stückzahlen deshalb abweichen. Umsätze stimmen mit dem Kassenabschluss überein.'
+/**
+ * Server-Hülle: liest nur, welche Tage einen Kassenbericht haben. Der
+ * Zeitraum endet am jüngsten davon (`reportAnchor`) - dieselbe Regel wie
+ * das Berichtsarchiv, damit „30 Tage“ überall dieselbe Summe ergibt.
+ */
 
 export default function ProductAnalyticsPage() {
-  const today = localIsoDate()
-  const [range, setRange] = useState({
-    from: addDaysIso(today, -29),
-    to: today,
-  })
-
-  const { data, loading, error, reload } =
-    useLatestRequest<ProductsResult>(async () => {
-      const params = { startDate: range.from, endDate: range.to }
-      const [all, bottom] = await Promise.all([
-        analyticsService.getProductPerformanceWithSource({
-          ...params,
-          type: 'top',
-          limit: 200,
-        }),
-        analyticsService.getProductPerformanceWithSource({
-          ...params,
-          type: 'bottom',
-          limit: 10,
-        }),
-      ])
-      return {
-        all: all.data,
-        bottom: bottom.data,
-        available: all.available && bottom.available,
-        forbidden: Boolean(all.forbidden || bottom.forbidden),
-      }
-    }, [range.from, range.to])
-
-  const all = data?.all ?? []
-  const hasData = Boolean(data?.available && all.length > 0)
-
-  let body: React.ReactNode = null
-  if (!data && loading) {
-    body = <LoadingState label="Produktdaten werden geladen …" />
-  } else if (error || !data) {
-    body = (
-      <Alert
-        severity="error"
-        action={
-          <Button color="inherit" size="small" onClick={reload}>
-            Erneut versuchen
-          </Button>
-        }
-      >
-        Produktdaten konnten nicht geladen werden.
-      </Alert>
-    )
-  } else if (data.forbidden) {
-    body = <OwnerOnlyNotice />
-  } else if (!data.available) {
-    body = (
-      <Alert severity="error">
-        Die API liefert keine Produktdaten. Es werden keine Zahlen angezeigt -
-        Beispieldaten gibt es hier bewusst nicht.
-      </Alert>
-    )
-  } else if (all.length === 0) {
-    body = (
-      <EmptyState
-        title="Für den gewählten Zeitraum liegt kein Kassenbericht vor."
-        description="Tage ohne Bericht sind Lücken, kein Umsatz von 0 €."
-      />
-    )
-  }
-
-  let figures: React.ReactNode = null
-  if (hasData) {
-    const revenue = all.reduce((sum, p) => sum + p.revenue, 0)
-    const byQuantity = all.reduce((a, b) =>
-      b.quantitySold > a.quantitySold ? b : a
-    )
-    const byRevenue = all.reduce((a, b) => (b.revenue > a.revenue ? b : a))
-    figures = (
-      <KeyFigures
-        aria-label="Kennzahlen des Zeitraums"
-        items={[
-          {
-            label: 'Umsatz aller Produkte',
-            value: formatEuro(revenue),
-          },
-          {
-            label: 'Verkaufte Produkte',
-            value: all.length.toLocaleString('de-DE'),
-            hint: 'mit mindestens einem Verkauf',
-          },
-          {
-            label: 'Umsatzstärkstes Produkt',
-            value: byRevenue.productName,
-            hint: formatEuro(byRevenue.revenue),
-          },
-          {
-            label: 'Meistverkauft',
-            value: byQuantity.productName,
-            hint: `${byQuantity.quantitySold.toLocaleString('de-DE')} Stück`,
-          },
-        ]}
-      />
-    )
-  }
-
+  const dates = listReportDates()
   return (
-    <PageLayout
-      title="Produktanalyse"
-      subtitle="Verkaufte Mengen je Produkt aus den Kassenberichten"
-      back={{ href: '/admin/analytics', label: 'Analysen' }}
-    >
-      <DateRangeFilter
-        from={range.from}
-        to={range.to}
-        onApply={(from, to) => setRange({ from, to })}
-        presets={standardPresets(today)}
-        max={today}
-        maxDays={ANALYTICS_MAX_DAYS}
-      />
-
-      {body}
-      {figures}
-
-      {hasData && data && (
-        <>
-          <PageSection
-            title={`Alle Produkte (${all.length})`}
-            description="Nach Umsatz sortiert"
-            disablePadding
-            detailsLabel="Hinweis zu den Mengen"
-            details={
-              <Typography variant="body2" color="text.secondary">
-                {NET_QUANTITY_NOTE}
-              </Typography>
-            }
-          >
-            <ProductRanking
-              products={all}
-              aria-label="Produkte nach Umsatz"
-              initialRows={20}
-              searchable
-            />
-          </PageSection>
-
-          <PageSection
-            title="Wenig verkauft"
-            description="Die wenigsten Stück im Zeitraum (nur Produkte, die überhaupt verkauft wurden)"
-            disablePadding
-          >
-            <ProductRanking
-              products={data.bottom}
-              aria-label="Wenig verkaufte Produkte"
-              showRank={false}
-            />
-          </PageSection>
-        </>
-      )}
-    </PageLayout>
+    <ProductAnalyticsClient
+      latestReportDate={dates.length > 0 ? dates[dates.length - 1] : null}
+      earliestReportDate={dates.length > 0 ? dates[0] : null}
+    />
   )
 }

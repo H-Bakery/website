@@ -220,4 +220,29 @@ describe('Rest-Auswertung', () => {
       await screen.findByText('Keine Berechtigung für diese Aktion.')
     ).toBeTruthy()
   })
+
+  it('fills the card width with the daily chart instead of fixed pixels', async () => {
+    // Regression: the SVG had a fixed width (n × 22 px) and ended in the
+    // middle of the card at 1440 px.
+    const original = global.ResizeObserver
+    global.ResizeObserver = jest
+      .fn()
+      .mockImplementation((cb: ResizeObserverCallback) => ({
+        observe: () =>
+          cb(
+            [{ contentRect: { width: 1200 } } as ResizeObserverEntry],
+            {} as ResizeObserver
+          ),
+        unobserve: jest.fn(),
+        disconnect: jest.fn(),
+      })) as unknown as typeof ResizeObserver
+    try {
+      render(<RestAuswertungClient />)
+      await screen.findByTestId('item-weck')
+      const svg = screen.getByTestId('daily-chart').querySelector('svg')
+      await waitFor(() => expect(svg?.getAttribute('width')).toBe('1200'))
+    } finally {
+      global.ResizeObserver = original
+    }
+  })
 })
