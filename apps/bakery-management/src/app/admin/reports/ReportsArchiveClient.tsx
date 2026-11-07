@@ -32,12 +32,35 @@ import {
   PageLayout,
   PageSection,
 } from '../../../components/layout'
+import { TOUCH_MEDIA } from '../../../lib/muiTheme'
 import DateRangeFilter from '../../../components/analytics/DateRangeFilter'
 import {
   formatIsoRange,
   reportArchiveNote,
   standardPresets,
 } from '../../../components/analytics/dateRange'
+
+/**
+ * „bester Tag 24.10.2026“ steht als Hinweis in einer Kennzahl - ein 14 px
+ * hoher Link. Am Handy/Tablet vergrößert ein unsichtbarer Rahmen die
+ * Tippfläche auf 44 px, ohne die Zeile höher zu machen (UI-Runde 2).
+ */
+const BEST_DAY_LINK_SX = {
+  [TOUCH_MEDIA]: {
+    position: 'relative',
+    // `::before`, weil global.css `::after` jedes Links für den
+    // Hover-Strich belegt (und mit höherer Spezifität).
+    '&::before': {
+      content: '""',
+      position: 'absolute',
+      top: '50%',
+      left: '50%',
+      width: 'max(100%, 44px)',
+      height: 44,
+      transform: 'translate(-50%, -50%)',
+    },
+  },
+} as const
 
 interface Props {
   list: DailyReportList
@@ -369,6 +392,7 @@ export default function ReportsArchiveClient({
                   <MuiLink
                     component={Link}
                     href={`/admin/reports/${summary.bestDay.date}`}
+                    sx={BEST_DAY_LINK_SX}
                   >
                     {formatReportDate(summary.bestDay.date)}
                   </MuiLink>
@@ -406,8 +430,9 @@ export default function ReportsArchiveClient({
             <FormControlLabel
               sx={{ mr: 0 }}
               control={
+                // Mittlere Größe: nur sie bekommt am Handy/Tablet die
+                // 44-px-Fläche des Themes (`small` war 24 × 24, UI-Runde 2).
                 <Switch
-                  size="small"
                   checked={hideGaps}
                   onChange={(e) => setHideGaps(e.target.checked)}
                 />

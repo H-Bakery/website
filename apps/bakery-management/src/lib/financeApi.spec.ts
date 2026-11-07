@@ -65,10 +65,41 @@ describe('financeApi', () => {
         'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.',
     })
     expect(classifyFinanceError(new ApiError('kaputt', 500)).kind).toBe('error')
-    expect(classifyFinanceError(new Error('Request timeout'))).toEqual({
-      kind: 'error',
-      message: 'Request timeout',
-    })
     expect(classifyFinanceError('???').kind).toBe('error')
+  })
+
+  // UI-Runde 2: Finanzen, Tagesziel und Kachel zeigten die rohe Meldung.
+  it('übersetzt Netz- und Proxyfehler in den WLAN-Hinweis', () => {
+    const OFFLINE = 'Keine Verbindung zum Server – bitte WLAN prüfen.'
+    for (const err of [
+      new TypeError('Failed to fetch'),
+      new Error('Request timeout'),
+      new ApiError('HTTP 502: Bad Gateway', 502),
+      new ApiError('HTTP 504: Gateway Timeout', 504),
+    ]) {
+      expect(classifyFinanceError(err)).toEqual({
+        kind: 'error',
+        message: OFFLINE,
+      })
+    }
+  })
+
+  it('ein unerwarteter Serverfehler nennt Text und Status, eine deutsche API-Meldung bleibt', () => {
+    expect(
+      classifyFinanceError(
+        new ApiError('Internal error', 500, 'internal'),
+        'Das Tagesziel konnte nicht geladen werden.'
+      ).message
+    ).toBe(
+      'Das Tagesziel konnte nicht geladen werden. Fehler auf dem Server (500) – bitte im Büro Bescheid geben.'
+    )
+    expect(
+      classifyFinanceError(new ApiError('Zeitraum ungültig.', 400, 'invalid'))
+        .message
+    ).toBe('Zeitraum ungültig.')
+    expect(
+      classifyFinanceError(new TypeError('Cannot read properties of null'))
+        .message
+    ).toBe('Die Finanzdaten konnten nicht geladen werden.')
   })
 })

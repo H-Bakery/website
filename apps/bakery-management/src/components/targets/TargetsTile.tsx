@@ -11,7 +11,7 @@ import {
   Typography,
 } from '@mui/material'
 import { Login as LoginIcon } from '@mui/icons-material'
-import { KeyFigures, PageSection, type KeyFigure } from '../layout'
+import { ErrorState, KeyFigures, PageSection, type KeyFigure } from '../layout'
 import { useSession } from '../../lib/session'
 import {
   classifyFinanceError,
@@ -77,7 +77,10 @@ export default function TargetsTile() {
       }
       setState({ phase: 'ok', data: result.data })
     } catch (err) {
-      const { kind, message } = classifyFinanceError(err)
+      const { kind, message } = classifyFinanceError(
+        err,
+        'Das Tagesziel konnte nicht geladen werden.'
+      )
       setState({ phase: 'access', kind, message })
     }
   }, [])
@@ -157,9 +160,15 @@ export default function TargetsTile() {
             Inhaber/Admin.
           </Alert>
         ) : (
-          <Alert severity="warning">
-            Das Tagesziel konnte nicht geladen werden. {state.message}
-          </Alert>
+          // Deutscher Text aus `classifyFinanceError` (ohne Netz: WLAN-
+          // Hinweis statt „Failed to fetch“) und „Erneut versuchen“ wie auf
+          // jeder Seite (UI-Runde 2).
+          <ErrorState
+            title="Tagesziel konnte nicht geladen werden"
+            message={state.message}
+            onRetry={() => void load()}
+            data-testid="targets-tile-error"
+          />
         )}
       </>
     )

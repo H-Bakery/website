@@ -57,6 +57,7 @@ import type {
 } from '../../../lib/financeTypes'
 import {
   EmptyState,
+  ErrorState,
   KeyFigures,
   LoadingState,
   PageLayout,
@@ -352,9 +353,11 @@ function InvariantBadge({ invariant }: { invariant: FinanceInvariant }) {
 function AccessNotice({
   kind,
   message,
+  onRetry,
 }: {
   kind: FinanceAccessProblem
   message: string
+  onRetry: () => void
 }) {
   if (kind === 'unauthenticated') {
     return (
@@ -401,11 +404,15 @@ function AccessNotice({
       </Alert>
     )
   }
+  // Wie jede andere Seite (Layout-Kit): deutscher Text aus
+  // `classifyFinanceError` und „Erneut versuchen“ (UI-Runde 2).
   return (
-    <Alert severity="error">
-      <AlertTitle>Finanzdaten konnten nicht geladen werden</AlertTitle>
-      {message}
-    </Alert>
+    <ErrorState
+      title="Finanzdaten konnten nicht geladen werden"
+      message={message}
+      onRetry={onRetry}
+      data-testid="finance-error"
+    />
   )
 }
 
@@ -580,7 +587,10 @@ export default function FinanceClient() {
       })
       .catch((err) => {
         if (cancelled) return
-        setRangeError(classifyFinanceError(err).message)
+        setRangeError(
+          classifyFinanceError(err, 'Der Zeitraum konnte nicht geladen werden.')
+            .message
+        )
         setRange(null)
       })
       .finally(() => {
@@ -602,7 +612,11 @@ export default function FinanceClient() {
   if (state.phase === 'access') {
     return (
       <PageLayout title={TITLE} subtitle={SUBTITLE}>
-        <AccessNotice kind={state.kind} message={state.message} />
+        <AccessNotice
+          kind={state.kind}
+          message={state.message}
+          onRetry={() => void load()}
+        />
       </PageLayout>
     )
   }
