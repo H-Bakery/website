@@ -2,7 +2,7 @@ import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import BackingListClient from './BackingListClient'
+import BackingListClient, { pieceTotal } from './BackingListClient'
 import {
   fetchPickupPoints,
   fetchPreorderDay,
@@ -234,5 +234,23 @@ describe('BackingListClient', () => {
         screen.getByRole('button', { name: 'Erneut versuchen' })
       ).toBeInTheDocument()
     )
+  })
+})
+
+describe('pieceTotal', () => {
+  it('zählt Stück nur, wenn alle Zeilen in Stück sind', () => {
+    expect(
+      pieceTotal([
+        { quantity: 12, unit: 'Stück' },
+        { quantity: 3, unit: 'Stück' },
+      ])
+    ).toBe(15)
+    // 12 Stück + 2 Blech sind keine „14 Stück“
+    expect(
+      pieceTotal([
+        { quantity: 12, unit: 'Stück' },
+        { quantity: 2, unit: 'Blech' },
+      ])
+    ).toBeNull()
   })
 })
