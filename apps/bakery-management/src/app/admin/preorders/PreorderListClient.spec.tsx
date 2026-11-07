@@ -89,6 +89,11 @@ describe('PreorderListClient (P3)', () => {
     renderAs('verkauf')
     await screen.findByText('Erika Beispiel')
 
+    // Am Handy (jsdom) sind die weiteren Filter zugeklappt.
+    expect(screen.queryByRole('button', { name: 'Offen' })).toBeNull()
+    const more = screen.getByRole('button', { name: 'Weitere Filter' })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    await user.click(more)
     await user.click(screen.getByRole('button', { name: 'Offen' }))
     await waitFor(() =>
       expect(mockList).toHaveBeenLastCalledWith({
@@ -107,6 +112,12 @@ describe('PreorderListClient (P3)', () => {
       expect(mockList).toHaveBeenLastCalledWith(
         expect.objectContaining({ q: 'Erika', status: ['offen'] })
       )
+    )
+
+    // zugeklappt bleibt sichtbar, welcher Filter wirkt
+    await user.click(screen.getByRole('button', { name: 'Weitere Filter (1)' }))
+    expect(screen.getByTestId('filter-summary')).toHaveTextContent(
+      'Aktiv: Offen'
     )
   })
 
