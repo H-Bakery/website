@@ -283,7 +283,7 @@ function WeekdayTable({
                     ? '–'
                     : formatEuro(row.average_revenue)}
                 </TableCell>
-                <TableCell align="right">
+                <TableCell align="right" sx={HIDE_ON_PHONE}>
                   {row.deviation === null
                     ? '–'
                     : formatSignedEuro(row.deviation)}

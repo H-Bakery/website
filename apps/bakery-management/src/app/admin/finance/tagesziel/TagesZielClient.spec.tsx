@@ -247,6 +247,48 @@ describe('TagesZielClient', () => {
     })
   })
 
+  it('blendet am Handy Kopf- und Datenzelle derselben Spalte gemeinsam aus', async () => {
+    // Regression: „Abweichung“ war nur im Kopf ausgeblendet - am Handy rutschte
+    // die Abweichung unter die Spalte „Ø Ist“ und ragte aus der Tabelle.
+    mockHappyPath()
+    renderWithTheme(<TagesZielClient />)
+    const table = await screen.findByRole('table', {
+      name: 'Ziel je Wochentag',
+    })
+    // jsdom wertet Media Queries nicht aus: an den Emotion-Regeln ablesen,
+    // ob eine Zelle am Handy (`xs`) `display: none` hat.
+    const phoneHidden = new Set<string>()
+    for (const sheet of Array.from(document.styleSheets)) {
+      for (const rule of Array.from(sheet.cssRules)) {
+        // MUI schreibt `xs` als `@media (min-width:0px)` - das gilt am Handy.
+        if (
+          !(rule instanceof CSSMediaRule) ||
+          !/min-width:\s*0px/.test(rule.media.mediaText)
+        ) {
+          continue
+        }
+        for (const inner of Array.from(rule.cssRules)) {
+          if (inner instanceof CSSStyleRule && inner.style.display === 'none') {
+            phoneHidden.add(inner.selectorText)
+          }
+        }
+      }
+    }
+    const hiddenOnPhone = (el: Element) =>
+      Array.from(el.classList).some((name) => phoneHidden.has(`.${name}`))
+    const head = Array.from(table.querySelectorAll('thead th'))
+    expect(head.filter(hiddenOnPhone).length).toBeGreaterThan(0)
+    const rows = Array.from(table.querySelectorAll('tbody tr'))
+    expect(rows.length).toBeGreaterThan(0)
+    for (const row of rows) {
+      const cells = Array.from(row.querySelectorAll('td'))
+      expect(cells).toHaveLength(head.length)
+      cells.forEach((cell, i) => {
+        expect([i, hiddenOnPhone(cell)]).toEqual([i, hiddenOnPhone(head[i])])
+      })
+    }
+  })
+
   it('schaltet auf die Entnahme-Stufe um und kennzeichnet sie als Annahme', async () => {
     mockHappyPath()
     renderWithTheme(<TagesZielClient />)

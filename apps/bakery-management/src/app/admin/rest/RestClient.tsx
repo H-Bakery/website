@@ -8,7 +8,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -55,6 +54,12 @@ import {
   type RestDraft,
   type RestLine,
 } from '../../../lib/restApi'
+import {
+  EmptyState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../components/layout'
 
 /** Wer zählen darf (wie `PUT /api/rest/:date`). */
 export const COUNT_ROLES = ['inhaber', 'verkauf']
@@ -533,6 +538,11 @@ export default function RestClient({ initialDate }: RestClientProps) {
         }
       } catch (error) {
         if (id !== requestId.current) return
+        // Ein anderer Tag ließ sich nicht laden: den alten nicht weiter unter
+        // dem neuen Datum (URL) zeigen - sonst zählte man in den falschen Tag.
+        setDay((prev) =>
+          target !== undefined && prev && prev.date !== target ? null : prev
+        )
         setLoadError(
           errorMessage(error, 'Die Zählliste konnte nicht geladen werden.')
         )
@@ -672,72 +682,80 @@ export default function RestClient({ initialDate }: RestClientProps) {
   const canPrev = !!day && day.date > day.window.from
   const canNext = !!day && day.date < day.window.to
 
+  const showSaveBar = !!day && mayCount && (changes.length > 0 || saving)
+  const backzettelChip =
+    day && day.status === 'ok' ? (
+      <Chip
+        size="small"
+        label={
+          confirmed
+            ? 'Backzettel freigegeben'
+            : day.backzettelStatus === 'draft'
+            ? 'Backzettel nicht freigegeben - Mengen geplant'
+            : 'Kein Backzettel'
+        }
+        color={confirmed ? 'success' : 'default'}
+        variant="outlined"
+        sx={{ maxWidth: '100%' }}
+      />
+    ) : null
+
   return (
-    <Box sx={{ pb: changes.length > 0 || saving ? 12 : 2 }}>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        spacing={1}
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        justifyContent="space-between"
-        sx={{ mb: 2 }}
-      >
-        <Box>
-          <Typography variant="h4" component="h1">
-            Rest am Abend
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            {day
-              ? longDate(day.date, day.weekdayName)
-              : 'Zählung bei Ladenschluss'}
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1} alignItems="center">
-          <IconButton
-            aria-label="Tag davor"
-            disabled={!canPrev || loading}
-            onClick={() => day && goTo(addDaysIso(day.date, -1))}
-            sx={{ width: 48, height: 48 }}
-          >
-            <PrevIcon />
-          </IconButton>
-          <Button
-            variant="outlined"
-            disabled={!day || day.date === day.today || loading}
-            onClick={() => day && goTo(day.today)}
-            sx={{ minHeight: 48 }}
-          >
-            Heute
-          </Button>
-          <IconButton
-            aria-label="Tag danach"
-            disabled={!canNext || loading}
-            onClick={() => day && goTo(addDaysIso(day.date, 1))}
-            sx={{ width: 48, height: 48 }}
-          >
-            <NextIcon />
-          </IconButton>
+    <PageLayout
+      title="Rest am Abend"
+      subtitle={
+        day ? longDate(day.date, day.weekdayName) : 'Zählung bei Ladenschluss'
+      }
+      status={backzettelChip}
+      actions={
+        <>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <IconButton
+              aria-label="Tag davor"
+              disabled={!canPrev || loading}
+              onClick={() => day && goTo(addDaysIso(day.date, -1))}
+              sx={{ width: 48, height: 48, border: 1, borderColor: 'divider' }}
+            >
+              <PrevIcon />
+            </IconButton>
+            <Button
+              variant="outlined"
+              disabled={!day || day.date === day.today || loading}
+              onClick={() => day && goTo(day.today)}
+              sx={{ minHeight: 48, flex: { xs: 1, sm: 'none' } }}
+            >
+              Heute
+            </Button>
+            <IconButton
+              aria-label="Tag danach"
+              disabled={!canNext || loading}
+              onClick={() => day && goTo(addDaysIso(day.date, 1))}
+              sx={{ width: 48, height: 48, border: 1, borderColor: 'divider' }}
+            >
+              <NextIcon />
+            </IconButton>
+          </Box>
           {role === 'inhaber' && (
             <Button
               component={Link}
               href="/admin/rest/auswertung"
+              variant="outlined"
               sx={{ minHeight: 48 }}
             >
               Auswertung
             </Button>
           )}
-        </Stack>
-      </Stack>
-
-      {loading && !day && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress aria-label="Lädt" />
-        </Box>
+        </>
+      }
+    >
+      {loading && !day && !loadError && (
+        <LoadingState label="Zählliste wird geladen …" />
       )}
 
       {loadError && (
         <Alert
           severity="error"
-          sx={{ mb: 2, ...ALERT_TOUCH }}
+          sx={ALERT_TOUCH}
           action={
             <Button color="inherit" onClick={() => void load(date)}>
               Erneut versuchen
@@ -748,176 +766,145 @@ export default function RestClient({ initialDate }: RestClientProps) {
         </Alert>
       )}
 
-      {day && (
-        <>
-          {loading && <LinearProgress sx={{ mb: 1 }} aria-label="Lädt" />}
-          <Stack
-            direction="row"
-            spacing={1}
-            flexWrap="wrap"
-            useFlexGap
-            sx={{ mb: 2 }}
-          >
-            {day.status === 'ok' && (
-              <Chip
-                label={
-                  confirmed
-                    ? 'Backzettel freigegeben'
-                    : day.backzettelStatus === 'draft'
-                    ? 'Backzettel nicht freigegeben - Mengen geplant'
-                    : 'Kein Backzettel'
-                }
-                color={confirmed ? 'success' : 'default'}
+      {day && day.status === 'no-config' && (
+        <Alert severity="warning">
+          <AlertTitle>Keine Zählliste</AlertTitle>
+          {day.editIssue}
+        </Alert>
+      )}
+      {day && day.status === 'ruhetag' && (
+        <Alert severity="info">{day.editIssue}</Alert>
+      )}
+      {day && day.status === 'ok' && !day.editable && day.editIssue && (
+        <Alert severity="info">{day.editIssue}</Alert>
+      )}
+      {day && day.status === 'ok' && day.editable && !mayCount && (
+        <Alert severity="info">Nur ansehen - gezählt wird vom Verkauf.</Alert>
+      )}
+      {day && otherDraftDates.length > 0 && (
+        <Alert severity="warning" data-testid="rest-other-drafts">
+          <AlertTitle>Ungespeicherte Zählung an anderen Tagen</AlertTitle>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+            {otherDraftDates.map((d) => (
+              <Button
+                key={d}
+                size="small"
                 variant="outlined"
-              />
-            )}
-            {day.summary.lastCountedAt && (
-              <Chip
-                variant="outlined"
-                label={`Zuletzt gespeichert ${timeOf(
-                  day.summary.lastCountedAt
-                )} Uhr${
-                  day.summary.lastCountedBy
-                    ? ` · ${day.summary.lastCountedBy.displayName}`
-                    : ''
-                }`}
-              />
-            )}
-          </Stack>
-
-          {day.status === 'no-config' && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              <AlertTitle>Keine Zählliste</AlertTitle>
-              {day.editIssue}
-            </Alert>
-          )}
-          {day.status === 'ruhetag' && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              {day.editIssue}
-            </Alert>
-          )}
-          {day.status === 'ok' && !day.editable && day.editIssue && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              {day.editIssue}
-            </Alert>
-          )}
-          {day.status === 'ok' && day.editable && !mayCount && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Nur ansehen - gezählt wird vom Verkauf.
-            </Alert>
-          )}
-          {otherDraftDates.length > 0 && (
-            <Alert
-              severity="warning"
-              sx={{ mb: 2 }}
-              data-testid="rest-other-drafts"
-            >
-              <AlertTitle>Ungespeicherte Zählung an anderen Tagen</AlertTitle>
-              <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-                {otherDraftDates.map((d) => (
-                  <Button
-                    key={d}
-                    size="small"
-                    variant="outlined"
-                    color="inherit"
-                    onClick={() => goTo(d)}
-                    sx={{ minHeight: 44 }}
-                  >
-                    {formatDayShort(d)} öffnen
-                  </Button>
-                ))}
-              </Stack>
-            </Alert>
-          )}
-          {saveError && (
-            <Alert
-              severity={conflicts.length > 0 ? 'warning' : 'error'}
-              sx={{ mb: 2, ...ALERT_TOUCH }}
-              onClose={() => setSaveError(null)}
-              data-testid="save-error"
-            >
-              {conflicts.length > 0 && (
-                <AlertTitle>Inzwischen anders gezählt</AlertTitle>
-              )}
-              {saveError}
-              {conflicts.length > 0 && (
-                <Box component="ul" sx={{ m: 0, mt: 1, pl: 2.5 }}>
-                  {conflicts.map((c) => (
-                    <li key={`${c.itemId}|${c.variant || ''}|${c.productId}`}>
-                      {c.name || c.itemId}: {formatNumber(c.qty)}
-                      {c.countedBy ? ` (${c.countedBy.displayName})` : ''}
-                    </li>
-                  ))}
-                </Box>
-              )}
-              {conflicts.length > 0 && (
-                <Typography variant="body2" sx={{ mt: 1 }}>
-                  Deine Eingaben stehen noch da. Prüfen und erneut speichern -
-                  dann gilt deine Zahl.
-                </Typography>
-              )}
-            </Alert>
-          )}
-
-          {day.status === 'ok' && day.lines.length > 0 && (
-            <Box sx={{ mb: 2 }}>
-              <Stack direction="row" justifyContent="space-between">
-                <Typography variant="body2" data-testid="rest-progress">
-                  {progress.counted} von {progress.total} gezählt
-                </Typography>
-                {changes.length > 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    {changes.length} ungespeichert
-                  </Typography>
-                )}
-              </Stack>
-              <LinearProgress
-                variant="determinate"
-                value={
-                  progress.total ? (progress.counted / progress.total) * 100 : 0
-                }
-                aria-label="Fortschritt der Zählung"
-                sx={{ height: 8, borderRadius: 1, mt: 0.5 }}
-              />
-            </Box>
-          )}
-
-          {day.status === 'ok' && day.lines.length === 0 && (
-            <Alert severity="info">
-              Für diesen Tag steht nichts auf dem Backzettel.
-            </Alert>
-          )}
-
-          {sections.map((section) => (
-            <Box key={section.label} component="section" sx={{ mb: 3 }}>
-              <Typography
-                variant="overline"
-                component="h2"
-                color="text.secondary"
-                sx={{ display: 'block', mb: 1 }}
+                color="inherit"
+                onClick={() => goTo(d)}
+                sx={{ minHeight: 44 }}
               >
-                {section.label}
-              </Typography>
-              <Stack spacing={1}>
-                {section.lines.map((line) => (
-                  <CountLine
-                    key={line.key}
-                    line={line}
-                    draft={draft}
-                    confirmed={confirmed}
-                    writable={writable}
-                    conflictKeys={conflictKeys}
-                    onChange={change}
-                    onPad={setPad}
-                  />
-                ))}
-              </Stack>
+                {formatDayShort(d)} öffnen
+              </Button>
+            ))}
+          </Stack>
+        </Alert>
+      )}
+      {day && saveError && (
+        <Alert
+          severity={conflicts.length > 0 ? 'warning' : 'error'}
+          sx={ALERT_TOUCH}
+          onClose={() => setSaveError(null)}
+          data-testid="save-error"
+        >
+          {conflicts.length > 0 && (
+            <AlertTitle>Inzwischen anders gezählt</AlertTitle>
+          )}
+          {saveError}
+          {conflicts.length > 0 && (
+            <Box component="ul" sx={{ m: 0, mt: 1, pl: 2.5 }}>
+              {conflicts.map((c) => (
+                <li key={`${c.itemId}|${c.variant || ''}|${c.productId}`}>
+                  {c.name || c.itemId}: {formatNumber(c.qty)}
+                  {c.countedBy ? ` (${c.countedBy.displayName})` : ''}
+                </li>
+              ))}
             </Box>
-          ))}
-        </>
+          )}
+          {conflicts.length > 0 && (
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              Deine Eingaben stehen noch da. Prüfen und erneut speichern - dann
+              gilt deine Zahl.
+            </Typography>
+          )}
+        </Alert>
       )}
 
-      {day && mayCount && (changes.length > 0 || saving) && (
+      {day && day.status === 'ok' && day.lines.length > 0 && (
+        <PageSection>
+          <Stack
+            direction="row"
+            justifyContent="space-between"
+            flexWrap="wrap"
+            columnGap={2}
+          >
+            <Typography
+              variant="body1"
+              fontWeight={600}
+              data-testid="rest-progress"
+            >
+              {progress.counted} von {progress.total} gezählt
+            </Typography>
+            {changes.length > 0 && (
+              <Typography variant="body2" color="text.secondary">
+                {changes.length} ungespeichert
+              </Typography>
+            )}
+          </Stack>
+          <LinearProgress
+            variant={loading ? 'indeterminate' : 'determinate'}
+            value={
+              progress.total ? (progress.counted / progress.total) * 100 : 0
+            }
+            aria-label={loading ? 'Lädt' : 'Fortschritt der Zählung'}
+            sx={{ height: 8, borderRadius: 1, mt: 1 }}
+          />
+          {day.summary.lastCountedAt && (
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+              Zuletzt gespeichert {timeOf(day.summary.lastCountedAt)} Uhr
+              {day.summary.lastCountedBy
+                ? ` · ${day.summary.lastCountedBy.displayName}`
+                : ''}
+            </Typography>
+          )}
+        </PageSection>
+      )}
+      {day && loading && !(day.status === 'ok' && day.lines.length > 0) && (
+        <LinearProgress aria-label="Lädt" />
+      )}
+
+      {day && day.status === 'ok' && day.lines.length === 0 && (
+        <EmptyState title="Für diesen Tag steht nichts auf dem Backzettel." />
+      )}
+
+      {day &&
+        sections.map((section) => (
+          <PageSection
+            key={section.label}
+            title={section.label}
+            variant="plain"
+          >
+            <Stack spacing={1}>
+              {section.lines.map((line) => (
+                <CountLine
+                  key={line.key}
+                  line={line}
+                  draft={draft}
+                  confirmed={confirmed}
+                  writable={writable}
+                  conflictKeys={conflictKeys}
+                  onChange={change}
+                  onPad={setPad}
+                />
+              ))}
+            </Stack>
+          </PageSection>
+        ))}
+
+      {/* Platz, damit die feste Leiste die letzten Zeilen nicht verdeckt. */}
+      {showSaveBar && <Box aria-hidden sx={{ height: 72 }} />}
+
+      {day && showSaveBar && (
         <Paper
           elevation={8}
           data-testid="rest-save-bar"
@@ -1011,6 +998,6 @@ export default function RestClient({ initialDate }: RestClientProps) {
         message={toast}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       />
-    </Box>
+    </PageLayout>
   )
 }

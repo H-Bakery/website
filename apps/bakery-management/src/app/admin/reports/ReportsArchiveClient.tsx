@@ -94,7 +94,12 @@ function DayTable({ days }: { days: ListDay[] }) {
   const router = useRouter()
   return (
     <TableContainer sx={{ overflowX: 'auto' }}>
-      <Table size="small" aria-label="Kassenberichte je Tag">
+      <Table
+        size="small"
+        aria-label="Kassenberichte je Tag"
+        // Zahlen nicht umbrechen („70,2 %“ stand am Tablet zweizeilig).
+        sx={{ '& .MuiTableCell-alignRight': { whiteSpace: 'nowrap' } }}
+      >
         <TableHead>
           <TableRow>
             <TableCell>Tag</TableCell>
