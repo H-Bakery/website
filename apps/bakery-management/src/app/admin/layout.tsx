@@ -37,6 +37,7 @@ import {
   Checklist as PickupIcon,
   HelpOutline as HelpIcon,
 } from '@mui/icons-material'
+import type { Theme } from '@mui/material/styles'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -62,6 +63,32 @@ import LogoutButton from '../../components/auth/LogoutButton'
 import { formatDateLong, isIsoDate } from '../../lib/backzettelFormat'
 
 const drawerWidth = 280
+
+/**
+ * Navigationseinträge: ruhig statt leuchtend. Der gewählte Eintrag bekommt
+ * `action.selected` als Fläche, einen Balken in `primary.main` und halbfette
+ * Schrift - Text bleibt `text.primary` (Dunkelmodus-Regel: keine Schrift auf
+ * `*.main`). `dense` + einzeilige Beschreibung: alle Einträge passen ohne
+ * Scrollen in die Seitenleiste eines 900-px-Fensters; die volle
+ * Beschreibung steht im Tooltip (`title`).
+ */
+const navItemSx = {
+  mx: 1,
+  my: 0.25,
+  borderRadius: 1,
+  minHeight: 44,
+  '&.Mui-selected, &.Mui-selected:hover': {
+    backgroundColor: 'action.selected',
+    boxShadow: (theme: Theme) => `inset 3px 0 0 ${theme.palette.primary.main}`,
+  },
+  '&.Mui-selected .MuiListItemIcon-root': { color: 'primary.main' },
+  '&.Mui-selected .MuiListItemText-primary': { fontWeight: 600 },
+} as const
+
+const navTextProps = {
+  primaryTypographyProps: { variant: 'body2' as const, fontWeight: 500 },
+  secondaryTypographyProps: { variant: 'caption' as const, noWrap: true },
+}
 
 /** Kennzeichen rechts in der AppBar: nie umbrechen, nie gequetscht. */
 const statusLabelSx = { ml: 1, flexShrink: 0, whiteSpace: 'nowrap' } as const
@@ -247,7 +274,7 @@ function AdminShell({
         </Typography>
       </Toolbar>
       <Divider />
-      <List>
+      <List sx={{ py: 1 }}>
         {navigation.map((item) => {
           const icon = item.icon ? iconMap[item.icon] : <DashboardIcon />
 
@@ -262,9 +289,11 @@ function AdminShell({
               <React.Fragment key={item.label}>
                 <ListItem disablePadding>
                   <ListItemButton
+                    dense
                     onClick={() => handleSubmenuToggle(item.label)}
                     aria-expanded={isSubmenuOpen}
                     sx={{
+                      ...navItemSx,
                       backgroundColor: hasActiveChild
                         ? 'action.selected'
                         : 'transparent',
@@ -274,6 +303,7 @@ function AdminShell({
                     <ListItemText
                       primary={item.label}
                       secondary={item.description}
+                      {...navTextProps}
                     />
                     {isSubmenuOpen ? <ExpandLess /> : <ExpandMore />}
                   </ListItemButton>
@@ -295,30 +325,19 @@ function AdminShell({
                     return (
                       <ListItem key={subItem.href} disablePadding>
                         <ListItemButton
+                          dense
                           component={Link}
                           href={subItem.href}
                           selected={isActive}
-                          sx={{
-                            pl: 4,
-                            '&.Mui-selected': {
-                              backgroundColor: 'primary.main',
-                              color: 'primary.contrastText',
-                              '&:hover': {
-                                backgroundColor: 'primary.dark',
-                              },
-                              '& .MuiListItemIcon-root': {
-                                color: 'primary.contrastText',
-                              },
-                              '& .MuiListItemText-secondary': {
-                                color: 'inherit',
-                              },
-                            },
-                          }}
+                          aria-current={isActive ? 'page' : undefined}
+                          title={subItem.description}
+                          sx={{ ...navItemSx, pl: 4 }}
                         >
                           {subIcon && <ListItemIcon>{subIcon}</ListItemIcon>}
                           <ListItemText
                             primary={subItem.label}
                             secondary={subItem.description}
+                            {...navTextProps}
                           />
                         </ListItemButton>
                       </ListItem>
@@ -334,21 +353,19 @@ function AdminShell({
             return (
               <ListItem key={item.href} disablePadding>
                 <ListItemButton
+                  dense
                   component="a"
                   href={item.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  sx={{
-                    backgroundColor: 'action.hover',
-                    '&:hover': {
-                      backgroundColor: 'action.selected',
-                    },
-                  }}
+                  title={item.description}
+                  sx={navItemSx}
                 >
                   <ListItemIcon>{icon}</ListItemIcon>
                   <ListItemText
                     primary={item.label}
                     secondary={item.description}
+                    {...navTextProps}
                   />
                 </ListItemButton>
               </ListItem>
@@ -361,29 +378,19 @@ function AdminShell({
           return (
             <ListItem key={item.href} disablePadding>
               <ListItemButton
+                dense
                 component={Link}
                 href={item.href}
                 selected={isActive}
-                sx={{
-                  '&.Mui-selected': {
-                    backgroundColor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      backgroundColor: 'primary.dark',
-                    },
-                    '& .MuiListItemIcon-root': {
-                      color: 'primary.contrastText',
-                    },
-                    '& .MuiListItemText-secondary': {
-                      color: 'inherit',
-                    },
-                  },
-                }}
+                aria-current={isActive ? 'page' : undefined}
+                title={item.description}
+                sx={navItemSx}
               >
                 <ListItemIcon>{icon}</ListItemIcon>
                 <ListItemText
                   primary={item.label}
                   secondary={item.description}
+                  {...navTextProps}
                 />
               </ListItemButton>
             </ListItem>
@@ -525,15 +532,18 @@ function AdminShell({
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 1.5, sm: 2, md: 3 },
+          // Der einzige Seitenrand (Gutter) der App: 16 px am Handy, 24 px ab
+          // Tablet. Seiten (PageLayout) geben keinen eigenen dazu.
+          p: { xs: 2, sm: 3 },
+          minWidth: 0,
           width: { xs: '100%', md: `calc(100% - ${drawerWidth}px)` },
           overflowX: 'hidden',
         }}
       >
         <Toolbar />
 
-        {/* Simple Breadcrumb */}
-        <Box sx={{ mb: 2 }}>
+        {/* Pfad - leise über dem Seitentitel, im Druck ausgeblendet. */}
+        <Box sx={{ mb: 1 }}>
           <Typography
             variant="body2"
             color="text.secondary"

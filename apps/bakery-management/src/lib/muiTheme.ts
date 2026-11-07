@@ -9,6 +9,9 @@ import { deDE } from '@mui/material/locale'
  */
 export const TOUCH_MEDIA = '@media (pointer: coarse), (max-width: 1199.95px)'
 
+/** MUI-Breakpoint `md` (Seitenleiste fest, größere Überschriften). */
+const MD_MIN_WIDTH = 900
+
 /** Inline-Links (Telefonnummer, Kurzcode) als 44-px-Touch-Ziel. */
 export const TOUCH_LINK_STYLE = {
   display: 'inline-flex',
@@ -52,7 +55,34 @@ export function createManagementTheme(mode: 'light' | 'dark'): Theme {
             }
           : {}),
       },
+      // Layout-Kit (src/components/layout): `h1` ist der Seitentitel
+      // (PageHeader), `h2` die Abschnittsüberschrift (PageSection) - je eine
+      // Größe für die ganze App statt h3/h4/h5/h6 nach Laune. Am Handy kleiner,
+      // damit lange Titel („Abholliste Gemeindehaus …“) nicht drei Zeilen
+      // füllen. h3-h6 bleiben MUI-Standard (Kennzahlen, Altseiten).
+      typography: {
+        h1: {
+          fontSize: '1.625rem',
+          fontWeight: 500,
+          lineHeight: 1.25,
+          letterSpacing: 0,
+          [`@media (min-width:${MD_MIN_WIDTH}px)`]: { fontSize: '2rem' },
+        },
+        h2: {
+          fontSize: '1.125rem',
+          fontWeight: 600,
+          lineHeight: 1.35,
+          letterSpacing: 0,
+          [`@media (min-width:${MD_MIN_WIDTH}px)`]: { fontSize: '1.25rem' },
+        },
+      },
+      shape: { borderRadius: 8 },
       components: {
+        // Tabellenköpfe überall gleich: halbfett, damit Kopf und Daten auch
+        // ohne Hintergrundfarbe (grey.* ist im Dunkelmodus verboten) trennen.
+        MuiTableCell: {
+          styleOverrides: { head: { fontWeight: 600 } },
+        },
         MuiButton: {
           styleOverrides: {
             root: { [TOUCH_MEDIA]: { minHeight: 44 } },

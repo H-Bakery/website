@@ -24,6 +24,10 @@ apiClient.setBaseUrl(resolveBrowserApiBase())
 /**
  * Bridges the shared theme context (mode/persistence) to an actual MUI theme,
  * so the "Dunkles Design" toggle in the settings actually restyles the app.
+ *
+ * `enableColorScheme` setzt `color-scheme` am Dokument: native Bedienelemente
+ * (Datumsfelder samt Kalender-Symbol, Bildlaufleisten) folgen dann dem
+ * Modus der App statt hell im Dunkelmodus zu stehen.
  */
 function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme()
@@ -34,7 +38,7 @@ function MuiThemeBridge({ children }: { children: React.ReactNode }) {
 
   return (
     <MuiThemeProvider theme={theme}>
-      <CssBaseline />
+      <CssBaseline enableColorScheme />
       <ThemeColorSync mode={colorScheme} />
       {children}
     </MuiThemeProvider>

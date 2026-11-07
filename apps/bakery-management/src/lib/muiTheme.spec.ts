@@ -148,3 +148,23 @@ describe('Text- und Umriss-Knöpfe im hellen Modus (W4-verify r4)', () => {
     expect(dark['textPrimary']).toBeUndefined()
   })
 })
+
+describe('Layout-Kit: Überschriften (src/components/layout)', () => {
+  it.each(['light', 'dark'] as const)(
+    '%s: h1 (Seitentitel) größer als h2 (Abschnitt), am Handy kleiner',
+    (mode) => {
+      const { h1, h2 } = createManagementTheme(mode).typography
+      const rem = (v: unknown) => parseFloat(String(v))
+      const desktop = (v: unknown) =>
+        rem(
+          (v as Record<string, { fontSize?: string }>)[
+            '@media (min-width:900px)'
+          ]?.fontSize
+        )
+      expect(rem(h1.fontSize)).toBeGreaterThan(rem(h2.fontSize))
+      expect(desktop(h1)).toBeGreaterThan(rem(h1.fontSize))
+      expect(desktop(h2)).toBeGreaterThan(rem(h2.fontSize))
+      expect(desktop(h1)).toBeLessThanOrEqual(2)
+    }
+  )
+})

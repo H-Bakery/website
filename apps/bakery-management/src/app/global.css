@@ -47,7 +47,11 @@ a {
   transition: color 0.3s ease;
 }
 
-a:not(.MuiButton-root):not(.MuiIconButton-root)::after {
+/* Nicht an Navigationseinträgen, Karten-Links, Chips und Reitern (Layout-Kit:
+   dort zeigt Fläche/Farbe den Zustand, ein Strich darunter wirkt verrutscht). */
+a:not(.MuiButton-root):not(.MuiIconButton-root):not(
+    .MuiListItemButton-root
+  ):not(.MuiCardActionArea-root):not(.MuiChip-root):not(.MuiTab-root)::after {
   content: '';
   position: absolute;
   bottom: -2px;
@@ -58,7 +62,11 @@ a:not(.MuiButton-root):not(.MuiIconButton-root)::after {
   transition: width 0.3s ease;
 }
 
-a:not(.MuiButton-root):not(.MuiIconButton-root):hover::after {
+a:not(.MuiButton-root):not(.MuiIconButton-root):not(
+    .MuiListItemButton-root
+  ):not(.MuiCardActionArea-root):not(.MuiChip-root):not(
+    .MuiTab-root
+  ):hover::after {
   width: 100%;
 }
 
@@ -181,29 +189,13 @@ img {
   transition: opacity 0.3s ease !important;
 }
 
-/* Section fade-in on scroll */
-section {
-  animation: sectionFadeIn 0.8s ease-out;
-}
-
-@keyframes sectionFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(30px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
+/* Kein Einblenden einzelner <section>s mehr (Layout-Kit): jede PageSection
+   ist ein <section>, und 0,8 s Schweben je Abschnitt ließ Seiten unruhig und
+   langsam wirken (Backstube, Hilfe und Druck mussten es eigens abschalten). */
 
 /* Smooth form field transitions */
 .MuiTextField-root .MuiOutlinedInput-root {
   transition: all 0.3s ease !important;
-}
-
-.MuiTextField-root .MuiOutlinedInput-root:hover {
-  transform: translateY(-1px);
 }
 
 /* Brand color glow effect */
@@ -264,29 +256,6 @@ section {
   }
 }
 
-/* Custom scrollbar styling */
-::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #d038ba;
-  border-radius: 10px;
-  transition: background 0.3s ease;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #b0309a;
-}
-
-/* Firefox scrollbar */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #d038ba #f1f1f1;
-}
+/* Bildlaufleisten: native, sie folgen dem Farbschema (CssBaseline mit
+   enableColorScheme in Providers.tsx). Die frühere pinke Leiste auf hellem
+   Grund (#f1f1f1) stand im Dunkelmodus als heller Streifen da. */

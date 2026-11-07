@@ -67,6 +67,17 @@ describe('AdminLayout', () => {
     )
   })
 
+  it('marks the active item for screen readers and keeps the description as tooltip', () => {
+    renderLayout('/admin/products/new')
+    const nav = getDesktopNav()
+    const active = nav.getByText('Produkte').closest('a')
+    expect(active).toHaveAttribute('aria-current', 'page')
+    expect(active).toHaveAttribute('title', 'Produktverwaltung')
+    expect(nav.getByText('Dashboard').closest('a')).not.toHaveAttribute(
+      'aria-current'
+    )
+  })
+
   it('does not highlight the dashboard on sub pages', () => {
     renderLayout('/admin/reports')
     const nav = getDesktopNav()
