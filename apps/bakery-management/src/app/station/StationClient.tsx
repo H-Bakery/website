@@ -8,7 +8,6 @@ import {
   Box,
   Button,
   ButtonBase,
-  CircularProgress,
   Paper,
   Stack,
   TextField,
@@ -47,7 +46,9 @@ import {
   readPreorderEditDraft,
 } from '../../lib/preorderDraft'
 import PinPad from '../../components/auth/PinPad'
+import { describeAuthError } from '../../components/auth/authErrors'
 import LogoutButton from '../../components/auth/LogoutButton'
+import { LoadingState } from '../../components/layout'
 
 /** Ohne Tippen fällt die PIN-Eingabe nach so vielen ms zurück auf die Kacheln. */
 export const PIN_IDLE_MS = 60 * 1000
@@ -56,7 +57,7 @@ const REVOKED_MESSAGE =
   'Diese Station wurde widerrufen oder ist unbekannt. Ein Inhaber muss das Gerät neu einrichten.'
 
 function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback
+  return describeAuthError(error, fallback)
 }
 
 function isStationRejected(error: unknown): boolean {
@@ -95,8 +96,8 @@ export default function StationClient() {
 
   if (!mounted || session.isLoading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
-        <CircularProgress aria-label="Wird geladen" />
+      <Box sx={{ py: 8 }}>
+        <LoadingState label="Wird geladen …" />
       </Box>
     )
   }
@@ -170,10 +171,7 @@ function StationSetup({
   return (
     <Paper sx={{ p: { xs: 3, md: 4 }, maxWidth: 560, mx: 'auto' }}>
       <Stack spacing={2}>
-        <Typography variant="h4" component="h1">
-          <StationIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Station einrichten
-        </Typography>
+        <Typography variant="h1">Station einrichten</Typography>
         {notice && <Alert severity="warning">{notice}</Alert>}
         <Typography color="text.secondary">
           Dieses Gerät ist noch keine Station. An einer Station melden sich alle
@@ -348,7 +346,7 @@ function StationLogin({
         }}
       >
         <Box>
-          <Typography variant="h4" component="h1">
+          <Typography variant="h1">
             {selected ? `PIN für ${selected.displayName}` : 'Wer bist du?'}
           </Typography>
           <Typography color="text.secondary">
@@ -454,9 +452,7 @@ function StationLogin({
           {loadError}
         </Alert>
       ) : users === null ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress aria-label="Namen werden geladen" />
-        </Box>
+        <LoadingState label="Namen werden geladen …" />
       ) : users.length === 0 ? (
         <Alert severity="info">
           Noch hat niemand eine PIN. Der Inhaber setzt PINs unter Verwaltung ›
