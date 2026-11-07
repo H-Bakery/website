@@ -2,7 +2,9 @@ import React from 'react'
 import { screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
+import { render } from '@testing-library/react'
 import TagesZielClient, {
+  TargetMarker,
   describeAverageRatio,
   formatSignedEuro,
 } from './TagesZielClient'
@@ -351,5 +353,47 @@ describe('TagesZielClient', () => {
     expect(describeAverageRatio(1.16)).toMatch(/16\s% über dem Tagesziel/)
     expect(describeAverageRatio(0.9)).toMatch(/10\s% unter dem Tagesziel/)
     expect(describeAverageRatio(1)).toMatch(/genau auf dem Tagesziel/)
+  })
+
+  it('zeichnet das Ziel genau über dem Balken desselben Tages', () => {
+    // Regression: eine stepAfter-Linie über die Balkenmitten - die linke
+    // Hälfte jedes Balkens zeigte das Ziel des Vortags.
+    const { container } = render(
+      <svg>
+        <TargetMarker
+          x={100}
+          y={40}
+          width={36}
+          height={200}
+          stroke="#000"
+          halo="#fff"
+          payload={{ target: 244.34 }}
+        />
+      </svg>
+    )
+    const lines = container.querySelectorAll('line')
+    expect(lines).toHaveLength(2)
+    lines.forEach((line) => {
+      expect(line.getAttribute('x1')).toBe('100')
+      expect(line.getAttribute('x2')).toBe('136')
+      expect(line.getAttribute('y1')).toBe('40')
+      expect(line.getAttribute('y2')).toBe('40')
+    })
+  })
+
+  it('zeichnet ohne Ziel (Ruhetag, offen) keine Markierung', () => {
+    const { container } = render(
+      <svg>
+        <TargetMarker
+          x={100}
+          y={240}
+          width={36}
+          stroke="#000"
+          halo="#fff"
+          payload={{ target: null }}
+        />
+      </svg>
+    )
+    expect(container.querySelector('line')).toBeNull()
   })
 })

@@ -16,7 +16,6 @@ import {
 } from '@mui/material'
 import { Download as DownloadIcon } from '@mui/icons-material'
 import {
-  addDaysIso,
   DAY_STATUS_LABELS,
   downloadRestCsv,
   fetchRestSummary,
@@ -37,6 +36,7 @@ import {
   type KeyFigure,
 } from '../../../../components/layout'
 import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
+import { weekPresets } from '../../../../components/analytics/dateRange'
 
 /** Längster Zeitraum - wie `MAX_RANGE_DAYS` in `rest-am-abend.core.js`. */
 const MAX_RANGE_DAYS = 400
@@ -44,12 +44,6 @@ const MAX_RANGE_DAYS = 400
 const ALERT_TOUCH = {
   '& .MuiAlert-action .MuiButtonBase-root': { minHeight: 44, minWidth: 44 },
 } as const
-
-const PRESETS: { label: string; days: number }[] = [
-  { label: '7 Tage', days: 7 },
-  { label: '4 Wochen', days: 28 },
-  { label: '12 Wochen', days: 84 },
-]
 
 /** Tage, die als Lücke markiert werden (nicht 0). */
 const GAP_STATUSES = new Set([
@@ -67,6 +61,29 @@ function errorMessage(error: unknown): string {
 // --------------------------------------------------------- Tagesverlauf
 
 /**
+ * Breite eines Elements, nachgeführt über `ResizeObserver` (0, solange
+ * nicht gemessen - z. B. in jsdom).
+ */
+function useElementWidth(el: HTMLElement | null): number {
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    if (!el) return
+    setWidth(Math.round(el.getBoundingClientRect().width))
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width
+      if (typeof w === 'number' && w > 0) setWidth(Math.round(w))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [el])
+  return width
+}
+
+/** Mindestbreite je Tag - darunter scrollt das Diagramm (Handy). */
+export const DAY_SLOT_MIN = 22
+
+/**
  * Restquote je Tag einer Einheit (eine Reihe, daher ohne Legende - der Titel
  * nennt sie). Tage ohne vollständige Zählung stehen als Lücke da, nie als 0.
  */
@@ -78,29 +95,34 @@ export function DailyRateChart({
   unit: string
 }) {
   const theme = useTheme()
-  const scroller = useRef<HTMLDivElement | null>(null)
+  // Element als State, nicht als Ref: das Diagramm erscheint oft erst mit
+  // den Daten, und erst dann darf gemessen werden.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
+  const available = useElementWidth(scroller)
   const shown = days.filter((d) => d.status !== 'future')
   // Auf dem Handy passt der Zeitraum nicht ganz: die jüngsten Tage zeigen.
   useEffect(() => {
-    const el = scroller.current
-    if (el) el.scrollLeft = el.scrollWidth
-  }, [days])
+    if (scroller) scroller.scrollLeft = scroller.scrollWidth
+  }, [days, scroller, available])
   if (shown.length === 0) return null
   const rates = shown.map((d) => d.byUnit[unit]?.rate ?? null)
   const max = Math.max(0.1, ...rates.map((r) => r ?? 0))
   const top = Math.ceil(max * 10) / 10
-  const width = Math.max(320, shown.length * 22)
-  const height = 160
+  // Die ganze Kartenbreite nutzen (früher feste Pixel: am PC endete das
+  // Diagramm in der Mitte der Karte); nur wenn die Tage dort nicht passen,
+  // wird es breiter und scrollt.
+  const width = Math.max(320, shown.length * DAY_SLOT_MIN, available)
+  const height = available >= 600 ? 200 : 160
   const left = 36
   const bottom = 22
   const plotH = height - bottom - 8
   const slot = (width - left) / shown.length
-  const barW = Math.max(4, Math.min(16, slot - 4))
+  const barW = Math.max(4, Math.min(28, slot - 6))
   const y = (r: number) => 8 + plotH - (r / top) * plotH
   const ticks = [0, top / 2, top]
   const ink = theme.palette.text.secondary
   return (
-    <Box ref={scroller} sx={{ overflowX: 'auto' }} data-testid="daily-chart">
+    <Box ref={setScroller} sx={{ overflowX: 'auto' }} data-testid="daily-chart">
       <svg
         width={width}
         height={height}
@@ -360,13 +382,8 @@ export default function RestAuswertungClient() {
 
   const chartUnit =
     data?.totals.find((t) => t.unit === 'Stück')?.unit ?? data?.totals[0]?.unit
-  const presets = data
-    ? PRESETS.map((p) => ({
-        label: p.label,
-        from: addDaysIso(data.today, -(p.days - 1)),
-        to: data.today,
-      }))
-    : []
+  // Dieselben Wochen-Zeiträume wie das Tagesziel (Wochentage vergleichen).
+  const presets = data ? weekPresets(data.today) : []
 
   return (
     <PageLayout

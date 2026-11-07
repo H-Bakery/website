@@ -1,7 +1,8 @@
 import React from 'react'
 import { screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import ProductAnalyticsPage from './page'
+import ProductAnalyticsPage from './ProductAnalyticsClient'
 
 // Das Ranking-Tabellenmodul zieht @mui/x-data-grid nach, das in jsdom an
 // TextEncoder scheitert; die Tabelle ist hier nicht Gegenstand des Tests.
@@ -77,5 +78,57 @@ describe('ProductAnalyticsPage', () => {
       screen.getByRole('button', { name: 'Hinweis zu den Mengen' })
     ).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText(unavailable)).not.toBeInTheDocument()
+  })
+
+  it('zeigt „Wenig verkauft“ als Sortierung derselben Liste, nicht als zweite Tabelle', async () => {
+    analyticsService.getProductPerformanceWithSource.mockImplementation(
+      (params: { type: string }) =>
+        Promise.resolve({
+          data:
+            params.type === 'bottom'
+              ? [
+                  {
+                    ...products[0],
+                    productId: '2',
+                    productName: 'Zopf',
+                    quantitySold: 1,
+                    revenue: 4,
+                  },
+                  ...products,
+                ]
+              : [
+                  ...products,
+                  {
+                    productId: '2',
+                    productName: 'Zopf',
+                    quantitySold: 1,
+                    revenue: 4,
+                  },
+                ],
+          available: true,
+        })
+    )
+    renderWithTheme(<ProductAnalyticsPage latestReportDate="2026-03-06" />)
+
+    expect(
+      await screen.findByRole('table', { name: 'Produkte nach Umsatz' })
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('table')).toHaveLength(1)
+    expect(
+      analyticsService.getProductPerformanceWithSource
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startDate: '2026-02-05',
+        endDate: '2026-03-06',
+      })
+    )
+
+    await userEvent
+      .setup()
+      .click(screen.getByRole('button', { name: 'Wenig verkauft' }))
+    expect(
+      screen.getByRole('table', { name: 'Wenig verkaufte Produkte' })
+    ).toBeInTheDocument()
+    expect(screen.getAllByRole('table')).toHaveLength(1)
   })
 })

@@ -49,6 +49,54 @@ export function rangeDays(from: string, to: string): number {
   return Math.round((b - a) / 86400000) + 1
 }
 
+export interface PresetButton {
+  label: string
+  active: boolean
+  onClick: () => void
+}
+
+/**
+ * Die Schnellwahl der Zahlen-Seiten - auch für Seiten ohne Datumsfelder
+ * (Finanzen: Monate). Gewählt = umrandet in Primärfarbe, `aria-pressed`.
+ */
+export function PresetButtons({
+  presets,
+  disabled = false,
+  'aria-label': ariaLabel = 'Schnellwahl Zeitraum',
+}: {
+  presets: PresetButton[]
+  disabled?: boolean
+  'aria-label'?: string
+}) {
+  return (
+    <Box
+      role="group"
+      aria-label={ariaLabel}
+      sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}
+    >
+      {presets.map((p) => (
+        <Button
+          key={p.label}
+          size="small"
+          variant="outlined"
+          color={p.active ? 'primary' : 'inherit'}
+          aria-pressed={p.active}
+          disabled={disabled}
+          onClick={p.onClick}
+          sx={{
+            whiteSpace: 'nowrap',
+            borderColor: p.active ? undefined : 'divider',
+            bgcolor: p.active ? 'action.selected' : undefined,
+            fontWeight: p.active ? 600 : 400,
+          }}
+        >
+          {p.label}
+        </Button>
+      ))}
+    </Box>
+  )
+}
+
 export function DateRangeFilter({
   from,
   to,
@@ -141,34 +189,14 @@ export function DateRangeFilter({
         </Typography>
       )}
       {presets.length > 0 && (
-        <Box
-          role="group"
-          aria-label="Schnellwahl Zeitraum"
-          sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}
-        >
-          {presets.map((p) => {
-            const active = p.from === from && p.to === to
-            return (
-              <Button
-                key={p.label}
-                size="small"
-                variant="outlined"
-                color={active ? 'primary' : 'inherit'}
-                aria-pressed={active}
-                disabled={busy}
-                onClick={() => onApply(p.from, p.to)}
-                sx={{
-                  whiteSpace: 'nowrap',
-                  borderColor: active ? undefined : 'divider',
-                  bgcolor: active ? 'action.selected' : undefined,
-                  fontWeight: active ? 600 : 400,
-                }}
-              >
-                {p.label}
-              </Button>
-            )
-          })}
-        </Box>
+        <PresetButtons
+          presets={presets.map((p) => ({
+            label: p.label,
+            active: p.from === from && p.to === to,
+            onClick: () => onApply(p.from, p.to),
+          }))}
+          disabled={busy}
+        />
       )}
       {note && (
         <Typography variant="body2" color="text.secondary">

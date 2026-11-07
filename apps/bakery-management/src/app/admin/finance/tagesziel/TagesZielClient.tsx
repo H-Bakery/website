@@ -31,7 +31,6 @@ import {
   CartesianGrid,
   Cell,
   ComposedChart,
-  Line,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -64,13 +63,14 @@ import TargetStatusChip, {
   useTargetStatusColors,
 } from '../../../../components/targets/TargetStatusChip'
 import {
+  EmptyState,
   KeyFigures,
   LoadingState,
   PageLayout,
   PageSection,
 } from '../../../../components/layout'
 import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
-import { monthStartIso } from '../../../../components/analytics/dateRange'
+import { weekPresets } from '../../../../components/analytics/dateRange'
 
 // ---------------------------------------------------------------------------
 // Formatierung
@@ -309,6 +309,62 @@ interface DayPoint {
   statusLabel: string
 }
 
+/** Achse der Ziel-Markierung - dieselben Kategorien wie die Balken. */
+export const TARGET_AXIS_ID = 'target'
+
+export interface TargetMarkerProps {
+  x?: number
+  y?: number
+  width?: number
+  height?: number
+  /** Farbe der Markierung (Schrift) und des Rands (Fläche). */
+  stroke: string
+  halo: string
+  payload?: { target?: number | null }
+}
+
+/**
+ * Ziel eines Tages als waagrechter Strich genau über **seinem** Balken (von
+ * `x` bis `x + width`, auf Höhe `y` = Ziel). Früher war das Ziel eine
+ * `stepAfter`-Linie über die Balkenmitten - die Stufe begann in der Mitte,
+ * die linke Hälfte jedes Balkens zeigte also das Ziel des Vortags (Fr 06.11.
+ * stand unter dem Donnerstagsziel). Ein Rand in der Flächenfarbe hält den
+ * Strich über den Ampelfarben und dem Hintergrund lesbar, hell wie dunkel.
+ */
+export function TargetMarker({
+  x,
+  y,
+  width,
+  stroke,
+  halo,
+  payload,
+}: TargetMarkerProps) {
+  if (
+    x === undefined ||
+    y === undefined ||
+    width === undefined ||
+    !Number.isFinite(y) ||
+    payload?.target === null ||
+    payload?.target === undefined
+  ) {
+    return null
+  }
+  return (
+    <g data-testid="target-marker">
+      <line x1={x} x2={x + width} y1={y} y2={y} stroke={halo} strokeWidth={6} />
+      <line
+        x1={x}
+        x2={x + width}
+        y1={y}
+        y2={y}
+        stroke={stroke}
+        strokeWidth={2.5}
+        strokeDasharray="5 3"
+      />
+    </g>
+  )
+}
+
 function DayChart({ points }: { points: DayPoint[] }) {
   const theme = useTheme()
   const colors = useTargetStatusColors()
@@ -328,6 +384,7 @@ function DayChart({ points }: { points: DayPoint[] }) {
             stroke={grid}
             interval="preserveStartEnd"
           />
+          <XAxis xAxisId={TARGET_AXIS_ID} dataKey="label" hide />
           <YAxis
             width={phone ? 60 : 80}
             tickFormatter={(v: number) => currencyNoCents.format(v)}
@@ -363,16 +420,23 @@ function DayChart({ points }: { points: DayPoint[] }) {
               <Cell key={p.date} fill={colors[p.status]} />
             ))}
           </Bar>
-          <Line
-            type="stepAfter"
+          {/* Ziel: eine eigene, unsichtbare Kategorie-Achse, damit die
+              Markierung genau über dem Balken desselben Tages liegt und
+              nicht neben ihm (zwei Bar-Reihen auf einer Achse stünden
+              nebeneinander). */}
+          <Bar
+            xAxisId={TARGET_AXIS_ID}
             dataKey="target"
             name="target"
-            stroke={text}
-            strokeWidth={2}
-            strokeDasharray="6 3"
-            dot={false}
-            connectNulls={false}
+            maxBarSize={40}
             isAnimationActive={false}
+            shape={(props: unknown) => (
+              <TargetMarker
+                {...(props as TargetMarkerProps)}
+                stroke={text}
+                halo={paper}
+              />
+            )}
           />
         </ComposedChart>
       </ResponsiveContainer>
@@ -641,17 +705,23 @@ export default function TagesZielClient() {
     const cfg = state.partial?.config
     return (
       <PageLayout title={title} subtitle={subtitle}>
-        <Alert severity="info">
-          <AlertTitle>Kein Tagesziel verfügbar</AlertTitle>
-          {state.reason} Es wird bewusst kein geschätzter Wert angezeigt. Die
-          Parameter stehen im hq-Repo unter data/finance/config/targets.json.
-        </Alert>
-        {cfg && (
-          <Typography variant="body2" color="text.secondary">
-            Stand der Kostenbasis: {formatReportDate(cfg.updated)} · Modus:{' '}
-            {cfg.mode === 'manual' ? 'manuell vorgegeben' : 'abgeleitet'}
-          </Typography>
-        )}
+        <EmptyState
+          title="Kein Tagesziel verfügbar"
+          description={
+            <>
+              {state.reason} Es wird bewusst kein geschätzter Wert angezeigt.
+              Die Parameter stehen im hq-Repo unter
+              data/finance/config/targets.json.
+              {cfg && (
+                <Box component="span" sx={{ display: 'block', mt: 1 }}>
+                  Stand der Kostenbasis: {formatReportDate(cfg.updated)} ·
+                  Modus:{' '}
+                  {cfg.mode === 'manual' ? 'manuell vorgegeben' : 'abgeleitet'}
+                </Box>
+              )}
+            </>
+          }
+        />
       </PageLayout>
     )
   }
@@ -804,15 +874,7 @@ export default function TagesZielClient() {
             setTo(t)
           }}
           max={status.today}
-          presets={[
-            { label: '7 Tage', from: addDaysIso(anchor, -6), to: anchor },
-            {
-              label: '4 Wochen',
-              from: addDaysIso(anchor, -(DEFAULT_RANGE_DAYS - 1)),
-              to: anchor,
-            },
-            { label: 'Dieser Monat', from: monthStartIso(anchor), to: anchor },
-          ]}
+          presets={weekPresets(anchor)}
         />
         {periodLoading && !period && (
           <LoadingState dense label="Tagesverlauf wird geladen …" />
