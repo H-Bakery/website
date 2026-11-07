@@ -346,9 +346,17 @@ describe('ReportClient', () => {
     expect(screen.getByTestId('report-kpi-geliefert')).toHaveTextContent(
       'davon 24 Stück offen (ohne Abholung)'
     )
+    // r1: Einschränkung als Hinweis, die Bezeichnung bleibt einzeilig - die
+    // umbrochene Bezeichnung schob den Wert aus der Reihe.
+    const quote = screen.getByTestId('report-kpi-quote')
+    expect(quote).toHaveTextContent('nur Tage mit Abholung')
+    expect(screen.queryByText('Abverkaufsquote (Tage mit Abholung)')).toBeNull()
+    // Die Eckdaten stehen im Abschnitt „Zeitraum“, nicht lose dazwischen.
     expect(
-      screen.getByText('Abverkaufsquote (Tage mit Abholung)')
-    ).toBeInTheDocument()
+      within(screen.getByRole('region', { name: 'Zeitraum' })).getByTestId(
+        'report-counts'
+      )
+    ).toHaveTextContent(/Geschäftstage · .* · davon/)
     expect(
       screen.getByText('4 Stück noch offen (Tag ohne Abholung)')
     ).toBeInTheDocument()

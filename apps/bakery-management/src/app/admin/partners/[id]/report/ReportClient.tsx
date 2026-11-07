@@ -395,6 +395,22 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
       ? 'Abrechnung: Festkauf - vergütet wird die gelieferte Ware'
       : 'Abrechnung: Kommission - vergütet wird die verkaufte Ware'
 
+  const countsText = stats
+    ? `${plural(
+        stats.totals.dayCount,
+        'Geschäftstag',
+        'Geschäftstage'
+      )} · ${plural(
+        stats.totals.visitCount,
+        'Besuch',
+        'Besuche'
+      )} · davon ${plural(
+        stats.totals.refillCount,
+        'Nachlieferung',
+        'Nachlieferungen'
+      )}`
+    : ''
+
   const isEmpty = Boolean(stats && stats.byDay.length === 0)
   const csvReady = rangeReady && !rangeInvalid
 
@@ -461,7 +477,20 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
       >
         {/* Zeitraumwahl - gehört zur App, nicht zum Dokument */}
         <Box className="report-no-print">
-          <PageSection title="Zeitraum">
+          <PageSection
+            title="Zeitraum"
+            description={
+              stats && partner && !rangeInvalid ? (
+                // Eckdaten des Zeitraums gehören zur Zeitraumwahl - vorher
+                // stand die Zeile lose zwischen den Abschnitten.
+                <Box component="span" data-testid="report-counts">
+                  {countsText} · {settlementText}
+                  {addressLines.length === 0 &&
+                    ' · Adresse noch nicht hinterlegt'}
+                </Box>
+              ) : undefined
+            }
+          >
             <Box
               sx={{
                 display: 'flex',
@@ -605,6 +634,13 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     <strong>Zeitraum:</strong> {periodText}
                   </Typography>
                   <Typography variant="body2">{settlementText}</Typography>
+                  {/* Im Druck fehlt die Zeitraumwahl - die Eckdaten stehen
+                      deshalb hier, als Liste statt als Fließtext. */}
+                  <Typography variant="body2">
+                    Geschäftstage: {stats.totals.dayCount} · Besuche:{' '}
+                    {stats.totals.visitCount} (davon Nachlieferungen:{' '}
+                    {stats.totals.refillCount})
+                  </Typography>
                   {createdAt && (
                     <Typography variant="body2">
                       Erstellt am {createdAt}
@@ -613,26 +649,6 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                 </Box>
               </Box>
             </Box>
-
-            <Typography
-              variant="body2"
-              color="text.secondary"
-              data-testid="report-counts"
-            >
-              {plural(stats.totals.dayCount, 'Geschäftstag', 'Geschäftstage')} ·{' '}
-              {plural(stats.totals.visitCount, 'Besuch', 'Besuche')} · davon{' '}
-              {plural(
-                stats.totals.refillCount,
-                'Nachlieferung',
-                'Nachlieferungen'
-              )}
-              <Box component="span" className="report-no-print">
-                {' '}
-                · {settlementText}
-                {addressLines.length === 0 &&
-                  ' · Adresse fehlt in den Partner-Stammdaten'}
-              </Box>
-            </Typography>
 
             {provisional && (
               <Alert severity="warning">
@@ -728,11 +744,14 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                       'data-testid': 'report-kpi-verkauft',
                     },
                     {
-                      label:
-                        stats.openDates.length > 0
-                          ? 'Abverkaufsquote (Tage mit Abholung)'
-                          : 'Abverkaufsquote',
+                      // Kurze Bezeichnung, Einschränkung als Hinweis: die
+                      // umbrochene Bezeichnung schob den Wert aus der Reihe.
+                      label: 'Abverkaufsquote',
                       value: formatPercent(stats.totals.sellThroughRate),
+                      hint:
+                        stats.openDates.length > 0
+                          ? 'nur Tage mit Abholung'
+                          : undefined,
                       'data-testid': 'report-kpi-quote',
                     },
                     {
@@ -798,7 +817,9 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                         {stats.byProduct.map((product) => (
                           <TableRow key={product.productSlug} hover>
                             <TableCell>
-                              {product.productName}
+                              <Box component="span" sx={{ fontWeight: 600 }}>
+                                {product.productName}
+                              </Box>
                               {(product.uncountedQty ?? 0) > 0 && (
                                 <Typography
                                   component="span"
@@ -917,6 +938,12 @@ export default function ReportClient({ partnerId }: { partnerId: string }) {
                     <ResponsiveContainer width="100%" height="100%">
                       <BarChart
                         data={chartData}
+                        // Bei ein, zwei Tagen sonst handbreite Balken. Feste
+                        // Breite statt `maxBarSize`: die setzt jeden Balken
+                        // einzeln in die Mitte seines Platzes, das Paar fällt
+                        // auseinander. Ab drei Tagen reicht der Platz am Handy
+                        // dafür nicht mehr.
+                        barSize={chartData.length <= 2 ? 40 : undefined}
                         margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
                       >
                         <defs>
