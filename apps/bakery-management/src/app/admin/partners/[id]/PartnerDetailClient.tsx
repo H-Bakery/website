@@ -643,21 +643,21 @@ export default function PartnerDetailClient({
               items={[
                 {
                   label: 'Geliefert',
-                  value: String(totals?.deliveredQty ?? 0),
-                  hint: 'Stück eingeräumt',
+                  // Einheit wie in Übersicht und Report: „60 Stück“.
+                  value: `${totals?.deliveredQty ?? 0} Stück`,
+                  hint: 'eingeräumt',
                   'data-testid': 'kpi-geliefert',
                 },
                 {
                   label: 'Verkauft',
-                  value: String(totals?.soldQty ?? 0),
-                  hint: 'Stück',
+                  value: `${totals?.soldQty ?? 0} Stück`,
                   badge: provisional ? <ProvisionalBadge /> : undefined,
                   'data-testid': 'kpi-verkauft',
                 },
                 {
                   label: 'Umsatz',
                   value: formatCurrency(totals?.revenue ?? 0),
-                  hint: 'zu HQ-Preisen',
+                  hint: 'zum Preis bei Lieferung',
                   badge: provisional ? <ProvisionalBadge /> : undefined,
                   // Grün nur, wenn die Zahl endgültig ist - ein vorläufiger
                   // Umsatz von 0,00 € in Grün las sich wie „alles gut“.

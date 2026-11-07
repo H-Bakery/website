@@ -14,6 +14,7 @@ import {
   DialogTitle,
   FormControlLabel,
   InputAdornment,
+  Menu,
   MenuItem,
   Stack,
   Switch,
@@ -119,8 +120,14 @@ export default function TemplatesClient({
   const [saveError, setSaveError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [search, setSearch] = useState('')
-  const [onlyStocked, setOnlyStocked] = useState(false)
-  const [copySource, setCopySource] = useState('')
+  // Standard: nur die Positionen des Tages (r1: sonst standen alle 56
+  // Katalogprodukte als „0“ da und die vier echten Positionen gingen unter).
+  const [showAll, setShowAll] = useState(false)
+  // Zeilen, die in dieser Sitzung bearbeitet wurden (`Wochentag:slug`): sie
+  // bleiben stehen, auch wenn ihre Menge auf 0 geht oder die Suche geleert
+  // wird - sonst verschwände eine Zeile mitten im Tippen.
+  const [touched, setTouched] = useState<Set<string>>(() => new Set())
+  const [copyAnchor, setCopyAnchor] = useState<HTMLElement | null>(null)
   const [pendingCopy, setPendingCopy] = useState<number | null>(null)
   const [notice, setNotice] = useState<{
     message: string
@@ -242,6 +249,8 @@ export default function TemplatesClient({
   const setQuantity = (slug: string, value: number) => {
     if (weekday == null) return
     setNotice(null)
+    const key = `${weekday}:${slug}`
+    setTouched((prev) => (prev.has(key) ? prev : new Set(prev).add(key)))
     setDrafts((prev) => {
       const day = { ...(prev[weekday] ?? {}) }
       if (value > 0) day[slug] = value
@@ -259,9 +268,8 @@ export default function TemplatesClient({
     })
   }
 
-  const handleCopySelect = (value: string) => {
-    const source = Number(value)
-    setCopySource('')
+  const handleCopySelect = (source: number) => {
+    setCopyAnchor(null)
     if (!Number.isFinite(source) || source === weekday) return
     if (summary.positions > 0) {
       setPendingCopy(source)
@@ -323,19 +331,41 @@ export default function TemplatesClient({
   }
 
   const needle = search.trim().toLowerCase()
+  /**
+   * Hat der Tag noch keine gespeicherte Bestückung, steht der ganze Katalog
+   * da (Erstbestückung). Sonst nur die Positionen des Tages; weitere Produkte
+   * über die Suche (durchsucht immer den ganzen Katalog) oder „Alle Produkte
+   * zeigen“.
+   */
+  const savedPositions =
+    weekday != null ? Object.keys(withoutEmpty(saved[weekday] ?? {})).length : 0
+  // Erstbestückung: wer schreiben darf, sieht den ganzen Katalog. Wer nur
+  // nachschlägt, bekommt keine 56 gesperrten Nullen, sondern „nichts
+  // hinterlegt“.
+  const firstStocking = canEdit && savedPositions === 0
+  const listAll = showAll || firstStocking
   const visibleGroups = useMemo(() => {
+    const savedDay = weekday != null ? saved[weekday] ?? {} : {}
     return groups
       .map((group) => ({
         ...group,
         products: group.products.filter((product) => {
-          const quantity = currentDraft[product.productSlug] ?? 0
-          if (onlyStocked && quantity <= 0) return false
-          if (!needle) return true
-          return product.productName.toLowerCase().includes(needle)
+          const slug = product.productSlug
+          if (needle) return product.productName.toLowerCase().includes(needle)
+          if (listAll) return true
+          return (
+            (currentDraft[slug] ?? 0) > 0 ||
+            (savedDay[slug] ?? 0) > 0 ||
+            touched.has(`${weekday}:${slug}`)
+          )
         }),
       }))
       .filter((group) => group.products.length > 0)
-  }, [groups, currentDraft, onlyStocked, needle])
+  }, [groups, currentDraft, saved, weekday, touched, listAll, needle])
+  const visibleCount = visibleGroups.reduce(
+    (sum, group) => sum + group.products.length,
+    0
+  )
 
   const subtitle = partner?.name
     ? canEdit
@@ -367,6 +397,35 @@ export default function TemplatesClient({
   const summaryText = `${positionsLabel(summary.positions)} · ${
     summary.units
   } Stück · Warenwert ${formatCurrency(summary.value)}`
+  const copyTargets = weekdays.filter((day) => day !== weekday)
+  const copyAction =
+    canEdit && copyTargets.length > 0 ? (
+      <>
+        <Button
+          variant="outlined"
+          startIcon={<ContentCopyIcon />}
+          onClick={(event) => setCopyAnchor(event.currentTarget)}
+          disabled={saving}
+          aria-haspopup="menu"
+          aria-expanded={copyAnchor ? 'true' : undefined}
+          aria-controls={copyAnchor ? 'copy-day-menu' : undefined}
+        >
+          Von anderem Tag übernehmen
+        </Button>
+        <Menu
+          id="copy-day-menu"
+          anchorEl={copyAnchor}
+          open={copyAnchor != null}
+          onClose={() => setCopyAnchor(null)}
+        >
+          {copyTargets.map((day) => (
+            <MenuItem key={day} onClick={() => handleCopySelect(day)}>
+              {WEEKDAY_LABELS[day]} ({positionsLabel(positionsOf(day))})
+            </MenuItem>
+          ))}
+        </Menu>
+      </>
+    ) : undefined
 
   return (
     <PageLayout
@@ -387,14 +446,14 @@ export default function TemplatesClient({
 
       {catalogue.length === 0 && (
         <Alert severity="warning">
-          Es sind keine lieferbaren Produkte aus HQ verfügbar. Ohne Katalog
+          Es sind keine lieferbaren Produkte im Produktkatalog. Ohne Katalog
           lässt sich keine Bestückung pflegen.
         </Alert>
       )}
 
       <PageSection
-        title={weekday != null ? WEEKDAY_LABELS[weekday] : 'Wochentag'}
-        description={`${summaryText} (HQ-Preise)`}
+        title="Liefermengen je Wochentag"
+        actions={copyAction}
         disablePadding
       >
         <Tabs
@@ -440,7 +499,8 @@ export default function TemplatesClient({
           ))}
         </Tabs>
 
-        {/* Werkzeuge: suchen, filtern, von einem anderen Tag übernehmen */}
+        {/* Summe des gewählten Tags (der Tag selbst steht im Reiter), dann
+            suchen und „Alle Produkte zeigen“. Übernehmen steht im Kopf. */}
         <Box
           sx={{
             display: 'flex',
@@ -451,12 +511,24 @@ export default function TemplatesClient({
             py: 2,
           }}
         >
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            data-testid="template-summary"
+            sx={{
+              flexBasis: '100%',
+              mb: 0.5,
+              fontVariantNumeric: 'tabular-nums',
+            }}
+          >
+            {summaryText} zu aktuellen Preisen
+          </Typography>
           <TextField
             size="small"
             label="Produkt suchen"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            sx={{ flex: '1 1 200px' }}
+            sx={{ flex: '1 1 220px' }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -465,50 +537,26 @@ export default function TemplatesClient({
               ),
             }}
           />
-          {canEdit && (
-            <TextField
-              select
-              size="small"
-              label="Von anderem Tag übernehmen"
-              value={copySource}
-              onChange={(event) => handleCopySelect(event.target.value)}
-              disabled={weekdays.length < 2 || saving}
-              sx={{ flex: '1 1 200px' }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <ContentCopyIcon fontSize="small" />
-                  </InputAdornment>
-                ),
-              }}
-            >
-              {weekdays
-                .filter((day) => day !== weekday)
-                .map((day) => (
-                  <MenuItem key={day} value={String(day)}>
-                    {WEEKDAY_LABELS[day]} ({positionsLabel(positionsOf(day))})
-                  </MenuItem>
-                ))}
-            </TextField>
+          {!firstStocking && (
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showAll}
+                  onChange={(event) => setShowAll(event.target.checked)}
+                />
+              }
+              label="Alle Produkte zeigen"
+              sx={{ mr: 0, minHeight: 44 }}
+            />
           )}
-          <FormControlLabel
-            control={
-              <Switch
-                checked={onlyStocked}
-                onChange={(event) => setOnlyStocked(event.target.checked)}
-              />
-            }
-            label="Nur bestückte"
-            sx={{ mr: 0, minHeight: 44 }}
-          />
         </Box>
 
         {unknownSlugs.length > 0 && (
           <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
             <Alert severity="warning">
               {unknownSlugs.length} Position(en) der gespeicherten Vorlage
-              stehen nicht mehr im HQ-Katalog ({unknownSlugs.join(', ')}) und
-              werden beim Speichern entfernt.
+              stehen nicht mehr im Produktkatalog ({unknownSlugs.join(', ')})
+              und werden beim Speichern entfernt.
             </Alert>
           </Box>
         )}
@@ -522,9 +570,13 @@ export default function TemplatesClient({
             <Box sx={{ px: { xs: 2, md: 3 }, pb: 3 }}>
               <EmptyState
                 title={
-                  onlyStocked || needle
-                    ? 'Keine Produkte für diese Filter.'
-                    : 'Keine Produkte im Katalog.'
+                  needle
+                    ? 'Kein Produkt passt zur Suche.'
+                    : catalogue.length === 0
+                    ? 'Keine Produkte im Katalog.'
+                    : `Für ${
+                        weekday != null ? WEEKDAY_LABELS[weekday] : 'diesen Tag'
+                      } ist keine Bestückung hinterlegt.`
                 }
               />
             </Box>
@@ -595,41 +647,91 @@ export default function TemplatesClient({
                               )}`}
                           </Typography>
                         </Box>
-                        <TextField
-                          type="number"
-                          size="small"
-                          value={quantity > 0 ? String(quantity) : ''}
-                          placeholder="0"
-                          disabled={!canEdit}
-                          error={quantity > MAX_TEMPLATE_QTY}
-                          onChange={(event) => {
-                            const parsed = parseInt(event.target.value, 10)
-                            setQuantity(
-                              product.productSlug,
-                              Number.isFinite(parsed) && parsed > 0 ? parsed : 0
-                            )
-                          }}
-                          inputProps={{
-                            min: 0,
-                            max: MAX_TEMPLATE_QTY,
-                            step: 1,
-                            inputMode: 'numeric',
-                            readOnly: !canEdit,
-                            'aria-label': `Menge ${product.productName}`,
-                            style: { textAlign: 'right' },
-                          }}
-                          sx={{
-                            width: 96,
-                            flexShrink: 0,
-                            '& .MuiInputBase-root': { minHeight: 44 },
-                          }}
-                        />
+                        {canEdit ? (
+                          <TextField
+                            type="number"
+                            size="small"
+                            value={quantity > 0 ? String(quantity) : ''}
+                            placeholder="0"
+                            error={quantity > MAX_TEMPLATE_QTY}
+                            onChange={(event) => {
+                              const parsed = parseInt(event.target.value, 10)
+                              setQuantity(
+                                product.productSlug,
+                                Number.isFinite(parsed) && parsed > 0
+                                  ? parsed
+                                  : 0
+                              )
+                            }}
+                            inputProps={{
+                              min: 0,
+                              max: MAX_TEMPLATE_QTY,
+                              step: 1,
+                              inputMode: 'numeric',
+                              'aria-label': `Menge ${product.productName}`,
+                              style: { textAlign: 'right' },
+                            }}
+                            sx={{
+                              width: 96,
+                              flexShrink: 0,
+                              '& .MuiInputBase-root': { minHeight: 44 },
+                            }}
+                          />
+                        ) : (
+                          // Nur Ansicht: Menge als Text statt eines gesperrten
+                          // Felds (graue Ziffern lagen unter 4,5:1).
+                          <Typography
+                            variant="body2"
+                            fontWeight={quantity > 0 ? 600 : 400}
+                            color={
+                              quantity > 0 ? 'text.primary' : 'text.secondary'
+                            }
+                            aria-label={`Menge ${product.productName}`}
+                            sx={{
+                              flexShrink: 0,
+                              minWidth: 72,
+                              textAlign: 'right',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {quantity > 0 ? `${quantity} Stück` : '–'}
+                          </Typography>
+                        )}
                       </Box>
                     )
                   })}
                 </Box>
               )
             })
+          )}
+          {!listAll && !needle && visibleCount < catalogue.length && (
+            <Box
+              sx={{
+                px: { xs: 2, md: 3 },
+                py: 1.5,
+                borderTop: 1,
+                borderColor: 'divider',
+                '@media print': { display: 'none' },
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  alignItems: 'center',
+                  columnGap: 1,
+                }}
+              >
+                <Typography variant="body2" color="text.secondary">
+                  {canEdit
+                    ? 'Weiteres Produkt aufnehmen: oben suchen oder'
+                    : 'Gezeigt sind nur die Positionen dieses Tages.'}
+                </Typography>
+                <Button size="small" onClick={() => setShowAll(true)}>
+                  Alle {catalogue.length} Produkte zeigen
+                </Button>
+              </Box>
+            </Box>
           )}
         </Box>
 

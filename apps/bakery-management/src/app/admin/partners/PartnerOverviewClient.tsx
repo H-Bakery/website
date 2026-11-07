@@ -118,7 +118,7 @@ function PartnerToday({
         </Link>
       }
       description={[
-        partner.city || 'Ort noch nicht hinterlegt',
+        partner.city || 'Adresse noch nicht hinterlegt',
         SETTLEMENT_LABELS[partner.settlementModel] ?? 'Kommission',
         `Liefertage ${deliveryDaysText(partner.deliveryDays)}`,
       ].join(' · ')}
@@ -174,11 +174,11 @@ function PartnerToday({
                 items={[
                   {
                     label: 'Geliefert',
-                    value: `${totals.deliveredQty} Stk.`,
+                    value: `${totals.deliveredQty} Stück`,
                   },
                   {
                     label: 'Verkauft',
-                    value: `${totals.soldQty} Stk.`,
+                    value: `${totals.soldQty} Stück`,
                     badge: provisional ? <ProvisionalBadge /> : undefined,
                   },
                   {

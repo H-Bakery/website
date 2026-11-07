@@ -8,7 +8,9 @@ import {
   InputAdornment,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import {
   Add as AddIcon,
   Edit as EditIcon,
@@ -89,6 +91,9 @@ export default function ProductListClient({
   products,
 }: ProductListClientProps) {
   const router = useRouter()
+  // Dieselbe Grenze wie `ResponsiveList` (Standard `sm`): darunter Karten.
+  const theme = useTheme()
+  const compact = useMediaQuery(theme.breakpoints.down('sm'))
   // F1/F4: Produkte schreibt nur der Inhaber (B5: PUT/POST `inhaber`).
   // Verkauf sieht die Liste lesend - ohne „Neues Produkt“ und Bearbeiten.
   // Ohne Sitzung (Specs) bleibt alles sichtbar; durchgesetzt wird in der API.
@@ -131,6 +136,39 @@ export default function ProductListClient({
           >
             {product.name}
           </Typography>
+          {compact && (
+            // Karte am Handy: „Brot · Verfügbar“ und der Preis in einer Zeile
+            // unter dem Namen - vorher liefen Kategorie, Status und Preis
+            // ohne Trenner zusammen, mit großem Abstand unter dem Namen.
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                columnGap: 0.75,
+                rowGap: 0.5,
+                mt: 0.25,
+                color: 'text.secondary',
+              }}
+            >
+              <Typography variant="body2" component="span">
+                {product.category}
+              </Typography>
+              <span aria-hidden="true">·</span>
+              <StatusCell product={product} />
+              <span aria-hidden="true">·</span>
+              <Typography
+                variant="body2"
+                component="span"
+                color="text.primary"
+                fontWeight={600}
+                noWrap
+                sx={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {formatCurrency(product.price)}
+              </Typography>
+            </Box>
+          )}
           {product.pendingApproval && (
             <Chip
               label={PENDING_APPROVAL_LABEL}
@@ -150,8 +188,8 @@ export default function ProductListClient({
     },
     {
       key: 'category',
+      hideInCard: true,
       header: 'Kategorie',
-      inline: true,
       cell: (product) => (
         <Typography variant="body2" component="span" color="text.secondary">
           {product.category}
@@ -160,15 +198,15 @@ export default function ProductListClient({
     },
     {
       key: 'status',
+      hideInCard: true,
       header: 'Status',
-      inline: true,
       cell: (product) => <StatusCell product={product} />,
     },
     {
       key: 'price',
+      hideInCard: true,
       header: 'Preis',
       align: 'right',
-      inline: true,
       cell: (product) => (
         <Typography
           variant="body2"
@@ -188,7 +226,7 @@ export default function ProductListClient({
       title={PRODUCTS_TITLE}
       subtitle={
         canEdit
-          ? 'Sortiment aus hq - bearbeiten und neu anlegen'
+          ? 'Sortiment für Laden und Shop - bearbeiten und neu anlegen'
           : 'Freigegebener Produktkatalog zum Nachschlagen'
       }
       width="default"

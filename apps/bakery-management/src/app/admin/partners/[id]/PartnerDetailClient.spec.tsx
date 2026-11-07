@@ -288,14 +288,14 @@ describe('PartnerDetailClient', () => {
 
     // Verkauft, Umsatz und Abverkaufsquote hängen an der fehlenden Abholung
     expect(screen.getAllByText('vorläufig')).toHaveLength(3)
-    expect(kpi('Verkauft').getByText('30')).toBeInTheDocument()
+    expect(kpi('Verkauft').getByText('30 Stück')).toBeInTheDocument()
     expect(kpi('Verkauft').getByText('vorläufig')).toBeInTheDocument()
     expect(kpi('Umsatz').getByText('63,00 €')).toBeInTheDocument()
     expect(kpi('Umsatz').getByText('vorläufig')).toBeInTheDocument()
     expect(kpi('Abverkaufsquote').getByText('50 %')).toBeInTheDocument()
 
     // Geliefert steht fest, die Retoure gibt es erst mit der Abholung
-    expect(kpi('Geliefert').getByText('60')).toBeInTheDocument()
+    expect(kpi('Geliefert').getByText('60 Stück')).toBeInTheDocument()
     expect(kpi('Geliefert').queryByText('vorläufig')).toBeNull()
     expect(
       kpi('Abverkaufsquote').getByText('Retoure erst mit der Abholung')
@@ -312,7 +312,7 @@ describe('PartnerDetailClient', () => {
     expect(screen.queryByText(/Tag noch offen/)).toBeNull()
     expect(screen.queryByText('vorläufig')).toBeNull()
 
-    expect(kpi('Verkauft').getByText('45')).toBeInTheDocument()
+    expect(kpi('Verkauft').getByText('45 Stück')).toBeInTheDocument()
     expect(kpi('Umsatz').getByText('94,50 €')).toBeInTheDocument()
     expect(kpi('Abverkaufsquote').getByText('75 %')).toBeInTheDocument()
     // Abgeschlossen: die Retoure ist beziffert statt angekündigt
