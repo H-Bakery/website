@@ -40,6 +40,7 @@ import { useOptionalSession } from '../../../lib/session'
 import { isPathAllowedForRole } from '../../../lib/roles'
 import { backzettelErrorText } from '../../../lib/backstubeErrors'
 import {
+  ErrorState,
   LoadingState,
   PageLayout,
   PageSection,
@@ -95,10 +96,15 @@ function DayStatus({ entry }: { entry: DayEntry }) {
     return <CircularProgress size={20} aria-label="wird geladen" />
   }
   if (entry.state === 'error') {
+    // Der Grund steht einmal oben (UI-Runde 1) - nicht in jeder Zeile.
     return (
-      <Typography variant="body2" color="error">
-        {entry.message}
-      </Typography>
+      <Chip
+        size="small"
+        color="error"
+        variant="outlined"
+        label="Nicht geladen"
+        data-testid={`day-error-${entry.date}`}
+      />
     )
   }
   const result = entry.result
@@ -217,6 +223,17 @@ export default function BackzettelOverviewClient({
     void load()
   }, [load])
 
+  // UI-Runde 1: ein Fehler steht einmal da, nicht in jeder Zeile. Ging gar
+  // nichts, gibt es nur den Fehler mit „Erneut versuchen“ - keine Karten mit
+  // aktivem „Öffnen“ über leeren Tagen.
+  const failed = entries.filter(
+    (e): e is Extract<DayEntry, { state: 'error' }> => e.state === 'error'
+  )
+  const allFailed =
+    !loading && entries.length > 0 && failed.length === entries.length
+  const errorMessage = configError ?? failed[0]?.message ?? null
+  const retry = () => void load()
+
   const days = config?.config?.days ?? null
   const next = nextProductionDay(today, days)
   const nextEntry = entries.find((e) => e.date === next)
@@ -282,7 +299,26 @@ export default function BackzettelOverviewClient({
         ) : undefined
       }
     >
-      {configError && <Alert severity="error">{configError}</Alert>}
+      {allFailed ? (
+        <ErrorState
+          title="Backzettel konnten nicht geladen werden"
+          message={errorMessage}
+          onRetry={retry}
+          data-testid="overview-error"
+        />
+      ) : (
+        (configError || (!loading && failed.length > 0)) && (
+          <ErrorState
+            message={
+              failed.length > 0
+                ? `${failed.length} von ${entries.length} Tagen nicht geladen: ${failed[0].message}`
+                : configError
+            }
+            onRetry={retry}
+            data-testid="overview-error"
+          />
+        )
+      )}
       {config?.status === 'no-config' && (
         <Alert severity="warning" data-testid="no-config">
           <AlertTitle>Keine Backzettel-Stammdaten</AlertTitle>
@@ -299,104 +335,108 @@ export default function BackzettelOverviewClient({
         </Alert>
       )}
 
-      <PageSection
-        title={formatDateLong(next)}
-        description="Nächster Produktionstag"
-        data-testid="next-day"
-      >
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            alignItems: { xs: 'stretch', sm: 'center' },
-            justifyContent: 'space-between',
-            gap: 2,
-          }}
+      {!allFailed && (
+        <PageSection
+          title={formatDateLong(next)}
+          description="Nächster Produktionstag"
+          data-testid="next-day"
         >
-          {nextEntry ? (
-            <Stack spacing={0.75} sx={{ minWidth: 0 }}>
-              <DayStatus entry={nextEntry} />
-              <DaySummaryLine entry={nextEntry} />
-            </Stack>
-          ) : (
-            <span />
-          )}
-          <Button
-            component={Link}
-            href={`/admin/backzettel/${next}`}
-            variant="contained"
-            endIcon={<ArrowForwardIcon />}
-            sx={{ minHeight: 48, minWidth: 160, flexShrink: 0 }}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: { xs: 'stretch', sm: 'center' },
+              justifyContent: 'space-between',
+              gap: 2,
+            }}
           >
-            {nextAction}
-          </Button>
-        </Box>
-      </PageSection>
+            {nextEntry ? (
+              <Stack spacing={0.75} sx={{ minWidth: 0 }}>
+                <DayStatus entry={nextEntry} />
+                <DaySummaryLine entry={nextEntry} />
+              </Stack>
+            ) : (
+              <span />
+            )}
+            <Button
+              component={Link}
+              href={`/admin/backzettel/${next}`}
+              variant="contained"
+              endIcon={<ArrowForwardIcon />}
+              sx={{ minHeight: 48, minWidth: 160, flexShrink: 0 }}
+            >
+              {nextAction}
+            </Button>
+          </Box>
+        </PageSection>
+      )}
 
-      <PageSection title="Diese Woche" disablePadding actions={jumpForm}>
-        {loading && entries.length === 0 ? (
-          <LoadingState label="Backzettel werden geladen …" />
-        ) : (
-          <Box component="ul" data-testid="day-list" sx={{ m: 0, p: 0 }}>
-            {entries.map((entry) => (
-              <Box
-                component="li"
-                key={entry.date}
-                data-testid={`day-${entry.date}`}
-                sx={{
-                  listStyle: 'none',
-                  borderTop: 1,
-                  borderColor: 'divider',
-                }}
-              >
-                <ListItemButton
-                  component={Link}
-                  href={`/admin/backzettel/${entry.date}`}
+      {!allFailed && (
+        <PageSection title="Nächste Tage" disablePadding actions={jumpForm}>
+          {loading && entries.length === 0 ? (
+            <LoadingState label="Backzettel werden geladen …" />
+          ) : (
+            <Box component="ul" data-testid="day-list" sx={{ m: 0, p: 0 }}>
+              {entries.map((entry) => (
+                <Box
+                  component="li"
+                  key={entry.date}
+                  data-testid={`day-${entry.date}`}
                   sx={{
-                    px: { xs: 2, md: 3 },
-                    py: 1.5,
-                    minHeight: 64,
-                    gap: 2,
-                    alignItems: 'center',
+                    listStyle: 'none',
+                    borderTop: 1,
+                    borderColor: 'divider',
                   }}
                 >
-                  <Box
+                  <ListItemButton
+                    component={Link}
+                    href={`/admin/backzettel/${entry.date}`}
                     sx={{
-                      flex: 1,
-                      minWidth: 0,
-                      display: 'flex',
-                      flexDirection: { xs: 'column', sm: 'row' },
-                      alignItems: { xs: 'flex-start', sm: 'center' },
-                      columnGap: 2,
-                      rowGap: 0.75,
+                      px: { xs: 2, md: 3 },
+                      py: 1.5,
+                      minHeight: 64,
+                      gap: 2,
+                      alignItems: 'center',
                     }}
                   >
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography
-                          component="span"
-                          sx={{ fontWeight: 600, fontSize: '1rem' }}
-                        >
-                          {formatDateLong(entry.date)}
-                        </Typography>
-                        {entry.date === today && (
-                          <Chip size="small" color="primary" label="heute" />
-                        )}
-                      </Stack>
-                      <DaySummaryLine entry={entry} />
+                    <Box
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: 'flex',
+                        flexDirection: { xs: 'column', sm: 'row' },
+                        alignItems: { xs: 'flex-start', sm: 'center' },
+                        columnGap: 2,
+                        rowGap: 0.75,
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography
+                            component="span"
+                            sx={{ fontWeight: 600, fontSize: '1rem' }}
+                          >
+                            {formatDateLong(entry.date)}
+                          </Typography>
+                          {entry.date === today && (
+                            <Chip size="small" color="primary" label="heute" />
+                          )}
+                        </Stack>
+                        <DaySummaryLine entry={entry} />
+                      </Box>
+                      <DayStatus entry={entry} />
                     </Box>
-                    <DayStatus entry={entry} />
-                  </Box>
-                  <ChevronRightIcon
-                    aria-hidden
-                    sx={{ color: 'text.secondary', flexShrink: 0 }}
-                  />
-                </ListItemButton>
-              </Box>
-            ))}
-          </Box>
-        )}
-      </PageSection>
+                    <ChevronRightIcon
+                      aria-hidden
+                      sx={{ color: 'text.secondary', flexShrink: 0 }}
+                    />
+                  </ListItemButton>
+                </Box>
+              ))}
+            </Box>
+          )}
+        </PageSection>
+      )}
     </PageLayout>
   )
 }

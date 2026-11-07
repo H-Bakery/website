@@ -20,10 +20,13 @@ import EditIcon from '@mui/icons-material/Edit'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import type {
   BackzettelConfigData,
+  BackzettelDeltaEntry,
   BackzettelLine,
   BackzettelSection,
 } from '../../lib/backzettelApi'
 import {
+  deltaAfterDone,
+  deltaAfterDoneText,
   formatNumber,
   formatOrDash,
   deltaBadgeText,
@@ -38,6 +41,11 @@ import { PageSection } from '../layout'
 export interface BackzettelSectionViewProps {
   section: BackzettelSection
   config: BackzettelConfigData | null
+  /**
+   * Nachträge des Tages: kamen sie nach dem Haken einer Zeile, ist sie
+   * wieder offen (UI-Runde 1). Fehlt im Entwurf.
+   */
+  deltas?: BackzettelDeltaEntry[]
   /** Korrekturen erlaubt (Entwurf + Rolle inhaber/backstube). */
   editable: boolean
   editingKey: string | null
@@ -49,9 +57,12 @@ export interface BackzettelSectionViewProps {
   ) => Promise<void>
 }
 
-/** Zeile mit offenen Nachträgen: Rand + leichte Warnfarbe, in beiden Modi lesbar. */
-function deltaSx(line: BackzettelLine) {
-  if (!line.delta || line.delta.open === 0) return {}
+/**
+ * Zeile mit offenen Nachträgen oder einem Nachtrag nach dem Haken: Rand +
+ * leichte Warnfarbe, in beiden Modi lesbar.
+ */
+function deltaSx(line: BackzettelLine, reopened = false) {
+  if (!reopened && (!line.delta || line.delta.open === 0)) return {}
   return {
     bgcolor: (t: Theme) => alpha(t.palette.warning.main, 0.14),
     boxShadow: (t: Theme) => `inset 4px 0 0 ${t.palette.warning.main}`,
@@ -67,7 +78,7 @@ function DeltaChip({ line }: { line: BackzettelLine }) {
       color={open ? 'warning' : 'default'}
       variant={open ? 'filled' : 'outlined'}
       label={`${deltaBadgeText(line.delta, line.unit)}${
-        open ? '' : ' · quittiert'
+        open ? '' : ' · gesehen'
       }`}
       data-testid={`delta-chip-${line.key}`}
     />
@@ -92,10 +103,13 @@ function BaseValue({ line }: { line: BackzettelLine }) {
 function LineName({
   line,
   config,
+  deltas,
 }: {
   line: BackzettelLine
   config: BackzettelConfigData | null
+  deltas?: BackzettelDeltaEntry[]
 }) {
+  const after = deltaAfterDone(line, deltas ?? null)
   return (
     <Box sx={{ minWidth: 0 }}>
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
@@ -117,6 +131,16 @@ function LineName({
         )}
         <DeltaChip line={line} />
       </Stack>
+      {after && (
+        <Typography
+          variant="caption"
+          component="div"
+          data-testid={`after-done-${line.key}`}
+          sx={{ fontWeight: 600, whiteSpace: 'normal' }}
+        >
+          {deltaAfterDoneText(line, after)}
+        </Typography>
+      )}
       {previouslyDoneText(line) && (
         <Typography
           variant="caption"
@@ -242,7 +266,9 @@ function SourcesLine({ line }: { line: BackzettelLine }) {
         display: 'flex',
         flexWrap: 'wrap',
         alignItems: 'center',
-        columnGap: 1,
+        // Lücke ≈ Leerzeichen: sonst stand vor jedem „·“ mehr Abstand als
+        // dahinter (UI-Runde 1).
+        columnGap: 0.5,
         rowGap: 0.5,
         mt: 0.5,
         '& > span + span::before': { content: '"· "' },
@@ -265,11 +291,14 @@ function SourcesLine({ line }: { line: BackzettelLine }) {
 export function BackzettelSectionView({
   section,
   config,
+  deltas,
   editable,
   editingKey,
   onEdit,
   onSaveCorrection,
 }: BackzettelSectionViewProps) {
+  const reopened = (line: BackzettelLine) =>
+    (deltaAfterDone(line, deltas ?? null)?.bake ?? 0) > 0
   const save = (line: BackzettelLine) => (c: number, r: string | null) =>
     onSaveCorrection(line, c, r)
 
@@ -319,10 +348,10 @@ export function BackzettelSectionView({
                 <React.Fragment key={line.key}>
                   <TableRow
                     data-testid={`line-row-${line.key}`}
-                    sx={deltaSx(line)}
+                    sx={deltaSx(line, reopened(line))}
                   >
                     <TableCell>
-                      <LineName line={line} config={config} />
+                      <LineName line={line} config={config} deltas={deltas} />
                     </TableCell>
                     <TableCell sx={NUM}>
                       <BaseValue line={line} />
@@ -392,7 +421,7 @@ export function BackzettelSectionView({
                 py: 1.5,
                 borderTop: index === 0 ? 0 : 1,
                 borderColor: 'divider',
-                ...deltaSx(line),
+                ...deltaSx(line, reopened(line)),
               }}
             >
               <Stack
@@ -401,7 +430,7 @@ export function BackzettelSectionView({
                 alignItems="flex-start"
                 justifyContent="space-between"
               >
-                <LineName line={line} config={config} />
+                <LineName line={line} config={config} deltas={deltas} />
                 <Typography
                   component="div"
                   sx={{ ...TOTAL_SX, fontSize: '1.5rem', whiteSpace: 'nowrap' }}

@@ -91,4 +91,22 @@ describe('backzettelErrorText (Verwaltung)', () => {
       backzettelErrorText(new ApiError('Internal error', 500), FALLBACK)
     ).toContain('Fehler auf dem Server (500)')
   })
+
+  it('UI-Runde 1: gewollte 5xx mit deutscher Meldung zeigen sie, unerwartete nicht', () => {
+    expect(
+      backzettelErrorText(
+        new ApiError('hq ist gerade nicht erreichbar.', 503, 'hq_unavailable'),
+        FALLBACK
+      )
+    ).toBe('hq ist gerade nicht erreichbar. (Fehler 503)')
+    expect(
+      backzettelErrorText(
+        new ApiError('Internal error', 500, 'internal_error'),
+        FALLBACK
+      )
+    ).toContain('Fehler auf dem Server (500)')
+    expect(
+      backzettelErrorText(new ApiError('HTTP 502: Bad Gateway', 502), FALLBACK)
+    ).toBe(OFFLINE_TEXT)
+  })
 })

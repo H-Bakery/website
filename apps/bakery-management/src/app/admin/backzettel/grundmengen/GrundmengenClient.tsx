@@ -8,7 +8,6 @@ import {
   CircularProgress,
   Paper,
   InputBase,
-  LinearProgress,
   Stack,
   Table,
   TableBody,
@@ -51,7 +50,11 @@ import {
 } from '../../../../lib/grundmengenApi'
 import { fetchRestAverages, type RestAverages } from '../../../../lib/restApi'
 import GrundmengenPrint, { grundmengenPrintStyles } from './GrundmengenPrint'
-import { PageLayout, PageSection } from '../../../../components/layout'
+import {
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../components/layout'
 
 /** Wer Grundmengen ändern darf (wie `PUT /config/base`). */
 const EDIT_ROLES = ['inhaber', 'backstube']
@@ -505,7 +508,13 @@ function GrundmengenGrid(props: GridProps) {
                 <TableCell
                   key={wd}
                   align="right"
-                  sx={{ minWidth: editable ? 136 : 72 }}
+                  sx={{
+                    minWidth: editable ? 136 : 72,
+                    // Über dem Eingabefeld, nicht über dem grauen ≈ daneben
+                    // (UI-Runde 1): rechts so viel Luft wie die ≈-Spalte.
+                    pl: 1,
+                    pr: editable ? `calc(8px + 4px + ${REFERENCE_SLOT}px)` : 1,
+                  }}
                 >
                   <abbr
                     title={WEEKDAY_LONG[wd]}
@@ -747,7 +756,9 @@ export default function GrundmengenClient() {
     >
       {grundmengenPrintStyles}
       {!view && !loadError && (
-        <LinearProgress aria-label="Lädt" className="grundmengen-screen-only" />
+        <Box className="grundmengen-screen-only">
+          <LoadingState label="Grundmengen werden geladen …" />
+        </Box>
       )}
 
       {loadError && (

@@ -217,6 +217,9 @@ function Filling({ filling, muted }: { filling: FillingNeed; muted: boolean }) {
                     fontWeight: 700,
                     textAlign: 'right',
                     fontVariantNumeric: 'tabular-nums',
+                    // Entwurf: grau wie alle anderen Entwurfszahlen
+                    // (UI-Runde 1) - weiß-fett las sich wie „schon fest“.
+                    color: muted ? 'text.secondary' : 'text.primary',
                   }}
                 >
                   {ingredientAmount(ing, filling.recipe).text}

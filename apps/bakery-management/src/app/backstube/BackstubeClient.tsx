@@ -38,6 +38,7 @@ import {
 } from '../../lib/backzettelApi'
 import {
   allLines,
+  deltaAfterDone,
   formatDateLong,
   formatDateShort,
   formatTimestamp,
@@ -58,6 +59,7 @@ import {
 } from '../../components/backstube/backstubeType'
 import LogoutButton from '../../components/auth/LogoutButton'
 import { BackstubeLine } from '../../components/backstube/BackstubeLine'
+import { BackzettelWarnings } from '../../components/backzettel/BackzettelWarnings'
 import { BackstubeHefeteig } from '../../components/backstube/BackstubeHefeteig'
 import { BackstubeDeltas } from '../../components/backstube/BackstubeDeltas'
 import { BackstubePrep } from '../../components/backstube/BackstubePrep'
@@ -69,6 +71,13 @@ type PrepResult =
   | PrepView
   | BackzettelNoConfig
   | { date: string; status: 'ruhetag'; message: string }
+
+/**
+ * Breite von Kopf und Zettel. Quer (1180 px) lief eine Zeile sonst über
+ * 1.000 px von Name bis Haken - aus Armlänge rutscht das Auge eine Zeile
+ * daneben (UI-Runde 1).
+ */
+const BS_MAX_WIDTH = 960
 
 const STALE_CODES = new Set([
   'confirmed',
@@ -126,7 +135,7 @@ export function afterReloadMessage(code: string | null): string | undefined {
     return 'Die Verbindung ist wieder da. Der letzte Haken wurde nicht gespeichert - bitte noch einmal abhaken.'
   }
   if (code === TRANSIENT_ACK) {
-    return 'Die Verbindung ist wieder da. Der Nachtrag wurde nicht quittiert - bitte noch einmal „Gesehen“ tippen.'
+    return 'Die Verbindung ist wieder da. Der Nachtrag wurde nicht als gesehen gespeichert – bitte noch einmal „Gesehen“ tippen.'
   }
   return undefined
 }
@@ -142,6 +151,15 @@ function isStale(error: unknown): boolean {
   // nicht mehr - neu laden statt den alten Stand mit Knöpfen stehen lassen.
   if (e.status === 404 && e.code === 'not_found') return true
   return e.status === 409 && !!e.code && STALE_CODES.has(e.code)
+}
+
+/** Abgehakt, aber danach kam ein Nachtrag, der mehr backen heißt. */
+function isReopened(
+  line: BackzettelLine,
+  deltas: BackzettelDeltaEntry[]
+): boolean {
+  const after = deltaAfterDone(line, deltas)
+  return !!after && after.bake > 0
 }
 
 function patchLines(
@@ -414,8 +432,13 @@ export default function BackstubeClient({
     if (!day || day.status !== 'confirmed' || line.id === null) return
     const lineId = line.id
     const target = day.date
-    const done = !line.doneAt
+    // UI-Runde 1: Kam nach dem Haken ein Nachtrag, ist die Zeile wieder
+    // offen. Ein Tipp heißt dann „Zusatzmenge gebacken“ - der Haken wird neu
+    // gesetzt (undone + done), damit sein Zeitpunkt nach dem Nachtrag liegt.
+    const retick = isReopened(line, day.deltas)
+    const done = retick || !line.doneAt
     const before = { doneAt: line.doneAt, doneBy: line.doneBy }
+    let undoneOk = false
     mutationSeq.current += 1
     pendingRef.current += 1
     setPendingIds((ids) => new Set(ids).add(lineId))
@@ -440,6 +463,10 @@ export default function BackstubeClient({
     )
     let stale = false
     try {
+      if (retick) {
+        await setLineDone(target, lineId, false)
+        undoneOk = true
+      }
       const res = await setLineDone(target, lineId, done, line.total)
       updateDay(target, (d) =>
         patchLines(
@@ -454,7 +481,7 @@ export default function BackstubeClient({
         patchLines(
           d,
           (l) => l.id === lineId,
-          () => before
+          () => (undoneOk ? { doneAt: null, doneBy: null } : before)
         )
       )
       stale = isStale(error)
@@ -537,7 +564,7 @@ export default function BackstubeClient({
     } catch (error) {
       const text = messageOf(
         error,
-        'Der Nachtrag konnte nicht quittiert werden.'
+        'Der Nachtrag konnte nicht als gesehen gespeichert werden.'
       )
       showActionError(
         isStale(error) ? `${text} Der Backzettel wird neu geladen.` : text,
@@ -567,7 +594,10 @@ export default function BackstubeClient({
     isPathAllowedForRole('/admin', role, session.sessionKind)
 
   const lines = day ? allLines(day) : []
-  const doneCount = lines.filter((l) => l.doneAt).length
+  // Eine Zeile mit Nachtrag nach dem Haken ist wieder offen (UI-Runde 1).
+  const doneCount = lines.filter(
+    (l) => l.doneAt && !isReopened(l, day?.deltas ?? [])
+  ).length
   const draft = day?.status === 'draft'
   const isSaturday = day?.weekday === 6
 
@@ -618,6 +648,10 @@ export default function BackstubeClient({
           // eine globale.
           '& .MuiPaper-root, & *': { transition: 'none !important' },
           '& [role="checkbox"]': { borderColor: '#000 !important' },
+          // UI-Runde 1: Zeilen- und Füllungskarten nicht über zwei Seiten
+          // zerschneiden.
+          '& [data-testid^="bs-line-"], & [data-testid^="bs-filling-"], & [data-testid^="bs-weigh-"]':
+            { breakInside: 'avoid' },
         },
       }}
     >
@@ -639,7 +673,7 @@ export default function BackstubeClient({
             Heute/Morgen. Am Handy rückt der Umschalter neben „Abmelden“. */}
         <Box
           sx={{
-            maxWidth: 1280,
+            maxWidth: BS_MAX_WIDTH,
             mx: 'auto',
             display: 'grid',
             alignItems: 'center',
@@ -803,7 +837,17 @@ export default function BackstubeClient({
         </Box>
       </Box>
 
-      <Box sx={{ px: { xs: 2, sm: 3 }, pt: 2, maxWidth: 1280, mx: 'auto' }}>
+      {/* content-box: die Breite gilt ohne Rand, so fluchten Kopf und
+          Inhalt (UI-Runde 1: vorher lag der Inhalt 24 px eingerückt). */}
+      <Box
+        sx={{
+          px: { xs: 2, sm: 3 },
+          pt: 2,
+          maxWidth: BS_MAX_WIDTH,
+          mx: 'auto',
+          boxSizing: 'content-box',
+        }}
+      >
         {actionError && (
           <Alert
             severity="error"
@@ -973,6 +1017,15 @@ export default function BackstubeClient({
                   onAck={ack}
                 />
 
+                {/* UI-Runde 1: Hinweise oben (nach den Nachträgen) und gelb
+                    wie auf der Planungsseite - unten als blaue Info übersah
+                    man z. B. Vorbestellungen, die zu keinem Posten gehören. */}
+                <BackzettelWarnings
+                  warnings={day.warnings}
+                  large
+                  data-testid="bs-warnings"
+                />
+
                 {isSaturday && hefeteig}
 
                 {day.sections.map((section) =>
@@ -996,6 +1049,9 @@ export default function BackstubeClient({
                           <BackstubeLine
                             key={line.key}
                             line={line}
+                            afterDone={
+                              draft ? null : deltaAfterDone(line, day.deltas)
+                            }
                             config={config}
                             draft={draft}
                             canTick={canWork}
@@ -1017,18 +1073,6 @@ export default function BackstubeClient({
                 )}
 
                 {!isSaturday && hefeteig}
-
-                {day.warnings.length > 0 && (
-                  <Alert
-                    severity="info"
-                    data-testid="bs-warnings"
-                    sx={{ fontSize: '1.05rem' }}
-                  >
-                    {day.warnings.map((w, i) => (
-                      <div key={`${w.code}-${i}`}>{w.message}</div>
-                    ))}
-                  </Alert>
-                )}
               </>
             )}
           </Stack>
