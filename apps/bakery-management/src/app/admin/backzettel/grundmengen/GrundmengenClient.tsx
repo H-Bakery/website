@@ -1,15 +1,14 @@
 'use client'
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
 import {
   Alert,
   AlertTitle,
   Box,
   Button,
   CircularProgress,
+  Paper,
   InputBase,
   LinearProgress,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -26,6 +25,7 @@ import {
 } from '@mui/icons-material'
 import { ApiError } from '@bakery/shared/data-access'
 import { useOptionalSession } from '../../../../lib/session'
+import { backzettelErrorText } from '../../../../lib/backstubeErrors'
 import {
   cellValue,
   displayValue,
@@ -51,6 +51,7 @@ import {
 } from '../../../../lib/grundmengenApi'
 import { fetchRestAverages, type RestAverages } from '../../../../lib/restApi'
 import GrundmengenPrint, { grundmengenPrintStyles } from './GrundmengenPrint'
+import { PageLayout, PageSection } from '../../../../components/layout'
 
 /** Wer Grundmengen ändern darf (wie `PUT /config/base`). */
 const EDIT_ROLES = ['inhaber', 'backstube']
@@ -63,8 +64,7 @@ const ALERT_TOUCH = {
 } as const
 
 function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  return 'Unbekannter Fehler.'
+  return backzettelErrorText(error, 'Unbekannter Fehler.')
 }
 
 function formatQty(value: number): string {
@@ -697,202 +697,196 @@ export default function GrundmengenClient() {
     return all.length > 0 ? all.length : 0
   }, [reference])
 
+  // Rechts neben „≈“: was der graue Wert ist und wo er fehlt - als eine
+  // Zeile Beschreibung; die ausgewerteten Tage stehen unter „Details“.
+  // Normalfall: „≈“ ist in der Beschreibung erklärt, Einzelheiten unter
+  // „Details“. Fehlen die Werte, steht das sichtbar da.
+  const referenceShownOk =
+    mayEdit && reference?.status === 'ok' && reference.available
+  const referenceProblem =
+    mayEdit && reference && !reference.available
+      ? 'Keine Kassenberichte gefunden - Referenzwerte fehlen.'
+      : mayEdit && referenceError
+      ? `Referenzwerte nicht verfügbar: ${referenceError}`
+      : referenceShownOk && referenceDays === 0
+      ? 'Für diese Wochentage gibt es noch keine Berichte.'
+      : null
+
+  const referenceDetails =
+    reference?.status === 'ok' && reference.weekdays.length > 0 ? (
+      <Typography variant="body2" color="text.secondary">
+        {REFERENCE_TOOLTIP} mit Kassenbericht; Tage ohne Bericht zählen nicht
+        als 0. Der Wert wird nie übernommen. Ausgewertete Tage:{' '}
+        {reference.weekdays
+          .map(
+            (w) =>
+              `${WEEKDAY_SHORT[w.weekday]} ${
+                w.dates.length > 0 ? w.dates.map(formatDate).join(', ') : '–'
+              }`
+          )
+          .join(' · ')}
+      </Typography>
+    ) : undefined
+
   return (
-    <Box sx={{ maxWidth: 1400 }}>
-      {grundmengenPrintStyles}
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={1}
-        sx={{ mb: 2 }}
-      >
-        <Box className="grundmengen-screen-only">
-          <Typography variant="h4" component="h1" gutterBottom>
-            Grundmengen
-          </Typography>
-          <Typography variant="body2" sx={{ color: 'text.secondary' }}>
-            Was der Backzettel je Wochentag als Basis rechnet. Leeres Feld =
-            noch nicht festgelegt, 0 = wird an dem Tag nicht gebacken.
-          </Typography>
-        </Box>
-        <Stack
-          direction="row"
-          spacing={1}
-          sx={{
-            flexShrink: 0,
-            '& .MuiButton-root': { whiteSpace: 'nowrap' },
-            '@media print': { display: 'none' },
-          }}
+    <PageLayout
+      width="wide"
+      title="Grundmengen"
+      subtitle="Was der Backzettel je Wochentag als Basis rechnet."
+      back={{ href: '/admin/backzettel', label: 'Zum Backzettel' }}
+      actions={
+        <Button
+          variant="outlined"
+          startIcon={<PrintIcon />}
+          onClick={() => window.print()}
+          sx={{ minHeight: 44, whiteSpace: 'nowrap' }}
         >
-          <Button
-            component={Link}
-            href="/admin/backzettel"
-            variant="outlined"
-            sx={{ minHeight: 44 }}
-          >
-            Zum Backzettel
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<PrintIcon />}
-            onClick={() => window.print()}
-            sx={{ minHeight: 44 }}
-          >
-            Drucken
-          </Button>
-        </Stack>
-      </Stack>
+          Drucken
+        </Button>
+      }
+    >
+      {grundmengenPrintStyles}
+      {!view && !loadError && (
+        <LinearProgress aria-label="Lädt" className="grundmengen-screen-only" />
+      )}
 
-      <Box className="grundmengen-screen-only">
-        {!view && !loadError && <LinearProgress aria-label="Lädt" />}
+      {loadError && (
+        <Alert
+          severity="error"
+          className="grundmengen-screen-only"
+          action={
+            <Button color="inherit" onClick={() => void load()}>
+              Erneut versuchen
+            </Button>
+          }
+          sx={ALERT_TOUCH}
+        >
+          Die Grundmengen konnten nicht geladen werden: {loadError}
+        </Alert>
+      )}
 
-        {loadError && (
-          <Alert
-            severity="error"
-            action={
-              <Button color="inherit" onClick={() => void load()}>
-                Erneut versuchen
-              </Button>
-            }
-            sx={{ mb: 2, ...ALERT_TOUCH }}
-          >
-            Die Grundmengen konnten nicht geladen werden: {loadError}
-          </Alert>
-        )}
+      {view?.pendingApproval && (
+        <Alert
+          severity="info"
+          icon={<PendingIcon />}
+          className="grundmengen-screen-only"
+          role="status"
+          data-testid="pending-banner"
+        >
+          <AlertTitle>Wartet auf Freigabe</AlertTitle>
+          Geänderte Grundmengen liegen in der Freigabe-Anfrage an hq. Bis zur
+          Freigabe rechnet der Backzettel mit den bisherigen Werten; geänderte
+          Felder sind blau umrandet.
+        </Alert>
+      )}
 
-        {view?.pendingApproval && (
-          <Alert
-            severity="info"
-            icon={<PendingIcon />}
-            sx={{ mb: 2 }}
-            role="status"
-            data-testid="pending-banner"
-          >
-            <AlertTitle>Wartet auf Freigabe</AlertTitle>
-            Geänderte Grundmengen liegen in der Freigabe-Anfrage an hq. Bis zur
-            Freigabe rechnet der Backzettel mit den bisherigen Werten; geänderte
-            Felder sind blau umrandet.
-          </Alert>
-        )}
+      {view && working?.status !== 'ok' && (
+        <Alert
+          severity="warning"
+          className="grundmengen-screen-only"
+          data-testid="config-errors"
+        >
+          <AlertTitle>
+            {config
+              ? 'Die Backzettel-Stammdaten in hq enthalten Fehler'
+              : 'Keine gültigen Backzettel-Stammdaten'}
+          </AlertTitle>
+          {config && (
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              Grundmengen lassen sich trotzdem pflegen - ein Speichern wird nur
+              abgelehnt, wenn es selbst einen Fehler verursacht. Die Fehler
+              unten müssen in hq behoben werden.
+            </Typography>
+          )}
+          {(working?.errors ?? []).length > 0 ? (
+            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+              {(working?.errors ?? []).slice(0, 8).map((e) => (
+                <li key={`${e.path}-${e.message}`}>
+                  {e.path ? <code>{e.path}</code> : null}
+                  {e.path ? ': ' : ''}
+                  {e.message}
+                </li>
+              ))}
+            </Box>
+          ) : (
+            'Die Datei config/backzettel.yaml fehlt in hq.'
+          )}
+        </Alert>
+      )}
 
-        {view && working?.status !== 'ok' && (
-          <Alert severity="warning" sx={{ mb: 2 }} data-testid="config-errors">
-            <AlertTitle>
-              {config
-                ? 'Die Backzettel-Stammdaten in hq enthalten Fehler'
-                : 'Keine gültigen Backzettel-Stammdaten'}
-            </AlertTitle>
-            {config && (
-              <Typography variant="body2" sx={{ mb: 1 }}>
-                Grundmengen lassen sich trotzdem pflegen - ein Speichern wird
-                nur abgelehnt, wenn es selbst einen Fehler verursacht. Die
-                Fehler unten müssen in hq behoben werden.
-              </Typography>
-            )}
-            {(working?.errors ?? []).length > 0 ? (
-              <Box component="ul" sx={{ m: 0, pl: 2 }}>
-                {(working?.errors ?? []).slice(0, 8).map((e) => (
-                  <li key={`${e.path}-${e.message}`}>
-                    {e.path ? <code>{e.path}</code> : null}
-                    {e.path ? ': ' : ''}
-                    {e.message}
-                  </li>
-                ))}
-              </Box>
-            ) : (
-              'Die Datei config/backzettel.yaml fehlt in hq.'
-            )}
-          </Alert>
-        )}
+      {saveError && (
+        <Alert
+          severity="error"
+          className="grundmengen-screen-only"
+          onClose={() => setSaveError(null)}
+          sx={ALERT_TOUCH}
+          role="alert"
+        >
+          Nicht gespeichert - {saveError}
+        </Alert>
+      )}
 
-        {saveError && (
-          <Alert
-            severity="error"
-            onClose={() => setSaveError(null)}
-            sx={{ mb: 2, ...ALERT_TOUCH }}
-            role="alert"
-          >
-            Nicht gespeichert - {saveError}
-          </Alert>
-        )}
+      {savedNote && !saveError && (
+        <Alert
+          severity="success"
+          className="grundmengen-screen-only"
+          onClose={() => setSavedNote(null)}
+          sx={ALERT_TOUCH}
+        >
+          {savedNote}
+          {view?.pendingApproval ? ' - wartet auf Freigabe.' : '.'}
+        </Alert>
+      )}
 
-        {savedNote && !saveError && (
-          <Alert
-            severity="success"
-            onClose={() => setSavedNote(null)}
-            sx={{ mb: 2, ...ALERT_TOUCH }}
-          >
-            {savedNote}
-            {view?.pendingApproval ? ' - wartet auf Freigabe.' : '.'}
-          </Alert>
-        )}
-
-        {view && mayEdit && !writable && (
-          <Alert severity="info" sx={{ mb: 2 }} data-testid="read-only">
-            Speichern geht auf diesem Server gerade nicht: {writeIssueText} Die
-            Werte sind nur zu lesen.
-          </Alert>
-        )}
-
-        {view && !mayEdit && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            Grundmengen ändern dürfen Inhaber und Backstube.
-          </Alert>
-        )}
-      </Box>
+      {view && mayEdit && !writable && (
+        <Alert
+          severity="info"
+          className="grundmengen-screen-only"
+          data-testid="read-only"
+        >
+          Speichern geht auf diesem Server gerade nicht: {writeIssueText} Die
+          Werte sind nur zu lesen.
+        </Alert>
+      )}
 
       {config && (
         <>
-          <Typography
-            variant="caption"
-            component="p"
-            className="grundmengen-screen-only"
-            sx={{ color: 'text.secondary', mb: 1 }}
-          >
-            {mayEdit && reference?.status === 'ok' && reference.available
-              ? `Grau daneben (≈): ${REFERENCE_TOOLTIP} mit Kassenbericht - nur zur Information, wird nie übernommen.`
-              : mayEdit && reference && !reference.available
-              ? 'Keine Kassenberichte gefunden - Referenzwerte fehlen.'
-              : mayEdit && referenceError
-              ? `Referenzwerte nicht verfügbar: ${referenceError}`
-              : null}
-            {referenceDays === 0 && reference?.available
-              ? ' Für diese Wochentage gibt es noch keine Berichte.'
-              : null}
-          </Typography>
-          <GrundmengenGrid
-            config={config}
-            approved={view?.status === 'ok' ? view.config : null}
-            pendingApproval={Boolean(view?.pendingApproval)}
-            reference={mayEdit ? referenceShown : null}
-            editable={editable}
-            onSave={onSave}
-            onInvalid={(label, text) => {
-              setSavedNote(null)
-              setSaveError(labelledMessage(label, inputProblem(text)))
-            }}
-          />
-          {reference?.status === 'ok' && reference.weekdays.length > 0 && (
-            <Typography
-              variant="caption"
-              component="p"
-              className="grundmengen-screen-only"
-              sx={{ color: 'text.secondary', mt: 1 }}
+          {/* Bildschirm-Raster; das Druckbild (GrundmengenPrint) steht
+              daneben und ersetzt es im Druck. */}
+          <Box className="grundmengen-screen-only" sx={{ minWidth: 0 }}>
+            <PageSection
+              variant="plain"
+              title="Posten je Wochentag"
+              description={
+                <>
+                  Leer = noch nicht festgelegt, 0 = wird nicht gebacken.
+                  {referenceShownOk &&
+                    ' Grau mit ≈: verkauft (Median), nur zur Info.'}
+                  {!mayEdit && ' Ändern dürfen Inhaber und Backstube.'}
+                  {referenceProblem && (
+                    <Box component="span" sx={{ display: 'block' }}>
+                      {referenceProblem}
+                    </Box>
+                  )}
+                </>
+              }
+              details={referenceDetails}
+              detailsLabel="Woher kommt ≈?"
             >
-              Ausgewertete Tage:{' '}
-              {reference.weekdays
-                .map(
-                  (w) =>
-                    `${WEEKDAY_SHORT[w.weekday]} ${
-                      w.dates.length > 0
-                        ? w.dates.map(formatDate).join(', ')
-                        : '–'
-                    }`
-                )
-                .join(' · ')}
-            </Typography>
-          )}
+              <GrundmengenGrid
+                config={config}
+                approved={view?.status === 'ok' ? view.config : null}
+                pendingApproval={Boolean(view?.pendingApproval)}
+                reference={mayEdit ? referenceShown : null}
+                editable={editable}
+                onSave={onSave}
+                onInvalid={(label, text) => {
+                  setSavedNote(null)
+                  setSaveError(labelledMessage(label, inputProblem(text)))
+                }}
+              />
+            </PageSection>
+          </Box>
           <GrundmengenPrint
             config={config}
             approved={
@@ -902,6 +896,6 @@ export default function GrundmengenClient() {
           />
         </>
       )}
-    </Box>
+    </PageLayout>
   )
 }
