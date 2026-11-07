@@ -13,6 +13,7 @@ import {
   PageSection,
   ResponsiveList,
   shiftIsoDate,
+  pageDocumentTitle,
   type ResponsiveColumn,
 } from './index'
 
@@ -142,6 +143,38 @@ describe('KeyFigures', () => {
     expect(within(list).getAllByRole('term')).toHaveLength(2)
     expect(within(list).getByText('259,80 €')).toBeInTheDocument()
     expect(within(list).getByText('Freitag')).toBeInTheDocument()
+  })
+
+  it('gültige Beschreibungsliste: je Kennzahl ein div mit dt + dd, Badge im dt (Review r2)', () => {
+    // axe meldete auf ~15 Seiten „definition-list“/„dlitem“: das <dt> stand
+    // zwei divs tief, der Badge zwischen <dt> und <dd>.
+    renderWithTheme(
+      <KeyFigures
+        aria-label="Kennzahlen des Zeitraums"
+        items={[
+          {
+            label: 'Umsatz',
+            value: '259,80 €',
+            hint: 'Freitag',
+            badge: <span data-testid="badge">vorläufig</span>,
+          },
+          { label: 'Bons', value: '47' },
+        ]}
+      />
+    )
+    const list = screen.getByLabelText('Kennzahlen des Zeitraums')
+    const groups = Array.from(list.children)
+    expect(groups).toHaveLength(2)
+    groups.forEach((group) => {
+      expect(group.tagName).toBe('DIV')
+      const tags = Array.from(group.children).map((child) => child.tagName)
+      expect(tags[0]).toBe('DT')
+      expect(tags.slice(1).every((tag) => tag === 'DD')).toBe(true)
+      expect(tags.slice(1).length).toBeGreaterThan(0)
+    })
+    const term = within(list).getAllByRole('term')[0]
+    expect(term).toContainElement(screen.getByTestId('badge'))
+    expect(term).toHaveTextContent('Umsatzvorläufig')
   })
 
   it('plain: ohne Schatten-Fläche, für Kennzahlen in einer Karte', () => {
@@ -387,5 +420,34 @@ describe('DayNavigator', () => {
     expect(onChange).toHaveBeenLastCalledWith('2026-11-07')
     rerender(<DayNavigator value="2026-11-07" onChange={onChange} />)
     expect(screen.queryByRole('button', { name: 'Heute' })).toBeNull()
+  })
+})
+
+describe('Fenstertitel aus dem Seitentitel (Review r2)', () => {
+  it('pageDocumentTitle: Text mit Endung, Elemente ohne', () => {
+    expect(pageDocumentTitle('Kassenberichte')).toBe(
+      'Kassenberichte - Bäckerei Heusser'
+    )
+    expect(pageDocumentTitle('  Vorbestellungen   Sa, 07.11.2026 ')).toBe(
+      'Vorbestellungen Sa, 07.11.2026 - Bäckerei Heusser'
+    )
+    expect(pageDocumentTitle(<span>x</span>)).toBeNull()
+    expect(pageDocumentTitle('')).toBeNull()
+  })
+
+  it('setzt document.title und stellt den vorigen beim Verlassen wieder her', () => {
+    document.title = 'Bäckerei Heusser - Verwaltung'
+    const { rerender, unmount } = renderWithTheme(
+      <PageLayout title="Kassenberichte">x</PageLayout>
+    )
+    expect(document.title).toBe('Kassenberichte - Bäckerei Heusser')
+    rerender(
+      <PageLayout title={<span>Tag</span>} documentTitle="Kassentag">
+        x
+      </PageLayout>
+    )
+    expect(document.title).toBe('Kassentag - Bäckerei Heusser')
+    unmount()
+    expect(document.title).toBe('Bäckerei Heusser - Verwaltung')
   })
 })

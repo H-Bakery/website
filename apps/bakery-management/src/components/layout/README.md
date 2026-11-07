@@ -27,7 +27,7 @@ import { PageLayout, PageSection, KeyFigures, ResponsiveList, LoadingState,
 | `PageLayout`                                 | Genau einer je Seite. Kopf (`PageHeader`) + Abschnitte mit festem Abstand.                                                                                                                          |
 | `PageHeader`                                 | Nur, wenn eine Seite den Kopf ohne `PageLayout` braucht (selten).                                                                                                                                   |
 | `PageSection`                                | Jeder inhaltliche Block: Überschrift, eine Zeile Beschreibung, Aktionen, zuklappbare Details. `variant="plain"` für Inhalte, die selbst Karten sind. `disablePadding` für Tabellen bis an den Rand. |
-| `KeyFigures`                                 | Kennzahlen-Reihe, **höchstens 4** Werte: Bezeichnung, Wert, Hinweis.                                                                                                                                |
+| `KeyFigures`                                 | Kennzahlen-Reihe, **höchstens 4** Werte: Bezeichnung, Wert, Hinweis. Ein `<dl>`, je Kennzahl ein `div` mit `<dt>` (Bezeichnung + Badge) und `<dd>`s.                                                |
 | `ResponsiveList`                             | Tabelle am PC, Karten unter `sm` (600 px) - die Aktionen bleiben am Handy sichtbar.                                                                                                                 |
 | `LoadingState` / `EmptyState` / `ErrorState` | Laden, „nichts da“, „geht nicht“ - überall gleich.                                                                                                                                                  |
 | `DayNavigator`                               | Tageswechsel einer Tagesseite: ‹ Datumsfeld › (+ „Heute“). Immer ganz vorne im `actions`-Slot des Kopfes.                                                                                           |
@@ -101,6 +101,13 @@ klickbare Flächen selbst auf 44 px bringen.
   und dunkel.
 - Flächen: `PageSection`/`Paper` (Theme-Elevation), keine festen Farben.
 
+**Fokus unter Leisten.** Die App-Hülle (`useFocusNotObscured`,
+`focusNotObscured.ts`) prüft nach jedem Fokuswechsel, ob eine klebende
+Leiste (Speichern unten, AppBar oben) das Feld zudeckt, und schiebt das
+Fenster dann so weit, dass es mit 16 px Abstand frei steht - Tab mit
+Bluetooth-Tastatur und die iOS-Pfeile „nächstes Feld“. Seiten tragen dafür
+nichts nach; eine Leiste muss nur `position: sticky`/`fixed` sein.
+
 **Sticky.** Speichern-Leisten und Tabellenköpfe kleben am Fenster
 (`position: sticky`). Das geht nur, wenn kein Vorfahr `overflow: hidden`
 oder `auto` hat, ohne selbst zu scrollen: `<main>` (`admin/layout.tsx`) und
@@ -110,7 +117,12 @@ einen eigenen Scroll-Container, klebt ihr Kopf nur darin (dann
 `maxHeight` setzen).
 
 **Druck.** Kopf-Aktionen und Details-Knöpfe sind im Druck ausgeblendet,
-`PageLayout` nimmt im Druck die Breitenbegrenzung weg. Eigene Druckansichten
+`PageLayout` nimmt im Druck die Breitenbegrenzung weg. Jede Seite druckt
+ohne AppBar, Seitenleiste und Pfad (`admin/layout.tsx`), ohne Schatten
+(`global.css`) und **hell, auch aus dem Dunkelmodus**: solange gedruckt
+wird, rendert `Providers.tsx` mit dem hellen Theme (`lib/printMode.ts`,
+`beforeprint`/`afterprint` und `matchMedia('print')`). `color-scheme`
+allein ändert MUIs Palettenfarben nicht. Eigene Druckansichten
 (Backzettel, Abholliste, Grundmengen, Hilfe) behalten ihr `@media print`; ein
 Bildschirm-Layout darf dort nicht hineinwirken.
 
@@ -133,13 +145,24 @@ Bildschirm-Layout darf dort nicht hineinwirken.
 - `KeyFigures variant="plain"`: Kennzahlen ohne eigene Fläche, für die
   Verwendung in einer `PageSection` (keine Fläche in der Fläche);
   `dense`: kleinere Werte für dichte Seiten.
-- `global.css` druckt immer hell (`color-scheme: light`) und ohne Übergänge
-  oder Animationen - auch aus dem Dunkelmodus.
+- `global.css` druckt ohne Übergänge, Animationen und Schatten; die hellen
+  Farben kommen aus dem Theme (siehe „Druck“).
+- **Fenstertitel:** `PageHeader` setzt `document.title` auf
+  „<Seitentitel> - Bäckerei Heusser“, solange die Seite steht. Ist der
+  Titel kein reiner Text oder soll der Reiter anders heißen:
+  `documentTitle="…"`.
+- **Sprunglink:** „Zum Inhalt springen“ ist der erste Tab-Halt jeder
+  `/admin`-Seite und führt auf `<main id="inhalt">`.
 
 ## Theme
 
 `lib/muiTheme.ts` setzt dafür: `h1` 1,625 rem (Handy) / 2 rem (ab `md`),
 `h2` 1,125 / 1,25 rem halbfett, Ecken 8 px, Tabellenköpfe halbfett.
+Tastaturfokus: jedes `ButtonBase` (Knöpfe, Chips, Reiter, Kacheln,
+Navigation) bekommt bei `Mui-focusVisible` einen 2-px-Ring
+(`FOCUS_RING_COLOR`, in der AppBar in Schriftfarbe), ein `Switch` den Ring
+am Daumen - MUIs Ripple allein war hell kaum (Switch: gar nicht) zu sehen.
+Eigene klickbare Flächen nicht mit `outline: 0` überschreiben.
 `global.css` blendet `<section>` nicht mehr ein (jede `PageSection` ist eine),
 Bildlaufleisten und Datumsfelder folgen dem Farbschema
 (`CssBaseline enableColorScheme`).

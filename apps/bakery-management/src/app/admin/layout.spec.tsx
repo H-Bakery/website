@@ -39,6 +39,50 @@ describe('AdminLayout', () => {
     expect(style.overflowX).toBe('clip')
   })
 
+  it('Sprunglink „Zum Inhalt springen“ führt auf <main> (Review r2)', () => {
+    renderLayout()
+    const skip = screen.getByRole('link', { name: 'Zum Inhalt springen' })
+    const main = document.querySelector('main') as HTMLElement
+    expect(skip).toHaveAttribute('href', `#${main.id}`)
+    expect(main.id).not.toBe('')
+    expect(main).toHaveAttribute('tabindex', '-1')
+    // der erste Tab-Halt der Seite
+    const focusables = document.querySelectorAll('a[href], button')
+    expect(focusables[0]).toBe(skip)
+  })
+
+  it('Menü-Knopf meldet, ob die Navigation offen ist (Review r2)', () => {
+    renderLayout()
+    const toggle = screen.getByLabelText('Navigation öffnen')
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    const controls = toggle.getAttribute('aria-controls') as string
+    expect(document.getElementById(controls)).not.toBeNull()
+    fireEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('druckt ohne AppBar, Seitenleiste und Platzhalter (Review r2, Kassentag)', () => {
+    renderLayout()
+    const css = Array.from(document.styleSheets)
+      .flatMap((sheet) => Array.from(sheet.cssRules))
+      .map((rule) => rule.cssText)
+      .join('\n')
+    const hiddenInPrint = (el: Element) => {
+      const cls = Array.from(el.classList).filter((c) => c.startsWith('css-'))
+      return cls.some((c) =>
+        new RegExp(
+          `@media print\\s*\\{\\s*\\.${c}\\s*\\{[^}]*display:\\s*none`
+        ).test(css)
+      )
+    }
+    const appBar = document.querySelector('.MuiAppBar-root') as Element
+    const nav = document.querySelector('nav') as Element
+    const spacer = document.querySelector('main > .MuiToolbar-root') as Element
+    expect(hiddenInPrint(appBar)).toBe(true)
+    expect(hiddenInPrint(nav)).toBe(true)
+    expect(hiddenInPrint(spacer)).toBe(true)
+  })
+
   it('renders children and the app bar', () => {
     renderLayout()
     expect(screen.getByTestId('test-child')).toBeInTheDocument()

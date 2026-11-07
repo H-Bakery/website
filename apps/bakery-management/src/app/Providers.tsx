@@ -15,6 +15,7 @@ import ThemeColorSync from '../components/pwa/ThemeColorSync'
 import { apiClient } from '@bakery/shared/data-access'
 import { resolveBrowserApiBase } from '../lib/apiBase'
 import { createManagementTheme } from '../lib/muiTheme'
+import { useIsPrinting } from '../lib/printMode'
 
 // F4: der Browser spricht die API über die eigene Origin an (`/api/...`) -
 // Caddy auf der Box bzw. src/proxy.ts leiten weiter. Gesetzt, bevor eine
@@ -29,12 +30,14 @@ apiClient.setBaseUrl(resolveBrowserApiBase())
  * (Datumsfelder samt Kalender-Symbol, Bildlaufleisten) folgen dann dem
  * Modus der App statt hell im Dunkelmodus zu stehen.
  */
-function MuiThemeBridge({ children }: { children: React.ReactNode }) {
+export function MuiThemeBridge({ children }: { children: React.ReactNode }) {
   const colorScheme = useColorScheme()
-  const theme = React.useMemo(
-    () => createManagementTheme(colorScheme),
-    [colorScheme]
-  )
+  // Gedruckt wird immer hell (Review r2): sonst kam jede Seite ohne eigene
+  // Druckansicht aus dem Dunkelmodus hellgrau auf Weiß bzw. schwarz aufs
+  // Blatt. Statusleiste und gespeicherte Wahl folgen weiter `colorScheme`.
+  const printing = useIsPrinting()
+  const mode = printing ? 'light' : colorScheme
+  const theme = React.useMemo(() => createManagementTheme(mode), [mode])
 
   return (
     <MuiThemeProvider theme={theme}>
