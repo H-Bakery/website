@@ -1,6 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import dynamic from 'next/dynamic'
 import {
   buildMultiStopNavigationUrl,
@@ -16,10 +23,11 @@ import {
   watchLocation,
 } from '@bakery/delivery/tracking'
 import {
-  ApiError,
   deliveryApi,
   describeError,
   flushQueue,
+  isRejection,
+  isServerError,
   pendingUpdates,
   queuePreorderUpdate,
   queueStopUpdate,
@@ -38,12 +46,15 @@ import {
   type Tour,
 } from '../lib/delivery-api'
 import {
+  followingSaturdayIso,
   formatDate,
   formatTime,
   nextSaturdayIso,
   todayIso,
   TOUR_STATUS_LABEL,
 } from '../lib/format'
+import { defaultTourName, isClockTime, markWindow } from '../lib/tour-day'
+import { describeRejected, syncNotice } from '../lib/sync-messages'
 import { permissionsFor, useDeliverySession } from '../lib/session'
 import { displayOrder, stopPositions } from '../lib/stop-order'
 import { AccountBar } from '../components/AccountBar'
@@ -89,6 +100,9 @@ export default function DeliveryDashboard() {
   const [isTracking, setIsTracking] = useState(false)
   const [pending, setPending] = useState<QueuedUpdate[]>([])
   const [isOnline, setIsOnline] = useState(true)
+  // Der Server hat geantwortet, aber mit 5xx: kein Funkloch, auch wenn die
+  // Änderung genauso in der Warteschlange wartet. Der Banner sagt das.
+  const [serverTrouble, setServerTrouble] = useState(false)
   /** Wann die angezeigte Tourliste vom Server kam - gesetzt, solange sie nur die Offline-Kopie ist. */
   const [copiedAt, setCopiedAt] = useState<string | null>(null)
 
@@ -145,6 +159,10 @@ export default function DeliveryDashboard() {
     () => tours.find((t) => t.id === tourId) ?? null,
     [tours, tourId]
   )
+  // Für die Meldung nach abgelehnten Nachsendungen: die Namen stehen im
+  // angezeigten Stand, den der Effekt der Warteschlange sonst nicht sieht.
+  const toursRef = useRef<Tour[]>(tours)
+  toursRef.current = tours
 
   /** Eine Tour vom Server, ueberlagert mit den noch laufenden Aenderungen. */
   const withInFlight = useCallback(
@@ -208,14 +226,17 @@ export default function DeliveryDashboard() {
         setCopiedAt(null)
         setLoadFailed(false)
         setIsOnline(true)
+        if (pendingUpdates().length === 0) setServerTrouble(false)
       } catch (err) {
         if (seq !== loadSeqRef.current) return
         if (copy) {
-          // Kein Netz, aber die Liste von vorhin: damit faehrt der Fahrer
-          // weiter, das Abhaken landet in der Warteschlange.
+          // Kein Netz (oder ein Serverfehler), aber die Liste von vorhin:
+          // damit faehrt der Fahrer weiter, das Abhaken landet in der
+          // Warteschlange.
           setCopiedAt(copy.at)
           setLoadFailed(false)
-          setIsOnline(false)
+          if (isServerError(err)) setServerTrouble(true)
+          else setIsOnline(false)
         } else {
           // Keine Antwort heisst nicht "keine Tour": die Liste bleibt leer,
           // aber die Oberflaeche darf daraus kein "nichts geplant" machen.
@@ -314,6 +335,9 @@ export default function DeliveryDashboard() {
   afterFlushRef.current = () => {
     if (copiedAt !== null) loadTours(date, driverId)
   }
+  // Nach einer Ablehnung gilt der Server-Stand: neu laden, egal ob Kopie.
+  const reloadRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  reloadRef.current = () => loadTours(date, driverId)
 
   // --- Standort ---
 
@@ -394,11 +418,14 @@ export default function DeliveryDashboard() {
         remaining,
         rejected,
         offline,
+        serverError,
       } = await flushQueue()
       setPending(remaining)
       // Erst wenn der Server wirklich geantwortet hat, ist "online" wahr -
       // sonst verschwand der Hinweis, waehrend die Aenderungen noch lagen.
-      setIsOnline(!offline)
+      // Ein 5xx ist eine Antwort: Netz ist da, nur der Server hat Probleme.
+      setIsOnline(!offline || serverError)
+      setServerTrouble(serverError)
       if (updated) mergeTour(updated)
       if (confirmed.length > 0) {
         // Die Antwort auf ein nachgesendetes Abhaken ist die Vorbestellung
@@ -408,11 +435,16 @@ export default function DeliveryDashboard() {
           withInFlight(list.map((t) => confirmed.reduce(replacePreorder, t)))
         )
       }
-      if (!offline && remaining.length === 0) afterFlushRef.current()
       if (rejected.length > 0) {
-        setHint(
-          `${rejected.length} Änderung(en) hat der Server abgelehnt und wurden verworfen.`
-        )
+        // Die Liste zeigt noch die Vorschau der abgelehnten Änderung (etwa
+        // „Abgeholt · Bezahlt“ an einer inzwischen stornierten Bestellung).
+        // Also: Namen merken, den Stand des Servers laden, dann sagen, was
+        // nicht gespeichert wurde und warum - `loadTours` leert die Meldung.
+        const message = describeRejected(rejected, toursRef.current)
+        await reloadRef.current()
+        setError(message)
+      } else if (!offline && remaining.length === 0) {
+        afterFlushRef.current()
       }
     }
 
@@ -434,6 +466,16 @@ export default function DeliveryDashboard() {
   }, [mergeTour, withInFlight])
 
   // --- Aktionen ---
+
+  /** Ein PATCH kam nicht durch: Funkloch oder Serverfehler (5xx)? */
+  const noteSendFailure = (err: unknown) => {
+    if (isServerError(err)) {
+      setServerTrouble(true)
+      setIsOnline(true)
+    } else {
+      setIsOnline(false)
+    }
+  }
 
   const changeStopStatus = async (
     stopId: number,
@@ -467,10 +509,11 @@ export default function DeliveryDashboard() {
       inFlightRef.current.delete(key)
       mergeTour(updated)
       setPending(pendingUpdates())
+      setServerTrouble(false)
       // Der Server hat geantwortet - eine Offline-Kopie gleich ersetzen.
       if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      if (isRejection(err)) {
         // Abgelehnt: der Server-Stand gilt, die Vorschau darf nicht bleiben.
         inFlightRef.current.delete(key)
         // Erst neu laden, dann melden: `loadTours` leert die Meldung, sonst
@@ -478,11 +521,11 @@ export default function DeliveryDashboard() {
         await loadTours(date, driverId)
         setError(err.message)
       } else {
-        // Kein Netz: gemerkt, geht spaeter automatisch raus. Von jetzt an
-        // haelt die Warteschlange die Aenderung, nicht mehr diese Liste.
+        // Kein Netz oder Serverfehler: gemerkt, geht spaeter automatisch
+        // raus. Von jetzt an haelt die Warteschlange die Aenderung.
         setPending(queueStopUpdate(tour.id, stopId, body))
         inFlightRef.current.delete(key)
-        setIsOnline(false)
+        noteSendFailure(err)
       }
     } finally {
       inFlightRef.current.delete(key)
@@ -527,19 +570,20 @@ export default function DeliveryDashboard() {
         list.map((t) => (t.id === tour.id ? replacePreorder(t, updated) : t))
       )
       setPending(pendingUpdates())
+      setServerTrouble(false)
       if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      if (isRejection(err)) {
         inFlightRef.current.delete(key)
         // Erst neu laden, dann melden: `loadTours` leert die Meldung, sonst
         // verschwände der Grund der Ablehnung (etwa ein 403) sofort wieder.
         await loadTours(date, driverId)
         setError(err.message)
       } else {
-        // Kein Netz: gemerkt, geht spaeter automatisch raus.
+        // Kein Netz oder Serverfehler: gemerkt, geht spaeter automatisch raus.
         setPending(queuePreorderUpdate(preorderId, body))
         inFlightRef.current.delete(key)
-        setIsOnline(false)
+        noteSendFailure(err)
       }
     } finally {
       inFlightRef.current.delete(key)
@@ -610,6 +654,27 @@ export default function DeliveryDashboard() {
     }
   }
 
+  /**
+   * Name oder geplante Abfahrt der Tour (Inhaber). Die Abfahrt ist die
+   * Grundlage aller Ankunftszeiten - stand sie fest auf 06:30, wartete die
+   * Tour laut App stundenlang vor jedem Zeitfenster.
+   */
+  const saveTourField = async (body: {
+    name?: string
+    plannedStart?: string
+  }) => {
+    if (!tour) return
+    setBusy(true)
+    setError(null)
+    try {
+      mergeTour(await deliveryApi.updateTour(tour.id, body))
+    } catch (err) {
+      setError(describeError(err, 'Tour konnte nicht gespeichert werden.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const moveStop = async (stopId: number, direction: -1 | 1) => {
     if (!tour) return
     // Verschoben wird in der Reihenfolge, die die Liste zeigt (erledigte
@@ -671,7 +736,12 @@ export default function DeliveryDashboard() {
       const created = await deliveryApi.createTour({
         date,
         driverId,
-        name: 'Samstagstour',
+        name: defaultTourName(
+          date,
+          tours
+            .filter((entry) => entry.date === date)
+            .map((entry) => entry.name)
+        ),
       })
       setTours((list) => [...list, created])
       setTourId(created.id)
@@ -714,6 +784,12 @@ export default function DeliveryDashboard() {
     [tour]
   )
   const positions = useMemo(() => stopPositions(orderedStops), [orderedStops])
+  // Stopps abhaken nur, wenn die API es annimmt (Vortag bis zwei Tage danach)
+  // - an einer Tour der nächsten Woche stand sonst „Geliefert“, das mit 400
+  // „Der Zeitpunkt muss zum Tourtag passen.“ endete. Die Übergabe einzelner
+  // Vorbestellungen prüft die API nicht am Tourtag; sie bleibt.
+  const markState = tour ? markWindow(tour.date, todayIso()) : 'open'
+  const canMark = can.drive && markState === 'open'
   const finishedStops = orderedStops.filter((stop) => stop.status !== 'open')
   // „Weitere Stopps": die offenen ohne den nächsten - der steht oben schon
   // ausführlich und kam sonst ein zweites Mal.
@@ -743,6 +819,7 @@ export default function DeliveryDashboard() {
     onStatusChange: changeStopStatus,
     onPreorderStatusChange: changePreorderStatus,
     readOnly: !can.drive,
+    canMarkStop: canMark,
     canUndoHandover: can.undoHandover,
     collapseHandover: true,
   })
@@ -769,13 +846,7 @@ export default function DeliveryDashboard() {
   }, [tour, currentLocation])
 
   const offlineNotice = [
-    !isOnline
-      ? `Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet${
-          pending.length > 0 ? ` (${pending.length} offen)` : ''
-        }.`
-      : pending.length > 0
-      ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
-      : null,
+    syncNotice(isOnline, serverTrouble, pending.length),
     copiedAt
       ? `Gespeicherter Stand ${describeCopyTime(
           copiedAt
@@ -810,7 +881,13 @@ export default function DeliveryDashboard() {
 
       <section className={styles.card} aria-label="Tour auswählen">
         <div className={styles.selectRow}>
-          <div className={styles.field}>
+          {/* Gesperrt (Fahrer) über die ganze Breite: sonst stand bei 390 px
+              nur „Frieda Fahrerin (Te“ da. */}
+          <div
+            className={`${styles.field} ${
+              can.ownToursOnly ? styles.fieldFull : ''
+            }`}
+          >
             <label htmlFor="driver-select">Fahrer</label>
             <select
               id="driver-select"
@@ -852,10 +929,12 @@ export default function DeliveryDashboard() {
           >
             Heute
           </button>
+          {/* Am Samstag ist „Heute“ schon der Samstag - dann führt der Knopf
+              eine Woche weiter, sonst taten beide dasselbe. */}
           <button
             type="button"
-            aria-pressed={date === nextSaturdayIso()}
-            onClick={() => chooseDate(nextSaturdayIso())}
+            aria-pressed={date === followingSaturdayIso()}
+            onClick={() => chooseDate(followingSaturdayIso())}
           >
             Nächster Samstag
           </button>
@@ -966,6 +1045,15 @@ export default function DeliveryDashboard() {
               {tour.progress.failed > 0 &&
                 `, ${tour.progress.failed} nicht angetroffen`}
             </p>
+            {can.drive && markState !== 'open' && (
+              <p className={styles.placeholder} data-testid="mark-window">
+                {markState === 'early'
+                  ? `Stopps abhaken geht erst ab dem Vortag der Tour (${formatDate(
+                      tour.date
+                    )}).`
+                  : 'Diese Tour liegt mehr als zwei Tage zurück – Stopps abhaken geht nicht mehr.'}
+              </p>
+            )}
 
             <dl className={styles.keyFigures}>
               <div>
@@ -1035,6 +1123,13 @@ export default function DeliveryDashboard() {
           {planning && can.plan && (
             <section className={styles.card}>
               <h2>Tour bearbeiten</h2>
+              <TourSettings
+                key={tour.id}
+                name={tour.name}
+                plannedStart={tour.plannedStart}
+                busy={busy}
+                onSave={saveTourField}
+              />
               <div className={styles.field}>
                 <label htmlFor="tour-driver-select">Fahrer dieser Tour</label>
                 <select
@@ -1076,8 +1171,12 @@ export default function DeliveryDashboard() {
                   aria-label="Tour löschen?"
                 >
                   <p>
-                    Tour „{tour.name}“ mit {tour.stops.length} Stopp(s) wirklich
-                    löschen? Vorbestellungen der Sammelstelle bleiben erhalten.
+                    Tour „{tour.name}“ mit{' '}
+                    {tour.stops.length === 1
+                      ? '1 Stopp'
+                      : `${tour.stops.length} Stopps`}{' '}
+                    wirklich löschen? Vorbestellungen der Sammelstelle bleiben
+                    erhalten.
                   </p>
                   <div className={styles.buttonGroup}>
                     <button
@@ -1113,7 +1212,9 @@ export default function DeliveryDashboard() {
             </section>
           )}
 
-          {nextStop && (
+          {/* In der Planung nicht: dort steht derselbe Stopp kompakt in der
+              Liste darunter - sonst kam er doppelt, samt Übergabeliste. */}
+          {nextStop && !planning && (
             <section
               className={`${styles.card} ${styles.nextCard}`}
               aria-label="Nächster Stopp"
@@ -1130,6 +1231,7 @@ export default function DeliveryDashboard() {
                   onStatusChange={changeStopStatus}
                   onPreorderStatusChange={changePreorderStatus}
                   readOnly={!can.drive}
+                  canMarkStop={canMark}
                   canUndoHandover={can.undoHandover}
                 />
               </ul>
@@ -1137,7 +1239,8 @@ export default function DeliveryDashboard() {
           )}
 
           {planning && can.plan ? (
-            // Planung: alle Stopps flach, mit „Nach oben" / „Nach unten".
+            // Planung: alle Stopps flach und kompakt (Name, Zeitfenster,
+            // Ankunft), mit „Nach oben" / „Nach unten" - ohne Fahrer-Bedienung.
             <section className={styles.plainSection} aria-label="Alle Stopps">
               <div className={styles.sectionHead}>
                 <h2>Alle Stopps ({tour.stops.length})</h2>
@@ -1157,6 +1260,7 @@ export default function DeliveryDashboard() {
                     <StopCard
                       key={stop.id}
                       {...stopCardProps(stop)}
+                      planning
                       onRemove={removeStop}
                       onMove={moveStop}
                       isFirst={index === 0}
@@ -1502,6 +1606,88 @@ function describeCopyTime(iso: string): string {
     year: 'numeric',
   })
   return `vom ${day}, ${formatTime(iso)} Uhr`
+}
+
+/**
+ * Name und geplante Abfahrt der Tour (Planung, Inhaber). Gespeichert wird beim
+ * Verlassen des Feldes bzw. mit Enter, und nur, wenn sich etwas geändert hat.
+ */
+function TourSettings({
+  name,
+  plannedStart,
+  busy,
+  onSave,
+}: {
+  name: string
+  plannedStart: string
+  busy: boolean
+  onSave: (body: { name?: string; plannedStart?: string }) => void
+}) {
+  const [draftName, setDraftName] = useState(name)
+  const [draftStart, setDraftStart] = useState(plannedStart)
+  const [startError, setStartError] = useState<string | null>(null)
+  // Kommt ein neuer Stand vom Server, gilt er.
+  useEffect(() => setDraftName(name), [name])
+  useEffect(() => setDraftStart(plannedStart), [plannedStart])
+
+  const commitName = () => {
+    const value = draftName.trim()
+    if (!value) {
+      setDraftName(name)
+      return
+    }
+    if (value !== name) onSave({ name: value })
+  }
+  const commitStart = () => {
+    if (draftStart === plannedStart) {
+      setStartError(null)
+      return
+    }
+    if (!isClockTime(draftStart)) {
+      setStartError('Bitte eine Uhrzeit wie 06:30 eingeben.')
+      return
+    }
+    setStartError(null)
+    onSave({ plannedStart: draftStart })
+  }
+  const onEnter =
+    (commit: () => void) => (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') commit()
+    }
+
+  return (
+    <div className={styles.selectRow}>
+      <div className={styles.field}>
+        <label htmlFor="tour-name">Name der Tour</label>
+        <input
+          id="tour-name"
+          value={draftName}
+          maxLength={120}
+          disabled={busy}
+          onChange={(event) => setDraftName(event.target.value)}
+          onBlur={commitName}
+          onKeyDown={onEnter(commitName)}
+        />
+      </div>
+      <div className={styles.field}>
+        <label htmlFor="tour-start">Abfahrt geplant</label>
+        <input
+          id="tour-start"
+          type="time"
+          value={draftStart}
+          disabled={busy}
+          aria-describedby="tour-start-hint"
+          aria-invalid={startError ? true : undefined}
+          onChange={(event) => setDraftStart(event.target.value)}
+          onBlur={commitStart}
+          onKeyDown={onEnter(commitStart)}
+        />
+        <span id="tour-start-hint" className={styles.fieldHint}>
+          {startError ?? 'Ab hier rechnet die App die Ankunftszeiten.'}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 function readStoredDriver(): number | null {

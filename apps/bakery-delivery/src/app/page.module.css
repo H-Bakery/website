@@ -451,6 +451,17 @@
   margin-top: 0.75rem;
 }
 
+/* Gesperrtes Fahrer-Feld (Rolle Fahrer): eigene Zeile, damit der Name ganz
+   dasteht. */
+.selectRow > .fieldFull {
+  grid-column: 1 / -1;
+}
+
+.fieldHint {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
 .field > label,
 .fieldNarrow > label {
   font-size: 0.8125rem;
@@ -579,6 +590,19 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+}
+
+/* Planung: kompakte Zeile zum Umsortieren (Inhaber). */
+.stop.stopCompact {
+  padding: 0.5rem 0.75rem;
+}
+
+.stopCompact .stopFacts {
+  margin-top: 0.25rem;
+}
+
+.stopCompact .planActions {
+  margin-top: 0.5rem;
 }
 
 .stop {

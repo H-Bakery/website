@@ -61,6 +61,12 @@ interface StopCardProps {
    * Anrufen bleiben. Die API lehnt das Abhaken ohnehin ab (403).
    */
   readOnly?: boolean
+  /**
+   * Den Stopp selbst abhaken („Geliefert“, „Nicht angetroffen“, „Stopp
+   * abschließen“): nur vom Vortag bis zwei Tage nach dem Tourtag - mehr nimmt
+   * die API nicht an (`markWindow`).
+   */
+  canMarkStop?: boolean
   /** Übergabe zurücknehmen erlaubt (nicht für den Fahrer, B8). */
   canUndoHandover?: boolean
   /**
@@ -69,6 +75,14 @@ interface StopCardProps {
    * sonst ein zweites Mal - acht Familien sind am Handy vier Bildschirme.
    */
   collapseHandover?: boolean
+  /**
+   * Planung (Inhaber): eine kompakte Zeile zum Umsortieren - Name, Adresse,
+   * Zeitfenster, Ankunft und Warnungen, dazu „Nach oben“/„Nach unten“/
+   * „Entfernen“. Keine Fahrer-Bedienung (Navigation, Anrufen, Abhaken) und
+   * keine Übergabeliste: so waren es bis zu 7 Knöpfe je Stopp und eine
+   * 7.600 px lange Seite.
+   */
+  planning?: boolean
 }
 
 export function StopCard({
@@ -85,8 +99,10 @@ export function StopCard({
   onPreorderStatusChange,
   busyPreorderIds,
   readOnly = false,
+  canMarkStop = true,
   canUndoHandover = true,
   collapseHandover = false,
+  planning = false,
 }: StopCardProps) {
   // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
   // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
@@ -154,7 +170,8 @@ export function StopCard({
     <li
       className={`${styles.stop} ${styles[`stop_${stop.status}`] ?? ''} ${
         isNext ? styles.stopNext : ''
-      }`}
+      } ${planning ? styles.stopCompact : ''}`}
+      data-planning={planning ? 'true' : undefined}
     >
       <div className={styles.stopHead}>
         <span className={styles.stopNumber} aria-hidden="true">
@@ -195,7 +212,7 @@ export function StopCard({
           </div>
         )}
         {/* `!= null` statt Truthiness: 0 m ist eine gueltige Entfernung. */}
-        {distance != null && (
+        {distance != null && !planning && (
           <div>
             <dt>Entfernung</dt>
             <dd>{formatRouteDistance(distance)}</dd>
@@ -219,8 +236,10 @@ export function StopCard({
           .
         </p>
       )}
-      {items && <p className={styles.stopItems}>{items}</p>}
-      {stop.notes && <p className={styles.stopNotes}>{stop.notes}</p>}
+      {items && !planning && <p className={styles.stopItems}>{items}</p>}
+      {stop.notes && !planning && (
+        <p className={styles.stopNotes}>{stop.notes}</p>
+      )}
       {stop.status === 'failed' &&
         (stop.failureReason || stop.goodsDisposition) && (
           <p className={styles.stopFailure}>
@@ -254,7 +273,16 @@ export function StopCard({
         </p>
       )}
 
-      {isPickupPoint && onPreorderStatusChange && (
+      {isPickupPoint && planning && (
+        <p className={styles.handoverSummary}>
+          {preorders.length === 1
+            ? '1 Vorbestellung'
+            : `${preorders.length} Vorbestellungen`}{' '}
+          · {handoverHeadline(handover)}
+        </p>
+      )}
+
+      {isPickupPoint && onPreorderStatusChange && !planning && (
         <>
           <p className={styles.handoverSummary}>{handoverHeadline(handover)}</p>
           {collapseHandover && preorders.length > 0 ? (
@@ -310,70 +338,74 @@ export function StopCard({
       )}
 
       {/* Wege zum Kunden: Navigation und Anrufen. */}
-      <div className={styles.stopActions}>
-        {navigationUrl && (
-          <a
-            className={styles.buttonLinkAccent}
-            href={navigationUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Navigation
-          </a>
-        )}
-        {phoneLink && (
-          <a className={styles.buttonLinkGhost} href={phoneLink}>
-            Anrufen
-          </a>
-        )}
-      </div>
+      {!planning && (
+        <div className={styles.stopActions}>
+          {navigationUrl && (
+            <a
+              className={styles.buttonLinkAccent}
+              href={navigationUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Navigation
+            </a>
+          )}
+          {phoneLink && (
+            <a className={styles.buttonLinkGhost} href={phoneLink}>
+              Anrufen
+            </a>
+          )}
+        </div>
+      )}
 
       {/* Status: immer in derselben Reihe, gefüllt nur die Hauptaktion. */}
-      <div className={styles.stopActions}>
-        {readOnly ? null : stop.status === 'open' ? (
-          // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
-          // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
-          isPickupPoint ? (
-            <button
-              type="button"
-              className={styles.buttonSuccess}
-              disabled={busy}
-              onClick={closeStop}
-            >
-              Stopp abschließen
-            </button>
-          ) : (
-            <>
+      {!planning && (
+        <div className={styles.stopActions}>
+          {readOnly || !canMarkStop ? null : stop.status === 'open' ? (
+            // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
+            // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
+            isPickupPoint ? (
               <button
                 type="button"
                 className={styles.buttonSuccess}
                 disabled={busy}
-                onClick={() => onStatusChange(stop.id, 'done')}
+                onClick={closeStop}
               >
-                Geliefert
+                Stopp abschließen
               </button>
-              <button
-                type="button"
-                className={styles.buttonWarn}
-                disabled={busy || askFailure}
-                aria-expanded={askFailure}
-                onClick={() => setAskFailure(true)}
-              >
-                Nicht angetroffen
-              </button>
-            </>
-          )
-        ) : (
-          <button
-            type="button"
-            className={styles.buttonGhost}
-            disabled={busy}
-            onClick={() => onStatusChange(stop.id, 'open')}
-          >
-            Zurücksetzen
-          </button>
-        )}
-      </div>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={styles.buttonSuccess}
+                  disabled={busy}
+                  onClick={() => onStatusChange(stop.id, 'done')}
+                >
+                  Geliefert
+                </button>
+                <button
+                  type="button"
+                  className={styles.buttonWarn}
+                  disabled={busy || askFailure}
+                  aria-expanded={askFailure}
+                  onClick={() => setAskFailure(true)}
+                >
+                  Nicht angetroffen
+                </button>
+              </>
+            )
+          ) : (
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              disabled={busy}
+              onClick={() => onStatusChange(stop.id, 'open')}
+            >
+              Zurücksetzen
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Planung (Inhaber): eigene Reihe, damit sie nicht zwischen
           „Geliefert" und „Nicht angetroffen" gerät. */}

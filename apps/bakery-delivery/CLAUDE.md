@@ -95,6 +95,12 @@ steht.
   **Planen (nur Inhaber):** „Tour planen" öffnet „Tour bearbeiten" mit Fahrer-Zuordnung
   (`PATCH /tours/:id { driverId }` - eine unter „Alle" angelegte Tour hat sonst keinen Fahrer),
   „Nach oben"/„Nach unten" je Stopp (`stopOrder`) und „Tour löschen" mit Rückfrage in der Seite;
+  dazu **Name der Tour** und **Abfahrt geplant** (`PATCH { name }` / `{ plannedStart }`, gespeichert
+  beim Verlassen des Feldes; die Abfahrt ist die Grundlage aller Ankunftszeiten). Eine neue Tour
+  heißt nach dem Wochentag („Freitagstour", die zweite am Tag „Samstagstour 2", `defaultTourName()`).
+  In der Planung stehen die Stopps **kompakt** (`StopCard planning`: Name, Adresse, Zeitfenster,
+  Ankunft, Warnungen, bei der Sammelstelle nur die Kopfzeile) und „Nächster Stopp" entfällt - vorher
+  stand Stopp 1 doppelt samt Übergabeliste, die Seite war 7.600 px lang;
   `verkauf` liest nur (keine Abhak-Knöpfe, kein Standort); `backstube` wird
   beim Anmelden abgewiesen und gleich wieder abgemeldet.
 - **Abgelehnte Änderungen bleiben sichtbar.** Lehnt die API ein Abhaken oder eine Übergabe mit
@@ -262,8 +268,11 @@ Vier Regeln, die man kennen muss, bevor man hier etwas ändert:
   überflüssiger Ballast: die Fahrer-App hält die Tourliste als Offline-Kopie im `localStorage` — läge
   die Übergabeliste hinter einem zweiten Aufruf, wäre sie im Funkloch weg. Stornierte sind nur dabei,
   wenn Geld zurückzugeben ist (`paymentBalance < 0`). **Bezahlstand:** jede Bestellung trägt `paid`,
-  `paidAmount` und `paymentBalance`; `HandoverList` zeigt je Zeile „Geld" (nichts / X kassieren /
-  Rest X / X zurückgeben / ohne Zahlung übergeben – X offen), die Kopfzeile kassiert Vorkasse
+  `paidAmount` und `paymentBalance`; `HandoverList` zeigt je Zeile „Geld" mit den Worten der
+  Abholliste der Verwaltung vorn (UI-Runde 2: „Nicht bezahlt – X kassieren", „Bezahlt", „Rest X
+  offen – kassieren", „Erstattung X offen – zurückgeben"; der Status heißt dort wie hier
+  „Abgeholt"), „Nach Bestellschluss aufgenommen" nur an noch offenen bzw. nicht abgeholten, und
+  die Kopfzeile nennt Stornierte („· 1 storniert"); sie kassiert Vorkasse
   nicht ein zweites Mal, nennt „Ohne Zahlung übergeben: X" (wie `handedOverUnpaidTotal` der
   Abholliste) und „Zurückzugeben" und lässt 0,00-€-Teile weg. **„Übergeben" fragt immer, wenn Geld
   offen ist** (UI-Runde 1): unbezahlt „Bezahlt und übergeben" (`paid: true`) / „Ohne Zahlung
@@ -463,6 +472,15 @@ Netzfehler in eine `localStorage`-Warteschlange gelegt (`bakery-delivery-queue`)
 Funk da ist, ob der Server antwortet, weiß er nicht. Pro Stopp bleibt nur der letzte Stand stehen.
 Eine Änderung, die der Server **fachlich** ablehnt (4xx), fliegt aus der Schlange — sonst blockierte
 sie alle folgenden für immer; Netzfehler (5xx, kein Netz, Timeout) lassen den Eintrag stehen.
+**Eine abgelehnte Nachsendung nimmt die Seite zurück** (UI-Runde 2): `flushQueue` liefert je
+abgelehntem Eintrag den Grund (`RejectedUpdate.reason`), die Seite merkt sich die Namen aus dem
+angezeigten Stand, lädt die Touren neu und meldet danach „Übergabe an … nicht gespeichert: <message
+des Servers>. Angezeigt ist jetzt der Stand des Servers." (`describeRejected()` in
+`src/lib/sync-messages.ts`). Vorher blieb die Vorschau stehen - eine inzwischen stornierte Bestellung
+zeigte „Abgeholt · Bezahlt", die einzige Meldung war „1 Änderung(en) … verworfen".
+**Ein 5xx ist kein Funkloch:** `isServerError()` trennt beides, der Balken sagt dann „Der Server hat
+einen Fehler gemeldet – die Änderung wird automatisch erneut gesendet (N offen) …" statt „Kein Netz"
+(`syncNotice()`); gesendet wird weiter im 30-s-Takt.
 `flushQueue` liest die Schlange nach jedem Versand **neu** und streicht nur den gesendeten Eintrag
 (per eindeutiger `id`) - früher schrieb es seine Kopie vom Start zurück und verlor ein Abhaken, das
 während des Nachsendens dazukam. Ein Stopp-Abhaken trägt `completedAt` = Zeitpunkt des Tippens,
@@ -521,9 +539,25 @@ Das Nachladen der Kopie (`online`-Event, 30-s-Takt) wartet, solange ein Abhaken 
 (`busyRef`) oder die Warteschlange voll ist: die Änderung steht noch in keiner von beiden, und der
 Server-Stand ließe den Stopp bis zum Nachsenden wieder als „Offen" erscheinen. Umgekehrt ersetzt ein
 erfolgreicher `PATCH` (direkt oder aus der Warteschlange) die Kopie sofort, statt den Balken bis zum
-nächsten Takt stehen zu lassen. Was fehlt: ein Service Worker. Ein kaltes Neuladen ganz ohne Netz
-zeigt weiterhin die Fehlerseite des Browsers; die Kopie hilft, sobald die App-Seite selbst da ist
-(Tab war noch offen, Dev-Server oder Hosting erreichbar, nur die API nicht).
+nächsten Takt stehen zu lassen.
+
+**Service Worker (UI-Runde 2):** `public/sw.js` cacht die App-Hülle - `/` (das HTML trägt keine
+Kundendaten, nur „Wird geladen …"), `/_next/static/*`, `/leaflet/*`, `/favicon.ico` - und liefert
+sie bei einem Seitenaufruf ohne Netz (oder bei 502-504 eines Proxys) aus. Erst damit erscheint die
+Offline-Kopie auch nach einem kalten Neuladen im Funkloch; vorher kam die leere Fehlerseite des
+Browsers. Nie angefasst: `/api/*` und fremde Hosts (API, Kartenkacheln). Registriert wird nur im
+Produktions-Build über HTTPS/localhost (`src/lib/pwa.ts`, `components/ServiceWorkerRegistration.tsx`),
+je Build unter `/sw.js?v=<NEXT_PUBLIC_SW_VERSION>` (`next.config.js`, `SW_VERSION` überschreibt);
+`next dev` meldet einen alten Worker ab. Notschalter beim Build: `NEXT_PUBLIC_DISABLE_SW=1`. Nach
+dem Start meldet die Seite dem Worker die schon geladenen Chunks (Karte), damit auch sie offline da
+sind. Tests: `src/lib/sw.spec.ts` (führt `sw.js` in einer nachgebauten Worker-Umgebung aus),
+`src/lib/pwa.spec.ts`.
+
+**Abhaken nur, wenn die API es annimmt** (`markWindow()` in `src/lib/tour-day.ts`, wie
+`COMPLETED_AT_DAYS_*` der API: Vortag bis zwei Tage nach dem Tourtag). Sonst fehlen „Geliefert",
+„Nicht angetroffen" und „Stopp abschließen" (`StopCard canMarkStop`), und ein Hinweis sagt warum;
+die Übergabe einzelner Vorbestellungen prüft die API nicht am Tourtag, sie bleibt - an
+einer Tour der nächsten Woche endete das sonst in 400 „Der Zeitpunkt muss zum Tourtag passen."
 
 ### Farbschema
 

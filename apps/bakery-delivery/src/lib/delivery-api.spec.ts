@@ -290,7 +290,34 @@ describe('Warteschlange', () => {
 
     expect(result.offline).toBe(false)
     expect(result.rejected).toHaveLength(1)
+    // UI-Runde 2: mit dem Grund des Servers - die Seite nennt ihn.
+    expect(result.rejected[0]).toMatchObject({
+      kind: 'preorder',
+      preorderId: 101,
+      reason: 'Diese Vorbestellung existiert nicht.',
+    })
     expect(pendingUpdates()).toEqual([])
+  })
+
+  it('unterscheidet einen Serverfehler (5xx) vom Funkloch und behält den Eintrag', async () => {
+    // UI-Runde 2: auf ein 500 hieß es „Kein Netz“.
+    ;(global as { fetch?: unknown }).fetch = serverAnswers(
+      { error: 'internal', message: 'Interner Fehler' },
+      500
+    )
+    queueStopUpdate(7, 1, { status: 'done' })
+    const result = await flushQueue()
+
+    expect(result.offline).toBe(true)
+    expect(result.serverError).toBe(true)
+    expect(result.rejected).toEqual([])
+    expect(pendingUpdates()).toHaveLength(1)
+    ;(global as { fetch?: unknown }).fetch = jest
+      .fn()
+      .mockRejectedValue(new TypeError('Failed to fetch'))
+    const again = await flushQueue()
+    expect(again.offline).toBe(true)
+    expect(again.serverError).toBe(false)
   })
 })
 

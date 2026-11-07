@@ -73,6 +73,7 @@ describe('summarizeHandover', () => {
       handedOverUnpaidTotal: 6.1,
       refundCount: 0,
       refundTotal: 0,
+      cancelled: 0,
     })
   })
 
@@ -190,8 +191,9 @@ describe('HandoverList', () => {
         onStatusChange={onStatusChange}
       />
     )
-    // Status nie allein ueber die Farbe: der Text steht daneben.
-    expect(screen.getByText('Übergeben')).toBeTruthy()
+    // Status nie allein ueber die Farbe: der Text steht daneben - mit dem
+    // Wort der Abholliste der Verwaltung („Abgeholt“, r2).
+    expect(screen.getByText('Abgeholt')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Zurücksetzen' }))
     expect(onStatusChange).toHaveBeenCalledWith(1, 'open')
   })
@@ -344,31 +346,67 @@ describe('Bezahlstand (Abschluss-Verifikation next)', () => {
       refundTotal: 12.3, // 2,70 + 9,60
       refundCount: 2,
     })
+    // Die stornierte steht in der Liste, zählt aber nicht mit - die
+    // Kopfzeile sagt das, sonst läse sich „0 von 4“ unter „(5)“ falsch.
     expect(handoverHeadline(summary)).toBe(
-      `0 von 4 übergeben · Bar zu kassieren: ${formatCurrency(
+      `0 von 4 übergeben · 1 storniert · Bar zu kassieren: ${formatCurrency(
         12.5
       )} · Zurückzugeben: ${formatCurrency(12.3)}`
     )
   })
 
-  it('zeigt je Zeile, was mit dem Geld zu tun ist', () => {
+  it('zeigt je Zeile, was mit dem Geld zu tun ist - mit den Worten der Abholliste', () => {
+    // r2: vorn derselbe Zahlungsstand wie auf der Abholliste der Verwaltung
+    // („Nicht bezahlt“, „Bezahlt“, „Rest … offen“, „Erstattung … offen“),
+    // dahinter die Handlung für den Fahrer.
     render(
       <HandoverList preorders={all} busy={false} onStatusChange={jest.fn()} />
     )
-    expect(screen.getByTestId('payment-1').textContent).toBe(
-      'Bezahlt – nichts zu kassieren'
-    )
+    expect(screen.getByTestId('payment-1').textContent).toBe('Bezahlt')
     expect(screen.getByTestId('payment-2').textContent).toBe(
-      `Bezahlt – Rest ${formatCurrency(6.4)} kassieren`
+      `Rest ${formatCurrency(6.4)} offen – kassieren`
     )
     expect(screen.getByTestId('payment-3').textContent).toBe(
-      `${formatCurrency(2.7)} zurückgeben`
+      `Erstattung ${formatCurrency(2.7)} offen – zurückgeben`
     )
     expect(screen.getByTestId('payment-4').textContent).toBe(
-      `Storniert – ${formatCurrency(9.6)} zurückgeben`
+      `Erstattung ${formatCurrency(9.6)} offen`
     )
     expect(screen.getByTestId('payment-5').textContent).toBe(
-      `${formatCurrency(6.1)} kassieren`
+      `Nicht bezahlt – ${formatCurrency(6.1)} kassieren`
+    )
+  })
+
+  it('nennt an einer nicht abgeholten, dass erst bei Abholung kassiert wird', () => {
+    // r2: „5,90 € kassieren“ an einer nicht abgeholten las sich neben der
+    // Kopfzeile (die sie nicht mitzählt) wie ein Rechenfehler.
+    render(
+      <HandoverList
+        preorders={[{ ...unpaid, status: 'not_collected' }]}
+        busy={false}
+        onStatusChange={jest.fn()}
+      />
+    )
+    expect(screen.getByTestId('payment-5').textContent).toBe(
+      `Nicht bezahlt – ${formatCurrency(6.1)} kassieren, falls doch abgeholt`
+    )
+  })
+
+  it('zeigt „Nach Bestellschluss“ nur, solange die Ware noch herausgegeben wird', () => {
+    // r2: der Hinweis stand auch an übergebenen und stornierten Bestellungen.
+    render(
+      <HandoverList
+        preorders={[
+          { ...unpaid, afterDeadline: true },
+          { ...prepaid, afterDeadline: true, status: 'handed_over' },
+          { ...cancelled, afterDeadline: true },
+        ]}
+        busy={false}
+        onStatusChange={jest.fn()}
+      />
+    )
+    expect(screen.getAllByText(/Nach Bestellschluss aufgenommen/)).toHaveLength(
+      1
     )
   })
 
@@ -421,8 +459,11 @@ describe('Bezahlstand (Abschluss-Verifikation next)', () => {
     expect(
       screen.queryByRole('button', { name: 'Ohne Rest übergeben' })
     ).toBeNull()
-    // Die stornierte hat keinen Knopf - erfassen kann das der Verkauf.
-    expect(screen.getByText('Erfassen kann das der Verkauf.')).toBeTruthy()
+    // Die stornierte hat keinen Knopf - und der Fahrer erfährt, wer die
+    // Erstattung einträgt und dass er nicht einfach auszahlt.
+    expect(
+      screen.getByText(/Die Erstattung trägt der Verkauf ein/).textContent
+    ).toContain('Bar auszahlen nur nach Rücksprache mit dem Laden.')
   })
 })
 
@@ -469,7 +510,7 @@ describe('Übergabe ohne Zahlung (UI-Runde 1)', () => {
       />
     )
     expect(screen.getByTestId('payment-1').textContent).toBe(
-      `Ohne Zahlung übergeben – ${formatCurrency(41.4)} offen`
+      `Nicht bezahlt – ${formatCurrency(41.4)} offen`
     )
     fireEvent.click(
       screen.getByRole('button', { name: 'Nachträglich kassiert' })
