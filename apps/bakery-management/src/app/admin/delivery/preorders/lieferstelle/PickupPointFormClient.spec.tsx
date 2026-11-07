@@ -159,9 +159,10 @@ describe('PickupPointFormClient', () => {
       expect(
         screen.queryByRole('button', { name: 'Speichern' })
       ).not.toBeInTheDocument()
+      // Rückweg nur noch oben als Link (Layout-Kit), kein zweiter Knopf
       expect(
-        screen.getAllByRole('button', { name: 'Zurück zur Liste' })
-      ).toHaveLength(2)
+        screen.getByRole('link', { name: 'Zurück zur Liste' })
+      ).toHaveAttribute('href', `/admin/delivery/preorders?point=${POINT.id}`)
       expect(mockSave).not.toHaveBeenCalled()
     }
   )
