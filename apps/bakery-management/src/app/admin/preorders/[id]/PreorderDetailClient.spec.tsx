@@ -40,6 +40,17 @@ const mockStatus = changePreorderStatus as jest.MockedFunction<
   typeof changePreorderStatus
 >
 
+/** Öffnet das ⋮-Menü und wählt einen Eintrag (Stornieren, Abgeholt bei offen …). */
+async function chooseMenu(
+  user: ReturnType<typeof userEvent.setup>,
+  name: string
+) {
+  await user.click(
+    await screen.findByRole('button', { name: 'Weitere Aktionen' })
+  )
+  await user.click(await screen.findByRole('menuitem', { name }))
+}
+
 function renderAs(role: PilotRole) {
   return renderWithTheme(
     <WithSession value={fakeSession({ role })}>
@@ -191,7 +202,12 @@ describe('PreorderDetailClient (P3)', () => {
     const user = userEvent.setup()
     mockCancel.mockResolvedValue(preorder({ status: 'storniert' }))
     renderAs('verkauf')
-    await user.click(await screen.findByRole('button', { name: 'Stornieren' }))
+    expect(
+      await screen.findByRole('button', { name: 'Bearbeiten' })
+    ).toBeInTheDocument()
+    // selten gebraucht: im ⋮-Menü, nicht als eigener Knopf
+    expect(screen.queryByRole('button', { name: 'Stornieren' })).toBeNull()
+    await chooseMenu(user, 'Stornieren')
     // findBy/waitFor statt getBy: unter Last dauert der MUI-Übergang länger
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByText(/Gelöscht wird nichts/)).toBeInTheDocument()
@@ -199,7 +215,7 @@ describe('PreorderDetailClient (P3)', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
     expect(mockCancel).not.toHaveBeenCalled()
 
-    await user.click(screen.getByRole('button', { name: 'Stornieren' }))
+    await chooseMenu(user, 'Stornieren')
     await user.click(
       within(await screen.findByRole('dialog')).getByRole('button', {
         name: 'Stornieren',
@@ -224,7 +240,7 @@ describe('PreorderDetailClient (P3)', () => {
     expect(await screen.findByTestId('payment-balance')).toHaveTextContent(
       /Bei der Abholung noch\s*0,90\s*€\s*kassieren/
     )
-    await user.click(screen.getByRole('button', { name: 'Stornieren' }))
+    await chooseMenu(user, 'Stornieren')
     const dialog = await screen.findByRole('dialog')
     expect(within(dialog).getByTestId('cancel-refund')).toHaveTextContent(
       /bereits bezahlt.*zurückgegeben/
@@ -280,7 +296,7 @@ describe('PreorderDetailClient (P3)', () => {
     )
     mockStatus.mockResolvedValueOnce(preorder({ paid: true }))
     renderAs('verkauf')
-    await user.click(await screen.findByRole('button', { name: 'Abgeholt' }))
+    await chooseMenu(user, 'Abgeholt')
     expect(
       await screen.findByText('Status muss „offen“ … sein.')
     ).toBeInTheDocument()
@@ -311,9 +327,9 @@ describe('PreorderDetailClient (P3)', () => {
       )
     )
     renderAs('verkauf')
-    const pickedUp = await screen.findByRole('button', { name: 'Abgeholt' })
+    await screen.findByRole('button', { name: 'Bearbeiten' })
     mockGet.mockResolvedValue(handedOver)
-    await user.click(pickedUp)
+    await chooseMenu(user, 'Abgeholt')
     expect(await screen.findByTestId('preorder-conflict')).toHaveTextContent(
       /inzwischen an anderer Stelle geändert.*nichts überschrieben/
     )
@@ -322,8 +338,10 @@ describe('PreorderDetailClient (P3)', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
     )
+    // abgeholt + bezahlt: „Doch nicht bezahlt“ steht im ⋮-Menü
+    await user.click(screen.getByRole('button', { name: 'Weitere Aktionen' }))
     expect(
-      screen.getByRole('button', { name: 'Doch nicht bezahlt' })
+      await screen.findByRole('menuitem', { name: 'Doch nicht bezahlt' })
     ).toBeInTheDocument()
     expect(mockStatus).toHaveBeenCalledTimes(1)
   })
@@ -342,7 +360,7 @@ describe('PreorderDetailClient (P3)', () => {
     await user.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
     await screen.findByRole('heading', { name: /bearbeiten/ })
     // nur die Anmerkung ergänzt: `paid` und Positionen gehen nicht mit
-    const note = screen.getByLabelText(/Notiz/)
+    const note = screen.getByLabelText(/^Notiz/)
     await user.type(note, 'Bitte schneiden')
     mockGet.mockResolvedValue(
       preorder({
@@ -372,8 +390,10 @@ describe('PreorderDetailClient (P3)', () => {
     await waitFor(() =>
       expect(screen.queryByRole('button', { name: 'Bearbeiten' })).toBeNull()
     )
+    // abgeholt + bezahlt: „Doch nicht bezahlt“ steht im ⋮-Menü
+    await user.click(screen.getByRole('button', { name: 'Weitere Aktionen' }))
     expect(
-      screen.getByRole('button', { name: 'Doch nicht bezahlt' })
+      await screen.findByRole('menuitem', { name: 'Doch nicht bezahlt' })
     ).toBeInTheDocument()
   })
 
@@ -440,5 +460,55 @@ describe('PreorderDetailClient (P3)', () => {
     expect(
       await screen.findByText('Diese Vorbestellung existiert nicht.')
     ).toBeInTheDocument()
+  })
+})
+
+describe('detailActions', () => {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { detailActions } = require('./PreorderDetailClient')
+  const keys = (p: ReturnType<typeof preorder>, editable = true) =>
+    detailActions(p, editable).map(
+      (a: { key: string; inMenu?: boolean; primary?: boolean }) =>
+        `${a.primary ? '*' : ''}${a.key}${a.inMenu ? '…' : ''}`
+    )
+
+  it('zeigt sichtbar nur den nächsten Schritt, den Rest im Menü', () => {
+    expect(keys(preorder({ status: 'offen' }))).toEqual([
+      '*edit',
+      'ready',
+      'pickedUp…',
+      'paid',
+      'cancel…',
+    ])
+    expect(keys(preorder({ status: 'bereit', paid: true }))).toEqual([
+      '*edit',
+      'pickedUp',
+      'unpaid…',
+      'reopen…',
+      'cancel…',
+    ])
+    expect(keys(preorder({ status: 'abgeholt' }), false)).toEqual([
+      '*paid',
+      'reopen',
+    ])
+  })
+
+  it('offenes Geld ist die Hauptaktion, genau eine ist primary', () => {
+    const list = keys(
+      preorder({ paid: true, paidAmount: 10, total: 10.9, paymentBalance: 0.9 })
+    )
+    expect(list[0]).toBe('*settle')
+    expect(list.filter((k: string) => k.startsWith('*'))).toHaveLength(1)
+    expect(
+      keys(
+        preorder({ status: 'storniert', paid: true, paymentBalance: -4.8 }),
+        false
+      )
+    ).toEqual(['*refundCancelled', 'uncancel'])
+    // Bezahlt abgeholt: nur Zurücknehmen bleibt - das ist kein Hauptknopf.
+    expect(keys(preorder({ status: 'abgeholt', paid: true }), false)).toEqual([
+      'unpaid…',
+      'reopen',
+    ])
   })
 })

@@ -39,14 +39,13 @@ describe('PreorderDayClient (P3)', () => {
       screen.getByRole('heading', { name: /Sa, 14\.11\.2026/ })
     ).toBeInTheDocument()
     expect(screen.getByText('Noch zu kassieren')).toBeInTheDocument()
-    expect(
-      screen.getByText(/Kita Teststraße: 1 Bestellung/)
-    ).toBeInTheDocument()
     // Bestellweg und Abholort stehen getrennt - "Laden" im Bestellweg ist
     // keine Abholzahl (W4-verify r5).
-    expect(screen.getByTestId('preorder-day-places')).toHaveTextContent(
-      /^Abholung: Laden: 1 Bestellung · Kita Teststraße: 1 Bestellung/
-    )
+    const places = within(
+      screen.getByRole('list', { name: 'Abholung:' })
+    ).getAllByRole('listitem')
+    expect(places[0]).toHaveTextContent(/^Laden: 1 Bestellung$/)
+    expect(places[1]).toHaveTextContent(/^Kita Teststraße: 1 Bestellung/)
     expect(screen.getByText(/Bestellweg:/)).toBeInTheDocument()
   })
 

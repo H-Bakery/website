@@ -1,5 +1,5 @@
 import React from 'react'
-import { isBusinessDate } from './preorderTypes'
+import { isBusinessDate, isPickupPointParam } from './preorderTypes'
 import PreorderListClient from './PreorderListClient'
 
 /**
@@ -12,6 +12,7 @@ import PreorderListClient from './PreorderListClient'
  *
  * Query-Parameter:
  *   `?date=YYYY-MM-DD` - Liefertag (Vorgabe: nächster Liefertag der Stelle)
+ *   `?point=<id>`      - Sammelstelle (Vorgabe: die erste aktive)
  *   `?saved=1`         - Bestätigung nach dem Speichern
  */
 export default async function PreordersPage({
@@ -22,12 +23,16 @@ export default async function PreordersPage({
   const query = await searchParams
   const raw = query['date']
   const date = Array.isArray(raw) ? raw[0] : raw
+  const point = Array.isArray(query['point'])
+    ? query['point'][0]
+    : query['point']
   const saved =
     (Array.isArray(query['saved']) ? query['saved'][0] : query['saved']) === '1'
 
   return (
     <PreorderListClient
       initialDate={isBusinessDate(date) ? date : undefined}
+      initialPointId={isPickupPointParam(point) ? point : undefined}
       saved={saved}
     />
   )

@@ -6,7 +6,6 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Divider,
   FormControlLabel,
   Grid,
@@ -29,6 +28,11 @@ import {
 import QuantityPad, {
   nextQuantity,
 } from '../../../components/preorders/QuantityPad'
+import {
+  LoadingState,
+  PageSection,
+  SECTION_GAP,
+} from '../../../components/layout'
 import {
   changePreorderStatus,
   createPreorder,
@@ -174,6 +178,7 @@ const variantChipSx = {
   '&.MuiChip-outlined.Mui-focusVisible': { backgroundColor: 'transparent' },
 } as const
 
+/** Ein Block der Maske - derselbe Abschnitt wie auf jeder Seite (Layout-Kit). */
 function Section({
   title,
   children,
@@ -181,19 +186,7 @@ function Section({
   title: string
   children: React.ReactNode
 }) {
-  return (
-    <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 } }}>
-      <Typography
-        variant="subtitle2"
-        component="h2"
-        color="text.secondary"
-        sx={{ mb: 1.25, textTransform: 'uppercase', letterSpacing: 0.6 }}
-      >
-        {title}
-      </Typography>
-      {children}
-    </Paper>
-  )
+  return <PageSection title={title}>{children}</PageSection>
 }
 
 export interface PreorderFormProps {
@@ -1001,15 +994,7 @@ export default function PreorderForm({
     }
 
   if (loading) {
-    return (
-      <Box
-        sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-        role="status"
-        aria-label="Maske wird geladen"
-      >
-        <CircularProgress />
-      </Box>
-    )
+    return <LoadingState label="Maske wird geladen …" />
   }
 
   const channelChoices: PreorderChannel[] = point
@@ -1076,10 +1061,10 @@ export default function PreorderForm({
         </Alert>
       )}
 
-      <Grid container spacing={2}>
+      <Grid container spacing={SECTION_GAP}>
         {/* ---------------- links: Kunde, Weg, Abholung ---------------- */}
         <Grid item xs={12} md={5}>
-          <Stack spacing={2}>
+          <Stack spacing={SECTION_GAP}>
             <Section title="Kunde">
               <Stack spacing={1.5}>
                 <TextField
@@ -1239,7 +1224,7 @@ export default function PreorderForm({
 
         {/* ------- rechts: Artikel, Bestellung, Zahlung (am Telefon darunter) ------- */}
         <Grid item xs={12} md={7}>
-          <Stack spacing={2}>
+          <Stack spacing={SECTION_GAP}>
             <Section title="Artikel">
               {!pending && (
                 <>
