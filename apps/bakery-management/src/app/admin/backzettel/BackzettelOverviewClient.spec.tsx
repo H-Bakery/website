@@ -114,8 +114,11 @@ describe('Backzettel-Übersicht', () => {
     )
     const sat = within(screen.getByTestId('day-2026-11-28'))
     expect(await sat.findByText('Entwurf')).toBeInTheDocument()
-    expect(sat.getByText('Vorbestellungen in 1 Zeile')).toBeInTheDocument()
-    expect(sat.getByText('Hefeteig')).toBeInTheDocument()
+    // Nebenwerte stehen als eine Zeile Text, nicht als weitere Chips.
+    expect(
+      sat.getByText('Vorbestellungen in 1 Zeile · Hefeteig')
+    ).toBeInTheDocument()
+    expect(sat.getAllByText(/Entwurf|Nachtrag/)).toHaveLength(1)
   })
 
   it('Entwurf: „Planen“ nur für Inhaber/Backstube, Verkauf bekommt „Ansehen“ (W4-verify r3)', async () => {
@@ -174,5 +177,20 @@ describe('Backzettel-Übersicht', () => {
     expect(
       within(screen.getByTestId('day-2026-11-28')).getByText('Entwurf')
     ).toBeInTheDocument()
+  })
+
+  it('ohne Netz: deutscher Hinweis statt „Failed to fetch“', async () => {
+    mocked.fetchBackzettelConfig.mockRejectedValue(
+      new TypeError('Failed to fetch')
+    )
+    mocked.fetchBackzettelDay.mockRejectedValue(
+      new TypeError('Failed to fetch')
+    )
+    render(<BackzettelOverviewClient today={TODAY} />)
+    const sun = within(await screen.findByTestId('day-2026-11-29'))
+    expect(
+      await sun.findByText('Keine Verbindung zum Server – bitte WLAN prüfen.')
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
   })
 })
