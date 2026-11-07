@@ -1,7 +1,7 @@
 import React from 'react'
 import { screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import DashboardClient from './DashboardClient'
+import DashboardClient, { countProducts } from './DashboardClient'
 import { fakeSession, WithSession } from '../../lib/testing/fakeSession'
 
 jest.mock('next/navigation', () => ({
@@ -61,12 +61,12 @@ describe('DashboardClient', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/api/products')
     expect(screen.getByText('Produkte gesamt')).toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Vorbestellungen' })
+      screen.getByRole('heading', { level: 3, name: 'Vorbestellungen' })
     ).toBeInTheDocument()
     ;['Bestellungen', 'Inventar', 'Produktion', 'Lieferungen'].forEach(
       (title) =>
         expect(
-          screen.queryByRole('heading', { level: 2, name: title })
+          screen.queryByRole('heading', { level: 3, name: title })
         ).not.toBeInTheDocument()
     )
     expect(screen.queryByText('Offene Bestellungen')).not.toBeInTheDocument()
@@ -95,7 +95,7 @@ describe('DashboardClient', () => {
     await screen.findByText('API erreichbar')
     ;['Produkte', 'Kassenberichte', 'Analysen'].forEach((title) =>
       expect(
-        screen.getByRole('heading', { level: 2, name: title })
+        screen.getByRole('heading', { level: 3, name: title })
       ).toBeInTheDocument()
     )
     ;[
@@ -106,7 +106,7 @@ describe('DashboardClient', () => {
       'Backliste',
     ].forEach((title) =>
       expect(
-        screen.queryByRole('heading', { level: 2, name: title })
+        screen.queryByRole('heading', { level: 3, name: title })
       ).not.toBeInTheDocument()
     )
   })
@@ -121,7 +121,7 @@ describe('DashboardClient', () => {
     await screen.findByText('API erreichbar')
     expect(screen.getByText('Produkte gesamt')).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Produkte verwalten' })
+      screen.queryByRole('link', { name: 'Produkte verwalten' })
     ).not.toBeInTheDocument()
     unmount()
 
@@ -132,7 +132,7 @@ describe('DashboardClient', () => {
     )
     await screen.findByText('API erreichbar')
     expect(
-      screen.getByRole('button', { name: 'Produkte verwalten' })
+      screen.getByRole('link', { name: 'Produkte verwalten' })
     ).toBeInTheDocument()
   })
 
@@ -150,22 +150,22 @@ describe('DashboardClient', () => {
     ).not.toBeInTheDocument()
     expect(screen.queryByTestId('targets-tile')).not.toBeInTheDocument()
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Produkte' })
+      screen.getByRole('heading', { level: 3, name: 'Produkte' })
     ).toBeInTheDocument()
     ;['Kassenberichte', 'Analysen'].forEach((title) =>
       expect(
-        screen.queryByRole('heading', { level: 2, name: title })
+        screen.queryByRole('heading', { level: 3, name: title })
       ).not.toBeInTheDocument()
     )
     // W4-Verifikation: der Verkauf bekommt seine Pilot-Bildschirme als
     // Schnellzugriff und liest die Produkte nur.
     ;['Vorbestellungen', 'Abholliste', 'Backschrank'].forEach((title) =>
       expect(
-        screen.getByRole('heading', { level: 2, name: title })
+        screen.getByRole('heading', { level: 3, name: title })
       ).toBeInTheDocument()
     )
     expect(
-      screen.getByRole('button', { name: 'Produkte ansehen' })
+      screen.getByRole('link', { name: 'Produkte ansehen' })
     ).toBeInTheDocument()
     // W4-verify r2: der Backzettel ist für den Verkauf nur zum Ansehen
     expect(screen.getByText('Tagesplan ansehen, drucken')).toBeInTheDocument()
@@ -184,12 +184,47 @@ describe('DashboardClient', () => {
     await screen.findByText('API erreichbar')
     ;['Backzettel', 'Backstube'].forEach((title) =>
       expect(
-        screen.getByRole('heading', { level: 2, name: title })
+        screen.getByRole('heading', { level: 3, name: title })
       ).toBeInTheDocument()
     )
     expect(
-      screen.queryByRole('heading', { level: 2, name: 'Vorbestellungen' })
+      screen.queryByRole('heading', { level: 3, name: 'Vorbestellungen' })
     ).not.toBeInTheDocument()
     expect(screen.getByText('Planen, freigeben, drucken')).toBeInTheDocument()
+  })
+
+  it('Schnellzugriffe sind echte Links (Tastatur), nicht nur klickbare Karten', async () => {
+    delete process.env.NEXT_PUBLIC_PILOT_MODE
+    renderDashboard()
+    await screen.findByText('API erreichbar')
+    const link = screen.getByRole('link', { name: /Abholliste/ })
+    expect(link).toHaveAttribute('href', '/admin/preorders/abholliste')
+  })
+
+  it('zählt das Sortiment wie die Produktliste (saisonal getrennt)', () => {
+    expect(
+      countProducts([
+        { available: true },
+        { available: true, seasonal: true },
+        { available: false, seasonal: true },
+        {},
+      ])
+    ).toEqual({
+      productsTotal: 4,
+      productsActive: 2,
+      productsSeasonal: 1,
+      productsUnavailable: 1,
+    })
+  })
+
+  it('API nicht erreichbar: Warnung und keine Null-Zahlen', async () => {
+    delete process.env.NEXT_PUBLIC_PILOT_MODE
+    apiClient.get.mockRejectedValue(new Error('offline'))
+    renderDashboard()
+    expect(await screen.findByText('API nicht erreichbar')).toBeInTheDocument()
+    expect(screen.getByText(/Die API antwortet nicht/)).toBeInTheDocument()
+    const total = screen.getByTestId('dashboard-products-total')
+    expect(total).toHaveTextContent('–')
+    expect(total).not.toHaveTextContent(/\b0\b/)
   })
 })
