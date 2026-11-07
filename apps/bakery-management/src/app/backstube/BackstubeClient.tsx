@@ -52,6 +52,10 @@ import {
 import { describeBackstubeError } from '../../lib/backstubeErrors'
 import { useSession } from '../../lib/session'
 import { isPathAllowedForRole } from '../../lib/roles'
+import {
+  BS_SECTION_TITLE_SX,
+  BS_TITLE_SX,
+} from '../../components/backstube/backstubeType'
 import LogoutButton from '../../components/auth/LogoutButton'
 import { BackstubeLine } from '../../components/backstube/BackstubeLine'
 import { BackstubeHefeteig } from '../../components/backstube/BackstubeHefeteig'
@@ -599,6 +603,7 @@ export default function BackstubeClient({
           // unlesbar - im Druck alles schwarz auf weiß, Rahmen bleiben.
           '& *': {
             backgroundColor: 'transparent !important',
+            backgroundImage: 'none !important',
             color: '#000 !important',
             boxShadow: 'none !important',
             opacity: '1 !important',
@@ -606,6 +611,12 @@ export default function BackstubeClient({
             // dunklen Modus weiß - auf Papier fehlten die leeren Kästchen.
             borderColor: '#888 !important',
           },
+          // global.css blendet `.MuiPaper-root` mit `transition:
+          // background-color 0.3s !important` um. Beim Wechsel ins Druckbild
+          // lief die Überblendung noch, und Hefeteig & Füllungen kam aus dem
+          // Dunkelmodus fast schwarz aufs Papier. Zwei Klassen schlagen die
+          // eine globale.
+          '& .MuiPaper-root, & *': { transition: 'none !important' },
           '& [role="checkbox"]': { borderColor: '#000 !important' },
         },
       }}
@@ -619,17 +630,32 @@ export default function BackstubeClient({
           bgcolor: 'background.paper',
           borderBottom: '2px solid',
           borderColor: 'divider',
-          px: { xs: 1.5, sm: 3 },
+          px: { xs: 2, sm: 3 },
           pt: 1.5,
         }}
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          flexWrap="wrap"
-          sx={{ gap: 1.5 }}
+        {/* Raster statt umbrechender Zeilen (Layout-Kit-Abgleich): Datum
+            links oben, Neu laden + Abmelden rechts; darunter Reiter und
+            Heute/Morgen. Am Handy rückt der Umschalter neben „Abmelden“. */}
+        <Box
+          sx={{
+            maxWidth: 1280,
+            mx: 'auto',
+            display: 'grid',
+            alignItems: 'center',
+            columnGap: { xs: 1, sm: 1.5 },
+            rowGap: 1,
+            // Drei Spalten auch am Handy: „Abmelden“ spannt über zwei, so
+            // gibt der Titel nur die Breite des Neu-laden-Knopfs ab und das
+            // Datum bricht bei 390 px nicht um.
+            gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+            gridTemplateAreas: {
+              xs: '"title title refresh" "toggle logout logout" "tabs tabs tabs"',
+              sm: '"title refresh logout" "tabs toggle toggle"',
+            },
+          }}
         >
-          <Box sx={{ flex: '1 1 260px', minWidth: 0 }}>
+          <Box sx={{ gridArea: 'title', minWidth: 0 }}>
             <Typography
               sx={{
                 fontSize: '1rem',
@@ -641,13 +667,10 @@ export default function BackstubeClient({
               {session.user ? ` · ${session.user.displayName}` : ''}
             </Typography>
             <Typography
+              variant="h1"
               component="h1"
               data-testid="bs-date"
-              sx={{
-                fontSize: { xs: '1.6rem', sm: '2.1rem' },
-                fontWeight: 800,
-                lineHeight: 1.15,
-              }}
+              sx={BS_TITLE_SX}
             >
               {tab === 'zettel'
                 ? formatDateLong(date)
@@ -665,10 +688,14 @@ export default function BackstubeClient({
               }}
               aria-label="Tag wählen"
               sx={{
+                gridArea: 'toggle',
+                justifySelf: { xs: 'stretch', sm: 'end' },
                 '& .MuiToggleButton-root': {
+                  flex: { xs: 1, sm: 'none' },
                   minHeight: 56,
-                  minWidth: 112,
-                  fontSize: '1.15rem',
+                  minWidth: { xs: 0, sm: 112 },
+                  px: { xs: 0.75, sm: 1.5 },
+                  fontSize: { xs: '1.05rem', sm: '1.15rem' },
                   fontWeight: 700,
                   textTransform: 'none',
                   lineHeight: 1.1,
@@ -709,80 +736,74 @@ export default function BackstubeClient({
               </ToggleButton>
             </ToggleButtonGroup>
           )}
-          <Stack
-            direction="row"
-            alignItems="center"
-            flexWrap="wrap"
+          <IconButton
+            onClick={refresh}
+            aria-label="Neu laden"
             data-print="hide"
-            sx={{ gap: 1 }}
+            sx={{
+              gridArea: 'refresh',
+              justifySelf: 'end',
+              width: 56,
+              height: 56,
+              border: '2px solid',
+              borderColor: 'divider',
+            }}
           >
-            {mayAdmin && (
-              <Button
-                component={Link}
-                href="/admin"
-                variant="outlined"
-                color="inherit"
-                size="large"
-                sx={{
-                  minHeight: 56,
-                  fontSize: '1.05rem',
-                  fontWeight: 700,
-                  textTransform: 'none',
-                }}
-              >
-                Zur Verwaltung
-              </Button>
+            {refreshing ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              <RefreshIcon sx={{ fontSize: 30 }} />
             )}
-            <IconButton
-              onClick={refresh}
-              aria-label="Neu laden"
-              sx={{
-                width: 56,
-                height: 56,
-                border: '2px solid',
-                borderColor: 'divider',
-              }}
-            >
-              {refreshing ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                <RefreshIcon sx={{ fontSize: 30 }} />
-              )}
-            </IconButton>
+          </IconButton>
+          <Box
+            data-print="hide"
+            sx={{ gridArea: 'logout', justifySelf: 'end' }}
+          >
             <LogoutButton
               variant="outlined"
               color="inherit"
               size="large"
-              sx={{ minHeight: 56, fontSize: '1.1rem', fontWeight: 700 }}
+              sx={{
+                minHeight: 56,
+                px: { xs: 1.5, sm: 2 },
+                fontSize: { xs: '1rem', sm: '1.1rem' },
+                fontWeight: 700,
+                textTransform: 'none',
+                whiteSpace: 'nowrap',
+              }}
             />
-          </Stack>
-        </Stack>
-        <Tabs
-          value={tab}
-          onChange={(_, value: TabId) => {
-            setTab(value)
-            showActionError(null)
-          }}
-          aria-label="Ansicht"
-          data-print="hide"
-          textColor="inherit"
-          TabIndicatorProps={{ sx: { height: 4, bgcolor: 'text.primary' } }}
-          sx={{
-            mt: 1,
-            '& .MuiTab-root': {
-              minHeight: 56,
-              fontSize: { xs: '1.05rem', sm: '1.25rem' },
-              fontWeight: 700,
-              textTransform: 'none',
-            },
-          }}
-        >
-          <Tab value="zettel" label="Backzettel" />
-          <Tab value="vorbereitung" label="Vorbereitung heute" />
-        </Tabs>
+          </Box>
+          <Tabs
+            value={tab}
+            onChange={(_, value: TabId) => {
+              setTab(value)
+              showActionError(null)
+            }}
+            aria-label="Ansicht"
+            data-print="hide"
+            textColor="inherit"
+            variant="scrollable"
+            scrollButtons={false}
+            TabIndicatorProps={{ sx: { height: 4, bgcolor: 'text.primary' } }}
+            sx={{
+              gridArea: 'tabs',
+              alignSelf: 'end',
+              minWidth: 0,
+              '& .MuiTab-root': {
+                minHeight: 56,
+                fontSize: { xs: '1.05rem', sm: '1.25rem' },
+                fontWeight: 700,
+                textTransform: 'none',
+              },
+            }}
+          >
+            <Tab value="zettel" label="Backzettel" />
+            <Tab value="vorbereitung" label="Vorbereitung heute" />
+          </Tabs>
+        </Box>
       </Box>
 
-      <Box sx={{ px: { xs: 1.5, sm: 3 }, pt: 2, maxWidth: 1280, mx: 'auto' }}>
+      <Box sx={{ px: { xs: 2, sm: 3 }, pt: 2, maxWidth: 1280, mx: 'auto' }}>
         {actionError && (
           <Alert
             severity="error"
@@ -964,13 +985,9 @@ export default function BackstubeClient({
                     >
                       <Typography
                         id={`bs-section-title-${section.id}`}
+                        variant="h2"
                         component="h2"
-                        sx={{
-                          fontSize: { xs: '1.5rem', sm: '1.9rem' },
-                          fontWeight: 800,
-                          mt: 1,
-                          mb: 1,
-                        }}
+                        sx={{ ...BS_SECTION_TITLE_SX, mt: 1, mb: 1 }}
                       >
                         {section.label}
                       </Typography>
@@ -1014,31 +1031,6 @@ export default function BackstubeClient({
                 )}
               </>
             )}
-
-            <Stack
-              direction="row"
-              flexWrap="wrap"
-              alignItems="center"
-              data-print="hide"
-              sx={{ gap: 2, pt: 1 }}
-            >
-              <Typography sx={{ fontSize: '1rem', color: 'text.secondary' }}>
-                {loadedAt
-                  ? `Stand ${timeOf(loadedAt)} · lädt jede Minute neu`
-                  : ''}
-              </Typography>
-              {mayPlan && (
-                <Button
-                  component={Link}
-                  href={planPath}
-                  variant="outlined"
-                  color="inherit"
-                  sx={{ minHeight: 48 }}
-                >
-                  Planung &amp; Druck
-                </Button>
-              )}
-            </Stack>
           </Stack>
         ) : (
           <Stack spacing={2}>
@@ -1071,6 +1063,46 @@ export default function BackstubeClient({
               )}
           </Stack>
         )}
+        <Stack
+          direction="row"
+          flexWrap="wrap"
+          alignItems="center"
+          data-print="hide"
+          sx={{ gap: 2, pt: 3 }}
+        >
+          {tab === 'zettel' && (
+            <Typography sx={{ fontSize: '1rem', color: 'text.secondary' }}>
+              {loadedAt
+                ? `Stand ${timeOf(loadedAt)} · lädt jede Minute neu`
+                : ''}
+            </Typography>
+          )}
+          {tab === 'zettel' && mayPlan && (
+            <Button
+              component={Link}
+              href={planPath}
+              variant="outlined"
+              color="inherit"
+              sx={{ minHeight: 48, textTransform: 'none', fontWeight: 700 }}
+            >
+              Planung &amp; Druck
+            </Button>
+          )}
+          {/* Nur mit persönlicher Sitzung (Inhaber); die Station braucht ihn
+              nicht. Unten statt im Kopf - der Kopf bleibt für Tag, Neu laden
+              und Abmelden. */}
+          {mayAdmin && (
+            <Button
+              component={Link}
+              href="/admin"
+              variant="outlined"
+              color="inherit"
+              sx={{ minHeight: 48, textTransform: 'none', fontWeight: 700 }}
+            >
+              Zur Verwaltung
+            </Button>
+          )}
+        </Stack>
       </Box>
     </Box>
   )
