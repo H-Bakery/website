@@ -1,247 +1,215 @@
 'use client'
 import React, { useState } from 'react'
-import {
-  Typography,
-  Box,
-  Paper,
-  ToggleButton,
-  ToggleButtonGroup,
-  Grid,
-  Button,
-  LinearProgress,
-  Alert,
-  Link as MuiLink,
-} from '@mui/material'
-import {
-  ShowChart as ShowChartIcon,
-  ArrowBack as ArrowBackIcon,
-} from '@mui/icons-material'
 import Link from 'next/link'
 import {
-  RevenueTrendChart,
-  DateRangePicker,
-} from '@bakery/management/feature-analytics'
+  Alert,
+  Button,
+  Link as MuiLink,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material'
 import { analyticsService } from '@bakery/shared/data-access'
+import type { Granularity } from '@bakery/shared/types'
 import OwnerOnlyNotice from '../../../../components/analytics/OwnerOnlyNotice'
-import type { RevenueData, DateRange, Granularity } from '@bakery/shared/types'
+import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
+import RevenueChart, {
+  revenueLabel,
+  type RevenuePoint,
+} from '../../../../components/analytics/RevenueChart'
+import useLatestRequest from '../../../../components/analytics/useLatestRequest'
+import {
+  ANALYTICS_MAX_DAYS,
+  addDaysIso,
+  localIsoDate,
+  standardPresets,
+} from '../../../../components/analytics/dateRange'
+import {
+  EmptyState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../../components/layout'
+import { formatEuro } from '../../../../lib/reportFormat'
+
+interface RevenueResult {
+  data: RevenuePoint[]
+  available: boolean
+  forbidden: boolean
+}
+
+const PERIOD: Record<
+  Granularity,
+  { one: string; best: string; worst: string }
+> = {
+  daily: { one: 'Tag', best: 'Bester Tag', worst: 'Schwächster Tag' },
+  weekly: { one: 'Woche', best: 'Beste Woche', worst: 'Schwächste Woche' },
+  monthly: { one: 'Monat', best: 'Bester Monat', worst: 'Schwächster Monat' },
+}
+
+/** Tage mit Bericht in einem Punkt (Woche/Monat: von der API, Tag: 1). */
+function daysOf(point: RevenuePoint): number {
+  return typeof point.dayCount === 'number' ? point.dayCount : 1
+}
 
 export default function RevenueAnalyticsPage() {
-  const [loading, setLoading] = useState(false)
+  const today = localIsoDate()
   const [granularity, setGranularity] = useState<Granularity>('daily')
-  const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: getDefaultStartDate(),
-    endDate: getDefaultEndDate(),
+  const [range, setRange] = useState({
+    from: addDaysIso(today, -89),
+    to: today,
   })
 
-  const [revenueData, setRevenueData] = useState<RevenueData[]>([])
-  const [available, setAvailable] = useState(true)
-  // F4: 403 = falsche Rolle (Analysen nur für den Inhaber, B4).
-  const [forbidden, setForbidden] = useState(false)
-
-  React.useEffect(() => {
-    fetchRevenueData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange, granularity])
-
-  function getDefaultStartDate() {
-    const date = new Date()
-    date.setMonth(date.getMonth() - 3) // Last 3 months
-    return date.toISOString().split('T')[0]
-  }
-
-  function getDefaultEndDate() {
-    return new Date().toISOString().split('T')[0]
-  }
-
-  const fetchRevenueData = async () => {
-    try {
-      setLoading(true)
-      const {
-        data,
-        available: fromApi,
-        forbidden: denied,
-      } = await analyticsService.getRevenueTrendsWithSource({
-        ...dateRange,
+  const { data, loading, error, reload } =
+    useLatestRequest<RevenueResult>(async () => {
+      const result = await analyticsService.getRevenueTrendsWithSource({
+        startDate: range.from,
+        endDate: range.to,
         granularity,
       })
-      setRevenueData(data)
-      setAvailable(fromApi)
-      setForbidden(Boolean(denied))
-    } catch (error) {
-      console.error('Error fetching revenue data:', error)
-      setRevenueData([])
-      setAvailable(false)
-    } finally {
-      setLoading(false)
-    }
+      return {
+        data: result.data as RevenuePoint[],
+        available: result.available,
+        forbidden: Boolean(result.forbidden),
+      }
+    }, [range.from, range.to, granularity])
+
+  const points = data?.data ?? []
+  const hasData = Boolean(data?.available && points.length > 0)
+  const period = PERIOD[granularity]
+
+  let body: React.ReactNode = null
+  if (!data && loading) {
+    body = <LoadingState label="Umsätze werden geladen …" />
+  } else if (error || !data) {
+    body = (
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={reload}>
+            Erneut versuchen
+          </Button>
+        }
+      >
+        Umsatzdaten konnten nicht geladen werden.
+      </Alert>
+    )
+  } else if (data.forbidden) {
+    body = <OwnerOnlyNotice />
+  } else if (!data.available) {
+    body = (
+      <Alert severity="error">
+        Die API liefert keine Umsatzdaten. Es werden keine Zahlen angezeigt -
+        Beispieldaten gibt es hier bewusst nicht.
+      </Alert>
+    )
+  } else if (points.length === 0) {
+    body = (
+      <EmptyState
+        title="Für den gewählten Zeitraum liegt kein Kassenbericht vor."
+        description="Tage ohne Bericht sind Lücken, kein Umsatz von 0 €."
+      />
+    )
   }
 
-  const calculateStats = () => {
-    if (revenueData.length === 0)
-      return { total: 0, average: 0, highest: 0, lowest: 0 }
-
-    const revenues = revenueData.map((d) => d.revenue)
-    const total = revenues.reduce((sum, rev) => sum + rev, 0)
-    const average = total / revenues.length
-    const highest = Math.max(...revenues)
-    const lowest = Math.min(...revenues)
-
-    return { total, average, highest, lowest }
-  }
-
-  const stats = calculateStats()
-  const hasData = available && revenueData.length > 0
-  const periodLabel =
-    granularity === 'weekly'
-      ? 'Woche'
-      : granularity === 'monthly'
-      ? 'Monat'
-      : 'Tag'
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('de-DE', {
-      style: 'currency',
-      currency: 'EUR',
-    }).format(amount)
+  let figures: React.ReactNode = null
+  if (hasData) {
+    const total = points.reduce((sum, p) => sum + p.revenue, 0)
+    const days = points.reduce((sum, p) => sum + daysOf(p), 0)
+    const best = points.reduce((a, b) => (b.revenue > a.revenue ? b : a))
+    const worst = points.reduce((a, b) => (b.revenue < a.revenue ? b : a))
+    // Eine angeschnittene Woche/ein angeschnittener Monat (Rand des
+    // Zeitraums) ist fast immer der „schwächste“ - die Zahl der Tage sagt es.
+    const pointHint = (p: RevenuePoint) =>
+      granularity === 'daily'
+        ? revenueLabel(p.date, granularity)
+        : `${revenueLabel(p.date, granularity)} · ${daysOf(p)} ${
+            daysOf(p) === 1 ? 'Tag' : 'Tage'
+          } mit Bericht`
+    figures = (
+      <KeyFigures
+        aria-label="Kennzahlen des Zeitraums"
+        items={[
+          {
+            label: 'Gesamtumsatz',
+            value: formatEuro(total),
+            hint: `${days} ${days === 1 ? 'Tag' : 'Tage'} mit Bericht`,
+          },
+          {
+            label: 'Ø je Tag mit Bericht',
+            value: formatEuro(days > 0 ? total / days : 0),
+          },
+          {
+            label: period.best,
+            value: formatEuro(best.revenue),
+            hint: pointHint(best),
+          },
+          {
+            label: period.worst,
+            value: formatEuro(worst.revenue),
+            hint: pointHint(worst),
+          },
+        ]}
+      />
+    )
   }
 
   return (
-    <Box>
-      {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Button
-          component={Link}
-          href="/admin/analytics"
-          startIcon={<ArrowBackIcon />}
-          size="small"
-          sx={{ mb: 1 }}
-        >
-          Zurück zur Analyse-Übersicht
-        </Button>
-        <Typography variant="h4" component="h1">
-          <ShowChartIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Umsatzanalyse
-        </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
-          Umsatzentwicklung aus den Kassenberichten (Tagesabschlüsse der Kasse)
-        </Typography>
-      </Box>
+    <PageLayout
+      title="Umsatzanalyse"
+      subtitle="Umsatzentwicklung aus den Tagesabschlüssen der Kasse"
+      back={{ href: '/admin/analytics', label: 'Analysen' }}
+    >
+      <DateRangeFilter
+        from={range.from}
+        to={range.to}
+        onApply={(from, to) => setRange({ from, to })}
+        presets={[
+          ...standardPresets(today),
+          { label: '90 Tage', from: addDaysIso(today, -89), to: today },
+        ]}
+        max={today}
+        maxDays={ANALYTICS_MAX_DAYS}
+      />
 
-      {loading && <LinearProgress sx={{ mb: 2 }} />}
-
-      {/* Controls */}
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={4}
-        flexWrap="wrap"
-        gap={2}
-      >
-        <Box display="flex" gap={2} alignItems="center">
-          <DateRangePicker value={dateRange} onChange={setDateRange} />
-          <ToggleButtonGroup
-            value={granularity}
-            exclusive
-            onChange={(_, value) => value && setGranularity(value)}
-            size="small"
-          >
-            <ToggleButton value="daily">Täglich</ToggleButton>
-            <ToggleButton value="weekly">Wöchentlich</ToggleButton>
-            <ToggleButton value="monthly">Monatlich</ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
-      </Box>
-
-      {forbidden && !loading && <OwnerOnlyNotice />}
-
-      {!available && !forbidden && !loading && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Die API liefert keine Umsatzdaten. Es werden keine Zahlen angezeigt -
-          Beispieldaten gibt es hier bewusst nicht.
-        </Alert>
-      )}
-
-      {available && !loading && revenueData.length === 0 && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          Für den gewählten Zeitraum liegt kein Kassenbericht vor.
-        </Alert>
-      )}
+      {body}
+      {figures}
 
       {hasData && (
-        <>
-          {/* Statistics */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={2} sx={{ p: 3 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Gesamtumsatz
-                </Typography>
-                <Typography variant="h5">
-                  {formatCurrency(stats.total)}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {revenueData.length}{' '}
-                  {revenueData.length === 1 ? periodLabel : `${periodLabel}e`}{' '}
-                  mit Bericht
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={2} sx={{ p: 3 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Durchschnitt je {periodLabel}
-                </Typography>
-                <Typography variant="h5">
-                  {formatCurrency(stats.average)}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={2} sx={{ p: 3 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Höchster Umsatz
-                </Typography>
-                <Typography variant="h5">
-                  {formatCurrency(stats.highest)}
-                </Typography>
-              </Paper>
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <Paper elevation={2} sx={{ p: 3 }}>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  Niedrigster Umsatz
-                </Typography>
-                <Typography variant="h5">
-                  {formatCurrency(stats.lowest)}
-                </Typography>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          {/* Revenue Chart */}
-          <RevenueTrendChart
-            data={revenueData}
-            granularity={granularity}
-            title="Umsatzentwicklung"
-            height={500}
-            showTransactions={true}
-          />
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', mt: 2 }}
-          >
-            Quelle: Kassenberichte aus dem HQ-Archiv. Tage ohne Bericht
-            (Ruhetag, Betriebsferien) fehlen in der Reihe, sie sind nicht 0.
-            Details je Tag im{' '}
-            <MuiLink component={Link} href="/admin/reports">
-              Berichtsarchiv
-            </MuiLink>
-            .
-          </Typography>
-        </>
+        <PageSection
+          title={`Umsatz je ${period.one}`}
+          description="Tage ohne Bericht (Ruhetag, Betriebsferien) fehlen in der Reihe, sie sind nicht 0."
+          actions={
+            <ToggleButtonGroup
+              value={granularity}
+              exclusive
+              onChange={(_, value) => value && setGranularity(value)}
+              size="small"
+              aria-label="Einteilung"
+            >
+              <ToggleButton value="daily">Tag</ToggleButton>
+              <ToggleButton value="weekly">Woche</ToggleButton>
+              <ToggleButton value="monthly">Monat</ToggleButton>
+            </ToggleButtonGroup>
+          }
+          detailsLabel="Quelle"
+          details={
+            <Typography variant="body2" color="text.secondary">
+              Quelle: Kassenberichte aus dem HQ-Archiv. Wochen sind
+              Kalenderwochen (Mo–So), am Rand des Zeitraums oft nur
+              angeschnitten - der Tooltip nennt die Tage mit Bericht. Details je
+              Tag im{' '}
+              <MuiLink component={Link} href="/admin/reports">
+                Berichtsarchiv
+              </MuiLink>
+              .
+            </Typography>
+          }
+        >
+          <RevenueChart data={points} granularity={granularity} />
+        </PageSection>
       )}
-    </Box>
+    </PageLayout>
   )
 }

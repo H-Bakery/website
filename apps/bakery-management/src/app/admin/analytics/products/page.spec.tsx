@@ -66,7 +66,16 @@ describe('ProductAnalyticsPage', () => {
 
     renderWithTheme(<ProductAnalyticsPage />)
 
-    await waitFor(() => expect(screen.getByText('35,00 €')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getAllByText('35,00 €').length).toBeGreaterThan(0)
+    )
+    expect(
+      screen.getByRole('table', { name: 'Produkte nach Umsatz' })
+    ).toBeInTheDocument()
+    // Der Hinweis zu Nettomengen steht zugeklappt unter der Liste.
+    expect(
+      screen.getByRole('button', { name: 'Hinweis zu den Mengen' })
+    ).toHaveAttribute('aria-expanded', 'false')
     expect(screen.queryByText(unavailable)).not.toBeInTheDocument()
   })
 })

@@ -1,327 +1,260 @@
 'use client'
 import React, { useState } from 'react'
 import Link from 'next/link'
-import {
-  Typography,
-  Box,
-  Grid,
-  Paper,
-  Button,
-  Alert,
-  Link as MuiLink,
-  Stack,
-} from '@mui/material'
-import {
-  Insights as InsightsIcon,
-  ShowChart as ShowChartIcon,
-  Inventory as InventoryIcon,
-} from '@mui/icons-material'
-import {
-  DateRangePicker,
-  AnalyticsSummaryCard,
-  RevenueTrendChart,
-  PaymentMethodsChart,
-  ProductRankingTable,
-} from '@bakery/management/feature-analytics'
+import { Alert, Box, Button, Link as MuiLink, Typography } from '@mui/material'
 import { analyticsService } from '@bakery/shared/data-access'
-import OwnerOnlyNotice from '../../../components/analytics/OwnerOnlyNotice'
 import type {
-  RevenueData,
-  ProductAnalyticsPerformance,
-  PaymentMethodData,
   AnalyticsSummary,
-  DateRange,
+  PaymentMethodData,
+  ProductAnalyticsPerformance,
+  RevenueData,
 } from '@bakery/shared/types'
+import OwnerOnlyNotice from '../../../components/analytics/OwnerOnlyNotice'
+import DateRangeFilter from '../../../components/analytics/DateRangeFilter'
+import RevenueChart from '../../../components/analytics/RevenueChart'
+import PaymentMix from '../../../components/analytics/PaymentMix'
+import ProductRanking from '../../../components/analytics/ProductRanking'
+import useLatestRequest from '../../../components/analytics/useLatestRequest'
+import {
+  ANALYTICS_MAX_DAYS,
+  addDaysIso,
+  localIsoDate,
+  standardPresets,
+} from '../../../components/analytics/dateRange'
+import {
+  EmptyState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../components/layout'
+import { formatEuro } from '../../../lib/reportFormat'
+
+interface OverviewData {
+  revenue: RevenueData[]
+  top: ProductAnalyticsPerformance[]
+  bottom: ProductAnalyticsPerformance[]
+  payments: PaymentMethodData[]
+  summary: AnalyticsSummary | null
+  available: boolean
+  forbidden: boolean
+}
 
 export default function AnalyticsPage() {
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [dateRange, setDateRange] = useState<DateRange>({
-    startDate: getDefaultStartDate(),
-    endDate: getDefaultEndDate(),
+  const today = localIsoDate()
+  const [range, setRange] = useState({
+    from: addDaysIso(today, -29),
+    to: today,
   })
 
-  const [revenueData, setRevenueData] = useState<RevenueData[]>([])
-  const [topProducts, setTopProducts] = useState<ProductAnalyticsPerformance[]>(
-    []
-  )
-  const [bottomProducts, setBottomProducts] = useState<
-    ProductAnalyticsPerformance[]
-  >([])
-  const [paymentMethods, setPaymentMethods] = useState<PaymentMethodData[]>([])
-  const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
-  const [available, setAvailable] = useState(true)
-  // F4: 403 = falsche Rolle (Analysen nur für den Inhaber, B4).
-  const [forbidden, setForbidden] = useState(false)
-
-  React.useEffect(() => {
-    fetchAnalyticsData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dateRange])
-
-  function getDefaultStartDate() {
-    const date = new Date()
-    date.setDate(date.getDate() - 30)
-    return date.toISOString().split('T')[0]
-  }
-
-  function getDefaultEndDate() {
-    return new Date().toISOString().split('T')[0]
-  }
-
-  const fetchAnalyticsData = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const [
-        revenueRes,
-        topProductsRes,
-        bottomProductsRes,
-        paymentRes,
-        summaryRes,
-      ] = await Promise.all([
+  const { data, loading, error, reload } =
+    useLatestRequest<OverviewData>(async () => {
+      const params = { startDate: range.from, endDate: range.to }
+      const [revenue, top, bottom, payments, summary] = await Promise.all([
         analyticsService.getRevenueTrendsWithSource({
-          ...dateRange,
+          ...params,
           granularity: 'daily',
         }),
         analyticsService.getProductPerformanceWithSource({
-          ...dateRange,
+          ...params,
           type: 'top',
           limit: 10,
         }),
         analyticsService.getProductPerformanceWithSource({
-          ...dateRange,
+          ...params,
           type: 'bottom',
           limit: 5,
         }),
-        analyticsService.getPaymentMethodsWithSource(dateRange),
-        analyticsService.getSummaryWithSource(dateRange),
+        analyticsService.getPaymentMethodsWithSource(params),
+        analyticsService.getSummaryWithSource(params),
       ])
+      const all = [revenue, top, bottom, payments, summary]
+      return {
+        revenue: revenue.data,
+        top: top.data,
+        bottom: bottom.data,
+        payments: payments.data,
+        summary: summary.data,
+        available: all.every((r) => r.available),
+        forbidden: all.some((r) => Boolean(r.forbidden)),
+      }
+    }, [range.from, range.to])
 
-      setRevenueData(revenueRes.data)
-      setTopProducts(topProductsRes.data)
-      setBottomProducts(bottomProductsRes.data)
-      setPaymentMethods(paymentRes.data)
-      setSummary(summaryRes.data)
-      const results = [
-        revenueRes,
-        topProductsRes,
-        bottomProductsRes,
-        paymentRes,
-        summaryRes,
-      ]
-      setAvailable(results.every((r) => r.available))
-      setForbidden(results.some((r) => r.forbidden))
-    } catch (err) {
-      console.error('Error fetching analytics:', err)
-      setError('Analysedaten konnten nicht geladen werden.')
-      setAvailable(false)
-    } finally {
-      setLoading(false)
-    }
+  const summary = data?.summary ?? null
+  const hasData = Boolean(data?.available && summary)
+
+  let body: React.ReactNode
+  if (!data && loading) {
+    body = <LoadingState label="Analysen werden geladen …" />
+  } else if (error || !data) {
+    body = (
+      <Alert
+        severity="error"
+        action={
+          <Button color="inherit" size="small" onClick={reload}>
+            Erneut versuchen
+          </Button>
+        }
+      >
+        Analysedaten konnten nicht geladen werden.
+      </Alert>
+    )
+  } else if (data.forbidden) {
+    body = <OwnerOnlyNotice />
+  } else if (!data.available) {
+    body = (
+      <Alert severity="error">
+        Die API liefert keine Analysedaten. Es werden keine Zahlen angezeigt -
+        Beispieldaten gibt es hier bewusst nicht.
+      </Alert>
+    )
+  } else if (!summary) {
+    body = (
+      <EmptyState
+        title="Für den gewählten Zeitraum liegt kein Kassenbericht vor."
+        description="Tage ohne Bericht sind Lücken, kein Umsatz von 0 €."
+      />
+    )
   }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('de-DE', {
-      style: 'currency',
-      currency: 'EUR',
-    }).format(amount)
-  }
-
-  const hasData = available && summary !== null
 
   return (
-    <Box>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          <InsightsIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-          Analysen
-        </Typography>
-        <Typography variant="subtitle1" color="text.secondary">
-          Umsatz- und Verkaufsanalysen aus den Kassenberichten
-        </Typography>
-      </Box>
-
-      {/* Sub pages */}
-      <Stack direction="row" spacing={1} sx={{ mb: 3 }} flexWrap="wrap">
-        <Button
-          component={Link}
-          href="/admin/analytics/revenue"
-          variant="outlined"
-          size="small"
-          startIcon={<ShowChartIcon />}
-        >
-          Umsatzanalyse
-        </Button>
-        <Button
-          component={Link}
-          href="/admin/analytics/products"
-          variant="outlined"
-          size="small"
-          startIcon={<InventoryIcon />}
-        >
-          Produktanalyse
-        </Button>
-      </Stack>
-
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Date Range and Export */}
-      <Box
-        display="flex"
-        justifyContent="space-between"
-        alignItems="center"
-        mb={4}
-        flexWrap="wrap"
-        gap={2}
-      >
-        <DateRangePicker value={dateRange} onChange={setDateRange} />
-      </Box>
-
-      {forbidden && !loading && <OwnerOnlyNotice />}
-
-      {!available && !forbidden && !loading && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          Die API liefert keine Analysedaten. Es werden keine Zahlen angezeigt -
-          Beispieldaten gibt es hier bewusst nicht.
-        </Alert>
-      )}
-
-      {available && !loading && summary === null && (
-        <Alert severity="info" sx={{ mb: 3 }}>
-          Für den gewählten Zeitraum liegt kein Kassenbericht vor. Tage ohne
-          Bericht sind Lücken, kein Umsatz von 0 €.
-        </Alert>
-      )}
-
-      {hasData && (
+    <PageLayout
+      title="Analysen"
+      subtitle="Umsatz und Verkäufe aus den Kassenberichten"
+      actions={
         <>
-          {/* Summary Cards */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} sm={6} md={3}>
-              <AnalyticsSummaryCard
-                title="Gesamtumsatz"
-                value={formatCurrency(summary.totalRevenue)}
-                subtitle={`${summary.totalTransactions} Bons`}
-                loading={loading}
-                color="success"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <AnalyticsSummaryCard
-                title="Ø Bon"
-                value={formatCurrency(summary.avgTransactionValue)}
-                loading={loading}
-                color="primary"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <AnalyticsSummaryCard
-                title="Meistverkauft"
-                value={summary.topSellingProduct?.productName || '-'}
-                subtitle={`${
-                  summary.topSellingProduct?.quantitySold || 0
-                } Stück`}
-                loading={loading}
-                color="info"
-              />
-            </Grid>
-            <Grid item xs={12} sm={6} md={3}>
-              <AnalyticsSummaryCard
-                title="Bargeldanteil"
-                value={`${summary.cashPercentage.toLocaleString('de-DE', {
+          <Button
+            component={Link}
+            href="/admin/analytics/revenue"
+            variant="outlined"
+          >
+            Umsatzanalyse
+          </Button>
+          <Button
+            component={Link}
+            href="/admin/analytics/products"
+            variant="outlined"
+          >
+            Produktanalyse
+          </Button>
+        </>
+      }
+    >
+      <DateRangeFilter
+        from={range.from}
+        to={range.to}
+        onApply={(from, to) => setRange({ from, to })}
+        presets={standardPresets(today)}
+        max={today}
+        maxDays={ANALYTICS_MAX_DAYS}
+      />
+
+      {body}
+
+      {hasData && data && summary && (
+        <>
+          <KeyFigures
+            aria-label="Kennzahlen des Zeitraums"
+            items={[
+              {
+                label: 'Umsatz',
+                value: formatEuro(summary.totalRevenue),
+                hint: `${summary.totalTransactions.toLocaleString(
+                  'de-DE'
+                )} Bons`,
+              },
+              {
+                label: 'Ø Bon',
+                value: formatEuro(summary.avgTransactionValue),
+              },
+              {
+                label: 'Bargeldanteil',
+                value: `${summary.cashPercentage.toLocaleString('de-DE', {
                   maximumFractionDigits: 1,
-                })} %`}
-                subtitle="des Umsatzes, Rest: Karte und ohne Zahlung"
-                loading={loading}
-                color="warning"
-              />
-            </Grid>
-          </Grid>
-
-          {/* Revenue Chart */}
-          <Box mb={4}>
-            <RevenueTrendChart
-              data={revenueData}
-              title="Umsatzentwicklung"
-              height={400}
-              showTransactions={true}
-            />
-          </Box>
-
-          {/* Product Performance */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} lg={8}>
-              <ProductRankingTable
-                products={topProducts}
-                title="Top Produkte"
-                showRank={true}
-                pageSize={10}
-                height={400}
-              />
-            </Grid>
-            <Grid item xs={12} lg={4}>
-              <Paper elevation={3} sx={{ p: 3, minHeight: 500 }}>
-                <Typography variant="h6" component="h2" gutterBottom>
-                  Schwache Produkte
-                </Typography>
-                <Box sx={{ mt: 2 }}>
-                  {bottomProducts.length === 0 && !loading && (
-                    <Typography color="text.secondary">
-                      Keine Daten für den gewählten Zeitraum.
-                    </Typography>
-                  )}
-                  {bottomProducts.map((product) => (
-                    <Box
-                      key={product.productId}
-                      sx={{
-                        mb: 2,
-                        p: 2,
-                        bgcolor: 'action.hover',
-                        borderRadius: 1,
-                      }}
-                    >
-                      <Typography variant="subtitle1">
-                        {product.productName}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {product.quantitySold} Stück -{' '}
-                        {formatCurrency(product.revenue)}
-                      </Typography>
-                    </Box>
-                  ))}
-                </Box>
-              </Paper>
-            </Grid>
-          </Grid>
-
-          {/* Payment Methods */}
-          <PaymentMethodsChart
-            data={paymentMethods}
-            title="Zahlungsarten"
-            height={400}
+                })} %`,
+                hint: 'Rest: Karte und ohne Zahlung',
+              },
+              {
+                label: 'Meistverkauft',
+                value: summary.topSellingProduct?.productName || '–',
+                hint: summary.topSellingProduct
+                  ? `${summary.topSellingProduct.quantitySold.toLocaleString(
+                      'de-DE'
+                    )} Stück`
+                  : undefined,
+              },
+            ]}
           />
 
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ display: 'block', mt: 2 }}
+          <PageSection
+            title="Umsatz je Tag"
+            description="Tage ohne Bericht (Ruhetag, Betriebsferien) fehlen, sie sind nicht 0."
+            details={
+              <Typography variant="body2" color="text.secondary">
+                Quelle: Kassenberichte aus dem HQ-Archiv (Tagesabschlüsse).
+                Karte = Zahlungsart „Unbar“ der Kasse. Einzelne Tage im{' '}
+                <MuiLink component={Link} href="/admin/reports">
+                  Berichtsarchiv
+                </MuiLink>
+                .
+              </Typography>
+            }
+            detailsLabel="Quelle"
           >
-            Quelle: Kassenberichte aus dem HQ-Archiv (Tagesabschlüsse). Karte =
-            Zahlungsart „Unbar“ der Kasse. Einzelne Tage im{' '}
-            <MuiLink component={Link} href="/admin/reports">
-              Berichtsarchiv
-            </MuiLink>
-            .
-          </Typography>
+            <RevenueChart data={data.revenue} />
+          </PageSection>
+
+          <Box
+            sx={{
+              display: 'grid',
+              gap: { xs: 2, md: 3 },
+              gridTemplateColumns: {
+                xs: '1fr',
+                lg: 'repeat(2, minmax(0, 1fr))',
+              },
+              alignItems: 'start',
+            }}
+          >
+            <PageSection
+              title="Top-Produkte"
+              description="Nach Umsatz"
+              disablePadding
+              actions={
+                <Button
+                  component={Link}
+                  href="/admin/analytics/products"
+                  size="small"
+                >
+                  Alle Produkte
+                </Button>
+              }
+            >
+              <ProductRanking
+                products={data.top}
+                aria-label="Top-Produkte"
+                initialRows={5}
+                showAvgPrice={false}
+              />
+            </PageSection>
+            <PageSection
+              title="Wenig verkauft"
+              description="Die wenigsten Stück im Zeitraum (nur verkaufte Produkte)"
+              disablePadding
+            >
+              <ProductRanking
+                products={data.bottom}
+                aria-label="Wenig verkaufte Produkte"
+                showAvgPrice={false}
+                showRank={false}
+              />
+            </PageSection>
+          </Box>
+
+          <PageSection title="Zahlungsarten">
+            <PaymentMix data={data.payments} />
+          </PageSection>
         </>
       )}
-    </Box>
+    </PageLayout>
   )
 }
