@@ -1,33 +1,42 @@
 'use client'
 import React from 'react'
-import {
-  Box,
-  Typography,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  Switch,
-  Divider,
-  FormControl,
-  Select,
-  MenuItem,
-  Card,
-  CardContent,
-  Grid,
-  Button,
-} from '@mui/material'
+import { Button, ToggleButton, ToggleButtonGroup } from '@mui/material'
 import Link from 'next/link'
-import DarkModeIcon from '@mui/icons-material/DarkMode'
-import LanguageIcon from '@mui/icons-material/Language'
-import SecurityIcon from '@mui/icons-material/Security'
-import BrightnessAutoIcon from '@mui/icons-material/BrightnessAuto'
+import {
+  LightMode as LightModeIcon,
+  DarkMode as DarkModeIcon,
+  BrightnessAuto as BrightnessAutoIcon,
+} from '@mui/icons-material'
 import { useNotifications, useTheme, ThemeMode } from '@bakery/shared/contexts'
 import { NotificationPreferences } from '@bakery/management/feature-settings'
 import { isPilotMode } from '../../../lib/pilotMode'
 import { isPathAllowedForRole } from '../../../lib/roles'
 import { useOptionalSession } from '../../../lib/session'
+import { PageLayout, PageSection } from '../../../components/layout'
 
+const MODE_OPTIONS: {
+  value: ThemeMode
+  label: string
+  icon: React.ReactNode
+}[] = [
+  { value: 'light', label: 'Hell', icon: <LightModeIcon fontSize="small" /> },
+  { value: 'dark', label: 'Dunkel', icon: <DarkModeIcon fontSize="small" /> },
+  {
+    value: 'system',
+    label: 'System',
+    icon: <BrightnessAutoIcon fontSize="small" />,
+  },
+]
+
+/**
+ * Einstellungen - Referenzseite des Layout-Kits (src/components/layout):
+ * schmale Seite, ein Abschnitt je Thema, keine toten Bedienelemente.
+ *
+ * Darstellung ist EIN Schalter mit drei Stellungen. Vorher standen zwei
+ * Schalter („Dunkles Design“, „Systemeinstellung folgen“) nebeneinander, die
+ * sich gegenseitig umlegten: wer „System“ ausschaltete, landete immer in Hell,
+ * auch wenn er vorher Dunkel hatte.
+ */
 export default function SettingsPage() {
   const { mode, setMode, colorScheme } = useTheme()
   const session = useOptionalSession()
@@ -41,192 +50,79 @@ export default function SettingsPage() {
   const mayManageUsers =
     !!role && isPathAllowedForRole('/admin/users', role, session?.sessionKind)
 
-  const handleModeChange = (next: ThemeMode) => setMode(next)
-
   return (
-    <Box>
-      <Typography variant="h4" component="h1" sx={{ mb: 3 }}>
-        Einstellungen
-      </Typography>
+    <PageLayout
+      width="narrow"
+      title="Einstellungen"
+      subtitle="Die Darstellung gilt nur für dieses Gerät."
+    >
+      <PageSection
+        title="Darstellung"
+        description={
+          mode === 'system'
+            ? `Folgt der Einstellung des Geräts - derzeit ${
+                colorScheme === 'dark' ? 'dunkel' : 'hell'
+              }.`
+            : undefined
+        }
+      >
+        <ToggleButtonGroup
+          exclusive
+          value={mode}
+          onChange={(_event, next: ThemeMode | null) => {
+            // Ein Tipp auf die schon gewählte Stellung liefert null - bleibt.
+            if (next) setMode(next)
+          }}
+          aria-label="Farbschema"
+          fullWidth
+          sx={{ maxWidth: 480 }}
+        >
+          {MODE_OPTIONS.map((option) => (
+            <ToggleButton
+              key={option.value}
+              value={option.value}
+              sx={{ gap: 1, textTransform: 'none' }}
+            >
+              {option.icon}
+              {option.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </PageSection>
 
-      <Grid container spacing={3}>
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography
-                variant="h6"
-                component="h2"
-                sx={{ mb: 2, fontWeight: 'bold' }}
-              >
-                Darstellung
-              </Typography>
-              <List disablePadding>
-                <ListItem>
-                  <ListItemIcon>
-                    <DarkModeIcon
-                      color={colorScheme === 'dark' ? 'primary' : 'inherit'}
-                    />
-                  </ListItemIcon>
-                  <ListItemText
-                    id="setting-dark-mode"
-                    primary="Dunkles Design"
-                    secondary="Reduziert Augenmüdigkeit bei schlechten Lichtverhältnissen"
-                  />
-                  <Switch
-                    edge="end"
-                    checked={mode === 'dark'}
-                    onChange={(e) =>
-                      handleModeChange(e.target.checked ? 'dark' : 'light')
-                    }
-                    inputProps={{ 'aria-labelledby': 'setting-dark-mode' }}
-                  />
-                </ListItem>
-                <Divider variant="inset" component="li" />
-                <ListItem>
-                  <ListItemIcon>
-                    <BrightnessAutoIcon />
-                  </ListItemIcon>
-                  <ListItemText
-                    id="setting-system-mode"
-                    primary="Systemeinstellung folgen"
-                    secondary="Hell/Dunkel automatisch vom Betriebssystem übernehmen"
-                  />
-                  <Switch
-                    edge="end"
-                    checked={mode === 'system'}
-                    onChange={(e) =>
-                      handleModeChange(e.target.checked ? 'system' : 'light')
-                    }
-                    inputProps={{ 'aria-labelledby': 'setting-system-mode' }}
-                  />
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
-        </Grid>
+      {!pilot && notificationsAvailable !== false && (
+        <PageSection title="Benachrichtigungen">
+          <NotificationPreferences />
+        </PageSection>
+      )}
 
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography
-                variant="h6"
-                component="h2"
-                sx={{ mb: 2, fontWeight: 'bold' }}
-              >
-                Lokalisierung
-              </Typography>
-              <List disablePadding>
-                <ListItem>
-                  <ListItemIcon>
-                    <LanguageIcon />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Sprache"
-                    secondary="Die Verwaltung ist derzeit nur auf Deutsch verfügbar"
-                  />
-                  <Box sx={{ minWidth: 120 }}>
-                    <FormControl size="small" fullWidth>
-                      <Select
-                        value="de"
-                        disabled
-                        inputProps={{ 'aria-label': 'Sprache' }}
-                      >
-                        <MenuItem value="de">Deutsch</MenuItem>
-                      </Select>
-                    </FormControl>
-                  </Box>
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
-        </Grid>
+      {!pilot && (
+        <PageSection
+          title="E-Mail-Versand"
+          description="Die Konfiguration des E-Mail-Versands (SMTP) ist noch nicht an die API angebunden."
+        />
+      )}
 
-        {!pilot && (
-          <>
-            {notificationsAvailable !== false && (
-              <Grid item xs={12}>
-                <Card>
-                  <CardContent>
-                    <Typography
-                      variant="h6"
-                      component="h2"
-                      sx={{ mb: 2, fontWeight: 'bold' }}
-                    >
-                      Benachrichtigungen
-                    </Typography>
-                    <NotificationPreferences />
-                  </CardContent>
-                </Card>
-              </Grid>
-            )}
-
-            <Grid item xs={12} md={6}>
-              <Card sx={{ height: '100%' }}>
-                <CardContent>
-                  <Typography
-                    variant="h6"
-                    component="h2"
-                    sx={{ mb: 2, fontWeight: 'bold' }}
-                  >
-                    E-Mail-Versand
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Die Konfiguration des E-Mail-Versands (SMTP) ist noch nicht
-                    an die API angebunden.
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </>
-        )}
-
-        <Grid item xs={12} md={6}>
-          <Card sx={{ height: '100%' }}>
-            <CardContent>
-              <Typography
-                variant="h6"
-                component="h2"
-                sx={{ mb: 2, fontWeight: 'bold' }}
-              >
-                Sicherheit
-              </Typography>
-              <List disablePadding>
-                <ListItem>
-                  <ListItemIcon>
-                    <SecurityIcon />
-                  </ListItemIcon>
-                  <ListItemText
-                    primary="Passwort und PIN"
-                    secondary={
-                      mayManageUsers
-                        ? 'Passwörter, PINs und Stationen verwalten Sie unter „Benutzer“.'
-                        : 'Passwort oder PIN vergessen? Der Inhaber setzt sie unter „Benutzer“ neu.'
-                    }
-                  />
-                  {mayManageUsers && (
-                    <Button
-                      component={Link}
-                      href="/admin/users"
-                      variant="outlined"
-                      size="small"
-                      // W4-verify r2: neben dem langen Hinweistext wurde der
-                      // Knopf bei 1280 px schmaler als sein Text.
-                      sx={{
-                        minHeight: 44,
-                        flexShrink: 0,
-                        whiteSpace: 'nowrap',
-                        ml: 1,
-                      }}
-                    >
-                      Benutzer
-                    </Button>
-                  )}
-                </ListItem>
-              </List>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
-    </Box>
+      <PageSection
+        title="Passwort und PIN"
+        description={
+          mayManageUsers
+            ? 'Passwörter, PINs und Stationen verwalten Sie unter „Benutzer“.'
+            : 'Passwort oder PIN vergessen? Der Inhaber setzt sie unter „Benutzer“ neu.'
+        }
+        actions={
+          mayManageUsers ? (
+            <Button
+              component={Link}
+              href="/admin/users"
+              variant="outlined"
+              sx={{ whiteSpace: 'nowrap' }}
+            >
+              Benutzer
+            </Button>
+          ) : undefined
+        }
+      />
+    </PageLayout>
   )
 }

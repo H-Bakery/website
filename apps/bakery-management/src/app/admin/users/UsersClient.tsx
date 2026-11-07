@@ -2,10 +2,8 @@
 import React from 'react'
 import {
   Alert,
-  Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -13,15 +11,8 @@ import {
   FormControlLabel,
   IconButton,
   MenuItem,
-  Paper,
   Stack,
   Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   Tooltip,
   Typography,
@@ -31,8 +22,6 @@ import {
   Edit as EditIcon,
   Key as PasswordIcon,
   Pin as PinIcon,
-  ManageAccounts as UsersIcon,
-  TabletAndroid as StationIcon,
 } from '@mui/icons-material'
 import {
   createUser,
@@ -48,6 +37,13 @@ import {
 import { PILOT_ROLES, ROLE_LABELS, type PilotRole } from '../../../lib/roles'
 import { useOptionalSession } from '../../../lib/session'
 import { PIN_MAX_LENGTH, PIN_MIN_LENGTH } from '../../../components/auth/PinPad'
+import {
+  LoadingState,
+  PageLayout,
+  PageSection,
+  ResponsiveList,
+  type ResponsiveColumn,
+} from '../../../components/layout'
 
 const PASSWORD_MIN_LENGTH = 8
 const PIN_PATTERN = new RegExp(`^\\d{${PIN_MIN_LENGTH},${PIN_MAX_LENGTH}}$`)
@@ -138,28 +134,104 @@ export default function UsersClient() {
   }
 
   const ownId = session?.user?.id
+  const activeStations = stations?.filter((s) => !s.revokedAt).length ?? 0
+
+  const userColumns: ResponsiveColumn<AdminUser>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      primary: true,
+      cell: (user) => (
+        <>
+          <Typography variant="body2" fontWeight={600}>
+            {user.displayName}
+            {user.id === ownId ? ' (Sie)' : ''}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {user.username}
+          </Typography>
+        </>
+      ),
+    },
+    {
+      key: 'role',
+      header: 'Rolle',
+      inline: true,
+      cell: (user) => (
+        <Chip
+          size="small"
+          variant="outlined"
+          label={ROLE_LABELS[user.role] ?? user.role}
+        />
+      ),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      inline: true,
+      cell: (user) => (
+        <Chip
+          size="small"
+          color={user.active ? 'success' : 'default'}
+          variant={user.active ? 'filled' : 'outlined'}
+          label={user.active ? 'aktiv' : 'deaktiviert'}
+        />
+      ),
+    },
+    {
+      key: 'pin',
+      header: 'PIN',
+      inline: true,
+      cell: (user) => (user.hasPin ? 'gesetzt' : '–'),
+      cardCell: (user) => (
+        <Typography variant="body2" color="text.secondary">
+          {user.hasPin ? 'PIN gesetzt' : 'keine PIN'}
+        </Typography>
+      ),
+    },
+  ]
+
+  const stationColumns: ResponsiveColumn<Station>[] = [
+    {
+      key: 'name',
+      header: 'Name',
+      primary: true,
+      cell: (station) => (
+        <Typography variant="body2" fontWeight={600}>
+          {station.name}
+        </Typography>
+      ),
+    },
+    {
+      key: 'created',
+      header: 'Eingerichtet',
+      cell: (station) => formatDate(station.createdAt),
+    },
+    {
+      key: 'used',
+      header: 'Zuletzt benutzt',
+      cell: (station) => formatDate(station.lastUsedAt),
+    },
+    {
+      key: 'status',
+      header: 'Status',
+      inline: true,
+      cell: (station) => (
+        <Chip
+          size="small"
+          color={station.revokedAt ? 'default' : 'success'}
+          variant={station.revokedAt ? 'outlined' : 'filled'}
+          label={station.revokedAt ? 'widerrufen' : 'aktiv'}
+        />
+      ),
+    },
+  ]
 
   return (
-    <Box>
-      <Box
-        sx={{
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: 2,
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          mb: 3,
-        }}
-      >
-        <Box>
-          <Typography variant="h4" component="h1">
-            <UsersIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Benutzer
-          </Typography>
-          <Typography color="text.secondary">
-            Konten, Rollen, Passwörter und PINs für die Stationen
-          </Typography>
-        </Box>
+    <PageLayout
+      title="Benutzer"
+      subtitle="Konten, Rollen, Passwörter und PINs für die Stationen"
+      actions={
         <Button
           variant="contained"
           startIcon={<AddIcon />}
@@ -167,166 +239,98 @@ export default function UsersClient() {
         >
           Neuer Benutzer
         </Button>
-      </Box>
-
+      }
+    >
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+        <Alert severity="error" onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
       {success && (
-        <Alert
-          severity="success"
-          sx={{ mb: 2 }}
-          onClose={() => setSuccess(null)}
-        >
+        <Alert severity="success" onClose={() => setSuccess(null)}>
           {success}
         </Alert>
       )}
 
-      {users === null ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress aria-label="Benutzer werden geladen" />
-        </Box>
-      ) : (
-        <TableContainer component={Paper} sx={{ mb: 4, overflowX: 'auto' }}>
-          <Table size="small" aria-label="Benutzer">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Rolle</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell>PIN</TableCell>
-                <TableCell align="right">Aktionen</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {users.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5}>Noch keine Benutzer.</TableCell>
-                </TableRow>
-              ) : (
-                users.map((user) => (
-                  <TableRow
-                    key={user.id}
-                    data-testid={`user-row-${user.username}`}
+      <PageSection
+        title={users ? `Konten (${users.length})` : 'Konten'}
+        description="Deaktivierte Konten bleiben stehen - gelöscht wird nie."
+        disablePadding
+      >
+        {users === null ? (
+          <LoadingState label="Benutzer werden geladen …" />
+        ) : (
+          <ResponsiveList
+            aria-label="Benutzer"
+            rows={users}
+            columns={userColumns}
+            rowKey={(user) => user.id}
+            rowTestId={(user) => `user-row-${user.username}`}
+            muted={(user) => !user.active}
+            empty="Noch keine Benutzer."
+            actions={(user) => (
+              <>
+                <Tooltip title="Bearbeiten">
+                  <IconButton
+                    aria-label={`${user.displayName} bearbeiten`}
+                    onClick={() => setDialog({ kind: 'edit', user })}
                   >
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={600}>
-                        {user.displayName}
-                        {user.id === ownId ? ' (Sie)' : ''}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {user.username}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        label={ROLE_LABELS[user.role] ?? user.role}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        color={user.active ? 'success' : 'default'}
-                        variant={user.active ? 'filled' : 'outlined'}
-                        label={user.active ? 'aktiv' : 'deaktiviert'}
-                      />
-                    </TableCell>
-                    <TableCell>{user.hasPin ? 'gesetzt' : '–'}</TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                      <Tooltip title="Bearbeiten">
-                        <IconButton
-                          aria-label={`${user.displayName} bearbeiten`}
-                          onClick={() => setDialog({ kind: 'edit', user })}
-                        >
-                          <EditIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="Passwort setzen">
-                        <IconButton
-                          aria-label={`Passwort für ${user.displayName} setzen`}
-                          onClick={() => setDialog({ kind: 'password', user })}
-                        >
-                          <PasswordIcon />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title="PIN setzen">
-                        <IconButton
-                          aria-label={`PIN für ${user.displayName} setzen`}
-                          onClick={() => setDialog({ kind: 'pin', user })}
-                        >
-                          <PinIcon />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Passwort setzen">
+                  <IconButton
+                    aria-label={`Passwort für ${user.displayName} setzen`}
+                    onClick={() => setDialog({ kind: 'password', user })}
+                  >
+                    <PasswordIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="PIN setzen">
+                  <IconButton
+                    aria-label={`PIN für ${user.displayName} setzen`}
+                    onClick={() => setDialog({ kind: 'pin', user })}
+                  >
+                    <PinIcon />
+                  </IconButton>
+                </Tooltip>
+              </>
+            )}
+          />
+        )}
+      </PageSection>
 
-      <Typography variant="h5" component="h2" sx={{ mb: 1 }}>
-        <StationIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-        Stationen
-      </Typography>
-      <Typography color="text.secondary" sx={{ mb: 2 }}>
-        Ein Tablet wird unter <strong>/station</strong> eingerichtet (als
-        Inhaber mit Passwort angemeldet).
-      </Typography>
-      {stations !== null && (
-        <TableContainer component={Paper} sx={{ overflowX: 'auto' }}>
-          <Table size="small" aria-label="Stationen">
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Eingerichtet</TableCell>
-                <TableCell>Zuletzt benutzt</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Aktion</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {stations.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5}>Noch keine Station.</TableCell>
-                </TableRow>
-              ) : (
-                stations.map((station) => (
-                  <TableRow key={station.id}>
-                    <TableCell>{station.name}</TableCell>
-                    <TableCell>{formatDate(station.createdAt)}</TableCell>
-                    <TableCell>{formatDate(station.lastUsedAt)}</TableCell>
-                    <TableCell>
-                      <Chip
-                        size="small"
-                        color={station.revokedAt ? 'default' : 'success'}
-                        variant={station.revokedAt ? 'outlined' : 'filled'}
-                        label={station.revokedAt ? 'widerrufen' : 'aktiv'}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      {!station.revokedAt && (
-                        <Button
-                          color="error"
-                          size="small"
-                          onClick={() => handleRevoke(station)}
-                        >
-                          Widerrufen
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      )}
+      <PageSection
+        title={stations ? `Stationen (${activeStations} aktiv)` : 'Stationen'}
+        description={
+          <>
+            Ein Tablet wird unter <strong>/station</strong> eingerichtet (als
+            Inhaber mit Passwort angemeldet).
+          </>
+        }
+        disablePadding
+      >
+        {stations === null ? (
+          <LoadingState label="Stationen werden geladen …" dense />
+        ) : (
+          <ResponsiveList
+            aria-label="Stationen"
+            rows={stations}
+            columns={stationColumns}
+            rowKey={(station) => station.id}
+            muted={(station) => Boolean(station.revokedAt)}
+            empty="Noch keine Station."
+            actionsHeader="Aktion"
+            actions={(station) =>
+              station.revokedAt ? null : (
+                <Button color="error" onClick={() => handleRevoke(station)}>
+                  Widerrufen
+                </Button>
+              )
+            }
+          />
+        )}
+      </PageSection>
 
       {dialog?.kind === 'create' && (
         <CreateUserDialog
@@ -361,7 +365,7 @@ export default function UsersClient() {
           }
         />
       )}
-    </Box>
+    </PageLayout>
   )
 }
 
