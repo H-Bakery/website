@@ -275,7 +275,9 @@ export function describeError(error: unknown, fallback: string): string {
     return 'Die Bäckerei-API antwortet nicht. Bitte gleich noch einmal versuchen.'
   }
   if (error instanceof TypeError) {
-    return `Keine Verbindung zur Bäckerei-API (${API_BASE_URL}). Läuft der Server?`
+    // Die Adresse bleibt drin (das Büro fragt am Telefon danach), aber die
+    // Bitte richtet sich an den Fahrer: „Läuft der Server?" kann er nicht prüfen.
+    return `Keine Verbindung zur Bäckerei-API (${API_BASE_URL}). Bitte Netz prüfen und gleich noch einmal versuchen.`
   }
   return error instanceof Error ? error.message : fallback
 }

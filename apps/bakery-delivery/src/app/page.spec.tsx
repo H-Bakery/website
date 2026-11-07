@@ -1251,3 +1251,65 @@ describe('DeliveryDashboard: Tour planen (Abschluss-Verifikation next)', () => {
     ).toBeTruthy()
   })
 })
+
+describe('DeliveryDashboard: Tageswechsel und Meldungen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    signIn('inhaber')
+    api.drivers.mockResolvedValue([])
+  })
+
+  it('zeigt nach einem Tageswechsel nicht die Tour des alten Tages, solange der neue lädt', async () => {
+    // Regression: ohne Offline-Kopie des neuen Tages blieb die alte Tour samt
+    // Abhak-Knöpfen stehen, bis die Antwort kam - im Funkloch bis zu 15 s,
+    // während im Datumsfeld schon der neue Tag stand.
+    api.tours
+      .mockResolvedValueOnce([tour])
+      .mockImplementation(() => new Promise(() => undefined))
+
+    render(<DeliveryDashboard />)
+    expect(
+      await screen.findByRole('heading', { name: 'Samstagstour' })
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Tag'), {
+      target: { value: '2026-09-06' },
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Samstagstour' })).toBeNull()
+    )
+    expect(screen.getByText('Tour wird geladen …')).toBeTruthy()
+  })
+
+  it('ignoriert ein geleertes Datumsfeld statt „Ob für  eine Tour …" zu zeigen', async () => {
+    // Regression: iOS „Zurücksetzen" liefert `''`, die API antwortet auf
+    // `date=` mit 400, und die Seite sagte „Ob für  eine Tour geplant ist".
+    api.tours.mockResolvedValue([tour])
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+    const calls = api.tours.mock.calls.length
+
+    fireEvent.change(screen.getByLabelText('Tag'), { target: { value: '' } })
+
+    expect((screen.getByLabelText('Tag') as HTMLInputElement).value).toBe(
+      nextSaturdayIso()
+    )
+    expect(api.tours).toHaveBeenCalledTimes(calls)
+    expect(screen.getByRole('heading', { name: 'Samstagstour' })).toBeTruthy()
+  })
+
+  it('lässt eine Fehlermeldung schließen', async () => {
+    api.tours.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+    const alert = await screen.findByRole('alert')
+    fireEvent.click(within(alert).getByRole('button', { name: 'Schließen' }))
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    // Der Zustand der Seite bleibt: nur die Meldung ist weg.
+    expect(screen.getByRole('button', { name: 'Erneut laden' })).toBeTruthy()
+  })
+})

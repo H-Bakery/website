@@ -63,6 +63,12 @@ interface StopCardProps {
   readOnly?: boolean
   /** Übergabe zurücknehmen erlaubt (nicht für den Fahrer, B8). */
   canUndoHandover?: boolean
+  /**
+   * Übergabeliste einer Sammelstelle zugeklappt zeigen (Liste „Alle Stopps").
+   * Ausgeklappt steht sie im Block „Nächster Stopp"; in der Liste stand sie
+   * sonst ein zweites Mal - acht Familien sind am Handy vier Bildschirme.
+   */
+  collapseHandover?: boolean
 }
 
 export function StopCard({
@@ -80,6 +86,7 @@ export function StopCard({
   busyPreorderIds,
   readOnly = false,
   canUndoHandover = true,
+  collapseHandover = false,
 }: StopCardProps) {
   // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
   // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
@@ -87,6 +94,8 @@ export function StopCard({
   const [confirmClose, setConfirmClose] = useState(false)
   // "Nicht angetroffen" fragt erst nach Grund und Verbleib der Ware.
   const [askFailure, setAskFailure] = useState(false)
+  // Planung: Rückfrage vor dem Entfernen.
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const phoneLink = buildPhoneLink(stop.phone)
   const located = hasCoordinates(stop)
   // Nur die Strasse gefunden: der Punkt liegt in der Strassenmitte. Dann - wie
@@ -121,6 +130,16 @@ export function StopCard({
   const isPickupPoint = stop.pickupPointId != null
   const preorders = stop.preorders ?? []
   const handover = summarizeHandover(preorders)
+  const handoverList = onPreorderStatusChange ? (
+    <HandoverList
+      preorders={preorders}
+      busy={busy}
+      busyIds={busyPreorderIds}
+      onStatusChange={onPreorderStatusChange}
+      readOnly={readOnly}
+      canUndoHandover={canUndoHandover}
+    />
+  ) : null
   const closeStop = () => {
     // Erledigt ist der Stopp erst, wenn jede Vorbestellung entschieden ist -
     // sonst verschwaende eine ungeklaerte Tuete lautlos aus der Abrechnung.
@@ -133,7 +152,7 @@ export function StopCard({
 
   return (
     <li
-      className={`${styles.stop} ${styles[`stop_${stop.status}`]} ${
+      className={`${styles.stop} ${styles[`stop_${stop.status}`] ?? ''} ${
         isNext ? styles.stopNext : ''
       }`}
     >
@@ -145,7 +164,9 @@ export function StopCard({
           <h3>{stop.customer}</h3>
           <p className={styles.stopAddress}>{stop.address}</p>
         </div>
-        <span className={`${styles.badge} ${styles[`badge_${stop.status}`]}`}>
+        <span
+          className={`${styles.badge} ${styles[`badge_${stop.status}`] ?? ''}`}
+        >
           {
             (isPickupPoint ? PICKUP_STOP_STATUS_LABEL : STOP_STATUS_LABEL)[
               stop.status
@@ -235,20 +256,20 @@ export function StopCard({
 
       {isPickupPoint && onPreorderStatusChange && (
         <>
-          <p className={styles.progressLabel}>{handoverHeadline(handover)}</p>
-          <HandoverList
-            preorders={preorders}
-            busy={busy}
-            busyIds={busyPreorderIds}
-            onStatusChange={onPreorderStatusChange}
-            readOnly={readOnly}
-            canUndoHandover={canUndoHandover}
-          />
+          <p className={styles.handoverSummary}>{handoverHeadline(handover)}</p>
+          {collapseHandover && preorders.length > 0 ? (
+            <details className={styles.disclosure}>
+              <summary>Übergabeliste ({preorders.length})</summary>
+              <div className={styles.handoverList}>{handoverList}</div>
+            </details>
+          ) : (
+            <div className={styles.handoverList}>{handoverList}</div>
+          )}
         </>
       )}
 
       {confirmClose && (
-        <div className={styles.hint} role="alert">
+        <div className={`${styles.panel} ${styles.panelWarning}`} role="alert">
           <p>
             {handover.open === 1
               ? '1 Vorbestellung ist noch offen. Trotzdem abschließen?'
@@ -257,7 +278,7 @@ export function StopCard({
           <div className={styles.buttonGroup}>
             <button
               type="button"
-              className={styles.buttonWarn}
+              className={styles.buttonDanger}
               disabled={busy}
               onClick={() => {
                 setConfirmClose(false)
@@ -288,10 +309,11 @@ export function StopCard({
         />
       )}
 
+      {/* Wege zum Kunden: Navigation und Anrufen. */}
       <div className={styles.stopActions}>
         {navigationUrl && (
           <a
-            className={styles.buttonLink}
+            className={styles.buttonLinkAccent}
             href={navigationUrl}
             target="_blank"
             rel="noopener noreferrer"
@@ -304,7 +326,10 @@ export function StopCard({
             Anrufen
           </a>
         )}
+      </div>
 
+      {/* Status: immer in derselben Reihe, gefüllt nur die Hauptaktion. */}
+      <div className={styles.stopActions}>
         {readOnly ? null : stop.status === 'open' ? (
           // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
           // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
@@ -348,39 +373,77 @@ export function StopCard({
             Zurücksetzen
           </button>
         )}
-
-        {onMove && (
-          <>
-            <button
-              type="button"
-              className={styles.buttonGhost}
-              disabled={busy || isFirst}
-              onClick={() => onMove(stop.id, -1)}
-            >
-              Nach oben
-            </button>
-            <button
-              type="button"
-              className={styles.buttonGhost}
-              disabled={busy || isLast}
-              onClick={() => onMove(stop.id, 1)}
-            >
-              Nach unten
-            </button>
-          </>
-        )}
-
-        {onRemove && (
-          <button
-            type="button"
-            className={styles.buttonGhost}
-            disabled={busy}
-            onClick={() => onRemove(stop.id)}
-          >
-            Entfernen
-          </button>
-        )}
       </div>
+
+      {/* Planung (Inhaber): eigene Reihe, damit sie nicht zwischen
+          „Geliefert" und „Nicht angetroffen" gerät. */}
+      {(onMove || onRemove) && (
+        <div className={styles.planActions} aria-label="Planung">
+          {onMove && (
+            <>
+              <button
+                type="button"
+                className={styles.buttonGhost}
+                disabled={busy || isFirst}
+                onClick={() => onMove(stop.id, -1)}
+              >
+                Nach oben
+              </button>
+              <button
+                type="button"
+                className={styles.buttonGhost}
+                disabled={busy || isLast}
+                onClick={() => onMove(stop.id, 1)}
+              >
+                Nach unten
+              </button>
+            </>
+          )}
+          {onRemove && (
+            <button
+              type="button"
+              className={styles.buttonWarn}
+              disabled={busy || confirmRemove}
+              aria-expanded={confirmRemove}
+              onClick={() => setConfirmRemove(true)}
+            >
+              Entfernen
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Entfernen löscht den Stopp samt Ware und Hinweis - ein Fehltipp in
+          der Planung darf das nicht ohne Rückfrage tun. */}
+      {confirmRemove && onRemove && (
+        <div
+          className={`${styles.panel} ${styles.panelWarning}`}
+          role="alertdialog"
+          aria-label="Stopp entfernen?"
+        >
+          <p>Stopp „{stop.customer}“ wirklich aus der Tour entfernen?</p>
+          <div className={styles.buttonGroup}>
+            <button
+              type="button"
+              className={styles.buttonDanger}
+              disabled={busy}
+              onClick={() => {
+                setConfirmRemove(false)
+                onRemove(stop.id)
+              }}
+            >
+              Ja, entfernen
+            </button>
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              onClick={() => setConfirmRemove(false)}
+            >
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      )}
     </li>
   )
 }

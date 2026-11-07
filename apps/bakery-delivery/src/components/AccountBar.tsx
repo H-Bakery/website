@@ -39,7 +39,7 @@ export function AccountBar({
     <section className={styles.account} aria-label="Anmeldung">
       <p className={styles.accountName}>
         {session.user.displayName}
-        <span className={styles.subtitle}>
+        <span className={styles.accountRole}>
           {' '}
           · {ROLE_LABEL[session.user.role] ?? session.user.role}
         </span>
@@ -55,7 +55,7 @@ export function AccountBar({
           <div className={styles.buttonGroup}>
             <button
               type="button"
-              className={styles.buttonWarn}
+              className={styles.buttonDanger}
               onClick={signOut}
               disabled={busy}
             >

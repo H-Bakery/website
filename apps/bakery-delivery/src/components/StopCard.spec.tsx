@@ -1,5 +1,5 @@
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import type { Stop } from '../lib/delivery-api'
 import { formatTime } from '../lib/format'
 import { StopCard } from './StopCard'
@@ -100,5 +100,98 @@ describe('StopCard – Zeitfenster', () => {
     )
     expect(screen.queryByText('Wartezeit bis Fensterbeginn')).toBeNull()
     expect(screen.queryByText(/nicht mehr einhaltbar/)).toBeNull()
+  })
+})
+
+describe('StopCard – Planung', () => {
+  it('fragt vor dem Entfernen eines Stopps nach', () => {
+    // Regression: „Entfernen" löschte den Stopp samt Ware und Hinweis beim
+    // ersten Tippen - direkt neben „Nach unten".
+    const onRemove = jest.fn()
+    render(
+      <ul>
+        <StopCard
+          stop={stop({ customer: 'Testkunde Ahorn', pickupPointId: null })}
+          position={1}
+          isNext={false}
+          distance={null}
+          busy={false}
+          onStatusChange={jest.fn()}
+          onRemove={onRemove}
+          onMove={jest.fn()}
+        />
+      </ul>
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }))
+    expect(onRemove).not.toHaveBeenCalled()
+    expect(
+      screen.getByRole('alertdialog', { name: 'Stopp entfernen?' }).textContent
+    ).toMatch(/Testkunde Ahorn/)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }))
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+    expect(onRemove).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entfernen' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Ja, entfernen' }))
+    expect(onRemove).toHaveBeenCalledWith(2)
+  })
+})
+
+describe('StopCard – Sammelstelle', () => {
+  const preorders = [
+    {
+      id: 11,
+      reference: 'MO-2026-09-19-01',
+      pickupPointId: 'kindergarten-moersbach',
+      date: '2026-09-19',
+      customer: 'Testfamilie Ahorn',
+      phone: null,
+      items: [],
+      total: 5,
+      note: null,
+      status: 'open' as const,
+      handedOverAt: null,
+      createdAt: '2026-09-17T08:00:00.000Z',
+      updatedAt: '2026-09-17T08:00:00.000Z',
+      deadline: '2026-09-18T10:00:00.000Z',
+      afterDeadline: false,
+    },
+  ]
+
+  function renderPickup(collapseHandover: boolean) {
+    return render(
+      <ul>
+        <StopCard
+          stop={stop({ pickupPointId: 'kindergarten-moersbach', preorders })}
+          position={1}
+          isNext={false}
+          distance={null}
+          busy={false}
+          onStatusChange={jest.fn()}
+          onPreorderStatusChange={jest.fn()}
+          collapseHandover={collapseHandover}
+        />
+      </ul>
+    )
+  }
+
+  it('klappt die Übergabeliste in „Alle Stopps" zu, die Kopfzeile bleibt sichtbar', () => {
+    const { container } = renderPickup(true)
+    const details = container.querySelector('details')
+    expect(details).not.toBeNull()
+    expect(details?.open).toBe(false)
+    expect(details?.querySelector('summary')?.textContent).toBe(
+      'Übergabeliste (1)'
+    )
+    // Die Zahlen stehen außerhalb der zugeklappten Liste.
+    expect(screen.getByText(/0 von 1 übergeben/).closest('details')).toBeNull()
+  })
+
+  it('zeigt die Übergabeliste im Block „Nächster Stopp" offen', () => {
+    const { container } = renderPickup(false)
+    expect(container.querySelector('details')).toBeNull()
+    expect(screen.getByText('Testfamilie Ahorn')).toBeTruthy()
   })
 })
