@@ -24,6 +24,7 @@ import {
 } from '../../../../components/analytics/dateRange'
 import {
   EmptyState,
+  ErrorState,
   KeyFigures,
   LoadingState,
   PageLayout,
@@ -99,10 +100,15 @@ export default function ProductAnalyticsPage({
     body = <OwnerOnlyNotice />
   } else if (!data.available) {
     body = (
-      <Alert severity="error">
-        Die API liefert keine Produktdaten. Es werden keine Zahlen angezeigt -
-        Beispieldaten gibt es hier bewusst nicht.
-      </Alert>
+      // Der Dienst fängt Netz- und Serverfehler ab (`available: false`) -
+      // wie auf jeder Seite der WLAN-Hinweis und „Erneut versuchen“ statt
+      // eines Satzes über Beispieldaten (UI-Runde 2). Zahlen gibt es keine.
+      <ErrorState
+        title="Produktdaten konnten nicht geladen werden"
+        message="Der Server hat keine Produktdaten geliefert – bitte WLAN prüfen und erneut versuchen."
+        onRetry={reload}
+        data-testid="analytics-unavailable"
+      />
     )
   } else if (all.length === 0) {
     body = (

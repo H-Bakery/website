@@ -27,7 +27,7 @@ const revenue = [
   { date: '2026-08-02', revenue: 2500, transactionCount: 120 },
 ]
 
-const unavailable = /Die API liefert keine Umsatzdaten/
+const unavailable = /Der Server hat keine Umsatzdaten geliefert/
 const noReports = /liegt kein Kassenbericht vor/
 
 describe('RevenueAnalyticsPage', () => {

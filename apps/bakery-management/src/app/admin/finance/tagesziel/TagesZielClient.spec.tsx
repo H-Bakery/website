@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import { render } from '@testing-library/react'
@@ -173,6 +173,35 @@ describe('TagesZielClient', () => {
       await screen.findByText('Tagesziel konnte nicht geladen werden')
     ).toBeInTheDocument()
   })
+
+  // UI-Runde 2: vorher „Failed to fetch“ / „HTTP 502: Bad Gateway“ und kein
+  // Knopf zum Wiederholen.
+  it.each([
+    ['abgebrochenes fetch', () => new TypeError('Failed to fetch')],
+    ['Caddy 502', () => new ApiError('HTTP 502: Bad Gateway', 502)],
+  ])(
+    'ohne Server (%s): WLAN-Hinweis und Erneut versuchen',
+    async (_l, make) => {
+      apiClient.get.mockRejectedValueOnce(make())
+      renderWithTheme(<TagesZielClient />)
+      expect(
+        await screen.findByText(
+          'Keine Verbindung zum Server – bitte WLAN prüfen.'
+        )
+      ).toBeInTheDocument()
+      expect(screen.queryByText(/Failed to fetch|Bad Gateway/)).toBeNull()
+      apiClient.get.mockResolvedValueOnce({
+        success: true,
+        status: 'no-target',
+        data: null,
+        message: 'Keine Zielkonfiguration gefunden.',
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+      expect(
+        await screen.findByText('Kein Tagesziel verfügbar')
+      ).toBeInTheDocument()
+    }
+  )
 
   it('rendert Kopfzeile, Kennzahlen, Kostenquote, Wochentagstabelle, Verlauf und Monatssicht', async () => {
     mockHappyPath()

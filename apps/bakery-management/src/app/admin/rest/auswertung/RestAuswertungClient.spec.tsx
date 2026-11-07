@@ -6,6 +6,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react'
+import { ApiError } from '@bakery/shared/data-access'
 import RestAuswertungClient from './RestAuswertungClient'
 import * as api from '../../../../lib/restApi'
 import type { RestSummary } from '../../../../lib/restApi'
@@ -220,6 +221,29 @@ describe('Rest-Auswertung', () => {
       await screen.findByText('Keine Berechtigung für diese Aktion.')
     ).toBeTruthy()
   })
+
+  // UI-Runde 2: vorher „Failed to fetch“ / „HTTP 502: Bad Gateway“ und leere
+  // Von/Bis-Felder über der Meldung.
+  it.each([
+    ['abgebrochenes fetch', () => new TypeError('Failed to fetch')],
+    ['Caddy 502', () => new ApiError('HTTP 502: Bad Gateway', 502)],
+  ])(
+    'ohne Server (%s): WLAN-Hinweis, Erneut versuchen, kein leerer Filter',
+    async (_l, make) => {
+      mocked.fetchRestSummary.mockRejectedValueOnce(make())
+      render(<RestAuswertungClient />)
+      expect(
+        await screen.findByText(
+          'Keine Verbindung zum Server – bitte WLAN prüfen.'
+        )
+      ).toBeTruthy()
+      expect(screen.queryByText(/Failed to fetch|Bad Gateway/)).toBeNull()
+      expect(screen.queryByLabelText('Von')).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+      expect(await screen.findByTestId('item-weck')).toBeTruthy()
+      expect(screen.getByLabelText('Von')).toBeTruthy()
+    }
+  )
 
   it('fills the card width with the daily chart instead of fixed pixels', async () => {
     // Regression: the SVG had a fixed width (n × 22 px) and ended in the

@@ -64,6 +64,7 @@ import TargetStatusChip, {
 } from '../../../../components/targets/TargetStatusChip'
 import {
   EmptyState,
+  ErrorState,
   KeyFigures,
   LoadingState,
   PageLayout,
@@ -494,12 +495,16 @@ function DayTable({
     </Box>
   )
 }
+const TARGET_FALLBACK = 'Das Tagesziel konnte nicht geladen werden.'
+
 function AccessNotice({
   kind,
   message,
+  onRetry,
 }: {
   kind: FinanceAccessProblem
   message: string
+  onRetry: () => void
 }) {
   if (kind === 'unauthenticated') {
     return (
@@ -546,11 +551,15 @@ function AccessNotice({
       </Alert>
     )
   }
+  // Wie jede andere Seite (Layout-Kit): deutscher Text aus
+  // `classifyFinanceError` und „Erneut versuchen“ (UI-Runde 2).
   return (
-    <Alert severity="error">
-      <AlertTitle>Tagesziel konnte nicht geladen werden</AlertTitle>
-      {message}
-    </Alert>
+    <ErrorState
+      title="Tagesziel konnte nicht geladen werden"
+      message={message}
+      onRetry={onRetry}
+      data-testid="targets-error"
+    />
   )
 }
 
@@ -601,7 +610,7 @@ export default function TagesZielClient() {
       setMonth(last.slice(0, 7))
       setMonthView(status.data)
     } catch (err) {
-      const { kind, message } = classifyFinanceError(err)
+      const { kind, message } = classifyFinanceError(err, TARGET_FALLBACK)
       setState({ phase: 'access', kind, message })
     }
   }, [])
@@ -630,7 +639,10 @@ export default function TagesZielClient() {
       })
       .catch((err) => {
         if (cancelled) return
-        setPeriodError(classifyFinanceError(err).message)
+        setPeriodError(
+          classifyFinanceError(err, 'Der Zeitraum konnte nicht geladen werden.')
+            .message
+        )
         setPeriod(null)
       })
       .finally(() => {
@@ -665,7 +677,10 @@ export default function TagesZielClient() {
       })
       .catch((err) => {
         if (cancelled) return
-        setMonthError(classifyFinanceError(err).message)
+        setMonthError(
+          classifyFinanceError(err, 'Der Monat konnte nicht geladen werden.')
+            .message
+        )
         setMonthView(null)
       })
     return () => {
@@ -696,7 +711,11 @@ export default function TagesZielClient() {
   if (state.phase === 'access') {
     return (
       <PageLayout title={title} subtitle={subtitle}>
-        <AccessNotice kind={state.kind} message={state.message} />
+        <AccessNotice
+          kind={state.kind}
+          message={state.message}
+          onRetry={() => void load()}
+        />
       </PageLayout>
     )
   }

@@ -26,7 +26,7 @@ const products = [
   { productId: '1', productName: 'Bauernbrot', quantitySold: 10, revenue: 35 },
 ]
 
-const unavailable = /Die API liefert keine Produktdaten/
+const unavailable = /Der Server hat keine Produktdaten geliefert/
 
 describe('ProductAnalyticsPage', () => {
   beforeEach(() => {

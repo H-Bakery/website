@@ -35,6 +35,7 @@ import {
   PageSection,
   type KeyFigure,
 } from '../../../../components/layout'
+import { backzettelErrorText } from '../../../../lib/backstubeErrors'
 import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
 import { weekPresets } from '../../../../components/analytics/dateRange'
 
@@ -53,9 +54,13 @@ const GAP_STATUSES = new Set([
   'counted_without_backzettel',
 ])
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  return 'Unbekannter Fehler.'
+/**
+ * Deutscher Fehlertext: ohne Antwort (WLAN, API gestoppt) oder mit 502-504
+ * von Caddy der WLAN-Hinweis statt „Failed to fetch“ / „HTTP 502: Bad
+ * Gateway“ (UI-Runde 2), sonst die `message` der API.
+ */
+function errorMessage(error: unknown, fallback: string): string {
+  return backzettelErrorText(error, fallback)
 }
 
 // --------------------------------------------------------- Tagesverlauf
@@ -357,7 +362,7 @@ export default function RestAuswertungClient() {
       setData(result)
     } catch (e) {
       if (id !== requestId.current) return
-      setError(errorMessage(e))
+      setError(errorMessage(e, 'Die Auswertung konnte nicht geladen werden.'))
     } finally {
       if (id === requestId.current) setLoading(false)
     }
@@ -374,7 +379,7 @@ export default function RestAuswertungClient() {
     try {
       await downloadRestCsv({ from: data.from, to: data.to })
     } catch (e) {
-      setCsvError(errorMessage(e))
+      setCsvError(errorMessage(e, 'Die CSV-Datei konnte nicht geladen werden.'))
     } finally {
       setCsvBusy(false)
     }
@@ -402,15 +407,19 @@ export default function RestAuswertungClient() {
         </Button>
       }
     >
-      <DateRangeFilter
-        from={data?.from ?? ''}
-        to={data?.to ?? ''}
-        onApply={(from, to) => void load({ from, to })}
-        presets={presets}
-        busy={loading}
-        max={data?.today}
-        maxDays={MAX_RANGE_DAYS}
-      />
+      {/* Erst mit Daten: vorher stünden leere Von/Bis-Felder (tt.mm.jjjj)
+          ohne Grenze über der Lade- bzw. Fehlermeldung (UI-Runde 2). */}
+      {data && (
+        <DateRangeFilter
+          from={data.from}
+          to={data.to}
+          onApply={(from, to) => void load({ from, to })}
+          presets={presets}
+          busy={loading}
+          max={data.today}
+          maxDays={MAX_RANGE_DAYS}
+        />
+      )}
 
       {loading && !data && !error && (
         <LoadingState label="Auswertung wird geladen …" />

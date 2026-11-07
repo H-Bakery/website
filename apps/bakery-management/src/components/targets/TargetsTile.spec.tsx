@@ -1,5 +1,5 @@
 import React from 'react'
-import { screen } from '@testing-library/react'
+import { fireEvent, screen } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import TargetsTile from './TargetsTile'
 import { syntheticStatus } from '../../lib/targetsFixtures'
@@ -84,14 +84,38 @@ describe('TargetsTile', () => {
     expect(screen.queryByText(/€/)).not.toBeInTheDocument()
   })
 
-  it('zeigt einen Serverfehler als Warnung', async () => {
-    apiClient.get.mockRejectedValue(new Error('Request timeout'))
-    renderWithTheme(<TargetsTile />)
-    expect(
-      await screen.findByText(/konnte nicht geladen werden/)
-    ).toBeInTheDocument()
-    expect(screen.getByText(/Request timeout/)).toBeInTheDocument()
-  })
+  // UI-Runde 2: vorher „Das Tagesziel konnte nicht geladen werden. Failed to
+  // fetch“ neben dem Dashboard-Hinweis „API nicht erreichbar“.
+  it.each([
+    ['abgebrochenes fetch', () => new TypeError('Failed to fetch')],
+    ['Zeitüberschreitung', () => new Error('Request timeout')],
+    ['Caddy 502', () => new ApiError('HTTP 502: Bad Gateway', 502)],
+  ])(
+    'ohne Server (%s): WLAN-Hinweis und Erneut versuchen',
+    async (_l, make) => {
+      apiClient.get.mockRejectedValueOnce(make())
+      renderWithTheme(<TargetsTile />)
+      expect(
+        await screen.findByText('Tagesziel konnte nicht geladen werden')
+      ).toBeInTheDocument()
+      expect(
+        screen.getByText('Keine Verbindung zum Server – bitte WLAN prüfen.')
+      ).toBeInTheDocument()
+      expect(
+        screen.queryByText(/Failed to fetch|Bad Gateway|Request timeout/)
+      ).toBeNull()
+      apiClient.get.mockResolvedValueOnce({
+        success: true,
+        status: 'no-target',
+        data: null,
+        message: 'Keine Zielkonfiguration gefunden.',
+      })
+      fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+      expect(
+        await screen.findByText(/Kein Tagesziel verfügbar/)
+      ).toBeInTheDocument()
+    }
+  )
 
   it('rendert letzten Tag, Woche und Monat mit Ampel, Label und Zahl', async () => {
     authState.isAuthenticated = true
