@@ -729,7 +729,7 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
 | CAP monthly settlement                                           | Ziel 1 (Retourenquote, Deckungsbeitrag) | Steuerberater on invoice numbering |
 | Recipes from `hq/data/recipes` → dough and ingredient quantities | Ziel 2 (no Fertigmischungen)            | recipes verified at bakery scale   |
 | Einkauf / Bestellliste                                           | duplicate orders, overstock             | real ingredient data               |
-| Dienstplan                                                       | Ziel 3                                  | owner priority                     |
+| Dienstplan                                                       | Ziel 3                                  | TASK-042, hidden in pilot mode     |
 | Automat view                                                     | vending-retrofit                        | hardware proven                    |
 
 ---

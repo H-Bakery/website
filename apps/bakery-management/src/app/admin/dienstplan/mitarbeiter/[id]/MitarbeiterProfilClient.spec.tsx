@@ -86,7 +86,7 @@ const BALANCE_NO_CONFIG: dienstplanApi.VacationBalance = {
   remainingAfterPlannedDays: null,
 }
 
-const ABSENCE: dienstplanApi.Absence = {
+const ABSENCE: dienstplanApi.ProfileAbsence = {
   id: 11,
   employeeId: 3,
   type: 'urlaub',
@@ -95,6 +95,7 @@ const ABSENCE: dienstplanApi.Absence = {
   endDate: '2026-08-08',
   halfDay: false,
   days: 5,
+  daysInYear: 5,
   note: null,
 }
 
@@ -185,6 +186,27 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
       'href',
       '/admin/dienstplan?bereich=verkauf'
     )
+  })
+
+  it('Urlaub über den Jahreswechsel: Spalte zeigt den Anteil im Jahr, die Summe darunter', async () => {
+    api.fetchEmployeeProfile.mockResolvedValue(
+      profile({
+        absences: [
+          {
+            ...ABSENCE,
+            id: 13,
+            startDate: '2026-12-28',
+            endDate: '2027-01-08',
+            days: 9.5,
+            daysInYear: 3.5,
+          },
+        ],
+      })
+    )
+    renderProfile()
+    const row = await screen.findByTestId('absence-13')
+    const cell = within(row).getByText('3,5').closest('td')
+    expect(cell).toHaveTextContent('3,5von insgesamt 9,5')
   })
 
   it('Anspruch je Jahr steht zugeklappt unter dem Konto', async () => {

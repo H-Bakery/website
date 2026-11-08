@@ -197,13 +197,21 @@ export interface Calendar {
   days: CalendarDay[]
 }
 
+/**
+ * Abwesenheit im Profil: `days` zählt den ganzen Zeitraum, `daysInYear` nur
+ * den Teil im gezeigten Jahr - den, den das Urlaubskonto des Jahres zählt.
+ */
+export interface ProfileAbsence extends Absence {
+  daysInYear: number
+}
+
 export interface EmployeeProfile {
   employee: Employee
   year: number
   entitlements: Entitlement[]
   balance: VacationBalance
   /** Abwesenheiten, die das Jahr berühren. */
-  absences: Absence[]
+  absences: ProfileAbsence[]
   /** Kommende Schichten ab heute (höchstens 20). */
   upcomingShifts: Shift[]
   closedWeekdays: ClosedWeekdays

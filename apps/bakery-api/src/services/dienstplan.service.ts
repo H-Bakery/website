@@ -658,7 +658,15 @@ export class DienstplanService {
         year,
         entitlements: entitlements.map(plainEntitlement),
         balance,
-        absences: absences.map((a) => this.plainAbsence(a, closed.weekdays)),
+        // `days` covers the whole absence; `daysInYear` is the share inside
+        // the shown year - the part `vacationBalance` counts for it.
+        absences: absences.map((a) => ({
+          ...this.plainAbsence(a, closed.weekdays),
+          daysInYear: core.absenceDays(absenceShape(a), closed.weekdays, {
+            from: `${year}-01-01`,
+            to: `${year}-12-31`,
+          }),
+        })),
         upcomingShifts: upcomingShifts.map(plainShift),
         closedWeekdays: closed,
       },

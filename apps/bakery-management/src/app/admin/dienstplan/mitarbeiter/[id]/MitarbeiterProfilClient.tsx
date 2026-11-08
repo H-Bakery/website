@@ -42,6 +42,7 @@ import {
   saveEntitlement,
   updateEmployee,
   type Absence,
+  type ProfileAbsence,
   type DienstplanWarning,
   type Employee,
   type EmployeeProfile,
@@ -457,7 +458,7 @@ function subtitleOf(employee: Employee): string | undefined {
   return parts.length > 0 ? parts.join(' · ') : undefined
 }
 
-const ABSENCE_COLUMNS: ResponsiveColumn<Absence>[] = [
+const ABSENCE_COLUMNS: ResponsiveColumn<ProfileAbsence>[] = [
   {
     key: 'range',
     header: 'Zeitraum',
@@ -501,10 +502,10 @@ const ABSENCE_COLUMNS: ResponsiveColumn<Absence>[] = [
     header: 'Urlaubstage',
     align: 'right',
     // Nur Urlaub zählt aufs Konto - bei „frei“/„abwesend“ keine Zahl.
-    cell: (absence) =>
-      absence.type === 'urlaub' ? formatDays(absence.days) : '–',
-    cardCell: (absence) =>
-      absence.type === 'urlaub' ? `${formatDays(absence.days)} Tage` : '–',
+    // Gezeigt wird der Anteil im Jahr (wie im Konto); reicht die
+    // Abwesenheit über den Jahreswechsel, steht die Summe darunter.
+    cell: (absence) => <AbsenceDaysCell absence={absence} />,
+    cardCell: (absence) => <AbsenceDaysCell absence={absence} unit />,
   },
   {
     key: 'note',
@@ -512,6 +513,33 @@ const ABSENCE_COLUMNS: ResponsiveColumn<Absence>[] = [
     cell: (absence) => absence.note ?? '–',
   },
 ]
+
+function AbsenceDaysCell({
+  absence,
+  unit = false,
+}: {
+  absence: ProfileAbsence
+  unit?: boolean
+}) {
+  if (absence.type !== 'urlaub') return <>–</>
+  const suffix = unit ? ' Tage' : ''
+  return (
+    <>
+      {formatDays(absence.daysInYear)}
+      {suffix}
+      {absence.daysInYear !== absence.days && (
+        <Typography
+          component="span"
+          variant="caption"
+          color="text.secondary"
+          sx={{ display: 'block' }}
+        >
+          von insgesamt {formatDays(absence.days)}
+        </Typography>
+      )}
+    </>
+  )
+}
 
 const SHIFT_COLUMNS: ResponsiveColumn<Shift>[] = [
   {

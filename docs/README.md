@@ -17,6 +17,7 @@
 **Domains** (German, rules as seen from outside the code):
 [Anmeldung](./domains/anmeldung.md) ·
 [Backzettel](./domains/backzettel.md) ·
+[Dienstplan & Urlaub](./domains/dienstplan.md) ·
 [Finanzen & Tagesziel](./domains/finanzen.md) ·
 [Kassenberichte](./domains/kassenberichte.md) ·
 [Liefertouren](./domains/liefertouren.md) ·

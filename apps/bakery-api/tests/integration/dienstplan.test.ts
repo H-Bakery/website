@@ -714,6 +714,23 @@ describe('absences', () => {
     expect(audit.map((a) => a.action)).toEqual(['create', 'delete'])
   })
 
+  it('profile shows the share of an absence inside the shown year', async () => {
+    // left over from the test above: Urlaub 29.12.2026-02.01.2027, approved
+    const y2026 = await as().get(`/api/dienstplan/employees/${id}?year=2026`)
+    expect(y2026.status).toBe(200)
+    const across = y2026.body.data.absences.find(
+      (a: { endDate: string }) => a.endDate === '2027-01-02'
+    )
+    // whole range 3.5; in 2026: 29., 30. = 2 + 31.12. = 0.5
+    expect(across).toMatchObject({ days: 3.5, daysInYear: 2.5 })
+    expect(y2026.body.data.balance.approvedDays).toBe(2.5)
+
+    const y2027 = await as().get(`/api/dienstplan/employees/${id}?year=2027`)
+    expect(y2027.body.data.absences).toEqual([
+      expect.objectContaining({ days: 3.5, daysInYear: 1 }),
+    ])
+  })
+
   it('warns when the absence covers shifts', async () => {
     const seller = await employee({
       displayName: 'Sina Schicht',

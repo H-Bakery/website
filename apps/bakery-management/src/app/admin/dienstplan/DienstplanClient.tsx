@@ -7,7 +7,6 @@ import {
   Box,
   Button,
   ButtonBase,
-  Chip,
   IconButton,
   LinearProgress,
   Menu,
@@ -23,7 +22,6 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import type { Theme } from '@mui/material/styles'
 import { Add as AddIcon, Badge as StaffIcon } from '@mui/icons-material'
 import {
   ABSENCE_STATUS_LABELS,
@@ -32,6 +30,7 @@ import {
   AREA_LABELS,
   deleteAbsence,
   deleteShift,
+  fetchBalances,
   fetchCalendar,
   fetchShiftTemplates,
   formatAbsenceRange,
@@ -39,7 +38,6 @@ import {
   formatMinutes,
   groupByArea,
   type Absence,
-  type AbsenceType,
   type Calendar,
   type CalendarDay,
   type DienstplanWarning,
@@ -47,11 +45,7 @@ import {
   type Shift,
   type ShiftTemplate,
 } from '../../../lib/dienstplanApi'
-import {
-  addDays,
-  formatDateShort,
-  todayIso,
-} from '../../../lib/backzettelFormat'
+import { formatDateShort, todayIso } from '../../../lib/backzettelFormat'
 import {
   CALENDAR_VIEWS,
   CALENDAR_VIEW_LABELS,
@@ -59,17 +53,23 @@ import {
   closedDayLabel,
   dienstplanHref,
   entriesByCell,
+  formatPeriodTitle,
   formatWeekTitle,
   mondayOf,
   parseAreaFilter,
+  parsePeriod,
   parseView,
-  parseWeek,
+  periodEnd,
+  periodStart,
   staffingText,
+  stepPeriod,
+  switchPeriod,
   weekDates,
   type AreaFilter,
   type CalendarView,
   type CellEntries,
 } from '../../../lib/dienstplanCalendar'
+import { TOUCH_MEDIA } from '../../../lib/muiTheme'
 import {
   DayNavigator,
   EmptyState,
@@ -77,12 +77,19 @@ import {
   LoadingState,
   PageLayout,
   PageSection,
-  shiftIsoDate,
 } from '../../../components/layout'
-import { ColorDot, messageOf } from './mitarbeiter/EmployeeDialog'
-import { profileHref } from './mitarbeiter/MitarbeiterClient'
+import { messageOf } from './mitarbeiter/EmployeeDialog'
 import AbsenceDialog from './AbsenceDialog'
 import ShiftDialog from './ShiftDialog'
+import MonthView from './MonthView'
+import YearView, { type YearBalances } from './YearView'
+import {
+  ABSENCE_COLORS,
+  AreaGroupRow,
+  EmployeeNameCell,
+  NAME_COLUMN_WIDTH,
+  stickyName,
+} from './calendarParts'
 
 type DialogState =
   | { kind: 'shift'; employee: Employee; date: string; shift: Shift | null }
@@ -105,13 +112,6 @@ interface Notice {
   warnings: DienstplanWarning[]
 }
 
-/** Farbe je Abwesenheitsart (Palette, damit Hell/Dunkel stimmen). */
-const ABSENCE_COLORS: Record<AbsenceType, 'info' | 'success' | 'warning'> = {
-  urlaub: 'info',
-  frei: 'success',
-  abwesend: 'warning',
-}
-
 /** Schichten nur im Verkauf und nur für aktive Mitarbeiter (die API prüft). */
 function canHaveShifts(employee: Employee): boolean {
   return employee.area === 'verkauf' && employee.active
@@ -120,15 +120,49 @@ function canHaveShifts(employee: Employee): boolean {
 const AREA_FILTERS: AreaFilter[] = ['alle', ...AREAS]
 
 /**
- * Spaltenbreiten des Rasters (px): Handy schmaler, damit neben der
+ * Breite einer Tagesspalte der Woche (px): Handy schmaler, damit neben der
  * stehenbleibenden Namensspalte noch ein Tag sichtbar ist.
  */
-const NAME_COLUMN_WIDTH = { xs: 116, sm: 170 } as const
 const DAY_COLUMN_MIN_WIDTH = { xs: 112, sm: 128 } as const
 
-/** Pfeile der Wochennavigation: sieben Tage weiter oder zurück. */
-function weekStep(date: string, direction: 1 | -1): string | null {
-  return shiftIsoDate(date, direction * 7)
+/** Beschriftung der Navigation je Ansicht. */
+const PERIOD_NAV: Record<
+  CalendarView,
+  { label: string; prev: string; next: string; testId: string }
+> = {
+  woche: {
+    label: 'Woche',
+    prev: 'Vorige Woche',
+    next: 'Nächste Woche',
+    testId: 'week-navigator',
+  },
+  monat: {
+    label: 'Monat',
+    prev: 'Voriger Monat',
+    next: 'Nächster Monat',
+    testId: 'month-navigator',
+  },
+  jahr: {
+    label: 'Jahr',
+    prev: 'Voriges Jahr',
+    next: 'Nächstes Jahr',
+    testId: 'year-navigator',
+  },
+}
+
+/** Testkennung des Abschnittstitels je Ansicht. */
+const TITLE_TEST_ID: Record<CalendarView, string> = {
+  woche: 'week-title',
+  monat: 'month-title',
+  jahr: 'year-title',
+}
+
+const SECTION_HINT: Record<CalendarView, string> = {
+  woche:
+    'Leere Zelle antippen: Schicht oder Abwesenheit anlegen. Eintrag antippen: bearbeiten.',
+  monat:
+    'Tag antippen: die Woche öffnet sich, dort wird eingetragen und bearbeitet. Punkt = Schicht.',
+  jahr: 'Monat antippen: Monatsansicht. Rechts das Urlaubskonto des Jahres.',
 }
 
 /**
@@ -137,36 +171,53 @@ function weekStep(date: string, direction: 1 | -1): string | null {
  * zuerst), Spalten Mo-So; Zellen zeigen Schichten mit Uhrzeit und
  * Abwesenheitsbalken (geplant gestrichelt). Ruhetag und Feiertage sind
  * hinterlegt und benannt, die Kopfzeile je Tag zeigt „Verkauf besetzt“.
+ * Monat: Tage als schmale Spalten mit Abwesenheiten und Schicht-Punkten
+ * (`MonthView`). Jahr: zwölf Monate je Person mit Urlaubsbalken und dem
+ * Konto daneben (`YearView`).
  *
- * Alle Daten kommen aus `GET /api/dienstplan?from&to`; Feiertage, Ruhetag
- * und Besetzung rechnet der Browser nicht selbst. Woche, Ansicht und
- * Bereich stehen in der URL.
+ * Alle Daten kommen aus `GET /api/dienstplan?from&to` (und für das Jahr
+ * `GET /api/dienstplan/balance?year`); Feiertage, Ruhetag, Besetzung und
+ * Salden rechnet der Browser nicht selbst. Zeitraum, Ansicht und Bereich
+ * stehen in der URL.
  *
- * Layout-Kit: Wochenwechsel als `DayNavigator` (Schritt 7 Tage) vorne im
- * Kopf, Ansicht und Bereich als Aktionen des Kalender-Abschnitts; das Raster
- * selbst ist eine eigene Tabelle, die am Handy waagrecht scrollt (die
- * Namensspalte bleibt stehen).
+ * Layout-Kit: Wechsel des Zeitraums als `DayNavigator` (Woche, Monat oder
+ * Jahr) vorne im Kopf, Ansicht und Bereich als Aktionen des
+ * Kalender-Abschnitts; das Raster selbst ist eine eigene Tabelle, die am
+ * Handy waagrecht scrollt (die Namensspalte bleibt stehen).
  */
 export default function DienstplanClient({
   week: weekParam,
+  month: monthParam,
+  year: yearParam,
   view: viewParam,
   area: areaParam,
 }: {
   week?: string
+  month?: string
+  year?: string
   view?: string
   area?: string
 }) {
   const router = useRouter()
-  const [week, setWeek] = React.useState<string>(
-    () => parseWeek(weekParam) ?? mondayOf(todayIso())
-  )
   const [view, setView] = React.useState<CalendarView>(() =>
     parseView(viewParam)
+  )
+  // Erster Tag des gezeigten Zeitraums: Montag, Monatserster oder 1.1.
+  const [start, setStart] = React.useState<string>(() =>
+    parsePeriod(
+      parseView(viewParam),
+      { week: weekParam, month: monthParam, year: yearParam },
+      todayIso()
+    )
   )
   const [area, setArea] = React.useState<AreaFilter>(() =>
     parseAreaFilter(areaParam)
   )
   const [calendar, setCalendar] = React.useState<Calendar | null>(null)
+  const [balances, setBalances] = React.useState<{
+    year: number
+    value: YearBalances
+  } | null>(null)
   const [loading, setLoading] = React.useState(false)
   const [loadError, setLoadError] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
@@ -182,24 +233,61 @@ export default function DienstplanClient({
   // Weiche Navigation auf dieselbe Seite (Seitenleiste, Links mit anderer
   // Query) ändert nur die Props - der Zustand folgt der URL.
   React.useEffect(() => {
-    setWeek(parseWeek(weekParam) ?? mondayOf(todayIso()))
-    setView(parseView(viewParam))
+    const nextView = parseView(viewParam)
+    setView(nextView)
+    setStart(
+      parsePeriod(
+        nextView,
+        { week: weekParam, month: monthParam, year: yearParam },
+        todayIso()
+      )
+    )
     setArea(parseAreaFilter(areaParam))
-  }, [weekParam, viewParam, areaParam])
+  }, [weekParam, monthParam, yearParam, viewParam, areaParam])
 
-  const dates = React.useMemo(() => weekDates(week), [week])
-  // Nur die Woche zeigen, für die der Kalender geladen ist: beim Blättern
-  // (oder wenn das Laden scheitert) nie die Zellen der alten Woche mit den
-  // Tagen der neuen - eine nicht geladene Woche ist keine leere Woche.
+  const end = periodEnd(view, start)
+  const year = Number(start.slice(0, 4))
+  const dates = React.useMemo(
+    () => (view === 'woche' ? weekDates(start) : []),
+    [view, start]
+  )
+  // Nur den Zeitraum zeigen, für den der Kalender geladen ist: beim
+  // Blättern (oder wenn das Laden scheitert) nie die Zellen des alten
+  // Zeitraums mit den Tagen des neuen - nicht geladen ist nicht leer.
   const shownCalendar =
-    calendar !== null && calendar.from === week ? calendar : null
+    calendar !== null && calendar.from === start && calendar.to === end
+      ? calendar
+      : null
 
   const reload = React.useCallback(async () => {
-    if (view !== 'woche') return
     const request = ++requestRef.current
     setLoading(true)
+    if (view === 'jahr') {
+      // Das Konto kommt getrennt; scheitert nur es, steht das Jahr trotzdem.
+      setBalances((current) =>
+        current?.year === year
+          ? current
+          : { year, value: { status: 'loading' } }
+      )
+      fetchBalances(year).then(
+        (list) => {
+          if (request !== requestRef.current) return
+          setBalances({
+            year,
+            value: {
+              status: 'ok',
+              byEmployee: new Map(list.map((b) => [b.employeeId, b])),
+            },
+          })
+        },
+        () => {
+          if (request !== requestRef.current) return
+          setBalances({ year, value: { status: 'error' } })
+        }
+      )
+    }
     try {
-      const next = await fetchCalendar({ from: week, to: addDays(week, 6) })
+      const next = await fetchCalendar({ from: start, to: end })
       if (request !== requestRef.current) return
       setCalendar(next)
       setLoadError(null)
@@ -211,7 +299,7 @@ export default function DienstplanClient({
     } finally {
       if (request === requestRef.current) setLoading(false)
     }
-  }, [week, view])
+  }, [start, end, view, year])
 
   React.useEffect(() => {
     void reload()
@@ -240,18 +328,26 @@ export default function DienstplanClient({
     }
   }, [])
 
+  const today = calendar?.today ?? todayIso()
+
   const navigate = (next: {
-    week?: string
+    start?: string
     view?: CalendarView
     area?: AreaFilter
   }) => {
+    const nextView = next.view ?? view
     const state = {
-      week: next.week ?? week,
-      view: next.view ?? view,
+      view: nextView,
+      // Neuer Zeitraum ausdrücklich, sonst beim Ansichtswechsel umrechnen.
+      start:
+        next.start ??
+        (nextView === view
+          ? start
+          : switchPeriod(view, start, nextView, today)),
       area: next.area ?? area,
     }
-    setWeek(state.week)
     setView(state.view)
+    setStart(state.start)
     setArea(state.area)
     router.replace(dienstplanHref(state), { scroll: false })
   }
@@ -309,7 +405,14 @@ export default function DienstplanClient({
     }
   }
 
-  const thisWeek = mondayOf(calendar?.today ?? todayIso())
+  const nav = PERIOD_NAV[view]
+  const sectionHint =
+    shownCalendar && shownCalendar.employees.length > 0
+      ? SECTION_HINT[view]
+      : undefined
+  // Die Tabelle steht bis an den Rand der Karte; Leer- und Ladezustand
+  // bekommen das Polster des Abschnitts.
+  const gridShown = shownCalendar !== null && shownCalendar.employees.length > 0
 
   const toolbar = (
     <>
@@ -359,18 +462,17 @@ export default function DienstplanClient({
       subtitle="Schichten im Verkauf, Urlaub und Abwesenheiten"
       actions={
         <>
-          {view === 'woche' && (
-            <DayNavigator
-              value={week}
-              onChange={(date) => navigate({ week: mondayOf(date) })}
-              label="Woche"
-              step={weekStep}
-              prevLabel="Vorige Woche"
-              nextLabel="Nächste Woche"
-              today={thisWeek}
-              data-testid="week-navigator"
-            />
-          )}
+          <DayNavigator
+            key={view}
+            value={start}
+            onChange={(date) => navigate({ start: periodStart(view, date) })}
+            label={nav.label}
+            step={(date, direction) => stepPeriod(view, date, direction)}
+            prevLabel={nav.prev}
+            nextLabel={nav.next}
+            today={periodStart(view, today)}
+            data-testid={nav.testId}
+          />
           <Button
             component={Link}
             href="/admin/dienstplan/mitarbeiter"
@@ -390,6 +492,15 @@ export default function DienstplanClient({
       {loadError && !blockingError && (
         <ErrorState message={loadError} onRetry={() => void reload()} />
       )}
+      {view === 'jahr' &&
+        shownCalendar !== null &&
+        balances?.year === year &&
+        balances.value.status === 'error' && (
+          <Alert severity="warning">
+            Das Urlaubskonto {year} konnte nicht geladen werden - die Spalte
+            „Urlaub {year}“ bleibt offen.
+          </Alert>
+        )}
       {notice && (
         <Alert
           severity={notice.warnings.length > 0 ? 'warning' : 'success'}
@@ -410,31 +521,30 @@ export default function DienstplanClient({
 
       <PageSection
         title={
-          view === 'woche' ? (
-            <span data-testid="week-title">{formatWeekTitle(week)}</span>
-          ) : view === 'monat' ? (
-            'Monatsansicht'
-          ) : (
-            'Jahresansicht'
-          )
+          <span data-testid={TITLE_TEST_ID[view]}>
+            {formatPeriodTitle(view, start)}
+          </span>
         }
-        description={
-          view === 'woche' && shownCalendar
-            ? 'Leere Zelle antippen: Schicht oder Abwesenheit anlegen. Eintrag antippen: bearbeiten.'
-            : undefined
-        }
+        description={sectionHint}
         actions={toolbar}
-        disablePadding={view === 'woche' && shownCalendar !== null}
+        disablePadding={gridShown}
         data-testid="calendar-section"
       >
-        {view !== 'woche' ? (
+        {shownCalendar !== null && shownCalendar.employees.length === 0 ? (
           <EmptyState
-            title={`${
-              view === 'monat' ? 'Die Monatsansicht' : 'Die Jahresansicht'
-            } folgt.`}
-            description="Bis dahin zeigt die Woche alle Einträge."
+            title="Noch keine Mitarbeiter."
+            description="Erst Mitarbeiter anlegen, dann Schichten und Abwesenheiten eintragen."
+            action={
+              <Button
+                component={Link}
+                href="/admin/dienstplan/mitarbeiter"
+                variant="outlined"
+              >
+                Zur Mitarbeiterliste
+              </Button>
+            }
           />
-        ) : shownCalendar !== null ? (
+        ) : shownCalendar !== null && view === 'woche' ? (
           <WeekView
             calendar={shownCalendar}
             dates={dates}
@@ -446,6 +556,29 @@ export default function DienstplanClient({
             }
             onAbsence={(employee, absence, date) =>
               setDialog({ kind: 'absence', employee, date, absence })
+            }
+          />
+        ) : shownCalendar !== null && view === 'monat' ? (
+          <MonthView
+            calendar={shownCalendar}
+            monthStart={start}
+            area={area}
+            loading={loading}
+            onOpenDay={(date) =>
+              navigate({ view: 'woche', start: mondayOf(date) })
+            }
+          />
+        ) : shownCalendar !== null ? (
+          <YearView
+            calendar={shownCalendar}
+            year={year}
+            balances={
+              balances?.year === year ? balances.value : { status: 'loading' }
+            }
+            area={area}
+            loading={loading}
+            onOpenMonth={(monthStart) =>
+              navigate({ view: 'monat', start: monthStart })
             }
           />
         ) : blockingError ? (
@@ -569,26 +702,6 @@ function WeekView({
       : calendar.employees.filter((e) => e.area === area)
   const groups = groupByArea(shown)
 
-  if (calendar.employees.length === 0) {
-    return (
-      <Box sx={{ px: { xs: 2, md: 3 }, pb: { xs: 2, md: 3 } }}>
-        <EmptyState
-          title="Noch keine Mitarbeiter."
-          description="Erst Mitarbeiter anlegen, dann Schichten und Abwesenheiten eintragen."
-          action={
-            <Button
-              component={Link}
-              href="/admin/dienstplan/mitarbeiter"
-              variant="outlined"
-            >
-              Zur Mitarbeiterliste
-            </Button>
-          }
-        />
-      </Box>
-    )
-  }
-
   return (
     <Box sx={{ position: 'relative' }}>
       {loading && (
@@ -656,70 +769,17 @@ function WeekView({
             ) : (
               groups.map((group) => (
                 <React.Fragment key={group.area}>
-                  <TableRow>
-                    <TableCell
-                      component="th"
-                      scope="rowgroup"
-                      colSpan={8}
-                      sx={{
-                        typography: 'subtitle2',
-                        fontWeight: 600,
-                        py: 0.75,
-                        bgcolor: 'action.hover',
-                      }}
-                    >
-                      {/* bleibt beim waagrechten Scrollen links stehen */}
-                      <Box
-                        component="span"
-                        sx={{
-                          position: 'sticky',
-                          left: 8,
-                          display: 'inline-block',
-                        }}
-                      >
-                        {group.label} ({group.employees.length})
-                      </Box>
-                    </TableCell>
-                  </TableRow>
+                  <AreaGroupRow
+                    label={group.label}
+                    count={group.employees.length}
+                    colSpan={8}
+                  />
                   {group.employees.map((employee) => (
                     <TableRow
                       key={employee.id}
                       data-testid={`row-${employee.id}`}
                     >
-                      <TableCell component="th" scope="row" sx={stickyName}>
-                        <Box
-                          sx={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 1,
-                            minWidth: 0,
-                          }}
-                        >
-                          <ColorDot color={employee.color} />
-                          <Box
-                            component={Link}
-                            href={profileHref(employee.id)}
-                            sx={{
-                              typography: 'body2',
-                              color: 'text.primary',
-                              fontWeight: 600,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                            }}
-                          >
-                            {employee.displayName}
-                          </Box>
-                        </Box>
-                        {!employee.active && (
-                          <Chip
-                            size="small"
-                            variant="outlined"
-                            label="ausgeschieden"
-                            sx={{ mt: 0.5 }}
-                          />
-                        )}
-                      </TableCell>
+                      <EmployeeNameCell employee={employee} />
                       {dates.map((date) => (
                         <DayCell
                           key={date}
@@ -744,29 +804,6 @@ function WeekView({
   )
 }
 
-/**
- * Stehenbleibende Namensspalte. Sie braucht einen deckenden Grund; im
- * Dunkelmodus legt MUI über `Paper` (Elevation 1, die Fläche von
- * `PageSection`) einen hellen Schleier - den bekommt die Zelle auch, sonst
- * wäre sie dunkler als das Raster daneben.
- */
-function stickyName(theme: Theme) {
-  return {
-    position: 'sticky',
-    left: 0,
-    zIndex: 2,
-    verticalAlign: 'top',
-    bgcolor: 'background.paper',
-    backgroundImage:
-      theme.palette.mode === 'dark'
-        ? `linear-gradient(${PAPER_OVERLAY}, ${PAPER_OVERLAY})`
-        : 'none',
-  } as const
-}
-
-/** MUI-Schleier für Elevation 1 im Dunkelmodus (`getOverlayAlpha(1)`). */
-const PAPER_OVERLAY = 'rgba(255, 255, 255, 0.051)'
-
 function DayHeader({
   date,
   day,
@@ -779,6 +816,7 @@ function DayHeader({
   anyShifts: boolean
 }) {
   const closedName = day ? closedDayLabel(day) : null
+  const staffing = day ? staffingText(day, anyShifts) : null
   return (
     <TableCell
       data-testid={`day-${date}`}
@@ -807,14 +845,14 @@ function DayHeader({
           {day.halfDayName} (halber Tag)
         </Typography>
       )}
-      {day && (
+      {staffing && (
         <Typography
           variant="caption"
           color="text.secondary"
           sx={{ display: 'block' }}
           data-testid={`staffing-${date}`}
         >
-          {staffingText(day, anyShifts)}
+          {staffing}
         </Typography>
       )}
     </TableCell>
@@ -906,6 +944,12 @@ function DayCell({
   )
 }
 
+/**
+ * Einträge der Woche sind am Schreibtisch kompakt; auf Touch-Geräten sind
+ * sie der einzige Weg zum Bearbeiten und bekommen 44 px (Layout-Kit).
+ */
+const ENTRY_TOUCH = { minHeight: 44 } as const
+
 /** Abwesenheit als Balken: genehmigt gefüllt, geplant gestrichelt. */
 function AbsenceBar({
   absence,
@@ -932,6 +976,8 @@ function AbsenceBar({
         justifyContent: 'flex-start',
         px: 0.75,
         py: 0.25,
+        // eigene klickbare Fläche: auf Touch 44 px hoch (Layout-Kit)
+        [TOUCH_MEDIA]: ENTRY_TOUCH,
         borderRadius: 1,
         typography: 'caption',
         fontWeight: 600,
@@ -974,6 +1020,7 @@ function ShiftBlock({
         justifyContent: 'flex-start',
         px: 0.75,
         py: 0.25,
+        [TOUCH_MEDIA]: ENTRY_TOUCH,
         borderRadius: 1,
         typography: 'caption',
         fontWeight: 600,

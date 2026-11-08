@@ -35,6 +35,10 @@ people only.
 | `POST /api/dienstplan/absences`, `PATCH/DELETE …/:id`            | `{ employeeId, type, status?, startDate, endDate?, halfDay?, note? }` - `status` default `geplant`, `endDate` default `startDate` |
 | `GET /api/dienstplan/balance?year=[&employeeId=]`                | one balance, or a list of all employees employed in that year (`+ displayName, area, active`)                                     |
 
+In the profile each absence also carries `daysInYear`: its vacation days inside the shown year
+(the part the balance counts), next to `days` for the whole range - they differ for an absence
+across New Year.
+
 Ranges (`from`/`to`) are required, `from ≤ to`, at most 366 days (400 `invalid_range`). `year`
 defaults to the current year (Berlin), 2000-2100 (400 `invalid_year`).
 

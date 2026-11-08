@@ -10,6 +10,7 @@ import MitarbeiterClient from './MitarbeiterClient'
 import { fakeSession, WithSession } from '../../../../lib/testing/fakeSession'
 import * as dienstplanApi from '../../../../lib/dienstplanApi'
 import * as authApi from '../../../../lib/authApi'
+import { touchStyle } from '../../../../lib/testing/touchTarget'
 
 jest.mock('../../../../lib/dienstplanApi', () => ({
   ...jest.requireActual('../../../../lib/dienstplanApi'),
@@ -242,5 +243,32 @@ describe('Dienstplan - Mitarbeiterliste', () => {
         'Das Austrittsdatum liegt vor dem Eintrittsdatum.'
       )
     ).toBeInTheDocument()
+  })
+
+  it('Logins nicht geladen: Feld gesperrt mit Hinweis statt leerer Liste', async () => {
+    auth.fetchUsers.mockRejectedValue(new Error('Netzwerkfehler'))
+    renderList()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Neuer Mitarbeiter' })
+    )
+    expect(
+      await dialog().findByText(
+        'Logins konnten nicht geladen werden - Verknüpfung bleibt unverändert.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      dialog().getByRole('combobox', { name: 'Login (optional)' })
+    ).toHaveAttribute('aria-disabled', 'true')
+  })
+
+  it('Farbfelder sind auf Touch-Geräten 44 px groß (Layout-Kit)', async () => {
+    renderList()
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Neuer Mitarbeiter' })
+    )
+    expect(
+      touchStyle(dialog().getByRole('radio', { name: 'Farbe #43A047' }))
+    ).toMatchObject({ 'min-width': '44px', 'min-height': '44px' })
+    await waitFor(() => expect(auth.fetchUsers).toHaveBeenCalled())
   })
 })

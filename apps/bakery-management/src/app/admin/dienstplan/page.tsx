@@ -12,8 +12,10 @@ export const metadata = {
  * Client-Komponente ohne `useSearchParams()` auskommt (Muster wie
  * `preorders/tag/page.tsx`). Die Client-Komponente prüft die Werte.
  *
- *   `?woche=JJJJ-MM-TT`  ein Tag der Woche (Vorgabe: diese Woche)
  *   `?ansicht=`          `woche` (Standard) | `monat` | `jahr`
+ *   `?woche=JJJJ-MM-TT`  ein Tag der Woche (Vorgabe: diese Woche)
+ *   `?monat=JJJJ-MM`     Monat der Monatsansicht (Vorgabe: dieser Monat)
+ *   `?jahr=JJJJ`         Jahr der Jahresansicht (Vorgabe: dieses Jahr)
  *   `?bereich=`          `verkauf` | `backstube` | `fahrer` | `buero` (Vorgabe: alle)
  */
 export default async function DienstplanPage({
@@ -29,6 +31,8 @@ export default async function DienstplanPage({
   return (
     <DienstplanClient
       week={first('woche')}
+      month={first('monat')}
+      year={first('jahr')}
       view={first('ansicht')}
       area={first('bereich')}
     />

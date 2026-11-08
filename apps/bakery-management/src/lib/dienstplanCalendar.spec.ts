@@ -1,7 +1,19 @@
 import {
   closedDayLabel,
+  daysInMonth,
   dienstplanHref,
   entriesByCell,
+  formatMonthTitle,
+  formatPeriodTitle,
+  monthDates,
+  monthSegment,
+  parseMonth,
+  parsePeriod,
+  parseYear,
+  periodEnd,
+  periodStart,
+  stepPeriod,
+  switchPeriod,
   formatWeekTitle,
   isoWeekNumber,
   mondayOf,
@@ -71,11 +83,14 @@ describe('dienstplanCalendar', () => {
 
   it('baut die URL ohne Standardwerte', () => {
     expect(
-      dienstplanHref({ week: '2026-11-09', view: 'woche', area: 'alle' })
+      dienstplanHref({ start: '2026-11-09', view: 'woche', area: 'alle' })
     ).toBe('/admin/dienstplan?woche=2026-11-09')
     expect(
-      dienstplanHref({ week: '2026-11-09', view: 'monat', area: 'verkauf' })
-    ).toBe('/admin/dienstplan?woche=2026-11-09&ansicht=monat&bereich=verkauf')
+      dienstplanHref({ start: '2026-11-01', view: 'monat', area: 'verkauf' })
+    ).toBe('/admin/dienstplan?ansicht=monat&monat=2026-11&bereich=verkauf')
+    expect(
+      dienstplanHref({ start: '2026-01-01', view: 'jahr', area: 'alle' })
+    ).toBe('/admin/dienstplan?ansicht=jahr&jahr=2026')
   })
 
   it('ordnet Schichten und mehrtägige Abwesenheiten den Zellen zu', () => {
@@ -112,6 +127,84 @@ describe('dienstplanCalendar', () => {
     expect(cells.has('4:2026-11-12')).toBe(false)
   })
 
+  it('Zeitraum je Ansicht: Anfang, Ende, Blättern', () => {
+    expect(periodStart('woche', '2026-11-12')).toBe('2026-11-09')
+    expect(periodStart('monat', '2026-11-12')).toBe('2026-11-01')
+    expect(periodStart('jahr', '2026-11-12')).toBe('2026-01-01')
+    expect(periodEnd('woche', '2026-11-09')).toBe('2026-11-15')
+    expect(periodEnd('monat', '2028-02-01')).toBe('2028-02-29')
+    expect(periodEnd('monat', '2026-02-01')).toBe('2026-02-28')
+    expect(periodEnd('jahr', '2026-01-01')).toBe('2026-12-31')
+    expect(daysInMonth('2026-11-01')).toBe(30)
+    expect(monthDates('2026-02-01')).toHaveLength(28)
+
+    expect(stepPeriod('woche', '2026-11-09', 1)).toBe('2026-11-16')
+    expect(stepPeriod('monat', '2026-12-01', 1)).toBe('2027-01-01')
+    expect(stepPeriod('monat', '2026-01-01', -1)).toBe('2025-12-01')
+    expect(stepPeriod('jahr', '2026-01-01', -1)).toBe('2025-01-01')
+
+    expect(formatMonthTitle('2026-03-01')).toBe('März 2026')
+    expect(formatPeriodTitle('jahr', '2026-01-01')).toBe('Jahr 2026')
+  })
+
+  it('Ansichtswechsel: Zeitraum mit heute, sonst nach dem Donnerstag', () => {
+    const today = '2026-11-10'
+    // Woche 30.11.-06.12. (Donnerstag 03.12.) → Dezember
+    expect(switchPeriod('woche', '2026-11-30', 'monat', today)).toBe(
+      '2026-12-01'
+    )
+    // Woche mit heute → Monat von heute
+    expect(switchPeriod('woche', '2026-11-09', 'monat', today)).toBe(
+      '2026-11-01'
+    )
+    // Monat ohne heute → erste Woche mit Donnerstag im Monat
+    expect(switchPeriod('monat', '2027-01-01', 'woche', today)).toBe(
+      '2027-01-04'
+    )
+    expect(switchPeriod('monat', '2026-10-01', 'woche', today)).toBe(
+      '2026-09-28'
+    )
+    // Jahr mit heute → Woche von heute; anderes Jahr → Januar
+    expect(switchPeriod('jahr', '2026-01-01', 'woche', today)).toBe(
+      '2026-11-09'
+    )
+    expect(switchPeriod('jahr', '2027-01-01', 'monat', today)).toBe(
+      '2027-01-01'
+    )
+    // Woche 28.12.2026-03.01.2027 (Donnerstag 31.12.) → Jahr 2026
+    expect(switchPeriod('woche', '2026-12-28', 'jahr', today)).toBe(
+      '2026-01-01'
+    )
+  })
+
+  it('liest Monat und Jahr aus der URL, sonst aus der Woche oder heute', () => {
+    expect(parseMonth('2026-11')).toBe('2026-11-01')
+    expect(parseMonth('2026-13')).toBeNull()
+    expect(parseMonth('2026-11-05')).toBeNull()
+    expect(parseYear('2026')).toBe('2026-01-01')
+    expect(parseYear('26')).toBeNull()
+    const today = '2026-11-10'
+    expect(parsePeriod('monat', { month: '2026-03' }, today)).toBe('2026-03-01')
+    expect(parsePeriod('monat', { week: '2026-12-02' }, today)).toBe(
+      '2026-12-01'
+    )
+    expect(parsePeriod('jahr', { year: 'x' }, today)).toBe('2026-01-01')
+    expect(parsePeriod('woche', {}, today)).toBe('2026-11-09')
+  })
+
+  it('Balken der Jahresansicht: Anteil im Monat', () => {
+    const absence = { startDate: '2026-07-27', endDate: '2026-08-08' }
+    expect(monthSegment(absence, '2026-07-01')).toEqual({
+      left: 26 / 31,
+      width: 5 / 31,
+    })
+    expect(monthSegment(absence, '2026-08-01')).toEqual({
+      left: 0,
+      width: 8 / 31,
+    })
+    expect(monthSegment(absence, '2026-09-01')).toBeNull()
+  })
+
   it('Kopfzeile: geschlossen, „nichts geplant“ statt 0, sonst Besetzung', () => {
     expect(staffingText(day(), true)).toBe('Verkauf besetzt: 2')
     expect(staffingText(day({ verkaufBesetzt: 0 }), true)).toBe(
@@ -120,9 +213,8 @@ describe('dienstplanCalendar', () => {
     expect(staffingText(day({ verkaufBesetzt: 0 }), false)).toBe(
       'nichts geplant'
     )
-    expect(staffingText(day({ closed: true, restDay: true }), true)).toBe(
-      'geschlossen'
-    )
+    // Geschlossen: keine Zeile - der Name des Tags steht schon darüber.
+    expect(staffingText(day({ closed: true, restDay: true }), true)).toBeNull()
 
     expect(closedDayLabel(day())).toBeNull()
     expect(closedDayLabel(day({ closed: true, restDay: true }))).toBe('Ruhetag')

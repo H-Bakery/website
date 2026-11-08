@@ -8,6 +8,7 @@ import {
 } from '@testing-library/react'
 import DienstplanClient from './DienstplanClient'
 import * as dienstplanApi from '../../../lib/dienstplanApi'
+import { touchStyle } from '../../../lib/testing/touchTarget'
 
 const mockReplace = jest.fn()
 jest.mock('next/navigation', () => ({
@@ -22,6 +23,7 @@ jest.mock('next/navigation', () => ({
 jest.mock('../../../lib/dienstplanApi', () => ({
   ...jest.requireActual('../../../lib/dienstplanApi'),
   fetchCalendar: jest.fn(),
+  fetchBalances: jest.fn(),
   fetchShiftTemplates: jest.fn(),
   createShift: jest.fn(),
   updateShift: jest.fn(),
@@ -172,7 +174,13 @@ const TEMPLATES: dienstplanApi.ShiftTemplate[] = [
 ]
 
 function renderCalendar(
-  props: { week?: string; view?: string; area?: string } = {
+  props: {
+    week?: string
+    month?: string
+    year?: string
+    view?: string
+    area?: string
+  } = {
     week: '2026-11-12',
   }
 ) {
@@ -218,9 +226,11 @@ describe('Dienstplan - Kalender (Woche)', () => {
     expect(screen.getByText('Verkauf (2)')).toBeInTheDocument()
     expect(screen.getByText('Backstube (1)')).toBeInTheDocument()
 
+    // Geschlossener Tag: nur sein Name, kein zweites „geschlossen“.
     const monday = screen.getByTestId('day-2026-11-09')
     expect(monday).toHaveTextContent('Ruhetag')
-    expect(monday).toHaveTextContent('geschlossen')
+    expect(monday).not.toHaveTextContent('geschlossen')
+    expect(screen.queryByTestId('staffing-2026-11-09')).not.toBeInTheDocument()
     expect(screen.getByTestId('day-2026-11-10')).toHaveTextContent(
       'Verkauf besetzt: 1'
     )
@@ -269,9 +279,7 @@ describe('Dienstplan - Kalender (Woche)', () => {
       'nichts geplant'
     )
     expect(screen.queryByText(/Verkauf besetzt/)).not.toBeInTheDocument()
-    expect(screen.getByTestId('staffing-2026-11-09')).toHaveTextContent(
-      'geschlossen'
-    )
+    expect(screen.queryByTestId('staffing-2026-11-09')).not.toBeInTheDocument()
   })
 
   it('Feiertag und halber Tag kommen mit Namen aus der API', async () => {
@@ -291,9 +299,7 @@ describe('Dienstplan - Kalender (Woche)', () => {
     expect(screen.getByTestId('day-2026-11-11')).toHaveTextContent(
       'Testfeiertag'
     )
-    expect(screen.getByTestId('staffing-2026-11-11')).toHaveTextContent(
-      'geschlossen'
-    )
+    expect(screen.queryByTestId('staffing-2026-11-11')).not.toBeInTheDocument()
     expect(screen.getByTestId('day-2026-11-12')).toHaveTextContent(
       'Testabend (halber Tag)'
     )
@@ -431,8 +437,17 @@ describe('Dienstplan - Kalender (Woche)', () => {
     expect(screen.getByTestId('row-4')).toBeInTheDocument()
     expect(screen.getByTestId('week-title')).toHaveTextContent('23.11.')
 
+    // Alter Link mit Woche und Ansicht Monat: der Monat dieser Woche.
     rerender(<DienstplanClient week="2026-11-25" view="monat" />)
-    expect(screen.getByText(/Die Monatsansicht folgt/)).toBeInTheDocument()
+    await waitFor(() =>
+      expect(api.fetchCalendar).toHaveBeenLastCalledWith({
+        from: '2026-11-01',
+        to: '2026-11-30',
+      })
+    )
+    expect(await screen.findByTestId('month-title')).toHaveTextContent(
+      'November 2026'
+    )
   })
 
   it('filtert nach Bereich (auch aus der URL)', async () => {
@@ -455,19 +470,19 @@ describe('Dienstplan - Kalender (Woche)', () => {
     ).toBeInTheDocument()
   })
 
-  it('Monat und Jahr sind noch Platzhalter (Ansicht in der URL)', async () => {
+  it('Einträge der Woche sind auf Touch-Geräten 44 px hoch (Layout-Kit)', async () => {
     renderCalendar()
     await ready()
-    fireEvent.click(screen.getByRole('button', { name: 'Monat' }))
-    expect(screen.getByText(/Die Monatsansicht folgt/)).toBeInTheDocument()
-    expect(mockReplace).toHaveBeenLastCalledWith(
-      '/admin/dienstplan?woche=2026-11-09&ansicht=monat',
-      { scroll: false }
-    )
-    fireEvent.click(screen.getByRole('button', { name: 'Jahr' }))
-    expect(screen.getByText(/Die Jahresansicht folgt/)).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Woche' }))
-    expect(await screen.findByTestId('row-3')).toBeInTheDocument()
+    expect(touchStyle(screen.getByTestId('shift-21'))).toMatchObject({
+      'min-height': '44px',
+    })
+    expect(
+      touchStyle(
+        within(screen.getByTestId('cell-4-2026-11-11')).getByTestId(
+          'absence-31'
+        )
+      )
+    ).toMatchObject({ 'min-height': '44px' })
   })
 
   it('legt per Klick auf eine leere Zelle eine Schicht mit Vorlage an und zeigt den Hinweis der API', async () => {
@@ -708,6 +723,255 @@ describe('Dienstplan - Kalender (Woche)', () => {
     renderCalendar()
     expect(
       await screen.findByText(/Noch keine Mitarbeiter/)
+    ).toBeInTheDocument()
+  })
+})
+
+// ------------------------------------------------------------ Monat / Jahr
+
+const NOVEMBER = Array.from({ length: 30 }, (_, i) =>
+  new Date(Date.UTC(2026, 10, 1 + i)).toISOString().slice(0, 10)
+)
+
+function monthCalendar(
+  overrides: Partial<dienstplanApi.Calendar> = {}
+): dienstplanApi.Calendar {
+  return {
+    ...calendar(),
+    from: '2026-11-01',
+    to: '2026-11-30',
+    days: NOVEMBER.map((date) => {
+      const weekday = ((new Date(`${date}T00:00:00Z`).getUTCDay() + 6) % 7) + 1
+      return {
+        date,
+        weekday,
+        holidayName: date === '2026-11-01' ? 'Allerheiligen' : null,
+        restDay: weekday === 1,
+        closed: weekday === 1 || date === '2026-11-01',
+        weight: weekday === 1 || date === '2026-11-01' ? 0 : 1,
+        halfDayName: null,
+        verkaufBesetzt: 0,
+      }
+    }),
+    ...overrides,
+  }
+}
+
+const YEAR_URLAUB: dienstplanApi.Absence = {
+  id: 41,
+  employeeId: 3,
+  type: 'urlaub',
+  status: 'genehmigt',
+  startDate: '2026-07-27',
+  endDate: '2026-08-08',
+  halfDay: false,
+  days: 11,
+  note: null,
+}
+
+function yearCalendar(): dienstplanApi.Calendar {
+  return {
+    ...calendar(),
+    from: '2026-01-01',
+    to: '2026-12-31',
+    shifts: [],
+    absences: [YEAR_URLAUB, URLAUB],
+    days: [],
+  }
+}
+
+function balance(
+  employeeId: number,
+  overrides: Partial<dienstplanApi.BalanceListEntry> = {}
+): dienstplanApi.BalanceListEntry {
+  return {
+    employeeId,
+    displayName: 'x',
+    area: 'verkauf',
+    active: true,
+    status: 'ok',
+    year: 2026,
+    entitlementDays: 24,
+    carryoverDays: null,
+    carryoverDeadline: '2026-03-31',
+    approvedDays: 11,
+    plannedDays: 3,
+    entitlement: 24,
+    months: 12,
+    fullYear: true,
+    carryoverUsed: null,
+    carryoverExpired: null,
+    carryoverOpen: null,
+    remainingDays: 13,
+    remainingAfterPlannedDays: 10,
+    ...overrides,
+  }
+}
+
+describe('Dienstplan - Kalender (Monat und Jahr)', () => {
+  beforeEach(() => {
+    jest.restoreAllMocks()
+    mockReplace.mockReset()
+    api.fetchShiftTemplates.mockReset().mockResolvedValue(TEMPLATES)
+    api.fetchCalendar.mockReset().mockImplementation(async (range) => {
+      if (range.from === '2026-11-01') return monthCalendar()
+      if (range.from === '2026-01-01') return yearCalendar()
+      return range.from === WEEK[0] ? calendar() : calendarFor(range)
+    })
+    api.fetchBalances.mockReset().mockResolvedValue([
+      balance(3),
+      balance(5, {
+        status: 'no-config',
+        entitlementDays: null,
+        entitlement: null,
+        approvedDays: 0,
+        plannedDays: 0,
+        remainingDays: null,
+        remainingAfterPlannedDays: null,
+      }),
+      balance(4, { approvedDays: 0, plannedDays: 3, remainingDays: 24 }),
+    ])
+  })
+
+  it('Monat: Tage als Spalten, Abwesenheit mit Kürzel, Schicht als Punkt, Ruhetag hinterlegt', async () => {
+    renderCalendar({ view: 'monat', month: '2026-11' })
+    await ready()
+    expect(api.fetchCalendar).toHaveBeenCalledWith({
+      from: '2026-11-01',
+      to: '2026-11-30',
+    })
+    expect(screen.getByTestId('month-title')).toHaveTextContent('November 2026')
+    expect(screen.getAllByTestId(/^day-2026-11-/)).toHaveLength(30)
+    expect(screen.getByTestId('day-2026-11-09')).toHaveTextContent('Mo')
+    expect(screen.getByTestId('day-2026-11-09')).toHaveTextContent('Ruhetag')
+    expect(screen.getByTestId('day-2026-11-01')).toHaveTextContent(
+      'Allerheiligen'
+    )
+
+    const urlaub = within(screen.getByTestId('cell-4-2026-11-12')).getByRole(
+      'button'
+    )
+    expect(urlaub).toHaveTextContent('U')
+    expect(urlaub).toHaveAttribute('data-status', 'geplant')
+    expect(urlaub).toHaveStyle({ borderStyle: 'dashed' })
+    expect(urlaub).toHaveAccessibleName(
+      'Max Muster, Do, 12.11.2026: Urlaub (geplant) - Woche öffnen'
+    )
+    expect(
+      within(screen.getByTestId('cell-5-2026-11-14')).getByRole('button')
+    ).toHaveTextContent('F')
+    expect(screen.getByTestId('shift-dot-3-2026-11-10')).toBeInTheDocument()
+    expect(screen.getByTestId('absence-legend')).toHaveTextContent('U = Urlaub')
+    // Tageszellen sind auf Touch-Geräten 44 px hoch.
+    expect(touchStyle(urlaub)).toMatchObject({ 'min-height': '44px' })
+
+    // Tag antippen → Woche dieses Tages (dort wird bearbeitet).
+    fireEvent.click(urlaub)
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      '/admin/dienstplan?woche=2026-11-09',
+      { scroll: false }
+    )
+    expect(await screen.findByTestId('week-title')).toHaveTextContent('KW 46')
+  })
+
+  it('Monat blättert monatsweise; Ansichtswechsel nimmt den Zeitraum mit', async () => {
+    renderCalendar({ week: '2026-11-12' })
+    await ready()
+    fireEvent.click(screen.getByRole('button', { name: 'Monat' }))
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      '/admin/dienstplan?ansicht=monat&monat=2026-11',
+      { scroll: false }
+    )
+    expect(await screen.findByTestId('month-title')).toHaveTextContent(
+      'November 2026'
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      '/admin/dienstplan?ansicht=monat&monat=2026-12',
+      { scroll: false }
+    )
+    await waitFor(() =>
+      expect(api.fetchCalendar).toHaveBeenLastCalledWith({
+        from: '2026-12-01',
+        to: '2026-12-31',
+      })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Jahr' }))
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      '/admin/dienstplan?ansicht=jahr&jahr=2026',
+      { scroll: false }
+    )
+    expect(await screen.findByTestId('year-title')).toHaveTextContent(
+      'Jahr 2026'
+    )
+    // Zurück zur Woche: heute (laut API 10.11.) liegt im Jahr → diese Woche.
+    await screen.findByText('Rest 13')
+    fireEvent.click(screen.getByRole('button', { name: 'Woche' }))
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      '/admin/dienstplan?woche=2026-11-09',
+      { scroll: false }
+    )
+    expect(await screen.findByTestId('shift-21')).toBeInTheDocument()
+  })
+
+  it('Jahr: zwölf Monate je Person mit Urlaubsbalken, daneben das Konto (offen statt 0)', async () => {
+    renderCalendar({ view: 'jahr', year: '2026' })
+    await ready()
+    expect(api.fetchCalendar).toHaveBeenCalledWith({
+      from: '2026-01-01',
+      to: '2026-12-31',
+    })
+    expect(api.fetchBalances).toHaveBeenCalledWith(2026)
+    expect(screen.getByTestId('year-title')).toHaveTextContent('Jahr 2026')
+
+    // Urlaub 27.07.-08.08.: ein Balken im Juli (ab Tag 27), einer im August.
+    const july = screen.getByTestId('bar-41-2026-07')
+    expect(july).toHaveStyle({ left: `${(26 / 31) * 100}%` })
+    expect(july).toHaveAccessibleName(
+      'Urlaub (genehmigt) 27.07.2026 – 08.08.2026'
+    )
+    expect(screen.getByTestId('bar-41-2026-08')).toHaveStyle({
+      left: '0%',
+      width: `${(8 / 31) * 100}%`,
+    })
+    expect(
+      within(screen.getByTestId('month-3-2026-09')).queryByRole('img')
+    ).not.toBeInTheDocument()
+    expect(screen.getByTestId('bar-31-2026-11')).toHaveAttribute(
+      'data-status',
+      'geplant'
+    )
+
+    expect(await screen.findByText('Rest 13')).toBeInTheDocument()
+    expect(screen.getByTestId('balance-3')).toHaveTextContent(
+      'genommen 11 · geplant 3'
+    )
+    // Ohne Anspruch: offen, nie 0.
+    expect(screen.getByTestId('balance-5')).toHaveTextContent('Rest offen')
+    expect(screen.getByTestId('balance-5')).toHaveTextContent('Anspruch offen')
+
+    // Monat im Kopf antippen → Monatsansicht.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'November 2026 als Monat öffnen' })
+    )
+    expect(mockReplace).toHaveBeenLastCalledWith(
+      '/admin/dienstplan?ansicht=monat&monat=2026-11',
+      { scroll: false }
+    )
+    expect(await screen.findByTestId('month-title')).toHaveTextContent(
+      'November 2026'
+    )
+  })
+
+  it('Jahr: Konto nicht geladen heißt „nicht geladen“, nicht 0', async () => {
+    api.fetchBalances.mockRejectedValue(new Error('kaputt'))
+    renderCalendar({ view: 'jahr', year: '2026' })
+    await ready()
+    await waitFor(() =>
+      expect(screen.getByTestId('balance-3')).toHaveTextContent('nicht geladen')
+    )
+    expect(
+      screen.getByText(/Urlaubskonto 2026 konnte nicht geladen werden/)
     ).toBeInTheDocument()
   })
 })

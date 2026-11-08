@@ -34,6 +34,7 @@ import {
   type EmploymentType,
 } from '../../../../lib/dienstplanApi'
 import { fetchUsers, type AdminUser } from '../../../../lib/authApi'
+import { TOUCH_MEDIA } from '../../../../lib/muiTheme'
 
 export function messageOf(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback
@@ -101,6 +102,9 @@ export default function EmployeeDialog({
   )
   const [note, setNote] = React.useState(employee?.note ?? '')
   const [users, setUsers] = React.useState<AdminUser[] | null>(null)
+  // Logins nicht geladen ist nicht „keine Logins“: das Feld bleibt gesperrt
+  // und sagt es; die Verknüpfung bleibt dann, wie sie ist.
+  const [usersError, setUsersError] = React.useState(false)
   const [busy, setBusy] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
@@ -111,7 +115,7 @@ export default function EmployeeDialog({
         if (!cancelled) setUsers(list)
       },
       () => {
-        if (!cancelled) setUsers([])
+        if (!cancelled) setUsersError(true)
       }
     )
     return () => {
@@ -289,6 +293,8 @@ export default function EmployeeDialog({
                       sx={{
                         width: 36,
                         height: 36,
+                        // eigene klickbare Fläche: auf Touch 44 px
+                        [TOUCH_MEDIA]: { minWidth: 44, minHeight: 44 },
                         borderRadius: '50%',
                         bgcolor: c,
                         border: 2,
@@ -320,7 +326,12 @@ export default function EmployeeDialog({
                 setUserId(e.target.value === '' ? '' : Number(e.target.value))
               }
               disabled={users === null}
-              helperText="Verknüpft die Person mit ihrem Benutzerkonto - nicht nötig, wenn sie keinen Login hat."
+              error={usersError}
+              helperText={
+                usersError
+                  ? 'Logins konnten nicht geladen werden - Verknüpfung bleibt unverändert.'
+                  : 'Verknüpft die Person mit ihrem Benutzerkonto - nicht nötig, wenn sie keinen Login hat.'
+              }
             >
               <MenuItem value="">
                 <em>kein Login</em>
