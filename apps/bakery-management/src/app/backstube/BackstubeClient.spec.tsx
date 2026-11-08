@@ -131,7 +131,7 @@ describe('Backstube-Tablet', () => {
     // Gesamt groß, Liter mit Einheit, Zusammensetzung klein
     expect(screen.getByTestId(`bs-total-${WECK}`)).toHaveTextContent('65')
     expect(screen.getByTestId('bs-total-test-kornbrot|')).toHaveTextContent(
-      '2,25 l'
+      '2,25 L'
     )
     expect(screen.getByTestId(`bs-line-${WECK}`)).toHaveTextContent(
       'Basis 60 · CAP 10 · Korr. −5 (Testgrund)'

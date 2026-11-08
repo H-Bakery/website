@@ -11,7 +11,7 @@ import type {
 import {
   bakeSourceText,
   deltaBadgeText,
-  formatQty,
+  minQtyText,
   lineLabel,
 } from '../../lib/backzettelFormat'
 import { BackstubeDeltas } from './BackstubeDeltas'
@@ -131,8 +131,7 @@ function BakeRow({
           flexShrink: 0,
         }}
       >
-        {line.baseUnset ? '≥ ' : ''}
-        {formatQty(line.total, line.unit)}
+        {minQtyText(line, line.unit)}
       </Typography>
     </Box>
   )

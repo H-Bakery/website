@@ -11,7 +11,7 @@ import {
   bakeSourceText,
   deltaBadgeText,
   formatDateLong,
-  formatQty,
+  minQtyText,
   formatSignedQty,
   lineLabel,
 } from '../../lib/backzettelFormat'
@@ -193,9 +193,7 @@ export function BakeListPrint({ list, config }: BakeListPrintProps) {
                     </strong>
                     {detail && <span className="small"> – {detail}</span>}
                   </span>
-                  <span className="bl-qty">
-                    {formatQty(line.total, line.unit)}
-                  </span>
+                  <span className="bl-qty">{minQtyText(line, line.unit)}</span>
                   <span className="box" />
                 </div>
               )

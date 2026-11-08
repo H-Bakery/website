@@ -5,19 +5,25 @@ import {
   batchesText,
   bruchGroupText,
   bruchKgText,
+  bruchSpareText,
   bruchStep,
   deltaDoughLines,
+  deltaExtrasHighlights,
+  deltaExtrasLines,
   doughsTodayText,
   fillingGramsText,
+  fillingOpenNote,
   formatKnown,
   formatKnownGrams,
   hefeteigDoughText,
   hefeteigPiecesText,
   kgText,
   lineLabel,
+  litersFigure,
   litersHint,
   litersLabel,
   litersText,
+  minQtyText,
   variantLabel,
 } from './backzettelFormat'
 import {
@@ -111,7 +117,7 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
       '7 Bruch × 1.250 g – 66 Testdoppel · +4 frei'
     )
     expect(bruchGroupText(tue.groups[1])).toBe(
-      '1 Bruch × g unbekannt – 20 Testflitweck · +0 frei'
+      '1 Bruch × ? g (Bruchgewicht offen) – 20 Testflitweck · +0 frei'
     )
     expect(bruchStep(20, 2)).toBe(10)
     expect(bruchStep(20, 3)).toBeNull()
@@ -278,5 +284,149 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
         V2_TUE
       )
     ).toBe('Teig von heute · Entwurf')
+  })
+
+  it('Review Z10 Runde 2: offene Grundmenge mit Vorbestellung ist eine Mindestmenge, nie eine fertige Zahl', () => {
+    expect(minQtyText({ total: 4, totalIsMinimum: true })).toBe('≥ 4')
+    expect(minQtyText({ total: 0, totalIsMinimum: true })).toBe('offen')
+    expect(minQtyText({ total: 1.5, totalIsMinimum: true }, 'Liter')).toBe(
+      '≥ 1,5 L'
+    )
+    expect(minQtyText({ total: 0 })).toBe('0')
+    expect(minQtyText({ total: 12, totalIsMinimum: false })).toBe('12')
+    // Bruch-Mitglied: die bekannten 7 bleiben stehen
+    const [sun] = saturdayV2Draft().rolls ?? []
+    const mixed = sun.groups[1]
+    const open = {
+      ...mixed,
+      brueche: null,
+      spare: null,
+      spareProducts: null,
+      bruecheKnown: 1,
+      complete: false,
+      split: [
+        { ...mixed.split[0], totalIsMinimum: false },
+        { ...mixed.split[1], total: 7, doughPieces: 7, totalIsMinimum: true },
+      ],
+    }
+    expect(bruchGroupText(open)).toBe(
+      '≥ 1 Bruch × 2.000 g – 12 Teststern, ≥ 7 Testkäse'
+    )
+  })
+
+  it('„frei“: ein Teigstück, das kein ganzes Produkt ist, steht in Teigstücken - nie „+0 frei“', () => {
+    const [, tue] = saturdayV2Draft().rolls ?? []
+    const doppel = tue.groups[0]
+    expect(
+      bruchSpareText({ ...doppel, spare: 1, spareProducts: 0, perProduct: 2 })
+    ).toBe(' · +1 Teigstück frei')
+    expect(
+      bruchSpareText({ ...doppel, spare: 0, spareProducts: 0, perProduct: 2 })
+    ).toBe(' · +0 frei')
+  })
+
+  it('Hefeteig: alle Grundmengen offen heißt „–“, nicht „≥ 0“', () => {
+    expect(hefeteigPiecesText({ pieces: 0, piecesComplete: false })).toBe('–')
+    expect(hefeteigPiecesText({ pieces: 12, piecesComplete: false })).toBe(
+      '≥ 12'
+    )
+  })
+
+  it('Füllung mit offener Grundmenge: „≥“ bzw. „offen“ und ein Hinweis', () => {
+    const items = [
+      {
+        itemId: 'test-zopf',
+        name: 'Testzopf',
+        pieces: 3,
+        filling_g: 400,
+        grams: 1200,
+      },
+    ]
+    const open = {
+      grams: 1200,
+      missingFillingG: false,
+      baseUnset: true,
+      openItems: ['Testzopf – Apfel'],
+      items,
+    }
+    expect(fillingGramsText(open)).toBe('≥ 1,2 kg')
+    expect(fillingGramsText({ ...open, grams: 0, items: [] })).toBe('offen')
+    expect(fillingOpenNote(open)).toContain(
+      'Grundmenge offen: Testzopf – Apfel'
+    )
+    expect(fillingOpenNote({ baseUnset: undefined })).toBeNull()
+  })
+
+  it('Hefeteig-Nachtrag bei unvollständigem Teig: kein „+0 g“, Gesamt als Mindestmenge', () => {
+    const extras = {
+      doughs: [
+        {
+          id: 'test-hefe',
+          name: 'Testhefe',
+          pieces: 4,
+          totalPieces: 37,
+          totalPiecesComplete: false,
+          dough_g: 2400,
+          totalDough_g: null,
+          totalDoughKnown_g: 16500,
+          batches: null,
+          batchesBefore: null,
+          batch_max_kg: null,
+          weighing: [{ piece_g: 600, pieces: 4, total: 9 }],
+        },
+      ],
+      fillings: [],
+    }
+    const [text] = deltaExtrasLines(extras)
+    expect(text).toContain('4 Teigstücke mehr (+2,4 kg Teig)')
+    expect(text).toContain('mit Nachträgen ≥ 37 Teigstücke, ≥ 16,5 kg Teig')
+    expect(text).not.toMatch(/\+0 g|, 0 g/)
+    const unknown = {
+      ...extras,
+      doughs: [{ ...extras.doughs[0], dough_g: null, totalDoughKnown_g: 0 }],
+    }
+    const [u] = deltaExtrasLines(unknown)
+    expect(u).toContain('(Zusatzteig unbekannt)')
+    expect(u).toContain('Teig gesamt unbekannt')
+    expect(deltaExtrasHighlights(unknown)[0].amounts).toEqual(['+4 × 600 g'])
+  })
+
+  it('Nachtrag an der Maschine: offene Rundung zeigt die genauen Liter, „unbekannt“ nur ohne kg je Liter', () => {
+    const base = v2DeltaDough().deltaMachine?.[0]
+    if (!base) throw new Error('Fixture ohne deltaMachine')
+    const at = (m: typeof base) =>
+      deltaDoughLines({ date: SAT, deltaBruch: [], deltaMachine: [m] })[0]
+    expect(
+      at({
+        ...base,
+        litersBefore: {
+          exact: 17.21,
+          rounded: null,
+          reason: 'rounding_unknown',
+        },
+        liters: { exact: 19.85, rounded: null, reason: 'rounding_unknown' },
+      })
+    ).toContain('Liter 17,21 L → 19,85 L (Rundung offen)')
+    expect(
+      at({
+        ...base,
+        litersBefore: {
+          exact: null,
+          rounded: null,
+          reason: 'kg_per_liter_unknown',
+        },
+        liters: { exact: null, rounded: null, reason: 'kg_per_liter_unknown' },
+      })
+    ).toContain('Liter unbekannt (kg je Liter fehlt)')
+  })
+
+  it('große Literzahl ohne Zusatz - „Rundung offen“ steht klein darunter', () => {
+    expect(
+      litersFigure({ exact: 15.09, rounded: null, reason: 'rounding_unknown' })
+    ).toBe('15,09 L')
+    expect(litersFigure({ exact: 5.87, rounded: 6, reason: null })).toBe('6 L')
+    expect(
+      litersFigure({ exact: null, rounded: null, reason: 'dough_incomplete' })
+    ).toBe('unbekannt')
   })
 })

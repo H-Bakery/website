@@ -11,12 +11,13 @@ import type {
 import { DeltaExtrasNote } from '../backzettel/DeltaExtrasNote'
 import {
   fillingGramsText,
+  fillingOpenNote,
   formatKnown,
   formatNumber,
   hefeteigDoughText,
   hefeteigPiecesText,
   litersHint,
-  litersText,
+  litersFigure,
   ingredientAmount,
   recipeHeading,
   recipeIncompleteNote,
@@ -77,7 +78,7 @@ function Dough({ dough, muted }: { dough: HefeteigDough; muted: boolean }) {
           <Box>
             <Figure
               label="Wasser"
-              value={litersText(dough.liters)}
+              value={litersFigure(dough.liters)}
               muted={muted}
             />
             {litersHint(dough.liters) && (
@@ -192,6 +193,11 @@ function Filling({ filling, muted }: { filling: FillingNeed; muted: boolean }) {
           )
           .join(', ')}
       </Typography>
+      {fillingOpenNote(filling) && (
+        <Typography sx={{ fontSize: SMALL, fontWeight: 700, mt: 0.5 }}>
+          Achtung: {fillingOpenNote(filling)}
+        </Typography>
+      )}
       {filling.missingFillingG && (
         <Typography sx={{ fontSize: SMALL, fontWeight: 700, mt: 0.5 }}>
           Achtung: Für mindestens einen Posten ist das Füllungsgewicht noch

@@ -72,7 +72,7 @@ describe('Backzettel v2 - Bausteine', () => {
     render(<BreadTable bread={day.bread} {...editProps} />)
     const hafer = within(screen.getByTestId('bread-row-test-hafer'))
     expect(hafer.getByTestId('bread-cell-test-hafer|')).toHaveTextContent(
-      '1,5 l'
+      '1,5 L'
     )
     expect(screen.getByTestId('bread-kg-test-hafer')).toHaveTextContent('')
     // nur lesen: keine Stifte

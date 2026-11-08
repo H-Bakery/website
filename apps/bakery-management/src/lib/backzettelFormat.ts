@@ -176,7 +176,7 @@ export function formatNumber(n: number): string {
 }
 
 const UNIT_SUFFIX: Record<string, string> = {
-  Liter: 'l',
+  Liter: 'L',
   kg: 'kg',
   Blech: 'Bl.',
 }
@@ -185,6 +185,49 @@ const UNIT_SUFFIX: Record<string, string> = {
 export function formatQty(n: number, unit: BackzettelUnit | null): string {
   const suffix = unit ? UNIT_SUFFIX[unit] : undefined
   return suffix ? `${formatNumber(n)} ${suffix}` : formatNumber(n)
+}
+
+/**
+ * Menge einer Zeile, Zelle oder eines Bruch-Mitglieds, deren Grundmenge offen
+ * sein kann (Review Z10 Runde 2) - eine Regel für Planung, Tablet, Backliste
+ * und Druck: „12“; mit `totalIsMinimum` (Server: Grundmenge offen, bekannt
+ * sind nur Vorbestellt/CAP) „≥ 4“ bzw. „offen“, wenn noch nichts bekannt
+ * ist. Nie eine nackte Zahl, die sich wie die ganze Backmenge liest.
+ */
+export function minQtyText(
+  q: { total: number | null; totalIsMinimum?: boolean },
+  unit: BackzettelUnit | null = null
+): string {
+  if (q.total === null || q.total === undefined) return 'offen'
+  if (!q.totalIsMinimum) return formatQty(q.total, unit)
+  return q.total > 0 ? `≥ ${formatQty(q.total, unit)}` : 'offen'
+}
+
+/**
+ * Zusammensetzung in Kurzform, nur Bestandteile ≠ 0: „Basis 60 · CAP 10 ·
+ * Korr. −5“, „Basis offen · Vorb. 7“ - Tablet und Planung (Brötchen).
+ */
+export function lineBreakdown(line: BackzettelLine): string {
+  const parts: string[] = []
+  parts.push(
+    line.baseUnset ? 'Basis offen' : `Basis ${formatNumber(line.base)}`
+  )
+  if (line.seasonal) parts.push(`Saison ${formatSigned(line.seasonal)}`)
+  if (line.preorders) parts.push(`Vorb. ${formatNumber(line.preorders)}`)
+  if (line.cap) parts.push(`CAP ${formatNumber(line.cap)}`)
+  if (line.correction) {
+    parts.push(
+      `Korr. ${formatSigned(line.correction)}${
+        line.correctionReason ? ` (${line.correctionReason})` : ''
+      }`
+    )
+  }
+  return parts.join(' · ')
+}
+
+/** Hinweis zu `minQtyText`: „Grundmenge offen“ oder `null`. */
+export function minQtyHint(q: { totalIsMinimum?: boolean }): string | null {
+  return q.totalIsMinimum ? 'Grundmenge offen' : null
 }
 
 /**
@@ -266,17 +309,19 @@ export function deltaExtrasLines(
     // W4-Verifikation Runde 3: eine Abnahme liest sich als „weniger“ - ein
     // „−2 × 600 g abwiegen“ übersieht man aus 1,5 m leicht.
     const weighing = d.weighing
-      .filter((w) => w.pieces)
+      .filter((w): w is typeof w & { pieces: number } => Boolean(w.pieces))
       .map(
         (w) =>
-          `${formatNumber(Math.abs(w.pieces))} × ${formatNumber(w.piece_g)} g ${
-            w.pieces > 0 ? 'zusätzlich' : 'weniger'
-          } abwiegen`
+          `${formatNumber(Math.abs(w.pieces))} × ${
+            w.piece_g === null ? '? g' : `${formatNumber(w.piece_g)} g`
+          } ${w.pieces > 0 ? 'zusätzlich' : 'weniger'} abwiegen`
       )
       .join(', ')
-    const dough = `${d.dough_g < 0 ? '−' : '+'}${formatGrams(
-      Math.abs(d.dough_g)
-    )} Teig`
+    // Unbekanntes bleibt unbekannt (Review Z10 Runde 2): nie „+0 g Teig“.
+    const dough =
+      d.dough_g === null
+        ? 'Zusatzteig unbekannt'
+        : `${d.dough_g < 0 ? '−' : '+'}${formatGrams(Math.abs(d.dough_g))} Teig`
     // Chargen (W4-Verifikation Runde 2): ändert sich ihre Zahl, steht es
     // da - und ist der Zusatzteig selbst größer als eine Charge, wie er sich
     // aufteilt.
@@ -290,22 +335,25 @@ export function deltaExtrasLines(
           )}${max ? ` (je max. ${formatNumber(max)} kg)` : ''}`
         : ''
     const extraBatches =
-      max && d.dough_g > max * 1000
+      max && d.dough_g !== null && d.dough_g > max * 1000
         ? `; den Zusatzteig in ${formatNumber(
             Math.ceil(d.dough_g / (max * 1000) - 1e-9)
           )} Chargen ansetzen`
         : ''
-    const pieces = d.pieces
-      ? `${formatNumber(Math.abs(d.pieces))} Teigstücke ${
-          d.pieces > 0 ? 'mehr' : 'weniger'
-        }`
-      : 'Teigstücke unverändert'
+    const pieces =
+      d.pieces === null
+        ? 'Teigstücke unbekannt'
+        : d.pieces
+        ? `${formatNumber(Math.abs(d.pieces))} Teigstücke ${
+            d.pieces > 0 ? 'mehr' : 'weniger'
+          }`
+        : 'Teigstücke unverändert'
     out.push(
       `${d.name}: ${pieces} (${dough})${
         weighing ? `: ${weighing}` : ''
-      }; mit Nachträgen ${formatNumber(
-        d.totalPieces
-      )} Teigstücke, ${formatGrams(d.totalDough_g)}${batchNote}${extraBatches}`
+      }; mit Nachträgen ${deltaTotalPiecesText(d)}, ${deltaTotalDoughText(
+        d
+      )}${batchNote}${extraBatches}`
     )
   }
   for (const f of extras.fillings) {
@@ -320,13 +368,39 @@ export function deltaExtrasLines(
             )
             .join(', ')}`
         : ''
+    const total =
+      f.totalComplete === false
+        ? f.totalGrams > 0
+          ? `≥ ${formatGrams(f.totalGrams)} (Grundmenge offen)`
+          : 'unbekannt (Grundmenge offen)'
+        : formatGrams(f.totalGrams)
     out.push(
       `${f.name}: ${f.grams > 0 ? '+' : '−'}${formatGrams(
         Math.abs(f.grams)
-      )}; mit Nachträgen ${formatGrams(f.totalGrams)}${recipe}`
+      )}; mit Nachträgen ${total}${recipe}`
     )
   }
   return out
+}
+
+type DeltaDough = DeltaExtras['doughs'][number]
+
+/** „37 Teigstücke“, „≥ 37 Teigstücke“ (Grundmenge offen) oder unbekannt. */
+function deltaTotalPiecesText(d: DeltaDough): string {
+  if (d.totalPieces === null) return 'Teigstücke unbekannt'
+  if (d.totalPiecesComplete === false) {
+    return d.totalPieces > 0
+      ? `≥ ${formatNumber(d.totalPieces)} Teigstücke`
+      : 'Teigstücke unbekannt'
+  }
+  return `${formatNumber(d.totalPieces)} Teigstücke`
+}
+
+/** „16,5 kg“, „≥ 16,5 kg Teig“ (Teig unvollständig) oder „Teig unbekannt“. */
+function deltaTotalDoughText(d: DeltaDough): string {
+  if (d.totalDough_g !== null) return formatGrams(d.totalDough_g)
+  const known = d.totalDoughKnown_g ?? null
+  return known ? `≥ ${formatGrams(known)} Teig` : 'Teig gesamt unbekannt'
 }
 
 /**
@@ -343,12 +417,12 @@ export function deltaExtrasHighlights(
   const out: Array<{ key: string; label: string; amounts: string[] }> = []
   for (const d of extras.doughs) {
     const amounts = d.weighing
-      .filter((w) => w.pieces)
+      .filter((w): w is typeof w & { pieces: number } => Boolean(w.pieces))
       .map(
         (w) =>
-          `${sign(w.pieces)}${formatNumber(
-            Math.abs(w.pieces)
-          )} × ${formatNumber(w.piece_g)} g`
+          `${sign(w.pieces)}${formatNumber(Math.abs(w.pieces))} × ${
+            w.piece_g === null ? '?' : formatNumber(w.piece_g)
+          } g`
       )
     if (d.dough_g) {
       amounts.push(`${sign(d.dough_g)}${formatGrams(Math.abs(d.dough_g))} Teig`)
@@ -701,6 +775,17 @@ export function litersText(liters: DoughLiters | null | undefined): string {
   return `${formatNumber(liters.rounded)} L`
 }
 
+/**
+ * Nur die Zahl für die große Anzeige (Maschinenleiste, Hefeteig-Karte,
+ * Tablet): „6,5 L“, ohne Rundung die genauen „6,47 L“, sonst „unbekannt“.
+ * Der Zusatz („Rundung offen …“) steht klein darunter (`litersHint`), wie im
+ * Druck - nicht in der großen Schrift.
+ */
+export function litersFigure(liters: DoughLiters | null | undefined): string {
+  if (!liters || liters.exact === null) return 'unbekannt'
+  return `${formatNumber(liters.rounded ?? liters.exact)} L`
+}
+
 /** Warum die Liter fehlen oder ungerundet sind - `null`, wenn alles bekannt ist. */
 export function litersHint(
   liters: DoughLiters | null | undefined
@@ -741,9 +826,11 @@ export function hefeteigPiecesText(d: {
   piecesComplete?: boolean
 }): string {
   if (d.pieces === null) return '–'
-  return d.piecesComplete === false
-    ? `≥ ${formatNumber(d.pieces)}`
-    : formatNumber(d.pieces)
+  if (d.piecesComplete === false) {
+    // nichts bekannt: „–“ wie beim Teiggewicht, nie das leere „≥ 0“
+    return d.pieces > 0 ? `≥ ${formatNumber(d.pieces)}` : '–'
+  }
+  return formatNumber(d.pieces)
 }
 
 /**
@@ -837,7 +924,8 @@ export function bakeDayLabel(bakeDate: string, sheetDate: string): string {
  * Produkt, in Teigstücken.
  */
 export function bruchGroupText(group: BruchGroup): string {
-  const weight = group.g === null ? 'g unbekannt' : `${formatNumber(group.g)} g`
+  const weight =
+    group.g === null ? '? g (Bruchgewicht offen)' : `${formatNumber(group.g)} g`
   return `${bruchCountText(group)} × ${weight} – ${bruchSplitText(
     group
   )}${bruchSpareText(group)}`
@@ -860,10 +948,10 @@ export function bruchSplitText(
 ): string {
   return group.split
     .map((s) => {
-      const base =
-        s.total === null
-          ? `${s.name} offen`
-          : `${formatNumber(s.total)} ${s.name}`
+      // Grundmenge offen: die bekannten Stück als Mindestmenge („≥ 7
+      // Roggen“), „offen“ nur, wenn noch nichts bekannt ist.
+      const qty = minQtyText(s)
+      const base = qty === 'offen' ? `${s.name} offen` : `${qty} ${s.name}`
       const line = lineByKey ? lineByKey.get(s.key) : undefined
       const corr = line && line.correction ? line.correction : 0
       if (!corr) return base
@@ -874,10 +962,20 @@ export function bruchSplitText(
     .join(', ')
 }
 
-/** „ · +4 frei“ (Produkte) bzw. „ · +9 Teigstücke frei“; leer, wenn unbekannt. */
+/**
+ * „ · +4 frei“ (Produkte) bzw. „ · +9 Teigstücke frei“; leer, wenn unbekannt.
+ * Ergeben die freien Teigstücke kein ganzes Produkt (Doppelweck, 1 Stück
+ * übrig), stehen sie in Teigstücken - nie „+0 frei“ neben freiem Teig.
+ * Bildschirm und Druck nehmen genau diesen Text.
+ */
 export function bruchSpareText(group: BruchGroup): string {
   if (group.spare === null) return ''
   if (group.spareProducts !== undefined && group.spareProducts !== null) {
+    if (group.spareProducts === 0 && group.spare > 0) {
+      return ` · +${formatNumber(group.spare)} ${
+        group.spare === 1 ? 'Teigstück' : 'Teigstücke'
+      } frei`
+    }
     return ` · +${formatNumber(group.spareProducts)} frei`
   }
   if (group.spareProducts === null && group.perProduct !== 1) {
@@ -938,14 +1036,28 @@ export function deltaDoughLines(
         m.kg !== null ? ` (jetzt ${formatKnown(m.kg, 'kg')})` : ''
       }`,
     ]
-    const before = m.litersBefore?.rounded ?? null
-    const after = m.liters?.rounded ?? null
-    if (after === null) parts.push('Liter unbekannt')
-    else if (before !== after) {
+    // Liter: gerundet, sonst die genauen mit „Rundung offen“ (Review Z10
+    // Runde 2 - die Maschinenleiste darüber zeigt sie auch); „unbekannt“ nur,
+    // wenn kg je Liter fehlt oder der Teig unvollständig ist.
+    const liters = m.liters
+    const exactOnly = liters?.rounded == null && liters?.exact != null
+    const value = (l: DoughLiters | null | undefined) =>
+      l == null ? null : exactOnly ? l.exact : l.rounded
+    const before = value(m.litersBefore)
+    const after = value(liters)
+    if (after === null) {
+      parts.push(
+        liters?.reason === 'kg_per_liter_unknown'
+          ? 'Liter unbekannt (kg je Liter fehlt)'
+          : liters?.reason === 'dough_incomplete'
+          ? 'Liter unbekannt (Teig unvollständig)'
+          : 'Liter unbekannt'
+      )
+    } else if (before !== after) {
       parts.push(
         `Liter ${
           before === null ? '–' : `${formatNumber(before)} L`
-        } → ${formatNumber(after)} L`
+        } → ${formatNumber(after)} L${exactOnly ? ' (Rundung offen)' : ''}`
       )
     }
     if (
@@ -1007,12 +1119,30 @@ export function doughsTodayText(
  * kein Posten Gramm hat; „≥ 1,2 kg“, wenn nur ein Teil bekannt ist.
  */
 export function fillingGramsText(
-  filling: Pick<FillingNeed, 'grams' | 'missingFillingG' | 'items'>
+  filling: Pick<
+    FillingNeed,
+    'grams' | 'missingFillingG' | 'items' | 'baseUnset'
+  >
 ): string {
-  if (!filling.missingFillingG) return formatGrams(filling.grams)
+  const open = filling.baseUnset === true
+  if (!filling.missingFillingG && !open) return formatGrams(filling.grams)
   const known = filling.items.some((i) => i.grams !== null)
-  if (!known || !filling.grams) return 'Gramm unbekannt'
+  if (!known || !filling.grams) return open ? 'offen' : 'Gramm unbekannt'
   return `≥ ${formatGrams(filling.grams)}`
+}
+
+/**
+ * Hinweis zu einer Füllung, deren gefüllter Posten keine Grundmenge hat
+ * (Review Z10 Runde 2): „Grundmenge offen: Zopf gefüllt – Apfel – …“.
+ */
+export function fillingOpenNote(
+  filling: Pick<FillingNeed, 'baseUnset' | 'openItems'>
+): string | null {
+  if (!filling.baseUnset) return null
+  const names = (filling.openItems ?? []).join(', ')
+  return `Grundmenge offen${
+    names ? `: ${names}` : ''
+  } – die Menge ist nur der bekannte Teil (Vorbestellungen, CAP), das Rezept wird nicht hochgerechnet.`
 }
 
 /**

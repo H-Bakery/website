@@ -35,7 +35,7 @@ import {
   deltaBadgeText,
   formatDateLong,
   formatDateShort,
-  formatQty,
+  minQtyText,
   isIsoDate,
   lineLabel,
   neighbourProductionDay,
@@ -144,7 +144,7 @@ function BakeLine({
           color: line.sheetStatus === 'draft' ? 'text.secondary' : undefined,
         }}
       >
-        {formatQty(line.total, line.unit)}
+        {minQtyText(line, line.unit)}
       </Typography>
     </Box>
   )

@@ -9,7 +9,7 @@ import {
   kgText,
   litersHint,
   litersLabel,
-  litersText,
+  litersFigure,
 } from '../../lib/backzettelFormat'
 
 export interface MachineStripProps {
@@ -125,7 +125,7 @@ export function MachineStrip({
                     muted || unknownLiters ? 'text.secondary' : 'text.primary',
                 }}
               >
-                {litersText(box.liters)}
+                {litersFigure(box.liters)}
               </Typography>
             </Stack>
             <Typography

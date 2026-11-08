@@ -5,6 +5,7 @@ import type { BackzettelDay } from '../../lib/backzettelApi'
 import {
   deltaExtrasLines,
   fillingGramsText,
+  fillingOpenNote,
   formatDateLong,
   formatGrams,
   formatKnown,
@@ -135,6 +136,7 @@ export function BackzettelPrintExtras({ day }: BackzettelPrintExtrasProps) {
                 {f.missingFillingG
                   ? ' · Füllungsgewicht fehlt bei mindestens einem Posten – Menge zu klein!'
                   : ''}
+                {fillingOpenNote(f) ? ` · ${fillingOpenNote(f)}` : ''}
               </p>
               {f.recipe ? (
                 <table>

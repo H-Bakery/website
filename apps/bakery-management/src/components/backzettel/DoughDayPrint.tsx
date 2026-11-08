@@ -7,6 +7,8 @@ import {
   type BackzettelConfigData,
   type BackzettelDay,
   type BackzettelLine,
+  type BackzettelUnit,
+  type BreadCell,
   type BreadRow,
   type DoughLiters,
   type MachineBox,
@@ -31,6 +33,7 @@ import {
   lineLabel,
   linesByKey,
   litersLabel,
+  minQtyText,
   previouslyDoneText,
   variantLabel,
   deltaDoughLines,
@@ -171,7 +174,9 @@ const doughDayPrintStyles = (
           borderBottom: '1.2pt solid #000',
           breakAfter: 'avoid',
         },
-        '.dd-print .dd-section-head:first-child': { marginTop: 0 },
+        '.dd-print .dd-others > div:first-child > .dd-section-head': {
+          marginTop: 0,
+        },
         '.dd-print .dd-row': {
           display: 'flex',
           alignItems: 'center',
@@ -182,7 +187,9 @@ const doughDayPrintStyles = (
         },
         '.dd-print .dd-name': { flex: '1 1 auto', minWidth: 0 },
         '.dd-print .dd-detail': { marginLeft: '1.5mm' },
-        '.dd-print .dd-single': { textAlign: 'center', whiteSpace: 'nowrap' },
+        // Ein kurzer Abschnitt bleibt in einer Spalte - sonst stünde seine
+        // Fortsetzung oben in der rechten Spalte ohne Überschrift.
+        '.dd-print .dd-keep': { breakInside: 'avoid' },
         '.dd-print .dd-initials': { display: 'block', lineHeight: 1 },
         '.dd-print .dd-counts': { fontWeight: 700, textAlign: 'right' },
         '.dd-print .dd-delta-qty': {
@@ -286,10 +293,25 @@ function MachineBoxPrint({ box }: { box: MachineBox }) {
   )
 }
 
-/** Alte Posten ohne Größen in der Brot-Tabelle: immer mit Einheit („16 Stück“). */
-function singleQty(total: number, unit: string): string {
-  const text = formatQty(total, unit)
-  return text === formatNumber(total) ? `${text} ${unit || 'Stück'}` : text
+/**
+ * Alte Posten ohne Größen in der Brot-Tabelle: immer mit Einheit („16
+ * Stück“); Grundmenge offen „≥ 4 Stück“ bzw. „offen“ (`minQtyText`).
+ */
+function singleQty(cell: BreadCell & { unit: BackzettelUnit }): string {
+  const text = minQtyText(cell, cell.unit)
+  if (text === 'offen') return text
+  return formatQty(cell.total, cell.unit) === formatNumber(cell.total)
+    ? `${text} ${cell.unit || 'Stück'}`
+    : text
+}
+
+/** „Grundmenge offen“ bzw. „Grundmenge offen: 750 g, Kasten“ einer Brot-Zeile. */
+function breadOpenText(row: BreadRow, sizes: { id: string; label: string }[]) {
+  if (row.single) return row.single.baseUnset ? 'Grundmenge offen' : ''
+  const open = sizes.filter((sz) => row.cells[sz.id]?.baseUnset)
+  return open.length > 0
+    ? `Grundmenge offen: ${open.map((sz) => sz.label).join(', ')}`
+    : ''
 }
 
 function BreadPrint({
@@ -350,6 +372,21 @@ function BreadPrint({
             <tr key={`${row.itemId}|${row.bakeDate}`}>
               <td>
                 <strong>{row.name}</strong>
+                {row.single && (
+                  // Menge ohne Größe gehört zum Namen, nicht unter eine
+                  // Größenspalte (dort läse sie sich wie Laibe dieser Größe)
+                  <strong
+                    className="total dd-detail"
+                    data-testid={`dd-bread-${row.single.key}`}
+                  >
+                    {singleQty(row.single)}
+                  </strong>
+                )}
+                {breadOpenText(row, sizes) && (
+                  <span className="small dd-detail">
+                    {breadOpenText(row, sizes)}
+                  </span>
+                )}
                 {row.note && (
                   <span className="small dd-detail">{row.note}</span>
                 )}
@@ -363,15 +400,7 @@ function BreadPrint({
                 )}
               </td>
               {row.single ? (
-                <td
-                  className="dd-single total"
-                  colSpan={Math.max(1, sizes.length)}
-                  data-testid={`dd-bread-${row.single.key}`}
-                >
-                  {row.single.baseUnset && row.single.total === 0
-                    ? 'offen'
-                    : singleQty(row.single.total, row.single.unit)}
-                </td>
+                <td colSpan={Math.max(1, sizes.length)} />
               ) : (
                 sizes.map((sz) => {
                   const cell = row.cells[sz.id]
@@ -381,11 +410,7 @@ function BreadPrint({
                       className="num total"
                       data-testid={cell ? `dd-bread-${cell.key}` : undefined}
                     >
-                      {!cell
-                        ? ''
-                        : cell.baseUnset && cell.total === 0
-                        ? 'offen'
-                        : formatNumber(cell.total)}
+                      {!cell ? '' : minQtyText(cell)}
                     </td>
                   )
                 })
@@ -458,8 +483,7 @@ function RollsPrint({
             {block.singles.map((s) => (
               <div key={s.key} className="dd-group dd-group-row">
                 <span>
-                  <strong className="total">{formatNumber(s.total)}</strong>{' '}
-                  {s.name}
+                  <strong className="total">{minQtyText(s)}</strong> {s.name}
                   <span className="small">
                     {s.piece_g === null
                       ? ' (g offen)'
@@ -482,8 +506,8 @@ function hefeteigCounts(
   row: HefeteigPrintRow,
   config: BackzettelConfigData | null
 ): string {
-  const qty = (l: BackzettelLine) =>
-    l.baseUnset && l.total === 0 ? 'offen' : formatQty(l.total, l.unit)
+  // Grundmenge offen: „≥ 3“ bzw. „offen“ - nie die nackte Vorbestellzahl
+  const qty = (l: BackzettelLine) => minQtyText(l, l.unit)
   if (row.lines.length === 1 && !row.lines[0].variant) {
     return qty(row.lines[0])
   }
@@ -568,6 +592,13 @@ function lineDetail(line: BackzettelLine): string {
     .join(' · ')
 }
 
+/**
+ * Abschnitte bis zu so vielen Zeilen bleiben im Zwei-Spalten-Druck in einer
+ * Spalte (Review Z10 Runde 2); längere dürfen umbrechen, sonst bliebe zu viel
+ * Platz leer und das Blatt reichte nicht.
+ */
+const KEEP_SECTION_LINES = 8
+
 function SectionsPrint({
   sections,
   config,
@@ -578,7 +609,13 @@ function SectionsPrint({
   return (
     <div className="dd-two dd-others" data-testid="dd-others">
       {sections.map((section) => (
-        <React.Fragment key={section.id}>
+        <div
+          key={section.id}
+          className={
+            section.lines.length <= KEEP_SECTION_LINES ? 'dd-keep' : undefined
+          }
+          data-testid={`dd-section-${section.id}`}
+        >
           <h3 className="dd-section-head">{section.label}</h3>
           {section.lines.map((line) => {
             const detail = lineDetail(line)
@@ -592,16 +629,14 @@ function SectionsPrint({
                   {lineLabel(line, config)}
                   {detail && <span className="small dd-detail">{detail}</span>}
                 </span>
-                <span className="num total">
-                  {formatQty(line.total, line.unit)}
-                </span>
+                <span className="num total">{minQtyText(line, line.unit)}</span>
                 <span className="tick">
                   <Tick lines={[line]} />
                 </span>
               </div>
             )
           })}
-        </React.Fragment>
+        </div>
       ))}
     </div>
   )

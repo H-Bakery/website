@@ -6,6 +6,7 @@ import {
   Chip,
   IconButton,
   Paper,
+  Stack,
   Table,
   TableBody,
   TableCell,
@@ -30,6 +31,7 @@ import {
   formatSigned,
   kgText,
   lineLabel,
+  minQtyText,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
 import { DeltaChip } from './BackzettelSectionView'
@@ -66,11 +68,13 @@ function rowKg(row: BreadRow): string {
 
 /**
  * Menge ohne Größe mit Einheit: „26 Stück“, „7,25 l“ - eine Zahl ohne
- * Einheit unter einer Größenspalte läse sich wie Laibe dieser Größe.
+ * Einheit läse sich wie Laibe einer Größe. Grundmenge offen: „≥ 4 Stück“.
  */
-function singleQty(total: number, unit: string): string {
-  const text = formatQty(total, unit as BackzettelUnit)
-  return text === formatNumber(total) ? `${text} ${unit}` : text
+function singleQty(cell: BreadCell, unit: string): string {
+  const text = minQtyText(cell, unit as BackzettelUnit)
+  if (text === 'offen') return text
+  const plain = formatQty(cell.total, unit as BackzettelUnit)
+  return plain === formatNumber(cell.total) ? `${text} ${unit}` : text
 }
 
 function CellValue({
@@ -81,6 +85,7 @@ function CellValue({
   editable,
   onEdit,
   single = false,
+  testId,
 }: {
   cell: BreadCell
   line: BackzettelLine | undefined
@@ -88,8 +93,9 @@ function CellValue({
   label: string
   editable: boolean
   onEdit: () => void
-  /** Zeile ohne Größen: links, mit Einheit, über alle Größenspalten. */
+  /** Zeile ohne Größen: Menge mit Einheit. */
   single?: boolean
+  testId: string
 }) {
   const correction = line?.correction ?? 0
   return (
@@ -97,28 +103,29 @@ function CellValue({
       sx={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: single ? 'flex-start' : 'flex-end',
+        justifyContent: 'flex-end',
         flexWrap: 'wrap',
         gap: 0.5,
       }}
     >
-      <Box sx={{ textAlign: single ? 'left' : 'right' }}>
+      <Box sx={{ textAlign: 'right' }}>
         <Typography
           component="div"
           variant="h6"
           fontWeight={700}
-          data-testid={`bread-cell-${cell.key}`}
+          data-testid={testId}
         >
+          {/* Grundmenge offen: „≥ 4“ bzw. „offen“, nie die nackte Zahl */}
           {single
-            ? singleQty(cell.total, unit)
-            : formatQty(cell.total, unit as BackzettelUnit)}
+            ? singleQty(cell, unit)
+            : minQtyText(cell, unit as BackzettelUnit)}
         </Typography>
         {cell.baseUnset && (
           <Chip
             size="small"
             variant="outlined"
-            label="offen"
-            title="Grundmenge noch nicht festgelegt"
+            label="Grundmenge offen"
+            title="Grundmenge noch nicht festgelegt - bekannt sind nur Vorbestellungen und CAP"
           />
         )}
         {correction !== 0 && (
@@ -142,15 +149,49 @@ function CellValue({
   )
 }
 
+/** Name, Backtag und Hinweis eines Brots (Tabelle und Karte). */
+function RowName({ row, sheetDate }: { row: BreadRow; sheetDate: string }) {
+  return (
+    <>
+      <Typography fontWeight={600}>{row.name}</Typography>
+      {row.bakeDate !== sheetDate && (
+        <Typography variant="caption" component="div">
+          {bakeDayLabel(row.bakeDate, sheetDate)}
+        </Typography>
+      )}
+      {row.note && (
+        <Typography variant="caption" component="div" color="text.secondary">
+          {row.note}
+        </Typography>
+      )}
+    </>
+  )
+}
+
+/** Die Zellen eines Brots mit Größe (Tabelle: je Spalte; Karte: Liste). */
+function rowCells(
+  row: BreadRow,
+  sizes: BreadView['sizes']
+): { size: { id: string; label: string } | null; cell: BreadCell }[] {
+  if (row.single) return [{ size: null, cell: row.single }]
+  return sizes
+    .map((s) => ({ size: s, cell: row.cells[s.id] }))
+    .filter(
+      (x): x is { size: { id: string; label: string }; cell: BreadCell } =>
+        Boolean(x.cell)
+    )
+}
+
 /**
  * Brot-Tabelle des Teigtag-Zettels (Z10, §7.2 Nr. 4): Zeilen = Brote,
  * Spalten = Laibgrößen, je Zelle die Laibe vom Server, korrigierbar mit dem
  * gewohnten Editor (Zeilenschlüssel). Dazu kg je Brot und der Hinweis des
  * Servers (gemeinsamer Teig, Anteil aus anderem Teig). Alte Liter-Posten und
- * Brote ohne Größe stehen als Zeile mit einer Zelle über alle Größenspalten,
- * links und mit Einheit („26 Stück“, „7,25 l“) - so steht die Zahl auch am
- * Handy ohne Wischen da und hängt an keiner Größe. Nachträge stehen als
- * Abzeichen an der Zelle.
+ * Brote ohne Größe tragen ihre Menge mit Einheit in der Namensspalte („26
+ * Stück“, „7,25 l“) - nie unter einer Größenspalte, wo sie sich wie Laibe
+ * dieser Größe läse (Review Z10 Runde 2). Ab `md` eine Tabelle, darunter je
+ * Brot eine Karte mit allen Größen (am Handy fielen sonst Spalten aus dem
+ * Bild). Nachträge stehen als Abzeichen an der Zelle.
  */
 export function BreadTable({
   bread,
@@ -167,147 +208,233 @@ export function BreadTable({
   const sizes = bread.sizes
   const valueCols = Math.max(sizes.length, 1)
   const cols = valueCols + 2
+  const cellLabel = (
+    row: BreadRow,
+    size: { label: string } | null,
+    key: string
+  ) => {
+    const line = lineByKey.get(key)
+    if (line) return lineLabel(line, config)
+    return size ? `${row.name} – ${size.label}` : row.name
+  }
+  const editor = (line: BackzettelLine, idPrefix: string) => (
+    <CorrectionEditor
+      idPrefix={idPrefix}
+      line={line}
+      label={lineLabel(line, config)}
+      initialCorrection={prefill ?? undefined}
+      onSave={(c, r) => onSaveCorrection(line, c, r)}
+      onCancel={() => onEdit(null)}
+    />
+  )
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{ mb: 2, overflow: 'hidden' }}
-      data-testid="bread-table"
-    >
-      <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}>
-        <Typography variant="h6" component="h2">
-          Brot
-        </Typography>
-      </Box>
-      <TableContainer sx={{ overflowX: 'auto' }}>
-        <Table size="small" aria-label="Brot je Laibgröße">
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ minWidth: 140 }}>Brot</TableCell>
-              {sizes.length > 0 ? (
-                sizes.map((s) => (
-                  <TableCell key={s.id} sx={{ ...NUM, minWidth: 96 }}>
-                    {s.label}
-                  </TableCell>
-                ))
-              ) : (
-                <TableCell sx={NUM}>Menge</TableCell>
-              )}
-              <TableCell sx={{ ...NUM, minWidth: 80 }}>Teig</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {bread.rows.map((row) => {
-              const cells: BreadCell[] = row.single
-                ? [row.single]
-                : sizes
-                    .map((s) => row.cells[s.id])
-                    .filter((c): c is BreadCell => !!c)
-              const editingCell = cells.find((c) => c.key === editingKey)
-              const editingLine = editingCell
-                ? lineByKey.get(editingCell.key)
-                : undefined
-              const rowKey = `${row.bakeDate}|${row.itemId}`
-              return (
-                <React.Fragment key={rowKey}>
-                  <TableRow data-testid={`bread-row-${row.itemId}`}>
-                    <TableCell>
-                      <Typography fontWeight={600}>{row.name}</Typography>
-                      {row.bakeDate !== sheetDate && (
-                        <Typography variant="caption" component="div">
-                          {bakeDayLabel(row.bakeDate, sheetDate)}
-                        </Typography>
-                      )}
-                      {row.note && (
-                        <Typography
-                          variant="caption"
-                          component="div"
-                          color="text.secondary"
-                        >
-                          {row.note}
-                        </Typography>
-                      )}
+    <>
+      <Paper
+        variant="outlined"
+        sx={{ mb: 2, overflow: 'hidden', display: { xs: 'none', md: 'block' } }}
+        data-testid="bread-table"
+      >
+        <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}>
+          <Typography variant="h6" component="h2">
+            Brot
+          </Typography>
+        </Box>
+        <TableContainer sx={{ overflowX: 'auto' }}>
+          <Table size="small" aria-label="Brot je Laibgröße">
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ minWidth: 140 }}>Brot</TableCell>
+                {sizes.length > 0 ? (
+                  sizes.map((s) => (
+                    <TableCell key={s.id} sx={{ ...NUM, minWidth: 96 }}>
+                      {s.label}
                     </TableCell>
-                    {row.single ? (
-                      <TableCell
-                        colSpan={valueCols}
-                        data-testid={`bread-single-${row.itemId}`}
-                      >
-                        <CellValue
-                          single
-                          cell={row.single}
-                          line={lineByKey.get(row.single.key)}
-                          unit={row.single.unit}
-                          label={row.name}
-                          editable={
-                            editable &&
-                            editingKey !== row.single.key &&
-                            lineByKey.has(row.single.key)
-                          }
-                          onEdit={() => onEdit(row.single?.key ?? null)}
-                        />
-                      </TableCell>
-                    ) : (
-                      sizes.map((s) => {
-                        const cell = row.cells[s.id]
-                        if (!cell) {
-                          // Diese Größe gibt es bei dem Brot nicht.
-                          return <TableCell key={s.id} sx={NUM} />
-                        }
-                        const line = lineByKey.get(cell.key)
-                        const label = line
-                          ? lineLabel(line, config)
-                          : `${row.name} – ${s.label}`
-                        return (
-                          <TableCell key={s.id} sx={NUM}>
+                  ))
+                ) : (
+                  <TableCell sx={NUM}>Menge</TableCell>
+                )}
+                <TableCell sx={{ ...NUM, minWidth: 80 }}>Teig</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {bread.rows.map((row) => {
+                const cells = rowCells(row, sizes).map((x) => x.cell)
+                const editingCell = cells.find((c) => c.key === editingKey)
+                const editingLine = editingCell
+                  ? lineByKey.get(editingCell.key)
+                  : undefined
+                const rowKey = `${row.bakeDate}|${row.itemId}`
+                const single = row.single
+                return (
+                  <React.Fragment key={rowKey}>
+                    <TableRow data-testid={`bread-row-${row.itemId}`}>
+                      <TableCell>
+                        {single ? (
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              alignItems: 'flex-start',
+                              justifyContent: 'space-between',
+                              gap: 2,
+                            }}
+                            data-testid={`bread-single-${row.itemId}`}
+                          >
+                            <Box sx={{ minWidth: 0 }}>
+                              <RowName row={row} sheetDate={sheetDate} />
+                            </Box>
                             <CellValue
-                              cell={cell}
-                              line={line}
-                              unit={row.unit}
-                              label={label}
+                              single
+                              cell={single}
+                              testId={`bread-cell-${single.key}`}
+                              line={lineByKey.get(single.key)}
+                              unit={single.unit}
+                              label={row.name}
                               editable={
-                                editable && editingKey !== cell.key && !!line
+                                editable &&
+                                editingKey !== single.key &&
+                                lineByKey.has(single.key)
                               }
-                              onEdit={() => onEdit(cell.key)}
+                              onEdit={() => onEdit(single.key)}
                             />
-                          </TableCell>
-                        )
-                      })
-                    )}
-                    <TableCell sx={NUM}>
-                      <Typography
-                        component="span"
-                        fontWeight={600}
-                        data-testid={`bread-kg-${row.itemId}`}
-                      >
-                        {rowKg(row)}
-                      </Typography>
-                    </TableCell>
-                  </TableRow>
-                  {editingLine && (
-                    <TableRow>
-                      <TableCell
-                        colSpan={cols}
-                        sx={{ bgcolor: 'action.selected' }}
-                      >
-                        <CorrectionEditor
-                          idPrefix="bread"
-                          line={editingLine}
-                          label={lineLabel(editingLine, config)}
-                          initialCorrection={prefill ?? undefined}
-                          onSave={(c, r) => onSaveCorrection(editingLine, c, r)}
-                          onCancel={() => onEdit(null)}
-                        />
+                          </Box>
+                        ) : (
+                          <RowName row={row} sheetDate={sheetDate} />
+                        )}
+                      </TableCell>
+                      {single ? (
+                        // ohne Größe: die Größenspalten bleiben leer
+                        <TableCell colSpan={valueCols} />
+                      ) : (
+                        sizes.map((s) => {
+                          const cell = row.cells[s.id]
+                          if (!cell) {
+                            // Diese Größe gibt es bei dem Brot nicht.
+                            return <TableCell key={s.id} sx={NUM} />
+                          }
+                          const line = lineByKey.get(cell.key)
+                          return (
+                            <TableCell key={s.id} sx={NUM}>
+                              <CellValue
+                                cell={cell}
+                                testId={`bread-cell-${cell.key}`}
+                                line={line}
+                                unit={row.unit}
+                                label={cellLabel(row, s, cell.key)}
+                                editable={
+                                  editable && editingKey !== cell.key && !!line
+                                }
+                                onEdit={() => onEdit(cell.key)}
+                              />
+                            </TableCell>
+                          )
+                        })
+                      )}
+                      <TableCell sx={NUM}>
+                        <Typography
+                          component="span"
+                          fontWeight={600}
+                          data-testid={`bread-kg-${row.itemId}`}
+                        >
+                          {rowKg(row)}
+                        </Typography>
                       </TableCell>
                     </TableRow>
-                  )}
-                </React.Fragment>
-              )
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
-    </Paper>
+                    {editingLine && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={cols}
+                          sx={{ bgcolor: 'action.selected' }}
+                        >
+                          {editor(editingLine, 'bread')}
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </React.Fragment>
+                )
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Paper>
+
+      {/* Karten unter md: je Brot alle Größen untereinander, nichts seitlich außer Sicht */}
+      <Paper
+        variant="outlined"
+        sx={{ mb: 2, overflow: 'hidden', display: { xs: 'block', md: 'none' } }}
+        data-testid="bread-cards"
+      >
+        <Box sx={{ px: 2, py: 1.5, bgcolor: 'action.hover' }}>
+          <Typography variant="h6" component="h2">
+            Brot
+          </Typography>
+        </Box>
+        {bread.rows.map((row, index) => {
+          const entries = rowCells(row, sizes)
+          const editingCell = entries.find((x) => x.cell.key === editingKey)
+          const editingLine = editingCell
+            ? lineByKey.get(editingCell.cell.key)
+            : undefined
+          const kg = rowKg(row)
+          return (
+            <Box
+              key={`${row.bakeDate}|${row.itemId}`}
+              data-testid={`bread-card-${row.itemId}`}
+              sx={{
+                px: 2,
+                py: 1.5,
+                borderTop: index === 0 ? 0 : 1,
+                borderColor: 'divider',
+              }}
+            >
+              <Stack
+                direction="row"
+                spacing={1}
+                alignItems="flex-start"
+                justifyContent="space-between"
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <RowName row={row} sheetDate={sheetDate} />
+                </Box>
+                {kg && (
+                  <Typography fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
+                    Teig {kg}
+                  </Typography>
+                )}
+              </Stack>
+              {entries.map(({ size, cell }) => {
+                const line = lineByKey.get(cell.key)
+                return (
+                  <Stack
+                    key={cell.key}
+                    direction="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    spacing={1}
+                    sx={{ mt: 0.5, minHeight: 44 }}
+                  >
+                    <Typography color="text.secondary">
+                      {size ? size.label : 'Menge'}
+                    </Typography>
+                    <CellValue
+                      single={!size}
+                      cell={cell}
+                      testId={`bread-card-cell-${cell.key}`}
+                      line={line}
+                      unit={row.single ? row.single.unit : row.unit}
+                      label={cellLabel(row, size, cell.key)}
+                      editable={editable && editingKey !== cell.key && !!line}
+                      onEdit={() => onEdit(cell.key)}
+                    />
+                  </Stack>
+                )
+              })}
+              {editingLine && editor(editingLine, 'bread-card')}
+            </Box>
+          )
+        })}
+      </Paper>
+    </>
   )
 }
 

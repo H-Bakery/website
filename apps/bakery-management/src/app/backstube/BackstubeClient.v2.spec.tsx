@@ -152,7 +152,9 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
         {
           ...section,
           lines: section.lines.map((l) =>
-            l.key === `test-doppel|@${SUN}` ? { ...l, baseUnset: true } : l
+            l.key === `test-doppel|@${SUN}`
+              ? { ...l, baseUnset: true, totalIsMinimum: true }
+              : l
           ),
         },
       ],

@@ -404,6 +404,8 @@ export function v2Line(
     lead: bakeDate === sheet ? 0 : 1,
     variantKind: null,
     variantLabel: null,
+    // wie der Server: Grundmenge offen ohne Korrektur = Mindestmenge
+    totalIsMinimum: Boolean(overrides.baseUnset) && !overrides.correction,
     ...overrides,
   })
 }
@@ -957,6 +959,7 @@ export function saturdayV2Draft(
               variant: 'kasten',
               total: 0,
               baseUnset: true,
+              totalIsMinimum: true,
             },
           },
           single: null,

@@ -28,7 +28,7 @@ import {
   formatNumber,
   formatOrDash,
   deltaBadgeText,
-  formatQty,
+  minQtyText,
   formatSigned,
   lineLabel,
   previouslyDoneText,
@@ -303,7 +303,7 @@ export function BackzettelSectionView({
                         fontWeight={700}
                         data-testid={`line-total-${line.key}`}
                       >
-                        {formatQty(line.total, line.unit)}
+                        {minQtyText(line, line.unit)}
                       </Typography>
                     </TableCell>
                   </TableRow>
@@ -364,7 +364,7 @@ export function BackzettelSectionView({
                   sx={{ whiteSpace: 'nowrap' }}
                   aria-label={`Gesamt ${label}`}
                 >
-                  {formatQty(line.total, line.unit)}
+                  {minQtyText(line, line.unit)}
                 </Typography>
               </Stack>
               <Box

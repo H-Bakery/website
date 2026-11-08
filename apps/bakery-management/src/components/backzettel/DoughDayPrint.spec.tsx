@@ -72,9 +72,72 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     expect(p.getByTestId('dd-bread-test-korn|kasten')).toHaveTextContent(
       'offen'
     )
-    expect(p.getByTestId('dd-bread-test-hafer|')).toHaveTextContent('1,5 l')
+    expect(p.getByTestId('dd-bread-test-hafer|')).toHaveTextContent('1,5 L')
     expect(p.getByText('7,8 kg')).toBeInTheDocument()
     expect(p.getAllByText('Gemeinsamer Teig: Korn + Holz')).toHaveLength(2)
+  })
+
+  it('offene Grundmenge mit Vorbestellung druckt „≥ n“ mit „Grundmenge offen“ - nie die nackte Vorbestellzahl (Review Z10 Runde 2)', () => {
+    const base = saturdayV2Draft()
+    const open = { baseUnset: true, totalIsMinimum: true, base: 0 }
+    const day: BackzettelDay = {
+      ...base,
+      sections: base.sections.map((sec) => ({
+        ...sec,
+        lines: sec.lines.map((l) =>
+          l.key === 'test-korn|kasten'
+            ? { ...l, ...open, preorders: 4, total: 4 }
+            : l.key === 'test-zopf|mohn'
+            ? { ...l, ...open, preorders: 2, total: 2 }
+            : l.key === 'test-plunder|'
+            ? { ...l, ...open, total: 0 }
+            : l
+        ),
+      })),
+      bread: base.bread && {
+        ...base.bread,
+        rows: base.bread.rows.map((r) =>
+          r.itemId === 'test-korn'
+            ? {
+                ...r,
+                cells: {
+                  ...r.cells,
+                  kasten: {
+                    key: 'test-korn|kasten',
+                    variant: 'kasten',
+                    total: 4,
+                    baseUnset: true,
+                    totalIsMinimum: true,
+                  },
+                },
+              }
+            : r
+        ),
+      },
+    }
+    const page = within(renderPrint(day).getByTestId('bz-print'))
+    expect(page.getByTestId('dd-bread-test-korn|kasten')).toHaveTextContent(
+      /^≥ 4$/
+    )
+    expect(
+      within(page.getByTestId('dd-bread')).getByText('Grundmenge offen: Kasten')
+    ).toBeInTheDocument()
+    // Hefeteig je Sorte: „Testmohnfüllung ≥ 2“
+    expect(page.getByTestId('dd-hefe-test-zopf')).toHaveTextContent(
+      'Testmohnfüllung ≥ 2'
+    )
+    // übrige Abschnitte: ohne Bekanntes „offen“, nie „0“
+    expect(page.getByTestId('dd-line-test-plunder|')).toHaveTextContent(/offen/)
+    expect(
+      within(page.getByTestId('dd-line-test-plunder|')).queryByText('0')
+    ).not.toBeInTheDocument()
+  })
+
+  it('Brot ohne Größe: die Menge steht beim Namen, nicht unter einer Größenspalte', () => {
+    const page = renderPrint(saturdayV2Draft())
+    const value = page.getByTestId('dd-bread-test-hafer|')
+    expect(value.tagName).toBe('STRONG')
+    expect(value.closest('td')).toHaveTextContent(/^Testhafer/)
   })
 
   it('Nachträge: was sie für Teig und Teilmaschine heißen', () => {

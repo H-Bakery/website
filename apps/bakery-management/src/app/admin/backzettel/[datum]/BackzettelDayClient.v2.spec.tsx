@@ -88,7 +88,24 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
       within(bread.getByTestId('bread-row-test-korn')).getByText('offen')
     ).toBeInTheDocument()
 
+    // Handy (unter md): je Brot eine Karte mit allen Größen und kg - keine
+    // Spalte fällt seitlich aus dem Bild (Review Z10 Runde 2)
+    const card = within(screen.getByTestId('bread-card-test-korn'))
+    expect(card.getByText('500 g')).toBeInTheDocument()
+    expect(card.getByText('Kasten')).toBeInTheDocument()
+    expect(
+      card.getByTestId('bread-card-cell-test-korn|g1000')
+    ).toHaveTextContent('3')
+    expect(
+      card.getByTestId('bread-card-cell-test-korn|kasten')
+    ).toHaveTextContent('offen')
+    expect(card.getByText('Teig 7,8 kg')).toBeInTheDocument()
+
     const sunday = within(screen.getByTestId(`rolls-${SUN}`))
+    // je Brötchen-Zeile die Zusammensetzung wie am Tablet
+    expect(
+      sunday.getByTestId(`roll-breakdown-test-doppel|@${SUN}`)
+    ).toHaveTextContent('Basis 60 · CAP 6')
     expect(sunday.getByText(/Brötchen für Sonntag, 29\.11\./)).toBeVisible()
     expect(sunday.getByText('Teig heute')).toBeInTheDocument()
     expect(
@@ -133,7 +150,7 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
     const tuesday = within(screen.getByTestId(`rolls-${V2_TUE}`))
     expect(
       tuesday.getByTestId(`bruch-text-${V2_TUE}|test-flitweck`)
-    ).toHaveTextContent('g unbekannt')
+    ).toHaveTextContent('? g (Bruchgewicht offen)')
     expect(tuesday.getByText('Teig: – kg')).toBeInTheDocument()
     expect(
       tuesday.getByText(

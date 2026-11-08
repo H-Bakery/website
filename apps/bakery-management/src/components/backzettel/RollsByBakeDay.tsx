@@ -19,9 +19,10 @@ import {
   bruchStep,
   formatKnown,
   formatNumber,
-  formatSigned,
+  lineBreakdown,
   lineLabel,
   linesByKey,
+  minQtyText,
   v2CoveredKeys,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
@@ -36,15 +37,15 @@ export interface RollsByBakeDayProps extends V2EditProps {
 function RollLine({
   lineKey,
   name,
-  total,
+  qty,
   detail,
   step,
   props,
 }: {
   lineKey: string
   name: string
-  /** `null`: Grundmenge offen - „–“, nie 0. */
-  total: number | null
+  /** Menge; mit `totalIsMinimum` (Grundmenge offen) „≥ n“ bzw. „offen“. */
+  qty: { total: number | null; totalIsMinimum?: boolean }
   detail?: string | null
   /** Stück je Bruch für „+1 Bruch“; `null` = kein Knopf. */
   step: number | null
@@ -69,23 +70,15 @@ function RollLine({
       >
         <Box sx={{ flex: '1 1 160px', minWidth: 0 }}>
           <Typography fontWeight={600}>{name}</Typography>
-          {(detail || correction !== 0 || line?.baseUnset) && (
+          {(detail || line) && (
             <Typography
               variant="caption"
               color="text.secondary"
               component="div"
+              data-testid={`roll-breakdown-${lineKey}`}
             >
-              {[
-                detail,
-                line?.baseUnset ? 'Grundmenge offen' : null,
-                correction !== 0
-                  ? `Korr. ${formatSigned(correction)}${
-                      line?.correctionReason
-                        ? ` (${line.correctionReason})`
-                        : ''
-                    }`
-                  : null,
-              ]
+              {/* wie am Tablet: „Basis 60 · Vorb. 5 · CAP 10“ (Review Z10 Runde 2) */}
+              {[detail, line ? lineBreakdown(line) : null]
                 .filter(Boolean)
                 .join(' · ')}
             </Typography>
@@ -97,7 +90,7 @@ function RollLine({
           sx={{ minWidth: 48, textAlign: 'right' }}
           data-testid={`roll-total-${lineKey}`}
         >
-          {formatKnown(total)}
+          {minQtyText(qty)}
         </Typography>
         {line && <DeltaChip line={line} />}
         {editable && line && !editing && (
@@ -178,7 +171,7 @@ function GroupBlock({
           key={s.key}
           lineKey={s.key}
           name={s.name}
-          total={s.total}
+          qty={s}
           detail={
             s.perProduct !== 1
               ? `${formatNumber(s.perProduct)} Teigstücke je Stück${
@@ -215,7 +208,8 @@ function singleDetail(single: SingleRow): string {
 /**
  * Brötchen des Teigtag-Zettels je Backtag (Z10, §7.2 Nr. 5): „für Sonntag“,
  * „für Dienstag“, „heute backen“. Je Bruch-Gruppe eine Zeile „2 Bruch ×
- * 1250 g – 12 Stern, 8 Käse · +0 frei“ (freie Stücke zählen nie mit), darunter
+ * 1250 g – 12 Stern, 8 Käse · +0 frei“ (freie Stücke zählen nie mit; eine
+ * offene Grundmenge steht als „≥ 7“ bzw. „offen“), darunter
  * die Posten mit Korrektur (schickt den Backtag mit) und „+1 Bruch“; danach
  * Einzelstücke ohne Teilmaschine.
  */
@@ -258,7 +252,7 @@ export function RollsByBakeDay(props: RollsByBakeDayProps) {
                     key={s.key}
                     lineKey={s.key}
                     name={s.name}
-                    total={s.total}
+                    qty={s}
                     detail={singleDetail(s)}
                     step={null}
                     props={props}

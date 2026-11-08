@@ -23,6 +23,7 @@ import type {
 } from '../../lib/backzettelApi'
 import {
   fillingGramsText,
+  fillingOpenNote,
   formatKnown,
   formatNumber,
   formatGrams,
@@ -30,7 +31,7 @@ import {
   hefeteigPiecesText,
   ingredientAmount,
   litersHint,
-  litersText,
+  litersFigure,
   recipeHeading,
   recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
@@ -83,7 +84,7 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
         </Grid>
         {dough.liters && (
           <Grid item xs={6} sm={3}>
-            <Figure label="Wasser" value={litersText(dough.liters)} />
+            <Figure label="Wasser" value={litersFigure(dough.liters)} />
             {litersHint(dough.liters) && (
               <Typography variant="caption" color="text.secondary">
                 {litersHint(dough.liters)}
@@ -186,6 +187,11 @@ export function FillingBlock({ filling }: { filling: FillingNeed }) {
           )
           .join(', ')}
       </Typography>
+      {fillingOpenNote(filling) && (
+        <Alert severity="warning" sx={{ mt: 1 }}>
+          {fillingOpenNote(filling)}
+        </Alert>
+      )}
       {filling.missingFillingG && (
         <Alert severity="warning" sx={{ mt: 1 }}>
           Für mindestens einen Posten ist das Füllungsgewicht noch offen – die

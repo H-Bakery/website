@@ -47,22 +47,37 @@ export interface DeltaExtras {
     id: string
     name: string
     /** Zusätzliche Teigstücke; `totalPieces` = mit Nachträgen. */
-    pieces: number
-    totalPieces: number
-    dough_g: number
-    totalDough_g: number
+    pieces: number | null
+    totalPieces: number | null
+    /**
+     * Z10: `false`, solange eine Grundmenge des Teigs offen ist - dann ist
+     * `totalPieces` nur eine Mindestmenge („≥ 37“). Ältere Server: fehlt.
+     */
+    totalPiecesComplete?: boolean
+    /** Zusatzteig in g; `null` = unbekannt (nie 0 für unbekannt). */
+    dough_g: number | null
+    /** Teig gesamt mit Nachträgen; `null` = unbekannt (Teig unvollständig). */
+    totalDough_g: number | null
+    /** Z10: der bekannte Teil von `totalDough_g` („≥ 16,5 kg“). */
+    totalDoughKnown_g?: number | null
     /** Chargen mit Nachträgen. */
     batches: number | null
     /** Chargen bei der Freigabe; ältere Server: fehlt. */
     batchesBefore?: number | null
     batch_max_kg?: number | null
-    weighing: Array<{ piece_g: number; pieces: number; total: number }>
+    weighing: Array<{
+      piece_g: number | null
+      pieces: number | null
+      total: number | null
+    }>
   }>
   fillings: Array<{
     id: string
     name: string
     grams: number
     totalGrams: number
+    /** Z10: `false`, wenn `totalGrams` nur der bekannte Teil ist („≥ …“). */
+    totalComplete?: boolean
     /** Rezept für die zusätzliche Menge; `null`, wenn nicht hochrechenbar. */
     recipe?: ScaledRecipe | null
   }>
@@ -99,6 +114,12 @@ export interface BackzettelLine {
   correctionReason: string | null
   correctionBy: BackzettelUserRef | null
   total: number
+  /**
+   * Z10: `true`, solange die Grundmenge offen ist (ohne Korrektur): `total`
+   * ist nur das Bekannte (Vorbestellt, CAP) - eine Mindestmenge („≥ 4“),
+   * bei 0 „offen“. Anzeige über `minQtyText`, nie als fertige Zahl.
+   */
+  totalIsMinimum?: boolean
   /**
    * `true`: die Korrektur drückt die Zeile unter 0, `total` ist auf 0 gekappt
    * (nur Entwurf; dazu Warnung `correction_exceeds_line`).
@@ -225,6 +246,12 @@ export interface FillingNeed {
   grams: number
   /** Mindestens ein Posten ohne Füllungsgramm - `grams` ist dann zu klein. */
   missingFillingG: boolean
+  /**
+   * Z10: ein gefüllter Posten hat keine Grundmenge - `grams` ist nur der
+   * bekannte Teil (auch 0), `openItems` nennt die Posten. Fehlt sonst.
+   */
+  baseUnset?: boolean
+  openItems?: string[]
   items: FillingNeedItem[]
   recipe: ScaledRecipe | null
   recipeMissing: boolean
@@ -453,6 +480,8 @@ export interface BreadCell {
   variant: string | null
   total: number
   baseUnset: boolean
+  /** Grundmenge offen: `total` ist eine Mindestmenge (siehe Zeile). */
+  totalIsMinimum?: boolean
 }
 
 export interface BreadRow {
@@ -482,10 +511,11 @@ export interface BruchSplit {
   itemId: string
   name: string
   variant: string | null
-  /** `null`: Grundmenge offen (Regel 8, nie 0). */
+  /** Bekannte Stück; mit `totalIsMinimum` nur eine Mindestmenge (Grundmenge offen). */
   total: number | null
   perProduct: number
   doughPieces: number | null
+  totalIsMinimum?: boolean
 }
 
 export interface BruchGroup {
@@ -522,6 +552,7 @@ export interface SingleRow {
   variant: string | null
   total: number
   baseUnset: boolean
+  totalIsMinimum?: boolean
   piece_g: number | null
   pieces: number | null
   kg: number | null
