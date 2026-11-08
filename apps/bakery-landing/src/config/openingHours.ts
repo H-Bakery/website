@@ -1,6 +1,12 @@
 /**
  * Centralized opening hours configuration for Bäckerei Heusser
  * Single source of truth for all opening hours across the application
+ *
+ * Die Zeiten stehen auch in der API (`apps/bakery-api/src/services/
+ * opening-hours.core.js`, Dienstplan-Besetzung) - die Landing-Page kann die
+ * CommonJS-Datei als statischer Export nicht importieren.
+ * `openingHours.spec.ts` prüft, dass beide übereinstimmen: wer hier eine Zeit
+ * ändert, ändert sie dort mit.
  */
 
 export interface OpeningHoursDay {

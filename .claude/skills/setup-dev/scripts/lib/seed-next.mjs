@@ -551,7 +551,9 @@ export async function seedNext(ctx) {
 }
 
 // TASK-042 Dienstplan: 8 invented people across verkauf/backstube/fahrer/buero, two shift templates,
-// Verkauf shifts this week and next (closed days skipped via the calendar's days[]), a few absences
+// Verkauf shifts this week and next (closed days skipped via the calendar's days[]) plus Backstube
+// shifts for bernd (shifts in every area since 2026-11-08; the Früh/Spät templates leave Verkauf
+// gaps 05:30-06:00 and, on Valentin's vacation days, from 12:00 - the Besetzung row shows them), a few absences
 // around today, entitlements for this year (one person without -> balance no-config). Skipped when
 // the API has no /api/dienstplan (older branch).
 export async function seedDienstplan(ctx) {
@@ -781,6 +783,12 @@ export async function seedDienstplan(ctx) {
     { who: 'valentin', template: spaet.id, weekdays: [2, 3, 4, 5, 6] },
     { who: 'sabine', template: fruh.id, weekdays: [7] },
     { who: 'mia', template: spaet.id, weekdays: [7] },
+    // Backstube (not counted in the Verkauf Besetzung, only in bernd's hours)
+    {
+      who: 'bernd',
+      times: { startTime: '02:30', endTime: '10:30', breakMinutes: 30 },
+      weekdays: [2, 3, 4, 5, 6],
+    },
   ]
   let shifts = 0
   for (const day of cal.days) {
@@ -792,7 +800,7 @@ export async function seedDienstplan(ctx) {
         body: {
           employeeId: ids[p.who],
           date: day.date,
-          templateId: p.template,
+          ...(p.times ?? { templateId: p.template }),
         },
       })
       shifts += 1

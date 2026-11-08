@@ -1,7 +1,7 @@
 /**
  * TASK-042 Dienstplan on the real API: access (inhaber, personal session
  * only), employees (no delete, deactivate), entitlements per year, shift
- * templates, shifts (Verkauf only, same day, no overlap), absences (inside
+ * templates, shifts (every area, same day, no overlap), absences (inside
  * the employment, warnings on shift overlap), the balance and the calendar
  * aggregate. Invented people only.
  */
@@ -415,7 +415,7 @@ describe('shifts', () => {
     ).body.data.id
   })
 
-  it('creates a shift from a template, only for Verkauf', async () => {
+  it('creates a shift from a template, in every area (since 2026-11-08)', async () => {
     const res = await as().post('/api/dienstplan/shifts', {
       employeeId: verkauf,
       date: '2026-11-10',
@@ -438,10 +438,11 @@ describe('shifts', () => {
       startTime: '04:00',
       endTime: '10:00',
     })
-    expect(other.status).toBe(400)
-    expect(other.body).toMatchObject({
-      error: 'not_verkauf',
-      message: 'Schichten gibt es nur für den Verkauf.',
+    // Backstube gets shifts too (owner decision 2026-11-08)
+    expect(other.status).toBe(201)
+    expect(other.body.data).toMatchObject({
+      employeeId: backstube,
+      minutes: 360,
     })
   })
 
@@ -556,12 +557,16 @@ describe('shifts', () => {
     expect(JSON.stringify(audit.map((a) => a.data))).not.toContain('Vertretung')
   })
 
-  it('a deactivated person cannot be planned; area change blocked by upcoming shifts', async () => {
+  it('a deactivated person cannot be planned; an area change keeps the shifts', async () => {
     const change = await as().patch(`/api/dienstplan/employees/${verkauf}`, {
       area: 'buero',
     })
-    expect(change.status).toBe(409)
-    expect(change.body.error).toBe('has_shifts')
+    expect(change.status).toBe(200)
+    expect(change.body.data.area).toBe('buero')
+    const back = await as().patch(`/api/dienstplan/employees/${verkauf}`, {
+      area: 'verkauf',
+    })
+    expect(back.status).toBe(200)
 
     const exitEarly = await as().patch(`/api/dienstplan/employees/${verkauf}`, {
       exitDate: '2026-11-12',
@@ -807,6 +812,132 @@ describe('calendar aggregate', () => {
       ['2026-12-25', '1. Weihnachtstag', 0],
       ['2026-12-26', '2. Weihnachtstag', 0],
     ])
+  })
+
+  it('delivers opening hours, the Verkauf Besetzung and planned vs. target hours', async () => {
+    const lena = await employee({
+      displayName: 'Lena Laden',
+      area: 'verkauf',
+      weeklyHours: 30,
+    })
+    const kai = await employee({ displayName: 'Kai Kasse', area: 'verkauf' })
+    const bruno = await employee({
+      displayName: 'Bruno Brot',
+      area: 'backstube',
+    })
+    for (const body of [
+      // Tue 01.12.: Lena 05:30-10:00, Kai 10:00-13:00, Bruno (Backstube)
+      {
+        employeeId: lena,
+        date: '2026-12-01',
+        startTime: '05:30',
+        endTime: '10:00',
+        breakMinutes: 30,
+      },
+      {
+        employeeId: kai,
+        date: '2026-12-01',
+        startTime: '10:00',
+        endTime: '13:00',
+      },
+      {
+        employeeId: bruno,
+        date: '2026-12-01',
+        startTime: '03:00',
+        endTime: '09:00',
+      },
+      // in today's week (02.11.-08.11.)
+      {
+        employeeId: lena,
+        date: '2026-11-07',
+        startTime: '06:00',
+        endTime: '12:00',
+      },
+    ]) {
+      const res = await as().post('/api/dienstplan/shifts', body)
+      expect(res.status).toBe(201)
+    }
+    const vacation = await as().post('/api/dienstplan/absences', {
+      employeeId: lena,
+      type: 'urlaub',
+      startDate: '2026-12-03',
+    })
+    expect(vacation.status).toBe(201)
+
+    const res = await as().get('/api/dienstplan?from=2026-11-30&to=2026-12-06')
+    expect(res.status).toBe(200)
+    const { days, hours } = res.body.data
+    const day = (date: string) =>
+      days.find((d: { date: string }) => d.date === date)
+    expect(day('2026-11-30')).toMatchObject({
+      closed: true,
+      openingHours: null,
+      besetzung: null,
+    })
+    expect(day('2026-12-01')).toMatchObject({
+      openingHours: { opens: '05:30', closes: '13:30' },
+      verkaufBesetzt: 2,
+      besetzung: {
+        opens: '05:30',
+        closes: '13:30',
+        segments: [
+          { from: '05:30', to: '10:00', employeeIds: [lena] },
+          { from: '10:00', to: '13:00', employeeIds: [kai] },
+          { from: '13:00', to: '13:30', employeeIds: [] },
+        ],
+        gaps: [{ from: '13:00', to: '13:30' }],
+        covered: false,
+      },
+    })
+    expect(day('2026-12-05').openingHours).toEqual({
+      opens: '05:30',
+      closes: '12:30',
+    })
+    expect(day('2026-12-06')).toMatchObject({
+      openingHours: { opens: '08:00', closes: '11:00' },
+      besetzung: { gaps: [{ from: '08:00', to: '11:00' }], covered: false },
+    })
+
+    const of = (id: number) =>
+      hours.find((h: { employeeId: number }) => h.employeeId === id)
+    expect(hours).toHaveLength(res.body.data.employees.length)
+    // 30 h / 6 open weekdays = 5 h a day; Thursday is vacation
+    expect(of(lena)).toEqual({
+      employeeId: lena,
+      from: '2026-11-30',
+      to: '2026-12-06',
+      weeklyHours: 30,
+      plannedMinutes: 240,
+      shiftCount: 1,
+      targetMinutes: 1500,
+      diffMinutes: -1260,
+      targetDays: 5,
+      creditedDays: 1,
+      status: 'ok',
+    })
+    expect(of(bruno)).toMatchObject({
+      plannedMinutes: 360,
+      targetMinutes: null,
+      diffMinutes: null,
+      status: 'no-target',
+    })
+
+    const profile = await as().get(`/api/dienstplan/employees/${lena}`)
+    expect(profile.status).toBe(200)
+    expect(profile.body.data.hours.week).toMatchObject({
+      from: '2026-11-02',
+      to: '2026-11-08',
+      plannedMinutes: 360,
+      targetMinutes: 1800,
+      diffMinutes: -1440,
+    })
+    // November 2026: 24 open days (5 Mondays, Allerheiligen on a Sunday)
+    expect(profile.body.data.hours.month).toMatchObject({
+      from: '2026-11-01',
+      to: '2026-11-30',
+      plannedMinutes: 360,
+      targetMinutes: 7200,
+    })
   })
 
   it('falls back to Monday when the finance config has no Ruhetage', async () => {

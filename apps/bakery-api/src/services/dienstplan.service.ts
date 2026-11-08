@@ -1,6 +1,6 @@
 /**
  * Dienstplan und Urlaubsplanung (TASK-042): employees, vacation entitlements
- * per year, shift templates, shifts (Verkauf only), absences, the vacation
+ * per year, shift templates, shifts (all areas since 2026-11-08), absences, the vacation
  * balance and the calendar aggregate. Owner only (router).
  *
  * Every rule and formula - holidays, opening days, day weights, vacation
@@ -549,12 +549,10 @@ export class DienstplanService {
       if (has(input, 'entryDate') || has(input, 'exitDate')) {
         await this.assertEntriesInside(id, entry, exit, transaction)
       }
-      const leavesVerkauf =
-        has(input, 'area') &&
-        input['area'] !== core.SHIFT_AREA &&
-        current.area === core.SHIFT_AREA
+      // Ein Bereichswechsel lässt die Schichten stehen (Schichten gibt es in
+      // allen Bereichen); sie zählen danach nur nicht mehr zum Verkauf.
       const deactivates = input['active'] === false && Boolean(current.active)
-      if (leavesVerkauf || deactivates) {
+      if (deactivates) {
         const upcoming = await Shift.count({
           where: { employeeId: id, date: { [Op.gte]: this.today() } },
           transaction,
@@ -563,9 +561,7 @@ export class DienstplanService {
           throw new DienstplanError(
             409,
             'has_shifts',
-            leavesVerkauf
-              ? `Es gibt noch ${upcoming} kommende Schicht(en) im Verkauf. Bitte erst löschen, dann den Bereich ändern.`
-              : `Es gibt noch ${upcoming} kommende Schicht(en). Bitte erst löschen, dann deaktivieren.`
+            `Es gibt noch ${upcoming} kommende Schicht(en). Bitte erst löschen, dann deaktivieren.`
           )
         }
       }
@@ -652,6 +648,7 @@ export class DienstplanService {
     })
     const closed = this.closedWeekdays()
     const balance = await this.balanceFor(employee, year, closed.weekdays)
+    const hours = await this.currentHours(employee, today, closed.weekdays)
     return {
       data: {
         employee: plainEmployee(employee),
@@ -668,8 +665,48 @@ export class DienstplanService {
           }),
         })),
         upcomingShifts: upcomingShifts.map(plainShift),
+        hours,
         closedWeekdays: closed,
       },
+    }
+  }
+
+  /**
+   * Plan und Soll der Person in der laufenden Woche (Mo-So) und im laufenden
+   * Monat (`plannedHours` in `vacation.core.js`) - für das Profil.
+   */
+  private async currentHours(
+    employee: Employee,
+    today: string,
+    closedWeekdays: number[]
+  ): Promise<{ week: Plain; month: Plain }> {
+    const weekFrom = core.addDays(today, 1 - core.isoWeekday(today))
+    const weekTo = core.addDays(weekFrom, 6)
+    const monthFrom = `${today.slice(0, 7)}-01`
+    const monthTo = core.addDays(core.addMonths(monthFrom, 1), -1)
+    const from = weekFrom < monthFrom ? weekFrom : monthFrom
+    const to = weekTo > monthTo ? weekTo : monthTo
+    const [shifts, absences] = await Promise.all([
+      Shift.findAll({
+        where: { employeeId: employee.id, date: { [Op.between]: [from, to] } },
+      }),
+      Absence.findAll({
+        where: {
+          employeeId: employee.id,
+          startDate: { [Op.lte]: to },
+          endDate: { [Op.gte]: from },
+        },
+      }),
+    ])
+    const input = {
+      employee: plainEmployee(employee),
+      shifts: shifts.map(plainShift),
+      absences: absences.map(absenceShape),
+      closedWeekdays,
+    }
+    return {
+      week: core.plannedHours({ ...input, from: weekFrom, to: weekTo }),
+      month: core.plannedHours({ ...input, from: monthFrom, to: monthTo }),
     }
   }
 
@@ -873,7 +910,7 @@ export class DienstplanService {
 
   /**
    * Validates a shift (new or changed) against the rules of TASK-042 and
-   * returns the warnings: Verkauf only, active, inside the employment period,
+   * returns the warnings: active, inside the employment period,
    * times (`checkShiftTimes`), no overlap with another shift of the person
    * (409). An absence on that day or a closed day is a warning, not an error.
    */
@@ -890,9 +927,8 @@ export class DienstplanService {
   ): Promise<Warning[]> {
     const employee = await Employee.findByPk(shift.employeeId, { transaction })
     if (!employee) employeeNotFound()
-    if (employee.area !== core.SHIFT_AREA) {
-      invalid('Schichten gibt es nur für den Verkauf.', 'not_verkauf')
-    }
+    // Schichten in allen Bereichen (Entscheidung des Inhabers 2026-11-08);
+    // die Besetzung zählt trotzdem nur den Verkauf (vacation.core.js).
     if (!employee.active) {
       throw new DienstplanError(
         409,
@@ -1400,13 +1436,14 @@ export class DienstplanService {
     const plainAbsences = absences.map((a) =>
       this.plainAbsence(a, closed.weekdays)
     )
+    const plainEmployees = shown.map(plainEmployee)
     return {
       data: {
         from,
         to,
         today: this.today(),
         closedWeekdays: closed,
-        employees: shown.map(plainEmployee),
+        employees: plainEmployees,
         shifts: plainShifts,
         absences: plainAbsences,
         days: core.calendarDays(
@@ -1416,6 +1453,16 @@ export class DienstplanService {
           shown.map((e) => ({ id: e.id, area: e.area })),
           plainShifts,
           plainAbsences
+        ),
+        // Plan- und Soll-Stunden je gezeigter Person für from…to (Woche,
+        // Monat oder Jahr - der Zeitraum der Ansicht).
+        hours: core.hoursByEmployee(
+          from,
+          to,
+          plainEmployees,
+          plainShifts,
+          plainAbsences,
+          closed.weekdays
         ),
       },
     }
