@@ -183,12 +183,18 @@ describe('dienstplanCalendar', () => {
     expect(parseMonth('2026-11-05')).toBeNull()
     expect(parseYear('2026')).toBe('2026-01-01')
     expect(parseYear('26')).toBeNull()
+    // Nur Jahre, für die die API ein Urlaubskonto rechnet (2000-2100).
+    expect(parseYear('2000')).toBe('2000-01-01')
+    expect(parseYear('2100')).toBe('2100-01-01')
+    expect(parseYear('1999')).toBeNull()
+    expect(parseYear('2101')).toBeNull()
     const today = '2026-11-10'
     expect(parsePeriod('monat', { month: '2026-03' }, today)).toBe('2026-03-01')
     expect(parsePeriod('monat', { week: '2026-12-02' }, today)).toBe(
       '2026-12-01'
     )
     expect(parsePeriod('jahr', { year: 'x' }, today)).toBe('2026-01-01')
+    expect(parsePeriod('jahr', { year: '1999' }, today)).toBe('2026-01-01')
     expect(parsePeriod('woche', {}, today)).toBe('2026-11-09')
   })
 

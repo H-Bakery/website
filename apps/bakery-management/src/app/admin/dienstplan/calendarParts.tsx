@@ -11,6 +11,7 @@ import {
 } from '../../../lib/dienstplanApi'
 import { ColorDot } from './mitarbeiter/EmployeeDialog'
 import { profileHref } from './mitarbeiter/MitarbeiterClient'
+import { TOUCH_MEDIA } from '../../../lib/muiTheme'
 
 /**
  * Bausteine, die Woche, Monat und Jahr des Dienstplans teilen: Farben der
@@ -63,8 +64,17 @@ export function stickyName(theme: Theme) {
   } as const
 }
 
-/** Zeilenkopf einer Person: Farbpunkt, Name als Link aufs Profil. */
-export function EmployeeNameCell({ employee }: { employee: Employee }) {
+/**
+ * Zeilenkopf einer Person: Farbpunkt, Name als Link aufs Profil; `extra`
+ * steht darunter (Jahr: der Rest am Handy).
+ */
+export function EmployeeNameCell({
+  employee,
+  extra,
+}: {
+  employee: Employee
+  extra?: React.ReactNode
+}) {
   return (
     <TableCell component="th" scope="row" sx={stickyName}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
@@ -79,6 +89,9 @@ export function EmployeeNameCell({ employee }: { employee: Employee }) {
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
+            // Eigenes Touch-Ziel (Weg zum Profil): 44 px hoch, eine Zeile,
+            // damit das Abschneiden mit „…“ bleibt.
+            [TOUCH_MEDIA]: { minHeight: 44, lineHeight: '44px' },
           }}
         >
           {employee.displayName}
@@ -92,6 +105,7 @@ export function EmployeeNameCell({ employee }: { employee: Employee }) {
           sx={{ mt: 0.5 }}
         />
       )}
+      {extra}
     </TableCell>
   )
 }

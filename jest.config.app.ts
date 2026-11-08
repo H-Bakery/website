@@ -13,7 +13,7 @@ const customJestConfig = {
     '\\.(css|less|scss|sass)$': 'identity-obj-proxy',
   },
   transformIgnorePatterns: [
-    '/node_modules/(?!(@mui|@fullcalendar|react-leaflet)/)',
+    '/node_modules/(?!(@mui|react-leaflet)/)',
     '^.+\\.module\\.(css|sass|scss)$',
   ],
   collectCoverage: false, // Set to true only when running coverage command

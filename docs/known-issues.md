@@ -42,6 +42,9 @@ deleted the six pre-pilot libraries whose specs used to fail (`feature-inventory
   of their own.
 - Stale npm scripts: `dev`, `build`, `start`, `lint` (plain `next …` at the repo root, no app
   there), `serve:backend` / `build:backend` (no `backend` project).
+- `bakery-api` has no `lint` target (`nx lint bakery-api` → "Cannot find configuration for task
+  bakery-api:lint"), and the root ESLint config ignores its files. The API is checked by
+  `nx run bakery-api:typecheck` and its tests only.
 - `bakeryAPI` in `libs/shared/data-access` is a mock over local data; only `EmailSettings` in
   `feature-settings` imports it, and no page renders that component.
 

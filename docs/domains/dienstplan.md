@@ -36,7 +36,7 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
 - **Nur Urlaub kostet Urlaubstage**; „frei“ und „abwesend“ stehen im Kalender, aber nicht auf dem
   Konto.
 - **Anspruch je Jahr** in einer eigenen Zeile (Anspruch, Übertrag). **Fehlt er, ist das Konto
-  „offen“** (`status: 'no-config'`, Rest `null`) - nie 0. Genommen und geplant stehen trotzdem da.
+  „offen“** (`status: 'no-config'`, Rest `null`) - nie 0. Genehmigt und geplant stehen trotzdem da.
   Bei Ein- oder Austritt im Jahr anteilig: 1/12 je vollem Beschäftigungsmonat, Rundung nach § 5
   Abs. 2 BUrlG (ab einem halben Tag aufrunden, nie abrunden).
 - **Übertrag verfällt am 31.03.**: genehmigter Urlaub bis dahin verbraucht zuerst den Übertrag;
@@ -95,20 +95,26 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
     auch noch Kommendes, daher nicht „genommen“ -, geplant, „verfallen“ wenn am 31.03. Übertrag
     übrig blieb; ohne Anspruch Rest „offen“ und „Anspruch offen“). Monat im Kopf antippen →
     Monatsansicht; Monat einer Person mit Abwesenheiten antippen → bearbeiten (eine: gleich der
-    Dialog, mehrere: Menü). Konnte das Konto nicht geladen werden, steht „nicht geladen“ in der
-    Spalte und ein Hinweis in ihrem Kopf - keine eigene Meldung über der Seite.
+    Dialog, mehrere: Menü); leerer Monat → Abwesenheit ab dem Ersten eintragen. Konnte das Konto
+    nicht geladen werden, steht „nicht geladen“ in der Spalte und ein Hinweis in ihrem Kopf - keine
+    eigene Meldung über der Seite. Am Handy steht der Rest zusätzlich unter dem Namen, weil die
+    Kontospalte ganz rechts liegt. Das Jahr reicht von 2000 bis 2100 (so weit rechnet die API das
+    Konto); ein anderes `?jahr=` zeigt das laufende Jahr.
   - **Meldungen** („Schicht angelegt.“, Fehler beim Löschen) gehören zum Zeitraum und verschwinden
-    beim Blättern oder Ansichtswechsel.
+    beim Blättern oder Ansichtswechsel. Höchstens zwei stehen über dem Kalender: ein Fehler ersetzt
+    die Erfolgsmeldung, und ein Ladefehler beim Nachladen zeigt sich nur, solange kein Fehler einer
+    Aktion dasteht.
   - Farbe ist nie der einzige Träger: Kürzel, Text und eine Legende stehen dabei.
 - **`/admin/dienstplan/mitarbeiter` - Liste** (aktiv / ausgeschieden / alle), Mitarbeiter anlegen.
 - **`/admin/dienstplan/mitarbeiter/[id]` - Profil:** Stammdaten, Urlaubskonto des Jahres
-  (Anspruch, Übertrag, genommen, geplant, verfallen, Rest), Anspruch je Jahr, Abwesenheiten des
+  (Anspruch, Übertrag, genehmigt, geplant, verfallen, Rest), Anspruch je Jahr, Abwesenheiten des
   Jahres, kommende Schichten.
 - **Handy und Tablet:** die Raster scrollen waagrecht, die Namensspalte bleibt stehen. Alle eigenen
-  klickbaren Flächen (Einträge der Woche, Tageszellen im Monat, Monatsköpfe und Monate mit
-  Abwesenheiten im Jahr, Farbfelder, Vorlagen-Chips im Schichtdialog) sind auf Touch-Geräten
-  mindestens 44 px groß (`TOUCH_MEDIA`).
-  Leere Zellen der Woche zeigen dort das „+“ immer (gedämpft) - Touch kennt kein Hover.
+  klickbaren Flächen (Name als Link aufs Profil, Einträge der Woche, Tageszellen im Monat,
+  Monatsköpfe und Monate im Jahr, Farbfelder, Vorlagen-Chips im Schichtdialog) sind auf
+  Touch-Geräten mindestens 44 px groß (`TOUCH_MEDIA`).
+  Leere Zellen der Woche und leere Monate im Jahr zeigen dort das „+“ immer (gedämpft) - Touch
+  kennt kein Hover.
 - **Daten nur aus der API:** Woche, Monat und Jahr laden `GET /api/dienstplan?from&to`
   (Mitarbeiter, Schichten, Abwesenheiten, `days[]` mit Feiertagsname, Ruhetag, Gewicht und
   „Verkauf besetzt“), das Jahr zusätzlich das Konto. Kein FullCalendar (`resource-timegrid` ist

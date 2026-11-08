@@ -180,9 +180,18 @@ export function parseMonth(raw: string | undefined): string | null {
   return /^\d{4}-\d{2}$/.test(raw ?? '') && isIsoDate(first) ? first : null
 }
 
-/** `?jahr=JJJJ` lesen → 1. Januar; sonst `null`. */
+/**
+ * Jahre, die die Jahresansicht zeigt - so weit, wie die API das
+ * Urlaubskonto rechnet (`GET /api/dienstplan/balance`, sonst `invalid_year`).
+ */
+export const YEAR_MIN = 2000
+export const YEAR_MAX = 2100
+
+/** `?jahr=JJJJ` (2000-2100) lesen → 1. Januar; sonst `null`. */
 export function parseYear(raw: string | undefined): string | null {
-  return /^\d{4}$/.test(raw ?? '') ? `${raw}-01-01` : null
+  if (!/^\d{4}$/.test(raw ?? '')) return null
+  const year = Number(raw)
+  return year >= YEAR_MIN && year <= YEAR_MAX ? `${raw}-01-01` : null
 }
 
 /**

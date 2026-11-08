@@ -31,6 +31,7 @@ import {
   type AreaFilter,
 } from '../../../lib/dienstplanCalendar'
 import { TOUCH_MEDIA } from '../../../lib/muiTheme'
+import { Add as AddIcon } from '@mui/icons-material'
 import {
   ABSENCE_COLORS,
   AbsenceLegend,
@@ -55,7 +56,9 @@ export type YearBalances =
  * Urlaubskonto des Jahres aus `GET /api/dienstplan/balance?year` - der
  * Browser rechnet keine Salden. Ein Monat im Kopf öffnet die Monatsansicht;
  * ein Monat einer Person mit Abwesenheiten öffnet sie zum Bearbeiten
- * (`onCell`, wie in Woche und Monat).
+ * (`onCell`, wie in Woche und Monat), ein leerer Monat legt eine Abwesenheit
+ * ab dem Ersten an (`onAdd`). Am Handy steht der Rest zusätzlich unter dem
+ * Namen - die Kontospalte liegt dort weit rechts.
  */
 export default function YearView({
   calendar,
@@ -65,6 +68,7 @@ export default function YearView({
   loading,
   onOpenMonth,
   onCell,
+  onAdd,
 }: {
   calendar: Calendar
   year: number
@@ -73,6 +77,7 @@ export default function YearView({
   loading: boolean
   onOpenMonth: (monthStart: string) => void
   onCell: (anchor: HTMLElement, employee: Employee, absences: Absence[]) => void
+  onAdd: (employee: Employee, monthStart: string) => void
 }) {
   const months = MONTH_NAMES.map(
     (_, i) => `${year}-${String(i + 1).padStart(2, '0')}-01`
@@ -206,7 +211,15 @@ export default function YearView({
                       key={employee.id}
                       data-testid={`row-${employee.id}`}
                     >
-                      <EmployeeNameCell employee={employee} />
+                      <EmployeeNameCell
+                        employee={employee}
+                        extra={
+                          <PhoneBalance
+                            employeeId={employee.id}
+                            balances={balances}
+                          />
+                        }
+                      />
                       {months.map((monthStart) => (
                         <YearMonthCell
                           key={monthStart}
@@ -218,6 +231,7 @@ export default function YearView({
                           monthStart={monthStart}
                           absences={byEmployee.get(employee.id) ?? []}
                           onCell={onCell}
+                          onAdd={onAdd}
                         />
                       ))}
                       <BalanceCell
@@ -237,10 +251,25 @@ export default function YearView({
   )
 }
 
+/** Antippbare Fläche eines Monats: ganzer Monat, auf Touch mindestens 44 px. */
+const MONTH_CELL_BUTTON = {
+  width: '100%',
+  minHeight: 28,
+  [TOUCH_MEDIA]: { minHeight: 44 },
+  px: 0.25,
+  borderRadius: 0.5,
+  '&:hover, &:focus-visible': {
+    bgcolor: 'action.hover',
+    outline: 2,
+    outlineColor: 'primary.main',
+  },
+} as const
+
 /**
  * Ein Monat einer Person: Abwesenheiten als Balken an ihrer Stelle. Mit
  * Abwesenheiten ist der ganze Monat (nicht der schmale Balken) die
- * antippbare Fläche - auf Touch mindestens 44 px.
+ * antippbare Fläche zum Bearbeiten; ein leerer Monat legt eine Abwesenheit
+ * an (das Plus erscheint bei Hover, auf Touch steht es gedämpft da).
  */
 function YearMonthCell({
   testId,
@@ -248,12 +277,14 @@ function YearMonthCell({
   monthStart,
   absences,
   onCell,
+  onAdd,
 }: {
   testId: string
   employee: Employee
   monthStart: string
   absences: Absence[]
   onCell: (anchor: HTMLElement, employee: Employee, absences: Absence[]) => void
+  onAdd: (employee: Employee, monthStart: string) => void
 }) {
   const bars = absences
     .map((absence) => ({ absence, segment: monthSegment(absence, monthStart) }))
@@ -305,7 +336,21 @@ function YearMonthCell({
   return (
     <TableCell data-testid={testId} sx={{ p: 0.5, verticalAlign: 'middle' }}>
       {bars.length === 0 ? (
-        track
+        <ButtonBase
+          aria-label={`${employee.displayName}, ${
+            MONTH_NAMES[Number(monthStart.slice(5, 7)) - 1]
+          } ${monthStart.slice(0, 4)}: Abwesenheit eintragen`}
+          onClick={() => onAdd(employee, monthStart)}
+          sx={{
+            ...MONTH_CELL_BUTTON,
+            color: 'text.secondary',
+            '& svg': { opacity: 0 },
+            '&:hover svg, &:focus-visible svg': { opacity: 1 },
+            [TOUCH_MEDIA]: { minHeight: 44, '& svg': { opacity: 0.5 } },
+          }}
+        >
+          <AddIcon fontSize="small" />
+        </ButtonBase>
       ) : (
         <ButtonBase
           aria-label={`${employee.displayName}, ${texts.join(
@@ -319,18 +364,7 @@ function YearMonthCell({
               bars.map((bar) => bar.absence)
             )
           }
-          sx={{
-            width: '100%',
-            minHeight: 28,
-            [TOUCH_MEDIA]: { minHeight: 44 },
-            px: 0.25,
-            borderRadius: 0.5,
-            '&:hover, &:focus-visible': {
-              bgcolor: 'action.hover',
-              outline: 2,
-              outlineColor: 'primary.main',
-            },
-          }}
+          sx={MONTH_CELL_BUTTON}
         >
           {track}
         </ButtonBase>
@@ -341,17 +375,14 @@ function YearMonthCell({
 
 /**
  * Urlaubskonto der Person im Jahr, wie die API es rechnet: Rest, genehmigt
- * (auch noch Kommendes - daher nicht „genommen“), geplant und - wenn am 31.03. Übertrag übrig blieb - verfallen. Ohne
- * erfassten Anspruch steht der Rest als „offen“ da (nie 0); ist das Konto
- * nicht geladen, steht das da.
+ * (auch noch Kommendes - daher nicht „genommen“), geplant und - wenn am
+ * 31.03. Übertrag übrig blieb - verfallen. Ohne erfassten Anspruch steht der
+ * Rest als „offen“ da (nie 0); ist das Konto nicht geladen, steht das da.
  */
-function BalanceCell({
-  employeeId,
-  balances,
-}: {
-  employeeId: number
+function balanceTexts(
+  employeeId: number,
   balances: YearBalances
-}) {
+): { main: string; detail: string | null } {
   let main: string
   let detail: string | null = null
   if (balances.status === 'loading') {
@@ -377,6 +408,37 @@ function BalanceCell({
         .join(' · ')
     }
   }
+  return { main, detail }
+}
+
+/** Am Handy (unter `sm`) der Rest unter dem Namen. */
+function PhoneBalance({
+  employeeId,
+  balances,
+}: {
+  employeeId: number
+  balances: YearBalances
+}) {
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      data-testid={`phone-balance-${employeeId}`}
+      sx={{ display: { xs: 'block', sm: 'none' } }}
+    >
+      {balanceTexts(employeeId, balances).main}
+    </Typography>
+  )
+}
+
+function BalanceCell({
+  employeeId,
+  balances,
+}: {
+  employeeId: number
+  balances: YearBalances
+}) {
+  const { main, detail } = balanceTexts(employeeId, balances)
   return (
     <TableCell data-testid={`balance-${employeeId}`} sx={{ py: 0.5 }}>
       <Typography variant="body2" sx={{ fontWeight: 600 }}>

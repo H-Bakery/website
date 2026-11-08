@@ -746,13 +746,13 @@ function BalanceView({
             hint: proRata,
           },
           {
-            label: 'Genommen',
+            label: 'Genehmigt',
             value: (
               <span data-testid="balance-approved">
                 {formatDays(balance.approvedDays)}
               </span>
             ),
-            hint: 'genehmigt',
+            hint: 'auch Kommendes',
           },
           {
             label: 'Geplant',

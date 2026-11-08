@@ -169,6 +169,9 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     expect(screen.getByTestId('balance-entitlement')).toHaveTextContent('24')
     expect(screen.getByTestId('balance-carryover')).toHaveTextContent('3')
     expect(screen.getByTestId('balance-approved')).toHaveTextContent('5,5')
+    // Wie in der Jahresansicht: „genehmigt“ zählt auch Kommendes mit.
+    expect(screen.getByText('Genehmigt')).toBeInTheDocument()
+    expect(screen.queryByText('Genommen')).not.toBeInTheDocument()
     expect(screen.getByTestId('balance-planned')).toHaveTextContent('2')
     expect(screen.getByTestId('balance-expired')).toHaveTextContent('1')
     expect(screen.getByTestId('balance-remaining')).toHaveTextContent('20,5')

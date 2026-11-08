@@ -486,6 +486,10 @@ describe('Dienstplan - Kalender (Woche)', () => {
         )
       )
     ).toMatchObject({ 'min-height': '44px' })
+    // Name als Weg zum Profil (Woche, Monat und Jahr teilen die Zelle).
+    expect(
+      touchStyle(screen.getByRole('link', { name: 'Erika Beispiel' }))
+    ).toMatchObject({ 'min-height': '44px' })
 
     // Leere Zelle: Touch kennt kein Hover - das Plus steht gedämpft da.
     const empty = within(screen.getByTestId('cell-3-2026-11-11')).getByRole(
@@ -787,6 +791,26 @@ describe('Dienstplan - Kalender (Woche)', () => {
     fireEvent.click(d.getByRole('button', { name: 'Löschen' }))
     await waitFor(() => expect(api.deleteShift).toHaveBeenCalledWith(21))
     expect(await screen.findByText('Schicht gelöscht.')).toBeInTheDocument()
+  })
+
+  it('ein Fehler ersetzt die alte Erfolgsmeldung - nie drei Hinweise übereinander', async () => {
+    jest.spyOn(window, 'confirm').mockReturnValue(true)
+    api.deleteShift.mockResolvedValue(undefined)
+    renderCalendar()
+    await ready()
+    fireEvent.click(screen.getByTestId('shift-21'))
+    fireEvent.click(dialog().getByRole('button', { name: 'Löschen' }))
+    expect(await screen.findByText('Schicht gelöscht.')).toBeInTheDocument()
+
+    api.deleteAbsence.mockRejectedValue(new Error('kaputt'))
+    fireEvent.click(
+      within(screen.getByTestId('cell-4-2026-11-12')).getByTestId('absence-31')
+    )
+    fireEvent.click(dialog().getByRole('button', { name: 'Löschen' }))
+    await waitFor(() => expect(api.deleteAbsence).toHaveBeenCalledWith(31))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
+    expect(screen.queryByText('Schicht gelöscht.')).not.toBeInTheDocument()
   })
 
   it('bearbeitet und löscht eine Abwesenheit aus dem Kalender', async () => {
@@ -1197,7 +1221,10 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       screen.getByTestId('year-navigator').querySelector('input')
     ).toBeNull()
     // Zurück zur Woche: heute (laut API 10.11.) liegt im Jahr → diese Woche.
-    await screen.findByText('Rest 13')
+    await screen.findByTestId('phone-balance-3')
+    await waitFor(() =>
+      expect(screen.getByTestId('balance-3')).toHaveTextContent('Rest 13')
+    )
     fireEvent.click(screen.getByRole('button', { name: 'Woche' }))
     expect(mockReplace).toHaveBeenLastCalledWith(
       '/admin/dienstplan?woche=2026-11-09',
@@ -1231,9 +1258,14 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       left: '0%',
       width: `${(8 / 31) * 100}%`,
     })
-    expect(
-      within(screen.getByTestId('month-3-2026-09')).queryByRole('button')
-    ).not.toBeInTheDocument()
+    // Leerer Monat: Abwesenheit eintragen, ebenfalls 44 px auf Touch.
+    const september = within(screen.getByTestId('month-3-2026-09')).getByRole(
+      'button'
+    )
+    expect(september).toHaveAccessibleName(
+      'Erika Beispiel, September 2026: Abwesenheit eintragen'
+    )
+    expect(touchStyle(september)).toMatchObject({ 'min-height': '44px' })
     expect(screen.getByTestId('bar-31-2026-11')).toHaveAttribute(
       'data-status',
       'geplant'
@@ -1245,7 +1277,15 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       borderWidth: '2px',
     })
 
-    expect(await screen.findByText('Rest 13')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByTestId('balance-3')).toHaveTextContent('Rest 13')
+    )
+    // Am Handy liegt die Kontospalte weit rechts: der Rest steht auch unter
+    // dem Namen (nur unter `sm` sichtbar).
+    expect(screen.getByTestId('phone-balance-3')).toHaveTextContent('Rest 13')
+    expect(screen.getByTestId('phone-balance-5')).toHaveTextContent(
+      'Rest offen'
+    )
     expect(screen.getByTestId('balance-3')).toHaveTextContent(
       'genehmigt 11 · geplant 3'
     )
@@ -1283,6 +1323,55 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     expect(await screen.findByTestId('month-title')).toHaveTextContent(
       'November 2026'
     )
+  })
+
+  it('Jahr: leerer Monat legt eine Abwesenheit ab dem Ersten an', async () => {
+    renderCalendar({ view: 'jahr', year: '2026' })
+    await ready()
+    fireEvent.click(
+      within(screen.getByTestId('month-5-2026-09')).getByRole('button')
+    )
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      dialog().getByText('Abwesenheit eintragen – Lena Neu', { exact: false })
+    ).toBeInTheDocument()
+    expect(dialog().getByLabelText(/^Von/)).toHaveValue('2026-09-01')
+  })
+
+  it('Jahr: nach dem Speichern einer Abwesenheit lädt das Konto neu', async () => {
+    api.updateAbsence.mockReset().mockResolvedValue({
+      data: { ...YEAR_URLAUB, note: 'Sommer' },
+      warnings: [],
+    })
+    renderCalendar({ view: 'jahr', year: '2026' })
+    await ready()
+    await waitFor(() =>
+      expect(screen.getByTestId('balance-3')).toHaveTextContent('Rest 13')
+    )
+    expect(api.fetchBalances).toHaveBeenCalledTimes(1)
+
+    api.fetchBalances.mockResolvedValue([
+      balance(3, { approvedDays: 12, remainingDays: 12 }),
+    ])
+    fireEvent.click(
+      within(screen.getByTestId('month-3-2026-07')).getByRole('button')
+    )
+    fireEvent.change(dialog().getByLabelText('Notiz (optional)'), {
+      target: { value: 'Sommer' },
+    })
+    fireEvent.click(dialog().getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(api.updateAbsence).toHaveBeenCalledWith(41, { note: 'Sommer' })
+    )
+    expect(
+      await screen.findByText('Abwesenheit gespeichert.')
+    ).toBeInTheDocument()
+    expect(api.fetchBalances).toHaveBeenCalledTimes(2)
+    expect(api.fetchBalances).toHaveBeenLastCalledWith(2026)
+    await waitFor(() =>
+      expect(screen.getByTestId('balance-3')).toHaveTextContent('Rest 12')
+    )
+    expect(screen.getByTestId('balance-3')).toHaveTextContent('genehmigt 12')
   })
 
   it('Jahr: Konto nicht geladen heißt „nicht geladen“, nicht 0', async () => {

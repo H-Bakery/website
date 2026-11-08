@@ -70,6 +70,8 @@ import {
   stepPeriod,
   switchPeriod,
   weekDates,
+  YEAR_MAX,
+  YEAR_MIN,
   type AreaFilter,
   type CalendarView,
   type CellEntries,
@@ -236,7 +238,7 @@ const SECTION_HINT: Record<CalendarView, string> = {
     'Leere Zelle antippen: Schicht oder Abwesenheit anlegen. Eintrag antippen: bearbeiten.',
   monat:
     'Tag einer Person antippen: Schicht oder Abwesenheit anlegen oder bearbeiten. Datum im Kopf antippen: Woche. Punkt = Schicht.',
-  jahr: 'Monat im Kopf antippen: Monatsansicht. Abwesenheit antippen: bearbeiten. Rechts das Urlaubskonto des Jahres.',
+  jahr: 'Monat im Kopf antippen: Monatsansicht. Abwesenheit antippen: bearbeiten, leeren Monat: Abwesenheit eintragen. Rechts das Urlaubskonto des Jahres.',
 }
 
 /**
@@ -452,6 +454,9 @@ export default function DienstplanClient({
       done('Schicht gelöscht.')
     } catch (err) {
       setDialog(null)
+      // Höchstens zwei Hinweise über dem Kalender: der Fehler ersetzt die
+      // alte Erfolgsmeldung.
+      setNotice(null)
       setError(messageOf(err, 'Löschen fehlgeschlagen.'))
     }
   }
@@ -471,6 +476,9 @@ export default function DienstplanClient({
       done('Abwesenheit gelöscht.')
     } catch (err) {
       setDialog(null)
+      // Höchstens zwei Hinweise über dem Kalender: der Fehler ersetzt die
+      // alte Erfolgsmeldung.
+      setNotice(null)
       setError(messageOf(err, 'Löschen fehlgeschlagen.'))
     }
   }
@@ -551,6 +559,9 @@ export default function DienstplanClient({
             onChange={(date) => navigate({ start: periodStart(view, date) })}
             label={nav.label}
             step={(date, direction) => stepPeriod(view, date, direction)}
+            // Das Urlaubskonto kennt nur die Jahre 2000-2100.
+            min={view === 'jahr' ? `${YEAR_MIN}-01-01` : undefined}
+            max={view === 'jahr' ? `${YEAR_MAX}-01-01` : undefined}
             prevLabel={nav.prev}
             nextLabel={nav.next}
             today={periodStart(view, today)}
@@ -583,15 +594,19 @@ export default function DienstplanClient({
         </>
       }
     >
-      {error && (
+      {/* Ein Platz für Fehler (höchstens zwei Hinweise mit der Meldung):
+          erst der Fehler einer Aktion, sonst der des Nachladens - der nur
+          über einem geladenen Raster, beim erneuten Versuch nach einem
+          blockierenden Fehler steht sonst Fehler und Laden zugleich da. */}
+      {error ? (
         <Alert severity="error" onClose={() => setError(null)}>
           {error}
         </Alert>
-      )}
-      {/* Nur über einem geladenen Raster: beim erneuten Versuch nach einem
-          blockierenden Fehler steht sonst Fehler und Laden zugleich da. */}
-      {loadError && shownCalendar !== null && (
-        <ErrorState message={loadError} onRetry={() => void reload()} />
+      ) : (
+        loadError &&
+        shownCalendar !== null && (
+          <ErrorState message={loadError} onRetry={() => void reload()} />
+        )
       )}
       {notice && (
         <Alert
@@ -682,6 +697,14 @@ export default function DienstplanClient({
                   editAbsence(employee, absence.startDate, absence)
                 )
               )
+            }
+            onAdd={(employee, monthStart) =>
+              setDialog({
+                kind: 'absence',
+                employee,
+                date: monthStart,
+                absence: null,
+              })
             }
           />
         ) : blockingError ? (
