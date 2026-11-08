@@ -192,7 +192,7 @@ _Single working document. Created 2026-11-05 (KW 45), owner huhn511. Supersedes
 
 **What the bakery needs (from `hq`):**
 
-- Biggest documented loss: 5–15 % of goods unsold, against a target under 5 %.
+- Biggest documented loss: unsold goods well above the target of under 5 % (figures in hq).
 - Preorders come by phone and WhatsApp with no system; Christmas is the peak.
 - Anna (the Telegram agent) already serves the owner with revenue summaries, so the app's job is
   the staff screens.
@@ -201,8 +201,8 @@ _Single working document. Created 2026-11-05 (KW 45), owner huhn511. Supersedes
   - `data/production/planning/{seasonal-calendar,batch-calculator}.md`
   - `data/inventory/suppliers/*`
   - the HACCP concept's placeholders
-- Scale: about 80 Bons per trading day, 103 catalog products, a team of about 4–6 people
-  (owner, 1 baker, 2 sales staff, 1–2 Saturday drivers).
+- Scale: a small team (owner, baker, sales staff, Saturday drivers) and 103 catalog products;
+  daily volumes are in hq.
 
 ---
 
@@ -368,54 +368,26 @@ A failed check leaves the PR open and notifies the owner through Telegram (M4) o
 | `libs/bakery-management/feature-saturday-production`                                                         | empty shell, broken exports                                                                                                                               | delete with its tsconfig path                      |
 | `admin/baking-list`, `/api/baking-list` (mock), `libs/api/baking-list` (TS, not runnable)                    | demo                                                                                                                                                      | delete; redirect to the Backzettel                 |
 
-**Known data conflict.** The existing code makes the filled Kranz 3 × 600 g; `hq` says 1 × 1200 g.
-The code was changed in commit 0a613ad9 (2025-07-28) and a spec locks in its value. The baker
-decides (Q-B3).
+**Known data conflict.** The existing code and `hq` disagree on the dough pieces of the filled
+Kranz; a spec locks in the code value. The baker decides (Q-B3); the real values are in hq.
 
 ### 5.2 What the days look like (from the data)
 
-**Weekday (Tue–Fri):**
+The day-by-day picture - quantities per product and weekday, register averages, dough pieces of the
+Hefeteig family - is real operating data and lives in the private hq repo
+(`notes/procedures/backzettel-tagesbild.md`, `notes/procedures/backliste.md`). What matters for
+the design:
 
-- **Prep, 14–15 h the day before:**
-  - Kaffeestückchen-Wagen from the freezer: 15 items with Blech numbers, from Schokocroissant 10
-    on Blech 1 to Nougatplunder 3 × 12 on Blech 15–17. Then into the retarder on program A.
-  - Sauerteig (Mischbrot; Buttermilch on Wednesday), Brühstück for Vollgut, Fleischkäse at 105 °C.
-- **Cakes:** Marmor 3, Rahm 3, Käse-Mandarine 2, Kirschstreusel 2.
-- **Bread in Liter (water):** Korn 6, Holzluken 6, Misch 3, Hafer 1.24. On Wednesday add
-  Vollgut 2 and Buttermilch 3. The register suggests a rotation: Spezialbrot Tue/Thu, Dinkel/Urkorn
-  Thu/Fri, Körnerbrot Saturday.
-- **Rolls, Laugen, Snacks:** no written quantities exist anywhere. Register averages per day:
-  Doppelweck 34–52, Flitweck 24–35, Brezel 16–25, Käseweck 11–16.
-- **Wednesday:** pastry 1–2 pieces fewer per item. The register agrees (Plunder Wednesday ~22 vs.
-  Thursday ~36).
-
-**Saturday: a different assortment, Hefeteig and cake.**
-
-- Plunder, Taschen, Hefeteig-Kaffeestückchen, Einback and Schoko-/Rosinenbrötchen drop to about 0.
-- Saturday-only rolls: Elsässer ~28, Samstagsweck ~9–11, Hörnchen ~4–5. Sternweck rises to 17–23
-  and Croissants double.
-- **The Hefeteig family**, from the Teigstückübersicht and PLUs 402–409:
-
-  | Product                         | Teigstück (from hq)          | Fillings                                 |
-  | ------------------------------- | ---------------------------- | ---------------------------------------- |
-  | Hefezopf groß (402)             | 300 g × 3                    | –                                        |
-  | Hefezopf klein (403)            | 300 g × 2                    | –                                        |
-  | Kranzkuchen (404)               | 600 g × 3                    | –                                        |
-  | Rosinenbrot (405)               | 600 g × 1                    | –                                        |
-  | Streusel groß / klein (406/407) | 900 g / 500 g × 1            | –                                        |
-  | Zopf gefüllt (408)              | 500 g × 1                    | Nuss, Schoko, Quark, Pudding             |
-  | Kranz gefüllt (409)             | 1200 g × 1 (code: 3 × 600 g) | Nuss, Schoko, Quark, Pudding (Marzipan?) |
-  | Teig, ausgerollt                | 500 g × 1                    |                                          |
-
-- "Kuchen, sonstige" sells 25–39 on Saturday vs. 3–10 on weekdays. Since June 2026 staff ring
-  Saturday cakes up as "Kuchen, sonstige", so **Saturday quantities per variant cannot be derived
-  from the register**. The baker has to set them.
+- **Weekday (Tue-Fri):** prep the afternoon before (pastry trolley from the freezer with Blech
+  numbers, Sauerteig, Brühstück); cakes, bread in Liter, rolls. Wednesday is slightly smaller.
+  For rolls, Laugen and snacks no written quantities exist; the register gives averages.
+- **Saturday** has a different assortment: pastry drops out, Saturday-only rolls appear, plus the
+  Hefeteig family (Zopf, Kranz, Streusel, filled variants) and cake. Since June 2026 Saturday cakes
+  are rung up as "Kuchen, sonstige", so **quantities per variant cannot be derived from the
+  register** - the baker sets them.
 - Mörsbach collection point: Saturday, orders close **Friday 12:00**, before the Friday 14 h freeze.
-- CAP is delivered Tue–Sat.
-
-**Sunday:**
-
-- Sonntagsbrötchen ~56, Knusperweck ~60, Roggenweck ~40, Käsezwilling ~18, Zwilling mit Topping ~13.
+- CAP is delivered Tue-Sat.
+- **Sunday:** Sonntagsbrötchen, Knusperweck, Roggenweck, Zwillinge.
 - Missing from `hq/products`: Sonntagsbrötchen, the Zwillinge, Mehrkornweck, 4-Saat,
   Vitalbrötchen, Nougatplunder, Franzbrötchen. They are needed as Backzettel items (preorderable
   or not).
@@ -438,11 +410,11 @@ items:
     section: hefeteig
     unit: Stück
     products: [{ id: zopf-gefuellt-nuss-schoko-quark-oder-pudding, factor: 1 }]
-    plu: [408]
+    plu: [901]
     variants: [nuss, schoko, quark, pudding]
-    dough: { id: hefeteig-suess, piece_g: 500, pieces: 1 }
-    filling_g: 450 # to confirm (Q-B4)
-    base: { 6: { nuss: 4, schoko: 3, quark: 2, pudding: 1 } }
+    dough: { id: hefeteig-suess, piece_g: 450, pieces: 1 }
+    filling_g: 300 # example value
+    base: { 6: { nuss: 3, schoko: 2, quark: 2, pudding: 1 } }
   - id: kranz-ungefuellt
     section: hefeteig
     products:
@@ -450,17 +422,17 @@ items:
         { id: kranzkuchen-ungefuellt, factor: 1 },
         { id: kranzkuchen-ungefuellt-1-4-stueck, factor: 0.25 },
       ]
-    dough: { id: hefeteig-suess, piece_g: 600, pieces: 3 }
+    dough: { id: hefeteig-suess, piece_g: 550, pieces: 2 }
   - id: kornbrot
     section: brot
     unit: Liter
-    base: { 2: 6, 3: 6, 4: 6, 5: 6, 6: 6 }
+    base: { 2: 4, 3: 4, 4: 4, 5: 4, 6: 5 }
     pieces_per_liter: null # unknown → no loaf count shown
   - id: schokocroissant
     section: kaffeestueckchen
     tray: { no: 1 }
-    base: { 2: 10, 3: 8, 4: 10, 5: 10, 6: 0 }
-doughs: [{ id: hefeteig-suess, batch_max_kg: 40 }] # batch size to confirm (Q-B5)
+    base: { 2: 8, 3: 6, 4: 8, 5: 8, 6: 0 }
+doughs: [{ id: hefeteig-suess, batch_max_kg: 50 }] # example value
 fillings: [{ id: nuss, recipe: data/recipes/fillings/Gefüllte-Kränze.md }]
 prep:
   - { id: sauerteig, by_weekday: { 3: buttermilch, default: misch } }
@@ -682,14 +654,14 @@ Exit criteria:
     the sheet shows kg only.
   - **Bread by loaf size** (dough weight per size) instead of `unit: Liter`; a dough may feed
     another item with a fixed extra (Kerbricher from Mischteig + Körner).
-  - **Brötchen in Bruch** (one divider press = 30 pieces; weight per Bruch, pieces per product,
+  - **Brötchen in Bruch** (one divider press; weight per Bruch, pieces per product,
     a Bruch split across products).
   - **Dough day ≠ bake day**: Brötchen are made the day before baking; Saturday makes Sunday's
     and Tuesday's, Sunday only bakes. The dough-day sheet collects base + preorders + CAP of its
     bake days; freeze and deltas follow the dough day; a slim bake list per bake day.
   - **One A4 page per dough day** (kneader strip, Brot, Brötchen per bake day, Hefeteig, notes)
     replaces the 3-page print for the bakers; weighing list and recipes stay optional.
-  - Hefeteig: one batch (kneader ~90 kg), water = dough ÷ 4, Kranz/Zopf variants Marzipan,
+  - Hefeteig: one batch (kneader capacity in hq), water = dough ÷ 4, Kranz/Zopf variants Marzipan,
     Mohn, Spezial. The current core already reproduces the paper Hefeteig totals.
   - Tests with invented quantities only; the real reference values stay in hq.
 - [~] **B5b** (`feat/B5b-Z9-hq-writeback`, merged; live push needs the Q3 token, H1/H2 merged and the `install.sh` write-clone step run on the box) hq write-back as a rolling PR per §4a: worktree `app/edits`, rebase, commit as
@@ -775,8 +747,8 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
 - **Q-B1** What does today's paper Backzettel look like? Who writes it, when, and in what order are
   the sections?
 - **Q-B2** Who preps Tuesday (Monday is Ruhetag)? When is Sunday prepped?
-- **Q-B3** In the Teigstückübersicht, does "Anzahl" mean strands per product? Is a filled Kranz
-  1 × 1200 g or 3 × 600 g?
+- **Q-B3** In the Teigstückübersicht, does "Anzahl" mean strands per product? How many dough
+  pieces of which weight make a filled Kranz?
 - **Q-B4** How many grams of filling go into a Kranz and into a Zopf? Is Marzipan offered? Mohn?
 - **Q-B5** What is the Hefeteig batch size (kneader limit) and the recipe?
 - **Q-B6** What are the usual Saturday quantities per Zopf/Kranz variant? Which are also made Tue–Fri?
@@ -788,7 +760,7 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
 - **Q-B11** For Advent, is a factor of 1.0 + corrections enough, or a factor per week?
 
 Partly answered on 2026-11-08 from two Saturday paper sheets and the owner (Q-B1, Q-B2, Q-B3
-1 × 1200 g, Q-B4 Marzipan yes, Q-B5 one batch ~90 kg, Q-B6, Q-B8 loaves per size, Q-B9 in part).
+Q-B4 Marzipan yes, Q-B5 one batch, Q-B6, Q-B8 loaves per size, Q-B9 in part).
 Details, the follow-up questions Q-L1…Q-L11 and the printed questionnaire live in
 `hq/notes/procedures/backliste.md` (private); answers are recorded there.
 
