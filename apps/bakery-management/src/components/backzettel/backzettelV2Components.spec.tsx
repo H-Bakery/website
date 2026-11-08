@@ -81,6 +81,61 @@ describe('Backzettel v2 - Bausteine', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('BreadTable (ab md): Liter-Posten in einer eigenen Spalte „Menge“, Zahl und Stift auf einer Linie', () => {
+    render(<BreadTable bread={day.bread} {...editProps} editable />)
+    const table = within(screen.getByTestId('bread-table'))
+    const headers = table.getAllByRole('columnheader').map((h) => h.textContent)
+    expect(headers).toEqual([
+      'Brot',
+      '500 g',
+      '1 kg',
+      'Kasten',
+      'Menge',
+      'Teig',
+    ])
+    // Die Menge steht in der Spalte „Menge“, nicht in der Namensspalte
+    // und nicht unter einer Größe.
+    const haferCells = within(
+      table.getByTestId('bread-row-test-hafer')
+    ).getAllByRole('cell')
+    expect(haferCells).toHaveLength(4) // Brot | Größen (leer) | Menge | Teig
+    expect(haferCells[0]).toHaveTextContent('Testhafer')
+    expect(haferCells[0]).not.toHaveTextContent('1,5')
+    expect(haferCells[1]).toHaveAttribute('colspan', '3')
+    expect(haferCells[1]).toBeEmptyDOMElement()
+    expect(haferCells[2]).toBe(table.getByTestId('bread-single-test-hafer'))
+    expect(haferCells[2]).toHaveTextContent('1,5 L')
+    // Brote mit Größe lassen „Menge“ leer
+    const kornCells = within(
+      table.getByTestId('bread-row-test-korn')
+    ).getAllByRole('cell')
+    expect(kornCells).toHaveLength(6)
+    expect(kornCells[4]).toBeEmptyDOMElement()
+    // Stift (44 px) neben der Zahl, kein Umbruch - auch in der 500-g-Spalte
+    for (const key of ['test-korn|g500', 'test-hafer|']) {
+      const box = table.getByTestId(`bread-cell-${key}-box`)
+      expect(box).toHaveStyle({ flexWrap: 'nowrap' })
+      const pencil = within(box).getByRole('button', { name: /Korrektur/ })
+      expect(pencil).toHaveStyle({ width: '44px', height: '44px' })
+    }
+  })
+
+  it('BreadTable: ohne Brot ohne Größe keine Spalte „Menge“', () => {
+    const bread = day.bread
+    if (!bread) throw new Error('Fixture ohne Brot')
+    render(
+      <BreadTable
+        bread={{ ...bread, rows: bread.rows.filter((r) => !r.single) }}
+        {...editProps}
+      />
+    )
+    expect(
+      within(screen.getByTestId('bread-table'))
+        .getAllByRole('columnheader')
+        .map((h) => h.textContent)
+    ).toEqual(['Brot', '500 g', '1 kg', 'Kasten', 'Teig'])
+  })
+
   it('RollsByBakeDay und v2CoveredKeys decken dieselben Zeilen ab', () => {
     render(<RollsByBakeDay rolls={day.rolls} {...editProps} />)
     expect(screen.getByTestId(`rolls-${SUN}`)).toBeInTheDocument()

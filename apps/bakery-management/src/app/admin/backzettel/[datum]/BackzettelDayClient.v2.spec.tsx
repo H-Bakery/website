@@ -73,9 +73,13 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
     )
 
     const bread = within(screen.getByTestId('bread-table'))
+    // „Menge“ für das Liter-Brot ohne Größe (Testhafer), eigene Spalte
     expect(
       bread.getAllByRole('columnheader').map((h) => h.textContent)
-    ).toEqual(['Brot', '500 g', '1 kg', 'Kasten', 'Teig'])
+    ).toEqual(['Brot', '500 g', '1 kg', 'Kasten', 'Menge', 'Teig'])
+    expect(bread.getByTestId('bread-single-test-hafer')).toHaveTextContent(
+      '1,5 L'
+    )
     expect(bread.getByTestId('bread-cell-test-korn|g500')).toHaveTextContent(
       '8'
     )

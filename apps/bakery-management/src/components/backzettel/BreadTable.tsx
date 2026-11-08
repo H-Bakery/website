@@ -59,6 +59,11 @@ export interface BreadTableProps extends V2EditProps {
 }
 
 const NUM = { textAlign: 'right' as const, whiteSpace: 'nowrap' as const }
+/**
+ * Breite einer Mengen-Spalte: Zahl („≥ 12“, „7,25 L“) und der 44-px-Stift
+ * stehen nebeneinander, nie der Stift unter der Zahl (Abschlussprüfung Z10).
+ */
+const VALUE_COL = { ...NUM, minWidth: 136 }
 
 function rowKg(row: BreadRow): string {
   // Alte Liter-Posten haben keinen Teig: keine kg-Angabe statt „unbekannt“.
@@ -100,19 +105,22 @@ function CellValue({
   const correction = line?.correction ?? 0
   return (
     <Box
+      data-testid={`${testId}-box`}
       sx={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'flex-end',
-        flexWrap: 'wrap',
+        // Zahl und Stift bleiben auf einer Linie (schmale 500-g-Spalte)
+        flexWrap: 'nowrap',
         gap: 0.5,
       }}
     >
-      <Box sx={{ textAlign: 'right' }}>
+      <Box sx={{ textAlign: 'right', minWidth: 0 }}>
         <Typography
           component="div"
           variant="h6"
           fontWeight={700}
+          sx={{ whiteSpace: 'nowrap' }}
           data-testid={testId}
         >
           {/* Grundmenge offen: „≥ 4“ bzw. „offen“, nie die nackte Zahl */}
@@ -129,7 +137,12 @@ function CellValue({
           />
         )}
         {correction !== 0 && (
-          <Typography variant="caption" component="div" color="text.secondary">
+          <Typography
+            variant="caption"
+            component="div"
+            color="text.secondary"
+            sx={{ overflowWrap: 'anywhere' }}
+          >
             Korr. {formatSigned(correction)}
             {line?.correctionReason ? ` (${line.correctionReason})` : ''}
           </Typography>
@@ -140,7 +153,7 @@ function CellValue({
         <IconButton
           onClick={onEdit}
           aria-label={`Korrektur ${label} bearbeiten`}
-          sx={{ width: 44, height: 44 }}
+          sx={{ width: 44, height: 44, flexShrink: 0 }}
         >
           <EditIcon fontSize="small" />
         </IconButton>
@@ -187,9 +200,10 @@ function rowCells(
  * Spalten = Laibgrößen, je Zelle die Laibe vom Server, korrigierbar mit dem
  * gewohnten Editor (Zeilenschlüssel). Dazu kg je Brot und der Hinweis des
  * Servers (gemeinsamer Teig, Anteil aus anderem Teig). Alte Liter-Posten und
- * Brote ohne Größe tragen ihre Menge mit Einheit in der Namensspalte („26
- * Stück“, „7,25 l“) - nie unter einer Größenspalte, wo sie sich wie Laibe
- * dieser Größe läse (Review Z10 Runde 2). Ab `md` eine Tabelle, darunter je
+ * Brote ohne Größe stehen in einer eigenen Spalte „Menge“ mit Einheit („26
+ * Stück“, „7,25 L“), rechtsbündig wie die übrigen Mengen - nie unter einer
+ * Größenspalte, wo sie sich wie Laibe dieser Größe läse (Review Z10 Runde 2),
+ * und nicht lose neben dem Namen (Abschlussprüfung). Ab `md` eine Tabelle, darunter je
  * Brot eine Karte mit allen Größen (am Handy fielen sonst Spalten aus dem
  * Bild). Nachträge stehen als Abzeichen an der Zelle.
  */
@@ -206,8 +220,10 @@ export function BreadTable({
 }: BreadTableProps) {
   if (!bread || bread.rows.length === 0) return null
   const sizes = bread.sizes
-  const valueCols = Math.max(sizes.length, 1)
-  const cols = valueCols + 2
+  // Spalte „Menge“ nur, wenn ein Brot ohne Größe auf dem Zettel steht
+  // (ohne Größen überhaupt: die einzige Mengen-Spalte).
+  const hasSingle = sizes.length === 0 || bread.rows.some((r) => r.single)
+  const cols = sizes.length + (hasSingle ? 1 : 0) + 2
   const cellLabel = (
     row: BreadRow,
     size: { label: string } | null,
@@ -245,15 +261,12 @@ export function BreadTable({
             <TableHead>
               <TableRow>
                 <TableCell sx={{ minWidth: 140 }}>Brot</TableCell>
-                {sizes.length > 0 ? (
-                  sizes.map((s) => (
-                    <TableCell key={s.id} sx={{ ...NUM, minWidth: 96 }}>
-                      {s.label}
-                    </TableCell>
-                  ))
-                ) : (
-                  <TableCell sx={NUM}>Menge</TableCell>
-                )}
+                {sizes.map((s) => (
+                  <TableCell key={s.id} sx={VALUE_COL}>
+                    {s.label}
+                  </TableCell>
+                ))}
+                {hasSingle && <TableCell sx={VALUE_COL}>Menge</TableCell>}
                 <TableCell sx={{ ...NUM, minWidth: 80 }}>Teig</TableCell>
               </TableRow>
             </TableHead>
@@ -270,19 +283,44 @@ export function BreadTable({
                   <React.Fragment key={rowKey}>
                     <TableRow data-testid={`bread-row-${row.itemId}`}>
                       <TableCell>
-                        {single ? (
-                          <Box
-                            sx={{
-                              display: 'flex',
-                              alignItems: 'flex-start',
-                              justifyContent: 'space-between',
-                              gap: 2,
-                            }}
-                            data-testid={`bread-single-${row.itemId}`}
-                          >
-                            <Box sx={{ minWidth: 0 }}>
-                              <RowName row={row} sheetDate={sheetDate} />
-                            </Box>
+                        <RowName row={row} sheetDate={sheetDate} />
+                      </TableCell>
+                      {single
+                        ? // ohne Größe: die Größenspalten bleiben leer
+                          sizes.length > 0 && (
+                            <TableCell colSpan={sizes.length} />
+                          )
+                        : sizes.map((s) => {
+                            const cell = row.cells[s.id]
+                            if (!cell) {
+                              // Diese Größe gibt es bei dem Brot nicht.
+                              return <TableCell key={s.id} sx={VALUE_COL} />
+                            }
+                            const line = lineByKey.get(cell.key)
+                            return (
+                              <TableCell key={s.id} sx={VALUE_COL}>
+                                <CellValue
+                                  cell={cell}
+                                  testId={`bread-cell-${cell.key}`}
+                                  line={line}
+                                  unit={row.unit}
+                                  label={cellLabel(row, s, cell.key)}
+                                  editable={
+                                    editable &&
+                                    editingKey !== cell.key &&
+                                    !!line
+                                  }
+                                  onEdit={() => onEdit(cell.key)}
+                                />
+                              </TableCell>
+                            )
+                          })}
+                      {hasSingle && (
+                        <TableCell
+                          sx={VALUE_COL}
+                          data-testid={`bread-single-${row.itemId}`}
+                        >
+                          {single && (
                             <CellValue
                               single
                               cell={single}
@@ -297,38 +335,8 @@ export function BreadTable({
                               }
                               onEdit={() => onEdit(single.key)}
                             />
-                          </Box>
-                        ) : (
-                          <RowName row={row} sheetDate={sheetDate} />
-                        )}
-                      </TableCell>
-                      {single ? (
-                        // ohne Größe: die Größenspalten bleiben leer
-                        <TableCell colSpan={valueCols} />
-                      ) : (
-                        sizes.map((s) => {
-                          const cell = row.cells[s.id]
-                          if (!cell) {
-                            // Diese Größe gibt es bei dem Brot nicht.
-                            return <TableCell key={s.id} sx={NUM} />
-                          }
-                          const line = lineByKey.get(cell.key)
-                          return (
-                            <TableCell key={s.id} sx={NUM}>
-                              <CellValue
-                                cell={cell}
-                                testId={`bread-cell-${cell.key}`}
-                                line={line}
-                                unit={row.unit}
-                                label={cellLabel(row, s, cell.key)}
-                                editable={
-                                  editable && editingKey !== cell.key && !!line
-                                }
-                                onEdit={() => onEdit(cell.key)}
-                              />
-                            </TableCell>
-                          )
-                        })
+                          )}
+                        </TableCell>
                       )}
                       <TableCell sx={NUM}>
                         <Typography
