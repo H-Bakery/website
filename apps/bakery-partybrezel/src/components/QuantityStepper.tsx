@@ -42,7 +42,9 @@ export default function QuantityStepper({
       </IconButton>
       <Box
         component="output"
-        aria-live="polite"
+        // <output> ist implizit ein Live-Bereich; den Wechsel sagt schon der
+        // Satz "N von höchstens … Brezeln gewählt" an
+        aria-live="off"
         aria-label={`${label}: ${value}`}
         sx={{
           minWidth: 32,

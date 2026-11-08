@@ -57,14 +57,6 @@ export function maxCountForSize(
   return Math.max(0, config.maxPretzelsPerOrder - others)
 }
 
-function sortBySize(pretzels: PretzelDraft[], config: PartybrezelConfig) {
-  const order = config.sizes.map((s) => s.id)
-  // stabil: innerhalb einer Größe bleibt die Reihenfolge
-  return [...pretzels].sort(
-    (a, b) => order.indexOf(a.size) - order.indexOf(b.size)
-  )
-}
-
 export function createOrderReducer(config: PartybrezelConfig) {
   return function orderReducer(
     state: OrderState,
@@ -92,7 +84,8 @@ export function createOrderReducer(config: PartybrezelConfig) {
             })
             nextId += 1
           }
-          pretzels = sortBySize([...state.pretzels, ...added], config)
+          // hinten anhängen: die Nummern schon belegter Brezeln bleiben
+          pretzels = [...state.pretzels, ...added]
         } else {
           // die zuletzt hinzugefügten Brezeln dieser Größe fallen weg
           const drop = new Set(current.slice(count).map((p) => p.id))
@@ -202,7 +195,7 @@ export function sanitizeOrderState(
       ? value.toppingMode
       : base.toppingMode
   return {
-    pretzels: sortBySize(pretzels, config),
+    pretzels,
     toppingMode: mode,
     pickupDate: isIsoDate(value.pickupDate) ? value.pickupDate : null,
     pickupTime: str(value.pickupTime),

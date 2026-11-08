@@ -6,19 +6,23 @@
  * hq. Aufpreise für Beläge lassen sich über diesen Endpunkt heute nicht
  * abbilden.
  */
-import type {
-  PartybrezelConfig,
-  SizeId,
-  ToppingMode,
-} from '../config/partybrezel.config'
+import type { PartybrezelConfig } from '../config/partybrezel.config'
 import {
   MAX_VARIANT_LENGTH,
   VARIANT_PATTERN,
   findTopping,
   getSize,
 } from './configLookup'
-import { API_MAX_NOTE_LENGTH } from './validation'
-import type { OrderDraft, PretzelDraft } from './types'
+import { pluralize } from './format'
+import {
+  API_MAX_NOTE_LENGTH,
+  composeNote,
+  describePretzels,
+  type ComposedNote,
+} from './note'
+import type { OrderDraft } from './types'
+
+export { composeNote, describePretzels, type ComposedNote } from './note'
 
 export const API_LIMITS = {
   maxItems: 50,
@@ -87,78 +91,6 @@ export function mergeItems(
   return [...merged.values()]
 }
 
-function sizeLabel(config: PartybrezelConfig, id: SizeId) {
-  return getSize(config, id).label
-}
-
-/** "Käse, Schinken, Butter" bzw. "3× Käse" (alle Teile gleich). */
-function describeParts(
-  pretzel: PretzelDraft,
-  mode: ToppingMode,
-  config: PartybrezelConfig
-): string {
-  const size = getSize(config, pretzel.size)
-  const labels: string[] = []
-  for (let part = 0; part < size.partsPerPretzel; part += 1) {
-    labels.push(
-      findTopping(config, pretzel.toppings[part])?.label ?? 'ohne Belag'
-    )
-  }
-  if (labels.every((l) => l === labels[0])) {
-    return mode === 'per-pretzel'
-      ? `${labels[0]} (ganze Brezel)`
-      : `${labels.length}× ${labels[0]}`
-  }
-  return labels.join(', ')
-}
-
-/** "Brezel 1 (groß): Käse, Schinken, Butter; Brezel 2 (klein): 3× Butter" */
-export function describePretzels(
-  pretzels: PretzelDraft[],
-  mode: ToppingMode,
-  config: PartybrezelConfig
-): string {
-  return pretzels
-    .map(
-      (p, i) =>
-        `Brezel ${i + 1} (${sizeLabel(config, p.size)}): ${describeParts(
-          p,
-          mode,
-          config
-        )}`
-    )
-    .join('; ')
-}
-
-export interface ComposedNote {
-  note: string
-  truncated: boolean
-  fullLength: number
-}
-
-/**
- * Anmerkung = "Partybrezel – <Belagsliste>" + " | Anmerkung: <Text der
- * Kundschaft>". Ist sie länger als die API erlaubt, wird gekürzt - nie still:
- * `truncated` geht als Warnung in die Vorschau.
- */
-export function composeNote(
-  description: string,
-  customerNote: string,
-  maxLength: number = API_LIMITS.maxNoteLength
-): ComposedNote {
-  const extra = customerNote.trim()
-  const full = `Partybrezel – ${description}${
-    extra ? ` | Anmerkung: ${extra}` : ''
-  }`
-  if (full.length <= maxLength)
-    return { note: full, truncated: false, fullLength: full.length }
-  return {
-    note: `${full.slice(0, maxLength - 1)}…`,
-    truncated: true,
-    fullLength: full.length,
-  }
-}
-
 function basePayload(
   draft: OrderDraft,
   items: PreorderItemPayload[],
@@ -194,7 +126,7 @@ function limitWarnings(
   if (items.length > API_LIMITS.maxItems)
     warnings.push({
       code: 'too_many_items',
-      message: `${items.length} Positionen - die API nimmt höchstens ${API_LIMITS.maxItems}.`,
+      message: `${items.length} Positionen – die API nimmt höchstens ${API_LIMITS.maxItems}.`,
     })
   for (const item of items) {
     if (item.quantity > API_LIMITS.maxQuantity)
@@ -202,7 +134,7 @@ function limitWarnings(
         code: 'quantity_too_large',
         message: `${item.productId}${
           item.variant ? ` (${item.variant})` : ''
-        }: Menge ${item.quantity} - die API nimmt höchstens ${
+        }: Menge ${item.quantity} – die API nimmt höchstens ${
           API_LIMITS.maxQuantity
         } je Position.`,
       })
@@ -210,7 +142,7 @@ function limitWarnings(
   if (noteInfo.truncated)
     warnings.push({
       code: 'note_truncated',
-      message: `Die Anmerkung wäre ${noteInfo.fullLength} Zeichen lang; die API nimmt höchstens ${API_LIMITS.maxNoteLength}. Sie wurde gekürzt - dabei ginge ein Teil der Belagsliste oder Ihrer Anmerkung verloren.`,
+      message: `Die Anmerkung wäre ${noteInfo.fullLength} Zeichen lang; die API nimmt höchstens ${API_LIMITS.maxNoteLength}. Sie wurde gekürzt – dabei ginge ein Teil der Belagsliste oder Ihrer Anmerkung verloren.`,
     })
 }
 
@@ -230,7 +162,7 @@ function untoppedWarning(
   if (untopped > 0)
     warnings.push({
       code: 'untopped_parts',
-      message: `${untopped} Teil(e) ohne Belag.${suffix}`,
+      message: `${pluralize(untopped, 'Teil', 'Teile')} ohne Belag.${suffix}`,
     })
   return untopped
 }

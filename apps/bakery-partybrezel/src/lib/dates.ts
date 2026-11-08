@@ -112,6 +112,12 @@ export interface PickupDate {
   weekday: number
   shortLabel: string
   longLabel: string
+  /**
+   * Der Vortag (Teigtag) ist Ruhetag - bei Abholung am Dienstag müsste der
+   * Teig am Montag entstehen. Wer dann ansetzt, ist offen (Q-P4/Q-P7, wie
+   * `prepDateProvisional` beim Backzettel, Q-B2).
+   */
+  doughOnRuhetag: boolean
 }
 
 export function isPickupWeekday(iso: string, availableWeekdays: number[]) {
@@ -143,6 +149,7 @@ export function pickupDates(
         weekday: isoWeekday(day),
         shortLabel: formatDateShort(day),
         longLabel: formatDateLong(day),
+        doughOnRuhetag: doughDateIsRuhetag(day),
       })
     }
     day = addDays(day, 1)
@@ -153,4 +160,12 @@ export function pickupDates(
 /** Der Teig entsteht am Vortag des Backtags (= Abholtag). */
 export function doughDate(pickupDate: string): string {
   return addDays(pickupDate, -1)
+}
+
+/**
+ * `true`, wenn der Teigtag (Vortag) auf den Ruhetag fällt. Dann ist der
+ * Teigtag kein Fakt, sondern offen - die Oberfläche nennt dann kein Datum.
+ */
+export function doughDateIsRuhetag(pickupDate: string): boolean {
+  return isoWeekday(doughDate(pickupDate)) === RUHETAG
 }

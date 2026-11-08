@@ -15,12 +15,12 @@ import type {
   PartybrezelConfig,
   ToppingMode,
 } from '../config/partybrezel.config'
-import { WEEKDAY_SHORT } from '../lib/dates'
-import { formatEuro } from '../lib/format'
+import { RUHETAG, WEEKDAY_SHORT } from '../lib/dates'
+import { formatEuro, pluralize } from '../lib/format'
 
 export const MODE_LABELS: Record<ToppingMode, string> = {
   'per-part': 'Belag je Teil (gemischt möglich)',
-  'per-pretzel': 'Eine Sorte je Brezel',
+  'per-pretzel': 'Ein Belag je Brezel',
 }
 
 export interface SettingsPanelProps {
@@ -39,15 +39,17 @@ export default function SettingsPanel({
 }: SettingsPanelProps) {
   return (
     <Accordion disableGutters variant="outlined">
-      <AccordionSummary
-        expandIcon={<ExpandMoreIcon />}
-        aria-controls="prototype-settings-content"
-        id="prototype-settings-header"
-      >
-        <Typography component="h2" variant="h3">
+      {/* Überschrift UM den Knopf: Inhalte eines Knopfs sind für
+          Screenreader rein darstellend, eine h2 darin fände niemand. */}
+      <Typography component="h2" variant="h3" sx={{ m: 0 }}>
+        <AccordionSummary
+          expandIcon={<ExpandMoreIcon />}
+          aria-controls="prototype-settings-content"
+          id="prototype-settings-header"
+        >
           Prototyp-Einstellungen
-        </Typography>
-      </AccordionSummary>
+        </AccordionSummary>
+      </Typography>
       <AccordionDetails id="prototype-settings-content">
         <FormControl>
           <FormLabel id="topping-mode-label">
@@ -71,10 +73,10 @@ export default function SettingsPanel({
           </RadioGroup>
         </FormControl>
         <Typography variant="body2" sx={{ mt: 2 }} color="text.secondary">
-          Aus der Config (Platzhalter): Vorlauf {config.leadTimeDays} Tage ·
-          Abholtage{' '}
+          Aus der Config (Platzhalter): Vorlauf{' '}
+          {pluralize(config.leadTimeDays, 'Tag', 'Tage')} · Abholtage{' '}
           {config.availableWeekdays
-            .filter((d) => d !== 1)
+            .filter((d) => d !== RUHETAG)
             .map((d) => WEEKDAY_SHORT[d - 1])
             .join(', ')}{' '}
           · höchstens {config.maxPretzelsPerOrder} Brezeln · Grundpreise{' '}

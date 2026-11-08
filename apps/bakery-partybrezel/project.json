@@ -36,6 +36,13 @@
         "description": "Serves the static export (apps/bakery-partybrezel/out) on http://localhost:4231 - run the build first"
       }
     },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["apps/bakery-partybrezel/**/*.{ts,tsx,js,jsx}"]
+      }
+    },
     "test": {
       "executor": "@nx/jest:jest",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],

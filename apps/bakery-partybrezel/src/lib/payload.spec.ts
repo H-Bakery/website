@@ -12,6 +12,7 @@ import {
   mergeItems,
 } from './payload'
 import { draft, pretzel } from './testing'
+import { validateOrder } from './validation'
 
 const VARIANT = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
@@ -141,6 +142,100 @@ describe('payload builders', () => {
         config
       )
     ).toBe('Brezel 1 (groß): Salami (ganze Brezel)')
+  })
+
+  it('fasst gleich belegte Brezeln einer Größe zusammen, Nummern bleiben', () => {
+    const mixed = ['kaese', 'schinken', 'butter']
+    expect(
+      describePretzels(
+        [
+          pretzel(config, 'gross', mixed),
+          pretzel(config, 'gross', mixed),
+          pretzel(config, 'klein', mixed),
+          pretzel(config, 'gross', mixed),
+        ],
+        'per-part',
+        config
+      )
+    ).toBe(
+      'Brezel 1, 2, 4 (groß): Käse, Schinken, Butter; Brezel 3 (klein): Käse, Schinken, Butter'
+    )
+    expect(
+      describePretzels(
+        Array.from({ length: 5 }, () => pretzel(config, 'klein', 'butter')),
+        'per-part',
+        config
+      )
+    ).toBe('Brezel 1–5 (klein): 3× Butter')
+  })
+
+  describe('Anmerkung über 500 Zeichen (realistisch, über die Prüfung)', () => {
+    const ids = config.toppings.map((t) => t.id)
+    // lauter verschieden gemischte Brezeln - der ungünstigste Fall
+    const mixedPretzels = (n: number) =>
+      Array.from({ length: n }, (_, i) =>
+        pretzel(config, i < 5 ? 'klein' : 'gross', [
+          ids[i % ids.length],
+          ids[(i + 1) % ids.length],
+          ids[(i + 3) % ids.length],
+        ])
+      )
+    const validate = (d: ReturnType<typeof draft>) =>
+      validateOrder(d, config, [d.pickupDate ?? ''])
+
+    it('höchstens maxPretzelsPerOrder gemischte Brezeln: schon die Belagsliste ist zu lang', () => {
+      const d = draft({
+        pretzels: mixedPretzels(config.maxPretzelsPerOrder),
+        note: 'x'.repeat(config.maxCustomerNoteLength),
+      })
+      const result = validate(d)
+      expect(result.valid).toBe(false)
+      expect(result.errors.toppings).toMatch(
+        /passen nicht in eine Vorbestellung/
+      )
+      // das Sicherheitsnetz der Vorschau bleibt: gekürzt nur mit Warnung
+      for (const mapping of ['A', 'B'] as const)
+        expect(
+          buildPayload(mapping, d, config).warnings.map((w) => w.code)
+        ).toContain('note_truncated')
+    })
+
+    it('Belagsliste passt, mit 300 Zeichen Anmerkung nicht: Fehler an der Anmerkung', () => {
+      const d = draft({
+        pretzels: mixedPretzels(4),
+        note: 'x'.repeat(config.maxCustomerNoteLength),
+      })
+      const result = validate(d)
+      expect(result.errors.toppings).toBeUndefined()
+      expect(result.errors.note).toMatch(/kürzen Sie Ihre Anmerkung um (\d+)/)
+      const over = Number(
+        /um (\d+) Zeichen/.exec(result.errors.note ?? '')?.[1]
+      )
+      // um genau so viel gekürzt: gültig, und die Vorschau kürzt nichts
+      const fitted = draft({
+        ...d,
+        note: 'x'.repeat(config.maxCustomerNoteLength - over),
+      })
+      expect(validate(fitted)).toEqual({ valid: true, errors: {} })
+      for (const mapping of ['A', 'B'] as const) {
+        const { payload, warnings } = buildPayload(mapping, fitted, config)
+        expect(warnings).toEqual([])
+        expect(payload.note).toHaveLength(API_LIMITS.maxNoteLength)
+      }
+    })
+
+    it('was die Prüfung durchlässt, kürzt die Vorschau nie', () => {
+      for (let n = 1; n <= config.maxPretzelsPerOrder; n += 1) {
+        for (const note of ['', 'x'.repeat(config.maxCustomerNoteLength)]) {
+          const d = draft({ pretzels: mixedPretzels(n), note })
+          if (!validate(d).valid) continue
+          for (const mapping of ['A', 'B'] as const)
+            expect(
+              buildPayload(mapping, d, config).warnings.map((w) => w.code)
+            ).not.toContain('note_truncated')
+        }
+      }
+    })
   })
 
   it('zu lange Anmerkung wird gekürzt - mit Warnung, nie still', () => {

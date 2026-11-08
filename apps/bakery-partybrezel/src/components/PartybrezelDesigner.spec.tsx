@@ -1,5 +1,10 @@
 import React from 'react'
-import { render, screen, within } from '@testing-library/react'
+import {
+  render,
+  screen,
+  waitForElementToBeRemoved,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ThemeRegistry from './ThemeRegistry'
 import PartybrezelDesigner from './PartybrezelDesigner'
@@ -31,6 +36,11 @@ const runningPrice = () =>
     /\u00a0/g,
     ' '
   )
+/** Datums-Chip über den langen Namen; der zugängliche Name beginnt mit dem sichtbaren "So, 08.11.". */
+const dateChipName = (long: string) =>
+  new RegExp(`^[A-Z][a-z], \\d{2}\\.\\d{2}\\. \\(${long}\\)$`)
+const dateChip = (long: string) =>
+  screen.getByRole('button', { name: dateChipName(long) })
 const json = () =>
   JSON.parse(screen.getByTestId('payload-json').textContent ?? '{}')
 
@@ -85,6 +95,8 @@ describe('PartybrezelDesigner', () => {
     expect(screen.getByTestId('step-errors')).toHaveTextContent(
       /mindestens eine Brezel/
     )
+    // schon beim ERSTEN Fehlversuch fokussiert (die Meldung entsteht erst da)
+    expect(screen.getByTestId('step-errors')).toHaveFocus()
     expect(heading()).toHaveTextContent('Schritt 1')
 
     await user.click(
@@ -106,8 +118,15 @@ describe('PartybrezelDesigner', () => {
     expect(heading()).toHaveFocus()
     await user.click(next())
     expect(screen.getByTestId('step-errors')).toHaveTextContent(
-      /jedes Teil belegen/
+      /belegen Sie jedes Teil/
     )
+    expect(screen.getByTestId('step-errors')).toHaveFocus()
+    // der Aufpreis am Chip ist der eines Klicks: je Teil
+    expect(
+      screen.getByRole('button', {
+        name: /^Käse \+1,00\s€ je Teil für Brezel 2 \(groß\), Teil 1$/,
+      })
+    ).toBeInTheDocument()
 
     const part = (label: string, pretzel: string, n: number) =>
       screen.getByRole('button', {
@@ -122,7 +141,7 @@ describe('PartybrezelDesigner', () => {
     )
     expect(
       screen.getByRole('img', {
-        name: 'Brezel 2 (groß) - Teil 1: Käse, Teil 2: Schinken, Teil 3: Butter',
+        name: 'Brezel 2 (groß) – Teil 1: Käse, Teil 2: Schinken, Teil 3: Butter',
       })
     ).toBeInTheDocument()
 
@@ -133,7 +152,7 @@ describe('PartybrezelDesigner', () => {
     )
     expect(
       screen.getByRole('img', {
-        name: 'Brezel 1 (klein) - Teil 1: Käse, Teil 2: Schinken, Teil 3: Butter',
+        name: 'Brezel 3 (klein) – Teil 1: Käse, Teil 2: Schinken, Teil 3: Butter',
       })
     ).toBeInTheDocument()
     // Käse 1,00 + Schinken 1,50 je Brezel (Platzhalter)
@@ -143,21 +162,31 @@ describe('PartybrezelDesigner', () => {
     await user.click(next())
     expect(heading()).toHaveTextContent('Schritt 3 von 4: Abholung & Kontakt')
     expect(
-      screen.queryByRole('button', { name: 'Montag, 9. November 2026' })
+      screen.queryByRole('button', {
+        name: dateChipName('Montag, 9. November 2026'),
+      })
     ).not.toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Samstag, 7. November 2026' })
+      screen.queryByRole('button', {
+        name: dateChipName('Samstag, 7. November 2026'),
+      })
     ).not.toBeInTheDocument()
     expect(
-      screen.getByRole('button', { name: 'Sonntag, 8. November 2026' })
+      screen.getByRole('button', {
+        name: 'So, 08.11. (Sonntag, 8. November 2026)',
+      })
     ).toBeInTheDocument()
     await user.click(next())
     const errors = screen.getByTestId('step-errors')
     expect(errors).toHaveTextContent(/Abholtag/)
     expect(errors).toHaveTextContent(/Namen/)
 
-    await user.click(
-      screen.getByRole('button', { name: 'Dienstag, 10. November 2026' })
+    await user.click(dateChip('Sonntag, 8. November 2026'))
+    expect(screen.queryByTestId('dough-ruhetag')).not.toBeInTheDocument()
+    // Dienstag: der Teigtag wäre der Ruhetag - offen, kein erfundenes Datum
+    await user.click(dateChip('Dienstag, 10. November 2026'))
+    expect(screen.getByTestId('dough-ruhetag')).toHaveTextContent(
+      /Vortag \(Montag\) ist Ruhetag.*noch offen \(Fragen Q-P4 und Q-P7\)/
     )
     await user.type(
       screen.getByRole('textbox', { name: /^Name/ }),
@@ -185,8 +214,11 @@ describe('PartybrezelDesigner', () => {
     expect(screen.getByTestId('dough-summary')).toHaveTextContent(
       '3 Teile × 300 g = 900 g Flitteig'
     )
+    expect(screen.getByTestId('dough-summary')).not.toHaveTextContent(
+      /Teig am Montag/
+    )
     expect(screen.getByTestId('dough-summary')).toHaveTextContent(
-      'Teig am Montag, 9. November 2026 ansetzen'
+      'Teig am Vortag – der Vortag (Montag) ist Ruhetag; wann der Teig angesetzt wird, ist offen (Q-P4/Q-P7).'
     )
     expect(screen.getByText(/Es wurde nichts gesendet/)).toBeInTheDocument()
 
@@ -197,22 +229,24 @@ describe('PartybrezelDesigner', () => {
       customerPhone: '12345',
       pickupDate: '2026-11-10',
       items: [
-        { productId: 'partybrezel-klein', quantity: 1 },
         { productId: 'partybrezel-gross', quantity: 2 },
+        { productId: 'partybrezel-klein', quantity: 1 },
       ],
     })
-    expect(a.note).toContain('Brezel 3 (groß): Käse, Schinken, Butter')
+    expect(a.note).toContain(
+      'Brezel 1, 2 (groß): Käse, Schinken, Butter; Brezel 3 (klein): Käse, Schinken, Butter'
+    )
     expect(a.note).toContain('Anmerkung: Bitte geschnitten')
     expect(screen.getByTestId('payload-json').textContent).not.toMatch(/price/i)
 
     await user.click(screen.getByRole('button', { name: 'B: Teile mit Sorte' }))
     expect(json().items).toEqual([
-      { productId: 'partybrezel-teil-klein', variant: 'kaese', quantity: 1 },
-      { productId: 'partybrezel-teil-klein', variant: 'schinken', quantity: 1 },
-      { productId: 'partybrezel-teil-klein', variant: 'butter', quantity: 1 },
       { productId: 'partybrezel-teil-gross', variant: 'kaese', quantity: 2 },
       { productId: 'partybrezel-teil-gross', variant: 'schinken', quantity: 2 },
       { productId: 'partybrezel-teil-gross', variant: 'butter', quantity: 2 },
+      { productId: 'partybrezel-teil-klein', variant: 'kaese', quantity: 1 },
+      { productId: 'partybrezel-teil-klein', variant: 'schinken', quantity: 1 },
+      { productId: 'partybrezel-teil-klein', variant: 'butter', quantity: 1 },
     ])
     expect(screen.getByTestId('mapping-description')).toHaveTextContent(
       /Backzettel/
@@ -230,24 +264,28 @@ describe('PartybrezelDesigner', () => {
     await user.click(
       screen.getByRole('button', { name: 'Prototyp-Einstellungen' })
     )
-    await user.click(
-      screen.getByRole('radio', { name: /Eine Sorte je Brezel/ })
-    )
+    await user.click(screen.getByRole('radio', { name: /Ein Belag je Brezel/ }))
+    expect(
+      screen.getByRole('heading', { level: 2, name: 'Prototyp-Einstellungen' })
+    ).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Belag' }))
     expect(heading()).toHaveTextContent('Schritt 2 von 4: Belag')
     expect(screen.getAllByText(/unterschiedlich belegt/)).toHaveLength(3)
+    // je Brezel: der Chip nennt den Aufpreis für die ganze Brezel (3 × 1,50)
     await user.click(
-      screen.getByRole('button', { name: /^Salami.* für Brezel 2 \(groß\)$/ })
+      screen.getByRole('button', {
+        name: /^Salami \+4,50\s€ je Brezel für Brezel 2 \(groß\)$/,
+      })
     )
     expect(
       screen.getByRole('img', {
-        name: 'Brezel 2 (groß) - Teil 1: Salami, Teil 2: Salami, Teil 3: Salami',
+        name: 'Brezel 2 (groß) – Teil 1: Salami, Teil 2: Salami, Teil 3: Salami',
       })
     ).toBeInTheDocument()
     expect(screen.getAllByText(/unterschiedlich belegt/)).toHaveLength(2)
     await user.click(next())
     expect(screen.getByTestId('step-errors')).toHaveTextContent(
-      /eine Sorte wählen \(offen: Brezel 1, 3\)/
+      /für jede Brezel einen Belag \(offen: Brezel 1, 3\)/
     )
     await user.click(
       screen.getByRole('button', {
@@ -257,7 +295,19 @@ describe('PartybrezelDesigner', () => {
     await user.click(next())
     await user.click(next())
     expect(heading()).toHaveTextContent('Schritt 4 von 4')
-    expect(json().note).toContain('Brezel 1 (klein): Salami (ganze Brezel)')
+    expect(json().note).toContain(
+      'Brezel 1, 2 (groß): Salami (ganze Brezel); Brezel 3 (klein): Salami (ganze Brezel)'
+    )
+
+    // "Neu beginnen" fragt nach; Abbrechen lässt alles stehen
+    await user.click(screen.getByRole('button', { name: 'Neu beginnen' }))
+    const confirm = await screen.findByRole('dialog', {
+      name: 'Zusammenstellung verwerfen?',
+    })
+    await user.click(within(confirm).getByRole('button', { name: 'Abbrechen' }))
+    await waitForElementToBeRemoved(confirm)
+    expect(heading()).toHaveTextContent('Schritt 4 von 4')
+    expect(runningPrice()).not.toContain('0,00')
   })
 
   it('Kopieren ohne Zwischenablage markiert den Text und sagt das', async () => {
@@ -286,9 +336,7 @@ describe('PartybrezelDesigner', () => {
       })
     )
     await user.click(next())
-    await user.click(
-      screen.getByRole('button', { name: 'Sonntag, 8. November 2026' })
-    )
+    await user.click(dateChip('Sonntag, 8. November 2026'))
     await user.type(
       screen.getByRole('textbox', { name: /^Name/ }),
       'Max Muster'
@@ -323,7 +371,38 @@ describe('PartybrezelDesigner', () => {
     await second.user.click(
       screen.getByRole('button', { name: 'Zusammenstellung verwerfen' })
     )
+    const confirm = await screen.findByRole('dialog', {
+      name: 'Zusammenstellung verwerfen?',
+    })
+    await second.user.click(
+      within(confirm).getByRole('button', { name: 'Verwerfen' })
+    )
     expect(screen.getByLabelText('Anzahl groß: 0')).toBeInTheDocument()
+  })
+
+  it('stellt den Entwurf auch unter React.StrictMode wieder her (next dev)', async () => {
+    window.localStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        pretzels: [{ size: 'gross', toppings: ['kaese', null, null] }],
+        toppingMode: 'per-part',
+        name: 'Erika Beispiel',
+      })
+    )
+    render(
+      <React.StrictMode>
+        <ThemeRegistry>
+          <PartybrezelDesigner today={TODAY} />
+        </ThemeRegistry>
+      </React.StrictMode>
+    )
+    expect(await screen.findByLabelText('Anzahl groß: 1')).toBeInTheDocument()
+    const stored = JSON.parse(
+      window.localStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}'
+    )
+    expect(stored.pretzels).toHaveLength(1)
+    expect(stored.pretzels[0].toppings[0]).toBe('kaese')
+    expect(stored.name).toBe('Erika Beispiel')
   })
 
   it('läuft auch, wenn der Browser-Speicher wirft', async () => {

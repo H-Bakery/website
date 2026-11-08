@@ -32,9 +32,6 @@ const nextConfig = {
   // Das Next-Symbol unten links verdeckt in `next dev` auf dem Handy den
   // Weiter-Knopf der festen Leiste - bei Vorführungen stört es nur.
   devIndicators: false,
-  env: {
-    NEXT_PUBLIC_PARTYBREZEL_BASE_PATH: basePath,
-  },
 }
 
 module.exports = nextConfig

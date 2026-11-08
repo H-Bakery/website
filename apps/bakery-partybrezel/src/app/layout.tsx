@@ -5,7 +5,7 @@ import ThemeRegistry from '../components/ThemeRegistry'
 export const metadata: Metadata = {
   title: 'Partybrezel selbst zusammenstellen',
   description:
-    'Prototyp: Partybrezel in Größe und Belag zusammenstellen - Platzhalterpreise, keine echte Bestellung.',
+    'Prototyp: Partybrezel in Größe und Belag zusammenstellen – Platzhalterpreise, keine echte Bestellung.',
   robots: {
     index: false,
     follow: false,

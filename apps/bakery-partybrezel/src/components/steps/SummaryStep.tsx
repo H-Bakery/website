@@ -7,7 +7,13 @@ import TableCell from '@mui/material/TableCell'
 import TableRow from '@mui/material/TableRow'
 import Typography from '@mui/material/Typography'
 import type { PartybrezelConfig } from '../../config/partybrezel.config'
-import { doughDate, formatDateLong } from '../../lib/dates'
+import {
+  RUHETAG,
+  WEEKDAY_NAMES,
+  doughDate,
+  doughDateIsRuhetag,
+  formatDateLong,
+} from '../../lib/dates'
 import { formatEuro, formatGrams, pluralize } from '../../lib/format'
 import type { PayloadMapping } from '../../lib/payload'
 import { priceBreakdown } from '../../lib/pricing'
@@ -57,7 +63,7 @@ export default function SummaryStep({
                     scope="row"
                     sx={{ fontWeight: 700 }}
                   >
-                    Brezel {line.index} ({line.sizeLabel}) - Grundpreis
+                    Brezel {line.index} ({line.sizeLabel}) – Grundpreis
                   </TableCell>
                   <TableCell align="right">
                     {formatEuro(line.baseCents)}
@@ -118,29 +124,24 @@ export default function SummaryStep({
           sx={{
             m: 0,
             display: 'grid',
-            gridTemplateColumns: 'auto 1fr',
+            gridTemplateColumns: 'auto minmax(0, 1fr)',
             columnGap: 2,
             rowGap: 0.5,
+            // lange Namen/Nummern ohne Leerzeichen brechen um statt die
+            // Seite bei 320 px seitlich scrollen zu lassen
+            '& dd': { margin: 0, overflowWrap: 'anywhere' },
           }}
         >
           <dt>Abholtag</dt>
-          <dd style={{ margin: 0 }}>
-            {draft.pickupDate ? formatDateLong(draft.pickupDate) : '-'}
-          </dd>
+          <dd>{draft.pickupDate ? formatDateLong(draft.pickupDate) : '–'}</dd>
           <dt>Wunschzeit</dt>
-          <dd style={{ margin: 0 }}>{draft.pickupTime || 'keine Angabe'}</dd>
+          <dd>{draft.pickupTime || 'keine Angabe'}</dd>
           <dt>Name</dt>
-          <dd style={{ margin: 0 }}>{draft.name.trim()}</dd>
+          <dd>{draft.name.trim()}</dd>
           <dt>Telefon</dt>
-          <dd style={{ margin: 0 }}>{draft.phone.trim() || 'keine Angabe'}</dd>
+          <dd>{draft.phone.trim() || 'keine Angabe'}</dd>
           <dt>Anmerkung</dt>
-          <dd
-            style={{
-              margin: 0,
-              whiteSpace: 'pre-wrap',
-              overflowWrap: 'anywhere',
-            }}
-          >
+          <dd style={{ whiteSpace: 'pre-wrap' }}>
             {draft.note.trim() || 'keine'}
           </dd>
         </Box>
@@ -166,12 +167,18 @@ export default function SummaryStep({
           <li>
             Zusammen {dough.totalParts} Teile, {formatGrams(dough.totalGrams)}{' '}
             {config.doughName}
-            {draft.pickupDate
+            {draft.pickupDate && !doughDateIsRuhetag(draft.pickupDate)
               ? `, Teig am ${formatDateLong(
                   doughDate(draft.pickupDate)
                 )} ansetzen`
               : ''}
           </li>
+          {draft.pickupDate && doughDateIsRuhetag(draft.pickupDate) && (
+            <li data-testid="dough-ruhetag">
+              Teig am Vortag – der Vortag ({WEEKDAY_NAMES[RUHETAG - 1]}) ist
+              Ruhetag; wann der Teig angesetzt wird, ist offen (Q-P4/Q-P7).
+            </li>
+          )}
           {toppings.length > 0 && (
             <li>
               Beläge:{' '}

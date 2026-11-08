@@ -8,6 +8,7 @@ import CardContent from '@mui/material/CardContent'
 import Typography from '@mui/material/Typography'
 import type {
   PartybrezelConfig,
+  SizeConfig,
   ToppingMode,
 } from '../../config/partybrezel.config'
 import { findTopping, getSize } from '../../lib/configLookup'
@@ -34,17 +35,25 @@ export default function ToppingStep({
   onPretzelTopping,
   onCopyToAll,
 }: ToppingStepProps) {
-  const options: ToggleChipOption[] = config.toppings.map((t) => ({
-    value: t.id,
-    label:
-      t.surchargePerPartCents > 0
-        ? `${t.label} +${formatEuro(t.surchargePerPartCents)}`
-        : t.label,
-  }))
+  // Der Aufpreis am Chip ist der, den ein Klick auslöst: je Teil bzw. für
+  // die ganze Brezel (Aufpreis je Teil × Teile).
+  const optionsFor = (size: SizeConfig): ToggleChipOption[] =>
+    config.toppings.map((t) => {
+      if (t.surchargePerPartCents <= 0) return { value: t.id, label: t.label }
+      return {
+        value: t.id,
+        label:
+          mode === 'per-part'
+            ? `${t.label} +${formatEuro(t.surchargePerPartCents)} je Teil`
+            : `${t.label} +${formatEuro(
+                t.surchargePerPartCents * size.partsPerPretzel
+              )} je Brezel`,
+      }
+    })
   const surchargeHint =
     mode === 'per-part'
       ? 'Aufpreise gelten je belegtem Teil (Platzhalter).'
-      : 'Aufpreise gelten je Teil, also für die ganze Brezel mal Anzahl der Teile (Platzhalter).'
+      : 'Der Aufpreis am Belag gilt für die ganze Brezel, also für alle Teile zusammen (Platzhalter).'
 
   if (pretzels.length === 0) {
     return (
@@ -59,8 +68,8 @@ export default function ToppingStep({
     <Box>
       <Typography sx={{ mb: 2 }}>
         {mode === 'per-part'
-          ? 'Wählen Sie für jedes Teil einen Belag - gemischt ist möglich.'
-          : 'Wählen Sie für jede Brezel eine Sorte; sie gilt für alle Teile.'}{' '}
+          ? 'Wählen Sie für jedes Teil einen Belag – gemischt ist möglich.'
+          : 'Wählen Sie für jede Brezel einen Belag; er gilt für alle Teile.'}{' '}
         {surchargeHint}
       </Typography>
       <Box sx={{ display: 'grid', gap: 2 }}>
@@ -73,6 +82,7 @@ export default function ToppingStep({
           const known = parts.every(Boolean)
           const uniform = known && new Set(parts.map((t) => t?.id)).size === 1
           const price = pretzelPrice(pretzel, i + 1, config)
+          const options = optionsFor(size)
           const headingId = `pretzel-${pretzel.id}-heading`
           return (
             <Card
@@ -126,11 +136,11 @@ export default function ToppingStep({
                       {known && !uniform && (
                         <Alert severity="warning">
                           Die Teile sind unterschiedlich belegt. Bitte wählen
-                          Sie eine Sorte für die ganze Brezel.
+                          Sie einen Belag für die ganze Brezel.
                         </Alert>
                       )}
                       <ToggleChips
-                        legend="Sorte für die ganze Brezel"
+                        legend="Ein Belag für die ganze Brezel"
                         options={options.map((o) => ({
                           ...o,
                           ariaLabel: `${o.label} für ${label}`,

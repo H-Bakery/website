@@ -2,6 +2,7 @@ import { partybrezelConfig as config } from '../config/partybrezel.config'
 import {
   addDays,
   doughDate,
+  doughDateIsRuhetag,
   earliestPickupDate,
   formatDateLong,
   formatDateShort,
@@ -118,6 +119,21 @@ describe('dates', () => {
   it('der Teig entsteht am Vortag', () => {
     expect(doughDate('2026-11-10')).toBe('2026-11-09')
     expect(doughDate('2027-01-01')).toBe('2026-12-31')
+  })
+
+  it('markiert Abholtage, deren Teigtag der Ruhetag ist (Dienstag)', () => {
+    expect(doughDateIsRuhetag('2026-11-10')).toBe(true) // Di -> Mo
+    expect(doughDateIsRuhetag('2026-11-11')).toBe(false) // Mi -> Di
+    expect(doughDateIsRuhetag('2026-11-08')).toBe(false) // So -> Sa
+    const days = pickupDates('2026-11-06', rules())
+    const tuesday = days.find((d) => d.date === '2026-11-10')
+    expect(tuesday?.doughOnRuhetag).toBe(true)
+    expect(
+      days.filter((d) => d.doughOnRuhetag).every((d) => d.weekday === 2)
+    ).toBe(true)
+    expect(days.find((d) => d.date === '2026-11-08')?.doughOnRuhetag).toBe(
+      false
+    )
   })
 
   it('bestimmt heute in Europe/Berlin, nicht in UTC', () => {

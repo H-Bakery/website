@@ -15,7 +15,12 @@ const THREE_PART_BADGES = [
   { x: 120, y: 128 },
 ]
 
-const CRUST = '#7a4a1d'
+/**
+ * Rand (Kruste) und Legenden-Rahmen: themenabhängig über eine CSS-Variable
+ * (ThemeRegistry), damit gestrichelt (offen) und durchgezogen auch im
+ * Dunkelmodus ≥ 3:1 gegen den Hintergrund stehen.
+ */
+const CRUST = 'var(--partybrezel-crust, #7a4a1d)'
 const UNSET = '#b9aea2'
 
 export interface PretzelPreviewProps {
@@ -26,6 +31,8 @@ export interface PretzelPreviewProps {
   size?: number
   /** Legende unter dem Bild (Nummer + Text je Teil). */
   showLegend?: boolean
+  /** Nur Schmuck (z. B. auf den Größen-Karten): für Screenreader ausgeblendet. */
+  decorative?: boolean
 }
 
 function partText(topping: ToppingConfig | undefined) {
@@ -42,6 +49,7 @@ export default function PretzelPreview({
   label,
   size = 160,
   showLegend = true,
+  decorative = false,
 }: PretzelPreviewProps) {
   const titleId = useId()
   const description = parts
@@ -54,20 +62,24 @@ export default function PretzelPreview({
       sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}
     >
       <svg
-        role="img"
-        aria-labelledby={titleId}
+        role={decorative ? undefined : 'img'}
+        aria-labelledby={decorative ? undefined : titleId}
+        aria-hidden={decorative ? true : undefined}
+        focusable="false"
         viewBox={three ? '0 0 240 190' : `0 0 ${parts.length * 60 + 20} 80`}
         width={size}
         style={{ maxWidth: '100%', height: 'auto', display: 'block' }}
       >
-        <title id={titleId}>{`${label} - ${description}`}</title>
+        {!decorative && (
+          <title id={titleId}>{`${label} – ${description}`}</title>
+        )}
         {three
           ? THREE_PART_PATHS.map((d, i) => (
               <g key={i} data-part={i + 1} data-topping={parts[i]?.id ?? ''}>
                 <path
                   d={d}
                   fill="none"
-                  stroke={CRUST}
+                  style={{ stroke: CRUST }}
                   strokeWidth={28}
                   strokeLinecap="round"
                 />
@@ -92,7 +104,7 @@ export default function PretzelPreview({
                 height={40}
                 rx={10}
                 fill={t?.color ?? UNSET}
-                stroke={CRUST}
+                style={{ stroke: CRUST }}
                 strokeWidth={4}
                 strokeDasharray={t ? undefined : '4 4'}
               />

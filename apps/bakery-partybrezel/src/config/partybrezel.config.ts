@@ -135,12 +135,19 @@ export const partybrezelConfig: PartybrezelConfig = {
       color: '#4f9d69',
     },
   ],
-  defaultToppingMode: 'per-part', // PLATZHALTER Q-P3 - gemischt je Teil oder eine Sorte je Brezel
+  defaultToppingMode: 'per-part', // PLATZHALTER Q-P3 - gemischt je Teil oder ein Belag je Brezel
   leadTimeDays: 2, // PLATZHALTER Q-P5 - Vorlauf offen (Teig am Vortag => mindestens 1)
-  availableWeekdays: [2, 3, 4, 5, 6, 7], // PLATZHALTER Q-P7 - Di-So; Montag ist immer Ruhetag
+  // PLATZHALTER Q-P7 - Di-So; Montag ist immer Ruhetag. Dienstag bleibt
+  // bewusst drin, ist aber offen: der Teig entstünde am Montag (Ruhetag).
+  // Die Seite nennt dann keinen Teigtag, sondern die offene Frage.
+  availableWeekdays: [2, 3, 4, 5, 6, 7],
   maxPretzelsPerOrder: 10, // PLATZHALTER Q-P5 - Obergrenze je Bestellung offen
   pickupDaysShown: 14, // PLATZHALTER Q-P5/Q-P7 - wie weit im Voraus bestellbar
-  maxCustomerNoteLength: 300, // lässt Platz für die Belagsliste in der 500-Zeichen-Anmerkung der API
+  // Eigene Grenze für den Text der Kundschaft. Die API nimmt 500 Zeichen für
+  // die GANZE Anmerkung (Belagsliste + Text); ob beides zusammen passt,
+  // prüft validateNoteFits() - bei vielen gemischten Brezeln reicht der
+  // Platz auch ohne Text nicht.
+  maxCustomerNoteLength: 300,
   productIds: {
     // HYPOTHETISCH - existiert noch nicht in hq (Q-P1)
     pretzelBySize: { klein: 'partybrezel-klein', gross: 'partybrezel-gross' },
@@ -169,7 +176,7 @@ export const partybrezelConfig: PartybrezelConfig = {
     {
       id: 'Q-P4',
       title: 'Belegen',
-      text: 'Wer belegt die Brezeln und wann - in der Backstube am Backtag oder im Laden vor der Abholung?',
+      text: 'Wer belegt die Brezeln und wann – in der Backstube am Backtag oder im Laden vor der Abholung?',
     },
     {
       id: 'Q-P5',
@@ -184,7 +191,7 @@ export const partybrezelConfig: PartybrezelConfig = {
     {
       id: 'Q-P7',
       title: 'Abholtage',
-      text: 'An welchen Wochentagen gibt es Partybrezeln? (Montag ist Ruhetag.)',
+      text: 'An welchen Wochentagen gibt es Partybrezeln? Montag ist Ruhetag – für eine Abholung am Dienstag müsste der Teig aber am Montag angesetzt werden. Gibt es dienstags keine Partybrezeln, oder wird der Teig dann anders vorbereitet?',
     },
   ],
 }

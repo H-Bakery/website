@@ -48,14 +48,22 @@ describe('config', () => {
 })
 
 describe('order reducer', () => {
-  it('legt Brezeln an, klein vor groß, mit offenen Teilen', () => {
+  it('legt Brezeln in der Reihenfolge des Hinzufügens an, mit offenen Teilen', () => {
     const s = withCounts(1, 2)
-    expect(s.pretzels.map((p) => p.size)).toEqual(['klein', 'gross', 'gross'])
+    expect(s.pretzels.map((p) => p.size)).toEqual(['gross', 'gross', 'klein'])
     expect(s.pretzels.every((p) => p.toppings.length === 3)).toBe(true)
     expect(s.pretzels.every((p) => p.toppings.every((t) => t === null))).toBe(
       true
     )
     expect(new Set(s.pretzels.map((p) => p.id)).size).toBe(3)
+  })
+
+  it('eine später hinzugefügte Größe verschiebt keine Nummern', () => {
+    let s = withCounts(0, 1)
+    const firstId = s.pretzels[0].id
+    s = reduce(s, { type: 'setCount', size: 'klein', count: 1 })
+    expect(s.pretzels.map((p) => p.size)).toEqual(['gross', 'klein'])
+    expect(s.pretzels[0].id).toBe(firstId)
   })
 
   it('begrenzt auf maxPretzelsPerOrder über alle Größen', () => {

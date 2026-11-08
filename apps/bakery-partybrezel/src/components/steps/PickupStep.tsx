@@ -5,7 +5,8 @@ import Box from '@mui/material/Box'
 import TextField from '@mui/material/TextField'
 import Typography from '@mui/material/Typography'
 import type { PartybrezelConfig } from '../../config/partybrezel.config'
-import { WEEKDAY_NAMES, type PickupDate } from '../../lib/dates'
+import { RUHETAG, WEEKDAY_NAMES, type PickupDate } from '../../lib/dates'
+import { pluralize } from '../../lib/format'
 import type { TextField as OrderTextField } from '../../lib/orderState'
 import type { OrderDraft } from '../../lib/types'
 import type { FieldErrors } from '../../lib/validation'
@@ -35,13 +36,14 @@ export default function PickupStep({
   onField,
 }: PickupStepProps) {
   const days = config.availableWeekdays
-    .filter((d) => d !== 1)
+    .filter((d) => d !== RUHETAG)
     .sort((a, b) => a - b)
     .map((d) => WEEKDAY_NAMES[d - 1])
     .join(', ')
   const err = (field: keyof FieldErrors) =>
     showError(field) ? errors[field] : undefined
   const noteLength = draft.note.trim().length
+  const selected = dates?.find((d) => d.date === draft.pickupDate)
 
   return (
     <Box sx={{ display: 'grid', gap: 3 }}>
@@ -49,26 +51,32 @@ export default function PickupStep({
         {dates === null ? (
           <Typography role="status">Abholtage werden geladen …</Typography>
         ) : dates.length === 0 ? (
-          <Alert severity="warning">
-            Zurzeit ist kein Abholtag wählbar (Config prüfen).
-          </Alert>
+          <Alert severity="warning">Zurzeit ist kein Abholtag wählbar.</Alert>
         ) : (
           <ToggleChips
             legend="Abholtag"
             options={dates.map((d) => ({
               value: d.date,
               label: d.shortLabel,
-              ariaLabel: d.longLabel,
+              // beginnt mit dem sichtbaren Text (WCAG 2.5.3, Sprachsteuerung)
+              ariaLabel: `${d.shortLabel} (${d.longLabel})`,
             }))}
             selected={draft.pickupDate}
             onSelect={onDate}
           />
         )}
         <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-          Frühestens {config.leadTimeDays} Tage im Voraus, abholbar {days}{' '}
-          (Platzhalter). Montag ist Ruhetag. Der Teig wird am Vortag angesetzt,
-          abgeholt wird am Backtag.
+          Frühestens {pluralize(config.leadTimeDays, 'Tag', 'Tage')} im Voraus,
+          abholbar {days} (Platzhalter). Montag ist Ruhetag. Der Teig wird am
+          Vortag angesetzt, abgeholt wird am Backtag.
         </Typography>
+        {selected?.doughOnRuhetag && (
+          <Alert severity="info" sx={{ mt: 1 }} data-testid="dough-ruhetag">
+            Der Vortag ({WEEKDAY_NAMES[RUHETAG - 1]}) ist Ruhetag. Ob es am{' '}
+            {WEEKDAY_NAMES[selected.weekday - 1]} Partybrezeln gibt und wann der
+            Teig dafür angesetzt wird, ist noch offen (Fragen Q-P4 und Q-P7).
+          </Alert>
+        )}
         {err('pickupDate') && (
           <Typography color="error" role="alert" sx={{ mt: 1 }}>
             {errors.pickupDate}

@@ -16,9 +16,13 @@ import {
 } from '../lib/payload'
 import type { OrderDraft } from '../lib/types'
 
-const MAPPING_TEXT: Record<PayloadMapping, string> = {
-  A: 'Eine Position je Größe, Menge = Anzahl Brezeln. Die Beläge stehen nur in der Anmerkung. Einfach und passend, wenn die ganze Brezel die Zähleinheit ist (Q-P1) - die Backstube muss die Beläge aber aus dem Text lesen.',
-  B: 'Eine Position je Größe und Belag, Menge = Anzahl Teile, der Belag als Sorte. So kann der Backzettel Teile (Flitteig in g) und Beläge zählen wie andere Sorten; welche Teile zu welcher Brezel gehören, steht weiter in der Anmerkung.',
+function mappingText(
+  mapping: PayloadMapping,
+  config: PartybrezelConfig
+): string {
+  return mapping === 'A'
+    ? 'Eine Position je Größe, Menge = Anzahl Brezeln. Die Beläge stehen nur in der Anmerkung. Einfach und passend, wenn die ganze Brezel die Zähleinheit ist (Q-P1) – die Backstube muss die Beläge aber aus dem Text lesen.'
+    : `Eine Position je Größe und Belag, Menge = Anzahl Teile, der Belag als Sorte. So kann der Backzettel Teile (${config.doughName} in g) und Beläge zählen wie andere Sorten; welche Teile zu welcher Brezel gehören, steht weiter in der Anmerkung.`
 }
 
 export interface PayloadPreviewProps {
@@ -49,7 +53,7 @@ export default function PayloadPreview({
     } else {
       selectElementText(preRef.current)
       setCopyStatus(
-        'Kopieren ist hier nicht möglich - der Text ist markiert, bitte mit Strg+C (Mac: ⌘+C) kopieren.'
+        'Kopieren ist hier nicht möglich – der Text ist markiert, bitte mit Strg+C (Mac: ⌘+C) kopieren.'
       )
     }
   }
@@ -67,9 +71,9 @@ export default function PayloadPreview({
       <Alert severity="info" sx={{ mb: 2 }}>
         <strong>Es wurde nichts gesendet.</strong> Später würde dieser Inhalt
         als Vorbestellung an <code>POST /api/preorders</code> gehen. Preise
-        stehen bewusst nicht darin: der Server übernimmt den Preis des Produkts
-        aus hq. Aufpreise für Beläge lassen sich darüber heute nicht abbilden -
-        in beiden Varianten kämen sie nicht an. Die Produkt-IDs sind
+        stehen bewusst nicht darin: der Server übernimmt den Preis aus dem
+        Produktkatalog. Aufpreise für Beläge lassen sich darüber heute nicht
+        abbilden – in beiden Varianten kämen sie nicht an. Die Produkt-IDs sind
         hypothetisch.
       </Alert>
       <ToggleButtonGroup
@@ -88,7 +92,7 @@ export default function PayloadPreview({
         ))}
       </ToggleButtonGroup>
       <Typography sx={{ mb: 2 }} data-testid="mapping-description">
-        {MAPPING_TEXT[mapping]}
+        {mappingText(mapping, config)}
       </Typography>
       {warnings.length > 0 && (
         <Alert severity="warning" sx={{ mb: 2 }} data-testid="payload-warnings">
@@ -103,6 +107,7 @@ export default function PayloadPreview({
         component="pre"
         ref={preRef}
         tabIndex={0}
+        role="region"
         aria-label={`Vorbestellung als JSON, ${MAPPING_LABELS[mapping]}`}
         data-testid="payload-json"
         sx={{

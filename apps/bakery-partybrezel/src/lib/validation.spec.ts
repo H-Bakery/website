@@ -26,6 +26,31 @@ describe('validation', () => {
     expect(validateName('Zoë Ünal')).toBeNull()
   })
 
+  it('Steuerzeichen wie die API (control-chars.core.js)', () => {
+    // unsichtbare Füll- und Formatzeichen
+    expect(validateName('Erika\u3164')).toMatch(/Steuerzeichen/) // Hangul-Füller
+    expect(validateName('Erika\ufe00')).toMatch(/Steuerzeichen/) // Variantenselektor
+    expect(validateName('Erika\u180eB')).toMatch(/Steuerzeichen/)
+    expect(validateName('Erika\ufffc')).toMatch(/Steuerzeichen/)
+    expect(validateName('Erika\u00adBeispiel')).toMatch(/Steuerzeichen/)
+    expect(validateName('Eri\tka')).toMatch(/Steuerzeichen/)
+    // „Zalgo“: mehr als vier Kombinationszeichen am Stück
+    expect(validateName('E\u0301\u0302\u0303\u0304\u0305rika')).toMatch(
+      /Steuerzeichen/
+    )
+    expect(validateName('Nguyê\u0303n')).toBeNull()
+    // ZWJ nur zwischen zwei Emoji, Darstellungsselektoren erlaubt
+    expect(validateName('Erika \u{1F468}\u200d\u{1F373}')).toBeNull()
+    expect(validateName('Erika \u2615\ufe0f')).toBeNull()
+    expect(validateName('Eri\u200dka')).toMatch(/Steuerzeichen/)
+    // Telefon prüft genauso
+    expect(validatePhone('0000\u3164 12345')).toMatch(/unzulässige/)
+    // Anmerkung: Tab, Zeilenumbruch, Wagenrücklauf erlaubt, Füller nicht
+    expect(validateNote('a\tb', 300)).toBeNull()
+    expect(validateNote('a\r\nb', 300)).toBeNull()
+    expect(validateNote('a\u3164b', 300)).toMatch(/Steuerzeichen/)
+  })
+
   it('Telefon: optional, sonst mindestens 5 Ziffern', () => {
     expect(validatePhone('')).toBeNull()
     expect(validatePhone('  ')).toBeNull()
@@ -79,14 +104,16 @@ describe('validation', () => {
     expect(validateToppings([ok, open], 'per-part', config)).toMatch(/Brezel 2/)
   })
 
-  it('je Brezel: gemischte Teile zählen als offen, nicht still als eine Sorte', () => {
+  it('je Brezel: gemischte Teile zählen als offen, nicht still als ein Belag', () => {
     const mixed = pretzel(config, 'gross', ['butter', 'kaese', 'salami'])
     const uniform = pretzel(config, 'klein', 'kaese')
     expect(
       findMissingToppings([uniform, mixed], 'per-pretzel', config)
     ).toEqual([{ pretzelId: mixed.id, index: 2, parts: [], mixed: true }])
     expect(validateToppings([uniform], 'per-pretzel', config)).toBeNull()
-    expect(validateToppings([mixed], 'per-pretzel', config)).toMatch(/Sorte/)
+    expect(validateToppings([mixed], 'per-pretzel', config)).toMatch(
+      /für jede Brezel einen Belag/
+    )
   })
 
   it('validateOrder sammelt Fehler je Schritt', () => {

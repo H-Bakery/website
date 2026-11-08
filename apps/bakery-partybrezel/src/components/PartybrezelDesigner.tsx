@@ -4,6 +4,11 @@ import Alert from '@mui/material/Alert'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Container from '@mui/material/Container'
+import Dialog from '@mui/material/Dialog'
+import DialogActions from '@mui/material/DialogActions'
+import DialogContent from '@mui/material/DialogContent'
+import DialogContentText from '@mui/material/DialogContentText'
+import DialogTitle from '@mui/material/DialogTitle'
 import Paper from '@mui/material/Paper'
 import Step from '@mui/material/Step'
 import StepButton from '@mui/material/StepButton'
@@ -61,7 +66,13 @@ export default function PartybrezelDesigner({
     {}
   )
   const [today, setToday] = useState<string | null>(todayProp ?? null)
-  const hydrated = useRef(false)
+  // Gespeichert wird erst, wenn der Entwurf geladen UND angewandt ist - sonst
+  // überschriebe der leere Anfangszustand ihn (StrictMode ruft Effekte in
+  // `next dev` zweimal auf; der zweite Lauf läse dann den leeren Entwurf).
+  const [draftReady, setDraftReady] = useState(!persistDraft)
+  const draftLoaded = useRef(false)
+  const [errorFocusToken, setErrorFocusToken] = useState(0)
+  const [confirmReset, setConfirmReset] = useState(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
   const errorRef = useRef<HTMLDivElement>(null)
   const firstRender = useRef(true)
@@ -72,18 +83,33 @@ export default function PartybrezelDesigner({
     else setToday(todayInBerlin(new Date()))
   }, [todayProp])
 
-  // Entwurf erst nach dem Mounten laden (sonst Hydration-Mismatch).
+  // Entwurf erst nach dem Mounten laden (sonst Hydration-Mismatch), und nur
+  // einmal je Komponente.
   useEffect(() => {
-    if (persistDraft) {
+    if (!persistDraft) return
+    if (!draftLoaded.current) {
+      draftLoaded.current = true
       const draft = loadDraft(config)
       if (draft) dispatch({ type: 'hydrate', state: draft })
     }
-    hydrated.current = true
+    setDraftReady(true)
   }, [config, persistDraft])
 
+  // `draftReady` wird erst im Render NACH dem `hydrate` wahr - der leere
+  // Anfangszustand wird nie gespeichert.
   useEffect(() => {
-    if (persistDraft && hydrated.current) saveDraft(state)
-  }, [state, persistDraft])
+    if (persistDraft && draftReady) saveDraft(state)
+  }, [state, persistDraft, draftReady])
+
+  // Fehler erst fokussieren, wenn die Meldung gerendert ist (beim ersten
+  // Fehlversuch gibt es sie vorher noch nicht).
+  useEffect(() => {
+    if (errorFocusToken === 0) return
+    const el = errorRef.current
+    if (!el) return
+    el.focus()
+    el.scrollIntoView?.({ block: 'center' })
+  }, [errorFocusToken])
 
   useEffect(() => {
     if (firstRender.current) {
@@ -133,7 +159,7 @@ export default function PartybrezelDesigner({
       if (!stepValid(i)) {
         setAttempted((a) => a.map((v, j) => (j === i ? true : v)))
         if (i !== step) setStep(i)
-        else errorRef.current?.focus()
+        else setErrorFocusToken((n) => n + 1)
         return
       }
     }
@@ -144,6 +170,7 @@ export default function PartybrezelDesigner({
     Boolean(touched[field] || attempted[2])
 
   const reset = () => {
+    setConfirmReset(false)
     dispatch({ type: 'reset' })
     clearDraft()
     setAttempted([false, false, false, false])
@@ -283,7 +310,7 @@ export default function PartybrezelDesigner({
             config={config}
             mode={state.toppingMode}
             onModeChange={(mode) => dispatch({ type: 'setMode', mode })}
-            onReset={reset}
+            onReset={() => setConfirmReset(true)}
           />
         </Box>
       </Container>
@@ -314,11 +341,9 @@ export default function PartybrezelDesigner({
             flexWrap: 'wrap',
           }}
         >
-          <Box
-            sx={{ flex: '1 1 140px' }}
-            aria-live="polite"
-            data-testid="running-price"
-          >
+          {/* bewusst ohne aria-live: sonst kündigte jeder Tipp auf +/− oder
+              einen Belag die Summe erneut an */}
+          <Box sx={{ flex: '1 1 140px' }} data-testid="running-price">
             <Typography variant="body2" color="text.secondary" component="span">
               Summe (Platzhalter){' '}
             </Typography>
@@ -338,12 +363,36 @@ export default function PartybrezelDesigner({
               Weiter
             </Button>
           ) : (
-            <Button variant="contained" color="secondary" onClick={reset}>
+            <Button variant="outlined" onClick={() => setConfirmReset(true)}>
               Neu beginnen
             </Button>
           )}
         </Container>
       </Paper>
+
+      <Dialog
+        open={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        aria-labelledby="confirm-reset-title"
+        aria-describedby="confirm-reset-text"
+      >
+        <DialogTitle id="confirm-reset-title">
+          Zusammenstellung verwerfen?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText id="confirm-reset-text">
+            Zusammenstellung wirklich verwerfen? Ihre Eingaben gehen verloren.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmReset(false)} autoFocus>
+            Abbrechen
+          </Button>
+          <Button onClick={reset} color="error" variant="contained">
+            Verwerfen
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   )
 }

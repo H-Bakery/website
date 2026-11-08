@@ -26,7 +26,7 @@ export default function SizeStep({
     <Box>
       <Typography sx={{ mb: 2 }}>
         Wählen Sie Größe und Anzahl. Jede Partybrezel besteht aus{' '}
-        {config.doughName} und wird in Teilen gebacken - den Belag wählen Sie im
+        {config.doughName} und wird in Teilen gebacken – den Belag wählen Sie im
         nächsten Schritt.
       </Typography>
       <Box
@@ -63,6 +63,7 @@ export default function SizeStep({
                     label={`Partybrezel ${size.label}`}
                     size={96}
                     showLegend={false}
+                    decorative
                   />
                   <Box component="ul" sx={{ m: 0, pl: 2 }}>
                     <li>
