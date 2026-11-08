@@ -1148,8 +1148,8 @@ describe('roundUp', () => {
   it('rundet Stueck auf ganze Zahlen und Liter auf Hundertstel, tolerant gegen Fliesskomma', () => {
     expect(core.roundUp(0.1 * 3 * 10, 'Stück')).toBe(3)
     expect(core.roundUp(2.01, 'Stück')).toBe(3)
-    expect(core.roundUp(1.24 * 1.0, 'Liter')).toBe(1.24)
-    expect(core.roundUp(1.241, 'Liter')).toBe(1.25)
+    expect(core.roundUp(1.37 * 1.0, 'Liter')).toBe(1.37)
+    expect(core.roundUp(1.371, 'Liter')).toBe(1.38)
     expect(core.roundUp(Number.NaN, 'Stück')).toBe(0)
   })
 })
