@@ -1,7 +1,7 @@
 /**
- * A shift in the shop (TASK-042): Verkauf only, one day, end after start (no
+ * A shift (TASK-042): any area (since 2026-11-08), one day, end after start (no
  * shift past midnight), no two overlapping shifts of the same person - the
- * API checks all three (`vacation.core.js`).
+ * API checks all of it (`vacation.core.js`).
  */
 import {
   CreationOptional,

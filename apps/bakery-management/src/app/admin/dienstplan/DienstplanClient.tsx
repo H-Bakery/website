@@ -26,6 +26,7 @@ import {
   Add as AddIcon,
   Badge as StaffIcon,
   Schedule as TemplatesIcon,
+  WarningAmber as GapIcon,
 } from '@mui/icons-material'
 import {
   ABSENCE_STATUS_LABELS,
@@ -42,6 +43,7 @@ import {
   formatMinutes,
   groupByArea,
   type Absence,
+  type Besetzung,
   type Calendar,
   type CalendarDay,
   type DienstplanWarning,
@@ -57,15 +59,19 @@ import {
   closedDayLabel,
   dienstplanHref,
   entriesByCell,
+  besetzungLines,
   formatMonthTitle,
   formatPeriodTitle,
   formatWeekTitle,
+  hasVerkaufShifts,
   mondayOf,
+  openingHoursText,
   parseAreaFilter,
   parsePeriod,
   parseView,
   periodEnd,
   periodStart,
+  shortNames,
   staffingText,
   stepPeriod,
   switchPeriod,
@@ -95,7 +101,11 @@ import {
   ABSENCE_COLORS,
   AreaGroupRow,
   EmployeeNameCell,
+  HOURS_COLUMN_WIDTH,
+  HoursCell,
+  HoursHeaderCell,
   NAME_COLUMN_WIDTH,
+  PhoneHours,
   stickyName,
 } from './calendarParts'
 
@@ -125,13 +135,16 @@ interface Notice {
   warnings: DienstplanWarning[]
 }
 
-/** Schichten nur im Verkauf und nur für aktive Mitarbeiter (die API prüft). */
+/**
+ * Schichten in allen Bereichen (Entscheidung des Inhabers 2026-11-08), nur
+ * für aktive Mitarbeiter (die API prüft).
+ */
 function canHaveShifts(employee: Employee): boolean {
-  return employee.area === 'verkauf' && employee.active
+  return employee.active
 }
 
 /**
- * Neu anlegen in einer Zelle (Woche und Monat): Schicht (nur Verkauf) und,
+ * Neu anlegen in einer Zelle (Woche und Monat): Schicht (aktive Personen) und,
  * solange an dem Tag keine Abwesenheit steht, Abwesenheit - eine zweite
  * würde die API ohnehin als Überschneidung ablehnen.
  */
@@ -199,7 +212,7 @@ const AREA_FILTERS: AreaFilter[] = ['alle', ...AREAS]
  * Breite einer Tagesspalte der Woche (px): Handy schmaler, damit neben der
  * stehenbleibenden Namensspalte noch ein Tag sichtbar ist.
  */
-const DAY_COLUMN_MIN_WIDTH = { xs: 112, sm: 128 } as const
+const DAY_COLUMN_MIN_WIDTH = { xs: 112, sm: 116 } as const
 
 /** Beschriftung der Navigation je Ansicht. */
 const PERIOD_NAV: Record<
@@ -244,9 +257,11 @@ const SECTION_HINT: Record<CalendarView, string> = {
 /**
  * Kalender des Dienstplans (TASK-042, nur Inhaber mit persönlicher
  * Sitzung). Woche (Standard): Zeilen = Mitarbeitende nach Bereich (Verkauf
- * zuerst), Spalten Mo-So; Zellen zeigen Schichten mit Uhrzeit und
- * Abwesenheitsbalken (geplant gestrichelt). Ruhetag und Feiertage sind
- * hinterlegt und benannt, die Kopfzeile je Tag zeigt „Verkauf besetzt“.
+ * zuerst), Spalten Mo-So und die Stunden; Zellen zeigen Schichten mit
+ * Uhrzeit und Abwesenheitsbalken (geplant gestrichelt). Ruhetag und
+ * Feiertage sind hinterlegt und benannt, der Kopf je Tag zeigt die
+ * Öffnungszeit, die Zeile „Besetzung Verkauf“ wer wann im Laden steht und
+ * wo niemand da ist.
  * Monat: Tage als schmale Spalten mit Abwesenheiten und Schicht-Punkten
  * (`MonthView`). Jahr: zwölf Monate je Person mit Urlaubsbalken und dem
  * Konto daneben (`YearView`).
@@ -550,7 +565,7 @@ export default function DienstplanClient({
     <PageLayout
       width="wide"
       title="Dienstplan"
-      subtitle="Schichten im Verkauf, Urlaub und Abwesenheiten"
+      subtitle="Schichten, Urlaub und Abwesenheiten"
       actions={
         <>
           <DayNavigator
@@ -818,12 +833,17 @@ function WeekView({
 }) {
   const days = new Map(calendar.days.map((d) => [d.date, d]))
   const cells = entriesByCell(calendar, dates)
-  const anyShifts = calendar.shifts.length > 0
+  const anyVerkaufShifts = hasVerkaufShifts(calendar)
+  const hours = new Map(calendar.hours.map((h) => [h.employeeId, h]))
+  const names = shortNames(calendar.employees)
   const shown =
     area === 'alle'
       ? calendar.employees
       : calendar.employees.filter((e) => e.area === area)
   const groups = groupByArea(shown)
+  // Die Besetzung gilt dem Verkauf - bei einem anderen Bereichsfilter fehlt sie.
+  const showBesetzung = area === 'alle' || area === 'verkauf'
+  const columns = dates.length + 2
 
   return (
     <Box sx={{ position: 'relative' }}>
@@ -847,8 +867,14 @@ function WeekView({
           sx={{
             tableLayout: 'fixed',
             minWidth: {
-              xs: NAME_COLUMN_WIDTH.xs + 7 * DAY_COLUMN_MIN_WIDTH.xs,
-              sm: NAME_COLUMN_WIDTH.sm + 7 * DAY_COLUMN_MIN_WIDTH.sm,
+              xs:
+                NAME_COLUMN_WIDTH.xs +
+                7 * DAY_COLUMN_MIN_WIDTH.xs +
+                HOURS_COLUMN_WIDTH,
+              sm:
+                NAME_COLUMN_WIDTH.sm +
+                7 * DAY_COLUMN_MIN_WIDTH.sm +
+                HOURS_COLUMN_WIDTH,
             },
             '& td, & th': { borderRight: 1, borderColor: 'divider' },
             '& td:last-of-type, & th:last-of-type': { borderRight: 0 },
@@ -871,15 +897,45 @@ function WeekView({
                   date={date}
                   day={days.get(date)}
                   today={date === calendar.today}
-                  anyShifts={anyShifts}
                 />
               ))}
+              <HoursHeaderCell periodLabel="Woche" />
             </TableRow>
           </TableHead>
           <TableBody>
+            {showBesetzung && (
+              <TableRow data-testid="besetzung-row">
+                <TableCell
+                  component="th"
+                  scope="row"
+                  sx={(theme) => ({ ...stickyName(theme), py: 0.5 })}
+                >
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    Besetzung Verkauf
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                  >
+                    über die Öffnungszeit
+                  </Typography>
+                </TableCell>
+                {dates.map((date) => (
+                  <BesetzungCell
+                    key={date}
+                    date={date}
+                    day={days.get(date)}
+                    anyVerkaufShifts={anyVerkaufShifts}
+                    names={names}
+                  />
+                ))}
+                <TableCell />
+              </TableRow>
+            )}
             {groups.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8}>
+                <TableCell colSpan={columns}>
                   <Typography
                     variant="body2"
                     color="text.secondary"
@@ -895,14 +951,22 @@ function WeekView({
                   <AreaGroupRow
                     label={group.label}
                     count={group.employees.length}
-                    colSpan={8}
+                    colSpan={columns}
                   />
                   {group.employees.map((employee) => (
                     <TableRow
                       key={employee.id}
                       data-testid={`row-${employee.id}`}
                     >
-                      <EmployeeNameCell employee={employee} />
+                      <EmployeeNameCell
+                        employee={employee}
+                        extra={
+                          <PhoneHours
+                            employeeId={employee.id}
+                            hours={hours.get(employee.id)}
+                          />
+                        }
+                      />
                       {dates.map((date) => (
                         <DayCell
                           key={date}
@@ -915,6 +979,10 @@ function WeekView({
                           onAbsence={onAbsence}
                         />
                       ))}
+                      <HoursCell
+                        employeeId={employee.id}
+                        hours={hours.get(employee.id)}
+                      />
                     </TableRow>
                   ))}
                 </React.Fragment>
@@ -931,15 +999,13 @@ function DayHeader({
   date,
   day,
   today,
-  anyShifts,
 }: {
   date: string
   day: CalendarDay | undefined
   today: boolean
-  anyShifts: boolean
 }) {
   const closedName = day ? closedDayLabel(day) : null
-  const staffing = day ? staffingText(day, anyShifts) : null
+  const hours = day ? openingHoursText(day) : null
   return (
     <TableCell
       data-testid={`day-${date}`}
@@ -968,17 +1034,142 @@ function DayHeader({
           {day.halfDayName} (halber Tag)
         </Typography>
       )}
-      {staffing && (
+      {hours && (
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', fontVariantNumeric: 'tabular-nums' }}
+          data-testid={`opening-${date}`}
+        >
+          <Box component="span" sx={visuallyHidden}>
+            geöffnet{' '}
+          </Box>
+          {hours}
+        </Typography>
+      )}
+    </TableCell>
+  )
+}
+
+/** Nur für Screenreader (wie `visuallyHidden` aus MUI). */
+const visuallyHidden = {
+  border: 0,
+  clip: 'rect(0 0 0 0)',
+  height: '1px',
+  margin: '-1px',
+  overflow: 'hidden',
+  padding: 0,
+  position: 'absolute',
+  whiteSpace: 'nowrap',
+  width: '1px',
+} as const
+
+/**
+ * Besetzung des Verkaufs an einem Tag: ein schmaler Zeitstrahl über die
+ * Öffnungszeit (besetzt gefüllt, Lücken schraffiert - nur Beiwerk) und
+ * darunter als Text, wer welchen Teil abdeckt und wo niemand da ist
+ * („unbesetzt 13:00–13:30“, „ab 12:00 unbesetzt“). Gerechnet hat die API.
+ */
+function BesetzungCell({
+  date,
+  day,
+  anyVerkaufShifts,
+  names,
+}: {
+  date: string
+  day: CalendarDay | undefined
+  anyVerkaufShifts: boolean
+  names: ReadonlyMap<number, string>
+}) {
+  const headline = day ? staffingText(day, anyVerkaufShifts) : null
+  const besetzung =
+    day && !day.closed && anyVerkaufShifts ? day.besetzung : null
+  const lines = besetzung ? besetzungLines(besetzung, names) : []
+  return (
+    <TableCell
+      data-testid={`besetzung-${date}`}
+      data-covered={besetzung ? String(besetzung.covered) : undefined}
+      sx={{
+        verticalAlign: 'top',
+        py: 0.5,
+        px: 0.75,
+        bgcolor: day?.closed ? 'action.hover' : undefined,
+      }}
+    >
+      {besetzung && <BesetzungBar besetzung={besetzung} />}
+      {headline && (
         <Typography
           variant="caption"
           color="text.secondary"
           sx={{ display: 'block' }}
           data-testid={`staffing-${date}`}
         >
-          {staffing}
+          {headline}
         </Typography>
       )}
+      {lines.map((line) => (
+        <Typography
+          key={`${line.from}-${line.to}`}
+          variant="caption"
+          data-kind={line.kind}
+          sx={{
+            display: 'block',
+            lineHeight: 1.3,
+            fontVariantNumeric: 'tabular-nums',
+            ...(line.kind === 'gap'
+              ? { fontWeight: 700, color: 'error.main' }
+              : { color: 'text.secondary' }),
+          }}
+        >
+          {line.kind === 'gap' && (
+            <GapIcon
+              aria-hidden
+              sx={{ fontSize: 12, mr: 0.25, verticalAlign: '-2px' }}
+            />
+          )}
+          {line.text}
+        </Typography>
+      ))}
     </TableCell>
+  )
+}
+
+/** Zeitstrahl der Besetzung (aria-hidden; der Text darunter trägt alles). */
+function BesetzungBar({ besetzung }: { besetzung: Besetzung }) {
+  const toMin = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3))
+  const start = toMin(besetzung.opens)
+  const total = toMin(besetzung.closes) - start
+  if (total <= 0) return null
+  return (
+    <Box
+      aria-hidden
+      data-testid="besetzung-bar"
+      sx={{
+        display: 'flex',
+        height: 6,
+        mb: 0.5,
+        borderRadius: 0.5,
+        overflow: 'hidden',
+        border: 1,
+        borderColor: 'divider',
+      }}
+    >
+      {besetzung.segments.map((seg) => {
+        const gap = seg.employeeIds.length === 0
+        return (
+          <Box
+            key={seg.from}
+            sx={{
+              flex: `0 0 ${((toMin(seg.to) - toMin(seg.from)) / total) * 100}%`,
+              bgcolor: gap ? 'transparent' : 'success.main',
+              color: 'error.main',
+              backgroundImage: gap
+                ? 'repeating-linear-gradient(135deg, currentColor 0 2px, transparent 2px 5px)'
+                : 'none',
+            }}
+          />
+        )
+      })}
+    </Box>
   )
 }
 
@@ -1007,7 +1198,7 @@ function DayCell({
   const shifts = entries?.shifts ?? []
   const absences = entries?.absences ?? []
   const empty = shifts.length === 0 && absences.length === 0
-  // Außerhalb des Verkaufs bleibt an einem Abwesenheitstag nichts anzulegen.
+  // Bei Ausgeschiedenen bleibt an einem Abwesenheitstag nichts anzulegen.
   const canAdd = addActions(employee, date, entries).length > 0
   const addLabel = `Eintrag für ${
     employee.displayName

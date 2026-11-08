@@ -22,8 +22,21 @@ import {
   parseWeek,
   staffingText,
   weekDates,
+  besetzungLines,
+  gapText,
+  hasVerkaufShifts,
+  hoursTexts,
+  openingHoursText,
+  shortNames,
 } from './dienstplanCalendar'
-import type { Absence, CalendarDay, Shift } from './dienstplanApi'
+import type {
+  Absence,
+  Besetzung,
+  CalendarDay,
+  Employee,
+  PlannedHours,
+  Shift,
+} from './dienstplanApi'
 
 function day(overrides: Partial<CalendarDay> = {}): CalendarDay {
   return {
@@ -34,7 +47,15 @@ function day(overrides: Partial<CalendarDay> = {}): CalendarDay {
     closed: false,
     weight: 1,
     halfDayName: null,
+    openingHours: { opens: '05:30', closes: '13:30' },
     verkaufBesetzt: 2,
+    besetzung: {
+      opens: '05:30',
+      closes: '13:30',
+      segments: [{ from: '05:30', to: '13:30', employeeIds: [1, 2] }],
+      gaps: [],
+      covered: true,
+    },
     ...overrides,
   }
 }
@@ -211,14 +232,29 @@ describe('dienstplanCalendar', () => {
     expect(monthSegment(absence, '2026-09-01')).toBeNull()
   })
 
-  it('Kopfzeile: geschlossen, „nichts geplant“ statt 0, sonst Besetzung', () => {
-    expect(staffingText(day(), true)).toBe('Verkauf besetzt: 2')
-    expect(staffingText(day({ verkaufBesetzt: 0 }), true)).toBe(
-      'Verkauf besetzt: 0'
-    )
+  it('Besetzung: geschlossen, „nichts geplant“ statt Lücken, durchgehend besetzt', () => {
+    expect(staffingText(day(), true)).toBe('durchgehend besetzt')
+    const gappy = day({
+      besetzung: {
+        opens: '05:30',
+        closes: '13:30',
+        segments: [
+          { from: '05:30', to: '12:00', employeeIds: [1] },
+          { from: '12:00', to: '13:30', employeeIds: [] },
+        ],
+        gaps: [{ from: '12:00', to: '13:30' }],
+        covered: false,
+      },
+    })
+    // Mit Lücken keine Überschrift - die Zeilen sagen „unbesetzt …“.
+    expect(staffingText(gappy, true)).toBeNull()
     expect(staffingText(day({ verkaufBesetzt: 0 }), false)).toBe(
       'nichts geplant'
     )
+    // Offener Tag ohne hinterlegte Öffnungszeit: die alte Zählung.
+    expect(
+      staffingText(day({ openingHours: null, besetzung: null }), true)
+    ).toBe('Öffnungszeit nicht hinterlegt · Verkauf besetzt: 2')
     // Geschlossen: keine Zeile - der Name des Tags steht schon darüber.
     expect(staffingText(day({ closed: true, restDay: true }), true)).toBeNull()
 
@@ -227,5 +263,117 @@ describe('dienstplanCalendar', () => {
     expect(
       closedDayLabel(day({ closed: true, holidayName: 'Allerheiligen' }))
     ).toBe('Allerheiligen')
+  })
+})
+
+describe('Öffnungszeit, Besetzung und Stunden (nur Anzeige)', () => {
+  it('Öffnungszeit als „05:30–13:30“, geschlossen ohne', () => {
+    expect(openingHoursText(day())).toBe('05:30–13:30')
+    expect(
+      openingHoursText(day({ closed: true, openingHours: null }))
+    ).toBeNull()
+  })
+
+  it('Lücken: bis Ladenschluss „ab … unbesetzt“, sonst „unbesetzt von–bis“', () => {
+    expect(gapText({ from: '13:00', to: '13:30' }, '13:30')).toBe(
+      'ab 13:00 unbesetzt'
+    )
+    expect(gapText({ from: '05:30', to: '13:30' }, '13:30')).toBe(
+      'ab 05:30 unbesetzt'
+    )
+    expect(gapText({ from: '13:30', to: '14:00' }, '15:00')).toBe(
+      'unbesetzt 13:30–14:00'
+    )
+  })
+
+  it('Zeilen der Besetzung mit Kurznamen', () => {
+    const besetzung: Besetzung = {
+      opens: '05:30',
+      closes: '13:30',
+      segments: [
+        { from: '05:30', to: '06:00', employeeIds: [] },
+        { from: '06:00', to: '10:00', employeeIds: [1, 2] },
+        { from: '10:00', to: '13:30', employeeIds: [2] },
+      ],
+      gaps: [{ from: '05:30', to: '06:00' }],
+      covered: false,
+    }
+    const names = shortNames([
+      { id: 1, displayName: 'Vera Beispiel' },
+      { id: 2, displayName: 'Mia Muster' },
+    ])
+    expect(besetzungLines(besetzung, names)).toEqual([
+      {
+        kind: 'gap',
+        from: '05:30',
+        to: '06:00',
+        text: 'unbesetzt 05:30–06:00',
+      },
+      {
+        kind: 'segment',
+        from: '06:00',
+        to: '10:00',
+        text: '06:00–10:00 Vera, Mia',
+      },
+      { kind: 'segment', from: '10:00', to: '13:30', text: '10:00–13:30 Mia' },
+    ])
+  })
+
+  it('Kurzname: erstes Wort, bei Gleichheit der volle Name', () => {
+    const names = shortNames([
+      { id: 1, displayName: 'Anna Alpha' },
+      { id: 2, displayName: 'Anna Beta' },
+      { id: 3, displayName: 'Bert' },
+    ])
+    expect([...names.values()]).toEqual(['Anna Alpha', 'Anna Beta', 'Bert'])
+  })
+
+  it('Schichten im Verkauf erkennen (Backstube zählt nicht)', () => {
+    const employees = [
+      { id: 1, area: 'verkauf' },
+      { id: 2, area: 'backstube' },
+    ] as Employee[]
+    const shift = (employeeId: number) => ({ employeeId } as Shift)
+    expect(hasVerkaufShifts({ employees, shifts: [shift(2)] })).toBe(false)
+    expect(hasVerkaufShifts({ employees, shifts: [shift(1)] })).toBe(true)
+  })
+
+  it('Stunden: Plan, Soll, Differenz mit Vorzeichen; ohne Soll „offen“', () => {
+    const base: PlannedHours = {
+      employeeId: 1,
+      from: '2026-11-09',
+      to: '2026-11-15',
+      weeklyHours: 30,
+      plannedMinutes: 1950,
+      shiftCount: 5,
+      targetMinutes: 1800,
+      diffMinutes: 150,
+      targetDays: 6,
+      creditedDays: 0,
+      status: 'ok',
+    }
+    expect(hoursTexts(base)).toEqual({
+      plan: '32:30 h',
+      target: '30:00 h',
+      diff: '+2:30 h',
+      sign: 'plus',
+    })
+    expect(hoursTexts({ ...base, diffMinutes: -240 })).toMatchObject({
+      diff: '−4:00 h',
+      sign: 'minus',
+    })
+    expect(hoursTexts({ ...base, diffMinutes: 0 })).toMatchObject({
+      diff: '±0:00 h',
+      sign: 'zero',
+    })
+    expect(
+      hoursTexts({
+        ...base,
+        weeklyHours: null,
+        targetMinutes: null,
+        diffMinutes: null,
+        status: 'no-target',
+      })
+    ).toEqual({ plan: '32:30 h', target: 'offen', diff: null, sign: null })
   })
 })

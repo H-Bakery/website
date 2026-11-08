@@ -4,18 +4,25 @@
  * die Kopfzeile je Tag. Reine Funktionen im Stil von `backzettelFormat.ts`,
  * ohne Datums-Bibliothek.
  *
- * Gerechnet wird hier nichts Fachliches: Feiertage, Ruhetag, Tagesgewicht
- * und „Verkauf besetzt“ kommen fertig aus `GET /api/dienstplan`
- * (`vacation.core.js`).
+ * Gerechnet wird hier nichts Fachliches: Feiertage, Ruhetag, Tagesgewicht,
+ * Öffnungszeit, Besetzung des Verkaufs und Plan-/Soll-Stunden kommen fertig
+ * aus `GET /api/dienstplan` (`vacation.core.js`); hier werden sie nur in
+ * Text übersetzt.
  */
 
 import { addDays, isIsoDate, isoWeekday } from './backzettelFormat'
 import {
   AREAS,
+  formatMinutes,
+  formatSignedMinutes,
+  formatTargetMinutes,
   type Absence,
   type Area,
+  type Besetzung,
   type Calendar,
   type CalendarDay,
+  type Employee,
+  type PlannedHours,
   type Shift,
 } from './dienstplanApi'
 
@@ -327,17 +334,129 @@ export function closedDayLabel(day: CalendarDay): string | null {
   return day.closed ? 'geschlossen' : null
 }
 
+/** Öffnungszeit eines Tags als „05:30–13:30“; ohne Öffnungszeit `null`. */
+export function openingHoursText(day: CalendarDay): string | null {
+  return day.openingHours
+    ? `${day.openingHours.opens}–${day.openingHours.closes}`
+    : null
+}
+
 /**
- * Kopfzeile eines Tags: „Verkauf besetzt: n“ als Lückencheck. Ein
- * geschlossener Tag hat keine Zeile (sein Name - Ruhetag, Feiertag - steht
- * schon darüber, `closedDayLabel`); eine Woche ganz ohne Schichten ist
- * „nichts geplant“ - keine 0, die nach Lücke aussieht.
+ * Gibt es im Zeitraum überhaupt Schichten im Verkauf? Ohne sie zeigt die
+ * Besetzung „nichts geplant“ statt an jedem Tag „unbesetzt“.
+ */
+export function hasVerkaufShifts(
+  calendar: Pick<Calendar, 'employees' | 'shifts'>
+): boolean {
+  const verkauf = new Set(
+    calendar.employees.filter((e) => e.area === 'verkauf').map((e) => e.id)
+  )
+  return calendar.shifts.some((s) => verkauf.has(s.employeeId))
+}
+
+/**
+ * Kurzname je Person für die enge Besetzungszeile: das erste Wort des
+ * Anzeigenamens („Vera“), bei zwei gleichen ersten Wörtern der volle Name.
+ */
+export function shortNames(
+  employees: readonly Pick<Employee, 'id' | 'displayName'>[]
+): Map<number, string> {
+  const first = (name: string) => name.trim().split(/\s+/)[0] || name
+  const counts = new Map<string, number>()
+  for (const e of employees) {
+    const f = first(e.displayName)
+    counts.set(f, (counts.get(f) ?? 0) + 1)
+  }
+  return new Map(
+    employees.map((e) => {
+      const f = first(e.displayName)
+      return [e.id, (counts.get(f) ?? 0) > 1 ? e.displayName : f]
+    })
+  )
+}
+
+/**
+ * Eine Lücke als Text: reicht sie bis Ladenschluss „ab 13:00 unbesetzt“,
+ * sonst „unbesetzt 05:30–06:00“.
+ */
+export function gapText(
+  gap: { from: string; to: string },
+  closes: string
+): string {
+  return gap.to === closes
+    ? `ab ${gap.from} unbesetzt`
+    : `unbesetzt ${gap.from}–${gap.to}`
+}
+
+export interface BesetzungLine {
+  kind: 'segment' | 'gap'
+  from: string
+  to: string
+  text: string
+}
+
+/**
+ * Zeilen der Besetzung in der Reihenfolge des Tages: Abschnitte mit
+ * Uhrzeit und Namen („05:30–10:00 Vera, Mia“), Lücken als „unbesetzt …“.
+ */
+export function besetzungLines(
+  besetzung: Besetzung,
+  names: ReadonlyMap<number, string>
+): BesetzungLine[] {
+  return besetzung.segments.map((seg) =>
+    seg.employeeIds.length === 0
+      ? {
+          kind: 'gap',
+          from: seg.from,
+          to: seg.to,
+          text: gapText(seg, besetzung.closes),
+        }
+      : {
+          kind: 'segment',
+          from: seg.from,
+          to: seg.to,
+          text: `${seg.from}–${seg.to} ${seg.employeeIds
+            .map((id) => names.get(id) ?? `#${id}`)
+            .join(', ')}`,
+        }
+  )
+}
+
+/**
+ * Überschrift der Besetzung eines Tags (Zeile „Besetzung Verkauf“ der
+ * Woche): geschlossen → `null` (der Kopf nennt Ruhetag oder Feiertag); eine
+ * Woche ganz ohne Schichten im Verkauf → „nichts geplant“ (keine Lücke an
+ * jedem Tag, die nach Alarm aussieht); ohne hinterlegte Öffnungszeit die
+ * alte Zählung; durchgehend besetzt → „durchgehend besetzt“; mit Lücken
+ * `null` - die Zeilen sagen „unbesetzt …“.
  */
 export function staffingText(
   day: CalendarDay,
-  anyShiftsInRange: boolean
+  anyVerkaufShifts: boolean
 ): string | null {
   if (day.closed) return null
-  if (!anyShiftsInRange) return 'nichts geplant'
-  return `Verkauf besetzt: ${day.verkaufBesetzt}`
+  if (!anyVerkaufShifts) return 'nichts geplant'
+  if (!day.besetzung) {
+    return `Öffnungszeit nicht hinterlegt · Verkauf besetzt: ${day.verkaufBesetzt}`
+  }
+  return day.besetzung.covered ? 'durchgehend besetzt' : null
+}
+
+/**
+ * Stunden einer Person als Text: Plan, Soll („offen“ ohne Wochenstunden)
+ * und die Differenz Plan − Soll mit Vorzeichen (`null` ohne Soll).
+ */
+export function hoursTexts(hours: PlannedHours): {
+  plan: string
+  target: string
+  diff: string | null
+  sign: 'plus' | 'minus' | 'zero' | null
+} {
+  const d = hours.diffMinutes
+  return {
+    plan: formatMinutes(hours.plannedMinutes),
+    target: formatTargetMinutes(hours.targetMinutes),
+    diff: d === null ? null : formatSignedMinutes(d),
+    sign: d === null ? null : d > 0 ? 'plus' : d < 0 ? 'minus' : 'zero',
+  }
 }

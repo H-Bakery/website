@@ -50,6 +50,7 @@ import {
   type Shift,
   type VacationBalance,
 } from '../../../../../lib/dienstplanApi'
+import { hoursTexts } from '../../../../../lib/dienstplanCalendar'
 import {
   EmptyState,
   ErrorState,
@@ -388,17 +389,18 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
       </PageSection>
 
       <PageSection
+        title="Stunden (Plan)"
+        description="Geplante Schichten neben dem Soll aus den Wochenstunden; Urlaub und abwesend mindern das Soll, Ruhetag und Feiertage zählen nicht."
+      >
+        <HoursView hours={profile.hours} />
+      </PageSection>
+
+      <PageSection
         title="Kommende Schichten"
         disablePadding={profile.upcomingShifts.length > 0}
       >
         {profile.upcomingShifts.length === 0 ? (
-          <EmptyState
-            title={
-              employee.area !== 'verkauf'
-                ? 'Schichten gibt es nur im Verkauf.'
-                : 'Keine Schichten geplant.'
-            }
-          />
+          <EmptyState title="Keine Schichten geplant." />
         ) : (
           <ResponsiveList
             aria-label="Kommende Schichten"
@@ -699,6 +701,56 @@ function MasterData({ employee }: { employee: Employee }) {
       {employee.note && <DataRow label="Notiz" value={employee.note} />}
     </DataList>
   )
+}
+
+/**
+ * Plan und Soll der laufenden Woche und des laufenden Monats (aus der API,
+ * `plannedHours`). Ohne Wochenstunden steht das Soll „offen“, nie 0.
+ */
+function HoursView({ hours }: { hours: EmployeeProfile['hours'] }) {
+  const rows = [
+    {
+      key: 'week',
+      label: `Woche ${formatDateShortDe(hours.week.from)} – ${formatDateDe(
+        hours.week.to
+      )}`,
+      h: hours.week,
+    },
+    {
+      key: 'month',
+      label: `Monat ${formatDateShortDe(hours.month.from)} – ${formatDateDe(
+        hours.month.to
+      )}`,
+      h: hours.month,
+    },
+  ]
+  return (
+    <DataList>
+      {rows.map(({ key, label, h }) => {
+        const t = hoursTexts(h)
+        return (
+          <DataRow
+            key={key}
+            label={label}
+            hint={`Plan ${t.plan} · Soll ${t.target}${
+              h.targetMinutes !== null && h.creditedDays > 0
+                ? ` (ohne ${formatDays(h.creditedDays)} ${
+                    h.creditedDays === 1 ? 'Tag' : 'Tage'
+                  } Urlaub/abwesend)`
+                : ''
+            }`}
+            value={t.diff ?? 'Soll offen'}
+            testId={`hours-${key}`}
+          />
+        )
+      })}
+    </DataList>
+  )
+}
+
+/** `2026-11-02` → `02.11.` */
+function formatDateShortDe(iso: string): string {
+  return formatDateDe(iso).slice(0, 6)
 }
 
 function BalanceView({

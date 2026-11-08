@@ -36,7 +36,7 @@ export function parseBreak(text: string): number {
 }
 
 /**
- * Schicht anlegen oder ändern (nur Verkauf): eine Schichtvorlage füllt die
+ * Schicht anlegen oder ändern (alle Bereiche): eine Schichtvorlage füllt die
  * Zeiten, die sich danach frei ändern lassen. Beim Ändern geht nur, was sich
  * geändert hat, an die API. Überschneidungen mit anderen Schichten lehnt die
  * API ab (Meldung im Dialog); eine Abwesenheit oder ein geschlossener Tag

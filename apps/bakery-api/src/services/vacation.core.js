@@ -1,7 +1,9 @@
 /**
- * Dienstplan und Urlaubskonto (TASK-042): Feiertage Saarland, Öffnungstage,
- * Gewicht eines Tages, Urlaubstage einer Abwesenheit, anteiliger Anspruch,
- * Jahreskonto mit Übertrag, Schicht-Regeln und die Tagesliste des Kalenders.
+ * Dienstplan und Urlaubskonto (TASK-042): Feiertage Saarland, Öffnungstage
+ * und -zeiten, Gewicht eines Tages, Urlaubstage einer Abwesenheit,
+ * anteiliger Anspruch, Jahreskonto mit Übertrag, Schicht-Regeln, die
+ * Tagesliste des Kalenders mit der Besetzung des Verkaufs und die geplanten
+ * Stunden neben dem Soll.
  *
  * Bewusst abhängigkeitsfreies CommonJS (Konvention wie `targets.core.js`):
  * dieselbe Datei benutzen die API (`src/services/dienstplan.service.ts`), die
@@ -29,6 +31,7 @@
 'use strict'
 
 const { normalizeClosedWeekdays } = require('./targets.core')
+const { openingHoursForWeekday } = require('./opening-hours.core')
 
 const AREAS = ['verkauf', 'backstube', 'fahrer', 'buero']
 
@@ -51,8 +54,19 @@ const ABSENCE_TYPE_LABELS = {
 
 const ABSENCE_STATUSES = ['geplant', 'genehmigt']
 
-/** Nur in diesem Bereich gibt es Schichten (Entscheidung 2). */
-const SHIFT_AREA = 'verkauf'
+/**
+ * Bereich, dessen Besetzung der Kalender prüft („Verkauf besetzt“,
+ * Besetzung über die Öffnungszeit). Schichten gibt es seit 2026-11-08 in
+ * allen Bereichen (Entscheidung des Inhabers); gezählt wird nur dieser.
+ */
+const STAFFING_AREA = 'verkauf'
+
+/**
+ * Abwesenheitsarten, die das Soll mindern: Urlaub und abwesend. „frei“
+ * mindert es nicht - ein freier Tag ist Ausgleich, die Stunden fehlen dann
+ * wirklich in der Woche.
+ */
+const CREDITED_ABSENCE_TYPES = ['urlaub', 'abwesend']
 
 /**
  * Ruhetag, wenn die Finanz-Config (`targets.json`) keine gültigen
@@ -225,8 +239,12 @@ function closedSet(closedWeekdays) {
 
 /**
  * Ein Kalendertag: `{ date, weekday, holidayName, restDay, closed, weight,
- * halfDayName }`. `weight` ist, was ein Urlaubstag an diesem Datum kostet:
- * 0 geschlossen (Ruhetag oder Feiertag), 0,5 an 24.12./31.12., sonst 1.
+ * halfDayName, openingHours }`. `weight` ist, was ein Urlaubstag an diesem
+ * Datum kostet: 0 geschlossen (Ruhetag oder Feiertag), 0,5 an 24.12./31.12.,
+ * sonst 1. `openingHours` = `{ opens, closes }` aus `opening-hours.core.js`
+ * an offenen Tagen; `null` an geschlossenen - und an einem offenen Tag, für
+ * dessen Wochentag die Tabelle keine Zeiten hat (die Finanz-Config öffnet
+ * z. B. den Montag): dann ist die Öffnungszeit nicht hinterlegt.
  */
 function dayInfo(date, closedWeekdays) {
   const weekday = isoWeekday(date)
@@ -245,6 +263,7 @@ function dayInfo(date, closedWeekdays) {
     closed,
     weight,
     halfDayName: closed ? null : halfDayName,
+    openingHours: closed ? null : openingHoursForWeekday(weekday),
   }
 }
 
@@ -549,39 +568,257 @@ function shiftsOverlap(a, b) {
 // ============================================================================
 
 /**
- * „Verkauf besetzt“ eines Tages: Personen aus dem Verkauf mit mindestens
- * einer Schicht an `date`, ohne ganztägige Abwesenheit an dem Tag (eine
- * halbtägige Abwesenheit lässt die Schicht stehen). Schnelle Lückenprüfung,
- * keine Stundenrechnung.
+ * Schichten aus dem Verkauf, die an `date` zählen: Person im Verkauf, ohne
+ * ganztägige Abwesenheit an dem Tag (eine halbtägige Abwesenheit lässt die
+ * Schicht stehen - wann der halbe Tag liegt, ist nicht erfasst).
  */
-function verkaufBesetzt(date, employees, shifts, absences) {
+function presentVerkaufShifts(date, employees, shifts, absences) {
   const verkauf = new Set(
-    (employees || []).filter((e) => e.area === SHIFT_AREA).map((e) => e.id)
+    (employees || []).filter((e) => e.area === STAFFING_AREA).map((e) => e.id)
   )
   const away = new Set(
     (absences || [])
       .filter((a) => !a.halfDay && absenceCovers(a, date))
       .map((a) => a.employeeId)
   )
-  const present = new Set()
-  for (const s of shifts || []) {
-    if (s.date !== date) continue
-    if (!verkauf.has(s.employeeId) || away.has(s.employeeId)) continue
-    present.add(s.employeeId)
-  }
+  return (shifts || []).filter(
+    (s) =>
+      s.date === date && verkauf.has(s.employeeId) && !away.has(s.employeeId)
+  )
+}
+
+/**
+ * „Verkauf besetzt“ eines Tages: Personen aus dem Verkauf mit mindestens
+ * einer Schicht an `date`, ohne ganztägige Abwesenheit an dem Tag (eine
+ * halbtägige Abwesenheit lässt die Schicht stehen). Nur eine Zahl - wann
+ * über den Tag niemand da ist, sagt `verkaufCoverage`.
+ */
+function verkaufBesetzt(date, employees, shifts, absences) {
+  const present = new Set(
+    presentVerkaufShifts(date, employees, shifts, absences).map(
+      (s) => s.employeeId
+    )
+  )
   return present.size
+}
+
+function minutesToTime(minutes) {
+  const h = Math.floor(minutes / 60)
+  const m = minutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
+/**
+ * Besetzung des Verkaufs über die Öffnungszeit eines Tages: wer welchen Teil
+ * abdeckt und wo niemand da ist. Gezählt werden dieselben Schichten wie bei
+ * `verkaufBesetzt`, von Beginn bis Ende - die Pause hat keine Uhrzeit und
+ * ist deshalb keine Lücke. Was vor dem Öffnen oder nach dem Schließen liegt,
+ * fällt heraus.
+ *
+ *   openingHours = { opens, closes } | null
+ *
+ * `null` ohne Öffnungszeit (geschlossen oder nicht hinterlegt), sonst
+ * `{ opens, closes, segments, gaps, covered }`:
+ *   segments  lückenlos von `opens` bis `closes`, je Abschnitt dieselben
+ *             Personen: `[{ from, to, employeeIds }]` (`employeeIds` nach
+ *             Beginn ihrer Schicht, leer = unbesetzt)
+ *   gaps      die unbesetzten Abschnitte `[{ from, to }]`
+ *   covered   true, wenn es keine Lücke gibt
+ */
+function verkaufCoverage(date, openingHours, employees, shifts, absences) {
+  if (
+    !openingHours ||
+    !isValidTime(openingHours.opens) ||
+    !isValidTime(openingHours.closes)
+  ) {
+    return null
+  }
+  const opens = timeToMinutes(openingHours.opens)
+  const closes = timeToMinutes(openingHours.closes)
+  if (closes <= opens) return null
+  const present = presentVerkaufShifts(date, employees, shifts, absences)
+    .map((s) => ({
+      employeeId: s.employeeId,
+      from: Math.max(timeToMinutes(s.startTime), opens),
+      to: Math.min(timeToMinutes(s.endTime), closes),
+    }))
+    .filter((s) => s.to > s.from)
+    .sort((a, b) => a.from - b.from || a.employeeId - b.employeeId)
+
+  const points = new Set([opens, closes])
+  for (const s of present) {
+    points.add(s.from)
+    points.add(s.to)
+  }
+  const sorted = [...points].sort((a, b) => a - b)
+  const segments = []
+  for (let i = 0; i < sorted.length - 1; i += 1) {
+    const from = sorted[i]
+    const to = sorted[i + 1]
+    const ids = []
+    for (const s of present) {
+      if (s.from <= from && s.to >= to && !ids.includes(s.employeeId)) {
+        ids.push(s.employeeId)
+      }
+    }
+    const last = segments[segments.length - 1]
+    if (last && last.employeeIds.join(',') === ids.join(',')) {
+      last.to = to
+    } else {
+      segments.push({ from, to, employeeIds: ids })
+    }
+  }
+  const out = segments.map((seg) => ({
+    from: minutesToTime(seg.from),
+    to: minutesToTime(seg.to),
+    employeeIds: seg.employeeIds,
+  }))
+  const gaps = out
+    .filter((seg) => seg.employeeIds.length === 0)
+    .map((seg) => ({ from: seg.from, to: seg.to }))
+  return {
+    opens: openingHours.opens,
+    closes: openingHours.closes,
+    segments: out,
+    gaps,
+    covered: gaps.length === 0,
+  }
 }
 
 /**
  * Tagesliste des Kalenders `from`…`to`:
  * `[{ date, weekday, holidayName, restDay, closed, weight, halfDayName,
- * verkaufBesetzt }]`.
+ * openingHours, verkaufBesetzt, besetzung }]` (`besetzung` aus
+ * `verkaufCoverage`, `null` ohne Öffnungszeit).
  */
 function calendarDays(from, to, closedWeekdays, employees, shifts, absences) {
-  return listDates(from, to).map((date) => ({
-    ...dayInfo(date, closedWeekdays),
-    verkaufBesetzt: verkaufBesetzt(date, employees, shifts, absences),
-  }))
+  return listDates(from, to).map((date) => {
+    const info = dayInfo(date, closedWeekdays)
+    return {
+      ...info,
+      verkaufBesetzt: verkaufBesetzt(date, employees, shifts, absences),
+      besetzung: verkaufCoverage(
+        date,
+        info.openingHours,
+        employees,
+        shifts,
+        absences
+      ),
+    }
+  })
+}
+
+// ============================================================================
+// STUNDEN (Plan und Soll)
+// ============================================================================
+
+/**
+ * Soll-Minuten je Öffnungstag: Wochenstunden ÷ Zahl der offenen Wochentage
+ * (6 beim Ruhetag Montag - dieselbe 6-Tage-Woche wie beim Urlaub). `null`
+ * ohne Wochenstunden oder ohne offenen Wochentag.
+ */
+function dailyTargetMinutes(weeklyHours, closedWeekdays) {
+  if (
+    typeof weeklyHours !== 'number' ||
+    !Number.isFinite(weeklyHours) ||
+    weeklyHours < 0
+  ) {
+    return null
+  }
+  const openWeekdays = 7 - closedSet(closedWeekdays).size
+  if (openWeekdays <= 0) return null
+  return (weeklyHours * 60) / openWeekdays
+}
+
+/**
+ * Geplante Stunden einer Person im Zeitraum `from`…`to` neben dem Soll.
+ *
+ *   input = {
+ *     from, to,
+ *     employee: { id, weeklyHours, entryDate, exitDate },
+ *     shifts:   Schichten (nur die der Person im Zeitraum zählen),
+ *     absences: Abwesenheiten (nur die der Person zählen),
+ *     closedWeekdays,
+ *   }
+ *
+ * Plan = Σ (Ende − Beginn − Pause) der Schichten im Zeitraum, egal in
+ * welchem Bereich und auch an einem Abwesenheits- oder geschlossenen Tag
+ * (das ist beim Anlegen ein Hinweis, kein Fehler).
+ *
+ * Soll = Tagessoll (`dailyTargetMinutes`) × Σ Gewicht der Öffnungstage im
+ * Zeitraum, an denen die Person beschäftigt ist. Ein Tag mit Urlaub oder
+ * „abwesend“ (geplant oder genehmigt) zählt nicht, ein halber Tag zur
+ * Hälfte (`CREDITED_ABSENCE_TYPES`; „frei“ mindert das Soll nicht).
+ * Ruhetag und Feiertage zählen nicht, 24.12./31.12. halb. Eine volle Woche
+ * ohne Feiertag ergibt genau die Wochenstunden, ein Monat im Mittel
+ * Wochenstunden × 13/3.
+ *
+ * Ergebnis (Minuten, ganzzahlig gerundet):
+ *   `{ employeeId, from, to, weeklyHours, plannedMinutes, shiftCount,
+ *      targetMinutes, diffMinutes, targetDays, creditedDays, status }`
+ *   status        'ok' | 'no-target' (keine Wochenstunden: Soll und
+ *                 Differenz `null` = „offen“, nie 0)
+ *   targetDays    Öffnungstage, die ins Soll eingehen (Summe der Gewichte)
+ *   creditedDays  Öffnungstage, die Urlaub/abwesend vom Soll abziehen
+ */
+function plannedHours(input) {
+  const { from, to, employee } = input
+  const shifts = (input.shifts || []).filter(
+    (s) => s.employeeId === employee.id && s.date >= from && s.date <= to
+  )
+  const plannedMinutes = shifts.reduce((sum, s) => sum + shiftMinutes(s), 0)
+  const credited = (input.absences || []).filter(
+    (a) =>
+      a.employeeId === employee.id && CREDITED_ABSENCE_TYPES.includes(a.type)
+  )
+
+  let openDays = 0
+  let creditedDays = 0
+  for (const date of listDates(from, to)) {
+    if (!withinEmployment(date, employee.entryDate, employee.exitDate)) continue
+    const w = dayWeight(date, input.closedWeekdays)
+    if (w === 0) continue
+    openDays += w
+    const absence = credited.find((a) => absenceCovers(a, date))
+    if (absence) creditedDays += absence.halfDay ? Math.min(w, 0.5) : w
+  }
+  creditedDays = round2(creditedDays)
+  const targetDays = round2(openDays - creditedDays)
+
+  const weeklyHours =
+    typeof employee.weeklyHours === 'number' &&
+    Number.isFinite(employee.weeklyHours)
+      ? employee.weeklyHours
+      : null
+  const perDay = dailyTargetMinutes(weeklyHours, input.closedWeekdays)
+  const targetMinutes = perDay === null ? null : Math.round(perDay * targetDays)
+  return {
+    employeeId: employee.id,
+    from,
+    to,
+    weeklyHours,
+    plannedMinutes,
+    shiftCount: shifts.length,
+    targetMinutes,
+    diffMinutes: targetMinutes === null ? null : plannedMinutes - targetMinutes,
+    targetDays,
+    creditedDays,
+    status: targetMinutes === null ? 'no-target' : 'ok',
+  }
+}
+
+/** `plannedHours` für jede Person aus `employees`, in deren Reihenfolge. */
+function hoursByEmployee(
+  from,
+  to,
+  employees,
+  shifts,
+  absences,
+  closedWeekdays
+) {
+  return (employees || []).map((employee) =>
+    plannedHours({ from, to, employee, shifts, absences, closedWeekdays })
+  )
 }
 
 /** Liegt `date` in der Beschäftigungszeit (Eintritt/Austritt, je optional)? */
@@ -598,7 +835,8 @@ module.exports = {
   ABSENCE_TYPES,
   ABSENCE_TYPE_LABELS,
   ABSENCE_STATUSES,
-  SHIFT_AREA,
+  STAFFING_AREA,
+  CREDITED_ABSENCE_TYPES,
   DEFAULT_CLOSED_WEEKDAYS,
   CARRYOVER_DEADLINE,
   isValidDate,
@@ -625,6 +863,10 @@ module.exports = {
   shiftMinutes,
   shiftsOverlap,
   verkaufBesetzt,
+  verkaufCoverage,
   calendarDays,
+  dailyTargetMinutes,
+  plannedHours,
+  hoursByEmployee,
   withinEmployment,
 }

@@ -1,13 +1,16 @@
 # Dienstplan und Urlaub (TASK-042)
 
 Roadmap §6 M5 candidate, originally out of the pilot (D11); now im Pilot für den Inhaber
-freigegeben (Entscheidung 2026-11-08) - the API rules are unchanged. The owner plans who works
-in the shop when (shifts, Verkauf only), who is away (all areas: urlaub / frei / abwesend) and
-keeps a vacation account per person and year. Task and decisions:
+freigegeben (Entscheidung 2026-11-08). The owner plans who works when (shifts, every area since
+the owner's decision of 2026-11-08 - before: Verkauf only), who is away (urlaub / frei /
+abwesend), sees the opening hours with the Verkauf coverage per day and the planned hours per
+person next to the contractual target, and keeps a vacation account per person and year. Task and decisions:
 `.mc/tasks/done/TASK-042-dienstplan-urlaub-mitarbeiterprofile.md` (section "Entscheidungen").
 
 Code in `apps/bakery-api/`: rules and formulas **once** in `src/services/vacation.core.js`
-(dependency-free, `tests/unit/vacationCore.test.js`); DB, validation, transaction and audit in
+(dependency-free, `tests/unit/vacationCore.test.js`), the weekly opening hours **once** in
+`src/services/opening-hours.core.js` (the landing page keeps a copy, checked by
+`apps/bakery-landing/src/config/openingHours.spec.ts`); DB, validation, transaction and audit in
 `src/services/dienstplan.service.ts`; routes in `src/routes/dienstplan.routes.ts`
 (`createDienstplanRouter(options)`, mounted by `app.ts` below the session guard); integration
 tests `tests/integration/dienstplan.test.ts`.
@@ -22,10 +25,10 @@ people only.
 
 | Endpoint                                                         | Answer (`{ success, data }`, writes may add `warnings`)                                                                           |
 | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /api/dienstplan?from=&to=`                                  | calendar: `{ from, to, today, closedWeekdays, employees[], shifts[], absences[], days[] }`                                        |
+| `GET /api/dienstplan?from=&to=`                                  | calendar: `{ from, to, today, closedWeekdays, employees[], shifts[], absences[], days[], hours[] }`                               |
 | `GET /api/dienstplan/employees`                                  | all employees (incl. deactivated), Verkauf first, then Backstube, Fahrer, Büro; by name                                           |
 | `POST /api/dienstplan/employees`                                 | `{ displayName, area, color?, employmentType?, weeklyHours?, entryDate?, exitDate?, userId?, note? }` → 201                       |
-| `GET /api/dienstplan/employees/:id?year=`                        | profile: `{ employee, year, entitlements[], balance, absences[] (of the year), upcomingShifts[] (≤ 20), closedWeekdays }`         |
+| `GET /api/dienstplan/employees/:id?year=`                        | profile: `{ employee, year, entitlements[], balance, absences[] (of the year), upcomingShifts[] (≤ 20), hours, closedWeekdays }`  |
 | `PATCH /api/dienstplan/employees/:id`                            | any of the fields above + `active`; `active: false` deactivates. **No DELETE** (404)                                              |
 | `GET /api/dienstplan/employees/:id/entitlements`                 | `[{ employeeId, year, entitlementDays, carryoverDays }]`, newest year first                                                       |
 | `PUT /api/dienstplan/employees/:id/entitlements/:year`           | `{ entitlementDays?, carryoverDays? }` (number 0-365 or `null` = offen); upsert of that year's row                                |
@@ -35,6 +38,9 @@ people only.
 | `GET /api/dienstplan/absences?from=&to=[&employeeId=]`           | overlapping the range: `[{ id, employeeId, type, status, startDate, endDate, halfDay, days, note }]`                              |
 | `POST /api/dienstplan/absences`, `PATCH/DELETE …/:id`            | `{ employeeId, type, status?, startDate, endDate?, halfDay?, note? }` - `status` default `geplant`, `endDate` default `startDate` |
 | `GET /api/dienstplan/balance?year=[&employeeId=]`                | one balance, or a list of all employees employed in that year (`+ displayName, area, active`)                                     |
+
+The profile's `hours` is `{ week, month }`: `plannedHours` (below) for the current week (Mon-Sun)
+and the current month (Berlin today), independent of `year`.
 
 In the profile each absence also carries `daysInYear`: its vacation days inside the shown year
 (the part the balance counts), next to `days` for the whole range - they differ for an absence
@@ -97,7 +103,8 @@ Migration `20270301000000-dienstplan.js` (additive, idempotent), models `Employe
   is `carryoverOpen`; after 31.03. it is `carryoverExpired` ("verfallen"). Planned vacation does
   not use carryover. Without an entered carryover `carryoverUsed`, `carryoverExpired` and
   `carryoverOpen` are `null` (nothing to show), not 0.
-- **Shifts:** Verkauf only (400 `not_verkauf`), active employees only (409 `employee_inactive`),
+- **Shifts:** every area (the former 400 `not_verkauf` is gone since 2026-11-08), active employees
+  only (409 `employee_inactive`),
   inside the employment period (400 `outside_employment`), `HH:MM`, end after start on the same
   day - no shift past midnight (400 `invalid_time` / `end_before_start`), break a whole number of
   minutes shorter than the shift (400 `invalid_break`), no overlap with another shift of the same
@@ -109,14 +116,35 @@ Migration `20270301000000-dienstplan.js` (additive, idempotent), models `Employe
 - **Warnings, not errors** (`warnings: [{ code, message }]` next to `data`): a shift on a day the
   person is absent (`absence_overlap`) or on a closed day (`closed_day`); an absence covering
   shifts of the person (`shift_overlap`, lists the dates).
+- **Opening hours** (`days[].openingHours`, `opening-hours.core.js`): Tue-Fri 05:30-13:30, Sat
+  05:30-12:30, Sun 08:00-11:00, Mon none. `{ opens, closes }` on open days, `null` on closed days
+  (Ruhetag or holiday) - and on an open day whose weekday has no hours in the table (a finance
+  config that opens Monday): "not on file", no estimate.
 - **Verkauf besetzt** (`days[].verkaufBesetzt`): Verkauf people with at least one shift that day
-  and no whole-day absence (a half-day absence keeps the shift). A quick gap check, no hours.
+  and no whole-day absence (a half-day absence keeps the shift). Only Verkauf counts, although
+  every area has shifts.
+- **Besetzung** (`days[].besetzung`, `verkaufCoverage`): `null` without opening hours, else
+  `{ opens, closes, segments: [{ from, to, employeeIds }], gaps: [{ from, to }], covered }`.
+  `segments` cover the opening hours without a hole, one per stretch with the same Verkauf people
+  (ids by shift start, empty = unbesetzt); the same shifts as `verkaufBesetzt`, start to end
+  (the break has no time of day and is no gap), clipped to the opening hours.
+- **Hours** (`hours[]`, `plannedHours` / `hoursByEmployee`), one per shown employee for
+  `from`…`to`: `{ employeeId, from, to, weeklyHours, plannedMinutes, shiftCount, targetMinutes,
+diffMinutes, targetDays, creditedDays, status }`. Plan = Σ (end − start − break) of the person's
+  shifts in the range (any area, also on an absence or closed day). Target = weeklyHours × 60 ÷
+  open weekdays (6 with Ruhetag Monday) per opening day in the range inside the employment (day
+  weight: 24./31.12. 0.5, Ruhetag/holiday 0), minus days with `urlaub` or `abwesend` (planned or
+  approved; a half day counts half; `frei` does not reduce the target) - `creditedDays`. A full
+  week without holidays is exactly weeklyHours, a month averages weeklyHours × 13/3. Without
+  `weeklyHours`: `status: 'no-target'`, `targetMinutes`/`diffMinutes` `null` ("offen"), never 0.
+  `diffMinutes` = plan − target. Actual hours (time clock) are a later stage.
 - **`days[]`**: `{ date, weekday (ISO), holidayName, restDay, closed, weight, halfDayName,
-verkaufBesetzt }`. The browser computes no holidays or balances itself.
+openingHours, verkaufBesetzt, besetzung }`. The browser computes no holidays, coverage, hours
+  or balances itself.
 - **Employee changes:** changing `entryDate`/`exitDate` so that shifts or absences fall outside →
-  409 `entries_outside_employment`; moving a person out of Verkauf or deactivating them
-  (`active: false`) while they have shifts from today on → 409 `has_shifts` (delete the shifts
-  first). The calendar lists active employees plus inactive ones with entries in the range.
+  409 `entries_outside_employment`; deactivating them (`active: false`) while they have shifts
+  from today on → 409 `has_shifts` (delete the shifts first). Changing the area keeps the shifts
+  (since 2026-11-08; they then simply stop counting for Verkauf). The calendar lists active employees plus inactive ones with entries in the range.
 
 ## Audit
 
@@ -131,9 +159,10 @@ nothing and returns no warnings.
 ## Tests and seed
 
 `tests/unit/vacationCore.test.js` (Easter and holidays over several years, Ruhetag, half days,
-24./31.12., entry/exit mid-year, carryover expiry, no-config), `tests/integration/dienstplan.test.ts`
-(401/403 for other roles and PIN sessions, validation, overlaps, warnings, audit without notes,
-calendar), `tests/migrations/pilotBaseline.test.ts`. `createApp({ dienstplan: { today, financeDir } })`
+24./31.12., entry/exit mid-year, carryover expiry, no-config, opening hours, Besetzung, planned vs.
+target hours), `tests/integration/dienstplan.test.ts` (401/403 for other roles and PIN sessions,
+validation, overlaps, warnings, audit without notes, calendar with opening hours, Besetzung and
+hours, profile hours), `tests/migrations/pilotBaseline.test.ts`. `createApp({ dienstplan: { today, financeDir } })`
 pins the clock and the finance dir. The setup-dev seed (`seedDienstplan` in
 `.claude/skills/setup-dev/scripts/lib/seed-next.mjs`) creates eight invented people through the
 API.

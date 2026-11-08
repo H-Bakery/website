@@ -65,6 +65,7 @@ const ERIKA = employee({
   id: 3,
   displayName: 'Erika Beispiel',
   color: '#1E88E5',
+  weeklyHours: 30,
 })
 const LENA = employee({ id: 5, displayName: 'Lena Neu' })
 const MAX = employee({ id: 4, displayName: 'Max Muster', area: 'backstube' })
@@ -114,6 +115,93 @@ const WEEK = [
   '2026-11-15',
 ]
 
+/** Öffnungszeiten wie in `opening-hours.core.js` (ISO-Wochentag). */
+const OPENING: Record<number, dienstplanApi.OpeningHours | null> = {
+  1: null,
+  2: { opens: '05:30', closes: '13:30' },
+  3: { opens: '05:30', closes: '13:30' },
+  4: { opens: '05:30', closes: '13:30' },
+  5: { opens: '05:30', closes: '13:30' },
+  6: { opens: '05:30', closes: '12:30' },
+  7: { opens: '08:00', closes: '11:00' },
+}
+
+/**
+ * Besetzung, wie die API sie liefert - für die Tests von Hand: höchstens
+ * eine Schicht am Tag (die Rechnung selbst prüft `vacationCore.test.js`).
+ */
+function besetzungFor(
+  hours: dienstplanApi.OpeningHours | null,
+  shift: dienstplanApi.Shift | undefined
+): dienstplanApi.Besetzung | null {
+  if (!hours) return null
+  const segments: dienstplanApi.BesetzungSegment[] = []
+  if (!shift) {
+    segments.push({ from: hours.opens, to: hours.closes, employeeIds: [] })
+  } else {
+    const from = shift.startTime > hours.opens ? shift.startTime : hours.opens
+    const to = shift.endTime < hours.closes ? shift.endTime : hours.closes
+    if (from > hours.opens) {
+      segments.push({ from: hours.opens, to: from, employeeIds: [] })
+    }
+    segments.push({ from, to, employeeIds: [shift.employeeId] })
+    if (to < hours.closes) {
+      segments.push({ from: to, to: hours.closes, employeeIds: [] })
+    }
+  }
+  const gaps = segments
+    .filter((x) => x.employeeIds.length === 0)
+    .map(({ from, to }) => ({ from, to }))
+  return {
+    opens: hours.opens,
+    closes: hours.closes,
+    segments,
+    gaps,
+    covered: gaps.length === 0,
+  }
+}
+
+/** Stunden einer Person, wie die API sie liefert (erfundene Zahlen). */
+function hoursOf(
+  employeeId: number,
+  overrides: Partial<dienstplanApi.PlannedHours> = {}
+): dienstplanApi.PlannedHours {
+  return {
+    employeeId,
+    from: WEEK[0],
+    to: WEEK[6],
+    weeklyHours: null,
+    plannedMinutes: 0,
+    shiftCount: 0,
+    targetMinutes: null,
+    diffMinutes: null,
+    targetDays: 6,
+    creditedDays: 0,
+    status: 'no-target',
+    ...overrides,
+  }
+}
+
+const WEEK_HOURS: dienstplanApi.PlannedHours[] = [
+  hoursOf(3, {
+    weeklyHours: 30,
+    plannedMinutes: 360,
+    shiftCount: 1,
+    targetMinutes: 1800,
+    diffMinutes: -1440,
+    status: 'ok',
+  }),
+  hoursOf(5),
+  hoursOf(4, {
+    weeklyHours: 40,
+    targetMinutes: 1200,
+    diffMinutes: -1200,
+    targetDays: 3,
+    creditedDays: 3,
+    status: 'ok',
+  }),
+]
+
 function calendar(
   overrides: Partial<dienstplanApi.Calendar> = {}
 ): dienstplanApi.Calendar {
@@ -135,8 +223,14 @@ function calendar(
       closed: i === 0,
       weight: i === 0 ? 0 : 1,
       halfDayName: null,
+      openingHours: OPENING[i + 1],
       verkaufBesetzt: shifts.filter((s) => s.date === date).length,
+      besetzung: besetzungFor(
+        OPENING[i + 1],
+        shifts.find((s) => s.date === date && s.employeeId !== 4)
+      ),
     })),
+    hours: WEEK_HOURS,
     ...overrides,
   }
 }
@@ -234,12 +328,17 @@ describe('Dienstplan - Kalender (Woche)', () => {
     expect(monday).toHaveTextContent('Ruhetag')
     expect(monday).not.toHaveTextContent('geschlossen')
     expect(screen.queryByTestId('staffing-2026-11-09')).not.toBeInTheDocument()
-    expect(screen.getByTestId('day-2026-11-10')).toHaveTextContent(
-      'Verkauf besetzt: 1'
-    )
+    expect(screen.queryByTestId('opening-2026-11-09')).not.toBeInTheDocument()
     expect(screen.getByTestId('day-2026-11-10')).toHaveTextContent('heute')
-    expect(screen.getByTestId('staffing-2026-11-11')).toHaveTextContent(
-      'Verkauf besetzt: 0'
+    // Öffnungszeit im Kopf jedes offenen Tags, aus der API.
+    expect(screen.getByTestId('opening-2026-11-10')).toHaveTextContent(
+      '05:30–13:30'
+    )
+    expect(screen.getByTestId('opening-2026-11-14')).toHaveTextContent(
+      '05:30–12:30'
+    )
+    expect(screen.getByTestId('opening-2026-11-15')).toHaveTextContent(
+      '08:00–11:00'
     )
 
     expect(
@@ -272,6 +371,93 @@ describe('Dienstplan - Kalender (Woche)', () => {
       'href',
       '/admin/dienstplan/mitarbeiter'
     )
+  })
+
+  it('Besetzung Verkauf: wer welchen Teil abdeckt, Lücken als Text', async () => {
+    renderCalendar()
+    await ready()
+    const row = screen.getByTestId('besetzung-row')
+    expect(row).toHaveTextContent('Besetzung Verkauf')
+    // Ruhetag: nichts, nur hinterlegt.
+    expect(screen.getByTestId('besetzung-2026-11-09').textContent).toBe('')
+    // Erika 06:00-12:00 bei 05:30-13:30: Lücke am Anfang und ab 12:00.
+    const tue = screen.getByTestId('besetzung-2026-11-10')
+    expect(tue).toHaveAttribute('data-covered', 'false')
+    const lines = Array.from(tue.querySelectorAll('[data-kind]')).map((el) => [
+      el.getAttribute('data-kind'),
+      el.textContent,
+    ])
+    expect(lines).toEqual([
+      ['gap', 'unbesetzt 05:30–06:00'],
+      ['segment', '06:00–12:00 Erika'],
+      ['gap', 'ab 12:00 unbesetzt'],
+    ])
+    // Tag ohne Schicht im Verkauf: von der Öffnung an unbesetzt.
+    expect(screen.getByTestId('besetzung-2026-11-15')).toHaveTextContent(
+      'ab 08:00 unbesetzt'
+    )
+  })
+
+  it('ein durchgehend besetzter Tag sagt es auch in Worten', async () => {
+    const base = calendar()
+    api.fetchCalendar.mockResolvedValue({
+      ...base,
+      days: base.days.map((d) =>
+        d.date === '2026-11-10' && d.besetzung
+          ? {
+              ...d,
+              besetzung: {
+                ...d.besetzung,
+                segments: [{ from: '05:30', to: '13:30', employeeIds: [3, 5] }],
+                gaps: [],
+                covered: true,
+              },
+            }
+          : d
+      ),
+    })
+    renderCalendar()
+    await ready()
+    expect(screen.getByTestId('staffing-2026-11-10')).toHaveTextContent(
+      'durchgehend besetzt'
+    )
+    expect(screen.getByTestId('besetzung-2026-11-10')).not.toHaveTextContent(
+      'unbesetzt'
+    )
+    expect(screen.getByTestId('besetzung-2026-11-10')).toHaveTextContent(
+      '05:30–13:30 Erika, Lena'
+    )
+  })
+
+  it('die Besetzung zählt nur den Verkauf - bei anderem Bereich fehlt die Zeile', async () => {
+    renderCalendar({ week: '2026-11-12', area: 'backstube' })
+    await screen.findByTestId('row-4')
+    expect(screen.queryByTestId('besetzung-row')).not.toBeInTheDocument()
+  })
+
+  it('Stunden je Person: Plan, Soll und Differenz mit Vorzeichen, ohne Wochenstunden „offen“', async () => {
+    renderCalendar()
+    await ready()
+    expect(screen.getByTestId('hours-header')).toHaveTextContent('Stunden')
+    const erika = screen.getByTestId('hours-3')
+    expect(erika).toHaveTextContent('Plan 6:00 h')
+    expect(erika).toHaveTextContent('Soll 30:00 h')
+    expect(erika).toHaveTextContent('−24:00 h')
+    // ohne Wochenstunden: Soll offen, keine Differenz, nie 0
+    const lena = screen.getByTestId('hours-5')
+    expect(lena).toHaveTextContent('Plan 0:00 h')
+    expect(lena).toHaveTextContent('Soll offen')
+    expect(lena).not.toHaveTextContent('Soll 0')
+    expect(lena.querySelector('[data-sign]')).toBeNull()
+    // Urlaub mindert das Soll und steht dabei
+    expect(screen.getByTestId('hours-4')).toHaveTextContent(
+      'ohne 3 Tage Urlaub/abwesend'
+    )
+    // am Handy unter dem Namen
+    expect(screen.getByTestId('phone-hours-3')).toHaveTextContent(
+      'Plan 6:00 h · −24:00 h'
+    )
+    expect(screen.getByTestId('phone-hours-5')).toHaveTextContent('Soll offen')
   })
 
   it('eine Woche ohne Schichten heißt „nichts geplant“, nicht 0', async () => {
@@ -690,7 +876,34 @@ describe('Dienstplan - Kalender (Woche)', () => {
     )
   })
 
-  it('außerhalb des Verkaufs öffnet die leere Zelle gleich die Abwesenheit', async () => {
+  it('auch die Backstube bekommt Schichten (seit 2026-11-08)', async () => {
+    api.createShift.mockResolvedValue({
+      data: { ...SHIFT, id: 23, employeeId: 4, date: '2026-11-14' },
+      warnings: [],
+    })
+    renderCalendar()
+    await ready()
+    fireEvent.click(
+      within(screen.getByTestId('cell-4-2026-11-14')).getByRole('button', {
+        name: /^Eintrag für Max Muster/,
+      })
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Schicht anlegen' }))
+    const d = dialog()
+    expect(
+      d.getByText('Schicht anlegen – Max Muster', { exact: false })
+    ).toBeInTheDocument()
+    fireEvent.click(d.getByRole('button', { name: 'Früh 06:00–12:00' }))
+    fireEvent.click(d.getByRole('button', { name: 'Anlegen' }))
+    await waitFor(() =>
+      expect(api.createShift).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeId: 4, date: '2026-11-14' })
+      )
+    )
+    expect(await screen.findByText('Schicht angelegt.')).toBeInTheDocument()
+  })
+
+  it('Backstube: Abwesenheit über das Menü der leeren Zelle', async () => {
     api.createAbsence.mockResolvedValue({
       data: {
         ...URLAUB,
@@ -707,7 +920,12 @@ describe('Dienstplan - Kalender (Woche)', () => {
         name: /^Eintrag für Max Muster/,
       })
     )
-    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent)
+    ).toEqual(['Schicht anlegen', 'Abwesenheit eintragen'])
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Abwesenheit eintragen' })
+    )
     const d = dialog()
     expect(
       d.getByText('Abwesenheit eintragen – Max Muster', { exact: false })
@@ -749,12 +967,20 @@ describe('Dienstplan - Kalender (Woche)', () => {
   it('an einem Tag mit Abwesenheit bietet das „+“ keine zweite Abwesenheit an', async () => {
     renderCalendar()
     await ready()
-    // Backstube mit Urlaub: nichts mehr anzulegen - kein „+“.
-    expect(
-      within(screen.getByTestId('cell-4-2026-11-12')).queryByRole('button', {
+    // Backstube mit Urlaub: nur noch die Schicht - gleich der Dialog.
+    fireEvent.click(
+      within(screen.getByTestId('cell-4-2026-11-12')).getByRole('button', {
         name: /^Eintrag für Max Muster/,
       })
-    ).not.toBeInTheDocument()
+    )
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      dialog().getByText('Schicht anlegen – Max Muster', { exact: false })
+    ).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'Abbrechen' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
     // Verkauf mit „frei“: nur noch die Schicht - gleich der Dialog, wie im Monat.
     fireEvent.click(
       within(screen.getByTestId('cell-5-2026-11-14')).getByRole('button', {
@@ -903,9 +1129,37 @@ function monthCalendar(
         closed: weekday === 1 || date === '2026-11-01',
         weight: weekday === 1 || date === '2026-11-01' ? 0 : 1,
         halfDayName: null,
+        openingHours:
+          weekday === 1 || date === '2026-11-01' ? null : OPENING[weekday],
         verkaufBesetzt: 0,
+        besetzung: null,
       }
     }),
+    hours: [
+      hoursOf(3, {
+        from: '2026-11-01',
+        to: '2026-11-30',
+        weeklyHours: 30,
+        plannedMinutes: 360,
+        shiftCount: 1,
+        targetMinutes: 7200,
+        diffMinutes: -6840,
+        targetDays: 24,
+        status: 'ok',
+      }),
+      hoursOf(5, { from: '2026-11-01', to: '2026-11-30' }),
+      hoursOf(4, {
+        from: '2026-11-01',
+        to: '2026-11-30',
+        weeklyHours: 40,
+        plannedMinutes: 9900,
+        shiftCount: 22,
+        targetMinutes: 9600,
+        diffMinutes: 300,
+        targetDays: 24,
+        status: 'ok',
+      }),
+    ],
     ...overrides,
   }
 }
@@ -1038,8 +1292,14 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       'min-width': '44px',
     })
     expect(touchStyle(screen.getByRole('table'))).toMatchObject({
-      'min-width': `${170 + 30 * (44 + 2 * 2 + 1)}px`,
+      'min-width': `${170 + 30 * (44 + 2 * 2 + 1) + 112}px`,
     })
+    // Stunden des Monats ganz rechts, Differenz mit Vorzeichen.
+    expect(screen.getByTestId('hours-header')).toHaveTextContent('Monat')
+    expect(screen.getByTestId('hours-3')).toHaveTextContent('Soll 120:00 h')
+    expect(screen.getByTestId('hours-3')).toHaveTextContent('−114:00 h')
+    expect(screen.getByTestId('hours-4')).toHaveTextContent('+5:00 h')
+    expect(screen.getByTestId('hours-5')).toHaveTextContent('Soll offen')
     // Monat ist kein Tag: zwischen den Pfeilen steht der Monat, kein Datum.
     const nav = screen.getByTestId('month-navigator')
     expect(screen.getByTestId('month-navigator-value')).toHaveTextContent(
@@ -1102,9 +1362,19 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     const cell = (id: number, date: string) =>
       within(screen.getByTestId(`cell-${id}-${date}`)).getByRole('button')
 
-    // Abwesenheit außerhalb des Verkaufs: gleich der Dialog zum Bearbeiten.
+    // Abwesenheit in der Backstube: bearbeiten oder (seit 2026-11-08) Schicht.
     fireEvent.click(cell(4, '2026-11-12'))
-    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent)
+    ).toEqual([
+      'Urlaub (geplant) 11.11.2026 – 13.11.2026 bearbeiten',
+      'Schicht anlegen',
+    ])
+    fireEvent.click(
+      screen.getByRole('menuitem', {
+        name: 'Urlaub (geplant) 11.11.2026 – 13.11.2026 bearbeiten',
+      })
+    )
     expect(
       dialog().getByText('Abwesenheit bearbeiten – Max Muster', {
         exact: false,
@@ -1116,9 +1386,14 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     )
 
-    // Leerer Tag außerhalb des Verkaufs: gleich die Abwesenheit.
+    // Leerer Tag in der Backstube: Schicht oder Abwesenheit.
     fireEvent.click(cell(4, '2026-11-17'))
-    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent)
+    ).toEqual(['Schicht anlegen', 'Abwesenheit eintragen'])
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Abwesenheit eintragen' })
+    )
     expect(
       dialog().getByText('Abwesenheit eintragen – Max Muster', {
         exact: false,

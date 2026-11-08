@@ -572,6 +572,311 @@ describe('calendarDays / verkaufBesetzt', () => {
     ])
     expect(days[0]).toMatchObject({ weekday: 1, restDay: true, weight: 0 })
   })
+
+  it('carries opening hours and the Besetzung per day', () => {
+    const days = core.calendarDays(
+      '2026-11-09',
+      '2026-11-10',
+      MONDAY,
+      employees,
+      [shift(1, '2026-11-10')],
+      []
+    )
+    expect(days[0]).toMatchObject({ openingHours: null, besetzung: null })
+    expect(days[1].openingHours).toEqual({ opens: '05:30', closes: '13:30' })
+    expect(days[1].besetzung).toMatchObject({
+      covered: false,
+      gaps: [
+        { from: '05:30', to: '06:00' },
+        { from: '12:00', to: '13:30' },
+      ],
+    })
+  })
+})
+
+describe('opening hours (opening-hours.core.js)', () => {
+  const hours = require('../../src/services/opening-hours.core')
+
+  it('one table: Mo closed, Di-Fr 05:30-13:30, Sa 05:30-12:30, So 08:00-11:00', () => {
+    expect([1, 2, 3, 4, 5, 6, 7].map(hours.openingHoursForWeekday)).toEqual([
+      null,
+      { opens: '05:30', closes: '13:30' },
+      { opens: '05:30', closes: '13:30' },
+      { opens: '05:30', closes: '13:30' },
+      { opens: '05:30', closes: '13:30' },
+      { opens: '05:30', closes: '12:30' },
+      { opens: '08:00', closes: '11:00' },
+    ])
+  })
+
+  it('the table closes exactly the default Ruhetag', () => {
+    expect(hours.weekdaysWithoutHours()).toEqual(core.DEFAULT_CLOSED_WEEKDAYS)
+  })
+
+  it('a copy, the table itself is frozen', () => {
+    const tue = hours.openingHoursForWeekday(2)
+    tue.opens = '00:00'
+    expect(hours.openingHoursForWeekday(2).opens).toBe('05:30')
+    expect(Object.isFrozen(hours.OPENING_HOURS)).toBe(true)
+  })
+
+  it('dayInfo: hours on open days, none on Ruhetag and holidays', () => {
+    expect(core.dayInfo('2026-11-14', MONDAY).openingHours).toEqual({
+      opens: '05:30',
+      closes: '12:30',
+    })
+    expect(core.dayInfo('2026-11-15', MONDAY).openingHours).toEqual({
+      opens: '08:00',
+      closes: '11:00',
+    })
+    expect(core.dayInfo('2026-11-09', MONDAY).openingHours).toBeNull()
+    // Fronleichnam (Thursday) and Allerheiligen on a Sunday
+    expect(core.dayInfo('2026-06-04', MONDAY).openingHours).toBeNull()
+    expect(core.dayInfo('2026-11-01', MONDAY).openingHours).toBeNull()
+    // 24.12. keeps the normal hours of its weekday (Thursday in 2026)
+    expect(core.dayInfo('2026-12-24', MONDAY).openingHours).toEqual({
+      opens: '05:30',
+      closes: '13:30',
+    })
+  })
+
+  it('follows the configured Ruhetage: closed day without hours, an opened Monday without a table entry', () => {
+    expect(core.dayInfo('2026-11-15', [1, 7]).openingHours).toBeNull()
+    const monday = core.dayInfo('2026-11-09', [])
+    expect(monday.closed).toBe(false)
+    expect(monday.openingHours).toBeNull()
+  })
+})
+
+describe('verkaufCoverage (Besetzung)', () => {
+  const employees = [
+    { id: 1, area: 'verkauf' },
+    { id: 2, area: 'verkauf' },
+    { id: 3, area: 'backstube' },
+  ]
+  const OPEN = { opens: '05:30', closes: '13:30' }
+  const s = (employeeId, startTime, endTime, extra = {}) => ({
+    employeeId,
+    date: '2026-11-10',
+    startTime,
+    endTime,
+    breakMinutes: 30,
+    ...extra,
+  })
+  const cover = (shifts, absences = [], hours = OPEN) =>
+    core.verkaufCoverage('2026-11-10', hours, employees, shifts, absences)
+
+  it('no opening hours: null', () => {
+    expect(cover([s(1, '06:00', '12:00')], [], null)).toBeNull()
+  })
+
+  it('nobody planned: one gap over the whole opening time', () => {
+    expect(cover([])).toEqual({
+      opens: '05:30',
+      closes: '13:30',
+      segments: [{ from: '05:30', to: '13:30', employeeIds: [] }],
+      gaps: [{ from: '05:30', to: '13:30' }],
+      covered: false,
+    })
+  })
+
+  it('who covers which part, gaps at the start and the end, clipped to the opening time', () => {
+    const res = cover([
+      s(2, '09:00', '14:00'),
+      s(1, '06:00', '10:00'),
+      s(3, '03:00', '13:30'), // Backstube: never counts
+    ])
+    expect(res.segments).toEqual([
+      { from: '05:30', to: '06:00', employeeIds: [] },
+      { from: '06:00', to: '09:00', employeeIds: [1] },
+      { from: '09:00', to: '10:00', employeeIds: [1, 2] },
+      { from: '10:00', to: '13:30', employeeIds: [2] },
+    ])
+    expect(res.gaps).toEqual([{ from: '05:30', to: '06:00' }])
+    expect(res.covered).toBe(false)
+  })
+
+  it('handover without a gap is covered; the break is no gap', () => {
+    const res = cover([s(1, '05:30', '09:30'), s(2, '09:30', '13:30')])
+    expect(res.covered).toBe(true)
+    expect(res.gaps).toEqual([])
+    expect(res.segments.map((x) => x.employeeIds)).toEqual([[1], [2]])
+  })
+
+  it('a gap in the middle and two shifts of the same person', () => {
+    const res = cover([s(1, '05:30', '08:00'), s(1, '09:00', '13:30')])
+    expect(res.gaps).toEqual([{ from: '08:00', to: '09:00' }])
+    expect(res.segments).toHaveLength(3)
+  })
+
+  it('shifts outside the opening time and on other days do not count', () => {
+    const res = cover([
+      s(1, '04:00', '05:30'),
+      s(2, '13:30', '15:00'),
+      s(2, '05:30', '13:30', { date: '2026-11-11' }),
+    ])
+    expect(res.gaps).toEqual([{ from: '05:30', to: '13:30' }])
+  })
+
+  it('a whole-day absence removes the shift, a half-day absence keeps it', () => {
+    const shifts = [s(1, '05:30', '13:30')]
+    const whole = [
+      { employeeId: 1, startDate: '2026-11-09', endDate: '2026-11-12' },
+    ]
+    const half = [
+      {
+        employeeId: 1,
+        startDate: '2026-11-10',
+        endDate: '2026-11-10',
+        halfDay: true,
+      },
+    ]
+    expect(cover(shifts, whole).covered).toBe(false)
+    expect(cover(shifts, half).covered).toBe(true)
+  })
+})
+
+describe('plannedHours (Plan und Soll)', () => {
+  // KW 46/2026: Mo 09.11. (Ruhetag) … So 15.11.
+  const WEEK = { from: '2026-11-09', to: '2026-11-15' }
+  const person = (extra = {}) => ({
+    id: 7,
+    weeklyHours: 30,
+    entryDate: null,
+    exitDate: null,
+    ...extra,
+  })
+  const shift = (
+    date,
+    startTime,
+    endTime,
+    breakMinutes = 0,
+    employeeId = 7
+  ) => ({
+    employeeId,
+    date,
+    startTime,
+    endTime,
+    breakMinutes,
+  })
+  const hours = (extra) =>
+    core.plannedHours({
+      ...WEEK,
+      employee: person(),
+      shifts: [],
+      absences: [],
+      closedWeekdays: MONDAY,
+      ...extra,
+    })
+
+  it('daily target: weekly hours over the open weekdays', () => {
+    expect(core.dailyTargetMinutes(30, MONDAY)).toBe(300)
+    expect(core.dailyTargetMinutes(35, [])).toBe(300)
+    expect(core.dailyTargetMinutes(null, MONDAY)).toBeNull()
+    expect(core.dailyTargetMinutes(10, [1, 2, 3, 4, 5, 6, 7])).toBeNull()
+  })
+
+  it('plan = Σ (end − start − break); a full week is exactly the weekly hours', () => {
+    const res = hours({
+      shifts: [
+        shift('2026-11-10', '06:00', '12:00', 30),
+        shift('2026-11-11', '06:00', '12:00'),
+        shift('2026-11-12', '12:00', '18:30', 30),
+        shift('2026-11-16', '06:00', '12:00'), // next week
+        shift('2026-11-10', '06:00', '12:00', 0, 8), // someone else
+      ],
+    })
+    expect(res).toEqual({
+      employeeId: 7,
+      from: '2026-11-09',
+      to: '2026-11-15',
+      weeklyHours: 30,
+      plannedMinutes: 330 + 360 + 360,
+      shiftCount: 3,
+      targetMinutes: 1800,
+      diffMinutes: 1050 - 1800,
+      targetDays: 6,
+      creditedDays: 0,
+      status: 'ok',
+    })
+  })
+
+  it('without weekly hours the target is open (null), never 0', () => {
+    const res = hours({
+      employee: person({ weeklyHours: null }),
+      shifts: [shift('2026-11-10', '06:00', '12:00')],
+    })
+    expect(res).toMatchObject({
+      plannedMinutes: 360,
+      targetMinutes: null,
+      diffMinutes: null,
+      status: 'no-target',
+    })
+  })
+
+  it('urlaub and abwesend reduce the target, half days by half; frei does not', () => {
+    const absence = (type, startDate, endDate, halfDay = false) => ({
+      employeeId: 7,
+      type,
+      status: 'geplant',
+      startDate,
+      endDate,
+      halfDay,
+    })
+    expect(
+      hours({ absences: [absence('urlaub', '2026-11-09', '2026-11-11')] })
+    ).toMatchObject({ creditedDays: 2, targetDays: 4, targetMinutes: 1200 })
+    expect(
+      hours({
+        absences: [absence('abwesend', '2026-11-12', '2026-11-12', true)],
+      })
+    ).toMatchObject({ creditedDays: 0.5, targetMinutes: 1650 })
+    expect(
+      hours({ absences: [absence('frei', '2026-11-12', '2026-11-12')] })
+    ).toMatchObject({ creditedDays: 0, targetMinutes: 1800 })
+    // another person's absence does not count
+    expect(
+      hours({
+        absences: [
+          { ...absence('urlaub', '2026-11-10', '2026-11-15'), employeeId: 8 },
+        ],
+      })
+    ).toMatchObject({ targetMinutes: 1800 })
+  })
+
+  it('holidays, 24.12. and the employment period shape the target', () => {
+    // KW 52/2026: Mo 21.12. … So 27.12.: 24.12. half, 25./26.12. holidays
+    const xmas = hours({ from: '2026-12-21', to: '2026-12-27' })
+    expect(xmas).toMatchObject({ targetDays: 3.5, targetMinutes: 1050 })
+    // entry on Friday 13.11.: Fr, Sa, So
+    const entry = hours({ employee: person({ entryDate: '2026-11-13' }) })
+    expect(entry).toMatchObject({ targetDays: 3, targetMinutes: 900 })
+  })
+
+  it('a month averages weekly hours × 13/3', () => {
+    // November 2026: 30 days, 5 Mondays, Allerheiligen on Sunday 01.11.
+    const nov = hours({ from: '2026-11-01', to: '2026-11-30' })
+    expect(nov.targetDays).toBe(24)
+    expect(nov.targetMinutes).toBe(24 * 300)
+    // over a year without holidays the months average weeklyHours × 13/3
+    const perDay = core.dailyTargetMinutes(30, MONDAY)
+    expect((perDay * 6 * 52) / 12).toBeCloseTo(30 * 60 * (13 / 3), 6)
+  })
+
+  it('hoursByEmployee keeps the order of the employees', () => {
+    const res = core.hoursByEmployee(
+      WEEK.from,
+      WEEK.to,
+      [person({ id: 2 }), person({ id: 1, weeklyHours: null })],
+      [],
+      [],
+      MONDAY
+    )
+    expect(res.map((h) => [h.employeeId, h.status])).toEqual([
+      [2, 'ok'],
+      [1, 'no-target'],
+    ])
+  })
 })
 
 describe('withinEmployment', () => {

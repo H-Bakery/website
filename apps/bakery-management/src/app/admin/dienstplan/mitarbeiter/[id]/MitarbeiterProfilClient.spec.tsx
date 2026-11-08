@@ -99,6 +99,26 @@ const ABSENCE: dienstplanApi.ProfileAbsence = {
   note: null,
 }
 
+/** Stunden wie von der API (`plannedHours`), erfundene Zahlen. */
+function hours(
+  overrides: Partial<dienstplanApi.PlannedHours> = {}
+): dienstplanApi.PlannedHours {
+  return {
+    employeeId: 3,
+    from: '2026-11-02',
+    to: '2026-11-08',
+    weeklyHours: 20,
+    plannedMinutes: 1350,
+    shiftCount: 4,
+    targetMinutes: 1200,
+    diffMinutes: 150,
+    targetDays: 6,
+    creditedDays: 0,
+    status: 'ok',
+    ...overrides,
+  }
+}
+
 function profile(
   overrides: Partial<dienstplanApi.EmployeeProfile> = {}
 ): dienstplanApi.EmployeeProfile {
@@ -122,6 +142,18 @@ function profile(
         note: null,
       },
     ],
+    hours: {
+      week: hours(),
+      month: hours({
+        from: '2026-11-01',
+        to: '2026-11-30',
+        plannedMinutes: 4200,
+        targetMinutes: 4600,
+        diffMinutes: -400,
+        targetDays: 23,
+        creditedDays: 1,
+      }),
+    },
     closedWeekdays: { weekdays: [1], source: 'default' },
     ...overrides,
   }
@@ -466,7 +498,7 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     )
   })
 
-  it('Backstube: keine Schichten, Hinweis statt leerer Liste', async () => {
+  it('Backstube ohne Schichten: „Keine Schichten geplant“ - Schichten gibt es in allen Bereichen', async () => {
     api.fetchEmployeeProfile.mockResolvedValue(
       profile({
         employee: { ...EMPLOYEE, area: 'backstube' },
@@ -475,8 +507,39 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     )
     renderProfile()
     expect(
-      await screen.findByText('Schichten gibt es nur im Verkauf.')
+      await screen.findByText('Keine Schichten geplant.')
     ).toBeInTheDocument()
+    expect(screen.queryByText(/nur im Verkauf/)).not.toBeInTheDocument()
+  })
+
+  it('Stunden: Plan und Soll der laufenden Woche und des Monats, Differenz mit Vorzeichen', async () => {
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Erika Beispiel' })
+    expect(screen.getByTestId('hours-week')).toHaveTextContent('+2:30 h')
+    expect(screen.getByText('Woche 02.11. – 08.11.2026')).toBeInTheDocument()
+    expect(screen.getByText('Plan 22:30 h · Soll 20:00 h')).toBeInTheDocument()
+    expect(screen.getByTestId('hours-month')).toHaveTextContent('−6:40 h')
+    expect(
+      screen.getByText(
+        'Plan 70:00 h · Soll 76:40 h (ohne 1 Tag Urlaub/abwesend)'
+      )
+    ).toBeInTheDocument()
+  })
+
+  it('Stunden ohne Wochenstunden: Soll „offen“, nie 0', async () => {
+    const open = hours({
+      weeklyHours: null,
+      targetMinutes: null,
+      diffMinutes: null,
+      status: 'no-target',
+    })
+    api.fetchEmployeeProfile.mockResolvedValue(
+      profile({ hours: { week: open, month: { ...open, from: '2026-11-01' } } })
+    )
+    renderProfile()
+    await screen.findByRole('heading', { name: 'Erika Beispiel' })
+    expect(screen.getByTestId('hours-week')).toHaveTextContent('Soll offen')
+    expect(screen.getAllByText('Plan 22:30 h · Soll offen')).toHaveLength(2)
   })
 
   it('zeigt die Meldung der API, wenn das Profil fehlt', async () => {
