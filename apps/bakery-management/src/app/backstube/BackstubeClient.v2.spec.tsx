@@ -143,6 +143,33 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
     ).toBeInTheDocument()
   })
 
+  it('kein Teigtag, aber Teig für heute (lead 0): kein „Heute kein Teig“', async () => {
+    const korn = saturdayV2Confirmed().machine?.find((m) =>
+      m.doughIds.includes('test-korn-teig')
+    )
+    expect(korn).toBeDefined()
+    mocked.fetchBackzettelDay.mockImplementation(async (date: string) =>
+      date === SUN
+        ? sundayV2Sheet({ machine: korn ? [korn] : [], doughs: [] })
+        : emptySheet(date, 2, 'Dienstag')
+    )
+    renderTablet(at(SUN, 3))
+    await screen.findByTestId('bs-bake-list')
+    fireEvent.click(screen.getByRole('tab', { name: 'Zettel' }))
+    const today = await screen.findByTestId('bs-doughs-today')
+    expect(today).toHaveTextContent('Teige heute: Korn + Holz')
+    expect(today).not.toHaveTextContent('Heute kein Teig')
+  })
+
+  it('kein Teigtag ohne Teig: „Heute kein Teig“', async () => {
+    renderTablet(at(SUN, 3))
+    await screen.findByTestId('bs-bake-list')
+    fireEvent.click(screen.getByRole('tab', { name: 'Zettel' }))
+    expect(await screen.findByTestId('bs-doughs-today')).toHaveTextContent(
+      'Heute kein Teig'
+    )
+  })
+
   it('Backen: offene Grundmenge steht da, die Menge mit „≥“', async () => {
     const base = sundayBakeList()
     const [section] = base.sections

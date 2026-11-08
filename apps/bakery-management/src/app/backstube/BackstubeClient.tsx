@@ -1186,7 +1186,11 @@ export default function BackstubeClient({
                         fontWeight: 700,
                       }}
                     >
-                      {day.isDoughDay === false
+                      {/* Kein Teigtag - Posten mit lead 0 werden trotzdem
+                          heute gemacht (Maschinen-Kästen vom Server), wie in
+                          der Übersicht (`doughForText`). */}
+                      {day.isDoughDay === false &&
+                      (day.machine ?? []).length === 0
                         ? 'Heute kein Teig – was gebacken wird, steht unter „Backen“.'
                         : doughsTodayText(day)}
                     </Typography>
