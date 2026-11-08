@@ -283,3 +283,28 @@ export function stepErrors(errors: FieldErrors, step: number): string[] {
     .map((field) => errors[field])
     .filter((m): m is string => Boolean(m))
 }
+
+/**
+ * Erster Schritt vor `before` (0-basiert), der Fehler hat, sonst -1. Auf der
+ * Übersicht heißt ein Treffer: die Zusammenstellung ist nachträglich
+ * ungültig geworden (z. B. Belag-Modus in den Prototyp-Einstellungen
+ * umgestellt).
+ */
+export function firstInvalidStep(errors: FieldErrors, before: number): number {
+  for (let i = 0; i < before; i += 1) {
+    if (stepErrors(errors, i).length > 0) return i
+  }
+  return -1
+}
+
+/**
+ * Der Schritt, auf dem ein wiederhergestellter Entwurf weitergeht: der
+ * gemerkte, höchstens aber der erste noch offene davor (z. B. ein inzwischen
+ * abgelaufener Abholtag).
+ */
+export function resumeStep(errors: FieldErrors, wanted: number): number {
+  const last = STEP_FIELDS.length - 1
+  const target = Math.min(Math.max(0, Math.trunc(wanted) || 0), last)
+  const blocked = firstInvalidStep(errors, target)
+  return blocked >= 0 ? blocked : target
+}

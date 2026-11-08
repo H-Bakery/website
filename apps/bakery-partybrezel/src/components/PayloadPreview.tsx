@@ -30,6 +30,8 @@ export interface PayloadPreviewProps {
   draft: OrderDraft
   mapping: PayloadMapping
   onMappingChange: (mapping: PayloadMapping) => void
+  /** Ein früherer Schritt ist offen: Vorschau als unvollständig markieren, nicht kopieren. */
+  incomplete?: boolean
 }
 
 export default function PayloadPreview({
@@ -37,6 +39,7 @@ export default function PayloadPreview({
   draft,
   mapping,
   onMappingChange,
+  incomplete = false,
 }: PayloadPreviewProps) {
   const { payload, warnings } = useMemo(
     () => buildPayload(mapping, draft, config),
@@ -67,6 +70,7 @@ export default function PayloadPreview({
         sx={{ mb: 1 }}
       >
         So würde die Vorbestellung aussehen
+        {incomplete ? ' (unvollständig)' : ''}
       </Typography>
       <Alert severity="info" sx={{ mb: 2 }}>
         <strong>Es wurde nichts gesendet.</strong> Später würde dieser Inhalt
@@ -140,11 +144,14 @@ export default function PayloadPreview({
           variant="contained"
           startIcon={<ContentCopyIcon />}
           onClick={handleCopy}
+          disabled={incomplete}
         >
           Kopieren
         </Button>
         <Typography role="status" aria-live="polite">
-          {copyStatus}
+          {incomplete
+            ? 'Kopieren geht erst, wenn die Zusammenstellung vollständig ist.'
+            : copyStatus}
         </Typography>
       </Box>
     </Box>

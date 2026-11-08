@@ -1,6 +1,7 @@
 'use client'
 import React, { useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import Alert from '@mui/material/Alert'
+import AlertTitle from '@mui/material/AlertTitle'
 import Box from '@mui/material/Box'
 import Button from '@mui/material/Button'
 import Container from '@mui/material/Container'
@@ -24,7 +25,13 @@ import { formatEuro } from '../lib/format'
 import { createOrderReducer, initialOrderState } from '../lib/orderState'
 import type { PayloadMapping } from '../lib/payload'
 import { priceBreakdown } from '../lib/pricing'
-import { stepErrors, validateOrder, type OrderField } from '../lib/validation'
+import {
+  firstInvalidStep,
+  resumeStep,
+  stepErrors,
+  validateOrder,
+  type OrderField,
+} from '../lib/validation'
 import PrototypeBanner from './PrototypeBanner'
 import SettingsPanel from './SettingsPanel'
 import PickupStep from './steps/PickupStep'
@@ -76,6 +83,8 @@ export default function PartybrezelDesigner({
   const headingRef = useRef<HTMLHeadingElement>(null)
   const errorRef = useRef<HTMLDivElement>(null)
   const firstRender = useRef(true)
+  // Ein beim Laden wiederhergestellter Schritt zieht den Fokus nicht an sich.
+  const skipHeadingFocus = useRef<number | null>(null)
 
   // Statischer Export: "heute" erst im Browser bestimmen, nicht beim Build.
   useEffect(() => {
@@ -90,16 +99,35 @@ export default function PartybrezelDesigner({
     if (!draftLoaded.current) {
       draftLoaded.current = true
       const draft = loadDraft(config)
-      if (draft) dispatch({ type: 'hydrate', state: draft })
+      if (draft) {
+        dispatch({ type: 'hydrate', state: draft.state })
+        // Weiter auf dem gemerkten Schritt - aber nie hinter einem Schritt,
+        // der inzwischen offen ist (z. B. Abholtag abgelaufen).
+        const day = todayProp ?? todayInBerlin(new Date())
+        const allowed = pickupDates(day, {
+          leadTimeDays: config.leadTimeDays,
+          availableWeekdays: config.availableWeekdays,
+          count: config.pickupDaysShown,
+        }).map((d) => d.date)
+        const target = resumeStep(
+          validateOrder(draft.state, config, allowed).errors,
+          draft.step
+        )
+        if (target > 0) {
+          skipHeadingFocus.current = target
+          setStep(target)
+        }
+      }
     }
     setDraftReady(true)
-  }, [config, persistDraft])
+    // geladen wird nur einmal (draftLoaded) - die Abhängigkeiten ändern daran nichts
+  }, [config, persistDraft, todayProp])
 
   // `draftReady` wird erst im Render NACH dem `hydrate` wahr - der leere
   // Anfangszustand wird nie gespeichert.
   useEffect(() => {
-    if (persistDraft && draftReady) saveDraft(state)
-  }, [state, persistDraft, draftReady])
+    if (persistDraft && draftReady) saveDraft(state, step)
+  }, [state, step, persistDraft, draftReady])
 
   // Fehler erst fokussieren, wenn die Meldung gerendert ist (beim ersten
   // Fehlversuch gibt es sie vorher noch nicht).
@@ -114,6 +142,10 @@ export default function PartybrezelDesigner({
   useEffect(() => {
     if (firstRender.current) {
       firstRender.current = false
+      return
+    }
+    if (skipHeadingFocus.current === step) {
+      skipHeadingFocus.current = null
       return
     }
     headingRef.current?.focus()
@@ -178,6 +210,19 @@ export default function PartybrezelDesigner({
     setMapping('A')
     setStep(0)
   }
+
+  // Auf der Übersicht, aber ein früherer Schritt ist (wieder) offen - etwa
+  // nach dem Umschalten des Belag-Modus in den Prototyp-Einstellungen.
+  const blockingStep =
+    step === STEP_TITLES.length - 1
+      ? firstInvalidStep(validation.errors, step)
+      : -1
+  const blockingMessages =
+    blockingStep >= 0
+      ? STEP_TITLES.slice(0, step).flatMap((_, i) =>
+          stepErrors(validation.errors, i)
+        )
+      : []
 
   const currentErrors = attempted[step]
     ? stepErrors(validation.errors, step)
@@ -256,6 +301,33 @@ export default function PartybrezelDesigner({
             </Alert>
           )}
 
+          {blockingStep >= 0 && (
+            <Alert
+              severity="warning"
+              sx={{ mb: 2 }}
+              data-testid="summary-incomplete"
+            >
+              <AlertTitle>
+                Die Zusammenstellung ist nicht vollständig
+              </AlertTitle>
+              {blockingMessages.map((m) => (
+                <div key={m}>{m}</div>
+              ))}
+              <Box sx={{ mt: 1 }}>
+                Die Übersicht und die Vorschau unten gelten erst, wenn das
+                erledigt ist.
+              </Box>
+              <Button
+                variant="outlined"
+                color="inherit"
+                onClick={() => goTo(blockingStep)}
+                sx={{ mt: 1 }}
+              >
+                {`Zu Schritt ${blockingStep + 1}: ${STEP_TITLES[blockingStep]}`}
+              </Button>
+            </Alert>
+          )}
+
           {step === 0 && (
             <SizeStep
               config={config}
@@ -301,6 +373,7 @@ export default function PartybrezelDesigner({
               draft={state}
               mapping={mapping}
               onMappingChange={setMapping}
+              incomplete={blockingStep >= 0}
             />
           )}
         </Box>

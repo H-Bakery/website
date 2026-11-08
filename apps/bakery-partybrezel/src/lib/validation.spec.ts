@@ -2,6 +2,8 @@ import { partybrezelConfig as config } from '../config/partybrezel.config'
 import { draft, pretzel } from './testing'
 import {
   findMissingToppings,
+  firstInvalidStep,
+  resumeStep,
   stepErrors,
   validateName,
   validateNote,
@@ -135,5 +137,19 @@ describe('validation', () => {
       ['2026-11-10']
     )
     expect(full).toEqual({ valid: true, errors: {} })
+  })
+
+  it('firstInvalidStep / resumeStep: nie hinter einem offenen Schritt', () => {
+    const errors = { toppings: 'x' }
+    expect(firstInvalidStep(errors, 3)).toBe(1)
+    expect(firstInvalidStep(errors, 1)).toBe(-1)
+    expect(firstInvalidStep({}, 3)).toBe(-1)
+    expect(resumeStep({}, 3)).toBe(3)
+    expect(resumeStep({}, 99)).toBe(3)
+    expect(resumeStep({}, -2)).toBe(0)
+    expect(resumeStep({}, Number.NaN)).toBe(0)
+    expect(resumeStep(errors, 3)).toBe(1)
+    expect(resumeStep(errors, 1)).toBe(1)
+    expect(resumeStep({ name: 'x' }, 3)).toBe(2)
   })
 })

@@ -26,6 +26,8 @@ export interface SummaryStepProps {
   draft: OrderDraft
   mapping: PayloadMapping
   onMappingChange: (mapping: PayloadMapping) => void
+  /** Ein früherer Schritt ist offen - die Vorschau ist nicht gültig. */
+  incomplete?: boolean
 }
 
 export default function SummaryStep({
@@ -33,6 +35,7 @@ export default function SummaryStep({
   draft,
   mapping,
   onMappingChange,
+  incomplete = false,
 }: SummaryStepProps) {
   const prices = priceBreakdown(draft.pretzels, config)
   const dough = doughSummary(draft.pretzels, config)
@@ -195,6 +198,7 @@ export default function SummaryStep({
         draft={draft}
         mapping={mapping}
         onMappingChange={onMappingChange}
+        incomplete={incomplete}
       />
     </Box>
   )

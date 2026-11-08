@@ -50,9 +50,10 @@ npx nx lint bakery-partybrezel   # eigenes lint-Target, damit `nx affected:lint`
 
 Gebaut wird mit **webpack** (`next build --webpack`) - Turbopack ist in Worktrees mit verlinktem
 `node_modules` unzuverlässig. `out/` und `.next/` sind über die Root-`.gitignore` ausgeschlossen.
-`next-env.d.ts` ist in der schlichten Fassung eingecheckt (wie `apps/bakery-delivery`); `next
-build` und `next dev` schreiben eine `import`-Zeile auf ihre `.next/…/routes.d.ts` hinein - diese
-Änderung nicht committen (`git checkout apps/bakery-partybrezel/next-env.d.ts`).
+`next-env.d.ts` ist **nicht** eingecheckt (Root-`.gitignore`): Next 16 schreibt die Datei bei
+jedem `next build` / `next dev` neu, je nach Lauf mit `.next/types` oder `.next/dev/types` - eine
+eingecheckte Fassung bliebe nach jedem Build als Änderung liegen. `tsc` (`npm run type-check`)
+braucht sie nicht.
 
 **Unterpfad:** `PARTYBREZEL_BASE_PATH=/partybrezel npm run build:partybrezel` setzt `basePath` und
 `assetPrefix`; `out/index.html` lädt dann `/partybrezel/_next/...`, das Icon liegt unter
@@ -90,10 +91,15 @@ Ein ungültiger Wert (ohne führendes `/`, Sonderzeichen) bricht den Build ab.
     werden **hinten angehängt** - die Nummer einer schon belegten Brezel ändert sich nicht, wenn
     später eine andere Größe dazukommt. Gespeichert wird erst, nachdem der Entwurf geladen und
     angewandt ist (sonst überschriebe der leere Anfangszustand ihn unter React StrictMode in
-    `next dev`).
+    `next dev`). Der Entwurf merkt sich auch den offenen Schritt (`step`); nach dem Neuladen geht
+    es dort weiter - höchstens aber bis zum ersten inzwischen offenen Schritt
+    (`resumeStep()` in `validation.ts`, z. B. Abholtag abgelaufen).
 - **`src/components/`** - eine Seite, vier Schritte (MUI-Stepper), feste Leiste unten mit
   laufender Summe und Zurück/Weiter, einklappbare **Prototyp-Einstellungen** (Belag je Teil ↔ ein
   Belag je Brezel zur Laufzeit, Entwurf verwerfen). Verwerfen und „Neu beginnen“ fragen nach.
+  Wird ein früherer Schritt auf der Übersicht ungültig (Modus umgestellt, Teile gemischt
+  belegt), sagt ein Hinweis oben, was offen ist, mit Knopf zum Schritt; die Vorschau heißt dann
+  „(unvollständig)“ und „Kopieren“ ist gesperrt.
   `scroll-padding` oben/unten (ThemeRegistry) hält fokussierte Elemente aus dem klebenden Hinweis
   und der festen Leiste heraus. Der Aufpreis am Belag-Chip ist der eines Klicks („je Teil“ bzw.
   „je Brezel“ = je Teil × Teile). Hell/dunkel nach `prefers-color-scheme`

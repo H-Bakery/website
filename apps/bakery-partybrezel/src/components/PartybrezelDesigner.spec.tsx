@@ -268,7 +268,20 @@ describe('PartybrezelDesigner', () => {
     expect(
       screen.getByRole('heading', { level: 2, name: 'Prototyp-Einstellungen' })
     ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Belag' }))
+    // die Übersicht sagt, dass sie nicht mehr gilt, und kopiert nichts
+    expect(heading()).toHaveTextContent('Schritt 4 von 4')
+    expect(screen.getByTestId('summary-incomplete')).toHaveTextContent(
+      /für jede Brezel einen Belag \(offen: Brezel 1, 2, 3\)/
+    )
+    expect(
+      screen.getByRole('heading', {
+        name: 'So würde die Vorbestellung aussehen (unvollständig)',
+      })
+    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Kopieren' })).toBeDisabled()
+    await user.click(
+      screen.getByRole('button', { name: 'Zu Schritt 2: Belag' })
+    )
     expect(heading()).toHaveTextContent('Schritt 2 von 4: Belag')
     expect(screen.getAllByText(/unterschiedlich belegt/)).toHaveLength(3)
     // je Brezel: der Chip nennt den Aufpreis für die ganze Brezel (3 × 1,50)
@@ -298,6 +311,8 @@ describe('PartybrezelDesigner', () => {
     expect(json().note).toContain(
       'Brezel 1, 2 (groß): Salami (ganze Brezel); Brezel 3 (klein): Salami (ganze Brezel)'
     )
+    expect(screen.queryByTestId('summary-incomplete')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Kopieren' })).toBeEnabled()
 
     // "Neu beginnen" fragt nach; Abbrechen lässt alles stehen
     await user.click(screen.getByRole('button', { name: 'Neu beginnen' }))
@@ -403,6 +418,44 @@ describe('PartybrezelDesigner', () => {
     expect(stored.pretzels).toHaveLength(1)
     expect(stored.pretzels[0].toppings[0]).toBe('kaese')
     expect(stored.name).toBe('Erika Beispiel')
+  })
+
+  it('öffnet einen wiederhergestellten Entwurf auf dem gemerkten Schritt', async () => {
+    window.localStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        pretzels: [{ size: 'klein', toppings: ['butter', 'butter', 'butter'] }],
+        toppingMode: 'per-part',
+        pickupDate: '2026-11-08',
+        name: 'Erika Beispiel',
+        step: 3,
+      })
+    )
+    setup({ persistDraft: true })
+    expect(await screen.findByText(/Schritt 4 von 4/)).toBeInTheDocument()
+    expect(heading()).not.toHaveFocus()
+    expect(screen.queryByTestId('summary-incomplete')).not.toBeInTheDocument()
+    expect(json().pickupDate).toBe('2026-11-08')
+  })
+
+  it('bleibt beim Wiederherstellen vor einem inzwischen offenen Schritt stehen', async () => {
+    window.localStorage.setItem(
+      DRAFT_STORAGE_KEY,
+      JSON.stringify({
+        pretzels: [{ size: 'klein', toppings: ['butter', 'butter', 'butter'] }],
+        toppingMode: 'per-part',
+        pickupDate: '2026-10-31', // abgelaufen
+        name: 'Erika Beispiel',
+        step: 3,
+      })
+    )
+    setup({ persistDraft: true })
+    expect(
+      await screen.findByText(/Schritt 3 von 4: Abholung/)
+    ).toBeInTheDocument()
+    expect(
+      JSON.parse(window.localStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}').step
+    ).toBe(2)
   })
 
   it('läuft auch, wenn der Browser-Speicher wirft', async () => {
