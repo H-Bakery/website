@@ -206,6 +206,36 @@ describe('BackstubeBakeList - gebacken-Haken (Z10 O5)', () => {
     )
   })
 
+  it('gebackener Nachtrag, danach abbestellt: Haken bleibt, lässt sich zurücknehmen', () => {
+    const base = tuesdayBakeList()
+    const onToggleDeltas = jest.fn()
+    const baked = {
+      ...base.deltas[0],
+      qty: 8,
+      acknowledgedAt: '2026-12-01T04:00:00.000Z',
+      bakedAt: '2026-12-01T04:00:00.000Z',
+      bakedBy: { id: 2, displayName: 'Test Backstube' },
+    }
+    const cancelled = {
+      ...base.deltas[0],
+      id: 32,
+      qty: -3,
+      kind: 'cancelled' as const,
+      createdAt: '2026-12-01T04:30:00.000Z',
+    }
+    renderList({ ...base, deltas: [baked, cancelled] }, { onToggleDeltas })
+    const group = screen.getByTestId(`bs-bake-dgroup-${DOPPEL}`)
+    expect(group).toHaveAttribute('data-baked', 'true')
+    expect(group).toHaveTextContent('+8 schon gebacken')
+    expect(group).toHaveTextContent('nichts zusätzlich zu backen')
+    const tick = screen.getByTestId(`bs-bake-dtick-${DOPPEL}`)
+    expect(tick).toHaveAttribute('aria-checked', 'true')
+    fireEvent.click(tick)
+    expect(onToggleDeltas).toHaveBeenCalledWith(
+      expect.objectContaining({ toggleIds: [31], toggleTo: false })
+    )
+  })
+
   it('Abbestellung (nichts zu backen): Nachtrag steht da, ohne Haken', () => {
     const base = tuesdayBakeList()
     renderList({

@@ -129,6 +129,53 @@ describe('bakeDeltaGroups (Z10 O5)', () => {
     expect(zero).toMatchObject({ figure: 0, tickable: false })
   })
 
+  it('gebacken, danach abbestellt: Haken steht und lässt sich zurücknehmen', () => {
+    const by = { id: 2, displayName: 'Test Backstube' }
+    // +8 gebacken, dann −3 (abbestellt): nichts mehr zu backen.
+    const [g] = bakeDeltaGroups(
+      list(
+        [
+          delta(31, 8, { bakedAt: '2026-12-01T04:00:00.000Z', bakedBy: by }),
+          delta(32, -3, { kind: 'cancelled' }),
+        ],
+        { qty: 5, bake: 5, bakedQty: 8, bakeUnbaked: -3 }
+      )
+    )
+    expect(g).toMatchObject({
+      state: 'partial',
+      figure: -3,
+      bakedFigure: 8,
+      checked: true,
+      tickable: true,
+      toggleIds: [31],
+      toggleTo: false,
+      bakedAt: '2026-12-01T04:00:00.000Z',
+    })
+    // ±0 nach einem gebackenen Nachtrag: ebenso.
+    const [zero] = bakeDeltaGroups(
+      list(
+        [delta(31, 2, { bakedAt: '2026-12-01T04:00:00.000Z' }), delta(32, -2)],
+        null
+      )
+    )
+    expect(zero).toMatchObject({
+      state: 'partial',
+      figure: -2,
+      checked: true,
+      tickable: true,
+      toggleIds: [31],
+      toggleTo: false,
+    })
+    // Noch etwas zu backen: nicht abgehakt, Tippen hakt die offenen ab.
+    const [open] = bakeDeltaGroups(
+      list(
+        [delta(31, 3, { bakedAt: '2026-12-01T04:00:00.000Z' }), delta(32, 2)],
+        null
+      )
+    )
+    expect(open).toMatchObject({ checked: false, toggleIds: [32] })
+  })
+
   it('keine Nachträge: keine Gruppen; Teigtag bleibt am Nachtrag', () => {
     expect(bakeDeltaGroups(list([], null))).toEqual([])
     const [g] = bakeDeltaGroups(list([delta(31, 3)], null))

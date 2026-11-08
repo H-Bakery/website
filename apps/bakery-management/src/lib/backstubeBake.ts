@@ -26,7 +26,16 @@ export interface BakeDeltaGroup {
   figure: number
   /** Schon gebacken (nur `partial`): so viel. */
   bakedFigure: number | null
-  /** Ein Haken nur, wo es etwas zu backen gibt (nicht bei „−3“ / „±0“). */
+  /**
+   * Der Haken steht: alle gebacken - oder teils gebacken und für die übrigen
+   * ist nichts mehr zu backen (eine Abbestellung „−3“ nach einem gebackenen
+   * „+8“). Dann nimmt ein Tippen die gebackenen zurück.
+   */
+  checked: boolean
+  /**
+   * Ein Haken nur, wo es etwas zu backen gibt (nicht bei „−3“ / „±0“) oder
+   * wo einer steht (der muss sich zurücknehmen lassen).
+   */
   tickable: boolean
   /** Was ein Tippen ändert: diese IDs auf `toggleTo`. */
   toggleIds: number[]
@@ -83,6 +92,7 @@ export function bakeDeltaGroups(
         !latest || (d.bakedAt ?? '') > (latest.bakedAt ?? '') ? d : latest,
       null
     )
+    const checked = state === 'baked' || (state === 'partial' && figure <= 0)
     return {
       key,
       first: deltas[0],
@@ -91,9 +101,10 @@ export function bakeDeltaGroups(
       state,
       figure,
       bakedFigure,
-      tickable: state === 'baked' || figure > 0,
-      toggleIds: (state === 'baked' ? baked : unbaked).map((d) => d.id),
-      toggleTo: state !== 'baked',
+      checked,
+      tickable: checked || figure > 0,
+      toggleIds: (checked ? baked : unbaked).map((d) => d.id),
+      toggleTo: !checked,
       bakedAt: last?.bakedAt ?? null,
       bakedBy: last?.bakedBy ?? null,
     }

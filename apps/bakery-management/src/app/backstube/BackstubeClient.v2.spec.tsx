@@ -411,6 +411,61 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
       await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(2))
     })
 
+    it('„Gesehen“ während ein Haken speichert: das Neuladen wird nachgeholt', async () => {
+      const pending = deferred<api.LineBakedResult>()
+      mocked.setLineBaked.mockReturnValue(pending.promise)
+      let acked = false
+      mocked.acknowledgeDelta.mockImplementation(async () => {
+        acked = true
+        return {
+          id: 31,
+          acknowledgedAt: '2026-12-01T03:00:00.000Z',
+          acknowledgedBy: { id: 2, displayName: 'Test Backstube' },
+        } as never
+      })
+      mocked.fetchBakeList.mockImplementation(async () => {
+        const base = tuesdayBakeList()
+        return acked
+          ? {
+              ...base,
+              deltas: base.deltas.map((d) => ({
+                ...d,
+                acknowledgedAt: '2026-12-01T03:00:00.000Z',
+              })),
+            }
+          : base
+      })
+      renderTablet(at(V2_TUE, 3))
+      fireEvent.click(
+        await screen.findByRole('checkbox', {
+          name: 'Testdoppel als gebacken abhaken',
+        })
+      )
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Nachtrag Testdoppel gesehen' })
+      )
+      await waitFor(() =>
+        expect(mocked.acknowledgeDelta).toHaveBeenCalledWith(SAT, 31)
+      )
+      // Die Antwort kam, während der Haken noch speichert: verworfen.
+      await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(2))
+      expect(screen.getByTestId('bs-deltas')).toBeInTheDocument()
+      pending.resolve({
+        id: 205,
+        date: SAT,
+        bakeDate: V2_TUE,
+        itemId: 'test-doppel',
+        variant: null,
+        bakedAt: '2026-12-01T04:00:00.000Z',
+        bakedBy: { id: 2, displayName: 'Test Backstube' },
+      })
+      // Haken fertig: neu geladen, das „Gesehen“ steht.
+      await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(3))
+      await waitFor(() =>
+        expect(screen.queryByTestId('bs-deltas')).not.toBeInTheDocument()
+      )
+    })
+
     it('Nachtrag: Fehler nimmt Haken und „Gesehen“ zurück', async () => {
       mocked.setDeltasBaked.mockRejectedValue(
         apiError(500, 'internal', 'Serverfehler.')

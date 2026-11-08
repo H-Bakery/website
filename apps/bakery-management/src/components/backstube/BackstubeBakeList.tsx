@@ -277,7 +277,8 @@ function BakeDeltaRow({
 }) {
   const colors = useBackstubeColors()
   const d = group.first
-  const baked = group.state === 'baked'
+  // Gebacken - auch teils, wenn für die übrigen nichts mehr zu backen ist.
+  const baked = group.checked
   const label = lineLabel(
     { name: d.name, variant: d.variant, itemId: d.itemId },
     config
@@ -290,7 +291,9 @@ function BakeDeltaRow({
     group.state === 'partial' && group.bakedFigure !== null
       ? `${formatSignedQty(group.bakedFigure, d.unit)} schon gebacken`
       : null,
-    group.figure <= 0 && !baked ? 'nichts zusätzlich zu backen' : null,
+    group.figure <= 0 && group.state !== 'baked'
+      ? 'nichts zusätzlich zu backen'
+      : null,
   ]
     .filter(Boolean)
     .join(' · ')

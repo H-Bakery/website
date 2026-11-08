@@ -298,6 +298,19 @@ export default function BackstubeClient({
   /** Wie `mutationSeq`/`pendingRef`, für die Backliste. */
   const bakeSeq = React.useRef(0)
   const bakePendingRef = React.useRef(0)
+  /**
+   * Ein Neuladen der Backliste wurde wegen eines laufenden gebacken-Hakens
+   * verworfen (oder ist nach einem Fehler fällig): es wird nachgeholt,
+   * sobald kein Haken mehr unterwegs ist - sonst fehlte z. B. das „Gesehen“
+   * eines gleichzeitig quittierten Nachtrags bis zum nächsten Abruf.
+   */
+  const bakeReloadDue = React.useRef(false)
+  const loadBakeRef = React.useRef<() => Promise<void>>(async () => undefined)
+  const reloadBakeWhenSettled = React.useCallback(() => {
+    if (bakePendingRef.current > 0 || !bakeReloadDue.current) return
+    bakeReloadDue.current = false
+    void loadBakeRef.current()
+  }, [])
 
   const dates = React.useMemo(
     () => backstubeDates(now, config?.days),
@@ -417,8 +430,13 @@ export default function BackstubeClient({
       const res = await fetchBakeList(target)
       if (dateRef.current !== target) return
       // Ein gebacken-Haken unterwegs (oder seit dem Start gesetzt): diese
-      // Antwort ist älter als die Anzeige - der nächste Lauf holt sie.
-      if (bakeSeq.current !== seq || bakePendingRef.current > 0) return
+      // Antwort ist älter als die Anzeige. Nicht wegwerfen, sondern neu
+      // laden, sobald kein Haken mehr unterwegs ist.
+      if (bakeSeq.current !== seq || bakePendingRef.current > 0) {
+        bakeReloadDue.current = true
+        reloadBakeWhenSettled()
+        return
+      }
       setBake(res)
       setBakeLoadedAt(clockRef.current())
       setBakeError(null)
@@ -431,7 +449,10 @@ export default function BackstubeClient({
         )
       )
     }
-  }, [])
+  }, [reloadBakeWhenSettled])
+  React.useEffect(() => {
+    loadBakeRef.current = loadBake
+  }, [loadBake])
 
   // Erster Lauf und Tageswechsel: erst die Stammdaten (Produktionstage),
   // damit nicht kurz ein falscher Tag geladen wird.
@@ -771,8 +792,9 @@ export default function BackstubeClient({
     }
     if (stale) {
       bakeSeq.current += 1
-      void loadBake()
+      bakeReloadDue.current = true
     }
+    reloadBakeWhenSettled()
   }
 
   /**
@@ -862,8 +884,9 @@ export default function BackstubeClient({
     // vom Server.
     if (ok || stale) {
       bakeSeq.current += 1
-      void loadBake()
+      bakeReloadDue.current = true
     }
+    reloadBakeWhenSettled()
   }
 
   const planPath = `/admin/backzettel/${date}`
