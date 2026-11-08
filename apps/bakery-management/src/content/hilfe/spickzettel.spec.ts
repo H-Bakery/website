@@ -89,6 +89,7 @@ describe('Spickzettel (P6)', () => {
       'Zettel',
       'Backen',
       'Backliste',
+      'gebacken',
       'Abwiegeliste & Rezepte mitdrucken',
     ]) {
       expect(t).toContain(needle)

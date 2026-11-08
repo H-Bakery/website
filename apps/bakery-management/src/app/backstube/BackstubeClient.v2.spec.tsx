@@ -31,6 +31,8 @@ jest.mock('../../lib/backzettelApi', () => {
     setLineDone: jest.fn(),
     acknowledgeDelta: jest.fn(),
     acknowledgeDeltas: jest.fn(),
+    setLineBaked: jest.fn(),
+    setDeltasBaked: jest.fn(),
   }
 })
 const mocked = api as jest.Mocked<typeof api>
@@ -39,6 +41,20 @@ jest.mock('next/navigation', () => ({
   useRouter: () => ({ replace: jest.fn(), push: jest.fn() }),
   usePathname: () => '/backstube',
 }))
+
+function apiError(status: number, code: string, message: string) {
+  return Object.assign(new Error(message), { status, code })
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
 
 function at(date: string, hour: number): Date {
   const [y, m, d] = date.split('-').map(Number)
@@ -245,5 +261,187 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
       )
     ).toBeInTheDocument()
     expect(screen.queryByText(/Failed to fetch/)).not.toBeInTheDocument()
+  })
+
+  describe('Backen: gebacken-Haken (O5)', () => {
+    const DOPPEL = `test-doppel|@${V2_TUE}`
+
+    it('setzt den Haken sofort und schickt ihn an die Backliste des Backtags', async () => {
+      const pending = deferred<api.LineBakedResult>()
+      mocked.setLineBaked.mockReturnValue(pending.promise)
+      renderTablet(at(V2_TUE, 3))
+      const tick = await screen.findByRole('checkbox', {
+        name: 'Testdoppel als gebacken abhaken',
+      })
+      fireEvent.click(tick)
+      // optimistisch: schon gesetzt, solange der Server antwortet
+      expect(screen.getByTestId(`bs-bake-tick-${DOPPEL}`)).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect(screen.getByTestId(`bs-bake-tick-${DOPPEL}`)).toBeDisabled()
+      expect(mocked.setLineBaked).toHaveBeenCalledWith(V2_TUE, 205, true, 44)
+      expect(mocked.setLineDone).not.toHaveBeenCalled()
+      pending.resolve({
+        id: 205,
+        date: SAT,
+        bakeDate: V2_TUE,
+        itemId: 'test-doppel',
+        variant: null,
+        bakedAt: '2026-12-01T04:00:00.000Z',
+        bakedBy: { id: 2, displayName: 'Test Backstube' },
+      })
+      await waitFor(() =>
+        expect(screen.getByTestId(`bs-bake-baked-${DOPPEL}`)).toHaveTextContent(
+          'Test Backstube'
+        )
+      )
+      expect(screen.getByTestId(`bs-bake-tick-${DOPPEL}`)).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+    })
+
+    it('nimmt den Haken zurück, wenn der Server ablehnt', async () => {
+      mocked.setLineBaked.mockRejectedValue(new TypeError('Failed to fetch'))
+      renderTablet(at(V2_TUE, 3))
+      fireEvent.click(
+        await screen.findByRole('checkbox', {
+          name: 'Testdoppel als gebacken abhaken',
+        })
+      )
+      expect(
+        await screen.findByText(
+          'Nicht gespeichert: Keine Verbindung zum Server – bitte WLAN prüfen.'
+        )
+      ).toBeInTheDocument()
+      expect(screen.getByTestId(`bs-bake-tick-${DOPPEL}`)).toHaveAttribute(
+        'aria-checked',
+        'false'
+      )
+    })
+
+    it('Zettel wieder geöffnet (409): zurückgenommen, Backliste neu geladen', async () => {
+      mocked.setLineBaked.mockRejectedValue(
+        apiError(
+          409,
+          'not_confirmed',
+          'Abhaken geht erst, wenn der Backzettel vom Samstag, 28.11. freigegeben ist.'
+        )
+      )
+      renderTablet(at(V2_TUE, 3))
+      fireEvent.click(
+        await screen.findByRole('checkbox', {
+          name: 'Testdoppel als gebacken abhaken',
+        })
+      )
+      expect(
+        await screen.findByText(
+          'Abhaken geht erst, wenn der Backzettel vom Samstag, 28.11. freigegeben ist. Die Backliste wird neu geladen.'
+        )
+      ).toBeInTheDocument()
+      await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(2))
+      expect(screen.getByTestId(`bs-bake-tick-${DOPPEL}`)).toHaveAttribute(
+        'aria-checked',
+        'false'
+      )
+    })
+
+    it('ein vorhandener Haken wird mit „unbaked“ zurückgenommen', async () => {
+      const base = tuesdayBakeList()
+      mocked.fetchBakeList.mockResolvedValue({
+        ...base,
+        sections: base.sections.map((sec) => ({
+          ...sec,
+          lines: sec.lines.map((l) =>
+            l.key === DOPPEL
+              ? { ...l, bakedAt: '2026-12-01T04:00:00.000Z', bakedBy: null }
+              : l
+          ),
+        })),
+      })
+      mocked.setLineBaked.mockResolvedValue({
+        id: 205,
+        date: SAT,
+        bakeDate: V2_TUE,
+        itemId: 'test-doppel',
+        variant: null,
+        bakedAt: null,
+        bakedBy: null,
+      })
+      renderTablet(at(V2_TUE, 3))
+      fireEvent.click(
+        await screen.findByRole('checkbox', { name: 'Testdoppel gebacken' })
+      )
+      await waitFor(() =>
+        expect(mocked.setLineBaked).toHaveBeenCalledWith(V2_TUE, 205, false, 44)
+      )
+      await waitFor(() =>
+        expect(screen.getByTestId(`bs-bake-tick-${DOPPEL}`)).toHaveAttribute(
+          'aria-checked',
+          'false'
+        )
+      )
+    })
+
+    it('Nachtrag: eigener Haken, quittiert mit, danach neu geladen', async () => {
+      const pending = deferred<api.BackzettelDeltaEntry[]>()
+      mocked.setDeltasBaked.mockReturnValue(pending.promise)
+      renderTablet(at(V2_TUE, 3))
+      fireEvent.click(
+        await screen.findByRole('checkbox', {
+          name: 'Nachtrag Testdoppel als gebacken abhaken',
+        })
+      )
+      expect(mocked.setDeltasBaked).toHaveBeenCalledWith(V2_TUE, [31], true)
+      // optimistisch gebacken und gesehen: die Gesehen-Karte oben ist weg
+      expect(screen.getByTestId(`bs-bake-dtick-${DOPPEL}`)).toHaveAttribute(
+        'aria-checked',
+        'true'
+      )
+      expect(screen.queryByTestId('bs-deltas')).not.toBeInTheDocument()
+      pending.resolve([
+        {
+          ...tuesdayBakeList().deltas[0],
+          acknowledgedAt: '2026-12-01T04:00:00.000Z',
+          bakedAt: '2026-12-01T04:00:00.000Z',
+          bakedBy: { id: 2, displayName: 'Test Backstube' },
+        },
+      ])
+      await waitFor(() => expect(mocked.fetchBakeList).toHaveBeenCalledTimes(2))
+    })
+
+    it('Nachtrag: Fehler nimmt Haken und „Gesehen“ zurück', async () => {
+      mocked.setDeltasBaked.mockRejectedValue(
+        apiError(500, 'internal', 'Serverfehler.')
+      )
+      renderTablet(at(V2_TUE, 3))
+      fireEvent.click(
+        await screen.findByRole('checkbox', {
+          name: 'Nachtrag Testdoppel als gebacken abhaken',
+        })
+      )
+      expect(
+        await screen.findByText(/^Nicht gespeichert: /)
+      ).toBeInTheDocument()
+      expect(screen.getByTestId(`bs-bake-dtick-${DOPPEL}`)).toHaveAttribute(
+        'aria-checked',
+        'false'
+      )
+      expect(screen.getByTestId('bs-deltas')).toBeInTheDocument()
+    })
+
+    it('Verkauf sieht die Backliste ohne Haken', async () => {
+      render(
+        <WithSession
+          value={fakeSession({ role: 'verkauf', sessionKind: 'station' })}
+        >
+          <BackstubeClient clock={() => at(V2_TUE, 3)} />
+        </WithSession>
+      )
+      await screen.findByTestId('bs-bake-list')
+      expect(screen.queryByTestId(`bs-bake-tick-${DOPPEL}`)).toBeNull()
+      expect(screen.queryByTestId(`bs-bake-dtick-${DOPPEL}`)).toBeNull()
+    })
   })
 })

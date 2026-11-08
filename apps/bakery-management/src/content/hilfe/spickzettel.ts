@@ -146,6 +146,7 @@ export const SPICKZETTEL: Record<PilotRole, Spickzettel> = {
           'Ist ein Posten fertig: das Kästchen rechts in der Zeile antippen.',
           'Noch einmal tippen nimmt den Haken weg.',
           'Oben steht, wie viele Zeilen erledigt sind.',
+          'Reiter **Backen**: eigenes Kästchen **gebacken** je Zeile – auch für Teig vom Vortag. Nachträge haben unten ein eigenes Kästchen.',
         ],
       },
       {

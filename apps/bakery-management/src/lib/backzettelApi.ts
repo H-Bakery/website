@@ -39,6 +39,12 @@ export interface BackzettelLineDelta {
   openQty?: number
   /** Was die noch nicht quittierten zusätzlich zu backen heißen. */
   bakeOpen?: number
+  /** Z10 O5: so viele Nachträge sind auf der Backliste „gebacken“ abgehakt. */
+  baked?: number
+  /** Summe der gebacken abgehakten Nachträge. */
+  bakedQty?: number
+  /** Was die noch nicht gebackenen zusätzlich zu backen heißen (aufgerundet). */
+  bakeUnbaked?: number
 }
 
 /** Hefeteig/Füllungen: was die Nachträge zusätzlich brauchen (nur Änderungen). */
@@ -137,6 +143,19 @@ export interface BackzettelLine {
    * wegen geänderter Menge entfernt hat - `qty` war damals schon gebacken.
    */
   previouslyDone?: {
+    qty: number
+    at: string | null
+    by: BackzettelUserRef | null
+  } | null
+  /**
+   * Z10, Inhaber-Entscheidung O5: „gebacken“ auf der Backliste - eigener
+   * Haken, getrennt von `doneAt` (auf dem Zettel des Teigtags = gemacht).
+   * Ältere Server: fehlt.
+   */
+  bakedAt?: string | null
+  bakedBy?: BackzettelUserRef | null
+  /** Wie `previouslyDone`, für den gebacken-Haken. */
+  previouslyBaked?: {
     qty: number
     at: string | null
     by: BackzettelUserRef | null
@@ -309,6 +328,9 @@ export interface BackzettelDeltaEntry {
   bakeDate?: string
   /** Z10, nur Backliste: Zettel (Teigtag), auf dem der Nachtrag quittiert wird. */
   doughDate?: string
+  /** Z10 O5: der Nachtrag ist gebacken (eigener Haken). Ältere Server: fehlt. */
+  bakedAt?: string | null
+  bakedBy?: BackzettelUserRef | null
 }
 
 export interface ConfigReason {
@@ -709,6 +731,18 @@ export interface LineDoneResult {
   doneBy: BackzettelUserRef | null
 }
 
+/** Antwort auf `POST /:backtag/bake/:lineId/baked|unbaked` (Z10 O5). */
+export interface LineBakedResult {
+  id: number
+  /** Zettel (Teigtag) der Zeile. */
+  date: string
+  bakeDate: string
+  itemId: string
+  variant: string | null
+  bakedAt: string | null
+  bakedBy: BackzettelUserRef | null
+}
+
 const BASE = '/api/backzettel'
 
 /** `data` einer `{ success, data }`-Antwort. */
@@ -853,6 +887,42 @@ export async function setLineDone(
     await apiClient.post<LineDoneResult>(
       `${datePath(date)}/lines/${lineId}/${done ? 'done' : 'undone'}`,
       done && expectedTotal !== undefined ? { expectedTotal } : {}
+    )
+  )
+}
+
+/**
+ * Z10, O5: „gebacken“ auf der Backliste des Backtags `bakeDate` (nicht des
+ * Teigtags!). Nur Zeilen eines freigegebenen Zettels; `expectedTotal` wie
+ * beim Abhaken (409 `line_changed`, wenn jetzt mehr zu backen ist).
+ */
+export async function setLineBaked(
+  bakeDate: string,
+  lineId: number,
+  baked: boolean,
+  expectedTotal?: number
+): Promise<LineBakedResult> {
+  return unwrap(
+    await apiClient.post<LineBakedResult>(
+      `${datePath(bakeDate)}/bake/${lineId}/${baked ? 'baked' : 'unbaked'}`,
+      baked && expectedTotal !== undefined ? { expectedTotal } : {}
+    )
+  )
+}
+
+/**
+ * Z10, O5: Nachträge auf der Backliste „gebacken“ (alles oder nichts).
+ * Gebacken quittiert einen offenen Nachtrag gleich mit.
+ */
+export async function setDeltasBaked(
+  bakeDate: string,
+  deltaIds: number[],
+  baked: boolean
+): Promise<BackzettelDeltaEntry[]> {
+  return unwrap(
+    await apiClient.post<BackzettelDeltaEntry[]>(
+      `${datePath(bakeDate)}/bake/deltas/${baked ? 'baked' : 'unbaked'}`,
+      { ids: deltaIds }
     )
   )
 }

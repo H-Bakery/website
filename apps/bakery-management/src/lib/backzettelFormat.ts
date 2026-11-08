@@ -237,8 +237,25 @@ export function minQtyHint(q: { totalIsMinimum?: boolean }): string | null {
  * abgehakt ist.
  */
 export function previouslyDoneText(line: BackzettelLine): string | null {
-  const prev = line.previouslyDone
-  if (!prev || line.doneAt) return null
+  if (line.doneAt) return null
+  return previousTickText(line, line.previouslyDone, 'erledigt')
+}
+
+/**
+ * Z10 O5: dasselbe für den gebacken-Haken der Backliste - eine erneute
+ * Freigabe mit mehr Stück hat ihn entfernt („bereits 66 gebacken … - noch +5“).
+ */
+export function previouslyBakedText(line: BackzettelLine): string | null {
+  if (line.bakedAt) return null
+  return previousTickText(line, line.previouslyBaked, 'gebacken')
+}
+
+function previousTickText(
+  line: BackzettelLine,
+  prev: BackzettelLine['previouslyDone'],
+  verb: string
+): string | null {
+  if (!prev) return null
   const who = [formatTimestamp(prev.at), prev.by?.displayName]
     .filter(Boolean)
     .join(' · ')
@@ -249,7 +266,7 @@ export function previouslyDoneText(line: BackzettelLine): string | null {
       : rest < 0
       ? `jetzt ${formatQty(-rest, line.unit)} weniger nötig`
       : 'Menge unverändert'
-  return `bereits ${formatQty(prev.qty, line.unit)} erledigt${
+  return `bereits ${formatQty(prev.qty, line.unit)} ${verb}${
     who ? ` (${who})` : ''
   } - ${tail}`
 }

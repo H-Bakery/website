@@ -29,6 +29,8 @@ import {
   deltaTotalsByKey,
   isBackzettelDay,
   isDoughDaySheet,
+  setDeltasBaked,
+  setLineBaked,
   setLineDone,
   type BackzettelConfigData,
   type BackzettelDay,
@@ -69,7 +71,12 @@ import { BackstubeHefeteig } from '../../components/backstube/BackstubeHefeteig'
 import { BackstubeDeltas } from '../../components/backstube/BackstubeDeltas'
 import { DeltaDoughNote } from '../../components/backzettel/DeltaDoughNote'
 import { BackstubePrep } from '../../components/backstube/BackstubePrep'
-import { BackstubeBakeList } from '../../components/backstube/BackstubeBakeList'
+import {
+  BackstubeBakeList,
+  bakeDeltaTickKey,
+  bakeLineTickKey,
+} from '../../components/backstube/BackstubeBakeList'
+import type { BakeDeltaGroup } from '../../lib/backstubeBake'
 import { useBackstubeColors } from '../../components/backstube/backstubeColors'
 import { MachineStrip } from '../../components/backzettel/MachineStrip'
 
@@ -143,6 +150,12 @@ export function afterReloadMessage(code: string | null): string | undefined {
 
 function messageOf(error: unknown, fallback: string): string {
   return describeBackstubeError(error, fallback).text
+}
+
+/** Z10 O5: wie `isStale`, dazu eine Zeile, die inzwischen an einem anderen Tag gebacken wird. */
+function isBakeStale(error: unknown): boolean {
+  const e = error as { status?: number; code?: string } | null
+  return isStale(error) || (e?.status === 404 && e.code === 'not_on_bake_list')
 }
 
 function isStale(error: unknown): boolean {
@@ -280,6 +293,11 @@ export default function BackstubeClient({
     offline: boolean
   } | null>(null)
   const [bakeLoadedAt, setBakeLoadedAt] = React.useState<Date | null>(null)
+  /** Z10 O5: laufende gebacken-Haken (`bakeLineTickKey` / `bakeDeltaTickKey`). */
+  const [bakePending, setBakePending] = React.useState<Set<string>>(new Set())
+  /** Wie `mutationSeq`/`pendingRef`, für die Backliste. */
+  const bakeSeq = React.useRef(0)
+  const bakePendingRef = React.useRef(0)
 
   const dates = React.useMemo(
     () => backstubeDates(now, config?.days),
@@ -394,9 +412,13 @@ export default function BackstubeClient({
 
   const loadBake = React.useCallback(async () => {
     const target = dateRef.current
+    const seq = bakeSeq.current
     try {
       const res = await fetchBakeList(target)
       if (dateRef.current !== target) return
+      // Ein gebacken-Haken unterwegs (oder seit dem Start gesetzt): diese
+      // Antwort ist älter als die Anzeige - der nächste Lauf holt sie.
+      if (bakeSeq.current !== seq || bakePendingRef.current > 0) return
       setBake(res)
       setBakeLoadedAt(clockRef.current())
       setBakeError(null)
@@ -669,6 +691,179 @@ export default function BackstubeClient({
       setAckingKey(null)
     }
     await loadBake()
+  }
+
+  const updateBake = (target: string, fn: (list: BakeList) => BakeList) => {
+    setBake((current) =>
+      current && current.date === target && current.status === 'ok'
+        ? fn(current)
+        : current
+    )
+  }
+
+  const markBakePending = (key: string, on: boolean) =>
+    setBakePending((keys) => {
+      const next = new Set(keys)
+      if (on) next.add(key)
+      else next.delete(key)
+      return next
+    })
+
+  const me = () =>
+    session.user
+      ? { id: Number(session.user.id), displayName: session.user.displayName }
+      : null
+
+  /**
+   * Z10 O5: „gebacken“ für eine Zeile der Backliste - sofort gezeigt, bei
+   * einem Fehler zurückgenommen (wie der Haken auf dem Zettel).
+   */
+  const toggleBakeLine = async (line: BackzettelLine) => {
+    if (!bakeShown || line.id === null || line.sheetStatus === 'draft') return
+    const lineId = line.id
+    const target = bakeShown.date
+    const baked = !line.bakedAt
+    const before = {
+      bakedAt: line.bakedAt ?? null,
+      bakedBy: line.bakedBy ?? null,
+    }
+    const key = bakeLineTickKey(line)
+    const patch = (fields: Partial<BackzettelLine>) =>
+      updateBake(target, (list) => ({
+        ...list,
+        sections: list.sections.map((s) => ({
+          ...s,
+          lines: s.lines.map((l) =>
+            l.id === lineId ? { ...l, ...fields } : l
+          ),
+        })),
+      }))
+    bakeSeq.current += 1
+    bakePendingRef.current += 1
+    markBakePending(key, true)
+    showActionError(null)
+    patch(
+      baked
+        ? { bakedAt: clockRef.current().toISOString(), bakedBy: me() }
+        : { bakedAt: null, bakedBy: null }
+    )
+    let stale = false
+    try {
+      const res = await setLineBaked(target, lineId, baked, line.total)
+      patch({ bakedAt: res.bakedAt, bakedBy: res.bakedBy })
+    } catch (error) {
+      // Zurücknehmen: der Haken steht nur, wenn der Server ihn hat.
+      patch(before)
+      stale = isBakeStale(error)
+      const text = messageOf(
+        error,
+        'Der Haken konnte nicht gespeichert werden.'
+      )
+      showActionError(
+        stale
+          ? `${text} Die Backliste wird neu geladen.`
+          : `Nicht gespeichert: ${text}`,
+        !stale && isTransient(error) ? TRANSIENT_TICK : null
+      )
+    } finally {
+      bakePendingRef.current -= 1
+      markBakePending(key, false)
+    }
+    if (stale) {
+      bakeSeq.current += 1
+      void loadBake()
+    }
+  }
+
+  /**
+   * Z10 O5: „gebacken“ für die Nachträge einer Zeile (jeder Nachtrag hat
+   * seinen eigenen Haken; ein Tippen setzt die noch offenen bzw. nimmt alle
+   * zurück). Gebacken quittiert offene Nachträge mit.
+   */
+  const toggleBakeDeltas = async (group: BakeDeltaGroup) => {
+    if (!bakeShown || group.toggleIds.length === 0) return
+    const target = bakeShown.date
+    const ids = new Set(group.toggleIds)
+    const baked = group.toggleTo
+    const before = new Map(
+      bakeShown.deltas
+        .filter((d) => ids.has(d.id))
+        .map((d) => [
+          d.id,
+          {
+            bakedAt: d.bakedAt ?? null,
+            bakedBy: d.bakedBy ?? null,
+            acknowledgedAt: d.acknowledgedAt,
+            acknowledgedBy: d.acknowledgedBy,
+          },
+        ])
+    )
+    const patch = (
+      fields: (d: BackzettelDeltaEntry) => Partial<BackzettelDeltaEntry>
+    ) =>
+      updateBake(target, (list) => ({
+        ...list,
+        deltas: list.deltas.map((d) =>
+          ids.has(d.id) ? { ...d, ...fields(d) } : d
+        ),
+      }))
+    const key = bakeDeltaTickKey(group)
+    bakeSeq.current += 1
+    bakePendingRef.current += 1
+    markBakePending(key, true)
+    showActionError(null)
+    const now = clockRef.current().toISOString()
+    const by = me()
+    patch((d) =>
+      baked
+        ? {
+            bakedAt: now,
+            bakedBy: by,
+            acknowledgedAt: d.acknowledgedAt ?? now,
+            acknowledgedBy: d.acknowledgedAt ? d.acknowledgedBy : by,
+          }
+        : { bakedAt: null, bakedBy: null }
+    )
+    let ok = false
+    let stale = false
+    try {
+      const res = await setDeltasBaked(target, Array.from(ids), baked)
+      const byId = new Map((res ?? []).map((r) => [r.id, r]))
+      patch((d) => {
+        const r = byId.get(d.id)
+        return r
+          ? {
+              bakedAt: r.bakedAt ?? null,
+              bakedBy: r.bakedBy ?? null,
+              acknowledgedAt: r.acknowledgedAt,
+              acknowledgedBy: r.acknowledgedBy,
+            }
+          : {}
+      })
+      ok = true
+    } catch (error) {
+      patch((d) => before.get(d.id) ?? {})
+      stale = isBakeStale(error)
+      const text = messageOf(
+        error,
+        'Der Haken konnte nicht gespeichert werden.'
+      )
+      showActionError(
+        stale
+          ? `${text} Die Backliste wird neu geladen.`
+          : `Nicht gespeichert: ${text}`,
+        !stale && isTransient(error) ? TRANSIENT_TICK : null
+      )
+    } finally {
+      bakePendingRef.current -= 1
+      markBakePending(key, false)
+    }
+    // Danach neu laden: „gesehen“ an der Zeile und die offene Zahl kommen
+    // vom Server.
+    if (ok || stale) {
+      bakeSeq.current += 1
+      void loadBake()
+    }
   }
 
   const planPath = `/admin/backzettel/${date}`
@@ -1021,6 +1216,10 @@ export default function BackstubeClient({
                 canAck={canWork}
                 ackingKey={ackingKey}
                 onAck={(group, key) => void ackBake(group, key)}
+                canTick={canWork}
+                pendingKeys={bakePending}
+                onToggleLine={(line) => void toggleBakeLine(line)}
+                onToggleDeltas={(group) => void toggleBakeDeltas(group)}
               />
             )}
             <Typography
