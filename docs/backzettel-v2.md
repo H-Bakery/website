@@ -764,6 +764,11 @@ Questionnaire answers (`backliste-fragebogen.md`) only fill `null`s in hq; no co
 11. **Same-day roll production** (Q-L17) is expressible (`lead: { default: 1, 3: 0 }`) but only per
     weekday, not per day; one-off cases go through corrections on the bake day's own sheet if the
     item is lead 0 that day - otherwise not at all. Accepted.
+12. **"Stammdaten geändert" for an item newly moved onto a confirmed sheet** - resolved.
+    `planDrift` also lists the pairs a `lead`/`dough_days` change newly puts on the dough day
+    (`added`), except pairs another confirmed sheet holds now or held at confirm
+    (`owned_elsewhere`) and items added to hq later (`knownItems`), so unchanged master data never
+    flag (docs/api/backzettel.md).
 
 ---
 

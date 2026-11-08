@@ -800,7 +800,8 @@ export function createBackzettelService(
     // confirmed before the snapshot column existed fall back to recomputing.
     // Z10: a v2 sheet computes all its parts like `computeDoughDay`
     // (`sheetParts`: Hefeteig with litres, fillings, doughs, machine strip,
-    // bread, rolls, open master data) and checks its plan (`planDrift`); an
+    // bread, rolls, open master data) and checks its plan (`planDrift`: pairs
+    // moved away and pairs newly on this dough day); an
     // old day computes Hefeteig and fillings like v1 `computeDay`.
     const partsOf = (cfg: any, list: any[], w: unknown[]) =>
       v2
@@ -813,6 +814,12 @@ export function createBackzettelService(
       const parts = partsOf(cfg, list, w)
       return { hefeteig: parts.hefeteig, fillings: parts.fillings }
     }
+    // Pairs other confirmed sheets hold stay there on a recompute (§5.4):
+    // only what the master data newly put on this sheet counts (`planDrift`).
+    const ownedByOthers =
+      v2 && config && !light
+        ? ownedPairs(config, date, await confirmedAround(date))
+        : null
     const recomputed =
       config && !light
         ? (() => {
@@ -826,7 +833,8 @@ export function createBackzettelService(
                     planDrift: dayCore.planDrift(
                       config,
                       snap.plan,
-                      snap.warnings
+                      snap.warnings,
+                      ownedByOthers
                     ),
                   }
                 : {}),

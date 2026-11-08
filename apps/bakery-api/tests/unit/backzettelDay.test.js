@@ -641,7 +641,7 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
       bread: null,
       rolls: [],
       openMasterData: [],
-      planDrift: { bakeDates: ['2026-11-28'], moved: [] },
+      planDrift: { bakeDates: ['2026-11-28'], moved: [], added: [] },
     }
     expect(day.snapshotDiffers(snap, same)).toBe(false)
     expect(
@@ -650,7 +650,21 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     expect(
       day.snapshotDiffers(snap, {
         ...same,
-        planDrift: { bakeDates: ['2026-11-28'], moved: ['2026-11-28|a'] },
+        planDrift: {
+          bakeDates: ['2026-11-28'],
+          moved: ['2026-11-28|a'],
+          added: [],
+        },
+      })
+    ).toBe(true)
+    expect(
+      day.snapshotDiffers(snap, {
+        ...same,
+        planDrift: {
+          bakeDates: ['2026-11-28'],
+          moved: [],
+          added: ['2026-11-28|b'],
+        },
       })
     ).toBe(true)
     // ein alter Tag (ohne Plan) vergleicht wie bisher nur Hefeteig & Co.
@@ -679,6 +693,7 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     expect(day.planDrift(null, plan)).toEqual({
       bakeDates: ['2026-11-28', '2026-11-29'],
       moved: [],
+      added: [],
     })
     // „alt“ fehlt in hq, ist aber übernommen; sonst passt alles
     expect(day.planDrift(c, plan, adopted).moved).toEqual([])
@@ -692,7 +707,86 @@ describe('Erneute Freigabe und eingefrorene Berechnung', () => {
     expect(moved).toEqual({
       bakeDates: ['2026-11-28'],
       moved: ['2026-11-29|weck'],
+      added: [],
     })
+  })
+
+  it('planDrift: Paare, die neu auf den Teigtag fallen (lead), ohne Fehlalarm', () => {
+    // Samstag 2026-11-28: Weck für Sonntag und Dienstag, Brot am Samstag
+    const c = {
+      days: [2, 3, 4, 5, 6, 7],
+      dough_days: [2, 3, 4, 5, 6],
+      items: [{ id: 'weck', lead: 1 }, { id: 'brot' }, { id: 'sonntag-x' }],
+    }
+    const plan = {
+      version: 2,
+      doughDate: '2026-11-28',
+      bakeDates: [
+        { date: '2026-11-28', itemIds: ['brot', 'sonntag-x'] },
+        { date: '2026-11-29', itemIds: ['weck'] },
+        { date: '2026-12-01', itemIds: ['weck'] },
+      ],
+      knownItems: ['weck', 'brot', 'sonntag-x'],
+    }
+    // unverändert: nichts verschoben, nichts neu
+    expect(day.planDrift(c, plan, [])).toEqual({
+      bakeDates: ['2026-11-28', '2026-11-29', '2026-12-01'],
+      moved: [],
+      added: [],
+    })
+    // der Sonntags-Posten wird jetzt am Samstag gemacht (lead 1 nur sonntags)
+    const sundayOnly = {
+      ...c,
+      items: [
+        { id: 'weck', lead: 1 },
+        { id: 'brot' },
+        { id: 'sonntag-x', lead: { 7: 1 } },
+      ],
+    }
+    expect(day.planDrift(sundayOnly, plan, [])).toEqual({
+      bakeDates: ['2026-11-28', '2026-11-29', '2026-12-01'],
+      moved: [],
+      added: ['2026-11-29|sonntag-x'],
+    })
+    // trägt ein anderer freigegebener Zettel das Paar, bleibt es dort
+    expect(
+      day.planDrift(sundayOnly, plan, [], new Set(['2026-11-29|sonntag-x']))
+        .added
+    ).toEqual([])
+    expect(
+      day.planDrift(
+        sundayOnly,
+        plan,
+        [],
+        new Map([['2026-11-29|sonntag-x', '2026-11-29']])
+      ).added
+    ).toEqual([])
+    // trug es schon beim Freigeben ein anderer Zettel, fehlt es nicht wegen
+    // der Stammdaten - auch wenn jener Zettel inzwischen wieder offen ist
+    const skipped = [
+      {
+        code: 'owned_elsewhere',
+        items: [{ date: '2026-11-29', itemId: 'sonntag-x' }],
+      },
+    ]
+    expect(day.planDrift(sundayOnly, plan, skipped).added).toEqual([])
+    // ein später in hq ergänzter Posten deckt der Plan ohnehin (planCovers)
+    const neu = { ...c, items: [...c.items, { id: 'neu', lead: 1 }] }
+    expect(day.planDrift(neu, plan, []).added).toEqual([])
+    // ohne knownItems lässt sich neu und verschoben nicht unterscheiden
+    const { knownItems: _k, ...noKnown } = plan
+    void _k
+    expect(day.planDrift(sundayOnly, noKnown, []).added).toEqual([])
+    // der Vergleich sieht es
+    const snap = { plan, warnings: [] }
+    expect(
+      day.snapshotDiffers(snap, { planDrift: day.planDrift(c, plan, []) })
+    ).toBe(false)
+    expect(
+      day.snapshotDiffers(snap, {
+        planDrift: day.planDrift(sundayOnly, plan, []),
+      })
+    ).toBe(true)
   })
 
   it('prepDateFor: Vortag, offen wenn der Vortag kein Produktionstag ist (Q-B2)', () => {

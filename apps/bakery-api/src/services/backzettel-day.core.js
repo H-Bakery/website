@@ -969,31 +969,54 @@ function isSheetSnapshot(snapshot) {
 /**
  * Der Plan eines freigegebenen Teigtag-Zettels, wie ihn die aktuellen
  * Stammdaten saehen (Z10, fuer `snapshotDiffers`): welche Backtage der Teigtag
- * beliefert (`bakeDatesFor`) und welche eingefrorenen Paare (Backtag ×
- * Posten) ihren Teig jetzt an einem anderen Tag haetten (`lead`,
- * `dough_days`) oder in hq fehlen. Uebernommene Posten (`adopted_orphans`)
- * stehen ohnehin am Backtag selbst und zaehlen nicht als verschoben.
+ * beliefert (`bakeDatesFor`), welche eingefrorenen Paare (Backtag × Posten)
+ * ihren Teig jetzt an einem anderen Tag haetten (`lead`, `dough_days`) oder
+ * in hq fehlen (`moved`), und welche Paare jetzt neu auf diesen Teigtag
+ * fielen (`added`, z. B. `lead: 1` fuer den Sonntag eines Postens).
+ * Uebernommene Posten (`adopted_orphans`) stehen ohnehin am Backtag selbst
+ * und zaehlen nicht als verschoben.
  *
- * Mit `config` null: der eingefrorene Plan selbst (`moved` leer) - die Seite
- * des Schnappschusses im Vergleich.
+ * `added` zaehlt nur, was die Stammdaten verschoben haben - kein Fehlalarm
+ * bei unveraenderten Stammdaten:
+ * - ein Paar, das ein anderer freigegebener Zettel traegt (`owned`, Set oder
+ *   Map von `ownedKey`), bliebe auch bei einer Neuberechnung dort (§5.4);
+ * - ein Paar, das schon beim Freigeben ein anderer Zettel trug (Warnung
+ *   `owned_elsewhere` im Schnappschuss), fehlt aus diesem Grund, nicht wegen
+ *   der Stammdaten - auch wenn jener Zettel inzwischen wieder offen ist;
+ * - ein Posten, den es beim Freigeben noch nicht gab (nicht in
+ *   `knownItems`), deckt der Plan ohnehin (`planCovers`). Ein Plan ohne
+ *   `knownItems` kann das nicht unterscheiden: dann kein `added`.
  *
- * @returns {{ bakeDates: string[], moved: string[] } | null}
+ * Mit `config` null: der eingefrorene Plan selbst (`moved`, `added` leer) -
+ * die Seite des Schnappschusses im Vergleich.
+ *
+ * @returns {{ bakeDates: string[], moved: string[], added: string[] } | null}
  */
-function planDrift(config, plan, warnings) {
+function planDrift(config, plan, warnings, owned) {
   if (!plan || !Array.isArray(plan.bakeDates)) return null
   const frozenDates = plan.bakeDates.map((b) => b && b.date)
-  if (!config) return { bakeDates: frozenDates, moved: [] }
+  if (!config) return { bakeDates: frozenDates, moved: [], added: [] }
+  const list = Array.isArray(warnings) ? warnings : []
   const adopted = new Set()
-  for (const w of Array.isArray(warnings) ? warnings : []) {
-    if (w && w.code === 'adopted_orphans' && Array.isArray(w.items)) {
+  const ownedAtConfirm = new Set()
+  for (const w of list) {
+    if (!w || !Array.isArray(w.items)) continue
+    if (w.code === 'adopted_orphans') {
       for (const id of w.items) adopted.add(id)
+    } else if (w.code === 'owned_elsewhere') {
+      for (const x of w.items) {
+        if (x && x.date && x.itemId)
+          ownedAtConfirm.add(planCore.ownedKey(x.date, x.itemId))
+      }
     }
   }
   const items = new Map((config.items || []).map((i) => [i.id, i]))
+  const frozen = new Set()
   const moved = []
   for (const b of plan.bakeDates) {
     if (!b || !Array.isArray(b.itemIds)) continue
     for (const id of b.itemIds) {
+      frozen.add(planCore.ownedKey(b.date, id))
       if (b.date === plan.doughDate && adopted.has(id)) continue
       const item = items.get(id)
       if (
@@ -1004,10 +1027,27 @@ function planDrift(config, plan, warnings) {
       }
     }
   }
-  return {
-    bakeDates: planCore.bakeDatesFor(config, plan.doughDate),
-    moved,
+  const bakeDates = planCore.bakeDatesFor(config, plan.doughDate)
+  const known = Array.isArray(plan.knownItems) ? new Set(plan.knownItems) : null
+  const ownedNow = owned && typeof owned.has === 'function' ? owned : new Set()
+  const added = []
+  if (known) {
+    for (const date of bakeDates) {
+      for (const item of config.items || []) {
+        const key = planCore.ownedKey(date, item.id)
+        if (
+          known.has(item.id) &&
+          !frozen.has(key) &&
+          !ownedNow.has(key) &&
+          !ownedAtConfirm.has(key) &&
+          planCore.doughDateFor(config, item, date) === plan.doughDate
+        ) {
+          added.push(key)
+        }
+      }
+    }
   }
+  return { bakeDates, moved, added }
 }
 
 /**
@@ -1036,8 +1076,9 @@ function stableJson(value) {
  * machen: Teige und Maschinen-Streifen (`kg_per_liter`, Liter-Rundung,
  * Zugaben, `combined_with`), Brot (Groessen, `dough_g`, `from_dough`),
  * Broetchen (Bruch-Gewichte und -Stueck), offene Stammdaten und die Backtage
- * des Plans (`planDrift`: `lead`, `dough_days`). `recomputed` traegt dafuer
- * `sheetParts` der aktuellen Stammdaten und `planDrift`.
+ * des Plans (`planDrift`: `lead`, `dough_days` - verschobene und neu
+ * hinzukommende Paare). `recomputed` traegt dafuer `sheetParts` der aktuellen
+ * Stammdaten und `planDrift`.
  */
 function snapshotDiffers(snapshot, recomputed) {
   if (!snapshot || !recomputed) return false

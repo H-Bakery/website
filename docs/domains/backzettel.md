@@ -76,7 +76,9 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   Hefeteig, Füllungen, Vorbereitung und Hinweise. Eine spätere Änderung an YAML oder Rezepten ändert
   einen freigegebenen Zettel nicht; `configChangedSinceConfirm: true` sagt nur, dass die aktuellen
   Stammdaten jetzt etwas anderes ergäben - beim Teigtag-Zettel (Z10) auch für Teige,
-  Maschinen-Streifen, Brot, Brötchen (Bruch) und die Backtage des Plans (`lead`, `dough_days`). Nach jeder Freigabe schreibt die API einen Schnappschuss nach
+  Maschinen-Streifen, Brot, Brötchen (Bruch) und den Plan (`lead`, `dough_days`: Backtage, Posten,
+  die wegziehen, und Posten, die neu auf den Teigtag fallen - außer ein anderer freigegebener Zettel
+  trägt sie). Nach jeder Freigabe schreibt die API einen Schnappschuss nach
   hq `data/production/backzettel/` (Z9, `hq-snapshots.service.ts`, ohne Personendaten). Ein
   Teigtag-Zettel (Z10, `sheetVersion: 2`) wird mit `schema_version: 2` geschrieben - zusätzlich
   `bakeDate`/`doughDate`/`variantLabel` je Zeile, `bakeDates`, `doughs`, `machine`, `rolls`

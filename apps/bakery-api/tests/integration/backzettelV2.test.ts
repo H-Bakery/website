@@ -982,6 +982,67 @@ describe('configChangedSinceConfirm on a dough-day sheet', () => {
     const day = (await as('backstube').get(`/api/backzettel/${SAT6}`)).body.data
     expect(day.configStatus).toBe('ok')
   })
+
+  // A lead that only moves Sunday's bread: nothing leaves Saturday's sheet,
+  // the Sunday bread newly lands on it.
+  const sundayBreadOnSaturday = (cfg: any) => {
+    byId(cfg.items, 'test-holz').lead = { 7: 1 }
+  }
+
+  it('an item newly moved onto this dough day by a lead', async () => {
+    expect(await changedAfter(sundayBreadOnSaturday)).toBe(true)
+  })
+
+  it('not while another confirmed sheet holds the pair, again once it is reopened', async () => {
+    const SUN6 = '2027-01-03'
+    const confirmed = await as('backstube').post(
+      `/api/backzettel/${SUN6}/confirm`
+    )
+    expect(confirmed.status).toBe(200)
+    // Sunday's own sheet keeps its bread - Saturday would not compute it
+    expect(await changedAfter(sundayBreadOnSaturday)).toBe(false)
+    const reopened = await as('inhaber')
+      .post(`/api/backzettel/${SUN6}/reopen`)
+      .send({ reason: 'Testgrund' })
+    expect(reopened.status).toBe(200)
+    // now the master data put it on Saturday's sheet, which lacks it
+    expect(await changedAfter(sundayBreadOnSaturday)).toBe(true)
+  })
+})
+
+describe('configChangedSinceConfirm: a pair another sheet held at confirm', () => {
+  // Sunday is confirmed first (bread on its own sheet), then hq moves the
+  // Sunday bread to Saturday and Saturday is confirmed without it
+  // (`owned_elsewhere`). Reopening Sunday changes ownership, not the master
+  // data - Saturday must not say "Stammdaten geändert".
+  const SAT7 = '2027-01-16'
+  const SUN7 = '2027-01-17'
+  afterAll(() => writeHq(hqDir))
+
+  it('stays false after the owner is reopened', async () => {
+    expect(
+      (await as('backstube').post(`/api/backzettel/${SUN7}/confirm`)).status
+    ).toBe(200)
+    const cfg = fixture.configV2()
+    cfg.items.find((i: any) => i.id === 'test-holz').lead = { 7: 1 }
+    fs.writeFileSync(
+      path.join(hqDir, 'config', 'backzettel.yaml'),
+      JSON.stringify(cfg, null, 2)
+    )
+    const sat = await as('backstube').post(`/api/backzettel/${SAT7}/confirm`)
+    expect(sat.status).toBe(200)
+    expect(sat.body.data.warnings.map((w: any) => w.code)).toContain(
+      'owned_elsewhere'
+    )
+    expect(sat.body.data.configChangedSinceConfirm).toBe(false)
+    const reopened = await as('inhaber')
+      .post(`/api/backzettel/${SUN7}/reopen`)
+      .send({ reason: 'Testgrund' })
+    expect(reopened.status).toBe(200)
+    const res = await as('backstube').get(`/api/backzettel/${SAT7}`)
+    expect(res.body.data.status).toBe('confirmed')
+    expect(res.body.data.configChangedSinceConfirm).toBe(false)
+  })
 })
 
 describe('an item added to hq after a sheet was confirmed', () => {

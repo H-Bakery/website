@@ -178,10 +178,15 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
   `computeHefeteig` for old days) and compares it with the snapshot (`snapshotDiffers`, key-order
   independent `stableJson`): v1 days Hefeteig, fillings and prep as before; v2 sheets also
   `doughs`, `machine`, `bread`, `rolls`, `openMasterData` and the plan (`planDrift`: the bake days
-  the dough day feeds, and frozen pairs whose dough day moved via `lead`/`dough_days` or whose item
-  is gone; adopted items excepted). So `kg_per_liter`, liter rounding, add-ons, `combined_with`,
-  Bruch weight/pieces, size `dough_g`, `from_dough` and a swap back to v1 master data all show.
-  Not covered: an item that would _newly_ move onto this dough day (other sheets may own it).
+  the dough day feeds, frozen pairs whose dough day moved via `lead`/`dough_days` or whose item
+  is gone (adopted items excepted), and pairs the master data now _newly_ put on this dough day
+  (`added`)). `added` leaves out pairs another confirmed sheet holds now (`ownedPairs` - a
+  recompute would skip them too), pairs another sheet held at confirm (`owned_elsewhere` in the
+  snapshot - reopening that sheet changes ownership, not master data) and items added to hq after
+  the confirm (not in `knownItems`; `planCovers` already gives them to the sheet). So
+  `kg_per_liter`, liter rounding, add-ons, `combined_with`, Bruch weight/pieces, size `dough_g`,
+  `from_dough`, a swap back to v1 master data and a `lead` that moves an item onto the sheet all
+  show.
   `deltaExtras` keeps its v1 shape; `deltaMachine` lists the machine boxes a Nachtrag changes (v2 only, `machineDeltaExtras`), `deltaBruch` the Bruch groups
   whose dough pieces change (`bruchDeltaExtras`: pieces, Brüche and free pieces before/after,
   `bruecheDelta` `null` while Stück je Bruch or a base is open) - "1 Bruch mehr" or "passt in die
