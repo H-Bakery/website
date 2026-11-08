@@ -1,6 +1,13 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from 'react'
 import dynamic from 'next/dynamic'
 import {
   buildMultiStopNavigationUrl,
@@ -16,10 +23,11 @@ import {
   watchLocation,
 } from '@bakery/delivery/tracking'
 import {
-  ApiError,
   deliveryApi,
   describeError,
   flushQueue,
+  isRejection,
+  isServerError,
   pendingUpdates,
   queuePreorderUpdate,
   queueStopUpdate,
@@ -38,17 +46,21 @@ import {
   type Tour,
 } from '../lib/delivery-api'
 import {
+  followingSaturdayIso,
   formatDate,
   formatTime,
   nextSaturdayIso,
   todayIso,
   TOUR_STATUS_LABEL,
 } from '../lib/format'
+import { defaultTourName, isClockTime, markWindow } from '../lib/tour-day'
+import { describeRejected, syncNotice } from '../lib/sync-messages'
 import { permissionsFor, useDeliverySession } from '../lib/session'
+import { displayOrder, stopPositions } from '../lib/stop-order'
 import { AccountBar } from '../components/AccountBar'
 import { AddStopForm, type NewStopInput } from '../components/AddStopForm'
 import { StopCard } from '../components/StopCard'
-import { ThemeToggle } from '../components/ThemeToggle'
+import { AppFooter } from '../components/AppFooter'
 import styles from './page.module.css'
 
 const Map = dynamic(() => import('../components/Map').then((mod) => mod.Map), {
@@ -84,9 +96,13 @@ export default function DeliveryDashboard() {
   const [tourId, setTourId] = useState<number | null>(null)
 
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null)
+  const [locationUnavailable, setLocationUnavailable] = useState(false)
   const [isTracking, setIsTracking] = useState(false)
   const [pending, setPending] = useState<QueuedUpdate[]>([])
   const [isOnline, setIsOnline] = useState(true)
+  // Der Server hat geantwortet, aber mit 5xx: kein Funkloch, auch wenn die
+  // Änderung genauso in der Warteschlange wartet. Der Banner sagt das.
+  const [serverTrouble, setServerTrouble] = useState(false)
   /** Wann die angezeigte Tourliste vom Server kam - gesetzt, solange sie nur die Offline-Kopie ist. */
   const [copiedAt, setCopiedAt] = useState<string | null>(null)
 
@@ -121,6 +137,8 @@ export default function DeliveryDashboard() {
   // Beim Start laufen zwei Ladevorgaenge kurz hintereinander (erst ohne, dann
   // mit gemerktem Fahrer). Nur der juengste darf den Bildschirm setzen.
   const loadSeqRef = useRef(0)
+  // Zu welchem Tag und Fahrer die angezeigte Tourliste gehört.
+  const shownKeyRef = useRef<string | null>(null)
   // Solange ein Abhaken unterwegs ist, darf kein Nachladen der Offline-Kopie
   // die Liste ersetzen: die Aenderung steht noch nicht in der Warteschlange,
   // und der Server-Stand liesse den Stopp bis zum Nachsenden wieder "Offen".
@@ -141,6 +159,10 @@ export default function DeliveryDashboard() {
     () => tours.find((t) => t.id === tourId) ?? null,
     [tours, tourId]
   )
+  // Für die Meldung nach abgelehnten Nachsendungen: die Namen stehen im
+  // angezeigten Stand, den der Effekt der Warteschlange sonst nicht sieht.
+  const toursRef = useRef<Tour[]>(tours)
+  toursRef.current = tours
 
   /** Eine Tour vom Server, ueberlagert mit den noch laufenden Aenderungen. */
   const withInFlight = useCallback(
@@ -165,8 +187,10 @@ export default function DeliveryDashboard() {
     async (targetDate: string, targetDriver: number | null) => {
       const seq = ++loadSeqRef.current
       setError(null)
+      const key = `${targetDate}|${targetDriver ?? ''}`
 
       const show = (list: Tour[]) => {
+        shownKeyRef.current = key
         setTours(list)
         setTourId((current) =>
           list.some((t) => t.id === current) ? current : list[0]?.id ?? null
@@ -182,6 +206,11 @@ export default function DeliveryDashboard() {
       const copy = remembered && remembered.tours.length > 0 ? remembered : null
       if (copy) {
         show(withInFlight(withPendingUpdates(copy.tours, pendingUpdates())))
+      } else if (shownKeyRef.current !== key) {
+        // Ein anderer Tag oder Fahrer ohne Offline-Kopie: die Tour von eben
+        // gehört nicht dazu. Sonst stand im Funkloch bis zu 15 s die
+        // Samstagstour unter „Sonntag" - samt Abhak-Knöpfen.
+        show([])
       }
 
       try {
@@ -197,14 +226,17 @@ export default function DeliveryDashboard() {
         setCopiedAt(null)
         setLoadFailed(false)
         setIsOnline(true)
+        if (pendingUpdates().length === 0) setServerTrouble(false)
       } catch (err) {
         if (seq !== loadSeqRef.current) return
         if (copy) {
-          // Kein Netz, aber die Liste von vorhin: damit faehrt der Fahrer
-          // weiter, das Abhaken landet in der Warteschlange.
+          // Kein Netz (oder ein Serverfehler), aber die Liste von vorhin:
+          // damit faehrt der Fahrer weiter, das Abhaken landet in der
+          // Warteschlange.
           setCopiedAt(copy.at)
           setLoadFailed(false)
-          setIsOnline(false)
+          if (isServerError(err)) setServerTrouble(true)
+          else setIsOnline(false)
         } else {
           // Keine Antwort heisst nicht "keine Tour": die Liste bleibt leer,
           // aber die Oberflaeche darf daraus kein "nichts geplant" machen.
@@ -303,17 +335,18 @@ export default function DeliveryDashboard() {
   afterFlushRef.current = () => {
     if (copiedAt !== null) loadTours(date, driverId)
   }
+  // Nach einer Ablehnung gilt der Server-Stand: neu laden, egal ob Kopie.
+  const reloadRef = useRef<() => Promise<void>>(() => Promise.resolve())
+  reloadRef.current = () => loadTours(date, driverId)
 
   // --- Standort ---
 
   useEffect(() => {
+    // Kein Standort beim Start ist kein Alarm: der Hinweis steht still unter
+    // der Karte, nicht als Meldung, die über jeder Seite schwebt.
     getCurrentLocation()
       .then(setCurrentLocation)
-      .catch(() =>
-        setHint(
-          'Standort nicht verfügbar. Die Tour funktioniert trotzdem, nur ohne Entfernungen.'
-        )
-      )
+      .catch(() => setLocationUnavailable(true))
 
     return () => {
       if (watchIdRef.current !== null) {
@@ -385,11 +418,14 @@ export default function DeliveryDashboard() {
         remaining,
         rejected,
         offline,
+        serverError,
       } = await flushQueue()
       setPending(remaining)
       // Erst wenn der Server wirklich geantwortet hat, ist "online" wahr -
       // sonst verschwand der Hinweis, waehrend die Aenderungen noch lagen.
-      setIsOnline(!offline)
+      // Ein 5xx ist eine Antwort: Netz ist da, nur der Server hat Probleme.
+      setIsOnline(!offline || serverError)
+      setServerTrouble(serverError)
       if (updated) mergeTour(updated)
       if (confirmed.length > 0) {
         // Die Antwort auf ein nachgesendetes Abhaken ist die Vorbestellung
@@ -399,11 +435,16 @@ export default function DeliveryDashboard() {
           withInFlight(list.map((t) => confirmed.reduce(replacePreorder, t)))
         )
       }
-      if (!offline && remaining.length === 0) afterFlushRef.current()
       if (rejected.length > 0) {
-        setHint(
-          `${rejected.length} Änderung(en) hat der Server abgelehnt und wurden verworfen.`
-        )
+        // Die Liste zeigt noch die Vorschau der abgelehnten Änderung (etwa
+        // „Abgeholt · Bezahlt“ an einer inzwischen stornierten Bestellung).
+        // Also: Namen merken, den Stand des Servers laden, dann sagen, was
+        // nicht gespeichert wurde und warum - `loadTours` leert die Meldung.
+        const message = describeRejected(rejected, toursRef.current)
+        await reloadRef.current()
+        setError(message)
+      } else if (!offline && remaining.length === 0) {
+        afterFlushRef.current()
       }
     }
 
@@ -425,6 +466,16 @@ export default function DeliveryDashboard() {
   }, [mergeTour, withInFlight])
 
   // --- Aktionen ---
+
+  /** Ein PATCH kam nicht durch: Funkloch oder Serverfehler (5xx)? */
+  const noteSendFailure = (err: unknown) => {
+    if (isServerError(err)) {
+      setServerTrouble(true)
+      setIsOnline(true)
+    } else {
+      setIsOnline(false)
+    }
+  }
 
   const changeStopStatus = async (
     stopId: number,
@@ -458,10 +509,11 @@ export default function DeliveryDashboard() {
       inFlightRef.current.delete(key)
       mergeTour(updated)
       setPending(pendingUpdates())
+      setServerTrouble(false)
       // Der Server hat geantwortet - eine Offline-Kopie gleich ersetzen.
       if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      if (isRejection(err)) {
         // Abgelehnt: der Server-Stand gilt, die Vorschau darf nicht bleiben.
         inFlightRef.current.delete(key)
         // Erst neu laden, dann melden: `loadTours` leert die Meldung, sonst
@@ -469,11 +521,11 @@ export default function DeliveryDashboard() {
         await loadTours(date, driverId)
         setError(err.message)
       } else {
-        // Kein Netz: gemerkt, geht spaeter automatisch raus. Von jetzt an
-        // haelt die Warteschlange die Aenderung, nicht mehr diese Liste.
+        // Kein Netz oder Serverfehler: gemerkt, geht spaeter automatisch
+        // raus. Von jetzt an haelt die Warteschlange die Aenderung.
         setPending(queueStopUpdate(tour.id, stopId, body))
         inFlightRef.current.delete(key)
-        setIsOnline(false)
+        noteSendFailure(err)
       }
     } finally {
       inFlightRef.current.delete(key)
@@ -484,7 +536,7 @@ export default function DeliveryDashboard() {
   const changePreorderStatus = async (
     preorderId: number,
     status: PreorderStatus,
-    paid?: true
+    paid?: boolean
   ) => {
     if (!tour) return
     if (busyPreorders.has(preorderId)) return
@@ -494,8 +546,11 @@ export default function DeliveryDashboard() {
     // Die Vorbestellungen haengen an der Tour: die Antwort auf einen
     // Stopp-PATCH braechte sonst eine eben uebergebene Bestellung wieder
     // auf „Offen", solange ihr eigener PATCH noch haengt.
-    // `paid: true` = Rest kassiert bzw. Erstattung ausgezahlt.
-    const body: PreorderUpdate = paid ? { status, paid } : { status }
+    // `paid: true` = bezahlt bzw. Rest kassiert / Erstattung ausgezahlt,
+    // `paid: false` = ohne Zahlung übergeben. Ohne `paid` bucht der Server
+    // eine unbezahlte Übergabe als bezahlt - die Oberfläche fragt deshalb.
+    const body: PreorderUpdate =
+      paid === undefined ? { status } : { status, paid }
     const key = inFlightKey('preorder', preorderId)
     inFlightRef.current.set(key, {
       kind: 'preorder',
@@ -515,19 +570,20 @@ export default function DeliveryDashboard() {
         list.map((t) => (t.id === tour.id ? replacePreorder(t, updated) : t))
       )
       setPending(pendingUpdates())
+      setServerTrouble(false)
       if (copiedAt !== null) loadTours(date, driverId)
     } catch (err) {
-      if (err instanceof ApiError && err.status >= 400 && err.status < 500) {
+      if (isRejection(err)) {
         inFlightRef.current.delete(key)
         // Erst neu laden, dann melden: `loadTours` leert die Meldung, sonst
         // verschwände der Grund der Ablehnung (etwa ein 403) sofort wieder.
         await loadTours(date, driverId)
         setError(err.message)
       } else {
-        // Kein Netz: gemerkt, geht spaeter automatisch raus.
+        // Kein Netz oder Serverfehler: gemerkt, geht spaeter automatisch raus.
         setPending(queuePreorderUpdate(preorderId, body))
         inFlightRef.current.delete(key)
-        setIsOnline(false)
+        noteSendFailure(err)
       }
     } finally {
       inFlightRef.current.delete(key)
@@ -598,9 +654,32 @@ export default function DeliveryDashboard() {
     }
   }
 
+  /**
+   * Name oder geplante Abfahrt der Tour (Inhaber). Die Abfahrt ist die
+   * Grundlage aller Ankunftszeiten - stand sie fest auf 06:30, wartete die
+   * Tour laut App stundenlang vor jedem Zeitfenster.
+   */
+  const saveTourField = async (body: {
+    name?: string
+    plannedStart?: string
+  }) => {
+    if (!tour) return
+    setBusy(true)
+    setError(null)
+    try {
+      mergeTour(await deliveryApi.updateTour(tour.id, body))
+    } catch (err) {
+      setError(describeError(err, 'Tour konnte nicht gespeichert werden.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const moveStop = async (stopId: number, direction: -1 | 1) => {
     if (!tour) return
-    const order = tour.stops.map((stop) => stop.id)
+    // Verschoben wird in der Reihenfolge, die die Liste zeigt (erledigte
+    // zuerst) - sonst sprang ein Stopp über einen unsichtbaren Nachbarn.
+    const order = displayOrder(tour.stops).map((stop) => stop.id)
     const from = order.indexOf(stopId)
     const to = from + direction
     if (from < 0 || to < 0 || to >= order.length) return
@@ -657,7 +736,12 @@ export default function DeliveryDashboard() {
       const created = await deliveryApi.createTour({
         date,
         driverId,
-        name: 'Samstagstour',
+        name: defaultTourName(
+          date,
+          tours
+            .filter((entry) => entry.date === date)
+            .map((entry) => entry.name)
+        ),
       })
       setTours((list) => [...list, created])
       setTourId(created.id)
@@ -667,6 +751,16 @@ export default function DeliveryDashboard() {
     } finally {
       setBusy(false)
     }
+  }
+
+  /**
+   * Ein leeres Datumsfeld (iOS „Zurücksetzen", Android „Löschen") ist keine
+   * Wahl: die API lehnt `date=` mit 400 ab, und die Seite sagte dann
+   * „Ob für  eine Tour geplant ist …". Der bisherige Tag bleibt stehen.
+   */
+  const chooseDate = (value: string) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return
+    setDate(value)
   }
 
   const chooseDriver = (value: number | null) => {
@@ -683,6 +777,25 @@ export default function DeliveryDashboard() {
 
   const nextStop =
     tour?.stops.find((stop) => stop.id === tour.nextStopId) ?? null
+  // Eine Nummer je Stopp für Liste, „Nächster Stopp" und Karte: erledigte
+  // zuerst, dann die offenen in Fahrtreihenfolge (`stop-order.ts`).
+  const orderedStops = useMemo(
+    () => (tour ? displayOrder(tour.stops) : []),
+    [tour]
+  )
+  const positions = useMemo(() => stopPositions(orderedStops), [orderedStops])
+  // Stopps abhaken nur, wenn die API es annimmt (Vortag bis zwei Tage danach)
+  // - an einer Tour der nächsten Woche stand sonst „Geliefert“, das mit 400
+  // „Der Zeitpunkt muss zum Tourtag passen.“ endete. Die Übergabe einzelner
+  // Vorbestellungen prüft die API nicht am Tourtag; sie bleibt.
+  const markState = tour ? markWindow(tour.date, todayIso()) : 'open'
+  const canMark = can.drive && markState === 'open'
+  const finishedStops = orderedStops.filter((stop) => stop.status !== 'open')
+  // „Weitere Stopps": die offenen ohne den nächsten - der steht oben schon
+  // ausführlich und kam sonst ein zweites Mal.
+  const upcomingStops = orderedStops.filter(
+    (stop) => stop.status === 'open' && stop.id !== nextStop?.id
+  )
 
   const distanceTo = (stop: Stop): number | null => {
     if (!currentLocation || !hasCoordinates(stop)) return null
@@ -694,6 +807,22 @@ export default function DeliveryDashboard() {
       { latitude: stop.lat, longitude: stop.lon }
     )
   }
+
+  /** Was jede Stopp-Karte in den Listen bekommt. */
+  const stopCardProps = (stop: Stop) => ({
+    stop,
+    position: positions.get(stop.id) ?? 0,
+    isNext: stop.id === tour?.nextStopId,
+    distance: distanceTo(stop),
+    busy: busy || busyStops.has(stop.id),
+    busyPreorderIds: busyPreorders,
+    onStatusChange: changeStopStatus,
+    onPreorderStatusChange: changePreorderStatus,
+    readOnly: !can.drive,
+    canMarkStop: canMark,
+    canUndoHandover: can.undoHandover,
+    collapseHandover: true,
+  })
 
   const navigateAllUrl = useMemo(() => {
     const open = (tour?.stops ?? []).filter(
@@ -717,13 +846,7 @@ export default function DeliveryDashboard() {
   }, [tour, currentLocation])
 
   const offlineNotice = [
-    !isOnline
-      ? `Kein Netz. Änderungen werden gespeichert und automatisch nachgesendet${
-          pending.length > 0 ? ` (${pending.length} offen)` : ''
-        }.`
-      : pending.length > 0
-      ? `${pending.length} Änderung(en) warten noch auf den Server und werden automatisch nachgesendet.`
-      : null,
+    syncNotice(isOnline, serverTrouble, pending.length),
     copiedAt
       ? `Gespeicherter Stand ${describeCopyTime(
           copiedAt
@@ -733,14 +856,17 @@ export default function DeliveryDashboard() {
     .filter(Boolean)
     .join(' ')
 
+  const progressDone = tour ? tour.progress.done + tour.progress.failed : 0
+  const progressPercent =
+    tour && tour.progress.total > 0
+      ? (progressDone / tour.progress.total) * 100
+      : 0
+
   return (
     <main className={styles.main}>
       <header className={styles.header}>
-        <div>
-          <h1>Liefertour</h1>
-          <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
-        </div>
-        <ThemeToggle />
+        <p className={styles.eyebrow}>Bäckerei Heusser – Fahrer-App</p>
+        <h1>Liefertour</h1>
       </header>
 
       {session && (
@@ -753,9 +879,15 @@ export default function DeliveryDashboard() {
         </div>
       )}
 
-      <section className={styles.card}>
+      <section className={styles.card} aria-label="Tour auswählen">
         <div className={styles.selectRow}>
-          <div className={styles.field}>
+          {/* Gesperrt (Fahrer) über die ganze Breite: sonst stand bei 390 px
+              nur „Frieda Fahrerin (Te“ da. */}
+          <div
+            className={`${styles.field} ${
+              can.ownToursOnly ? styles.fieldFull : ''
+            }`}
+          >
             <label htmlFor="driver-select">Fahrer</label>
             <select
               id="driver-select"
@@ -784,23 +916,25 @@ export default function DeliveryDashboard() {
               id="tour-date"
               type="date"
               value={date}
-              onChange={(event) => setDate(event.target.value)}
+              onChange={(event) => chooseDate(event.target.value)}
             />
           </div>
         </div>
 
-        <div className={styles.buttonGroup}>
+        <div className={styles.chipGroup}>
           <button
             type="button"
-            className={styles.buttonGhost}
-            onClick={() => setDate(todayIso())}
+            aria-pressed={date === todayIso()}
+            onClick={() => chooseDate(todayIso())}
           >
             Heute
           </button>
+          {/* Am Samstag ist „Heute“ schon der Samstag - dann führt der Knopf
+              eine Woche weiter, sonst taten beide dasselbe. */}
           <button
             type="button"
-            className={styles.buttonGhost}
-            onClick={() => setDate(nextSaturdayIso())}
+            aria-pressed={date === followingSaturdayIso()}
+            onClick={() => chooseDate(followingSaturdayIso())}
           >
             Nächster Samstag
           </button>
@@ -824,7 +958,11 @@ export default function DeliveryDashboard() {
         )}
       </section>
 
-      {loading && <p className={styles.placeholder}>Tour wird geladen …</p>}
+      {loading && (
+        <p className={`${styles.placeholder} ${styles.loading}`} role="status">
+          Tour wird geladen …
+        </p>
+      )}
 
       {!loading && !tour && loadFailed && (
         <section className={styles.card}>
@@ -833,9 +971,15 @@ export default function DeliveryDashboard() {
             Ob für {formatDate(date)} eine Tour geplant ist, lässt sich gerade
             nicht prüfen.
           </p>
-          <button type="button" className={styles.button} onClick={reloadTours}>
-            Erneut laden
-          </button>
+          <div className={styles.buttonGroup}>
+            <button
+              type="button"
+              className={styles.button}
+              onClick={reloadTours}
+            >
+              Erneut laden
+            </button>
+          </div>
         </section>
       )}
 
@@ -850,14 +994,16 @@ export default function DeliveryDashboard() {
               : 'Für diesen Tag ist noch nichts geplant.'}
           </p>
           {can.plan && (
-            <button
-              type="button"
-              className={styles.button}
-              onClick={createTour}
-              disabled={busy}
-            >
-              Tour anlegen
-            </button>
+            <div className={styles.buttonGroup}>
+              <button
+                type="button"
+                className={styles.button}
+                onClick={createTour}
+                disabled={busy}
+              >
+                Tour anlegen
+              </button>
+            </div>
           )}
         </section>
       )}
@@ -873,7 +1019,9 @@ export default function DeliveryDashboard() {
                 </p>
               </div>
               <span
-                className={`${styles.badge} ${styles[`badge_${tour.status}`]}`}
+                className={`${styles.badge} ${
+                  styles[`badge_${tour.status}`] ?? ''
+                }`}
               >
                 {TOUR_STATUS_LABEL[tour.status]}
               </span>
@@ -882,21 +1030,14 @@ export default function DeliveryDashboard() {
             <div
               className={styles.progressBar}
               role="progressbar"
+              aria-label="Fortschritt der Tour"
               aria-valuemin={0}
               aria-valuemax={tour.progress.total}
-              aria-valuenow={tour.progress.done + tour.progress.failed}
+              aria-valuenow={progressDone}
             >
               <span
                 className={styles.progressFill}
-                style={{
-                  width: `${
-                    tour.progress.total === 0
-                      ? 0
-                      : ((tour.progress.done + tour.progress.failed) /
-                          tour.progress.total) *
-                        100
-                  }%`,
-                }}
+                style={{ width: `${progressPercent}%` }}
               />
             </div>
             <p className={styles.progressLabel}>
@@ -904,15 +1045,26 @@ export default function DeliveryDashboard() {
               {tour.progress.failed > 0 &&
                 `, ${tour.progress.failed} nicht angetroffen`}
             </p>
+            {can.drive && markState !== 'open' && (
+              <p className={styles.placeholder} data-testid="mark-window">
+                {markState === 'early'
+                  ? `Stopps abhaken geht erst ab dem Vortag der Tour (${formatDate(
+                      tour.date
+                    )}).`
+                  : 'Diese Tour liegt mehr als zwei Tage zurück – Stopps abhaken geht nicht mehr.'}
+              </p>
+            )}
 
-            <dl className={styles.stopFacts}>
+            <dl className={styles.keyFigures}>
               <div>
                 <dt>Strecke</dt>
                 <dd>
                   {tour.distance === null
                     ? '–'
                     : formatRouteDistance(tour.distance)}
-                  {tour.isEstimate && tour.distance !== null && ' (geschätzt)'}
+                  {tour.isEstimate && tour.distance !== null && (
+                    <span className={styles.keyFigureHint}>(geschätzt)</span>
+                  )}
                 </dd>
               </div>
               <div>
@@ -932,16 +1084,6 @@ export default function DeliveryDashboard() {
             </dl>
 
             <div className={styles.buttonGroup}>
-              {can.drive && (
-                <button
-                  type="button"
-                  className={styles.button}
-                  onClick={runOptimize}
-                  disabled={anyInFlight || tour.stops.length === 0}
-                >
-                  Route berechnen
-                </button>
-              )}
               {navigateAllUrl && (
                 <a
                   className={styles.buttonLink}
@@ -952,10 +1094,21 @@ export default function DeliveryDashboard() {
                   Ganze Tour navigieren
                 </a>
               )}
+              {can.drive && (
+                <button
+                  type="button"
+                  className={styles.buttonGhost}
+                  onClick={runOptimize}
+                  disabled={anyInFlight || tour.stops.length === 0}
+                >
+                  Route berechnen
+                </button>
+              )}
               {can.plan && (
                 <button
                   type="button"
                   className={styles.buttonGhost}
+                  aria-expanded={planning}
                   onClick={() => {
                     setConfirmDelete(false)
                     setPlanning((value) => !value)
@@ -967,109 +1120,16 @@ export default function DeliveryDashboard() {
             </div>
           </section>
 
-          {nextStop && (
-            <section className={`${styles.card} ${styles.nextCard}`}>
-              <h2>Nächster Stopp</h2>
-              <ul className={styles.stopList}>
-                <StopCard
-                  stop={nextStop}
-                  position={tour.stops.indexOf(nextStop) + 1}
-                  isNext
-                  distance={distanceTo(nextStop)}
-                  busy={busy || busyStops.has(nextStop.id)}
-                  busyPreorderIds={busyPreorders}
-                  onStatusChange={changeStopStatus}
-                  onPreorderStatusChange={changePreorderStatus}
-                  readOnly={!can.drive}
-                  canUndoHandover={can.undoHandover}
-                />
-              </ul>
-            </section>
-          )}
-
-          <section className={styles.card}>
-            <h2>Karte</h2>
-            <div className={styles.mapContainer}>
-              <Map
-                currentLocation={currentLocation ?? undefined}
-                depot={tour.depot}
-                stops={tour.stops}
-                geometry={tour.geometry}
-                activeStopId={tour.nextStopId}
-              />
-            </div>
-
-            {can.drive && (
-              <div className={styles.buttonGroup}>
-                {!isTracking ? (
-                  <button
-                    type="button"
-                    className={styles.buttonGhost}
-                    onClick={startTracking}
-                  >
-                    Standort verfolgen
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className={styles.buttonGhost}
-                    onClick={stopTracking}
-                  >
-                    Verfolgung stoppen
-                  </button>
-                )}
-              </div>
-            )}
-
-            {currentLocation && (
-              <p className={styles.coords}>
-                {currentLocation.latitude.toFixed(5)},{' '}
-                {currentLocation.longitude.toFixed(5)}
-                {/* `!= null`, nicht Truthiness: sonst rendert React bei 0 eine nackte 0. */}
-                {currentLocation.accuracy != null &&
-                  ` · ±${Math.round(currentLocation.accuracy)} m`}
-                {currentLocation.speed != null &&
-                  ` · ${Math.round(currentLocation.speed * 3.6)} km/h`}
-              </p>
-            )}
-          </section>
-
-          <section className={styles.card}>
-            <h2>Alle Stopps ({tour.stops.length})</h2>
-            {tour.stops.length === 0 ? (
-              <p className={styles.placeholder}>
-                {can.plan
-                  ? 'Noch keine Stopps. Über „Tour planen“ hinzufügen.'
-                  : 'Noch keine Stopps.'}
-              </p>
-            ) : (
-              <ul className={styles.stopList}>
-                {tour.stops.map((stop, index) => (
-                  <StopCard
-                    key={stop.id}
-                    stop={stop}
-                    position={index + 1}
-                    isNext={stop.id === tour.nextStopId}
-                    distance={distanceTo(stop)}
-                    busy={busy || busyStops.has(stop.id)}
-                    busyPreorderIds={busyPreorders}
-                    onStatusChange={changeStopStatus}
-                    onPreorderStatusChange={changePreorderStatus}
-                    onRemove={planning && can.plan ? removeStop : undefined}
-                    onMove={planning && can.plan ? moveStop : undefined}
-                    isFirst={index === 0}
-                    isLast={index === tour.stops.length - 1}
-                    readOnly={!can.drive}
-                    canUndoHandover={can.undoHandover}
-                  />
-                ))}
-              </ul>
-            )}
-          </section>
-
           {planning && can.plan && (
             <section className={styles.card}>
               <h2>Tour bearbeiten</h2>
+              <TourSettings
+                key={tour.id}
+                name={tour.name}
+                plannedStart={tour.plannedStart}
+                busy={busy}
+                onSave={saveTourField}
+              />
               <div className={styles.field}>
                 <label htmlFor="tour-driver-select">Fahrer dieser Tour</label>
                 <select
@@ -1097,7 +1157,7 @@ export default function DeliveryDashboard() {
                 <div className={styles.buttonGroup}>
                   <button
                     type="button"
-                    className={styles.buttonGhost}
+                    className={styles.buttonWarn}
                     disabled={busy}
                     onClick={() => setConfirmDelete(true)}
                   >
@@ -1105,15 +1165,23 @@ export default function DeliveryDashboard() {
                   </button>
                 </div>
               ) : (
-                <div role="alertdialog" aria-label="Tour löschen?">
+                <div
+                  className={`${styles.panel} ${styles.panelWarning}`}
+                  role="alertdialog"
+                  aria-label="Tour löschen?"
+                >
                   <p>
-                    Tour „{tour.name}“ mit {tour.stops.length} Stopp(s) wirklich
-                    löschen? Vorbestellungen der Sammelstelle bleiben erhalten.
+                    Tour „{tour.name}“ mit{' '}
+                    {tour.stops.length === 1
+                      ? '1 Stopp'
+                      : `${tour.stops.length} Stopps`}{' '}
+                    wirklich löschen? Vorbestellungen der Sammelstelle bleiben
+                    erhalten.
                   </p>
                   <div className={styles.buttonGroup}>
                     <button
                       type="button"
-                      className={styles.button}
+                      className={styles.buttonDanger}
                       disabled={busy}
                       onClick={deleteTour}
                     >
@@ -1143,19 +1211,210 @@ export default function DeliveryDashboard() {
               <AddStopForm busy={busy} onSubmit={addStop} />
             </section>
           )}
+
+          {/* In der Planung nicht: dort steht derselbe Stopp kompakt in der
+              Liste darunter - sonst kam er doppelt, samt Übergabeliste. */}
+          {nextStop && !planning && (
+            <section
+              className={`${styles.card} ${styles.nextCard}`}
+              aria-label="Nächster Stopp"
+            >
+              <h2>Nächster Stopp</h2>
+              <ul className={styles.stopList}>
+                <StopCard
+                  stop={nextStop}
+                  position={positions.get(nextStop.id) ?? 0}
+                  isNext
+                  distance={distanceTo(nextStop)}
+                  busy={busy || busyStops.has(nextStop.id)}
+                  busyPreorderIds={busyPreorders}
+                  onStatusChange={changeStopStatus}
+                  onPreorderStatusChange={changePreorderStatus}
+                  readOnly={!can.drive}
+                  canMarkStop={canMark}
+                  canUndoHandover={can.undoHandover}
+                />
+              </ul>
+            </section>
+          )}
+
+          {planning && can.plan ? (
+            // Planung: alle Stopps flach und kompakt (Name, Zeitfenster,
+            // Ankunft), mit „Nach oben" / „Nach unten" - ohne Fahrer-Bedienung.
+            <section className={styles.plainSection} aria-label="Alle Stopps">
+              <div className={styles.sectionHead}>
+                <h2>Alle Stopps ({tour.stops.length})</h2>
+                {tour.stops.length > 0 && (
+                  <span className={styles.count}>
+                    {tour.progress.open} offen
+                  </span>
+                )}
+              </div>
+              {tour.stops.length === 0 ? (
+                <p className={styles.placeholder}>
+                  Noch keine Stopps. Über „Tour planen“ hinzufügen.
+                </p>
+              ) : (
+                <ul className={styles.stopList}>
+                  {orderedStops.map((stop, index) => (
+                    <StopCard
+                      key={stop.id}
+                      {...stopCardProps(stop)}
+                      planning
+                      onRemove={removeStop}
+                      onMove={moveStop}
+                      isFirst={index === 0}
+                      isLast={index === orderedStops.length - 1}
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+          ) : (
+            <>
+              {tour.stops.length === 0 && (
+                <section
+                  className={styles.plainSection}
+                  aria-label="Alle Stopps"
+                >
+                  <div className={styles.sectionHead}>
+                    <h2>Alle Stopps (0)</h2>
+                  </div>
+                  <p className={styles.placeholder}>
+                    {can.plan
+                      ? 'Noch keine Stopps. Über „Tour planen“ hinzufügen.'
+                      : 'Noch keine Stopps.'}
+                  </p>
+                </section>
+              )}
+
+              {upcomingStops.length > 0 && (
+                <section
+                  className={styles.plainSection}
+                  aria-label="Weitere Stopps"
+                >
+                  <div className={styles.sectionHead}>
+                    <h2>Weitere Stopps ({upcomingStops.length})</h2>
+                  </div>
+                  <ul className={styles.stopList}>
+                    {upcomingStops.map((stop) => (
+                      <StopCard key={stop.id} {...stopCardProps(stop)} />
+                    ))}
+                  </ul>
+                </section>
+              )}
+
+              {/* Erledigte zugeklappt: nachsehen oder zurücksetzen geht,
+                  aber der Fahrer scrollt nicht an ihnen vorbei. */}
+              {finishedStops.length > 0 && (
+                <section
+                  className={styles.plainSection}
+                  aria-label="Erledigte Stopps"
+                >
+                  <details className={styles.disclosure}>
+                    <summary>
+                      Erledigt ({finishedStops.length}
+                      {tour.progress.failed > 0 &&
+                        `, davon ${tour.progress.failed} nicht angetroffen`}
+                      )
+                    </summary>
+                    <ul className={`${styles.stopList} ${styles.finishedList}`}>
+                      {finishedStops.map((stop) => (
+                        <StopCard key={stop.id} {...stopCardProps(stop)} />
+                      ))}
+                    </ul>
+                  </details>
+                </section>
+              )}
+            </>
+          )}
+
+          <section className={styles.card} aria-label="Karte">
+            <h2>Karte</h2>
+            <div className={styles.mapContainer}>
+              <Map
+                currentLocation={currentLocation ?? undefined}
+                depot={tour.depot}
+                stops={tour.stops}
+                geometry={tour.geometry}
+                activeStopId={tour.nextStopId}
+                height="300px"
+              />
+            </div>
+
+            {(can.drive || currentLocation || locationUnavailable) && (
+              <div className={styles.mapFooter}>
+                {can.drive &&
+                  (!isTracking ? (
+                    <button
+                      type="button"
+                      className={styles.buttonGhost}
+                      onClick={startTracking}
+                    >
+                      Standort verfolgen
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.buttonGhost}
+                      onClick={stopTracking}
+                    >
+                      Verfolgung stoppen
+                    </button>
+                  ))}
+                {!currentLocation && locationUnavailable && (
+                  <p className={styles.coords}>
+                    Standort nicht verfügbar. Die Tour funktioniert trotzdem,
+                    nur ohne Entfernungen.
+                  </p>
+                )}
+                {currentLocation && (
+                  <p className={styles.coords}>
+                    {currentLocation.latitude.toFixed(5)},{' '}
+                    {currentLocation.longitude.toFixed(5)}
+                    {/* `!= null`, nicht Truthiness: sonst rendert React bei 0 eine nackte 0. */}
+                    {currentLocation.accuracy != null &&
+                      ` · ±${Math.round(currentLocation.accuracy)} m`}
+                    {currentLocation.speed != null &&
+                      ` · ${Math.round(currentLocation.speed * 3.6)} km/h`}
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
         </>
       )}
 
-      {error && (
-        <div className={styles.error} role="alert">
-          <p>{error}</p>
-        </div>
-      )}
-      {hint && !error && (
-        <div className={styles.hint} role="status">
-          <p>{hint}</p>
-        </div>
-      )}
+      {/* Meldungen kleben am unteren Rand - die Seite ist am Samstag lang,
+          und eine Ablehnung ganz unten sah niemand. */}
+      <div className={styles.toasts}>
+        {error && (
+          <div className={styles.error} role="alert">
+            <p>{error}</p>
+            <button
+              type="button"
+              className={styles.dismiss}
+              onClick={() => setError(null)}
+            >
+              Schließen
+            </button>
+          </div>
+        )}
+        {hint && !error && (
+          <div className={styles.hint} role="status">
+            <p>{hint}</p>
+            <button
+              type="button"
+              className={styles.dismiss}
+              onClick={() => setHint(null)}
+            >
+              Schließen
+            </button>
+          </div>
+        )}
+      </div>
+
+      <AppFooter />
     </main>
   )
 }
@@ -1248,16 +1507,23 @@ function applyPreorderStatus(
 ): Tour {
   const { status } = body
   return mapPreorder(tour, preorderId, (preorder) => {
-    // Wie der Server: eine unbezahlte gilt mit der Übergabe als bezahlt,
-    // eine vorab bezahlte nur mit `paid: true` als ausgeglichen.
+    // Wie der Server: `paid: true` gleicht aus (auch nachträglich an einer
+    // schon übergebenen), `paid: false` lässt das Geld offen, und ohne `paid`
+    // gilt eine unbezahlte mit der Übergabe als bezahlt.
     const settles =
       status === 'handed_over' &&
-      preorder.status !== 'handed_over' &&
-      (body.paid === true || preorder.paid === false)
+      (body.paid === true ||
+        (body.paid === undefined &&
+          preorder.status !== 'handed_over' &&
+          preorder.paid === false))
     return {
       ...preorder,
       status,
-      handedOverAt: status === 'handed_over' ? new Date().toISOString() : null,
+      handedOverAt:
+        status === 'handed_over'
+          ? (preorder.status === 'handed_over' && preorder.handedOverAt) ||
+            new Date().toISOString()
+          : null,
       ...(settles
         ? { paid: true, paidAmount: preorder.total, paymentBalance: 0 }
         : {}),
@@ -1340,6 +1606,88 @@ function describeCopyTime(iso: string): string {
     year: 'numeric',
   })
   return `vom ${day}, ${formatTime(iso)} Uhr`
+}
+
+/**
+ * Name und geplante Abfahrt der Tour (Planung, Inhaber). Gespeichert wird beim
+ * Verlassen des Feldes bzw. mit Enter, und nur, wenn sich etwas geändert hat.
+ */
+function TourSettings({
+  name,
+  plannedStart,
+  busy,
+  onSave,
+}: {
+  name: string
+  plannedStart: string
+  busy: boolean
+  onSave: (body: { name?: string; plannedStart?: string }) => void
+}) {
+  const [draftName, setDraftName] = useState(name)
+  const [draftStart, setDraftStart] = useState(plannedStart)
+  const [startError, setStartError] = useState<string | null>(null)
+  // Kommt ein neuer Stand vom Server, gilt er.
+  useEffect(() => setDraftName(name), [name])
+  useEffect(() => setDraftStart(plannedStart), [plannedStart])
+
+  const commitName = () => {
+    const value = draftName.trim()
+    if (!value) {
+      setDraftName(name)
+      return
+    }
+    if (value !== name) onSave({ name: value })
+  }
+  const commitStart = () => {
+    if (draftStart === plannedStart) {
+      setStartError(null)
+      return
+    }
+    if (!isClockTime(draftStart)) {
+      setStartError('Bitte eine Uhrzeit wie 06:30 eingeben.')
+      return
+    }
+    setStartError(null)
+    onSave({ plannedStart: draftStart })
+  }
+  const onEnter =
+    (commit: () => void) => (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Enter') commit()
+    }
+
+  return (
+    <div className={styles.selectRow}>
+      <div className={styles.field}>
+        <label htmlFor="tour-name">Name der Tour</label>
+        <input
+          id="tour-name"
+          value={draftName}
+          maxLength={120}
+          disabled={busy}
+          onChange={(event) => setDraftName(event.target.value)}
+          onBlur={commitName}
+          onKeyDown={onEnter(commitName)}
+        />
+      </div>
+      <div className={styles.field}>
+        <label htmlFor="tour-start">Abfahrt geplant</label>
+        <input
+          id="tour-start"
+          type="time"
+          value={draftStart}
+          disabled={busy}
+          aria-describedby="tour-start-hint"
+          aria-invalid={startError ? true : undefined}
+          onChange={(event) => setDraftStart(event.target.value)}
+          onBlur={commitStart}
+          onKeyDown={onEnter(commitStart)}
+        />
+        <span id="tour-start-hint" className={styles.fieldHint}>
+          {startError ?? 'Ab hier rechnet die App die Ankunftszeiten.'}
+        </span>
+      </div>
+    </div>
+  )
 }
 
 function readStoredDriver(): number | null {

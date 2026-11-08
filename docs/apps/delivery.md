@@ -99,15 +99,24 @@ MUI/Context-Stacks steht.
   und darf „Route berechnen", aber nicht planen (kein „Tour anlegen", „Tour planen", Stopp
   entfernen) und eine **Übergabe nicht zurücknehmen** (`undoHandover`: an einer übergebenen
   Vorbestellung steht statt „Zurücksetzen" „Zurücknehmen kann der Verkauf." - die API sagt sonst 403
-  `handover_undo_forbidden`; „Nicht abgeholt" darf er zurücksetzen). `verkauf` liest nur (keine
+  `handover_undo_forbidden`). Auch „Nicht abgeholt" setzt er **nicht** auf „Offen" zurück - die API
+  lässt den Fahrer nur `abgeholt`/`nicht_abgeholt` setzen (403). Kommt die Familie doch noch, steht
+  an der nicht abgeholten Bestellung wieder „Übergeben" (für alle Rollen; „Zurücksetzen" nur mit
+  `undoHandover`). `verkauf` liest nur (keine
   Abhak-Knöpfe, kein Standort); `backstube` wird beim Anmelden abgewiesen und gleich wieder
   abgemeldet.
 - **Planen (nur Inhaber):** „Tour planen" öffnet „Tour bearbeiten" mit Fahrer-Zuordnung
   (`PATCH /tours/:id { driverId }` - eine unter „Alle" angelegte Tour hat sonst keinen Fahrer),
-  „Nach oben"/„Nach unten" je Stopp (`stopOrder`) und „Tour löschen" mit Rückfrage in der Seite.
+  „Nach oben"/„Nach unten" je Stopp (`stopOrder`) und „Tour löschen" mit Rückfrage in der Seite;
+  dazu **Name der Tour** und **Abfahrt geplant** (`PATCH { name }` / `{ plannedStart }`, gespeichert
+  beim Verlassen des Feldes; die Abfahrt ist die Grundlage aller Ankunftszeiten). Eine neue Tour
+  heißt nach dem Wochentag („Freitagstour", die zweite am Tag „Samstagstour 2", `defaultTourName()`).
+  In der Planung stehen die Stopps kompakt (`StopCard planning`), „Nächster Stopp" entfällt.
 - **Abgelehnte Änderungen bleiben sichtbar.** Lehnt die API ein Abhaken oder eine Übergabe mit 4xx
   ab, lädt die Seite die Tour neu und zeigt **danach** die `message` - `loadTours()` leert die
-  Fehlermeldung, vorher gesetzt verschwand sie sofort.
+  Fehlermeldung, vorher gesetzt verschwand sie sofort. Fehler und Hinweise stehen in `.toasts` am
+  **unteren Bildrand** (`position: sticky`, mit „Schließen"). Damit `sticky` greift, trägt
+  `html, body` `overflow-x: clip` statt `hidden` (`hidden` macht `body` zum Scroll-Container).
 - **Die Form des früheren Mocks wird weiter gelesen** (`normalizeUser()`), falls eine alte Sitzung im
   Speicher liegt: `email`/`firstName` statt `displayName`, `admin` → `inhaber`, `staff` → `verkauf`.
 
@@ -254,10 +263,15 @@ Regeln, die man kennen muss, bevor man hier etwas ändert:
   einem zweiten Aufruf, wäre sie im Funkloch weg. Stornierte sind nur dabei, wenn Geld
   zurückzugeben ist (`paymentBalance < 0`).
 - **Bezahlstand:** jede Bestellung trägt `paid`, `paidAmount` und `paymentBalance`; `HandoverList`
-  zeigt je Zeile „Geld" (nichts / X kassieren / Rest X / X zurückgeben), die Kopfzeile kassiert
-  Vorkasse nicht ein zweites Mal und nennt „Zurückzugeben". Bei Rest oder Erstattung fragen zwei
-  Knöpfe, ob das Geld geflossen ist (`paid: true` mit der Übergabe) - der Alias setzt `paid` nur bei
-  einer **unbezahlten** Bestellung selbst.
+  zeigt je Zeile „Geld" mit den Worten der Abholliste der Verwaltung („Nicht bezahlt – X kassieren",
+  „Bezahlt", „Rest X offen – kassieren", „Erstattung X offen – zurückgeben"; Status „Abgeholt").
+  Die Kopfzeile kassiert Vorkasse nicht ein zweites Mal, nennt Stornierte, „Ohne Zahlung übergeben:
+  X" (wie `handedOverUnpaidTotal` der Abholliste) und „Zurückzugeben" und lässt 0,00-€-Teile weg.
+  **„Übergeben" fragt immer, wenn Geld offen ist:** unbezahlt „Bezahlt und übergeben" (`paid: true`)
+  / „Ohne Zahlung übergeben" (`paid: false`), bei Rest bzw. Erstattung „… und übergeben" (`paid:
+true`) / „Ohne … übergeben" (ohne `paid`). Der Alias setzt `paid` nur noch ohne Angabe selbst (alte
+  Warteschlangen) - vorher buchte er jede unbezahlte Übergabe als bezahlt. Der Fahrer darf `paid:
+false` nur an einer unbezahlten schicken (sonst 403 `paid_undo_forbidden`).
 - **Preise und Namen sind ein Snapshot** aus `hq`, wie bei `PartnerVisitItem`. Der Client schickt nur
   `productId` und `qty`; ein mitgeschickter Preis wird ignoriert. Beim **Bearbeiten** wird der
   Snapshot bereits erfasster Positionen aus der gespeicherten Bestellung übernommen, nicht neu aus
@@ -354,6 +368,10 @@ Tests: `apps/bakery-api/tests/unit/deliveryPreorders.test.js`.
   `ensureStopCoordinates()` sucht ohne Straße gar nicht erst.
 - **Kein `window.confirm`** — blockiert und sieht auf dem Handy aus wie ein Absturz. Die Rückfrage
   vor dem Abschließen eines Stopps mit offenen Vorbestellungen steht in der Oberfläche.
+- **Tageswechsel leert die Liste.** `loadTours()` merkt sich in `shownKeyRef`, zu welchem Tag und
+  Fahrer die Liste gehört, und leert sie beim Wechsel - sonst blieb ohne Offline-Kopie des neuen
+  Tages die alte Tour samt Abhak-Knöpfen stehen. Ein **geleertes** Datumsfeld (iOS „Zurücksetzen")
+  ist keine Wahl (`chooseDate()`); die API antwortet auf `date=` mit 400.
 - **Kein `"type"` in `libs/bakery-delivery-{routing,tracking}/package.json`.** Die Quellen sind ESM;
   ein `"type": "commonjs"` dort ließ Turbopack mit „Specified module format (CommonJs) is not
   matching …" aussteigen (`nx build` scheiterte, `nx serve` lieferte HTTP 500). Nicht „lösen",
@@ -379,6 +397,12 @@ src/components/AddStopForm.tsx   Erfassung inkl. „2x Bauernbrot, 10x Brötchen
 src/components/HandoverList.tsx  Übergabeliste einer Sammelstelle (Vorbestellungen abhaken)
 src/components/FailureForm.tsx   Rückfrage zu „Nicht angetroffen": Grund und Verbleib der Ware
 src/components/ThemeToggle.tsx   Farbschema System / Hell / Dunkel
+src/components/AppFooter.tsx     Fußzeile mit dem Farbschema (auch auf der Anmeldung)
+src/components/ServiceWorkerRegistration.tsx  registriert public/sw.js (nur Produktion)
+src/lib/stop-order.ts            eine Stoppnummer für Liste, „Nächster Stopp" und Karte
+src/lib/sync-messages.ts         Texte zu Warteschlange und abgelehnten Nachsendungen
+src/lib/tour-day.ts              Tourtag, Abhak-Fenster (markWindow)
+src/lib/pwa.ts                   Service-Worker-Registrierung, Version
 src/components/Map.tsx           Leaflet, dynamisch mit ssr:false
 src/lib/delivery-api.ts          Typen, fetch-Client (Bearer + Refresh), Offline-Warteschlange
 src/lib/session.ts               Anmeldung, Sitzung, Refresh mit Rotation, Rollenrechte (B8)
@@ -406,6 +430,11 @@ Netzfehler in eine `localStorage`-Warteschlange gelegt (`bakery-delivery-queue`)
 Funk da ist, ob der Server antwortet, weiß er nicht. Pro Stopp bleibt nur der letzte Stand stehen.
 Eine Änderung, die der Server **fachlich** ablehnt (4xx), fliegt aus der Schlange — sonst blockierte
 sie alle folgenden für immer; Netzfehler (5xx, kein Netz, Timeout) lassen den Eintrag stehen.
+**Eine abgelehnte Nachsendung nimmt die Seite zurück:** `flushQueue` liefert je abgelehntem Eintrag
+den Grund (`RejectedUpdate.reason`), die Seite lädt die Touren neu und meldet „Übergabe an … nicht
+gespeichert: <message>. Angezeigt ist jetzt der Stand des Servers." (`describeRejected()` in
+`src/lib/sync-messages.ts`). **Ein 5xx ist kein Funkloch:** `isServerError()` trennt beides, der
+Balken sagt dann „Der Server hat einen Fehler gemeldet …" statt „Kein Netz" (`syncNotice()`).
 `flushQueue` liest die Schlange nach jedem Versand **neu** und streicht nur den gesendeten Eintrag
 (per eindeutiger `id`) - früher schrieb es seine Kopie vom Start zurück und verlor ein Abhaken, das
 während des Nachsendens dazukam. Ein Stopp-Abhaken trägt `completedAt` = Zeitpunkt des Tippens,
@@ -446,8 +475,20 @@ erst nach dem 15-s-Timeout von `GET /drivers` da. Der Tag wird absichtlich nicht
 **nicht** „noch nichts geplant / Tour anlegen" — sonst legte der Fahrer beim nächsten Netz eine
 zweite Tour an. Das Nachladen der Kopie (`online`-Event, 30-s-Takt) wartet, solange ein Abhaken
 unterwegs ist (`busyRef`) oder die Warteschlange voll ist; ein erfolgreicher `PATCH` ersetzt die
-Kopie sofort. Es gibt keinen Service Worker: ein kaltes Neuladen ganz ohne Netz zeigt die
-Fehlerseite des Browsers.
+Kopie sofort.
+
+**Service Worker:** `public/sw.js` cacht die App-Hülle - `/` (das HTML trägt keine Kundendaten),
+`/_next/static/*`, `/leaflet/*`, `/favicon.ico` - und liefert sie bei einem Seitenaufruf ohne Netz
+(oder bei 502-504 eines Proxys) aus; erst damit erscheint die Offline-Kopie auch nach einem kalten
+Neuladen im Funkloch. Nie angefasst: `/api/*` und fremde Hosts (API, Kartenkacheln). Registriert
+wird nur im Produktions-Build über HTTPS/localhost (`src/lib/pwa.ts`,
+`components/ServiceWorkerRegistration.tsx`), je Build unter `/sw.js?v=<NEXT_PUBLIC_SW_VERSION>`
+(`next.config.js`, `SW_VERSION` überschreibt); `next dev` meldet einen alten Worker ab. Notschalter
+beim Build: `NEXT_PUBLIC_DISABLE_SW=1`. Tests: `src/lib/sw.spec.ts`, `src/lib/pwa.spec.ts`.
+
+**Abhaken nur, wenn die API es annimmt** (`markWindow()` in `src/lib/tour-day.ts`, wie
+`COMPLETED_AT_DAYS_*` der API: Vortag bis zwei Tage nach dem Tourtag). Sonst fehlen „Geliefert",
+„Nicht angetroffen" und „Stopp abschließen" (`StopCard canMarkStop`), und ein Hinweis sagt warum.
 
 ### „Nicht angetroffen" hält Grund und Verbleib der Ware fest
 
@@ -471,6 +512,27 @@ beide Richtungen gewinnt. Ein Inline-Skript in `layout.tsx` (Quelle in `src/lib/
 
 Keine festen Farben in `page.module.css`. Die Leaflet-Kacheln werden im Dunkelmodus per CSS-Filter
 abgedunkelt, die Marker bleiben ausgenommen. Status ist nie **nur** Farbe — der Text daneben bleibt.
+
+### Oberfläche
+
+Dieselben Regeln wie das Layout-Kit der Verwaltung
+(`apps/bakery-management/src/components/layout/README.md`), nur in CSS-Variablen statt MUI;
+Kommentar am Kopf von `page.module.css`:
+
+- Eine Spalte (höchstens 760 px), Rand 16 px am Handy, 24 px ab 768 px. Genau ein `h1`
+  („Liefertour"), Abschnitte `h2`, Stopps `h3`, Vorbestellungen `h4`.
+- Reihenfolge: Kopf + Anmeldung, Auswahl (Fahrer/Tag, „Heute"/„Nächster Samstag" als Chips),
+  Tourkarte, **Planung direkt darunter**, „Nächster Stopp", „Weitere Stopps", „Erledigt (n)"
+  zugeklappt, Karte, Fußzeile mit dem Farbschema (`AppFooter`). In der Planung eine flache Liste
+  „Alle Stopps".
+- **Eine Nummer je Stopp** (`src/lib/stop-order.ts`): erledigte zuerst (nach Abhakzeit), dann die
+  offenen in Tourreihenfolge - in Liste, „Nächster Stopp" und auf der Karte gleich.
+- **Je Karte eine gefüllte Hauptaktion** („Geliefert"/„Übergeben"/„Stopp abschließen", „Ganze Tour
+  navigieren"); „Nicht angetroffen" umrandet, gefüllt rot nur die Bestätigung einer Rückfrage.
+- **Die Übergabeliste einer Sammelstelle steht nur im Block „Nächster Stopp" offen**, sonst als
+  `<details>` „Übergabeliste (N)" (`collapseHandover`); je Familie eine knappe Zeile, sortiert nach
+  Name, stornierte zuletzt - wie die Abholliste der Verwaltung.
+- „Entfernen" in der Planung fragt nach („Ja, entfernen").
 
 ### Navigation
 

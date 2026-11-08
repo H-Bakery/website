@@ -11,10 +11,13 @@
  */
 
 import { apiClient, ApiError } from '@bakery/shared/data-access'
+import { backzettelErrorText } from './backstubeErrors'
 import type {
+  FinanceMonthReport,
   FinanceMonthsResponse,
   FinanceResult,
   FinanceSummaryResponse,
+  FinanceYearReport,
 } from './financeTypes'
 
 interface FinanceEnvelope<T> {
@@ -56,6 +59,39 @@ export async function fetchFinanceMonths(
 }
 
 /**
+ * Jahresabschluss (vorläufig) eines Jahres (`JJJJ`); ohne Jahr das jüngste
+ * mit Bankdaten. Gerechnet wird ausschließlich auf dem Server
+ * (`finance-report.core.js`).
+ */
+export async function fetchYearReport(
+  year?: string
+): Promise<FinanceResult<FinanceYearReport>> {
+  const path = year
+    ? `/api/finance/year/${encodeURIComponent(year)}`
+    : '/api/finance/year'
+  const res = (await apiClient.get<FinanceYearReport>(
+    path
+  )) as FinanceEnvelope<FinanceYearReport>
+  return toResult(res)
+}
+
+/**
+ * Monatsanalyse eines Monats (`JJJJ-MM`); ohne Monat der jüngste
+ * vollständige.
+ */
+export async function fetchMonthReport(
+  month?: string
+): Promise<FinanceResult<FinanceMonthReport>> {
+  const path = month
+    ? `/api/finance/month/${encodeURIComponent(month)}`
+    : '/api/finance/month'
+  const res = (await apiClient.get<FinanceMonthReport>(
+    path
+  )) as FinanceEnvelope<FinanceMonthReport>
+  return toResult(res)
+}
+
+/**
  * Fehlerklassen, die die Seite unterschiedlich darstellt. `personal_session`:
  * Inhaber an einer PIN-Station - Finanzen und Tagesziel brauchen eine
  * Passwort-Sitzung (B4, 403 `personal_session_required`).
@@ -70,7 +106,16 @@ export type FinanceAccessProblem =
 export const PERSONAL_SESSION_HINT =
   'An der PIN-Station nicht verfügbar – bitte am Büro-PC oder eigenen Gerät mit Passwort anmelden.'
 
-export function classifyFinanceError(err: unknown): {
+/**
+ * Fehlerklasse und deutscher Text. Ohne Antwort (WLAN weg, API gestoppt)
+ * oder mit 502-504 von Caddy kommt der WLAN-Hinweis, nie die Browser- oder
+ * Proxy-Meldung („Failed to fetch“, „HTTP 502: Bad Gateway“ - UI-Runde 2);
+ * `fallback` beginnt den Text bei einem unerwarteten Serverfehler.
+ */
+export function classifyFinanceError(
+  err: unknown,
+  fallback = 'Die Finanzdaten konnten nicht geladen werden.'
+): {
   kind: FinanceAccessProblem
   message: string
 } {
@@ -82,11 +127,12 @@ export function classifyFinanceError(err: unknown): {
       return { kind: 'personal_session', message: PERSONAL_SESSION_HINT }
     }
     if (err.status === 403) return { kind: 'forbidden', message: err.message }
-    return { kind: 'error', message: err.message }
   }
+  // Ein Programmfehler (TypeError „Cannot read …“) gehört nicht auf den
+  // Bildschirm; „Failed to fetch“ ist auch ein TypeError und bleibt der
+  // WLAN-Hinweis.
+  const text = backzettelErrorText(err, fallback)
   const message =
-    err instanceof Error && err.message
-      ? err.message
-      : 'Die Finanzdaten konnten nicht geladen werden.'
+    err instanceof TypeError && text === err.message ? fallback : text
   return { kind: 'error', message }
 }

@@ -7,13 +7,11 @@ import {
   Box,
   Button,
   Chip,
-  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
   DialogContentText,
   DialogTitle,
-  Grid,
   IconButton,
   Link,
   MenuItem,
@@ -37,15 +35,25 @@ import {
   ChevronRight as NextWeekIcon,
   Checklist as PickupListIcon,
   Edit as EditIcon,
+  ChevronRight as OpenIcon,
   EventBusy as CancelIcon,
   ListAlt as BackingListIcon,
-  LocalShipping as PreorderIcon,
   Place as AddressIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material'
 import PaymentNote from '../../../../components/preorders/PaymentNote'
 import PreorderStatusChip from '../../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../../lib/session'
+import { isPathAllowedForRole, type PilotRole } from '../../../../lib/roles'
+import {
+  EmptyState,
+  ErrorState,
+  KeyFigures,
+  LoadingState,
+  PageLayout,
+  PageSection,
+  type KeyFigure,
+} from '../../../../components/layout'
 import {
   cancelPreorder,
   fetchPickupPoints,
@@ -60,7 +68,11 @@ import {
   type Preorder,
   type PreorderDay,
 } from '../../../../lib/preordersTypes'
-import { abhollisteHref } from '../../../../lib/abholliste'
+import {
+  abhollisteHref,
+  MOERSBACH_POINT_ID,
+  preferredPickupPoint,
+} from '../../../../lib/abholliste'
 import {
   DELIVERY_WEEKDAY_LABELS,
   PickupPoint,
@@ -71,6 +83,7 @@ import {
   formatPickupAddress,
   hasPickupAddress,
   isBusinessDate,
+  moersbachListHref,
   nextDeliveryDate,
   shiftDate,
 } from './preorderTypes'
@@ -80,34 +93,6 @@ import { TOUCH_LINK_STYLE } from '../../../../lib/muiTheme'
 const DEFAULT_WEEKDAY = 6
 
 const PICKUP_POINT_HREF = '/admin/delivery/preorders/lieferstelle'
-
-function StatTile({
-  label,
-  value,
-  note,
-}: {
-  label: string
-  value: string
-  note?: string | null
-}) {
-  return (
-    <Box
-      sx={{ p: 1.5, height: '100%', borderRadius: 1, bgcolor: 'action.hover' }}
-    >
-      <Typography variant="caption" color="text.secondary" display="block">
-        {label}
-      </Typography>
-      <Typography variant="h6" sx={{ fontSize: '1.15rem', lineHeight: 1.4 }}>
-        {value}
-      </Typography>
-      {note ? (
-        <Typography variant="caption" color="text.secondary" display="block">
-          {note}
-        </Typography>
-      ) : null}
-    </Box>
-  )
-}
 
 /**
  * Was „Noch zu kassieren“ nicht enthält (W4-Verifikation Runde 3, wie die
@@ -134,6 +119,8 @@ export function moneyNotes(summary: {
 interface PreorderListClientProps {
   /** Liefertag aus der URL - z. B. nach dem Speichern einer Bestellung. */
   initialDate?: string
+  /** Sammelstelle aus der URL (`?point=`), sonst Mörsbach (`preferredPickupPoint`). */
+  initialPointId?: string
   /** Gesetzt, wenn gerade gespeichert wurde (`?saved=1`). */
   saved?: boolean
 }
@@ -148,10 +135,20 @@ interface PreorderListClientProps {
  */
 export default function PreorderListClient({
   initialDate,
+  initialPointId,
   saved = false,
 }: PreorderListClientProps) {
   const session = useOptionalSession()
-  const canWrite = canWritePreorders(session?.user?.role)
+  const role = session?.user?.role ?? null
+  const canWrite = canWritePreorders(role)
+  // Die Sammelstelle (Adresse, Fenster, Bestellschluss) ändert nur der
+  // Inhaber; der Verkauf sieht sie, der Fahrer nicht (ROLE_ACCESS).
+  const mayEditPoint = isPathAllowedForRole(
+    PICKUP_POINT_HREF,
+    role as PilotRole | null,
+    session?.sessionKind ?? null
+  )
+  const canEditPoint = role === 'inhaber'
   const theme = useTheme()
   // Unter md (Handy, Tablet hochkant) Karten statt einer Tabelle, die
   // Artikel, Summe, Status und Aktion seitlich aus dem Bild schiebt.
@@ -184,13 +181,27 @@ export default function PreorderListClient({
   /* ------------------------------------------------------------------ *
    * Sammelstellen - sie geben Liefertag und Bestellschluss vor.
    * ------------------------------------------------------------------ */
+  // Erneut versuchen nach einem Ausfall: zählt hoch und lädt neu.
+  const [pointsAttempt, setPointsAttempt] = useState(0)
   useEffect(() => {
     let active = true
     fetchPickupPoints()
       .then((list) => {
         if (!active) return
         setPoints(list)
-        const first = list.find((p) => p.active !== false) ?? list[0] ?? null
+        const fromUrl = initialPointId
+          ? list.find((p) => p.id === initialPointId)
+          : undefined
+        // Ohne `?point=` die Sammelstelle, nach der der Menüpunkt heißt
+        // (Mörsbach) - nicht die erste in API-Reihenfolge (alphabetisch).
+        const first =
+          fromUrl ??
+          preferredPickupPoint(list, {
+            date: initialDate,
+            preferId: MOERSBACH_POINT_ID,
+          }) ??
+          list[0] ??
+          null
         if (first) setPointId(first.id)
         setDate((current) =>
           isBusinessDate(current)
@@ -216,7 +227,28 @@ export default function PreorderListClient({
     return () => {
       active = false
     }
-  }, [])
+    // Beim ersten Laden (und „Erneut versuchen“): danach wählt die Seite
+    // die Sammelstelle selbst.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pointsAttempt])
+
+  const retryPoints = () => {
+    setPointsError(null)
+    setLoadingPoints(true)
+    setPointsAttempt((n) => n + 1)
+  }
+
+  // Liefertag und Sammelstelle in die URL - ein Neuladen oder „Zurück“ aus
+  // einer Bestellung bleibt so auf demselben Tag und Ort, und `?saved=1`
+  // zeigt nach einem Neuladen nicht noch einmal „gespeichert“.
+  useEffect(() => {
+    if (!isBusinessDate(date) || !pointId) return
+    if (typeof window === 'undefined') return
+    const href = moersbachListHref(date, false, pointId)
+    if (`${window.location.pathname}${window.location.search}` !== href) {
+      window.history.replaceState(window.history.state, '', href)
+    }
+  }, [date, pointId])
 
   const load = useCallback(async () => {
     // Ohne Sammelstelle gibt es nichts zu zeigen: der Tag ohne Ort wäre der
@@ -300,6 +332,11 @@ export default function PreorderListClient({
     pointId ? `&pickupPointId=${encodeURIComponent(pointId)}` : ''
   }`
   const pickupListHref = abhollisteHref(date, pointId || undefined)
+  // Die gewählte Sammelstelle bearbeiten - ohne Kennung öffnete die Seite
+  // immer die erste, und man änderte die falsche Adresse.
+  const pickupPointHref = pointId
+    ? `${PICKUP_POINT_HREF}?pickupPointId=${encodeURIComponent(pointId)}`
+    : PICKUP_POINT_HREF
 
   /** Ansehen/Bearbeiten und Stornieren - gleich in Tabelle und Karte. */
   const renderActions = (preorder: Preorder) => {
@@ -315,7 +352,13 @@ export default function PreorderListClient({
             href={`/admin/delivery/preorders/${preorder.id}`}
             sx={{ minWidth: 44, minHeight: 44 }}
           >
-            <EditIcon fontSize="small" />
+            {/* Nur-Lesen (Fahrer): kein Stift - die Detailseite hat für ihn
+                keine Bearbeiten-Aktionen (UI-Runde 1). */}
+            {canWrite ? (
+              <EditIcon fontSize="small" />
+            ) : (
+              <OpenIcon fontSize="small" />
+            )}
           </IconButton>
         </Tooltip>
         {/* Eine übergebene Bestellung wird nicht storniert:
@@ -371,80 +414,127 @@ export default function PreorderListClient({
       '–'
     )
 
-  return (
-    <Box>
-      <Box sx={{ mb: { xs: 2, md: 3 } }}>
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: { xs: 'column', sm: 'row' },
-            justifyContent: 'space-between',
-            alignItems: { xs: 'stretch', sm: 'center' },
-            gap: 1.5,
-            mb: 1,
-          }}
-        >
-          <Typography
-            variant="h4"
-            component="h1"
-            sx={{ fontSize: { xs: '1.5rem', md: '2.125rem' } }}
-          >
-            <PreorderIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Vorbestellungen
-          </Typography>
-          <Tooltip title="Aktualisieren">
-            <span>
-              <IconButton
-                aria-label="Vorbestellungen aktualisieren"
-                onClick={load}
-                disabled={loading || !isBusinessDate(date)}
-                sx={{ minWidth: 44, minHeight: 44 }}
-              >
-                <RefreshIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Box>
-        <Typography variant="subtitle1" color="text.secondary">
-          {point
-            ? `${point.name}${
-                point.window ? ` · Übergabe ${point.window} Uhr` : ''
-              }`
-            : 'Sammelstelle'}
-        </Typography>
-      </Box>
+  const address = point ? formatPickupAddress(point) : ''
+  const dateText = isBusinessDate(date)
+    ? `${
+        weekday != null ? `${DELIVERY_WEEKDAY_LABELS[weekday]}, ` : ''
+      }${formatDate(date)}`
+    : 'Bitte einen Liefertag im Format JJJJ-MM-TT wählen.'
+  const waitingCount = summary
+    ? summary.byStatus.offen + summary.byStatus.bereit - summary.notCollected
+    : 0
+  // Dieselben vier Zahlen wie die Abholliste (W4-verify r4: „Warten noch“
+  // = Offen + Bereit ohne „nicht abgeholt“).
+  const figures: KeyFigure[] = summary
+    ? [
+        {
+          label: 'Übergeben',
+          value: `${summary.byStatus.abgeholt} von ${summary.count}`,
+        },
+        {
+          label: 'Warten noch',
+          value: String(waitingCount),
+          hint:
+            summary.notCollected > 0
+              ? `${summary.notCollected} nicht abgeholt`
+              : undefined,
+        },
+        { label: 'Gesamtsumme', value: formatCurrency(summary.total) },
+        {
+          label: 'Noch zu kassieren',
+          value: formatCurrency(summary.unpaidTotal),
+          tone: summary.unpaidTotal > 0 ? 'warning' : 'default',
+          hint: moneyNotes(summary) ?? undefined,
+        },
+      ]
+    : []
 
+  // Solange die Sammelstelle noch nicht da ist (Laden, Fehler), heißt die
+  // Seite wie der Menüpunkt - nicht nur „Sammelstelle“ (UI-Runde 2).
+  const fallbackTitle =
+    !initialPointId || initialPointId === MOERSBACH_POINT_ID
+      ? 'Sammelstelle Mörsbach'
+      : 'Sammelstelle'
+  const pageTitle = point ? `Sammelstelle ${point.name}` : fallbackTitle
+
+  // Erst die Sammelstelle laden, dann die Seite zeigen: sonst stand eine
+  // leere Fläche ohne Hinweis da, und Titel, Adresse und Bestellschluss
+  // schoben den Tagwähler danach um ~100 px nach unten (UI-Runde 2).
+  if (loadingPoints) {
+    return (
+      <PageLayout width="wide" title={pageTitle}>
+        <LoadingState label="Sammelstelle wird geladen …" />
+      </PageLayout>
+    )
+  }
+
+  // Leer erst, wenn der Server für diesen Tag geantwortet hat.
+  const showLoading =
+    loading || (!day && !error && Boolean(pointId) && isBusinessDate(date))
+
+  return (
+    <PageLayout
+      width="wide"
+      title={pageTitle}
+      subtitle={[
+        point?.window ? `Übergabe ${point.window} Uhr` : null,
+        address || null,
+      ]
+        .filter(Boolean)
+        .join(' · ')}
+      actions={
+        <>
+          {canWrite && (
+            <Button
+              component={NextLink}
+              href={newHref}
+              variant="contained"
+              startIcon={<NewPreorderIcon />}
+            >
+              Vorbestellung erfassen
+            </Button>
+          )}
+          <Button
+            component={NextLink}
+            href={pickupListHref}
+            variant={canWrite ? 'outlined' : 'contained'}
+            startIcon={<PickupListIcon />}
+          >
+            Abholliste
+          </Button>
+          <Button
+            component={NextLink}
+            href={backingListHref}
+            variant="outlined"
+            startIcon={<BackingListIcon />}
+          >
+            Backliste
+          </Button>
+        </>
+      }
+    >
       {savedVisible && (
-        <Alert
-          severity="success"
-          sx={{ mb: 2 }}
-          onClose={() => setSavedVisible(false)}
-        >
+        <Alert severity="success" onClose={() => setSavedVisible(false)}>
           Die Vorbestellung wurde gespeichert.
         </Alert>
       )}
 
       {pointsError && (
-        <Alert severity="error" sx={{ mb: 2 }}>
-          {pointsError}
-        </Alert>
+        <ErrorState message={pointsError} onRetry={retryPoints} />
       )}
 
       {!loadingPoints && !pointsError && points.length === 0 && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Es ist keine Sammelstelle angelegt.
-        </Alert>
+        <Alert severity="info">Es ist keine Sammelstelle angelegt.</Alert>
       )}
 
       {!loadingPoints && point && !hasPickupAddress(point) && (
         <Alert
           severity="warning"
           icon={<AddressIcon />}
-          sx={{ mb: 2 }}
           action={
             <Button
               component={NextLink}
-              href={PICKUP_POINT_HREF}
+              href={pickupPointHref}
               color="inherit"
               size="small"
             >
@@ -458,11 +548,13 @@ export default function PreorderListClient({
       )}
 
       {/* Tagwahl */}
-      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <PageSection>
         <Stack
-          direction={{ xs: 'column', md: 'row' }}
+          direction={{ xs: 'column', sm: 'row' }}
           spacing={1.5}
-          alignItems={{ xs: 'stretch', md: 'center' }}
+          alignItems={{ xs: 'stretch', sm: 'center' }}
+          useFlexGap
+          flexWrap="wrap"
         >
           <Stack direction="row" spacing={0.5} alignItems="center">
             <Tooltip title="Eine Woche zurück">
@@ -471,7 +563,6 @@ export default function PreorderListClient({
                   aria-label="Eine Woche zurück"
                   onClick={() => changeDate(shiftDate(date, -7))}
                   disabled={!isBusinessDate(date)}
-                  sx={{ minWidth: 44, minHeight: 44 }}
                 >
                   <PrevWeekIcon />
                 </IconButton>
@@ -484,7 +575,7 @@ export default function PreorderListClient({
               value={date}
               onChange={(event) => changeDate(event.target.value)}
               InputLabelProps={{ shrink: true }}
-              sx={{ minWidth: 170, flex: { xs: 1, md: 'none' } }}
+              sx={{ minWidth: 160, flex: { xs: 1, sm: 'none' } }}
             />
             <Tooltip title="Eine Woche vor">
               <span>
@@ -492,7 +583,6 @@ export default function PreorderListClient({
                   aria-label="Eine Woche vor"
                   onClick={() => changeDate(shiftDate(date, 7))}
                   disabled={!isBusinessDate(date)}
-                  sx={{ minWidth: 44, minHeight: 44 }}
                 >
                   <NextWeekIcon />
                 </IconButton>
@@ -517,53 +607,43 @@ export default function PreorderListClient({
             </TextField>
           )}
 
-          <Box sx={{ flexGrow: 1 }} />
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ flex: { sm: 1 } }}
+          >
+            {dateText}
+          </Typography>
 
-          {canWrite && (
-            <Button
-              component={NextLink}
-              href={newHref}
-              variant="contained"
-              startIcon={<NewPreorderIcon />}
-              sx={{ minHeight: 44 }}
-            >
-              Vorbestellung erfassen
-            </Button>
-          )}
-          <Button
-            component={NextLink}
-            href={pickupListHref}
-            variant={canWrite ? 'outlined' : 'contained'}
-            startIcon={<PickupListIcon />}
-            sx={{ minHeight: 44 }}
-          >
-            Abholliste
-          </Button>
-          <Button
-            component={NextLink}
-            href={backingListHref}
-            variant="outlined"
-            startIcon={<BackingListIcon />}
-            sx={{ minHeight: 44 }}
-          >
-            Backliste
-          </Button>
+          <Stack direction="row" spacing={0.5} alignItems="center">
+            {mayEditPoint && (
+              <Button
+                component={NextLink}
+                href={pickupPointHref}
+                startIcon={<AddressIcon />}
+              >
+                {canEditPoint
+                  ? 'Sammelstelle bearbeiten'
+                  : 'Sammelstelle ansehen'}
+              </Button>
+            )}
+            <Tooltip title="Aktualisieren">
+              <span>
+                <IconButton
+                  aria-label="Vorbestellungen aktualisieren"
+                  onClick={load}
+                  disabled={loading || !isBusinessDate(date)}
+                >
+                  <RefreshIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Stack>
         </Stack>
-
-        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
-          {isBusinessDate(date)
-            ? `${
-                weekday != null ? `${DELIVERY_WEEKDAY_LABELS[weekday]}, ` : ''
-              }${formatDate(date)}`
-            : 'Bitte einen Liefertag im Format JJJJ-MM-TT wählen.'}
-          {point && formatPickupAddress(point)
-            ? ` · ${formatPickupAddress(point)}`
-            : ''}
-        </Typography>
-      </Paper>
+      </PageSection>
 
       {wrongWeekday && point && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
+        <Alert severity="warning">
           Der {formatDate(date)} ist kein{' '}
           {DELIVERY_WEEKDAY_LABELS[point.weekday] ?? 'Liefertag'} - an diesem
           Tag wird nicht zu {point.name} geliefert.
@@ -571,276 +651,232 @@ export default function PreorderListClient({
       )}
 
       {notice && (
-        <Alert severity={notice.passed ? 'warning' : 'info'} sx={{ mb: 2 }}>
+        <Alert severity={notice.passed ? 'warning' : 'info'}>
           {notice.text}
           {notice.passed
-            ? ' Später erfasste Bestellungen sind trotzdem gültig - sie werden als „Nach Bestellschluss“ markiert.'
+            ? ' Spätere Bestellungen gelten trotzdem (markiert „Nach Bestellschluss“).'
             : ''}
         </Alert>
       )}
 
       {conflict && (
-        <Alert severity="info" sx={{ mb: 2 }} onClose={() => setConflict(null)}>
+        <Alert severity="info" onClose={() => setConflict(null)}>
           {conflict}
         </Alert>
       )}
 
-      {error && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      )}
+      {error && <ErrorState message={error} onRetry={load} />}
 
       {summary && (
-        <Grid container spacing={1.5} sx={{ mb: 2 }}>
-          <Grid item xs={6} sm={4} md={2}>
-            <StatTile label="Bestellungen" value={String(summary.count)} />
-          </Grid>
-          <Grid item xs={6} sm={4} md={2}>
-            <StatTile
-              label="Gesamtsumme"
-              value={formatCurrency(summary.total)}
-            />
-          </Grid>
-          <Grid item xs={6} sm={4} md={2}>
-            {/* Offen + Bereit, ohne „nicht abgeholt“ - wie „Warten noch“ in
-                der Abholliste; „Offen“ hieße sonst etwas anderes als der
-                Status-Chip „Offen“ darunter (W4-verify r4). */}
-            <StatTile
-              label="Warten noch"
-              value={String(
-                summary.byStatus.offen +
-                  summary.byStatus.bereit -
-                  summary.notCollected
-              )}
-            />
-          </Grid>
-          <Grid item xs={6} sm={4} md={2}>
-            <StatTile
-              label="Übergeben"
-              value={String(summary.byStatus.abgeholt)}
-            />
-          </Grid>
-          <Grid item xs={6} sm={4} md={2}>
-            <StatTile
-              label="Nicht abgeholt"
-              value={String(summary.notCollected)}
-            />
-          </Grid>
-          <Grid item xs={6} sm={4} md={2}>
-            <StatTile
-              label="Noch zu kassieren"
-              value={formatCurrency(summary.unpaidTotal)}
-              note={moneyNotes(summary)}
-            />
-          </Grid>
-        </Grid>
+        <KeyFigures items={figures} aria-label="Stand des Liefertags" />
       )}
 
-      {loading ? (
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Vorbestellungen werden geladen"
-        >
-          <CircularProgress />
-        </Box>
+      {showLoading ? (
+        <LoadingState label="Vorbestellungen werden geladen …" />
       ) : preorders.length === 0 ? (
         !error &&
         day && (
-          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary" sx={{ mb: canWrite ? 2 : 0 }}>
-              Für diesen Tag ist noch nichts vorbestellt.
-            </Typography>
-            {canWrite && (
-              <Button
-                component={NextLink}
-                href={newHref}
-                variant="contained"
-                startIcon={<NewPreorderIcon />}
-              >
-                Vorbestellung erfassen
-              </Button>
-            )}
-          </Paper>
-        )
-      ) : !wide ? (
-        <Stack spacing={1.5} data-testid="preorder-cards">
-          {preorders.map((preorder) => {
-            const isCancelled = preorder.status === 'storniert'
-            return (
-              <Paper
-                key={preorder.id}
-                variant="outlined"
-                data-testid="preorder-card"
-                sx={{ p: 1.5 }}
-              >
-                <Stack
-                  direction="row"
-                  spacing={1}
-                  alignItems="flex-start"
-                  justifyContent="space-between"
+          <EmptyState
+            title="Für diesen Tag ist noch nichts vorbestellt."
+            action={
+              canWrite ? (
+                <Button
+                  component={NextLink}
+                  href={newHref}
+                  variant="contained"
+                  startIcon={<NewPreorderIcon />}
                 >
-                  <Box sx={{ minWidth: 0 }}>
+                  Vorbestellung erfassen
+                </Button>
+              ) : undefined
+            }
+          />
+        )
+      ) : (
+        <PageSection
+          title={`Bestellungen (${preorders.length})`}
+          variant={wide ? 'card' : 'plain'}
+          disablePadding
+        >
+          {!wide ? (
+            <Stack spacing={1} data-testid="preorder-cards">
+              {preorders.map((preorder) => {
+                const isCancelled = preorder.status === 'storniert'
+                return (
+                  <Paper
+                    key={preorder.id}
+                    data-testid="preorder-card"
+                    sx={{ p: 1.5 }}
+                  >
+                    <Stack
+                      direction="row"
+                      spacing={1}
+                      alignItems="flex-start"
+                      justifyContent="space-between"
+                    >
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography
+                          sx={{
+                            fontWeight: 600,
+                            overflowWrap: 'anywhere',
+                            textDecoration: isCancelled
+                              ? 'line-through'
+                              : 'none',
+                            color: isCancelled
+                              ? 'text.secondary'
+                              : 'text.primary',
+                          }}
+                        >
+                          {preorder.customerName}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontFamily: 'monospace' }}
+                        >
+                          {preorder.code}
+                        </Typography>
+                      </Box>
+                      <PreorderStatusChip preorder={preorder} />
+                    </Stack>
+                    {preorder.afterDeadline && !isCancelled && (
+                      <Chip
+                        size="small"
+                        variant="outlined"
+                        label="Nach Bestellschluss"
+                        sx={{ mt: 0.5 }}
+                      />
+                    )}
+                    {preorder.note && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        display="block"
+                        sx={{ mt: 0.5, overflowWrap: 'anywhere' }}
+                      >
+                        {preorder.note}
+                      </Typography>
+                    )}
                     <Typography
                       variant="body2"
-                      sx={{ fontWeight: 600, fontFamily: 'monospace' }}
-                    >
-                      {preorder.code}
-                    </Typography>
-                    <Typography
                       sx={{
-                        fontWeight: 600,
+                        mt: 1,
                         overflowWrap: 'anywhere',
                         textDecoration: isCancelled ? 'line-through' : 'none',
                         color: isCancelled ? 'text.secondary' : 'text.primary',
                       }}
                     >
-                      {preorder.customerName}
+                      {formatItems(preorder.items)}
                     </Typography>
-                  </Box>
-                  <PreorderStatusChip preorder={preorder} />
-                </Stack>
-                {preorder.afterDeadline && !isCancelled && (
-                  <Chip
-                    size="small"
-                    variant="outlined"
-                    label="Nach Bestellschluss"
-                    sx={{ mt: 0.5 }}
-                  />
-                )}
-                {preorder.note && (
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    display="block"
-                    sx={{ mt: 0.5, overflowWrap: 'anywhere' }}
-                  >
-                    {preorder.note}
-                  </Typography>
-                )}
-                <Typography
-                  variant="body2"
-                  sx={{
-                    mt: 1,
-                    overflowWrap: 'anywhere',
-                    textDecoration: isCancelled ? 'line-through' : 'none',
-                    color: isCancelled ? 'text.secondary' : 'text.primary',
-                  }}
-                >
-                  {formatItems(preorder.items)}
-                </Typography>
-                <Stack
-                  direction="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  spacing={1}
-                  sx={{ mt: 0.5, flexWrap: 'wrap' }}
-                >
-                  <Box>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {formatCurrency(preorder.total)}
-                    </Typography>
-                    <PaymentNote preorder={preorder} variant="caption" />
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                    {renderPhone(preorder)}
-                    {renderActions(preorder)}
-                  </Box>
-                </Stack>
-              </Paper>
-            )
-          })}
-        </Stack>
-      ) : (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small" aria-label="Vorbestellungen des Liefertags">
-            <TableHead>
-              <TableRow>
-                <TableCell>Code</TableCell>
-                <TableCell>Kunde</TableCell>
-                <TableCell>Telefon</TableCell>
-                <TableCell>Artikel</TableCell>
-                <TableCell align="right">Summe</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Aktion</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {preorders.map((preorder) => {
-                const isCancelled = preorder.status === 'storniert'
-                return (
-                  <TableRow
-                    key={preorder.id}
-                    hover
-                    sx={{
-                      // Stornierte bleiben sichtbar - sie sind die einzige
-                      // Aufzeichnung dessen, was jemand bestellt hatte.
-                      textDecoration: isCancelled ? 'line-through' : 'none',
-                      '& td': isCancelled
-                        ? { color: 'text.secondary' }
-                        : undefined,
-                    }}
-                  >
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Typography
-                        variant="body2"
-                        sx={{ fontWeight: 600, fontFamily: 'monospace' }}
-                      >
-                        {preorder.code}
-                      </Typography>
-                      {preorder.afterDeadline && !isCancelled && (
-                        <Chip
-                          size="small"
-                          variant="outlined"
-                          label="Nach Bestellschluss"
-                          sx={{ mt: 0.5 }}
-                        />
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {preorder.customerName}
-                      {preorder.note && (
-                        <Typography
-                          variant="caption"
-                          color="text.secondary"
-                          display="block"
-                        >
-                          {preorder.note}
+                    <Stack
+                      direction="row"
+                      alignItems="center"
+                      justifyContent="space-between"
+                      spacing={1}
+                      sx={{ mt: 0.5, flexWrap: 'wrap' }}
+                    >
+                      <Box>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                          {formatCurrency(preorder.total)}
                         </Typography>
-                      )}
-                    </TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      {renderPhone(preorder)}
-                    </TableCell>
-                    <TableCell>{formatItems(preorder.items)}</TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                      {formatCurrency(preorder.total)}
-                      <PaymentNote preorder={preorder} variant="caption" />
-                    </TableCell>
-                    <TableCell>
-                      <PreorderStatusChip preorder={preorder} />
-                    </TableCell>
-                    <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                      {renderActions(preorder)}
-                    </TableCell>
-                  </TableRow>
+                        <PaymentNote preorder={preorder} variant="caption" />
+                      </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        {renderPhone(preorder)}
+                        {renderActions(preorder)}
+                      </Box>
+                    </Stack>
+                  </Paper>
                 )
               })}
-            </TableBody>
-          </Table>
-        </TableContainer>
+            </Stack>
+          ) : (
+            <TableContainer>
+              <Table size="small" aria-label="Vorbestellungen des Liefertags">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Code</TableCell>
+                    <TableCell>Kunde</TableCell>
+                    <TableCell>Telefon</TableCell>
+                    <TableCell>Artikel</TableCell>
+                    <TableCell align="right">Summe</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Aktion</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {preorders.map((preorder) => {
+                    const isCancelled = preorder.status === 'storniert'
+                    return (
+                      <TableRow
+                        key={preorder.id}
+                        hover
+                        sx={{
+                          verticalAlign: 'top',
+                          // Stornierte bleiben sichtbar - sie sind die einzige
+                          // Aufzeichnung dessen, was jemand bestellt hatte.
+                          textDecoration: isCancelled ? 'line-through' : 'none',
+                          '& td': isCancelled
+                            ? { color: 'text.secondary' }
+                            : undefined,
+                        }}
+                      >
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          <Typography
+                            variant="body2"
+                            sx={{ fontWeight: 600, fontFamily: 'monospace' }}
+                          >
+                            {preorder.code}
+                          </Typography>
+                          {preorder.afterDeadline && !isCancelled && (
+                            <Chip
+                              size="small"
+                              variant="outlined"
+                              label="Nach Bestellschluss"
+                              sx={{ mt: 0.5 }}
+                            />
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {preorder.customerName}
+                          {preorder.note && (
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              display="block"
+                            >
+                              {preorder.note}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                          {renderPhone(preorder)}
+                        </TableCell>
+                        <TableCell>{formatItems(preorder.items)}</TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {formatCurrency(preorder.total)}
+                          <PaymentNote preorder={preorder} variant="caption" />
+                        </TableCell>
+                        <TableCell>
+                          <PreorderStatusChip preorder={preorder} />
+                        </TableCell>
+                        <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                          {renderActions(preorder)}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </PageSection>
       )}
 
-      <Dialog open={toCancel !== null} onClose={() => setToCancel(null)}>
+      <Dialog
+        open={toCancel !== null}
+        onClose={() => !cancelling && setToCancel(null)}
+      >
         <DialogTitle>Vorbestellung stornieren?</DialogTitle>
         <DialogContent>
           <DialogContentText>
@@ -870,6 +906,6 @@ export default function PreorderListClient({
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </PageLayout>
   )
 }

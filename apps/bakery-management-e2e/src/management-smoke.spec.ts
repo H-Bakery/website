@@ -46,7 +46,7 @@ test.describe('Anmeldung', () => {
       await page.getByRole('button', { name: /Anmelden/ }).click()
       await expect(page).toHaveURL(/\/admin\/products$/)
       await expect(page.getByRole('heading', { level: 1 })).toContainText(
-        'Produktverwaltung'
+        'Produkte'
       )
     } finally {
       await context.close()
@@ -110,13 +110,16 @@ test.describe('mit Sitzung (Inhaber)', () => {
 
     await page.goto('/admin/products')
     await expect(page.getByRole('heading', { level: 1 })).toContainText(
-      'Produktverwaltung'
+      'Produkte'
     )
     await expect(page.getByText(`Produktliste (${productCount})`)).toBeVisible()
-    const rows = page.locator('tbody tr')
+    // Tabelle am PC, Karten am Handy - beide tragen `product-row-<id>`.
+    const rows = page.locator('[data-testid^="product-row-"]')
     await expect(rows).toHaveCount(productCount)
 
-    const firstName = (await rows.first().locator('td').first().innerText())
+    const firstName = (
+      await rows.first().getByTestId('product-name').innerText()
+    )
       .split('\n')[0]
       .trim()
     const editButton = rows
@@ -124,7 +127,7 @@ test.describe('mit Sitzung (Inhaber)', () => {
       .getByRole('button', { name: `${firstName} bearbeiten` })
     await clickUntilURL(page, editButton, /\/admin\/products\/[^/]+$/)
     await expect(page.getByLabel('Produktname')).toHaveValue(firstName)
-    await expect(page.getByLabel('Preis (EUR)')).not.toHaveValue('')
+    await expect(page.getByLabel(/^Preis \(EUR\)/)).not.toHaveValue('')
   })
 
   test('unbekanntes Produkt endet nicht in einem leeren Formular', async ({

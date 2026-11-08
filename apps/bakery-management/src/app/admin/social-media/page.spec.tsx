@@ -38,16 +38,37 @@ describe('Social-Media - Vorschau', () => {
     expect(screen.getByText('Dinkelbrot', { selector: 'h4' })).toBeVisible()
   })
 
-  it('führt die Legenden-Chips als Seiten-Chrome ohne Markenfarben', () => {
+  it('zeigt den Preis mit genau einem „ €“ (vorher „3,50€“ bzw. „3,50 €€“)', () => {
+    renderWithTheme(<SocialMediaPage />)
+    const price = screen.getByLabelText('Preis')
+
+    fireEvent.change(price, { target: { value: '3,50' } })
+    expect(screen.getByText('3,50 €', { selector: 'h3' })).toBeVisible()
+
+    fireEvent.change(price, { target: { value: '3,50 €' } })
+    expect(screen.getByText('3,50 €', { selector: 'h3' })).toBeVisible()
+  })
+
+  it('Seitenkopf aus dem Layout-Kit, ein Download-Knopf für das gewählte Format', () => {
     renderWithTheme(<SocialMediaPage />)
 
-    for (const label of ['Text-fokussierte Designs', 'Mit Firmen-Logo']) {
-      const chip = screen.getByText(label).closest('.MuiChip-root')
-      expect(chip).toHaveClass('MuiChip-outlined')
-      // Die Markenfarben (#D038BA, #1ADA67) erreichen auf background.paper
-      // keinen Lesekontrast; die Chips folgen der Palette.
-      const color = getComputedStyle(chip as Element).color
-      expect(color).not.toMatch(/208, 56, 186|26, 218, 103/)
-    }
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Social Media' })
+    ).toBeInTheDocument()
+    // Keine Werbe-Chips und kein toter „Nur Text“-Schalter mehr.
+    expect(screen.queryByText('Text-fokussierte Designs')).toBeNull()
+    expect(screen.queryByLabelText('Nur Text (ohne Bilder)')).toBeNull()
+
+    const download = screen.getByRole('button', { name: 'Bild herunterladen' })
+    expect(download).toBeDisabled()
+    fireEvent.change(screen.getByLabelText('Titel'), {
+      target: { value: 'Dinkelbrot' },
+    })
+    expect(download).toBeEnabled()
+    expect(
+      screen.getAllByRole('button', {
+        name: /herunterladen|1080x1080|optimiert/,
+      })
+    ).toHaveLength(1)
   })
 })

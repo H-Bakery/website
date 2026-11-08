@@ -368,6 +368,29 @@ describe('Rest am Abend - Zählung', () => {
     expect(screen.queryByRole('button', { name: 'Auswertung' })).toBeNull()
   })
 
+  it('a failed day switch does not keep showing the previous day', async () => {
+    renderAs('verkauf')
+    await screen.findByTestId('rest-line-weck|')
+    expect(screen.getByText(/01\.12\.2026/)).toBeTruthy()
+    mocked.fetchRestDay.mockRejectedValueOnce(
+      new ApiError('Keine Verbindung', 0)
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Tag davor' }))
+    await waitFor(() =>
+      expect(mocked.fetchRestDay).toHaveBeenLastCalledWith('2026-11-30')
+    )
+    await screen.findByRole('button', { name: 'Erneut versuchen' })
+    // Die Zählliste vom 01.12. stünde sonst unter ?date=2026-11-30 da.
+    expect(screen.queryByTestId('rest-line-weck|')).toBeNull()
+    expect(screen.queryByText(/01\.12\.2026/)).toBeNull()
+    mocked.fetchRestDay.mockResolvedValueOnce(
+      makeDay({ date: '2026-11-30', weekday: 1, weekdayName: 'Montag' })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+    expect(await screen.findByTestId('rest-line-weck|')).toBeTruthy()
+    expect(mocked.fetchRestDay).toHaveBeenLastCalledWith('2026-11-30')
+  })
+
   it('a day outside the window or a Ruhetag cannot be counted', async () => {
     mocked.fetchRestDay.mockResolvedValueOnce(
       makeDay({

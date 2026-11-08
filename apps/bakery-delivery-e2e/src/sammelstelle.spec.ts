@@ -156,8 +156,10 @@ test.describe('Sammelstelle', () => {
       await expect(stop.getByText('E2E Familie Klein')).toBeVisible()
       // Referenz statt Adresse: an der Sammelstelle wird aufgerufen, nicht gefahren.
       await expect(stop.getByText(first.reference)).toBeVisible()
-      // Preise kommen aus hq, nicht aus dem Formular: 2 x 2,50 EUR.
-      await expect(stop.getByText('5,00 €')).toBeVisible()
+      // Preise kommen aus hq, nicht aus dem Formular: 2 x 2,50 EUR. Der
+      // Betrag steht für sich, daneben „5,00 € kassieren“ als Bezahlstand.
+      await expect(stop.getByText('5,00 €', { exact: true })).toBeVisible()
+      await expect(stop.getByText('5,00 € kassieren')).toBeVisible()
       await expect(stop.getByText('0 von 2 übergeben')).toBeVisible()
       // Summe der offenen Beträge, sauber gerundet.
       await expect(stop.getByText('Bar zu kassieren: 7,50 €')).toBeVisible()
@@ -184,11 +186,14 @@ test.describe('Sammelstelle', () => {
         .filter({ hasText: 'E2E Familie Roth' })
         .first()
 
+      // Unbezahlt: „Übergeben" fragt erst, ob das Geld geflossen ist.
       await row.getByRole('button', { name: 'Übergeben' }).click()
+      await row.getByRole('button', { name: 'Bezahlt und übergeben' }).click()
       await expect(stop.getByText('1 von 1 übergeben')).toBeVisible({
         timeout: 15_000,
       })
-      await expect(stop.getByText('Bar zu kassieren: 0,00 €')).toBeVisible()
+      // Nichts mehr offen: kein „Bar zu kassieren: 0,00 €" in der Kopfzeile.
+      await expect(stop.getByText(/Bar zu kassieren/)).toHaveCount(0)
 
       // Der Server hat es wirklich - nicht nur der Bildschirm. Der Tag steht
       // nach dem Neuladen wieder auf heute, also noch einmal hinstellen.
@@ -232,9 +237,13 @@ test.describe('Sammelstelle', () => {
 
       await stop.getByRole('button', { name: 'Stopp abschließen' }).click()
       await stop.getByRole('button', { name: 'Trotzdem abschließen' }).click()
-      await expect(stop.getByText('Abgeschlossen')).toBeVisible({
-        timeout: 15_000,
-      })
+      // Erledigte Stopps stehen zugeklappt unter „Erledigt (n)".
+      await page.getByText(/^Erledigt \(/).click()
+      await expect(
+        page
+          .getByRole('region', { name: 'Erledigte Stopps' })
+          .getByText('Abgeschlossen')
+      ).toBeVisible({ timeout: 15_000 })
     } finally {
       await cleanup(request, tour.id, [preorder.id])
     }

@@ -216,8 +216,12 @@ export interface Tour {
 /** Was die Übergabeliste an die API schickt. */
 export interface PreorderUpdate {
   status: PreorderStatus
-  /** Rest kassiert bzw. Erstattung ausgezahlt - nur mit `handed_over`. */
-  paid?: true
+  /**
+   * Nur mit `handed_over`: `true` = bezahlt bzw. Rest kassiert / Erstattung
+   * ausgezahlt, `false` = ohne Zahlung übergeben (nur an einer unbezahlten).
+   * Fehlt es, bucht der Server eine unbezahlte Übergabe als bezahlt.
+   */
+  paid?: boolean
 }
 
 /** Was die Erfassungsmaske an die API schickt. */
@@ -275,9 +279,26 @@ export function describeError(error: unknown, fallback: string): string {
     return 'Die Bäckerei-API antwortet nicht. Bitte gleich noch einmal versuchen.'
   }
   if (error instanceof TypeError) {
-    return `Keine Verbindung zur Bäckerei-API (${API_BASE_URL}). Läuft der Server?`
+    // Die Adresse bleibt drin (das Büro fragt am Telefon danach), aber die
+    // Bitte richtet sich an den Fahrer: „Läuft der Server?" kann er nicht prüfen.
+    return `Keine Verbindung zur Bäckerei-API (${API_BASE_URL}). Bitte Netz prüfen und gleich noch einmal versuchen.`
   }
   return error instanceof Error ? error.message : fallback
+}
+
+/**
+ * Der Server hat geantwortet, aber mit einem Fehler (5xx, auch die Fehlerseite
+ * eines Proxys davor). Das ist kein Funkloch: der Fahrer soll nicht an seinem
+ * Handy suchen. Die Änderung wird trotzdem erneut gesendet - ein 5xx ist meist
+ * vorübergehend, und verwerfen darf die App ein Abhaken nicht.
+ */
+export function isServerError(error: unknown): boolean {
+  return error instanceof ApiError && error.status >= 500
+}
+
+/** Fachlich abgelehnt (4xx): erneut senden ändert nichts. */
+export function isRejection(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status >= 400 && error.status < 500
 }
 
 /**
@@ -510,6 +531,12 @@ export interface QueuedPreorderUpdate extends QueuedBase {
 
 export type QueuedUpdate = QueuedStopUpdate | QueuedPreorderUpdate
 
+/** Ein Eintrag, den der Server beim Nachsenden abgelehnt hat, mit seinem Grund. */
+export type RejectedUpdate = QueuedUpdate & {
+  /** Die deutsche `message` des Servers. */
+  reason: string
+}
+
 /**
  * Liest einen gespeicherten Eintrag - auch einen aus der Zeit vor den
  * Vorbestellungen. Damals hatte die Schlange kein `kind`; ein solcher Eintrag
@@ -655,9 +682,12 @@ export async function flushQueue(): Promise<{
   tour: Tour | null
   preorders: Preorder[]
   remaining: QueuedUpdate[]
-  rejected: QueuedUpdate[]
-  /** true, wenn der Server nicht erreichbar war und Eintraege liegen blieben. */
+  /** Verworfen, weil der Server sie fachlich abgelehnt hat (4xx) - mit Grund. */
+  rejected: RejectedUpdate[]
+  /** true, wenn Eintraege liegen blieben (kein Netz oder Serverfehler). */
   offline: boolean
+  /** true, wenn der Server geantwortet hat, aber mit 5xx - kein Funkloch. */
+  serverError: boolean
 }> {
   // Nur eine Momentaufnahme dessen, was abzuarbeiten ist. Geschrieben wird
   // immer auf den *aktuellen* Stand des Speichers: ein Abhaken, das während
@@ -666,8 +696,9 @@ export async function flushQueue(): Promise<{
   const snapshot = readQueue()
   let tour: Tour | null = null
   const confirmed: Preorder[] = []
-  const rejected: QueuedUpdate[] = []
+  const rejected: RejectedUpdate[] = []
   let offline = false
+  let serverError = false
   const drop = (id: string) =>
     writeQueue(readQueue().filter((q) => q.id !== id))
 
@@ -689,17 +720,14 @@ export async function flushQueue(): Promise<{
       }
       drop(entry.id)
     } catch (error) {
-      if (
-        error instanceof ApiError &&
-        error.status >= 400 &&
-        error.status < 500
-      ) {
-        rejected.push(entry)
+      if (isRejection(error)) {
+        rejected.push({ ...entry, reason: error.message })
         drop(entry.id)
         continue
       }
       offline = true
-      break // Netzproblem: der Rest wartet auf den naechsten Versuch.
+      serverError = isServerError(error)
+      break // Netz- oder Serverproblem: der Rest wartet auf den naechsten Versuch.
     }
   }
 
@@ -709,6 +737,7 @@ export async function flushQueue(): Promise<{
     remaining: readQueue(),
     rejected,
     offline,
+    serverError,
   }
 }
 

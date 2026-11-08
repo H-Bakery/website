@@ -81,6 +81,15 @@ describe('TemplatesClient - Rollen (F4)', () => {
   })
 
   it('Verkauf sieht die Bestückung ohne Speichern', async () => {
+    mockFetchTemplates.mockResolvedValue([
+      {
+        id: 1,
+        partnerId: 1,
+        weekday: 2,
+        active: true,
+        items: [{ productId: 1, productSlug: 'musterbrot', quantity: 4 }],
+      },
+    ])
     renderWithTheme(
       <WithSession value={fakeSession({ role: 'verkauf' })}>
         {renderTemplates()}
@@ -90,8 +99,27 @@ describe('TemplatesClient - Rollen (F4)', () => {
       await screen.findByText(/Standard-Bestückung ändert nur der Inhaber/)
     ).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Speichern/ })).toBeNull()
-    // W4-Verifikation: nichts eintippen, was nie gespeichert werden kann.
-    expect(screen.getByLabelText('Menge Musterbrot')).toBeDisabled()
+    expect(
+      screen.queryByRole('button', { name: /Von anderem Tag übernehmen/ })
+    ).toBeNull()
+    // W4-Verifikation: nichts eintippen, was nie gespeichert werden kann -
+    // seit r1 steht die Menge als Text da, nicht als gesperrtes Feld.
+    expect(screen.queryByRole('spinbutton')).toBeNull()
+    expect(screen.getByLabelText('Menge Musterbrot')).toHaveTextContent(
+      '4 Stück'
+    )
+  })
+
+  it('Verkauf: ein Tag ohne Bestückung zeigt keine Liste aus Nullen', async () => {
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'verkauf' })}>
+        {renderTemplates()}
+      </WithSession>
+    )
+    expect(
+      await screen.findByText('Für Dienstag ist keine Bestückung hinterlegt.')
+    ).toBeInTheDocument()
+    expect(screen.queryByLabelText('Menge Musterbrot')).toBeNull()
   })
 
   it('Inhaber: mehr als 10.000 Stück je Position werden nicht gespeichert (W4-Verifikation)', async () => {
@@ -109,5 +137,179 @@ describe('TemplatesClient - Rollen (F4)', () => {
     expect(saveTemplate).not.toHaveBeenCalled()
     // Gruppenkopf in richtiger Einzahl.
     expect(screen.getByText('1 Position · 250000 Stück')).toBeInTheDocument()
+  })
+
+  it('fragt nach, bevor ein Link ungespeicherte Mengen verwirft', async () => {
+    const confirm = jest.spyOn(window, 'confirm').mockReturnValue(false)
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        <>
+          {renderTemplates()}
+          <a href="/admin/partners">Seitenleiste</a>
+        </>
+      </WithSession>
+    )
+    const input = await screen.findByLabelText('Menge Musterbrot')
+    const link = screen.getByRole('link', { name: 'Seitenleiste' })
+
+    // Ohne Änderung: keine Rückfrage.
+    fireEvent.click(link)
+    expect(confirm).not.toHaveBeenCalled()
+
+    fireEvent.change(input, { target: { value: '12' } })
+    // „Abbrechen“ in der Rückfrage: der Klick wird verworfen (vorher
+    // wechselte die Seite still, die Mengen waren weg).
+    expect(fireEvent.click(link)).toBe(false)
+    expect(confirm).toHaveBeenCalledTimes(1)
+
+    confirm.mockReturnValue(true)
+    expect(fireEvent.click(link)).toBe(true)
+    confirm.mockRestore()
+  })
+
+  it('meldet das Speichern in der Leiste, ohne Snackbar über den Knöpfen', async () => {
+    ;(saveTemplate as jest.Mock).mockResolvedValue({})
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        {renderTemplates()}
+      </WithSession>
+    )
+    const input = await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.change(input, { target: { value: '12' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Nicht gespeichert')
+    fireEvent.click(screen.getByRole('button', { name: /Speichern/ }))
+
+    expect(await screen.findByText('Dienstag gespeichert')).toBeInTheDocument()
+    expect(document.querySelector('.MuiSnackbar-root')).toBeNull()
+    expect(saveTemplate).toHaveBeenCalledWith('1', 2, [
+      { productId: 1, productSlug: 'musterbrot', quantity: 12 },
+    ])
+  })
+})
+
+describe('TemplatesClient - nur die Positionen des Tages (r1)', () => {
+  const SEMMEL: CatalogueProduct = {
+    productId: 2,
+    productSlug: 'mustersemmel',
+    productName: 'Mustersemmel',
+    unitPrice: 0.5,
+    category: 'broetchen',
+    categoryLabel: 'Brötchen',
+    available: true,
+  }
+
+  function renderTwo() {
+    return renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        <TemplatesClient
+          partnerId="1"
+          catalogue={[PRODUCT, SEMMEL]}
+          groups={[
+            { category: 'brot', label: 'Brot', products: [PRODUCT] },
+            { category: 'broetchen', label: 'Brötchen', products: [SEMMEL] },
+          ]}
+        />
+      </WithSession>
+    )
+  }
+
+  beforeEach(() => {
+    mockFetchPartner.mockResolvedValue(PARTNER)
+    mockFetchTemplates.mockResolvedValue([
+      {
+        id: 1,
+        partnerId: 1,
+        weekday: 2,
+        active: true,
+        items: [{ productId: 1, productSlug: 'musterbrot', quantity: 4 }],
+      },
+    ])
+  })
+
+  it('zeigt zuerst nur die bestückten Produkte, der Rest über „Alle Produkte zeigen“', async () => {
+    renderTwo()
+    expect(await screen.findByLabelText('Menge Musterbrot')).toHaveValue(4)
+    // Vorher stand jedes Katalogprodukt als „0“ da.
+    expect(screen.queryByLabelText('Menge Mustersemmel')).toBeNull()
+    expect(screen.getByTestId('template-summary')).toHaveTextContent(
+      '1 Position · 4 Stück · Warenwert 12,80 €'
+    )
+    // Der Tag steht im Reiter, nicht noch einmal als Überschrift.
+    expect(
+      screen.queryByRole('heading', { name: 'Dienstag' })
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Alle 2 Produkte zeigen' })
+    )
+    expect(screen.getByLabelText('Menge Mustersemmel')).toBeInTheDocument()
+    expect(
+      screen.getByRole('checkbox', { name: 'Alle Produkte zeigen' })
+    ).toBeChecked()
+  })
+
+  it('die Suche findet auch nicht bestückte Produkte; eine neue Zeile bleibt nach dem Leeren der Suche stehen', async () => {
+    renderTwo()
+    await screen.findByLabelText('Menge Musterbrot')
+    const search = screen.getByRole('textbox', { name: 'Produkt suchen' })
+    fireEvent.change(search, { target: { value: 'semmel' } })
+    const semmel = screen.getByLabelText('Menge Mustersemmel')
+    expect(screen.queryByLabelText('Menge Musterbrot')).toBeNull()
+
+    fireEvent.change(semmel, { target: { value: '5' } })
+    fireEvent.change(search, { target: { value: '' } })
+    expect(screen.getByLabelText('Menge Mustersemmel')).toHaveValue(5)
+    expect(screen.getByLabelText('Menge Musterbrot')).toHaveValue(4)
+
+    // Auf 0 gesetzt verschwindet die Zeile nicht mitten im Tippen.
+    fireEvent.change(screen.getByLabelText('Menge Musterbrot'), {
+      target: { value: '' },
+    })
+    expect(screen.getByLabelText('Menge Musterbrot')).toBeInTheDocument()
+  })
+
+  it('ein Tag ohne gespeicherte Bestückung zeigt den ganzen Katalog (Erstbestückung)', async () => {
+    renderTwo()
+    await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.click(screen.getByRole('tab', { name: /Mi/ }))
+    expect(screen.getByLabelText('Menge Musterbrot')).toHaveValue(null)
+    expect(screen.getByLabelText('Menge Mustersemmel')).toBeInTheDocument()
+  })
+
+  it('übernimmt über den Knopf „Von anderem Tag übernehmen“ (vorher ein Auswahlfeld ohne Wert)', async () => {
+    renderTwo()
+    await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.click(screen.getByRole('tab', { name: /Mi/ }))
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Von anderem Tag übernehmen' })
+    )
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Dienstag (1 Position)' })
+    )
+    expect(screen.getByLabelText('Menge Musterbrot')).toHaveValue(4)
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Von Dienstag übernommen - nicht gespeichert'
+    )
+  })
+
+  it('übernimmt gleiche Mengen ohne Rückfrage und meldet nicht „nicht gespeichert“ (ui r2)', async () => {
+    const same = { productId: 1, productSlug: 'musterbrot', quantity: 4 }
+    mockFetchTemplates.mockResolvedValue([
+      { id: 1, partnerId: 1, weekday: 2, active: true, items: [same] },
+      { id: 2, partnerId: 1, weekday: 3, active: true, items: [same] },
+    ])
+    renderTwo()
+    await screen.findByLabelText('Menge Musterbrot')
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Von anderem Tag übernehmen' })
+    )
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Mittwoch (1 Position)' })
+    )
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Mittwoch hat dieselben Mengen - nichts geändert'
+    )
+    expect(screen.getByRole('button', { name: 'Speichern' })).toBeDisabled()
   })
 })

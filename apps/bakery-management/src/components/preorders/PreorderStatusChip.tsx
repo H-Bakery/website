@@ -3,6 +3,7 @@ import { Chip, type ChipProps } from '@mui/material'
 import {
   PREORDER_STATUS_COLORS,
   PREORDER_STATUS_LABELS,
+  PREORDER_STATUS_VARIANTS,
   type Preorder,
 } from '../../lib/preordersTypes'
 
@@ -33,7 +34,7 @@ export default function PreorderStatusChip({
     <Chip
       size={size}
       color={color}
-      variant={preorder.status === 'storniert' ? 'outlined' : 'filled'}
+      variant={PREORDER_STATUS_VARIANTS[preorder.status] ?? 'filled'}
       label={PREORDER_STATUS_LABELS[preorder.status] ?? preorder.status}
       data-status={preorder.status}
     />

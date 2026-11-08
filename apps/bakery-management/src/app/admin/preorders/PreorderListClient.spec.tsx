@@ -68,8 +68,11 @@ describe('PreorderListClient (P3)', () => {
     renderAs('verkauf')
     expect(await screen.findByText('Erika Beispiel')).toBeInTheDocument()
     expect(mockList).toHaveBeenCalledWith({ from: '2026-11-12' })
+    expect(
+      screen.getByRole('heading', { name: 'Bestellungen (1)' })
+    ).toBeInTheDocument()
     expect(screen.getByTestId('preorder-count')).toHaveTextContent(
-      '1 Vorbestellung · 4,80 € · 1 storniert'
+      'Summe 4,80 € · dazu 1 storniert'
     )
     expect(document.querySelector('[data-status="storniert"]')).not.toBeNull()
     expect(
@@ -89,6 +92,11 @@ describe('PreorderListClient (P3)', () => {
     renderAs('verkauf')
     await screen.findByText('Erika Beispiel')
 
+    // Am Handy (jsdom) sind die weiteren Filter zugeklappt.
+    expect(screen.queryByRole('button', { name: 'Offen' })).toBeNull()
+    const more = screen.getByRole('button', { name: 'Weitere Filter' })
+    expect(more).toHaveAttribute('aria-expanded', 'false')
+    await user.click(more)
     await user.click(screen.getByRole('button', { name: 'Offen' }))
     await waitFor(() =>
       expect(mockList).toHaveBeenLastCalledWith({
@@ -107,6 +115,12 @@ describe('PreorderListClient (P3)', () => {
       expect(mockList).toHaveBeenLastCalledWith(
         expect.objectContaining({ q: 'Erika', status: ['offen'] })
       )
+    )
+
+    // zugeklappt bleibt sichtbar, welcher Filter wirkt
+    await user.click(screen.getByRole('button', { name: 'Weitere Filter (1)' }))
+    expect(screen.getByTestId('filter-summary')).toHaveTextContent(
+      'Aktiv: Offen'
     )
   })
 

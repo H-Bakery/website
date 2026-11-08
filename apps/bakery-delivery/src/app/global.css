@@ -36,6 +36,7 @@
   --color-accent-hover: #6b3410;
   --color-accent-contrast: #ffffff;
   --color-accent-ring: rgba(139, 69, 19, 0.25);
+  --color-accent-text: #8b4513; /* Akzent als Schrift auf --color-surface */
 
   /* Status "offen" */
   --color-open-surface: #ede7e0;
@@ -109,6 +110,7 @@
     --color-accent-hover: #efa768;
     --color-accent-contrast: #1d1206;
     --color-accent-ring: rgba(226, 146, 79, 0.35);
+    --color-accent-text: #efa768;
 
     --color-open-surface: #3a3128;
     --color-open-text: #e0d4c6;
@@ -168,6 +170,7 @@
   --color-accent-hover: #efa768;
   --color-accent-contrast: #1d1206;
   --color-accent-ring: rgba(226, 146, 79, 0.35);
+  --color-accent-text: #efa768;
 
   --color-open-surface: #3a3128;
   --color-open-text: #e0d4c6;
@@ -219,7 +222,11 @@
 html,
 body {
   max-width: 100vw;
+  /* `clip`, nicht `hidden`: `hidden` macht `body` zum Scroll-Container, und
+     dann klebten die Meldungen (`position: sticky`) nicht am Bildrand,
+     sondern am Ende der Seite. `hidden` bleibt nur für alte Browser. */
   overflow-x: hidden;
+  overflow-x: clip;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
     Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
   /* Der Fahrer tippt mit Handschuh - kein Zoom-Sprung beim Doppeltippen. */

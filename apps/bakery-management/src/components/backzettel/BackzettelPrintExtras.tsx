@@ -130,6 +130,13 @@ export function BackzettelPrintExtras({ day }: BackzettelPrintExtrasProps) {
                   : ''}
                 {fillingOpenNote(f) ? ` · ${fillingOpenNote(f)}` : ''}
               </p>
+              {/* Vor der Tabelle: der Hinweis sagt „Unten das Grundrezept“
+                  (UI-Runde 1 - vorher stand er darunter). */}
+              {f.recipe && recipeIncompleteNote(f.recipe) && (
+                <p className="small">
+                  <strong>{recipeIncompleteNote(f.recipe)}</strong>
+                </p>
+              )}
               {f.recipe ? (
                 <table>
                   <thead>
@@ -155,11 +162,6 @@ export function BackzettelPrintExtras({ day }: BackzettelPrintExtrasProps) {
                 </table>
               ) : (
                 <p className="small">Kein Rezept hinterlegt.</p>
-              )}
-              {f.recipe && recipeIncompleteNote(f.recipe) && (
-                <p className="small">
-                  <strong>{recipeIncompleteNote(f.recipe)}</strong>
-                </p>
               )}
             </div>
           ))}

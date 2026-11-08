@@ -40,6 +40,8 @@
 'use strict'
 
 /** Die einzige Schema-Version der Zielkonfiguration, die dieser Code versteht. */
+const financeReport = require('./finance-report.core')
+
 const TARGETS_SCHEMA_VERSION = 1
 
 const MODES = ['derived', 'manual']
@@ -458,10 +460,23 @@ function bucketNet(bucket) {
 
 /** Die letzten `count` Monate der Zusammenfassung, aufsteigend sortiert. */
 function lastMonths(summary, count) {
+  const period = isPlainObject(summary && summary.period)
+    ? summary.period
+    : null
   const months = (
     Array.isArray(summary && summary.months) ? summary.months : []
   )
     .filter((m) => isPlainObject(m) && isValidMonth(String(m.month)))
+    // Nur Monate, die die Bankdaten ganz abdecken: der laufende Monat (und ein
+    // angebrochener erster) drückte sonst jedes Monatsmittel - mit Daten bis
+    // zum 6. stünden dort nur sechs Tage Kosten.
+    .filter(
+      (m) =>
+        !period ||
+        !period.from ||
+        !period.to ||
+        financeReport.monthCoverage(m.month, period).status === 'complete'
+    )
     .sort((a, b) => String(a.month).localeCompare(String(b.month)))
   return months.slice(Math.max(0, months.length - count))
 }

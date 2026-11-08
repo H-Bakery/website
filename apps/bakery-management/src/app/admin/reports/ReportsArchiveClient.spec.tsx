@@ -2,7 +2,7 @@ import React from 'react'
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import ReportsArchiveClient from './ReportsArchiveClient'
+import ReportsArchiveClient, { newestFirst } from './ReportsArchiveClient'
 import type {
   DailyReportList,
   DailyReportSummary,
@@ -125,14 +125,51 @@ describe('ReportsArchiveClient', () => {
     const table = screen.getByRole('table', { name: 'Kassenberichte je Tag' })
     const rows = within(table).getAllByRole('row').slice(1)
     expect(rows).toHaveLength(3)
-    expect(within(rows[0]).getByText('kein Bericht')).toBeInTheDocument()
-    expect(within(rows[0]).queryByText('0,00 €')).not.toBeInTheDocument()
+    // Neuester Tag zuerst, die Lücke (ältester Tag) unten.
+    expect(within(rows[0]).getByText('2 Abschlüsse')).toBeInTheDocument()
+    expect(
+      within(rows[0]).getByRole('link', { name: '06.05.2026' })
+    ).toHaveAttribute('href', '/admin/reports/2026-05-06')
     expect(within(rows[1]).getByText('100,00 €')).toBeInTheDocument()
     expect(within(rows[1]).getByText('1 Storno')).toBeInTheDocument()
-    expect(within(rows[2]).getByText('2 Abschlüsse')).toBeInTheDocument()
-    expect(
-      within(rows[2]).getByRole('link', { name: '06.05.2026' })
-    ).toHaveAttribute('href', '/admin/reports/2026-05-06')
+    expect(within(rows[2]).getByText('kein Bericht')).toBeInTheDocument()
+    expect(within(rows[2]).queryByText('0,00 €')).not.toBeInTheDocument()
+  })
+
+  it('zeigt den neuesten Tag zuerst, auch mit ausgeblendeten Lücken', async () => {
+    const user = userEvent.setup()
+    renderWithTheme(
+      <ReportsArchiveClient
+        list={list}
+        latestDate="2026-05-06"
+        earliestDate="2026-01-02"
+      />
+    )
+
+    const table = screen.getByRole('table', { name: 'Kassenberichte je Tag' })
+    const dates = () =>
+      within(table)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => row.textContent?.match(/\d{2}\.05\.2026/)?.[0])
+    expect(dates()).toEqual(['06.05.2026', '05.05.2026', '04.05.2026'])
+
+    await user.click(screen.getByLabelText(/Tage ohne Bericht ausblenden/))
+    expect(dates()).toEqual(['06.05.2026', '05.05.2026'])
+  })
+
+  it('newestFirst dreht nur die Anzeige um und lässt die Eingabe stehen', () => {
+    const input = [
+      { date: '2026-05-04' },
+      { date: '2026-05-06' },
+      { date: '2026-05-05' },
+    ]
+    expect(newestFirst(input).map((d) => d.date)).toEqual([
+      '2026-05-06',
+      '2026-05-05',
+      '2026-05-04',
+    ])
+    expect(input[0].date).toBe('2026-05-04')
   })
 
   it('blendet Lücken auf Wunsch aus', async () => {

@@ -4,17 +4,15 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import NextLink from 'next/link'
 import { useRouter } from 'next/navigation'
 import {
-  Alert,
   Box,
   Button,
   Card,
   CardActionArea,
   CardContent,
   Chip,
-  CircularProgress,
+  Collapse,
   IconButton,
   MenuItem,
-  Paper,
   Stack,
   Table,
   TableBody,
@@ -31,10 +29,20 @@ import {
 import {
   AddCircleOutline as NewIcon,
   CalendarMonth as DayIcon,
+  ExpandMore as ExpandMoreIcon,
+  FilterList as FilterIcon,
   Refresh as RefreshIcon,
   Search as SearchIcon,
 } from '@mui/icons-material'
+import ItemsSummary from '../../../components/preorders/ItemsSummary'
 import PaymentNote from '../../../components/preorders/PaymentNote'
+import {
+  EmptyState,
+  ErrorState,
+  LoadingState,
+  PageLayout,
+  PageSection,
+} from '../../../components/layout'
 import PreorderStatusChip from '../../../components/preorders/PreorderStatusChip'
 import { useOptionalSession } from '../../../lib/session'
 import {
@@ -53,7 +61,6 @@ import {
   PREORDER_STATUS_LABELS,
   formatCurrency,
   formatDateWithWeekday,
-  formatItems,
   formatPickupPlace,
   isBusinessDate,
   nextProductionDate,
@@ -205,30 +212,53 @@ export default function PreorderListClient({
 
   const chipSx = { minHeight: 44 }
 
+  // Weitere Filter (Zeitraum, Bestellweg, Abholort, Status): am PC offen,
+  // am Handy zugeklappt mit Zusammenfassung - sonst lagen ~330 px Filter vor
+  // dem ersten Treffer.
+  const [filtersOpenChoice, setFiltersOpenChoice] = useState<boolean | null>(
+    null
+  )
+  const filtersOpen = filtersOpenChoice ?? wide
+  const pointName = (id: string) =>
+    id === LADEN_PICKUP
+      ? 'Laden'
+      : points.find((p) => p.id === id)?.name ?? 'Sammelstelle'
+  const filterSummary = [
+    preset === null && (range.from || range.to)
+      ? `${range.from ? formatDateWithWeekday(range.from) : '…'} – ${
+          range.to ? formatDateWithWeekday(range.to) : '…'
+        }`
+      : null,
+    filters?.channel ? CHANNEL_LABELS[filters.channel] : null,
+    filters?.pickupPointId ? pointName(filters.pickupPointId) : null,
+    ...(filters?.status ?? []).map((s) => PREORDER_STATUS_LABELS[s]),
+  ].filter((part): part is string => Boolean(part))
+
+  // Zahlen sind keine Überschrift (Layout-Kit): Anzahl im Titel, Summe und
+  // Stornierte als Beschreibung darunter (UI-Runde 1).
+  const countTitle = `Bestellungen (${active.length})`
+  const countLine = !loading && !error && (
+    <span data-testid="preorder-count">
+      Summe {formatCurrency(total)}
+      {preorders.length > active.length
+        ? ` · dazu ${preorders.length - active.length} storniert`
+        : ''}
+    </span>
+  )
+
   return (
-    <Box>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'stretch', sm: 'center' }}
-        spacing={1.5}
-        sx={{ mb: 2 }}
-      >
-        <Typography
-          variant="h4"
-          component="h1"
-          sx={{ fontSize: { xs: '1.5rem', md: '2rem' } }}
-        >
-          Vorbestellungen
-        </Typography>
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+    <PageLayout
+      width="wide"
+      title="Vorbestellungen"
+      subtitle="Alle Bestellwege und Abholorte"
+      actions={
+        <>
           {canWrite && (
             <Button
               component={NextLink}
               href="/admin/preorders/neu"
               variant="contained"
               startIcon={<NewIcon />}
-              sx={{ minHeight: 48 }}
             >
               Neue Vorbestellung
             </Button>
@@ -238,26 +268,13 @@ export default function PreorderListClient({
             href={dayHref}
             variant="outlined"
             startIcon={<DayIcon />}
-            sx={{ minHeight: 48 }}
           >
             Tagesübersicht
           </Button>
-          <Tooltip title="Aktualisieren">
-            <span>
-              <IconButton
-                aria-label="Liste aktualisieren"
-                onClick={load}
-                disabled={loading}
-                sx={{ width: 48, height: 48 }}
-              >
-                <RefreshIcon />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Stack>
-      </Stack>
-
-      <Paper variant="outlined" sx={{ p: { xs: 1.5, sm: 2 }, mb: 2 }}>
+        </>
+      }
+    >
+      <PageSection>
         <TextField
           label="Suche"
           placeholder="Name, Code oder Telefon"
@@ -279,7 +296,7 @@ export default function PreorderListClient({
           spacing={1}
           flexWrap="wrap"
           useFlexGap
-          sx={{ mb: 1.5 }}
+          alignItems="center"
         >
           <Chip
             label="Ab heute"
@@ -309,275 +326,313 @@ export default function PreorderListClient({
             aria-pressed={preset === 'alle'}
             sx={chipSx}
           />
-        </Stack>
-
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: {
-              xs: 'repeat(2, minmax(0, 1fr))',
-              md: 'repeat(4, minmax(0, 1fr))',
-            },
-            gap: 1.5,
-            mb: 1.5,
-          }}
-        >
-          <TextField
-            label="Von"
-            type="date"
-            value={range.from}
-            onChange={(event) => setRange(event.target.value, range.to)}
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            label="Bis"
-            type="date"
-            value={range.to}
-            onChange={(event) => setRange(range.from, event.target.value)}
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField
-            select
-            label="Bestellweg"
-            value={filters?.channel ?? ''}
-            onChange={(event) =>
-              update({
-                channel: (event.target.value || undefined) as
-                  | PreorderChannel
-                  | undefined,
-              })
-            }
-          >
-            <MenuItem value="">Alle</MenuItem>
-            {PREORDER_CHANNELS.map((channel) => (
-              <MenuItem key={channel} value={channel}>
-                {CHANNEL_LABELS[channel]}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            select
-            label="Abholort"
-            value={filters?.pickupPointId ?? ''}
-            onChange={(event) =>
-              update({ pickupPointId: event.target.value || undefined })
-            }
-          >
-            <MenuItem value="">Alle</MenuItem>
-            <MenuItem value={LADEN_PICKUP}>Laden</MenuItem>
-            {points.map((p) => (
-              <MenuItem key={p.id} value={p.id}>
-                {p.name}
-              </MenuItem>
-            ))}
-          </TextField>
-        </Box>
-
-        <Stack
-          direction="row"
-          spacing={1}
-          flexWrap="wrap"
-          useFlexGap
-          role="group"
-          aria-label="Status"
-        >
-          {PREORDER_STATUSES.map((status) => {
-            const on = filters?.status?.includes(status) ?? false
-            return (
-              <Chip
-                key={status}
-                label={PREORDER_STATUS_LABELS[status]}
-                color={on ? 'primary' : 'default'}
-                variant={on ? 'filled' : 'outlined'}
-                onClick={() => toggleStatus(status)}
-                aria-pressed={on}
-                sx={chipSx}
+          <Button
+            onClick={() => setFiltersOpenChoice(!filtersOpen)}
+            aria-expanded={filtersOpen}
+            aria-controls="preorder-filters"
+            startIcon={<FilterIcon />}
+            endIcon={
+              <ExpandMoreIcon
+                sx={{
+                  transition: 'transform 0.2s',
+                  transform: filtersOpen ? 'rotate(180deg)' : 'none',
+                }}
               />
-            )
-          })}
+            }
+            sx={{ ml: { sm: 'auto' } }}
+          >
+            {filterSummary.length > 0
+              ? `Weitere Filter (${filterSummary.length})`
+              : 'Weitere Filter'}
+          </Button>
         </Stack>
-      </Paper>
+        {!filtersOpen && filterSummary.length > 0 && (
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mt: 1 }}
+            data-testid="filter-summary"
+          >
+            Aktiv: {filterSummary.join(' · ')}
+          </Typography>
+        )}
 
-      {error && (
-        <Alert
-          severity="error"
-          sx={{ mb: 2 }}
-          action={
-            <Button color="inherit" size="small" onClick={load}>
-              Erneut versuchen
-            </Button>
-          }
-        >
-          {error}
-        </Alert>
-      )}
-
-      {!loading && !error && (
-        <Typography
-          color="text.secondary"
-          sx={{ mb: 1 }}
-          data-testid="preorder-count"
-        >
-          {active.length}{' '}
-          {active.length === 1 ? 'Vorbestellung' : 'Vorbestellungen'} ·{' '}
-          {formatCurrency(total)}
-          {preorders.length > active.length
-            ? ` · ${preorders.length - active.length} storniert`
-            : ''}
-        </Typography>
-      )}
-
-      {loading ? (
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Vorbestellungen werden geladen"
-        >
-          <CircularProgress />
-        </Box>
-      ) : preorders.length === 0 ? (
-        !error && (
-          <Paper variant="outlined" sx={{ p: 4, textAlign: 'center' }}>
-            <Typography color="text.secondary">
-              Keine Vorbestellungen für diese Auswahl.
-            </Typography>
-          </Paper>
-        )
-      ) : wide ? (
-        <TableContainer component={Paper} variant="outlined">
-          <Table size="small" aria-label="Vorbestellungen">
-            <TableHead>
-              <TableRow>
-                <TableCell>Code</TableCell>
-                <TableCell>Abholung</TableCell>
-                <TableCell>Kunde</TableCell>
-                <TableCell>Artikel</TableCell>
-                <TableCell align="right">Summe</TableCell>
-                <TableCell>Status</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {preorders.map((p) => (
-                <TableRow
-                  key={p.id}
-                  hover
-                  onClick={() => router.push(`/admin/preorders/${p.id}`)}
-                  sx={{
-                    cursor: 'pointer',
-                    ...(p.status === 'storniert' && {
-                      '& td': {
-                        // W4-Verifikation: text.disabled lag bei 2,7:1.
-                        color: 'text.secondary',
-                        textDecoration: 'line-through',
-                      },
-                      '& td:last-of-type': { textDecoration: 'none' },
-                    }),
-                  }}
-                >
-                  <TableCell
-                    sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}
-                  >
-                    <NextLink
-                      href={`/admin/preorders/${p.id}`}
-                      style={{ color: 'inherit' }}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      {p.code}
-                    </NextLink>
-                  </TableCell>
-                  <TableCell>
-                    {formatDateWithWeekday(p.pickupDate)}
-                    <Typography variant="body2" color="text.secondary">
-                      {formatPickupPlace(p)}
-                    </Typography>
-                  </TableCell>
-                  <TableCell>
-                    {p.customerName}
-                    {p.customerPhone && (
-                      <Typography variant="body2" color="text.secondary">
-                        {p.customerPhone}
-                      </Typography>
-                    )}
-                  </TableCell>
-                  <TableCell sx={{ maxWidth: 320 }}>
-                    {formatItems(p.items)}
-                  </TableCell>
-                  <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-                    {formatCurrency(p.total)}
-                    <PaymentNote preorder={p} />
-                  </TableCell>
-                  <TableCell>
-                    <PreorderStatusChip preorder={p} />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      ) : (
-        <Stack
-          spacing={1}
-          component="ul"
-          aria-label="Vorbestellungen"
-          sx={{ listStyle: 'none', p: 0, m: 0 }}
-        >
-          {preorders.map((p) => (
-            <Card
-              key={p.id}
-              variant="outlined"
-              component="li"
-              sx={
-                p.status === 'storniert'
-                  ? { color: 'text.secondary', borderStyle: 'dashed' }
-                  : undefined
+        <Collapse in={filtersOpen} id="preorder-filters" unmountOnExit>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: {
+                xs: 'repeat(2, minmax(0, 1fr))',
+                md: 'repeat(4, minmax(0, 1fr))',
+              },
+              gap: 1.5,
+              mt: 2,
+              mb: 1.5,
+            }}
+          >
+            <TextField
+              label="Von"
+              type="date"
+              value={range.from}
+              onChange={(event) => setRange(event.target.value, range.to)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              label="Bis"
+              type="date"
+              value={range.to}
+              onChange={(event) => setRange(range.from, event.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField
+              select
+              label="Bestellweg"
+              value={filters?.channel ?? ''}
+              onChange={(event) =>
+                update({
+                  channel: (event.target.value || undefined) as
+                    | PreorderChannel
+                    | undefined,
+                })
               }
             >
-              <CardActionArea
-                component={NextLink}
-                href={`/admin/preorders/${p.id}`}
-              >
-                <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    alignItems="center"
-                    spacing={1}
-                  >
-                    <Typography sx={{ fontWeight: 600 }} noWrap>
-                      {p.customerName}
-                    </Typography>
-                    <PreorderStatusChip preorder={p} />
-                  </Stack>
-                  <Typography variant="body2" color="text.secondary">
-                    {formatDateWithWeekday(p.pickupDate)} ·{' '}
-                    {formatPickupPlace(p)}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 0.5 }}>
-                    {formatItems(p.items)}
-                  </Typography>
-                  <Stack
-                    direction="row"
-                    justifyContent="space-between"
-                    sx={{ mt: 0.5 }}
-                  >
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                      sx={{ fontFamily: 'monospace' }}
+              <MenuItem value="">Alle</MenuItem>
+              {PREORDER_CHANNELS.map((channel) => (
+                <MenuItem key={channel} value={channel}>
+                  {CHANNEL_LABELS[channel]}
+                </MenuItem>
+              ))}
+            </TextField>
+            <TextField
+              select
+              label="Abholort"
+              value={filters?.pickupPointId ?? ''}
+              onChange={(event) =>
+                update({ pickupPointId: event.target.value || undefined })
+              }
+            >
+              <MenuItem value="">Alle</MenuItem>
+              <MenuItem value={LADEN_PICKUP}>Laden</MenuItem>
+              {points.map((p) => (
+                <MenuItem key={p.id} value={p.id}>
+                  {p.name}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Box>
+
+          <Stack
+            direction="row"
+            spacing={1}
+            flexWrap="wrap"
+            useFlexGap
+            role="group"
+            aria-label="Status"
+          >
+            {PREORDER_STATUSES.map((status) => {
+              const on = filters?.status?.includes(status) ?? false
+              return (
+                <Chip
+                  key={status}
+                  label={PREORDER_STATUS_LABELS[status]}
+                  color={on ? 'primary' : 'default'}
+                  variant={on ? 'filled' : 'outlined'}
+                  onClick={() => toggleStatus(status)}
+                  aria-pressed={on}
+                  sx={chipSx}
+                />
+              )
+            })}
+          </Stack>
+        </Collapse>
+      </PageSection>
+
+      {error ? (
+        <ErrorState message={error} onRetry={load} />
+      ) : loading ? (
+        <LoadingState label="Vorbestellungen werden geladen …" />
+      ) : preorders.length === 0 ? (
+        <EmptyState
+          title="Keine Vorbestellungen für diese Auswahl."
+          description="Suche oder Filter ändern - oder „Alle Tage“ wählen."
+        />
+      ) : (
+        <PageSection
+          title={countTitle}
+          description={countLine}
+          variant={wide ? 'card' : 'plain'}
+          disablePadding
+          actions={
+            <Tooltip title="Aktualisieren">
+              <span>
+                <IconButton
+                  aria-label="Liste aktualisieren"
+                  onClick={load}
+                  disabled={loading}
+                >
+                  <RefreshIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
+          }
+        >
+          {wide ? (
+            <TableContainer sx={{ overflowX: 'auto' }}>
+              <Table size="small" aria-label="Vorbestellungen">
+                <TableHead>
+                  <TableRow>
+                    {/* Status gleich hinter dem Code: am Laden-Tablet quer
+                        (1180 px) war er rechts abgeschnitten (UI-Runde 1). */}
+                    <TableCell>Code</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Abholung</TableCell>
+                    <TableCell>Kunde</TableCell>
+                    <TableCell>Artikel</TableCell>
+                    <TableCell align="right">Summe</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {preorders.map((p) => (
+                    <TableRow
+                      key={p.id}
+                      hover
+                      onClick={() => router.push(`/admin/preorders/${p.id}`)}
+                      sx={{
+                        cursor: 'pointer',
+                        verticalAlign: 'top',
+                        ...(p.status === 'storniert' && {
+                          '& td': {
+                            // W4-Verifikation: text.disabled lag bei 2,7:1.
+                            color: 'text.secondary',
+                            textDecoration: 'line-through',
+                          },
+                          '& td:last-of-type': { textDecoration: 'none' },
+                        }),
+                      }}
                     >
-                      {p.code}
-                    </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {formatCurrency(p.total)}
-                      <PaymentNote preorder={p} inline />
-                    </Typography>
-                  </Stack>
-                </CardContent>
-              </CardActionArea>
-            </Card>
-          ))}
-        </Stack>
+                      <TableCell
+                        sx={{ fontFamily: 'monospace', whiteSpace: 'nowrap' }}
+                      >
+                        <NextLink
+                          href={`/admin/preorders/${p.id}`}
+                          style={{ color: 'inherit' }}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          {p.code}
+                        </NextLink>
+                      </TableCell>
+                      <TableCell>
+                        <PreorderStatusChip preorder={p} />
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 130, maxWidth: 220 }}>
+                        <Box component="span" sx={{ whiteSpace: 'nowrap' }}>
+                          {formatDateWithWeekday(p.pickupDate)}
+                        </Box>
+                        <Typography variant="body2" color="text.secondary">
+                          {formatPickupPlace(p)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 140, maxWidth: 280 }}>
+                        <Box sx={{ overflowWrap: 'break-word' }}>
+                          {p.customerName}
+                        </Box>
+                        {p.customerPhone && (
+                          <Typography variant="body2" color="text.secondary">
+                            {p.customerPhone}
+                          </Typography>
+                        )}
+                      </TableCell>
+                      <TableCell sx={{ minWidth: 180, maxWidth: 360 }}>
+                        <ItemsSummary items={p.items} />
+                      </TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
+                        {formatCurrency(p.total)}
+                        <PaymentNote preorder={p} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Stack
+              spacing={1}
+              component="ul"
+              aria-label="Vorbestellungen"
+              sx={{ listStyle: 'none', p: 0, m: 0 }}
+            >
+              {preorders.map((p) => (
+                <Card
+                  key={p.id}
+                  component="li"
+                  sx={
+                    p.status === 'storniert'
+                      ? {
+                          color: 'text.secondary',
+                          border: 1,
+                          borderStyle: 'dashed',
+                          borderColor: 'divider',
+                        }
+                      : undefined
+                  }
+                >
+                  <CardActionArea
+                    component={NextLink}
+                    href={`/admin/preorders/${p.id}`}
+                  >
+                    <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="center"
+                        spacing={1}
+                      >
+                        <Typography sx={{ fontWeight: 600 }} noWrap>
+                          {p.customerName}
+                        </Typography>
+                        <PreorderStatusChip preorder={p} />
+                      </Stack>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatDateWithWeekday(p.pickupDate)} ·{' '}
+                        {formatPickupPlace(p)}
+                      </Typography>
+                      <Typography
+                        variant="body2"
+                        component="div"
+                        sx={{ mt: 0.5 }}
+                      >
+                        <ItemsSummary items={p.items} />
+                      </Typography>
+                      <Stack
+                        direction="row"
+                        justifyContent="space-between"
+                        alignItems="baseline"
+                        spacing={1}
+                        sx={{ mt: 0.5 }}
+                      >
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontFamily: 'monospace' }}
+                        >
+                          {p.code}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          sx={{ fontWeight: 600, textAlign: 'right' }}
+                        >
+                          {formatCurrency(p.total)}
+                          <PaymentNote preorder={p} inline />
+                        </Typography>
+                      </Stack>
+                    </CardContent>
+                  </CardActionArea>
+                </Card>
+              ))}
+            </Stack>
+          )}
+        </PageSection>
       )}
-    </Box>
+    </PageLayout>
   )
 }

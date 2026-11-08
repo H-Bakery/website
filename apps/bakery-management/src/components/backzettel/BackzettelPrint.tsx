@@ -11,6 +11,7 @@ import {
 } from '../../lib/backzettelApi'
 import {
   DELTA_KIND_LABELS,
+  deltaAfterDone,
   deltaCodeText,
   deltaBadgeText,
   formatDateLong,
@@ -21,6 +22,7 @@ import {
   formatSigned,
   formatSignedQty,
   formatTimestamp,
+  type DeltaAfterDone,
   lineLabel,
   previouslyDoneText,
 } from '../../lib/backzettelFormat'
@@ -93,7 +95,7 @@ export const backzettelPrintStyles = (
         // Abschnitt wird nicht mittendrin umbrochen (.bz-section).
         '.bz-print h2': {
           fontSize: '11.5pt',
-          margin: '2.5mm 0 0.5mm',
+          margin: '2mm 0 0.5mm',
           borderBottom: '1.5pt solid #000',
           breakAfter: 'avoid',
         },
@@ -129,13 +131,20 @@ export const backzettelPrintStyles = (
         '.bz-print tr': { pageBreakInside: 'avoid', breakInside: 'avoid' },
         '.bz-print th, .bz-print td': {
           borderBottom: '0.5pt solid #777',
-          padding: '0.6mm 1.5mm',
+          padding: '0.4mm 1.5mm',
           textAlign: 'left',
           verticalAlign: 'middle',
         },
         '.bz-print th': { fontSize: '8.5pt' },
         '.bz-print .num': { textAlign: 'right', whiteSpace: 'nowrap' },
-        '.bz-print .total': { fontSize: '13pt', fontWeight: 700 },
+        // UI-Runde 1: Zeilenhöhe 1,05 statt 1,25 bei der großen Zahl - am
+        // freigegebenen Samstag mit Nachträgen rutschten sonst die Hinweise
+        // allein auf ein zweites Blatt (25 Zeilen × gut 1 mm).
+        '.bz-print .total': {
+          fontSize: '13pt',
+          fontWeight: 700,
+          lineHeight: 1.05,
+        },
         '.bz-print .small': { fontSize: '8pt' },
         '.bz-print .box': {
           display: 'inline-block',
@@ -166,6 +175,15 @@ export const backzettelPrintStyles = (
         '.bz-print .figures': { display: 'flex', gap: '8mm', margin: '1mm 0' },
         '.bz-print .figures strong': { fontSize: '14pt' },
         '.bz-print ul': { margin: '1mm 0', paddingLeft: '5mm' },
+        // Hinweise zweispaltig und knapp: sie gehören auf Seite 1, nicht
+        // allein auf ein eigenes Blatt (UI-Runde 1).
+        '.bz-print .bz-warnings h3': { margin: '2mm 0 0.5mm' },
+        '.bz-print .bz-warnings ul': {
+          columnCount: 2,
+          columnGap: '6mm',
+          margin: '0.5mm 0',
+        },
+        '.bz-print .bz-warnings li': { breakInside: 'avoid' },
         '.bz-print .avoid': { breakInside: 'avoid' },
       },
     }}
@@ -259,12 +277,20 @@ export function groupDeltasForPrint(
  * Backstube buk sie sonst ein zweites Mal. Ganz gesehen: die Summe mit
  * Haken; teils gesehen: nur, was noch offen ist.
  */
-export function printDeltaFigure(group: PrintDeltaGroup): {
+export function printDeltaFigure(
+  group: PrintDeltaGroup,
+  afterDone: DeltaAfterDone | null = null
+): {
   shown: number
   done: boolean
   seen: number | null
 } {
   const total = group.bake ?? group.qty
+  // UI-Runde 1: Gesehen heißt nicht gebacken. Kam der Nachtrag nach dem
+  // Haken der Zeile, bleibt sein Kästchen leer, bis die Zeile neu abgehakt ist.
+  if (afterDone && afterDone.bake > 0) {
+    return { shown: afterDone.bake, done: false, seen: null }
+  }
   if (group.open === 0) return { shown: total, done: true, seen: null }
   if (group.open === group.deltas.length) {
     return { shown: total, done: false, seen: null }
@@ -286,7 +312,7 @@ export function printLineDeltaNote(
   unit: BackzettelDeltaEntry['unit']
 ): string {
   if (delta.open === 0) {
-    return `${deltaBadgeText(delta, unit)} · schon gesehen (Liste unten)`
+    return `${deltaBadgeText(delta, unit)} · gesehen`
   }
   if (delta.open < delta.count && typeof delta.openQty === 'number') {
     const open = delta.bakeOpen ?? delta.openQty
@@ -303,7 +329,8 @@ export function printLineDeltaNote(
 
 function printDeltaDetail(
   group: PrintDeltaGroup,
-  unit: BackzettelDeltaEntry['unit']
+  unit: BackzettelDeltaEntry['unit'],
+  afterDone: DeltaAfterDone | null = null
 ): string {
   const parts: string[] = []
   if (group.bake !== undefined && group.bake !== group.qty) {
@@ -324,8 +351,10 @@ function printDeltaDetail(
   )
   if (codes.length) parts.push(codes.join(', '))
   parts.push(
-    group.open === 0
-      ? 'quittiert'
+    afterDone && afterDone.bake > 0
+      ? 'nach dem Abhaken – noch backen'
+      : group.open === 0
+      ? 'gesehen'
       : group.open === group.deltas.length
       ? 'offen'
       : `${group.open} offen`
@@ -338,6 +367,16 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
   const withPage3 = (day.prep ?? []).length > 0
   const deltas = day.deltas ?? []
   const deltaGroups = groupDeltasForPrint(deltas, deltaTotalsByKey(day))
+  // Nachträge nach dem Haken je Zeile (UI-Runde 1).
+  const afterDoneByKey = new Map<string, DeltaAfterDone>()
+  if (confirmed) {
+    for (const section of day.sections) {
+      for (const line of section.lines) {
+        const after = deltaAfterDone(line, deltas)
+        if (after) afterDoneByKey.set(line.key, after)
+      }
+    }
+  }
 
   return (
     <div className="bz-print" data-testid="bz-print" aria-hidden="true">
@@ -405,7 +444,12 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                               ? `Korrektur: ${line.correctionReason}`
                               : null,
                             previouslyDoneText(line),
-                            line.delta && line.delta.count > 0
+                            afterDoneByKey.get(line.key)?.bake
+                              ? `danach Nachtrag: noch ${formatSignedQty(
+                                  afterDoneByKey.get(line.key)?.bake ?? 0,
+                                  line.unit
+                                )} backen`
+                              : line.delta && line.delta.count > 0
                               ? printLineDeltaNote(line.delta, line.unit)
                               : null,
                           ]
@@ -466,7 +510,8 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
               </thead>
               <tbody>
                 {deltaGroups.map((g) => {
-                  const { shown, done, seen } = printDeltaFigure(g)
+                  const after = afterDoneByKey.get(g.key) ?? null
+                  const { shown, done, seen } = printDeltaFigure(g, after)
                   return (
                     <tr key={g.key} data-testid={`print-delta-${g.key}`}>
                       <td className="num total">
@@ -496,7 +541,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
                                   g.first.unit
                                 )} schon gesehen`
                               : null,
-                            printDeltaDetail(g, g.first.unit),
+                            printDeltaDetail(g, g.first.unit, after),
                           ]
                             .filter(Boolean)
                             .join(' · ')}
@@ -522,7 +567,7 @@ export function BackzettelPrint({ day, config }: BackzettelPrintProps) {
           </div>
         )}
         {day.warnings.length > 0 && (
-          <div className="small avoid">
+          <div className="small avoid bz-warnings">
             <h3>Hinweise</h3>
             <ul>
               {day.warnings.map((w, i) => (

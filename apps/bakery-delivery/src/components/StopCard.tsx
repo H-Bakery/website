@@ -52,7 +52,7 @@ interface StopCardProps {
   onPreorderStatusChange?: (
     preorderId: number,
     status: PreorderStatus,
-    paid?: true
+    paid?: boolean
   ) => void
   /** Vorbestellungen, deren eigener Statuswechsel gerade unterwegs ist. */
   busyPreorderIds?: ReadonlySet<number>
@@ -61,8 +61,28 @@ interface StopCardProps {
    * Anrufen bleiben. Die API lehnt das Abhaken ohnehin ab (403).
    */
   readOnly?: boolean
+  /**
+   * Den Stopp selbst abhaken („Geliefert“, „Nicht angetroffen“, „Stopp
+   * abschließen“): nur vom Vortag bis zwei Tage nach dem Tourtag - mehr nimmt
+   * die API nicht an (`markWindow`).
+   */
+  canMarkStop?: boolean
   /** Übergabe zurücknehmen erlaubt (nicht für den Fahrer, B8). */
   canUndoHandover?: boolean
+  /**
+   * Übergabeliste einer Sammelstelle zugeklappt zeigen (Liste „Alle Stopps").
+   * Ausgeklappt steht sie im Block „Nächster Stopp"; in der Liste stand sie
+   * sonst ein zweites Mal - acht Familien sind am Handy vier Bildschirme.
+   */
+  collapseHandover?: boolean
+  /**
+   * Planung (Inhaber): eine kompakte Zeile zum Umsortieren - Name, Adresse,
+   * Zeitfenster, Ankunft und Warnungen, dazu „Nach oben“/„Nach unten“/
+   * „Entfernen“. Keine Fahrer-Bedienung (Navigation, Anrufen, Abhaken) und
+   * keine Übergabeliste: so waren es bis zu 7 Knöpfe je Stopp und eine
+   * 7.600 px lange Seite.
+   */
+  planning?: boolean
 }
 
 export function StopCard({
@@ -79,7 +99,10 @@ export function StopCard({
   onPreorderStatusChange,
   busyPreorderIds,
   readOnly = false,
+  canMarkStop = true,
   canUndoHandover = true,
+  collapseHandover = false,
+  planning = false,
 }: StopCardProps) {
   // Rueckfrage vor dem Abschliessen einer Sammelstelle mit offenen
   // Vorbestellungen. Bewusst kein `window.confirm`: das blockiert den
@@ -87,6 +110,8 @@ export function StopCard({
   const [confirmClose, setConfirmClose] = useState(false)
   // "Nicht angetroffen" fragt erst nach Grund und Verbleib der Ware.
   const [askFailure, setAskFailure] = useState(false)
+  // Planung: Rückfrage vor dem Entfernen.
+  const [confirmRemove, setConfirmRemove] = useState(false)
   const phoneLink = buildPhoneLink(stop.phone)
   const located = hasCoordinates(stop)
   // Nur die Strasse gefunden: der Punkt liegt in der Strassenmitte. Dann - wie
@@ -121,6 +146,16 @@ export function StopCard({
   const isPickupPoint = stop.pickupPointId != null
   const preorders = stop.preorders ?? []
   const handover = summarizeHandover(preorders)
+  const handoverList = onPreorderStatusChange ? (
+    <HandoverList
+      preorders={preorders}
+      busy={busy}
+      busyIds={busyPreorderIds}
+      onStatusChange={onPreorderStatusChange}
+      readOnly={readOnly}
+      canUndoHandover={canUndoHandover}
+    />
+  ) : null
   const closeStop = () => {
     // Erledigt ist der Stopp erst, wenn jede Vorbestellung entschieden ist -
     // sonst verschwaende eine ungeklaerte Tuete lautlos aus der Abrechnung.
@@ -133,9 +168,10 @@ export function StopCard({
 
   return (
     <li
-      className={`${styles.stop} ${styles[`stop_${stop.status}`]} ${
+      className={`${styles.stop} ${styles[`stop_${stop.status}`] ?? ''} ${
         isNext ? styles.stopNext : ''
-      }`}
+      } ${planning ? styles.stopCompact : ''}`}
+      data-planning={planning ? 'true' : undefined}
     >
       <div className={styles.stopHead}>
         <span className={styles.stopNumber} aria-hidden="true">
@@ -145,7 +181,9 @@ export function StopCard({
           <h3>{stop.customer}</h3>
           <p className={styles.stopAddress}>{stop.address}</p>
         </div>
-        <span className={`${styles.badge} ${styles[`badge_${stop.status}`]}`}>
+        <span
+          className={`${styles.badge} ${styles[`badge_${stop.status}`] ?? ''}`}
+        >
           {
             (isPickupPoint ? PICKUP_STOP_STATUS_LABEL : STOP_STATUS_LABEL)[
               stop.status
@@ -174,7 +212,7 @@ export function StopCard({
           </div>
         )}
         {/* `!= null` statt Truthiness: 0 m ist eine gueltige Entfernung. */}
-        {distance != null && (
+        {distance != null && !planning && (
           <div>
             <dt>Entfernung</dt>
             <dd>{formatRouteDistance(distance)}</dd>
@@ -198,8 +236,10 @@ export function StopCard({
           .
         </p>
       )}
-      {items && <p className={styles.stopItems}>{items}</p>}
-      {stop.notes && <p className={styles.stopNotes}>{stop.notes}</p>}
+      {items && !planning && <p className={styles.stopItems}>{items}</p>}
+      {stop.notes && !planning && (
+        <p className={styles.stopNotes}>{stop.notes}</p>
+      )}
       {stop.status === 'failed' &&
         (stop.failureReason || stop.goodsDisposition) && (
           <p className={styles.stopFailure}>
@@ -233,22 +273,31 @@ export function StopCard({
         </p>
       )}
 
-      {isPickupPoint && onPreorderStatusChange && (
+      {isPickupPoint && planning && (
+        <p className={styles.handoverSummary}>
+          {preorders.length === 1
+            ? '1 Vorbestellung'
+            : `${preorders.length} Vorbestellungen`}{' '}
+          · {handoverHeadline(handover)}
+        </p>
+      )}
+
+      {isPickupPoint && onPreorderStatusChange && !planning && (
         <>
-          <p className={styles.progressLabel}>{handoverHeadline(handover)}</p>
-          <HandoverList
-            preorders={preorders}
-            busy={busy}
-            busyIds={busyPreorderIds}
-            onStatusChange={onPreorderStatusChange}
-            readOnly={readOnly}
-            canUndoHandover={canUndoHandover}
-          />
+          <p className={styles.handoverSummary}>{handoverHeadline(handover)}</p>
+          {collapseHandover && preorders.length > 0 ? (
+            <details className={styles.disclosure}>
+              <summary>Übergabeliste ({preorders.length})</summary>
+              <div className={styles.handoverList}>{handoverList}</div>
+            </details>
+          ) : (
+            <div className={styles.handoverList}>{handoverList}</div>
+          )}
         </>
       )}
 
       {confirmClose && (
-        <div className={styles.hint} role="alert">
+        <div className={`${styles.panel} ${styles.panelWarning}`} role="alert">
           <p>
             {handover.open === 1
               ? '1 Vorbestellung ist noch offen. Trotzdem abschließen?'
@@ -257,7 +306,7 @@ export function StopCard({
           <div className={styles.buttonGroup}>
             <button
               type="button"
-              className={styles.buttonWarn}
+              className={styles.buttonDanger}
               disabled={busy}
               onClick={() => {
                 setConfirmClose(false)
@@ -288,99 +337,145 @@ export function StopCard({
         />
       )}
 
-      <div className={styles.stopActions}>
-        {navigationUrl && (
-          <a
-            className={styles.buttonLink}
-            href={navigationUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Navigation
-          </a>
-        )}
-        {phoneLink && (
-          <a className={styles.buttonLinkGhost} href={phoneLink}>
-            Anrufen
-          </a>
-        )}
-
-        {readOnly ? null : stop.status === 'open' ? (
-          // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
-          // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
-          isPickupPoint ? (
-            <button
-              type="button"
-              className={styles.buttonSuccess}
-              disabled={busy}
-              onClick={closeStop}
+      {/* Wege zum Kunden: Navigation und Anrufen. */}
+      {!planning && (
+        <div className={styles.stopActions}>
+          {navigationUrl && (
+            <a
+              className={styles.buttonLinkAccent}
+              href={navigationUrl}
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              Stopp abschließen
-            </button>
-          ) : (
-            <>
+              Navigation
+            </a>
+          )}
+          {phoneLink && (
+            <a className={styles.buttonLinkGhost} href={phoneLink}>
+              Anrufen
+            </a>
+          )}
+        </div>
+      )}
+
+      {/* Status: immer in derselben Reihe, gefüllt nur die Hauptaktion. */}
+      {!planning && (
+        <div className={styles.stopActions}>
+          {readOnly || !canMarkStop ? null : stop.status === 'open' ? (
+            // An der Sammelstelle gibt es kein „Nicht angetroffen": nicht
+            // erschienen ist dort eine einzelne Vorbestellung, nicht der Stopp.
+            isPickupPoint ? (
               <button
                 type="button"
                 className={styles.buttonSuccess}
                 disabled={busy}
-                onClick={() => onStatusChange(stop.id, 'done')}
+                onClick={closeStop}
               >
-                Geliefert
+                Stopp abschließen
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className={styles.buttonSuccess}
+                  disabled={busy}
+                  onClick={() => onStatusChange(stop.id, 'done')}
+                >
+                  Geliefert
+                </button>
+                <button
+                  type="button"
+                  className={styles.buttonWarn}
+                  disabled={busy || askFailure}
+                  aria-expanded={askFailure}
+                  onClick={() => setAskFailure(true)}
+                >
+                  Nicht angetroffen
+                </button>
+              </>
+            )
+          ) : (
+            <button
+              type="button"
+              className={styles.buttonGhost}
+              disabled={busy}
+              onClick={() => onStatusChange(stop.id, 'open')}
+            >
+              Zurücksetzen
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Planung (Inhaber): eigene Reihe, damit sie nicht zwischen
+          „Geliefert" und „Nicht angetroffen" gerät. */}
+      {(onMove || onRemove) && (
+        <div className={styles.planActions} aria-label="Planung">
+          {onMove && (
+            <>
+              <button
+                type="button"
+                className={styles.buttonGhost}
+                disabled={busy || isFirst}
+                onClick={() => onMove(stop.id, -1)}
+              >
+                Nach oben
               </button>
               <button
                 type="button"
-                className={styles.buttonWarn}
-                disabled={busy || askFailure}
-                aria-expanded={askFailure}
-                onClick={() => setAskFailure(true)}
+                className={styles.buttonGhost}
+                disabled={busy || isLast}
+                onClick={() => onMove(stop.id, 1)}
               >
-                Nicht angetroffen
+                Nach unten
               </button>
             </>
-          )
-        ) : (
-          <button
-            type="button"
-            className={styles.buttonGhost}
-            disabled={busy}
-            onClick={() => onStatusChange(stop.id, 'open')}
-          >
-            Zurücksetzen
-          </button>
-        )}
-
-        {onMove && (
-          <>
+          )}
+          {onRemove && (
             <button
               type="button"
-              className={styles.buttonGhost}
-              disabled={busy || isFirst}
-              onClick={() => onMove(stop.id, -1)}
+              className={styles.buttonWarn}
+              disabled={busy || confirmRemove}
+              aria-expanded={confirmRemove}
+              onClick={() => setConfirmRemove(true)}
             >
-              Nach oben
+              Entfernen
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Entfernen löscht den Stopp samt Ware und Hinweis - ein Fehltipp in
+          der Planung darf das nicht ohne Rückfrage tun. */}
+      {confirmRemove && onRemove && (
+        <div
+          className={`${styles.panel} ${styles.panelWarning}`}
+          role="alertdialog"
+          aria-label="Stopp entfernen?"
+        >
+          <p>Stopp „{stop.customer}“ wirklich aus der Tour entfernen?</p>
+          <div className={styles.buttonGroup}>
+            <button
+              type="button"
+              className={styles.buttonDanger}
+              disabled={busy}
+              onClick={() => {
+                setConfirmRemove(false)
+                onRemove(stop.id)
+              }}
+            >
+              Ja, entfernen
             </button>
             <button
               type="button"
               className={styles.buttonGhost}
-              disabled={busy || isLast}
-              onClick={() => onMove(stop.id, 1)}
+              onClick={() => setConfirmRemove(false)}
             >
-              Nach unten
+              Abbrechen
             </button>
-          </>
-        )}
-
-        {onRemove && (
-          <button
-            type="button"
-            className={styles.buttonGhost}
-            disabled={busy}
-            onClick={() => onRemove(stop.id)}
-          >
-            Entfernen
-          </button>
-        )}
-      </div>
+          </div>
+        </div>
+      )}
     </li>
   )
 }

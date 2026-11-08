@@ -44,6 +44,7 @@ import {
 } from '../../lib/backzettelApi'
 import {
   allLines,
+  deltaAfterDone,
   bakeDayLabel,
   bruchGroupText,
   doughsTodayText,
@@ -65,8 +66,13 @@ import {
 } from '../../lib/backstubeTab'
 import { useSession } from '../../lib/session'
 import { isPathAllowedForRole } from '../../lib/roles'
+import {
+  BS_SECTION_TITLE_SX,
+  BS_TITLE_SX,
+} from '../../components/backstube/backstubeType'
 import LogoutButton from '../../components/auth/LogoutButton'
 import { BackstubeLine } from '../../components/backstube/BackstubeLine'
+import { BackzettelWarnings } from '../../components/backzettel/BackzettelWarnings'
 import { BackstubeHefeteig } from '../../components/backstube/BackstubeHefeteig'
 import { BackstubeDeltas } from '../../components/backstube/BackstubeDeltas'
 import { DeltaDoughNote } from '../../components/backzettel/DeltaDoughNote'
@@ -86,6 +92,13 @@ type PrepResult =
   | PrepView
   | BackzettelNoConfig
   | { date: string; status: 'ruhetag'; message: string }
+
+/**
+ * Breite von Kopf und Zettel. Quer (1180 px) lief eine Zeile sonst über
+ * 1.000 px von Name bis Haken - aus Armlänge rutscht das Auge eine Zeile
+ * daneben (UI-Runde 1).
+ */
+const BS_MAX_WIDTH = 960
 
 const STALE_CODES = new Set([
   'confirmed',
@@ -143,7 +156,7 @@ export function afterReloadMessage(code: string | null): string | undefined {
     return 'Die Verbindung ist wieder da. Der letzte Haken wurde nicht gespeichert - bitte noch einmal abhaken.'
   }
   if (code === TRANSIENT_ACK) {
-    return 'Die Verbindung ist wieder da. Der Nachtrag wurde nicht quittiert - bitte noch einmal „Gesehen“ tippen.'
+    return 'Die Verbindung ist wieder da. Der Nachtrag wurde nicht als gesehen gespeichert – bitte noch einmal „Gesehen“ tippen.'
   }
   return undefined
 }
@@ -165,6 +178,15 @@ function isStale(error: unknown): boolean {
   // nicht mehr - neu laden statt den alten Stand mit Knöpfen stehen lassen.
   if (e.status === 404 && e.code === 'not_found') return true
   return e.status === 409 && !!e.code && STALE_CODES.has(e.code)
+}
+
+/** Abgehakt, aber danach kam ein Nachtrag, der mehr backen heißt. */
+function isReopened(
+  line: BackzettelLine,
+  deltas: BackzettelDeltaEntry[]
+): boolean {
+  const after = deltaAfterDone(line, deltas)
+  return !!after && after.bake > 0
 }
 
 function patchLines(
@@ -544,8 +566,13 @@ export default function BackstubeClient({
     if (!day || day.status !== 'confirmed' || line.id === null) return
     const lineId = line.id
     const target = day.date
-    const done = !line.doneAt
+    // UI-Runde 1: Kam nach dem Haken ein Nachtrag, ist die Zeile wieder
+    // offen. Ein Tipp heißt dann „Zusatzmenge gebacken“ - der Haken wird neu
+    // gesetzt (undone + done), damit sein Zeitpunkt nach dem Nachtrag liegt.
+    const retick = isReopened(line, day.deltas)
+    const done = retick || !line.doneAt
     const before = { doneAt: line.doneAt, doneBy: line.doneBy }
+    let undoneOk = false
     mutationSeq.current += 1
     pendingRef.current += 1
     setPendingIds((ids) => new Set(ids).add(lineId))
@@ -570,6 +597,10 @@ export default function BackstubeClient({
     )
     let stale = false
     try {
+      if (retick) {
+        await setLineDone(target, lineId, false)
+        undoneOk = true
+      }
       const res = await setLineDone(target, lineId, done, line.total)
       updateDay(target, (d) =>
         patchLines(
@@ -584,7 +615,7 @@ export default function BackstubeClient({
         patchLines(
           d,
           (l) => l.id === lineId,
-          () => before
+          () => (undoneOk ? { doneAt: null, doneBy: null } : before)
         )
       )
       stale = isStale(error)
@@ -667,7 +698,7 @@ export default function BackstubeClient({
     } catch (error) {
       const text = messageOf(
         error,
-        'Der Nachtrag konnte nicht quittiert werden.'
+        'Der Nachtrag konnte nicht als gesehen gespeichert werden.'
       )
       showActionError(
         isStale(error) ? `${text} Der Backzettel wird neu geladen.` : text,
@@ -900,7 +931,10 @@ export default function BackstubeClient({
     isPathAllowedForRole('/admin', role, session.sessionKind)
 
   const lines = day ? allLines(day) : []
-  const doneCount = lines.filter((l) => l.doneAt).length
+  // Eine Zeile mit Nachtrag nach dem Haken ist wieder offen (UI-Runde 1).
+  const doneCount = lines.filter(
+    (l) => l.doneAt && !isReopened(l, day?.deltas ?? [])
+  ).length
   const draft = day?.status === 'draft'
   const isSaturday = day?.weekday === 6
 
@@ -920,13 +954,9 @@ export default function BackstubeClient({
       >
         <Typography
           id={`bs-section-title-${id}`}
+          variant={stripBakeDate ? 'h3' : 'h2'}
           component={stripBakeDate ? 'h3' : 'h2'}
-          sx={{
-            fontSize: { xs: '1.5rem', sm: '1.9rem' },
-            fontWeight: 800,
-            mt: 1,
-            mb: 1,
-          }}
+          sx={{ ...BS_SECTION_TITLE_SX, mt: 1, mb: 1 }}
         >
           {section.label}
         </Typography>
@@ -936,6 +966,9 @@ export default function BackstubeClient({
               key={line.key}
               // Unter der Backtag-Überschrift kein „· für …“ am Namen.
               line={stripBakeDate ? { ...line, bakeDate: undefined } : line}
+              afterDone={
+                draft || !day ? null : deltaAfterDone(line, day.deltas)
+              }
               config={config}
               draft={draft}
               canTick={canWork}
@@ -979,6 +1012,7 @@ export default function BackstubeClient({
           // unlesbar - im Druck alles schwarz auf weiß, Rahmen bleiben.
           '& *': {
             backgroundColor: 'transparent !important',
+            backgroundImage: 'none !important',
             color: '#000 !important',
             boxShadow: 'none !important',
             opacity: '1 !important',
@@ -986,7 +1020,17 @@ export default function BackstubeClient({
             // dunklen Modus weiß - auf Papier fehlten die leeren Kästchen.
             borderColor: '#888 !important',
           },
+          // global.css blendet `.MuiPaper-root` mit `transition:
+          // background-color 0.3s !important` um. Beim Wechsel ins Druckbild
+          // lief die Überblendung noch, und Hefeteig & Füllungen kam aus dem
+          // Dunkelmodus fast schwarz aufs Papier. Zwei Klassen schlagen die
+          // eine globale.
+          '& .MuiPaper-root, & *': { transition: 'none !important' },
           '& [role="checkbox"]': { borderColor: '#000 !important' },
+          // UI-Runde 1: Zeilen- und Füllungskarten nicht über zwei Seiten
+          // zerschneiden.
+          '& [data-testid^="bs-line-"], & [data-testid^="bs-filling-"], & [data-testid^="bs-weigh-"]':
+            { breakInside: 'avoid' },
         },
       }}
     >
@@ -999,17 +1043,32 @@ export default function BackstubeClient({
           bgcolor: 'background.paper',
           borderBottom: '2px solid',
           borderColor: 'divider',
-          px: { xs: 1.5, sm: 3 },
+          px: { xs: 2, sm: 3 },
           pt: 1.5,
         }}
       >
-        <Stack
-          direction="row"
-          alignItems="center"
-          flexWrap="wrap"
-          sx={{ gap: 1.5 }}
+        {/* Raster statt umbrechender Zeilen (Layout-Kit-Abgleich): Datum
+            links oben, Neu laden + Abmelden rechts; darunter Reiter und
+            Heute/Morgen. Am Handy rückt der Umschalter neben „Abmelden“. */}
+        <Box
+          sx={{
+            maxWidth: BS_MAX_WIDTH,
+            mx: 'auto',
+            display: 'grid',
+            alignItems: 'center',
+            columnGap: { xs: 1, sm: 1.5 },
+            rowGap: 1,
+            // Drei Spalten auch am Handy: „Abmelden“ spannt über zwei, so
+            // gibt der Titel nur die Breite des Neu-laden-Knopfs ab und das
+            // Datum bricht bei 390 px nicht um.
+            gridTemplateColumns: 'minmax(0, 1fr) auto auto',
+            gridTemplateAreas: {
+              xs: '"title title refresh" "toggle logout logout" "tabs tabs tabs"',
+              sm: '"title refresh logout" "tabs toggle toggle"',
+            },
+          }}
         >
-          <Box sx={{ flex: '1 1 260px', minWidth: 0 }}>
+          <Box sx={{ gridArea: 'title', minWidth: 0 }}>
             <Typography
               sx={{
                 fontSize: '1rem',
@@ -1021,13 +1080,10 @@ export default function BackstubeClient({
               {session.user ? ` · ${session.user.displayName}` : ''}
             </Typography>
             <Typography
+              variant="h1"
               component="h1"
               data-testid="bs-date"
-              sx={{
-                fontSize: { xs: '1.6rem', sm: '2.1rem' },
-                fontWeight: 800,
-                lineHeight: 1.15,
-              }}
+              sx={BS_TITLE_SX}
             >
               {tab !== 'vorbereitung'
                 ? formatDateLong(date)
@@ -1045,10 +1101,14 @@ export default function BackstubeClient({
               }}
               aria-label="Tag wählen"
               sx={{
+                gridArea: 'toggle',
+                justifySelf: { xs: 'stretch', sm: 'end' },
                 '& .MuiToggleButton-root': {
+                  flex: { xs: 1, sm: 'none' },
                   minHeight: 56,
-                  minWidth: 112,
-                  fontSize: '1.15rem',
+                  minWidth: { xs: 0, sm: 112 },
+                  px: { xs: 0.75, sm: 1.5 },
+                  fontSize: { xs: '1.05rem', sm: '1.15rem' },
                   fontWeight: 700,
                   textTransform: 'none',
                   lineHeight: 1.1,
@@ -1089,81 +1149,85 @@ export default function BackstubeClient({
               </ToggleButton>
             </ToggleButtonGroup>
           )}
-          <Stack
-            direction="row"
-            alignItems="center"
-            flexWrap="wrap"
+          <IconButton
+            onClick={refresh}
+            aria-label="Neu laden"
             data-print="hide"
-            sx={{ gap: 1 }}
+            sx={{
+              gridArea: 'refresh',
+              justifySelf: 'end',
+              width: 56,
+              height: 56,
+              border: '2px solid',
+              borderColor: 'divider',
+            }}
           >
-            {mayAdmin && (
-              <Button
-                component={Link}
-                href="/admin"
-                variant="outlined"
-                color="inherit"
-                size="large"
-                sx={{
-                  minHeight: 56,
-                  fontSize: '1.05rem',
-                  fontWeight: 700,
-                  textTransform: 'none',
-                }}
-              >
-                Zur Verwaltung
-              </Button>
+            {refreshing ? (
+              <CircularProgress size={24} color="inherit" />
+            ) : (
+              <RefreshIcon sx={{ fontSize: 30 }} />
             )}
-            <IconButton
-              onClick={refresh}
-              aria-label="Neu laden"
-              sx={{
-                width: 56,
-                height: 56,
-                border: '2px solid',
-                borderColor: 'divider',
-              }}
-            >
-              {refreshing ? (
-                <CircularProgress size={24} color="inherit" />
-              ) : (
-                <RefreshIcon sx={{ fontSize: 30 }} />
-              )}
-            </IconButton>
+          </IconButton>
+          <Box
+            data-print="hide"
+            sx={{ gridArea: 'logout', justifySelf: 'end' }}
+          >
             <LogoutButton
               variant="outlined"
               color="inherit"
               size="large"
-              sx={{ minHeight: 56, fontSize: '1.1rem', fontWeight: 700 }}
+              sx={{
+                minHeight: 56,
+                px: { xs: 1.5, sm: 2 },
+                fontSize: { xs: '1rem', sm: '1.1rem' },
+                fontWeight: 700,
+                textTransform: 'none',
+                whiteSpace: 'nowrap',
+              }}
             />
-          </Stack>
-        </Stack>
-        <Tabs
-          value={tab}
-          onChange={(_, value: TabId) => {
-            setTabChoice({ tab: value, date })
-            showActionError(null)
-          }}
-          aria-label="Ansicht"
-          data-print="hide"
-          textColor="inherit"
-          TabIndicatorProps={{ sx: { height: 4, bgcolor: 'text.primary' } }}
-          sx={{
-            mt: 1,
-            '& .MuiTab-root': {
-              minHeight: 56,
-              fontSize: { xs: '1.05rem', sm: '1.25rem' },
-              fontWeight: 700,
-              textTransform: 'none',
-            },
-          }}
-        >
-          <Tab value="zettel" label="Zettel" />
-          <Tab value="backen" label="Backen" />
-          <Tab value="vorbereitung" label="Vorbereitung heute" />
-        </Tabs>
+          </Box>
+          <Tabs
+            value={tab}
+            onChange={(_, value: TabId) => {
+              setTabChoice({ tab: value, date })
+              showActionError(null)
+            }}
+            aria-label="Ansicht"
+            data-print="hide"
+            textColor="inherit"
+            variant="scrollable"
+            scrollButtons={false}
+            TabIndicatorProps={{ sx: { height: 4, bgcolor: 'text.primary' } }}
+            sx={{
+              gridArea: 'tabs',
+              alignSelf: 'end',
+              minWidth: 0,
+              '& .MuiTab-root': {
+                minHeight: 56,
+                fontSize: { xs: '1.05rem', sm: '1.25rem' },
+                fontWeight: 700,
+                textTransform: 'none',
+              },
+            }}
+          >
+            <Tab value="zettel" label="Zettel" />
+            <Tab value="backen" label="Backen" />
+            <Tab value="vorbereitung" label="Vorbereitung heute" />
+          </Tabs>
+        </Box>
       </Box>
 
-      <Box sx={{ px: { xs: 1.5, sm: 3 }, pt: 2, maxWidth: 1280, mx: 'auto' }}>
+      {/* content-box: die Breite gilt ohne Rand, so fluchten Kopf und
+          Inhalt (UI-Runde 1: vorher lag der Inhalt 24 px eingerückt). */}
+      <Box
+        sx={{
+          px: { xs: 2, sm: 3 },
+          pt: 2,
+          maxWidth: BS_MAX_WIDTH,
+          mx: 'auto',
+          boxSizing: 'content-box',
+        }}
+      >
         {actionError && (
           <Alert
             severity="error"
@@ -1441,6 +1505,15 @@ export default function BackstubeClient({
                 />
                 {!draft && <DeltaDoughNote day={day} large />}
 
+                {/* UI-Runde 1: Hinweise oben (nach den Nachträgen) und gelb
+                    wie auf der Planungsseite - unten als blaue Info übersah
+                    man z. B. Vorbestellungen, die zu keinem Posten gehören. */}
+                <BackzettelWarnings
+                  warnings={day.warnings}
+                  large
+                  data-testid="bs-warnings"
+                />
+
                 {isSaturday && hefeteig}
 
                 {v2
@@ -1511,45 +1584,8 @@ export default function BackstubeClient({
                 )}
 
                 {!isSaturday && hefeteig}
-
-                {day.warnings.length > 0 && (
-                  <Alert
-                    severity="info"
-                    data-testid="bs-warnings"
-                    sx={{ fontSize: '1.05rem' }}
-                  >
-                    {day.warnings.map((w, i) => (
-                      <div key={`${w.code}-${i}`}>{w.message}</div>
-                    ))}
-                  </Alert>
-                )}
               </>
             )}
-
-            <Stack
-              direction="row"
-              flexWrap="wrap"
-              alignItems="center"
-              data-print="hide"
-              sx={{ gap: 2, pt: 1 }}
-            >
-              <Typography sx={{ fontSize: '1rem', color: 'text.secondary' }}>
-                {loadedAt
-                  ? `Stand ${timeOf(loadedAt)} · lädt jede Minute neu`
-                  : ''}
-              </Typography>
-              {mayPlan && (
-                <Button
-                  component={Link}
-                  href={planPath}
-                  variant="outlined"
-                  color="inherit"
-                  sx={{ minHeight: 48 }}
-                >
-                  Planung &amp; Druck
-                </Button>
-              )}
-            </Stack>
           </Stack>
         ) : (
           <Stack spacing={2}>
@@ -1582,6 +1618,46 @@ export default function BackstubeClient({
               )}
           </Stack>
         )}
+        <Stack
+          direction="row"
+          flexWrap="wrap"
+          alignItems="center"
+          data-print="hide"
+          sx={{ gap: 2, pt: 3 }}
+        >
+          {tab === 'zettel' && (
+            <Typography sx={{ fontSize: '1rem', color: 'text.secondary' }}>
+              {loadedAt
+                ? `Stand ${timeOf(loadedAt)} · lädt jede Minute neu`
+                : ''}
+            </Typography>
+          )}
+          {tab === 'zettel' && mayPlan && (
+            <Button
+              component={Link}
+              href={planPath}
+              variant="outlined"
+              color="inherit"
+              sx={{ minHeight: 48, textTransform: 'none', fontWeight: 700 }}
+            >
+              Planung &amp; Druck
+            </Button>
+          )}
+          {/* Nur mit persönlicher Sitzung (Inhaber); die Station braucht ihn
+              nicht. Unten statt im Kopf - der Kopf bleibt für Tag, Neu laden
+              und Abmelden. */}
+          {mayAdmin && (
+            <Button
+              component={Link}
+              href="/admin"
+              variant="outlined"
+              color="inherit"
+              sx={{ minHeight: 48, textTransform: 'none', fontWeight: 700 }}
+            >
+              Zur Verwaltung
+            </Button>
+          )}
+        </Stack>
       </Box>
     </Box>
   )

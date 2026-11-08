@@ -1,27 +1,21 @@
 'use client'
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import Link from 'next/link'
 import {
   Alert,
   Box,
   Button,
-  CircularProgress,
-  Paper,
-  Stack,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
   useTheme,
 } from '@mui/material'
 import { Download as DownloadIcon } from '@mui/icons-material'
 import {
-  addDaysIso,
   DAY_STATUS_LABELS,
   downloadRestCsv,
   fetchRestSummary,
@@ -29,21 +23,28 @@ import {
   formatNumber,
   formatQtyUnit,
   formatRate,
-  isIsoDate,
   type RestSummary,
   type RestSummaryDay,
   type RestSummaryItem,
 } from '../../../../lib/restApi'
+import {
+  KeyFigures,
+  LoadingState,
+  MAX_KEY_FIGURES,
+  PageLayout,
+  PageSection,
+  type KeyFigure,
+} from '../../../../components/layout'
+import { backzettelErrorText } from '../../../../lib/backstubeErrors'
+import DateRangeFilter from '../../../../components/analytics/DateRangeFilter'
+import { weekPresets } from '../../../../components/analytics/dateRange'
+
+/** Längster Zeitraum - wie `MAX_RANGE_DAYS` in `rest-am-abend.core.js`. */
+const MAX_RANGE_DAYS = 400
 
 const ALERT_TOUCH = {
   '& .MuiAlert-action .MuiButtonBase-root': { minHeight: 44, minWidth: 44 },
 } as const
-
-const PRESETS: { label: string; days: number }[] = [
-  { label: '7 Tage', days: 7 },
-  { label: '4 Wochen', days: 28 },
-  { label: '12 Wochen', days: 84 },
-]
 
 /** Tage, die als Lücke markiert werden (nicht 0). */
 const GAP_STATUSES = new Set([
@@ -53,12 +54,39 @@ const GAP_STATUSES = new Set([
   'counted_without_backzettel',
 ])
 
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) return error.message
-  return 'Unbekannter Fehler.'
+/**
+ * Deutscher Fehlertext: ohne Antwort (WLAN, API gestoppt) oder mit 502-504
+ * von Caddy der WLAN-Hinweis statt „Failed to fetch“ / „HTTP 502: Bad
+ * Gateway“ (UI-Runde 2), sonst die `message` der API.
+ */
+function errorMessage(error: unknown, fallback: string): string {
+  return backzettelErrorText(error, fallback)
 }
 
 // --------------------------------------------------------- Tagesverlauf
+
+/**
+ * Breite eines Elements, nachgeführt über `ResizeObserver` (0, solange
+ * nicht gemessen - z. B. in jsdom).
+ */
+function useElementWidth(el: HTMLElement | null): number {
+  const [width, setWidth] = useState(0)
+  useEffect(() => {
+    if (!el) return
+    setWidth(Math.round(el.getBoundingClientRect().width))
+    if (typeof ResizeObserver === 'undefined') return
+    const observer = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect?.width
+      if (typeof w === 'number' && w > 0) setWidth(Math.round(w))
+    })
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [el])
+  return width
+}
+
+/** Mindestbreite je Tag - darunter scrollt das Diagramm (Handy). */
+export const DAY_SLOT_MIN = 22
 
 /**
  * Restquote je Tag einer Einheit (eine Reihe, daher ohne Legende - der Titel
@@ -72,29 +100,34 @@ export function DailyRateChart({
   unit: string
 }) {
   const theme = useTheme()
-  const scroller = useRef<HTMLDivElement | null>(null)
+  // Element als State, nicht als Ref: das Diagramm erscheint oft erst mit
+  // den Daten, und erst dann darf gemessen werden.
+  const [scroller, setScroller] = useState<HTMLDivElement | null>(null)
+  const available = useElementWidth(scroller)
   const shown = days.filter((d) => d.status !== 'future')
   // Auf dem Handy passt der Zeitraum nicht ganz: die jüngsten Tage zeigen.
   useEffect(() => {
-    const el = scroller.current
-    if (el) el.scrollLeft = el.scrollWidth
-  }, [days])
+    if (scroller) scroller.scrollLeft = scroller.scrollWidth
+  }, [days, scroller, available])
   if (shown.length === 0) return null
   const rates = shown.map((d) => d.byUnit[unit]?.rate ?? null)
   const max = Math.max(0.1, ...rates.map((r) => r ?? 0))
   const top = Math.ceil(max * 10) / 10
-  const width = Math.max(320, shown.length * 22)
-  const height = 160
+  // Die ganze Kartenbreite nutzen (früher feste Pixel: am PC endete das
+  // Diagramm in der Mitte der Karte); nur wenn die Tage dort nicht passen,
+  // wird es breiter und scrollt.
+  const width = Math.max(320, shown.length * DAY_SLOT_MIN, available)
+  const height = available >= 600 ? 200 : 160
   const left = 36
   const bottom = 22
   const plotH = height - bottom - 8
   const slot = (width - left) / shown.length
-  const barW = Math.max(4, Math.min(16, slot - 4))
+  const barW = Math.max(4, Math.min(28, slot - 6))
   const y = (r: number) => 8 + plotH - (r / top) * plotH
   const ticks = [0, top / 2, top]
   const ink = theme.palette.text.secondary
   return (
-    <Box ref={scroller} sx={{ overflowX: 'auto' }} data-testid="daily-chart">
+    <Box ref={setScroller} sx={{ overflowX: 'auto' }} data-testid="daily-chart">
       <svg
         width={width}
         height={height}
@@ -274,30 +307,62 @@ function soldText(item: RestSummaryItem): string {
 
 // ------------------------------------------------------------------ Seite
 
+const HIDE_ON_PHONE = { display: { xs: 'none', sm: 'table-cell' } } as const
+
+/** Eine Einheit als Kennzahl: Restquote groß, darunter Rest von gebacken. */
+function unitFigure(t: RestSummary['totals'][number]): KeyFigure {
+  const exceeds = t.restExceedsItems ?? 0
+  return {
+    label: `Restquote ${t.unit}`,
+    value: formatRate(t.rate),
+    tone: exceeds > 0 ? 'warning' : 'default',
+    hint: (
+      <>
+        <Box component="span" sx={{ display: 'block' }}>
+          Rest {formatQtyUnit(t.rest, t.unit)} von{' '}
+          {formatQtyUnit(t.shopBaked, t.unit)} im Laden · {t.items} Posten
+        </Box>
+        {exceeds > 0 && (
+          <Box
+            component="span"
+            data-testid={`rest-total-exceeds-${t.unit}`}
+            sx={{
+              display: 'block',
+              mt: 0.5,
+              color: 'text.primary',
+              fontWeight: 600,
+            }}
+          >
+            {exceeds === 1 ? '1 Posten' : `${exceeds} Posten`} mit mehr Rest als
+            gebacken - Quote enthält vermutlich Zählfehler.
+          </Box>
+        )}
+      </>
+    ),
+  }
+}
+
 export default function RestAuswertungClient() {
-  const theme = useTheme()
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
   const [data, setData] = useState<RestSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [csvError, setCsvError] = useState<string | null>(null)
   const [csvBusy, setCsvBusy] = useState(false)
+  const lastRange = useRef<{ from?: string; to?: string }>({})
   const requestId = useRef(0)
 
   const load = useCallback(async (range: { from?: string; to?: string }) => {
     const id = ++requestId.current
+    lastRange.current = range
     setLoading(true)
     setError(null)
     try {
       const result = await fetchRestSummary(range)
       if (id !== requestId.current) return
       setData(result)
-      setFrom(result.from)
-      setTo(result.to)
     } catch (e) {
       if (id !== requestId.current) return
-      setError(errorMessage(e))
+      setError(errorMessage(e, 'Die Auswertung konnte nicht geladen werden.'))
     } finally {
       if (id === requestId.current) setLoading(false)
     }
@@ -307,13 +372,6 @@ export default function RestAuswertungClient() {
     void load({})
   }, [load])
 
-  // Das Kalender-Symbol der nativen Datumsfelder folgt sonst nicht dem Modus.
-  const dateSx = {
-    flex: 1,
-    '& input': { minHeight: 28, colorScheme: theme.palette.mode },
-  }
-  const rangeValid = isIsoDate(from) && isIsoDate(to) && from <= to
-
   const csv = async () => {
     if (!data) return
     setCsvBusy(true)
@@ -321,7 +379,7 @@ export default function RestAuswertungClient() {
     try {
       await downloadRestCsv({ from: data.from, to: data.to })
     } catch (e) {
-      setCsvError(errorMessage(e))
+      setCsvError(errorMessage(e, 'Die CSV-Datei konnte nicht geladen werden.'))
     } finally {
       setCsvBusy(false)
     }
@@ -329,118 +387,52 @@ export default function RestAuswertungClient() {
 
   const chartUnit =
     data?.totals.find((t) => t.unit === 'Stück')?.unit ?? data?.totals[0]?.unit
+  // Dieselben Wochen-Zeiträume wie das Tagesziel (Wochentage vergleichen).
+  const presets = data ? weekPresets(data.today) : []
 
   return (
-    <Box>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'flex-start', sm: 'center' }}
-        spacing={1}
-        sx={{ mb: 2 }}
-      >
-        <Box>
-          <Typography variant="h4" component="h1">
-            Rest-Auswertung
-          </Typography>
-          <Typography color="text.secondary">
-            Gebacken, verkauft und übrig - je Posten
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={1}>
-          <Button component={Link} href="/admin/rest" sx={{ minHeight: 44 }}>
-            Zur Zählung
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<DownloadIcon />}
-            onClick={() => void csv()}
-            disabled={!data || csvBusy}
-            sx={{ minHeight: 44 }}
-          >
-            CSV
-          </Button>
-        </Stack>
-      </Stack>
-
-      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-        <Stack
-          component="form"
-          direction={{ xs: 'column', md: 'row' }}
-          spacing={2}
-          alignItems={{ xs: 'stretch', md: 'center' }}
-          onSubmit={(e) => {
-            e.preventDefault()
-            if (rangeValid) void load({ from, to })
-          }}
+    <PageLayout
+      title="Rest-Auswertung"
+      subtitle="Gebacken, verkauft und übrig - je Posten"
+      back={{ href: '/admin/rest', label: 'Rest am Abend' }}
+      actions={
+        <Button
+          variant="outlined"
+          startIcon={<DownloadIcon />}
+          onClick={() => void csv()}
+          disabled={!data || csvBusy}
+          sx={{ minHeight: 44 }}
         >
-          <Stack direction="row" spacing={1}>
-            <TextField
-              label="Von"
-              type="date"
-              value={from}
-              onChange={(e) => setFrom(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              size="small"
-              sx={dateSx}
-            />
-            <TextField
-              label="Bis"
-              type="date"
-              value={to}
-              onChange={(e) => setTo(e.target.value)}
-              InputLabelProps={{ shrink: true }}
-              size="small"
-              sx={dateSx}
-            />
-          </Stack>
-          <Button
-            type="submit"
-            variant="contained"
-            disabled={!rangeValid || loading}
-            sx={{ minHeight: 44 }}
-          >
-            Anzeigen
-          </Button>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {PRESETS.map((p) => (
-              <Button
-                key={p.days}
-                size="small"
-                variant="outlined"
-                disabled={!data || loading}
-                onClick={() => {
-                  if (!data) return
-                  void load({
-                    from: addDaysIso(data.today, -(p.days - 1)),
-                    to: data.today,
-                  })
-                }}
-                sx={{ minHeight: 44 }}
-              >
-                {p.label}
-              </Button>
-            ))}
-          </Stack>
-        </Stack>
-        {!rangeValid && from && to && (
-          <Typography color="error" variant="body2" sx={{ mt: 1 }}>
-            Der Anfang muss vor dem Ende liegen.
-          </Typography>
-        )}
-      </Paper>
+          CSV
+        </Button>
+      }
+    >
+      {/* Erst mit Daten: vorher stünden leere Von/Bis-Felder (tt.mm.jjjj)
+          ohne Grenze über der Lade- bzw. Fehlermeldung (UI-Runde 2). */}
+      {data && (
+        <DateRangeFilter
+          from={data.from}
+          to={data.to}
+          onApply={(from, to) => void load({ from, to })}
+          presets={presets}
+          busy={loading}
+          max={data.today}
+          maxDays={MAX_RANGE_DAYS}
+        />
+      )}
 
-      {loading && !data && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
-          <CircularProgress aria-label="Lädt" />
-        </Box>
+      {loading && !data && !error && (
+        <LoadingState label="Auswertung wird geladen …" />
       )}
       {error && (
         <Alert
           severity="error"
-          sx={{ mb: 2, ...ALERT_TOUCH }}
+          sx={ALERT_TOUCH}
           action={
-            <Button color="inherit" onClick={() => void load({ from, to })}>
+            <Button
+              color="inherit"
+              onClick={() => void load(lastRange.current)}
+            >
               Erneut versuchen
             </Button>
           }
@@ -451,7 +443,7 @@ export default function RestAuswertungClient() {
       {csvError && (
         <Alert
           severity="error"
-          sx={{ mb: 2, ...ALERT_TOUCH }}
+          sx={ALERT_TOUCH}
           onClose={() => setCsvError(null)}
         >
           {csvError}
@@ -461,94 +453,78 @@ export default function RestAuswertungClient() {
       {data && (
         <>
           {data.configStatus !== 'ok' && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
+            <Alert severity="warning">
               Die Backzettel-Stammdaten fehlen oder sind ungültig - ohne sie
               lässt sich nichts zuordnen.
             </Alert>
           )}
           {!data.reportsAvailable && (
-            <Alert severity="info" sx={{ mb: 2 }}>
+            <Alert severity="info">
               Keine Kassenberichte gefunden - „verkauft“ bleibt leer.
             </Alert>
           )}
 
-          <Typography variant="body2" sx={{ mb: 2 }} data-testid="day-counts">
-            {data.counts.counted} Tage ausgewertet · {data.counts.partial}{' '}
-            teilweise gezählt · {data.counts.notCounted} ohne Zählung ·{' '}
-            {data.counts.noBackzettel} ohne freigegebenen Backzettel
-            {data.counts.ruhetag > 0
-              ? ` · ${data.counts.ruhetag} Ruhetage`
-              : ''}
-          </Typography>
-
-          <Box
-            sx={{
-              display: 'grid',
-              gridTemplateColumns: {
-                xs: '1fr',
-                sm: 'repeat(2, 1fr)',
-                lg: 'repeat(4, 1fr)',
-              },
-              gap: 2,
-              mb: 3,
-            }}
-          >
-            {data.totals.map((t) => (
-              <Paper key={t.unit} variant="outlined" sx={{ p: 2 }}>
-                <Typography variant="overline" color="text.secondary">
-                  {t.unit} · {t.items} Posten
-                </Typography>
-                <Typography variant="h4" component="p">
-                  {formatRate(t.rate)}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Rest {formatQtyUnit(t.rest, t.unit)} von{' '}
-                  {formatQtyUnit(t.shopBaked, t.unit)} im Laden
-                </Typography>
-                {(t.restExceedsItems ?? 0) > 0 && (
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    sx={{ mt: 0.5 }}
-                    data-testid={`rest-total-exceeds-${t.unit}`}
-                  >
-                    {t.restExceedsItems === 1
-                      ? '1 Posten'
-                      : `${t.restExceedsItems} Posten`}{' '}
-                    mit mehr Rest als gebacken - Quote enthält vermutlich
-                    Zählfehler.
-                  </Typography>
-                )}
-              </Paper>
-            ))}
-          </Box>
-
-          {chartUnit && (
-            <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
-              <Typography variant="subtitle1" component="h2" gutterBottom>
-                Restquote je Tag ({chartUnit})
-              </Typography>
-              <DailyRateChart days={data.days} unit={chartUnit} />
-              <Typography variant="caption" color="text.secondary">
-                Gestrichelt: Tag ohne vollständige Zählung oder ohne
-                freigegebenen Backzettel - eine Lücke, keine 0.
-              </Typography>
-            </Paper>
+          {data.totals.length > 0 && (
+            <KeyFigures
+              aria-label="Restquote je Einheit"
+              items={data.totals.slice(0, MAX_KEY_FIGURES).map(unitFigure)}
+            />
           )}
 
-          <Paper variant="outlined" sx={{ mb: 2 }}>
+          {chartUnit && (
+            <PageSection
+              title={`Restquote je Tag (${chartUnit})`}
+              description="Gestrichelt: Tag ohne vollständige Zählung oder ohne freigegebenen Backzettel - eine Lücke, keine 0."
+            >
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ mb: 1.5 }}
+                data-testid="day-counts"
+              >
+                {data.counts.counted} Tage ausgewertet · {data.counts.partial}{' '}
+                teilweise gezählt · {data.counts.notCounted} ohne Zählung ·{' '}
+                {data.counts.noBackzettel} ohne freigegebenen Backzettel
+                {data.counts.ruhetag > 0
+                  ? ` · ${data.counts.ruhetag} Ruhetage`
+                  : ''}
+              </Typography>
+              <DailyRateChart days={data.days} unit={chartUnit} />
+            </PageSection>
+          )}
+
+          <PageSection
+            title={`Rest je Posten (${data.items.length})`}
+            disablePadding
+            detailsLabel="So wird gerechnet"
+            details={
+              <Typography variant="body2" color="text.secondary">
+                {data.rateBasis} Verkauft = Kassenbons über die PLU des Postens
+                (Stornos abgezogen), an denselben ausgewerteten Tagen, soweit
+                ein Kassenbericht da ist.
+              </Typography>
+            }
+          >
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small" aria-label="Rest je Posten">
                 <TableHead>
                   <TableRow>
                     <TableCell>Posten</TableCell>
-                    <TableCell align="right">Tage</TableCell>
-                    <TableCell align="right">Gebacken</TableCell>
-                    <TableCell align="right">davon CAP</TableCell>
-                    <TableCell align="right">Verkauft (Kasse)</TableCell>
+                    <TableCell align="right" sx={HIDE_ON_PHONE}>
+                      Tage
+                    </TableCell>
+                    <TableCell align="right" sx={HIDE_ON_PHONE}>
+                      Gebacken
+                    </TableCell>
+                    <TableCell align="right" sx={HIDE_ON_PHONE}>
+                      davon CAP
+                    </TableCell>
+                    <TableCell align="right" sx={HIDE_ON_PHONE}>
+                      Verkauft (Kasse)
+                    </TableCell>
                     <TableCell align="right">Rest</TableCell>
                     <TableCell align="right">Quote</TableCell>
-                    <TableCell>Wochen</TableCell>
+                    <TableCell sx={HIDE_ON_PHONE}>Wochen</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -557,7 +533,7 @@ export default function RestAuswertungClient() {
                       key={item.itemId}
                       data-testid={`item-${item.itemId}`}
                     >
-                      <TableCell sx={{ minWidth: 160 }}>
+                      <TableCell sx={{ minWidth: { xs: 120, sm: 160 } }}>
                         <Typography variant="body2" fontWeight={600}>
                           {item.name}
                         </Typography>
@@ -599,21 +575,25 @@ export default function RestAuswertungClient() {
                           </Typography>
                         )}
                       </TableCell>
-                      <TableCell align="right">{item.days}</TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={HIDE_ON_PHONE}>
+                        {item.days}
+                      </TableCell>
+                      <TableCell align="right" sx={HIDE_ON_PHONE}>
                         {item.days ? formatQtyUnit(item.baked, item.unit) : '–'}
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={HIDE_ON_PHONE}>
                         {item.days ? formatQtyUnit(item.cap, item.unit) : '–'}
                       </TableCell>
-                      <TableCell align="right">{soldText(item)}</TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={HIDE_ON_PHONE}>
+                        {soldText(item)}
+                      </TableCell>
+                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                         {item.days ? formatQtyUnit(item.rest, item.unit) : '–'}
                       </TableCell>
-                      <TableCell align="right">
+                      <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                         <strong>{formatRate(item.rate)}</strong>
                       </TableCell>
-                      <TableCell>
+                      <TableCell sx={HIDE_ON_PHONE}>
                         <WeekSparkline item={item} />
                       </TableCell>
                     </TableRow>
@@ -628,14 +608,9 @@ export default function RestAuswertungClient() {
                 </TableBody>
               </Table>
             </TableContainer>
-          </Paper>
-          <Typography variant="caption" color="text.secondary" component="p">
-            {data.rateBasis} Verkauft = Kassenbons über die PLU des Postens
-            (Stornos abgezogen), an denselben ausgewerteten Tagen, soweit ein
-            Kassenbericht da ist.
-          </Typography>
+          </PageSection>
         </>
       )}
-    </Box>
+    </PageLayout>
   )
 }

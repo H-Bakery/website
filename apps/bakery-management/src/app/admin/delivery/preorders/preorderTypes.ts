@@ -22,7 +22,11 @@ export {
   toBusinessDate,
 } from '../../../../lib/partnerTypes'
 
-import { formatDate, toBusinessDate } from '../../../../lib/partnerTypes'
+import {
+  formatDate,
+  isBusinessDate,
+  toBusinessDate,
+} from '../../../../lib/partnerTypes'
 import type { PickupPoint } from '../../../../lib/preordersTypes'
 
 export type { PickupPoint } from '../../../../lib/preordersTypes'
@@ -137,4 +141,31 @@ export function formatPickupAddress(point: PickupPoint | null): string {
     .filter(Boolean)
     .join(' ')
   return [street, place].filter(Boolean).join(', ')
+}
+
+/** Liste der Sammelstelle (Mörsbach). */
+export const MOERSBACH_LIST_HREF = '/admin/delivery/preorders'
+
+/** Erlaubte Kennung einer Sammelstelle in der URL (wie `new/page.tsx`). */
+export function isPickupPointParam(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z0-9-]{1,64}$/.test(value)
+}
+
+/**
+ * Zurück auf Liefertag **und Sammelstelle** der Liste - nicht auf heute und
+ * nicht auf die erste Sammelstelle. Ohne `point` landete man nach dem
+ * Speichern einer Bestellung für die zweite Sammelstelle bei der ersten und
+ * sah die eben gespeicherte Bestellung nicht.
+ */
+export function moersbachListHref(
+  date?: string | null,
+  saved = false,
+  pointId?: string | null
+): string {
+  const params = new URLSearchParams()
+  if (date && isBusinessDate(date)) params.set('date', date)
+  if (isPickupPointParam(pointId)) params.set('point', pointId)
+  if (saved) params.set('saved', '1')
+  const query = params.toString()
+  return query ? `${MOERSBACH_LIST_HREF}?${query}` : MOERSBACH_LIST_HREF
 }

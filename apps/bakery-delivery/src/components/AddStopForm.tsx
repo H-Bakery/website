@@ -61,7 +61,7 @@ export function AddStopForm({ busy, onSubmit }: AddStopFormProps) {
   }
 
   return (
-    <form className={styles.form} onSubmit={handleSubmit}>
+    <form className={styles.form} onSubmit={handleSubmit} noValidate>
       <div className={styles.formRow}>
         <div className={styles.field}>
           <label htmlFor="stop-customer">Kunde *</label>
@@ -146,11 +146,17 @@ export function AddStopForm({ busy, onSubmit }: AddStopFormProps) {
         </div>
       </div>
 
-      {error && <p className={styles.formError}>{error}</p>}
+      {error && (
+        <p className={styles.formError} role="alert">
+          {error}
+        </p>
+      )}
 
-      <button type="submit" className={styles.button} disabled={busy}>
-        {busy ? 'Wird gespeichert …' : 'Stopp hinzufügen'}
-      </button>
+      <div className={styles.formActions}>
+        <button type="submit" className={styles.button} disabled={busy}>
+          {busy ? 'Wird gespeichert …' : 'Stopp hinzufügen'}
+        </button>
+      </div>
     </form>
   )
 }

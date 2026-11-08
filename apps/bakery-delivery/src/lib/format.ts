@@ -74,7 +74,9 @@ export const GOODS_DISPOSITION_LABEL: Record<GoodsDisposition, string> = {
 
 export const PREORDER_STATUS_LABEL: Record<Preorder['status'], string> = {
   open: 'Offen',
-  handed_over: 'Übergeben',
+  // Wie die Abholliste der Verwaltung („Abgeholt“): der Fahrer benutzt beide.
+  // Die Handlung heißt weiter „Übergeben“, auch dort.
+  handed_over: 'Abgeholt',
   not_collected: 'Nicht abgeholt',
   cancelled: 'Storniert',
 }
@@ -99,6 +101,20 @@ export function nextSaturdayIso(): string {
   const date = new Date()
   date.setHours(12, 0, 0, 0)
   date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7))
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
+/**
+ * Der nächste Samstag *nach* heute - für den Knopf „Nächster Samstag“. Am
+ * Samstag ist das der der Folgewoche; sonst führte der Knopf samstags auf
+ * heute, genau wie „Heute“.
+ */
+export function followingSaturdayIso(): string {
+  const date = new Date()
+  date.setHours(12, 0, 0, 0)
+  date.setDate(date.getDate() + ((6 - date.getDay() + 7) % 7 || 7))
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${date.getFullYear()}-${month}-${day}`

@@ -24,6 +24,7 @@ import {
   recipeHeading,
   recipeIncompleteNote,
 } from '../../lib/backzettelFormat'
+import { BS_SECTION_TITLE_SX } from './backstubeType'
 import { batchText } from '../backzettel/HefeteigCard'
 
 const BIG = { xs: '1.75rem', sm: '2.25rem' }
@@ -235,6 +236,9 @@ function Filling({ filling, muted }: { filling: FillingNeed; muted: boolean }) {
                     fontWeight: 700,
                     textAlign: 'right',
                     fontVariantNumeric: 'tabular-nums',
+                    // Entwurf: grau wie alle anderen Entwurfszahlen
+                    // (UI-Runde 1) - weiß-fett las sich wie „schon fest“.
+                    color: muted ? 'text.secondary' : 'text.primary',
                   }}
                 >
                   {ingredientAmount(ing, filling.recipe).text}
@@ -288,12 +292,9 @@ export function BackstubeHefeteig({
     >
       <Typography
         id="bs-hefeteig-title"
+        variant="h2"
         component="h2"
-        sx={{
-          fontSize: { xs: '1.5rem', sm: '1.9rem' },
-          fontWeight: 800,
-          mb: 2,
-        }}
+        sx={{ ...BS_SECTION_TITLE_SX, mb: 2 }}
       >
         Hefeteig &amp; Füllungen
       </Typography>

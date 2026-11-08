@@ -1,8 +1,8 @@
 import React from 'react'
-import { screen, waitFor, within } from '@testing-library/react'
+import { act, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { renderWithTheme } from '@bakery/shared/test-utils'
-import ReportClient from './ReportClient'
+import ReportClient, { PRINT_CHART_WIDTH } from './ReportClient'
 import {
   fetchPartner,
   fetchStats,
@@ -44,10 +44,11 @@ jest.mock('recharts', () => {
   }
   return {
     ResponsiveContainer: stub('responsive-container'),
-    BarChart: (props: { data?: unknown[] }) =>
+    BarChart: (props: { data?: unknown[]; width?: number }) =>
       react.createElement('div', {
         'data-testid': 'bar-chart',
         'data-point-count': String(props.data ? props.data.length : 0),
+        'data-width': props.width == null ? '' : String(props.width),
       }),
     Bar: stub('bar'),
     Cell: stub('cell'),
@@ -281,8 +282,12 @@ describe('ReportClient', () => {
     await renderReport()
 
     expect(mockFetchStats).toHaveBeenCalledWith(PARTNER_ID, THIS_WEEK)
+    // Partner und Zeitraum stehen im Seitenkopf unter „Partner-Report“.
     expect(
-      screen.getByRole('heading', { name: 'CAP-Markt Homburg-Kirrberg' })
+      screen.getByRole('heading', { level: 1, name: 'Partner-Report' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/^CAP-Markt Homburg-Kirrberg · \d{2}\.\d{2}\.\d{4} bis /)
     ).toBeInTheDocument()
     expect(
       screen.getByText(
@@ -337,17 +342,55 @@ describe('ReportClient', () => {
     })
     await renderReport()
 
-    const tile = screen.getByText('Offen (ohne Abholung)')
-    expect(tile.parentElement).toHaveTextContent('24 Stück')
+    // Geliefert = Verkauft + Retoure + Offen: der offene Teil steht als
+    // Hinweis an „Geliefert“, damit höchstens vier Kennzahlen dastehen.
+    expect(screen.getByTestId('report-kpi-geliefert')).toHaveTextContent(
+      'davon 24 Stück offen (ohne Abholung)'
+    )
+    // r1: Einschränkung als Hinweis, die Bezeichnung bleibt einzeilig - die
+    // umbrochene Bezeichnung schob den Wert aus der Reihe.
+    const quote = screen.getByTestId('report-kpi-quote')
+    expect(quote).toHaveTextContent('nur Tage mit Abholung')
+    expect(screen.queryByText('Abverkaufsquote (Tage mit Abholung)')).toBeNull()
+    // Die Eckdaten stehen im Abschnitt „Zeitraum“, nicht lose dazwischen.
     expect(
-      screen.getByText('Abverkaufsquote (Tage mit Abholung)')
-    ).toBeInTheDocument()
+      within(screen.getByRole('region', { name: 'Zeitraum' })).getByTestId(
+        'report-counts'
+      )
+    ).toHaveTextContent(/Geschäftstage · .* · davon/)
     expect(
       screen.getByText('4 Stück noch offen (Tag ohne Abholung)')
     ).toBeInTheDocument()
     expect(
       screen.getByText(/Die Abverkaufsquote rechnet nur Tage mit Abholung/)
     ).toBeInTheDocument()
+  })
+
+  it('druckt das Diagramm mit fester Papierbreite statt der Bildschirmbreite (ui r2)', async () => {
+    mockFetchStats.mockResolvedValue(STATS_COMPLETE)
+    await renderReport()
+
+    const chart = screen.getByTestId('report-chart')
+    expect(chart).toHaveAttribute('data-layout', 'screen')
+    expect(screen.getByTestId('responsive-container')).toBeInTheDocument()
+
+    // Am Büro-PC (1440 px) behielt ResponsiveContainer beim Drucken seine
+    // Bildschirmbreite: Achsen ~4 pt, Legende rechts abgeschnitten.
+    act(() => {
+      window.dispatchEvent(new Event('beforeprint'))
+    })
+    expect(chart).toHaveAttribute('data-layout', 'print')
+    expect(screen.queryByTestId('responsive-container')).toBeNull()
+    expect(screen.getByTestId('bar-chart')).toHaveAttribute(
+      'data-width',
+      String(PRINT_CHART_WIDTH)
+    )
+
+    act(() => {
+      window.dispatchEvent(new Event('afterprint'))
+    })
+    expect(chart).toHaveAttribute('data-layout', 'screen')
+    expect(screen.getByTestId('responsive-container')).toBeInTheDocument()
   })
 
   it('does not warn about provisional figures for a completed period', async () => {
@@ -405,6 +448,32 @@ describe('ReportClient', () => {
       'Abweichung: 3 Stück mehr gezählt, als im Schrank sein konnten'
     )
     expect(screen.getByText(/1 Besuch ·/)).toBeInTheDocument()
+  })
+
+  it('zeigt beim schnellen Umschalten nie den Zeitraum einer älteren Antwort', async () => {
+    const user = userEvent.setup()
+    await renderReport()
+
+    // „Letzter Monat“ antwortet langsam, „Letzte Woche“ danach sofort.
+    let resolveSlow: (value: typeof STATS_PROVISIONAL) => void = () => undefined
+    mockFetchStats.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveSlow = resolve
+        })
+    )
+    mockFetchStats.mockResolvedValueOnce(STATS_COMPLETE)
+    await user.click(screen.getByRole('button', { name: 'Letzter Monat' }))
+    await user.click(screen.getByRole('button', { name: 'Letzte Woche' }))
+    await waitFor(() =>
+      expect(screen.queryByText('Vorläufige Zahlen')).toBeNull()
+    )
+
+    // Die veraltete Antwort kommt zuletzt - sie darf nichts mehr ändern.
+    await act(async () => {
+      resolveSlow(STATS_PROVISIONAL)
+    })
+    expect(screen.queryByText('Vorläufige Zahlen')).toBeNull()
   })
 
   it('reloads the report for a different range when a quick filter is used', async () => {

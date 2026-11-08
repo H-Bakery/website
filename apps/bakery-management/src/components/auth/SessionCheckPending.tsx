@@ -1,12 +1,11 @@
 'use client'
 import React from 'react'
-import { Alert, Box, Button } from '@mui/material'
 import { usePathname, useRouter } from 'next/navigation'
 import { useOptionalSession } from '../../lib/session'
 import { fetchMe } from '../../lib/authApi'
 import { currentToken } from '../../lib/authSession'
 import { SESSION_CHECK_PATH, writeSessionCookie } from '../../lib/sessionCookie'
-import SessionLoading from './SessionLoading'
+import { ErrorState, LoadingState, PageLayout } from '../layout'
 
 /** So lange nach einem Neuladen ohne Seitenwechsel, bis der Fehler erscheint. */
 export const SESSION_CHECK_FAILURE_DELAY_MS = 1500
@@ -73,29 +72,20 @@ export default function SessionCheckPending() {
     return () => window.clearTimeout(timer)
   }, [refreshIssued, isPending])
 
-  if (!failed) return <SessionLoading label="Seite wird geladen …" />
+  // Steht in der App-Hülle (Seitenleiste): kein bildschirmhoher Ladezustand
+  // wie beim RouteGuard, sonst rollt die Seite unter der Kopfzeile weiter.
+  if (!failed) return <LoadingState label="Seite wird geladen …" />
 
   return (
-    <Box sx={{ maxWidth: 640 }}>
-      <Alert
-        severity="warning"
-        action={
-          <Button
-            color="inherit"
-            size="small"
-            onClick={() => {
-              setFailed(false)
-              setRefreshIssued(false)
-              setAttempt((value) => value + 1)
-            }}
-          >
-            Erneut versuchen
-          </Button>
-        }
-      >
-        Die Seite konnte nicht geladen werden - die Anmeldung wurde vom Server
-        nicht bestätigt. Bitte erneut versuchen oder ab- und wieder anmelden.
-      </Alert>
-    </Box>
+    <PageLayout title="Anmeldung prüfen" width="narrow">
+      <ErrorState
+        message="Die Seite konnte nicht geladen werden - die Anmeldung wurde vom Server nicht bestätigt. Bitte erneut versuchen oder ab- und wieder anmelden."
+        onRetry={() => {
+          setFailed(false)
+          setRefreshIssued(false)
+          setAttempt((value) => value + 1)
+        }}
+      />
+    </PageLayout>
   )
 }

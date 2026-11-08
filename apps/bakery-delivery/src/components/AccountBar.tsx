@@ -39,7 +39,7 @@ export function AccountBar({
     <section className={styles.account} aria-label="Anmeldung">
       <p className={styles.accountName}>
         {session.user.displayName}
-        <span className={styles.subtitle}>
+        <span className={styles.accountRole}>
           {' '}
           · {ROLE_LABEL[session.user.role] ?? session.user.role}
         </span>
@@ -48,14 +48,13 @@ export function AccountBar({
         <div className={styles.accountConfirm} role="alert">
           <p>
             {pendingCount === 1
-              ? '1 Änderung ist noch nicht beim Server angekommen'
-              : `${pendingCount} Änderungen sind noch nicht beim Server angekommen`}{' '}
-            und gehen beim Abmelden verloren.
+              ? '1 Änderung ist noch nicht beim Server angekommen und geht beim Abmelden verloren.'
+              : `${pendingCount} Änderungen sind noch nicht beim Server angekommen und gehen beim Abmelden verloren.`}
           </p>
           <div className={styles.buttonGroup}>
             <button
               type="button"
-              className={styles.buttonWarn}
+              className={styles.buttonDanger}
               onClick={signOut}
               disabled={busy}
             >

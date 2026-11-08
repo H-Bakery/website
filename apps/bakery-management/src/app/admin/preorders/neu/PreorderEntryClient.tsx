@@ -2,25 +2,17 @@
 
 import React, { useEffect, useRef, useState } from 'react'
 import NextLink from 'next/link'
-import {
-  Alert,
-  Box,
-  Button,
-  Paper,
-  Snackbar,
-  Stack,
-  Typography,
-} from '@mui/material'
+import { Alert, Button, Paper, Stack, Typography } from '@mui/material'
 import {
   AddCircleOutline as NewIcon,
   CheckCircle as DoneIcon,
-  ListAlt as ListIcon,
 } from '@mui/icons-material'
 import PreorderForm from '../PreorderForm'
+import ItemsSummary from '../../../../components/preorders/ItemsSummary'
+import { PageLayout } from '../../../../components/layout'
 import {
   formatCurrency,
   formatDateWithWeekday,
-  formatItems,
   formatPickupPlace,
   type Preorder,
 } from '../../../../lib/preordersTypes'
@@ -32,15 +24,15 @@ export interface PreorderEntryClientProps {
 
 /**
  * P1: Vorbestellung erfassen. Nach dem Speichern steht der Code groß da (für
- * den Abholzettel oder zum Durchsagen am Telefon), dazu ein Hinweis unten und
- * „Nächste Bestellung“ - Enter genügt, der Knopf hat den Fokus.
+ * den Abholzettel oder zum Durchsagen am Telefon) und „Nächste Bestellung“ -
+ * Enter genügt, der Knopf hat den Fokus. Keine zusätzliche Snackbar mehr: sie
+ * wiederholte Meldung und Knopf der Karte (UI-Runde 2).
  */
 export default function PreorderEntryClient({
   initialDate,
   initialPickupPointId,
 }: PreorderEntryClientProps) {
   const [saved, setSaved] = useState<Preorder | null>(null)
-  const [toastOpen, setToastOpen] = useState(false)
   // Neuer Schlüssel = frische Maske (alle Felder leer, Fokus auf Name).
   const [formKey, setFormKey] = useState(0)
   const nextRef = useRef<HTMLButtonElement>(null)
@@ -51,44 +43,21 @@ export default function PreorderEntryClient({
 
   const next = () => {
     setSaved(null)
-    setToastOpen(false)
     setFormKey((k) => k + 1)
   }
 
   return (
-    <Box>
-      <Stack
-        direction={{ xs: 'column', sm: 'row' }}
-        justifyContent="space-between"
-        alignItems={{ xs: 'stretch', sm: 'center' }}
-        spacing={1}
-        sx={{ mb: 2 }}
-      >
-        <Typography
-          variant="h4"
-          component="h1"
-          sx={{ fontSize: { xs: '1.5rem', md: '2rem' } }}
-        >
-          Neue Vorbestellung
-        </Typography>
-        <Button
-          component={NextLink}
-          href="/admin/preorders"
-          startIcon={<ListIcon />}
-          sx={{ minHeight: 44, alignSelf: { xs: 'flex-start', sm: 'auto' } }}
-        >
-          Alle Vorbestellungen
-        </Button>
-      </Stack>
-
+    <PageLayout
+      title="Neue Vorbestellung"
+      back={{ href: '/admin/preorders', label: 'Alle Vorbestellungen' }}
+    >
       {saved ? (
         <Paper
-          variant="outlined"
           sx={{ p: { xs: 2, sm: 4 }, textAlign: 'center' }}
           data-testid="preorder-saved"
         >
           <DoneIcon color="success" sx={{ fontSize: 56 }} />
-          <Typography variant="h6" component="h2" sx={{ mt: 1 }}>
+          <Typography variant="h2" sx={{ mt: 1 }}>
             Gespeichert
           </Typography>
           <Typography
@@ -109,8 +78,12 @@ export default function PreorderEntryClient({
             {saved.customerName} · {formatDateWithWeekday(saved.pickupDate)} ·{' '}
             {formatPickupPlace(saved)}
           </Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            {formatItems(saved.items)}
+          <Typography
+            color="text.secondary"
+            component="div"
+            sx={{ mt: 0.5, display: 'inline-block', textAlign: 'left' }}
+          >
+            <ItemsSummary items={saved.items} max={4} />
           </Typography>
           <Typography sx={{ mt: 0.5, fontWeight: 600 }}>
             {formatCurrency(saved.total)} ·{' '}
@@ -156,35 +129,9 @@ export default function PreorderEntryClient({
           initialPickupPointId={
             formKey === 0 ? initialPickupPointId : undefined
           }
-          onSaved={(preorder) => {
-            setSaved(preorder)
-            setToastOpen(true)
-          }}
+          onSaved={setSaved}
         />
       )}
-
-      <Snackbar
-        open={toastOpen}
-        autoHideDuration={8000}
-        onClose={(_event, reason) => {
-          if (reason !== 'clickaway') setToastOpen(false)
-        }}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert
-          severity="success"
-          variant="filled"
-          onClose={() => setToastOpen(false)}
-          action={
-            <Button color="inherit" size="small" onClick={next}>
-              Nächste Bestellung
-            </Button>
-          }
-          sx={{ alignItems: 'center' }}
-        >
-          Vorbestellung {saved?.code} gespeichert
-        </Alert>
-      </Snackbar>
-    </Box>
+    </PageLayout>
   )
 }

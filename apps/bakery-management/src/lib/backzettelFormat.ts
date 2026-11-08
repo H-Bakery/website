@@ -271,6 +271,72 @@ function previousTickText(
   } - ${tail}`
 }
 
+/** Nachträge, die erst nach dem Abhaken einer Zeile kamen. */
+export interface DeltaAfterDone {
+  /** Summe der Nachtragsmengen nach dem Haken (Einheit der Zeile). */
+  qty: number
+  /** Was das zusätzlich zu backen heißt; > 0 = die Zeile ist wieder offen. */
+  bake: number
+  /** Anzahl dieser Nachträge (gesehen oder nicht). */
+  count: number
+}
+
+/**
+ * UI-Runde 1: Ein Nachtrag, der nach dem Abhaken kam, ist mit dem Haken
+ * nicht gebacken - auch nicht, nachdem ihn jemand „gesehen“ hat. Vorher
+ * stand die Zeile grün „erledigt“ da und die Zusatzmenge nirgends mehr
+ * offen. `null`, wenn die Zeile nicht abgehakt ist oder seither nichts kam.
+ *
+ * Die Backmenge kommt vom Server (`delta.bake`), wenn alle Nachträge der
+ * Zeile nach dem Haken kamen; sonst die aufgerundete Menge (Stück/Blech).
+ */
+export function deltaAfterDone(
+  line: Pick<BackzettelLine, 'key' | 'doneAt' | 'delta' | 'unit'>,
+  deltas: ReadonlyArray<
+    Pick<BackzettelDeltaEntry, 'key' | 'qty' | 'createdAt'>
+  > | null
+): DeltaAfterDone | null {
+  if (!line.doneAt || !deltas?.length) return null
+  const doneAt = Date.parse(line.doneAt)
+  if (Number.isNaN(doneAt)) return null
+  const mine = deltas.filter((d) => d.key === line.key)
+  const after = mine.filter((d) => {
+    const at = Date.parse(d.createdAt)
+    return !Number.isNaN(at) && at > doneAt
+  })
+  if (after.length === 0) return null
+  const qty = Math.round(after.reduce((s, d) => s + d.qty, 0) * 100) / 100
+  let bake: number
+  if (after.length === mine.length && typeof line.delta?.bake === 'number') {
+    bake = line.delta.bake
+  } else if (isIntegerUnit(line.unit)) {
+    bake = qty > 0 ? Math.ceil(qty - 1e-9) : Math.floor(qty + 1e-9)
+  } else {
+    bake = qty
+  }
+  return { qty, bake, count: after.length }
+}
+
+/**
+ * Text an einer abgehakten Zeile mit späterem Nachtrag: „erledigt 07.11.
+ * 02:54 · Bernd – danach Nachtrag: noch +12 backen“.
+ */
+export function deltaAfterDoneText(
+  line: Pick<BackzettelLine, 'doneAt' | 'doneBy' | 'unit'>,
+  after: DeltaAfterDone
+): string {
+  const who = [formatTimestamp(line.doneAt), line.doneBy?.displayName]
+    .filter(Boolean)
+    .join(' · ')
+  const tail =
+    after.bake > 0
+      ? `noch ${formatSignedQty(after.bake, line.unit)} backen`
+      : after.qty < 0
+      ? `${formatQty(-after.qty, line.unit)} weniger nötig`
+      : 'nichts mehr backen'
+  return `erledigt${who ? ` ${who}` : ''} – danach Nachtrag: ${tail}`
+}
+
 /** Zu- und Abschläge: „+2“, „−1“, „–“ für 0. */
 export function formatSigned(n: number): string {
   if (!n) return '–'

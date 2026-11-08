@@ -3,32 +3,24 @@
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Alert,
-  Box,
-  CircularProgress,
-  IconButton,
-  Typography,
-} from '@mui/material'
-import { ArrowBack as ArrowBackIcon } from '@mui/icons-material'
+  ErrorState,
+  LoadingState,
+  PageLayout,
+} from '../../../../components/layout'
 import PreorderForm from '../../preorders/PreorderForm'
 import PreorderDetailClient from '../../preorders/[id]/PreorderDetailClient'
 import {
   fetchPickupPoints,
   preorderErrorMessage,
 } from '../../../../lib/preordersApi'
-import { isBusinessDate, type Preorder } from '../../../../lib/preordersTypes'
+import { type Preorder } from '../../../../lib/preordersTypes'
+import {
+  MOERSBACH_POINT_ID,
+  preferredPickupPoint,
+} from '../../../../lib/abholliste'
+import { moersbachListHref } from './preorderTypes'
 
-/** Liste der Sammelstelle (Mörsbach). */
-export const MOERSBACH_LIST_HREF = '/admin/delivery/preorders'
-
-/** Zurück auf den Liefertag der Liste - nicht auf heute. */
-export function moersbachListHref(date?: string | null, saved = false): string {
-  const params = new URLSearchParams()
-  if (date && isBusinessDate(date)) params.set('date', date)
-  if (saved) params.set('saved', '1')
-  const query = params.toString()
-  return query ? `${MOERSBACH_LIST_HREF}?${query}` : MOERSBACH_LIST_HREF
-}
+export { MOERSBACH_LIST_HREF, moersbachListHref } from './preorderTypes'
 
 export interface MoersbachNewPreorderClientProps {
   initialDate?: string
@@ -46,22 +38,34 @@ export function MoersbachNewPreorderClient({
 }: MoersbachNewPreorderClientProps) {
   const router = useRouter()
   const [pointId, setPointId] = useState(initialPickupPointId ?? '')
+  const [pointName, setPointName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  // Ohne Sammelstelle in der URL die erste aktive - sonst stünde die Maske
-  // auf „Laden“.
+  // Ohne Sammelstelle in der URL Mörsbach (wie die Liste) - sonst stünde die Maske
+  // auf „Laden“. Der Name steht im Untertitel.
   useEffect(() => {
-    if (initialPickupPointId) return
     let active = true
     fetchPickupPoints()
       .then((points) => {
         if (!active) return
-        const first = points.find((p) => p.active !== false) ?? points[0]
-        if (first) setPointId(first.id)
-        else setError('Es ist keine Sammelstelle angelegt.')
+        if (initialPickupPointId) {
+          const chosen = points.find((p) => p.id === initialPickupPointId)
+          if (chosen) setPointName(chosen.name)
+          return
+        }
+        const first =
+          preferredPickupPoint(points, {
+            date: initialDate,
+            preferId: MOERSBACH_POINT_ID,
+          }) ?? points[0]
+        if (first) {
+          setPointId(first.id)
+          setPointName(first.name)
+        } else setError('Es ist keine Sammelstelle angelegt.')
       })
       .catch((err) => {
-        if (active) {
+        // Mit Sammelstelle aus der URL geht es auch ohne Namen weiter.
+        if (active && !initialPickupPointId) {
           setError(
             preorderErrorMessage(
               err,
@@ -73,38 +77,23 @@ export function MoersbachNewPreorderClient({
     return () => {
       active = false
     }
-  }, [initialPickupPointId])
+  }, [initialPickupPointId, initialDate])
 
-  const back = () => router.push(moersbachListHref(initialDate))
+  const back = () => router.push(moersbachListHref(initialDate, false, pointId))
 
   return (
-    <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-        <IconButton
-          aria-label="Zurück zur Liste"
-          onClick={back}
-          sx={{ minWidth: 44, minHeight: 44 }}
-        >
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography
-          variant="h5"
-          component="h1"
-          sx={{ fontSize: { xs: '1.35rem', md: '1.75rem' } }}
-        >
-          Vorbestellung erfassen
-        </Typography>
-      </Box>
+    <PageLayout
+      title="Neue Vorbestellung"
+      subtitle={pointName ? `Abholung: ${pointName}` : undefined}
+      back={{
+        href: moersbachListHref(initialDate, false, pointId),
+        label: 'Zurück zur Sammelstelle',
+      }}
+    >
       {error ? (
-        <Alert severity="error">{error}</Alert>
+        <ErrorState message={error} />
       ) : !pointId ? (
-        <Box
-          sx={{ display: 'flex', justifyContent: 'center', p: 6 }}
-          role="status"
-          aria-label="Sammelstelle wird geladen"
-        >
-          <CircularProgress />
-        </Box>
+        <LoadingState label="Sammelstelle wird geladen …" />
       ) : (
         <PreorderForm
           initialDate={initialDate}
@@ -113,12 +102,14 @@ export function MoersbachNewPreorderClient({
           onSaved={(saved: Preorder) => {
             // `saving` bleibt in der Maske stehen, bis die Seite wechselt -
             // eine zweite Bestellung kann so nicht entstehen.
-            router.push(moersbachListHref(saved.pickupDate, true))
+            router.push(
+              moersbachListHref(saved.pickupDate, true, saved.pickupPointId)
+            )
             router.refresh()
           }}
         />
       )}
-    </Box>
+    </PageLayout>
   )
 }
 
@@ -131,7 +122,9 @@ export function MoersbachPreorderDetailClient({ id }: { id: number }) {
   return (
     <PreorderDetailClient
       id={id}
-      backHref={(preorder) => moersbachListHref(preorder?.pickupDate)}
+      backHref={(preorder) =>
+        moersbachListHref(preorder?.pickupDate, false, preorder?.pickupPointId)
+      }
       backLabel="Zurück zur Sammelstelle"
     />
   )

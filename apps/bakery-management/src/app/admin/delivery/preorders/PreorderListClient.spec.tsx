@@ -154,8 +154,12 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
   it('lädt den Liefertag der Sammelstelle mit einer Anfrage und zeigt Sorten', async () => {
     renderAs()
 
+    // Titel = die Sammelstelle, nicht „Vorbestellungen“ wie /admin/preorders
     expect(
-      screen.getByRole('heading', { name: /Vorbestellungen/ })
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Sammelstelle Kindergarten Mörsbach',
+      })
     ).toBeInTheDocument()
     expect(await screen.findByText('MO-2026-09-12-01')).toBeInTheDocument()
     expect(mockDay).toHaveBeenCalledWith(DATE, POINT.id)
@@ -177,6 +181,43 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     )
   })
 
+  it('zeigt beim langsamen Laden „wird geladen“ statt einer leeren Fläche (UI-Runde 2)', async () => {
+    let resolvePoints: (points: PickupPoint[]) => void = () => undefined
+    mockFetchPickupPoints.mockReturnValue(
+      new Promise<PickupPoint[]>((resolve) => {
+        resolvePoints = resolve
+      })
+    )
+    let resolveDay: (day: PreorderDay) => void = () => undefined
+    mockDay.mockReturnValue(
+      new Promise<PreorderDay>((resolve) => {
+        resolveDay = resolve
+      })
+    )
+    renderAs()
+
+    // Erste Anfrage (Sammelstellen): Titel wie der Menüpunkt, ein
+    // Ladehinweis - und noch kein Tagwähler, der danach verrutscht.
+    expect(
+      screen.getByRole('heading', { level: 1, name: 'Sammelstelle Mörsbach' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Sammelstelle wird geladen …')).toBeInTheDocument()
+    expect(screen.queryByLabelText('Liefertag')).not.toBeInTheDocument()
+
+    // Zweite Anfrage (Tag): Tagwähler steht, die Liste lädt sichtbar.
+    resolvePoints([POINT])
+    expect(
+      await screen.findByText('Vorbestellungen werden geladen …')
+    ).toBeInTheDocument()
+    expect(screen.getByLabelText('Liefertag')).toBeInTheDocument()
+    expect(
+      screen.queryByText(/noch nichts vorbestellt/)
+    ).not.toBeInTheDocument()
+
+    resolveDay(dayWith([OPEN]))
+    expect(await screen.findByText('MO-2026-09-12-01')).toBeInTheDocument()
+  })
+
   it('warnt sichtbar, solange die Adresse der Sammelstelle fehlt', async () => {
     renderAs()
     expect(
@@ -184,7 +225,75 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByRole('link', { name: 'Adresse nachtragen' })
-    ).toHaveAttribute('href', '/admin/delivery/preorders/lieferstelle')
+    ).toHaveAttribute(
+      'href',
+      `/admin/delivery/preorders/lieferstelle?pickupPointId=${POINT.id}`
+    )
+  })
+
+  it('öffnet die Sammelstelle aus der URL und hält Tag und Ort in der URL', async () => {
+    // Regression: nach dem Speichern für die zweite Sammelstelle zeigte die
+    // Liste die erste, „Sammelstelle bearbeiten“ öffnete die erste, und ein
+    // Neuladen zeigte wieder „gespeichert“.
+    const SECOND: PickupPoint = {
+      ...POINT,
+      id: 'gemeindehaus-test',
+      name: 'Gemeindehaus Test',
+    }
+    mockFetchPickupPoints.mockResolvedValue([POINT, SECOND])
+    window.history.replaceState(
+      null,
+      '',
+      `/admin/delivery/preorders?date=${DATE}&point=${SECOND.id}&saved=1`
+    )
+    renderWithTheme(
+      <WithSession value={fakeSession({ role: 'inhaber' })}>
+        <PreorderListClient
+          initialDate={DATE}
+          initialPointId={SECOND.id}
+          saved
+        />
+      </WithSession>
+    )
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Sammelstelle Gemeindehaus Test',
+      })
+    ).toBeInTheDocument()
+    await waitFor(() => expect(mockDay).toHaveBeenCalledWith(DATE, SECOND.id))
+    expect(mockDay).not.toHaveBeenCalledWith(DATE, POINT.id)
+    expect(
+      screen.getByRole('link', { name: 'Sammelstelle bearbeiten' })
+    ).toHaveAttribute(
+      'href',
+      `/admin/delivery/preorders/lieferstelle?pickupPointId=${SECOND.id}`
+    )
+    // `saved=1` fällt aus der URL, Tag und Ort bleiben
+    expect(`${window.location.pathname}${window.location.search}`).toBe(
+      `/admin/delivery/preorders?date=${DATE}&point=${SECOND.id}`
+    )
+  })
+
+  it('öffnet ohne `?point=` Mörsbach, auch wenn die API eine andere Stelle zuerst nennt (UI-Runde 1)', async () => {
+    // Alphabetisch zuerst, übergibt später - vorher landete der Menüpunkt
+    // „Sammelstelle Mörsbach“ hier.
+    const OBERDORF: PickupPoint = {
+      ...POINT,
+      id: 'gemeindehaus-oberdorf',
+      name: 'Gemeindehaus Oberdorf',
+      window: '10:00-10:30',
+    }
+    mockFetchPickupPoints.mockResolvedValue([OBERDORF, POINT])
+    renderAs()
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Sammelstelle Kindergarten Mörsbach',
+      })
+    ).toBeInTheDocument()
+    await waitFor(() => expect(mockDay).toHaveBeenCalledWith(DATE, POINT.id))
+    expect(mockDay).not.toHaveBeenCalledWith(DATE, OBERDORF.id)
   })
 
   it('nennt den Bestellschluss und markiert danach erfasste Bestellungen', async () => {
@@ -295,6 +404,8 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
         name: 'Vorbestellung MO-2026-09-12-01 ansehen',
       })
     ).toHaveAttribute('href', '/admin/delivery/preorders/1')
+    // Nur-Lesen: kein Stift-Symbol (UI-Runde 1).
+    expect(screen.queryByTestId('EditIcon')).not.toBeInTheDocument()
   })
 
   it('warnt, wenn der gewählte Tag kein Liefertag der Sammelstelle ist', async () => {
@@ -316,6 +427,28 @@ describe('PreorderListClient (Mörsbach, P2 auf /api/preorders)', () => {
     expect(
       await screen.findByText('Die Vorbestellungen sind unerreichbar.')
     ).toBeInTheDocument()
+  })
+
+  it('lädt die Sammelstellen nach einem Ausfall mit „Erneut versuchen“', async () => {
+    const user = userEvent.setup()
+    mockFetchPickupPoints.mockRejectedValueOnce(
+      new Error('Die Sammelstellen sind unerreichbar.')
+    )
+    renderAs()
+    expect(
+      await screen.findByText('Die Sammelstellen sind unerreichbar.')
+    ).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Sammelstelle Kindergarten Mörsbach',
+      })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Die Sammelstellen sind unerreichbar.')
+    ).not.toBeInTheDocument()
+    await waitFor(() => expect(mockDay).toHaveBeenCalledWith(DATE, POINT.id))
   })
 
   it('wählt ohne Datum in der URL den nächsten Liefertag der Sammelstelle', async () => {

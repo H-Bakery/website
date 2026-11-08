@@ -28,6 +28,27 @@ async function resetTours(
   }
 }
 
+/**
+ * Ein Werktag (kein Samstag) dicht an heute, je Projekt ein anderer.
+ *
+ * „Geliefert“ schickt die Uhrzeit des Geräts als `completedAt`, und die API
+ * nimmt nur Zeitpunkte zwischen Tourtag − 1 und Tourtag + 3 Tagen an
+ * („Der Zeitpunkt muss zum Tourtag passen.“). Ein fester Tag im Test lief
+ * deshalb wenige Tage später aus. Kandidaten sind gestern − 1 bis morgen
+ * (UTC, wie die Prüfung der API); Samstage fallen weg, weil dort die
+ * Sammelstelle Mörsbach automatisch an der Tour hängt.
+ */
+function workdayNearToday(slot: number): string {
+  const days: string[] = []
+  for (const offset of [-1, 0, -2, 1]) {
+    const day = new Date()
+    day.setUTCHours(0, 0, 0, 0)
+    day.setUTCDate(day.getUTCDate() + offset)
+    if (day.getUTCDay() !== 6) days.push(day.toISOString().slice(0, 10))
+  }
+  return days[slot]
+}
+
 test.describe('Liefertour', () => {
   // B8: die App zeigt ohne Anmeldung nur das Formular.
   test.beforeEach(({ page, request }) => useSession(page, request))
@@ -49,8 +70,9 @@ test.describe('Liefertour', () => {
     request,
   }) => {
     // Eigene Tour, damit der Test nicht an fremden Daten haengt.
-    const workday =
-      test.info().project.name === 'chromium' ? '2026-09-09' : '2026-09-10'
+    const workday = workdayNearToday(
+      test.info().project.name === 'chromium' ? 0 : 1
+    )
     await resetTours(request, workday)
     const created = await request.post(`${API}/api/deliveries/tours`, {
       // Bewusst ein Werktag: an einem Samstag haengt die Sammelstelle

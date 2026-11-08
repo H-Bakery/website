@@ -9,6 +9,7 @@ import {
 } from '@testing-library/react'
 import DeliveryDashboard from './page'
 import {
+  ApiError,
   deliveryApi,
   rememberDrivers,
   rememberTours,
@@ -46,6 +47,32 @@ jest.mock('../lib/delivery-api', () => ({
 // Leaflet braucht ein echtes Fenster; die Karte ist hier nicht Thema.
 jest.mock('../components/Map', () => ({ Map: () => null }))
 
+// Feste Uhr (nur `Date`, die Timer bleiben echt): die Seite rechnet mit
+// „heute“ (Standardtag, Abhak-Fenster `markWindow`). Ohne sie hingen die Tests
+// am Wochentag - sonntags bis donnerstags liegt der nächste Samstag mehr als
+// einen Tag vorn, „Geliefert“ fehlt dann zu Recht. Steht vor `tour`, weil
+// dessen Datum beim Laden des Moduls entsteht.
+jest.useFakeTimers({
+  now: new Date(2026, 8, 12, 12, 0, 0), // Samstag, 12.09.2026, 12:00 Ortszeit
+  doNotFake: [
+    'hrtime',
+    'nextTick',
+    'performance',
+    'queueMicrotask',
+    'requestAnimationFrame',
+    'cancelAnimationFrame',
+    'requestIdleCallback',
+    'cancelIdleCallback',
+    'setImmediate',
+    'clearImmediate',
+    'setInterval',
+    'clearInterval',
+    'setTimeout',
+    'clearTimeout',
+  ],
+})
+afterAll(() => jest.useRealTimers())
+
 const api = deliveryApi as jest.Mocked<typeof deliveryApi>
 
 /** Die Seite steht hinter `AuthGate` (Layout); hier genügt eine Sitzung im Speicher. */
@@ -67,7 +94,9 @@ const driver: Driver = {
 
 const tour: Tour = {
   id: 7,
-  date: '2026-09-05',
+  // Ein Tag, an dem abgehakt werden darf (`markWindow`): sonst hinge jeder
+  // Test mit „Geliefert“ am Kalender.
+  date: nextSaturdayIso(),
   driverId: 1,
   driver,
   depot: {
@@ -588,6 +617,59 @@ describe('DeliveryDashboard beim Abhaken', () => {
     ])
   })
 
+  it('zeigt erledigte Stopps zugeklappt und nummeriert in Fahrtreihenfolge', async () => {
+    // Regression (UI-Runde 1): nach „Route berechnen" liess der Server
+    // erledigte Stopps auf ihrem Platz - die Liste stand „1 offen, 2 offen,
+    // 3 geliefert, 4 nicht angetroffen, 5 offen", der Fahrer scrollte an
+    // erledigten Karten vorbei, und die Nummer hiess nicht „so wird gefahren".
+    const finished = (
+      id: number,
+      customer: string,
+      status: 'done' | 'failed',
+      at: string
+    ): Stop => ({ ...stop(id, customer), status, completedAt: at })
+    api.tours.mockResolvedValue([
+      {
+        ...twoStops,
+        stops: [
+          stop(1, 'Kunde Fink'),
+          stop(2, 'Kunde Drossel'),
+          finished(3, 'Kunde Amsel', 'done', '2026-09-12T07:10:00.000Z'),
+          finished(4, 'Kunde Buchfink', 'failed', '2026-09-12T07:20:00.000Z'),
+          stop(5, 'Kunde Mörsbach'),
+        ],
+        progress: { total: 5, done: 1, failed: 1, open: 3, isComplete: false },
+        nextStopId: 1,
+      },
+    ])
+
+    render(<DeliveryDashboard />)
+    const next = await screen.findByRole('region', { name: 'Nächster Stopp' })
+    const numbers = (region: HTMLElement) =>
+      Array.from(region.querySelectorAll('li')).map(
+        (li) =>
+          `${li.querySelector('span')?.textContent} ${
+            li.querySelector('h3')?.textContent
+          }`
+      )
+
+    expect(numbers(next)).toEqual(['3 Kunde Fink'])
+    expect(
+      numbers(screen.getByRole('region', { name: 'Weitere Stopps' }))
+    ).toEqual(['4 Kunde Drossel', '5 Kunde Mörsbach'])
+    const done = screen.getByRole('region', { name: 'Erledigte Stopps' })
+    expect(numbers(done)).toEqual(['1 Kunde Amsel', '2 Kunde Buchfink'])
+    // Zugeklappt: nachsehen und zurücksetzen geht, im Weg sind sie nicht.
+    expect(done.querySelector('details')?.open).toBe(false)
+    expect(
+      within(done).getByText('Erledigt (2, davon 1 nicht angetroffen)')
+    ).toBeTruthy()
+    // Der nächste Stopp kommt kein zweites Mal.
+    expect(screen.getAllByRole('heading', { name: 'Kunde Fink' })).toHaveLength(
+      1
+    )
+  })
+
   it('schickt Grund und Verbleib der Ware mit „Nicht angetroffen" und zeigt sie an', async () => {
     api.updateStop.mockImplementation(async (_tourId, stopId, body) => ({
       ...twoStops,
@@ -627,10 +709,15 @@ describe('DeliveryDashboard beim Abhaken', () => {
         completedAt: expect.any(String),
       })
     )
+    // Die Karte wandert nach „Erledigt" - also frisch suchen.
     expect(
-      await a.findByText('Grund: Adresse nicht gefunden · Ware abgestellt')
+      await within(card('Kunde A')).findByText(
+        'Grund: Adresse nicht gefunden · Ware abgestellt'
+      )
     ).toBeTruthy()
-    expect(screen.getByText(/1 nicht angetroffen/)).toBeTruthy()
+    expect(
+      screen.getByText(/0 von 2 geliefert, 1 nicht angetroffen/)
+    ).toBeTruthy()
   })
 
   it('legt Grund und Verbleib im Funkloch mit in die Warteschlange', async () => {
@@ -662,7 +749,9 @@ describe('DeliveryDashboard beim Abhaken', () => {
     ])
     // Die lokale Vorschau zeigt den Grund schon, bevor der Server ihn kennt.
     expect(
-      a.getByText('Grund: Annahme verweigert · Ware mitgenommen')
+      within(card('Kunde A')).getByText(
+        'Grund: Annahme verweigert · Ware mitgenommen'
+      )
     ).toBeTruthy()
   })
 
@@ -692,7 +781,7 @@ describe('DeliveryDashboard beim Abhaken', () => {
 
     fireEvent.click(a.getByRole('button', { name: 'Zurücksetzen' }))
     await screen.findByText(/Kein Netz/)
-    expect(a.queryByText(/Grund:/)).toBeNull()
+    expect(within(card('Kunde A')).queryByText(/Grund:/)).toBeNull()
     expect(pendingUpdates()[0]).toEqual(
       expect.objectContaining({
         body: { status: 'open' },
@@ -792,10 +881,9 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
   it('zeigt die Übergabeliste mit Kopfzeile statt „Geliefert / Nicht angetroffen"', async () => {
     render(<DeliveryDashboard />)
 
-    // Der Stopp steht zweimal auf der Seite („Nächster Stopp" und die Liste).
-    expect(
-      (await screen.findAllByText(/0 von 2 übergeben/)).length
-    ).toBeGreaterThan(0)
+    // Der Stopp steht einmal auf der Seite: als „Nächster Stopp", nicht
+    // zusätzlich in der Liste darunter (UI-Runde 1: acht Familien doppelt).
+    expect((await screen.findAllByText(/0 von 2 übergeben/)).length).toBe(1)
     expect(
       screen.getAllByText(/Bar zu kassieren: 12,30/).length
     ).toBeGreaterThan(0)
@@ -821,6 +909,10 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
 
     const buttons = await screen.findAllByRole('button', { name: 'Übergeben' })
     fireEvent.click(buttons[0])
+    // Unbezahlt: erst die Frage nach dem Geld.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Bezahlt und übergeben' })
+    )
 
     expect(
       await screen.findByText('Diese Übergabe ist nicht erlaubt.')
@@ -946,6 +1038,9 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     fireEvent.click(
       (await screen.findAllByRole('button', { name: 'Übergeben' }))[0]
     )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Bezahlt und übergeben' })
+    )
     await waitFor(() =>
       expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
     )
@@ -966,6 +1061,49 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     expect(await screen.findByText('Abgeschlossen')).toBeTruthy()
     expect(screen.getAllByText(/1 von 2 übergeben/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/0 von 2 übergeben/)).toBeNull()
+  })
+
+  it('fragt beim Übergeben einer unbezahlten nach dem Geld und bucht „ohne Zahlung" nicht als bezahlt', async () => {
+    // Regression (UI-Runde 1): ein Tipp auf „Übergeben" schickte nur
+    // `{ status }`, und der Server buchte die unbezahlte Bestellung als
+    // bezahlt - Bargeld, das nie geflossen ist.
+    api.updatePreorder.mockImplementation(async (id, body) => ({
+      ...preorder({ id, reference: 'MO-2026-09-12-01', total: 6.1 }),
+      status: body.status,
+      handedOverAt: '2026-09-12T07:15:00.000Z',
+      paid: false,
+      paidAmount: null,
+      paymentBalance: 0,
+    }))
+
+    render(<DeliveryDashboard />)
+    const next = within(
+      await screen.findByRole('region', { name: 'Nächster Stopp' })
+    )
+    fireEvent.click(next.getAllByRole('button', { name: 'Übergeben' })[0])
+
+    // Kein PATCH ohne Antwort auf die Geldfrage; der Betrag steht da.
+    expect(api.updatePreorder).not.toHaveBeenCalled()
+    expect(next.getByText(/Noch nicht bezahlt: 6,10/)).toBeTruthy()
+    fireEvent.click(
+      next.getByRole('button', { name: 'Ohne Zahlung übergeben' })
+    )
+
+    await waitFor(() =>
+      expect(api.updatePreorder).toHaveBeenCalledWith(101, {
+        status: 'handed_over',
+        paid: false,
+      })
+    )
+    expect((await next.findByTestId('payment-101')).textContent).toMatch(
+      /^Nicht bezahlt – 6,10\s€ offen$/
+    )
+    // Die Kopfzeile verliert das Geld nicht: es steht für sich.
+    expect(
+      next.getByText(
+        /1 von 2 übergeben · Bar zu kassieren: 6,20\s€ · Ohne Zahlung übergeben: 6,10\s€/
+      )
+    ).toBeTruthy()
   })
 
   it('legt die Warteschlange über die Offline-Kopie der Tour', async () => {
@@ -995,6 +1133,9 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
     fireEvent.click(
       (await screen.findAllByRole('button', { name: 'Übergeben' }))[0]
     )
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Bezahlt und übergeben' })
+    )
 
     // Sofort umgeschaltet - der Fahrer wartet nicht auf das Netz.
     await waitFor(() =>
@@ -1005,7 +1146,7 @@ describe('DeliveryDashboard an der Sammelstelle', () => {
       expect.objectContaining({
         kind: 'preorder',
         preorderId: 101,
-        body: { status: 'handed_over' },
+        body: { status: 'handed_over', paid: true },
       }),
     ])
 
@@ -1093,7 +1234,8 @@ describe('DeliveryDashboard nach Rolle', () => {
     expect(
       await screen.findByRole('heading', { name: 'Samstagstour' })
     ).toBeTruthy()
-    expect(screen.getAllByRole('heading', { name: 'Kunde A' }).length).toBe(2)
+    // Einmal: der nächste Stopp steht nicht noch einmal in der Liste.
+    expect(screen.getAllByRole('heading', { name: 'Kunde A' }).length).toBe(1)
     expect(screen.queryByRole('button', { name: 'Tour planen' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Route berechnen' })).toBeNull()
     expect(screen.queryByRole('button', { name: 'Geliefert' })).toBeNull()
@@ -1200,6 +1342,14 @@ describe('DeliveryDashboard: Tour planen (Abschluss-Verifikation next)', () => {
 
   async function openPlanning() {
     render(<DeliveryDashboard />)
+    // Erst nach dem Fahrerwechsel (Fahrerliste geladen → erster Fahrer): der
+    // leert die Liste kurz (`shownKeyRef`), ein früherer Klick ging auf
+    // langsamen Rechnern (CI mit Coverage) ins Leere.
+    await waitFor(() =>
+      expect(api.tours).toHaveBeenCalledWith(
+        expect.objectContaining({ driverId: 1 })
+      )
+    )
     fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
   }
 
@@ -1249,5 +1399,339 @@ describe('DeliveryDashboard: Tour planen (Abschluss-Verifikation next)', () => {
     expect(
       await screen.findByRole('heading', { name: /Keine Tour für/ })
     ).toBeTruthy()
+  })
+})
+
+describe('DeliveryDashboard: Tageswechsel und Meldungen', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    signIn('inhaber')
+    api.drivers.mockResolvedValue([])
+  })
+
+  it('zeigt nach einem Tageswechsel nicht die Tour des alten Tages, solange der neue lädt', async () => {
+    // Regression: ohne Offline-Kopie des neuen Tages blieb die alte Tour samt
+    // Abhak-Knöpfen stehen, bis die Antwort kam - im Funkloch bis zu 15 s,
+    // während im Datumsfeld schon der neue Tag stand.
+    api.tours
+      .mockResolvedValueOnce([tour])
+      .mockImplementation(() => new Promise(() => undefined))
+
+    render(<DeliveryDashboard />)
+    expect(
+      await screen.findByRole('heading', { name: 'Samstagstour' })
+    ).toBeTruthy()
+
+    fireEvent.change(screen.getByLabelText('Tag'), {
+      target: { value: '2026-09-06' },
+    })
+
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Samstagstour' })).toBeNull()
+    )
+    expect(screen.getByText('Tour wird geladen …')).toBeTruthy()
+  })
+
+  it('ignoriert ein geleertes Datumsfeld statt „Ob für  eine Tour …" zu zeigen', async () => {
+    // Regression: iOS „Zurücksetzen" liefert `''`, die API antwortet auf
+    // `date=` mit 400, und die Seite sagte „Ob für  eine Tour geplant ist".
+    api.tours.mockResolvedValue([tour])
+
+    render(<DeliveryDashboard />)
+    await screen.findByRole('heading', { name: 'Samstagstour' })
+    const calls = api.tours.mock.calls.length
+
+    fireEvent.change(screen.getByLabelText('Tag'), { target: { value: '' } })
+
+    expect((screen.getByLabelText('Tag') as HTMLInputElement).value).toBe(
+      nextSaturdayIso()
+    )
+    expect(api.tours).toHaveBeenCalledTimes(calls)
+    expect(screen.getByRole('heading', { name: 'Samstagstour' })).toBeTruthy()
+  })
+
+  it('lässt eine Fehlermeldung schließen', async () => {
+    api.tours.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+    const alert = await screen.findByRole('alert')
+    fireEvent.click(within(alert).getByRole('button', { name: 'Schließen' }))
+
+    expect(screen.queryByRole('alert')).toBeNull()
+    // Der Zustand der Seite bleibt: nur die Meldung ist weg.
+    expect(screen.getByRole('button', { name: 'Erneut laden' })).toBeTruthy()
+  })
+})
+
+/**
+ * UI-Runde 2 (Fahrer-App): abgelehnte Nachsendungen, Serverfehler, Planung
+ * und Abhaken nur am Tourtag.
+ */
+describe('DeliveryDashboard - UI-Runde 2', () => {
+  const date = nextSaturdayIso()
+  const paidPreorder: Preorder = {
+    id: 201,
+    reference: 'MO-2026-09-12-07',
+    pickupPointId: 'kindergarten-moersbach',
+    date,
+    customer: 'Testkundin Faulbaum',
+    phone: null,
+    items: [],
+    total: 16.4,
+    note: null,
+    status: 'open',
+    handedOverAt: null,
+    createdAt: '2026-09-10T08:00:00.000Z',
+    updatedAt: '2026-09-10T08:00:00.000Z',
+    deadline: null,
+    afterDeadline: false,
+    paid: true,
+    paidAmount: 16.4,
+    paymentBalance: 0,
+  }
+  const pickupStop: Stop = {
+    id: 1,
+    customer: 'Kindergarten Mörsbach',
+    street: 'Höhenstraße 24',
+    zip: '66482',
+    city: 'Zweibrücken',
+    address: 'Höhenstraße 24, 66482 Zweibrücken',
+    phone: null,
+    timeWindow: '09:00-09:30',
+    notes: null,
+    items: [],
+    status: 'open',
+    completedAt: null,
+    failureReason: null,
+    lat: 49.25,
+    lon: 7.36,
+    geocodeSource: null,
+    geocodePrecision: 'house',
+    estimatedArrival: null,
+    pickupPointId: 'kindergarten-moersbach',
+    preorders: [paidPreorder],
+  }
+  const homeStop: Stop = {
+    ...pickupStop,
+    id: 2,
+    customer: 'Testkundin Amsel',
+    pickupPointId: null,
+    preorders: undefined,
+    timeWindow: '07:30-08:00',
+  }
+  const twoStops: Tour = {
+    ...tour,
+    date,
+    stops: [pickupStop, homeStop],
+    progress: { total: 2, done: 0, failed: 0, open: 2, isComplete: false },
+    nextStopId: 1,
+  }
+  const respond = (status: number, body: unknown) =>
+    jest.fn().mockResolvedValue({
+      ok: status < 400,
+      status,
+      text: async () => JSON.stringify(body),
+    })
+
+  beforeEach(() => {
+    jest.clearAllMocks()
+    window.localStorage.clear()
+    api.drivers.mockResolvedValue([])
+  })
+
+  afterEach(() => {
+    delete (global as { fetch?: unknown }).fetch
+  })
+
+  it('nimmt eine beim Nachsenden abgelehnte Übergabe zurück und nennt Kundin und Grund', async () => {
+    // Regression: ohne Netz übergeben, das Büro storniert inzwischen, der
+    // Server lehnt das Nachsenden mit 409 ab. Die Karte zeigte danach weiter
+    // „Abgeholt · Bezahlt“, die einzige Meldung war „1 Änderung(en) …
+    // verworfen“ - ohne Namen, ohne Grund.
+    signIn('fahrer', 42)
+    api.drivers.mockResolvedValue([{ ...driver, userId: 42 }])
+    api.tours.mockResolvedValue([twoStops])
+    api.updatePreorder.mockRejectedValue(networkError())
+
+    render(<DeliveryDashboard />)
+    // Erst wenn der eigene Fahrer gewählt ist (zweiter Ladevorgang).
+    await waitFor(() =>
+      expect(api.tours).toHaveBeenLastCalledWith(
+        expect.objectContaining({ driverId: 1 })
+      )
+    )
+    fireEvent.click(await screen.findByRole('button', { name: 'Übergeben' }))
+    await waitFor(() =>
+      expect(screen.getAllByText(/1 von 1 übergeben/).length).toBeGreaterThan(0)
+    )
+    expect(pendingUpdates()).toHaveLength(1)
+
+    // Der Server kennt die Bestellung inzwischen als storniert.
+    const cancelled = {
+      ...paidPreorder,
+      status: 'cancelled' as const,
+      paymentBalance: -16.4,
+    }
+    api.tours.mockResolvedValue([
+      {
+        ...twoStops,
+        stops: [{ ...pickupStop, preorders: [cancelled] }, homeStop],
+      },
+    ])
+    ;(global as { fetch?: unknown }).fetch = respond(409, {
+      error: 'cancelled',
+      message: 'Die Bestellung wurde storniert.',
+    })
+    const loadsBefore = api.tours.mock.calls.length
+
+    await act(async () => {
+      window.dispatchEvent(new Event('online'))
+      await new Promise((resolve) => setTimeout(resolve, 50))
+    })
+
+    expect(pendingUpdates()).toEqual([])
+    // Neu geladen: der Stand des Servers steht da, nicht die Vorschau.
+    expect(api.tours.mock.calls.length).toBeGreaterThan(loadsBefore)
+    await waitFor(() =>
+      expect(screen.getByTestId('payment-201').textContent).toMatch(
+        /^Erstattung 16,40\s€ offen$/
+      )
+    )
+    expect(screen.queryByText(/1 von 1 übergeben/)).toBeNull()
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Übergabe an Testkundin Faulbaum nicht gespeichert: Die Bestellung wurde storniert.'
+    )
+  })
+
+  it('meldet einen Serverfehler (5xx) nicht als „Kein Netz“', async () => {
+    // Regression: auf ein 500 hieß es „Kein Netz …“ - der Fahrer suchte den
+    // Fehler am Handy. Gemerkt wird die Änderung trotzdem.
+    signIn('inhaber')
+    api.tours.mockResolvedValue([twoStops])
+    api.updateStop.mockRejectedValue(new ApiError('Interner Fehler', 500))
+
+    render(<DeliveryDashboard />)
+    // Erst den Stopp der Sammelstelle ohne offene Bestellung abschließen …
+    // einfacher: der Hausstopp in „Weitere Stopps“.
+    const weitere = await screen.findByRole('region', {
+      name: 'Weitere Stopps',
+    })
+    fireEvent.click(within(weitere).getByRole('button', { name: 'Geliefert' }))
+
+    const notice = await screen.findByText(
+      /Der Server hat einen Fehler gemeldet/
+    )
+    expect(notice.textContent).toContain('(1 offen)')
+    expect(screen.queryByText(/Kein Netz/)).toBeNull()
+    expect(pendingUpdates()).toHaveLength(1)
+  })
+
+  it('zeigt in der Planung jeden Stopp einmal und kompakt, ohne Fahrer-Bedienung', async () => {
+    // Regression: „Nächster Stopp“ blieb mit voller Übergabeliste stehen,
+    // darunter derselbe Stopp noch einmal - bis zu 7 Knöpfe je Stopp.
+    signIn('inhaber')
+    api.tours.mockResolvedValue([twoStops])
+
+    render(<DeliveryDashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
+
+    expect(screen.queryByRole('region', { name: 'Nächster Stopp' })).toBeNull()
+    const list = screen.getByRole('region', { name: 'Alle Stopps' })
+    expect(
+      within(list).getAllByRole('heading', { name: 'Kindergarten Mörsbach' })
+    ).toHaveLength(1)
+    for (const name of [
+      'Geliefert',
+      'Nicht angetroffen',
+      'Stopp abschließen',
+      'Übergeben',
+      'Navigation',
+    ]) {
+      expect(within(list).queryByRole('button', { name })).toBeNull()
+      expect(within(list).queryByRole('link', { name })).toBeNull()
+    }
+    expect(
+      within(list).getAllByRole('button', { name: 'Nach unten' })
+    ).toHaveLength(2)
+    expect(
+      within(list).getByText(/1 Vorbestellung · 0 von 1 übergeben/)
+    ).toBeTruthy()
+  })
+
+  it('lässt Name und geplante Abfahrt der Tour einstellen', async () => {
+    // Regression: jede Tour hieß „Samstagstour“ und fuhr fest um 06:30 ab -
+    // alle Ankunftszeiten hingen daran, ändern ließ es sich in der App nicht.
+    signIn('inhaber')
+    api.tours.mockResolvedValue([twoStops])
+    api.updateTour.mockImplementation(async (_id, body) => ({
+      ...twoStops,
+      ...(body as Partial<Tour>),
+    }))
+
+    render(<DeliveryDashboard />)
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour planen' }))
+
+    const start = screen.getByLabelText('Abfahrt geplant') as HTMLInputElement
+    expect(start.value).toBe('06:30')
+    fireEvent.change(start, { target: { value: '08:15' } })
+    fireEvent.blur(start)
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, { plannedStart: '08:15' })
+    )
+    expect(await screen.findByText('08:15')).toBeTruthy()
+
+    const name = screen.getByLabelText('Name der Tour')
+    fireEvent.change(name, { target: { value: 'Samstagstour Süd' } })
+    fireEvent.keyDown(name, { key: 'Enter' })
+    await waitFor(() =>
+      expect(api.updateTour).toHaveBeenCalledWith(7, {
+        name: 'Samstagstour Süd',
+      })
+    )
+  })
+
+  it('benennt eine neue Tour nach dem Wochentag und nummeriert die zweite', async () => {
+    signIn('inhaber')
+    api.tours.mockResolvedValue([])
+    api.createTour.mockResolvedValue({ ...twoStops, id: 9, stops: [] })
+
+    render(<DeliveryDashboard />)
+    fireEvent.change(await screen.findByLabelText('Tag'), {
+      target: { value: '2026-11-13' },
+    })
+    fireEvent.click(await screen.findByRole('button', { name: 'Tour anlegen' }))
+    await waitFor(() =>
+      expect(api.createTour).toHaveBeenCalledWith(
+        expect.objectContaining({ date: '2026-11-13', name: 'Freitagstour' })
+      )
+    )
+  })
+
+  it('bietet an einer Tour der nächsten Woche kein Abhaken an (API: 400)', async () => {
+    // Regression: „Geliefert“ an einer künftigen Tour endete mit „Der
+    // Zeitpunkt muss zum Tourtag passen.“
+    signIn('inhaber')
+    const later = new Date(`${date}T12:00:00`)
+    later.setDate(later.getDate() + 7)
+    const iso = `${later.getFullYear()}-${String(later.getMonth() + 1).padStart(
+      2,
+      '0'
+    )}-${String(later.getDate()).padStart(2, '0')}`
+    api.tours.mockResolvedValue([{ ...twoStops, date: iso }])
+
+    render(<DeliveryDashboard />)
+    expect(await screen.findByTestId('mark-window')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Geliefert' })).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Stopp abschließen' })
+    ).toBeNull()
+    expect(
+      screen.queryByRole('button', { name: 'Nicht angetroffen' })
+    ).toBeNull()
+    // Die Übergabe einzelner Vorbestellungen prüft die API nicht am Tourtag.
+    expect(screen.getByRole('button', { name: 'Übergeben' })).toBeTruthy()
+    // Planen geht weiter.
+    expect(screen.getByRole('button', { name: 'Tour planen' })).toBeTruthy()
   })
 })

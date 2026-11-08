@@ -13,7 +13,7 @@ import {
   rememberLastUser,
   useDeliverySession,
 } from '../lib/session'
-import { ThemeToggle } from './ThemeToggle'
+import { AppFooter } from './AppFooter'
 import styles from '../app/page.module.css'
 
 /**
@@ -27,7 +27,9 @@ export function AuthGate({ children }: { children: ReactNode }) {
   if (session === undefined) {
     return (
       <main className={styles.main}>
-        <p className={styles.placeholder}>Wird geladen …</p>
+        <p className={`${styles.placeholder} ${styles.loading}`} role="status">
+          Wird geladen …
+        </p>
       </main>
     )
   }
@@ -70,11 +72,8 @@ export function LoginForm() {
   return (
     <main className={styles.main}>
       <header className={styles.header}>
-        <div>
-          <h1>Liefertour</h1>
-          <p className={styles.subtitle}>Bäckerei Heusser – Fahrer-App</p>
-        </div>
-        <ThemeToggle />
+        <p className={styles.eyebrow}>Bäckerei Heusser – Fahrer-App</p>
+        <h1>Liefertour</h1>
       </header>
 
       <section className={styles.card}>
@@ -108,16 +107,19 @@ export function LoginForm() {
               {error}
             </p>
           )}
-          <div className={styles.buttonGroup}>
+          <div className={styles.formActions}>
             <button type="submit" className={styles.button} disabled={busy}>
               {busy ? 'Anmelden …' : 'Anmelden'}
             </button>
           </div>
+          <p className={styles.subtitle}>
+            Das Konto legt das Büro an. Fahrer sehen hier nur ihre eigenen
+            Touren.
+          </p>
         </form>
-        <p className={styles.placeholder}>
-          Das Konto legt das Büro an. Fahrer sehen hier nur ihre eigenen Touren.
-        </p>
       </section>
+
+      <AppFooter />
     </main>
   )
 }
