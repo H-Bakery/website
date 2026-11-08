@@ -198,7 +198,7 @@ export default function EmployeeDialog({
               label="Bereich"
               value={area}
               onChange={(e) => setArea(e.target.value as Area)}
-              helperText="Schichten gibt es nur im Verkauf; alle Bereiche haben Urlaub und Abwesenheiten."
+              helperText="Alle Bereiche haben Schichten, Urlaub und Abwesenheiten; die Besetzung im Kalender zählt nur den Verkauf."
             >
               {AREAS.map((a) => (
                 <MenuItem key={a} value={a}>

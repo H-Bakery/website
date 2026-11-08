@@ -6,9 +6,12 @@ import type { Theme } from '@mui/material/styles'
 import {
   ABSENCE_TYPES,
   ABSENCE_TYPE_LABELS,
+  formatDays,
   type AbsenceType,
   type Employee,
+  type PlannedHours,
 } from '../../../lib/dienstplanApi'
+import { hoursTexts } from '../../../lib/dienstplanCalendar'
 import { ColorDot } from './mitarbeiter/EmployeeDialog'
 import { profileHref } from './mitarbeiter/MitarbeiterClient'
 import { TOUCH_MEDIA } from '../../../lib/muiTheme'
@@ -204,5 +207,108 @@ function LegendItem({
       />
       <Typography variant="caption">{text}</Typography>
     </Box>
+  )
+}
+
+/**
+ * Breite der Stundenspalte (px) in Woche und Monat - ganz rechts, damit das
+ * Raster vorne bleibt; am Handy steht die Differenz zusätzlich unter dem
+ * Namen (`PhoneHours`).
+ */
+export const HOURS_COLUMN_WIDTH = 128
+
+/** Kopf der Stundenspalte. */
+export function HoursHeaderCell({ periodLabel }: { periodLabel: string }) {
+  return (
+    <TableCell
+      data-testid="hours-header"
+      sx={{ verticalAlign: 'top', width: HOURS_COLUMN_WIDTH }}
+    >
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        Stunden
+      </Typography>
+      <Typography variant="caption" color="text.secondary" display="block">
+        {periodLabel}: Plan, Soll, Plan − Soll
+      </Typography>
+    </TableCell>
+  )
+}
+
+/**
+ * Stunden einer Person im Zeitraum: Plan, Soll („offen“ ohne
+ * Wochenstunden, nie 0) und die Differenz mit Vorzeichen - als Text.
+ * Gerechnet hat die API (`plannedHours` in `vacation.core.js`).
+ */
+export function HoursCell({
+  employeeId,
+  hours,
+}: {
+  employeeId: number
+  hours: PlannedHours | undefined
+}) {
+  if (!hours) {
+    return <TableCell data-testid={`hours-${employeeId}`}>–</TableCell>
+  }
+  const t = hoursTexts(hours)
+  const credited =
+    hours.targetMinutes !== null && hours.creditedDays > 0
+      ? `ohne ${formatDays(hours.creditedDays)} ${
+          hours.creditedDays === 1 ? 'Tag' : 'Tage'
+        } Urlaub/abwesend`
+      : null
+  return (
+    <TableCell
+      data-testid={`hours-${employeeId}`}
+      sx={{
+        verticalAlign: 'top',
+        py: 0.5,
+        fontVariantNumeric: 'tabular-nums',
+      }}
+    >
+      <Typography variant="caption" display="block">
+        Plan {t.plan}
+      </Typography>
+      <Typography variant="caption" display="block" color="text.secondary">
+        Soll {t.target}
+      </Typography>
+      {credited && (
+        <Typography variant="caption" display="block" color="text.secondary">
+          {credited}
+        </Typography>
+      )}
+      {t.diff && (
+        <Typography
+          variant="caption"
+          display="block"
+          data-sign={t.sign}
+          aria-label={`Plan − Soll ${t.diff}`}
+          sx={{ fontWeight: 600 }}
+        >
+          {t.diff}
+        </Typography>
+      )}
+    </TableCell>
+  )
+}
+
+/** Am Handy (unter `sm`) Plan und Differenz unter dem Namen. */
+export function PhoneHours({
+  employeeId,
+  hours,
+}: {
+  employeeId: number
+  hours: PlannedHours | undefined
+}) {
+  if (!hours) return null
+  const t = hoursTexts(hours)
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      data-testid={`phone-hours-${employeeId}`}
+      sx={{ display: { xs: 'block', sm: 'none' } }}
+    >
+      Plan {t.plan} · {t.diff ?? 'Soll offen'}
+    </Typography>
   )
 }

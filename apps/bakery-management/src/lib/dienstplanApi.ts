@@ -174,6 +174,33 @@ export interface ClosedWeekdays {
   source: 'config' | 'default'
 }
 
+/** Öffnungszeit eines Tages (`opening-hours.core.js`), `HH:MM`. */
+export interface OpeningHours {
+  opens: string
+  closes: string
+}
+
+/** Abschnitt der Öffnungszeit mit denselben Personen im Verkauf. */
+export interface BesetzungSegment {
+  from: string
+  to: string
+  /** Personen im Verkauf in diesem Abschnitt; leer = unbesetzt. */
+  employeeIds: number[]
+}
+
+/**
+ * Besetzung des Verkaufs über die Öffnungszeit (`verkaufCoverage` in
+ * `vacation.core.js`): `segments` lückenlos von `opens` bis `closes`,
+ * `gaps` die unbesetzten Abschnitte.
+ */
+export interface Besetzung {
+  opens: string
+  closes: string
+  segments: BesetzungSegment[]
+  gaps: { from: string; to: string }[]
+  covered: boolean
+}
+
 export interface CalendarDay {
   date: string
   weekday: number
@@ -183,7 +210,36 @@ export interface CalendarDay {
   /** 1, 0,5 (24./31.12.) oder 0 (geschlossen). */
   weight: number
   halfDayName: string | null
+  /**
+   * Öffnungszeit; `null` an geschlossenen Tagen - und an einem offenen Tag
+   * ohne hinterlegte Zeit (z. B. Ruhetag laut Finanz-Config geändert).
+   */
+  openingHours: OpeningHours | null
   verkaufBesetzt: number
+  /** `null`, wenn der Tag keine Öffnungszeit hat. */
+  besetzung: Besetzung | null
+}
+
+/**
+ * Geplante Stunden einer Person im Zeitraum neben dem Soll
+ * (`plannedHours` in `vacation.core.js`). Minuten. `no-target`: keine
+ * Wochenstunden erfasst - Soll und Differenz `null` („offen“), nie 0.
+ */
+export interface PlannedHours {
+  employeeId: number
+  from: string
+  to: string
+  weeklyHours: number | null
+  plannedMinutes: number
+  shiftCount: number
+  targetMinutes: number | null
+  /** Plan − Soll. */
+  diffMinutes: number | null
+  /** Öffnungstage, die ins Soll eingehen. */
+  targetDays: number
+  /** Öffnungstage, die Urlaub/abwesend vom Soll abziehen. */
+  creditedDays: number
+  status: 'ok' | 'no-target'
 }
 
 export interface Calendar {
@@ -195,6 +251,8 @@ export interface Calendar {
   shifts: Shift[]
   absences: Absence[]
   days: CalendarDay[]
+  /** Plan und Soll je gezeigter Person für `from`…`to`. */
+  hours: PlannedHours[]
 }
 
 /**
@@ -214,6 +272,8 @@ export interface EmployeeProfile {
   absences: ProfileAbsence[]
   /** Kommende Schichten ab heute (höchstens 20). */
   upcomingShifts: Shift[]
+  /** Plan und Soll in der laufenden Woche und im laufenden Monat. */
+  hours: { week: PlannedHours; month: PlannedHours }
   closedWeekdays: ClosedWeekdays
 }
 
@@ -554,6 +614,21 @@ export function formatMinutes(minutes: number): string {
   const h = Math.floor(minutes / 60)
   const m = minutes % 60
   return `${h}:${String(m).padStart(2, '0')} h`
+}
+
+/**
+ * Differenz mit Vorzeichen: `150` → `+2:30 h`, `-240` → `−4:00 h`,
+ * `0` → `±0:00 h`; `null` → `offen`.
+ */
+export function formatSignedMinutes(minutes: number | null): string {
+  if (minutes === null) return 'offen'
+  if (minutes === 0) return '±0:00 h'
+  return `${minutes > 0 ? '+' : '−'}${formatMinutes(Math.abs(minutes))}`
+}
+
+/** Soll in Minuten: `null` heißt „offen“ (keine Wochenstunden erfasst). */
+export function formatTargetMinutes(minutes: number | null): string {
+  return minutes === null ? 'offen' : formatMinutes(minutes)
 }
 
 export function isIsoDate(value: unknown): value is string {

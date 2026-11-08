@@ -39,7 +39,11 @@ import {
   AbsenceLegend,
   AreaGroupRow,
   EmployeeNameCell,
+  HOURS_COLUMN_WIDTH,
+  HoursCell,
+  HoursHeaderCell,
   NAME_COLUMN_WIDTH,
+  PhoneHours,
   stickyName,
 } from './calendarParts'
 
@@ -74,7 +78,8 @@ const DAY_WIDTH_TOUCH = 44 + 2 * DAY_CELL_PADDING + DAY_CELL_BORDER
 function touchTableWidth(days: number): number {
   return (
     Math.max(NAME_COLUMN_WIDTH.xs, NAME_COLUMN_WIDTH.sm) +
-    days * DAY_WIDTH_TOUCH
+    days * DAY_WIDTH_TOUCH +
+    HOURS_COLUMN_WIDTH
   )
 }
 
@@ -85,7 +90,8 @@ function touchTableWidth(days: number): number {
  * Ruhetag und Feiertage sind hinterlegt. Eine Abwesenheit über mehrere
  * Tage steht als durchgehender Balken. Eine Zelle antippen öffnet dieselben
  * Dialoge wie in der Woche (`onCell`: anlegen oder bearbeiten); das Datum
- * im Kopf antippen öffnet die Woche dieses Tages.
+ * im Kopf antippen öffnet die Woche dieses Tages. Ganz rechts stehen die
+ * Stunden des Monats je Person (Plan, Soll, Differenz - aus der API).
  */
 export default function MonthView({
   calendar,
@@ -115,7 +121,8 @@ export default function MonthView({
       ? calendar.employees
       : calendar.employees.filter((e) => e.area === area)
   const groups = groupByArea(shown)
-  const columns = dates.length + 1
+  const hours = new Map(calendar.hours.map((h) => [h.employeeId, h]))
+  const columns = dates.length + 2
 
   return (
     <Box sx={{ position: 'relative' }}>
@@ -139,8 +146,14 @@ export default function MonthView({
           sx={{
             tableLayout: 'fixed',
             minWidth: {
-              xs: NAME_COLUMN_WIDTH.xs + dates.length * DAY_WIDTH,
-              sm: NAME_COLUMN_WIDTH.sm + dates.length * DAY_WIDTH,
+              xs:
+                NAME_COLUMN_WIDTH.xs +
+                dates.length * DAY_WIDTH +
+                HOURS_COLUMN_WIDTH,
+              sm:
+                NAME_COLUMN_WIDTH.sm +
+                dates.length * DAY_WIDTH +
+                HOURS_COLUMN_WIDTH,
             },
             [TOUCH_MEDIA]: { minWidth: touchTableWidth(dates.length) },
             '& td, & th': { borderRight: 1, borderColor: 'divider' },
@@ -167,6 +180,7 @@ export default function MonthView({
                   onOpenWeek={onOpenWeek}
                 />
               ))}
+              <HoursHeaderCell periodLabel="Monat" />
             </TableRow>
           </TableHead>
           <TableBody>
@@ -195,7 +209,15 @@ export default function MonthView({
                       key={employee.id}
                       data-testid={`row-${employee.id}`}
                     >
-                      <EmployeeNameCell employee={employee} />
+                      <EmployeeNameCell
+                        employee={employee}
+                        extra={
+                          <PhoneHours
+                            employeeId={employee.id}
+                            hours={hours.get(employee.id)}
+                          />
+                        }
+                      />
                       {dates.map((date) => (
                         <MonthCell
                           key={date}
@@ -208,6 +230,10 @@ export default function MonthView({
                           onCell={onCell}
                         />
                       ))}
+                      <HoursCell
+                        employeeId={employee.id}
+                        hours={hours.get(employee.id)}
+                      />
                     </TableRow>
                   ))}
                 </React.Fragment>
