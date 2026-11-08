@@ -285,6 +285,16 @@ describe('entitlements and balance', () => {
       entitlementDays: 24,
       carryoverDays: null,
     })
+    const samePut = await as().put(
+      `/api/dienstplan/employees/${id}/entitlements/2026`,
+      { entitlementDays: 24 }
+    )
+    expect(samePut.status).toBe(200)
+    expect(samePut.body.data.entitlementDays).toBe(24)
+    const entitlementAudit = await AuditLog.findAll({
+      where: { entity: 'vacation_entitlement', entityId: `${id}/2026` },
+    })
+    expect(entitlementAudit.map((a) => a.action)).toEqual(['create'])
     const bad = await as().put(
       `/api/dienstplan/employees/${id}/entitlements/2026`,
       { entitlementDays: -1 }
@@ -362,6 +372,15 @@ describe('shift templates', () => {
       endTime: '12:30',
       breakMinutes: 15,
     })
+    const same = await as().patch(`/api/dienstplan/shift-templates/${id}`, {
+      name: 'Früh',
+      endTime: '12:30',
+    })
+    expect(same.status).toBe(200)
+    const templateAudit = await AuditLog.findAll({
+      where: { entity: 'shift_template', entityId: String(id) },
+    })
+    expect(templateAudit.map((a) => a.action)).toEqual(['create', 'update'])
     expect(
       (await as().delete(`/api/dienstplan/shift-templates/${id}`)).status
     ).toBe(200)
@@ -505,6 +524,19 @@ describe('shifts', () => {
     })
     expect(moved.body.warnings).toEqual([])
 
+    const shiftAudits = async () =>
+      AuditLog.count({
+        where: { entity: 'shift', entityId: String(shift.body.data.id) },
+      })
+    const auditsBefore = await shiftAudits()
+    const same = await as().patch(
+      `/api/dienstplan/shifts/${shift.body.data.id}`,
+      { date: '2026-11-18', startTime: '06:00', note: 'Vertretung' }
+    )
+    expect(same.status).toBe(200)
+    expect(same.body.data).toMatchObject({ date: '2026-11-18' })
+    expect(await shiftAudits()).toBe(auditsBefore)
+
     expect(
       (await as().delete(`/api/dienstplan/shifts/${shift.body.data.id}`)).status
     ).toBe(200)
@@ -536,6 +568,17 @@ describe('shifts', () => {
     })
     expect(exitEarly.status).toBe(409)
     expect(exitEarly.body.error).toBe('entries_outside_employment')
+
+    const off = await as().patch(`/api/dienstplan/employees/${verkauf}`, {
+      active: false,
+    })
+    expect(off.status).toBe(409)
+    expect(off.body).toMatchObject({
+      error: 'has_shifts',
+      message: expect.stringContaining('deaktivieren'),
+    })
+    const still = await as().get(`/api/dienstplan/employees/${verkauf}`)
+    expect(still.body.data.employee.active).toBe(true)
 
     const temp = await employee({ displayName: 'Tim Test', area: 'verkauf' })
     await as().patch(`/api/dienstplan/employees/${temp}`, { active: false })
@@ -644,6 +687,16 @@ describe('absences', () => {
     )
     expect(approved.status).toBe(200)
     expect(approved.body.data.status).toBe('genehmigt')
+    const again = await as().patch(
+      `/api/dienstplan/absences/${planned.body.data.id}`,
+      { status: 'genehmigt', endDate: '2027-01-02' }
+    )
+    expect(again.status).toBe(200)
+    expect(again.body.data.days).toBe(3.5)
+    const plannedAudit = await AuditLog.findAll({
+      where: { entity: 'absence', entityId: String(planned.body.data.id) },
+    })
+    expect(plannedAudit.map((a) => a.action)).toEqual(['create', 'update'])
 
     const list = await as().get(
       `/api/dienstplan/absences?from=2027-01-01&to=2027-01-31&employeeId=${id}`

@@ -73,20 +73,25 @@ Migration `20270107000000-dienstplan.js` (additive, idempotent), models `Employe
   `abwesend` do not.
 - **Pro-rata entitlement:** a person employed the whole year gets `entitlementDays`. With entry or
   exit in the year: 1/12 per full employment month, counted from the first day employed in the
-  year (15.03. → 15.03.-14.04. is one month). Rounding § 5 Abs. 2 BUrlG: a fraction of at least
-  half a day rounds up to a full day; smaller fractions stay (2 decimals), they are never rounded
-  down. The owner decided this for entry **and** exit; the statutory minimum for a person who
-  leaves in the second half of the year after the waiting period can be higher - the owner then
-  enters it as that year's entitlement.
+  year (15.03. → 15.03.-14.04. is one month). A start day missing in the target month ends that
+  month on the month's last day (§ 188 Abs. 3 BGB: 31.01. → 31.01.-28.02., 31.03. → 31.03.-30.04.).
+  Rounding § 5 Abs. 2 BUrlG: a fraction of at least half a day rounds up to a full day; smaller
+  fractions stay (2 decimals), they are never rounded down. The owner decided this for entry
+  **and** exit. The statutory minimum can be higher: § 5 Abs. 1 BUrlG prorates only when the
+  six-month waiting period is not completed in the year, so a person who enters before 1 July, or
+  leaves in the second half of the year after the waiting period, is owed the full statutory
+  minimum - the owner then enters the higher amount as that year's entitlement.
 - **Balance** (`vacationBalance`): `status` `ok` | `no-config` (no entitlement for the year:
   `entitlement`, `remainingDays` are `null` = "offen", never 0; taken and planned are still
   counted) | `not-employed` (the employment does not touch the year). Approved (`genehmigt`) and
   planned (`geplant`) vacation in the year are counted separately (an absence across New Year
   counts in each year only its part). `remainingDays = entitlement + carryover − carryoverExpired
 − approvedDays`, `remainingAfterPlannedDays = remainingDays − plannedDays`.
-- **Carryover** (`carryoverDays`, `null` = none entered, counts 0): approved vacation until 31.03.
-  of the year uses it first (`carryoverUsed`). Until the deadline the rest is `carryoverOpen`;
-  after 31.03. it is `carryoverExpired` ("verfallen"). Planned vacation does not use carryover.
+- **Carryover** (`carryoverDays`, `null` = none entered, counts 0 in `remainingDays`): approved
+  vacation until 31.03. of the year uses it first (`carryoverUsed`). Until the deadline the rest
+  is `carryoverOpen`; after 31.03. it is `carryoverExpired` ("verfallen"). Planned vacation does
+  not use carryover. Without an entered carryover `carryoverUsed`, `carryoverExpired` and
+  `carryoverOpen` are `null` (nothing to show), not 0.
 - **Shifts:** Verkauf only (400 `not_verkauf`), active employees only (409 `employee_inactive`),
   inside the employment period (400 `outside_employment`), `HH:MM`, end after start on the same
   day - no shift past midnight (400 `invalid_time` / `end_before_start`), break a whole number of
@@ -104,9 +109,9 @@ Migration `20270107000000-dienstplan.js` (additive, idempotent), models `Employe
 - **`days[]`**: `{ date, weekday (ISO), holidayName, restDay, closed, weight, halfDayName,
 verkaufBesetzt }`. The browser computes no holidays or balances itself.
 - **Employee changes:** changing `entryDate`/`exitDate` so that shifts or absences fall outside →
-  409 `entries_outside_employment`; moving a person out of Verkauf while they have shifts from
-  today on → 409 `has_shifts`. The calendar lists active employees plus inactive ones with entries
-  in the range.
+  409 `entries_outside_employment`; moving a person out of Verkauf or deactivating them
+  (`active: false`) while they have shifts from today on → 409 `has_shifts` (delete the shifts
+  first). The calendar lists active employees plus inactive ones with entries in the range.
 
 ## Audit
 
@@ -114,6 +119,9 @@ Every write is one `audit_log` row in the same transaction: `create` / `update` 
 `shift`, `absence`, `shift_template`, `vacation_entitlement` (entity id `employeeId/year`);
 `create` / `update` / `deactivate` / `reactivate` on `employee`. `data` holds the changed fields
 (`{ from, to }`), **never a note or a display name** - only `noteChanged` / `nameChanged: true`.
+A write that changes nothing (a PATCH/PUT with the current values) returns the row unchanged,
+without an update and without an audit row. A shift PATCH that only changes the note re-checks
+nothing and returns no warnings.
 
 ## Tests and seed
 

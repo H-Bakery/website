@@ -32,6 +32,7 @@ import {
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./vacation.core')
+const { berlinToday } = require('./backzettel-reference.core')
 const controlChars = require('./control-chars.core')
 const finance = require('../routes/finance.routes')
 /* eslint-enable @typescript-eslint/no-var-requires */
@@ -72,12 +73,6 @@ export class DienstplanError extends Error {
 
 function invalid(message: string, code = 'validation_failed'): never {
   throw new DienstplanError(400, code, message)
-}
-
-function berlinToday(): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin' }).format(
-    new Date()
-  )
 }
 
 /** `2026-12-24` → `24.12.2026` for messages. */
@@ -554,11 +549,12 @@ export class DienstplanService {
       if (has(input, 'entryDate') || has(input, 'exitDate')) {
         await this.assertEntriesInside(id, entry, exit, transaction)
       }
-      if (
+      const leavesVerkauf =
         has(input, 'area') &&
         input['area'] !== core.SHIFT_AREA &&
         current.area === core.SHIFT_AREA
-      ) {
+      const deactivates = input['active'] === false && Boolean(current.active)
+      if (leavesVerkauf || deactivates) {
         const upcoming = await Shift.count({
           where: { employeeId: id, date: { [Op.gte]: this.today() } },
           transaction,
@@ -567,7 +563,9 @@ export class DienstplanService {
           throw new DienstplanError(
             409,
             'has_shifts',
-            `Es gibt noch ${upcoming} kommende Schicht(en) im Verkauf. Bitte erst löschen, dann den Bereich ändern.`
+            leavesVerkauf
+              ? `Es gibt noch ${upcoming} kommende Schicht(en) im Verkauf. Bitte erst löschen, dann den Bereich ändern.`
+              : `Es gibt noch ${upcoming} kommende Schicht(en). Bitte erst löschen, dann deaktivieren.`
           )
         }
       }
@@ -708,6 +706,13 @@ export class DienstplanService {
             ? carryoverDays
             : (before?.['carryoverDays'] as number | null) ?? null,
       }
+      if (
+        existing &&
+        before?.['entitlementDays'] === next.entitlementDays &&
+        before?.['carryoverDays'] === next.carryoverDays
+      ) {
+        return existing
+      }
       let saved: VacationEntitlement
       if (existing) {
         saved = await existing.update(next, { transaction })
@@ -799,6 +804,11 @@ export class DienstplanService {
       if (!current) templateNotFound()
       const before = plainTemplate(current)
       const input = this.templateInput(body, current)
+      if (
+        Object.entries(input).every(([key, value]) => before[key] === value)
+      ) {
+        return current
+      }
       await current.update(input, { transaction })
       await audit(
         req,
@@ -1032,14 +1042,23 @@ export class DienstplanService {
         if (!current) shiftNotFound()
         const before = this.shiftAudit(current)
         const input = await this.shiftFromBody(body, current, transaction)
-        const warnings = await this.checkShift(input, id, transaction)
+        const after = this.shiftAudit(input)
+        const timesSame = Object.entries(after).every(
+          ([key, value]) => before[key] === value
+        )
+        const noteSame = input.note === (current.note ?? null)
+        if (timesSame && noteSame) return { row: current, warnings: [] }
+        // A note-only change re-checks nothing: the plan stays as it was.
+        const warnings = timesSame
+          ? []
+          : await this.checkShift(input, id, transaction)
         await current.update(input, { transaction })
         await audit(
           req,
           'update',
           'shift',
           id,
-          { from: before, to: this.shiftAudit(input) },
+          { from: before, to: after },
           { transaction }
         )
         return { row: current, warnings }
@@ -1241,6 +1260,14 @@ export class DienstplanService {
         if (!current) absenceNotFound()
         const before = absenceShape(current)
         const input = this.absenceFromBody(body, current)
+        const unchanged =
+          input.note === (current.note ?? null) &&
+          Object.keys(before).every(
+            (key) =>
+              key === 'id' ||
+              before[key] === (input as Record<string, unknown>)[key]
+          )
+        if (unchanged) return { row: current, warnings: [] as Warning[] }
         const warnings = await this.checkAbsence(input, id, transaction)
         await current.update(input, { transaction })
         await audit(

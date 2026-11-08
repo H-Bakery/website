@@ -182,8 +182,10 @@ function holidaysSaarland(year) {
     fixed('12-25', '1. Weihnachtstag'),
     fixed('12-26', '2. Weihnachtstag'),
   ].sort((x, y) => (x.date < y.date ? -1 : 1))
-  holidayCache.set(year, list)
-  return list
+  // Eingefroren: der Cache gilt für alle späteren Aufrufe im Prozess.
+  const frozen = Object.freeze(list.map((h) => Object.freeze(h)))
+  holidayCache.set(year, frozen)
+  return frozen
 }
 
 /** Name des Feiertags an `date` oder `null`. */
@@ -296,10 +298,23 @@ function rangesOverlap(a, b) {
 // ============================================================================
 
 /**
+ * Letzter Tag des `k`-ten Beschäftigungsmonats ab `from` (§ 187 Abs. 2,
+ * § 188 Abs. 2 und 3 BGB): der Tag vor dem Tag mit derselben Zahl wie
+ * `from`, k Monate später (15.03. → 14.04.). Fehlt dieser Tag im Monat
+ * (31.01. + 1 Monat), endet der Monat mit dem letzten Tag des Monats
+ * (28.02. bzw. 29.02.).
+ */
+function employmentMonthEnd(from, k) {
+  const shifted = addMonths(from, k)
+  const clamped = Number(shifted.slice(8, 10)) < Number(from.slice(8, 10))
+  return clamped ? shifted : addDays(shifted, -1)
+}
+
+/**
  * Volle Beschäftigungsmonate im Kalenderjahr `year`, gezählt ab dem ersten
- * Beschäftigungstag im Jahr (15.03. → 15.03.-14.04. ist ein Monat), und ob
- * die Person das ganze Jahr beschäftigt ist. `null`, wenn die Beschäftigung
- * das Jahr nicht berührt.
+ * Beschäftigungstag im Jahr (15.03. → 15.03.-14.04. ist ein Monat,
+ * 31.01. → 31.01.-28.02.), und ob die Person das ganze Jahr beschäftigt ist.
+ * `null`, wenn die Beschäftigung das Jahr nicht berührt.
  */
 function employmentMonthsInYear(year, entryDate, exitDate) {
   const yearFrom = `${year}-01-01`
@@ -308,9 +323,8 @@ function employmentMonthsInYear(year, entryDate, exitDate) {
   const to = isValidDate(exitDate) ? minDate(exitDate, yearTo) : yearTo
   if (from > to) return null
   if (from === yearFrom && to === yearTo) return { months: 12, fullYear: true }
-  const after = addDays(to, 1)
   let months = 0
-  while (months < 12 && addMonths(from, months + 1) <= after) months += 1
+  while (months < 12 && employmentMonthEnd(from, months + 1) <= to) months += 1
   return { months, fullYear: false }
 }
 
@@ -363,6 +377,7 @@ function isDays(value) {
  *   carryoverUsed     davon durch genehmigten Urlaub bis 31.03. verbraucht
  *   carryoverExpired  am 31.03. verfallen (erst nach dem Stichtag > 0)
  *   carryoverOpen     noch nutzbar bis `carryoverDeadline` (vor dem Stichtag)
+ *                     - alle drei null, wenn kein Übertrag erfasst ist
  *   approvedDays      genehmigter Urlaub im Jahr
  *   plannedDays       geplanter (noch nicht genehmigter) Urlaub im Jahr
  *   remainingDays     Anspruch + Übertrag − verfallen − genehmigt (null bei no-config)
@@ -437,14 +452,18 @@ function vacationBalance(input) {
     input.entryDate,
     input.exitDate
   )
+  // Ohne erfassten Übertrag rechnet der Rest mit 0, die Übertragsfelder
+  // bleiben aber null ("nicht erfasst", nicht "0 verfallen").
   const carry = carryoverDays ?? 0
-  const carryoverUsed = round2(Math.min(carry, approvedUntilDeadline))
+  const used = round2(Math.min(carry, approvedUntilDeadline))
   const pastDeadline = isValidDate(input.today) && input.today > deadline
-  const carryoverExpired = pastDeadline ? round2(carry - carryoverUsed) : 0
-  const carryoverOpen = pastDeadline ? 0 : round2(carry - carryoverUsed)
-  const remainingDays = round2(
-    pro.entitlement + carry - carryoverExpired - approvedDays
-  )
+  const expired = pastDeadline ? round2(carry - used) : 0
+  const open = pastDeadline ? 0 : round2(carry - used)
+  const hasCarry = carryoverDays !== null
+  const carryoverUsed = hasCarry ? used : null
+  const carryoverExpired = hasCarry ? expired : null
+  const carryoverOpen = hasCarry ? open : null
+  const remainingDays = round2(pro.entitlement + carry - expired - approvedDays)
   return {
     status: 'ok',
     ...base,

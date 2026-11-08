@@ -68,6 +68,11 @@ describe('easterSunday / holidaysSaarland', () => {
     expect(core.holidayName('2026-10-31')).toBeNull()
     expect(core.holidayName('2026-11-18')).toBeNull()
     expect(core.holidaysSaarland(2027)).toHaveLength(12)
+    // the cached list cannot be changed by a caller
+    const cached = core.holidaysSaarland(2027)
+    expect(Object.isFrozen(cached)).toBe(true)
+    expect(() => cached.push({ date: '2027-12-31', name: 'x' })).toThrow()
+    expect(core.holidaysSaarland(2027)).toHaveLength(12)
   })
 })
 
@@ -250,6 +255,30 @@ describe('proRataEntitlement (§ 5 BUrlG)', () => {
     ).toBe(12)
   })
 
+  it('a start day missing in the month ends that month on its last day (§ 188 Abs. 3 BGB)', () => {
+    const months = (entry, exit) =>
+      core.employmentMonthsInYear(2026, entry, exit).months
+    expect(months('2026-01-31', '2026-02-27')).toBe(0)
+    expect(months('2026-01-31', '2026-02-28')).toBe(1)
+    expect(months('2026-03-31', '2026-04-29')).toBe(0)
+    expect(months('2026-03-31', '2026-04-30')).toBe(1)
+    expect(months('2026-01-30', '2026-02-27')).toBe(0)
+    expect(months('2026-01-30', '2026-02-28')).toBe(1)
+    // 31.01. → 28.02. → 30.03. (day 30 exists in March)
+    expect(months('2026-01-31', '2026-03-29')).toBe(1)
+    expect(months('2026-01-31', '2026-03-30')).toBe(2)
+    // leap year: 31.01.2028 → 29.02.2028
+    expect(
+      core.employmentMonthsInYear(2028, '2028-01-31', '2028-02-28')
+    ).toEqual({ months: 0, fullYear: false })
+    expect(
+      core.employmentMonthsInYear(2028, '2028-01-31', '2028-02-29')
+    ).toEqual({ months: 1, fullYear: false })
+    // an ordinary start day: 15.03. → 14.04.
+    expect(months('2026-03-15', '2026-04-13')).toBe(0)
+    expect(months('2026-03-15', '2026-04-14')).toBe(1)
+  })
+
   it('no employment in the year: null', () => {
     expect(core.proRataEntitlement(24, 2026, '2027-01-01', null)).toBeNull()
     expect(core.proRataEntitlement(24, 2026, null, '2025-12-31')).toBeNull()
@@ -346,6 +375,36 @@ describe('vacationBalance', () => {
       carryoverOpen: 0,
       remainingDays: 21, // 25 + 5 - 2 - 7
       remainingAfterPlannedDays: 19,
+    })
+  })
+
+  it('no carryover entered: carryover fields null, remaining counts 0', () => {
+    const b = core.vacationBalance({
+      year: 2026,
+      today: '2026-11-08',
+      entitlement: { entitlementDays: 20, carryoverDays: null },
+      absences: [urlaub('2026-02-03', '2026-02-07')], // 5
+      closedWeekdays: MONDAY,
+    })
+    expect(b).toMatchObject({
+      status: 'ok',
+      carryoverDays: null,
+      carryoverUsed: null,
+      carryoverExpired: null,
+      carryoverOpen: null,
+      remainingDays: 15,
+    })
+    const zero = core.vacationBalance({
+      year: 2026,
+      today: '2026-11-08',
+      entitlement: { entitlementDays: 20, carryoverDays: 0 },
+      absences: [],
+      closedWeekdays: MONDAY,
+    })
+    expect(zero).toMatchObject({
+      carryoverUsed: 0,
+      carryoverExpired: 0,
+      carryoverOpen: 0,
     })
   })
 
