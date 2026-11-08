@@ -280,7 +280,10 @@ ensure_dirs() {
   install -d -m 0755 -o "$APP_USER" -g "$APP_USER" "$BAKERY_ROOT/releases"
   # Rückfallpfad der Loader (<monorepo>/../hq) zeigt so auch ohne HQ_*_DIR auf den Lese-Klon.
   # Releases liegen unter releases/<sha>, ihr ../hq ist releases/hq.
-  [ -e "$BAKERY_ROOT/releases/hq" ] || ln -s "$BAKERY_VAR/hq" "$BAKERY_ROOT/releases/hq"
+  # -L dazu: solange der Lese-Klon fehlt (kein Token), zeigt der Link ins Leere - `-e` ist dann
+  # falsch, und ein zweiter Lauf brach mit "ln: File exists" ab, bevor er den Klon anlegen konnte.
+  [ -e "$BAKERY_ROOT/releases/hq" ] || [ -L "$BAKERY_ROOT/releases/hq" ] ||
+    ln -s "$BAKERY_VAR/hq" "$BAKERY_ROOT/releases/hq"
 }
 
 # Neue Schlüssel aus dem Beispiel melden, die in der echten Datei fehlen.
