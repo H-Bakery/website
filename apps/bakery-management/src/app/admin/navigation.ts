@@ -148,6 +148,15 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Auffälligkeiten im Monat',
   },
   {
+    // TASK-042: Schichten (Verkauf), Abwesenheiten und Urlaubskonten - nur
+    // Inhaber mit persönlicher Sitzung (PERSONAL_ONLY_ROUTES). Im Pilot für
+    // den Inhaber freigegeben (Entscheidung 2026-11-08, PILOT_ALLOWED_ROUTES).
+    label: 'Dienstplan',
+    href: '/admin/dienstplan',
+    icon: 'dienstplan',
+    description: 'Schichten, Urlaub & Mitarbeiter',
+  },
+  {
     label: 'Social Media',
     href: '/admin/social-media',
     icon: 'socialmedia',

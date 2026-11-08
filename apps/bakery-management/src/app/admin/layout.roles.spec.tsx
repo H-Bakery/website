@@ -1,5 +1,6 @@
 import React from 'react'
 import {
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -70,6 +71,21 @@ describe('AdminLayout mit Rollen (F1)', () => {
     expect(navLabels()).toContain('Benutzer')
   })
 
+  it('Inhaber sieht „Dienstplan“, Verkauf nicht (TASK-042)', () => {
+    renderLayout('/admin', fakeSession({ role: 'inhaber' }))
+    expect(navLabels()).toContain('Dienstplan')
+    cleanup()
+    renderLayout('/admin', fakeSession({ role: 'verkauf' }))
+    expect(navLabels()).not.toContain('Dienstplan')
+    cleanup()
+    renderLayout(
+      '/admin/dienstplan/mitarbeiter',
+      fakeSession({ role: 'verkauf' })
+    )
+    expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()
+    expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
+  })
+
   it('verbotene Seite: „Kein Zugriff“ statt Inhalt, Link zur Startseite', () => {
     renderLayout('/admin/finance', fakeSession({ role: 'fahrer' }))
     expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
@@ -96,6 +112,19 @@ describe('AdminLayout mit Rollen (F1)', () => {
     renderLayout('/admin/login', fakeSession())
     expect(screen.getByText('Seiteninhalt')).toBeInTheDocument()
     expect(document.querySelector('.MuiDrawer-paper')).toBeNull()
+  })
+
+  it('Inhaber an der Station: kein Dienstplan (Personendaten), mit Begründung', () => {
+    renderLayout(
+      '/admin/dienstplan/mitarbeiter/3',
+      fakeSession({ role: 'inhaber', sessionKind: 'station' })
+    )
+    expect(navLabels()).not.toContain('Dienstplan')
+    expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()
+    expect(
+      screen.getByText(/an einer Station nicht verfügbar/)
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
   })
 
   it('Inhaber an der Station: keine Benutzerverwaltung, mit Begründung', () => {
@@ -129,5 +158,58 @@ describe('AdminLayout mit Rollen (F1)', () => {
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(
       'Dashboard › Produkte'
     )
+  })
+})
+
+describe('AdminLayout mit Rollen im Pilotbetrieb (Dienstplan, Entscheidung 2026-11-08)', () => {
+  const original = process.env.NEXT_PUBLIC_PILOT_MODE
+  beforeEach(() => {
+    mockReplace.mockReset()
+    process.env.NEXT_PUBLIC_PILOT_MODE = '1'
+  })
+  afterEach(() => {
+    if (original === undefined) delete process.env.NEXT_PUBLIC_PILOT_MODE
+    else process.env.NEXT_PUBLIC_PILOT_MODE = original
+  })
+
+  it('Inhaber sieht „Dienstplan“ im Menü und erreicht die Seiten', () => {
+    renderLayout('/admin', fakeSession({ role: 'inhaber' }))
+    expect(screen.getByText('Pilotbetrieb')).toBeInTheDocument()
+    expect(navLabels()).toContain('Dienstplan')
+    for (const path of [
+      '/admin/dienstplan',
+      '/admin/dienstplan/mitarbeiter',
+      '/admin/dienstplan/mitarbeiter/3',
+    ]) {
+      cleanup()
+      renderLayout(path, fakeSession({ role: 'inhaber' }))
+      expect(screen.getByText('Seiteninhalt')).toBeInTheDocument()
+      expect(
+        screen.queryByText('Im Pilotbetrieb nicht verfügbar')
+      ).not.toBeInTheDocument()
+      expect(screen.queryByText('Kein Zugriff')).not.toBeInTheDocument()
+    }
+  })
+
+  it.each(['verkauf', 'backstube', 'fahrer'] as const)(
+    '%s sieht „Dienstplan“ nicht und kommt nicht hinein',
+    (role) => {
+      renderLayout('/admin/settings', fakeSession({ role }))
+      expect(navLabels()).not.toContain('Dienstplan')
+      cleanup()
+      renderLayout('/admin/dienstplan', fakeSession({ role }))
+      expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()
+      expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
+    }
+  )
+
+  it('Inhaber an der Station: auch im Pilotbetrieb kein Dienstplan', () => {
+    renderLayout(
+      '/admin/dienstplan',
+      fakeSession({ role: 'inhaber', sessionKind: 'station' })
+    )
+    expect(navLabels()).not.toContain('Dienstplan')
+    expect(screen.getByText('Kein Zugriff')).toBeInTheDocument()
+    expect(screen.queryByText('Seiteninhalt')).not.toBeInTheDocument()
   })
 })

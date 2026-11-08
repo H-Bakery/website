@@ -40,6 +40,7 @@ import {
   HelpOutline as HelpIcon,
   Place as PickupPointIcon,
   QueryStats as RestSummaryIcon,
+  CalendarMonth as DienstplanIcon,
 } from '@mui/icons-material'
 import type { Theme } from '@mui/material/styles'
 import Link from 'next/link'
@@ -139,6 +140,7 @@ const iconMap: Record<string, React.ReactElement> = {
   help: <HelpIcon />,
   pickuppoint: <PickupPointIcon />,
   restsummary: <RestSummaryIcon />,
+  dienstplan: <DienstplanIcon />,
 }
 
 /**
@@ -174,6 +176,9 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/analytics/revenue': 'Umsatz',
   '/admin/nicht-verfuegbar': 'Nicht verfügbar',
   '/admin/sitzung-pruefen': 'Anmeldung prüfen',
+  // Dienstplan (TASK-042): der Name steht auf der Profilseite selbst.
+  '/admin/dienstplan/mitarbeiter': 'Mitarbeiter',
+  '/admin/dienstplan/mitarbeiter/[id]': null,
 }
 
 /**

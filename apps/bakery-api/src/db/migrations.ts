@@ -78,4 +78,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270210000000-backzettel-baked.js',
     module: require('../../migrations/20270210000000-backzettel-baked.js'),
   },
+  {
+    // TASK-042 (after the pilot): employees, entitlements, shifts, absences
+    name: '20270301000000-dienstplan.js',
+    module: require('../../migrations/20270301000000-dienstplan.js'),
+  },
 ]

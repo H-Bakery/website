@@ -19,7 +19,7 @@ contract tests in `tests/contract/` (see [Tests](#tests)).
 
 Domain docs: [auth](auth.md), [hq data](hq-data.md), [hq products + write-back](hq-products.md),
 [partners](partners.md), [preorders](preorders.md), [Backzettel](backzettel.md),
-[delivery tours](deliveries.md), [Rest am Abend](rest.md).
+[delivery tours](deliveries.md), [Rest am Abend](rest.md), [Dienstplan](dienstplan.md).
 
 ## Build and run
 
@@ -85,7 +85,9 @@ node --enable-source-maps dist/apps/bakery-api/bundle/main.js
    "Schema"), `20261106000000-auth-sessions-stations.js`, `20261112000000-backzettel-z3.js`,
    `20261113000000-preorders-b7.js`, `20261114000000-preorders-paid-amount.js`,
    `20261116000000-preorders-request-id.js`, `20261201000000-rest-am-abend.js` (M4),
-   `20270105000000-delivery-tours-b8.js` (B8), `20270106000000-rest-count-line-rows.js` (M4). The
+   `20270105000000-delivery-tours-b8.js` (B8), `20270106000000-rest-count-line-rows.js` (M4),
+   `20270201000000-backzettel-dough-day.js` (Z10), `20270210000000-backzettel-baked.js` (Z10 O5),
+   `20270301000000-dienstplan.js` (TASK-042). The
    17 legacy migrations are archived in
    `migrations/archive/` and never loaded (`sequelize-cli` does not read subdirectories either).
 5. `initializeModels(sequelize)` - after the migrations, never before.
@@ -105,23 +107,24 @@ and for supertest. Every `/api` answer gets `Cache-Control: no-store` (answers c
 numbers and money; Chrome otherwise kept them in its disk cache on the shared tablet after logout).
 Mounted:
 
-| Path                                             | Router                                   | Note                                                             |
-| ------------------------------------------------ | ---------------------------------------- | ---------------------------------------------------------------- |
-| `/health`, `/api/health`                         | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed                        |
-| `/api/auth` (public)                             | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users, logout                       |
-| `/api` (guard)                                   | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**                       |
-| `/api/auth` (session)                            | `routes/auth.routes.ts` (session router) | me, stations                                                     |
-| `/api/users`                                     | `routes/users.routes.ts`                 | user admin, `inhaber` only                                       |
-| `/api/partners`                                  | `routes/partner.routes.ts`               | Backschrank, see [partners.md](partners.md)                      |
-| `/api/reports`, `/api/analytics`, `/api/finance` | `routes/hq-data.routes.ts`               | hq read-only data, see [hq-data.md](hq-data.md)                  |
-| `/api/products`, `/api/hq-products`              | `routes/hq-products.routes.ts`           | hq catalogue, see [hq-products.md](hq-products.md)               |
-| `/api/preorders`                                 | `routes/preorders.routes.ts`             | Vorbestellungen, see [preorders.md](preorders.md)                |
-| `/api/deliveries`                                | `routes/preorders.routes.ts` (alias)     | the Mörsbach mock contract (pickup points, preorders)            |
-| `/api/deliveries`                                | `routes/delivery-tours.routes.ts`        | tours, stops, drivers, depot, see [deliveries.md](deliveries.md) |
-| `/api/orders` (POST only)                        | `routes/preorders.routes.ts` (shop)      | shop order → preorder with channel `shop`, behind auth           |
-| `/api/backzettel`                                | `routes/backzettel.routes.ts`            | see [backzettel.md](backzettel.md)                               |
-| `/api/rest`                                      | `routes/rest.routes.ts`                  | Rest am Abend (M4), see [rest.md](rest.md)                       |
-| `/api/hq-sync`                                   | `routes/hq-sync.routes.ts`               | write-back status + retry, `inhaber`                             |
+| Path                                             | Router                                   | Note                                                                  |
+| ------------------------------------------------ | ---------------------------------------- | --------------------------------------------------------------------- |
+| `/health`, `/api/health`                         | `routes/health.routes.ts`                | no session; `SELECT 1` if a DB was passed                             |
+| `/api/auth` (public)                             | `routes/auth.routes.ts` (public router)  | login, refresh, pin, station/users, logout                            |
+| `/api` (guard)                                   | `auth/middleware.ts` `requireAuth`       | **everything below needs a session (401)**                            |
+| `/api/auth` (session)                            | `routes/auth.routes.ts` (session router) | me, stations                                                          |
+| `/api/users`                                     | `routes/users.routes.ts`                 | user admin, `inhaber` only                                            |
+| `/api/partners`                                  | `routes/partner.routes.ts`               | Backschrank, see [partners.md](partners.md)                           |
+| `/api/reports`, `/api/analytics`, `/api/finance` | `routes/hq-data.routes.ts`               | hq read-only data, see [hq-data.md](hq-data.md)                       |
+| `/api/products`, `/api/hq-products`              | `routes/hq-products.routes.ts`           | hq catalogue, see [hq-products.md](hq-products.md)                    |
+| `/api/preorders`                                 | `routes/preorders.routes.ts`             | Vorbestellungen, see [preorders.md](preorders.md)                     |
+| `/api/deliveries`                                | `routes/preorders.routes.ts` (alias)     | the Mörsbach mock contract (pickup points, preorders)                 |
+| `/api/deliveries`                                | `routes/delivery-tours.routes.ts`        | tours, stops, drivers, depot, see [deliveries.md](deliveries.md)      |
+| `/api/orders` (POST only)                        | `routes/preorders.routes.ts` (shop)      | shop order → preorder with channel `shop`, behind auth                |
+| `/api/backzettel`                                | `routes/backzettel.routes.ts`            | see [backzettel.md](backzettel.md)                                    |
+| `/api/rest`                                      | `routes/rest.routes.ts`                  | Rest am Abend (M4), see [rest.md](rest.md)                            |
+| `/api/dienstplan`                                | `routes/dienstplan.routes.ts`            | staff, shifts, absences, vacation; see [dienstplan.md](dienstplan.md) |
+| `/api/hq-sync`                                   | `routes/hq-sync.routes.ts`               | write-back status + retry, `inhaber`                                  |
 
 New domains are mounted in `app.ts` **below the global guard** - mount them there and add
 `requireRole(...)`. **One exception (B12):** with `PUBLIC_CATALOGUE=1`
@@ -130,7 +133,8 @@ the guard, so the customer shop can read the approved catalogue without a sessio
 route still answers 401. Default off - whether the box turns it on is the owner's call, together
 with a public order path.
 
-Nothing else exists: recipes, inventory, cash, chat, dashboard, staff, notifications, templates,
+Nothing else exists: recipes, inventory, cash, chat, dashboard, the old mock staff routes (staff
+data is `/api/dienstplan` since TASK-042), notifications, templates,
 preferences, import, sales-analytics, unsold, the rest of orders (only the shop's
 `POST /api/orders`), production, baking-list, workflows, email, monitoring/metrics and Swagger
 were deleted with the legacy code in B12.
@@ -155,7 +159,8 @@ the four partner tables (`Partners`, `PartnerDeliveryTemplates`, `PartnerVisits`
 `preorders`, `preorder_items` and the Backzettel tables `backzettel_days`, `backzettel_lines`,
 `backzettel_deltas`. Later migrations add columns/tables (see Startup) - among them the delivery
 tables (`delivery_depot`, `delivery_drivers`, `delivery_tours`, `delivery_stops`,
-`delivery_geocache`, B8) and `rest_counts` (M4). New tables are snake_case;
+`delivery_geocache`, B8), `rest_counts` (M4) and the Dienstplan tables (`employees`,
+`vacation_entitlements`, `shift_templates`, `shifts`, `absences`, TASK-042). New tables are snake_case;
 their models use `underscored: true` and camelCase attributes.
 
 - **Idempotent.** Each table is created only if missing (case-insensitive - SQLite treats `Users`

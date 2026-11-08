@@ -34,7 +34,8 @@ Details: [`api/hq-products.md`](./api/hq-products.md).
   (`src/db/migrations.ts`), `createApp()` in `src/app.ts`. Mounted: health, auth, users, partners,
   products / hq-products, preorders (+ the `/api/deliveries/preorders*` alias and the shop's
   `POST /api/orders`), delivery tours (`/api/deliveries`, B8), Backzettel, Rest am Abend
-  (`/api/rest`, M4), hq-sync, and reports / analytics / finance / targets. Everything under `/api`
+  (`/api/rest`, M4), Dienstplan (`/api/dienstplan`, TASK-042, inhaber with a personal session),
+  hq-sync, and reports / analytics / finance / targets. Everything under `/api`
   except login, refresh, PIN and the station user list sits behind the session guard - and, with
   `PUBLIC_CATALOGUE=1`, `GET /api/products` for the shop; roles via `requireRole`.
 - **One API.** Since B12 (cutover) the mock server `simple-server.js`, the pre-TypeScript JS layer

@@ -2,7 +2,10 @@ import React from 'react'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { renderWithTheme } from '@bakery/shared/test-utils'
 import FinanceClient, { formatEuro, formatMonth } from './FinanceClient'
-import type { FinanceSummaryResponse } from '../../../lib/financeTypes'
+import type {
+  FinanceMonthsResponse,
+  FinanceSummaryResponse,
+} from '../../../lib/financeTypes'
 
 jest.mock('@bakery/shared/data-access', () => {
   class ApiError extends Error {
@@ -138,6 +141,51 @@ function syntheticSummary(): FinanceSummaryResponse {
   }
 }
 
+/** Synthetische Antwort von `/api/finance/months` für „ab Februar 2026“. */
+function syntheticFebruary(): FinanceMonthsResponse {
+  return {
+    from: '2026-02',
+    to: null,
+    generated_at: null,
+    months: syntheticSummary().derived.series.slice(1),
+    overview: {
+      months: 1,
+      from: '2026-02',
+      to: '2026-02',
+      transactions: 12,
+      income: 1200,
+      expense: -700,
+      result: 500,
+      neutral: 0,
+      net_change: 500,
+    },
+    cost_structure: [],
+    income_structure: [],
+  }
+}
+
+function ok<T>(data: T) {
+  return { success: true, status: 'ok', data }
+}
+
+/**
+ * Antwortet je Endpunkt mit dessen eigener Form. Ein pauschales
+ * `mockResolvedValue(summary)` beantwortete auch `/api/finance/months` mit der
+ * Summary - ohne `overview` stürzte die Seite dann ab, sobald die Antwort vor
+ * dem Testende ankam (auf langsamen CI-Runnern).
+ */
+function mockFinanceApi({
+  months = () => Promise.resolve(ok(syntheticFebruary())),
+}: { months?: () => Promise<unknown> } = {}) {
+  apiClient.get.mockImplementation((url: string) => {
+    if (url === '/api/finance/summary') {
+      return Promise.resolve(ok(syntheticSummary()))
+    }
+    if (url === '/api/finance/months') return months()
+    return Promise.reject(new Error(`Unerwarteter Aufruf im Test: ${url}`))
+  })
+}
+
 describe('FinanceClient', () => {
   beforeEach(() => {
     apiClient.get.mockReset()
@@ -243,11 +291,7 @@ describe('FinanceClient', () => {
   )
 
   it('rendert Kennzahlen, Stand, GuV-Hinweis und den Hinweis auf offene Buchungen', async () => {
-    apiClient.get.mockResolvedValue({
-      success: true,
-      status: 'ok',
-      data: syntheticSummary(),
-    })
+    mockFinanceApi()
     renderWithTheme(<FinanceClient />)
 
     expect(await screen.findByText('Einnahmen')).toBeInTheDocument()
@@ -285,46 +329,13 @@ describe('FinanceClient', () => {
   })
 
   it('holt bei einem Zeitraumfilter die Reihe vom Server', async () => {
-    apiClient.get.mockImplementation((url: string) => {
-      if (url === '/api/finance/summary') {
-        return Promise.resolve({
-          success: true,
-          status: 'ok',
-          data: syntheticSummary(),
-        })
-      }
-      return Promise.resolve({
-        success: true,
-        status: 'ok',
-        data: {
-          from: '2026-02',
-          to: null,
-          generated_at: null,
-          months: syntheticSummary().derived.series.slice(1),
-          overview: {
-            months: 1,
-            from: '2026-02',
-            to: '2026-02',
-            transactions: 12,
-            income: 1200,
-            expense: -700,
-            result: 500,
-            neutral: 0,
-            net_change: 500,
-          },
-          cost_structure: [],
-          income_structure: [],
-        },
-      })
-    })
+    mockFinanceApi()
     renderWithTheme(<FinanceClient />)
     await screen.findByText('Einnahmen')
 
     // MUI-Select: Menü öffnen und Februar wählen
     const fromSelect = screen.getByLabelText('Von')
     fromSelect.focus()
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { fireEvent } = require('@testing-library/react')
     fireEvent.mouseDown(fromSelect)
     fireEvent.click(await screen.findByRole('option', { name: 'Februar 2026' }))
 
@@ -342,20 +353,10 @@ describe('FinanceClient', () => {
   it('nimmt „Lädt …“ zurück, wenn der Filter während einer Anfrage zurückgesetzt wird', async () => {
     // Regression: die abgebrochene Monatsanfrage setzte ihr „Lädt …“ nie
     // zurück - nach „Gesamter Zeitraum“ stand es für immer da.
-    apiClient.get.mockImplementation((url: string) =>
-      url === '/api/finance/summary'
-        ? Promise.resolve({
-            success: true,
-            status: 'ok',
-            data: syntheticSummary(),
-          })
-        : new Promise(() => undefined)
-    )
+    mockFinanceApi({ months: () => new Promise(() => undefined) })
     renderWithTheme(<FinanceClient />)
     await screen.findByText('Einnahmen')
 
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { fireEvent } = require('@testing-library/react')
     fireEvent.mouseDown(screen.getByLabelText('Von'))
     fireEvent.click(await screen.findByRole('option', { name: 'Februar 2026' }))
     expect(await screen.findByText('Lädt …')).toBeInTheDocument()
@@ -367,11 +368,7 @@ describe('FinanceClient', () => {
   it('zeigt den gewählten Zeitraum in Von/Bis, auch ohne Filter', async () => {
     // Regression: beide Felder zeigten nur ihre Beschriftung als
     // Platzhalter - es sah aus, als sei nichts gewählt.
-    apiClient.get.mockResolvedValue({
-      success: true,
-      status: 'ok',
-      data: syntheticSummary(),
-    })
+    mockFinanceApi()
     renderWithTheme(<FinanceClient />)
     await screen.findByText('Einnahmen')
     expect(screen.getByLabelText('Von')).toHaveTextContent('Januar 2026')
@@ -381,8 +378,6 @@ describe('FinanceClient', () => {
     ).toHaveAttribute('aria-pressed', 'true')
     // Schnellwahl wie auf den anderen Zahlen-Seiten
     const last = screen.getByRole('button', { name: 'Letzter Monat' })
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { fireEvent } = require('@testing-library/react')
     fireEvent.click(last)
     await waitFor(() =>
       expect(apiClient.get).toHaveBeenCalledWith('/api/finance/months', {
@@ -390,6 +385,10 @@ describe('FinanceClient', () => {
         to: undefined,
       })
     )
+    // Erst wenn die Monatsreihe gerendert ist, ist der Zustand fertig - sonst
+    // kommt die Antwort je nach Rechnertempo vor oder nach dem Testende an.
+    expect(await screen.findByText(euro(1200))).toBeInTheDocument()
+    expect(screen.getByText('1 Monat')).toBeInTheDocument()
     expect(last).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByLabelText('Von')).toHaveTextContent('Februar 2026')
   })

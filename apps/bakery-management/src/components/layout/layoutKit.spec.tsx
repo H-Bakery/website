@@ -421,6 +421,31 @@ describe('DayNavigator', () => {
     rerender(<DayNavigator value="2026-11-07" onChange={onChange} />)
     expect(screen.queryByRole('button', { name: 'Heute' })).toBeNull()
   })
+
+  it('display: Monat oder Jahr als Text statt eines Datumsfelds', () => {
+    const onChange = jest.fn()
+    renderWithTheme(
+      <DayNavigator
+        value="2026-11-01"
+        onChange={onChange}
+        label="Monat"
+        display="November 2026"
+        step={(date, direction) =>
+          direction === 1 ? '2026-12-01' : '2026-10-01'
+        }
+        nextLabel="Nächster Monat"
+        data-testid="month-navigator"
+      />
+    )
+    const group = screen.getByRole('group', { name: 'Monat wechseln' })
+    expect(within(group).queryByLabelText('Monat')).toBeNull()
+    expect(group.querySelector('input')).toBeNull()
+    expect(screen.getByTestId('month-navigator-value')).toHaveTextContent(
+      'November 2026'
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Nächster Monat' }))
+    expect(onChange).toHaveBeenCalledWith('2026-12-01')
+  })
 })
 
 describe('Fenstertitel aus dem Seitentitel (Review r2)', () => {

@@ -7,7 +7,8 @@
  *
  * Mounted (roadmap §4): health, auth, users, partners (B6), the hq read-only
  * data (B4: reports, analytics, finance, targets), products (B5), preorders
- * (B7), the Backzettel (Z3), the delivery tours (B8) and Rest am Abend (M4).
+ * (B7), the Backzettel (Z3), the delivery tours (B8), Rest am Abend (M4)
+ * and the Dienstplan (TASK-042).
  * The other pilot domains get their mount points below as their tasks land.
  *
  * Every `/api` route needs a session (D5, B3) except the public auth
@@ -48,6 +49,10 @@ import {
 } from './routes/backzettel.routes'
 import { createHqSyncRouter } from './routes/hq-sync.routes'
 import { createRestRouter, RestRouterOptions } from './routes/rest.routes'
+import {
+  createDienstplanRouter,
+  DienstplanRouterOptions,
+} from './routes/dienstplan.routes'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
 import { createErrorHandler, notFoundHandler } from './utils/http-error'
@@ -114,6 +119,11 @@ export interface CreateAppOptions {
    * Default: `hq.reportsDir` / `hq.today`, the Backzettel's master data.
    */
   rest?: RestRouterOptions
+  /**
+   * Dienstplan (TASK-042, in the pilot for the owner): clock and finance dir (Ruhetage
+   * from `config/targets.json`) for tests. Default: `hq.financeDir`.
+   */
+  dienstplan?: DienstplanRouterOptions
 }
 
 export function createApp(options: CreateAppOptions = {}): Application {
@@ -273,6 +283,16 @@ export function createApp(options: CreateAppOptions = {}): Application {
     backzettel.service.reconcileConfirmedDays(reconcile)
   // Tests: wait for the background catch-ups a GET started.
   app.locals['backzettelIdle'] = () => backzettel.service.idle()
+  // TASK-042 Dienstplan: employees, shifts, absences, vacation balance;
+  // inhaber from a personal session only (staff data)
+  app.use(
+    '/api/dienstplan',
+    createDienstplanRouter({
+      financeDir: options.hq?.financeDir,
+      log: options.hq?.log?.warn,
+      ...options.dienstplan,
+    })
+  )
   // B5b/Z9 status + retry, inhaber only
   app.use('/api/hq-sync', createHqSyncRouter({ edits, snapshots }))
 

@@ -66,6 +66,13 @@ describe('ROLE_ACCESS - die eine Rollen-Tabelle', () => {
     ['backstube', '/admin/rest', true],
     ['backstube', '/admin/rest/auswertung', false],
     ['fahrer', '/admin/rest', false],
+    // TASK-042 Dienstplan: nur Inhaber
+    ['inhaber', '/admin/dienstplan', true],
+    ['inhaber', '/admin/dienstplan/mitarbeiter/3', true],
+    ['verkauf', '/admin/dienstplan', false],
+    ['verkauf', '/admin/dienstplan/mitarbeiter', false],
+    ['backstube', '/admin/dienstplan/mitarbeiter/3', false],
+    ['fahrer', '/admin/dienstplan', false],
     ['inhaber', '/admin/rest/auswertung', true],
     ['backstube', '/admin/preorders', false],
     ['backstube', '/admin/reports', false],
@@ -228,6 +235,21 @@ describe('getNavigationForRole', () => {
     expect(external('verkauf')).toBe(false)
   })
 
+  it('Dienstplan im Pilotbetrieb: nur der Inhaber sieht ihn (Entscheidung 2026-11-08)', () => {
+    expect(hrefs(getNavigationForRole('inhaber', true))).toContain(
+      '/admin/dienstplan'
+    )
+    expect(hrefs(getNavigationForRole('inhaber', true, 'personal'))).toContain(
+      '/admin/dienstplan'
+    )
+    for (const role of ['verkauf', 'backstube', 'fahrer'] as PilotRole[]) {
+      expect(hrefs(getNavigationForRole(role, true))).not.toContain(
+        '/admin/dienstplan'
+      )
+      expect(isPathAllowedForRole('/admin/dienstplan', role)).toBe(false)
+    }
+  })
+
   it('Pilotbetrieb und Rolle überlagern sich: gesperrte Seiten fehlen auch dem Inhaber', () => {
     const items = hrefs(getNavigationForRole('inhaber', true))
     expect(items).not.toContain('/admin/cash')
@@ -255,6 +277,29 @@ describe('Station (PIN-Sitzung)', () => {
       hrefs(getNavigationForRole('inhaber', true, kind))
     expect(navHrefs('personal')).toContain('/admin/users')
     expect(navHrefs('station')).not.toContain('/admin/users')
+  })
+
+  it('Dienstplan und Mitarbeiterprofile wie die API nur mit persönlicher Sitzung (TASK-042)', () => {
+    for (const path of [
+      '/admin/dienstplan',
+      '/admin/dienstplan/mitarbeiter',
+      '/admin/dienstplan/mitarbeiter/3',
+    ]) {
+      expect(isPersonalOnlyPath(path)).toBe(true)
+      expect(isPathAllowedForRole(path, 'inhaber', 'station')).toBe(false)
+      expect(isPathAllowedForRole(path, 'inhaber', 'personal')).toBe(true)
+    }
+    expect(isPersonalOnlyPath('/admin/dienstplanx')).toBe(false)
+    expect(hrefs(getNavigationForRole('inhaber', false, 'personal'))).toContain(
+      '/admin/dienstplan'
+    )
+    expect(
+      hrefs(getNavigationForRole('inhaber', false, 'station'))
+    ).not.toContain('/admin/dienstplan')
+    // Auch im Pilotbetrieb (dort für den Inhaber freigegeben) nicht an der Station.
+    expect(
+      hrefs(getNavigationForRole('inhaber', true, 'station'))
+    ).not.toContain('/admin/dienstplan')
   })
 
   it('Finanzen und Tagesziel wie die API nur mit persönlicher Sitzung (W4-verify r2)', () => {

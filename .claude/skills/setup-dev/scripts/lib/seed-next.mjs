@@ -1,5 +1,5 @@
 // Additions to seed.mjs for branch `next` (skipped on pilot): B8 delivery tours + driver accounts,
-// M4 "Rest am Abend" on the past week. Everything synthetic (names, addresses, coordinates).
+// M4 "Rest am Abend" on the past week, TASK-042 Dienstplan (employees, shifts, absences). Everything synthetic (names, addresses, coordinates).
 // Called by seed.mjs after the pilot seed; returns the world.json fragments.
 
 export async function seedNext(ctx) {
@@ -505,7 +505,11 @@ export async function seedNext(ctx) {
     token: sale,
   })
 
+  // ------------------------------------------------------------ TASK-042: Dienstplan (only where the API has it)
+  const dienstplan = await seedDienstplan(ctx)
+
   return {
+    dienstplan,
     deliveries: {
       depot: {
         name: depot.name ?? null,
@@ -543,5 +547,280 @@ export async function seedNext(ctx) {
         editable: (todayView.data ?? todayView).editable,
       },
     },
+  }
+}
+
+// TASK-042 Dienstplan: 8 invented people across verkauf/backstube/fahrer/buero, two shift templates,
+// Verkauf shifts this week and next (closed days skipped via the calendar's days[]), a few absences
+// around today, entitlements for this year (one person without -> balance no-config). Skipped when
+// the API has no /api/dienstplan (older branch).
+export async function seedDienstplan(ctx) {
+  const { call, must, USERS, owner, today, addDays, isoWd, log } = ctx
+  const probe = await call('GET', '/api/dienstplan/employees', { token: owner })
+  if (probe.status !== 200) {
+    log('no /api/dienstplan: skipping Dienstplan')
+    return null
+  }
+  const data = (r) => r.data ?? r
+  const year = Number(today.slice(0, 4))
+  const monday = addDays(today, 1 - isoWd(today))
+  const from = monday
+  const to = addDays(monday, 13)
+
+  const PEOPLE = [
+    {
+      key: 'vera',
+      displayName: 'Vera Verkauf (Test)',
+      area: 'verkauf',
+      color: '#c2185b',
+      employmentType: 'vollzeit',
+      weeklyHours: 38,
+      user: 'verkauf',
+      entitlement: 26,
+      carryover: 3,
+    },
+    {
+      key: 'valentin',
+      displayName: 'Valentin Verkauf (Test)',
+      area: 'verkauf',
+      color: '#1976d2',
+      employmentType: 'teilzeit',
+      weeklyHours: 25,
+      user: 'verkauf2',
+      entitlement: 26,
+      carryover: 0,
+    },
+    {
+      key: 'sabine',
+      displayName: 'Sabine Beispiel (Test)',
+      area: 'verkauf',
+      color: '#388e3c',
+      employmentType: 'minijob',
+      weeklyHours: 10,
+      entitlement: 24,
+      carryover: null,
+    },
+    {
+      key: 'mia',
+      displayName: 'Mia Muster (Test)',
+      area: 'verkauf',
+      color: '#f57c00',
+      employmentType: 'aushilfe',
+      weeklyHours: 8,
+      entryDate: addDays(today, -60),
+      entitlement: 24,
+      carryover: null,
+    },
+    {
+      key: 'bernd',
+      displayName: 'Bernd Backstube (Test)',
+      area: 'backstube',
+      color: '#6d4c41',
+      employmentType: 'vollzeit',
+      weeklyHours: 40,
+      user: 'backstube',
+      entitlement: 28,
+      carryover: 2,
+    },
+    {
+      key: 'paul',
+      displayName: 'Paul Probe (Test)',
+      area: 'backstube',
+      color: '#5d4037',
+      employmentType: 'teilzeit',
+      weeklyHours: 20,
+      entitlement: null,
+    },
+    {
+      key: 'fritz',
+      displayName: 'Fritz Fahrer (Test)',
+      area: 'fahrer',
+      color: '#455a64',
+      employmentType: 'minijob',
+      weeklyHours: 6,
+      user: 'fahrer',
+      entitlement: 20,
+      carryover: null,
+    },
+    {
+      key: 'erika',
+      displayName: 'Erika Beispiel (Test)',
+      area: 'buero',
+      color: '#7b1fa2',
+      employmentType: 'teilzeit',
+      weeklyHours: 15,
+      entitlement: 26,
+      carryover: 1.5,
+    },
+  ]
+  const ids = {}
+  for (const p of PEOPLE) {
+    const body = {
+      displayName: p.displayName,
+      area: p.area,
+      color: p.color,
+      employmentType: p.employmentType,
+      weeklyHours: p.weeklyHours,
+      ...(p.entryDate ? { entryDate: p.entryDate } : {}),
+      ...(p.user && USERS[p.user]?.id ? { userId: USERS[p.user].id } : {}),
+    }
+    const e = data(
+      await must('POST', '/api/dienstplan/employees', { token: owner, body })
+    )
+    ids[p.key] = e.id
+    if (p.entitlement !== null) {
+      await must(
+        'PUT',
+        `/api/dienstplan/employees/${e.id}/entitlements/${year}`,
+        {
+          token: owner,
+          body: { entitlementDays: p.entitlement, carryoverDays: p.carryover },
+        }
+      )
+    }
+    log('employee', e.id, p.displayName)
+  }
+
+  const fruh = data(
+    await must('POST', '/api/dienstplan/shift-templates', {
+      token: owner,
+      body: {
+        name: 'Früh',
+        startTime: '06:00',
+        endTime: '12:00',
+        breakMinutes: 0,
+      },
+    })
+  )
+  const spaet = data(
+    await must('POST', '/api/dienstplan/shift-templates', {
+      token: owner,
+      body: {
+        name: 'Spät',
+        startTime: '12:00',
+        endTime: '18:30',
+        breakMinutes: 30,
+      },
+    })
+  )
+
+  // absences around today (Valentin's vacation next week takes him off the shift plan)
+  const ABSENCES = [
+    {
+      who: 'valentin',
+      type: 'urlaub',
+      status: 'genehmigt',
+      startDate: addDays(monday, 9),
+      endDate: addDays(monday, 11),
+    },
+    {
+      who: 'bernd',
+      type: 'urlaub',
+      status: 'geplant',
+      startDate: addDays(monday, 22),
+      endDate: addDays(monday, 27),
+    },
+    {
+      who: 'paul',
+      type: 'urlaub',
+      status: 'genehmigt',
+      startDate: addDays(monday, -6),
+      endDate: addDays(monday, -2),
+    },
+    {
+      who: 'fritz',
+      type: 'frei',
+      status: 'genehmigt',
+      startDate: addDays(today, 2),
+      endDate: addDays(today, 2),
+    },
+    {
+      who: 'erika',
+      type: 'abwesend',
+      status: 'genehmigt',
+      startDate: addDays(today, 3),
+      endDate: addDays(today, 3),
+      halfDay: true,
+    },
+  ]
+  const absences = []
+  for (const a of ABSENCES) {
+    const r = await must('POST', '/api/dienstplan/absences', {
+      token: owner,
+      body: {
+        employeeId: ids[a.who],
+        type: a.type,
+        status: a.status,
+        startDate: a.startDate,
+        endDate: a.endDate,
+        ...(a.halfDay ? { halfDay: true } : {}),
+      },
+    })
+    absences.push({
+      id: data(r).id,
+      who: a.who,
+      type: a.type,
+      status: a.status,
+      startDate: a.startDate,
+      endDate: a.endDate,
+      days: data(r).days,
+    })
+  }
+
+  // Verkauf shifts on the open days of this and next week
+  const cal = data(
+    await must('GET', `/api/dienstplan?from=${from}&to=${to}`, { token: owner })
+  )
+  const away = (who, date) =>
+    ABSENCES.some(
+      (a) =>
+        a.who === who && !a.halfDay && a.startDate <= date && date <= a.endDate
+    )
+  const PLAN = [
+    { who: 'vera', template: fruh.id, weekdays: [2, 3, 4, 5, 6] },
+    { who: 'valentin', template: spaet.id, weekdays: [2, 3, 4, 5, 6] },
+    { who: 'sabine', template: fruh.id, weekdays: [7] },
+    { who: 'mia', template: spaet.id, weekdays: [7] },
+  ]
+  let shifts = 0
+  for (const day of cal.days) {
+    if (day.closed) continue
+    for (const p of PLAN) {
+      if (!p.weekdays.includes(day.weekday) || away(p.who, day.date)) continue
+      await must('POST', '/api/dienstplan/shifts', {
+        token: owner,
+        body: {
+          employeeId: ids[p.who],
+          date: day.date,
+          templateId: p.template,
+        },
+      })
+      shifts += 1
+    }
+  }
+  const balance = data(
+    await must('GET', `/api/dienstplan/balance?year=${year}`, { token: owner })
+  )
+  log(
+    'dienstplan',
+    Object.keys(ids).length,
+    'employees,',
+    shifts,
+    'shifts,',
+    absences.length,
+    'absences'
+  )
+  return {
+    from,
+    to,
+    employees: ids,
+    templates: { fruh: fruh.id, spaet: spaet.id },
+    shifts,
+    absences,
+    balanceStatus: Object.fromEntries(
+      balance.map((b) => [b.employeeId, b.status])
+    ),
+    notes:
+      'Owner only, personal session (not at a station). paul has no entitlement -> balance no-config; mia entered 60 days ago -> pro-rata. /admin/dienstplan is visible in pilot mode for the owner (decision 2026-11-08).',
   }
 }

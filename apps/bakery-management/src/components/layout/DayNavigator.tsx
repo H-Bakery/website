@@ -1,6 +1,13 @@
 'use client'
 import React from 'react'
-import { Box, Button, IconButton, TextField, Tooltip } from '@mui/material'
+import {
+  Box,
+  Button,
+  IconButton,
+  TextField,
+  Tooltip,
+  Typography,
+} from '@mui/material'
 import {
   ChevronLeft as PrevIcon,
   ChevronRight as NextIcon,
@@ -59,6 +66,13 @@ export interface DayNavigatorProps {
   today?: string
   todayLabel?: string
   disabled?: boolean
+  /**
+   * Zeigt die Seite keinen einzelnen Tag, sondern einen Monat oder ein Jahr
+   * (Dienstplan), steht statt des Datumsfelds dieser Text zwischen den
+   * Pfeilen, z. B. „November 2026“. `value` bleibt der erste Tag des
+   * Zeitraums; gewechselt wird dann nur mit Pfeilen und „Heute“.
+   */
+  display?: string
   'data-testid'?: string
 }
 
@@ -81,6 +95,7 @@ export function DayNavigator({
   today,
   todayLabel = 'Heute',
   disabled = false,
+  display,
   'data-testid': testId = 'day-navigator',
 }: DayNavigatorProps) {
   const go = (direction: 1 | -1) =>
@@ -126,19 +141,35 @@ export function DayNavigator({
       }}
     >
       {arrow(prev, prevLabel, <PrevIcon />)}
-      <TextField
-        label={label}
-        type="date"
-        size="small"
-        value={value}
-        disabled={disabled}
-        onChange={(event) => {
-          if (ISO_DATE.test(event.target.value)) onChange(event.target.value)
-        }}
-        InputLabelProps={{ shrink: true }}
-        inputProps={{ min, max }}
-        sx={{ minWidth: 160, flex: { xs: 1, sm: 'none' } }}
-      />
+      {display !== undefined ? (
+        <Typography
+          component="span"
+          aria-live="polite"
+          data-testid={`${testId}-value`}
+          sx={{
+            minWidth: 160,
+            flex: { xs: 1, sm: 'none' },
+            textAlign: 'center',
+            fontWeight: 600,
+          }}
+        >
+          {display}
+        </Typography>
+      ) : (
+        <TextField
+          label={label}
+          type="date"
+          size="small"
+          value={value}
+          disabled={disabled}
+          onChange={(event) => {
+            if (ISO_DATE.test(event.target.value)) onChange(event.target.value)
+          }}
+          InputLabelProps={{ shrink: true }}
+          inputProps={{ min, max }}
+          sx={{ minWidth: 160, flex: { xs: 1, sm: 'none' } }}
+        />
+      )}
       {arrow(next, nextLabel, <NextIcon />)}
       {today && (
         <Button

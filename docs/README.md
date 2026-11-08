@@ -17,6 +17,7 @@
 **Domains** (German, rules as seen from outside the code):
 [Anmeldung](./domains/anmeldung.md) ·
 [Backzettel](./domains/backzettel.md) ·
+[Dienstplan & Urlaub](./domains/dienstplan.md) ·
 [Finanzen & Tagesziel](./domains/finanzen.md) ·
 [Kassenberichte](./domains/kassenberichte.md) ·
 [Liefertouren](./domains/liefertouren.md) ·
@@ -29,7 +30,8 @@
 **Real API internals** (English): [overview](./api/overview.md) · [auth](./api/auth.md) ·
 [hq-data](./api/hq-data.md) · [hq-products](./api/hq-products.md) ·
 [partners](./api/partners.md) · [preorders](./api/preorders.md) ·
-[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md)
+[deliveries](./api/deliveries.md) · [backzettel](./api/backzettel.md) · [rest](./api/rest.md) ·
+[dienstplan](./api/dienstplan.md)
 
 **Apps:** [landing](./apps/landing.md) · [shop](./apps/shop.md) · [delivery](./apps/delivery.md) ·
 [partybrezel](./apps/partybrezel.md) (Klick-Prototyp, nicht im Pilot)

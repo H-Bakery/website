@@ -179,6 +179,30 @@ function createGate() {
   return { opened, open }
 }
 
+/**
+ * Ohne die `setTimeout(0)`-Pause zwischen den Eingaben - die Specs hier tippen
+ * und klicken viel, und auf dem CI-Runner summiert sich jede Pause.
+ */
+function setupUser() {
+  return userEvent.setup({ delay: null })
+}
+
+/**
+ * Knopf der Besuchsart, gesucht in seiner Gruppe statt im ganzen Formular:
+ * `ByRole` mit Namen berechnet sonst den Namen jedes Mengen-Knopfs - das ist
+ * in jsdom teuer, in einem `waitFor` sogar je Durchlauf.
+ */
+function visitTypeButton(name: string) {
+  return within(
+    screen.getByRole('group', { name: 'Art des Besuchs' })
+  ).getByRole('button', { name })
+}
+
+/** Der Speichern-Knopf (aus demselben Grund nicht per `ByRole` mit Namen). */
+function saveButton() {
+  return screen.getByText('Besuch speichern', { selector: 'button' })
+}
+
 async function renderForm(props: { initialDate?: string; visitId?: number }) {
   const view = renderWithTheme(
     <VisitFormClient partnerId={PARTNER_ID} groups={GROUPS} {...props} />
@@ -208,17 +232,22 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     mockCreateVisit.mockResolvedValue(SAVED_VISIT)
   })
 
+  afterEach(() => {
+    jest.useRealTimers()
+  })
+
   it('renders the catalogue grouped by category with a Rest and a Neu input per product', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
 
     expect(
       screen.getByRole('heading', { name: 'Besuch erfassen' })
     ).toBeInTheDocument()
     expect(screen.getByText('Dienstag, 25.08.2026')).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: 'Erstbestückung' })
-    ).toHaveAttribute('aria-pressed', 'true')
+    expect(visitTypeButton('Erstbestückung')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
 
     // Alle drei Kategorien haben einen Gruppenkopf, offen ist nur die erste.
     expect(screen.getByRole('button', { name: /Brot/ })).toHaveAttribute(
@@ -266,7 +295,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('submits the quantity built up with the plus stepper', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
 
     const plus = screen.getByLabelText('Neu erhöhen: Roggenbrot')
@@ -275,7 +304,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     await user.click(plus)
     expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('3')
 
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
     const [partnerArg, payload] = mockCreateVisit.mock.calls[0]
@@ -317,7 +346,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('includes a typed quantity in the payload without leaving the field first', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
 
     await user.type(screen.getByLabelText('Rest in Stück: Bauernbrot'), '7')
@@ -325,13 +354,13 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(screen.getByLabelText('Neu in Stück: Bauernbrot')).toHaveValue('12')
 
     // Direkt aus dem Feld heraus speichern - kein Blur, kein Tab dazwischen.
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     // nothing is in the cabinet yet: the counted Rest needs a second tap (W4-verify r2)
     expect(
       await screen.findByText(/Mehr gezählt, als im Schrank/)
     ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
     expect(mockCreateVisit.mock.calls[0][1].items).toEqual([
@@ -347,7 +376,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('sends countedQty null for an untouched Rest field and 0 for one set to zero', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
 
     // Roggenbrot: nur nachgelegt, Rest gar nicht gezählt.
@@ -361,7 +390,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     ).toBeInTheDocument()
     expect(screen.getByText('Bestand danach 5 (0 + 5)')).toBeInTheDocument()
 
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
     const items = mockCreateVisit.mock.calls[0][1].items
@@ -379,7 +408,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('blocks a pickup that leaves a product with stock uncounted and offers to set it to 0', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     // Erstbestückung am Morgen: 10 Roggenbrot und 6 Bauernbrot liegen im Schrank.
     mockFetchToday.mockResolvedValue({
       ...DAY_DETAIL,
@@ -423,9 +452,9 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     })
     await renderForm({ initialDate: BUSINESS_DATE })
 
-    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+    await user.click(visitTypeButton('Abholung'))
     await user.type(screen.getByLabelText('Rest in Stück: Roggenbrot'), '2')
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     // Bauernbrot liegt laut Tagesverlauf noch da, wurde aber nicht gezählt.
     expect(
@@ -441,7 +470,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
         .value
     ).toBe('0')
 
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
     const items = mockCreateVisit.mock.calls[0][1].items
     expect(items).toEqual(
@@ -453,12 +482,12 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('asks before saving a Rest larger than the stock (W4-verify r2: Abweichung, not Retoure)', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
     // no visit yet today: nothing can be in the cabinet
-    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+    await user.click(visitTypeButton('Abholung'))
     await user.type(screen.getByLabelText('Rest in Stück: Roggenbrot'), '3')
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
     expect(
       await screen.findByText(
         /Mehr gezählt, als im Schrank sein kann: Roggenbrot 3 \(möglich 0\)\. Das wird als Abweichung gebucht, nicht als Retoure/
@@ -466,12 +495,12 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     ).toBeInTheDocument()
     expect(mockCreateVisit).not.toHaveBeenCalled()
     // second tap saves
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
   })
 
   it('puts the products that are in the cabinet first, opens their groups and names them when switching to Abholung', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     // Morgens 6 Bauernbrot und 4 Apfeltaschen eingeräumt; mittags waren die
     // Apfeltaschen ausverkauft (Rest 0, nichts nachgelegt). Roggenbrot und
     // Kaisersemmel lagen heute nie im Schrank.
@@ -551,7 +580,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(rowOrder()).toEqual(['Roggenbrot', 'Bauernbrot'])
     expect(screen.queryByText(/Im Schrank erwartet/)).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+    await user.click(visitTypeButton('Abholung'))
 
     // Bauernbrot (erwartet 6) rückt vor Roggenbrot; die Teilchen klappen auf,
     // weil die Apfeltasche heute im Schrank lag - auch wenn sie schon auf 0
@@ -576,7 +605,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     ).toBeInTheDocument()
 
     // Zurück zur Erstbestückung: wieder Katalogreihenfolge, Hinweis weg.
-    await user.click(screen.getByRole('button', { name: 'Erstbestückung' }))
+    await user.click(visitTypeButton('Erstbestückung'))
     await waitFor(() =>
       expect(rowOrder()).toEqual(['Roggenbrot', 'Bauernbrot', 'Apfeltasche'])
     )
@@ -584,7 +613,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('applies the weekday template to the Neu fields when switching to Erstbestückung', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     const gate = createGate()
     mockFetchTemplates.mockImplementation(async () => {
       await gate.opened
@@ -602,7 +631,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     // Noch während des Ladens auf Nachlieferung wechseln - dann greift die
     // Vorlagen-Automatik beim Laden nicht.
     expect(screen.getByRole('progressbar')).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Nachlieferung' }))
+    await user.click(visitTypeButton('Nachlieferung'))
 
     await act(async () => {
       gate.open()
@@ -613,7 +642,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('')
     expect(screen.queryByText(/Vorlage für Dienstag übernommen/)).toBeNull()
 
-    await user.click(screen.getByRole('button', { name: 'Erstbestückung' }))
+    await user.click(visitTypeButton('Erstbestückung'))
 
     // Die Vorlage füllt "Neu" und klappt die betroffene Kategorie auf.
     expect(
@@ -627,7 +656,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('removes the template quantities from Neu when switching from Erstbestückung to Abholung (W4-verify)', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     mockFetchTemplates.mockResolvedValue([TUESDAY_TEMPLATE])
 
     await renderForm({ initialDate: BUSINESS_DATE })
@@ -640,7 +669,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     await user.clear(roggenNeu)
     await user.type(roggenNeu, '7')
 
-    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+    await user.click(visitTypeButton('Abholung'))
 
     expect(screen.getByLabelText('Neu in Stück: Kaisersemmel')).toHaveValue('')
     expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('7')
@@ -651,13 +680,13 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     ).toBeInTheDocument()
 
     await user.type(screen.getByLabelText('Rest in Stück: Kaisersemmel'), '3')
-    await user.click(screen.getByRole('button', { name: /Besuch speichern/ }))
+    await user.click(saveButton())
 
     // nothing is in the cabinet yet: the counted Rest needs a second tap (W4-verify r2)
     expect(
       await screen.findByText(/Mehr gezählt, als im Schrank/)
     ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /Besuch speichern/ }))
+    await user.click(saveButton())
 
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
     const payload = mockCreateVisit.mock.calls[0][1]
@@ -677,9 +706,10 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
 
     await renderForm({ initialDate: BUSINESS_DATE })
 
-    expect(
-      screen.getByRole('button', { name: 'Nachlieferung' })
-    ).toHaveAttribute('aria-pressed', 'true')
+    expect(visitTypeButton('Nachlieferung')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
     expect(screen.getByLabelText('Neu in Stück: Roggenbrot')).toHaveValue('')
     expect(screen.queryByText(/Vorlage für Dienstag übernommen/)).toBeNull()
   })
@@ -699,7 +729,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
       extras: [],
     })
 
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
 
     expect(storage.getItem).toHaveBeenCalledWith(DRAFT_KEY)
@@ -716,18 +746,19 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(screen.getByLabelText('Notiz (optional)')).toHaveValue(
       'Brot war um 10 Uhr komplett leer'
     )
-    expect(
-      screen.getByRole('button', { name: 'Nachlieferung' })
-    ).toHaveAttribute('aria-pressed', 'true')
+    expect(visitTypeButton('Nachlieferung')).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
 
     storage.removeItem.mockClear()
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     // nothing is in the cabinet yet: the counted Rest needs a second tap (W4-verify r2)
     expect(
       await screen.findByText(/Mehr gezählt, als im Schrank/)
     ).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     await waitFor(() => expect(mockCreateVisit).toHaveBeenCalledTimes(1))
     const payload = mockCreateVisit.mock.calls[0][1]
@@ -772,13 +803,13 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
       new Error('Der Besuch konnte nicht gespeichert werden - Server offline')
     )
 
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
 
     await user.click(screen.getByLabelText('Neu erhöhen: Roggenbrot'))
     storage.removeItem.mockClear()
 
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
 
     expect(
       await screen.findByText(
@@ -791,16 +822,14 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     expect(storage.removeItem).not.toHaveBeenCalledWith(DRAFT_KEY)
     expect(store[DRAFT_KEY]).toBeDefined()
     // Ein zweiter Versuch ist möglich - der Button ist wieder frei.
-    expect(
-      screen.getByRole('button', { name: 'Besuch speichern' })
-    ).toBeEnabled()
+    expect(saveButton()).toBeEnabled()
   })
   it('shows save errors and the pickup question inside the sticky save bar, next to the button (ui r2)', async () => {
-    const user = userEvent.setup()
+    const user = setupUser()
     await renderForm({ initialDate: BUSINESS_DATE })
 
     // Leer speichern: die Rückfrage steht in der Leiste, nicht unter der Liste.
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
     const messages = await screen.findByTestId('visit-save-messages')
     expect(
       within(messages).getByText(/Bitte mindestens ein Produkt erfassen/)
@@ -815,7 +844,7 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
       new Error('Keine Verbindung zum Server – bitte WLAN prüfen.')
     )
     await user.click(screen.getByLabelText('Neu erhöhen: Roggenbrot'))
-    await user.click(screen.getByRole('button', { name: 'Besuch speichern' }))
+    await user.click(saveButton())
     const saveMessages = await screen.findByTestId('visit-save-messages')
     expect(
       await within(saveMessages).findByText(
@@ -828,6 +857,12 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('switches to Erstbestückung with the template when the time moves to a day without one (ui r2)', async () => {
+    // Der Tageswechsel lädt erst nach 300 ms Entprellung nach. Mit echter Uhr
+    // fraß das allein ein Drittel der 1 s von `waitFor` - auf dem langsamen
+    // CI-Runner lief der Rest (Laden, Rendern) darüber hinaus. Mit falscher
+    // Uhr schiebt der Test die Zeit selbst vor, `waitFor` zählt dann nur noch
+    // falsche Zeit und hängt nicht mehr am Rechnertempo.
+    jest.useFakeTimers({ now: new Date(`${BUSINESS_DATE}T10:00:00`) })
     const WEDNESDAY = '2026-08-26'
     mockFetchTemplates.mockResolvedValue([
       TUESDAY_TEMPLATE,
@@ -840,15 +875,18 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
     )
     await renderForm({ initialDate: BUSINESS_DATE })
     const pressed = (name: string) =>
-      screen.getByRole('button', { name }).getAttribute('aria-pressed')
+      visitTypeButton(name).getAttribute('aria-pressed')
     expect(pressed('Nachlieferung')).toBe('true')
 
     // Im Büro nacherfassen: Mittwoch hat noch keine Erstbestückung.
     fireEvent.change(screen.getByLabelText('Zeitpunkt des Besuchs'), {
       target: { value: `${WEDNESDAY}T08:00` },
     })
-    await waitFor(() => expect(pressed('Erstbestückung')).toBe('true'))
+    await act(async () => {
+      jest.advanceTimersByTime(300)
+    })
     expect(mockFetchToday).toHaveBeenCalledWith(PARTNER_ID, WEDNESDAY)
+    await waitFor(() => expect(pressed('Erstbestückung')).toBe('true'))
     expect(
       await screen.findByText(/Vorlage für Mittwoch übernommen/)
     ).toBeInTheDocument()
@@ -864,27 +902,29 @@ describe('VisitFormClient (admin/partners/[id]/visit/new)', () => {
   })
 
   it('keeps a visit type chosen by hand when the time moves to another day (ui r2)', async () => {
-    const user = userEvent.setup()
+    // Falsche Uhr wie oben: die Entprellung wird vorgespult statt abgewartet.
+    jest.useFakeTimers({ now: new Date(`${BUSINESS_DATE}T10:00:00`) })
+    const user = userEvent.setup({
+      delay: null,
+      advanceTimers: jest.advanceTimersByTime,
+    })
     mockFetchToday.mockImplementation(async (_partner, date) =>
       date === BUSINESS_DATE
         ? { ...DAY_DETAIL, visits: [{ ...SAVED_VISIT, id: 5 }] }
         : { ...DAY_DETAIL, businessDate: date ?? null, visits: [] }
     )
     await renderForm({ initialDate: BUSINESS_DATE })
-    await user.click(screen.getByRole('button', { name: 'Abholung' }))
+    await user.click(visitTypeButton('Abholung'))
 
     fireEvent.change(screen.getByLabelText('Zeitpunkt des Besuchs'), {
       target: { value: '2026-08-26T18:00' },
     })
-    await waitFor(() =>
-      expect(mockFetchToday).toHaveBeenCalledWith(PARTNER_ID, '2026-08-26')
-    )
+    // Entprellung vorspulen; das `async act` lässt auch die Antwort für den
+    // neuen Tag samt Folge-Render durchlaufen.
     await act(async () => {
-      await new Promise((resolve) => setTimeout(resolve, 50))
+      jest.advanceTimersByTime(300)
     })
-    expect(screen.getByRole('button', { name: 'Abholung' })).toHaveAttribute(
-      'aria-pressed',
-      'true'
-    )
+    expect(mockFetchToday).toHaveBeenCalledWith(PARTNER_ID, '2026-08-26')
+    expect(visitTypeButton('Abholung')).toHaveAttribute('aria-pressed', 'true')
   })
 })

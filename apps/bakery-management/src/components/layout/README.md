@@ -64,6 +64,8 @@ Abholliste, Backzettel, Kassentag, Rest, Backschrank), wechselt den Tag mit
 `DayNavigator` als **erstem** Element im `actions`-Slot - nicht in einer
 Filterfläche, nicht als beschriftete Knöpfe. Ruhetage überspringt `step`,
 Grenzen setzen `min`/`max`, „Heute“ kommt mit `today`.
+Zeigt eine Seite einen Monat oder ein Jahr (Dienstplan), steht mit `display`
+der Zeitraum („November 2026“) statt des Datumsfelds zwischen den Pfeilen.
 
 **Weniger auf einmal.** Untertitel eine Zeile. Erklärungen, Annahmen,
 Rechenwege in `details` (zugeklappt) oder als Tooltip. Höchstens 4 Kennzahlen

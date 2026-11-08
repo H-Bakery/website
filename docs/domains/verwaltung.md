@@ -17,7 +17,9 @@ Fachseiten: [`backzettel.md`](backzettel.md), [`vorbestellungen.md`](vorbestellu
 ## Pilotbetrieb (`NEXT_PUBLIC_PILOT_MODE`, F2)
 
 Mit `NEXT_PUBLIC_PILOT_MODE=1` zeigt die App nur die Seiten mit echten Daten (Spalte „Keep" in
-`docs/roadmap.md` §3) plus Anmeldung und die Pilot-Bildschirme; alles andere fehlt in der Navigation
+`docs/roadmap.md` §3) plus Anmeldung, die Pilot-Bildschirme und den Dienstplan (im Pilot für den
+Inhaber freigegeben, Entscheidung 2026-11-08; Rolle und persönliche Sitzung regelt weiter
+`roles.ts`); alles andere fehlt in der Navigation
 und zeigt beim direkten Aufruf „Im Pilotbetrieb nicht verfügbar" (seit B12 nur noch vorhandene Seiten
 aus `PILOT_HIDDEN_ROUTES`, siehe [Aufräumen nach dem Umstieg](#aufräumen-nach-dem-umstieg-b12)). Ohne
 die Variable (lokal, CI) ändert sich nichts.
@@ -73,7 +75,8 @@ Gelöscht sind die Demo-Seiten, die nicht auf der „Keep"-Liste standen (`baker
   Bestellungen → `/admin/preorders`, Lieferung → `/admin/delivery/preorders`. Die übrigen gelöschten
   Seiten sind 404 - **auch im Pilotbetrieb**: der Proxy schreibt nur noch vorhandene, gesperrte Seiten
   auf „Im Pilotbetrieb nicht verfügbar" um (`PILOT_HIDDEN_ROUTES`, heute `/admin/rest` und
-  `/admin/sitzung-pruefen`). `pilotMode.spec.ts` fällt um, wenn eine `page.tsx` unter `app/admin`
+  `/admin/sitzung-pruefen`; der Dienstplan ist im Pilot für den Inhaber freigegeben, Entscheidung
+  2026-11-08, und steht in `PILOT_ALLOWED_ROUTES`). `pilotMode.spec.ts` fällt um, wenn eine `page.tsx` unter `app/admin`
   weder freigegeben noch dort gesperrt ist; `src/lib/oldPageRedirects.spec.ts` prüft die
   Weiterleitungen (Ziele im Pilotbetrieb erlaubt, keine fängt eine vorhandene Seite).
 
