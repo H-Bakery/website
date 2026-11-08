@@ -563,6 +563,27 @@ export function FinanceReportPrintStyles() {
             display: 'none !important',
           },
           '.fin-report .fin-print-only': { display: 'block !important' },
+          // Diagramme: feste Druckbreite (FinanceCharts.tsx), schrumpfen aber
+          // mit, falls die Spalte schmaler ist (das SVG hat eine viewBox).
+          '.fin-report .fin-chart-print .recharts-wrapper': {
+            maxWidth: '100%',
+            height: 'auto !important',
+          },
+          '.fin-report .fin-chart-print svg.recharts-surface': {
+            maxWidth: '100%',
+            height: 'auto',
+          },
+          '.fin-report .recharts-tooltip-wrapper': { display: 'none' },
+          '.fin-report .fin-chart, .fin-report .fin-keep': {
+            breakInside: 'avoid',
+          },
+          // Schrift in farbigen Flächen bleibt weiß bzw. schwarz.
+          '.fin-report [data-ink="light"], .fin-report [data-ink="light"] *': {
+            color: '#fff !important',
+          },
+          '.fin-report [data-ink="dark"], .fin-report [data-ink="dark"] *': {
+            color: '#0b0b0b !important',
+          },
           '.fin-report a': { textDecoration: 'none' },
           '.fin-report a::after': { display: 'none !important' },
         },

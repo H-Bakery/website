@@ -476,10 +476,25 @@ Aus derselben bereinigten `finance-summary.json` plus den Monatssummen der Kasse
   Umsatz, der Kassenabschluss nicht (wenige Euro im Jahr) - eine Änderung bräche die
   aufgezeichneten Antworten in `tests/contract/recorded/hq-data.json` und braucht eine bewusste
   Vertragsentscheidung.
+- **Diagramme** (`components/finance/FinanceCharts.tsx`, Daten umgeordnet in
+  `src/lib/financeCharts.ts` - gerechnet wird auch hier nichts): Jahr im Verlauf (Einnahmen nach
+  oben, Ausgaben nach unten, Ergebnis als Linie), Ergebnis seit Jahresbeginn, Einnahmen nach
+  Herkunft (geteilter Balken), Ausgaben nach Posten (Rangliste, in der Monatsanalyse mit Ø-Strich)
+  und der Verlauf der letzten 13 Monate (`trend` der Monatsantwort). Die Werte je Monat für
+  Hochrechnung und aufgelaufenes Ergebnis liefert der Server (`projection.basis[]` mit
+  `estimate_*`/`cumulative_result`, `months[].cumulative_result`). Geschätzte Anteile sind
+  schraffiert, offene Monate gestrichelt mit `*` an der Achse. Farben: Einnahmen blau, Ausgaben
+  orange (wie `/admin/finance`), Ergebnis in Schriftfarbe. **Druck:** beim Drucken rendern die
+  Recharts-Diagramme mit fester Breite (`PRINT_CHART_WIDTH`) statt `ResponsiveContainer`;
+  Abdunkeln über `fill-opacity` (die Druckstile setzen `opacity: 1`), Flächen-Swatches mit
+  `print-color-adjust: exact`, Abschnitte nur mit Diagramm in `.fin-keep` (kein Umbruch). Mit
+  `page.pdf()` prüfen. Klick auf einen Monat öffnet die Monatsanalyse - nur mit Maus, am
+  Touchscreen zeigt ein Tipp die Zahlen.
 
 Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/financeReport` (Core
 und Routen, Fixture `tests/fixtures/finance-report.synthetic.js`) und in der Management-App
-`admin/finance/{jahr,monat}/**/*.spec.tsx` (Fixtures `src/lib/financeReportFixtures.ts`, erfunden).
+`admin/finance/{jahr,monat}/**/*.spec.tsx`, `src/lib/financeCharts.spec.ts`,
+`components/finance/FinanceCharts.spec.tsx` (Fixtures `src/lib/financeReportFixtures.ts`, erfunden).
 
 ## Tagesziel-Ampel (`/admin/finance/tagesziel`, TASK-039)
 

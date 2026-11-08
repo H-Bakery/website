@@ -6,7 +6,9 @@
 import type {
   FinanceKasse,
   FinanceMonthReport,
+  FinanceProjectionMonth,
   FinanceStatement,
+  FinanceTrendMonth,
   FinanceYearMonthRow,
   FinanceYearReport,
 } from './financeTypes'
@@ -173,6 +175,7 @@ function yearMonths(year: string): FinanceYearMonthRow[] {
         net_change: 700,
         transactions: 60,
         has_data: true,
+        cumulative_result: 1600 * (index + 1),
         // März ohne Kassenberichte - die Spalte zeigt dann einen Strich.
         kasse: index === 2 ? null : kasse(9500, 22),
       }
@@ -190,6 +193,7 @@ function yearMonths(year: string): FinanceYearMonthRow[] {
         net_change: 700,
         transactions: 62,
         has_data: true,
+        cumulative_result: 16000,
         kasse: kasse(4200, 11),
       }
     }
@@ -205,9 +209,41 @@ function yearMonths(year: string): FinanceYearMonthRow[] {
       net_change: 0,
       transactions: 0,
       has_data: false,
+      cumulative_result: null,
       kasse: null,
     }
   })
+}
+
+/**
+ * Hochrechnung je Monat: Jan–Sep Ist, Oktober Ist bis 15. + Rest aus dem
+ * Vorjahr, Nov/Dez geschätzt. Summe 118.000 / −98.000 / 20.000.
+ */
+function projectionBasis(): FinanceProjectionMonth[] {
+  const rows: FinanceProjectionMonth[] = []
+  let cumulative = 0
+  for (let i = 1; i <= 12; i += 1) {
+    const month = `2026-${String(i).padStart(2, '0')}`
+    const [source, fraction, income, expense, estIncome, estExpense] =
+      i <= 9
+        ? ['actual', 1, 10000, -8400, 0, 0]
+        : i === 10
+        ? ['partial_previous_year', 0.52, 10000, -8000, 4000, -3600]
+        : ['previous_year', 1, 9000, -7200, 9000, -7200]
+    cumulative += income + expense
+    rows.push({
+      month,
+      source: String(source),
+      fraction: Number(fraction),
+      income: Number(income),
+      expense: Number(expense),
+      result: Number(income) + Number(expense),
+      estimate_income: Number(estIncome),
+      estimate_expense: Number(estExpense),
+      cumulative_result: cumulative,
+    })
+  }
+  return rows
 }
 
 /** Laufendes Jahr: vorläufig, Bankdaten bis Mitte Oktober, mit Hochrechnung. */
@@ -249,7 +285,7 @@ export function provisionalYearFixture(): FinanceYearReport {
       income: 118000,
       expense: -98000,
       result: 20000,
-      basis: [],
+      basis: projectionBasis(),
       average_window: { from: '2025-10', to: '2026-09', months: 12 },
       method:
         'Ist der abgeschlossenen Monate; für den Rest des Jahres derselbe Monat im Vorjahr, wo vorhanden, sonst der Durchschnitt der letzten 12 vollständigen Monate.',
@@ -295,6 +331,7 @@ export function finalYearFixture(): FinanceYearReport {
       expense: -7500,
       result: 1500,
       has_data: true,
+      cumulative_result: 1500 * Number(row.month.slice(5)),
       kasse: kasse(8800, 22),
     })),
     statement: { ...yearStatement(), result: 18000 },
@@ -310,6 +347,31 @@ export function finalYearFixture(): FinanceYearReport {
     previous_year: null,
     next_year: '2026',
   }
+}
+
+/** Verlauf: 13 Monate bis `last`; März mit Verlust, damit es etwas zu sehen gibt. */
+function trendTo(last: string, partial: boolean): FinanceTrendMonth[] {
+  const [y, m] = last.split('-').map(Number)
+  const out: FinanceTrendMonth[] = []
+  for (let back = 12; back >= 0; back -= 1) {
+    const total = y * 12 + (m - 1) - back
+    const month = `${Math.floor(total / 12)}-${String(
+      (total % 12) + 1
+    ).padStart(2, '0')}`
+    const isLast = back === 0
+    const loss = month.endsWith('-03')
+    const income = isLast && partial ? 6000 : 10000
+    const expense = isLast && partial ? -4400 : loss ? -11000 : -8400
+    out.push({
+      month,
+      coverage: isLast && partial ? 'partial' : 'complete',
+      covered_to: isLast && partial ? `${month}-15` : `${month}-28`,
+      income,
+      expense,
+      result: income + expense,
+    })
+  }
+  return out
 }
 
 /** Vollständiger Monat mit Auffälligkeiten und Vergleich. */
@@ -510,6 +572,7 @@ export function completeMonthFixture(): FinanceMonthReport {
         text: 'Miete: diesen Monat keine Zahlung (sonst Ø 800,00 €) – kommt sie noch oder lief sie über ein anderes Konto?',
       },
     ],
+    trend: trendTo('2026-09', false),
     highlights_reason: null,
     highlights_min_months: 6,
     notes: [
@@ -553,6 +616,7 @@ export function partialMonthFixture(): FinanceMonthReport {
     statement: withoutAverages(base.statement),
     reconciliation: null,
     comparison: { previous_month: null, previous_year: null, average: null },
+    trend: trendTo('2026-10', true),
     highlights: [],
     highlights_reason: 'partial',
     notes: [

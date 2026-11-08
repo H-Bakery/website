@@ -117,12 +117,40 @@ describe('finance-report.core - Jahresabschluss', () => {
     expect(data.projection.income).toBe(116774.19)
     expect(data.projection.expense).toBe(-97069.35)
     expect(data.projection.result).toBe(19704.84)
+    // Je Monat: ganzer Monat hochgerechnet, davon geschätzt, aufgelaufen.
+    // Mai: Ist 3000 / −1000, Rest 10000 × 21/31 und −8000 × 21/31.
     expect(data.projection.basis[4]).toEqual({
       month: '2026-05',
       source: 'partial_previous_year',
       fraction: 0.68,
+      income: 9774.19,
+      expense: -6419.35,
+      result: 3354.84,
+      estimate_income: 6774.19,
+      estimate_expense: -5419.35,
+      cumulative_result: 5704.84,
+    })
+    expect(data.projection.basis[0]).toMatchObject({
+      source: 'actual',
+      result: 2000,
+      estimate_income: 0,
+      estimate_expense: 0,
+      cumulative_result: 2000,
     })
     expect(data.projection.basis[11].source).toBe('previous_year')
+    expect(data.projection.basis[11].cumulative_result).toBe(
+      data.projection.result
+    )
+    // Ist aufgelaufen: Jan 2000, Feb 2000, Mär −1500, Apr −150, Mai bis 10.
+    expect(data.months.map((m) => m.cumulative_result)).toEqual([
+      2000,
+      4000,
+      2500,
+      2350,
+      4350,
+      ...Array(7).fill(null),
+    ])
+    expect(data.months[4].cumulative_result).toBe(data.statement.result)
     expect(data.notes.find((n) => n.key === 'year_open').text).toContain(
       '10.05.2026'
     )
@@ -231,6 +259,35 @@ describe('finance-report.core - Monatsanalyse', () => {
       (r) => r.category === 'energie'
     )
     expect(energie).toMatchObject({ amount: -1000, average: -1000, diff: 0 })
+  })
+
+  it('Verlauf: dieser Monat und bis zu 12 davor, soweit Bankdaten', () => {
+    const { data } = report.buildMonthReport(summary, '2026-04')
+    expect(data.trend).toHaveLength(report.TREND_MONTHS)
+    expect(data.trend[0]).toEqual({
+      month: '2025-04',
+      coverage: 'complete',
+      covered_to: '2025-04-30',
+      income: 10000,
+      expense: -8000,
+      result: 2000,
+    })
+    expect(data.trend[12]).toMatchObject({
+      month: '2026-04',
+      income: 7000,
+      expense: -7150,
+      result: -150,
+    })
+    // Am Datenanfang kürzer, der laufende Monat ist als angebrochen markiert.
+    expect(report.buildMonthReport(summary, '2025-03').data.trend).toHaveLength(
+      3
+    )
+    const may = report.buildMonthReport(summary, '2026-05').data.trend
+    expect(may[may.length - 1]).toMatchObject({
+      month: '2026-05',
+      coverage: 'partial',
+      covered_to: '2026-05-10',
+    })
   })
 
   it('erkennt Ausreißer und neue Ausgaben', () => {

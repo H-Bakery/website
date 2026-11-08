@@ -222,6 +222,57 @@ describe('JahresabschlussClient', () => {
     expect(apiClient.get).toHaveBeenCalledWith('/api/finance/year/2025')
   })
 
+  it('zeigt Verlauf, aufgelaufenes Ergebnis und Herkunft/Posten als Diagramme', async () => {
+    respondWith({ '/api/finance/year': provisionalYearFixture() })
+    renderWithTheme(<JahresabschlussClient />)
+    const flow = await screen.findByTestId('year-flow-chart')
+    expect(flow).toHaveAttribute(
+      'aria-label',
+      'Einnahmen, Ausgaben und Ergebnis je Monat 2026'
+    )
+    // Legende mit offenem Monat und Schätzung, Satz zum Ablesen darunter.
+    const legend = within(flow).getByRole('list', { name: 'Legende' })
+    expect(legend).toHaveTextContent('Monat läuft noch')
+    expect(legend).toHaveTextContent('geschätzt (Hochrechnung)')
+    expect(flow).toHaveTextContent(
+      '* Oktober läuft noch (Bankdaten bis 15.10.).'
+    )
+    expect(flow).toHaveTextContent('Schraffiert: geschätzt')
+
+    expect(screen.getByTestId('year-cumulative-chart')).toHaveTextContent(
+      'Hochrechnung'
+    )
+    expect(
+      screen.getByRole('img', { name: /^Einnahmen 2026 nach Herkunft:/ })
+    ).toBeInTheDocument()
+    const bars = screen.getByRole('list', { name: 'Ausgaben 2026 nach Posten' })
+    expect(within(bars).getAllByRole('listitem')).toHaveLength(4)
+  })
+
+  it('ein unvollständiges Jahr hat keine Kurve seit Jahresbeginn', async () => {
+    respondWith({
+      '/api/finance/year': {
+        ...finalYearFixture(),
+        status: 'incomplete',
+        coverage: {
+          ...finalYearFixture().coverage,
+          missing_before: ['2025-01', '2025-02', '2025-03'],
+        },
+      },
+    })
+    renderWithTheme(<JahresabschlussClient />)
+    expect(await screen.findByTestId('year-flow-chart')).toHaveTextContent(
+      'Für Januar bis März gibt es noch keine Bankdaten.'
+    )
+    expect(screen.queryByTestId('year-cumulative-chart')).toBeNull()
+    // Nichts geschätzt, nichts offen - die Legende sagt es auch nicht.
+    expect(
+      within(screen.getByTestId('year-flow-chart')).getByRole('list', {
+        name: 'Legende',
+      })
+    ).not.toHaveTextContent('geschätzt')
+  })
+
   it('nennt den Grund, wenn keine Hochrechnung möglich ist', async () => {
     respondWith({
       '/api/finance/year': {

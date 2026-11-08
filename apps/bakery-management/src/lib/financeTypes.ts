@@ -227,14 +227,44 @@ export interface FinanceYearMonthRow {
   net_change: number
   transactions: number
   has_data: boolean
+  /** Ergebnis seit Jahres- bzw. Datenbeginn bis Ende dieses Monats (`null` ohne Daten). */
+  cumulative_result: number | null
   kasse: FinanceKasse | null
+}
+
+/** Ein Monat der Hochrechnung: ganzer Monat (Ist + geschätzter Rest). */
+export interface FinanceProjectionMonth {
+  month: string
+  /** `actual`, `previous_year`, `average`, `partial_previous_year`, `partial_average` */
+  source: string
+  /** Geschätzter Anteil des Monats (1 = ganz geschätzt, 0 bei `actual`). */
+  fraction: number
+  income: number
+  expense: number
+  result: number
+  /** Davon geschätzt (0 bei `actual`). */
+  estimate_income: number
+  estimate_expense: number
+  /** Hochgerechnetes Ergebnis seit Jahresbeginn bis Ende dieses Monats. */
+  cumulative_result: number
+}
+
+/** Ein Monat im Verlauf der Monatsanalyse. */
+export interface FinanceTrendMonth {
+  month: string
+  coverage: FinanceMonthCoverageStatus
+  covered_to: string | null
+  income: number
+  expense: number
+  result: number
 }
 
 export interface FinanceProjection {
   income: number
   expense: number
   result: number
-  basis: { month: string; source: string; fraction: number }[]
+  /** Zwölf Einträge, Januar bis Dezember. */
+  basis: FinanceProjectionMonth[]
   average_window: { from: string; to: string; months: number } | null
   /** Rechenweg als Satz (deutsch, vom Server). */
   method: string
@@ -354,6 +384,8 @@ export interface FinanceMonthReport {
     previous_year: FinanceMonthComparison | null
     average: FinanceMonthAverage | null
   }
+  /** Dieser Monat und bis zu 12 davor, ältester zuerst. */
+  trend: FinanceTrendMonth[]
   highlights: FinanceHighlight[]
   highlights_reason: FinanceHighlightsReason
   /** Ab so vielen vollen Vergleichsmonaten gibt es Auffälligkeiten. */

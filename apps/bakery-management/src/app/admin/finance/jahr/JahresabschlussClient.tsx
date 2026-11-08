@@ -50,6 +50,23 @@ import {
   type KeyFigure,
 } from '../../../../components/layout'
 import {
+  CategoryBars,
+  ChartFigure,
+  ChartLegend,
+  CumulativeResultChart,
+  IncomeSplitBar,
+  MonthlyFlowChart,
+  type LegendKey,
+} from '../../../../components/finance/FinanceCharts'
+import {
+  cumulativePoints,
+  expenseBars,
+  flowExtremes,
+  hasEstimates,
+  incomeParts,
+  yearFlowPoints,
+} from '../../../../lib/financeCharts'
+import {
   FinanceAccessNotice,
   FinanceReportPrintStyles,
   formatDayMonth,
@@ -372,6 +389,146 @@ function YearSwitcher({
   )
 }
 
+/** Ein Satz unter dem Säulendiagramm: was man ablesen soll. */
+export function yearFlowCaption(report: FinanceYearReport): string {
+  const points = yearFlowPoints(report)
+  const parts: string[] = []
+  const missing = report.coverage.missing_before
+  if (missing.length > 0) {
+    const first = formatMonth(missing[0]).split(' ')[0]
+    const last = formatMonth(missing[missing.length - 1]).split(' ')[0]
+    parts.push(
+      missing.length === 1
+        ? `Für ${first} gibt es noch keine Bankdaten.`
+        : `Für ${first} bis ${last} gibt es noch keine Bankdaten.`
+    )
+  }
+  const extremes = flowExtremes(points)
+  if (extremes) {
+    parts.push(
+      `Bestes Monatsergebnis: ${extremes.best.title} (${formatEuro(
+        extremes.best.result ?? 0
+      )}), schwächstes: ${extremes.worst.title} (${formatEuro(
+        extremes.worst.result ?? 0
+      )}).`
+    )
+  }
+  const partial = report.months.find((row) => row.coverage === 'partial')
+  if (partial?.covered_to) {
+    parts.push(
+      `* ${partial.label} läuft noch (Bankdaten bis ${formatDayMonth(
+        partial.covered_to
+      )}).`
+    )
+  }
+  if (hasEstimates(points)) {
+    parts.push(
+      'Schraffiert: geschätzt aus dem Vorjahresmonat bzw. dem Durchschnitt – siehe Hochrechnung.'
+    )
+  }
+  return parts.join(' ')
+}
+
+function YearCharts({ report }: { report: FinanceYearReport }) {
+  const router = useRouter()
+  const flow = yearFlowPoints(report)
+  const estimates = hasEstimates(flow)
+  const open = flow.some((p) => p.open)
+  const legend: LegendKey[] = ['income', 'expense', 'result']
+  if (open) legend.push('open')
+  if (estimates) legend.push('estimate')
+  const cumulative = cumulativePoints(report)
+  const showCumulative =
+    report.status !== 'incomplete' &&
+    cumulative.filter((p) => p.actual !== null).length > 0
+  const parts = incomeParts(report.statement)
+  const bars = expenseBars(report.statement)
+  return (
+    <>
+      <Box className="fin-keep">
+        <PageSection
+          title="Das Jahr im Verlauf"
+          description="Einnahmen nach oben, Ausgaben nach unten, die Linie ist das Ergebnis des Monats. Tipp auf einen Monat zeigt die Zahlen; am Computer öffnet ein Klick die Monatsanalyse."
+          data-testid="year-flow-section"
+        >
+          <ChartFigure
+            label={`Einnahmen, Ausgaben und Ergebnis je Monat ${report.year}`}
+            legend={<ChartLegend items={legend} />}
+            caption={yearFlowCaption(report)}
+            data-testid="year-flow-chart"
+          >
+            <MonthlyFlowChart
+              points={flow}
+              onSelect={(month) => router.push(monthHref(month))}
+            />
+          </ChartFigure>
+        </PageSection>
+      </Box>
+
+      {showCumulative && (
+        <Box className="fin-keep">
+          <PageSection
+            title="Ergebnis seit Jahresbeginn"
+            description={
+              report.projection
+                ? 'Was bis Monatsende aufgelaufen ist – gestrichelt die Hochrechnung bis Dezember.'
+                : 'Was bis Monatsende aufgelaufen ist.'
+            }
+            data-testid="year-cumulative-section"
+          >
+            <ChartFigure
+              label={`Ergebnis aufgelaufen ${report.year}`}
+              legend={
+                <ChartLegend
+                  items={
+                    report.projection
+                      ? ['cumulative', 'projection']
+                      : ['cumulative']
+                  }
+                />
+              }
+              data-testid="year-cumulative-chart"
+            >
+              <CumulativeResultChart points={cumulative} />
+            </ChartFigure>
+          </PageSection>
+        </Box>
+      )}
+
+      <PageSection
+        title="Woher das Geld kam – wohin es ging"
+        description="Einnahmen nach Herkunft, Ausgaben nach Posten mit ihrem Anteil an allen Ausgaben."
+        data-testid="year-split-section"
+      >
+        <Box sx={{ display: 'grid', gap: 3 }}>
+          {parts.length > 0 && (
+            <Box>
+              <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
+                Einnahmen {formatEuro(report.statement.income.total)}
+              </Typography>
+              <IncomeSplitBar
+                parts={parts}
+                label={`Einnahmen ${report.year} nach Herkunft`}
+              />
+            </Box>
+          )}
+          {bars.length > 0 && (
+            <Box>
+              <Typography variant="subtitle2" component="h3" sx={{ mb: 1 }}>
+                Ausgaben {formatEuro(report.statement.expense.total)}
+              </Typography>
+              <CategoryBars
+                bars={bars}
+                label={`Ausgaben ${report.year} nach Posten`}
+              />
+            </Box>
+          )}
+        </Box>
+      </PageSection>
+    </>
+  )
+}
+
 function keyFigures(report: FinanceYearReport): KeyFigure[] {
   const { statement } = report
   const items: KeyFigure[] = [
@@ -576,6 +733,8 @@ export default function JahresabschlussClient({
             </Typography>
           )}
         </Box>
+
+        <YearCharts report={report} />
 
         <PageSection
           title="Einnahmen und Ausgaben"

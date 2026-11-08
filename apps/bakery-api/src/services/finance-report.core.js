@@ -564,6 +564,24 @@ function projectYear(summary, year, byMonth) {
   const basis = []
   let income = 0
   let expense = 0
+  // Je Monat: Hochrechnung des ganzen Monats (Ist + geschätzter Rest), davon
+  // geschätzt, und das aufgelaufene Ergebnis - für das Diagramm, damit die
+  // Oberfläche nichts nachrechnet.
+  const entry = (month, source, fraction, actual, estIncome, estExpense) => {
+    const inc = cents(actual ? actual.operating_income : 0) + estIncome
+    const exp = cents(actual ? actual.operating_expense : 0) + estExpense
+    basis.push({
+      month,
+      source,
+      fraction,
+      income: euro(inc),
+      expense: euro(exp),
+      result: euro(inc + exp),
+      estimate_income: euro(estIncome),
+      estimate_expense: euro(estExpense),
+      cumulative_result: euro(income + expense),
+    })
+  }
   for (let i = 1; i <= 12; i += 1) {
     const month = `${year}-${String(i).padStart(2, '0')}`
     const coverage = monthCoverage(month, period)
@@ -584,7 +602,7 @@ function projectYear(summary, year, byMonth) {
     if (coverage.status === 'complete') {
       income += cents(actual ? actual.operating_income : 0)
       expense += cents(actual ? actual.operating_expense : 0)
-      basis.push({ month, source: 'actual', fraction: 1 })
+      entry(month, 'actual', 1, actual, 0, 0)
       continue
     }
     if (
@@ -615,20 +633,25 @@ function projectYear(summary, year, byMonth) {
       coverage.status === 'partial'
         ? 1 - coverage.days / coverage.days_in_month
         : 1
-    if (actual && coverage.status === 'partial') {
-      income += cents(actual.operating_income)
-      expense += cents(actual.operating_expense)
+    const counted = actual && coverage.status === 'partial' ? actual : null
+    if (counted) {
+      income += cents(counted.operating_income)
+      expense += cents(counted.operating_expense)
     }
-    income += cents(estimate.income) * fraction
-    expense += cents(estimate.expense) * fraction
-    basis.push({
+    const estIncome = Math.round(cents(estimate.income) * fraction)
+    const estExpense = Math.round(cents(estimate.expense) * fraction)
+    income += estIncome
+    expense += estExpense
+    entry(
       month,
-      source:
-        coverage.status === 'partial'
-          ? `partial_${estimate.source}`
-          : estimate.source,
-      fraction: round2(fraction),
-    })
+      coverage.status === 'partial'
+        ? `partial_${estimate.source}`
+        : estimate.source,
+      round2(fraction),
+      counted,
+      estIncome,
+      estExpense
+    )
   }
   return {
     projection: {
@@ -670,6 +693,7 @@ function buildYearReport(summary, year, options = {}) {
   const rows = []
   const missingBefore = []
   let startsLate = false
+  let cumulative = 0
   for (let i = 1; i <= 12; i += 1) {
     const month = `${year}-${String(i).padStart(2, '0')}`
     const coverage = monthCoverage(month, period)
@@ -683,13 +707,16 @@ function buildYearReport(summary, year, options = {}) {
     }
     if (coverage.status === 'partial' && coverage.from > `${month}-01`)
       startsLate = true
+    const totals = data ? totalsOf(data) : null
+    if (totals && coverage.status !== 'missing')
+      cumulative += cents(totals.result)
     rows.push({
       month,
       label: monthName(month),
       coverage: coverage.status,
       covered_to: coverage.to,
-      ...(data
-        ? totalsOf(data)
+      ...(totals
+        ? totals
         : {
             income: 0,
             expense: 0,
@@ -699,6 +726,9 @@ function buildYearReport(summary, year, options = {}) {
             transactions: 0,
           }),
       has_data: Boolean(data),
+      /** Ergebnis seit Jahresbeginn (bzw. Datenbeginn) bis Ende dieses Monats. */
+      cumulative_result:
+        totals && coverage.status !== 'missing' ? euro(cumulative) : null,
       kasse: kasseOf(kasseByMonth[month]),
     })
   }
@@ -803,6 +833,14 @@ function compareTo(month, current) {
 
 /** Unter so vielen Vergleichsmonaten gibt es keine Auffälligkeiten. */
 const HIGHLIGHT_MIN_MONTHS = 6
+/** Monatsanalyse: so viele Monate zeigt der Verlauf (dieser + 12 davor). */
+const TREND_MONTHS = 13
+
+function pick(obj, keys) {
+  const out = {}
+  for (const key of keys) out[key] = obj[key]
+  return out
+}
 
 /**
  * Auffälligkeiten eines vollständigen Monats gegenüber den 12 vollständigen
@@ -965,6 +1003,19 @@ function buildMonthReport(summary, month, options = {}) {
 
   const index = all.findIndex((m) => m.month === month)
   const previous = index > 0 ? all[index - 1] : null
+  // Verlauf: dieser Monat und bis zu 12 davor, soweit es Bankdaten gibt.
+  const trendFrom = addMonths(month, -TREND_MONTHS + 1)
+  const trend = all
+    .filter((m) => m.month >= trendFrom && m.month <= month)
+    .map((m) => {
+      const c = monthCoverage(m.month, period)
+      return {
+        month: m.month,
+        coverage: c.status,
+        covered_to: c.to,
+        ...pick(totalsOf(m), ['income', 'expense', 'result']),
+      }
+    })
   const lastYear = all.find((m) => m.month === addMonths(month, -12)) || null
 
   const notes = []
@@ -1033,6 +1084,7 @@ function buildMonthReport(summary, month, options = {}) {
               : null,
           }
         : { previous_month: null, previous_year: null, average: null },
+      trend,
       highlights,
       highlights_reason: highlightsReason,
       highlights_min_months: HIGHLIGHT_MIN_MONTHS,
@@ -1050,6 +1102,7 @@ module.exports = {
   HIGHLIGHT_MIN_MONTHS,
   HIGHLIGHT_RATIO,
   HIGHLIGHT_MIN_EUR,
+  TREND_MONTHS,
   isValidYear,
   isValidMonth,
   monthCoverage,

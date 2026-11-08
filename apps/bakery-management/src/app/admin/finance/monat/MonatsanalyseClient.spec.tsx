@@ -165,6 +165,42 @@ describe('MonatsanalyseClient', () => {
     ).toHaveAttribute('href', '/admin/finance/jahr?jahr=2026')
   })
 
+  it('zeigt den Verlauf und die Ausgaben gegen den Durchschnitt', async () => {
+    respond(completeMonthFixture())
+    renderWithTheme(<MonatsanalyseClient month="2026-09" />)
+    const trend = await screen.findByTestId('trend-chart')
+    expect(trend).toHaveAttribute(
+      'aria-label',
+      'Einnahmen, Ausgaben und Ergebnis der letzten 13 Monate bis September 2026'
+    )
+    expect(trend).toHaveTextContent(
+      'September 2026 hervorgehoben, davor 12 Monate.'
+    )
+    expect(trend).toHaveTextContent('1 der abgeschlossenen Monate mit Verlust')
+    const bars = screen.getByRole('list', {
+      name: 'Ausgaben September 2026 nach Posten',
+    })
+    expect(bars.querySelectorAll('[data-average]').length).toBeGreaterThan(0)
+    expect(
+      screen.getByRole('img', {
+        name: /^Einnahmen September 2026 nach Herkunft:/,
+      })
+    ).toBeInTheDocument()
+  })
+
+  it('ein laufender Monat: Verlauf mit offenem Monat, Balken ohne Durchschnitt', async () => {
+    respond(partialMonthFixture())
+    renderWithTheme(<MonatsanalyseClient month="2026-10" />)
+    const trend = await screen.findByTestId('trend-chart')
+    expect(trend).toHaveTextContent(
+      '* Oktober 2026 läuft noch (Bankdaten bis 15.10.).'
+    )
+    const bars = screen.getByRole('list', {
+      name: 'Ausgaben Oktober 2026 nach Posten',
+    })
+    expect(bars.querySelectorAll('[data-average]')).toHaveLength(0)
+  })
+
   it('zeigt bei einem laufenden Monat den Hinweis des Servers statt Vergleichen', async () => {
     respond(partialMonthFixture())
     renderWithTheme(<MonatsanalyseClient month="2026-10" />)

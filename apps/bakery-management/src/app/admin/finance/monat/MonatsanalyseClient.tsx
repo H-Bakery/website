@@ -50,6 +50,19 @@ import {
   type KeyFigure,
 } from '../../../../components/layout'
 import {
+  CategoryBars,
+  ChartFigure,
+  ChartLegend,
+  IncomeSplitBar,
+  MonthlyFlowChart,
+  type LegendKey,
+} from '../../../../components/finance/FinanceCharts'
+import {
+  expenseBars,
+  incomeParts,
+  trendFlowPoints,
+} from '../../../../lib/financeCharts'
+import {
   FinanceAccessNotice,
   FinanceReportPrintStyles,
   formatDayMonth,
@@ -230,6 +243,60 @@ function Highlights({ report }: { report: FinanceMonthReport }) {
         </Box>
       ))}
     </Box>
+  )
+}
+
+/** Ein Satz unter dem Verlauf. */
+export function trendCaption(report: FinanceMonthReport): string {
+  const parts: string[] = []
+  const n = report.trend.length
+  if (n > 1) {
+    parts.push(
+      `${report.label} hervorgehoben, davor ${n - 1} Monat${
+        n - 1 === 1 ? '' : 'e'
+      }.`
+    )
+  }
+  const losses = report.trend.filter(
+    (row) => row.coverage === 'complete' && row.result < 0
+  ).length
+  if (losses > 0) {
+    parts.push(
+      `${losses} der abgeschlossenen Monate mit Verlust (Ausgaben über den Einnahmen).`
+    )
+  }
+  const open = report.trend.find((row) => row.coverage === 'partial')
+  if (open?.covered_to) {
+    parts.push(
+      `* ${formatMonth(open.month)} läuft noch (Bankdaten bis ${formatDayMonth(
+        open.covered_to
+      )}).`
+    )
+  }
+  return parts.join(' ')
+}
+
+function TrendChart({ report }: { report: FinanceMonthReport }) {
+  const router = useRouter()
+  const points = trendFlowPoints(report)
+  if (points.length === 0) return null
+  const legend: LegendKey[] = ['income', 'expense', 'result']
+  if (points.some((p) => p.open)) legend.push('open')
+  return (
+    <ChartFigure
+      label={`Einnahmen, Ausgaben und Ergebnis der letzten ${points.length} Monate bis ${report.label}`}
+      legend={<ChartLegend items={legend} />}
+      caption={trendCaption(report)}
+      data-testid="trend-chart"
+    >
+      <MonthlyFlowChart
+        points={points}
+        highlight={report.month}
+        onSelect={(month) => {
+          if (month !== report.month) router.push(monthHref(month))
+        }}
+      />
+    </ChartFigure>
   )
 }
 
@@ -543,6 +610,16 @@ export default function MonatsanalyseClient({
           items={keyFigures(report, complete)}
         />
 
+        <Box className="fin-keep">
+          <PageSection
+            title="Im Verlauf"
+            description="Einnahmen nach oben, Ausgaben nach unten, die Linie ist das Ergebnis. Tipp auf einen Monat zeigt die Zahlen; am Computer öffnet ein Klick den Monat."
+            data-testid="trend-section"
+          >
+            <TrendChart report={report} />
+          </PageSection>
+        </Box>
+
         <PageSection
           title="Auffälligkeiten"
           description={
@@ -562,6 +639,14 @@ export default function MonatsanalyseClient({
           description="Einnahmen nach Art. Pfeil neben einem Posten: aufschlüsseln."
           disablePadding
         >
+          {incomeParts(statement).length > 0 && (
+            <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+              <IncomeSplitBar
+                parts={incomeParts(statement)}
+                label={`Einnahmen ${report.label} nach Herkunft`}
+              />
+            </Box>
+          )}
           <RowsTable
             rows={statement.income.rows}
             total={statement.income.total}
@@ -578,9 +663,32 @@ export default function MonatsanalyseClient({
 
         <PageSection
           title="Wohin das Geld ging"
-          description="Ausgaben nach Art, die größten zuerst."
+          description={
+            comparison
+              ? `Ausgaben nach Art, die größten zuerst. Der Strich im Balken ist der Durchschnitt der ${avg?.months} vollen Monate davor.`
+              : 'Ausgaben nach Art, die größten zuerst.'
+          }
           disablePadding
         >
+          {expenseBars(statement).length > 0 && (
+            <Box sx={{ px: { xs: 2, md: 3 }, pb: 2 }}>
+              {comparison && (
+                <ChartLegend
+                  items={['expense', 'average']}
+                  labels={{
+                    expense: report.label,
+                    average: averageLabel,
+                  }}
+                />
+              )}
+              <CategoryBars
+                bars={expenseBars(statement)}
+                label={`Ausgaben ${report.label} nach Posten`}
+                showAverage={comparison}
+                averageLabel={averageLabel}
+              />
+            </Box>
+          )}
           <RowsTable
             rows={statement.expense.rows}
             total={statement.expense.total}
