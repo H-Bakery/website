@@ -562,7 +562,7 @@ describe('Hefeteig (portiert aus HefezopfCalculator)', () => {
     expect(h.doughs[0].weighing[0]).toMatchObject({ piece_g: 600, pieces: 4 })
   })
 
-  it('der gefuellte Kranz ist einstellbar (Q-B3: hq-Notiz 1 × 1200 g, alter Code 3 × 600 g; Testwert 2 × 600 g)', () => {
+  it('der gefuellte Kranz ist einstellbar (Q-B3; Testwert 2 × 600 g)', () => {
     const cfg = config()
     cfg.items.find((i) => i.id === 'kranz-gefuellt').dough = {
       id: 'hefeteig-test',
