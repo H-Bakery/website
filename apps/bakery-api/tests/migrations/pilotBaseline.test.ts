@@ -1129,6 +1129,41 @@ describe('Z10 Backzettel dough-day migration (bake_date)', () => {
     }
   })
 
+  it('down() leaves the schema as before Z10: foreign keys and every index', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, {
+      ...quiet,
+      migrations: MIGRATIONS.filter((m) => m.name !== Z10),
+    })
+    const schema = async () => {
+      const out: Record<string, unknown> = {}
+      for (const table of ['backzettel_lines', 'backzettel_deltas']) {
+        out[`${table}:fk`] = await sequelize.query(
+          `PRAGMA foreign_key_list(${table})`,
+          { type: QueryTypes.SELECT }
+        )
+        out[`${table}:indexes`] = await indexes(sequelize, table)
+        out[`${table}:columns`] = await columns(sequelize, table)
+      }
+      return out
+    }
+    const before = await schema()
+    // the baseline really has cascading keys and the deltas indexes
+    expect(JSON.stringify(before)).toContain('CASCADE')
+    expect(JSON.stringify(before)).toContain('SET NULL')
+    expect(Object.keys(before['backzettel_deltas:indexes'] as object)).toEqual(
+      expect.arrayContaining([
+        'backzettel_deltas_date',
+        'backzettel_deltas_preorder_id',
+      ])
+    )
+    const qi = sequelize.getQueryInterface()
+    await doughDayMigration.up(qi, Sequelize)
+    await doughDayMigration.down(qi, Sequelize)
+    expect(await schema()).toEqual(before)
+    await sequelize.close()
+  })
+
   it('is idempotent, and down() restores the old index (same-day sheets only)', async () => {
     const { sequelize } = await confirmedV1Day()
     const qi = sequelize.getQueryInterface()

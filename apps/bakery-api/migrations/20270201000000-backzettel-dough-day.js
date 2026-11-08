@@ -21,8 +21,8 @@
  * gain `pickupDate`; a snapshot without `plan` is a day confirmed before Z10
  * (`legacyPlan`).
  *
- * down(): drops the new indexes and columns and restores the old unique
- * index. Only valid while every sheet is same-day (no line with
+ * down(): drops the new indexes and columns (in place, keeping foreign keys
+ * and the other indexes) and restores the old unique index. Only valid while every sheet is same-day (no line with
  * `bake_date <> date`); with such lines the old index cannot hold, and down()
  * refuses instead of losing them.
  *
@@ -118,14 +118,21 @@ module.exports = {
     if (deltas.has(DELTAS_BAKE_INDEX)) {
       await queryInterface.removeIndex('backzettel_deltas', DELTAS_BAKE_INDEX)
     }
+    // `ALTER TABLE … DROP COLUMN` (SQLite ≥ 3.35), not `removeColumn`: the
+    // latter rebuilds the table and loses its foreign keys (ON DELETE
+    // CASCADE / SET NULL) and the other indexes. The column is no longer
+    // indexed here, so SQLite drops it in place.
     if (lineColumns.bake_date) {
-      await queryInterface.removeColumn('backzettel_lines', 'bake_date')
+      await queryInterface.sequelize.query(
+        'ALTER TABLE backzettel_lines DROP COLUMN bake_date'
+      )
     }
     const deltaColumns = await queryInterface.describeTable('backzettel_deltas')
     if (deltaColumns.bake_date) {
-      await queryInterface.removeColumn('backzettel_deltas', 'bake_date')
+      await queryInterface.sequelize.query(
+        'ALTER TABLE backzettel_deltas DROP COLUMN bake_date'
+      )
     }
-    // SQLite rebuilds the table on removeColumn; re-read before re-adding.
     const after = await indexNames(queryInterface, 'backzettel_lines')
     if (!after.has(OLD_LINES_INDEX)) {
       await queryInterface.addIndex(
