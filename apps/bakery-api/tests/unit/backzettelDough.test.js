@@ -215,6 +215,7 @@ describe('R5: Teig je Größe = Σ Laibe × Teig je Laib', () => {
       variant: 'kasten',
       total: 0,
       baseUnset: false,
+      totalIsMinimum: false,
     })
     expect(
       s.bread.rows.find((r) => r.itemId === 'test-holz').cells.g1000
@@ -634,6 +635,7 @@ describe('R12: ein Bruch für mehrere Produkte einer Gruppe', () => {
         total: 12,
         perProduct: 1,
         doughPieces: 12,
+        totalIsMinimum: false,
       },
       {
         key: `test-kaese|@${SUN}`,
@@ -643,6 +645,7 @@ describe('R12: ein Bruch für mehrere Produkte einer Gruppe', () => {
         total: 13,
         perProduct: 1,
         doughPieces: 13,
+        totalIsMinimum: false,
       },
     ])
   })
@@ -667,7 +670,11 @@ describe('Regel 8: Grundmenge offen in einer Bruch-Gruppe', () => {
       pieces: null,
       complete: false,
     })
-    expect(g.split.map((m) => m.total)).toEqual([null, null])
+    // bekannt ist nur „0 Stück“ - als Mindestmenge, nie als fertige 0
+    expect(g.split.map((m) => [m.total, m.totalIsMinimum])).toEqual([
+      [0, true],
+      [0, true],
+    ])
     expect(g.missing.map((m) => m.code)).toEqual(['base_unset', 'base_unset'])
     expect(doughOf(s, 'test-weck-teig')).toMatchObject({
       kg: null,
@@ -689,10 +696,36 @@ describe('Regel 8: Grundmenge offen in einer Bruch-Gruppe', () => {
       piecesKnown: 12,
       complete: false,
     })
-    expect(g.split.map((m) => [m.itemId, m.total])).toEqual([
-      ['test-stern', 12],
-      ['test-kaese', null],
+    expect(g.split.map((m) => [m.itemId, m.total, m.totalIsMinimum])).toEqual([
+      ['test-stern', 12, false],
+      ['test-kaese', 0, true],
     ])
+  })
+
+  it('Grundmenge offen plus Vorbestellung: die bekannten Stück bleiben als Mindestmenge (Review Z10 Runde 2)', () => {
+    const s = sheet(SAT, {
+      config: v2((c) => (rawItem(c, 'test-kaese').base[2] = null)),
+      preorderItems: [pre('test-kaese', 7, NEXT_TUE)],
+    })
+    const g = group(s, NEXT_TUE, 'test-gemischt')
+    const kaese = g.split.find((m) => m.itemId === 'test-kaese')
+    // nicht „Testkäse offen“: mindestens die 7 vorbestellten
+    expect(kaese).toMatchObject({
+      total: 7,
+      doughPieces: 7,
+      totalIsMinimum: true,
+    })
+    expect(g).toMatchObject({
+      brueche: null,
+      piecesKnown: 19,
+      complete: false,
+    })
+    // dieselbe Kennzeichnung an der Zeile selbst
+    expect(s.lines.find((l) => l.key === kaese.key)).toMatchObject({
+      total: 7,
+      baseUnset: true,
+      totalIsMinimum: true,
+    })
   })
 })
 
@@ -792,6 +825,7 @@ describe('R15: Einzelstücke ohne Teilmaschine', () => {
         variant: null,
         total: 10,
         baseUnset: false,
+        totalIsMinimum: false,
         piece_g: 300,
         pieces: 1,
         kg: 3,

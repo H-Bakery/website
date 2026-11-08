@@ -884,6 +884,49 @@ describe('Z10: Teigtag-Zettel im Tages-Core', () => {
     )
   })
 
+  it('eine Bestellung zieht zwischen zwei Backtagen desselben Zettels um: „verschoben“, nicht „entfernt“ (Review Z10 Runde 2)', () => {
+    const rows = day.reconcileDeltas({
+      config: cfgV2,
+      date: SAT,
+      plan: satPlan,
+      snapshot: [confirmedSnapshot[0]],
+      current: [{ ...confirmedSnapshot[0], pickupDate: SUN }],
+      recorded: [],
+      catalog: PRODUCTS_V2,
+      orders: { 1: { status: 'offen', pickupDate: SUN } },
+    })
+    expect(rows).toEqual([
+      expect.objectContaining({ qty: 2, kind: 'added', bakeDate: SUN }),
+      expect.objectContaining({ qty: -2, kind: 'moved', bakeDate: NEXT_TUE }),
+    ])
+    // dieselbe Bestellung, nur die Position gestrichen: entfernt
+    const removed = day.reconcileDeltas({
+      config: cfgV2,
+      date: SAT,
+      plan: satPlan,
+      snapshot: [confirmedSnapshot[0]],
+      current: [],
+      recorded: [],
+      catalog: PRODUCTS_V2,
+      orders: { 1: { status: 'offen', pickupDate: NEXT_TUE } },
+    })
+    expect(removed).toEqual([
+      expect.objectContaining({ qty: -2, kind: 'removed' }),
+    ])
+    expect(
+      day.reconcileDeltas({
+        config: cfgV2,
+        date: SAT,
+        plan: satPlan,
+        snapshot: [confirmedSnapshot[0]],
+        current: [],
+        recorded: [],
+        catalog: PRODUCTS_V2,
+        orders: { 1: { status: 'storniert', pickupDate: SUN } },
+      })[0].kind
+    ).toBe('cancelled')
+  })
+
   it('R24: neue Dienstagsbrötchen nach der Samstagsfreigabe → Delta am Samstag, Backtag Di', () => {
     const current = [
       ...confirmedSnapshot,

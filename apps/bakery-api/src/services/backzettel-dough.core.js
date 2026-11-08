@@ -263,13 +263,14 @@ function bruchGroups(cfg, lines, sheetDate) {
       total,
       perProduct,
       doughPieces: total * perProduct,
+      // Grundmenge offen: `total` ist nur das Bekannte (Vorbestellt, CAP) -
+      // eine Mindestmenge („≥ 7“), nie „offen“ statt der bekannten Stücke.
+      totalIsMinimum: qtyUnknown(line),
     })
     if (!g._names.includes(line.name)) g._names.push(line.name)
     if (qtyUnknown(line)) {
       g.missing.push(baseUnsetMissing(line))
       g._unknownQty = true
-      g.split[g.split.length - 1].total = null
-      g.split[g.split.length - 1].doughPieces = null
     }
   }
   const out = []
@@ -1005,6 +1006,7 @@ function breadView(cfg, lines, parts, sheetDate) {
       variant: line.variant === undefined ? null : line.variant,
       total: Number(line.total) || 0,
       baseUnset: Boolean(line.baseUnset),
+      totalIsMinimum: qtyUnknown(line),
     }
     if (sized && line.variant) row.cells[line.variant] = cell
     else row.single = { ...cell, unit: item.unit }
@@ -1031,6 +1033,7 @@ function breadView(cfg, lines, parts, sheetDate) {
               variant: s.id,
               total: 0,
               baseUnset: false,
+              totalIsMinimum: false,
             }
           : null
       }
@@ -1118,6 +1121,7 @@ function rollsView(cfg, lines, groups, sheetDate) {
       variant: line.variant === undefined ? null : line.variant,
       total,
       baseUnset: Boolean(line.baseUnset),
+      totalIsMinimum: qtyUnknown(line),
       piece_g: isNum(pieceG) ? pieceG : null,
       pieces: isNum(pieces) ? pieces : null,
       kg:

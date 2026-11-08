@@ -29,6 +29,10 @@ function round2(x) {
   return r === 0 ? 0 : r
 }
 
+function isNum(x) {
+  return typeof x === 'number' && Number.isFinite(x)
+}
+
 function fail(error, message) {
   return { ok: false, error, message }
 }
@@ -274,7 +278,8 @@ function preorderSums(config, date, snapshot, catalog, plan) {
  *   alten Tagen `legacyPlan`). Dann zaehlen die Positionen aller Backtage des
  *   Plans, je Backtag getrennt, und jede Zeile traegt `bakeDate` (gespeicherte
  *   Zeilen ohne `bakeDate` gehoeren zum Zettel-Tag). Ohne Plan wie v1.
- * @param {Record<string, string>} [args.orders] Status je Vorbestellung, die
+ * @param {Record<string, string|{status: string, pickupDate: string}>} [args.orders]
+ *   Status (Z10: mit Abholtag) je Vorbestellung, die
  *   jetzt an diesem Tag liegt (auch `storniert`). Damit heisst eine Menge,
  *   die auf 0 faellt, nur dann `cancelled`, wenn die Bestellung storniert
  *   ist; liegt sie noch hier, ist die Zeile `removed`, liegt sie nicht mehr
@@ -282,12 +287,27 @@ function preorderSums(config, date, snapshot, catalog, plan) {
  *   bisher `cancelled`.
  * @returns {Array<{itemId:string, variant:string, preorderId:number|null, qty:number, kind:'added'|'changed'|'cancelled'|'removed'|'moved'}>}
  */
-function goneKind(orders, preorderId) {
+function goneKind(orders, preorderId, bakeDate) {
   if (!orders || preorderId === null || preorderId === undefined) {
     return 'cancelled'
   }
-  const status = orders[String(preorderId)]
-  if (status === undefined) return 'moved'
+  const entry = orders[String(preorderId)]
+  if (entry === undefined) return 'moved'
+  // Z10: `{ status, pickupDate }` - ein Zettel je Teigtag traegt mehrere
+  // Backtage; zieht eine Bestellung zwischen zweien davon um (Di → So),
+  // liegt sie noch auf dem Zettel, ist aber verschoben, nicht entfernt.
+  const status = entry && typeof entry === 'object' ? entry.status : entry
+  if (
+    entry &&
+    typeof entry === 'object' &&
+    bakeDate &&
+    typeof entry.pickupDate === 'string' &&
+    entry.pickupDate !== bakeDate &&
+    status !== 'storniert' &&
+    status !== 'cancelled'
+  ) {
+    return 'moved'
+  }
   return status === 'storniert' || status === 'cancelled'
     ? 'cancelled'
     : 'removed'
@@ -338,7 +358,7 @@ function reconcileDeltas(args) {
         previous === 0
           ? 'added'
           : n === 0
-          ? goneKind(a.orders, ref.preorderId)
+          ? goneKind(a.orders, ref.preorderId, plan ? ref.bakeDate : null)
           : 'changed',
       ...(plan ? { bakeDate: ref.bakeDate } : {}),
     })
@@ -452,6 +472,7 @@ function frozenLine(row, config, unsetKeys) {
             },
           }
         : {}),
+      totalIsMinimum: doughCore.qtyUnknown(line),
     })
   }
   return line
@@ -861,21 +882,48 @@ function hefeteigFillingsDiff(before, after) {
       batches: null,
     }
     const bw = new Map((b.weighing || []).map((w) => [w.piece_g, w.pieces]))
+    // Unbekanntes bleibt unbekannt (Regel 8): `null - null` ist nicht 0.
+    const minus = (x, y) =>
+      x === null || x === undefined || y === null ? null : round2(x - (y || 0))
     const weighing = (d.weighing || [])
       .map((w) => ({
         piece_g: w.piece_g,
-        pieces: round2(w.pieces - (bw.get(w.piece_g) || 0)),
+        pieces: minus(w.pieces, bw.has(w.piece_g) ? bw.get(w.piece_g) : 0),
         total: w.pieces,
       }))
       .filter((w) => w.pieces !== 0)
-    const pieces = round2(d.pieces - (b.pieces || 0))
+    const pieces = minus(d.pieces, b.pieces === undefined ? 0 : b.pieces)
     if (pieces === 0 && weighing.length === 0) continue
+    // Zusatzteig: aus den Gesamtgewichten, sonst - Teig unvollständig, etwa
+    // wegen einer offenen Grundmenge - aus dem, was zusätzlich abzuwiegen
+    // ist (Teigstücke × Gramm), solange das ganz bekannt ist.
+    let doughG = minus(d.dough_g, b.dough_g === undefined ? 0 : b.dough_g)
+    if (
+      doughG === null &&
+      weighing.length > 0 &&
+      weighing.every((w) => isNum(w.piece_g) && isNum(w.pieces))
+    ) {
+      doughG = round2(
+        weighing.reduce((sum, w) => sum + w.pieces * w.piece_g, 0)
+      )
+    }
+    const v2 = d.complete !== undefined || d.piecesComplete !== undefined
     doughs.push({
       id: d.id,
       name: d.name,
       pieces,
       totalPieces: d.pieces,
-      dough_g: round2(d.dough_g - (b.dough_g || 0)),
+      // Z10: Stücke/Teig gesamt sind nur eine Mindestmenge, solange eine
+      // Grundmenge des Teigs offen ist („≥ 37 Teigstücke“).
+      ...(v2
+        ? {
+            totalPiecesComplete: d.piecesComplete !== false,
+            totalDoughKnown_g: isNum(d.kgKnown)
+              ? Math.round(d.kgKnown * 1000)
+              : null,
+          }
+        : {}),
+      dough_g: doughG,
       totalDough_g: d.dough_g,
       batches: d.batches,
       // W4-Verifikation Runde 2: Chargen vor den Nachtraegen und die
@@ -894,6 +942,7 @@ function hefeteigFillingsDiff(before, after) {
     const b = beforeFillings.get(f.id)
     const grams = round2((f.grams || 0) - ((b && b.grams) || 0))
     if (grams === 0) continue
+    const v2 = f.baseUnset === true || f.missingFillingG === true
     // Das Rezept fuer die zusaetzliche Menge (nur bei mehr, nur wenn es sich
     // hochrechnen laesst) - sonst rechnet die Backstube von Hand.
     const recipe =
@@ -905,6 +954,7 @@ function hefeteigFillingsDiff(before, after) {
       name: f.name,
       grams,
       totalGrams: f.grams,
+      ...(v2 ? { totalComplete: !f.baseUnset && !f.missingFillingG } : {}),
       recipe,
     })
   }

@@ -224,15 +224,25 @@ async function loadPreorderSnapshot(
 async function loadDayOrderStates(
   dates: string[],
   transaction?: Transaction
-): Promise<Record<string, string>> {
+): Promise<Record<string, OrderState>> {
   if (dates.length === 0) return {}
   const rows = await Preorder.findAll({
     where: { pickupDate: dates },
-    attributes: ['id', 'status'],
+    attributes: ['id', 'status', 'pickupDate'],
     transaction,
   })
-  return Object.fromEntries(rows.map((p) => [String(p.id), p.status]))
+  // Z10: with the pickup day, so a move between two bake days of one sheet
+  // reads as „verschoben“, not „entfernt“ (`goneKind`).
+  return Object.fromEntries(
+    rows.map((p) => [
+      String(p.id),
+      { status: p.status, pickupDate: p.pickupDate },
+    ])
+  )
 }
+
+/** Status and pickup day of a preorder that lies on a sheet's bake days. */
+type OrderState = { status: string; pickupDate: string }
 
 /** Active delivery templates of active sales partners for an ISO weekday. */
 async function loadCapTemplates(
@@ -959,7 +969,7 @@ export function createBackzettelService(
     current: PreorderSnapshotItem[],
     recorded: BackzettelDelta[],
     snapshot: unknown,
-    orders?: Record<string, string>
+    orders?: Record<string, OrderState>
   ) {
     return dayCore.reconcileDeltas({
       config: loaded.config,

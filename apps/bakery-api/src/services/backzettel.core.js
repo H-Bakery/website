@@ -668,6 +668,9 @@ function computeLines(args) {
         }
         if (v2) {
           Object.assign(line, v2LineFields(cfg, item, variant, date, dough))
+          // Grundmenge offen (ohne Korrektur): `total` ist nur das Bekannte -
+          // eine Mindestmenge („≥ 4“), keine fertige Zahl (Regel 8).
+          line.totalIsMinimum = doughCore.qtyUnknown(line)
           if (!dough.found && !noDoughDay.includes(item.name))
             noDoughDay.push(item.name)
         }
@@ -992,12 +995,19 @@ function computeHefeteig(cfg, lines, options) {
 /**
  * Fuellungsbedarf je Fuellung (= Variante) und das darauf skalierte Rezept.
  */
-function computeFillings(cfg, lines, recipes, warnings) {
+function computeFillings(cfg, lines, recipes, warnings, options) {
+  // Z10 (Teigtag-Zettel): ein gefüllter Posten mit offener Grundmenge macht
+  // den Bedarf seiner Füllung unvollständig (Regel 1/8) - auch mit 0 Stück,
+  // damit die Füllung als „offen“ erscheint statt zu fehlen.
+  const withOpen = Boolean(options && options.withOpenBase)
   const itemsById = new Map(cfg.items.map((i) => [i.id, i]))
   const byFilling = new Map()
   for (const line of lines) {
     const item = itemsById.get(line.itemId)
-    if (!item || !item.filling_g || !(line.total > 0)) continue
+    if (!item || !item.filling_g) continue
+    const openBase =
+      withOpen && line.variant !== null && doughCore.qtyUnknown(line)
+    if (!(line.total > 0) && !openBase) continue
     if (line.variant === null) {
       warnings.push({
         code: 'filling_unassigned',
@@ -1019,6 +1029,16 @@ function computeFillings(cfg, lines, recipes, warnings) {
         items: [],
       }
       byFilling.set(line.variant, entry)
+    }
+    if (openBase) {
+      // nur dann gesetzt: ohne offene Grundmenge bleibt die Form wie v1
+      entry.baseUnset = true
+      if (!entry.openItems) entry.openItems = []
+      const label = line.variantLabel
+        ? `${item.name} – ${line.variantLabel}`
+        : item.name
+      if (!entry.openItems.includes(label)) entry.openItems.push(label)
+      if (!(line.total > 0)) continue
     }
     const grams = perPiece ? line.total * perPiece : null
     if (grams === null) entry.missingFillingG = true
@@ -1045,7 +1065,7 @@ function computeFillings(cfg, lines, recipes, warnings) {
         // Regel 7 (Z10): ohne alle Gramm kein hochgerechnetes Rezept - eine
         // Teilmenge saehe aus wie der ganze Bedarf.
         recipe:
-          recipe && e.grams > 0 && !e.missingFillingG
+          recipe && e.grams > 0 && !e.missingFillingG && !e.baseUnset
             ? recipesCore.scaleRecipe(recipe, e.grams)
             : null,
         recipeMissing: !recipe,
@@ -1331,7 +1351,9 @@ function sheetParts(cfg, lines, sheetDate, recipes, warnings) {
     lines.filter((l) => l.section === 'hefeteig'),
     { withLiters: true, summaries: doughs.doughs }
   )
-  const fillings = computeFillings(cfg, lines, recipes || {}, warnings)
+  const fillings = computeFillings(cfg, lines, recipes || {}, warnings, {
+    withOpenBase: true,
+  })
   return {
     hefeteig,
     fillings,

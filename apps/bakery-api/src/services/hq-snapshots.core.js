@@ -117,6 +117,8 @@ function pickLine(line, v2) {
     out.variantLabel =
       out.variant === null ? null : str(line.variantLabel) || out.variant
     out.baseUnset = line.baseUnset === true
+    // Grundmenge offen: `total` ist nur das Bekannte (Mindestmenge, Regel 8)
+    out.totalIsMinimum = line.totalIsMinimum === true
   }
   return out
 }
@@ -234,22 +236,31 @@ function pickRolls(list) {
         brueche: numOrNull(g.brueche),
         kg: numOrNull(g.kg),
         spare: numOrNull(g.spare),
+        spareProducts: numOrNull(g.spareProducts),
+        perProduct: numOrNull(g.perProduct),
+        // nur die bekannten Mitglieder („≥ n Bruch“), solange eine
+        // Grundmenge offen ist - nie 0 für unbekannt (Regel 8)
+        piecesKnown: numOrNull(g.piecesKnown),
+        bruecheKnown: numOrNull(g.bruecheKnown),
+        kgKnown: numOrNull(g.kgKnown),
         complete: g.complete !== false,
         missing: pickMissing(g.missing),
         split: (Array.isArray(g.split) ? g.split : []).map((x) => ({
           itemId: str(x.itemId),
           name: str(x.name),
           variant: pickVariant(x.variant),
-          total: num(x.total),
+          total: numOrNull(x.total),
           perProduct: numOrNull(x.perProduct),
-          doughPieces: num(x.doughPieces),
+          doughPieces: numOrNull(x.doughPieces),
+          totalIsMinimum: x.totalIsMinimum === true,
         })),
       })),
       singles: (Array.isArray(b.singles) ? b.singles : []).map((x) => ({
         itemId: str(x.itemId),
         name: str(x.name),
         variant: pickVariant(x.variant),
-        total: num(x.total),
+        total: numOrNull(x.total),
+        totalIsMinimum: x.totalIsMinimum === true,
         piece_g: numOrNull(x.piece_g),
         pieces: numOrNull(x.pieces),
         kg: numOrNull(x.kg),
@@ -332,8 +343,15 @@ function pickFillings(list, v2) {
     name: str(f.name),
     // Schema 2: with grams per piece missing the total is unknown (null);
     // `gramsKnown` is the sum of the known items.
-    grams: v2 && f.missingFillingG ? null : num(f.grams),
-    ...(v2 ? { gramsKnown: num(f.grams) } : {}),
+    // A filled item without a Grundmenge (`baseUnset`) makes it unknown too.
+    grams: v2 && (f.missingFillingG || f.baseUnset) ? null : num(f.grams),
+    ...(v2
+      ? {
+          gramsKnown: num(f.grams),
+          baseUnset: f.baseUnset === true,
+          openItems: (Array.isArray(f.openItems) ? f.openItems : []).map(str),
+        }
+      : {}),
     missingFillingG: !!f.missingFillingG,
     items: (Array.isArray(f.items) ? f.items : []).map((i) => ({
       itemId: str(i.itemId),
@@ -553,6 +571,38 @@ function addonsText(list) {
     .join(', ')
 }
 
+/**
+ * A quantity whose Grundmenge may be open: „7“, „≥ 7“ (only the preorders/CAP
+ * are known) or „offen“ (nothing known yet) - never „0“ for unknown.
+ */
+function minimumText(total, isMinimum) {
+  if (total === null || total === undefined) return 'offen'
+  if (!isMinimum) return deNumber(total)
+  return total > 0 ? `≥ ${deNumber(total)}` : 'offen'
+}
+
+/** „4 Bruch“, „≥ 2 Bruch“ (a Grundmenge open) or „? Bruch“. */
+function bruecheText(g) {
+  if (g.brueche !== null) return `${deNumber(g.brueche)} Bruch`
+  return g.bruecheKnown ? `≥ ${deNumber(g.bruecheKnown)} Bruch` : '? Bruch'
+}
+
+/** „ (+4 frei)“ in products, „ (+9 Teigstücke frei)“ for mixed groups. */
+function spareText(g) {
+  if (g.spare === null || !(g.spare > 0)) return ''
+  if (g.spareProducts !== null) {
+    // a leftover dough piece that is no whole product: in dough pieces
+    return g.spareProducts > 0
+      ? ` (+${deNumber(g.spareProducts)} frei)`
+      : ` (+${deNumber(g.spare)} ${
+          g.spare === 1 ? 'Teigstück' : 'Teigstücke'
+        } frei)`
+  }
+  return g.perProduct === 1
+    ? ` (+${deNumber(g.spare)} frei)`
+    : ` (+${deNumber(g.spare)} Teigstücke frei)`
+}
+
 /** „für Sonntag, 29.11.2026“ / „heute“ for a bake day of a sheet. */
 function bakeDayTitle(s, date) {
   if (!date || date === s.date) return 'Heute backen'
@@ -569,7 +619,7 @@ function linesTable(out, lines, v2) {
   )
   for (const l of lines) {
     const total =
-      `**${deNumber(l.total)}**` +
+      `**${v2 ? minimumText(l.total, l.totalIsMinimum) : deNumber(l.total)}**` +
       (l.loavesEstimate ? ` (ca. ${deNumber(l.loavesEstimate, 0)} Laibe)` : '')
     const base = v2 && l.base === null ? 'offen' : deNumber(l.base)
     out.push(
@@ -639,26 +689,33 @@ function doughDayMarkdown(out, s) {
         const split = g.split
           .map(
             (x) =>
-              `${deNumber(x.total)} ${cell(x.name)}` +
+              (x.totalIsMinimum && !(x.total > 0)
+                ? `${cell(x.name)} offen`
+                : `${minimumText(x.total, x.totalIsMinimum)} ${cell(x.name)}`) +
               (x.perProduct > 1
                 ? ` (je ${deNumber(x.perProduct)} Teigstücke)`
                 : '')
           )
           .join(', ')
         out.push(
-          `- ${known(g.brueche, 0, 'Bruch')} × ${known(g.g, 0, 'g')}` +
-            (g.kg !== null ? ` = ${deNumber(g.kg)} kg` : '') +
+          `- ${bruecheText(g)} × ${known(g.g, 0, 'g')}` +
+            (g.kg !== null
+              ? ` = ${deNumber(g.kg)} kg`
+              : g.kgKnown
+              ? ` = ≥ ${deNumber(g.kgKnown)} kg`
+              : '') +
             ` – ${split}` +
-            (g.spare ? ` (+${deNumber(g.spare)} frei)` : '')
+            spareText(g)
         )
       }
       for (const x of b.singles) {
+        const qty =
+          x.totalIsMinimum && !(x.total > 0)
+            ? 'offen'
+            : `${minimumText(x.total, x.totalIsMinimum)} Stück`
         out.push(
-          `- ${cell(x.name)}: ${deNumber(x.total)} Stück à ${known(
-            x.piece_g,
-            0,
-            'g'
-          )}` + (x.kg !== null ? ` = ${deNumber(x.kg)} kg` : ' (kg unbekannt)')
+          `- ${cell(x.name)}: ${qty} à ${known(x.piece_g, 0, 'g')}` +
+            (x.kg !== null ? ` = ${deNumber(x.kg)} kg` : ' (kg unbekannt)')
         )
       }
       out.push('')
@@ -792,7 +849,11 @@ function backzettelMarkdown(snapshot) {
               f.gramsKnown > 0
                 ? `≥ ${deNumber(f.gramsKnown / 1000)} kg`
                 : 'Menge unbekannt'
-            } (Füllmenge je Stück fehlt)`
+            } (${
+              f.missingFillingG
+                ? 'Füllmenge je Stück fehlt'
+                : 'Grundmenge offen'
+            })`
           : `### ${f.name || f.id}: ${deNumber(f.grams / 1000)} kg` +
               (f.missingFillingG ? ' (Füllmenge je Stück fehlt teilweise)' : '')
       )

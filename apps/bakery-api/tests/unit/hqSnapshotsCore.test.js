@@ -730,12 +730,12 @@ describe('backzettelSnapshot schema 2 (Backzettel v2)', () => {
   const config = configCore.normalizeConfig(fixture.configV2())
 
   /** A confirmed dough-day sheet as the API answers it, with markers. */
-  function sheet(date) {
+  function sheet(date, opts = {}) {
     const s = bz.computeDoughDay({
-      config,
+      config: opts.config || config,
       date,
       seasonFactor: 1,
-      bakeInputs: {},
+      bakeInputs: opts.bakeInputs || {},
       corrections: [],
       recipes: {},
       catalog: fixture.PRODUCTS_V2,
@@ -879,6 +879,61 @@ describe('backzettelSnapshot schema 2 (Backzettel v2)', () => {
     ]) {
       expect(json).not.toContain(`"${key}"`)
     }
+  })
+
+  test('an open Grundmenge in a Bruch group stays open - JSON and Markdown (review Z10 round 2)', () => {
+    const raw = fixture.configV2()
+    raw.items.find((i) => i.id === 'test-kaese').base[2] = null
+    raw.items.find((i) => i.id === 'test-stern').base[2] = null
+    const TUE = '2026-12-01'
+    const pre = (productId, qty) => ({ productId, qty, pickupDate: TUE })
+    const s = core.backzettelSnapshot(
+      sheet('2026-11-28', {
+        config: configCore.normalizeConfig(raw),
+        bakeInputs: {
+          [TUE]: {
+            preorderItems: [pre('test-stern', 7), pre('test-doppel', 3)],
+            capTemplate: [],
+          },
+        },
+      }),
+      {}
+    )
+    const tue = s.rolls.find((b) => b.bakeDate === TUE)
+    const mixed = tue.groups.find((g) => g.group === 'test-gemischt')
+    expect(mixed).toMatchObject({
+      brueche: null,
+      kg: null,
+      bruecheKnown: 1,
+      complete: false,
+    })
+    expect(mixed.kgKnown).toBeGreaterThan(0)
+    expect(mixed.split).toEqual([
+      expect.objectContaining({
+        itemId: 'test-stern',
+        total: 7,
+        totalIsMinimum: true,
+      }),
+      expect.objectContaining({
+        itemId: 'test-kaese',
+        total: 0,
+        totalIsMinimum: true,
+      }),
+    ])
+    const stern = s.sections
+      .flatMap((x) => x.lines)
+      .find((l) => l.itemId === 'test-stern' && l.bakeDate === TUE)
+    expect(stern).toMatchObject({ total: 7, totalIsMinimum: true })
+
+    const md = core.backzettelMarkdown(s)
+    expect(md).toMatch(/- ≥ 1 Bruch × [^\n]* – ≥ 7 Teststern, Testkäse offen\n/)
+    expect(md).not.toMatch(/ 0 Testkäse/)
+    expect(md).toMatch(/\| Teststern \| [^\n]*\*\*≥ 7\*\*/)
+    // per_product 2: 43 Doppel = 86 Teigstücke, 5 Bruch à 20 → 14 Teigstücke
+    // frei = 7 Doppelweck, nicht „+14 frei“
+    const doppel = tue.groups.find((g) => g.split[0].itemId === 'test-doppel')
+    expect(doppel).toMatchObject({ spare: 14, spareProducts: 7, perProduct: 2 })
+    expect(md).toContain('43 Testdoppel (je 2 Teigstücke) (+7 frei)')
   })
 
   test('a day confirmed before Z10 stays schema 1 without the new fields', () => {

@@ -31,7 +31,12 @@ v2 keeps every v1 mechanism and adds four ideas on top:
 **Compatibility rule:** an item without `lead` has lead 0, so its dough day is its bake day. A
 config without the new keys (today's `hq/config/backzettel.yaml`) therefore yields sheets that are
 **identical** to v1 days (regression test S2-R1), and every endpoint keeps its v1 shape plus
-additive fields.
+additive fields. One deliberate difference (review Z10 round 2): where today's file leaves a
+Grundmenge open (`null`), the dough sheet no longer counts it as 0 - Hefeteig kg, litres and
+batches of that dough become unknown (`dough_g: null`, „≥ kgKnown", „Chargen: unbekannt") where
+v1 showed a number, and a line with an open base shows its known part as a minimum
+(`totalIsMinimum`, „≥ 4"). Set the Grundmengen in hq before the deploy where the number is
+needed.
 
 **Unknown rule:** every open master value is `null` in YAML, travels as `null` plus a reason
 through core and API, and is shown as "unbekannt"/"–" with a hint. Nothing is estimated or
@@ -444,7 +449,14 @@ interface BruchGroup {
   spareProducts: number | null // the same in products ("+n frei"), null if per_product differs
   bruecheKnown: number | null // from the known members only ("≥ n Bruch")
   kgKnown: number | null
-  split: { key; itemId; name; total /* null = base open */; doughPieces }[]
+  split: {
+    key
+    itemId
+    name
+    total /* known pieces */
+    doughPieces
+    totalIsMinimum /* base open */
+  }[]
 }
 interface SingleRow {
   key
@@ -789,7 +801,8 @@ Each slice leaves the branch green: `npx jest -c apps/bakery-api/jest.config.js`
   `apps/bakery-api/CLAUDE.md` (Backzettel section).
 - Acceptance: R24, R25, R27, R29, R32; all existing integration suites unchanged and green
   (`backzettel`, `backzettelGrundmengen`, `rest`, `hqSnapshots`, `preorders`); with today's config
-  the day answer equals v1 plus additive fields.
+  the day answer equals v1 plus additive fields - except where a Grundmenge is open: then the
+  Hefeteig of the sheet is incomplete (kg/Chargen unknown) instead of counting the line as 0 (§1).
 - Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests` +
   `npx nx run bakery-api:typecheck`.
 

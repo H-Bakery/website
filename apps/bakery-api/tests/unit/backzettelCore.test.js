@@ -1193,6 +1193,7 @@ function stripV2(sheet) {
     'variantKind',
     'variantLabel',
     'bruch',
+    'totalIsMinimum',
   ]
   const DOUGH_FIELDS = [
     'kg',
@@ -1837,5 +1838,87 @@ describe('R26 (Core): Backliste aus zwei Zetteln', () => {
       },
     ])
     expect(list.warnings.map((w) => w.code)).toEqual(['duplicate_bake_line'])
+  })
+})
+
+describe('Review Z10 Runde 2: offene Grundmenge in Füllung und Hefeteig-Nachtrag', () => {
+  /** v1-Stammdaten, Zopf gefüllt Mohn ohne Grundmenge am Samstag. */
+  const openMohn = () => {
+    const cfg = config()
+    cfg.items.find((i) => i.id === 'zopf-gefuellt').base[6] = {
+      nuss: 4,
+      mohn: null,
+    }
+    return cfg
+  }
+  const zopfMohn = (qty) => ({
+    productId: 'test-zopf-gefuellt',
+    variant: 'mohn',
+    qty,
+    pickupDate: SAT,
+  })
+
+  it('Füllungsbedarf mit offener Grundmenge ist unvollständig - kein Rezept auf die Teilmenge', () => {
+    const r = sheetV2(SAT, {
+      config: openMohn(),
+      catalog: PRODUCTS,
+      preorderItems: [zopfMohn(3)],
+    })
+    const mohn = r.fillings.find((f) => f.id === 'mohn')
+    // 3 Zopf × 400 g + 1 Kranz × 800 g sind bekannt - als Mindestmenge
+    expect(mohn).toMatchObject({
+      grams: 2000,
+      missingFillingG: false,
+      baseUnset: true,
+      recipe: null,
+    })
+    expect(mohn.openItems).toEqual([expect.stringContaining('Zopf gefüllt')])
+  })
+
+  it('ohne bekannte Stück erscheint die Füllung trotzdem (offen), statt zu fehlen', () => {
+    const cfg = openMohn()
+    // Kranz Mohn auf 0: nur der offene Zopf hängt an der Füllung
+    cfg.items.find((i) => i.id === 'kranz-gefuellt').base[6] = {
+      nuss: 3,
+      mohn: 0,
+    }
+    const r = sheetV2(SAT, { config: cfg, catalog: PRODUCTS })
+    expect(r.fillings.find((f) => f.id === 'mohn')).toMatchObject({
+      grams: 0,
+      baseUnset: true,
+      recipe: null,
+    })
+    // computeDay (v1-Form) bleibt wie vor Z10: ohne Stück keine Füllung
+    const v1 = core.computeDay({ config: cfg, date: SAT, recipes: RECIPES })
+    expect(v1.fillings.find((f) => f.id === 'mohn')).toBeUndefined()
+  })
+
+  it('Hefeteig-Nachtrag bei unvollständigem Teig: Zusatzteig aus Stück × Gramm, Gesamt nur Mindestmenge', () => {
+    const dayCore = require('../../src/services/backzettel-day.core')
+    const args = { config: openMohn(), catalog: PRODUCTS }
+    const before = sheetV2(SAT, args)
+    const after = sheetV2(SAT, {
+      ...args,
+      preorderItems: [
+        {
+          productId: 'test-kranz-gefuellt',
+          variant: 'nuss',
+          qty: 2,
+          pickupDate: SAT,
+        },
+      ],
+    })
+    expect(after.hefeteig.doughs[0].dough_g).toBeNull()
+    const diff = dayCore.hefeteigFillingsDiff(before, after)
+    const d = diff.doughs[0]
+    // 2 Kränze × 2 Teigstücke × 600 g - bekannt, nie „+0 g“
+    expect(d).toMatchObject({
+      pieces: 4,
+      dough_g: 2400,
+      totalDough_g: null,
+      totalPiecesComplete: false,
+    })
+    expect(d.totalPieces).toBe(after.hefeteig.doughs[0].pieces)
+    expect(d.totalDoughKnown_g).toBeGreaterThan(0)
   })
 })

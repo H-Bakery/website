@@ -97,7 +97,7 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
 - **Was Nachträge für Ofen, Teig und Füllung heißen:** je Zeile `delta.bake` =
   `roundUp(exakt + Nachtrag) − roundUp(exakt)` (`deltaBakeExtras`; `exakt` = Vorbestellungen vor dem
   Aufrunden, im `computed_snapshot` als `preordersExact`; ältere Freigaben rechnen mit der gerundeten
-  Menge - eher eine Einheit zu viel als zu wenig). Abzeichen sagen das mit Einheit („Nachtrag +1 l",
+  Menge - eher eine Einheit zu viel als zu wenig). Abzeichen sagen das mit Einheit („Nachtrag +1 L",
   „Nachtrag +0,25 · 1 mehr backen"). `deltaExtras` am Tag nennt, was Hefeteig und Füllungen dadurch
   zusätzlich brauchen (`doughs[].batchesBefore` + `batch_max_kg`, `fillings[].recipe`); der Hinweis
   nennt „jetzt 4 Chargen statt 3" und, wenn der Zusatzteig größer als eine Charge ist, wie viele
@@ -150,6 +150,20 @@ Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Z
 - **Ohne Stammdaten** bleibt die Backliste lesbar, soweit freigegebene Zettel den Tag tragen
   (`configStatus: 'no-config'`, Hinweis, dass Entwürfe fehlen) - der Sonntag sieht die Brötchen
   vom Samstag.
+- **Grundmenge offen heißt Mindestmenge, nicht fertige Zahl** (Review Z10 Runde 2): eine Zeile
+  ohne Grundmenge und ohne Korrektur trägt `totalIsMinimum: true` - `total` ist nur das Bekannte
+  (Vorbestellt, CAP). Dasselbe Feld steht an Brot-Zellen, Einzelstücken und Bruch-Mitgliedern
+  (`split[].total` bleibt die bekannte Zahl, nie `null`, nie 0 statt 7). Bildschirm, Tablet,
+  Backliste, Druck und Z9-Schnappschuss zeigen „≥ 4" bzw. „offen", wenn nichts bekannt ist
+  (`minQtyText` in `backzettelFormat.ts`, eine Regel). Gefüllte Posten ohne Grundmenge machen den
+  Füllungsbedarf unvollständig (`fillings[].baseUnset`, `openItems`; auch mit 0 Stück, kein
+  hochgerechnetes Rezept); ein Hefeteig-Nachtrag auf einen unvollständigen Teig nennt den
+  Zusatzteig aus Stück × Gramm und das Gesamt nur als Mindestmenge (`totalPiecesComplete`,
+  `totalDoughKnown_g`) - nie „+0 g".
+- **Folge für die heutige hq-Datei:** solange Grundmengen offen sind (z. B. Hefeteig am Samstag),
+  sind Hefeteig-kg, Liter und Chargen unbekannt („≥ kgKnown", „Chargen: unbekannt") - der alte
+  Zettel zeigte dort eine Zahl, die die offenen Posten als 0 zählte. Wer die Zahl am ersten
+  Samstag nach dem Deploy braucht, trägt vorher die Grundmengen in hq ein.
 - **Unbekannt bleibt unbekannt, auch beim Bruch:** hat ein Mitglied einer Bruch-Gruppe keine
   Grundmenge, sind Brüche, kg und „frei“ `null`; `bruecheKnown`/`kgKnown` zählen nur die bekannten
   Mitglieder („≥ 1 Bruch“). „+n frei“ steht in Produkten (`spareProducts`, bei zwei Teigstücken je

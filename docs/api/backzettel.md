@@ -79,7 +79,9 @@ screen showed, and the server refuses instead of overwriting:
   `{preorderId, productId, variant, qty}`) and `computed_snapshot`
   (`{ hefeteig, fillings, prep, warnings, unsetKeys, preordersExact }` exactly as the core computed
   them; `unsetKeys` = line keys with `baseUnset`, which `frozenSections` restores so a confirmed
-  line with an unset base still reads „offen", not 0), discards old deltas. **Ticks** survive a
+  line with an unset base still reads „offen", not 0), discards old deltas. Dough-day lines
+  (draft and confirmed) carry `totalIsMinimum` (base open, no correction: `total` is only the
+  known part - preorders, CAP); so do `bread` cells, `rolls` singles and Bruch `split` members. **Ticks** survive a
   re-confirm when the line's `base/seasonal/preorders/cap/total` are unchanged
   (`frozenQtyChanged`) or the new total is not larger (`tickStillValid`: baked 14, now 12 needed is
   done); otherwise `doneAt`/`doneBy` are cleared and listed as `clearedTicks` in the confirm audit
