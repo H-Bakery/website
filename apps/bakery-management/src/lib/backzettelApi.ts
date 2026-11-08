@@ -196,7 +196,7 @@ export interface HefeteigDough {
   pieces: number | null
   /** `null` (Z10): ein Teil des Teigs hat kein bekanntes Gewicht. */
   dough_g: number | null
-  /** `null`, wenn die Chargengröße nicht festgelegt ist. */
+  /** `null`, wenn die Chargengröße offen ist. */
   batches: number | null
   weighing: HefeteigWeighing[]
   // ---- Z10: nur Teigtag-Zettel

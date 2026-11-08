@@ -3,6 +3,8 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { MachineStrip, machineHints } from './MachineStrip'
 import { OpenMasterDataNote } from './OpenMasterDataNote'
 import { BreadTable } from './BreadTable'
+import { batchText } from './HefeteigCard'
+import { batchesText } from '../../lib/backzettelFormat'
 import { RollsByBakeDay, linesByKey, v2CoveredKeys } from './RollsByBakeDay'
 import {
   SAT,
@@ -53,6 +55,31 @@ describe('Backzettel v2 - Bausteine', () => {
         'Chargen: unbekannt'
       )
     ).toBeInTheDocument()
+  })
+
+  it('Maschinen-Leiste und Hefeteig-Karte (auch Tablet, Druck) sagen dasselbe: Stammdaten „offen“, Gerechnetes „unbekannt“', () => {
+    const dough = {
+      id: 'test-hefe',
+      name: 'Testhefe',
+      pieces: null,
+      dough_g: null,
+      batches: null,
+      weighing: [],
+    }
+    // Chargengröße fehlt in den Stammdaten
+    expect(batchesText({ batches: null, batch_max_kg: null }).hint).toBe(
+      'Chargengröße offen'
+    )
+    expect(batchText({ ...dough, batch_max_kg: null })).toBe(
+      'Chargengröße offen'
+    )
+    // Chargengröße da, das Teiggewicht lässt sich nicht rechnen
+    expect(batchesText({ batches: null, batch_max_kg: 40 }).hint).toBe(
+      'Teiggewicht unbekannt'
+    )
+    expect(batchText({ ...dough, batch_max_kg: 40 })).toBe(
+      'Chargen: unbekannt (Teiggewicht unbekannt) – je max. 40 kg'
+    )
   })
 
   it('OpenMasterDataNote: leer = nichts, sonst aufklappbar (44 px)', () => {

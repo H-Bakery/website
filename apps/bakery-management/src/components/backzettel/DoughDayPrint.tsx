@@ -222,7 +222,7 @@ export function printLiters(liters: DoughLiters | null | undefined): {
       text: '–',
       hint:
         liters?.reason === 'kg_per_liter_unknown'
-          ? 'Liter unbekannt (kg je Liter fehlt)'
+          ? 'Liter unbekannt (kg je Liter offen)'
           : liters?.reason === 'dough_incomplete'
           ? 'Liter unbekannt (Teig unvollständig)'
           : 'Liter unbekannt',

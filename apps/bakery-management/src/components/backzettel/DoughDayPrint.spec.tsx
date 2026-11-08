@@ -316,7 +316,7 @@ describe('Zahlen im Druck', () => {
         rounded: null,
         reason: 'kg_per_liter_unknown',
       })
-    ).toEqual({ text: '–', hint: 'Liter unbekannt (kg je Liter fehlt)' })
+    ).toEqual({ text: '–', hint: 'Liter unbekannt (kg je Liter offen)' })
     expect(
       printLiters({ exact: 6.47, rounded: null, reason: 'rounding_unknown' })
     ).toEqual({ text: '6,47 L', hint: 'Rundung offen' })

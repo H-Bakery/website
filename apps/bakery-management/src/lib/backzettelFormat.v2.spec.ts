@@ -57,7 +57,7 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
     expect(litersText(null)).toBe('unbekannt')
     expect(
       litersHint({ exact: null, rounded: null, reason: 'kg_per_liter_unknown' })
-    ).toBe('Liter: unbekannt (kg je Liter fehlt)')
+    ).toBe('Liter: unbekannt (kg je Liter offen)')
     expect(
       litersHint({ exact: null, rounded: null, reason: 'dough_incomplete' })
     ).toMatch(/Teig unvollständig/)
@@ -434,7 +434,7 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
         },
         liters: { exact: null, rounded: null, reason: 'kg_per_liter_unknown' },
       })
-    ).toContain('Liter unbekannt (kg je Liter fehlt)')
+    ).toContain('Liter unbekannt (kg je Liter offen)')
   })
 
   it('große Literzahl ohne Zusatz - „Rundung offen“ steht klein darunter', () => {

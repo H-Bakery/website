@@ -257,9 +257,12 @@ erweitertes `GET /api/backzettel/config`.
   Abschnitte knapp in zwei Spalten (Basis/Saison/Vorb./CAP stehen nur als Text dabei, wenn sie etwas
   sagen), Nachträge (nie in den Mengen), „Hinweise", „Offen: …" (offene Stammdaten und fehlende
   Teig-Angaben, je einmal) und vier Notizzeilen. **Unbekanntes bleibt unbekannt:** Liter ohne
-  `kg_per_liter` sind „–" mit Grund („Liter unbekannt (kg je Liter fehlt)"), ohne Rundung stehen die
+  `kg_per_liter` sind „–" mit Grund („Liter unbekannt (kg je Liter offen)"), ohne Rundung stehen die
   genauen Liter mit „Rundung offen", kg mit fehlendem Teil „≥ n kg", ganz unbekannt „– kg"; die
-  Seite summiert nichts (`printLiters`, `printKg`).
+  Seite summiert nichts (`printLiters`, `printKg`). **Wörter überall gleich** (Leiste, Karten,
+  Tablet, Druck): eine Stammdaten-Angabe, die fehlt, ist „offen" („Chargengröße offen", „kg je
+  Liter offen"); was sich daraus nicht rechnen lässt, ist „unbekannt" („Chargen: unbekannt
+  (Teiggewicht unbekannt)").
   **Dichte:** `src/lib/dayPrintLayout.ts` schätzt die Höhe je Block in mm (wie `notfallLayout`) und
   wählt die erste von fünf Stufen (10 pt … 7 pt, `DAY_PRINT_STEPS`), die auf 268 mm passt (A4, Rand
   10 mm). Passt auch die dichteste nicht, werden zuerst die Notizzeilen gekürzt (bis keine,

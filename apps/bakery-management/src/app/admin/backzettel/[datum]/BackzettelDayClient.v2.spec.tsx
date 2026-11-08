@@ -143,7 +143,7 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
       '≥ 3 kg'
     )
     expect(flit.getByTestId('machine-hints-test-flit-teig')).toHaveTextContent(
-      'Liter: unbekannt (Teig unvollständig – ein Gewicht fehlt)'
+      'Liter: unbekannt (Teig unvollständig – ein Gewicht offen)'
     )
     expect(flit.getByText('Chargen: unbekannt')).toBeInTheDocument()
     expect(screen.getByTestId('machine-test-flit-teig')).toHaveAttribute(

@@ -57,12 +57,14 @@ function Figure({ label, value }: { label: string; value: string }) {
 
 /**
  * Chargen-Text; ohne Chargengröße oder Teiggewicht kein geschätzter Wert -
- * und es steht da, welche der beiden Zahlen fehlt.
+ * und es steht da, welche der beiden Zahlen fehlt. Dieselben Wörter wie die
+ * Maschinen-Leiste (`batchesText`): Stammdaten sind „offen“, was sich daraus
+ * nicht rechnen lässt, „unbekannt“.
  */
 export function batchText(dough: HefeteigDough): string {
-  if (!dough.batch_max_kg) return 'Chargengröße nicht festgelegt'
+  if (!dough.batch_max_kg) return 'Chargengröße offen'
   if (dough.batches === null) {
-    return `Chargen: unbekannt (Teiggewicht offen) – je max. ${formatNumber(
+    return `Chargen: unbekannt (Teiggewicht unbekannt) – je max. ${formatNumber(
       dough.batch_max_kg
     )} kg`
   }

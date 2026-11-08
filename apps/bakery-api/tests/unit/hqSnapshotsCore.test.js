@@ -831,7 +831,7 @@ describe('backzettelSnapshot schema 2 (Backzettel v2)', () => {
 
     const satMd = core.backzettelMarkdown(sat)
     expect(satMd).toContain(
-      '| Testflit | 6,2 kg | unbekannt (kg je Liter fehlt) | unbekannt |'
+      '| Testflit | 6,2 kg | unbekannt (kg je Liter offen) | unbekannt |'
     )
     expect(satMd).toContain(
       '### Nussfüllung: Menge unbekannt (Füllmenge je Stück fehlt)'

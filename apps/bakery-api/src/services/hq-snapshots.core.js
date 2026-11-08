@@ -550,7 +550,7 @@ function litersText(l) {
   if (l.rounded !== null) return `${deNumber(l.rounded)} L`
   if (l.exact !== null) return `${deNumber(l.exact)} L (Rundung offen)`
   const why = {
-    kg_per_liter_unknown: 'kg je Liter fehlt',
+    kg_per_liter_unknown: 'kg je Liter offen',
     dough_incomplete: 'Teig unvollständig',
   }[l.reason]
   return why ? `unbekannt (${why})` : 'unbekannt'

@@ -793,9 +793,9 @@ export function litersHint(
   if (!liters) return 'Liter: unbekannt'
   switch (liters.reason) {
     case 'kg_per_liter_unknown':
-      return 'Liter: unbekannt (kg je Liter fehlt)'
+      return 'Liter: unbekannt (kg je Liter offen)'
     case 'dough_incomplete':
-      return 'Liter: unbekannt (Teig unvollständig – ein Gewicht fehlt)'
+      return 'Liter: unbekannt (Teig unvollständig – ein Gewicht offen)'
     case 'rounding_unknown':
       return 'Rundung offen – angezeigt sind die genauen Liter'
     default:
@@ -1075,7 +1075,7 @@ export function deltaDoughLines(
     ]
     // Liter: gerundet, sonst die genauen mit „Rundung offen“ (Review Z10
     // Runde 2 - die Maschinenleiste darüber zeigt sie auch); „unbekannt“ nur,
-    // wenn kg je Liter fehlt oder der Teig unvollständig ist.
+    // wenn kg je Liter offen oder der Teig unvollständig ist.
     const liters = m.liters
     const exactOnly = liters?.rounded == null && liters?.exact != null
     const value = (l: DoughLiters | null | undefined) =>
@@ -1085,7 +1085,7 @@ export function deltaDoughLines(
     if (after === null) {
       parts.push(
         liters?.reason === 'kg_per_liter_unknown'
-          ? 'Liter unbekannt (kg je Liter fehlt)'
+          ? 'Liter unbekannt (kg je Liter offen)'
           : liters?.reason === 'dough_incomplete'
           ? 'Liter unbekannt (Teig unvollständig)'
           : 'Liter unbekannt'
