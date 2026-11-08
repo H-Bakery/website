@@ -107,10 +107,15 @@ type DialogState =
     }
   | null
 
-interface AddMenu {
+/** Ein Punkt im Menü einer Zelle: öffnet einen Dialog. */
+interface CellAction {
+  label: string
+  dialog: NonNullable<DialogState>
+}
+
+interface CellMenu {
   anchor: HTMLElement
-  employee: Employee
-  date: string
+  actions: CellAction[]
 }
 
 interface Notice {
@@ -121,6 +126,56 @@ interface Notice {
 /** Schichten nur im Verkauf und nur für aktive Mitarbeiter (die API prüft). */
 function canHaveShifts(employee: Employee): boolean {
   return employee.area === 'verkauf' && employee.active
+}
+
+/** Neu anlegen in einer Zelle: Schicht (nur Verkauf) und Abwesenheit. */
+function addActions(employee: Employee, date: string): CellAction[] {
+  const absence: CellAction = {
+    label: 'Abwesenheit eintragen',
+    dialog: { kind: 'absence', employee, date, absence: null },
+  }
+  return canHaveShifts(employee)
+    ? [
+        {
+          label: 'Schicht anlegen',
+          dialog: { kind: 'shift', employee, date, shift: null },
+        },
+        absence,
+      ]
+    : [absence]
+}
+
+/**
+ * Was eine Tageszelle des Monats anbietet - dieselben Dialoge wie die Woche:
+ * jeden Eintrag bearbeiten, dazu Schicht anlegen (Verkauf) und, solange an
+ * dem Tag keine Abwesenheit steht, Abwesenheit eintragen.
+ */
+function cellActions(
+  employee: Employee,
+  date: string,
+  entries: CellEntries | undefined
+): CellAction[] {
+  const absences = entries?.absences ?? []
+  const shifts = entries?.shifts ?? []
+  return [
+    ...absences.map(
+      (absence): CellAction => ({
+        label: `${ABSENCE_TYPE_LABELS[absence.type]} (${
+          ABSENCE_STATUS_LABELS[absence.status]
+        }) ${formatAbsenceRange(absence)} bearbeiten`,
+        dialog: { kind: 'absence', employee, date, absence },
+      })
+    ),
+    ...shifts.map(
+      (shift): CellAction => ({
+        label: `Schicht ${shift.startTime}–${shift.endTime} bearbeiten`,
+        dialog: { kind: 'shift', employee, date, shift },
+      })
+    ),
+    ...addActions(employee, date).filter(
+      (action) => action.dialog.kind === 'shift' || absences.length === 0
+    ),
+  ]
 }
 
 const AREA_FILTERS: AreaFilter[] = ['alle', ...AREAS]
@@ -167,7 +222,7 @@ const SECTION_HINT: Record<CalendarView, string> = {
   woche:
     'Leere Zelle antippen: Schicht oder Abwesenheit anlegen. Eintrag antippen: bearbeiten.',
   monat:
-    'Tag antippen: die Woche öffnet sich, dort wird eingetragen und bearbeitet. Punkt = Schicht.',
+    'Tag einer Person antippen: Schicht oder Abwesenheit anlegen oder bearbeiten. Datum im Kopf antippen: Woche. Punkt = Schicht.',
   jahr: 'Monat antippen: Monatsansicht. Rechts das Urlaubskonto des Jahres.',
 }
 
@@ -233,7 +288,7 @@ export default function DienstplanClient({
     null
   )
   const [templatesOpen, setTemplatesOpen] = React.useState(false)
-  const [addMenu, setAddMenu] = React.useState<AddMenu | null>(null)
+  const [cellMenu, setCellMenu] = React.useState<CellMenu | null>(null)
   const [dialog, setDialog] = React.useState<DialogState>(null)
   const requestRef = React.useRef(0)
 
@@ -404,13 +459,14 @@ export default function DienstplanClient({
     }
   }
 
-  const openAdd = (anchor: HTMLElement, employee: Employee, date: string) => {
-    if (canHaveShifts(employee)) {
-      setAddMenu({ anchor, employee, date })
-    } else {
-      setDialog({ kind: 'absence', employee, date, absence: null })
-    }
+  // Nur eine Möglichkeit: gleich den Dialog, sonst ein Menü an der Zelle.
+  const offer = (anchor: HTMLElement, actions: CellAction[]) => {
+    if (actions.length === 1) setDialog(actions[0].dialog)
+    else if (actions.length > 1) setCellMenu({ anchor, actions })
   }
+
+  const openAdd = (anchor: HTMLElement, employee: Employee, date: string) =>
+    offer(anchor, addActions(employee, date))
 
   const nav = PERIOD_NAV[view]
   const sectionHint =
@@ -589,7 +645,10 @@ export default function DienstplanClient({
             monthStart={start}
             area={area}
             loading={loading}
-            onOpenDay={(date) =>
+            onCell={(anchor, employee, date, entries) =>
+              offer(anchor, cellActions(employee, date, entries))
+            }
+            onOpenWeek={(date) =>
               navigate({ view: 'woche', start: mondayOf(date) })
             }
           />
@@ -614,38 +673,21 @@ export default function DienstplanClient({
       </PageSection>
 
       <Menu
-        anchorEl={addMenu?.anchor ?? null}
-        open={addMenu !== null}
-        onClose={() => setAddMenu(null)}
+        anchorEl={cellMenu?.anchor ?? null}
+        open={cellMenu !== null}
+        onClose={() => setCellMenu(null)}
       >
-        <MenuItem
-          onClick={() => {
-            if (!addMenu) return
-            setDialog({
-              kind: 'shift',
-              employee: addMenu.employee,
-              date: addMenu.date,
-              shift: null,
-            })
-            setAddMenu(null)
-          }}
-        >
-          Schicht anlegen
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            if (!addMenu) return
-            setDialog({
-              kind: 'absence',
-              employee: addMenu.employee,
-              date: addMenu.date,
-              absence: null,
-            })
-            setAddMenu(null)
-          }}
-        >
-          Abwesenheit eintragen
-        </MenuItem>
+        {cellMenu?.actions.map((action) => (
+          <MenuItem
+            key={action.label}
+            onClick={() => {
+              setDialog(action.dialog)
+              setCellMenu(null)
+            }}
+          >
+            {action.label}
+          </MenuItem>
+        ))}
       </Menu>
 
       {templatesOpen && (

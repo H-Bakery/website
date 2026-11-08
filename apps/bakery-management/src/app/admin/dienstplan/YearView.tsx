@@ -276,8 +276,10 @@ function YearMonthCell({
 }
 
 /**
- * Urlaubskonto der Person im Jahr. Ohne erfassten Anspruch steht der Rest
- * als „offen“ da (nie 0); ist das Konto nicht geladen, steht das da.
+ * Urlaubskonto der Person im Jahr, wie die API es rechnet: Rest, genommen,
+ * geplant und - wenn am 31.03. Übertrag übrig blieb - verfallen. Ohne
+ * erfassten Anspruch steht der Rest als „offen“ da (nie 0); ist das Konto
+ * nicht geladen, steht das da.
  */
 function BalanceCell({
   employeeId,
@@ -298,11 +300,13 @@ function BalanceCell({
       main = 'nicht beschäftigt'
     } else {
       main = `Rest ${formatOpenDays(balance.remainingDays)}`
+      // Verfallen nur, wenn ein Übertrag erfasst ist und am 31.03. etwas
+      // übrig blieb - ohne Übertrag ist es nicht „0 verfallen“.
+      const expired = balance.carryoverExpired ?? 0
       detail = [
         `genommen ${formatDays(balance.approvedDays)}`,
-        balance.plannedDays > 0
-          ? `geplant ${formatDays(balance.plannedDays)}`
-          : null,
+        `geplant ${formatDays(balance.plannedDays)}`,
+        expired > 0 ? `verfallen ${formatDays(expired)}` : null,
         balance.status === 'no-config' ? 'Anspruch offen' : null,
       ]
         .filter(Boolean)

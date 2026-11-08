@@ -82,21 +82,30 @@ function touchTableWidth(days: number): number {
  * Monatsansicht (Gantt-artig): Zeilen = Mitarbeitende nach Bereich, Spalten
  * = Tage des Monats. Eine Zelle zeigt die Abwesenheit als Fläche mit Kürzel
  * (geplant gestrichelt) und Schichten als Punkt in der Farbe der Person.
- * Ruhetag und Feiertage sind hinterlegt. Eine Zelle antippen öffnet die
- * Woche dieses Tages - bearbeitet wird dort.
+ * Ruhetag und Feiertage sind hinterlegt. Eine Abwesenheit über mehrere
+ * Tage steht als durchgehender Balken. Eine Zelle antippen öffnet dieselben
+ * Dialoge wie in der Woche (`onCell`: anlegen oder bearbeiten); das Datum
+ * im Kopf antippen öffnet die Woche dieses Tages.
  */
 export default function MonthView({
   calendar,
   monthStart,
   area,
   loading,
-  onOpenDay,
+  onCell,
+  onOpenWeek,
 }: {
   calendar: Calendar
   monthStart: string
   area: AreaFilter
   loading: boolean
-  onOpenDay: (date: string) => void
+  onCell: (
+    anchor: HTMLElement,
+    employee: Employee,
+    date: string,
+    entries: CellEntries | undefined
+  ) => void
+  onOpenWeek: (date: string) => void
 }) {
   const dates = monthDates(monthStart)
   const days = new Map(calendar.days.map((d) => [d.date, d]))
@@ -155,6 +164,7 @@ export default function MonthView({
                   date={date}
                   day={days.get(date)}
                   today={date === calendar.today}
+                  onOpenWeek={onOpenWeek}
                 />
               ))}
             </TableRow>
@@ -193,7 +203,9 @@ export default function MonthView({
                           date={date}
                           day={days.get(date)}
                           entries={cells.get(cellKey(employee.id, date))}
-                          onOpenDay={onOpenDay}
+                          first={date === dates[0]}
+                          last={date === dates[dates.length - 1]}
+                          onCell={onCell}
                         />
                       ))}
                     </TableRow>
@@ -213,46 +225,63 @@ function MonthDayHeader({
   date,
   day,
   today,
+  onOpenWeek,
 }: {
   date: string
   day: CalendarDay | undefined
   today: boolean
+  onOpenWeek: (date: string) => void
 }) {
   const closedName = day ? closedDayLabel(day) : null
   const weekday = WEEKDAY_LETTERS[isoWeekday(date)]
+  const note = closedName ?? day?.halfDayName ?? null
   return (
     <TableCell
       data-testid={`day-${date}`}
-      title={closedName ?? day?.halfDayName ?? undefined}
+      title={note ?? undefined}
       align="center"
       sx={{
-        px: 0,
+        p: 0,
         verticalAlign: 'top',
         bgcolor: day?.closed ? 'action.selected' : undefined,
         borderBottom: today ? 3 : 1,
         borderBottomColor: today ? 'primary.main' : 'divider',
       }}
     >
-      <Typography
-        variant="caption"
-        sx={{ display: 'block', fontWeight: 600 }}
-        color={today ? 'primary' : undefined}
+      <ButtonBase
+        onClick={() => onOpenWeek(date)}
+        aria-label={`${formatDateWithWeekday(date)}${
+          note ? ` (${note})` : ''
+        }: Woche öffnen`}
+        sx={{
+          width: '100%',
+          py: 0.5,
+          display: 'block',
+          [TOUCH_MEDIA]: { minHeight: 44 },
+          '&:hover, &:focus-visible': { bgcolor: 'action.hover' },
+        }}
       >
-        {Number(date.slice(8, 10))}
-      </Typography>
-      <Typography variant="caption" color="text.secondary" display="block">
-        {weekday}
-      </Typography>
-      {closedName && (
-        // Sichtbar nur ein Zeichen (die Spalte ist schmal), der Name steht
-        // im Tooltip (title) und für Screenreader ausgeschrieben.
-        <Typography variant="caption" display="block">
-          <span aria-hidden>×</span>
-          <Box component="span" sx={visuallyHidden}>
-            {closedName}
-          </Box>
+        <Typography
+          variant="caption"
+          sx={{ display: 'block', fontWeight: 600 }}
+          color={today ? 'primary' : undefined}
+        >
+          {Number(date.slice(8, 10))}
         </Typography>
-      )}
+        <Typography variant="caption" color="text.secondary" display="block">
+          {weekday}
+        </Typography>
+        {closedName && (
+          // Sichtbar nur ein Zeichen (die Spalte ist schmal), der Name steht
+          // im Tooltip (title) und für Screenreader ausgeschrieben.
+          <Typography variant="caption" display="block">
+            <span aria-hidden>×</span>
+            <Box component="span" sx={visuallyHidden}>
+              {closedName}
+            </Box>
+          </Typography>
+        )}
+      </ButtonBase>
     </TableCell>
   )
 }
@@ -262,15 +291,28 @@ function MonthCell({
   date,
   day,
   entries,
-  onOpenDay,
+  first,
+  last,
+  onCell,
 }: {
   employee: Employee
   date: string
   day: CalendarDay | undefined
   entries: CellEntries | undefined
-  onOpenDay: (date: string) => void
+  first: boolean
+  last: boolean
+  onCell: (
+    anchor: HTMLElement,
+    employee: Employee,
+    date: string,
+    entries: CellEntries | undefined
+  ) => void
 }) {
   const absence = entries?.absences[0] ?? null
+  // Balken über mehrere Tage: zur Nachbarzelle hin ohne Rundung, Rand und
+  // Polster, damit er durchgeht (am Monatsrand endet er sichtbar).
+  const joinLeft = absence !== null && !first && absence.startDate < date
+  const joinRight = absence !== null && !last && absence.endDate > date
   const shifts = entries?.shifts ?? []
   const color = absence ? ABSENCE_COLORS[absence.type] : null
   const planned = absence?.status === 'geplant'
@@ -286,21 +328,36 @@ function MonthCell({
   const closedName = day ? closedDayLabel(day) : null
   const label = `${employee.displayName}, ${formatDateWithWeekday(date)}: ${
     parts.length > 0 ? parts.join(', ') : closedName ?? 'nichts eingetragen'
-  } - Woche öffnen`
+  } - ${parts.length > 0 ? 'bearbeiten' : 'anlegen'}`
   return (
     <TableCell
       data-testid={`cell-${employee.id}-${date}`}
       sx={{
         p: `${DAY_CELL_PADDING}px`,
+        pl: joinLeft ? 0 : undefined,
+        pr: joinRight ? 0 : undefined,
         verticalAlign: 'middle',
         bgcolor: day?.closed ? 'action.hover' : undefined,
+        // `!important` schlägt die Spaltenlinie der Tabelle (`& td`)
+        borderRightWidth: joinRight ? '0 !important' : undefined,
       }}
     >
       <ButtonBase
         aria-label={label}
         title={parts.join(', ') || undefined}
-        onClick={() => onOpenDay(date)}
+        onClick={(event) =>
+          onCell(event.currentTarget, employee, date, entries)
+        }
         data-status={absence?.status}
+        data-join={
+          joinLeft && joinRight
+            ? 'both'
+            : joinLeft
+            ? 'left'
+            : joinRight
+            ? 'right'
+            : undefined
+        }
         sx={{
           width: '100%',
           minHeight: 32,
@@ -309,10 +366,20 @@ function MonthCell({
           flexDirection: 'column',
           gap: 0.25,
           borderRadius: 0.5,
+          ...(joinLeft && {
+            borderTopLeftRadius: 0,
+            borderBottomLeftRadius: 0,
+          }),
+          ...(joinRight && {
+            borderTopRightRadius: 0,
+            borderBottomRightRadius: 0,
+          }),
           typography: 'caption',
           fontWeight: 600,
           lineHeight: 1,
           border: absence ? 2 : 0,
+          borderLeftWidth: joinLeft ? 0 : undefined,
+          borderRightWidth: joinRight ? 0 : undefined,
           borderStyle: planned ? 'dashed' : 'solid',
           borderColor: color ? `${color}.main` : 'transparent',
           bgcolor: color && !planned ? `${color}.main` : 'transparent',

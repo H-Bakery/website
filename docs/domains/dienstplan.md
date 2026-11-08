@@ -49,11 +49,22 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   „Früh 6-12“) füllen die Zeiten vor; sie bleiben je Schicht änderbar. Gepflegt werden die
   Vorlagen über „Schichtvorlagen“ im Kopf des Kalenders (anlegen, ändern, löschen); ändern oder
   löschen ändert keine bestehenden Schichten. Die Migration legt keine Vorlagen an.
+- **Abwesenheitsarten** `urlaub`, `frei`, `abwesend`; Status `geplant` oder `genehmigt` (später:
+  Urlaubsantrag der Mitarbeitenden). Ganze Tage, ein einzelner Tag auch als halber Tag.
 - **Abwesenheiten** liegen ganz in der Beschäftigung und überschneiden sich nicht. Schicht an einem
   Abwesenheitstag oder an einem geschlossenen Tag ist **ein Hinweis, kein Fehler**.
+- **Feiertage Saarland sind geschlossen** (Neujahr, Karfreitag, Ostermontag, 1. Mai, Christi
+  Himmelfahrt, Pfingstmontag, Fronleichnam, Mariä Himmelfahrt, 3. Oktober, Allerheiligen, beide
+  Weihnachtsfeiertage): sie zählen nie als Urlaubstag und stehen im Kalender wie der Ruhetag als
+  geschlossen. 24.12./31.12. zählen nur dann 0,5, wenn sie Öffnungstag sind.
 - **Mitarbeiter werden deaktiviert, nie gelöscht.** Der Anzeigename ist maßgeblich; der Login ist
   nur ein optionaler Verweis. Konnten die Logins nicht geladen werden, ist das Feld gesperrt und
   sagt es - die Verknüpfung bleibt dann unverändert.
+- **Audit:** jede Änderung steht im `AuditLog`, aber **ohne Notizen und Anzeigenamen** (nur
+  „geändert“).
+- **Datenbank:** Migration `20270301000000-dienstplan.js` (sortiert nach den Backzettel-v2-
+  Migrationen von `main`, daher nicht das im Task genannte `20270107…`), Tabellen `employees`,
+  `vacation_entitlements`, `shift_templates`, `shifts`, `absences` in der SQLite der Box.
 
 ## Oberfläche
 
@@ -67,12 +78,19 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
     Ruhetag und Feiertag sind hinterlegt und benannt; offene Tage zeigen „Verkauf besetzt: n“, eine
     Woche ganz ohne Schichten „nichts geplant“ statt 0. Leere Zelle antippen → Schicht oder
     Abwesenheit anlegen; Eintrag antippen → bearbeiten oder löschen.
-  - **Monat:** Tage als schmale Spalten. Abwesenheit als Fläche mit Kürzel (U/F/A, geplant
-    gestrichelt), Schicht als Punkt in der Farbe der Person, geschlossene Tage hinterlegt (Name im
-    Tooltip). Tag antippen → die Woche dieses Tages; bearbeitet wird dort.
+  - **Monat:** dieselbe Zeilenlogik, Tage als schmale Spalten (Gantt-artig). Abwesenheit als
+    durchgehender Balken mit Kürzel (U/F/A, geplant gestrichelt), Schicht als Punkt in der Farbe
+    der Person, geschlossene Tage hinterlegt (Name im Tooltip). Ein Tag einer Person öffnet
+    **dieselben Dialoge wie die Woche**: leerer Tag → Schicht oder Abwesenheit anlegen (außerhalb
+    des Verkaufs gleich die Abwesenheit); Tag mit Einträgen → Menü mit jedem Eintrag zum
+    Bearbeiten, dazu „Schicht anlegen“ (Verkauf) und „Abwesenheit eintragen“ (nur ohne Abwesenheit
+    an dem Tag). Gibt es nur eine Möglichkeit, öffnet gleich der Dialog. Das Datum im Kopf öffnet
+    die Woche dieses Tages.
   - **Jahr:** je Person zwölf Monate mit den Abwesenheiten als Balken an ihrer Stelle im Monat,
-    daneben das Urlaubskonto des Jahres (Rest, genommen, geplant; ohne Anspruch „offen“). Monat
-    antippen → Monatsansicht. Konnte das Konto nicht geladen werden, steht „nicht geladen“ da.
+    daneben das Urlaubskonto des Jahres aus `GET /api/dienstplan/balance?year` (Rest, genommen,
+    geplant, „verfallen“ wenn am 31.03. Übertrag übrig blieb; ohne Anspruch Rest „offen“ und
+    „Anspruch offen“). Monat antippen → Monatsansicht. Konnte das Konto nicht geladen werden, steht
+    „nicht geladen“ da.
   - Farbe ist nie der einzige Träger: Kürzel, Text und eine Legende stehen dabei.
 - **`/admin/dienstplan/mitarbeiter` - Liste** (aktiv / ausgeschieden / alle), Mitarbeiter anlegen.
 - **`/admin/dienstplan/mitarbeiter/[id]` - Profil:** Stammdaten, Urlaubskonto des Jahres
@@ -82,6 +100,10 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
   klickbaren Flächen (Einträge der Woche, Tageszellen im Monat, Monatsköpfe im Jahr, Farbfelder,
   Vorlagen-Chips im Schichtdialog) sind auf Touch-Geräten mindestens 44 px groß (`TOUCH_MEDIA`).
   Leere Zellen der Woche zeigen dort das „+“ immer (gedämpft) - Touch kennt kein Hover.
+- **Daten nur aus der API:** Woche, Monat und Jahr laden `GET /api/dienstplan?from&to`
+  (Mitarbeiter, Schichten, Abwesenheiten, `days[]` mit Feiertagsname, Ruhetag, Gewicht und
+  „Verkauf besetzt“), das Jahr zusätzlich das Konto. Kein FullCalendar (`resource-timegrid` ist
+  ein kostenpflichtiges Plugin) und kein `date-fns`: eigene MUI-Tabellen auf dem Layout-Kit.
 
 ## Tests
 

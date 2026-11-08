@@ -937,7 +937,15 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
         remainingDays: null,
         remainingAfterPlannedDays: null,
       }),
-      balance(4, { approvedDays: 0, plannedDays: 3, remainingDays: 24 }),
+      balance(4, {
+        approvedDays: 0,
+        plannedDays: 3,
+        carryoverDays: 4,
+        carryoverUsed: 1,
+        carryoverExpired: 3,
+        carryoverOpen: 0,
+        remainingDays: 24,
+      }),
     ])
   })
 
@@ -963,8 +971,15 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     expect(urlaub).toHaveAttribute('data-status', 'geplant')
     expect(urlaub).toHaveStyle({ borderStyle: 'dashed' })
     expect(urlaub).toHaveAccessibleName(
-      'Max Muster, Do, 12.11.2026: Urlaub (geplant) - Woche öffnen'
+      'Max Muster, Do, 12.11.2026: Urlaub (geplant) - bearbeiten'
     )
+    // Urlaub 11.-13.11. als ein durchgehender Balken.
+    const bar = (date: string) =>
+      within(screen.getByTestId(`cell-4-${date}`)).getByRole('button')
+    expect(bar('2026-11-11')).toHaveAttribute('data-join', 'right')
+    expect(urlaub).toHaveAttribute('data-join', 'both')
+    expect(bar('2026-11-13')).toHaveAttribute('data-join', 'left')
+    expect(bar('2026-11-14')).not.toHaveAttribute('data-join')
     expect(
       within(screen.getByTestId('cell-5-2026-11-14')).getByRole('button')
     ).toHaveTextContent('F')
@@ -987,13 +1002,116 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     )
     expect(nav.querySelector('input')).toBeNull()
 
-    // Tag antippen → Woche dieses Tages (dort wird bearbeitet).
-    fireEvent.click(urlaub)
+    // Datum im Kopf antippen → Woche dieses Tages.
+    const header = within(screen.getByTestId('day-2026-11-09')).getByRole(
+      'button'
+    )
+    expect(header).toHaveAccessibleName(
+      'Mo, 09.11.2026 (Ruhetag): Woche öffnen'
+    )
+    expect(touchStyle(header)).toMatchObject({ 'min-height': '44px' })
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Do, 12.11.2026: Woche öffnen' })
+    )
     expect(mockReplace).toHaveBeenLastCalledWith(
       '/admin/dienstplan?woche=2026-11-09',
       { scroll: false }
     )
     expect(await screen.findByTestId('week-title')).toHaveTextContent('KW 46')
+  })
+
+  it('Monat: Zelle öffnet dieselben Dialoge wie die Woche', async () => {
+    api.createShift.mockReset().mockResolvedValue({
+      data: { ...SHIFT, id: 22, employeeId: 5, date: '2026-11-17' },
+      warnings: [],
+    })
+    renderCalendar({ view: 'monat', month: '2026-11' })
+    await ready()
+    const cell = (id: number, date: string) =>
+      within(screen.getByTestId(`cell-${id}-${date}`)).getByRole('button')
+
+    // Abwesenheit außerhalb des Verkaufs: gleich der Dialog zum Bearbeiten.
+    fireEvent.click(cell(4, '2026-11-12'))
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      dialog().getByText('Abwesenheit bearbeiten – Max Muster', {
+        exact: false,
+      })
+    ).toBeInTheDocument()
+    expect(dialog().getByLabelText(/^Von/)).toHaveValue('2026-11-11')
+    fireEvent.click(dialog().getByRole('button', { name: 'Abbrechen' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+
+    // Leerer Tag außerhalb des Verkaufs: gleich die Abwesenheit.
+    fireEvent.click(cell(4, '2026-11-17'))
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      dialog().getByText('Abwesenheit eintragen – Max Muster', {
+        exact: false,
+      })
+    ).toBeInTheDocument()
+    expect(dialog().getByLabelText(/^Von/)).toHaveValue('2026-11-17')
+    fireEvent.click(dialog().getByRole('button', { name: 'Abbrechen' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+
+    // Tag mit Schicht im Verkauf: Menü mit Bearbeiten und Anlegen.
+    fireEvent.click(cell(3, '2026-11-10'))
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent)
+    ).toEqual([
+      'Schicht 06:00–12:00 bearbeiten',
+      'Schicht anlegen',
+      'Abwesenheit eintragen',
+    ])
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Schicht 06:00–12:00 bearbeiten' })
+    )
+    expect(
+      dialog().getByText('Schicht bearbeiten – Erika Beispiel', {
+        exact: false,
+      })
+    ).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'Abbrechen' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+
+    // An einem Tag mit Abwesenheit keine zweite Abwesenheit anbieten.
+    fireEvent.click(cell(5, '2026-11-14'))
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent)
+    ).toEqual(['Frei (genehmigt) 14.11.2026 bearbeiten', 'Schicht anlegen'])
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' })
+    await waitFor(() =>
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+    )
+
+    // Leerer Tag im Verkauf: Schicht anlegen, danach lädt der Monat neu.
+    const calls = api.fetchCalendar.mock.calls.length
+    fireEvent.click(cell(5, '2026-11-17'))
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Schicht anlegen' }))
+    const d = dialog()
+    expect(
+      d.getByText('Schicht anlegen – Lena Neu', { exact: false })
+    ).toBeInTheDocument()
+    fireEvent.click(d.getByRole('button', { name: 'Früh 06:00–12:00' }))
+    fireEvent.click(d.getByRole('button', { name: 'Anlegen' }))
+    await waitFor(() =>
+      expect(api.createShift).toHaveBeenCalledWith(
+        expect.objectContaining({ employeeId: 5, date: '2026-11-17' })
+      )
+    )
+    expect(await screen.findByText('Schicht angelegt.')).toBeInTheDocument()
+    expect(api.fetchCalendar).toHaveBeenCalledTimes(calls + 1)
+    expect(api.fetchCalendar).toHaveBeenLastCalledWith({
+      from: '2026-11-01',
+      to: '2026-11-30',
+    })
+    expect(screen.getByTestId('month-title')).toHaveTextContent('November 2026')
   })
 
   it('Monat blättert monatsweise; Ansichtswechsel nimmt den Zeitraum mit', async () => {
@@ -1071,6 +1189,11 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     expect(await screen.findByText('Rest 13')).toBeInTheDocument()
     expect(screen.getByTestId('balance-3')).toHaveTextContent(
       'genommen 11 · geplant 3'
+    )
+    expect(screen.getByTestId('balance-3')).not.toHaveTextContent('verfallen')
+    // Übertrag am 31.03. nicht verbraucht: steht als verfallen da.
+    expect(screen.getByTestId('balance-4')).toHaveTextContent(
+      'Rest 24genommen 0 · geplant 3 · verfallen 3'
     )
     // Ohne Anspruch: offen, nie 0.
     expect(screen.getByTestId('balance-5')).toHaveTextContent('Rest offen')
