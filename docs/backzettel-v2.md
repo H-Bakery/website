@@ -404,7 +404,8 @@ interface DoughSummary {
     itemId
     name
     bakeDate
-    kg: number | null
+    kg: number | null // from_dough: the share of the target dough
+    loavesKg?: number | null // from_dough only: loaves × dough_g (the bread row's own dough)
   }[]
   extras: { name; kg: number | null; itemId }[] // Körner etc., listed, not dough
   combinedWith: string | null
@@ -426,9 +427,9 @@ interface BreadRow {
   doughId
   unit
   cells: Record<sizeId, { key; total } | null>
-  kg
+  kg // dough of the bread itself: loaves × dough_g, also for from_dough items (§4.1)
   complete
-  note
+  note // from_dough: "… · davon x kg <dough>" once the share is known
 }
 interface BruchGroup {
   key
@@ -439,8 +440,11 @@ interface BruchGroup {
   piecesPerBruch: number | null
   brueche: number | null
   kg: number | null
-  spare: number | null
-  split: { key; itemId; name; total; doughPieces }[]
+  spare: number | null // free dough pieces; null while a member's base is open
+  spareProducts: number | null // the same in products ("+n frei"), null if per_product differs
+  bruecheKnown: number | null // from the known members only ("≥ n Bruch")
+  kgKnown: number | null
+  split: { key; itemId; name; total /* null = base open */; doughPieces }[]
 }
 interface SingleRow {
   key

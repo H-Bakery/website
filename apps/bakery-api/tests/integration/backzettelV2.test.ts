@@ -490,6 +490,18 @@ describe('confirm, deltas by dough day, bake list', () => {
     // 44 → 47 Doppel = 94 pieces: still 5 Brüche (spare pieces), so the
     // machine strip does not change; Hefeteig and fillings neither.
     expect(sat.deltaMachine).toEqual([])
+    // … and the Bruch group says so: +6 pieces fit into the free ones.
+    expect(sat.deltaBruch).toEqual([
+      expect.objectContaining({
+        key: `${TUE}|test-doppel`,
+        piecesBefore: 88,
+        pieces: 94,
+        piecesDelta: 6,
+        bruecheBefore: 5,
+        brueche: 5,
+        bruecheDelta: 0,
+      }),
+    ])
     expect(sat.deltaExtras).toBeNull()
     const tueDay = (await as('backstube').get(`/api/backzettel/${TUE}`)).body
       .data
@@ -708,7 +720,7 @@ describe('transition: a Saturday confirmed before Z10', () => {
   const SAT3 = '2026-12-12'
   const TUE3 = '2026-12-15'
 
-  it('the bake list says which rolls are on no sheet, instead of dropping them', async () => {
+  it('Tuesday’s own draft takes the rolls no sheet holds, and says why', async () => {
     await BackzettelDay.create({
       date: SAT3,
       status: 'confirmed',
@@ -721,19 +733,224 @@ describe('transition: a Saturday confirmed before Z10', () => {
         warnings: [],
       },
     })
-    const list = (await as('verkauf').get(`/api/backzettel/${TUE3}/bake-list`))
-      .body.data
-    const warning = list.warnings.find(
-      (w: any) => w.code === 'not_on_confirmed_sheet'
-    )
-    expect(warning).toMatchObject({
+    // A correction on Tuesday's sheet for its rolls is accepted there.
+    const corr = await as('backstube')
+      .put(`/api/backzettel/${TUE3}/lines/test-doppel/correction`)
+      .send({ correction: 3, reason: 'Testgrund' })
+    expect(corr.status).toBe(200)
+    const tue = (await as('backstube').get(`/api/backzettel/${TUE3}`)).body.data
+    // On Tuesday's sheet, made that day; the stored correction counts.
+    expect(line(tue, 'test-doppel|')).toMatchObject({
+      bakeDate: TUE3,
+      doughDate: TUE3,
+      lead: 0,
+      adopted: true,
+      correction: 3,
+    })
+    expect(
+      tue.plan.bakeDates.find((b: any) => b.date === TUE3).itemIds
+    ).toEqual(expect.arrayContaining(['test-doppel', 'test-stern']))
+    const adopted = tue.warnings.find((w: any) => w.code === 'adopted_orphans')
+    expect(adopted).toMatchObject({
       doughDate: SAT3,
       items: expect.arrayContaining(['test-doppel', 'test-stern']),
     })
-    expect(warning.message).toMatch(
-      /Testdoppel.*stehen auf keinem Zettel: der Zettel vom Samstag, 12\.12\. wurde vor der Umstellung freigegeben/
+    expect(adopted.message).toMatch(
+      /Testdoppel.*der Zettel vom Samstag, 12\.12\. schon freigegeben ist/
     )
-    // Tuesday's own lines are there.
+    // The old Saturday says where they went.
+    const sat = (await as('backstube').get(`/api/backzettel/${SAT3}`)).body.data
+    const moved = sat.warnings.find(
+      (w: any) => w.code === 'moved_to_bake_day' && w.bakeDate === TUE3
+    )
+    expect(moved.message).toMatch(
+      /stehen nicht auf diesem Zettel .* sondern auf dem Zettel vom Dienstag, 15\.12\./
+    )
+    // The bake list has them from Tuesday's draft - nothing lost.
+    const list = (await as('verkauf').get(`/api/backzettel/${TUE3}/bake-list`))
+      .body.data
+    expect(list.warnings.map((w: any) => w.code)).not.toContain(
+      'not_on_confirmed_sheet'
+    )
     expect(list.sources.map((s: any) => s.doughDate)).toEqual([TUE3])
+    expect(
+      list.sections
+        .flatMap((s: any) => s.lines)
+        .find((l: any) => l.itemId === 'test-doppel')
+    ).toMatchObject({ doughDate: TUE3, correction: 3 })
+  })
+
+  it('confirming Tuesday freezes them into its plan', async () => {
+    const res = await as('backstube').post(`/api/backzettel/${TUE3}/confirm`)
+    expect(res.status).toBe(200)
+    expect(
+      res.body.data.plan.bakeDates.find((b: any) => b.date === TUE3).itemIds
+    ).toEqual(expect.arrayContaining(['test-doppel', 'test-stern']))
+    expect(
+      await BackzettelLine.count({
+        where: { date: TUE3, itemId: 'test-doppel' },
+      })
+    ).toBe(1)
+    const list = (await as('verkauf').get(`/api/backzettel/${TUE3}/bake-list`))
+      .body.data
+    expect(list.warnings.map((w: any) => w.code)).not.toContain(
+      'not_on_confirmed_sheet'
+    )
+  })
+
+  it('if Tuesday was confirmed without them too, both the sheet and the bake list say so', async () => {
+    const SAT4 = '2026-12-19'
+    const TUE4 = '2026-12-22'
+    for (const date of [SAT4, TUE4]) {
+      await BackzettelDay.create({
+        date,
+        status: 'confirmed',
+        confirmedAt: new Date('2026-11-20T08:00:00Z'),
+        preorderSnapshot: [],
+        computedSnapshot: {
+          hefeteig: null,
+          fillings: [],
+          prep: [],
+          warnings: [],
+          // v2 sheets that hold nothing of Tuesday's rolls
+          plan: {
+            version: 2,
+            doughDate: date,
+            bakeDates: [{ date, itemIds: [] }],
+            knownItems: fixture.configV2().items.map((i: any) => i.id),
+          },
+        },
+      })
+    }
+    const list = (await as('verkauf').get(`/api/backzettel/${TUE4}/bake-list`))
+      .body.data
+    const warning = list.warnings.find(
+      (w: any) => w.code === 'not_on_confirmed_sheet' && w.doughDate === SAT4
+    )
+    expect(warning).toMatchObject({
+      doughDate: SAT4,
+      items: expect.arrayContaining(['test-doppel', 'test-stern']),
+    })
+    expect(warning.message).toMatch(
+      /Testdoppel.*stehen auf keinem Zettel: der Zettel vom Samstag, 19\.12\. wurde vor der Umstellung freigegeben/
+    )
+    for (const date of [TUE4, SAT4]) {
+      const day = (await as('backstube').get(`/api/backzettel/${date}`)).body
+        .data
+      expect(
+        day.warnings.find(
+          (w: any) =>
+            w.code === 'not_on_confirmed_sheet' &&
+            w.doughDate === SAT4 &&
+            w.bakeDate === TUE4
+        )
+      ).toMatchObject({ items: expect.arrayContaining(['test-doppel']) })
+    }
+  })
+})
+
+describe('transition: a legacy Tuesday reopened after Saturday’s v2 confirm', () => {
+  it('Tuesday’s draft takes its rolls back; nothing is lost', async () => {
+    // TUE2 (legacy) and SAT2 (v2, Tuesday itemIds []) are confirmed above.
+    const reopened = await as('inhaber')
+      .post(`/api/backzettel/${TUE2}/reopen`)
+      .send({ reason: 'Testgrund' })
+    expect(reopened.status).toBe(200)
+    const tue = reopened.body.data
+    expect(line(tue, 'test-doppel|')).toMatchObject({
+      doughDate: TUE2,
+      adopted: true,
+    })
+    expect(tue.warnings.map((w: any) => w.code)).toContain('adopted_orphans')
+    const sat = (await as('backstube').get(`/api/backzettel/${SAT2}`)).body.data
+    expect(
+      sat.warnings.find(
+        (w: any) => w.code === 'moved_to_bake_day' && w.bakeDate === TUE2
+      )
+    ).toBeTruthy()
+    // A new preorder shows live on Tuesday's draft (no delta needed).
+    await apiPreorder(TUE2, [{ productId: 'test-doppel', quantity: 7 }])
+    const after = (await as('backstube').get(`/api/backzettel/${TUE2}`)).body
+      .data
+    expect(line(after, 'test-doppel|').preorders).toBeGreaterThanOrEqual(7)
+    const confirmed = await as('backstube').post(
+      `/api/backzettel/${TUE2}/confirm`
+    )
+    expect(confirmed.status).toBe(200)
+    expect(
+      await BackzettelLine.count({
+        where: { date: TUE2, bakeDate: TUE2, itemId: 'test-doppel' },
+      })
+    ).toBe(1)
+    const svc = createBackzettelService(
+      createBackzettelSource({ hqDir, cacheMs: 0 })
+    )
+    const bake: any = await svc.getBakeLines(TUE2)
+    expect(bake.status).toBe('confirmed')
+    expect(
+      allLines(bake).find((l: any) => l.itemId === 'test-doppel')
+    ).toBeTruthy()
+  })
+})
+
+describe('an item added to hq after a sheet was confirmed', () => {
+  const SAT5 = '2027-01-09'
+  afterAll(() => writeHq(hqDir))
+
+  it('its preorders become Nachträge on that sheet (as in v1)', async () => {
+    const res = await as('backstube').post(`/api/backzettel/${SAT5}/confirm`)
+    expect(res.status).toBe(200)
+    expect(res.body.data.plan.knownItems).toContain('test-doppel')
+    // hq adds a lead-0 item and moves a product onto it
+    const cfg = fixture.configV2()
+    const plunder = cfg.items.find((i: any) => i.id === 'test-plunder')
+    const product = plunder.products[0].id
+    plunder.products = []
+    cfg.items.push({
+      id: 'test-neu',
+      name: 'Testneu',
+      section: plunder.section,
+      unit: 'Stück',
+      products: [{ id: product }],
+      base: {},
+    })
+    fs.writeFileSync(
+      path.join(hqDir, 'config', 'backzettel.yaml'),
+      JSON.stringify(cfg, null, 2)
+    )
+    await apiPreorder(SAT5, [{ productId: product, quantity: 4 }])
+    const rows = await BackzettelDelta.findAll({ where: { date: SAT5 } })
+    expect(rows.map((r) => [r.itemId, Number(r.qty)])).toEqual([
+      ['test-neu', 4],
+    ])
+  })
+})
+
+describe('the bake list without master data', () => {
+  afterAll(() => writeHq(hqDir))
+
+  it('still lists the confirmed sheets’ lines (Sunday from Saturday)', async () => {
+    // SAT2 (2026-12-05) is confirmed above; its Sunday rolls are frozen.
+    const SUN2 = '2026-12-06'
+    fs.writeFileSync(
+      path.join(hqDir, 'config', 'backzettel.yaml'),
+      'version: [kaputt'
+    )
+    const res = await as('backstube').get(`/api/backzettel/${SUN2}/bake-list`)
+    expect(res.status).toBe(200)
+    const list = res.body.data
+    expect(list).toMatchObject({ status: 'ok', configStatus: 'no-config' })
+    expect(list.warnings.map((w: any) => w.code)).toContain('no_config')
+    expect(list.sources.map((s: any) => [s.doughDate, s.status])).toEqual([
+      [SAT2, 'confirmed'],
+    ])
+    const lines = list.sections.flatMap((s: any) => s.lines)
+    expect(lines.length).toBeGreaterThan(0)
+    expect(lines.every((l: any) => l.bakeDate === SUN2)).toBe(true)
+    // A day no confirmed sheet feeds stays no-config.
+    const later = (
+      await as('backstube').get('/api/backzettel/2027-02-03/bake-list')
+    ).body.data
+    expect(later.status).toBe('no-config')
   })
 })

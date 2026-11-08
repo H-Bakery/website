@@ -1194,7 +1194,14 @@ function stripV2(sheet) {
     'variantLabel',
     'bruch',
   ]
-  const DOUGH_FIELDS = ['kg', 'kgKnown', 'complete', 'missing', 'liters']
+  const DOUGH_FIELDS = [
+    'kg',
+    'kgKnown',
+    'complete',
+    'missing',
+    'liters',
+    'piecesComplete',
+  ]
   const s = JSON.parse(JSON.stringify(sheet))
   for (const k of [
     'sheetVersion',
@@ -1480,6 +1487,38 @@ describe('R21: Hefeteig mit Litern (kg ÷ 5, ganze Liter) und Chargen', () => {
       liters: { exact: 1.8, rounded: 2 },
       batches: 2,
     })
+  })
+
+  it('Grundmenge offen: Hefeteig-Karte und Maschinenleiste sagen dasselbe (unvollständig)', () => {
+    const cfg = configV2()
+    cfg.items.find((i) => i.id === 'test-kranz').base[6] = null
+    cfg.doughs.find((d) => d.id === 'test-hefe').batch_max_kg = 5
+    const r = sheetV2(SAT, { config: cfg })
+    const card = r.hefeteig.doughs[0]
+    const machine = r.machine.find((m) => m.id === 'test-hefe')
+    expect(machine).toMatchObject({ kg: null, complete: false, batches: null })
+    expect(card).toMatchObject({
+      kg: machine.kg,
+      kgKnown: machine.kgKnown,
+      complete: false,
+      dough_g: null,
+      batches: null,
+      piecesComplete: false,
+      liters: machine.liters,
+    })
+    expect(card.liters.reason).toBe('dough_incomplete')
+    expect(card.missing.map((m) => m.code)).toContain('base_unset')
+    expect(r.hefeteig.complete).toBe(false)
+  })
+
+  it('Hefeteig-Karte = Teigsumme des Zettels, auch vollständig', () => {
+    const cfg = configV2()
+    cfg.doughs.find((d) => d.id === 'test-hefe').batch_max_kg = 5
+    const r = sheetV2(SAT, { config: cfg })
+    const card = r.hefeteig.doughs[0]
+    const summary = r.doughs.find((d) => d.id === 'test-hefe')
+    for (const f of ['kg', 'kgKnown', 'complete', 'liters', 'batches'])
+      expect(card[f]).toEqual(summary[f])
   })
 
   it('Stückgewicht offen: Teiggewicht unbekannt statt 0, keine Chargen', () => {

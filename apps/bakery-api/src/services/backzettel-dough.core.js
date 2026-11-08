@@ -65,33 +65,47 @@ function roundTo(x, rounding) {
  * @returns {{exact: number|null, rounded: number|null, reason: string|null}}
  */
 function litersFor(dough, kg, rounding) {
-  if (!isNum(kg)) {
-    return { exact: null, rounded: null, reason: 'dough_incomplete' }
+  const raw = rawLiters(dough, kg)
+  if (raw === null) {
+    return {
+      exact: null,
+      rounded: null,
+      reason: !isNum(kg) ? 'dough_incomplete' : 'kg_per_liter_unknown',
+    }
   }
-  const kpl = dough ? dough.kg_per_liter : null
-  if (!isNum(kpl) || kpl <= 0) {
-    return { exact: null, rounded: null, reason: 'kg_per_liter_unknown' }
-  }
-  return litersFromExact(
-    round2(kg / kpl),
+  return litersFromRaw(
+    raw,
     rounding === undefined ? dough.liter_rounding : rounding
   )
 }
 
-function litersFromExact(exact, rounding) {
-  const rounded = roundTo(exact, rounding)
+/** Ungerundete Liter (kg ÷ kg je Liter) oder `null`. */
+function rawLiters(dough, kg) {
+  const kpl = dough ? dough.kg_per_liter : null
+  if (!isNum(kg) || !isNum(kpl) || kpl <= 0) return null
+  return kg / kpl
+}
+
+/**
+ * Liter aus dem ungerundeten Quotienten: gerundet wird von dort, nicht von
+ * der 2-stelligen Anzeige - sonst wird 6,01 kg ÷ 3 (2,0033 L) „auf 0,5 L
+ * aufgerundet“ zu 2 statt 2,5. `exact` ist nur die Anzeige (0,01 L).
+ */
+function litersFromRaw(raw, rounding) {
+  const rounded = roundTo(round(raw, 9), rounding)
   return {
-    exact,
+    exact: round2(raw),
     rounded,
     reason: rounded === null ? 'rounding_unknown' : null,
   }
 }
 
 /**
- * Zugaben eines Teigs (Regel 4, z. B. Sauer): g je Liter × genaue Liter des
- * Teigs - nicht der gerundeten Literzahl einer Gruppe.
+ * Zugaben eines Teigs (Regel 4, z. B. Sauer): g je Liter × genaue
+ * (ungerundete) Liter des Teigs - nicht der gerundeten Literzahl einer Gruppe.
  */
-function addonsFor(dough, exactLiters) {
+function addonsFor(dough, rawLitersOfDough) {
+  const exactLiters = rawLitersOfDough
   return ((dough && dough.addons) || []).map((a) => {
     const base = {
       id: a.id,
@@ -105,8 +119,9 @@ function addonsFor(dough, exactLiters) {
     if (!isNum(exactLiters)) {
       return { ...base, grams: null, reason: 'liters_unknown' }
     }
-    const exact = round1(base.g_per_liter * exactLiters)
-    const rounded = roundTo(exact, a.rounding)
+    const grams = base.g_per_liter * exactLiters
+    const exact = round1(grams)
+    const rounded = roundTo(round(grams, 9), a.rounding)
     return {
       ...base,
       grams: { exact, rounded },
@@ -250,15 +265,37 @@ function bruchGroups(cfg, lines, sheetDate) {
       doughPieces: total * perProduct,
     })
     if (!g._names.includes(line.name)) g._names.push(line.name)
-    if (qtyUnknown(line)) g.missing.push(baseUnsetMissing(line))
+    if (qtyUnknown(line)) {
+      g.missing.push(baseUnsetMissing(line))
+      g._unknownQty = true
+      g.split[g.split.length - 1].total = null
+      g.split[g.split.length - 1].doughPieces = null
+    }
   }
   const out = []
   for (const g of groups.values()) {
     const name = g._names.join(' + ')
     g.pieces = round3(g.pieces)
+    // Eine Grundmenge offen (Regel 8): Brüche, kg und „frei“ sind unbekannt;
+    // `bruecheKnown`/`kgKnown`/`piecesKnown` zählen nur die bekannten Mitglieder.
+    g.piecesKnown = g.pieces
+    g.complete = !g._unknownQty
+    const per = [...new Set(g.split.map((m) => m.perProduct))]
+    g.perProduct = per.length === 1 ? per[0] : null
+    g.bruecheKnown = null
+    g.spareProducts = null
     if (isNum(g.piecesPerBruch)) {
-      g.brueche = Math.ceil(g.pieces / g.piecesPerBruch - EPSILON)
-      g.spare = round3(g.brueche * g.piecesPerBruch - g.pieces)
+      const brueche = Math.ceil(g.pieces / g.piecesPerBruch - EPSILON) || 0
+      g.bruecheKnown = brueche
+      if (!g._unknownQty) {
+        g.brueche = brueche
+        g.spare = round3(brueche * g.piecesPerBruch - g.pieces)
+        // „+n frei“ in Produkten, nicht in Teigstücken (Doppelweck: 2 je Stück)
+        g.spareProducts =
+          g.perProduct !== null
+            ? Math.floor(g.spare / g.perProduct + EPSILON)
+            : null
+      }
     } else {
       g.missing.push({
         itemId: g.split[0].itemId,
@@ -281,8 +318,13 @@ function bruchGroups(cfg, lines, sheetDate) {
         path: `items[${g._itemIndex}].bruch.g${
           g._gramKey === null ? '' : `.${g._gramKey}`
         }`,
+        // Wochentag nur nennen, wenn genau dessen Eintrag fehlt: ein
+        // offenes `default` (oder eine bloße Zahl) gilt für alle Tage, und
+        // die Lücke wird je Pfad nur einmal gemeldet (dedupeGaps).
         message: `„${name}“: Bruchgewicht${
-          g._weekday ? ` am ${WEEKDAY_NAMES[g._weekday]}` : ''
+          g._weekday && g._gramKey === String(g._weekday)
+            ? ` am ${WEEKDAY_NAMES[g._weekday]}`
+            : ''
         } ist noch offen.`,
       })
     }
@@ -290,6 +332,11 @@ function bruchGroups(cfg, lines, sheetDate) {
       g.brueche !== null && g.g !== null
         ? round3((g.brueche * g.g) / 1000)
         : null
+    g.kgKnown =
+      g.bruecheKnown !== null && g.g !== null
+        ? round3((g.bruecheKnown * g.g) / 1000)
+        : null
+    if (g._unknownQty) g.pieces = null
     g.name = name
     out.push(g)
   }
@@ -446,7 +493,7 @@ function doughParts(cfg, lines, groups, sheetDate) {
       section: first ? first.item.section : null,
       bakeDate: g.bakeDate,
       kg: g.missing.length === 0 ? g.kg : null,
-      kgKnown: isNum(g.kg) ? g.kg : 0,
+      kgKnown: isNum(g.kgKnown) ? g.kgKnown : 0,
       missing: [...g.missing],
       gaps: [],
       _index: first ? first.index : Infinity,
@@ -476,6 +523,10 @@ function doughParts(cfg, lines, groups, sheetDate) {
       else if (size && isNum(size.dough_g))
         itemKg += (total * size.dough_g) / 1000
     }
+    // Teig des Postens selbst (Laibe × Teig je Laib) - für die Brot-Zeile;
+    // der Anteil am Teig `from_dough.id` steht daneben in `kg`.
+    p.loavesKgKnown = round3(itemKg)
+    p.loavesKg = itemKgKnown && !unknownQty ? round3(itemKg) : null
     const extrasSum = f.extras.reduce(
       (s, x) => (s === null || !isNum(x.kg) ? null : s + x.kg),
       0
@@ -601,6 +652,8 @@ function doughParts(cfg, lines, groups, sheetDate) {
       delete out._item
       delete out._lines
       if (out.kind !== 'from_dough') delete out.extras
+      // from_dough: `loavesKg` = Laibe × Teig je Laib (Brot-Zeile), `kg` =
+      // Anteil am Teig `from_dough.id` - unabhängig voneinander bekannt.
       return { ...out, _order: p._index }
     })
     .sort((a, b) =>
@@ -670,6 +723,7 @@ function summarizeDoughs(cfg, parts) {
     const kg = complete ? kgKnown : null
     const head = headOf(d)
     const liters = litersFor(d, kg, head.liter_rounding)
+    const raw = rawLiters(d, kg)
     if (di !== null) {
       if (d.kg_per_liter === null) {
         gaps.push(
@@ -733,7 +787,7 @@ function summarizeDoughs(cfg, parts) {
       liters,
       batches: batchesFor(kg, d.batch_max_kg),
       batch_max_kg: d.batch_max_kg,
-      addons: addonsFor(d, liters.exact),
+      addons: addonsFor(d, raw),
       parts: own.map((p) => ({
         kind: p.kind,
         itemId: p.itemId,
@@ -744,8 +798,39 @@ function summarizeDoughs(cfg, parts) {
       extras: own.flatMap((p) => (p.kind === 'from_dough' ? p.extras : [])),
       combinedWith: d.combined_with || null,
       _sections: own.map((p) => p.section).filter(Boolean),
+      _raw: raw,
     }
   })
+
+  // Kopf einer gemeinsamen Gruppe ohne eigene Teile auf dem Zettel: seine
+  // offene Rundung/Chargengröße betrifft den Kasten trotzdem.
+  for (const s of summaries) {
+    const d = recordOf(s.id)
+    const head = headOf(d)
+    if (head === d || ids.includes(head.id) || !doughIndex.has(head.id))
+      continue
+    const hi = doughIndex.get(head.id)
+    if (head.liter_rounding === null) {
+      gaps.push(
+        doughGap(
+          hi,
+          'liter_rounding',
+          'liter_rounding_unknown',
+          `Teig „${head.name}“: Literrundung ist noch offen – der Zettel zeigt die genauen Liter.`
+        )
+      )
+    }
+    if (head.batch_max_kg === null) {
+      gaps.push(
+        doughGap(
+          hi,
+          'batch_max_kg',
+          'batch_max_kg_unknown',
+          `Teig „${head.name}“: Chargengröße ist noch offen – Chargen werden nicht berechnet.`
+        )
+      )
+    }
+  }
 
   // Maschinen-Kästen: ein Kasten je Teig oder je gemeinsamer Gruppe
   const boxes = new Map()
@@ -771,11 +856,11 @@ function summarizeDoughs(cfg, parts) {
         liters = members[0].liters
       } else if (!complete) {
         liters = { exact: null, rounded: null, reason: 'dough_incomplete' }
-      } else if (members.some((m) => m.liters.exact === null)) {
+      } else if (members.some((m) => m._raw === null)) {
         liters = { exact: null, rounded: null, reason: 'kg_per_liter_unknown' }
       } else {
-        liters = litersFromExact(
-          round2(members.reduce((s, m) => s + m.liters.exact, 0)),
+        liters = litersFromRaw(
+          members.reduce((s, m) => s + m._raw, 0),
           head.liter_rounding
         )
       }
@@ -806,7 +891,7 @@ function summarizeDoughs(cfg, parts) {
     })
 
   return {
-    doughs: summaries.map(({ _sections, ...s }) => s),
+    doughs: summaries.map(({ _sections, _raw, ...s }) => s),
     machine,
     gaps,
   }
@@ -955,17 +1040,34 @@ function breadView(cfg, lines, parts, sheetDate) {
           p.bakeDate === row.bakeDate &&
           (p.kind === 'sizes' || p.kind === 'from_dough')
       )
-      const complete = own.every((p) => p.kg !== null)
+      // Teig der Zeile = Teig des Brots selbst; bei from_dough Laibe × Teig
+      // je Laib (§4.1), der Anteil am Mischteig steht im Hinweis.
+      const rowKg = (p) => (p.kind === 'from_dough' ? p.loavesKg : p.kg)
+      const rowKgKnown = (p) =>
+        p.kind === 'from_dough' ? p.loavesKgKnown : p.kgKnown
+      const complete = own.every((p) => rowKg(p) !== null)
+      const shares = own.filter((p) => p.kind === 'from_dough')
+      let note = row.note
+      // Offener Anteil steht schon in breadNote („noch offen“, „kg offen“).
+      if (shares.length > 0 && shares.every((p) => p.kg !== null)) {
+        const from = cfg.doughs.find((d) => d.id === shares[0].doughId)
+        const fromName = from ? from.name : shares[0].doughId
+        const share = `davon ${fmt(
+          shares.reduce((s, p) => s + p.kg, 0)
+        )} kg ${fromName}`
+        note = note ? `${note} · ${share}` : share
+      }
       return {
         ...row,
+        note,
         cells,
         kg:
           own.length === 0
             ? null
             : complete
-            ? round3(own.reduce((s, p) => s + p.kg, 0))
+            ? round3(own.reduce((s, p) => s + rowKg(p), 0))
             : null,
-        kgKnown: round3(own.reduce((s, p) => s + (p.kgKnown || 0), 0)),
+        kgKnown: round3(own.reduce((s, p) => s + (rowKgKnown(p) || 0), 0)),
         // ohne Teil: alte Liter-Zeile (kein Teig) oder Groessen-Posten ohne Teig
         complete: own.length === 0 ? !isSizeItem(_item) : complete,
       }

@@ -36,6 +36,11 @@ export interface BackzettelPlan {
   doughDate: string
   /** `itemIds: null` = every item (a day confirmed before Z10, `legacyPlan`). */
   bakeDates: { date: string; itemIds: string[] | null }[]
+  /**
+   * Item ids of the master data at confirm (Z10): an item added to hq later
+   * stays with this sheet if its dough day is this sheet (`planCovers`).
+   */
+  knownItems?: string[]
 }
 
 /**

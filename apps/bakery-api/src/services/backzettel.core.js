@@ -740,6 +740,12 @@ function computeLines(args) {
   }
 }
 
+/** `2026-11-28` → „Samstag, 28.11.“ (Hinweise). */
+function dayLabel(date) {
+  const [, m, d] = String(date).split('-')
+  return `${WEEKDAY_NAMES[isoWeekday(date)]}, ${d}.${m}.`
+}
+
 /** Die v2-Felder einer Zeile (Backtag, Teigtag, Sortenname, Bruch). */
 function v2LineFields(cfg, item, variant, bakeDate, dough) {
   const d = dough || planCore.resolveDoughDate(cfg, item, bakeDate)
@@ -820,11 +826,21 @@ function computeDay(args) {
  */
 function computeHefeteig(cfg, lines, options) {
   const withLiters = Boolean(options && options.withLiters)
+  // Z10: die Teigsummen des Zettels (`summarizeDoughs`) - kg, Liter,
+  // Chargen und Vollständigkeit kommen von dort, damit Hefeteig-Karte und
+  // Maschinenleiste dieselbe Zahl zeigen (eine Regel).
+  const summaries = new Map(
+    (options && Array.isArray(options.summaries) ? options.summaries : []).map(
+      (d) => [d.id, d]
+    )
+  )
   const itemsById = new Map(cfg.items.map((i) => [i.id, i]))
   const byDough = new Map()
   for (const line of lines) {
     const item = itemsById.get(line.itemId)
-    if (!item || !doughCore.isPieceItem(item) || !(line.total > 0)) continue
+    if (!item || !doughCore.isPieceItem(item)) continue
+    const unknownQty = withLiters && doughCore.qtyUnknown(line)
+    if (!(line.total > 0) && !unknownQty) continue
     const dough = cfg.doughs.find((d) => d.id === item.dough.id) || {
       id: item.dough.id,
       name: item.dough.id === null ? 'Teig offen' : item.dough.id,
@@ -847,6 +863,20 @@ function computeHefeteig(cfg, lines, options) {
         weights: new Map(),
       }
       byDough.set(dough.id, entry)
+    }
+    if (unknownQty) {
+      // Grundmenge offen: der Teig ist unvollständig, nie „0“ (Regel 8)
+      entry.missing.push({
+        itemId: item.id,
+        name: item.name,
+        field: 'base',
+        code: 'base_unset',
+        message: `„${
+          line.variantLabel ? `${item.name} – ${line.variantLabel}` : item.name
+        }“: Grundmenge ist noch nicht festgelegt.`,
+      })
+      entry.baseUnset = true
+      if (!(line.total > 0)) continue
     }
     const perProduct = item.dough.pieces
     const pieceG = item.dough.piece_g
@@ -928,7 +958,21 @@ function computeHefeteig(cfg, lines, options) {
           complete,
           missing: e.missing,
           liters: doughCore.litersFor(e.record, kg),
+          // Teigstücke ohne die Posten mit offener Grundmenge
+          piecesComplete: !e.baseUnset && e.piecesKnown,
         })
+        const s = summaries.get(e.id)
+        if (s) {
+          Object.assign(out, {
+            kg: s.kg,
+            kgKnown: s.kgKnown,
+            complete: s.complete,
+            missing: s.missing,
+            liters: s.liters,
+            batches: s.batches,
+            dough_g: s.kg === null ? null : Math.round(s.kg * 1000),
+          })
+        }
       }
       return out
     })
@@ -1098,7 +1142,7 @@ function computePreorderDeltas(args) {
       if (qty === null) continue
       const hit = resolve(raw.productSlug || raw.productId)
       if (!hit) continue // unbekannte Produkte meldet computeDay
-      if (plan && !planCore.planIncludes(plan, pickup, hit.item.id)) continue
+      if (plan && !planCore.planCovers(cfg, plan, pickup, hit.item)) continue
       const variant = hit.size ? hit.size : cleanVariant(hit.item, raw.variant)
       const preorderId =
         raw.preorderId === undefined || raw.preorderId === null
@@ -1285,7 +1329,7 @@ function sheetParts(cfg, lines, sheetDate, recipes, warnings) {
   const hefeteig = computeHefeteig(
     cfg,
     lines.filter((l) => l.section === 'hefeteig'),
-    { withLiters: true }
+    { withLiters: true, summaries: doughs.doughs }
   )
   const fillings = computeFillings(cfg, lines, recipes || {}, warnings)
   return {
@@ -1342,7 +1386,17 @@ function computeDoughDay(args) {
   const warnings = []
   const seasonFactor = seasonFactorOf(a.seasonFactor, warnings)
   const owned = new Set(a.owned || [])
-  const plan = planCore.planForSheet(cfg, date, owned)
+  // Posten des eigenen Backtags, die sonst auf keinem Zettel stünden (§5.4)
+  const adopted = (Array.isArray(a.adopted) ? a.adopted : [])
+    .map((x) => (typeof x === 'string' ? { itemId: x, doughDate: null } : x))
+    .filter(
+      (x) =>
+        x &&
+        cfg.items.some((i) => i.id === x.itemId) &&
+        !owned.has(planCore.ownedKey(date, x.itemId))
+    )
+  const adoptedIds = new Set(adopted.map((x) => x.itemId))
+  const plan = planCore.planForSheet(cfg, date, owned, adoptedIds)
 
   // Paare, die ein anderer freigegebener Zettel schon trägt (§5.4)
   const full = owned.size > 0 ? planCore.planForSheet(cfg, date) : plan
@@ -1399,6 +1453,77 @@ function computeDoughDay(args) {
       warnings.push(b.date === date ? w : { ...w, bakeDate: b.date })
     }
   }
+  // Übernommene Posten: auf diesem Zettel, Teig am Backtag selbst
+  if (adopted.length > 0) {
+    for (const { line } of tagged) {
+      if (line.bakeDate === date && adoptedIds.has(line.itemId)) {
+        line.doughDate = date
+        line.lead = 0
+        line.adopted = true
+      }
+    }
+    const byDough = new Map()
+    for (const x of adopted) {
+      const k = x.doughDate || ''
+      if (!byDough.has(k)) byDough.set(k, [])
+      const item = cfg.items.find((i) => i.id === x.itemId)
+      byDough.get(k).push(item ? item.name : x.itemId)
+    }
+    for (const [dd, names] of byDough) {
+      warnings.push({
+        code: 'adopted_orphans',
+        doughDate: dd || null,
+        items: adopted
+          .filter((x) => (x.doughDate || '') === dd)
+          .map((x) => x.itemId),
+        message: `${names.join(', ')} ${
+          names.length === 1 ? 'steht' : 'stehen'
+        } hier, weil ${
+          dd
+            ? `der Zettel vom ${dayLabel(dd)} schon freigegeben ist und ${
+                names.length === 1 ? 'ihn' : 'sie'
+              } nicht enthält`
+            : 'sie sonst auf keinem Zettel stünden'
+        }. Soll${names.length === 1 ? '' : 'en'} ${
+          names.length === 1 ? 'er' : 'sie'
+        } dort gemacht werden: dort „Wieder öffnen“ und neu freigeben.`,
+      })
+    }
+  }
+  // Korrekturen für Paare, die dieser Zettel nicht trägt: nie still weg
+  const planned = (b, itemId) =>
+    plan.bakeDates.some((x) => x.date === b && x.itemIds.includes(itemId))
+  const foreign = corrections.filter(
+    (c) =>
+      Number(c.qty) !== 0 &&
+      Number.isFinite(Number(c.qty)) &&
+      cfg.items.some((i) => i.id === c.itemId) &&
+      isValidDate(c.bakeDate) &&
+      cfg.days.includes(isoWeekday(c.bakeDate)) &&
+      !planned(c.bakeDate, c.itemId)
+  )
+  if (foreign.length > 0) {
+    warnings.push({
+      code: 'correction_not_on_sheet',
+      items: foreign.map((c) => ({
+        itemId: c.itemId,
+        variant: c.variant === undefined ? null : c.variant,
+        bakeDate: c.bakeDate,
+        qty: Number(c.qty),
+      })),
+      message: `Korrektur ${foreign
+        .map((c) => {
+          const item = cfg.items.find((i) => i.id === c.itemId)
+          const n = Number(c.qty)
+          return `${n > 0 ? '+' : ''}${String(n).replace('.', ',')} ${
+            item ? item.name : c.itemId
+          } (für ${WEEKDAY_NAMES[isoWeekday(c.bakeDate)]})`
+        })
+        .join(
+          ', '
+        )} gehört nicht mehr zu diesem Zettel und wird hier nicht gerechnet - beim Freigeben fällt sie weg. Bitte auf dem Zettel eintragen, der die Ware jetzt trägt.`,
+    })
+  }
   if (skipped.length > 0) {
     const names = skipped.map((s) => {
       const item = cfg.items.find((i) => i.id === s.itemId)
@@ -1441,7 +1566,9 @@ function computeDoughDay(args) {
       label: doughCore.bakeDayLabel(b.date, date),
       lineCount: lineCounts.get(b.date) || 0,
     })),
-    plan,
+    // Posten, die es beim Freigeben gab: ein später in hq ergänzter Posten
+    // bleibt mit seinen Vorbestellungen bei diesem Zettel (`planCovers`).
+    plan: { ...plan, knownItems: cfg.items.map((i) => i.id) },
     doughs: parts.doughs,
     machine: parts.machine,
     bread: parts.bread,
@@ -1451,15 +1578,96 @@ function computeDoughDay(args) {
 }
 
 /**
+ * Übergang (§5.4, docs/backzettel-v2.md §9.2): was an Posten auf keinem
+ * Zettel stünde, weil ihr Teigtag ein freigegebener Zettel ist, der sie nicht
+ * trägt. Ein Entwurf ihres Backtags nimmt sie auf (`adopted`, an
+ * `computeDoughDay`); ist auch der freigegeben, stehen sie auf keinem Zettel
+ * (`not_on_confirmed_sheet`). Ein freigegebener Teigtag-Zettel sagt, wohin
+ * seine Posten gewandert sind (`moved_to_bake_day`).
+ *
+ * @param {object} config Stammdaten.
+ * @param {string} date der Zettel (Teigtag) bzw. Backtag.
+ * @param {Array<{date: string, plan: object}>} confirmed freigegebene Zettel
+ *   in [date − 14, date + 14] (Plan aus `computed_snapshot`, alte Tage `legacyPlan`).
+ * @returns {{ adopted: Array<{itemId, name, doughDate}>, warnings: Array, lostOwn: Array }}
+ *   `adopted` für den Entwurf des Zettels `date`; `warnings` für den Zettel
+ *   `date` (nur wenn er freigegeben ist); `lostOwn` = Posten des Backtags
+ *   `date`, die auf keinem Zettel stehen (für die Backliste).
+ */
+function transitionFor(config, date, confirmed) {
+  const cfg = ensureNormalized(config)
+  const list = Array.isArray(confirmed) ? confirmed : []
+  const isConfirmed = (d) => list.some((c) => c.date === d)
+  const own = planCore.orphanedItems(cfg, date, list)
+  const lostText = (items, bakeDate) =>
+    `${items.map((i) => i.name).join(', ')} für ${dayLabel(bakeDate)} ${
+      items.length === 1 ? 'steht' : 'stehen'
+    } auf keinem Zettel: der Zettel vom ${dayLabel(
+      items[0].doughDate
+    )} wurde vor der Umstellung freigegeben. Bitte einen der Zettel „Wieder öffnen“ und neu freigeben.`
+  const warnings = []
+  const lostOwn = isConfirmed(date) ? own : []
+  if (isConfirmed(date)) {
+    const byDough = new Map()
+    for (const o of own) {
+      if (!byDough.has(o.doughDate)) byDough.set(o.doughDate, [])
+      byDough.get(o.doughDate).push(o)
+    }
+    for (const [dd, items] of byDough) {
+      warnings.push({
+        code: 'not_on_confirmed_sheet',
+        bakeDate: date,
+        doughDate: dd,
+        items: items.map((i) => i.itemId),
+        message: lostText(items, date),
+      })
+    }
+    for (const b of planCore.bakeDatesFor(cfg, date)) {
+      if (b === date) continue
+      const items = planCore
+        .orphanedItems(cfg, b, list)
+        .filter((o) => o.doughDate === date)
+      if (items.length === 0) continue
+      warnings.push(
+        isConfirmed(b)
+          ? {
+              code: 'not_on_confirmed_sheet',
+              bakeDate: b,
+              doughDate: date,
+              items: items.map((i) => i.itemId),
+              message: lostText(items, b),
+            }
+          : {
+              code: 'moved_to_bake_day',
+              bakeDate: b,
+              doughDate: date,
+              items: items.map((i) => i.itemId),
+              message: `${items.map((i) => i.name).join(', ')} für ${dayLabel(
+                b
+              )} ${
+                items.length === 1 ? 'steht' : 'stehen'
+              } nicht auf diesem Zettel (vor der Umstellung freigegeben), sondern auf dem Zettel vom ${dayLabel(
+                b
+              )}.`,
+            }
+      )
+    }
+  }
+  return { adopted: isConfirmed(date) ? [] : own, warnings, lostOwn }
+}
+
+/**
  * Backliste eines Backtags (§4.4): was an `bakeDate` gebacken wird, aus allen
  * Zetteln, die dafür Teig machen - ohne Teigzahlen. Für die Person, die nur
  * backt (Sonntag).
  *
  * @param {object} config Stammdaten.
  * @param {string} bakeDate Backtag.
- * @param {Array<{doughDate: string, status: 'draft'|'confirmed', lines: Array, deltas?: Array}>} sources
+ * @param {Array<{doughDate: string, status: 'draft'|'confirmed', lines: Array, deltas?: Array, rolls?: Array}>} sources
  *   die Zettel (Entwurf live gerechnet, freigegeben aus den gespeicherten
  *   Zeilen); Zeilen und Nachträge anderer Backtage werden ausgelassen.
+ *   Ohne Stammdaten (`config` null) kommen die Brötchen aus den
+ *   eingefrorenen `rolls` der Zettel.
  */
 function bakeListFromLines(config, bakeDate, sources) {
   const cfg = ensureNormalized(config)
@@ -1542,7 +1750,21 @@ function bakeListFromLines(config, bakeDate, sources) {
         lines: lines.filter((l) => l.section === id),
       }))
       .filter((s) => s.lines.length > 0),
-    rolls: doughCore.rollsView(cfg, lines, groups, bakeDate),
+    // Ohne Stammdaten (nur freigegebene Zettel): die eingefrorenen
+    // Brötchen-Blöcke dieses Backtags, nie neu gerechnet.
+    rolls: config
+      ? doughCore.rollsView(cfg, lines, groups, bakeDate)
+      : (Array.isArray(sources) ? sources : []).flatMap((src) =>
+          (src && Array.isArray(src.rolls) ? src.rolls : [])
+            .filter((r) => r && r.bakeDate === bakeDate)
+            .map((r) => ({
+              ...r,
+              label:
+                src.doughDate === bakeDate
+                  ? 'heute'
+                  : `Teig vom ${WEEKDAY_NAMES[isoWeekday(src.doughDate)]}`,
+            }))
+        ),
     deltas,
     warnings,
   }
@@ -1555,6 +1777,7 @@ module.exports = {
   sheetParts,
   computeDeltas,
   computePreorderDeltas,
+  transitionFor,
   createProductResolver,
   variantsForProduct,
   variantsByProduct,

@@ -265,6 +265,8 @@ type Plan = BackzettelPlan
 interface SheetInputs {
   /** `${bakeDate}|${itemId}` → date of the confirmed sheet that holds it (§5.4). */
   owned: Map<string, string>
+  /** Items of this bake day no other sheet holds (`core.transitionFor`). */
+  adopted: { itemId: string; doughDate: string }[]
   /** The sheet day plus every bake day it may collect. */
   dates: string[]
   snapshot: PreorderSnapshotItem[]
@@ -285,17 +287,21 @@ function rowKey(
   )
 }
 
+/** A confirmed sheet and its frozen plan (Z10, §5.4). */
+interface ConfirmedPlan {
+  date: string
+  plan: Plan
+}
+
 /**
- * The (bake date × item) pairs held by **other** confirmed sheets (§5.4): a
- * draft never recomputes them, so nothing is counted twice while hq switches
- * an item to `lead: 1` (an old Tuesday sheet keeps its rolls). A day
- * confirmed before Z10 holds every item of its own date (`legacyPlan`).
+ * Confirmed sheets in [date − 14, date + 14] with their frozen plans (a day
+ * confirmed before Z10 has `legacyPlan`): what ownership (§5.4) and the
+ * transition check (`core.transitionFor`) look at.
  */
-async function ownedPairs(
-  config: any,
+async function confirmedAround(
   date: string,
   transaction?: Transaction
-): Promise<Map<string, string>> {
+): Promise<ConfirmedPlan[]> {
   const range = planCore.LOOKAHEAD_DAYS
   const days = await BackzettelDay.findAll({
     where: {
@@ -311,14 +317,32 @@ async function ownedPairs(
     order: [['date', 'ASC']],
     transaction,
   })
-  const allItems: string[] = config.items.map((i: any) => i.id)
+  return days.map((d) => ({
+    date: d.date,
+    plan: dayCore.planOfSnapshot(d.computedSnapshot, d.date) as Plan,
+  }))
+}
+
+/**
+ * The (bake date × item) pairs held by **other** confirmed sheets (§5.4): a
+ * draft never recomputes them, so nothing is counted twice while hq switches
+ * an item to `lead: 1` (an old Tuesday sheet keeps its rolls). A day
+ * confirmed before Z10 holds every item of its own date (`legacyPlan`); a v2
+ * sheet also the items added to hq after it was confirmed (`planCovers`).
+ */
+function ownedPairs(
+  config: any,
+  date: string,
+  confirmed: ConfirmedPlan[]
+): Map<string, string> {
   const out = new Map<string, string>()
-  for (const d of days) {
+  for (const d of confirmed) {
     if (d.date === date) continue
-    const plan: Plan = dayCore.planOfSnapshot(d.computedSnapshot, d.date)
-    for (const b of plan.bakeDates) {
-      for (const itemId of b.itemIds ?? allItems) {
-        out.set(planCore.ownedKey(b.date, itemId), d.date)
+    for (const b of d.plan.bakeDates) {
+      for (const item of config.items) {
+        if (planCore.planCovers(config, d.plan, b.date, item)) {
+          out.set(planCore.ownedKey(b.date, item.id), d.date)
+        }
       }
     }
   }
@@ -332,16 +356,21 @@ async function loadSheetInputs(
 ): Promise<SheetInputs> {
   const bakeDates: string[] = planCore.bakeDatesFor(loaded.config, date)
   const dates = bakeDates.includes(date) ? bakeDates : [date, ...bakeDates]
-  const [owned, snapshot, rows, templates] = await Promise.all([
-    ownedPairs(loaded.config, date, transaction),
+  const [confirmed, snapshot, rows, templates] = await Promise.all([
+    confirmedAround(date, transaction),
     loadPreorderSnapshot(dates, transaction),
     BackzettelLine.findAll({ where: { date }, transaction }),
     Promise.all(
       dates.map((b) => loadCapTemplates(core.isoWeekday(b), transaction))
     ),
   ])
+  // Items of this bake day that no sheet would hold otherwise (transition,
+  // §5.4): the draft of their bake day takes them.
+  const others = confirmed.filter((c) => c.date !== date)
+  const transition = core.transitionFor(loaded.config, date, others)
   return {
-    owned,
+    owned: ownedPairs(loaded.config, date, confirmed),
+    adopted: transition.adopted,
     dates,
     snapshot,
     rows,
@@ -374,6 +403,7 @@ function computeSheet(
       )
     ),
     owned: [...inputs.owned.keys()],
+    adopted: inputs.adopted,
     recipes: loaded.recipes,
     catalog: loaded.catalog,
   })
@@ -801,6 +831,7 @@ export function createBackzettelService(
     // the change in Hefeteig/Füllungen - the frozen figures stay as they are.
     let deltaExtras: unknown = null
     let deltaMachine: unknown[] = []
+    let deltaBruch: unknown[] = []
     if (deltaByKey.size > 0) {
       // W4-verify r6: a Nachtrag for an item/variant not baked at confirm
       // time has no frozen line - give it an empty one, so it gets an oven
@@ -873,6 +904,14 @@ export function createBackzettelService(
             extras,
             date
           )
+          // Review Z10 r1: what they mean per Bruch group - „+1 Bruch“ or
+          // „passt in die freien Stücke“.
+          deltaBruch = dayCore.bruchDeltaExtras(
+            config,
+            deltaLines,
+            extras,
+            date
+          )
         }
       }
     }
@@ -894,6 +933,8 @@ export function createBackzettelService(
       deltaExtras,
       // Z10: per machine box, only boxes that change (v2 sheets).
       deltaMachine,
+      // Z10: per Bruch group, only groups whose dough pieces change.
+      deltaBruch,
       // W4-verify r6: per key incl. items without a frozen line.
       deltaTotals: Object.fromEntries(deltaByKey),
       warnings,
@@ -1200,7 +1241,17 @@ export function createBackzettelService(
       const view = await confirmedView(date, day, loaded)
       const deltasPending = loaded.ok ? await pendingFor(loaded, day) : null
       if (deltasPending === true) scheduleCatchUp(date)
-      return { ...view, deltasPending }
+      // Transition (§5.4): items of this sheet's days that no sheet holds,
+      // or that moved to their bake day's draft - said on the sheet itself.
+      const transition = loaded.ok
+        ? core.transitionFor(loaded.config, date, await confirmedAround(date))
+            .warnings
+        : []
+      return {
+        ...view,
+        warnings: [...view.warnings, ...transition],
+        deltasPending,
+      }
     }
     if (!loaded.ok) {
       return {
@@ -1251,9 +1302,6 @@ export function createBackzettelService(
       ? pool.filter((d) => feedsBakeDate(d, date))
       : await confirmedSheetsFor([date])
     const confirmedDates = new Set(confirmed.map((d) => d.date))
-    const plans = confirmed.map(
-      (d) => dayCore.planOfSnapshot(d.computedSnapshot, d.date) as Plan
-    )
     const warnings: Record<string, unknown>[] = []
     const sources: {
       doughDate: string
@@ -1272,33 +1320,53 @@ export function createBackzettelService(
         lines: [],
       })
     }
+    // Transition (§5.4): items of this bake day whose dough-day sheet was
+    // confirmed without them. The bake day's own draft takes them; if that
+    // is confirmed too, they stand on no sheet - say so, never drop them.
+    const transition = core.transitionFor(
+      config,
+      date,
+      pool
+        ? pool
+            .filter(
+              (d) =>
+                d.date >= planCore.addDays(date, -planCore.LOOKAHEAD_DAYS) &&
+                d.date <= planCore.addDays(date, planCore.LOOKAHEAD_DAYS)
+            )
+            .map((d) => ({
+              date: d.date,
+              plan: dayCore.planOfSnapshot(d.computedSnapshot, d.date) as Plan,
+            }))
+        : await confirmedAround(date)
+    )
+    if (transition.lostOwn.length > 0) {
+      const byDough = new Map<string, any[]>()
+      for (const o of transition.lostOwn) {
+        if (!byDough.has(o.doughDate)) byDough.set(o.doughDate, [])
+        byDough.get(o.doughDate)!.push(o)
+      }
+      for (const [d, lost] of byDough) {
+        warnings.push({
+          code: 'not_on_confirmed_sheet',
+          doughDate: d,
+          items: lost.map((i: any) => i.itemId),
+          message: `${lost.map((i: any) => i.name).join(', ')} für ${dayText(
+            date
+          )} stehen auf keinem Zettel: der Zettel vom ${dayText(
+            d
+          )} wurde vor der Umstellung freigegeben. Bitte dort „Wieder öffnen“ und neu freigeben.`,
+        })
+      }
+    }
     const doughDates: string[] = planCore.doughDatesFor(config, date)
+    if (transition.adopted.length > 0 && !doughDates.includes(date)) {
+      doughDates.push(date)
+      doughDates.sort()
+    }
     for (const d of doughDates) {
       if (confirmedDates.has(d)) continue
       const day = await BackzettelDay.findByPk(d)
-      if (day && day.status === 'confirmed') {
-        // Confirmed before hq moved these items to this dough day: its
-        // frozen plan does not hold them, so no sheet does - say so, never
-        // drop them silently (transition, docs/backzettel-v2.md §9.2).
-        const lost = config.items.filter(
-          (item: any) =>
-            planCore.doughDateFor(config, item, date) === d &&
-            !plans.some((p) => planCore.planIncludes(p, date, item.id))
-        )
-        if (lost.length > 0) {
-          warnings.push({
-            code: 'not_on_confirmed_sheet',
-            doughDate: d,
-            items: lost.map((i: any) => i.id),
-            message: `${lost.map((i: any) => i.name).join(', ')} für ${dayText(
-              date
-            )} stehen auf keinem Zettel: der Zettel vom ${dayText(
-              d
-            )} wurde vor der Umstellung freigegeben. Bitte dort „Wieder öffnen“ und neu freigeben.`,
-          })
-        }
-        continue
-      }
+      if (day && day.status === 'confirmed') continue
       if (!config.days.includes(core.isoWeekday(d))) continue
       sources.push({
         doughDate: d,
@@ -1335,11 +1403,68 @@ export function createBackzettelService(
     assertDate(date)
     const loaded = source.load()
     if (!loaded.ok) {
+      // Like a confirmed day (Z3), the frozen sheets stay readable without
+      // master data: the Sunday baker still sees Saturday's rolls. Drafts
+      // and the other sources are missing - `configStatus` says so.
+      const confirmed = await confirmedSheetsFor([date])
+      if (confirmed.length === 0) {
+        return {
+          date,
+          status: 'no-config' as const,
+          reasons: loaded.reasons,
+          warnings: loaded.warnings,
+        }
+      }
+      const weekday = core.isoWeekday(date)
+      const sources = []
+      for (const day of confirmed) {
+        const view = await confirmedView(day.date, day, loaded)
+        sources.push({
+          day,
+          view,
+          lines: view.sections
+            .flatMap((s: any) => s.lines)
+            .filter((l: any) => (l.bakeDate || day.date) === date),
+        })
+      }
+      const list = core.bakeListFromLines(
+        null,
+        date,
+        sources.map((s) => ({
+          doughDate: s.day.date,
+          status: 'confirmed',
+          lines: s.lines,
+          deltas: s.view.deltas,
+          rolls: s.view.rolls ?? [],
+        }))
+      )
       return {
         date,
-        status: 'no-config' as const,
-        reasons: loaded.reasons,
-        warnings: loaded.warnings,
+        weekday,
+        weekdayName: WEEKDAY_NAMES[weekday],
+        status: 'ok' as const,
+        configStatus: 'no-config' as const,
+        configReasons: loaded.reasons,
+        sources: sources.map((s) => ({
+          doughDate: s.day.date,
+          weekday: core.isoWeekday(s.day.date),
+          weekdayName: WEEKDAY_NAMES[core.isoWeekday(s.day.date)],
+          status: 'confirmed' as const,
+          confirmedAt: s.day.confirmedAt,
+          lineCount: s.lines.length,
+        })),
+        sections: list.sections,
+        rolls: list.rolls,
+        deltas: list.deltas,
+        deltasPending: null,
+        warnings: [
+          {
+            code: 'no_config',
+            message:
+              'Stammdaten fehlen - die Backliste zeigt nur die freigegebenen Zettel. Was noch im Entwurf ist, fehlt hier.',
+          },
+          ...list.warnings,
+        ],
       }
     }
     const weekday = core.isoWeekday(date)
@@ -1378,6 +1503,7 @@ export function createBackzettelService(
     return {
       ...head,
       status: 'ok' as const,
+      configStatus: 'ok' as const,
       sources: sources.map((s) => ({
         doughDate: s.doughDate,
         weekday: core.isoWeekday(s.doughDate),
@@ -1755,7 +1881,18 @@ export function createBackzettelService(
     item: { id: string; name: string },
     transaction: Transaction
   ): Promise<void> {
-    const plan: Plan = planCore.planForSheet(loaded.config, date)
+    const confirmed = await confirmedAround(date, transaction)
+    const adopted = core.transitionFor(
+      loaded.config,
+      date,
+      confirmed.filter((c) => c.date !== date)
+    ).adopted
+    const plan: Plan = planCore.planForSheet(
+      loaded.config,
+      date,
+      undefined,
+      adopted
+    )
     if (!planCore.planBakeDates(plan).includes(bakeDate)) {
       throw new BackzettelError(
         400,
@@ -1779,7 +1916,7 @@ export function createBackzettelService(
         { doughDate }
       )
     }
-    const owner = (await ownedPairs(loaded.config, date, transaction)).get(
+    const owner = ownedPairs(loaded.config, date, confirmed).get(
       planCore.ownedKey(bakeDate, item.id)
     )
     if (owner) {

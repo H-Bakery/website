@@ -361,6 +361,30 @@ describe('backzettelLines', () => {
     )
     expect(lines.get('weck|')).toMatchObject({ planned: 40, baked: null })
   })
+  it('Teigtag-Zettel (ohne Stammdaten gelesen): Zeilen anderer Backtage zählen hier nicht', () => {
+    const day = {
+      ...bzDay(
+        'confirmed',
+        [
+          { itemId: 'weck', total: 40, bakeDate: '2026-12-05' },
+          {
+            key: 'weck|@2026-12-06',
+            itemId: 'weck',
+            total: 30,
+            bakeDate: '2026-12-06',
+          },
+        ],
+        {
+          'weck|': { qty: 2, openQty: 0, bake: 2, bakeOpen: 0 },
+          'weck|@2026-12-08': { qty: 5, openQty: 0, bake: 5, bakeOpen: 0 },
+        }
+      ),
+      date: '2026-12-05',
+    }
+    const lines = core.backzettelLines(day, config)
+    expect(lines.get('weck|')).toMatchObject({ planned: 40, baked: 42 })
+    expect([...lines.keys()]).toEqual(['weck|'])
+  })
 })
 
 describe('buildDayView', () => {

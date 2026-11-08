@@ -233,3 +233,72 @@ describe('Plan: Besitz, alte Tage', () => {
     expect(plan.planForSheet(v1, MON).bakeDates).toEqual([])
   })
 })
+
+describe('Übergang: planCovers und orphanedItems (§5.4)', () => {
+  const v2Plan = (date, bakeDates, knownItems) => ({
+    version: 2,
+    doughDate: date,
+    bakeDates,
+    ...(knownItems ? { knownItems } : {}),
+  })
+
+  it('ein Posten, den es beim Freigeben noch nicht gab, gehört zum Zettel seines Teigtags', () => {
+    const p = v2Plan(SAT, [{ date: SAT, itemIds: [] }], ['test-korn'])
+    // test-plunder (lead 0) wird am Samstag gemacht und war nicht bekannt
+    expect(plan.planCovers(cfg, p, SAT, item('test-plunder'))).toBe(true)
+    // bekannt, aber nicht im Plan → nicht gedeckt
+    expect(plan.planCovers(cfg, p, SAT, item('test-korn'))).toBe(false)
+    // ohne knownItems (alter v2-Plan) wie planIncludes
+    expect(
+      plan.planCovers(
+        cfg,
+        v2Plan(SAT, [{ date: SAT, itemIds: [] }]),
+        SAT,
+        item('test-plunder')
+      )
+    ).toBe(false)
+    // alter Tag: alles des eigenen Tages
+    expect(
+      plan.planCovers(cfg, plan.legacyPlan(SAT), SAT, item('test-plunder'))
+    ).toBe(true)
+  })
+
+  it('Brötchen, deren Teigtag ohne sie freigegeben wurde, stehen auf keinem Zettel', () => {
+    const known = cfg.items.map((i) => i.id)
+    const sat = {
+      date: SAT,
+      plan: v2Plan(
+        SAT,
+        [
+          { date: SAT, itemIds: [] },
+          { date: NEXT_TUE, itemIds: [] },
+        ],
+        known
+      ),
+    }
+    const orphans = plan.orphanedItems(cfg, NEXT_TUE, [sat])
+    expect(orphans.map((o) => o.itemId)).toEqual(
+      expect.arrayContaining(['test-doppel', 'test-stern', 'test-kaese'])
+    )
+    expect(orphans.every((o) => o.doughDate === SAT)).toBe(true)
+    // hält ein anderer freigegebener Zettel sie (alter Dienstag), keine Waisen
+    const oldTue = { date: NEXT_TUE, plan: plan.legacyPlan(NEXT_TUE) }
+    expect(plan.orphanedItems(cfg, NEXT_TUE, [sat, oldTue])).toEqual([])
+    // Teigtag nicht freigegeben: sein Entwurf trägt sie
+    expect(plan.orphanedItems(cfg, NEXT_TUE, [])).toEqual([])
+    // Montag ist kein Backtag
+    expect(plan.orphanedItems(cfg, MON, [sat])).toEqual([])
+  })
+
+  it('planForSheet nimmt übernommene Posten in den eigenen Backtag auf', () => {
+    const p = plan.planForSheet(cfg, NEXT_TUE, undefined, ['test-doppel'])
+    const own = p.bakeDates.find((b) => b.date === NEXT_TUE)
+    expect(own.itemIds).toContain('test-doppel')
+    // ohne Übernahme nicht (Teigtag Samstag)
+    expect(
+      plan
+        .planForSheet(cfg, NEXT_TUE)
+        .bakeDates.find((b) => b.date === NEXT_TUE).itemIds
+    ).not.toContain('test-doppel')
+  })
+})

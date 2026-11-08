@@ -130,11 +130,16 @@ function ownedKey(bakeDate, itemId) {
  * Der Plan eines Zettels (Teigtag `doughDate`): je Backtag die Posten, deren
  * Teig an diesem Tag gemacht wird. `owned` (Set von `${bakeDate}|${itemId}`)
  * nennt Paare, die schon ein anderer freigegebener Zettel trägt (§5.4) - die
- * fehlen hier.
+ * fehlen hier. `adopted` (Posten-IDs oder `{itemId}`) sind Posten des
+ * eigenen Backtags, die sonst auf keinem Zettel stünden (`orphanedItems`) -
+ * der Zettel ihres Backtags nimmt sie auf.
  * @returns {{ version: 2, doughDate: string, bakeDates: Array<{date: string, itemIds: string[]}> }}
  */
-function planForSheet(cfg, doughDate, owned) {
+function planForSheet(cfg, doughDate, owned, adopted) {
   const skip = owned instanceof Set ? owned : new Set(owned || [])
+  const adopt = new Set(
+    [...(adopted || [])].map((a) => (a && a.itemId ? a.itemId : a))
+  )
   return {
     version: 2,
     doughDate,
@@ -143,7 +148,8 @@ function planForSheet(cfg, doughDate, owned) {
       itemIds: cfg.items
         .filter(
           (item) =>
-            doughDateFor(cfg, item, date) === doughDate &&
+            ((date === doughDate && adopt.has(item.id)) ||
+              doughDateFor(cfg, item, date) === doughDate) &&
             !skip.has(ownedKey(date, item.id))
         )
         .map((item) => item.id),
@@ -164,6 +170,49 @@ function planIncludes(plan, bakeDate, itemId) {
   return entry.itemIds === null || entry.itemIds === undefined
     ? true
     : entry.itemIds.includes(itemId)
+}
+
+/**
+ * Deckt der (eingefrorene) Plan den Posten `item` am Backtag `bakeDate`?
+ * Wie `planIncludes`, dazu (Plan v2 mit `knownItems`): ein Posten, den es
+ * beim Freigeben noch nicht gab, dessen Teigtag an diesem Backtag der Zettel
+ * des Plans ist - so landen seine Vorbestellungen als Nachtrag auf dem
+ * freigegebenen Zettel, statt auf keinem (wie in v1).
+ */
+function planCovers(cfg, plan, bakeDate, item) {
+  if (!item) return false
+  if (planIncludes(plan, bakeDate, item.id)) return true
+  if (!plan || !Array.isArray(plan.knownItems)) return false
+  if (plan.knownItems.includes(item.id)) return false
+  if (!plan.bakeDates.some((b) => b && b.date === bakeDate)) return false
+  return doughDateFor(cfg, item, bakeDate) === plan.doughDate
+}
+
+/**
+ * Posten des Backtags `bakeDate`, die auf keinem Zettel stehen (§5.4,
+ * Übergang): ihr Teigtag laut heutigen Stammdaten ist ein freigegebener
+ * Zettel, dessen Plan sie nicht trägt (vor der Umstellung freigegeben oder
+ * nach dem Freigeben eines anderen Zettels wieder geöffnet), und auch kein
+ * anderer freigegebener Plan trägt sie.
+ *
+ * @param {object} cfg normalisierte Stammdaten
+ * @param {string} bakeDate Backtag
+ * @param {Array<{date: string, plan: object}>} confirmed freigegebene Zettel
+ *   (mindestens die 14 Tage vor `bakeDate` und `bakeDate` selbst)
+ * @returns {Array<{itemId: string, name: string, doughDate: string}>}
+ */
+function orphanedItems(cfg, bakeDate, confirmed) {
+  if (!cfg.days.includes(isoWeekday(bakeDate))) return []
+  const list = Array.isArray(confirmed) ? confirmed : []
+  const dates = new Set(list.map((c) => c.date))
+  const out = []
+  for (const item of cfg.items) {
+    const dd = doughDateFor(cfg, item, bakeDate)
+    if (!dates.has(dd)) continue
+    if (list.some((c) => planCovers(cfg, c.plan, bakeDate, item))) continue
+    out.push({ itemId: item.id, name: item.name, doughDate: dd })
+  }
+  return out
 }
 
 /** Die Backtage eines Plans (`YYYY-MM-DD`, in Plan-Reihenfolge). */
@@ -188,5 +237,7 @@ module.exports = {
   planForSheet,
   legacyPlan,
   planIncludes,
+  planCovers,
+  orphanedItems,
   planBakeDates,
 }

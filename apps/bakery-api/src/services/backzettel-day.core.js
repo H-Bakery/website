@@ -782,6 +782,66 @@ function machineDeltaExtras(config, lines, extras, sheetDate) {
 }
 
 /**
+ * Was die Nachtraege eines freigegebenen Zettels fuer die Bruch-Gruppen
+ * heissen (Z10, Review Runde 1): Teigstuecke vorher/nachher, Brueche
+ * vorher/nachher und die freien Stuecke - „+1 Bruch“ oder „passt in die
+ * freien Stuecke“. Nur Gruppen, deren Teigstuecke sich aendern. Unbekanntes
+ * (Stueck je Bruch offen, Grundmenge offen) bleibt `null`, nie 0.
+ *
+ * @returns {Array<{key, name, bakeDate, piecesBefore, pieces, piecesDelta,
+ *   bruecheBefore, brueche, bruecheDelta, spareBefore, spare,
+ *   spareProductsBefore, spareProducts, complete}>}
+ */
+function bruchDeltaExtras(config, lines, extras, sheetDate) {
+  if (!config || !extras || Object.keys(extras).length === 0) return []
+  const before = doughCore.bruchGroups(config, lines, sheetDate)
+  const after = doughCore.bruchGroups(
+    config,
+    linesWithExtras(lines, extras),
+    sheetDate
+  )
+  const byKey = new Map(before.map((g) => [g.key, g]))
+  const known = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null)
+  const out = []
+  for (const g of after) {
+    const b = byKey.get(g.key) || {
+      pieces: 0,
+      piecesKnown: 0,
+      brueche: 0,
+      spare: 0,
+      spareProducts: 0,
+    }
+    const piecesDelta = round2((g.piecesKnown || 0) - (b.piecesKnown || 0))
+    if (piecesDelta === 0) continue
+    const bruecheBefore = known(b.brueche)
+    const brueche = known(g.brueche)
+    out.push({
+      key: g.key,
+      group: g.group,
+      name: g.name,
+      bakeDate: g.bakeDate,
+      piecesBefore: known(b.pieces),
+      pieces: known(g.pieces),
+      piecesDelta,
+      bruecheBefore,
+      brueche,
+      bruecheDelta:
+        bruecheBefore !== null && brueche !== null
+          ? brueche - bruecheBefore
+          : null,
+      spareBefore: known(b.spare),
+      spare: known(g.spare),
+      spareProductsBefore:
+        b.spareProducts === undefined ? null : known(b.spareProducts),
+      spareProducts:
+        g.spareProducts === undefined ? null : known(g.spareProducts),
+      complete: Boolean(g.complete),
+    })
+  }
+  return out
+}
+
+/**
  * Unterschied Hefeteig/Fuellungen ohne und mit Nachtraegen - nur, was sich
  * aendert. `null`, wenn sich nichts aendert.
  */
@@ -913,6 +973,7 @@ module.exports = {
   linesForDeltas,
   linesWithExtras,
   machineDeltaExtras,
+  bruchDeltaExtras,
   planOfSnapshot,
   prepWithDeltas,
   hefeteigFillingsDiff,

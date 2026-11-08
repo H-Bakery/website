@@ -152,13 +152,13 @@ Design: [../backzettel-v2.md](../backzettel-v2.md) §5. A day is now the **sheet
 later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (no `lead`, no
 `dough_days`) every line has `bakeDate === date` and the answer is the v1 day plus additive fields.
 
-| Endpoint                                           | Who                | Change                                                                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /config`                                      | any session        | + `open` and `working.open`: open master data `[{ path, code, message }]` (explicit `null`s, §3)                                                                                                                                                                                                                                |
-| `GET /:date`                                       | any session        | + `sheetVersion` (2; 1 = confirmed before Z10), `isDoughDay`, `bakeDates[{ date, weekday, weekdayName, label, lineCount }]`, `plan`, `doughs`, `machine`, `bread`, `rolls`, `openMasterData`; lines + `bakeDate`, `doughDate`, `lead`, `variantKind`, `variantLabel`, `bruch?`; deltas + `bakeDate`; confirmed + `deltaMachine` |
-| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                  |
-| `PUT /:date/lines/:itemId[/:variant]/correction`   | inhaber, backstube | + optional `bakeDate` (default `date`): must be a bake day of the sheet on which the item is made from this sheet's dough → else 400 `invalid_bake_date`; a pair another confirmed sheet holds → 409 `owned_elsewhere` (`sheetDate`)                                                                                            |
-| `POST /:date/lines/:lineId/done`, `…/deltas/…/ack` | inhaber, backstube | answers + `bakeDate`; on a lead > 0 line "done" means **made** (no "baked" tick in Z10)                                                                                                                                                                                                                                         |
+| Endpoint                                           | Who                | Change                                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------- | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /config`                                      | any session        | + `open` and `working.open`: open master data `[{ path, code, message }]` (explicit `null`s, §3)                                                                                                                                                                                                                                              |
+| `GET /:date`                                       | any session        | + `sheetVersion` (2; 1 = confirmed before Z10), `isDoughDay`, `bakeDates[{ date, weekday, weekdayName, label, lineCount }]`, `plan`, `doughs`, `machine`, `bread`, `rolls`, `openMasterData`; lines + `bakeDate`, `doughDate`, `lead`, `variantKind`, `variantLabel`, `bruch?`; deltas + `bakeDate`; confirmed + `deltaMachine`, `deltaBruch` |
+| `GET /:date/bake-list`                             | any session        | **new**: `{ date, weekday, weekdayName, status: ok \| no-config \| ruhetag, sources[{ doughDate, status: draft \| confirmed, confirmedAt, lineCount }], sections, rolls, deltas, deltasPending, warnings }` - no dough figures                                                                                                                |
+| `PUT /:date/lines/:itemId[/:variant]/correction`   | inhaber, backstube | + optional `bakeDate` (default `date`): must be a bake day of the sheet on which the item is made from this sheet's dough → else 400 `invalid_bake_date`; a pair another confirmed sheet holds → 409 `owned_elsewhere` (`sheetDate`)                                                                                                          |
+| `POST /:date/lines/:lineId/done`, `…/deltas/…/ack` | inhaber, backstube | answers + `bakeDate`; on a lead > 0 line "done" means **made** (no "baked" tick in Z10)                                                                                                                                                                                                                                                       |
 
 - **Line keys:** `itemId|variant` when `bakeDate === date` (all v1 keys stay valid), else
   `itemId|variant@bakeDate`. Rows are looked up by (sheet date, bake date, item, variant).
@@ -174,12 +174,28 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
   no `doughs`/`machine`/`bread`/`rolls`, lines with `lead: 0` - the screens keep the v1 layout.
   `configChangedSinceConfirm` recomputes the way the day was computed (`sheetParts` for v2, v1
   `computeHefeteig` for old days). `deltaExtras` keeps its v1 shape; `deltaMachine` lists the
-  machine boxes a Nachtrag changes (v2 only, `machineDeltaExtras`).
+  machine boxes a Nachtrag changes (v2 only, `machineDeltaExtras`), `deltaBruch` the Bruch groups
+  whose dough pieces change (`bruchDeltaExtras`: pieces, Brüche and free pieces before/after,
+  `bruecheDelta` `null` while Stück je Bruch or a base is open) - "1 Bruch mehr" or "passt in die
+  freien Stücke". Planning screen, tablet and print show both as one note under the Nachträge.
 - **Ownership (§5.4):** a (bake date, item) pair belongs to the confirmed sheet whose frozen plan
   holds it (`ownedPairs`, confirmed sheets within ±14 days). A draft never recomputes such a pair
   (core warning `owned_elsewhere`); a correction on it is 409 `owned_elsewhere`. Reopen clears the
   plan, the pairs are free again. So a Tuesday confirmed before hq moves the rolls to `lead: 1`
-  keeps them and the Saturday draft does not count them twice.
+  keeps them and the Saturday draft does not count them twice. A v2 plan also freezes
+  `knownItems` (the item ids at confirm): an item added to hq later whose dough day is that sheet
+  is covered by it (`planCovers`), so its preorders become Nachträge there, as in v1.
+- **Orphans (transition, `core.transitionFor`):** a (bake date B, item) whose dough day per the
+  current master data is a confirmed sheet that does not hold it, and that no other confirmed plan
+  holds (`planCore.orphanedItems`), would be on no sheet - e.g. a legacy Tuesday reopened after
+  Saturday's v2 confirm, or hq switched to `lead: 1` after Saturday was confirmed. **B's own
+  draft adopts it**: the line stands on B's sheet with `doughDate = B`, `lead: 0`,
+  `adopted: true`, warning `adopted_orphans` (names the dough-day sheet, says to reopen it if the
+  dough should be made there); corrections stored on B count; confirming B freezes it into B's
+  plan. The confirmed dough-day sheet says `moved_to_bake_day`. If B's sheet is confirmed too, the
+  pair is on no sheet: `not_on_confirmed_sheet` on both sheets (`GET /:date`) and on the bake list.
+  A stored correction for a pair the sheet no longer holds is warned (`correction_not_on_sheet`,
+  „fällt beim Freigeben weg"), never dropped silently.
 - **Deltas by dough day:** the preorder write hook records on every confirmed sheet whose frozen
   plan bakes on a touched pickup day (`confirmedSheetsFor`), each reconciled with **its own** plan
   (`reconcileDeltas({ plan })`, `legacyPlan` for old days, so an old Tuesday still sees its rolls).
@@ -190,10 +206,13 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
 - **Bake list** (`getBakeList`): sources = confirmed sheets whose plan bakes on B (lines from the
   rows, with ticks = made and Nachträge) + the dough days of the current master data that are still
   drafts (live, without owned pairs; a draft without a line for B is not listed). Lines carry
-  `doughDate`, `sheetStatus` and `madeOn` („Teig vom Samstag" / „Teig von heute"). A dough day
-  that was confirmed **before** hq moved items to it holds them in no plan: warning
-  `not_on_confirmed_sheet` (names the items, asks to reopen that sheet) - never silently dropped.
-  Ruhetag answers `status: 'ruhetag'` (200) with empty lists.
+  `doughDate`, `sheetStatus` and `madeOn` („Teig vom Samstag" / „Teig von heute"). Orphans
+  (above) come from B's own draft, which is then a source even if no item is lead 0 on B; if B is
+  confirmed too, warning `not_on_confirmed_sheet` - never silently dropped. Ruhetag answers
+  `status: 'ruhetag'` (200) with empty lists. `configStatus: 'ok'`. **Without loadable master
+  data** the bake list is built from the confirmed sheets whose frozen plan bakes on B (lines and
+  frozen `rolls`), `configStatus: 'no-config'`, `deltasPending: null`, warning `no_config`
+  („Was noch im Entwurf ist, fehlt hier"); with no such sheet it stays `status: 'no-config'`.
 - **`getBakeLines(B, { light })`** (service only, for Rest am Abend, S4): the bake-list lines as one
   day view `{ date, status, sources, sections, deltas, deltaTotals }`; `status: 'confirmed'` only
   when every source with lines for B is confirmed; `deltaTotals` keyed `itemId|variant` (summed

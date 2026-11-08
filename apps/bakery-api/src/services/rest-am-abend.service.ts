@@ -159,9 +159,10 @@ export function createRestService(
    * deltas and their oven figures). `null` on a Ruhetag.
    *
    * Without loadable master data there is no plan, so no bake list: then
-   * the day's own confirmed sheet, as before Z10 (a sheet frozen with a
-   * plan still holds its lines; only the bake days of other sheets are
-   * missing until the master data is back).
+   * the day's own confirmed sheet, as before Z10. Of a v2 sheet only the
+   * lines baked on this day count (`backzettelLines` skips other bake
+   * days); this day's lines on other sheets are missing until the master
+   * data is back.
    */
   async function bakeLines(date: string): Promise<RestDayView | null> {
     try {

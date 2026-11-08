@@ -140,8 +140,22 @@ Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Z
 - **Korrekturen** nennen den Backtag (`bakeDate`); einer, der nicht auf dem Zettel steht, ist
   400 `invalid_bake_date`.
 - **Umstellung in hq:** erst wenn S1-S3 auf der Box laufen. Ein Samstag, der **vor** der Umstellung
-  freigegeben wurde, trägt die Dienstags-Brötchen nicht - die Backliste warnt
-  (`not_on_confirmed_sheet`); dann den Samstag wieder öffnen und neu freigeben.
+  freigegeben wurde, trägt die Dienstags-Brötchen nicht. Dann nimmt sie der Entwurf des Dienstags
+  auf (`adopted_orphans`, „steht hier, weil der Zettel vom Samstag schon freigegeben ist"; der
+  Samstag sagt `moved_to_bake_day`) - nichts fällt weg, auch nicht nach „Wieder öffnen" eines alten
+  Dienstags. Ist auch der Dienstag schon freigegeben, warnen beide Zettel und die Backliste
+  (`not_on_confirmed_sheet`); dann einen der Zettel wieder öffnen und neu freigeben. Ein nach dem
+  Freigeben in hq ergänzter Posten bleibt beim Zettel seines Teigtags (`plan.knownItems`), seine
+  Vorbestellungen werden dort Nachträge.
+- **Ohne Stammdaten** bleibt die Backliste lesbar, soweit freigegebene Zettel den Tag tragen
+  (`configStatus: 'no-config'`, Hinweis, dass Entwürfe fehlen) - der Sonntag sieht die Brötchen
+  vom Samstag.
+- **Unbekannt bleibt unbekannt, auch beim Bruch:** hat ein Mitglied einer Bruch-Gruppe keine
+  Grundmenge, sind Brüche, kg und „frei“ `null`; `bruecheKnown`/`kgKnown` zählen nur die bekannten
+  Mitglieder („≥ 1 Bruch“). „+n frei“ steht in Produkten (`spareProducts`, bei zwei Teigstücken je
+  Doppelweck die Hälfte), `spare` in Teigstücken. Liter werden vom ungerundeten Quotienten
+  gerundet (6,01 kg ÷ 3 = 2,003 L → auf 0,5 L aufgerundet 2,5). Die Hefeteig-Karte nimmt kg, Liter
+  und Chargen aus der Teigsumme des Zettels - dieselbe Zahl wie die Maschinenleiste.
 
 ## Grundmengen (Z4, `/admin/backzettel/grundmengen`)
 
@@ -229,7 +243,8 @@ erweitertes `GET /api/backzettel/config`.
   Seite summiert nichts (`printLiters`, `printKg`).
   **Dichte:** `src/lib/dayPrintLayout.ts` schätzt die Höhe je Block in mm (wie `notfallLayout`) und
   wählt die erste von fünf Stufen (10 pt … 7 pt, `DAY_PRINT_STEPS`), die auf 268 mm passt (A4, Rand
-  10 mm). Passt auch die dichteste nicht, kommen die **übrigen Abschnitte auf Blatt 2** mit Hinweis
+  10 mm). Passt auch die dichteste nicht, werden zuerst die Notizzeilen gekürzt (bis keine,
+  `noteLines`); erst danach kommen die **übrigen Abschnitte auf Blatt 2** mit Hinweis
   „Weitere Posten auf Blatt 2 (…)" auf Seite 1 - weggelassen wird nie etwas. Die Stufe steht als
   `data-print-step` am Druckbild. **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in
   `BackzettelPrintExtras.tsx` und kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"

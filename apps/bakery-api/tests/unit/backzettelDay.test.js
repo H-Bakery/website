@@ -1141,6 +1141,70 @@ describe('Z10: Teigtag-Zettel im Tages-Core', () => {
     expect(day.machineDeltaExtras(null, sheet.lines, extras, SAT)).toEqual([])
   })
 
+  it('bruchDeltaExtras: „+1 Bruch“ oder „passt in die freien Stücke“', () => {
+    const sheet = core.computeDoughDay({
+      config: cfgV2,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const before = sheet.rolls
+      .flatMap((r) => r.groups)
+      .find((g) => g.key === `${NEXT_TUE}|test-doppel`)
+    expect(before).toBeDefined()
+    // So viele Brötchen, wie gerade noch in die freien Stücke passen …
+    const fits = before.spareProducts
+    if (fits > 0) {
+      const [g] = day.bruchDeltaExtras(
+        cfgV2,
+        sheet.lines,
+        { [`test-doppel|@${NEXT_TUE}`]: fits },
+        SAT
+      )
+      expect(g).toMatchObject({
+        key: `${NEXT_TUE}|test-doppel`,
+        bruecheBefore: before.brueche,
+        brueche: before.brueche,
+        bruecheDelta: 0,
+        spareProducts: 0,
+      })
+    }
+    // … und eins mehr braucht einen Bruch mehr.
+    const [more] = day.bruchDeltaExtras(
+      cfgV2,
+      sheet.lines,
+      { [`test-doppel|@${NEXT_TUE}`]: fits + 1 },
+      SAT
+    )
+    expect(more).toMatchObject({
+      key: `${NEXT_TUE}|test-doppel`,
+      piecesBefore: before.pieces,
+      piecesDelta: (fits + 1) * before.perProduct,
+      bruecheBefore: before.brueche,
+      brueche: before.brueche + 1,
+      bruecheDelta: 1,
+      complete: true,
+    })
+    expect(day.bruchDeltaExtras(cfgV2, sheet.lines, {}, SAT)).toEqual([])
+    expect(day.bruchDeltaExtras(null, sheet.lines, { x: 1 }, SAT)).toEqual([])
+  })
+
+  it('bruchDeltaExtras: Stück je Bruch offen - Brüche bleiben unbekannt, nie 0', () => {
+    const cfg = configCore.normalizeConfig(configV2({ bruch_pieces: null }))
+    const sheet = core.computeDoughDay({
+      config: cfg,
+      date: SAT,
+      catalog: PRODUCTS_V2,
+    })
+    const [g] = day.bruchDeltaExtras(
+      cfg,
+      sheet.lines,
+      { [`test-doppel|@${NEXT_TUE}`]: 3 },
+      SAT
+    )
+    expect(g).toMatchObject({ brueche: null, bruecheDelta: null })
+    expect(g.piecesDelta).toBe(6)
+  })
+
   it('linesForDeltas: ein Nachtrag für einen anderen Backtag bekommt eine Zeile mit seinem Schlüssel (S3)', () => {
     const key = `test-kaese|@${NEXT_TUE}`
     const delta = {

@@ -82,6 +82,49 @@ describe('R2: Liter = kg ÷ kg je Liter, gerundet nach Schritt und Art', () => {
     ).toEqual({ exact: 5.33, rounded: 5.5, reason: null })
   })
 
+  it('gerundet wird vom ungerundeten Quotienten, nicht von der Anzeige', () => {
+    // 6,01 ÷ 3 = 2,0033 L: auf 0,5 aufgerundet 2,5 (nicht 2 aus „2,00“)
+    expect(
+      dough.litersFor(
+        { kg_per_liter: 3, liter_rounding: { step: 0.5, mode: 'up' } },
+        6.01
+      )
+    ).toEqual({ exact: 2, rounded: 2.5, reason: null })
+    // 8,71 ÷ 3 = 2,9033 L: auf 0,1 aufgerundet 3,0
+    expect(
+      dough.litersFor(
+        { kg_per_liter: 3, liter_rounding: { step: 0.1, mode: 'up' } },
+        8.71
+      ).rounded
+    ).toBe(3)
+    // genau auf der Stufe bleibt es dabei (Toleranz)
+    expect(
+      dough.litersFor(
+        { kg_per_liter: 3, liter_rounding: { step: 0.5, mode: 'up' } },
+        6
+      ).rounded
+    ).toBe(2)
+  })
+
+  it('gemeinsamer Teig: Summe der ungerundeten Liter der Mitglieder', () => {
+    // Korn 4 × 501 g = 2,004 kg ÷ 2 = 1,002 L; Holz 600 g ÷ 2 = 0,3 L
+    // Σ 1,302 L → auf 0,5 aufgerundet 1,5 (aus 1,00 + 0,30 = 1,30 auch 1,5)
+    // und Korn allein: 1,002 L → 1,5, nicht 1
+    const s = sheet(SAT, {
+      config: v2((c) => {
+        rawItem(c, 'test-korn').sizes[0].dough_g = 501
+        rawItem(c, 'test-korn').base[6] = { g500: 4, g1000: 0 }
+      }),
+      corrections: [
+        { itemId: 'test-holz', variant: 'g500', qty: -100, reason: 'aus' },
+      ],
+    })
+    expect(box(s, 'test-korn-teig').liters).toMatchObject({
+      exact: 1,
+      rounded: 1.5,
+    })
+  })
+
   it('im Zettel: Testweck 16 kg ÷ 3 = 5,33 L → 5,5 L, Chargen ⌈16 ÷ 40⌉ = 1', () => {
     expect(box(sheet(SAT), 'test-weck-teig')).toMatchObject({
       kg: 16,
@@ -297,6 +340,27 @@ describe('R6: gemeinsamer Teig - eine Literzahl aus der Summe der genauen Liter'
   })
 })
 
+describe('gemeinsamer Teig: offene Stammdaten des Kopfes', () => {
+  it('nur ein Mitglied auf dem Zettel: die offene Rundung des Kopfes steht in „Offen“', () => {
+    const cfg = v2((c) => (rawDough(c, 'test-korn-teig').liter_rounding = null))
+    const s = sheet(SAT, {
+      config: cfg,
+      corrections: [
+        { itemId: 'test-korn', variant: 'g500', qty: -8, reason: 'aus' },
+        { itemId: 'test-korn', variant: 'g1000', qty: -3, reason: 'aus' },
+      ],
+    })
+    expect(box(s, 'test-korn-teig').liters.reason).toBe('rounding_unknown')
+    const head = cfg.doughs.findIndex((d) => d.id === 'test-korn-teig')
+    expect(s.openMasterData.map((o) => o.path)).toEqual(
+      expect.arrayContaining([
+        `doughs[${head}].liter_rounding`,
+        `doughs[${head}].batch_max_kg`,
+      ])
+    )
+  })
+})
+
 describe('R7: Zugabe je Liter des eigenen Teigs', () => {
   it('10 g × 1,8 L Testholz = 18 g → 20 g (nicht 10 g × 6 L der Gruppe)', () => {
     expect(box(sheet(SAT), 'test-korn-teig').addons).toEqual([
@@ -384,8 +448,12 @@ describe('R8: fester Anteil aus einem anderen Teig (Kerbricher-Muster)', () => {
       },
     ])
     const row = s.bread.rows.find((r) => r.itemId === 'test-kerb')
-    expect(row.kg).toBe(5)
-    expect(row.note).toBe('Aus Teig „Testmisch“: 5 kg je Ansatz + Körner 1 kg')
+    // Brot-Zeile: Laibe × Teig je Laib (10 × 600 g), der Anteil am
+    // Mischteig im Hinweis (Review Runde 1, Befund 6).
+    expect(row.kg).toBe(6)
+    expect(row.note).toBe(
+      'Aus Teig „Testmisch“: 5 kg je Ansatz + Körner 1 kg · davon 5 kg Testmisch'
+    )
   })
 
   it('einmal je Ansatz, egal wie viele Laibe; ohne Laibe kein Anteil', () => {
@@ -474,9 +542,11 @@ describe('R10: Art des Anteils offen', () => {
         }),
       ])
     )
-    expect(s.bread.rows.find((r) => r.itemId === 'test-kerb').note).toBe(
-      'Anteil am Teig „Testmisch“ noch offen'
-    )
+    const kerb = s.bread.rows.find((r) => r.itemId === 'test-kerb')
+    expect(kerb.note).toBe('Anteil am Teig „Testmisch“ noch offen')
+    // Die Laibgewichte sind bekannt - die Brot-Zeile hat ihren Teig trotzdem.
+    expect(kerb.kg).toBe(6)
+    expect(kerb.complete).toBe(true)
   })
 })
 
@@ -505,6 +575,26 @@ describe('R11: ein Bruch = Stück je Bruch; zwei Teigstücke je Brötchen', () =
     })
     const line = s.lines.find((l) => l.key === `test-doppel|@${SUN}`)
     expect(line.total).toBe(63)
+  })
+
+  it('„frei“ in Brötchen, nicht in Teigstücken: 14 freie Teigstücke = 7 Doppel', () => {
+    const s = sheet(SAT, { preorderItems: [pre('test-doppel', 3, SUN)] })
+    expect(group(s, SUN, 'test-doppel')).toMatchObject({
+      perProduct: 2,
+      spare: 14,
+      spareProducts: 7,
+    })
+    // ein ungerader Rest ist kein ganzes Brötchen
+    const odd = sheet(SAT, {
+      config: v2((c) => (rawItem(c, 'test-doppel').bruch.pieces = 15)),
+      preorderItems: [pre('test-doppel', 1, SUN)],
+    })
+    // 61 × 2 = 122 Teigstücke → 9 Brüche à 15 = 135, frei 13 = 6 Doppel
+    expect(group(odd, SUN, 'test-doppel')).toMatchObject({
+      brueche: 9,
+      spare: 13,
+      spareProducts: 6,
+    })
   })
 
   it('Stück je Bruch offen: keine Brüche, keine kg, Teig unvollständig', () => {
@@ -558,6 +648,54 @@ describe('R12: ein Bruch für mehrere Produkte einer Gruppe', () => {
   })
 })
 
+describe('Regel 8: Grundmenge offen in einer Bruch-Gruppe', () => {
+  it('alle Mitglieder offen: keine Brüche, keine kg, kein „frei“ - nie 0', () => {
+    const s = sheet(SAT, {
+      config: v2((c) => {
+        rawItem(c, 'test-stern').base[2] = null
+        rawItem(c, 'test-kaese').base[2] = null
+      }),
+    })
+    const g = group(s, NEXT_TUE, 'test-gemischt')
+    expect(g).toMatchObject({
+      brueche: null,
+      bruecheKnown: 0,
+      kg: null,
+      kgKnown: 0,
+      spare: null,
+      spareProducts: null,
+      pieces: null,
+      complete: false,
+    })
+    expect(g.split.map((m) => m.total)).toEqual([null, null])
+    expect(g.missing.map((m) => m.code)).toEqual(['base_unset', 'base_unset'])
+    expect(doughOf(s, 'test-weck-teig')).toMatchObject({
+      kg: null,
+      complete: false,
+    })
+  })
+
+  it('ein Mitglied offen: bekannter Teil als „mindestens“, Gesamt unbekannt', () => {
+    const s = sheet(SAT, {
+      config: v2((c) => (rawItem(c, 'test-kaese').base[2] = null)),
+    })
+    const g = group(s, NEXT_TUE, 'test-gemischt')
+    expect(g).toMatchObject({
+      brueche: null,
+      bruecheKnown: 1,
+      kg: null,
+      kgKnown: 2,
+      spare: null,
+      piecesKnown: 12,
+      complete: false,
+    })
+    expect(g.split.map((m) => [m.itemId, m.total])).toEqual([
+      ['test-stern', 12],
+      ['test-kaese', null],
+    ])
+  })
+})
+
 describe('R13: Bruchgewicht je Backtag', () => {
   it('ein Zettel, zwei Backtage, zwei Gewichte: So 1000 g, Di 1200 g', () => {
     const s = sheet(SAT)
@@ -593,7 +731,11 @@ describe('R14: Bruchgewicht offen', () => {
       complete: false,
     })
     expect(g.missing[0]).toMatchObject({ code: 'bruch_g_unknown' })
-    expect(g.missing[0].message).toMatch(/am Mittwoch/)
+    // Offen ist `default` - das gilt für jeden Tag; „am Mittwoch“ wäre nach
+    // dem Zusammenfassen je Pfad an allen anderen Tagen falsch.
+    expect(g.missing[0].message).toBe(
+      '„Testflitweck“: Bruchgewicht ist noch offen.'
+    )
     expect(doughOf(s, 'test-flit-teig')).toMatchObject({
       kg: null,
       kgKnown: 0,
@@ -605,6 +747,34 @@ describe('R14: Bruchgewicht offen', () => {
           path: 'items[8].bruch.g.default',
           code: 'bruch_g_unknown',
         }),
+      ])
+    )
+  })
+})
+
+describe('R14: offenes Bruchgewicht eines Wochentags', () => {
+  it('nennt den Wochentag nur, wenn genau dessen Eintrag fehlt', () => {
+    const config = configV2()
+    config.items.find((i) => i.id === 'test-flitweck').bruch.g = {
+      7: 1000,
+      3: null,
+      default: 1200,
+    }
+    const s = sheet(TUE, {
+      config,
+      corrections: [
+        { bakeDate: WED, itemId: 'test-flitweck', qty: 10, reason: 'Markt' },
+      ],
+    })
+    const g = group(s, WED, 'test-flitweck')
+    expect(g.g).toBeNull()
+    expect(g.missing[0]).toMatchObject({
+      code: 'bruch_g_unknown',
+      message: '„Testflitweck“: Bruchgewicht am Mittwoch ist noch offen.',
+    })
+    expect(s.openMasterData).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ path: 'items[8].bruch.g.3' }),
       ])
     )
   })

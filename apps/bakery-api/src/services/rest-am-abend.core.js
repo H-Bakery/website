@@ -515,6 +515,9 @@ function backzettelLines(day, config) {
     if (!section || NOT_SOLD_SECTIONS.has(section.id)) continue
     for (const line of Array.isArray(section.lines) ? section.lines : []) {
       if (!line || !line.itemId) continue
+      // Z10: ein Teigtag-Zettel trägt auch Zeilen anderer Backtage - die
+      // zählen an ihrem eigenen Backtag, nicht hier.
+      if (day.date && line.bakeDate && line.bakeDate !== day.date) continue
       const variant = line.variant || ''
       const key = lineKey(line.itemId, variant)
       const total = num(line.total)
@@ -551,6 +554,8 @@ function backzettelLines(day, config) {
     // Nachträge zu Posten ohne freigegebene Zeile (W4-verify r6).
     for (const [key, delta] of Object.entries(totals)) {
       if (out.has(key)) continue
+      // `itemId|variant@bakeDate`: Nachtrag für einen anderen Backtag
+      if (key.includes('@')) continue
       const [itemId, variant = ''] = key.split('|')
       const item = items.get(itemId)
       if (item && !isCountable(item)) continue
