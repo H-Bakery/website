@@ -33,6 +33,10 @@ deleted the six pre-pilot libraries whose specs used to fail (`feature-inventory
   `POST /api/preorders` of the test returned no `data`; alone and in a full rerun it passed. Not
   investigated further - if it recurs, look at that test first.
 - `bakery-management` has been seen failing under `run-many` parallel load and passing alone.
+- **`bakery-api` locally under parallel jest workers:** occasionally one random test fails (e.g. in
+  `auth`, `preorders`, `deliveries.contract` or `hqData`), sometimes with
+  `connect ETIMEDOUT 127.0.0.1:<port>` or an unexpected 401. The same test is green alone and with
+  `--runInBand`; CI is green. Not a regression - rerun with `--runInBand` before investigating.
 
 ## Not wired / stale
 

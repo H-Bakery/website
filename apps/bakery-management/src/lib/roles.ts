@@ -88,9 +88,8 @@ const COMMON_ROUTES: readonly RouteRule[] = ['/admin/settings', '/admin/hilfe']
 
 /**
  * M4 „Rest am Abend“: die Zählliste, ohne die Auswertung (`GET
- * /api/rest/summary` ist nur Inhaber). Bewusst **nicht** in
- * `PILOT_ALLOWED_ROUTES` - im Pilotbetrieb bleibt die Seite gesperrt, bis der
- * Inhaber sie freigibt (Eintrag dort ergänzen).
+ * /api/rest/summary` ist nur Inhaber). Im Pilot freigegeben (Entscheidung
+ * 2026-11-08, `PILOT_ALLOWED_ROUTES`).
  */
 const REST_COUNT_ROUTE: RouteRule = {
   path: '/admin/rest',

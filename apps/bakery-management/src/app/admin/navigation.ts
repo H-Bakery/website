@@ -80,8 +80,8 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Vorbestellungen Kindergarten',
   },
   {
-    // M4: Zählung bei Ladenschluss (Verkauf, Laden-Tablet). Nicht in
-    // PILOT_ALLOWED_ROUTES - im Pilotbetrieb erst nach Freigabe sichtbar.
+    // M4: Zählung bei Ladenschluss (Verkauf, Laden-Tablet). Im Pilot
+    // freigegeben (Entscheidung 2026-11-08).
     label: 'Rest am Abend',
     href: '/admin/rest',
     icon: 'unsold',

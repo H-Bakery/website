@@ -180,6 +180,7 @@ describe('getNavigationForRole', () => {
         '/admin/preorders/abholliste',
         '/admin/backzettel',
         '/admin/delivery/preorders',
+        '/admin/rest',
         '/admin/products',
         '/admin/partners',
         '/admin/settings',
@@ -198,17 +199,18 @@ describe('getNavigationForRole', () => {
     ])
   })
 
-  it('Backstube: Dashboard, Backzettel, Tablet, Einstellungen und Hilfe', () => {
+  it('Backstube: Dashboard, Backzettel, Tablet, Rest am Abend, Einstellungen und Hilfe', () => {
     expect(hrefs(getNavigationForRole('backstube', true))).toEqual([
       '/admin',
       '/admin/backzettel',
       '/backstube',
+      '/admin/rest',
       '/admin/settings',
       '/admin/hilfe',
     ])
   })
 
-  it('Rest am Abend (M4) steht außerhalb des Pilotbetriebs im Menü, im Pilotbetrieb noch nicht', () => {
+  it('Rest am Abend (M4) steht mit und ohne Pilotbetrieb im Menü (Entscheidung 2026-11-08)', () => {
     expect(hrefs(getNavigationForRole('verkauf', false))).toContain(
       '/admin/rest'
     )
@@ -222,10 +224,19 @@ describe('getNavigationForRole', () => {
       expect.arrayContaining(['/admin/rest', '/admin/rest/auswertung'])
     )
     for (const role of ['inhaber', 'verkauf', 'backstube'] as PilotRole[]) {
+      expect(hrefs(getNavigationForRole(role, true))).toContain('/admin/rest')
+    }
+    expect(hrefs(getNavigationForRole('inhaber', true))).toContain(
+      '/admin/rest/auswertung'
+    )
+    for (const role of ['verkauf', 'backstube', 'fahrer'] as PilotRole[]) {
       expect(hrefs(getNavigationForRole(role, true))).not.toContain(
-        '/admin/rest'
+        '/admin/rest/auswertung'
       )
     }
+    expect(hrefs(getNavigationForRole('fahrer', true))).not.toContain(
+      '/admin/rest'
+    )
   })
 
   it('außerhalb des Pilotbetriebs bekommt nur der Inhaber den Shop-Link', () => {

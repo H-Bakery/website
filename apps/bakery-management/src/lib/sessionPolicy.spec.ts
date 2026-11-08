@@ -220,10 +220,12 @@ describe('pilotRewriteTarget (Proxy im Pilotbetrieb)', () => {
   })
 
   it('schreibt vorhandene gesperrte Seiten um, erlaubte nicht', () => {
-    expect(pilotRewriteTarget('/admin/rest', true)).toBe(PILOT_UNAVAILABLE_PATH)
-    expect(pilotRewriteTarget('/admin/rest/auswertung', true)).toBe(
+    expect(pilotRewriteTarget('/admin/sitzung-pruefen', true)).toBe(
       PILOT_UNAVAILABLE_PATH
     )
+    // Rest am Abend: im Pilot freigegeben (Entscheidung 2026-11-08)
+    expect(pilotRewriteTarget('/admin/rest', true)).toBeNull()
+    expect(pilotRewriteTarget('/admin/rest/auswertung', true)).toBeNull()
     expect(pilotRewriteTarget('/admin/delivery/preorders', true)).toBeNull()
     expect(pilotRewriteTarget('/admin/users', true)).toBeNull()
     expect(pilotRewriteTarget('/admin/login', true)).toBeNull()

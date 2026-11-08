@@ -1,4 +1,4 @@
-# Rest am Abend (M4, nach dem Pilot)
+# Rest am Abend (M4, im Pilot freigegeben)
 
 Der Verkauf zählt bei Ladenschluss am Laden-Tablet (PIN-Station), was übrig ist; der Inhaber sieht
 unter `/admin/rest/auswertung` gebacken / verkauft / Rest / Restquote je Posten.
@@ -53,11 +53,10 @@ API-Details (Endpunkte, Fehlercodes, Tabelle `rest_counts`): [`docs/api/rest.md`
   überschriebe ein aufgehobener Entwurf still die Zählung eines anderen Tablets.
 - Korrekturen stehen mit altem und neuem Wert im `audit_log` (`rest_count`), `revision` zählt mit.
   Gezählt und korrigiert wird nur heute bis 7 Tage zurück (Berlin), nie am Ruhetag.
-- **Nicht im Pilotbetrieb.** `/admin/rest` steht in `ROLE_ACCESS` (Verkauf zählt, Backstube liest,
-  Auswertung nur Inhaber; `REST_COUNT_ROUTE` in `src/lib/roles.ts`), aber **bewusst nicht** in
-  `PILOT_ALLOWED_ROUTES`, sondern in `PILOT_HIDDEN_ROUTES` - mit `NEXT_PUBLIC_PILOT_MODE=1` fehlt die
-  Seite, bis der Inhaber sie freigibt (Eintrag in `PILOT_ALLOWED_ROUTES` ergänzen;
-  `pilotMode.spec.ts` und `roles.spec.ts` prüfen den heutigen Stand).
+- **Im Pilot freigegeben (Entscheidung 2026-11-08).** `/admin/rest` steht in `PILOT_ALLOWED_ROUTES`;
+  wer was darf, regelt `ROLE_ACCESS` (Verkauf zählt, Backstube liest, Auswertung
+  `/admin/rest/auswertung` und `GET /api/rest/summary` nur Inhaber; `REST_COUNT_ROUTE` in
+  `src/lib/roles.ts`).
 
 ## Bedienung am Tablet
 

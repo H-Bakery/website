@@ -718,6 +718,7 @@ Exit criterion: the Christmas preorders were handed over from the app and no dat
   unmounted `libs/api/*`, the old pages listed in §5.1, and the `ambient.d.ts` stubs.
 - [~] **B8** (branch `next`) Deliveries/tours router on the real API + remote access for drivers (revisit D4/D11).
 - [~] "Rest am Abend" (branch `next`): unsold count per product at closing. This measures the waste target.
+  Im Pilot freigegeben (Entscheidung 2026-11-08): Verkauf/Backstube zählen, Auswertung nur Inhaber.
 - [ ] Backzettel v2 suggestions (§5.4).
 - [ ] Fix the `group_name` loss in `hq` `convert_reports.js`; fix `create_baking_plan.py`.
 

@@ -1,6 +1,6 @@
 # Rest am Abend (M4)
 
-Roadmap §6 M4 (after the pilot). Verkauf counts what is left at closing; the owner sees baked /
+Roadmap §6 M4 (im Pilot freigegeben, Entscheidung 2026-11-08). Verkauf counts what is left at closing; the owner sees baked /
 sold / rest / waste rate. Screens and rules as seen from outside:
 [domains/rest-am-abend.md](../domains/rest-am-abend.md). Code in `apps/bakery-api/`; rules
 **once** in `src/services/rest-am-abend.core.js` (dependency-free,
@@ -94,8 +94,9 @@ bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not count
   `snapshots.restCounted(view)` in the background → `data/production/rest/<date>.json`
   (`restSnapshot` in `hq-snapshots.core.js`: baked, cap, rest and counts per line - no user, no
   times; commit `chore(production): Rest am Abend <date> (App)`).
-- The management screens (`/admin/rest`, `/admin/rest/auswertung`) are not in the pilot's route
-  list (see [domains/rest-am-abend.md](../domains/rest-am-abend.md)).
+- The management screens (`/admin/rest`, `/admin/rest/auswertung`) are in the pilot's route list
+  (im Pilot freigegeben, Entscheidung 2026-11-08); the summary stays inhaber-only (see
+  [domains/rest-am-abend.md](../domains/rest-am-abend.md)).
 
 Tests: `tests/unit/restAmAbend.test.js` (core), `tests/integration/rest.test.ts` (roles incl.
 PIN station, PUT rules, `variant_required`, parallel PUTs on one row = one 200 + 409s, window,
