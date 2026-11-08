@@ -11,8 +11,10 @@
 # Umgebung (aus /etc/bakery/bakery.env bzw. ops.env):
 #   HQ_DIR            Lese-Klon (Vorgabe /var/lib/bakery/hq)
 #   HQ_BRANCH         Vorgabe main
-#   HQ_GITHUB_TOKEN   Token für das private hq-Repo (Q3); leer = öffentliche
-#                     URL oder SSH-Schlüssel
+#   HQ_GITHUB_TOKEN   fester Token für das private hq-Repo (Q3)
+#   HQ_GITHUB_TOKEN_FILE  sonst: Datei mit dem GitHub-App-Token (hq-token.sh,
+#                     alle 30 min neu) - bei jedem Lauf frisch gelesen.
+#                     Beides leer = öffentliche URL oder SSH-Schlüssel
 #   HQ_WRITE_DIR      Schreib-Klon - darf nie derselbe Pfad wie HQ_DIR sein
 #   HQ_SYNC_FORCE=1   lokale Commits im Lese-Klon verwerfen (sonst Abbruch)
 #
@@ -61,21 +63,19 @@ if ! acquire_lock hq-sync; then
 fi
 
 # Token nur für diesen Aufruf als Credential-Helper, nie in .git/config.
-git_auth=()
-if [ -n "${HQ_GITHUB_TOKEN:-}" ]; then
-  export HQ_GITHUB_TOKEN
-  # shellcheck disable=SC2016 # $1 und $HQ_GITHUB_TOKEN wertet der Helper aus
-  git_auth=(-c credential.helper= -c 'credential.helper=!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=${HQ_GITHUB_TOKEN}"; }; f')
+# Aus der Datei erst jetzt gelesen: ein App-Token gilt nur eine Stunde.
+if ! hq_git_auth_args && [ -n "${HQ_GITHUB_TOKEN_FILE:-}" ]; then
+  warn "kein GitHub-Token: $(hq_github_token_hint) - versuche es ohne"
 fi
 
 old="$(hq_git rev-parse --verify --quiet HEAD || echo none)"
 
 # ${arr[@]+...}: leeres Array unter `set -u` auch in bash < 4.4
-if ! hq_git ${git_auth[@]+"${git_auth[@]}"} \
+if ! hq_git ${HQ_GIT_AUTH[@]+"${HQ_GIT_AUTH[@]}"} \
   -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=60 \
   fetch --prune --quiet origin \
   "+refs/heads/$HQ_BRANCH:refs/remotes/origin/$HQ_BRANCH"; then
-  die 3 "git fetch fehlgeschlagen (offline oder Token ungültig?) - Lese-Klon bleibt auf ${old:0:12}"
+  die 3 "git fetch fehlgeschlagen (offline oder Token ungültig/abgelaufen?) - Lese-Klon bleibt auf ${old:0:12}"
 fi
 
 new="$(hq_git rev-parse --verify "refs/remotes/origin/$HQ_BRANCH")"

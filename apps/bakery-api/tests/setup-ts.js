@@ -33,6 +33,7 @@ delete process.env.HQ_WRITE_BRANCH
 // B5b/Z9: never push to a real remote or call the real GitHub API.
 delete process.env.HQ_SNAPSHOT_DIR
 delete process.env.HQ_GITHUB_TOKEN
+delete process.env.HQ_GITHUB_TOKEN_FILE
 delete process.env.GITHUB_TOKEN
 delete process.env.GITHUB_API_URL
 delete process.env.HQ_GITHUB_REPO

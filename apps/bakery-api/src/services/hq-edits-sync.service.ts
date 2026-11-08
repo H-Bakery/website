@@ -30,6 +30,12 @@
  * retries. Without `HQ_WRITE_DIR` or a GitHub token the sync is disabled and
  * `status()` says why; saves still commit locally (B5), and `pendingApproval`
  * is measured against the read clone as in B5.
+ *
+ * The token comes from a `GitHubTokenProvider` (github-token.ts) and is read
+ * at the time of use - a GitHub App token in `HQ_GITHUB_TOKEN_FILE` is renewed
+ * every 30 minutes by `hq-token.sh`. With a token file the retry timer runs
+ * even while the file is missing, so the sync starts by itself once the
+ * first token is there.
  */
 import * as path from 'path'
 
@@ -48,6 +54,12 @@ import {
   withRepoLock,
 } from './hq-git'
 import { ensurePullRequest, FetchLike, GitHubError } from './github-pr'
+import {
+  describeTokenProblem,
+  GitHubTokenProvider,
+  GitHubTokenState,
+  staticGitHubToken,
+} from './github-token'
 
 /* eslint-disable @typescript-eslint/no-var-requires */
 const core = require('./hq-writeback.core')
@@ -69,8 +81,13 @@ export interface SyncLog {
 export interface HqEditsSyncOptions {
   /** Root of the write worktree (`HQ_WRITE_DIR`); `null` = disabled. */
   writeDir: string | null
-  /** GitHub token (`HQ_GITHUB_TOKEN`, else `GITHUB_TOKEN`); `null` = disabled. */
-  token: string | null
+  /**
+   * Fixed GitHub token; `null` = disabled. Ignored when `tokenProvider` is
+   * given (server.ts: `HQ_GITHUB_TOKEN` or `HQ_GITHUB_TOKEN_FILE`).
+   */
+  token?: string | null
+  /** Where the token is read from at the time of use (github-token.ts). */
+  tokenProvider?: GitHubTokenProvider
   branch?: string
   baseBranch?: string
   remote?: string
@@ -94,10 +111,21 @@ export interface SyncError {
   at: string
 }
 
+/** Where the token comes from - never the token itself. */
+export interface TokenStatus {
+  source: GitHubTokenState['source']
+  /** `HQ_GITHUB_TOKEN_FILE`, else `null`. */
+  file: string | null
+  /** Last renewal of the token file (an App token is valid 1 h). */
+  updatedAt: string | null
+  problem: GitHubTokenState['problem']
+}
+
 export interface EditsSyncStatus {
   enabled: boolean
   /** Why it is disabled (German), else `null`. */
   reason: string | null
+  token: TokenStatus
   branch: string
   baseBranch: string
   repo: string
@@ -133,7 +161,7 @@ class SyncStop extends Error {
 
 export class HqEditsSync {
   readonly writeDir: string | null
-  readonly token: string | null
+  readonly tokenProvider: GitHubTokenProvider
   readonly branch: string
   readonly baseBranch: string
   readonly remote: string
@@ -163,7 +191,8 @@ export class HqEditsSync {
 
   constructor(options: HqEditsSyncOptions) {
     this.writeDir = options.writeDir ? path.resolve(options.writeDir) : null
-    this.token = options.token || null
+    this.tokenProvider =
+      options.tokenProvider ?? staticGitHubToken(options.token || null)
     this.branch = options.branch || core.EDITS_BRANCH
     this.baseBranch = options.baseBranch || core.BASE_BRANCH
     this.remote = options.remote || 'origin'
@@ -176,17 +205,30 @@ export class HqEditsSync {
     this.log = options.log ?? DEFAULT_LOG
   }
 
+  /** The token right now (the token file is read on every call). */
+  private currentToken(): string | null {
+    return this.tokenProvider.read().token
+  }
+
+  /** A write dir and, right now, a token. */
   get enabled(): boolean {
-    return this.writeDir !== null && this.token !== null
+    return this.writeDir !== null && this.currentToken() !== null
   }
 
   /** Why the sync is off (German), or `null`. */
   get disabledReason(): string | null {
+    return this.reasonFor(this.tokenProvider.read())
+  }
+
+  private reasonFor(state: GitHubTokenState): string | null {
     if (!this.writeDir) {
       return 'HQ_WRITE_DIR ist nicht gesetzt - Änderungen werden nicht nach hq übertragen.'
     }
-    if (!this.token) {
-      return 'Kein GitHub-Token (HQ_GITHUB_TOKEN) - Änderungen bleiben als Commits auf der Box.'
+    if (!state.token) {
+      const problem = describeTokenProblem(state)
+      return problem
+        ? `Kein GitHub-Token (HQ_GITHUB_TOKEN_FILE: ${problem}) - Änderungen bleiben als Commits auf der Box.`
+        : 'Kein GitHub-Token (HQ_GITHUB_TOKEN) - Änderungen bleiben als Commits auf der Box.'
     }
     return null
   }
@@ -231,9 +273,16 @@ export class HqEditsSync {
   }
 
   status(): EditsSyncStatus {
+    const token = this.tokenProvider.read()
     return {
-      enabled: this.enabled,
-      reason: this.disabledReason,
+      enabled: this.writeDir !== null && token.token !== null,
+      reason: this.reasonFor(token),
+      token: {
+        source: token.source,
+        file: token.file,
+        updatedAt: token.updatedAt,
+        problem: token.problem,
+      },
       branch: this.branch,
       baseBranch: this.baseBranch,
       repo: this.githubRepo,
@@ -262,9 +311,13 @@ export class HqEditsSync {
     }
   }
 
-  /** Starts the retry timer (unref'd) and a first sync. */
+  /**
+   * Starts the retry timer (unref'd) and a first sync. With a token file the
+   * timer runs even while the file is missing or empty: every tick reads it
+   * again, so the first token minted after the start is picked up.
+   */
   start(): void {
-    if (!this.enabled || this.timer) return
+    if (!this.writeDir || !this.tokenProvider.configured || this.timer) return
     this.timer = setInterval(() => {
       void this.sync()
     }, this.retryMs)
@@ -342,8 +395,9 @@ export class HqEditsSync {
     this.log.warn(`sync failed (${code}): ${detail ?? ''}`)
   }
 
+  /** Read at the time of use: an App token in a file is renewed every 30 min. */
   private networkOptions() {
-    return { token: this.token, timeoutMs: NETWORK_GIT_TIMEOUT_MS }
+    return { token: this.currentToken(), timeoutMs: NETWORK_GIT_TIMEOUT_MS }
   }
 
   private async fetch(dir: string): Promise<void> {
@@ -747,10 +801,14 @@ export class HqEditsSync {
       editors: core.editorsFromLog(log),
       commitCount: this.unmergedCommits,
     })
+    const token = this.currentToken()
+    if (!token) {
+      throw new GitHubError('Kein GitHub-Token für die Pull-Request.')
+    }
     const pr = await ensurePullRequest(
       {
         apiUrl: this.githubApiUrl,
-        token: this.token as string,
+        token,
         repo: this.githubRepo,
         fetch: this.fetchImpl,
       },

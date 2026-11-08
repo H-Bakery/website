@@ -464,7 +464,13 @@ origin <sha>:refs/heads/app/edits` - the sha prepared under the local lock; a sa
 
 **Disabled** without `HQ_WRITE_DIR` or without a token (`HQ_GITHUB_TOKEN`, fallback
 `GITHUB_TOKEN` - the box's env already uses `HQ_GITHUB_TOKEN`): saves still commit locally (B5),
-the status says why. `createApp()` without `hqSync` builds disabled instances (tests stay
+the status says why. **GitHub App token file (Q3):** with `HQ_GITHUB_TOKEN_FILE` (and no
+`HQ_GITHUB_TOKEN`, which wins) the token is read from that file **at every use**
+(`src/services/github-token.ts`, `GitHubTokenProvider`, shared by `HqEditsSync` and
+`HqSnapshotWriter`); the box's `bakery-hq-token.timer` rewrites it every 30 min (1 h tokens).
+Missing, empty, unreadable or malformed = no token (`enabled: false`, never a crash), and
+`status().token` reports `{ source, file, updatedAt, problem }` - never the token. The timer keeps
+running while the file is missing, so a token minted after start is picked up. `createApp()` without `hqSync` builds disabled instances (tests stay
 hermetic); `server.ts` builds the real ones from `loadHqSyncConfig()` (`HQ_GITHUB_REPO` default
 `H-Bakery/hq`, `GITHUB_API_URL`, `HQ_SYNC_RETRY_MS` ≥ 1000), calls `edits.init()` (reads
 `origin/main` without fetching), starts both timers after `listen` and stops them on close.
@@ -547,8 +553,8 @@ and with a newer local edit), foreign commit adopted / conflicting foreign commi
 overwritten, slow fetch does not block a save, disabled sync falls back to the read clone,
 network-lock queue + stale takeover guard (`hqGit`), reopen note and push waiting on another
 process's network lock (`hqSnapshots`), CLI waiting for the server's locks (`hqSnapshotsCli`) and a local fake of the GitHub pulls API (`startFakeGitHub`) -
-never GitHub. `tests/setup-ts.js` unsets `HQ_SNAPSHOT_DIR`, `HQ_GITHUB_TOKEN`, `GITHUB_TOKEN`,
-`GITHUB_API_URL`, `HQ_GITHUB_REPO`.
+never GitHub. `tests/setup-ts.js` unsets `HQ_SNAPSHOT_DIR`, `HQ_GITHUB_TOKEN`,
+`HQ_GITHUB_TOKEN_FILE`, `GITHUB_TOKEN`, `GITHUB_API_URL`, `HQ_GITHUB_REPO`.
 
 Box: `install.sh` creates the write clone (`bakery.role=write-clone`, branch `app/edits`) and
 `git worktree add $HQ_SNAPSHOT_DIR main`; runbook §6.1. Before the first push H1 must be merged

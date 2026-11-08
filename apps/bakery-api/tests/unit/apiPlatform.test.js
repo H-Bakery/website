@@ -202,6 +202,7 @@ describe('loadHqSyncConfig (B5b/Z9)', () => {
   test('defaults, token fallback and validation', () => {
     expect(api.loadHqSyncConfig({})).toEqual({
       token: null,
+      tokenFile: null,
       githubRepo: 'H-Bakery/hq',
       githubApiUrl: 'https://api.github.com',
       retryMs: 900000,
@@ -219,6 +220,36 @@ describe('loadHqSyncConfig (B5b/Z9)', () => {
     expect(() => api.loadHqSyncConfig({ HQ_SYNC_RETRY_MS: '5' })).toThrow(
       /at least 1000/
     )
+  })
+
+  test('HQ_GITHUB_TOKEN > HQ_GITHUB_TOKEN_FILE > GITHUB_TOKEN', () => {
+    const file = { HQ_GITHUB_TOKEN_FILE: '/etc/bakery/hq-token' }
+    expect(api.loadHqSyncConfig(file)).toMatchObject({
+      token: null,
+      tokenFile: '/etc/bakery/hq-token',
+    })
+    // the fixed token wins, the file is ignored
+    expect(
+      api.loadHqSyncConfig({ ...file, HQ_GITHUB_TOKEN: 'h' })
+    ).toMatchObject({ token: 'h', tokenFile: null })
+    // the generic GITHUB_TOKEN does not shadow a configured file
+    expect(api.loadHqSyncConfig({ ...file, GITHUB_TOKEN: 'g' })).toMatchObject({
+      token: null,
+      tokenFile: '/etc/bakery/hq-token',
+    })
+    // blank = unset; relative resolves against cwd outside production
+    expect(
+      api.loadHqSyncConfig({ HQ_GITHUB_TOKEN_FILE: '  ', GITHUB_TOKEN: 'g' })
+    ).toMatchObject({ token: 'g', tokenFile: null })
+    expect(
+      api.loadHqSyncConfig({ HQ_GITHUB_TOKEN_FILE: 'tok' }, '/srv/x').tokenFile
+    ).toBe('/srv/x/tok')
+    expect(() =>
+      api.loadHqSyncConfig({
+        NODE_ENV: 'production',
+        HQ_GITHUB_TOKEN_FILE: 'tok',
+      })
+    ).toThrow(/HQ_GITHUB_TOKEN_FILE must be absolute/)
   })
 })
 
