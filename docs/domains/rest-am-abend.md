@@ -20,7 +20,8 @@ API-Details (Endpunkte, Fehlercodes, Tabelle `rest_counts`): [`docs/api/rest.md`
   Backzettel rechnet in Liter/Blech, im Laden liegen Stücke. Ein Posten mit `products` wird je
   Produkt in Stück gezählt und mit dessen `factor` umgerechnet (Marmorkuchen ganz = 1 Blech,
   1 Stück = ¼), ein Liter-Posten ohne Produkte mit `pieces_per_liter` in Stück (Faktor 1/ppl),
-  sonst in seiner eigenen Einheit. Der Faktor wird beim Zählen mitgespeichert. Ein Posten mit Sorten
+  sonst in seiner eigenen Einheit. Der Faktor wird beim Zählen mitgespeichert. Liter stehen wie im
+  Backzettel als „L“ („gebacken 4 L“, `formatQtyUnit`). Ein Posten mit Sorten
   wird je Sorte gezählt (400 `variant_required`, wie bei Vorbestellungen). **Brot je Laibgröße**
   (Backzettel v2, Z10) wird je Größe gezählt, nur mit den Produkten dieser Größe
   (`products[].size`); ein Produkt einer anderen Größe ist 400 `unknown_product`.

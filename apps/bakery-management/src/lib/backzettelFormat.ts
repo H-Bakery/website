@@ -181,7 +181,7 @@ const UNIT_SUFFIX: Record<string, string> = {
   Blech: 'Bl.',
 }
 
-/** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 l“, „3 Bl.“). */
+/** Menge mit Einheit; Stück ohne Zusatz („40“, „4,5 L“, „3 Bl.“). */
 export function formatQty(n: number, unit: BackzettelUnit | null): string {
   const suffix = unit ? UNIT_SUFFIX[unit] : undefined
   return suffix ? `${formatNumber(n)} ${suffix}` : formatNumber(n)
@@ -260,7 +260,7 @@ export function formatSigned(n: number): string {
   return n > 0 ? `+${formatNumber(n)}` : `−${formatNumber(Math.abs(n))}`
 }
 
-/** Zu- und Abschläge mit Einheit: „+1 l“, „−2“, „+0,5 kg“; „–“ für 0. */
+/** Zu- und Abschläge mit Einheit: „+1 L“, „−2“, „+0,5 kg“; „–“ für 0. */
 export function formatSignedQty(
   n: number,
   unit: BackzettelUnit | null
@@ -271,7 +271,7 @@ export function formatSignedQty(
 
 /**
  * Text des Nachtrag-Abzeichens einer Zeile (W4-Verifikation): mit Einheit
- * („Nachtrag +1 l“) und - wenn das Aufrunden etwas anderes ergibt als der
+ * („Nachtrag +1 L“) und - wenn das Aufrunden etwas anderes ergibt als der
  * Nachtrag selbst (Viertel) - was zusätzlich zu backen ist
  * („Nachtrag +0,25 · 1 mehr backen“, „… · nichts mehr backen“).
  */
