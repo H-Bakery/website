@@ -272,7 +272,12 @@ export function HoursCell({
         Soll {t.target}
       </Typography>
       {credited && (
-        <Typography variant="caption" display="block" color="text.secondary">
+        <Typography
+          variant="caption"
+          display="block"
+          color="text.secondary"
+          sx={{ overflowWrap: 'anywhere' }}
+        >
           {credited}
         </Typography>
       )}
