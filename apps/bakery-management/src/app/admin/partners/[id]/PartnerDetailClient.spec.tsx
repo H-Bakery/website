@@ -371,7 +371,12 @@ describe('PartnerDetailClient', () => {
     expect(
       screen.getByRole('heading', { name: `Besuche am ${formatDate(TODAY)}` })
     ).toBeInTheDocument()
-    expect(screen.getByText('3 Besuche · 1 Nachlieferung')).toBeInTheDocument()
+    // TODAY ist das echte Datum - an So/Mo hängt „kein regulärer Liefertag“ an.
+    expect(
+      screen.getByText(
+        /^3 Besuche · 1 Nachlieferung( · kein regulärer Liefertag)?$/
+      )
+    ).toBeInTheDocument()
 
     const entries = screen.getAllByRole('button', {
       name: /^Besuch um .+ löschen$/,
