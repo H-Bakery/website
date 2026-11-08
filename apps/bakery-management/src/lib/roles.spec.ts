@@ -235,6 +235,21 @@ describe('getNavigationForRole', () => {
     expect(external('verkauf')).toBe(false)
   })
 
+  it('Dienstplan im Pilotbetrieb: nur der Inhaber sieht ihn (Entscheidung 2026-11-08)', () => {
+    expect(hrefs(getNavigationForRole('inhaber', true))).toContain(
+      '/admin/dienstplan'
+    )
+    expect(hrefs(getNavigationForRole('inhaber', true, 'personal'))).toContain(
+      '/admin/dienstplan'
+    )
+    for (const role of ['verkauf', 'backstube', 'fahrer'] as PilotRole[]) {
+      expect(hrefs(getNavigationForRole(role, true))).not.toContain(
+        '/admin/dienstplan'
+      )
+      expect(isPathAllowedForRole('/admin/dienstplan', role)).toBe(false)
+    }
+  })
+
   it('Pilotbetrieb und Rolle überlagern sich: gesperrte Seiten fehlen auch dem Inhaber', () => {
     const items = hrefs(getNavigationForRole('inhaber', true))
     expect(items).not.toContain('/admin/cash')
@@ -280,6 +295,10 @@ describe('Station (PIN-Sitzung)', () => {
     )
     expect(
       hrefs(getNavigationForRole('inhaber', false, 'station'))
+    ).not.toContain('/admin/dienstplan')
+    // Auch im Pilotbetrieb (dort für den Inhaber freigegeben) nicht an der Station.
+    expect(
+      hrefs(getNavigationForRole('inhaber', true, 'station'))
     ).not.toContain('/admin/dienstplan')
   })
 

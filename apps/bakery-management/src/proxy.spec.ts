@@ -3,6 +3,7 @@
  */
 import { NextRequest } from 'next/server'
 import { proxy } from './proxy'
+import { PILOT_UNAVAILABLE_PATH } from './lib/pilotRewrite'
 import {
   ROLE_HEADER,
   SESSION_CHECK_PATH,
@@ -123,5 +124,43 @@ describe('proxy', () => {
       'http://localhost:5000/api/partners/3/report.csv?from=2026-01-01&to=2026-01-31'
     )
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('proxy im Pilotbetrieb', () => {
+  const original = process.env.NEXT_PUBLIC_PILOT_MODE
+  beforeEach(() => {
+    process.env.NEXT_PUBLIC_PILOT_MODE = '1'
+  })
+  afterEach(() => {
+    if (original === undefined) delete process.env.NEXT_PUBLIC_PILOT_MODE
+    else process.env.NEXT_PUBLIC_PILOT_MODE = original
+  })
+
+  it('gesperrte Seite (Rest am Abend): Ersatzseite, ohne Sitzungsprüfung', async () => {
+    const response = await proxy(request('/admin/rest', token()))
+    expect(rewrittenTo(response)).toBe(PILOT_UNAVAILABLE_PATH)
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('Dienstplan: für den Inhaber erreichbar (Entscheidung 2026-11-08)', async () => {
+    apiAnswers(200, 'inhaber')
+    for (const path of [
+      '/admin/dienstplan',
+      '/admin/dienstplan/mitarbeiter',
+      '/admin/dienstplan/mitarbeiter/3',
+    ]) {
+      const response = await proxy(request(path, token()))
+      expect(rewrittenTo(response)).toBeNull()
+      expect(response.headers.get(NEXT)).toBe('1')
+    }
+  })
+
+  it('Dienstplan: andere Rollen landen auf der Prüfseite, nicht auf dem Pilot-Hinweis', async () => {
+    for (const role of ['verkauf', 'backstube', 'fahrer']) {
+      apiAnswers(200, role)
+      const response = await proxy(request('/admin/dienstplan', token()))
+      expect(rewrittenTo(response)).toBe(SESSION_CHECK_PATH)
+    }
   })
 })

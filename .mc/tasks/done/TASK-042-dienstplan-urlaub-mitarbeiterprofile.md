@@ -22,6 +22,7 @@ updated: 2026-11-08
 
 Arbeitsdokument (vorläufig). Roadmap: Kandidat „Dienstplan“ in M5 (`docs/roadmap.md` §6, Ziel 3);
 laut D11 nicht Teil des Pilots, deshalb im Pilotbetrieb ausgeblendet (siehe unten).
+**Nachtrag 2026-11-08:** im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08).
 
 ## Ziel
 
@@ -116,6 +117,11 @@ Diagnose o. Ä. speichern.
 - Route in `ROLE_ACCESS` (`src/lib/roles.ts`) nur für `inhaber`.
 - **Nicht** in `PILOT_ALLOWED_ROUTES` (`src/lib/pilotMode.ts`) - auf der Box (`NEXT_PUBLIC_PILOT_MODE=1`)
   bleibt es unsichtbar, bis der Inhaber es freigibt. Freischalten = eine Zeile + Deploy.
+- **Nachtrag 2026-11-08:** im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08).
+  `/admin/dienstplan` steht jetzt in `PILOT_ALLOWED_ROUTES` statt in `PILOT_HIDDEN_ROUTES`
+  (deckt `/admin/dienstplan/mitarbeiter` und das Profil ab). Unverändert: `ROLE_ACCESS` nur
+  `inhaber`, `/admin/dienstplan` in `PERSONAL_ONLY_ROUTES`, API `requireRole('inhaber')` +
+  `requirePersonalSession`. Verkauf, Backstube und Fahrer sehen den Menüpunkt auch im Pilot nicht.
 
 ## Abgrenzung (nicht in diesem Task)
 
@@ -159,6 +165,7 @@ Antworten des Inhabers:
   `/admin/dienstplan` (Kalender), `/admin/dienstplan/mitarbeiter` (Liste),
   `/admin/dienstplan/mitarbeiter/[id]` (Profil).
 - Pilot: alle Seiten in `PILOT_HIDDEN_ROUTES`, **nicht** in `PILOT_ALLOWED_ROUTES`.
+  (Nachtrag 2026-11-08: im Pilot für den Inhaber freigegeben, jetzt in `PILOT_ALLOWED_ROUTES`.)
   `ROLE_ACCESS` braucht keinen Eintrag (inhaber = all), aber `/admin/dienstplan` in
   `PERSONAL_ONLY_ROUTES` (nicht an der PIN-Station) und API mit `requirePersonalSession`.
 - Ein Router **`/api/dienstplan`** (`/employees`, `/shifts`, `/shift-templates`, `/absences`,
@@ -191,5 +198,6 @@ Antworten des Inhabers:
 - [x] Build grün (`bakery-api`, `bakery-management` mit webpack, voll und Pilotbetrieb);
       Smoke-Test mit `setup-dev` (synthetischer Seed): API, Woche/Monat/Jahr, Liste und Profil
       für den Inhaber; PIN-Station und Verkauf bekommen 403; im Pilotbetrieb gesperrt und nicht
-      im Menü
+      im Menü (Nachtrag 2026-11-08: im Pilot für den Inhaber freigegeben, siehe „Pilotbetrieb und
+      Rollen“)
 - [ ] PR auf `main` (Branch `feat/dienstplan`, noch nicht gepusht)

@@ -149,8 +149,8 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
   },
   {
     // TASK-042: Schichten (Verkauf), Abwesenheiten und Urlaubskonten - nur
-    // Inhaber mit persönlicher Sitzung (PERSONAL_ONLY_ROUTES). Nicht in
-    // PILOT_ALLOWED_ROUTES - im Pilotbetrieb erst nach Freigabe sichtbar.
+    // Inhaber mit persönlicher Sitzung (PERSONAL_ONLY_ROUTES). Im Pilot für
+    // den Inhaber freigegeben (Entscheidung 2026-11-08, PILOT_ALLOWED_ROUTES).
     label: 'Dienstplan',
     href: '/admin/dienstplan',
     icon: 'dienstplan',

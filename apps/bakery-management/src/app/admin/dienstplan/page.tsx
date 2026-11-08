@@ -6,7 +6,8 @@ export const metadata = {
 
 /**
  * `/admin/dienstplan` - Kalender des Dienstplans (TASK-042, nur Inhaber mit
- * persönlicher Sitzung, im Pilotbetrieb gesperrt).
+ * persönlicher Sitzung, im Pilot für den Inhaber freigegeben - Entscheidung
+ * 2026-11-08).
  *
  * Reine Server-Hülle: die Query-Parameter werden hier gelesen, damit die
  * Client-Komponente ohne `useSearchParams()` auskommt (Muster wie

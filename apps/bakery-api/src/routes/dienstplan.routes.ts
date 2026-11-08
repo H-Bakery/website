@@ -1,6 +1,6 @@
 /**
- * `/api/dienstplan` - Dienstplan und Urlaubsplanung (TASK-042, after the
- * pilot). Mounted below the global session guard; **`inhaber` only, from a
+ * `/api/dienstplan` - Dienstplan und Urlaubsplanung (TASK-042; in the pilot
+ * for the owner since 2026-11-08). Mounted below the global session guard; **`inhaber` only, from a
  * personal session** (not at a PIN station - staff data). Answers
  * `{ success, data }`, writes that hit an absence/shift overlap add
  * `warnings: [{ code, message }]` (a warning, never an error). Errors

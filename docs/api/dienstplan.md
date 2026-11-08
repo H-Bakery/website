@@ -1,6 +1,7 @@
 # Dienstplan und Urlaub (TASK-042)
 
-After the pilot (roadmap §6 M5 candidate, D11: hidden in pilot mode). The owner plans who works
+Roadmap §6 M5 candidate, originally out of the pilot (D11); now im Pilot für den Inhaber
+freigegeben (Entscheidung 2026-11-08) - the API rules are unchanged. The owner plans who works
 in the shop when (shifts, Verkauf only), who is away (all areas: urlaub / frei / abwesend) and
 keeps a vacation account per person and year. Task and decisions:
 `.mc/tasks/done/TASK-042-dienstplan-urlaub-mitarbeiterprofile.md` (section "Entscheidungen").

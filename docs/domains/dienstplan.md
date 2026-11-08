@@ -1,9 +1,9 @@
-# Dienstplan und Urlaub (M5-Kandidat, nach dem Pilot)
+# Dienstplan und Urlaub (M5-Kandidat, im Pilot für den Inhaber freigegeben)
 
 Der Inhaber plant in der Verwaltung, **wer im Verkauf wann arbeitet** (Schichten), **wer abwesend
 ist** (alle Bereiche: Urlaub, frei, abwesend) und führt je Person und Jahr ein **Urlaubskonto**.
-Mitarbeitende sehen noch nichts (später: eigene Ansicht, Urlaubsantrag). Laut D11 nicht Teil des
-Pilots - im Pilotbetrieb ausgeblendet.
+Mitarbeitende sehen noch nichts (später: eigene Ansicht, Urlaubsantrag). Ursprünglich laut D11
+nicht Teil des Pilots; jetzt im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08).
 
 **Code:** Rechnung `apps/bakery-api/src/services/vacation.core.js` · DB, Prüfung, Transaktion,
 Audit `dienstplan.service.ts` · Routen `src/routes/dienstplan.routes.ts` (`/api/dienstplan`) ·
@@ -18,8 +18,11 @@ Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). AP
 - **Nur `inhaber` mit persönlicher Sitzung** - nicht über eine PIN an der Station
   (`PERSONAL_ONLY_ROUTES` in `src/lib/roles.ts`; die API prüft `requireRole('inhaber')` und
   `requirePersonalSession`). Andere Rollen bekommen 403.
-- **Im Pilotbetrieb unsichtbar:** die drei Seiten stehen in `PILOT_HIDDEN_ROUTES` und **nicht** in
-  `PILOT_ALLOWED_ROUTES` (`src/lib/pilotMode.ts`). Freischalten = eine Zeile + Deploy.
+- **Im Pilot für den Inhaber freigegeben (Entscheidung 2026-11-08):** `/admin/dienstplan` steht in
+  `PILOT_ALLOWED_ROUTES` (`src/lib/pilotMode.ts`) und deckt die drei Seiten ab (Kalender,
+  Mitarbeiterliste, Profil). Auf der Box (`NEXT_PUBLIC_PILOT_MODE=1`) sieht nur der Inhaber mit
+  persönlicher Sitzung den Menüpunkt „Dienstplan“; Verkauf, Backstube und Fahrer nicht (Rolle),
+  der Inhaber an der PIN-Station auch nicht (`PERSONAL_ONLY_ROUTES`).
 - **Personendaten bleiben in der SQLite der Box** (D13), nie in `hq`. Keine Telefonnummer, Adresse,
   Bankdaten, Steuer-ID oder Gesundheitsangaben - es gibt kein „krank“, nur das neutrale
   „abwesend“. Repo, Tests und Seed nutzen erfundene Personen.

@@ -47,6 +47,7 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
       'Einstellungen',
       'Anmeldung',
       'Hilfe',
+      'Dienstplan', // TASK-042, für den Inhaber freigegeben (2026-11-08)
     ].forEach((label) => expect(nav.getByText(label)).toBeInTheDocument())
     ;[
       'Bestellungen',
@@ -89,6 +90,8 @@ describe('AdminLayout im Pilotbetrieb (NEXT_PUBLIC_PILOT_MODE=1)', () => {
     '/admin/delivery/preorders/backliste',
     '/admin/finance/tagesziel',
     '/admin/partners/1',
+    '/admin/dienstplan',
+    '/admin/dienstplan/mitarbeiter/3',
   ])('zeigt die erlaubte Seite %s', (route) => {
     renderLayout(route)
     expect(screen.getByTestId('page-content')).toBeInTheDocument()

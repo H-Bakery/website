@@ -821,6 +821,6 @@ export async function seedDienstplan(ctx) {
       balance.map((b) => [b.employeeId, b.status])
     ),
     notes:
-      'Owner only, personal session (not at a station). paul has no entitlement -> balance no-config; mia entered 60 days ago -> pro-rata. /admin/dienstplan is hidden in pilot mode.',
+      'Owner only, personal session (not at a station). paul has no entitlement -> balance no-config; mia entered 60 days ago -> pro-rata. /admin/dienstplan is visible in pilot mode for the owner (decision 2026-11-08).',
   }
 }

@@ -120,7 +120,7 @@ export interface CreateAppOptions {
    */
   rest?: RestRouterOptions
   /**
-   * Dienstplan (TASK-042, after the pilot): clock and finance dir (Ruhetage
+   * Dienstplan (TASK-042, in the pilot for the owner): clock and finance dir (Ruhetage
    * from `config/targets.json`) for tests. Default: `hq.financeDir`.
    */
   dienstplan?: DienstplanRouterOptions

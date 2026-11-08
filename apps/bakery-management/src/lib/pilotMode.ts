@@ -51,6 +51,10 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
   '/admin/settings', // Design / Dunkelmodus
   '/admin/hilfe', // P6: Kurzanleitungen, Papierbetrieb (alle Rollen)
   '/admin/users', // Benutzer & Stationen (F1, nur Inhaber)
+  // Dienstplan, Mitarbeiter, Urlaub (TASK-042): im Pilot für den Inhaber
+  // freigegeben (Entscheidung 2026-11-08). Nur Inhaber mit persönlicher
+  // Sitzung - das regeln ROLE_ACCESS und PERSONAL_ONLY_ROUTES (roles.ts).
+  '/admin/dienstplan',
   // Kommende Pilot-Bildschirme (M1/M2):
   '/admin/preorders',
   '/admin/preorders/abholliste', // P2 (liegt unter /admin/preorders)
@@ -68,7 +72,6 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
  */
 export const PILOT_HIDDEN_ROUTES: readonly string[] = [
   '/admin/rest', // Rest am Abend (M4, nach dem Pilot)
-  '/admin/dienstplan', // Dienstplan, Mitarbeiter, Urlaub (TASK-042, nach dem Pilot)
   '/admin/sitzung-pruefen', // Ziel des Proxys, nicht zum direkten Aufruf
 ]
 

@@ -6,8 +6,8 @@ export const metadata = {
 
 /**
  * Dienstplan: Mitarbeiterliste (TASK-042) - nur Inhaber mit persönlicher
- * Sitzung (`PERSONAL_ONLY_ROUTES`), im Pilotbetrieb gesperrt
- * (`PILOT_HIDDEN_ROUTES`).
+ * Sitzung (`PERSONAL_ONLY_ROUTES`), im Pilot für den Inhaber freigegeben
+ * (Entscheidung 2026-11-08, `PILOT_ALLOWED_ROUTES`).
  */
 export default function MitarbeiterPage() {
   return <MitarbeiterClient />
