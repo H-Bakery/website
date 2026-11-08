@@ -22,6 +22,7 @@ import {
   type Absence,
   type BalanceListEntry,
   type Calendar,
+  type Employee,
 } from '../../../lib/dienstplanApi'
 import {
   MONTH_NAMES,
@@ -52,7 +53,9 @@ export type YearBalances =
  * Jahresansicht: je Person eine Zeile mit zwölf Monaten, Abwesenheiten als
  * Balken an ihrer Stelle im Monat (geplant gestrichelt), daneben das
  * Urlaubskonto des Jahres aus `GET /api/dienstplan/balance?year` - der
- * Browser rechnet keine Salden. Ein Monat im Kopf öffnet die Monatsansicht.
+ * Browser rechnet keine Salden. Ein Monat im Kopf öffnet die Monatsansicht;
+ * ein Monat einer Person mit Abwesenheiten öffnet sie zum Bearbeiten
+ * (`onCell`, wie in Woche und Monat).
  */
 export default function YearView({
   calendar,
@@ -61,6 +64,7 @@ export default function YearView({
   area,
   loading,
   onOpenMonth,
+  onCell,
 }: {
   calendar: Calendar
   year: number
@@ -68,6 +72,7 @@ export default function YearView({
   area: AreaFilter
   loading: boolean
   onOpenMonth: (monthStart: string) => void
+  onCell: (anchor: HTMLElement, employee: Employee, absences: Absence[]) => void
 }) {
   const months = MONTH_NAMES.map(
     (_, i) => `${year}-${String(i + 1).padStart(2, '0')}-01`
@@ -158,7 +163,21 @@ export default function YearView({
                   </TableCell>
                 )
               })}
-              <TableCell sx={{ width: BALANCE_WIDTH }}>Urlaub {year}</TableCell>
+              <TableCell sx={{ width: BALANCE_WIDTH }}>
+                Urlaub {year}
+                {balances.status === 'error' && (
+                  // Statt einer eigenen Meldung über der Seite: hier, wo das
+                  // Konto fehlt.
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    display="block"
+                    data-testid="balance-error"
+                  >
+                    Konto konnte nicht geladen werden
+                  </Typography>
+                )}
+              </TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
@@ -195,8 +214,10 @@ export default function YearView({
                             0,
                             7
                           )}`}
+                          employee={employee}
                           monthStart={monthStart}
                           absences={byEmployee.get(employee.id) ?? []}
+                          onCell={onCell}
                         />
                       ))}
                       <BalanceCell
@@ -216,15 +237,23 @@ export default function YearView({
   )
 }
 
-/** Ein Monat einer Person: Abwesenheiten als Balken an ihrer Stelle. */
+/**
+ * Ein Monat einer Person: Abwesenheiten als Balken an ihrer Stelle. Mit
+ * Abwesenheiten ist der ganze Monat (nicht der schmale Balken) die
+ * antippbare Fläche - auf Touch mindestens 44 px.
+ */
 function YearMonthCell({
   testId,
+  employee,
   monthStart,
   absences,
+  onCell,
 }: {
   testId: string
+  employee: Employee
   monthStart: string
   absences: Absence[]
+  onCell: (anchor: HTMLElement, employee: Employee, absences: Absence[]) => void
 }) {
   const bars = absences
     .map((absence) => ({ absence, segment: monthSegment(absence, monthStart) }))
@@ -236,48 +265,83 @@ function YearMonthCell({
         segment: { left: number; width: number }
       } => bar.segment !== null
     )
+  const texts = bars.map(
+    ({ absence }) =>
+      `${ABSENCE_TYPE_LABELS[absence.type]} (${
+        ABSENCE_STATUS_LABELS[absence.status]
+      }) ${formatAbsenceRange(absence)}`
+  )
+  const track = (
+    // Text steht im Namen des Knopfs; die Balken sind nur Bild.
+    <Box aria-hidden sx={{ position: 'relative', height: 16, width: '100%' }}>
+      {bars.map(({ absence, segment }, i) => {
+        const color = ABSENCE_COLORS[absence.type]
+        const planned = absence.status === 'geplant'
+        return (
+          <Box
+            key={absence.id}
+            title={texts[i]}
+            data-testid={`bar-${absence.id}-${monthStart.slice(0, 7)}`}
+            data-status={absence.status}
+            sx={{
+              position: 'absolute',
+              top: 0,
+              bottom: 0,
+              left: `${segment.left * 100}%`,
+              width: `${segment.width * 100}%`,
+              // ein einzelner Tag bleibt sichtbar, auch gestrichelt
+              minWidth: 6,
+              borderRadius: 0.5,
+              border: planned ? 2 : 0,
+              borderStyle: 'dashed',
+              borderColor: `${color}.main`,
+              bgcolor: planned ? 'transparent' : `${color}.main`,
+            }}
+          />
+        )
+      })}
+    </Box>
+  )
   return (
     <TableCell data-testid={testId} sx={{ p: 0.5, verticalAlign: 'middle' }}>
-      <Box sx={{ position: 'relative', height: 16 }}>
-        {bars.map(({ absence, segment }) => {
-          const color = ABSENCE_COLORS[absence.type]
-          const planned = absence.status === 'geplant'
-          const text = `${ABSENCE_TYPE_LABELS[absence.type]} (${
-            ABSENCE_STATUS_LABELS[absence.status]
-          }) ${formatAbsenceRange(absence)}`
-          return (
-            <Box
-              key={absence.id}
-              role="img"
-              aria-label={text}
-              title={text}
-              data-testid={`bar-${absence.id}-${monthStart.slice(0, 7)}`}
-              data-status={absence.status}
-              sx={{
-                position: 'absolute',
-                top: 0,
-                bottom: 0,
-                left: `${segment.left * 100}%`,
-                width: `${segment.width * 100}%`,
-                // ein einzelner Tag bleibt sichtbar
-                minWidth: 3,
-                borderRadius: 0.5,
-                border: planned ? 1 : 0,
-                borderStyle: 'dashed',
-                borderColor: `${color}.main`,
-                bgcolor: planned ? 'transparent' : `${color}.main`,
-              }}
-            />
-          )
-        })}
-      </Box>
+      {bars.length === 0 ? (
+        track
+      ) : (
+        <ButtonBase
+          aria-label={`${employee.displayName}, ${texts.join(
+            ', '
+          )} - bearbeiten`}
+          title={texts.join('\n')}
+          onClick={(event) =>
+            onCell(
+              event.currentTarget,
+              employee,
+              bars.map((bar) => bar.absence)
+            )
+          }
+          sx={{
+            width: '100%',
+            minHeight: 28,
+            [TOUCH_MEDIA]: { minHeight: 44 },
+            px: 0.25,
+            borderRadius: 0.5,
+            '&:hover, &:focus-visible': {
+              bgcolor: 'action.hover',
+              outline: 2,
+              outlineColor: 'primary.main',
+            },
+          }}
+        >
+          {track}
+        </ButtonBase>
+      )}
     </TableCell>
   )
 }
 
 /**
- * Urlaubskonto der Person im Jahr, wie die API es rechnet: Rest, genommen,
- * geplant und - wenn am 31.03. Übertrag übrig blieb - verfallen. Ohne
+ * Urlaubskonto der Person im Jahr, wie die API es rechnet: Rest, genehmigt
+ * (auch noch Kommendes - daher nicht „genommen“), geplant und - wenn am 31.03. Übertrag übrig blieb - verfallen. Ohne
  * erfassten Anspruch steht der Rest als „offen“ da (nie 0); ist das Konto
  * nicht geladen, steht das da.
  */
@@ -304,7 +368,7 @@ function BalanceCell({
       // übrig blieb - ohne Übertrag ist es nicht „0 verfallen“.
       const expired = balance.carryoverExpired ?? 0
       detail = [
-        `genommen ${formatDays(balance.approvedDays)}`,
+        `genehmigt ${formatDays(balance.approvedDays)}`,
         `geplant ${formatDays(balance.plannedDays)}`,
         expired > 0 ? `verfallen ${formatDays(expired)}` : null,
         balance.status === 'no-config' ? 'Anspruch offen' : null,

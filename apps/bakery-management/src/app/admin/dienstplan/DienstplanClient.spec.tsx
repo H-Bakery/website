@@ -742,6 +742,27 @@ describe('Dienstplan - Kalender (Woche)', () => {
     ).toBeInTheDocument()
   })
 
+  it('an einem Tag mit Abwesenheit bietet das „+“ keine zweite Abwesenheit an', async () => {
+    renderCalendar()
+    await ready()
+    // Backstube mit Urlaub: nichts mehr anzulegen - kein „+“.
+    expect(
+      within(screen.getByTestId('cell-4-2026-11-12')).queryByRole('button', {
+        name: /^Eintrag für Max Muster/,
+      })
+    ).not.toBeInTheDocument()
+    // Verkauf mit „frei“: nur noch die Schicht - gleich der Dialog, wie im Monat.
+    fireEvent.click(
+      within(screen.getByTestId('cell-5-2026-11-14')).getByRole('button', {
+        name: /^Eintrag für Lena Neu/,
+      })
+    )
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      dialog().getByText('Schicht anlegen – Lena Neu', { exact: false })
+    ).toBeInTheDocument()
+  })
+
   it('ändert eine Schicht (nur die Änderung) und löscht sie nach Rückfrage', async () => {
     api.updateShift.mockResolvedValue({
       data: { ...SHIFT, endTime: '13:00' },
@@ -1020,6 +1041,33 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     expect(await screen.findByTestId('week-title')).toHaveTextContent('KW 46')
   })
 
+  it('Monat: Feiertag und halber Tag sind sichtbar markiert und unter der Tabelle benannt', async () => {
+    const base = monthCalendar()
+    api.fetchCalendar.mockResolvedValue({
+      ...base,
+      days: base.days.map((d) =>
+        d.date === '2026-11-12'
+          ? { ...d, weight: 0.5, halfDayName: 'Testabend' }
+          : d
+      ),
+    })
+    renderCalendar({ view: 'monat', month: '2026-11' })
+    await ready()
+    // Touch kennt keinen Tooltip: das Zeichen steht im Kopf, der Name darunter.
+    expect(screen.getByTestId('day-2026-11-12')).toHaveTextContent('½')
+    expect(screen.getByTestId('day-2026-11-01')).toHaveTextContent('×')
+    expect(screen.getByTestId('day-2026-11-13')).not.toHaveTextContent(/[½×]/)
+    expect(
+      within(screen.getByTestId('day-2026-11-12')).getByRole('button')
+    ).toHaveAccessibleName('Do, 12.11.2026 (Testabend): Woche öffnen')
+    const notes = screen.getByTestId('month-day-notes')
+    expect(notes).toHaveTextContent('½ = zählt als halber Urlaubstag')
+    expect(notes).toHaveTextContent('So 01.11. Allerheiligen (×)')
+    expect(notes).toHaveTextContent('Do 12.11. Testabend (½, halber Tag)')
+    // Der Ruhetag ist jede Woche derselbe - nicht einzeln aufgezählt.
+    expect(notes).not.toHaveTextContent('09.11.')
+  })
+
   it('Monat: Zelle öffnet dieselben Dialoge wie die Woche', async () => {
     api.createShift.mockReset().mockResolvedValue({
       data: { ...SHIFT, id: 22, employeeId: 5, date: '2026-11-17' },
@@ -1171,33 +1219,58 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     // Urlaub 27.07.-08.08.: ein Balken im Juli (ab Tag 27), einer im August.
     const july = screen.getByTestId('bar-41-2026-07')
     expect(july).toHaveStyle({ left: `${(26 / 31) * 100}%` })
-    expect(july).toHaveAccessibleName(
-      'Urlaub (genehmigt) 27.07.2026 – 08.08.2026'
+    const julyCell = within(screen.getByTestId('month-3-2026-07')).getByRole(
+      'button'
     )
+    expect(julyCell).toHaveAccessibleName(
+      'Erika Beispiel, Urlaub (genehmigt) 27.07.2026 – 08.08.2026 - bearbeiten'
+    )
+    // Der ganze Monat ist die Fläche, nicht der schmale Balken.
+    expect(touchStyle(julyCell)).toMatchObject({ 'min-height': '44px' })
     expect(screen.getByTestId('bar-41-2026-08')).toHaveStyle({
       left: '0%',
       width: `${(8 / 31) * 100}%`,
     })
     expect(
-      within(screen.getByTestId('month-3-2026-09')).queryByRole('img')
+      within(screen.getByTestId('month-3-2026-09')).queryByRole('button')
     ).not.toBeInTheDocument()
     expect(screen.getByTestId('bar-31-2026-11')).toHaveAttribute(
       'data-status',
       'geplant'
     )
+    // Geplanter einzelner Tag bleibt sichtbar: breiter und kräftiger Rand.
+    expect(screen.getByTestId('bar-31-2026-11')).toHaveStyle({
+      minWidth: '6px',
+      borderStyle: 'dashed',
+      borderWidth: '2px',
+    })
 
     expect(await screen.findByText('Rest 13')).toBeInTheDocument()
     expect(screen.getByTestId('balance-3')).toHaveTextContent(
-      'genommen 11 · geplant 3'
+      'genehmigt 11 · geplant 3'
     )
     expect(screen.getByTestId('balance-3')).not.toHaveTextContent('verfallen')
     // Übertrag am 31.03. nicht verbraucht: steht als verfallen da.
     expect(screen.getByTestId('balance-4')).toHaveTextContent(
-      'Rest 24genommen 0 · geplant 3 · verfallen 3'
+      'Rest 24genehmigt 0 · geplant 3 · verfallen 3'
     )
     // Ohne Anspruch: offen, nie 0.
     expect(screen.getByTestId('balance-5')).toHaveTextContent('Rest offen')
     expect(screen.getByTestId('balance-5')).toHaveTextContent('Anspruch offen')
+
+    // Abwesenheit im Jahr antippen → bearbeiten wie in Woche und Monat.
+    fireEvent.click(julyCell)
+    expect(screen.queryByRole('menuitem')).not.toBeInTheDocument()
+    expect(
+      dialog().getByText('Abwesenheit bearbeiten – Erika Beispiel', {
+        exact: false,
+      })
+    ).toBeInTheDocument()
+    expect(dialog().getByLabelText(/^Von/)).toHaveValue('2026-07-27')
+    fireEvent.click(dialog().getByRole('button', { name: 'Abbrechen' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
 
     // Monat im Kopf antippen → Monatsansicht.
     fireEvent.click(
@@ -1219,8 +1292,32 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     await waitFor(() =>
       expect(screen.getByTestId('balance-3')).toHaveTextContent('nicht geladen')
     )
-    expect(
-      screen.getByText(/Urlaubskonto 2026 konnte nicht geladen werden/)
-    ).toBeInTheDocument()
+    // Kein eigener Hinweis über der Seite - es steht an der Spalte.
+    expect(screen.getByTestId('balance-error')).toHaveTextContent(
+      'Konto konnte nicht geladen werden'
+    )
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+  })
+
+  it('eine Meldung gehört zum Zeitraum: beim Wechsel der Ansicht verschwindet sie', async () => {
+    api.createShift.mockReset().mockResolvedValue({
+      data: { ...SHIFT, id: 22, employeeId: 5, date: '2026-11-17' },
+      warnings: [],
+    })
+    renderCalendar({ view: 'monat', month: '2026-11' })
+    await ready()
+    fireEvent.click(
+      within(screen.getByTestId('cell-5-2026-11-17')).getByRole('button')
+    )
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Schicht anlegen' }))
+    fireEvent.click(dialog().getByRole('button', { name: 'Früh 06:00–12:00' }))
+    fireEvent.click(dialog().getByRole('button', { name: 'Anlegen' }))
+    expect(await screen.findByText('Schicht angelegt.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jahr' }))
+    expect(await screen.findByTestId('year-title')).toHaveTextContent(
+      'Jahr 2026'
+    )
+    expect(screen.queryByText('Schicht angelegt.')).not.toBeInTheDocument()
   })
 })

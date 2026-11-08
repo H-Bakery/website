@@ -31,7 +31,7 @@ import {
   type AreaFilter,
   type CellEntries,
 } from '../../../lib/dienstplanCalendar'
-import { isoWeekday } from '../../../lib/backzettelFormat'
+import { formatDateShort, isoWeekday } from '../../../lib/backzettelFormat'
 import { TOUCH_MEDIA } from '../../../lib/muiTheme'
 import {
   ABSENCE_COLORS,
@@ -217,6 +217,7 @@ export default function MonthView({
         </Table>
       </TableContainer>
       <AbsenceLegend letters />
+      <MonthDayNotes dates={dates} days={days} />
     </Box>
   )
 }
@@ -271,18 +272,56 @@ function MonthDayHeader({
         <Typography variant="caption" color="text.secondary" display="block">
           {weekday}
         </Typography>
-        {closedName && (
-          // Sichtbar nur ein Zeichen (die Spalte ist schmal), der Name steht
-          // im Tooltip (title) und für Screenreader ausgeschrieben.
+        {note && (
+          // Sichtbar nur ein Zeichen (die Spalte ist schmal): × geschlossen,
+          // ½ halber Tag. Der Name steht im Tooltip (title), für
+          // Screenreader ausgeschrieben und unter der Tabelle
+          // (`MonthDayNotes`) - Touch kennt keinen Tooltip.
           <Typography variant="caption" display="block">
-            <span aria-hidden>×</span>
+            <span aria-hidden>{closedName ? '×' : '½'}</span>
             <Box component="span" sx={visuallyHidden}>
-              {closedName}
+              {closedName ?? `${note} (halber Tag)`}
             </Box>
           </Typography>
         )}
       </ButtonBase>
     </TableCell>
+  )
+}
+
+/**
+ * Unter der Tabelle ausgeschrieben, was die Köpfe nur als Zeichen zeigen:
+ * Feiertage (×) und halbe Tage (½) des Monats mit Namen. Der Ruhetag steht
+ * nicht einzeln da - er ist jede Woche derselbe.
+ */
+function MonthDayNotes({
+  dates,
+  days,
+}: {
+  dates: string[]
+  days: Map<string, CalendarDay>
+}) {
+  const named: string[] = []
+  for (const date of dates) {
+    const day = days.get(date)
+    if (!day) continue
+    if (day.holidayName) {
+      named.push(`${formatDateShort(date)} ${day.holidayName} (×)`)
+    } else if (day.halfDayName) {
+      named.push(`${formatDateShort(date)} ${day.halfDayName} (½, halber Tag)`)
+    }
+  }
+  return (
+    <Typography
+      variant="caption"
+      color="text.secondary"
+      component="p"
+      data-testid="month-day-notes"
+      sx={{ px: { xs: 2, md: 3 }, pb: 1.5, m: 0 }}
+    >
+      × = geschlossen (Ruhetag oder Feiertag) · ½ = zählt als halber Urlaubstag
+      {named.length > 0 && <> · {named.join(' · ')}</>}
+    </Typography>
   )
 }
 

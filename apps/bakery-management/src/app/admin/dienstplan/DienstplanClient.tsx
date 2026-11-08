@@ -128,27 +128,49 @@ function canHaveShifts(employee: Employee): boolean {
   return employee.area === 'verkauf' && employee.active
 }
 
-/** Neu anlegen in einer Zelle: Schicht (nur Verkauf) und Abwesenheit. */
-function addActions(employee: Employee, date: string): CellAction[] {
-  const absence: CellAction = {
-    label: 'Abwesenheit eintragen',
-    dialog: { kind: 'absence', employee, date, absence: null },
+/**
+ * Neu anlegen in einer Zelle (Woche und Monat): Schicht (nur Verkauf) und,
+ * solange an dem Tag keine Abwesenheit steht, Abwesenheit - eine zweite
+ * würde die API ohnehin als Überschneidung ablehnen.
+ */
+function addActions(
+  employee: Employee,
+  date: string,
+  entries: CellEntries | undefined
+): CellAction[] {
+  const actions: CellAction[] = []
+  if (canHaveShifts(employee)) {
+    actions.push({
+      label: 'Schicht anlegen',
+      dialog: { kind: 'shift', employee, date, shift: null },
+    })
   }
-  return canHaveShifts(employee)
-    ? [
-        {
-          label: 'Schicht anlegen',
-          dialog: { kind: 'shift', employee, date, shift: null },
-        },
-        absence,
-      ]
-    : [absence]
+  if ((entries?.absences ?? []).length === 0) {
+    actions.push({
+      label: 'Abwesenheit eintragen',
+      dialog: { kind: 'absence', employee, date, absence: null },
+    })
+  }
+  return actions
+}
+
+/** Eine Abwesenheit bearbeiten (Menüpunkt in Monat und Jahr). */
+function editAbsence(
+  employee: Employee,
+  date: string,
+  absence: Absence
+): CellAction {
+  return {
+    label: `${ABSENCE_TYPE_LABELS[absence.type]} (${
+      ABSENCE_STATUS_LABELS[absence.status]
+    }) ${formatAbsenceRange(absence)} bearbeiten`,
+    dialog: { kind: 'absence', employee, date, absence },
+  }
 }
 
 /**
  * Was eine Tageszelle des Monats anbietet - dieselben Dialoge wie die Woche:
- * jeden Eintrag bearbeiten, dazu Schicht anlegen (Verkauf) und, solange an
- * dem Tag keine Abwesenheit steht, Abwesenheit eintragen.
+ * jeden Eintrag bearbeiten, dazu, was sich anlegen lässt (`addActions`).
  */
 function cellActions(
   employee: Employee,
@@ -158,23 +180,14 @@ function cellActions(
   const absences = entries?.absences ?? []
   const shifts = entries?.shifts ?? []
   return [
-    ...absences.map(
-      (absence): CellAction => ({
-        label: `${ABSENCE_TYPE_LABELS[absence.type]} (${
-          ABSENCE_STATUS_LABELS[absence.status]
-        }) ${formatAbsenceRange(absence)} bearbeiten`,
-        dialog: { kind: 'absence', employee, date, absence },
-      })
-    ),
+    ...absences.map((absence) => editAbsence(employee, date, absence)),
     ...shifts.map(
       (shift): CellAction => ({
         label: `Schicht ${shift.startTime}–${shift.endTime} bearbeiten`,
         dialog: { kind: 'shift', employee, date, shift },
       })
     ),
-    ...addActions(employee, date).filter(
-      (action) => action.dialog.kind === 'shift' || absences.length === 0
-    ),
+    ...addActions(employee, date, entries),
   ]
 }
 
@@ -223,7 +236,7 @@ const SECTION_HINT: Record<CalendarView, string> = {
     'Leere Zelle antippen: Schicht oder Abwesenheit anlegen. Eintrag antippen: bearbeiten.',
   monat:
     'Tag einer Person antippen: Schicht oder Abwesenheit anlegen oder bearbeiten. Datum im Kopf antippen: Woche. Punkt = Schicht.',
-  jahr: 'Monat antippen: Monatsansicht. Rechts das Urlaubskonto des Jahres.',
+  jahr: 'Monat im Kopf antippen: Monatsansicht. Abwesenheit antippen: bearbeiten. Rechts das Urlaubskonto des Jahres.',
 }
 
 /**
@@ -411,6 +424,9 @@ export default function DienstplanClient({
     setView(state.view)
     setStart(state.start)
     setArea(state.area)
+    // Meldungen gehören zum alten Zeitraum - nicht über dem neuen stapeln.
+    setNotice(null)
+    setError(null)
     router.replace(dienstplanHref(state), { scroll: false })
   }
 
@@ -465,8 +481,12 @@ export default function DienstplanClient({
     else if (actions.length > 1) setCellMenu({ anchor, actions })
   }
 
-  const openAdd = (anchor: HTMLElement, employee: Employee, date: string) =>
-    offer(anchor, addActions(employee, date))
+  const openAdd = (
+    anchor: HTMLElement,
+    employee: Employee,
+    date: string,
+    entries: CellEntries | undefined
+  ) => offer(anchor, addActions(employee, date, entries))
 
   const nav = PERIOD_NAV[view]
   const sectionHint =
@@ -573,15 +593,6 @@ export default function DienstplanClient({
       {loadError && shownCalendar !== null && (
         <ErrorState message={loadError} onRetry={() => void reload()} />
       )}
-      {view === 'jahr' &&
-        shownCalendar !== null &&
-        balances?.year === year &&
-        balances.value.status === 'error' && (
-          <Alert severity="warning">
-            Das Urlaubskonto {year} konnte nicht geladen werden - die Spalte
-            „Urlaub {year}“ bleibt offen.
-          </Alert>
-        )}
       {notice && (
         <Alert
           severity={notice.warnings.length > 0 ? 'warning' : 'success'}
@@ -663,6 +674,14 @@ export default function DienstplanClient({
             loading={loading}
             onOpenMonth={(monthStart) =>
               navigate({ view: 'monat', start: monthStart })
+            }
+            onCell={(anchor, employee, absences) =>
+              offer(
+                anchor,
+                absences.map((absence) =>
+                  editAbsence(employee, absence.startDate, absence)
+                )
+              )
             }
           />
         ) : blockingError ? (
@@ -765,7 +784,12 @@ function WeekView({
   dates: readonly string[]
   area: AreaFilter
   loading: boolean
-  onAdd: (anchor: HTMLElement, employee: Employee, date: string) => void
+  onAdd: (
+    anchor: HTMLElement,
+    employee: Employee,
+    date: string,
+    entries: CellEntries | undefined
+  ) => void
   onShift: (employee: Employee, shift: Shift) => void
   onAbsence: (employee: Employee, absence: Absence, date: string) => void
 }) {
@@ -948,13 +972,20 @@ function DayCell({
   date: string
   day: CalendarDay | undefined
   entries: CellEntries | undefined
-  onAdd: (anchor: HTMLElement, employee: Employee, date: string) => void
+  onAdd: (
+    anchor: HTMLElement,
+    employee: Employee,
+    date: string,
+    entries: CellEntries | undefined
+  ) => void
   onShift: (employee: Employee, shift: Shift) => void
   onAbsence: (employee: Employee, absence: Absence, date: string) => void
 }) {
   const shifts = entries?.shifts ?? []
   const absences = entries?.absences ?? []
   const empty = shifts.length === 0 && absences.length === 0
+  // Außerhalb des Verkaufs bleibt an einem Abwesenheitstag nichts anzulegen.
+  const canAdd = addActions(employee, date, entries).length > 0
   const addLabel = `Eintrag für ${
     employee.displayName
   } am ${formatDateWithWeekday(date)} anlegen`
@@ -971,7 +1002,7 @@ function DayCell({
       {empty ? (
         <ButtonBase
           aria-label={addLabel}
-          onClick={(e) => onAdd(e.currentTarget, employee, date)}
+          onClick={(e) => onAdd(e.currentTarget, employee, date, entries)}
           sx={{
             width: '100%',
             height: '100%',
@@ -1007,16 +1038,18 @@ function DayCell({
               onClick={() => onShift(employee, shift)}
             />
           ))}
-          <Tooltip title="Eintrag hinzufügen">
-            <IconButton
-              size="small"
-              aria-label={addLabel}
-              onClick={(e) => onAdd(e.currentTarget, employee, date)}
-              sx={{ alignSelf: 'flex-start', p: 0.25 }}
-            >
-              <AddIcon fontSize="small" />
-            </IconButton>
-          </Tooltip>
+          {canAdd && (
+            <Tooltip title="Eintrag hinzufügen">
+              <IconButton
+                size="small"
+                aria-label={addLabel}
+                onClick={(e) => onAdd(e.currentTarget, employee, date, entries)}
+                sx={{ alignSelf: 'flex-start', p: 0.25 }}
+              >
+                <AddIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
         </Box>
       )}
     </TableCell>
