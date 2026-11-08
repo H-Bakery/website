@@ -68,4 +68,9 @@ export const MIGRATIONS: MigrationEntry[] = [
     name: '20270106000000-rest-count-line-rows.js',
     module: require('../../migrations/20270106000000-rest-count-line-rows.js'),
   },
+  {
+    // TASK-042 (after the pilot): employees, entitlements, shifts, absences
+    name: '20270107000000-dienstplan.js',
+    module: require('../../migrations/20270107000000-dienstplan.js'),
+  },
 ]

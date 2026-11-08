@@ -65,7 +65,8 @@ whitespace - tabs, line breaks, U+2028/U+2029, BOM - is collapsed to one space b
 - **Station sessions carry the user's full role but cannot administer** (`requirePersonalSession`
   on `/api/users` and `/api/auth/stations`, 403 `personal_session_required`): a 4-digit PIN on a
   shared tablet must not unlock user/station admin. Finance and Tagesziel use the same guard (see
-  [hq-data.md](hq-data.md)).
+  [hq-data.md](hq-data.md)), and so does the Dienstplan (`/api/dienstplan`, staff data, see
+  [dienstplan.md](dienstplan.md)).
 - **Logout is public**: Bearer access token, else `{ refreshToken }` (also a rotated or expired
   one) names the session; it is revoked and audited (`via: 'access' | 'refresh'`). Nothing valid
   → still 200, as in the mock. A tablet whose access token expired can still end its session.

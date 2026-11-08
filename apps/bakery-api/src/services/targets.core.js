@@ -226,6 +226,19 @@ function stringList(value) {
 }
 
 /**
+ * Ruhetage aus `closed_weekdays`: eine Liste von ISO-Wochentagen
+ * (1 = Montag … 7 = Sonntag), nicht alle sieben. Ergebnis sortiert und ohne
+ * Doppelte, oder `null`, wenn der Wert fehlt oder ungültig ist - wirft nie.
+ * Dieselbe Regel nutzt der Dienstplan (`vacation.core.js`).
+ */
+function normalizeClosedWeekdays(value) {
+  if (!Array.isArray(value)) return null
+  if (value.some((d) => !Number.isInteger(d) || d < 1 || d > 7)) return null
+  if (new Set(value).size >= 7) return null
+  return [...new Set(value)].sort((a, b) => a - b)
+}
+
+/**
  * Prüft und normalisiert `targets.json`. Ergebnis ist `{ ok: true, config }`
  * oder `{ ok: false, reason }` - wirft nie. Alles, was hier durchfällt,
  * führt zu "kein Ziel verfügbar", nie zu einem Ersatzwert.
@@ -295,12 +308,8 @@ function validateConfig(raw) {
         '`thresholds` braucht 0 < amber ≤ green ≤ 2 (Anteil vom Ziel, z. B. 0.9 / 1.0).',
     }
   }
-  const closed = Array.isArray(raw.closed_weekdays) ? raw.closed_weekdays : null
-  if (
-    !closed ||
-    closed.some((d) => !Number.isInteger(d) || d < 1 || d > 7) ||
-    new Set(closed).size >= 7
-  ) {
+  const closed = normalizeClosedWeekdays(raw.closed_weekdays)
+  if (!closed) {
     return {
       ok: false,
       reason:
@@ -331,7 +340,7 @@ function validateConfig(raw) {
     business_days_per_month: businessDays,
     weekday_window_months: windowMonths,
     thresholds: { green: thresholds.green, amber: thresholds.amber },
-    closed_weekdays: [...new Set(closed)].sort((a, b) => a - b),
+    closed_weekdays: closed,
     non_pos_revenue_monthly: nonPos.value,
     private_draw_monthly: draw.value,
     fixed_costs_monthly: null,
@@ -1206,6 +1215,7 @@ module.exports = {
   monthBounds,
   todayIso,
   monthsBetween,
+  normalizeClosedWeekdays,
   validateConfig,
   parseConfig,
   configAge,

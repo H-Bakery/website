@@ -1243,6 +1243,7 @@ const world = {
   },
   deliveries: nextWorld.deliveries,
   restAmAbend: nextWorld.restAmAbend,
+  dienstplan: nextWorld.dienstplan ?? null,
   partner: {
     id: partner.id,
     slug: partner.slug,
@@ -1291,6 +1292,7 @@ const world = {
     'Round-6 (W4-verify r5 fixes): confirmedBackzettel has Nachträge of every kind (added, changed, removed = line dropped from tag3-entfernt, moved = tag3-verschoben moved to afterConfirm.movedTo and carries preorderMovedTo, cancelled = tag3-storniert, paid -> refund); idempotentCreate.changedRetry = same requestId with an edited body -> 409 request_id_changed, nothing saved; partner has two complete days (completeDays) and one open day (openDay, initial only) -> sell-through over complete days only, rest as openQty „Offen“; a lost-refresh reissue revokes the unused successor without replacedBy (presenting it later = reuse, session ends).',
     'Branch next only: B8 tours on the real API - deliveries.tours on world.saturday, tour 1 (verify.fahrer) carries the Mörsbach + Oberdorf pickup stops, tour 2 (verify.fahrer2) is started (first stop done); verify.fahrer3 has no driver row (app shows the bitte-im-Büro-melden hint); a third driver has no account. Fahrer-App = second.url when second.kind is delivery: username + password login (no PIN). Nominatim/OSRM are dead -> estimates.',
     'Branch next only: restAmAbend.days = production days in today-7..yesterday: confirmed Backzettel except the one marked draft; count full|partial|exceeds|none (counted by verify.verkauf via PIN at stations[0], one correction by verify.verkauf2); one acknowledged and one open Nachtrag. /admin/rest exists only in mode full (pilot mode: Im Pilotbetrieb nicht verfügbar).',
+    'Dienstplan (TASK-042, only where /api/dienstplan exists): dienstplan.employees = 8 invented people (verkauf/backstube/fahrer/buero, four linked to verify.* logins), templates Früh/Spät, Verkauf shifts this and next ISO week on open days, absences around today (Valentin urlaub genehmigt next week, Bernd urlaub geplant, Paul urlaub last week, Fritz frei, Erika abwesend halber Tag); Paul has no entitlement (balance no-config), Mia entered 60 days ago (pro-rata). Owner with a personal session only; /admin/dienstplan is hidden in pilot mode.',
     'CLI: source dirs.envFile, then (cd dirs.root && node <repo>/dist/apps/bakery-api/bundle/cli.js <cmd>).',
   ],
 }

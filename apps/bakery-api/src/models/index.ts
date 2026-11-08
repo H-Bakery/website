@@ -14,6 +14,10 @@
  *   DeliveryDepot, DeliveryDriver, DeliveryTour,
  *   DeliveryStop, DeliveryGeocache               delivery_* (B8 migration)
  *   RestCount                                    rest_counts (M4 „Rest am Abend“ migration)
+ *   Employee, VacationEntitlement, ShiftTemplate,
+ *   Shift, Absence                               employees, vacation_entitlements,
+ *                                                shift_templates, shifts, absences
+ *                                                (TASK-042 Dienstplan migration)
  *
  * The legacy models (Cash, Chat, Product, Order, Inventory, Recipe, ...) were
  * deleted with the unmounted code in B12; their tables may still sit in an old
@@ -42,6 +46,11 @@ import { default as DeliveryTour } from './DeliveryTour'
 import { default as DeliveryStop } from './DeliveryStop'
 import { default as DeliveryGeocache } from './DeliveryGeocache'
 import { default as RestCount } from './RestCount'
+import { default as Employee } from './Employee'
+import { default as VacationEntitlement } from './VacationEntitlement'
+import { default as ShiftTemplate } from './ShiftTemplate'
+import { default as Shift } from './Shift'
+import { default as Absence } from './Absence'
 
 // Sequelize instance - set during initializeModels
 let _sequelize: Sequelize | undefined
@@ -78,6 +87,11 @@ export {
   DeliveryStop,
   DeliveryGeocache,
   RestCount,
+  Employee,
+  VacationEntitlement,
+  ShiftTemplate,
+  Shift,
+  Absence,
 }
 
 /** The models `initializeModels()` sets up, in dependency order. */
@@ -103,6 +117,11 @@ export const PILOT_MODELS = [
   DeliveryStop,
   DeliveryGeocache,
   RestCount,
+  Employee,
+  VacationEntitlement,
+  ShiftTemplate,
+  Shift,
+  Absence,
 ] as const
 
 export async function initializeModels(seq: Sequelize): Promise<void> {
@@ -192,6 +211,21 @@ function setupAssociations(): void {
     foreignKey: 'pickupPointId',
     as: 'pickupPoint',
   })
+
+  // Dienstplan (TASK-042)
+  Employee.belongsTo(User, { foreignKey: 'userId', as: 'user' })
+  Employee.hasMany(VacationEntitlement, {
+    foreignKey: 'employeeId',
+    as: 'entitlements',
+  })
+  VacationEntitlement.belongsTo(Employee, {
+    foreignKey: 'employeeId',
+    as: 'employee',
+  })
+  Employee.hasMany(Shift, { foreignKey: 'employeeId', as: 'shifts' })
+  Shift.belongsTo(Employee, { foreignKey: 'employeeId', as: 'employee' })
+  Employee.hasMany(Absence, { foreignKey: 'employeeId', as: 'absences' })
+  Absence.belongsTo(Employee, { foreignKey: 'employeeId', as: 'employee' })
 }
 
 /** Models with a table in the pilot schema (for tooling and tests). */

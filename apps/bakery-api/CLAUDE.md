@@ -30,4 +30,5 @@ Details in `website/docs/api/`: [overview](../../docs/api/overview.md) (build, s
 tests) · [auth](../../docs/api/auth.md) · [hq-data](../../docs/api/hq-data.md) ·
 [hq-products](../../docs/api/hq-products.md) · [partners](../../docs/api/partners.md) ·
 [preorders](../../docs/api/preorders.md) · [deliveries](../../docs/api/deliveries.md) ·
-[backzettel](../../docs/api/backzettel.md) · [rest](../../docs/api/rest.md).
+[backzettel](../../docs/api/backzettel.md) · [rest](../../docs/api/rest.md) ·
+[dienstplan](../../docs/api/dienstplan.md).

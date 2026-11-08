@@ -16,6 +16,7 @@ const authMigration = require('../../migrations/20261106000000-auth-sessions-sta
 const preordersMigration = require('../../migrations/20261113000000-preorders-b7.js')
 const deliveriesMigration = require('../../migrations/20270105000000-delivery-tours-b8.js')
 const restMigration = require('../../migrations/20261201000000-rest-am-abend.js')
+const dienstplanMigration = require('../../migrations/20270107000000-dienstplan.js')
 
 /** The 17 migrations the server ran before B2, now in migrations/archive/. */
 const LEGACY_NAMES = [
@@ -77,7 +78,7 @@ describe('pilot baseline on a fresh database', () => {
   })
   afterAll(() => sequelize.close())
 
-  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders, M4 rest and B8 tours', () => {
+  it('opens the static list, followed by B3 auth, Z3 Backzettel, B7 preorders, M4 rest, B8 tours and the Dienstplan', () => {
     expect(MIGRATIONS.map((m) => m.name)).toEqual([
       '20261105000000-pilot-baseline.js',
       '20261106000000-auth-sessions-stations.js',
@@ -88,10 +89,11 @@ describe('pilot baseline on a fresh database', () => {
       '20261201000000-rest-am-abend.js',
       '20270105000000-delivery-tours-b8.js',
       '20270106000000-rest-count-line-rows.js',
+      '20270107000000-dienstplan.js',
     ])
   })
 
-  it('creates exactly the pilot tables (with the B3 auth, B7, M4 and B8 tables)', async () => {
+  it('creates exactly the pilot tables (with the B3 auth, B7, M4, B8 and Dienstplan tables)', async () => {
     expect(await tableNames(sequelize)).toEqual(
       [
         ...baseline.TABLES,
@@ -99,6 +101,7 @@ describe('pilot baseline on a fresh database', () => {
         ...preordersMigration.TABLES,
         ...deliveriesMigration.TABLES,
         ...restMigration.TABLES,
+        ...dienstplanMigration.TABLES,
         'SequelizeMeta',
       ].sort()
     )
@@ -627,6 +630,7 @@ describe('pilot baseline down()', () => {
   it('drops every baseline table (after B7 and B3 auth are undone)', async () => {
     const sequelize = await freshDb()
     await runMigrations(sequelize, quiet)
+    await dienstplanMigration.down(sequelize.getQueryInterface(), Sequelize)
     await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)
     await restMigration.down(sequelize.getQueryInterface(), Sequelize)
     await preordersMigration.down(sequelize.getQueryInterface(), Sequelize)
@@ -864,6 +868,64 @@ describe('B8 delivery tours migration', () => {
     expect(await depot()).toHaveLength(1)
     await deliveriesMigration.down(sequelize.getQueryInterface(), Sequelize)
     for (const table of deliveriesMigration.TABLES) {
+      expect(await tableNames(sequelize)).not.toContain(table)
+    }
+    await sequelize.close()
+  })
+})
+
+describe('TASK-042 Dienstplan migration', () => {
+  it('creates the Dienstplan tables, idempotently, and drops them again', async () => {
+    const sequelize = await freshDb()
+    await runMigrations(sequelize, quiet)
+    for (const table of dienstplanMigration.TABLES) {
+      expect(await tableNames(sequelize)).toContain(table)
+    }
+    expect(await columns(sequelize, 'employees')).toEqual(
+      [
+        'active',
+        'area',
+        'color',
+        'created_at',
+        'display_name',
+        'employment_type',
+        'entry_date',
+        'exit_date',
+        'id',
+        'note',
+        'updated_at',
+        'user_id',
+        'weekly_hours',
+      ].sort()
+    )
+    expect(await columns(sequelize, 'absences')).toEqual(
+      expect.arrayContaining([
+        'employee_id',
+        'type',
+        'status',
+        'start_date',
+        'end_date',
+        'half_day',
+      ])
+    )
+    const insertEntitlement = () =>
+      sequelize.query(
+        `INSERT INTO vacation_entitlements (employee_id, year, created_at, updated_at)
+         VALUES (1, 2026, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+      )
+    await sequelize.query(
+      `INSERT INTO employees (display_name, area, created_at, updated_at)
+       VALUES ('Erika Beispiel', 'verkauf', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+    )
+    await insertEntitlement()
+    await expect(insertEntitlement()).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    })
+    const before = await tableNames(sequelize)
+    await dienstplanMigration.up(sequelize.getQueryInterface(), Sequelize)
+    expect(await tableNames(sequelize)).toEqual(before)
+    await dienstplanMigration.down(sequelize.getQueryInterface(), Sequelize)
+    for (const table of dienstplanMigration.TABLES) {
       expect(await tableNames(sequelize)).not.toContain(table)
     }
     await sequelize.close()
