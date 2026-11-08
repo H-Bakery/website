@@ -120,6 +120,19 @@ describe('AdminLayout', () => {
     expect(screen.getByLabelText('Pfad').textContent).not.toMatch(/\b1\b/)
   })
 
+  it('names the Dienstplan pages and drops the employee id (TASK-042)', () => {
+    renderLayout('/admin/dienstplan/mitarbeiter')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Dienstplan › Mitarbeiter'
+    )
+    cleanup()
+    renderLayout('/admin/dienstplan/mitarbeiter/12')
+    expect(screen.getByLabelText('Pfad')).toHaveTextContent(
+      'Dashboard › Dienstplan › Mitarbeiter'
+    )
+    expect(screen.getByLabelText('Pfad').textContent).not.toMatch(/\b12\b/)
+  })
+
   it('renders a readable breadcrumb', () => {
     renderLayout('/admin/products/new')
     expect(screen.getByLabelText('Pfad')).toHaveTextContent(

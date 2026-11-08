@@ -135,6 +135,21 @@ describe('isPilotPathAllowed', () => {
     expect(isPilotPathAllowed('/admin/rest', false)).toBe(true)
   })
 
+  it('sperrt den Dienstplan (TASK-042, nach dem Pilot), bis der Inhaber ihn freigibt', () => {
+    for (const route of [
+      '/admin/dienstplan',
+      '/admin/dienstplan/mitarbeiter',
+      '/admin/dienstplan/mitarbeiter/3',
+    ]) {
+      expect(isPilotPathAllowed(route, true)).toBe(false)
+      expect(isPilotHiddenPath(route)).toBe(true)
+      expect(isPilotPathAllowed(route, false)).toBe(true)
+    }
+    expect(PILOT_ALLOWED_ROUTES).not.toContain('/admin/dienstplan')
+    expect(hrefs(getNavigation(true))).not.toContain('/admin/dienstplan')
+    expect(hrefs(getNavigation(false))).toContain('/admin/dienstplan')
+  })
+
   it('lässt das Dashboard nur exakt zu, nicht jede /admin-Unterseite', () => {
     expect(matchesRoute('/admin')).toBe(true)
     expect(matchesRoute('/admin/')).toBe(true)

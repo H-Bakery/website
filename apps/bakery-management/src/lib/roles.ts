@@ -208,6 +208,9 @@ export const PERSONAL_ONLY_ROUTES: readonly string[] = [
   // standen sie an der Station im Menü und antworteten dann mit 403
   // (W4-verify r2). `/admin/finance` schließt `/admin/finance/tagesziel` ein.
   '/admin/finance',
+  // Dienstplan samt Mitarbeiterprofilen und Urlaub (TASK-042): Personendaten,
+  // die API verlangt `requirePersonalSession` auf dem ganzen Router.
+  '/admin/dienstplan',
 ]
 
 /** Sitzungsart, wie sie `authSession.ts` speichert (hier ohne Import-Zyklus). */

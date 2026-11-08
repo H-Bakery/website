@@ -36,6 +36,7 @@ import {
   ManageAccounts as UsersIcon,
   Checklist as PickupIcon,
   HelpOutline as HelpIcon,
+  CalendarMonth as DienstplanIcon,
 } from '@mui/icons-material'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -89,6 +90,7 @@ const iconMap: Record<string, React.ReactElement> = {
   users: <UsersIcon />,
   pickup: <PickupIcon />,
   help: <HelpIcon />,
+  dienstplan: <DienstplanIcon />,
 }
 
 /**
@@ -122,6 +124,9 @@ const DYNAMIC_BREADCRUMB_LABELS: Record<string, string | null> = {
   '/admin/analytics/revenue': 'Umsatz',
   '/admin/nicht-verfuegbar': 'Nicht verfügbar',
   '/admin/sitzung-pruefen': 'Anmeldung prüfen',
+  // Dienstplan (TASK-042): der Name steht auf der Profilseite selbst.
+  '/admin/dienstplan/mitarbeiter': 'Mitarbeiter',
+  '/admin/dienstplan/mitarbeiter/[id]': null,
 }
 
 /** Human readable breadcrumb segments for the current path. */

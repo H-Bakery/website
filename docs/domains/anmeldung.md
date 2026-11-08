@@ -122,7 +122,7 @@ im Browser noch im Server-HTML/RSC-Payload.
   `getNavigation()`; Pilotbetrieb und Rolle überlagern sich. Das Dashboard zeigt Kasse, Tagesziel und
   Schnellzugriffe nur, wenn die Rolle die Seite dahinter darf. **Wer eine Seite für eine Rolle
   freigibt, ändert nur `ROLE_ACCESS`** (Tests: `roles.spec.ts`). `PERSONAL_ONLY_ROUTES`
-  (`/admin/users`, `/admin/finance` samt Tagesziel) sind an einer Station auch für den Inhaber gesperrt -
+  (`/admin/users`, `/admin/finance` samt Tagesziel, `/admin/dienstplan` samt Mitarbeiterprofilen) sind an einer Station auch für den Inhaber gesperrt -
   wie `requirePersonalSession` der API; Navigation, Layout („Kein Zugriff" mit Begründung) und Proxy
   fragen `isPathAllowedForRole(path, role, sessionKind)`.
 - **Station (`/station`, außerhalb `/admin`, ohne Seitenleiste).** Ohne Token richtet ein mit Passwort

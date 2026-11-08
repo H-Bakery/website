@@ -68,6 +68,7 @@ export const PILOT_ALLOWED_ROUTES: readonly string[] = [
  */
 export const PILOT_HIDDEN_ROUTES: readonly string[] = [
   '/admin/rest', // Rest am Abend (M4, nach dem Pilot)
+  '/admin/dienstplan', // Dienstplan, Mitarbeiter, Urlaub (TASK-042, nach dem Pilot)
   '/admin/sitzung-pruefen', // Ziel des Proxys, nicht zum direkten Aufruf
 ]
 

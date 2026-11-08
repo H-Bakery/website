@@ -123,6 +123,15 @@ export const MANAGEMENT_NAVIGATION: NavItem[] = [
     description: 'Break-even-Ampel (nur Inhaber)',
   },
   {
+    // TASK-042: Schichten (Verkauf), Abwesenheiten und Urlaubskonten - nur
+    // Inhaber mit persönlicher Sitzung (PERSONAL_ONLY_ROUTES). Nicht in
+    // PILOT_ALLOWED_ROUTES - im Pilotbetrieb erst nach Freigabe sichtbar.
+    label: 'Dienstplan',
+    href: '/admin/dienstplan',
+    icon: 'dienstplan',
+    description: 'Schichten, Urlaub & Mitarbeiter',
+  },
+  {
     label: 'Social Media',
     href: '/admin/social-media',
     icon: 'socialmedia',
