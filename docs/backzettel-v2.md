@@ -530,12 +530,14 @@ sheet.
 | `GET /api/backzettel/:date/bake-list`            | **new**, any session: `{ date, weekday, weekdayName, status: 'ok'\|'no-config'\|'ruhetag', sources: [{ doughDate, status: 'draft'\|'confirmed', confirmedAt }], sections, rolls, deltas, deltasPending, warnings }`. Lines from confirmed sheets come from the stored rows, from draft sheets live. |
 | `PUT /:date/lines/:itemId[/:variant]/correction` | body gains optional `bakeDate` (default = `date`); must be a bake date of the sheet → else 400 `invalid_bake_date`. `expected` unchanged.                                                                                                                                                           |
 | `POST /:date/confirm`                            | freezes the plan (`computed_snapshot.plan`) and the v2 parts; rows per (bake date × item × variant)                                                                                                                                                                                                 |
-| `POST /:date/lines/:lineId/done`                 | unchanged (row id). On a lead > 0 line "done" means **made** (dough day); there is no "baked" tick in Z10 (owner decision O5)                                                                                                                                                                       |
+| `POST /:date/lines/:lineId/done`                 | unchanged (row id). On a lead > 0 line "done" means **made** (dough day); "baked" is its own tick on the bake list (owner decision O5, next row)                                                                                                                                                    |
+| `POST /:date/bake/:lineId/baked` / `/unbaked`    | **new (O5, 2026-11-08)**: „gebacken" for a row of the bake list of `:date`; also `POST /:date/bake/deltas/baked` / `/unbaked { ids }` for Nachträge, each on its own. Details: docs/api/backzettel.md                                                                                               |
 | `GET /config`                                    | adds `open` and `working.open`; normalised items carry `sizes`, `variantKind`, `lead`, `bruch` (with `piecesPerBruch`), `from_dough`                                                                                                                                                                |
 | `GET /:date/prep`                                | unchanged                                                                                                                                                                                                                                                                                           |
 | Z4 `PUT /config/base`                            | unchanged; sizes are edited with `variants: { g500: n }`                                                                                                                                                                                                                                            |
 
-Roles unchanged: read any session; plan/confirm/tick/ack `inhaber` + `backstube`; reopen `inhaber`.
+Roles unchanged: read any session; plan/confirm/tick (done and baked)/ack `inhaber` + `backstube`;
+reopen `inhaber`.
 Planning window (today − 7 … + 90) applies to the sheet date D.
 
 ### 5.3 Service (`backzettel.service.ts`)
@@ -589,41 +591,42 @@ mixed group, Testflit with per-weekday Bruch weight and singles, Testhefe) and `
 these is a value from hq. Management fixtures: `backzettelFixtures.ts` gains a v2 sheet, same
 numbers.
 
-| #   | Rule (backliste.md)                                                                                                                      | Test (file)                                                   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| R1  | v1 regression: a config without new keys gives the same `computeDay` result and a sheet equal to it                                      | `backzettelCore.test.js` (record v1 output first, deep-equal) |
-| R2  | §4.0 litres = kg ÷ kg/L, rounding step/mode up/nearest/down, tolerance (`10 × 1.1`)                                                      | `backzettelDough.test.js`                                     |
-| R3  | §4.0 kg/L null → kg only, `reason: kg_per_liter_unknown`                                                                                 | `backzettelDough.test.js`                                     |
-| R4  | rounding null → exact litres, `rounded: null`, `rounding_unknown`                                                                        | `backzettelDough.test.js`                                     |
-| R5  | §4.1 dough per size = Σ loaves × dough_g; unknown size weight → incomplete, `kgKnown`                                                    | `backzettelDough.test.js`                                     |
-| R6  | §4.1 combined dough: one litre number from Σ exact member litres, member kg shown; one member unknown → group litres null                | `backzettelDough.test.js`                                     |
-| R7  | §4.1 add-on g per litre of the member's exact litres, rounding; unknown → null                                                           | `backzettelDough.test.js`                                     |
-| R8  | §4.1 from_dough fixed: share added once when the item is baked, extras listed, not dough                                                 | `backzettelDough.test.js`                                     |
-| R9  | from_dough per_dough: share scaled with the item's kg                                                                                    | `backzettelDough.test.js`                                     |
-| R10 | from_dough mode null → target dough incomplete, no litres, `open` entry                                                                  | `backzettelDough.test.js`                                     |
-| R11 | §4.2 one Bruch = `bruch_pieces`; per_product 2 → half as many rolls per Bruch; ceil; spare                                               | `backzettelDough.test.js`                                     |
-| R12 | §4.2 one Bruch split across products of a group; Brüche from summed pieces; split list                                                   | `backzettelDough.test.js`                                     |
-| R13 | §4.2 Bruch weight per bake weekday (two bake days on one sheet, different g)                                                             | `backzettelDough.test.js`                                     |
-| R14 | Bruch weight null → group kg null, dough incomplete; Brüche still shown                                                                  | `backzettelDough.test.js`                                     |
-| R15 | §4.2 single pieces without divider: count × pieces × piece_g; `pieces: null` → unknown                                                   | `backzettelDough.test.js`                                     |
-| R16 | §2 dough day: Saturday sheet collects Sunday + Tuesday (lead 1, dough_days without Sun/Mon)                                              | `backzettelPlan.test.js`                                      |
-| R17 | lead 2 (Teiglinge): Thursday → Saturday; lead map per bake weekday                                                                       | `backzettelPlan.test.js`                                      |
-| R18 | no dough day within 14 days → warning, line on its bake day                                                                              | `backzettelPlan.test.js`                                      |
-| R19 | §2 preorders and CAP belong to the bake day (pickup date B, CAP weekday of B)                                                            | `backzettelCore.test.js`                                      |
-| R20 | pooled quarters per (bake date × item × variant), not across bake dates                                                                  | `backzettelCore.test.js`                                      |
-| R21 | §4.3 Hefeteig litres = kg ÷ 5 (fixture), nearest whole; batches null without batch_max                                                   | `backzettelCore.test.js`                                      |
-| R22 | filling_g null → filled, grams null, no recipe scaling; base per variant still required                                                  | `backzettelCore.test.js`, `backzettelConfig.test.js`          |
-| R23 | size products: preorder lands on its size; `variantsForProduct` → `variants: []`, `variantsByProduct` omits it                           | `backzettelCore.test.js`                                      |
-| R24 | deltas: Tuesday-roll preorder after Saturday confirm → delta on Saturday (bake date Tue), none on Tuesday                                | `backzettelDay.test.js`, `backzettel.test.ts`                 |
-| R25 | transition: legacy confirmed Tuesday keeps its rolls; Saturday draft skips owned pairs; no double delta                                  | `backzettelDay.test.js`, `backzettel.test.ts`                 |
-| R26 | bake list collects lines from two sheets with their statuses                                                                             | `backzettelCore.test.js`, `backzettel.test.ts`                |
-| R27 | Sunday: sheet with only lead-0 lines, bake list full; Monday still 409                                                                   | `backzettel.test.ts`                                          |
-| R28 | validator null / missing / invalid for every row of the §2 tables; `open` list; v1 hq-shaped fixture: same errors and warnings as before | `backzettelConfig.test.js`                                    |
-| R29 | correction with `bakeDate`, 400 `invalid_bake_date`; ticks per row                                                                       | `backzettel.test.ts`                                          |
-| R30 | Rest am Abend: size rows only with that size's products; baked from two sheets                                                           | `restAmAbend.test.js`, `rest.test.ts`                         |
-| R31 | Z9 snapshot v2 keeps the whitelist (planted personal markers stay out)                                                                   | `hqSnapshotsCore.test.js`                                     |
-| R32 | migration backfill; legacy confirmed day reads identically                                                                               | `pilotBaseline.test.ts`                                       |
-| R33 | Z4 editor: size ids in variant maps, flow and block, zero diff                                                                           | `backzettelBaseEdit.test.js`                                  |
+| #   | Rule (backliste.md)                                                                                                                      | Test (file)                                                                                               |
+| --- | ---------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| R1  | v1 regression: a config without new keys gives the same `computeDay` result and a sheet equal to it                                      | `backzettelCore.test.js` (record v1 output first, deep-equal)                                             |
+| R2  | §4.0 litres = kg ÷ kg/L, rounding step/mode up/nearest/down, tolerance (`10 × 1.1`)                                                      | `backzettelDough.test.js`                                                                                 |
+| R3  | §4.0 kg/L null → kg only, `reason: kg_per_liter_unknown`                                                                                 | `backzettelDough.test.js`                                                                                 |
+| R4  | rounding null → exact litres, `rounded: null`, `rounding_unknown`                                                                        | `backzettelDough.test.js`                                                                                 |
+| R5  | §4.1 dough per size = Σ loaves × dough_g; unknown size weight → incomplete, `kgKnown`                                                    | `backzettelDough.test.js`                                                                                 |
+| R6  | §4.1 combined dough: one litre number from Σ exact member litres, member kg shown; one member unknown → group litres null                | `backzettelDough.test.js`                                                                                 |
+| R7  | §4.1 add-on g per litre of the member's exact litres, rounding; unknown → null                                                           | `backzettelDough.test.js`                                                                                 |
+| R8  | §4.1 from_dough fixed: share added once when the item is baked, extras listed, not dough                                                 | `backzettelDough.test.js`                                                                                 |
+| R9  | from_dough per_dough: share scaled with the item's kg                                                                                    | `backzettelDough.test.js`                                                                                 |
+| R10 | from_dough mode null → target dough incomplete, no litres, `open` entry                                                                  | `backzettelDough.test.js`                                                                                 |
+| R11 | §4.2 one Bruch = `bruch_pieces`; per_product 2 → half as many rolls per Bruch; ceil; spare                                               | `backzettelDough.test.js`                                                                                 |
+| R12 | §4.2 one Bruch split across products of a group; Brüche from summed pieces; split list                                                   | `backzettelDough.test.js`                                                                                 |
+| R13 | §4.2 Bruch weight per bake weekday (two bake days on one sheet, different g)                                                             | `backzettelDough.test.js`                                                                                 |
+| R14 | Bruch weight null → group kg null, dough incomplete; Brüche still shown                                                                  | `backzettelDough.test.js`                                                                                 |
+| R15 | §4.2 single pieces without divider: count × pieces × piece_g; `pieces: null` → unknown                                                   | `backzettelDough.test.js`                                                                                 |
+| R16 | §2 dough day: Saturday sheet collects Sunday + Tuesday (lead 1, dough_days without Sun/Mon)                                              | `backzettelPlan.test.js`                                                                                  |
+| R17 | lead 2 (Teiglinge): Thursday → Saturday; lead map per bake weekday                                                                       | `backzettelPlan.test.js`                                                                                  |
+| R18 | no dough day within 14 days → warning, line on its bake day                                                                              | `backzettelPlan.test.js`                                                                                  |
+| R19 | §2 preorders and CAP belong to the bake day (pickup date B, CAP weekday of B)                                                            | `backzettelCore.test.js`                                                                                  |
+| R20 | pooled quarters per (bake date × item × variant), not across bake dates                                                                  | `backzettelCore.test.js`                                                                                  |
+| R21 | §4.3 Hefeteig litres = kg ÷ 5 (fixture), nearest whole; batches null without batch_max                                                   | `backzettelCore.test.js`                                                                                  |
+| R22 | filling_g null → filled, grams null, no recipe scaling; base per variant still required                                                  | `backzettelCore.test.js`, `backzettelConfig.test.js`                                                      |
+| R23 | size products: preorder lands on its size; `variantsForProduct` → `variants: []`, `variantsByProduct` omits it                           | `backzettelCore.test.js`                                                                                  |
+| R24 | deltas: Tuesday-roll preorder after Saturday confirm → delta on Saturday (bake date Tue), none on Tuesday                                | `backzettelDay.test.js`, `backzettel.test.ts`                                                             |
+| R25 | transition: legacy confirmed Tuesday keeps its rolls; Saturday draft skips owned pairs; no double delta                                  | `backzettelDay.test.js`, `backzettel.test.ts`                                                             |
+| R26 | bake list collects lines from two sheets with their statuses                                                                             | `backzettelCore.test.js`, `backzettel.test.ts`                                                            |
+| R27 | Sunday: sheet with only lead-0 lines, bake list full; Monday still 409                                                                   | `backzettel.test.ts`                                                                                      |
+| R28 | validator null / missing / invalid for every row of the §2 tables; `open` list; v1 hq-shaped fixture: same errors and warnings as before | `backzettelConfig.test.js`                                                                                |
+| R29 | correction with `bakeDate`, 400 `invalid_bake_date`; ticks per row                                                                       | `backzettel.test.ts`                                                                                      |
+| R30 | Rest am Abend: size rows only with that size's products; baked from two sheets                                                           | `restAmAbend.test.js`, `rest.test.ts`                                                                     |
+| R31 | Z9 snapshot v2 keeps the whitelist (planted personal markers stay out)                                                                   | `hqSnapshotsCore.test.js`                                                                                 |
+| R32 | migration backfill; legacy confirmed day reads identically                                                                               | `pilotBaseline.test.ts`                                                                                   |
+| R33 | Z4 editor: size ids in variant maps, flow and block, zero diff                                                                           | `backzettelBaseEdit.test.js`                                                                              |
+| R34 | O5 „gebacken“: own tick per bake-list row and per Nachtrag; draft 409, other bake day 404, survival per row, baked = seen                | `backzettelDay.test.js`, `backzettelBaked.test.ts`, `BackstubeBakeList.spec.tsx`, `backstubeBake.spec.ts` |
 
 ---
 
@@ -679,7 +682,9 @@ covered by the existing `ROLE_ACCESS` rule for `/admin/backzettel` and by `PILOT
 - Machine strip at the top of Zettel, large; rolls grouped by bake day; Hefeteig first on Saturday
   stays.
 - Bake list: big rows "Doppelweck 60 (Teig vom Sa)", open Nachträge with "Gesehen" (same
-  `ack` endpoint, the delta's sheet date). No tick (O5).
+  `ack` endpoint, the delta's sheet date). Since O5 (2026-11-08) each row of a confirmed sheet has
+  its own 72 px „gebacken" tick, and the Nachträge below have one per line (`bakeDeltaGroups`);
+  draft rows have none. The print (`BakeListPrint`) stays paper - an empty box per row.
 
 ### 7.4 Grundmengen `/admin/backzettel/grundmengen` (Z4)
 
@@ -720,21 +725,24 @@ covered by the existing `ROLE_ACCESS` rule for `/admin/backzettel` and by `PILOT
 
 ## 8. Owner decisions and questionnaire values
 
-Owner decisions: **O1, O2, O7 and O9 confirmed by the owner on 2026-11-08**; the rest are the
-defaults the design assumes until the owner says otherwise.
+Owner decisions: **O1, O2, O5, O7, O9, O11 and O12 decided by the owner on 2026-11-08** (O5
+changed from "no tick"); the rest are the defaults the design assumes until the owner says
+otherwise.
 
-| #   | Decision                                                     | Default in this design                              |
-| --- | ------------------------------------------------------------ | --------------------------------------------------- |
-| O1  | Unit of roll base quantities                                 | pieces (Brüche are derived)                         |
-| O2  | Spare pieces of a rounded-up Bruch                           | shown "+n frei", not added to lines or "baked"      |
-| O3  | Season factor                                                | per sheet (dough day), applies to all its bake days |
-| O4  | Combined litres formula                                      | round(Σ exact member litres)                        |
-| O5  | Tick on the bake list                                        | none in Z10 (paper); "done" on the sheet = made     |
-| O6  | Dough master data editable in the app                        | no; hq by hand + CI validator                       |
-| O7  | Switch bread to sizes now with `null` bases                  | yes, in the hq PR that follows the deploy           |
-| O8  | Print default                                                | one page; extras opt-in                             |
-| O9  | Old, unconfirmed `batch_max_kg` and `filling_g` values in hq | replaced by `null`                                  |
-| O10 | Late preorder for a bake day whose dough is made             | accept, Nachtrag on sheet + bake list (as today)    |
+| #   | Decision                                                     | Default in this design                                                                                                                                                                                   |
+| --- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| O1  | Unit of roll base quantities                                 | pieces (Brüche are derived)                                                                                                                                                                              |
+| O2  | Spare pieces of a rounded-up Bruch                           | shown "+n frei", not added to lines or "baked"                                                                                                                                                           |
+| O3  | Season factor                                                | per sheet (dough day), applies to all its bake days                                                                                                                                                      |
+| O4  | Combined litres formula                                      | round(Σ exact member litres)                                                                                                                                                                             |
+| O5  | Tick on the bake list                                        | gebacken-Haken auf der Backliste (Inhaber, 2026-11-08): its own tick per bake-list row and per Nachtrag, separate from "done" on the sheet (= made); same survival rules per row; not in the Z9 snapshot |
+| O6  | Dough master data editable in the app                        | no; hq by hand + CI validator                                                                                                                                                                            |
+| O7  | Switch bread to sizes now with `null` bases                  | yes, in the hq PR that follows the deploy                                                                                                                                                                |
+| O8  | Print default                                                | one page; extras opt-in                                                                                                                                                                                  |
+| O9  | Old, unconfirmed `batch_max_kg` and `filling_g` values in hq | replaced by `null`                                                                                                                                                                                       |
+| O10 | Late preorder for a bake day whose dough is made             | accept, Nachtrag on sheet + bake list (as today)                                                                                                                                                         |
+| O11 | Make vs. bake for cakes ("make n, bake m", Kränze ahead)     | not modelled; waits for questionnaire F13/Q-L18 (Inhaber, 2026-11-08)                                                                                                                                    |
+| O12 | Spezialbrote                                                 | stay legacy Liter items until the questionnaire says what the number means (Inhaber, 2026-11-08)                                                                                                         |
 
 Questionnaire answers (`backliste-fragebogen.md`) only fill `null`s in hq; no code waits for them.
 
@@ -767,13 +775,19 @@ Questionnaire answers (`backliste-fragebogen.md`) only fill `null`s in hq; no co
    (Korn share applied to the whole dough); after rounding it agrees on both reference Saturdays.
    Dunkelsauer rounding differs between Saturday and weekdays → `rounding: null` until answered.
 5. **Make vs. bake for cakes** ("make n, bake m", Kränze made ahead and frozen) is not modelled;
-   `lead` covers only whole lines. Follow-up if F13/Q-L18 confirm it.
+   `lead` covers only whole lines. Owner decision O11 (2026-11-08): it waits for the questionnaire
+   (F13/Q-L18); nothing is built before the answer. The bake-list „gebacken" tick (O5) is per whole
+   line and does not model it either.
 6. **Weekday sheets carry only "N Bruch mehr"**: without standard quantities (F3) every roll line
    stays `base_unset`; the app cannot invent them. Corrections with reason cover "mehr".
 7. **Rest am Abend vs. spare pieces**: physically more rolls come out than "baked" says (O2).
-8. **Spezialbrote** (decimal number of unknown unit, rotation) stay legacy Liter items.
+8. **Spezialbrote** (decimal number of unknown unit, rotation) stay legacy Liter items - owner
+   decision O12 (2026-11-08): until the questionnaire says what the number means; no conversion
+   is guessed.
 9. **Z9 snapshot schema 2**: Anna's readers of `data/production/backzettel/*.json` must accept
-   `schema_version: 2` (additive fields).
+   `schema_version: 2` (additive fields). The O5 „gebacken" ticks are not in it, like the done
+   ticks: the snapshot is written at confirm, before anything is baked, and who ticked is
+   personal (D13) - no new field, `schema_version` stays 2.
 10. **Per-size reference medians** - resolved. A size can carry its own register numbers
     (`sizes[].plu`, a subset of the item's `plu`, each PLU at most one size; missing or `null` =
     unknown, `null` listed in `open` as `size_plu_unknown`). `/reference` adds `sizes[]` per sized

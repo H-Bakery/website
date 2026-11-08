@@ -133,6 +133,18 @@ Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Z
   plus zusätzliche Felder. Die Grundmenge steht beim **Backtag**.
 - **`GET /api/backzettel/:datum/bake-list`** ist die Backliste für die Person, die nur backt
   (Sonntag): je Backtag die Zeilen aller Zettel, mit „Teig vom Samstag", ohne Teigzahlen.
+- **Zwei Haken (Inhaber-Entscheidung O5, 2026-11-08):** „erledigt" auf dem Zettel des Teigtags
+  heißt bei Teig für einen späteren Backtag **gemacht**; **gebacken** ist ein eigener Haken je Zeile
+  der Backliste (`POST /:backtag/bake/:zeilenId/baked|unbaked`, `inhaber` + `backstube`). Beide sind
+  unabhängig - wer bäckt, muss nicht vorher „gemacht" getippt haben. Gebacken geht nur, wenn der
+  Zettel der Zeile freigegeben ist (409 `not_confirmed`, wie Abhaken); eine Zeile eines anderen
+  Backtags ist 404 `not_on_bake_list`. Für den gebacken-Haken gelten dieselben Regeln wie für
+  „erledigt", je Zeile: braucht eine erneute Freigabe mehr, fällt er weg (`clearedBakedTicks`,
+  danach `previouslyBaked` „bereits 66 gebacken - noch +5"), weniger oder gleich lässt ihn stehen
+  (`ticksAfterConfirm` im Tages-Kern). **Ein Nachtrag wird für sich abgehakt**, nie über seine Zeile
+  (`POST /:backtag/bake/deltas/baked { ids }`); gebacken heißt auch gesehen (`deltaBakedUpdate`),
+  zurücknehmen lässt „Gesehen" stehen. Wieder öffnen und neu freigeben verwirft die Nachträge mit
+  ihren Haken (sie stehen dann in den Zeilen). Der Z9-Schnappschuss trägt keinen der Haken.
 - **Freigeben friert den Plan ein** (welche Backtage × Posten der Zettel trägt). Was ein
   freigegebener Zettel trägt, rechnet kein anderer Entwurf noch einmal (`owned_elsewhere`).
   Ein vor Z10 freigegebener Tag trägt alle Posten seines Datums (`legacyPlan`) und zeigt die
@@ -359,6 +371,15 @@ zu den Namenskacheln). Rolle prüfen Proxy und RouteGuard (`ROLE_ACCESS`: Inhabe
   während eines laufenden Hakens zurückkommt, wird verworfen (`mutationSeq`) - sonst spränge der Haken
   kurz zurück.
 - **Entwurf:** großes Banner „Noch nicht freigegeben", Zahlen grau, gestrichelte Zeilen, keine Haken.
+- **Reiter „Backen" (O5):** je Zeile eines freigegebenen Zettels ein eigener 72-px-Haken
+  **gebacken** (`BackstubeBakeList.tsx`), getrennt von „erledigt" im Reiter „Zettel"; Zeilen eines
+  Entwurfs-Zettels (gestrichelt) haben keinen. Darunter „Nachträge (nicht in den Zahlen oben)" je
+  Zeile mit eigenem Haken (`bakeDeltaGroups` in `src/lib/backstubeBake.ts`: die große Zahl ist
+  `delta.bake` bzw. bei einem später gekommenen Nachtrag `delta.bakeUnbaked`; ein Tippen hakt die
+  noch offenen ab bzw. nimmt alle zurück; bei „−3"/„±0" kein Haken). Wie auf dem Zettel sofort
+  gesetzt und bei Fehler zurückgenommen; 409/404 laden die Backliste neu, ein Neuladen während
+  eines laufenden Hakens wird verworfen. Der **Ausdruck** der Backliste bleibt Papier: ein leeres
+  Kästchen je Zeile, unverändert (eine Seite).
 - **Nachträge:** Karte oben mit je einem großen „Gesehen", an der Zeile ein Badge „Nachtrag +N" (offen
   farbig, quittiert „· gesehen"). Nachträge stehen nie im Gesamt.
 - **Samstag:** Hefeteig & Füllungen (`components/backstube/BackstubeHefeteig.tsx`) **vor** den Zeilen,

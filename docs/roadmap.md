@@ -650,7 +650,9 @@ Exit criteria:
   Progress: S1 schema/validator, S2 core (plan, doughs, sheet, bake list, deltas), S3 API + migration,
   S4 Rest am Abend + Z9 snapshot v2, S5 screens (planning, Backliste, tablet tabs Zettel/Backen,
   Grundmengen), S6 one-page print per dough day + bake-list print + optional weighing sheet, Hilfe,
-  docs (`docs/domains/backzettel.md`). Design record: `docs/backzettel-v2.md`.
+  docs (`docs/domains/backzettel.md`); owner decision O5 (2026-11-08): own „gebacken" tick per
+  bake-list row and Nachtrag on the tablet's Backen tab (API + migration `20270210000000`).
+  Design record: `docs/backzettel-v2.md`.
   Domain reference (private, with real reference values): `hq/notes/procedures/backliste.md`;
   baker questionnaire `hq/notes/procedures/backliste-fragebogen.md`. Scope:
   - **Doughs as master data** (`doughs[]`: `kg_per_liter` - the bakers' "Liter" is the recipe
