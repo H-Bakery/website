@@ -435,7 +435,7 @@ function ItemV2Note({ item }: { item: GrundmengenItem }) {
         : 'Stück, Bruch: Stück je Bruch unbekannt'
     )
   }
-  if (hasLead(item)) parts.push('Teig am Vortag')
+  if (hasLead(item)) parts.push('Teig am Teigtag davor')
   if (parts.length === 0) return null
   return (
     <Typography

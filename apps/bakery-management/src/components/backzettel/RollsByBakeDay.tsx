@@ -15,6 +15,7 @@ import type { BruchGroup, RollsBlock, SingleRow } from '../../lib/backzettelApi'
 import {
   bakeDayLabel,
   bruchGroupText,
+  bruchKgText,
   bruchStep,
   formatKnown,
   formatNumber,
@@ -24,6 +25,7 @@ import {
   v2CoveredKeys,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
+import { DeltaChip } from './BackzettelSectionView'
 import type { V2EditProps } from './BreadTable'
 
 export interface RollsByBakeDayProps extends V2EditProps {
@@ -41,7 +43,8 @@ function RollLine({
 }: {
   lineKey: string
   name: string
-  total: number
+  /** `null`: Grundmenge offen - „–“, nie 0. */
+  total: number | null
   detail?: string | null
   /** Stück je Bruch für „+1 Bruch“; `null` = kein Knopf. */
   step: number | null
@@ -94,8 +97,9 @@ function RollLine({
           sx={{ minWidth: 48, textAlign: 'right' }}
           data-testid={`roll-total-${lineKey}`}
         >
-          {formatNumber(total)}
+          {formatKnown(total)}
         </Typography>
+        {line && <DeltaChip line={line} />}
         {editable && line && !editing && (
           <>
             {step !== null && (
@@ -156,9 +160,7 @@ function GroupBlock({
           {bruchGroupText(group)}
         </Typography>
         <Typography color="text.secondary" variant="body2">
-          {group.kg === null
-            ? 'Teig: – kg'
-            : `Teig: ${formatKnown(group.kg, 'kg')}`}
+          {bruchKgText(group)}
         </Typography>
       </Stack>
       {group.missing.length > 0 && (
@@ -179,9 +181,11 @@ function GroupBlock({
           total={s.total}
           detail={
             s.perProduct !== 1
-              ? `${formatNumber(
-                  s.perProduct
-                )} Teigstücke je Stück (${formatNumber(s.doughPieces)})`
+              ? `${formatNumber(s.perProduct)} Teigstücke je Stück${
+                  s.doughPieces === null
+                    ? ''
+                    : ` (${formatNumber(s.doughPieces)})`
+                }`
               : null
           }
           step={bruchStep(group.piecesPerBruch, s.perProduct)}
@@ -211,7 +215,7 @@ function singleDetail(single: SingleRow): string {
 /**
  * Brötchen des Teigtag-Zettels je Backtag (Z10, §7.2 Nr. 5): „für Sonntag“,
  * „für Dienstag“, „heute backen“. Je Bruch-Gruppe eine Zeile „2 Bruch ×
- * 1150 g – 12 Stern, 8 Käse · +0 frei“ (freie Stücke zählen nie mit), darunter
+ * 1250 g – 12 Stern, 8 Käse · +0 frei“ (freie Stücke zählen nie mit), darunter
  * die Posten mit Korrektur (schickt den Backtag mit) und „+1 Bruch“; danach
  * Einzelstücke ohne Teilmaschine.
  */

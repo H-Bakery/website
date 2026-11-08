@@ -180,6 +180,8 @@ export interface HefeteigDough {
   complete?: boolean
   missing?: MissingPart[]
   liters?: DoughLiters
+  /** `false`: eine Grundmenge des Teigs ist offen - Teigstücke sind „mindestens“. */
+  piecesComplete?: boolean
 }
 
 export interface Hefeteig {
@@ -335,7 +337,44 @@ export interface BackzettelDay {
   /** Stammdaten, die für diesen Zettel noch offen sind (null = unbekannt). */
   openMasterData?: OpenMasterData[]
   /** Nur freigegeben (v2): Maschinen-Kästen, die Nachträge verändern. */
-  deltaMachine?: unknown[]
+  deltaMachine?: DeltaMachineBox[]
+  /** Nur freigegeben (v2): Bruch-Gruppen, deren Teigstücke Nachträge ändern. */
+  deltaBruch?: DeltaBruchGroup[]
+}
+
+/** Was Nachträge für einen Maschinen-Kasten heißen (Server, `machineDeltaExtras`). */
+export interface DeltaMachineBox {
+  id: string
+  name: string
+  doughIds: string[]
+  kgBefore: number | null
+  kg: number | null
+  kgDelta: number
+  complete: boolean
+  litersBefore: DoughLiters
+  liters: DoughLiters
+  batchesBefore: number | null
+  batches: number | null
+}
+
+/** Was Nachträge für eine Bruch-Gruppe heißen (Server, `bruchDeltaExtras`). */
+export interface DeltaBruchGroup {
+  key: string
+  group: string
+  name: string
+  bakeDate: string
+  piecesBefore: number | null
+  pieces: number | null
+  piecesDelta: number
+  bruecheBefore: number | null
+  brueche: number | null
+  /** `null`, wenn Stück je Bruch oder eine Grundmenge offen ist. */
+  bruecheDelta: number | null
+  spareBefore: number | null
+  spare: number | null
+  spareProductsBefore: number | null
+  spareProducts: number | null
+  complete: boolean
 }
 
 // ---------------------------------------------------------------- Z10 (v2)
@@ -384,7 +423,10 @@ export interface DoughSummary {
     itemId: string
     name: string
     bakeDate: string
+    /** from_dough: Anteil am Teig `from_dough.id`. */
     kg: number | null
+    /** Nur from_dough: Laibe × Teig je Laib (Teig der Brot-Zeile). */
+    loavesKg?: number | null
   }[]
   extras: { name: string; kg: number | null; itemId: string }[]
   combinedWith: string | null
@@ -440,9 +482,10 @@ export interface BruchSplit {
   itemId: string
   name: string
   variant: string | null
-  total: number
+  /** `null`: Grundmenge offen (Regel 8, nie 0). */
+  total: number | null
   perProduct: number
-  doughPieces: number
+  doughPieces: number | null
 }
 
 export interface BruchGroup {
@@ -453,11 +496,20 @@ export interface BruchGroup {
   bakeDate: string
   g: number | null
   piecesPerBruch: number | null
-  pieces: number
+  /** `null`, solange eine Grundmenge der Gruppe offen ist. */
+  pieces: number | null
   brueche: number | null
   kg: number | null
-  /** Freie Stücke durch das Aufrunden (nur Anzeige, nie in den Zeilen). */
+  /** Freie Teigstücke durch das Aufrunden (nur Anzeige, nie in den Zeilen). */
   spare: number | null
+  /** Dieselben freien Stücke in Produkten („+n frei“); `null` bei gemischten Teigstücken je Produkt. */
+  spareProducts?: number | null
+  /** Teigstücke je Produkt, wenn alle Mitglieder gleich sind. */
+  perProduct?: number | null
+  /** Nur die bekannten Mitglieder („≥ n Bruch“, „Teig: ≥ x kg“). */
+  piecesKnown?: number
+  bruecheKnown?: number | null
+  kgKnown?: number | null
   split: BruchSplit[]
   complete: boolean
   missing: MissingPart[]

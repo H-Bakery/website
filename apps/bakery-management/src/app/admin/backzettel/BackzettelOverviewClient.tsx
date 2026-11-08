@@ -60,7 +60,15 @@ function messageOf(error: unknown, fallback: string): string {
  */
 export function doughForText(day: BackzettelDay): string | null {
   if (!isDoughDaySheet(day)) return null
-  if (day.isDoughDay === false) return 'Kein Teig – nur backen (Backliste)'
+  if (day.isDoughDay === false) {
+    // Kein Teigtag - aber Posten mit lead 0 werden trotzdem heute gemacht
+    // (Maschinen-Kästen vom Server). „Kein Teig“ nur, wenn es keine gibt.
+    const boxes = day.machine ?? []
+    if (boxes.length === 0) return 'Kein Teig – nur backen (Backliste)'
+    return `Teig für heute (${boxes
+      .map((b) => b.name)
+      .join(', ')}) – sonst nur backen (Backliste)`
+  }
   const dates = (day.bakeDates ?? []).filter((b) => b.lineCount > 0)
   if (dates.length === 0) return null
   return `Teig für ${dates

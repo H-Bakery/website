@@ -65,6 +65,7 @@ import { BackzettelSectionView } from '../../../../components/backzettel/Backzet
 import { HefeteigCard } from '../../../../components/backzettel/HefeteigCard'
 import { PrepCard } from '../../../../components/backzettel/PrepCard'
 import { DeltasCard } from '../../../../components/backzettel/DeltasCard'
+import { DeltaDoughNote } from '../../../../components/backzettel/DeltaDoughNote'
 import { MachineStrip } from '../../../../components/backzettel/MachineStrip'
 import { OpenMasterDataNote } from '../../../../components/backzettel/OpenMasterDataNote'
 import { BreadTable } from '../../../../components/backzettel/BreadTable'
@@ -776,6 +777,7 @@ export default function BackzettelDayClient({
           onAck={(d) => void doAck(d)}
           sheetDate={date}
         />
+        {v2 && <DeltaDoughNote day={day} />}
 
         {v2 && day.sections.length === 0 && day.isDoughDay === false && (
           <Alert severity="info" sx={{ mb: 2 }} data-testid="no-dough-day">

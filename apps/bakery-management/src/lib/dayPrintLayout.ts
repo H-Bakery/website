@@ -14,7 +14,7 @@ import type {
   BackzettelSection,
   BakeList,
 } from './backzettelApi'
-import { v2CoveredKeys } from './backzettelFormat'
+import { deltaDoughLines, v2CoveredKeys } from './backzettelFormat'
 
 /** Abschnitt, der im Druck einen eigenen Block in zwei Spalten bekommt. */
 export const HEFETEIG_SECTION = 'hefeteig'
@@ -135,6 +135,11 @@ export interface DayPrintLayout extends PrintStep {
    * abgeschnitten, nie weggelassen.
    */
   othersOnSecondSheet: boolean
+  /**
+   * Notizzeilen am Ende von Seite 1: `NOTE_LINES`, weniger (bis 0), wenn die
+   * übrigen Abschnitte sonst auf Blatt 2 müssten - Notizen gehen vor.
+   */
+  noteLines: number
   /** Geschätzte Höhe von Seite 1 in mm (für Specs und Fehlersuche). */
   estimatedMm: number
 }
@@ -143,7 +148,8 @@ export interface DayPrintLayout extends PrintStep {
 export function dayPrintHeights(
   day: BackzettelDay,
   parts: DayPrintParts,
-  s: PrintStep
+  s: PrintStep,
+  noteLines: number = NOTE_LINES
 ): { fixed: number; others: number } {
   const row = s.rowMm
   const heading = row * 1.5
@@ -200,6 +206,11 @@ export function dayPrintHeights(
   // Nachträge: eine Zeile je Posten.
   const deltaKeys = new Set((day.deltas ?? []).map((d) => d.key)).size
   if (deltaKeys > 0) fixed += heading + Math.ceil(deltaKeys / 2) * row * 1.2
+  // … und was sie für Teig und Teilmaschine heißen (eine kleine Textzeile).
+  const doughChars = deltaDoughLines(day).join('; ').length
+  if (doughChars > 0) {
+    fixed += textLines(doughChars + 30, s.fontPt * 0.85) * small + 1
+  }
 
   // Hinweise und „Offen: …“ in kleiner Schrift.
   const smallPt = s.fontPt * 0.85
@@ -208,8 +219,8 @@ export function dayPrintHeights(
   if (hintChars > 0) fixed += textLines(hintChars + 10, smallPt) * small + 1
   if (openChars > 0) fixed += textLines(openChars + 8, smallPt) * small + 1
 
-  // Notizzeilen.
-  fixed += row + NOTE_LINES * NOTE_LINE_MM
+  // Notizzeilen (ohne Zeilen auch ohne Überschrift).
+  if (noteLines > 0) fixed += row + noteLines * NOTE_LINE_MM
 
   // Übrige Abschnitte: zwei Spalten.
   let othersRows = 0
@@ -241,16 +252,35 @@ export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
         ...DAY_PRINT_STEPS[i],
         step: i,
         othersOnSecondSheet: false,
+        noteLines: NOTE_LINES,
         estimatedMm: Math.round(h.fixed + h.others),
       }
     }
   }
   const last = DAY_PRINT_STEPS.length - 1
+  // Vor Blatt 2: in der dichtesten Stufe erst die Notizzeilen kürzen
+  // (Review Z10 Runde 1 - ein voller Samstag ging sonst auf zwei Blätter,
+  // obwohl unten Platz blieb).
+  if (parts.others.length > 0) {
+    for (let n = NOTE_LINES - 1; n >= 0; n--) {
+      const h = dayPrintHeights(day, parts, DAY_PRINT_STEPS[last], n)
+      if (h.fixed + h.others <= PAGE_HEIGHT_MM) {
+        return {
+          ...DAY_PRINT_STEPS[last],
+          step: last,
+          othersOnSecondSheet: false,
+          noteLines: n,
+          estimatedMm: Math.round(h.fixed + h.others),
+        }
+      }
+    }
+  }
   const h = tightest as { fixed: number; others: number }
   return {
     ...DAY_PRINT_STEPS[last],
     step: last,
     othersOnSecondSheet: parts.others.length > 0,
+    noteLines: NOTE_LINES,
     estimatedMm: Math.round(h.fixed + (parts.others.length > 0 ? 0 : h.others)),
   }
 }

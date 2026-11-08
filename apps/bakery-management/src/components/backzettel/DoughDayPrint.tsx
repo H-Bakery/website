@@ -15,24 +15,27 @@ import {
 import {
   addonText,
   bakeDayLabel,
+  bruchCountText,
+  bruchSpareText,
+  bruchSplitText,
   doughsTodayText,
   formatDateLong,
   formatFactor,
-  formatKnown,
   formatKnownGrams,
   formatNumber,
   formatQty,
   formatSignedQty,
   formatTimestamp,
+  hefeteigPiecesText,
   kgText,
   lineLabel,
   linesByKey,
   litersLabel,
   previouslyDoneText,
   variantLabel,
+  deltaDoughLines,
 } from '../../lib/backzettelFormat'
 import {
-  NOTE_LINES,
   NOTE_LINE_MM,
   PAGE_MARGIN_MM,
   dayPrintLayout,
@@ -304,6 +307,28 @@ function BreadPrint({
       .filter((c): c is NonNullable<typeof c> => !!c)
       .filter((c) => c.total > 0)
       .map((c) => lineByKey.get(c.key))
+  // Korrektur mit Grund je Zelle - wie am Bildschirm (BreadTable), damit die
+  // Backstube auf Papier sieht, warum eine Zahl von der Grundmenge abweicht.
+  const corrections = (row: BreadRow) => {
+    const cells: { label: string | null; key: string }[] = []
+    if (row.single) cells.push({ label: null, key: row.single.key })
+    for (const sz of sizes) {
+      const cell = row.cells[sz.id]
+      if (cell) cells.push({ label: sz.label, key: cell.key })
+    }
+    const texts: string[] = []
+    for (const c of cells) {
+      const line = lineByKey.get(c.key)
+      if (!line || !line.correction) continue
+      texts.push(
+        `${c.label ? `${c.label}: ` : ''}Korr. ${formatSignedQty(
+          line.correction,
+          line.unit
+        )}${line.correctionReason ? ` (${line.correctionReason})` : ''}`
+      )
+    }
+    return texts.join(' · ')
+  }
   return (
     <div data-testid="dd-bread">
       <h2>Brot</h2>
@@ -327,6 +352,14 @@ function BreadPrint({
                 <strong>{row.name}</strong>
                 {row.note && (
                   <span className="small dd-detail">{row.note}</span>
+                )}
+                {corrections(row) && (
+                  <span
+                    className="small dd-detail"
+                    data-testid={`dd-bread-corr-${row.itemId}|${row.bakeDate}`}
+                  >
+                    {corrections(row)}
+                  </span>
                 )}
               </td>
               {row.single ? (
@@ -411,20 +444,12 @@ function RollsPrint({
                 data-testid={`dd-bruch-${g.key}`}
               >
                 <span>
-                  <strong className="total">
-                    {g.brueche === null
-                      ? '? Bruch'
-                      : `${formatNumber(g.brueche)} Bruch`}
-                  </strong>{' '}
-                  × {g.g === null ? '– g' : `${formatNumber(g.g)} g`}
+                  <strong className="total">{bruchCountText(g)}</strong> ×{' '}
+                  {g.g === null ? '– g' : `${formatNumber(g.g)} g`}
                   <span className="small">
                     {' – '}
-                    {g.split
-                      .map((s) => `${formatNumber(s.total)} ${s.name}`)
-                      .join(', ')}
-                    {g.spare !== null && g.spare > 0
-                      ? ` · +${formatNumber(g.spare)} frei`
-                      : ''}
+                    {bruchSplitText(g, lineByKey)}
+                    {g.spare !== null && g.spare > 0 ? bruchSpareText(g) : ''}
                   </span>
                 </span>
                 <Tick lines={g.split.map((s) => lineByKey.get(s.key))} />
@@ -494,7 +519,7 @@ function HefeteigPrint({
             {doughs
               .map(
                 (d) =>
-                  `${d.name}: ${formatKnown(d.pieces)} Teigstücke · ${
+                  `${d.name}: ${hefeteigPiecesText(d)} Teigstücke · ${
                     d.kg !== undefined
                       ? printKg({ kg: d.kg, kgKnown: d.kgKnown })
                       : formatKnownGrams(d.dough_g)
@@ -644,6 +669,12 @@ function DeltasPrint({
           )
         })}
       </div>
+      {deltaDoughLines(day).length > 0 && (
+        <p className="small" data-testid="print-delta-dough">
+          <strong>Für Teig und Teilmaschine:</strong>{' '}
+          {deltaDoughLines(day).join('; ')}.
+        </p>
+      )}
     </div>
   )
 }
@@ -765,12 +796,14 @@ export function DoughDayPrint({
           </p>
         )}
 
-        <div data-testid="dd-notes">
-          <h3>Notizen</h3>
-          {Array.from({ length: NOTE_LINES }, (_, i) => (
-            <div key={i} className="dd-note-line" />
-          ))}
-        </div>
+        {layout.noteLines > 0 && (
+          <div data-testid="dd-notes">
+            <h3>Notizen</h3>
+            {Array.from({ length: layout.noteLines }, (_, i) => (
+              <div key={i} className="dd-note-line" />
+            ))}
+          </div>
+        )}
       </section>
 
       {layout.othersOnSecondSheet && others && (

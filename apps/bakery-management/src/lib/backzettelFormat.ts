@@ -732,6 +732,37 @@ export function kgText(d: {
   return 'unbekannt'
 }
 
+/**
+ * Teigstücke einer Hefeteig-Karte: „≥ 12“, wenn eine Grundmenge des Teigs
+ * offen ist (Regel 8), „–“ wenn unbekannt.
+ */
+export function hefeteigPiecesText(d: {
+  pieces: number | null
+  piecesComplete?: boolean
+}): string {
+  if (d.pieces === null) return '–'
+  return d.piecesComplete === false
+    ? `≥ ${formatNumber(d.pieces)}`
+    : formatNumber(d.pieces)
+}
+
+/**
+ * Teig gesamt einer Hefeteig-Karte - dieselbe Zahl wie die Maschinenleiste
+ * (Teigtag-Zettel: `kg`/`kgKnown` vom Server, „≥ 16,5 kg“ bei offenen Teilen);
+ * ältere Tage in Gramm.
+ */
+export function hefeteigDoughText(d: {
+  dough_g: number | null
+  kg?: number | null
+  kgKnown?: number
+}): string {
+  if (d.kg === undefined) return formatKnownGrams(d.dough_g)
+  if (d.kg !== null) return formatGrams(Math.round(d.kg * 1000))
+  return d.kgKnown && d.kgKnown > 0
+    ? `≥ ${formatGrams(Math.round(d.kgKnown * 1000))}`
+    : '–'
+}
+
 /** Chargen: Zahl, sonst „unbekannt“ mit Grund. */
 export function batchesText(
   box: Pick<MachineBox, 'batches' | 'batch_max_kg'>
@@ -799,19 +830,136 @@ export function bakeDayLabel(bakeDate: string, sheetDate: string): string {
 }
 
 /**
- * Bruch-Gruppe in einer Zeile: „7 Bruch × 1150 g – 12 Teststern, 8 Testkäse
- * · +8 frei“. Unbekanntes bleibt sichtbar („? Bruch“, „g unbekannt“).
+ * Bruch-Gruppe in einer Zeile: „7 Bruch × 1250 g – 12 Teststern, 8 Testkäse
+ * · +8 frei“. Unbekanntes bleibt sichtbar: eine offene Grundmenge macht
+ * „≥ 1 Bruch“ bzw. „? Bruch“ und „Testkäse offen“, nie „0“ (Regel 8). „frei“
+ * steht in Produkten; haben die Mitglieder verschieden viele Teigstücke je
+ * Produkt, in Teigstücken.
  */
 export function bruchGroupText(group: BruchGroup): string {
-  const brueche =
-    group.brueche === null ? '? Bruch' : `${formatNumber(group.brueche)} Bruch`
   const weight = group.g === null ? 'g unbekannt' : `${formatNumber(group.g)} g`
-  const split = group.split
-    .map((s) => `${formatNumber(s.total)} ${s.name}`)
+  return `${bruchCountText(group)} × ${weight} – ${bruchSplitText(
+    group
+  )}${bruchSpareText(group)}`
+}
+
+/** „7 Bruch“, „≥ 1 Bruch“ (Grundmenge offen) oder „? Bruch“. */
+export function bruchCountText(group: BruchGroup): string {
+  const known = group.bruecheKnown ?? null
+  if (group.brueche !== null) return `${formatNumber(group.brueche)} Bruch`
+  return known ? `≥ ${formatNumber(known)} Bruch` : '? Bruch'
+}
+
+/**
+ * Aufteilung „12 Teststern, Testkäse offen“; mit `lineByKey` (Druck) je
+ * Mitglied auch die Korrektur mit Grund: „42 Testdoppel (Korr. +30 Fest)“.
+ */
+export function bruchSplitText(
+  group: BruchGroup,
+  lineByKey?: Map<string, BackzettelLine>
+): string {
+  return group.split
+    .map((s) => {
+      const base =
+        s.total === null
+          ? `${s.name} offen`
+          : `${formatNumber(s.total)} ${s.name}`
+      const line = lineByKey ? lineByKey.get(s.key) : undefined
+      const corr = line && line.correction ? line.correction : 0
+      if (!corr) return base
+      return `${base} (Korr. ${formatSigned(corr)}${
+        line && line.correctionReason ? ` ${line.correctionReason}` : ''
+      })`
+    })
     .join(', ')
-  const spare =
-    group.spare === null ? '' : ` · +${formatNumber(group.spare)} frei`
-  return `${brueche} × ${weight} – ${split}${spare}`
+}
+
+/** „ · +4 frei“ (Produkte) bzw. „ · +9 Teigstücke frei“; leer, wenn unbekannt. */
+export function bruchSpareText(group: BruchGroup): string {
+  if (group.spare === null) return ''
+  if (group.spareProducts !== undefined && group.spareProducts !== null) {
+    return ` · +${formatNumber(group.spareProducts)} frei`
+  }
+  if (group.spareProducts === null && group.perProduct !== 1) {
+    return ` · +${formatNumber(group.spare)} Teigstücke frei`
+  }
+  return ` · +${formatNumber(group.spare)} frei`
+}
+
+/** „Teig: 2,4 kg“, „Teig: ≥ 2 kg“ (Grundmenge offen) oder „Teig: – kg“. */
+export function bruchKgText(group: BruchGroup): string {
+  if (group.kg !== null) return `Teig: ${formatKnown(group.kg, 'kg')}`
+  if (group.kgKnown) return `Teig: ≥ ${formatKnown(group.kgKnown, 'kg')}`
+  return 'Teig: – kg'
+}
+
+/**
+ * Was die Nachträge eines freigegebenen Teigtag-Zettels für Teilmaschine und
+ * Teige heißen (Review Z10 Runde 1) - nur Text aus den Server-Zahlen
+ * (`deltaBruch`, `deltaMachine`), gerechnet wird hier nichts:
+ * „Testdoppel für Di: +6 Teigstücke – 1 Bruch mehr (jetzt 6)“,
+ * „… – passt in die freien Stücke (noch +2 frei)“,
+ * „Testweck: +1,2 kg Teig (jetzt 17,2 kg) · Liter 5,5 L → 6 L“.
+ */
+export function deltaDoughLines(
+  day: Pick<BackzettelDay, 'date' | 'deltaBruch' | 'deltaMachine'>
+): string[] {
+  const out: string[] = []
+  for (const g of day.deltaBruch ?? []) {
+    const when =
+      g.bakeDate && g.bakeDate !== day.date
+        ? ` für ${WEEKDAY_SHORT[isoWeekday(g.bakeDate)]}`
+        : ''
+    const pieces = `${formatSigned(g.piecesDelta)} Teigstücke`
+    let effect: string
+    if (g.bruecheDelta === null) {
+      effect = 'Brüche unbekannt (Stammdaten offen)'
+    } else if (g.bruecheDelta > 0) {
+      effect = `${formatNumber(
+        g.bruecheDelta
+      )} Bruch mehr (jetzt ${formatNumber(g.brueche as number)})`
+    } else if (g.bruecheDelta < 0) {
+      effect = `${formatNumber(
+        Math.abs(g.bruecheDelta)
+      )} Bruch weniger (jetzt ${formatNumber(g.brueche as number)})`
+    } else if (g.piecesDelta > 0) {
+      const free = g.spareProducts ?? g.spare
+      effect = `passt in die freien Stücke${
+        free !== null ? ` (noch +${formatNumber(free)} frei)` : ''
+      }`
+    } else {
+      effect = 'gleich viele Brüche'
+    }
+    out.push(`${g.name}${when}: ${pieces} – ${effect}`)
+  }
+  for (const m of day.deltaMachine ?? []) {
+    const parts = [
+      `${formatSigned(m.kgDelta)} kg Teig${
+        m.kg !== null ? ` (jetzt ${formatKnown(m.kg, 'kg')})` : ''
+      }`,
+    ]
+    const before = m.litersBefore?.rounded ?? null
+    const after = m.liters?.rounded ?? null
+    if (after === null) parts.push('Liter unbekannt')
+    else if (before !== after) {
+      parts.push(
+        `Liter ${
+          before === null ? '–' : `${formatNumber(before)} L`
+        } → ${formatNumber(after)} L`
+      )
+    }
+    if (
+      m.batches !== null &&
+      m.batchesBefore !== null &&
+      m.batches !== m.batchesBefore
+    ) {
+      parts.push(
+        `${formatNumber(m.batchesBefore)} → ${formatNumber(m.batches)} Chargen`
+      )
+    }
+    out.push(`${m.name}: ${parts.join(' · ')}`)
+  }
+  return out
 }
 
 /**

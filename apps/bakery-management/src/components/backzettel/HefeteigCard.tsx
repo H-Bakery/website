@@ -24,9 +24,10 @@ import type {
 import {
   fillingGramsText,
   formatKnown,
-  formatKnownGrams,
   formatNumber,
   formatGrams,
+  hefeteigDoughText,
+  hefeteigPiecesText,
   ingredientAmount,
   litersHint,
   litersText,
@@ -51,10 +52,16 @@ function Figure({ label, value }: { label: string; value: string }) {
   )
 }
 
-/** Chargen-Text; ohne Chargengröße kein geschätzter Wert. */
+/**
+ * Chargen-Text; ohne Chargengröße oder Teiggewicht kein geschätzter Wert -
+ * und es steht da, welche der beiden Zahlen fehlt.
+ */
 export function batchText(dough: HefeteigDough): string {
-  if (dough.batches === null || !dough.batch_max_kg) {
-    return 'Chargengröße nicht festgelegt'
+  if (!dough.batch_max_kg) return 'Chargengröße nicht festgelegt'
+  if (dough.batches === null) {
+    return `Chargen: unbekannt (Teiggewicht offen) – je max. ${formatNumber(
+      dough.batch_max_kg
+    )} kg`
   }
   return `${dough.batches} ${
     dough.batches === 1 ? 'Charge' : 'Chargen'
@@ -69,10 +76,10 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
       </Typography>
       <Grid container spacing={2} sx={{ mt: 0 }}>
         <Grid item xs={6} sm={3}>
-          <Figure label="Teigstücke" value={formatKnown(dough.pieces)} />
+          <Figure label="Teigstücke" value={hefeteigPiecesText(dough)} />
         </Grid>
         <Grid item xs={6} sm={3}>
-          <Figure label="Teig gesamt" value={formatKnownGrams(dough.dough_g)} />
+          <Figure label="Teig gesamt" value={hefeteigDoughText(dough)} />
         </Grid>
         {dough.liters && (
           <Grid item xs={6} sm={3}>

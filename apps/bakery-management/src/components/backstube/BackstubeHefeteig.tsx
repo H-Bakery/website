@@ -12,8 +12,9 @@ import { DeltaExtrasNote } from '../backzettel/DeltaExtrasNote'
 import {
   fillingGramsText,
   formatKnown,
-  formatKnownGrams,
   formatNumber,
+  hefeteigDoughText,
+  hefeteigPiecesText,
   litersHint,
   litersText,
   ingredientAmount,
@@ -64,12 +65,12 @@ function Dough({ dough, muted }: { dough: HefeteigDough; muted: boolean }) {
       <Stack direction="row" flexWrap="wrap" sx={{ gap: 3, mt: 1 }}>
         <Figure
           label="Teigstücke"
-          value={formatKnown(dough.pieces)}
+          value={hefeteigPiecesText(dough)}
           muted={muted}
         />
         <Figure
           label="Teig gesamt"
-          value={formatKnownGrams(dough.dough_g)}
+          value={hefeteigDoughText(dough)}
           muted={muted}
         />
         {dough.liters && (

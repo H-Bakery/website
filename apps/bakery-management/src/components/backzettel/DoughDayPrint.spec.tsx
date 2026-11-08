@@ -11,6 +11,7 @@ import {
   saturdayV2Confirmed,
   saturdayV2Draft,
   sundayV2Sheet,
+  v2DeltaDough,
 } from '../../lib/backzettelFixtures'
 
 function renderPrint(day: BackzettelDay, withExtras = false) {
@@ -76,12 +77,42 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     expect(p.getAllByText('Gemeinsamer Teig: Korn + Holz')).toHaveLength(2)
   })
 
+  it('Nachträge: was sie für Teig und Teilmaschine heißen', () => {
+    const page = renderPrint({ ...saturdayV2Confirmed(), ...v2DeltaDough() })
+    expect(page.getByTestId('print-delta-dough')).toHaveTextContent(
+      'Testdoppel für Di: +14 Teigstücke – 1 Bruch mehr (jetzt 6)'
+    )
+    page.unmount()
+    expect(
+      renderPrint(saturdayV2Confirmed()).queryByTestId('print-delta-dough')
+    ).not.toBeInTheDocument()
+  })
+
+  it('Brot: Korrektur mit Grund steht an der Zeile', () => {
+    const day = saturdayV2Draft()
+    const sections = day.sections.map((s) => ({
+      ...s,
+      lines: s.lines.map((l) =>
+        l.key === 'test-korn|g1000'
+          ? { ...l, correction: 2, correctionReason: 'Testfest' }
+          : l
+      ),
+    }))
+    const p = within(renderPrint({ ...day, sections }).getByTestId('dd-bread'))
+    expect(p.getByTestId(`dd-bread-corr-test-korn|${SAT}`)).toHaveTextContent(
+      '1 kg: Korr. +2 (Testfest)'
+    )
+    expect(
+      p.queryByTestId(`dd-bread-corr-test-holz|${SAT}`)
+    ).not.toBeInTheDocument()
+  })
+
   it('Brötchen je Backtag: Brüche × Gewicht – Aufteilung, „+n frei“ nur als Hinweis', () => {
     const page = renderPrint(saturdayV2Draft())
     const sun = within(page.getByTestId(`dd-rolls-${SUN}`))
     expect(sun.getByText('für Sonntag, 29.11.')).toBeInTheDocument()
     expect(sun.getByTestId(`dd-bruch-${SUN}|test-doppel`)).toHaveTextContent(
-      '7 Bruch × 1.150 g – 66 Testdoppel · +8 frei'
+      '7 Bruch × 1.250 g – 66 Testdoppel · +4 frei'
     )
     expect(sun.getByTestId(`dd-bruch-${SUN}|test-gemischt`)).toHaveTextContent(
       '1 Bruch × 2.000 g – 12 Teststern, 8 Testkäse'

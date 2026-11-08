@@ -80,6 +80,19 @@ function BakeRow({
             .filter(Boolean)
             .join(' · ')}
         </Typography>
+        {line.baseUnset && (
+          <Typography
+            component="div"
+            data-testid={`bs-bake-base-unset-${line.key}`}
+            sx={{
+              fontSize: { xs: '1rem', sm: '1.15rem' },
+              fontWeight: 700,
+              mt: 0.5,
+            }}
+          >
+            Grundmenge offen - Menge ohne Basis, bitte nachfragen
+          </Typography>
+        )}
         {line.delta && line.delta.count > 0 && (
           <Box
             component="span"
@@ -118,6 +131,7 @@ function BakeRow({
           flexShrink: 0,
         }}
       >
+        {line.baseUnset ? '≥ ' : ''}
         {formatQty(line.total, line.unit)}
       </Typography>
     </Box>

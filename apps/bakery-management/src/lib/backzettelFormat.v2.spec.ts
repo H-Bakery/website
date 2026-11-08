@@ -4,11 +4,15 @@ import {
   bakeSourceText,
   batchesText,
   bruchGroupText,
+  bruchKgText,
   bruchStep,
+  deltaDoughLines,
   doughsTodayText,
   fillingGramsText,
   formatKnown,
   formatKnownGrams,
+  hefeteigDoughText,
+  hefeteigPiecesText,
   kgText,
   lineLabel,
   litersHint,
@@ -22,6 +26,7 @@ import {
   TEST_CONFIG_V2,
   V2_TUE,
   saturdayV2Draft,
+  v2DeltaDough,
 } from './backzettelFixtures'
 
 describe('Backzettel v2 - Anzeige-Helfer', () => {
@@ -103,7 +108,7 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
     expect(bakeDayLabel(SUN, SAT)).toBe('für Sonntag, 29.11.')
     const [sun, tue] = saturdayV2Draft().rolls ?? []
     expect(bruchGroupText(sun.groups[0])).toBe(
-      '7 Bruch × 1.150 g – 66 Testdoppel · +8 frei'
+      '7 Bruch × 1.250 g – 66 Testdoppel · +4 frei'
     )
     expect(bruchGroupText(tue.groups[1])).toBe(
       '1 Bruch × g unbekannt – 20 Testflitweck · +0 frei'
@@ -111,6 +116,86 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
     expect(bruchStep(20, 2)).toBe(10)
     expect(bruchStep(20, 3)).toBeNull()
     expect(bruchStep(null, 1)).toBeNull()
+  })
+
+  it('Bruch-Gruppe mit offener Grundmenge: „≥“, „offen“, nie 0', () => {
+    const [sun] = saturdayV2Draft().rolls ?? []
+    const mixed = sun.groups[1]
+    const open = {
+      ...mixed,
+      pieces: null,
+      brueche: null,
+      kg: null,
+      spare: null,
+      spareProducts: null,
+      piecesKnown: 12,
+      bruecheKnown: 1,
+      kgKnown: 1.2,
+      complete: false,
+      split: [mixed.split[0], { ...mixed.split[1], total: null }],
+    }
+    expect(bruchGroupText(open)).toBe(
+      '≥ 1 Bruch × 2.000 g – 12 Teststern, Testkäse offen'
+    )
+    expect(bruchKgText(open)).toBe('Teig: ≥ 1,2 kg')
+    expect(
+      bruchGroupText({ ...open, bruecheKnown: 0, kgKnown: 0, piecesKnown: 0 })
+    ).toMatch(/^\? Bruch/)
+    expect(bruchKgText({ ...open, kgKnown: 0 })).toBe('Teig: – kg')
+    // Freie Stücke in Produkten, nicht in Teigstücken.
+    expect(bruchGroupText(sun.groups[0])).toMatch(/\+4 frei$/)
+    expect(
+      bruchGroupText({
+        ...sun.groups[0],
+        spareProducts: null,
+        perProduct: null,
+      })
+    ).toMatch(/\+8 Teigstücke frei$/)
+  })
+
+  it('Hefeteig-Karte: Stück und Teig wie der Server, offen mit „≥“', () => {
+    expect(hefeteigPiecesText({ pieces: 40, piecesComplete: true })).toBe('40')
+    expect(hefeteigPiecesText({ pieces: 40, piecesComplete: false })).toBe(
+      '≥ 40'
+    )
+    expect(hefeteigPiecesText({ pieces: null })).toBe('–')
+    expect(hefeteigDoughText({ dough_g: 999, kg: 6.6 })).toMatch(
+      /6\.600 g|6,6 kg/
+    )
+    expect(hefeteigDoughText({ dough_g: null, kg: null, kgKnown: 2 })).toMatch(
+      /^≥ /
+    )
+    expect(hefeteigDoughText({ dough_g: null, kg: null, kgKnown: 0 })).toBe('–')
+    expect(hefeteigDoughText({ dough_g: null })).toBe('–')
+  })
+
+  it('Nachträge für Teig und Teilmaschine: Text aus den Server-Zahlen', () => {
+    const day = { date: SAT, ...v2DeltaDough() }
+    expect(deltaDoughLines(day)).toEqual([
+      'Testdoppel für Di: +14 Teigstücke – 1 Bruch mehr (jetzt 6)',
+      'Teststern + Testkäse für So: −2 Teigstücke – gleich viele Brüche',
+      'Testweck: +1,25 kg Teig (jetzt 18,25 kg) · Liter 5,5 L → 6 L',
+    ])
+    const [doppel] = v2DeltaDough().deltaBruch ?? []
+    expect(
+      deltaDoughLines({
+        date: SAT,
+        deltaBruch: [
+          { ...doppel, brueche: 5, bruecheDelta: 0, spareProducts: 2 },
+        ],
+      })
+    ).toEqual([
+      'Testdoppel für Di: +14 Teigstücke – passt in die freien Stücke (noch +2 frei)',
+    ])
+    expect(
+      deltaDoughLines({
+        date: SAT,
+        deltaBruch: [{ ...doppel, brueche: null, bruecheDelta: null }],
+      })
+    ).toEqual([
+      'Testdoppel für Di: +14 Teigstücke – Brüche unbekannt (Stammdaten offen)',
+    ])
+    expect(deltaDoughLines({ date: SAT })).toEqual([])
   })
 
   it('Kopfzeile „Teige heute“ aus den Kästen des Servers', () => {

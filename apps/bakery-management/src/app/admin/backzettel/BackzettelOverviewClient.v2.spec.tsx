@@ -62,4 +62,29 @@ describe('Backzettel-Übersicht - Teigtag-Zettel (Z10)', () => {
       'Kein Teig – nur backen (Backliste)'
     )
   })
+
+  it('Sonntag mit Teig für heute (lead 0): nicht „Kein Teig“', () => {
+    const sun = sundayV2Sheet()
+    const day = {
+      ...sun,
+      machine: [
+        {
+          id: 'test-hefe',
+          name: 'Testhefe',
+          doughIds: ['test-hefe'],
+          kg: 2,
+          kgKnown: 2,
+          complete: true,
+          liters: { exact: 0.4, rounded: 0, reason: null },
+          batches: null,
+          batch_max_kg: null,
+          addons: [],
+          section: 'hefeteig',
+        },
+      ],
+    } as typeof sun
+    expect(doughForText(day)).toBe(
+      'Teig für heute (Testhefe) – sonst nur backen (Backliste)'
+    )
+  })
 })

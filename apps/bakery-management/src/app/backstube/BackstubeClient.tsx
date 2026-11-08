@@ -67,6 +67,7 @@ import LogoutButton from '../../components/auth/LogoutButton'
 import { BackstubeLine } from '../../components/backstube/BackstubeLine'
 import { BackstubeHefeteig } from '../../components/backstube/BackstubeHefeteig'
 import { BackstubeDeltas } from '../../components/backstube/BackstubeDeltas'
+import { DeltaDoughNote } from '../../components/backzettel/DeltaDoughNote'
 import { BackstubePrep } from '../../components/backstube/BackstubePrep'
 import { BackstubeBakeList } from '../../components/backstube/BackstubeBakeList'
 import { useBackstubeColors } from '../../components/backstube/backstubeColors'
@@ -1212,6 +1213,7 @@ export default function BackstubeClient({
                   ackingKey={ackingKey}
                   onAck={ack}
                 />
+                {!draft && <DeltaDoughNote day={day} large />}
 
                 {isSaturday && hefeteig}
 

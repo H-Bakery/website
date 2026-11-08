@@ -5,6 +5,7 @@ import {
   dayPrintHeights,
   dayPrintLayout,
   dayPrintParts,
+  NOTE_LINES,
 } from './dayPrintLayout'
 import type { BackzettelDay, BackzettelLine } from './backzettelApi'
 import {
@@ -115,6 +116,25 @@ describe('dayPrintLayout (Z10 S6)', () => {
     expect(layout.step).toBeGreaterThan(0)
     expect(layout.othersOnSecondSheet).toBe(false)
     expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+  })
+
+  it('vor Blatt 2 werden erst die Notizzeilen gekürzt', () => {
+    // Die Zahl der Zeilen suchen, bei der es mit allen Notizzeilen gerade
+    // nicht mehr passt - dort darf es noch kein Blatt 2 geben.
+    let n = 40
+    while (
+      dayPrintLayout(busySaturday(n)).noteLines === NOTE_LINES &&
+      !dayPrintLayout(busySaturday(n)).othersOnSecondSheet
+    ) {
+      n += 1
+    }
+    const layout = dayPrintLayout(busySaturday(n))
+    expect(layout.othersOnSecondSheet).toBe(false)
+    expect(layout.noteLines).toBeLessThan(NOTE_LINES)
+    expect(layout.step).toBe(DAY_PRINT_STEPS.length - 1)
+    expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+    // Normale Tage behalten alle Notizzeilen.
+    expect(dayPrintLayout(saturdayV2Draft()).noteLines).toBe(NOTE_LINES)
   })
 
   it('passt es auch knapp nicht, kommen die übrigen Abschnitte auf Blatt 2 - nie weggelassen', () => {

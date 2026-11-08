@@ -191,6 +191,10 @@ const styles = (
       // letzte Abschnitt fiele in eine dritte, abgeschnittene Spalte.
       '.nfb-section': { marginBottom: '2mm' },
       '.nfb tr': { breakInside: 'avoid' },
+      // Die leere Zeile am Ende bleibt bei ihrem Abschnitt - sonst stand oben
+      // in der nächsten Spalte eine zweite Überschrift mit nur dieser Zeile
+      // (Review Z10 Runde 1).
+      '.nfb tr.nfb-blank': { breakBefore: 'avoid' },
       '.nfb thead': { display: 'table-header-group' },
       // Die Überschrift steht als erste Kopfzeile in der Tabelle: bricht ein
       // Abschnitt in die nächste Spalte um, steht sie dort noch einmal
@@ -315,6 +319,12 @@ export default function BackzettelNotfallblatt({
                     {section.rows.map((row, index) => (
                       <tr
                         key={`${row}-${index}`}
+                        className={
+                          row === '' &&
+                          section.rows.slice(0, index).some((r) => r !== '')
+                            ? 'nfb-blank'
+                            : undefined
+                        }
                         style={{ height: `${rowHeight}mm` }}
                       >
                         <td className="posten">{row}</td>

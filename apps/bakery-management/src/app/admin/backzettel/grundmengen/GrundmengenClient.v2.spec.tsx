@@ -89,7 +89,7 @@ describe('GrundmengenClient - Backzettel v2 (Z10)', () => {
       'Bruch: Stück je Bruch unbekannt'
     )
     expect(screen.getByTestId('v2-note-testdoppel')).toHaveTextContent(
-      'Teig am Vortag'
+      'Teig am Teigtag davor'
     )
     expect(screen.getByTestId('bake-day-note')).toHaveTextContent(
       'Brötchen: Menge am Backtag, Teig am Teigtag davor.'

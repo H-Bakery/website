@@ -8,9 +8,10 @@ import {
   formatDateLong,
   formatGrams,
   formatKnown,
-  formatKnownGrams,
   formatNumber,
   hasHefeteig,
+  hefeteigDoughText,
+  hefeteigPiecesText,
   ingredientAmount,
   recipeHeading,
   recipeIncompleteNote,
@@ -72,10 +73,10 @@ export function BackzettelPrintExtras({ day }: BackzettelPrintExtrasProps) {
               <h2>{dough.name}</h2>
               <div className="figures">
                 <span>
-                  Teigstücke <strong>{formatKnown(dough.pieces)}</strong>
+                  Teigstücke <strong>{hefeteigPiecesText(dough)}</strong>
                 </span>
                 <span>
-                  Teig <strong>{formatKnownGrams(dough.dough_g)}</strong>
+                  Teig <strong>{hefeteigDoughText(dough)}</strong>
                 </span>
                 <span>{batchText(dough)}</span>
               </div>

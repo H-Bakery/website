@@ -18,18 +18,21 @@ import EditIcon from '@mui/icons-material/Edit'
 import type {
   BackzettelConfigData,
   BackzettelLine,
+  BackzettelUnit,
   BreadCell,
   BreadRow,
   BreadView,
 } from '../../lib/backzettelApi'
 import {
   bakeDayLabel,
+  formatNumber,
   formatQty,
   formatSigned,
   kgText,
   lineLabel,
 } from '../../lib/backzettelFormat'
 import { CorrectionEditor } from './CorrectionEditor'
+import { DeltaChip } from './BackzettelSectionView'
 
 export interface V2EditProps {
   config: BackzettelConfigData | null
@@ -61,6 +64,15 @@ function rowKg(row: BreadRow): string {
   return kgText(row)
 }
 
+/**
+ * Menge ohne Größe mit Einheit: „26 Stück“, „7,25 l“ - eine Zahl ohne
+ * Einheit unter einer Größenspalte läse sich wie Laibe dieser Größe.
+ */
+function singleQty(total: number, unit: string): string {
+  const text = formatQty(total, unit as BackzettelUnit)
+  return text === formatNumber(total) ? `${text} ${unit}` : text
+}
+
 function CellValue({
   cell,
   line,
@@ -68,6 +80,7 @@ function CellValue({
   label,
   editable,
   onEdit,
+  single = false,
 }: {
   cell: BreadCell
   line: BackzettelLine | undefined
@@ -75,6 +88,8 @@ function CellValue({
   label: string
   editable: boolean
   onEdit: () => void
+  /** Zeile ohne Größen: links, mit Einheit, über alle Größenspalten. */
+  single?: boolean
 }) {
   const correction = line?.correction ?? 0
   return (
@@ -82,18 +97,21 @@ function CellValue({
       sx={{
         display: 'flex',
         alignItems: 'center',
-        justifyContent: 'flex-end',
+        justifyContent: single ? 'flex-start' : 'flex-end',
+        flexWrap: 'wrap',
         gap: 0.5,
       }}
     >
-      <Box sx={{ textAlign: 'right' }}>
+      <Box sx={{ textAlign: single ? 'left' : 'right' }}>
         <Typography
           component="div"
           variant="h6"
           fontWeight={700}
           data-testid={`bread-cell-${cell.key}`}
         >
-          {formatQty(cell.total, unit)}
+          {single
+            ? singleQty(cell.total, unit)
+            : formatQty(cell.total, unit as BackzettelUnit)}
         </Typography>
         {cell.baseUnset && (
           <Chip
@@ -106,8 +124,10 @@ function CellValue({
         {correction !== 0 && (
           <Typography variant="caption" component="div" color="text.secondary">
             Korr. {formatSigned(correction)}
+            {line?.correctionReason ? ` (${line.correctionReason})` : ''}
           </Typography>
         )}
+        {line && <DeltaChip line={line} />}
       </Box>
       {editable && (
         <IconButton
@@ -126,8 +146,11 @@ function CellValue({
  * Brot-Tabelle des Teigtag-Zettels (Z10, §7.2 Nr. 4): Zeilen = Brote,
  * Spalten = Laibgrößen, je Zelle die Laibe vom Server, korrigierbar mit dem
  * gewohnten Editor (Zeilenschlüssel). Dazu kg je Brot und der Hinweis des
- * Servers (gemeinsamer Teig, Anteil aus anderem Teig). Alte Liter-Posten
- * stehen als Zeile mit einer Zelle „in L“.
+ * Servers (gemeinsamer Teig, Anteil aus anderem Teig). Alte Liter-Posten und
+ * Brote ohne Größe stehen als Zeile mit einer Zelle über alle Größenspalten,
+ * links und mit Einheit („26 Stück“, „7,25 l“) - so steht die Zahl auch am
+ * Handy ohne Wischen da und hängt an keiner Größe. Nachträge stehen als
+ * Abzeichen an der Zelle.
  */
 export function BreadTable({
   bread,
@@ -206,8 +229,12 @@ export function BreadTable({
                       )}
                     </TableCell>
                     {row.single ? (
-                      <TableCell sx={NUM} colSpan={valueCols}>
+                      <TableCell
+                        colSpan={valueCols}
+                        data-testid={`bread-single-${row.itemId}`}
+                      >
                         <CellValue
+                          single
                           cell={row.single}
                           line={lineByKey.get(row.single.key)}
                           unit={row.single.unit}

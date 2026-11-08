@@ -106,7 +106,7 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
     const sunday = within(screen.getByTestId(`bs-bakeday-${SUN}`))
     expect(sunday.getByText('Teig für Sonntag, 29.11.')).toBeInTheDocument()
     expect(screen.getByTestId(`bs-bruch-${SUN}`)).toHaveTextContent(
-      'Testdoppel: 7 Bruch × 1.150 g – 66 Testdoppel · +8 frei'
+      'Testdoppel: 7 Bruch × 1.250 g – 66 Testdoppel · +4 frei'
     )
     // unter der Backtag-Überschrift ohne „· für …“
     expect(
@@ -141,6 +141,30 @@ describe('Backstube-Tablet - Teigtag-Zettel und Backliste (Z10)', () => {
         /Teig vom Samstag/
       )
     ).toBeInTheDocument()
+  })
+
+  it('Backen: offene Grundmenge steht da, die Menge mit „≥“', async () => {
+    const base = sundayBakeList()
+    const [section] = base.sections
+    mocked.fetchBakeList.mockResolvedValue({
+      ...base,
+      sections: [
+        {
+          ...section,
+          lines: section.lines.map((l) =>
+            l.key === `test-doppel|@${SUN}` ? { ...l, baseUnset: true } : l
+          ),
+        },
+      ],
+    })
+    renderTablet(at(SUN, 3))
+    const list = within(await screen.findByTestId('bs-bake-list'))
+    expect(
+      list.getByTestId(`bs-bake-base-unset-test-doppel|@${SUN}`)
+    ).toHaveTextContent('Grundmenge offen')
+    expect(
+      list.getByTestId(`bs-bake-total-test-doppel|@${SUN}`)
+    ).toHaveTextContent('≥ 66')
   })
 
   it('die Reiter-Wahl gilt nur für ihren Tag', async () => {

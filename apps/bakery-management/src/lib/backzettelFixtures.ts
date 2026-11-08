@@ -761,8 +761,8 @@ export function saturdayV2Draft(
       {
         id: 'test-weck-teig',
         name: 'Testweck',
-        kg: 15.8,
-        kgKnown: 15.8,
+        kg: 17,
+        kgKnown: 17,
         complete: true,
         missing: [],
         liters: { exact: 5.47, rounded: 5.5, reason: null },
@@ -775,7 +775,7 @@ export function saturdayV2Draft(
             itemId: 'test-doppel',
             name: 'Testdoppel',
             bakeDate: SUN,
-            kg: 8.05,
+            kg: 8.75,
           },
           {
             kind: 'bruch',
@@ -789,7 +789,7 @@ export function saturdayV2Draft(
             itemId: 'test-doppel',
             name: 'Testdoppel',
             bakeDate: V2_TUE,
-            kg: 5.75,
+            kg: 6.25,
           },
         ],
         extras: [],
@@ -890,8 +890,8 @@ export function saturdayV2Draft(
         id: 'test-weck-teig',
         name: 'Testweck',
         doughIds: ['test-weck-teig'],
-        kg: 15.8,
-        kgKnown: 15.8,
+        kg: 17,
+        kgKnown: 17,
         complete: true,
         liters: { exact: 5.47, rounded: 5.5, reason: null },
         batches: 1,
@@ -1019,12 +1019,17 @@ export function saturdayV2Draft(
             name: 'Testdoppel',
             doughId: 'test-weck-teig',
             bakeDate: SUN,
-            g: 1150,
+            g: 1250,
             piecesPerBruch: 20,
             pieces: 132,
             brueche: 7,
-            kg: 8.05,
+            kg: 8.75,
             spare: 8,
+            spareProducts: 4,
+            perProduct: 2,
+            piecesKnown: 132,
+            bruecheKnown: 7,
+            kgKnown: 8.75,
             split: [
               {
                 key: `test-doppel|@${SUN}`,
@@ -1051,6 +1056,11 @@ export function saturdayV2Draft(
             brueche: 1,
             kg: 2,
             spare: 0,
+            spareProducts: 0,
+            perProduct: 1,
+            piecesKnown: 20,
+            bruecheKnown: 1,
+            kgKnown: 2,
             split: [
               {
                 key: `test-stern|@${SUN}`,
@@ -1099,12 +1109,17 @@ export function saturdayV2Draft(
             name: 'Testdoppel',
             doughId: 'test-weck-teig',
             bakeDate: V2_TUE,
-            g: 1150,
+            g: 1250,
             piecesPerBruch: 20,
             pieces: 88,
             brueche: 5,
-            kg: 5.75,
+            kg: 6.25,
             spare: 12,
+            spareProducts: 6,
+            perProduct: 2,
+            piecesKnown: 88,
+            bruecheKnown: 5,
+            kgKnown: 6.25,
             split: [
               {
                 key: `test-doppel|@${V2_TUE}`,
@@ -1294,6 +1309,66 @@ function bakeListLine(
  * Backliste Dienstag: Brot aus Dienstagsteig (Entwurf), Brötchen aus
  * Samstagsteig (freigegeben, mit offenem Nachtrag).
  */
+/** Erfunden: was die Nachträge des Samstags für Teilmaschine und Teig heißen. */
+export function v2DeltaDough(): Pick<
+  BackzettelDay,
+  'deltaBruch' | 'deltaMachine'
+> {
+  return {
+    deltaBruch: [
+      {
+        key: `${V2_TUE}|test-doppel`,
+        group: 'test-doppel',
+        name: 'Testdoppel',
+        bakeDate: V2_TUE,
+        piecesBefore: 88,
+        pieces: 102,
+        piecesDelta: 14,
+        bruecheBefore: 5,
+        brueche: 6,
+        bruecheDelta: 1,
+        spareBefore: 12,
+        spare: 18,
+        spareProductsBefore: 6,
+        spareProducts: 9,
+        complete: true,
+      },
+      {
+        key: `${SUN}|test-gemischt`,
+        group: 'test-gemischt',
+        name: 'Teststern + Testkäse',
+        bakeDate: SUN,
+        piecesBefore: 20,
+        pieces: 18,
+        piecesDelta: -2,
+        bruecheBefore: 1,
+        brueche: 1,
+        bruecheDelta: 0,
+        spareBefore: 0,
+        spare: 2,
+        spareProductsBefore: 0,
+        spareProducts: 2,
+        complete: true,
+      },
+    ],
+    deltaMachine: [
+      {
+        id: 'test-weck-teig',
+        name: 'Testweck',
+        doughIds: ['test-weck-teig'],
+        kgBefore: 17,
+        kg: 18.25,
+        kgDelta: 1.25,
+        complete: true,
+        litersBefore: { exact: 5.47, rounded: 5.5, reason: null },
+        liters: { exact: 5.87, rounded: 6, reason: null },
+        batchesBefore: 1,
+        batches: 1,
+      },
+    ],
+  }
+}
+
 export function tuesdayBakeList(overrides: Partial<BakeList> = {}): BakeList {
   return {
     date: V2_TUE,

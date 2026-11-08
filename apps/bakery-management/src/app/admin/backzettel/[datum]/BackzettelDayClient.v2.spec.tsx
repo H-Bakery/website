@@ -17,6 +17,7 @@ import {
   V2_TUE,
   saturdayDraft,
   saturdayV2Confirmed,
+  v2DeltaDough,
   saturdayV2Draft,
   sundayV2Sheet,
 } from '../../../../lib/backzettelFixtures'
@@ -92,7 +93,7 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
     expect(sunday.getByText('Teig heute')).toBeInTheDocument()
     expect(
       sunday.getByTestId(`bruch-text-${SUN}|test-doppel`)
-    ).toHaveTextContent('7 Bruch × 1.150 g – 66 Testdoppel · +8 frei')
+    ).toHaveTextContent('7 Bruch × 1.250 g – 66 Testdoppel · +4 frei')
     expect(
       sunday.getByTestId(`bruch-text-${SUN}|test-gemischt`)
     ).toHaveTextContent('12 Teststern, 8 Testkäse')
@@ -276,6 +277,19 @@ describe('Backzettel-Tagesplanung - Teigtag-Zettel (Z10)', () => {
     expect(
       screen.queryByRole('button', { name: /einen Bruch mehr/ })
     ).not.toBeInTheDocument()
+  })
+
+  it('freigegeben: was Nachträge für Bruch und Teig heißen, steht unter den Nachträgen', async () => {
+    mocked.fetchBackzettelDay.mockResolvedValue({
+      ...saturdayV2Confirmed(),
+      ...v2DeltaDough(),
+    })
+    renderDay()
+    const note = await screen.findByTestId('delta-dough')
+    expect(note).toHaveTextContent(
+      'Testdoppel für Di: +14 Teigstücke – 1 Bruch mehr (jetzt 6)'
+    )
+    expect(note).toHaveTextContent('Testweck: +1,25 kg Teig')
   })
 
   it('kein Teigtag (Sonntag): Hinweis mit Link zur Backliste', async () => {

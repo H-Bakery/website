@@ -58,7 +58,8 @@ function deltaSx(line: BackzettelLine) {
   }
 }
 
-function DeltaChip({ line }: { line: BackzettelLine }) {
+/** Abzeichen „Nachtrag +N“ einer Zeile (offen farbig, quittiert umrandet). */
+export function DeltaChip({ line }: { line: BackzettelLine }) {
   if (!line.delta || line.delta.count === 0) return null
   const open = line.delta.open > 0
   return (
