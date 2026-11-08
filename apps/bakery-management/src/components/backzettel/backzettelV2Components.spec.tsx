@@ -90,4 +90,29 @@ describe('Backzettel v2 - Bausteine', () => {
     expect(covered.has('test-korn|g500')).toBe(true)
     expect(covered.has('test-plunder|')).toBe(false)
   })
+
+  it('RollsByBakeDay: Einzelstück mit offener Grundmenge zeigt den bekannten Teig als „≥“', () => {
+    const rolls = (day.rolls ?? []).map((block) =>
+      block.bakeDate === SUN
+        ? {
+            ...block,
+            singles: block.singles.map((s) => ({
+              ...s,
+              baseUnset: true,
+              totalIsMinimum: true,
+              kg: null,
+              kgKnown: 3,
+            })),
+          }
+        : block
+    )
+    render(<RollsByBakeDay rolls={rolls} {...editProps} />)
+    const sunday = within(screen.getByTestId(`rolls-${SUN}`))
+    expect(sunday.getByText(/Teig: ≥ 3 kg/)).toBeInTheDocument()
+    // ganz unbekannt (Teigstücke offen) bleibt „–“
+    const tuesday = within(screen.getByTestId(`rolls-${V2_TUE}`))
+    expect(
+      tuesday.getByText(/je 250 g · Teigstücke je Stück offen · Teig: – kg/)
+    ).toBeInTheDocument()
+  })
 })

@@ -829,12 +829,41 @@ describe('R15: Einzelstücke ohne Teilmaschine', () => {
         piece_g: 300,
         pieces: 1,
         kg: 3,
+        kgKnown: 3,
       },
     ])
     const two = sheet(SAT, {
       config: v2((c) => (rawItem(c, 'test-flit-klein').dough.pieces = 2)),
     })
     expect(rolls(two, SUN).singles[0].kg).toBe(6)
+  })
+
+  it('Grundmenge offen plus Vorbestellung: kg unbekannt, der bekannte Teil als kgKnown (wie im Teig)', () => {
+    const s = sheet(SAT, {
+      config: v2((c) => {
+        const item = rawItem(c, 'test-flit-klein')
+        item.base[7] = null
+        item.products = [{ id: 'test-flit-klein-p' }]
+      }),
+      catalog: [...PRODUCTS_V2, { id: 'test-flit-klein-p', numeric_id: 990 }],
+      preorderItems: [pre('test-flit-klein-p', 4, SUN)],
+    })
+    const single = rolls(s, SUN).singles[0]
+    expect(single).toMatchObject({
+      itemId: 'test-flit-klein',
+      total: 4,
+      totalIsMinimum: true,
+      kg: null,
+      kgKnown: 1.2,
+    })
+    // dieselben 1,2 kg stecken im bekannten Teil des Teigs
+    const flit = doughOf(s, 'test-flit-teig')
+    expect(flit.complete).toBe(false)
+    expect(flit.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ itemId: 'test-flit-klein', bakeDate: SUN }),
+      ])
+    )
   })
 
   it('Teigstücke je Produkt offen → kg unbekannt, Teig unvollständig', () => {

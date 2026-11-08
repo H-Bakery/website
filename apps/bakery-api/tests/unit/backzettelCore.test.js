@@ -1512,6 +1512,46 @@ describe('R21: Hefeteig mit Litern (kg ÷ 5, ganze Liter) und Chargen', () => {
     expect(r.hefeteig.complete).toBe(false)
   })
 
+  it('Grundmenge offen: Abwiegeliste nennt Stufe und Posten als „mindestens“', () => {
+    const cfg = configV2()
+    cfg.items.find((i) => i.id === 'test-zopf').base[6] = {
+      nuss: null,
+      mohn: 2,
+    }
+    const r = sheetV2(SAT, {
+      config: cfg,
+      preorderItems: [pre('test-zopf-v2', 1, { variant: 'nuss' })],
+    })
+    const weighing = r.hefeteig.doughs[0].weighing
+    const zopf = weighing.find((w) => w.piece_g === 500)
+    expect(zopf).toMatchObject({ pieces: 3, isMinimum: true })
+    expect(zopf.items).toEqual([
+      expect.objectContaining({
+        itemId: 'test-zopf',
+        products: 3,
+        isMinimum: true,
+      }),
+    ])
+    // der Kranz (Grundmenge bekannt) bleibt eine feste Zahl
+    const kranz = weighing.find((w) => w.piece_g === 600)
+    expect(kranz.pieces).toBe(6)
+    expect(kranz.isMinimum).toBeUndefined()
+    expect(kranz.items[0].isMinimum).toBeUndefined()
+  })
+
+  it('Grundmenge offen ohne Vorbestellung: der Posten steht trotzdem in der Abwiegeliste', () => {
+    const cfg = configV2()
+    cfg.items.find((i) => i.id === 'test-kranz').base[6] = null
+    const weighing = sheetV2(SAT, { config: cfg }).hefeteig.doughs[0].weighing
+    const kranz = weighing.find((w) => w.piece_g === 600)
+    expect(kranz).toMatchObject({ pieces: 0, isMinimum: true })
+    expect(kranz.items[0]).toMatchObject({
+      itemId: 'test-kranz',
+      products: 0,
+      isMinimum: true,
+    })
+  })
+
   it('Hefeteig-Karte = Teigsumme des Zettels, auch vollständig', () => {
     const cfg = configV2()
     cfg.doughs.find((d) => d.id === 'test-hefe').batch_max_kg = 5

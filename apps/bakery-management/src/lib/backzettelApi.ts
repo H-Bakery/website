@@ -175,6 +175,8 @@ export interface HefeteigWeighingItem {
   /** `null` (Z10): in den Stammdaten offen. */
   piecesPerProduct: number | null
   pieces: number | null
+  /** Z10: Grundmenge offen - `products` ist nur der bekannte Teil („≥ …“). */
+  isMinimum?: boolean
 }
 
 export interface HefeteigWeighing {
@@ -182,6 +184,8 @@ export interface HefeteigWeighing {
   piece_g: number | null
   pieces: number | null
   items: HefeteigWeighingItem[]
+  /** Z10: ein Posten dieser Stufe hat eine offene Grundmenge („≥ …“). */
+  isMinimum?: boolean
 }
 
 export interface HefeteigDough {
@@ -556,6 +560,8 @@ export interface SingleRow {
   piece_g: number | null
   pieces: number | null
   kg: number | null
+  /** Z10: kg des bekannten Teils (Grundmenge offen: „Teig: ≥ …“); ältere Server: fehlt. */
+  kgKnown?: number | null
 }
 
 export interface RollsBlock {

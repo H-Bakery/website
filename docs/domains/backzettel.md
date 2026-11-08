@@ -163,7 +163,11 @@ Rest am Abend/Schnappschuss (S4), Bildschirme (S5) und Druck (S6) sind auf dem Z
 - **Folge für die heutige hq-Datei:** solange Grundmengen offen sind (z. B. Hefeteig am Samstag),
   sind Hefeteig-kg, Liter und Chargen unbekannt („≥ kgKnown", „Chargen: unbekannt") - der alte
   Zettel zeigte dort eine Zahl, die die offenen Posten als 0 zählte. Wer die Zahl am ersten
-  Samstag nach dem Deploy braucht, trägt vorher die Grundmengen in hq ein.
+  Samstag nach dem Deploy braucht, trägt vorher die Grundmengen in hq ein. Auch die
+  **Abwiegeliste** sagt das: Gewichtsstufe und Posten mit offener Grundmenge tragen
+  `isMinimum` („≥ 15 × 500 g", „Zopf gefüllt ≥ 15", ohne bekannte Stück „offen"), ebenso ein
+  Einzelstück (`singles[].kgKnown`, „Teig: ≥ 1,25 kg") - dieselben kg, die im `kgKnown` des Teigs
+  stecken.
 - **Unbekannt bleibt unbekannt, auch beim Bruch:** hat ein Mitglied einer Bruch-Gruppe keine
   Grundmenge, sind Brüche, kg und „frei“ `null`; `bruecheKnown`/`kgKnown` zählen nur die bekannten
   Mitglieder („≥ 1 Bruch“). „+n frei“ steht in Produkten (`spareProducts`, bei zwei Teigstücken je

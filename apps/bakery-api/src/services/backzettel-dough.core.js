@@ -1128,6 +1128,12 @@ function rollsView(cfg, lines, groups, sheetDate) {
         isNum(pieceG) && isNum(pieces) && !qtyUnknown(line)
           ? round3((total * pieces * pieceG) / 1000)
           : null,
+      // der bekannte Teil (Grundmenge offen): steckt im kgKnown des Teigs,
+      // die Zeile zeigt ihn als „≥ …“ statt „–“ (Regel 1)
+      kgKnown:
+        isNum(pieceG) && isNum(pieces)
+          ? round3((total * pieces * pieceG) / 1000)
+          : null,
     })
   }
   return [...blocks.values()].sort((a, b) =>

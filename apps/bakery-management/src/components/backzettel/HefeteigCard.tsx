@@ -25,6 +25,8 @@ import {
   fillingGramsText,
   fillingOpenNote,
   formatKnown,
+  weighingItemsText,
+  weighingPiecesText,
   formatNumber,
   formatGrams,
   hefeteigDoughText,
@@ -138,20 +140,10 @@ function DoughBlock({ dough }: { dough: HefeteigDough }) {
                 </TableCell>
                 <TableCell sx={NUM}>
                   <Typography component="span" fontWeight={700}>
-                    {formatKnown(w.pieces)}
+                    {weighingPiecesText(w)}
                   </Typography>
                 </TableCell>
-                <TableCell>
-                  {w.items
-                    .map((i) =>
-                      i.piecesPerProduct === 1
-                        ? `${i.name} ${formatNumber(i.products)}`
-                        : `${i.name} ${formatNumber(i.products)} × ${
-                            i.piecesPerProduct ?? '?'
-                          }`
-                    )
-                    .join(', ')}
-                </TableCell>
+                <TableCell>{weighingItemsText(w.items)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

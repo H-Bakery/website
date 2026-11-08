@@ -9,6 +9,8 @@ import {
   formatDateLong,
   formatGrams,
   formatKnown,
+  weighingItemsText,
+  weighingPiecesText,
   formatNumber,
   hasHefeteig,
   hefeteigDoughText,
@@ -95,18 +97,8 @@ export function BackzettelPrintExtras({ day }: BackzettelPrintExtrasProps) {
                   {dough.weighing.map((w) => (
                     <tr key={w.piece_g ?? 'offen'}>
                       <td className="total">{formatKnown(w.piece_g, 'g')}</td>
-                      <td className="num total">{formatKnown(w.pieces)}</td>
-                      <td>
-                        {w.items
-                          .map((i) =>
-                            i.piecesPerProduct === 1
-                              ? `${i.name} ${formatNumber(i.products)}`
-                              : `${i.name} ${formatNumber(i.products)} × ${
-                                  i.piecesPerProduct
-                                }`
-                          )
-                          .join(', ')}
-                      </td>
+                      <td className="num total">{weighingPiecesText(w)}</td>
+                      <td>{weighingItemsText(w.items)}</td>
                       <td className="num">
                         <span className="box" />
                       </td>

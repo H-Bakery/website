@@ -201,7 +201,11 @@ function singleDetail(single: SingleRow): string {
       ? `${formatNumber(single.pieces)} Teigstücke je Stück`
       : null
   const kg =
-    single.kg === null ? 'Teig: – kg' : `Teig: ${formatKnown(single.kg, 'kg')}`
+    single.kg !== null
+      ? `Teig: ${formatKnown(single.kg, 'kg')}`
+      : single.kgKnown
+      ? `Teig: ≥ ${formatKnown(single.kgKnown, 'kg')}`
+      : 'Teig: – kg'
   return [piece, pieces, kg].filter(Boolean).join(' · ')
 }
 

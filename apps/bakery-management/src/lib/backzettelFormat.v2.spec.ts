@@ -25,6 +25,8 @@ import {
   litersText,
   minQtyText,
   variantLabel,
+  weighingItemsText,
+  weighingPiecesText,
 } from './backzettelFormat'
 import {
   SAT,
@@ -173,6 +175,21 @@ describe('Backzettel v2 - Anzeige-Helfer', () => {
     )
     expect(hefeteigDoughText({ dough_g: null, kg: null, kgKnown: 0 })).toBe('–')
     expect(hefeteigDoughText({ dough_g: null })).toBe('–')
+  })
+
+  it('Abwiegeliste: offene Grundmenge als „≥“, ohne bekannte Stück „–“/„offen“', () => {
+    expect(weighingPiecesText({ pieces: 15 })).toBe('15')
+    expect(weighingPiecesText({ pieces: 15, isMinimum: true })).toBe('≥ 15')
+    expect(weighingPiecesText({ pieces: 0, isMinimum: true })).toBe('–')
+    expect(weighingPiecesText({ pieces: null })).toBe('–')
+    expect(
+      weighingItemsText([
+        { name: 'Testkranz', products: 3, piecesPerProduct: 2 },
+        { name: 'Testzopf', products: 6, piecesPerProduct: 1, isMinimum: true },
+        { name: 'Testlaib', products: 0, piecesPerProduct: 1, isMinimum: true },
+        { name: 'Testring', products: 2, piecesPerProduct: null },
+      ])
+    ).toBe('Testkranz 3 × 2, Testzopf ≥ 6, Testlaib offen, Testring 2 × ?')
   })
 
   it('Nachträge für Teig und Teilmaschine: Text aus den Server-Zahlen', () => {

@@ -818,6 +818,43 @@ export function kgText(d: {
 }
 
 /**
+ * Stück einer Gewichtsstufe der Abwiegeliste: „15“, „≥ 15“, wenn ein Posten
+ * dieser Stufe eine offene Grundmenge hat (Regel 8), „–“ wenn unbekannt oder
+ * noch nichts bekannt ist (nie das leere „≥ 0“).
+ */
+export function weighingPiecesText(w: {
+  pieces: number | null
+  isMinimum?: boolean
+}): string {
+  if (w.pieces === null) return '–'
+  if (w.isMinimum) return w.pieces > 0 ? `≥ ${formatNumber(w.pieces)}` : '–'
+  return formatNumber(w.pieces)
+}
+
+/**
+ * Posten einer Gewichtsstufe: „Zopf gefüllt 15“, „Kranz gefüllt 14 × 2“, mit
+ * offener Grundmenge „Zopf gefüllt ≥ 6“ bzw. „Zopf gefüllt offen“.
+ */
+export function weighingItemsText(
+  items: Array<{
+    name: string
+    products: number
+    piecesPerProduct: number | null
+    isMinimum?: boolean
+  }>
+): string {
+  return items
+    .map((i) => {
+      if (i.isMinimum && !(i.products > 0)) return `${i.name} offen`
+      const count = `${i.isMinimum ? '≥ ' : ''}${formatNumber(i.products)}`
+      return i.piecesPerProduct === 1
+        ? `${i.name} ${count}`
+        : `${i.name} ${count} × ${i.piecesPerProduct ?? '?'}`
+    })
+    .join(', ')
+}
+
+/**
  * Teigstücke einer Hefeteig-Karte: „≥ 12“, wenn eine Grundmenge des Teigs
  * offen ist (Regel 8), „–“ wenn unbekannt.
  */

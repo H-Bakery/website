@@ -879,10 +879,30 @@ function computeHefeteig(cfg, lines, options) {
         }“: Grundmenge ist noch nicht festgelegt.`,
       })
       entry.baseUnset = true
-      if (!(line.total > 0)) continue
     }
     const perProduct = item.dough.pieces
     const pieceG = item.dough.piece_g
+    if (unknownQty) {
+      // Abwiegeliste: die Gewichtsstufe und der Posten sind nur „mindestens“
+      // (Regel 8) - auch wenn vom Posten noch nichts bekannt ist.
+      const mw = entry.weights.get(pieceG) || {
+        piece_g: pieceG,
+        pieces: 0,
+        items: new Map(),
+      }
+      mw.isMinimum = true
+      entry.weights.set(pieceG, mw)
+      const mi = mw.items.get(item.id) || {
+        itemId: item.id,
+        name: item.name,
+        products: 0,
+        piecesPerProduct: perProduct,
+        pieces: 0,
+      }
+      mi.isMinimum = true
+      mw.items.set(item.id, mi)
+      if (!(line.total > 0)) continue
+    }
     const pieces =
       typeof perProduct === 'number' ? line.total * perProduct : null
     if (pieces === null) {
@@ -951,6 +971,7 @@ function computeHefeteig(cfg, lines, options) {
             piece_g: w.piece_g,
             pieces: w.piecesUnknown ? null : w.pieces,
             items: [...w.items.values()],
+            ...(w.isMinimum ? { isMinimum: true } : {}),
           })),
       }
       if (withLiters) {

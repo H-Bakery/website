@@ -13,6 +13,8 @@ import {
   fillingGramsText,
   fillingOpenNote,
   formatKnown,
+  weighingItemsText,
+  weighingPiecesText,
   formatNumber,
   hefeteigDoughText,
   hefeteigPiecesText,
@@ -129,18 +131,10 @@ function Dough({ dough, muted }: { dough: HefeteigDough; muted: boolean }) {
                 color: muted ? 'text.secondary' : 'text.primary',
               }}
             >
-              {formatKnown(w.pieces)} × {formatKnown(w.piece_g)} g
+              {weighingPiecesText(w)} × {formatKnown(w.piece_g)} g
             </Typography>
             <Typography sx={{ fontSize: SMALL, color: 'text.secondary' }}>
-              {w.items
-                .map((i) =>
-                  i.piecesPerProduct === 1
-                    ? `${i.name} ${formatNumber(i.products)}`
-                    : `${i.name} ${formatNumber(i.products)} × ${
-                        i.piecesPerProduct ?? '?'
-                      }`
-                )
-                .join(', ')}
+              {weighingItemsText(w.items)}
             </Typography>
           </Box>
         ))}
