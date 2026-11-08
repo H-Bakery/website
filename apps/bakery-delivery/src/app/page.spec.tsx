@@ -47,6 +47,32 @@ jest.mock('../lib/delivery-api', () => ({
 // Leaflet braucht ein echtes Fenster; die Karte ist hier nicht Thema.
 jest.mock('../components/Map', () => ({ Map: () => null }))
 
+// Feste Uhr (nur `Date`, die Timer bleiben echt): die Seite rechnet mit
+// „heute“ (Standardtag, Abhak-Fenster `markWindow`). Ohne sie hingen die Tests
+// am Wochentag - sonntags bis donnerstags liegt der nächste Samstag mehr als
+// einen Tag vorn, „Geliefert“ fehlt dann zu Recht. Steht vor `tour`, weil
+// dessen Datum beim Laden des Moduls entsteht.
+jest.useFakeTimers({
+  now: new Date(2026, 8, 12, 12, 0, 0), // Samstag, 12.09.2026, 12:00 Ortszeit
+  doNotFake: [
+    'hrtime',
+    'nextTick',
+    'performance',
+    'queueMicrotask',
+    'requestAnimationFrame',
+    'cancelAnimationFrame',
+    'requestIdleCallback',
+    'cancelIdleCallback',
+    'setImmediate',
+    'clearImmediate',
+    'setInterval',
+    'clearInterval',
+    'setTimeout',
+    'clearTimeout',
+  ],
+})
+afterAll(() => jest.useRealTimers())
+
 const api = deliveryApi as jest.Mocked<typeof deliveryApi>
 
 /** Die Seite steht hinter `AuthGate` (Layout); hier genügt eine Sitzung im Speicher. */
