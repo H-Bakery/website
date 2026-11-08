@@ -25,6 +25,9 @@ jest.mock('../../../lib/dienstplanApi', () => ({
   fetchCalendar: jest.fn(),
   fetchBalances: jest.fn(),
   fetchShiftTemplates: jest.fn(),
+  createShiftTemplate: jest.fn(),
+  updateShiftTemplate: jest.fn(),
+  deleteShiftTemplate: jest.fn(),
   createShift: jest.fn(),
   updateShift: jest.fn(),
   deleteShift: jest.fn(),
@@ -483,6 +486,111 @@ describe('Dienstplan - Kalender (Woche)', () => {
         )
       )
     ).toMatchObject({ 'min-height': '44px' })
+
+    // Leere Zelle: Touch kennt kein Hover - das Plus steht gedämpft da.
+    const empty = within(screen.getByTestId('cell-3-2026-11-11')).getByRole(
+      'button',
+      { name: /^Eintrag für Erika Beispiel/ }
+    )
+    expect(touchStyle(empty, ' svg')).toMatchObject({ opacity: '0.5' })
+
+    // Vorlagen-Chips im Schichtdialog: Schnelleingabe am Tablet, 44 px.
+    fireEvent.click(empty)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Schicht anlegen' }))
+    expect(
+      touchStyle(dialog().getByRole('button', { name: 'Früh 06:00–12:00' }))
+    ).toMatchObject({ 'min-height': '44px' })
+  })
+
+  it('erneuter Versuch nach einem Ladefehler: nur Laden, nicht Fehler und Laden zugleich', async () => {
+    api.fetchCalendar.mockRejectedValueOnce(
+      new Error('Der Dienstplan konnte nicht geladen werden.')
+    )
+    renderCalendar()
+    expect(
+      await screen.findByText('Der Dienstplan konnte nicht geladen werden.')
+    ).toBeInTheDocument()
+
+    let finish: (value: dienstplanApi.Calendar) => void = () => undefined
+    api.fetchCalendar.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve
+        })
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' }))
+    expect(
+      screen.getByRole('progressbar', { name: /Dienstplan wird geladen/ })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('Der Dienstplan konnte nicht geladen werden.')
+    ).not.toBeInTheDocument()
+
+    finish(calendar())
+    await ready()
+    expect(
+      screen.queryByText('Der Dienstplan konnte nicht geladen werden.')
+    ).not.toBeInTheDocument()
+  })
+
+  it('Schichtvorlagen im Kopf pflegen: eine neue Vorlage steht gleich im Schichtdialog', async () => {
+    api.fetchShiftTemplates.mockResolvedValue([])
+    api.createShiftTemplate.mockReset().mockResolvedValue({
+      id: 9,
+      name: 'Mittag',
+      startTime: '10:00',
+      endTime: '14:00',
+      breakMinutes: 0,
+    })
+    renderCalendar()
+    await ready()
+    const empty = within(screen.getByTestId('cell-3-2026-11-11')).getByRole(
+      'button',
+      { name: /^Eintrag für Erika Beispiel/ }
+    )
+    fireEvent.click(empty)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Schicht anlegen' }))
+    expect(
+      await dialog().findByText(
+        'Keine Schichtvorlagen - Zeiten frei eintragen.'
+      )
+    ).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'Abbrechen' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Schichtvorlagen' }))
+    const d = dialog()
+    expect(
+      await d.findByText('Noch keine Schichtvorlagen.')
+    ).toBeInTheDocument()
+    fireEvent.change(d.getByLabelText(/^Name/), { target: { value: 'Mittag' } })
+    fireEvent.change(d.getByLabelText(/^Beginn/), {
+      target: { value: '10:00' },
+    })
+    fireEvent.change(d.getByLabelText(/^Ende/), { target: { value: '14:00' } })
+    fireEvent.click(d.getByRole('button', { name: 'Vorlage anlegen' }))
+    await waitFor(() =>
+      expect(api.createShiftTemplate).toHaveBeenCalledWith({
+        name: 'Mittag',
+        startTime: '10:00',
+        endTime: '14:00',
+        breakMinutes: 0,
+      })
+    )
+    expect(await d.findByTestId('shift-template-9')).toHaveTextContent('Mittag')
+    fireEvent.click(d.getByRole('button', { name: 'Fertig' }))
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    )
+
+    fireEvent.click(empty)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Schicht anlegen' }))
+    fireEvent.click(
+      dialog().getByRole('button', { name: 'Mittag 10:00–14:00' })
+    )
+    expect(dialog().getByLabelText(/^Beginn/)).toHaveValue('10:00')
   })
 
   it('legt per Klick auf eine leere Zelle eine Schicht mit Vorlage an und zeigt den Hinweis der API', async () => {
@@ -862,8 +970,22 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     ).toHaveTextContent('F')
     expect(screen.getByTestId('shift-dot-3-2026-11-10')).toBeInTheDocument()
     expect(screen.getByTestId('absence-legend')).toHaveTextContent('U = Urlaub')
-    // Tageszellen sind auf Touch-Geräten 44 px hoch.
-    expect(touchStyle(urlaub)).toMatchObject({ 'min-height': '44px' })
+    // Tageszellen sind auf Touch-Geräten 44 px groß - auch auf dem Tablet,
+    // wo die Namensspalte breiter ist: die Tabelle rechnet mit ihr, und
+    // jede Spalte hat 44 px plus Polster und Rand.
+    expect(touchStyle(urlaub)).toMatchObject({
+      'min-height': '44px',
+      'min-width': '44px',
+    })
+    expect(touchStyle(screen.getByRole('table'))).toMatchObject({
+      'min-width': `${170 + 30 * (44 + 2 * 2 + 1)}px`,
+    })
+    // Monat ist kein Tag: zwischen den Pfeilen steht der Monat, kein Datum.
+    const nav = screen.getByTestId('month-navigator')
+    expect(screen.getByTestId('month-navigator-value')).toHaveTextContent(
+      'November 2026'
+    )
+    expect(nav.querySelector('input')).toBeNull()
 
     // Tag antippen → Woche dieses Tages (dort wird bearbeitet).
     fireEvent.click(urlaub)
@@ -904,6 +1026,10 @@ describe('Dienstplan - Kalender (Monat und Jahr)', () => {
     expect(await screen.findByTestId('year-title')).toHaveTextContent(
       'Jahr 2026'
     )
+    expect(screen.getByTestId('year-navigator-value')).toHaveTextContent('2026')
+    expect(
+      screen.getByTestId('year-navigator').querySelector('input')
+    ).toBeNull()
     // Zurück zur Woche: heute (laut API 10.11.) liegt im Jahr → diese Woche.
     await screen.findByText('Rest 13')
     fireEvent.click(screen.getByRole('button', { name: 'Woche' }))

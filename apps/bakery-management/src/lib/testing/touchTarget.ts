@@ -6,10 +6,18 @@ import { TOUCH_MEDIA } from '../muiTheme'
  * Element unter `TOUCH_MEDIA` eingefügt hat (z. B. `{ 'min-height':
  * '44px' }`). jsdom wertet keine Media-Queries aus, darum wird die
  * eingefügte Regel gelesen, nicht die berechnete Höhe.
+ *
+ * Mit `descendant` (z. B. `' svg'` für `'& svg'` im `sx`) liest sie die
+ * Regel für ein Kind des Elements.
  */
-export function touchStyle(element: Element): Record<string, string> {
+export function touchStyle(
+  element: Element,
+  descendant = ''
+): Record<string, string> {
   const media = normalize(TOUCH_MEDIA.replace(/^@media\s*/, ''))
-  const selectors = new Set(Array.from(element.classList).map((c) => `.${c}`))
+  const selectors = new Set(
+    Array.from(element.classList).map((c) => `.${c}${descendant}`)
+  )
   const out: Record<string, string> = {}
   for (const sheet of Array.from(document.styleSheets)) {
     for (const rule of Array.from(sheet.cssRules)) {

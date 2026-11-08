@@ -56,9 +56,27 @@ const visuallyHidden = {
   width: '1px',
 } as const
 
-/** Breite einer Tagesspalte (px): am Schreibtisch schmal, auf Touch 44 px. */
+/** Breite einer Tagesspalte (px) am Schreibtisch. */
 const DAY_WIDTH = 32
-const DAY_WIDTH_TOUCH = 44
+/** Polster einer Tageszelle (px, je Seite) und ihr Rand rechts. */
+const DAY_CELL_PADDING = 2
+const DAY_CELL_BORDER = 1
+/**
+ * Breite einer Tagesspalte auf Touch: die antippbare Fläche selbst (nicht
+ * nur die Spalte) ist mindestens 44 px breit - Polster und Rand kommen dazu.
+ */
+const DAY_WIDTH_TOUCH = 44 + 2 * DAY_CELL_PADDING + DAY_CELL_BORDER
+/**
+ * Mindestbreite der Tabelle auf Touch. Gerechnet mit der breitesten
+ * Namensspalte (ab `sm`): sonst bleibt den Tagen auf dem Tablet weniger
+ * als 44 px; am Handy wird die Tabelle dadurch nur etwas breiter.
+ */
+function touchTableWidth(days: number): number {
+  return (
+    Math.max(NAME_COLUMN_WIDTH.xs, NAME_COLUMN_WIDTH.sm) +
+    days * DAY_WIDTH_TOUCH
+  )
+}
 
 /**
  * Monatsansicht (Gantt-artig): Zeilen = Mitarbeitende nach Bereich, Spalten
@@ -115,9 +133,7 @@ export default function MonthView({
               xs: NAME_COLUMN_WIDTH.xs + dates.length * DAY_WIDTH,
               sm: NAME_COLUMN_WIDTH.sm + dates.length * DAY_WIDTH,
             },
-            [TOUCH_MEDIA]: {
-              minWidth: NAME_COLUMN_WIDTH.xs + dates.length * DAY_WIDTH_TOUCH,
-            },
+            [TOUCH_MEDIA]: { minWidth: touchTableWidth(dates.length) },
             '& td, & th': { borderRight: 1, borderColor: 'divider' },
             '& td:last-of-type, & th:last-of-type': { borderRight: 0 },
           }}
@@ -275,7 +291,7 @@ function MonthCell({
     <TableCell
       data-testid={`cell-${employee.id}-${date}`}
       sx={{
-        p: 0.25,
+        p: `${DAY_CELL_PADDING}px`,
         verticalAlign: 'middle',
         bgcolor: day?.closed ? 'action.hover' : undefined,
       }}
@@ -288,7 +304,7 @@ function MonthCell({
         sx={{
           width: '100%',
           minHeight: 32,
-          [TOUCH_MEDIA]: { minHeight: 44 },
+          [TOUCH_MEDIA]: { minHeight: 44, minWidth: 44 },
           display: 'flex',
           flexDirection: 'column',
           gap: 0.25,

@@ -321,7 +321,7 @@ export default function EmployeeDialog({
             <TextField
               select
               label="Login (optional)"
-              value={users === null ? '' : userId}
+              value={userId}
               onChange={(e) =>
                 setUserId(e.target.value === '' ? '' : Number(e.target.value))
               }
@@ -336,6 +336,15 @@ export default function EmployeeDialog({
               <MenuItem value="">
                 <em>kein Login</em>
               </MenuItem>
+              {/* Liste (noch) nicht da: eine bestehende Verknüpfung nicht als
+                  „kein Login“ zeigen - sie bleibt beim Speichern erhalten. */}
+              {users === null && employee?.userId != null && (
+                <MenuItem value={employee.userId}>
+                  {usersError
+                    ? 'verknüpft (Liste nicht geladen)'
+                    : 'verknüpft (Logins werden geladen …)'}
+                </MenuItem>
+              )}
               {userOptions.map((u) => (
                 <MenuItem key={u.id} value={u.id}>
                   {u.displayName} ({u.username})

@@ -160,6 +160,12 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     expect(screen.getByText('Teilzeit')).toBeInTheDocument()
     expect(screen.getByText('01.03.2025')).toBeInTheDocument()
 
+    // Urlaub zählt in Öffnungstagen, nicht in Arbeitstagen der Person.
+    expect(
+      screen.getByText(
+        'Öffnungstage (Samstag zählt, 24./31.12. halb); genehmigter und geplanter Urlaub getrennt.'
+      )
+    ).toBeInTheDocument()
     expect(screen.getByTestId('balance-entitlement')).toHaveTextContent('24')
     expect(screen.getByTestId('balance-carryover')).toHaveTextContent('3')
     expect(screen.getByTestId('balance-approved')).toHaveTextContent('5,5')
@@ -420,6 +426,34 @@ describe('Dienstplan - Mitarbeiterprofil', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
     const d = dialog()
     expect(d.getByRole('button', { name: 'Speichern' })).toBeDisabled()
+    fireEvent.change(d.getByLabelText(/Wochenstunden/), {
+      target: { value: '25' },
+    })
+    fireEvent.click(d.getByRole('button', { name: 'Speichern' }))
+    await waitFor(() =>
+      expect(api.updateEmployee).toHaveBeenCalledWith(3, { weeklyHours: 25 })
+    )
+  })
+
+  it('Logins nicht geladen: ein verknüpfter Login steht als „verknüpft“, nicht als „kein Login“', async () => {
+    api.fetchEmployeeProfile.mockResolvedValue(
+      profile({ employee: { ...EMPLOYEE, userId: 7 } })
+    )
+    auth.fetchUsers.mockRejectedValue(new Error('Netzwerkfehler'))
+    api.updateEmployee.mockResolvedValue({ ...EMPLOYEE, userId: 7 })
+    renderProfile()
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }))
+    const d = dialog()
+    expect(
+      await d.findByText(
+        'Logins konnten nicht geladen werden - Verknüpfung bleibt unverändert.'
+      )
+    ).toBeInTheDocument()
+    const login = d.getByRole('combobox', { name: 'Login (optional)' })
+    expect(login).toHaveAttribute('aria-disabled', 'true')
+    expect(login).toHaveTextContent('verknüpft (Liste nicht geladen)')
+    expect(login).not.toHaveTextContent('kein Login')
+    // Speichern lässt die Verknüpfung, wie sie ist.
     fireEvent.change(d.getByLabelText(/Wochenstunden/), {
       target: { value: '25' },
     })

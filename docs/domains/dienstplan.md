@@ -9,7 +9,7 @@ Pilots - im Pilotbetrieb ausgeblendet.
 Audit `dienstplan.service.ts` · Routen `src/routes/dienstplan.routes.ts` (`/api/dienstplan`) ·
 Management-App `src/lib/dienstplanApi.ts`, `src/lib/dienstplanCalendar.ts`,
 `src/app/admin/dienstplan/` (Kalender: `DienstplanClient.tsx`, `MonthView.tsx`, `YearView.tsx`;
-Liste und Profil unter `mitarbeiter/`). API-Details (Endpunkte, Fehlercodes, Tabellen):
+Vorlagen: `ShiftTemplatesDialog.tsx`; Liste und Profil unter `mitarbeiter/`). API-Details (Endpunkte, Fehlercodes, Tabellen):
 [`docs/api/dienstplan.md`](../api/dienstplan.md). Task und Entscheidungen des Inhabers:
 `.mc/tasks/todo/TASK-042-dienstplan-urlaub-mitarbeiterprofile.md`.
 
@@ -46,7 +46,9 @@ Liste und Profil unter `mitarbeiter/`). API-Details (Endpunkte, Fehlercodes, Tab
   darunter „von insgesamt n“, wenn die Abwesenheit ins Nachbarjahr reicht.
 - **Schichten nur im Verkauf**, nur für aktive Personen, innerhalb der Beschäftigung, am selben Tag
   (keine Schicht über Mitternacht), keine Überschneidung derselben Person. Schichtvorlagen (z. B.
-  „Früh 6-12“) füllen die Zeiten vor; sie bleiben je Schicht änderbar.
+  „Früh 6-12“) füllen die Zeiten vor; sie bleiben je Schicht änderbar. Gepflegt werden die
+  Vorlagen über „Schichtvorlagen“ im Kopf des Kalenders (anlegen, ändern, löschen); ändern oder
+  löschen ändert keine bestehenden Schichten. Die Migration legt keine Vorlagen an.
 - **Abwesenheiten** liegen ganz in der Beschäftigung und überschneiden sich nicht. Schicht an einem
   Abwesenheitstag oder an einem geschlossenen Tag ist **ein Hinweis, kein Fehler**.
 - **Mitarbeiter werden deaktiviert, nie gelöscht.** Der Anzeigename ist maßgeblich; der Login ist
@@ -58,7 +60,8 @@ Liste und Profil unter `mitarbeiter/`). API-Details (Endpunkte, Fehlercodes, Tab
 - **`/admin/dienstplan` - Kalender**, Ansicht, Zeitraum und Bereich stehen in der URL
   (`?woche=JJJJ-MM-TT`, `?ansicht=monat&monat=JJJJ-MM`, `?ansicht=jahr&jahr=JJJJ`, `&bereich=`).
   Beim Ansichtswechsel bleibt man im Zeitraum (mit heute, sonst nach dem Donnerstag der Woche wie
-  bei der Kalenderwoche).
+  bei der Kalenderwoche). Die Woche wechselt per Pfeil oder Datumsfeld, Monat und Jahr per Pfeil
+  und „Heute“ (zwischen den Pfeilen steht der Zeitraum, kein Datum).
   - **Woche (Standard):** Zeilen = Mitarbeitende nach Bereich (Verkauf zuerst), Spalten Mo-So.
     Schichten mit Uhrzeit, Abwesenheiten als Balken (genehmigt gefüllt, geplant gestrichelt).
     Ruhetag und Feiertag sind hinterlegt und benannt; offene Tage zeigen „Verkauf besetzt: n“, eine
@@ -76,8 +79,9 @@ Liste und Profil unter `mitarbeiter/`). API-Details (Endpunkte, Fehlercodes, Tab
   (Anspruch, Übertrag, genommen, geplant, verfallen, Rest), Anspruch je Jahr, Abwesenheiten des
   Jahres, kommende Schichten.
 - **Handy und Tablet:** die Raster scrollen waagrecht, die Namensspalte bleibt stehen. Alle eigenen
-  klickbaren Flächen (Einträge der Woche, Tageszellen im Monat, Monatsköpfe im Jahr, Farbfelder)
-  sind auf Touch-Geräten mindestens 44 px groß (`TOUCH_MEDIA`).
+  klickbaren Flächen (Einträge der Woche, Tageszellen im Monat, Monatsköpfe im Jahr, Farbfelder,
+  Vorlagen-Chips im Schichtdialog) sind auf Touch-Geräten mindestens 44 px groß (`TOUCH_MEDIA`).
+  Leere Zellen der Woche zeigen dort das „+“ immer (gedämpft) - Touch kennt kein Hover.
 
 ## Tests
 

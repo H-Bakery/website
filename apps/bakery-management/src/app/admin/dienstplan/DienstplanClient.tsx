@@ -22,7 +22,11 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material'
-import { Add as AddIcon, Badge as StaffIcon } from '@mui/icons-material'
+import {
+  Add as AddIcon,
+  Badge as StaffIcon,
+  Schedule as TemplatesIcon,
+} from '@mui/icons-material'
 import {
   ABSENCE_STATUS_LABELS,
   ABSENCE_TYPE_LABELS,
@@ -53,6 +57,7 @@ import {
   closedDayLabel,
   dienstplanHref,
   entriesByCell,
+  formatMonthTitle,
   formatPeriodTitle,
   formatWeekTitle,
   mondayOf,
@@ -81,6 +86,7 @@ import {
 import { messageOf } from './mitarbeiter/EmployeeDialog'
 import AbsenceDialog from './AbsenceDialog'
 import ShiftDialog from './ShiftDialog'
+import ShiftTemplatesDialog from './ShiftTemplatesDialog'
 import MonthView from './MonthView'
 import YearView, { type YearBalances } from './YearView'
 import {
@@ -226,6 +232,7 @@ export default function DienstplanClient({
   const [templatesError, setTemplatesError] = React.useState<string | null>(
     null
   )
+  const [templatesOpen, setTemplatesOpen] = React.useState(false)
   const [addMenu, setAddMenu] = React.useState<AddMenu | null>(null)
   const [dialog, setDialog] = React.useState<DialogState>(null)
   const requestRef = React.useRef(0)
@@ -471,6 +478,15 @@ export default function DienstplanClient({
             prevLabel={nav.prev}
             nextLabel={nav.next}
             today={periodStart(view, today)}
+            // Monat und Jahr sind kein einzelner Tag: statt des Datumsfelds
+            // steht der Zeitraum zwischen den Pfeilen.
+            display={
+              view === 'monat'
+                ? formatMonthTitle(start)
+                : view === 'jahr'
+                ? start.slice(0, 4)
+                : undefined
+            }
             data-testid={nav.testId}
           />
           <Button
@@ -481,6 +497,13 @@ export default function DienstplanClient({
           >
             Mitarbeiter
           </Button>
+          <Button
+            variant="outlined"
+            startIcon={<TemplatesIcon />}
+            onClick={() => setTemplatesOpen(true)}
+          >
+            Schichtvorlagen
+          </Button>
         </>
       }
     >
@@ -489,7 +512,9 @@ export default function DienstplanClient({
           {error}
         </Alert>
       )}
-      {loadError && !blockingError && (
+      {/* Nur über einem geladenen Raster: beim erneuten Versuch nach einem
+          blockierenden Fehler steht sonst Fehler und Laden zugleich da. */}
+      {loadError && shownCalendar !== null && (
         <ErrorState message={loadError} onRetry={() => void reload()} />
       )}
       {view === 'jahr' &&
@@ -623,6 +648,15 @@ export default function DienstplanClient({
         </MenuItem>
       </Menu>
 
+      {templatesOpen && (
+        <ShiftTemplatesDialog
+          onClose={() => setTemplatesOpen(false)}
+          onChange={(list) => {
+            setTemplates(list)
+            setTemplatesError(null)
+          }}
+        />
+      )}
       {dialog?.kind === 'shift' && (
         <ShiftDialog
           employee={dialog.employee}
@@ -903,6 +937,9 @@ function DayCell({
             borderRadius: 1,
             color: 'text.secondary',
             '& svg': { opacity: 0 },
+            // Touch kennt kein Hover: das Plus steht gedämpft immer da, sonst
+            // sieht die Zelle leer und nicht antippbar aus.
+            [TOUCH_MEDIA]: { '& svg': { opacity: 0.5 } },
             '&:hover, &:focus-visible': {
               bgcolor: 'action.hover',
               '& svg': { opacity: 1 },

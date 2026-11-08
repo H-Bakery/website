@@ -282,7 +282,7 @@ export default function MitarbeiterProfilClient({ id }: { id: number }) {
 
         <PageSection
           title={`Urlaubskonto ${shownYear}`}
-          description="Arbeitstage; genehmigter und geplanter Urlaub getrennt."
+          description="Öffnungstage (Samstag zählt, 24./31.12. halb); genehmigter und geplanter Urlaub getrennt."
           actions={
             <>
               <Tooltip title="Vorheriges Jahr">

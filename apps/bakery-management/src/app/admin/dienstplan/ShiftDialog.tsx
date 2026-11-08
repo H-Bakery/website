@@ -22,12 +22,14 @@ import {
   type ShiftInput,
   type ShiftTemplate,
 } from '../../../lib/dienstplanApi'
+import { TOUCH_MEDIA } from '../../../lib/muiTheme'
 import { useFullScreenDialog, useSubmit } from './AbsenceDialog'
 
-const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
+/** Uhrzeit `HH:MM` (nur Bedienführung - die API prüft die Regeln). */
+export const TIME = /^([01]\d|2[0-3]):[0-5]\d$/
 
 /** Pause lesen: leer = 0, sonst ganze Minuten 0-999; `NaN` = ungültig. */
-function parseBreak(text: string): number {
+export function parseBreak(text: string): number {
   const t = text.trim()
   if (t === '') return 0
   return /^\d{1,3}$/.test(t) ? Number(t) : NaN
@@ -150,9 +152,15 @@ export default function ShiftDialog({
                   {templatesError}
                 </Typography>
               ) : templates.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  Keine Schichtvorlagen - Zeiten frei eintragen.
-                </Typography>
+                <>
+                  <Typography variant="body2" color="text.secondary">
+                    Keine Schichtvorlagen - Zeiten frei eintragen.
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Vorlagen wie „Früh“ anlegen: „Schichtvorlagen“ oben im
+                    Dienstplan.
+                  </Typography>
+                </>
               ) : (
                 <Box
                   role="group"
@@ -166,6 +174,8 @@ export default function ShiftDialog({
                       color={templateId === t.id ? 'primary' : 'default'}
                       variant={templateId === t.id ? 'filled' : 'outlined'}
                       onClick={() => applyTemplate(t)}
+                      // Schnelleingabe am Tablet: Touch-Ziel 44 px (Layout-Kit)
+                      sx={{ [TOUCH_MEDIA]: { minHeight: 44 } }}
                     />
                   ))}
                 </Box>
