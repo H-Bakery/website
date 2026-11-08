@@ -214,7 +214,8 @@ erweitertes `GET /api/backzettel/config`.
   hat der Posten selbst keine `plu`, bleiben auch die Größen-Zeilen leer. Im Hinweis steht zusätzlich „Rest am Abend Ø"
   (`GET /api/rest/averages`, nur Information, siehe [rest-am-abend.md](rest-am-abend.md)).
 - **Drucken:** eigenes Druckbild (`GrundmengenPrint.tsx`, A4 quer, schwarz auf weiß, alle Tage Di–So,
-  geänderte Werte mit `*` und dem freigegebenen in Klammern); das Bildschirm-Raster
+  geänderte Werte mit `*` und dem freigegebenen in Klammern, Referenz „≈ n“ klein unter dem Wert,
+  bei einer Größe ohne eigene Kassennummer „≈ unbekannt“ wie am Bildschirm, nie leer); das Bildschirm-Raster
   (`grundmengen-screen-only`) und die App-Hülle fallen im Druck weg. Mit `page.pdf()` prüfen, nicht mit
   einem Screenshot.
 - **Client:** `src/lib/grundmengenApi.ts` (getrennt von `backzettelApi.ts`), Fixtures
@@ -276,7 +277,11 @@ erweitertes `GET /api/backzettel/config`.
   `noteLines`); erst danach kommen die **übrigen Abschnitte auf Blatt 2**, und auf Seite 1 steht an
   ihrer Stelle ein gerahmter Kasten „**Weitere Abschnitte auf Blatt 2:** Laugen, …"; weggelassen
   wird nie etwas. Seite 1 nimmt dann wieder die luftigste Stufe, in der sie ohne die
-  Abschnitte passt. Die Stufe steht als `data-print-step` am Druckbild.
+  Abschnitte passt; **Blatt 2 wählt seine Stufe für sich** (`layout.secondSheet`, die luftigste, in
+  der Titel, „ENTWURF“-Kasten und die zwei Spalten auf 268 mm passen) und trägt sie als eigene
+  CSS-Variablen `--dd-font`/`--dd-row` am Blatt (`.dd-sheet2`). Vorher erbte Blatt 2 die luftige
+  Stufe von Seite 1 und lief schon bei 75–100 Zeilen auf ein drittes Blatt, obwohl es knapp gesetzt
+  passte (Review Z10). Die Stufe steht als `data-print-step` am Druckbild und an Blatt 2.
   **Spalten der übrigen Abschnitte:** keine CSS-Spalten (Chrome ließ eine Überschrift unten links
   stehen und setzte die Zeilen ohne Überschrift nach rechts), sondern zwei feste Spalten, aufgeteilt
   von `printColumns` in `dayPrintLayout.ts`: Reihenfolge bleibt, links zuerst; gewählt wird die
@@ -285,8 +290,9 @@ erweitertes `GET /api/backzettel/config`.
   Überschrift und mindestens 3 rechts unter „**Kaffeestückchen (Forts.)**" - nie eine Überschrift
   ohne ihre ersten Zeilen, nie Zeilen ohne Überschrift. Gewählt wurde die wiederholte Überschrift
   statt „Überschrift mit den ersten Zeilen zusammenhalten", weil sonst rechts oben Zeilen ohne
-  Abschnitt stünden. Grenze: passen die übrigen Abschnitte auch auf Blatt 2 nicht in zwei Spalten
-  einer Seite (weit über 100 Zeilen), laufen beide Spalten über die Seite weiter.
+  Abschnitt stünden. Grenze: passen die übrigen Abschnitte auch in der dichtesten Stufe nicht in
+  zwei Spalten einer Seite (Schätzung, eher zu groß: ab etwa 120 Zeilen übriger Abschnitte), laufen beide Spalten
+  über die Seite weiter, auf der Folgeseite ohne Überschrift.
   **Abwiegeliste, skalierte Rezepte und Vorbereitung** stehen in `BackzettelPrintExtras.tsx` und
   kommen nur mit Haken bei „Abwiegeliste & Rezepte mitdrucken"
   (`localStorage` `bakery-backzettel-print-extras`, Vorgabe aus, O8) auf eigene Blätter. Mit der

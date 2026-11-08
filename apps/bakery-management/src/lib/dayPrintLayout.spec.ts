@@ -7,6 +7,7 @@ import {
   dayPrintHeights,
   dayPrintLayout,
   dayPrintParts,
+  dayPrintSecondSheetHeight,
   NOTE_LINES,
   printColumnRows,
   printColumns,
@@ -185,6 +186,91 @@ describe('dayPrintLayout (Z10 S6)', () => {
     expect(layout.step).toBe(0)
     expect(layout.noteLines).toBe(NOTE_LINES)
     expect(layout.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+  })
+
+  it('ohne Blatt 2 gibt es keine eigene Dichte für Blatt 2', () => {
+    expect(dayPrintLayout(saturdayV2Draft()).secondSheet).toBeNull()
+  })
+
+  // Review Z10: Blatt 2 erbte die luftige Stufe von Seite 1 und lief bei
+  // 75-100 Zeilen übriger Abschnitte auf ein drittes Blatt, obwohl es knapp
+  // gesetzt auf eines passte.
+  const withExtra = (
+    day: BackzettelDay,
+    extra: BackzettelSection
+  ): BackzettelDay => ({ ...day, sections: [...day.sections, extra] })
+  const secondSheetDays: [string, () => BackzettelDay][] = [
+    [
+      'voller Samstag freigegeben + 60 Laugen',
+      () =>
+        withExtra(busySaturdayV2Confirmed(), section('test-laugen-viele', 60)),
+    ],
+    [
+      'voller Samstag Entwurf + 70 Zeilen',
+      () => withExtra(busySaturdayV2Draft(), section('test-viele', 70)),
+    ],
+    [
+      'voller Samstag Entwurf + 100 Zeilen',
+      () => withExtra(busySaturdayV2Draft(), section('test-viele', 100)),
+    ],
+  ]
+  it.each(secondSheetDays)(
+    '%s: Blatt 2 wählt seine Stufe nach der eigenen Höhe und bleibt ein Blatt',
+    (_name, make) => {
+      const day = make()
+      const parts = dayPrintParts(day)
+      const layout = dayPrintLayout(day)
+      expect(layout.othersOnSecondSheet).toBe(true)
+      const second = layout.secondSheet
+      expect(second).not.toBeNull()
+      if (!second) return
+      expect(second.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+      expect(second.estimatedMm).toBe(
+        Math.round(
+          dayPrintSecondSheetHeight(day, parts, DAY_PRINT_STEPS[second.step])
+        )
+      )
+      // Die luftigste passende Stufe: eine Stufe luftiger passt nicht mehr.
+      if (second.step > 0) {
+        expect(
+          dayPrintSecondSheetHeight(
+            day,
+            parts,
+            DAY_PRINT_STEPS[second.step - 1]
+          )
+        ).toBeGreaterThan(PAGE_HEIGHT_MM)
+      }
+    }
+  )
+
+  it('in der Stufe von Seite 1 liefe Blatt 2 über - es wird dichter gesetzt als Seite 1', () => {
+    const day = withExtra(busySaturdayV2Draft(), section('test-viele', 100))
+    const parts = dayPrintParts(day)
+    const layout = dayPrintLayout(day)
+    expect(
+      dayPrintSecondSheetHeight(day, parts, DAY_PRINT_STEPS[layout.step])
+    ).toBeGreaterThan(PAGE_HEIGHT_MM)
+    expect(layout.secondSheet?.step).toBeGreaterThan(layout.step)
+    expect(layout.secondSheet?.estimatedMm).toBeLessThanOrEqual(PAGE_HEIGHT_MM)
+  })
+
+  it('Blatt 2 bleibt ein Blatt, solange es in der dichtesten Stufe passt', () => {
+    const densest = DAY_PRINT_STEPS[DAY_PRINT_STEPS.length - 1]
+    for (let n = 30; n <= 160; n += 5) {
+      const day = withExtra(busySaturdayV2Draft(), section('test-viele', n))
+      const layout = dayPrintLayout(day)
+      if (!layout.secondSheet) continue
+      const fitsDensest =
+        dayPrintSecondSheetHeight(day, dayPrintParts(day), densest) <=
+        PAGE_HEIGHT_MM
+      if (fitsDensest) {
+        expect(layout.secondSheet.estimatedMm).toBeLessThanOrEqual(
+          PAGE_HEIGHT_MM
+        )
+      } else {
+        expect(layout.secondSheet.step).toBe(DAY_PRINT_STEPS.length - 1)
+      }
+    }
   })
 
   it('ohne übrige Abschnitte gibt es kein Blatt 2, auch wenn es eng wird', () => {

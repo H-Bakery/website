@@ -221,6 +221,9 @@ const doughDayPrintStyles = (
           height: `${NOTE_LINE_MM}mm`,
         },
         '.dd-print .bz-break': { breakBefore: 'page' },
+        // Blatt 2 hat seine eigene Dichte (`layout.secondSheet`): die
+        // Variablen stehen am Blatt, die Schrift muss sie dort neu lesen.
+        '.dd-print .dd-sheet2': { fontSize: 'var(--dd-font) !important' },
       },
     }}
   />
@@ -864,7 +867,21 @@ export function DoughDayPrint({
       </section>
 
       {layout.othersOnSecondSheet && others && (
-        <section className="bz-page bz-break" data-testid="print-dd-others">
+        <section
+          className="bz-page bz-break dd-sheet2"
+          data-testid="print-dd-others"
+          data-print-step={layout.secondSheet?.step}
+          data-print-estimate={layout.secondSheet?.estimatedMm}
+          style={
+            layout.secondSheet
+              ? ({
+                  '--dd-font': `${layout.secondSheet.fontPt}pt`,
+                  '--dd-row': `${layout.secondSheet.rowMm}mm`,
+                  '--dd-big': `${layout.secondSheet.bigPt}pt`,
+                } as React.CSSProperties)
+              : undefined
+          }
+        >
           <h1>Backzettel {formatDateLong(day.date)} – Blatt 2</h1>
           {!confirmed && (
             <p className="banner">ENTWURF – noch nicht freigegeben</p>

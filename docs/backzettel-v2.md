@@ -757,7 +757,12 @@ Questionnaire answers (`backliste-fragebogen.md`) only fill `null`s in hq; no co
    `printColumns` splits them into two fixed columns, a long section continues under
    "… (Forts.)" with at least 3 rows on each side. If a sheet still overflows, the other sections
    move to sheet 2 and page 1 shows a framed "Weitere Abschnitte auf Blatt 2: …" box (checked with
-   a forced overflow: 2 pages). Details: docs/domains/backzettel.md, "Druck".
+   a forced overflow: 2 pages). Page 1 and sheet 2 then pick their density step separately
+   (`layout.secondSheet`, own `--dd-font`/`--dd-row` on the sheet) - resolved review finding: sheet 2
+   used to inherit page 1's roomier step and ran onto a third page at 75-100 lines although it fit
+   at the densest step. Remaining limit: other sections that do not fit two columns of one page even
+   at the densest step (estimate: about 120 lines) continue onto a further page without a heading.
+   Details: docs/domains/backzettel.md, "Druck".
 4. **Paper formula differences.** The paper computes the combined litres slightly differently
    (Korn share applied to the whole dough); after rounding it agrees on both reference Saturdays.
    Dunkelsauer rounding differs between Saturday and weekdays → `rounding: null` until answered.
@@ -774,7 +779,7 @@ Questionnaire answers (`backliste-fragebogen.md`) only fill `null`s in hq; no co
     unknown, `null` listed in `open` as `size_plu_unknown`). `/reference` adds `sizes[]` per sized
     item with the same median formula over the size's PLUs (`status: unknown` without PLUs - never
     0, never a share of the item); the Grundmengen size rows show it, "unbekannt" when the item has
-    PLUs but the size has none. The item median is unchanged; items without `sizes` (every v1
+    PLUs but the size has none - on screen and in the print ("≈ unbekannt", never blank). The item median is unchanged; items without `sizes` (every v1
     file) answer byte-identically. Whether the register separates sizes is a property of the hq
     data: it has separate small/large articles for some breads, but one pair of articles can cover
     two items, so most `sizes[].plu` stay `null` until the owner confirms the mapping (hq

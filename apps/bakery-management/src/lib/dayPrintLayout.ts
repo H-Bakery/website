@@ -265,6 +265,63 @@ export interface DayPrintLayout extends PrintStep {
   noteLines: number
   /** Geschätzte Höhe von Seite 1 in mm (für Specs und Fehlersuche). */
   estimatedMm: number
+  /**
+   * Dichte von Blatt 2 (nur mit `othersOnSecondSheet`): eigene Stufe, nach
+   * der Höhe von Blatt 2 gewählt - nicht die von Seite 1, sonst lief ein
+   * Blatt 2, das knapp gesetzt passt, luftig auf ein drittes (Review Z10).
+   */
+  secondSheet: SecondSheetLayout | null
+}
+
+/** Dichte und geschätzte Höhe von Blatt 2 (übrige Abschnitte). */
+export interface SecondSheetLayout extends PrintStep {
+  /** Index in `DAY_PRINT_STEPS` (0 = luftig). */
+  step: number
+  /** Geschätzte Höhe von Blatt 2 in mm. */
+  estimatedMm: number
+}
+
+/**
+ * Höhe des Kastens „ENTWURF – noch nicht freigegeben“ in mm (`.banner` aus
+ * `backzettelPrintStyles`: 12 pt, 1,5 mm Innen-, 2 mm Außenabstand).
+ */
+const DRAFT_BANNER_MM = 14
+
+/**
+ * Geschätzte Höhe von Blatt 2 in mm: Titel (1,5-fache Schrift), beim Entwurf
+ * der Kasten „ENTWURF“, dann die übrigen Abschnitte in zwei Spalten.
+ */
+export function dayPrintSecondSheetHeight(
+  day: BackzettelDay,
+  parts: DayPrintParts,
+  s: PrintStep
+): number {
+  return (
+    s.fontPt * 0.3528 * 1.5 * 1.2 +
+    (day.status === 'confirmed' ? 0 : DRAFT_BANNER_MM) +
+    dayPrintHeights(day, parts, s).others
+  )
+}
+
+/**
+ * Stufe von Blatt 2: die luftigste, in der es passt. Passt es selbst in der
+ * dichtesten nicht, bleibt die dichteste - dann läuft Blatt 2 weiter
+ * (docs/backzettel-v2.md §9 Nr. 3, Grenze).
+ */
+function secondSheetLayout(
+  day: BackzettelDay,
+  parts: DayPrintParts
+): SecondSheetLayout {
+  const heights = DAY_PRINT_STEPS.map((s) =>
+    dayPrintSecondSheetHeight(day, parts, s)
+  )
+  const found = heights.findIndex((h) => h <= PAGE_HEIGHT_MM)
+  const step = found === -1 ? DAY_PRINT_STEPS.length - 1 : found
+  return {
+    ...DAY_PRINT_STEPS[step],
+    step,
+    estimatedMm: Math.round(heights[step]),
+  }
 }
 
 /** Geschätzte Höhen der Blöcke von Seite 1 in mm bei einer Dichtestufe. */
@@ -362,7 +419,8 @@ export function dayPrintHeights(
 /**
  * Dichte des Druckbilds: die luftigste Stufe, in der Seite 1 passt. Passt es
  * nirgends, stehen die übrigen Abschnitte auf einem zweiten Blatt (mit
- * Hinweis auf Seite 1).
+ * Hinweis auf Seite 1); Seite 1 und Blatt 2 wählen ihre Stufe dann je für
+ * sich.
  */
 export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
   const parts = dayPrintParts(day)
@@ -377,6 +435,7 @@ export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
         othersOnSecondSheet: false,
         noteLines: NOTE_LINES,
         estimatedMm: Math.round(h.fixed + h.others),
+        secondSheet: null,
       }
     }
   }
@@ -394,6 +453,7 @@ export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
           othersOnSecondSheet: false,
           noteLines: n,
           estimatedMm: Math.round(h.fixed + h.others),
+          secondSheet: null,
         }
       }
     }
@@ -406,10 +466,12 @@ export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
       othersOnSecondSheet: false,
       noteLines: NOTE_LINES,
       estimatedMm: Math.round(h.fixed + h.others),
+      secondSheet: null,
     }
   }
   // Blatt 2: Seite 1 trägt statt der Abschnitte nur den Kasten „Weitere
   // Abschnitte auf Blatt 2: …“ (zwei Zeilen) und darf wieder luftiger werden.
+  // Blatt 2 bekommt seine eigene Stufe (`secondSheet`).
   const page1 = (s: PrintStep) =>
     dayPrintHeights(day, parts, s).fixed + 2 * s.rowMm
   const found = DAY_PRINT_STEPS.findIndex((s) => page1(s) <= PAGE_HEIGHT_MM)
@@ -420,6 +482,7 @@ export function dayPrintLayout(day: BackzettelDay): DayPrintLayout {
     othersOnSecondSheet: true,
     noteLines: NOTE_LINES,
     estimatedMm: Math.round(page1(DAY_PRINT_STEPS[step])),
+    secondSheet: secondSheetLayout(day, parts),
   }
 }
 

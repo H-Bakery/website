@@ -305,6 +305,14 @@ describe('Druck eines Teigtag-Zettels (Z10 S6)', () => {
     const second = within(page.getByTestId('print-dd-others'))
     expect(second.getByTestId('dd-line-test-extra-199|')).toBeInTheDocument()
     expect(page.getByTestId('print-dd-others')).toHaveClass('bz-break')
+    // Blatt 2 trägt seine eigene Dichte (Review Z10), Seite 1 ihre.
+    const sheet2 = page.getByTestId('print-dd-others')
+    expect(sheet2).toHaveClass('dd-sheet2')
+    expect(sheet2.style.getPropertyValue('--dd-font')).toMatch(
+      /^\d+(\.\d+)?pt$/
+    )
+    expect(sheet2.style.getPropertyValue('--dd-row')).toMatch(/^\d+(\.\d+)?mm$/)
+    expect(sheet2).toHaveAttribute('data-print-step')
   })
 
   it('voller Samstag: jede Zeile steht genau einmal auf Seite 1, kein Blatt 2', () => {
