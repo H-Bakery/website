@@ -1506,6 +1506,36 @@ Tests: `npx jest -c apps/bakery-api/jest.config.js apps/bakery-api/tests/unit/re
 apps/bakery-api/tests/integration/rest.test.ts` und in der Management-App `src/lib/restApi.spec.ts`,
 `admin/rest/RestClient.spec.tsx`, `admin/rest/auswertung/RestAuswertungClient.spec.tsx`.
 
+## Partybrezel-Prototyp (`apps/bakery-partybrezel`)
+
+Klickbarer Prototyp „Partybrezel selbst zusammenstellen“ (Größe → Belag → Abholung → Übersicht),
+eigene statische Next.js-App ohne API und ohne `@bakery/*`-Libs. Dev auf 4221
+(`npm run dev:partybrezel`), Export nach `apps/bakery-partybrezel/out` (`npm run build:partybrezel`,
+webpack), ausgeliefert auf 4231 (`npm run serve:partybrezel`). Details:
+`docs/partybrezel-prototyp.md`. Fünf Dinge, die man wissen muss:
+
+- **Fest ist nur:** Flitteig, klein 3 × 300 g, groß 3 × 400 g, Teig am Vortag, Abholung am
+  Backtag, Montag Ruhetag. Alles andere (Q-P1 … Q-P7: Zähleinheit, Personen, Beläge, wer belegt,
+  Vorlauf, Preise, Tage) ist offen und steht als `// PLATZHALTER Q-P…` **nur** in
+  `src/config/partybrezel.config.ts` - Komponenten haben keine eigenen Werte. Preise und
+  Produkt-IDs sind erfunden; echte Werte nie hierher kopieren (Repo öffentlich).
+- **Rechnen in `src/lib/`, reines TS:** Preise in ganzen Cent, Abholtage aus einem
+  hineingereichten „heute“ (`pickupDates(today, …)`, nie `new Date()` darin; die Seite bestimmt
+  es erst im Browser mit `todayInBerlin`, sonst gälte das Build-Datum).
+- **Nichts wird gesendet.** Die Übersicht zeigt den Body für `POST /api/preorders` in zwei
+  Abbildungen: A „Produkt je Größe“ (Beläge in der Anmerkung) und B „Teile mit Sorte“ (Belag als
+  `variant`, Menge = Teile). Keine Preisfelder - der Server nimmt den Preis aus hq, Belag-Aufpreise
+  sind über die API heute nicht abbildbar; die Seite sagt das. Gekürzte Anmerkung = Warnung.
+- **Belag-Modus** (`per-part` / `per-pretzel`) ist Config-Vorgabe und in den
+  „Prototyp-Einstellungen“ umschaltbar; im Modus je Brezel wird eine gemischt belegte Brezel als
+  offen gemeldet, nie still vereinheitlicht.
+- **Unterpfad:** `PARTYBREZEL_BASE_PATH=/partybrezel` beim Build setzt `basePath`/`assetPrefix`
+  (Hosting unter der Landing Page oder eigener Pages-Seite ist **nicht** umgesetzt, der
+  Deploy-Workflow bleibt unverändert). CI baut die App in der Build-Matrix.
+
+Tests: `npx nx test bakery-partybrezel` (Kern: `src/lib/*.spec.ts`, Durchklick:
+`src/components/PartybrezelDesigner.spec.tsx`).
+
 ## Box-Betrieb (`deploy/`, roadmap O1–O4)
 
 Pilot-Betrieb auf einem Rechner in der Bäckerei: systemd-Units, Caddy (LAN-HTTPS über DNS-01),
