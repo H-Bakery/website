@@ -76,7 +76,11 @@ die Überarbeitung „Backzettel v2" (Z10) ist dort geplant - dieses Dokument be
   Hefeteig, Füllungen, Vorbereitung und Hinweise. Eine spätere Änderung an YAML oder Rezepten ändert
   einen freigegebenen Zettel nicht; `configChangedSinceConfirm: true` sagt nur, dass die aktuellen
   Stammdaten jetzt etwas anderes ergäben. Nach jeder Freigabe schreibt die API einen Schnappschuss nach
-  hq `data/production/backzettel/` (Z9, `hq-snapshots.service.ts`, ohne Personendaten).
+  hq `data/production/backzettel/` (Z9, `hq-snapshots.service.ts`, ohne Personendaten). Ein
+  Teigtag-Zettel (Z10, `sheetVersion: 2`) wird mit `schema_version: 2` geschrieben - zusätzlich
+  `bakeDate`/`doughDate`/`variantLabel` je Zeile, `bakeDates`, `doughs`, `machine`, `rolls`
+  (Brüche) und `openMasterData`; Unbekanntes bleibt `null`, nie 0. Das Markdown gruppiert die
+  Brötchen nach Backtag. Tage von vor Z10 bleiben Schema 1.
 - **Offene Grundmenge bleibt offen nach der Freigabe:** `computed_snapshot.unsetKeys` hält die Zeilen
   mit `baseUnset`, `frozenSections(rows, config, unsetKeys)` setzt sie wieder - sonst stünde auf dem
   freigegebenen Zettel „Basis 0" statt „offen". Ältere Freigaben ohne das Feld zeigen 0.

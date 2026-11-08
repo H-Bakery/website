@@ -991,3 +991,261 @@ describe('Abschluss-Verifikation next', () => {
     expect(dayLine.split(';').pop()).toBe(s.items[0].name)
   })
 })
+
+// ---------------------------------------------------------------------------
+// Backzettel v2 (Z10, docs/backzettel-v2.md §5.5, R30): Laibgrößen werden je
+// Größe gezählt; „gebacken“ kommt aus der Backliste des Backtags - Zeilen
+// mehrerer Zettel (Dienstags-Brötchen vom Samstag, Brot vom Dienstag).
+// ---------------------------------------------------------------------------
+
+describe('Backzettel v2: Laibgrößen und Backliste (R30)', () => {
+  const configV2 = configCore.normalizeConfig(fixture.configV2())
+  const catalogV2 = fixture.PRODUCTS_V2.map((p) => ({
+    ...p,
+    name: `Test ${p.id.replace('test-', '')}`,
+  }))
+  const itemV2 = (id) => configV2.items.find((i) => i.id === id)
+  const SAT = '2026-11-28'
+  const TUE = '2026-12-01'
+
+  /** Eine Zeile der Backliste (`getBakeLines`): mit Teigtag und Backtag. */
+  function bakeLine(itemId, variant, total, doughDate, extra = {}) {
+    const it = itemV2(itemId)
+    return {
+      key:
+        doughDate === TUE
+          ? `${itemId}|${variant || ''}`
+          : `${itemId}|${variant || ''}@${TUE}`,
+      itemId,
+      variant: variant || null,
+      name: it.name,
+      unit: it.unit || 'Stück',
+      section: it.section,
+      total,
+      cap: 0,
+      bakeDate: TUE,
+      doughDate,
+      delta: null,
+      ...extra,
+    }
+  }
+
+  /** Die Backliste des Dienstags: Brötchen vom Samstag, Brot vom Dienstag. */
+  function bakeList(status, lines, deltaTotals) {
+    const bySection = new Map()
+    for (const l of lines) {
+      if (!bySection.has(l.section)) bySection.set(l.section, [])
+      bySection.get(l.section).push(l)
+    }
+    return {
+      date: TUE,
+      status,
+      sources: [
+        { doughDate: SAT, status: 'confirmed', lineCount: 1 },
+        { doughDate: TUE, status, lineCount: 1 },
+      ],
+      sections: [...bySection.entries()].map(([id, ls]) => ({
+        id,
+        label: id,
+        lines: ls,
+      })),
+      deltas: [],
+      ...(deltaTotals ? { deltaTotals } : {}),
+    }
+  }
+
+  function countRow(itemId, variant, productId, qty) {
+    const r = core
+      .countRowsForItem(itemV2(itemId), catalogV2, variant)
+      .find((x) => x.productId === productId)
+    return {
+      itemId,
+      variant,
+      productId,
+      name: r.label,
+      itemName: itemV2(itemId).name,
+      unit: r.unit,
+      itemUnit: 'Stück',
+      factor: r.factor,
+      qty,
+      lineRows: core
+        .countRowsForItem(itemV2(itemId), catalogV2, variant)
+        .map((x) => x.productId),
+      countedAt: `${TUE}T17:00:00.000Z`,
+      countedBy: { id: 7, displayName: 'Test Verkauf' },
+      revision: 1,
+    }
+  }
+
+  it('zählt eine Laibgröße nur mit den Produkten dieser Größe', () => {
+    const korn = itemV2('test-korn')
+    expect(korn.variantKind).toBe('size')
+    expect(
+      core.countRowsForItem(korn, catalogV2, 'g500').map((r) => r.productId)
+    ).toEqual(['test-korn-500'])
+    expect(
+      core.countRowsForItem(korn, catalogV2, 'g1000').map((r) => r.productId)
+    ).toEqual(['test-korn-1000'])
+    // Eine Größe ohne eigenes Produkt: in der Einheit des Postens, mit
+    // dem Etikett der Größe.
+    expect(core.countRowsForItem(korn, catalogV2, 'kasten')).toEqual([
+      expect.objectContaining({
+        productId: '',
+        label: 'Testkorn Kasten',
+        unit: 'Stück',
+        factor: 1,
+      }),
+    ])
+    // Sorten (Nuss/Mohn) teilen sich weiter alle Produkte des Postens.
+    expect(
+      core
+        .countRowsForItem(item('kranz'), catalog, 'nuss')
+        .map((r) => r.productId)
+    ).toEqual(
+      core.countRowsForItem(item('kranz'), catalog).map((r) => r.productId)
+    )
+  })
+
+  it('lehnt ein Produkt einer anderen Größe ab', () => {
+    const wrong = core.validateBatch(
+      {
+        items: [
+          {
+            itemId: 'test-korn',
+            variant: 'g500',
+            productId: 'test-korn-1000',
+            qty: 1,
+          },
+        ],
+      },
+      { config: configV2, catalog: catalogV2 }
+    )
+    expect(wrong).toMatchObject({ ok: false, error: 'unknown_product' })
+    const ok = core.validateBatch(
+      {
+        items: [
+          {
+            itemId: 'test-korn',
+            variant: 'g500',
+            productId: 'test-korn-500',
+            qty: 2,
+          },
+        ],
+      },
+      { config: configV2, catalog: catalogV2 }
+    )
+    expect(ok.ok).toBe(true)
+    expect(ok.entries[0]).toMatchObject({
+      variant: 'g500',
+      productId: 'test-korn-500',
+      factor: 1,
+    })
+  })
+
+  it('gebacken kommt aus beiden Zetteln des Backtags; Größen mit Etikett', () => {
+    const view = core.buildDayView({
+      date: TUE,
+      today: TUE,
+      config: configV2,
+      catalog: catalogV2,
+      backzettel: bakeList('confirmed', [
+        bakeLine('test-doppel', '', 40, SAT),
+        bakeLine('test-korn', 'g500', 4, TUE),
+        bakeLine('test-korn', 'g1000', 2, TUE),
+      ]),
+      rows: [countRow('test-korn', 'g500', 'test-korn-500', 1)],
+    })
+    expect(view.backzettelStatus).toBe('confirmed')
+    const byKey = Object.fromEntries(view.lines.map((l) => [l.key, l]))
+    expect(byKey['test-doppel|']).toMatchObject({ baked: 40, planned: 40 })
+    expect(byKey['test-korn|g500']).toMatchObject({
+      baked: 4,
+      variantLabel: '500 g',
+      counted: true,
+      rest: 1,
+    })
+    expect(byKey['test-korn|g500'].rows.map((r) => r.productId)).toEqual([
+      'test-korn-500',
+    ])
+    expect(byKey['test-korn|g1000']).toMatchObject({
+      variantLabel: '1 kg',
+      counted: false,
+    })
+    expect(byKey['test-korn|g1000'].rows.map((r) => r.productId)).toEqual([
+      'test-korn-1000',
+    ])
+  })
+
+  it('ein Zettel noch Entwurf: der Backtag ist nur geplant', () => {
+    const view = core.buildDayView({
+      date: TUE,
+      today: TUE,
+      config: configV2,
+      catalog: catalogV2,
+      backzettel: bakeList('draft', [
+        bakeLine('test-doppel', '', 40, SAT),
+        bakeLine('test-korn', 'g500', 4, TUE),
+      ]),
+      rows: [],
+    })
+    expect(view.backzettelStatus).toBe('draft')
+    for (const l of view.lines) expect(l.baked).toBeNull()
+    expect(view.lines.find((l) => l.itemId === 'test-doppel').planned).toBe(40)
+  })
+
+  it('derselbe Posten auf zwei Zetteln wird addiert, Nachträge zählen einmal', () => {
+    const delta = { qty: 4, openQty: 0, bake: 4, bakeOpen: 0 }
+    const twice = [
+      bakeLine('test-doppel', '', 40, SAT, { delta }),
+      bakeLine('test-doppel', '', 10, TUE),
+    ]
+    // deltaTotals (über alle Zettel summiert) hat Vorrang ...
+    expect(
+      core
+        .backzettelLines(
+          bakeList('confirmed', twice, { 'test-doppel|': delta }),
+          configV2
+        )
+        .get('test-doppel|')
+    ).toMatchObject({ planned: 50, baked: 54 })
+    // ... ohne sie zählen die Nachträge an den Zeilen.
+    expect(
+      core
+        .backzettelLines(bakeList('confirmed', twice), configV2)
+        .get('test-doppel|')
+    ).toMatchObject({ planned: 50, baked: 54 })
+  })
+
+  it('Auswertung: eine Größe ist vollständig gezählt, wenn ihre Produkte gezählt sind', () => {
+    const s = core.summarize({
+      from: TUE,
+      to: TUE,
+      today: TUE,
+      config: configV2,
+      catalog: catalogV2,
+      days: {
+        [TUE]: {
+          backzettel: bakeList('confirmed', [
+            bakeLine('test-doppel', '', 40, SAT),
+            bakeLine('test-korn', 'g500', 4, TUE),
+            bakeLine('test-korn', 'g1000', 2, TUE),
+          ]),
+          rows: [
+            countRow('test-doppel', '', 'test-doppel', 3),
+            countRow('test-korn', 'g500', 'test-korn-500', 1),
+            countRow('test-korn', 'g1000', 'test-korn-1000', 0),
+          ],
+          report: null,
+        },
+      },
+    })
+    expect(s.days[0].status).toBe('counted')
+    const korn = s.items.find((i) => i.itemId === 'test-korn')
+    expect(korn).toMatchObject({ baked: 6, rest: 1, days: 1 })
+    expect(korn.variants.map((v) => v.label)).toEqual(['500 g', '1 kg'])
+    expect(s.items.find((i) => i.itemId === 'test-doppel')).toMatchObject({
+      baked: 40,
+      rest: 3,
+    })
+  })
+})

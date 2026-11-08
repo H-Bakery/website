@@ -2,7 +2,11 @@
 /**
  * Writes a synthetic hq working tree into <dir> (must exist, may be a git clone):
  *   products/            copy of tools/e2e/hq-products (56 synthetic products)
- *   config/backzettel.yaml  every section, Saturday Hefeteig with fillings + variants
+ *   config/backzettel.yaml  every section, Saturday Hefeteig with fillings + variants,
+ *                          and one example of each Backzettel-v2 feature (Z10):
+ *                          dough days, bread by size, combined doughs with an
+ *                          add-on, a fixed dough share, rolls in Bruch made the
+ *                          day before, singles, and open (null) master data
  *   data/recipes/fillings/test.md
  *   data/reports/converted/  8 weeks up to yesterday (Berlin), Mondays closed, one gap
  *   data/finance/finance-summary.json + config/targets.json (last 3 full months)
@@ -64,8 +68,13 @@ w(
   'config/backzettel.yaml',
   `# Synthetische Backzettel-Stammdaten (bakery-dev) auf dem E2E-Katalog.
 # Kein Wert stammt aus dem echten hq. Montag (1) ist Ruhetag.
+# Backzettel v2 (Z10): Teig wird Di-Sa gemacht, Sonntag wird nur gebacken; die
+# Brötchen in Bruch entstehen am Teigtag davor (Samstag für So + Di).
+# null = noch offen (die App zeigt „unbekannt“, nie eine Schätzung).
 version: 1
 days: [2, 3, 4, 5, 6, 7]
+dough_days: [2, 3, 4, 5, 6]
+bruch_pieces: 24
 sections: [vorbereitung, brot, broetchen, laugen, kaffeestueckchen, kuchen, hefeteig]
 items:
   # --- Vorbereitung
@@ -96,6 +105,49 @@ items:
     products: [{ id: musterlaib-vollkorn-1000g, factor: 1 }]
     plu: [8]
     base: { 3: 2, 5: 2.5 }
+  # Brot je Laibgröße (v2): Grundmenge je Größe, Teig aus dem Gewicht je Laib
+  - id: mischbrot
+    name: Mischbrot
+    section: brot
+    dough: { id: mischteig }
+    sizes:
+      - { id: g500, label: 500 g, dough_g: 580 }
+      - { id: g750, label: 750 g, dough_g: 860 }
+      - { id: kasten, label: Kasten, dough_g: 1000 }
+    products:
+      - { id: musterlaib-roggen-500g, size: g500 }
+      - { id: musterbrot-dunkel-750g, size: g750 }
+      - { id: testkasten-mehrkorn-750g, size: kasten }
+    plu: [6, 4, 12]
+    base:
+      2: { g500: 6, g750: 4, kasten: 2 }
+      3: { g500: 4, g750: 3, kasten: null }
+      4: { g500: 6, g750: 4, kasten: 2 }
+      5: { g500: 6, g750: 5, kasten: 2 }
+      6: { g500: 10, g750: 8, kasten: 3 }
+      7: { g500: 4, g750: 3 }
+  - id: dinkelbrot
+    name: Dinkelbrot
+    section: brot
+    dough: { id: dinkelteig }
+    sizes: [{ id: g750, label: 750 g, dough_g: 850 }]
+    products: [{ id: musterlaib-dinkel-750g, size: g750 }]
+    plu: [7]
+    base: { 2: { g750: 3 }, 4: { g750: 3 }, 6: { g750: 6 }, 7: { g750: 2 } }
+  # fester Anteil Mischteig je Ansatz, dazu Körner (kein Teig)
+  - id: kernbrot
+    name: Kernbrot
+    section: brot
+    dough: { id: mischteig }
+    sizes: [{ id: g1000, label: 1 kg, dough_g: 1100 }]
+    products: [{ id: musterbrot-kern-1000g, size: g1000 }]
+    plu: [5]
+    from_dough:
+      id: mischteig
+      mode: fixed
+      dough_kg: 4
+      extras: [{ name: Körnermischung, kg: null }]
+    base: { 3: { g1000: 4 }, 6: { g1000: 6 } }
   # --- Brötchen
   - id: musterweck
     name: Musterweck
@@ -109,6 +161,51 @@ items:
     products: [{ id: mustersemmel, factor: 1 }]
     plu: [15]
     base: { 2: 20, 3: 16, 4: 20, 5: 20, 6: 30, 7: 40 }
+  # Brötchen in Bruch (v2), Teig am Teigtag davor; Grundmenge in Stück am Backtag
+  - id: koernerweck
+    name: Körnerweck
+    section: broetchen
+    products: [{ id: musterweck-koerner }]
+    plu: [14]
+    lead: 1
+    dough: { id: weckteig }
+    bruch: { g: { default: 1700, 7: 1900 }, per_product: 2 }
+    base: { 2: 30, 3: 30, 4: 30, 5: 30, 6: 45, 7: 60 }
+  - id: sesambroetchen
+    name: Sesambrötchen
+    section: broetchen
+    products: [{ id: probebroetchen-sesam }]
+    plu: [17]
+    lead: 1
+    dough: { id: weckteig }
+    bruch: { g: 1300, group: bunte-broetchen }
+    base: { 2: 12, 3: 12, 4: 12, 5: 12, 6: 18, 7: 24 }
+  - id: roggenbroetchen
+    name: Roggenbrötchen
+    section: broetchen
+    products: [{ id: probebroetchen-roggen }]
+    plu: [18]
+    lead: 1
+    dough: { id: weckteig }
+    bruch: { g: 1300, group: bunte-broetchen }
+    base: { 2: 10, 3: 10, 4: 10, 5: 10, 6: 12, 7: 18 }
+  - id: dinkelbroetchen
+    name: Dinkelbrötchen
+    section: broetchen
+    products: [{ id: testbroetchen-dinkel }]
+    plu: [19]
+    lead: { default: 1, 6: 2 }
+    dough: { id: dinkel-weckteig }
+    bruch: { g: null }
+    base: { 2: 20, 4: 20, 6: 30, 7: 30 }
+  - id: kraeuterstange
+    name: Kräuterstange
+    section: broetchen
+    products: [{ id: probebaguette-kraeuter }]
+    plu: [23]
+    lead: 1
+    dough: { id: weckteig, piece_g: 250 }
+    base: { 6: 6, 7: 8 }
   # --- Laugen
   - id: brezel
     name: Musterbrezel
@@ -191,7 +288,35 @@ items:
     dough: { id: hefeteig-test, piece_g: 300, pieces: 3 }
     base: { 6: 3, 7: 2 }
 doughs:
-  - { id: hefeteig-test, name: Hefeteig (Test), batch_max_kg: 10 }
+  - id: hefeteig-test
+    name: Hefeteig (Test)
+    kg_per_liter: 3.5
+    liter_rounding: { step: 0.5, mode: nearest }
+    batch_max_kg: 10
+  # Misch- und Dinkelteig: eine Literzahl an der Maschine
+  - id: mischteig
+    name: Mischteig
+    kg_per_liter: 1.8
+    liter_rounding: { step: 0.5, mode: up }
+    batch_max_kg: null
+    combined_name: Misch + Dinkel
+  - id: dinkelteig
+    name: Dinkelteig
+    kg_per_liter: 1.7
+    batch_max_kg: null
+    combined_with: mischteig
+    addons:
+      - { id: sauer, name: Testsauer, g_per_liter: 40, rounding: { step: 10, mode: nearest } }
+  - id: weckteig
+    name: Weckteig
+    kg_per_liter: 1.7
+    liter_rounding: null
+    batch_max_kg: 25
+  - id: dinkel-weckteig
+    name: Dinkel-Weckteig
+    kg_per_liter: null
+    liter_rounding: { step: 1, mode: nearest }
+    batch_max_kg: null
 fillings:
   - { id: nuss, name: Nussfüllung, recipe: data/recipes/fillings/test.md, section: Nussfüllung }
   - { id: mohn, name: Mohnfüllung, recipe: data/recipes/fillings/test.md, section: Mohnfüllung }

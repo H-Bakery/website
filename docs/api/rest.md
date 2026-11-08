@@ -46,7 +46,15 @@ is where Verkauf counts. Errors via `sendError`: 400 `invalid_date` / `date_out_
   not limited. `createApp({ hq: { today } })` / `rest: { today, now }` pin the clock in tests.
 - **Baked** = the confirmed Backzettel's frozen `total` plus acknowledged deltas (`bake −
 bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not counted as baked. A
-  draft day gives `planned` only, `baked: null`. **Rate** = rest ÷ (baked − cap), because CAP
+  draft day gives `planned` only, `baked: null`. **Since Z10 (Backzettel v2)** a business day
+  is a **bake day**: its lines come from `BackzettelService.getBakeLines(date, { light: true })` -
+  every sheet that makes dough for that day (Tuesday's rolls from Saturday's sheet, Tuesday's
+  bread from Tuesday's own). `backzettelStatus` is `confirmed` only when every such sheet with
+  lines for the day is confirmed, else `draft` (planned only). The same item × variant on two
+  sheets (transition only; the bake list warns `duplicate_bake_line`) is added up, its Nachträge
+  counted once (`deltaTotals` summed over the sheets). Spare pieces of a rounded-up Bruch ("+n
+  frei", O2) are never "baked". Without loadable master data there is no plan: the day's own
+  confirmed sheet is read as before (`getConfirmedLines`). **Rate** = rest ÷ (baked − cap), because CAP
   goods leave the shop. The summary evaluates only confirmed days whose item is counted
   completely (`lineComplete` over `evaluatedLineKeys`: every line that was counted or baked
   `> 0`, every count line of it); others are listed as gaps
@@ -56,8 +64,14 @@ bakeOpen`, fallback `qty − openQty`) - unacknowledged Nachträge are not count
   Range default the last 28 days, at most 400. A rest above `baked − cap` is flagged, not
   dropped: `restExceedsShop` on the day line, `restExceedsDates` on the summary item (almost
   always a miscount; the screens say "bitte nachzählen" / "Zählung prüfen").
-- **Light Backzettel view:** the summary and the averages read each confirmed day through
-  `BackzettelService.getConfirmedLines(date)` - `confirmedView(..., { light: true })`: frozen
+- **Bread by size (Z10):** an item with `sizes` (`variantKind: 'size'`) is counted per size,
+  with only the products whose `products[].size` is that size (`productsForVariant`); a size
+  without a product of its own is counted in the item's unit. A product of another size is 400
+  `unknown_product`. `variantLabel` of a size line is the size label ("500 g").
+- **Light Backzettel view:** the summary and the averages read each confirmed bake day through
+  `BackzettelService.getBakeLinesRange(dates, { light: true })` (Z10: the confirmed sheets are
+  loaded once for the range; only days that at least one confirmed sheet bakes on are read; each
+  feeding sheet through `confirmedView(..., { light: true })`, before Z10 `getConfirmedLines`): frozen
   lines, deltas and their oven figures (`bake`/`bakeOpen`, `deltaTotals`) exactly as the full
   view, without confirm audits, user names, preorder codes, the Hefeteig/Füllungen recompute and
   the `deltasPending` catch-up (an unrecorded delta is never acknowledged, so it cannot change

@@ -15,9 +15,16 @@
 //     Faktor des Backzettels (`products[].factor`) in die Einheit des
 //     Postens umgerechnet. Ein Posten ohne Produkte wird in seiner eigenen
 //     Einheit gezählt (Liter-Posten mit `pieces_per_liter` in Laiben).
+//     Ein Brot je Laibgröße (Backzettel v2, `variantKind: 'size'`) wird je
+//     Größe gezählt, nur mit den Produkten dieser Größe (`products[].size`).
 //   - **Gebacken** = Gesamt des **freigegebenen** Backzettels plus die
 //     quittierten Nachträge (nach dem Aufrunden, `delta.bake`). Ein Entwurf
-//     hat nur „geplant“ - er zählt in der Auswertung nicht.
+//     hat nur „geplant“ - er zählt in der Auswertung nicht. Seit Backzettel v2
+//     (Z10) ist das die Backliste des Tages: die Zeilen aller Zettel, deren
+//     Teig für diesen Backtag gemacht wird (Brötchen vom Samstag für Sonntag
+//     und Dienstag). Freigegeben ist der Tag nur, wenn jeder dieser Zettel
+//     freigegeben ist. Überzählige Stücke eines aufgerundeten Bruchs
+//     („+n frei“) zählen nie als gebacken.
 //   - **Für den Laden** = gebacken − CAP-Lieferung (die geht morgens in den
 //     Backschrank, dessen Rest die Besuche messen).
 //   - **Restquote** = Rest ÷ für den Laden gebacken.
@@ -113,9 +120,14 @@ function itemsById(config) {
   return map
 }
 
-/** Anzeigename einer Sorte: Füllungsname aus der Config, sonst der Slug. */
-function variantLabel(config, variant) {
+/**
+ * Anzeigename einer Sorte: bei Laibgrößen das Etikett der Größe („500 g“),
+ * sonst der Füllungsname aus der Config, sonst der Slug.
+ */
+function variantLabel(config, variant, item) {
   if (!variant) return null
+  if (isSizeItem(item))
+    return configCore.variantDisplayName(config, item, variant)
   const f = (
     config && Array.isArray(config.fillings) ? config.fillings : []
   ).find((x) => x && x.id === variant)
@@ -126,22 +138,49 @@ function isCountable(item) {
   return !!item && !NOT_SOLD_SECTIONS.has(item.section)
 }
 
+/** Ein Brot je Laibgröße (Backzettel v2): die Größen sind die Sorten. */
+function isSizeItem(item) {
+  return (
+    !!item &&
+    item.variantKind === 'size' &&
+    Array.isArray(item.sizes) &&
+    item.sizes.length > 0
+  )
+}
+
 /**
- * Die Zählzeilen eines Postens.
+ * Die Produkte, die in einer Zeile (Posten × Sorte) gezählt werden. Bei
+ * Laibgrößen nur die Produkte dieser Größe - „Testkorn 500 g“ liegt nicht in
+ * der 1-kg-Zeile. Sonst alle Produkte des Postens (Sorten wie Nuss/Mohn
+ * teilen sich die Produkte).
+ */
+function productsForVariant(item, variant) {
+  const products = (Array.isArray(item.products) ? item.products : []).filter(
+    (p) => p && p.id && Number(p.factor) > 0
+  )
+  if (!isSizeItem(item)) return products
+  return products.filter((p) => (p.size || '') === (variant || ''))
+}
+
+/**
+ * Die Zählzeilen eines Postens (je Sorte: `variant`, wichtig bei
+ * Laibgrößen). Eine Größe ohne eigenes Produkt wird in der Einheit des
+ * Postens gezählt.
  *
  * @returns {Array<{productId: string, label: string, unit: string, factor: number, integer: boolean, step: number}>}
  *   `factor` rechnet die Zählmenge in die Einheit des Postens um.
  */
-function countRowsForItem(item, catalog) {
+function countRowsForItem(item, catalog, variant) {
   if (!item) return []
   const nameOf = catalogNamer(catalog)
-  const products = (Array.isArray(item.products) ? item.products : []).filter(
-    (p) => p && p.id && Number(p.factor) > 0
-  )
+  const products = productsForVariant(item, variant)
+  const size =
+    isSizeItem(item) && variant ? variantLabel(null, variant, item) : null
+  const label = size ? `${item.name} ${size}` : item.name
   if (products.length > 0) {
     return products.map((p) => ({
       productId: String(p.id),
-      label: nameOf(p.id) || (products.length === 1 ? item.name : String(p.id)),
+      label: nameOf(p.id) || (products.length === 1 ? label : String(p.id)),
       unit: 'Stück',
       factor: Number(p.factor),
       integer: true,
@@ -165,7 +204,7 @@ function countRowsForItem(item, catalog) {
   return [
     {
       productId: '',
-      label: item.name,
+      label,
       unit,
       factor: 1,
       integer,
@@ -301,7 +340,7 @@ function validateBatch(body, options) {
       raw.productId === undefined || raw.productId === null
         ? ''
         : String(raw.productId)
-    const row = countRowsForItem(item, catalog).find(
+    const row = countRowsForItem(item, catalog, variant).find(
       (r) => r.productId === productId
     )
     if (!row) {
@@ -447,10 +486,18 @@ function acknowledgedExtra(delta) {
 }
 
 /**
- * Die Zeilen eines Backzettel-Tages (Antwort von `GET /api/backzettel/:date`)
- * für den Rest: ohne Vorbereitung, je Schlüssel `itemId|variant`.
- * Freigegeben: `baked` = Gesamt + quittierte Nachträge; Entwurf: `baked`
- * `null`, nur `planned`.
+ * Die Zeilen eines Backtages für den Rest: ohne Vorbereitung, je Schlüssel
+ * `itemId|variant`. Eingabe ist die Backliste des Tages
+ * (`BackzettelService.getBakeLines`, Z10: Zeilen aller Zettel, die für
+ * diesen Tag Teig machen) oder - ältere Form - die Tagesansicht
+ * `GET /api/backzettel/:date`. Freigegeben: `baked` = Gesamt + quittierte
+ * Nachträge; Entwurf: `baked` `null`, nur `planned`.
+ *
+ * Steht ein Posten × Sorte für denselben Backtag auf zwei Zetteln (nur im
+ * Übergang, die Backliste warnt dann), werden die Zeilen addiert, nie die
+ * eine durch die andere ersetzt. Die Nachträge eines Schlüssels zählen
+ * einmal: `deltaTotals[key]` (über alle Zettel summiert), sonst die
+ * Nachträge an den Zeilen.
  *
  * @returns {Map<string, {itemId, variant, name, section, unit, planned, baked, cap, confirmed}>}
  */
@@ -463,15 +510,22 @@ function backzettelLines(day, config) {
     day.deltaTotals && typeof day.deltaTotals === 'object'
       ? day.deltaTotals
       : {}
+  const lineExtras = new Map()
   for (const section of day.sections) {
     if (!section || NOT_SOLD_SECTIONS.has(section.id)) continue
     for (const line of Array.isArray(section.lines) ? section.lines : []) {
       if (!line || !line.itemId) continue
       const variant = line.variant || ''
       const key = lineKey(line.itemId, variant)
-      const delta = totals[key] || line.delta || null
       const total = num(line.total)
-      const extra = confirmed ? acknowledgedExtra(delta) : 0
+      const extra = confirmed ? acknowledgedExtra(line.delta || null) : 0
+      lineExtras.set(key, round2((lineExtras.get(key) || 0) + extra))
+      const known = out.get(key)
+      if (known) {
+        known.planned = round2(known.planned + total)
+        known.cap = round2(known.cap + num(line.cap))
+        continue
+      }
       out.set(key, {
         itemId: line.itemId,
         variant,
@@ -479,10 +533,18 @@ function backzettelLines(day, config) {
         section: line.section || section.id,
         unit: line.unit || 'Stück',
         planned: total,
-        baked: confirmed ? Math.max(0, round2(total + extra)) : null,
+        baked: null,
         cap: num(line.cap),
         confirmed,
       })
+    }
+  }
+  if (confirmed) {
+    for (const [key, l] of out) {
+      const extra = totals[key]
+        ? acknowledgedExtra(totals[key])
+        : lineExtras.get(key) || 0
+      l.baked = Math.max(0, round2(l.planned + extra))
     }
   }
   if (confirmed) {
@@ -554,10 +616,10 @@ function lineComplete(stored, expected) {
  *
  * @returns {Array<{productId: string}>}
  */
-function expectedRowsForLine(item, catalog, stored) {
+function expectedRowsForLine(item, catalog, stored, variant) {
   const snap = (stored || []).find((s) => s && Array.isArray(s.lineRows))
   if (snap) return snap.lineRows.map((id) => ({ productId: String(id || '') }))
-  return item ? countRowsForItem(item, catalog) : []
+  return item ? countRowsForItem(item, catalog, variant) : []
 }
 
 /**
@@ -602,14 +664,14 @@ function sectionOrder(config) {
  * Bausteine einer Tageszeile: Zählzeilen aus der Config, gespeicherte
  * Zählungen darüber (auch zu Produkten, die die Config nicht mehr kennt).
  */
-function mergeRows(item, catalog, stored) {
+function mergeRows(item, catalog, stored, variant) {
   // Mit Schnappschuss nur die Zählzeilen, die beim Zählen galten - ein
   // inzwischen ergänztes Produkt gehört nicht zu diesem Tag.
   const snap = (stored || []).find((s) => s && Array.isArray(s.lineRows))
   const wanted = snap
     ? new Set(snap.lineRows.map((id) => String(id || '')))
     : null
-  const rows = countRowsForItem(item, catalog)
+  const rows = countRowsForItem(item, catalog, variant)
     .filter((r) => !wanted || wanted.has(r.productId))
     .map((r) => ({
       ...r,
@@ -712,14 +774,14 @@ function buildDayView(a) {
     const [itemId, variant = ''] = key.split('|')
     const item = items.get(itemId) || null
     const first = stored[0] || {}
-    const rows = mergeRows(item, a.catalog, stored)
+    const rows = mergeRows(item, a.catalog, stored, variant)
     const counted = rows.every((r) => r.qty !== null)
     const section = item ? item.section : b ? b.section : null
     return {
       key,
       itemId,
       variant: variant || null,
-      variantLabel: variantLabel(config, variant),
+      variantLabel: variantLabel(config, variant, item),
       name: item ? item.name : b ? b.name : first.itemName || itemId,
       section,
       sectionLabel: (section && SECTION_LABELS[section]) || section || null,
@@ -946,7 +1008,7 @@ function summarize(a) {
       const item = items.get(itemId) || null
       if (item && !isCountable(item)) continue
       const stored = byLine.get(key) || []
-      const expected = expectedRowsForLine(item, a.catalog, stored)
+      const expected = expectedRowsForLine(item, a.catalog, stored, variant)
       const complete = lineComplete(stored, expected)
       const b = bz.get(key) || null
       const first = stored[0] || {}
@@ -1088,7 +1150,7 @@ function summarize(a) {
           .filter(([v]) => v !== '' || t.variants.size > 1)
           .map(([v, x]) => ({
             variant: v || null,
-            label: v ? variantLabel(config, v) : 'ohne Sorte',
+            label: v ? variantLabel(config, v, item) : 'ohne Sorte',
             baked: x.baked,
             cap: x.cap,
             rest: x.rest,
@@ -1332,7 +1394,7 @@ function weekdayRestAverages(a) {
           const stored = byLine.get(key) || []
           return lineComplete(
             stored,
-            expectedRowsForLine(item, a.catalog, stored)
+            expectedRowsForLine(item, a.catalog, stored, key.split('|')[1])
           )
         })
         if (!complete) continue
@@ -1380,11 +1442,13 @@ module.exports = {
   lineKey,
   rowKey,
   isoWeek,
+  listDates,
   isCalendarDate,
   isoWeekday,
   addDays,
   berlinToday,
   countRowsForItem,
+  productsForVariant,
   parseQty,
   validateBatch,
   emptyVariantCandidates,

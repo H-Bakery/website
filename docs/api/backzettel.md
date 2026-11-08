@@ -191,8 +191,12 @@ later bake day (Saturday: Sunday's and Tuesday's rolls). With today's hq file (n
   Ruhetag answers `status: 'ruhetag'` (200) with empty lists.
 - **`getBakeLines(B, { light })`** (service only, for Rest am Abend, S4): the bake-list lines as one
   day view `{ date, status, sources, sections, deltas, deltaTotals }`; `status: 'confirmed'` only
-  when every source with lines for B is confirmed; `deltaTotals` keyed `itemId|variant`; `null`
-  without master data or on a Ruhetag. `getConfirmedLines` stays until S4 switches over.
+  when every source with lines for B is confirmed; `deltaTotals` keyed `itemId|variant` (summed
+  when two sheets hold Nachträge for the same item on B); `null` without master data or on a
+  Ruhetag. Rest am Abend reads it since S4; `getBakeLinesRange(dates, { light })` does the same
+  for many days with the confirmed sheets loaded once (summary, averages) and returns only days
+  that some confirmed sheet bakes on. `getConfirmedLines` (the day's own sheet) is left for the
+  case without master data.
 - **Migration** `20270201000000-backzettel-dough-day.js`: `backzettel_lines.bake_date` and
   `backzettel_deltas.bake_date` (DATEONLY NOT NULL DEFAULT `''`, backfilled `= date`), unique index
   `backzettel_lines_date_bake_item_variant (date, bake_date, item_id, variant)` instead of

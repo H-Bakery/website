@@ -714,3 +714,183 @@ describe('restSnapshot (M4 Rest am Abend)', () => {
     expect(() => core.restSnapshot({ date: '2026-02-30', lines: [] })).toThrow()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Schema 2: dough-day sheets (Backzettel v2, Z10, R31). The day comes from
+// the real core (`computeDoughDay` on the synthetic `configV2`), with the
+// same planted personal markers as above.
+// ---------------------------------------------------------------------------
+
+describe('backzettelSnapshot schema 2 (Backzettel v2)', () => {
+  /* eslint-disable @typescript-eslint/no-var-requires */
+  const bz = require('../../src/services/backzettel.core')
+  const configCore = require('../../src/services/backzettel-config.core')
+  const fixture = require('../fixtures/backzettel.synthetic')
+  /* eslint-enable @typescript-eslint/no-var-requires */
+  const config = configCore.normalizeConfig(fixture.configV2())
+
+  /** A confirmed dough-day sheet as the API answers it, with markers. */
+  function sheet(date) {
+    const s = bz.computeDoughDay({
+      config,
+      date,
+      seasonFactor: 1,
+      bakeInputs: {},
+      corrections: [],
+      recipes: {},
+      catalog: fixture.PRODUCTS_V2,
+    })
+    return {
+      ...s,
+      status: 'confirmed',
+      confirmedAt: '2026-11-27T13:05:00.000Z',
+      confirmedBy: { id: 3, displayName: 'Erika Geheim' },
+      sections: s.sections.map((sec) => ({
+        ...sec,
+        lines: sec.lines.map((l, i) => ({
+          id: 100 + i,
+          ...l,
+          correctionReason: 'für Frau Beispielkundin weniger',
+          correctionBy: { id: 3, displayName: 'Erika Geheim' },
+          doneBy: { id: 3, displayName: 'erika.geheim' },
+          preorderIds: [41],
+        })),
+      })),
+      deltas: [
+        { id: 5, preorderCode: 'LA-2026-11-28-07', bakeDate: '2026-12-01' },
+      ],
+      customerPhone: '0170 1234567',
+    }
+  }
+
+  test('writes schema 2 with bake days, doughs, machine and Brüche', () => {
+    const s = core.backzettelSnapshot(sheet('2026-11-28'), {
+      role: 'backstube',
+    })
+    expect(s).toMatchObject({
+      schema_version: 2,
+      sheetVersion: 2,
+      isDoughDay: true,
+      date: '2026-11-28',
+      bakeDates: [
+        expect.objectContaining({ date: '2026-11-28', label: 'heute' }),
+        expect.objectContaining({ date: '2026-11-29' }),
+        expect.objectContaining({ date: '2026-12-01' }),
+      ],
+    })
+    expect(core.SNAPSHOT_SCHEMA_VERSION_V2).toBe(2)
+    const lines = s.sections.flatMap((x) => x.lines)
+    const tuesdayRoll = lines.find(
+      (l) => l.itemId === 'test-doppel' && l.bakeDate === '2026-12-01'
+    )
+    expect(tuesdayRoll).toMatchObject({
+      doughDate: '2026-11-28',
+      total: 40,
+      variantLabel: null,
+    })
+    expect(lines.find((l) => l.itemId === 'test-korn')).toMatchObject({
+      variant: 'g500',
+      variantLabel: '500 g',
+      bakeDate: '2026-11-28',
+    })
+    const box = s.machine.find((m) => m.id === 'test-korn-teig')
+    expect(box.doughIds).toEqual(['test-korn-teig', 'test-holz-teig'])
+    expect(box.addons[0]).toMatchObject({ id: 'test-sauer' })
+    const tuesday = s.rolls.find((b) => b.bakeDate === '2026-12-01')
+    expect(tuesday.groups[0]).toMatchObject({
+      brueche: 4,
+      split: [expect.objectContaining({ itemId: 'test-doppel', total: 40 })],
+    })
+    expect(s.openMasterData.length).toBeGreaterThan(0)
+    expect(Object.keys(s).pop()).toBe('source')
+  })
+
+  test('unknown master data stays null, never 0', () => {
+    const sat = core.backzettelSnapshot(sheet('2026-11-28'), {})
+    const flit = sat.machine.find((m) => m.id === 'test-flit-teig')
+    expect(flit.liters).toEqual({
+      exact: null,
+      rounded: null,
+      reason: 'kg_per_liter_unknown',
+    })
+    expect(flit.batches).toBeNull()
+    const nuss = sat.fillings.find((f) => f.id === 'nuss')
+    expect(nuss).toMatchObject({
+      grams: null,
+      gramsKnown: 0,
+      missingFillingG: true,
+    })
+    // Tuesday: a size without a Grundmenge (`kasten: null`) stays open.
+    const tue = core.backzettelSnapshot(sheet('2026-12-01'), {})
+    const kasten = tue.sections
+      .flatMap((x) => x.lines)
+      .find((l) => l.itemId === 'test-korn' && l.variant === 'kasten')
+    expect(kasten).toMatchObject({ base: null, baseUnset: true })
+    const md = core.backzettelMarkdown(tue)
+    expect(md).toMatch(/\| Testkorn \| Kasten \| Stück \| offen \|/)
+
+    const satMd = core.backzettelMarkdown(sat)
+    expect(satMd).toContain(
+      '| Testflit | 6,2 kg | unbekannt (kg je Liter fehlt) | unbekannt |'
+    )
+    expect(satMd).toContain(
+      '### Nussfüllung: Menge unbekannt (Füllmenge je Stück fehlt)'
+    )
+    expect(satMd).toContain('## Offene Stammdaten')
+  })
+
+  test('Markdown groups rolls by bake day', () => {
+    const md = core.backzettelMarkdown(
+      core.backzettelSnapshot(sheet('2026-11-28'), { role: 'backstube' })
+    )
+    expect(md).toContain(
+      'Teig von heute auch für: Sonntag, 29.11.2026; Dienstag, 01.12.2026.'
+    )
+    expect(md).toContain('## Teige an der Maschine')
+    expect(md).toContain('## Brötchen nach Backtag')
+    expect(md).toContain(
+      '- 4 Bruch × 1.200 g = 4,8 kg – 40 Testdoppel (je 2 Teigstücke)'
+    )
+    const broetchen = md.slice(md.indexOf('## Brötchen\n'))
+    const sun = broetchen.indexOf('### Für Sonntag, 29.11.2026')
+    const tue = broetchen.indexOf('### Für Dienstag, 01.12.2026')
+    expect(sun).toBeGreaterThan(-1)
+    expect(tue).toBeGreaterThan(sun)
+  })
+
+  test('keeps the whitelist: no names, reasons, codes, plan or bread view', () => {
+    const s = core.backzettelSnapshot(sheet('2026-11-28'), { role: 'inhaber' })
+    const json = core.toJsonFile(s)
+    const md = core.backzettelMarkdown(s)
+    for (const marker of MARKERS) {
+      expect(json).not.toContain(marker)
+      expect(md).not.toContain(marker)
+    }
+    for (const key of [
+      'confirmedBy',
+      'correctionBy',
+      'correctionReason',
+      'doneBy',
+      'deltas',
+      'preorderIds',
+      'customerPhone',
+      'plan',
+      'bread',
+    ]) {
+      expect(json).not.toContain(`"${key}"`)
+    }
+  })
+
+  test('a day confirmed before Z10 stays schema 1 without the new fields', () => {
+    const s = core.backzettelSnapshot(
+      day({ sheetVersion: 1, plan: { version: 1 } }),
+      {}
+    )
+    expect(s.schema_version).toBe(1)
+    for (const key of ['sheetVersion', 'bakeDates', 'machine', 'rolls']) {
+      expect(s).not.toHaveProperty(key)
+    }
+    expect(s.sections[0].lines[0]).not.toHaveProperty('bakeDate')
+    expect(core.backzettelMarkdown(s)).not.toContain('Teige an der Maschine')
+  })
+})

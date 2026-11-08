@@ -411,6 +411,27 @@ function sheetFields(
   }
 }
 
+/**
+ * Two `deltaTotals` entries of one item and bake day from different sheets,
+ * added field by field (counts and quantities; `bake`/`bakeOpen` are the
+ * oven figures of each sheet, so they add up as well).
+ */
+function sumDeltaTotals(
+  a: Record<string, unknown>,
+  b: Record<string, unknown>
+): Record<string, number> {
+  const out: Record<string, number> = {}
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const x = Number(a[k] ?? 0)
+    const y = Number(b[k] ?? 0)
+    out[k] =
+      Math.round(
+        ((Number.isFinite(x) ? x : 0) + (Number.isFinite(y) ? y : 0)) * 100
+      ) / 100
+  }
+  return out
+}
+
 /** German short date: `2026-11-28` → „Samstag, 28.11.“. */
 function dayText(date: string): string {
   const [, m, d] = date.split('-')
@@ -956,12 +977,21 @@ export function createBackzettelService(
       order: [['date', 'ASC']],
       transaction,
     })
-    return days.filter((d) => {
-      const dates: string[] = planCore.planBakeDates(
-        dayCore.planOfSnapshot(d.computedSnapshot, d.date)
-      )
-      return dates.some((b) => valid.includes(b))
-    })
+    return days.filter((d) => valid.some((b) => feedsBakeDate(d, b)))
+  }
+
+  /** Does confirmed sheet `day` bake on `bakeDate` (its frozen plan)? */
+  function feedsBakeDate(day: BackzettelDay, bakeDate: string): boolean {
+    if (
+      day.date > bakeDate ||
+      day.date < planCore.addDays(bakeDate, -planCore.LOOKAHEAD_DAYS)
+    ) {
+      return false
+    }
+    const dates: string[] = planCore.planBakeDates(
+      dayCore.planOfSnapshot(day.computedSnapshot, day.date)
+    )
+    return dates.includes(bakeDate)
   }
 
   /** Days whose deltas could not be recorded (no master data) - logged once. */
@@ -1207,10 +1237,19 @@ export function createBackzettelService(
   async function bakeSources(
     loaded: Loaded,
     date: string,
-    { light = false }: { light?: boolean } = {}
+    {
+      light = false,
+      pool,
+    }: {
+      light?: boolean
+      /** Confirmed sheets loaded once for many bake days (`getBakeLinesRange`). */
+      pool?: BackzettelDay[]
+    } = {}
   ) {
     const config = loaded.config
-    const confirmed = await confirmedSheetsFor([date])
+    const confirmed = pool
+      ? pool.filter((d) => feedsBakeDate(d, date))
+      : await confirmedSheetsFor([date])
     const confirmedDates = new Set(confirmed.map((d) => d.date))
     const plans = confirmed.map(
       (d) => dayCore.planOfSnapshot(d.computedSnapshot, d.date) as Plan
@@ -1365,14 +1404,14 @@ export function createBackzettelService(
    */
   async function getBakeLines(
     date: string,
-    { light = true }: { light?: boolean } = {}
+    { light = true, pool }: { light?: boolean; pool?: BackzettelDay[] } = {}
   ) {
     assertDate(date)
     const loaded = source.load()
     if (!loaded.ok) return null
     const weekday = core.isoWeekday(date)
     if (!loaded.config.days.includes(weekday)) return null
-    const { sources } = await bakeSources(loaded, date, { light })
+    const { sources } = await bakeSources(loaded, date, { light, pool })
     const withLines = sources.filter((s) => s.lines.length > 0)
     const allConfirmed =
       sources.length > 0 &&
@@ -1392,7 +1431,12 @@ export function createBackzettelService(
         (src.view.deltaTotals ?? {}) as Record<string, any>
       )) {
         if ((keyBake.get(key) ?? src.doughDate) !== date) continue
-        deltaTotals[key.split('@')[0]] = entry
+        // Two sheets with Nachträge for the same item on this day (only in
+        // the transition): add them up, never let one replace the other.
+        const k = key.split('@')[0]
+        deltaTotals[k] = deltaTotals[k]
+          ? sumDeltaTotals(deltaTotals[k], entry)
+          : entry
       }
     }
     const list = core.bakeListFromLines(
@@ -1418,6 +1462,38 @@ export function createBackzettelService(
       deltas,
       deltaTotals,
     }
+  }
+
+  /**
+   * `getBakeLines` for many bake days at once (Rest am Abend summary and
+   * averages): the confirmed sheets are read once for the whole range.
+   * Only days that at least one confirmed sheet bakes on are returned - a
+   * day without any is not confirmed and does not count anyway. `{}`
+   * without master data (the caller falls back to `getConfirmedLines`).
+   */
+  async function getBakeLinesRange(
+    dates: string[],
+    { light = true }: { light?: boolean } = {}
+  ) {
+    const out: Record<string, any> = {}
+    const loaded = source.load()
+    if (!loaded.ok) return out
+    const valid = [
+      ...new Set(
+        dates.filter(
+          (d) =>
+            core.isValidDate(d) &&
+            loaded.config.days.includes(core.isoWeekday(d))
+        )
+      ),
+    ].sort()
+    const pool = await confirmedSheetsFor(valid)
+    for (const date of valid) {
+      if (!pool.some((d) => feedsBakeDate(d, date))) continue
+      const lines = await getBakeLines(date, { light, pool })
+      if (lines) out[date] = lines
+    }
+    return out
   }
 
   async function getPrep(date: string) {
@@ -2236,6 +2312,7 @@ export function createBackzettelService(
     getConfirmedLines,
     getBakeList,
     getBakeLines,
+    getBakeLinesRange,
     getPrep,
     getConfig,
     setSeasonFactor,
