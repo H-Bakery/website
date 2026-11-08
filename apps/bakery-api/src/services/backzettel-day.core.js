@@ -11,6 +11,8 @@
 const core = require('./backzettel.core')
 const configCore = require('./backzettel-config.core')
 const recipesCore = require('./backzettel-recipes.core')
+const planCore = require('./backzettel-plan.core')
+const doughCore = require('./backzettel-dough.core')
 const { hasNameControlChars } = require('./control-chars.core')
 
 const { INTEGER_UNITS, SECTION_LABELS } = configCore
@@ -175,7 +177,9 @@ function parseCorrection(body, item) {
  * Flache Vorbestellungspositionen eines Tages (Schnappschuss-Form) aus
  * Vorbestellungen `{id, status, items:[{productId, variant, quantity}]}`.
  * Stornierte zaehlen nicht. Sortiert, damit gleiche Staende gleich aussehen.
- * @returns {Array<{preorderId:number|null, productId:string, variant:string, qty:number}>}
+ * Z10: traegt die Vorbestellung `pickupDate`, steht er an jeder Position
+ * (ein Zettel sammelt mehrere Backtage ein).
+ * @returns {Array<{preorderId:number|null, productId:string, variant:string, qty:number, pickupDate?:string}>}
  */
 function snapshotFromPreorders(preorders) {
   const out = []
@@ -190,6 +194,9 @@ function snapshotFromPreorders(preorders) {
         productId: String(item.productId),
         variant: storedVariant(item.variant),
         qty,
+        ...(typeof p.pickupDate === 'string' && p.pickupDate
+          ? { pickupDate: p.pickupDate }
+          : {}),
       })
     }
   }
@@ -203,25 +210,28 @@ function snapshotFromPreorders(preorders) {
   )
 }
 
-/** Schnappschuss -> Eingabe fuer `computeDay`/`computePreorderDeltas`. */
+/**
+ * Schnappschuss -> Eingabe fuer `computeDay`/`computePreorderDeltas`. Der
+ * Abholtag ist der der Position (Z10), sonst `date`.
+ */
 function toCorePreorderItems(snapshot, date) {
   return (Array.isArray(snapshot) ? snapshot : []).map((s) => ({
     preorderId: s.preorderId,
     productId: s.productId,
     variant: apiVariant(s.variant),
     qty: s.qty,
-    pickupDate: date,
+    pickupDate: s.pickupDate || date,
   }))
 }
 
-function deltaKey(preorderId, itemId, variant) {
+function deltaKey(preorderId, itemId, variant, bakeDate) {
   return `${
     preorderId === undefined || preorderId === null ? '' : preorderId
-  }#${itemId}|${storedVariant(variant)}`
+  }#${itemId}|${storedVariant(variant)}${bakeDate ? `@${bakeDate}` : ''}`
 }
 
-/** Summe je Vorbestellung × Posten × Variante, in Posten-Einheiten. */
-function preorderSums(config, date, snapshot, catalog) {
+/** Summe je Vorbestellung × Posten × Variante (× Backtag), in Posten-Einheiten. */
+function preorderSums(config, date, snapshot, catalog, plan) {
   const map = new Map()
   const entries = core.computePreorderDeltas({
     config,
@@ -229,14 +239,19 @@ function preorderSums(config, date, snapshot, catalog) {
     before: [],
     after: toCorePreorderItems(snapshot, date),
     catalog,
+    ...(plan ? { plan } : {}),
   })
   for (const e of entries) {
-    map.set(deltaKey(e.preorderId, e.itemId, e.variant), {
-      itemId: e.itemId,
-      variant: storedVariant(e.variant),
-      preorderId: e.preorderId,
-      qty: e.after,
-    })
+    map.set(
+      deltaKey(e.preorderId, e.itemId, e.variant, plan ? e.bakeDate : null),
+      {
+        itemId: e.itemId,
+        variant: storedVariant(e.variant),
+        preorderId: e.preorderId,
+        qty: e.after,
+        ...(plan ? { bakeDate: e.bakeDate } : {}),
+      }
+    )
   }
   return map
 }
@@ -255,6 +270,10 @@ function preorderSums(config, date, snapshot, catalog) {
  * @param {Array} args.current Positionen jetzt (Schnappschuss-Form)
  * @param {Array} args.recorded gespeicherte Deltas `{itemId, variant, preorderId, qty}`
  * @param {Array} [args.catalog] hq-Produkte fuer numerische IDs
+ * @param {object} [args.plan] Z10: Plan des Zettels (`planForSheet`, bei
+ *   alten Tagen `legacyPlan`). Dann zaehlen die Positionen aller Backtage des
+ *   Plans, je Backtag getrennt, und jede Zeile traegt `bakeDate` (gespeicherte
+ *   Zeilen ohne `bakeDate` gehoeren zum Zettel-Tag). Ohne Plan wie v1.
  * @param {Record<string, string>} [args.orders] Status je Vorbestellung, die
  *   jetzt an diesem Tag liegt (auch `storniert`). Damit heisst eine Menge,
  *   die auf 0 faellt, nur dann `cancelled`, wenn die Bestellung storniert
@@ -276,11 +295,13 @@ function goneKind(orders, preorderId) {
 
 function reconcileDeltas(args) {
   const a = args || {}
-  const before = preorderSums(a.config, a.date, a.snapshot, a.catalog)
-  const after = preorderSums(a.config, a.date, a.current, a.catalog)
+  const plan = a.plan || null
+  const before = preorderSums(a.config, a.date, a.snapshot, a.catalog, plan)
+  const after = preorderSums(a.config, a.date, a.current, a.catalog, plan)
   const recorded = new Map()
   for (const r of Array.isArray(a.recorded) ? a.recorded : []) {
-    const k = deltaKey(r.preorderId, r.itemId, r.variant)
+    const bakeDate = plan ? r.bakeDate || a.date : null
+    const k = deltaKey(r.preorderId, r.itemId, r.variant, bakeDate)
     const e = recorded.get(k) || {
       itemId: r.itemId,
       variant: storedVariant(r.variant),
@@ -289,6 +310,7 @@ function reconcileDeltas(args) {
           ? null
           : r.preorderId,
       qty: 0,
+      ...(plan ? { bakeDate } : {}),
     }
     e.qty = round2(e.qty + Number(r.qty || 0))
     recorded.set(k, e)
@@ -318,6 +340,7 @@ function reconcileDeltas(args) {
           : n === 0
           ? goneKind(a.orders, ref.preorderId)
           : 'changed',
+      ...(plan ? { bakeDate: ref.bakeDate } : {}),
     })
   }
   return out
@@ -329,6 +352,7 @@ function reconcileDeltas(args) {
  */
 function linesForConfirm(computedLines) {
   return (Array.isArray(computedLines) ? computedLines : []).map((l) => ({
+    ...(l.bakeDate ? { bakeDate: l.bakeDate } : {}),
     itemId: l.itemId,
     variant: storedVariant(l.variant),
     name: l.name,
@@ -354,6 +378,7 @@ function correctionsFromRows(rows) {
     const qty = Number(r.correction)
     if (!Number.isFinite(qty) || qty === 0) continue
     out.push({
+      ...(r.bakeDate ? { bakeDate: r.bakeDate } : {}),
       itemId: r.itemId,
       variant: apiVariant(r.variant),
       qty,
@@ -378,7 +403,16 @@ function frozenLine(row, config, unsetKeys) {
       : null
   const unit = row.unit || (item ? item.unit : 'Stück')
   const total = Number(row.total) || 0
-  const key = core.lineKey(row.itemId, apiVariant(row.variant))
+  // Z10: Zeilen mit Backtag (`bake_date`) - Schluessel wie im Entwurf
+  const bakeDate =
+    typeof row.bakeDate === 'string' && row.bakeDate ? row.bakeDate : null
+  const sheetDate = bakeDate && typeof row.date === 'string' ? row.date : null
+  const key = core.lineKey(
+    row.itemId,
+    apiVariant(row.variant),
+    bakeDate,
+    sheetDate || bakeDate
+  )
   const line = {
     key,
     itemId: row.itemId,
@@ -399,6 +433,26 @@ function frozenLine(row, config, unsetKeys) {
   }
   if (item && unit === 'Liter' && item.pieces_per_liter) {
     line.loavesEstimate = Math.round(total * item.pieces_per_liter)
+  }
+  if (bakeDate) {
+    const doughDate = sheetDate || bakeDate
+    Object.assign(line, {
+      bakeDate,
+      doughDate,
+      lead: item ? planCore.leadFor(item, core.isoWeekday(bakeDate)) : 0,
+      variantKind: item && item.variantKind ? item.variantKind : null,
+      variantLabel: item
+        ? configCore.variantDisplayName(config, item, line.variant)
+        : line.variant,
+      ...(item && item.bruch
+        ? {
+            bruch: {
+              group: item.bruch.group,
+              perProduct: item.bruch.per_product,
+            },
+          }
+        : {}),
+    })
   }
   return line
 }
@@ -432,6 +486,10 @@ function frozenSections(rows, config, unsetKeys) {
     ((config && config.items) || []).map((item) => [item.id, item])
   )
   lines.sort((x, y) => {
+    // Z10: innerhalb eines Abschnitts erst nach Backtag
+    const bx = x.line.bakeDate || ''
+    const by = y.line.bakeDate || ''
+    if (bx !== by) return bx.localeCompare(by)
     const ix = itemOrder.has(x.line.itemId)
       ? itemOrder.get(x.line.itemId)
       : Infinity
@@ -488,8 +546,27 @@ function tickStillValid(row, values) {
  */
 function computedSnapshot(result) {
   const r = result || {}
+  // Z10: ein Zettel je Teigtag friert dazu Plan, Teige, Maschinen-Kästen,
+  // Brot, Brötchen und die offenen Stammdaten ein (§5.3); ein Tag ohne
+  // `plan` im Schnappschuss ist ein alter Tag (`legacyPlan`).
+  const v2 =
+    r.sheetVersion === 2
+      ? {
+          sheetVersion: 2,
+          plan: r.plan === undefined ? null : r.plan,
+          bakeDates: Array.isArray(r.bakeDates) ? r.bakeDates : [],
+          doughs: Array.isArray(r.doughs) ? r.doughs : [],
+          machine: Array.isArray(r.machine) ? r.machine : [],
+          bread: r.bread === undefined ? null : r.bread,
+          rolls: Array.isArray(r.rolls) ? r.rolls : [],
+          openMasterData: Array.isArray(r.openMasterData)
+            ? r.openMasterData
+            : [],
+        }
+      : {}
   return JSON.parse(
     JSON.stringify({
+      ...v2,
       hefeteig: r.hefeteig === undefined ? null : r.hefeteig,
       fillings: r.fillings === undefined ? null : r.fillings,
       prep: r.prep === undefined ? null : r.prep,
@@ -639,6 +716,64 @@ function linesWithExtras(lines, extras) {
 }
 
 /**
+ * Z10: der Plan eines freigegebenen Zettels - aus dem Schnappschuss, bei
+ * Tagen von vor Z10 (`plan` fehlt) `legacyPlan(date)` (alle Posten des Tages).
+ */
+function planOfSnapshot(snapshot, date) {
+  return snapshot && snapshot.plan && Array.isArray(snapshot.plan.bakeDates)
+    ? snapshot.plan
+    : planCore.legacyPlan(date)
+}
+
+/**
+ * Was die Nachtraege eines freigegebenen Zettels fuer die Maschinen-Kaesten
+ * heissen (Z10, `deltaBakeExtras` je Teig): die Kaesten ohne und mit den
+ * zusaetzlichen Backmengen, nur die, die sich aendern. Der freigegebene Stand
+ * bleibt eingefroren; das hier ist der Hinweis darueber.
+ *
+ * @param {object} config normalisierte Stammdaten
+ * @param {Array} lines freigegebene Zeilen (`frozenLine`, mit `bakeDate`)
+ * @param {Record<string, number>} extras Zeilen-Schluessel -> zusaetzlich
+ * @param {string} sheetDate Teigtag
+ * @returns {Array<{id, name, doughIds, kgBefore, kg, kgDelta, litersBefore, liters, batchesBefore, batches, complete}>}
+ */
+function machineDeltaExtras(config, lines, extras, sheetDate) {
+  if (!config || !extras || Object.keys(extras).length === 0) return []
+  const before = doughCore.computeSheetDoughs(config, lines, sheetDate).machine
+  const after = doughCore.computeSheetDoughs(
+    config,
+    linesWithExtras(lines, extras),
+    sheetDate
+  ).machine
+  const byId = new Map(before.map((m) => [m.id, m]))
+  const out = []
+  for (const m of after) {
+    const b = byId.get(m.id) || {
+      kg: 0,
+      kgKnown: 0,
+      liters: { exact: 0, rounded: 0, reason: null },
+      batches: null,
+    }
+    const kgDelta = round2(m.kgKnown - b.kgKnown)
+    if (kgDelta === 0) continue
+    out.push({
+      id: m.id,
+      name: m.name,
+      doughIds: m.doughIds,
+      kgBefore: b.kg,
+      kg: m.kg,
+      kgDelta,
+      complete: m.complete,
+      litersBefore: b.liters,
+      liters: m.liters,
+      batchesBefore: b.batches,
+      batches: m.batches,
+    })
+  }
+  return out
+}
+
+/**
  * Unterschied Hefeteig/Fuellungen ohne und mit Nachtraegen - nur, was sich
  * aendert. `null`, wenn sich nichts aendert.
  */
@@ -769,6 +904,8 @@ module.exports = {
   deltaBakeExtras,
   linesForDeltas,
   linesWithExtras,
+  machineDeltaExtras,
+  planOfSnapshot,
   prepWithDeltas,
   hefeteigFillingsDiff,
   snapshotDiffers,
