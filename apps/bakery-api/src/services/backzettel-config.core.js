@@ -32,7 +32,7 @@ const SECTION_LABELS = {
 }
 
 const UNITS = ['Stück', 'Liter', 'Blech', 'kg']
-/** Einheiten, deren Mengen ganzzahlig sein muessen. Liter/kg duerfen Bruchteile haben (Haferbrot 1,24 l). */
+/** Einheiten, deren Mengen ganzzahlig sein muessen. Liter/kg duerfen Bruchteile haben (z. B. 1,25 l). */
 const INTEGER_UNITS = new Set(['Stück', 'Blech'])
 
 const WEEKDAY_NAMES = {

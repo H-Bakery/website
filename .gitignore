@@ -12,6 +12,11 @@ dist/
 
 # next.js
 /.next/
+# Partybrezel-Prototyp: Next 16 schreibt next-env.d.ts bei jedem Build und
+# dev-Start neu (je nach Lauf mit .next/types oder .next/dev/types) - nicht
+# versionieren, sonst bleibt nach jedem Build eine Änderung liegen. tsc
+# (type-check) braucht die Datei nicht.
+/apps/bakery-partybrezel/next-env.d.ts
 /out/
 
 # production

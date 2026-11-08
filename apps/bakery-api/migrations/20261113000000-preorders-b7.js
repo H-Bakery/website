@@ -9,8 +9,8 @@
  *    Mörsbach alias round-trips without loss (see `delivery-preorders.core.js`).
  * 2. The Sammelstelle "Kindergarten Mörsbach" from the mock seed
  *    (`simple-server.js` `seedDeliveryStore`), inserted only if the id is
- *    missing. The address is public (städt. Kita "Hand in Hand", see the
- *    website CLAUDE.md); no personal data.
+ *    missing. The address is public (städt. Kita "Hand in Hand"); no
+ *    personal data.
  *
  * 3. `preorder_codes`: every pickup code ever handed out (`MO-…`, `LA-…`).
  *    A code is single-use - when a preorder moves to another day or place it

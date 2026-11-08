@@ -21,6 +21,7 @@ import { initializeModels } from './models'
 import { runPartnerSeeder } from './seeders/partner.seeder'
 import { bootstrapAdmin } from './auth/users.service'
 import { defaultProductsDir } from './services/hq-catalogue'
+import { createGitHubTokenProvider } from './services/github-token'
 import { HqEditsSync } from './services/hq-edits-sync.service'
 import { HqSnapshotWriter } from './services/hq-snapshots.service'
 
@@ -80,19 +81,25 @@ export async function startServer(
   )
 
   // B5b: push app/edits + one rolling PR; Z9: snapshots to main. Both retry
-  // every 15 min (unref'd timers) and are stopped on close.
+  // every 15 min (unref'd timers) and are stopped on close. The token is read
+  // at the time of use (HQ_GITHUB_TOKEN_FILE: GitHub App token, renewed by
+  // bakery-hq-token.timer) - never logged.
+  const githubToken = createGitHubTokenProvider(hqSync)
   const edits = new HqEditsSync({
     writeDir: hqWriteDir,
-    token: hqSync.token,
+    tokenProvider: githubToken,
     githubRepo: hqSync.githubRepo,
     githubApiUrl: hqSync.githubApiUrl,
     retryMs: hqSync.retryMs,
   })
   const snapshots = new HqSnapshotWriter({
     snapshotDir: hq.snapshotDir,
-    token: hqSync.token,
+    tokenProvider: githubToken,
     retryMs: hqSync.retryMs,
   })
+  if (githubToken.source === 'file') {
+    console.log(`[INFO] hq GitHub token: read per use from ${githubToken.file}`)
+  }
   console.log(
     edits.enabled
       ? `[INFO] hq write-back: app/edits -> PR in ${hqSync.githubRepo}`

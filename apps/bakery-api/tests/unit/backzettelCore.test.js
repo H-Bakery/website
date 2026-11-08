@@ -562,7 +562,7 @@ describe('Hefeteig (portiert aus HefezopfCalculator)', () => {
     expect(h.doughs[0].weighing[0]).toMatchObject({ piece_g: 600, pieces: 4 })
   })
 
-  it('der gefuellte Kranz ist einstellbar (Q-B3: hq-Notiz 1 × 1200 g, alter Code 3 × 600 g; Testwert 2 × 600 g)', () => {
+  it('der gefuellte Kranz ist einstellbar (Q-B3; Testwert 2 × 600 g)', () => {
     const cfg = config()
     cfg.items.find((i) => i.id === 'kranz-gefuellt').dough = {
       id: 'hefeteig-test',
@@ -1148,8 +1148,8 @@ describe('roundUp', () => {
   it('rundet Stueck auf ganze Zahlen und Liter auf Hundertstel, tolerant gegen Fliesskomma', () => {
     expect(core.roundUp(0.1 * 3 * 10, 'Stück')).toBe(3)
     expect(core.roundUp(2.01, 'Stück')).toBe(3)
-    expect(core.roundUp(1.24 * 1.0, 'Liter')).toBe(1.24)
-    expect(core.roundUp(1.241, 'Liter')).toBe(1.25)
+    expect(core.roundUp(1.37 * 1.0, 'Liter')).toBe(1.37)
+    expect(core.roundUp(1.371, 'Liter')).toBe(1.38)
     expect(core.roundUp(Number.NaN, 'Stück')).toBe(0)
   })
 })

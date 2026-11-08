@@ -79,7 +79,7 @@ function parseQuantity(raw, label) {
       `${label}: ${value} ist unplausibel groß (höchstens ${MAX_QTY}).`
     )
   }
-  // Zwei Nachkommastellen reichen (Haferbrot 1,24 l); mehr ist Rauschen.
+  // Zwei Nachkommastellen reichen (z. B. 1,25 l); mehr ist Rauschen.
   return { ok: true, value: Math.round(value * 100) / 100 }
 }
 

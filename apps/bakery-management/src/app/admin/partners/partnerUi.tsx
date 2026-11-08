@@ -47,7 +47,7 @@ export function deliveryDaysText(days: number[] | null | undefined): string {
 
 /**
  * Lage eines Geschäftstags am Backschrank. Nur `closed` ist endgültig; jede
- * andere mit Besuchen heißt „vorläufig“ (CLAUDE.md, Verkaufspartner).
+ * andere mit Besuchen heißt „vorläufig“ (docs/domains/verkaufspartner.md).
  */
 export type DayState =
   | 'no-delivery'

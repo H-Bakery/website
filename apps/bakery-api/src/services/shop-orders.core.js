@@ -20,7 +20,7 @@
  * Die Feldregeln spiegeln die Client-Prüfung in
  * `libs/bakery-shop/feature-cart/src/lib/checkout-validation.ts`. Öffnungszeiten
  * und Ruhetag werden hier bewusst **nicht** geprüft - die Tabelle stünde sonst
- * ein weiteres Mal im Code (siehe `apps/bakery-shop/CLAUDE.md`). Geprüft wird
+ * ein weiteres Mal im Code (siehe `docs/apps/shop.md`). Geprüft wird
  * nur, dass das Datum existiert und nicht in der Vergangenheit liegt.
  *
  * Alle Meldungen sind deutsch und landen über `message` beim Kunden:

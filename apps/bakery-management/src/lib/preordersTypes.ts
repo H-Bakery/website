@@ -284,7 +284,7 @@ export const PREORDER_STATUS_LABELS: Record<PreorderStatus, string> = {
 /**
  * Chip-Farben. Gefüllte MUI-Chips nehmen `*.contrastText` - das bleibt in
  * Hell und Dunkel lesbar. Kein `warning`: dessen Kontrast ist im hellen
- * Modus zu schwach (CLAUDE.md, Tagesziel).
+ * Modus zu schwach (`docs/domains/finanzen.md`, Tagesziel).
  */
 /**
  * Farbe je Status. „Offen“ (noch packen) und „Bereit“ (gepackt) waren zwei

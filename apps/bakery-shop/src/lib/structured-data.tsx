@@ -268,7 +268,7 @@ export function productJsonLd(product: ShopProduct): JsonLdObject {
     name: product.name,
     // Der lange Fließtext beschreibt das Produkt; der Teaser ist die Notlösung.
     // Beide Felder bleiben getrennt — sie zusammenzuwerfen hat schon einmal
-    // Produkttexte vernichtet (siehe apps/bakery-shop/CLAUDE.md).
+    // Produkttexte vernichtet (siehe docs/apps/shop.md).
     description: product.description || product.shortDescription,
     sku: product.id,
     category: shopCategoryLabel(product.category),

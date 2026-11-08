@@ -37,9 +37,10 @@ ProtectSystem=strict
 # Next schreibt seinen Cache (Bilder, ISR) unter .next/cache des aktiven Releases.
 # "-": fehlt das Verzeichnis, startet die Unit trotzdem.
 ReadWritePaths=-/opt/bakery/current/dist/apps/bakery-management/.next/cache
-# Geheimnisse der Betriebs-Skripte (Telegram, restic, AWS, DNS-Token) sind ohnehin
+# Geheimnisse der Betriebs-Skripte (Telegram, restic, AWS, DNS-Token, GitHub-App-Schlüssel) sind ohnehin
 # root:root 0600; hier zusätzlich unsichtbar, falls jemand die Rechte lockert.
-InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/caddy
+# Das hq-Token (GitHub-App, 1 h) braucht dieser Dienst nicht.
+InaccessiblePaths=-/etc/bakery/ops.env -/etc/bakery/restic-password -/etc/bakery/github-app.pem -/etc/bakery/hq-token -/etc/caddy
 ProtectHome=yes
 PrivateTmp=yes
 PrivateDevices=yes

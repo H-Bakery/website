@@ -1,8 +1,10 @@
 # Runbook: Bäckerei-Box
 
-_Betriebshandbuch für den Server in der Bäckerei (roadmap.md D4, O1–O4). Stand 2026-11-05.
-Die Box gibt es noch nicht (Q1); alles hier ist vorbereitet und, soweit ohne Hardware möglich,
-getestet (`deploy/tests/run-tests.sh`)._
+_Betriebshandbuch für den Server in der Bäckerei (roadmap.md D4, O1–O4). Stand 2026-11-08.
+Vorläufig läuft der Pilot auf dem Agenten-Pi `robot0` (Pi 5, 4 GB, Debian 13; §3.1), eine eigene
+Box folgt (Q1). Bis zum Zertifikat (Q2) im LAN über HTTP (§3.7), hq-Zugang über die GitHub-App
+statt eines PAT (§3.6). Alles hier ist, soweit ohne Hardware möglich, getestet
+(`deploy/tests/run-tests.sh`)._
 
 Die Dateien liegen im Repo unter `deploy/`:
 
@@ -15,8 +17,11 @@ Die Dateien liegen im Repo unter `deploy/`:
 | `deploy/scripts/restore.sh`           | Backup zurückholen, prüfen, optional einspielen                     |
 | `deploy/scripts/health.sh`            | Health-Check, Telegram-Meldung bei Zustandswechsel                  |
 | `deploy/scripts/sqlite-tool.js`       | SQLite-Kopie/Prüfung ohne `sqlite3`-CLI, Prüfung des nativen Moduls |
+| `deploy/scripts/hq-token.sh`          | GitHub-App-Token für hq erneuern (root, alle 30 min)                |
+| `deploy/scripts/gh-app-token.mjs`     | JWT + Installationstoken, nur Node-Bordmittel                       |
 | `deploy/systemd/*.service`, `*.timer` | Dienste und Zeitpläne                                               |
 | `deploy/caddy/Caddyfile`              | HTTPS für `intern.<domain>`                                         |
+| `deploy/caddy/Caddyfile.lan-http`     | HTTP auf Port 80 im LAN, bis das Zertifikat da ist (Q2)             |
 | `deploy/bakery.env.example`           | Umgebung von API und Verwaltung → `/etc/bakery/bakery.env`          |
 | `deploy/ops.env.example`              | Telegram, restic, Deploy → `/etc/bakery/ops.env`                    |
 | `deploy/caddy/caddy.env.example`      | Domain + DNS-Token → `/etc/caddy/bakery.env`                        |
@@ -26,17 +31,18 @@ Die Dateien liegen im Repo unter `deploy/`:
 
 ```
 Handy / Laden-Tablet / Backstube-Tablet / Büro-PC
-        │  WLAN der Bäckerei, https://intern.<domain>
+        │  WLAN der Bäckerei, https://intern.<domain>  (bis Q2: http://<IP der Box>)
         ▼
-Caddy :443  ── /api/* ──► bakery-api         127.0.0.1:5000  (node, esbuild-Bundle)
-            └─ sonst ───► bakery-management  127.0.0.1:4201  (next start)
+Caddy :443 (bis Q2 :80) ── /api/* ──► bakery-api   127.0.0.1:5000  (node, esbuild-Bundle)
+                        └─ sonst ───► bakery-management  127.0.0.1:4201  (next start)
                                 │
                                 ├─ /var/lib/bakery/bakery.db      SQLite (WAL)
                                 ├─ /var/lib/bakery/hq             hq-Lese-Klon (main)
                                 ├─ /var/lib/bakery/hq-write       hq-Schreib-Klon, Branch app/edits (B5b)
                                 └─ /var/lib/bakery/hq-write-main  zweiter Worktree davon auf main (Z9)
 Timer: hq-Sync alle 10 min + 14:50/17:50 · Vorbestellungs-Snapshot 22:15 · Backup 23:30 ·
-       Anonymisierung 23:45 · Health alle 5 min · in der API: Push/PR + Snapshots alle 15 min
+       Anonymisierung 23:45 · Health alle 5 min · GitHub-App-Token alle 30 min ·
+       in der API: Push/PR + Snapshots alle 15 min
 ```
 
 | Ort                                 | Inhalt                                                         |
@@ -49,13 +55,16 @@ Timer: hq-Sync alle 10 min + 14:50/17:50 · Vorbestellungs-Snapshot 22:15 · Bac
 | `/etc/bakery/bakery.env`            | Konfiguration von API und Verwaltung (root:bakery 0640)        |
 | `/etc/bakery/ops.env`               | Telegram, restic, Deploy (root:root 0600)                      |
 | `/etc/bakery/restic-password`       | Schlüssel des Off-site-Backups (root:root 0600)                |
+| `/etc/bakery/github-app.pem`        | privater Schlüssel der GitHub-App (root:root 0600, Q3)         |
+| `/etc/bakery/hq-token`              | daraus erzeugtes hq-Token, 1 h gültig (root:bakery 0640)       |
 | `/var/lib/bakery/`                  | Daten: DB, hq-Klone, `backup/`, `state/`                       |
 | `journalctl -u bakery-*`            | alle Logs                                                      |
 
 Dienste: `bakery-api`, `bakery-management` (laufen dauerhaft, `Restart=always`), dazu
 `bakery-hq-sync`, `bakery-backup`, `bakery-health`, `bakery-anonymize`,
 `bakery-snapshot-preorders` als Timer. Alles läuft als
-Benutzer `bakery`.
+Benutzer `bakery` – bis auf `bakery-hq-token` (root, Timer alle 30 min), das als Einziges den
+Schlüssel der GitHub-App liest.
 Die Zeitpläne stehen ausdrücklich in `Europe/Berlin`.
 
 **Rechte – nicht lockern.** `ops.env` und `restic-password` kann der Benutzer `bakery` nicht
@@ -64,7 +73,24 @@ lesen: systemd liest `ops.env` als root und gibt die Werte nur an `bakery-backup
 systemd ≥ 247). Wer die API übernimmt, kommt so nicht an Telegram-Token und Backup-Zugang.
 `/opt/bakery` gehört root; `bakery` darf nur `releases/` und `repo.git` beschreiben, denn dort
 laufen `npm ci` und der Build. Was root ausführt (Skripte in `bin/`, Units), kommt aus dem
-root-eigenen Klon `src/`, nie aus einem Release.
+root-eigenen Klon `src/`, nie aus einem Release. Den Schlüssel der GitHub-App
+(`github-app.pem`) liest nur `bakery-hq-token`; `bakery` sieht nur das daraus erzeugte Token,
+das eine Stunde gilt und nur für hq taugt (Contents + Pull requests).
+
+### 1.1 Vor einer Änderung an `deploy/`
+
+- **Neue Geheimnisse der Betriebs-Skripte gehören in `ops.env`, nie in `bakery.env`.** `bakery.env`
+  kann der Benutzer `bakery` lesen - und damit jeder, der die API oder ein npm-Skript übernimmt.
+- **`NEXT_PUBLIC_*` werden beim Build eingebacken.** Eine Änderung in `bakery.env` wirkt erst nach
+  `deploy.sh --rebuild` (§4).
+- **Braucht der Build eine neue Variable, sie in `DEPLOY_BUILD_ENV_KEYS` freigeben**
+  (`deploy/scripts/deploy.sh`, Vorgabe: `NEXT_PUBLIC_*`, `API_URL`, `HQ_*_DIR`, `TZ`) - nicht die
+  geleerte Umgebung (`env -i`) des Builds aushebeln. npm-Skripte sind fremder Code.
+- **Was root ausführt, nie aus einem Release** (das gehört `bakery`), sondern aus `/opt/bakery/src`.
+- **Node 22 LTS** auf der Box (§3.3).
+- **Testen:** `deploy/tests/run-tests.sh` (macOS/Linux, ohne root, fünf Ports ab 5120 -
+  `TEST_PORT_BASE` -, nur synthetische Daten). Nicht abgedeckt sind `install.sh`, die systemd-Units,
+  Caddy, restic gegen ein echtes Repository und `npm ci`/Build im Release - das braucht die Box.
 
 ## 2. Wer macht was
 
@@ -100,6 +126,15 @@ root-eigenen Klon `src/`, nie aus einem Release.
    sudo dpkg-reconfigure -plow unattended-upgrades
    ```
 
+**Vorläufig (Entscheidung 2026-11-08): der Agenten-Pi `robot0`** (Pi 5, 4 GB, Debian 13), auf
+dem auch die Agenten (OpenClaw) laufen – Schritte 1–3 entfallen. Vor `install.sh` prüfen,
+dass die Ports frei sind (`sudo ss -ltnp | grep -E ':(80|443|5000|4201) '`). 4 GB reichen für
+den Betrieb, knapp aber für `npm ci` + Build (`DEPLOY_NODE_OPTIONS`, Vorgabe
+`--max-old-space-size=4096`): vor dem ersten Deploy Swap auf mindestens 4 GB setzen
+(`/etc/dphys-swapfile` bzw. zram) und nicht um 14:30/17:30 deployen (Kassen-Pipeline der
+Agenten). Die Agenten und ihre Dateien bleiben, wie sie sind – die Units
+der App laufen mit `ProtectHome=yes` und sehen kein Home-Verzeichnis.
+
 ### 3.2 Netzwerk
 
 1. Box per **Kabel** an den Router (WLAN nur für die Geräte).
@@ -126,6 +161,9 @@ node -v                                # v22.x
 
 ### 3.4 Caddy mit DNS-Plugin
 
+Für den LAN-HTTP-Betrieb bis Q2 (§3.7) reichen die ersten beiden Zeilen; Plugin und `hold`
+kommen erst mit dem Zertifikat.
+
 ```bash
 # Caddy-Paketquelle laut https://caddyserver.com/docs/install#debian-ubuntu-raspbian, dann:
 sudo apt install -y caddy
@@ -148,15 +186,24 @@ Das Skript legt an bzw. prüft (jeder Schritt ist wiederholbar):
   `/etc/bakery/restic-password` zufällig erzeugt. Vorhandene Dateien bleiben unangetastet (nur
   die Rechte von `ops.env`/`restic-password` werden auf root:root 0600 nachgezogen); neue
   Schlüssel aus den Vorlagen werden als WARNUNG gemeldet.
-- `/etc/caddy/bakery.env` und `/etc/caddy/Caddyfile` (eine vorhandene Caddyfile wird gesichert)
+- `/etc/caddy/bakery.env` und `/etc/caddy/Caddyfile` (eine vorhandene Caddyfile wird gesichert):
+  `Caddyfile.lan-http`, solange dort `BAKERY_LAN_HTTP=1` steht oder die Domain noch der
+  Platzhalter ist, sonst die HTTPS-`Caddyfile` (§3.7)
+- GitHub-App (§3.6): Rechte von `github-app.pem` (root:root 0600) und `hq-token`
+  (root:bakery 0640) nachziehen; fehlt das Token oder ist es älter als 40 min, gleich eins holen.
+  Fehlt der Schlüssel, nur eine WARNUNG.
 - Bare-Klon `/opt/bakery/repo.git`, root-eigener Klon `/opt/bakery/src`, hq-Lese-Klon (sobald
-  `HQ_GITHUB_TOKEN` gesetzt ist). Einen **schon vorhandenen** hq-Klon markiert `install.sh` nicht
-  selbst als Lese-Klon (das würde die Schutzprüfung von `hq-sync.sh` aushebeln), sondern meldet
-  ihn – Markierung dann von Hand, §6.
+  ein Token da ist – App-Token-Datei oder fester `HQ_GITHUB_TOKEN`; es erreicht git nur über
+  die Umgebung, nie über die Befehlszeile). Einen **schon vorhandenen** hq-Klon markiert
+  `install.sh` nicht selbst als Lese-Klon (das würde die Schutzprüfung von `hq-sync.sh`
+  aushebeln), sondern meldet ihn – Markierung dann von Hand, §6.
 - hq-Schreib-Klon `HQ_WRITE_DIR` auf Branch `app/edits` (Markierung `bakery.role=write-clone`)
   und daneben der Snapshot-Worktree `HQ_SNAPSHOT_DIR` auf `main` (§6.1) – ebenfalls erst mit
-  `HQ_GITHUB_TOKEN`, einen vorhandenen Klon fasst `install.sh` nicht an.
-- Skripte nach `/opt/bakery/bin`, Units nach `/etc/systemd/system`, Timer aktiviert
+  einem Token, einen vorhandenen Klon fasst `install.sh` nicht an.
+- Skripte nach `/opt/bakery/bin`, Units nach `/etc/systemd/system`, Timer aktiviert (auch
+  `bakery-hq-token.timer`). Nach dem ersten Deploy genügt `sudo /opt/bakery/bin/install.sh`:
+  Vorlagen, Units und Caddyfiles nimmt es dann aus `/opt/bakery/src`, das `deploy.sh` auf dem
+  aktiven Commit hält. Davor (dort steht noch `main`) den Klon von oben nehmen.
 
 **Sofort danach:** den Inhalt von `/etc/bakery/restic-password` in den Passwort-Safe des Inhabers.
 Ohne dieses Passwort ist jedes Off-site-Backup wertlos.
@@ -164,11 +211,34 @@ Ohne dieses Passwort ist jedes Off-site-Backup wertlos.
 ### 3.6 Konfiguration ausfüllen
 
 ```bash
-sudoedit /etc/bakery/bakery.env    # Domain in CORS_ORIGIN, HQ_GITHUB_TOKEN (Q3); NEXT_PUBLIC_API_URL leer lassen
-sudoedit /etc/bakery/ops.env       # TELEGRAM_*, RESTIC_REPOSITORY + Zugang (Q4)
-sudoedit /etc/caddy/bakery.env     # BAKERY_DOMAIN, ACME_EMAIL, ACME_DNS_* (Q2)
-sudo /opt/bakery/bin/install.sh    # noch einmal: legt jetzt Lese-Klon, Schreib-Klon und Snapshot-Worktree an
+sudoedit /etc/bakery/bakery.env    # CORS_ORIGIN (bis Q2 http://<IP der Box>), HQ_GITHUB_TOKEN_FILE; NEXT_PUBLIC_API_URL leer lassen
+sudoedit /etc/bakery/ops.env       # GH_APP_ID (Q3), TELEGRAM_*, RESTIC_REPOSITORY + Zugang (Q4)
+sudoedit /etc/caddy/bakery.env     # bis Q2: BAKERY_LAN_HTTP=1; danach BAKERY_DOMAIN, ACME_EMAIL, ACME_DNS_*
+sudo ~/website/deploy/scripts/install.sh   # noch einmal: holt das App-Token, legt die hq-Klone an
 ```
+
+**GitHub-App statt PAT (Q3, Entscheidung 2026-11-08).** Die Box benutzt die vorhandene
+GitHub-App der Agenten statt eines langlebigen Tokens. `bakery-hq-token.timer` (root, beim Start
+und alle 30 min) erzeugt mit dem privaten Schlüssel ein **Installationstoken**: eine Stunde
+gültig, nur für `H-Bakery/hq` (das Repo aus `HQ_REPO_URL`), nur Contents + Pull requests
+schreiben (`GH_APP_PERMISSIONS`). Es landet atomar in `/etc/bakery/hq-token`; API (B5b, Z9),
+`hq-sync.sh` und `install.sh` lesen die Datei **bei jeder Verwendung** neu. Fehlt sie oder ist
+sie leer, verhält sich alles wie ohne Token: Produktänderungen bleiben als Commits auf der Box,
+`GET /api/hq-sync/status` nennt den Grund (`token.problem`: `missing`, `empty`, …). Ein fester
+`HQ_GITHUB_TOKEN` gewinnt weiterhin, wenn er gesetzt ist.
+
+1. Die App muss auf GitHub für `H-Bakery/hq` installiert sein (Organisation → Settings → GitHub
+   Apps) und dort mindestens _Contents_ und _Pull requests_ mit Schreibrecht haben.
+2. Schlüssel nach `/etc/bakery/github-app.pem`, **root:root 0600** – nie für `bakery` lesbar,
+   nie ins Backup (`backup.sh` lässt ihn aus):
+   `sudo install -m 600 -o root -g root <pem-Datei> /etc/bakery/github-app.pem`
+3. `ops.env`: `GH_APP_ID=<App-ID>`, `GH_APP_KEY=/etc/bakery/github-app.pem`.
+4. `bakery.env`: `HQ_GITHUB_TOKEN_FILE=/etc/bakery/hq-token`, `HQ_GITHUB_TOKEN=` leer.
+5. `sudo systemctl start bakery-hq-token.service && journalctl -u bakery-hq-token -n 5`
+   („Token für H-Bakery/hq erneuert"), dann `sudo systemctl restart bakery-api`.
+
+Das Token steht nie im Log. `install.sh --check` meldet das Alter der Datei (über 60 min =
+abgelaufen), der Health-Check alarmiert ab 70 min (`HQ_TOKEN_MAX_AGE_MIN`).
 
 Format beider Dateien: `KEY=wert`, ohne `export`, ohne Leerzeichen um `=`. Sie werden von
 systemd **und** von bash gelesen.
@@ -178,9 +248,11 @@ Wer sie ändert, muss neu bauen: `sudo /opt/bakery/bin/deploy.sh --rebuild`. `NE
 bleibt im Normalfall **leer** (F4): die Verwaltung fragt `/api` auf der eigenen Origin, Caddy
 schickt es an die API. `API_URL` liest die Verwaltung zur Laufzeit (kein Rebuild). Solange
 `NEXT_PUBLIC_API_URL` oder `CORS_ORIGIN` noch `example.` aus der Vorlage enthalten, bricht
-`deploy.sh` vor dem Build ab, und `install.sh --check` meldet es.
+`deploy.sh` vor dem Build ab, und `install.sh --check` meldet es. Eine Domain braucht es dafür
+nicht: im LAN-HTTP-Betrieb ist `CORS_ORIGIN=http://<IP der Box>`.
 
-`HEALTH_TLS_HOST` in `ops.env` auf `intern.<domain>` setzen, sobald das Zertifikat da ist (§3.7):
+`HEALTH_TLS_HOST` in `ops.env` auf `intern.<domain>` setzen, sobald das Zertifikat da ist (§3.7;
+im LAN-HTTP-Betrieb leer lassen):
 dann prüft der Health-Check HTTPS über Caddy und meldet, wenn das Zertifikat in weniger als 14
 Tagen abläuft – eine ausgefallene DNS-01-Erneuerung fällt so Wochen vor dem Ablauf auf.
 
@@ -189,6 +261,33 @@ gewünschten Chat schreiben, die Chat-ID über `https://api.telegram.org/bot<TOK
 ablesen.
 
 ### 3.7 Zertifikat (DNS-01, Q2)
+
+**LAN-HTTP bis Q2 (Entscheidung 2026-11-08).** Bis das Zertifikat da ist, läuft Caddy mit
+`Caddyfile.lan-http`: Port 80, jeder Hostname, dieselbe Weiterleitung (`/api/*` → 5000, sonst
+→ 4201) und dieselben Sicherheits-Header, nur ohne TLS und ohne HSTS. Dafür in
+`/etc/caddy/bakery.env` `BAKERY_LAN_HTTP=1` (Vorgabe der Vorlage), in `bakery.env`
+`CORS_ORIGIN=http://<IP der Box>`, `HEALTH_TLS_HOST` leer. Die Geräte öffnen
+`http://<IP der Box>` (feste IP, §3.2). Was dabei anders ist:
+
+- Passwörter, PINs und Daten gehen unverschlüsselt durchs WLAN – geschützt nur durch das
+  WLAN-Passwort. Port 80 deshalb nur aus dem LAN (§3.8), nie im Router freigeben.
+- Die Verwaltung ist **keine installierbare App** (der Service Worker braucht HTTPS) und hat
+  keine Offline-Seite; ein Lesezeichen auf dem Startbildschirm tut es.
+- Das Sitzungs-Cookie geht ohne `Secure` raus (die App entscheidet das zur Laufzeit am Protokoll).
+
+**Umstieg auf HTTPS** braucht keinen neuen Build und kein Deploy: Schritte unten ausführen,
+in `/etc/caddy/bakery.env` `BAKERY_LAN_HTTP=0` setzen, dann
+
+```bash
+sudo /opt/bakery/bin/install.sh                  # installiert die HTTPS-Caddyfile (die alte wird gesichert)
+sudo systemctl restart caddy
+sudoedit /etc/bakery/bakery.env                  # CORS_ORIGIN=https://intern.<domain>
+sudo systemctl restart bakery-api                # liest CORS_ORIGIN neu
+sudoedit /etc/bakery/ops.env                     # HEALTH_TLS_HOST=intern.<domain>
+```
+
+Danach die Geräte auf `https://intern.<domain>` umstellen; dort wird die Verwaltung wieder
+installierbar.
 
 `intern.<domain>` braucht zwei Dinge im öffentlichen DNS:
 
@@ -238,6 +337,11 @@ sudo ufw allow in on tailscale0 to any port 22 proto tcp                # erst n
 sudo ufw enable
 ```
 
+Im LAN-HTTP-Betrieb ist Port 80 der einzige Weg zur App: nur aus dem LAN-Netz freigeben (wie
+oben), im Router **keine** Portweiterleitung. Caddy trennt Anfragen von außerhalb privater
+Netze zusätzlich selbst (`@outside`). Auf `robot0` vorhandene Regeln der Agenten nicht
+überschreiben – mit `sudo ufw status numbered` ansehen und nur ergänzen.
+
 ### 3.9 Erstes Deploy und Abnahme
 
 ```bash
@@ -278,9 +382,12 @@ sudo -u bakery bash -c 'set -a; . /etc/bakery/bakery.env; set +a; cd /opt/bakery
 Abnahme M0 (roadmap §6):
 
 - [ ] `https://intern.<domain>` lädt auf Handy, Laden-Tablet, Backstube-Tablet und Büro-PC,
-      Schloss-Symbol ohne Warnung
+      Schloss-Symbol ohne Warnung (bis Q2: `http://<IP der Box>`, ohne Schloss)
 - [ ] jede Person kann sich anmelden; das Laden-Tablet wechselt per PIN
 - [ ] `curl -s -o /dev/null -w '%{http_code}' https://intern.<domain>/api/preorders` → `401`
+      (bis Q2 `http://<IP der Box>/api/preorders`)
+- [ ] `install.sh --check`: GitHub-Token-Datei jünger als 60 min, `/api/hq-sync/status` ohne
+      `reason`
 - [ ] `sudo reboot` → nach 2 Minuten alles wieder da, keine Daten verloren
 - [ ] Restore-Übung auf einem anderen Rechner bestanden (§5.3)
 - [ ] Testalarm per Telegram angekommen (§8.1)
@@ -357,7 +464,8 @@ Jede Nacht um 23:30 (`bakery-backup.timer`; Backbeginn ist 02:00):
    npm-Modul – und `integrity_check`
 2. lokal: `backup/snapshots/bakery-nightly-<Zeit>.db` (7 Stück), `backup/current/bakery.db`
 3. off-site mit restic: `backup/current/bakery.db`, `/etc/bakery/bakery.env` (ohne `ops.env`
-   und restic-Passwort – sie öffnen das Backup selbst und gehören in den Passwort-Safe),
+   und restic-Passwort – sie öffnen das Backup selbst und gehören in den Passwort-Safe –, und
+   ohne Schlüssel und Token der GitHub-App: das Token entsteht nach einem Restore neu),
    `BACKUP_EXTRA_PATHS` (Vorgabe: hq-Schreib-Klon mit evtl. noch nicht gepushten Commits)
 4. `restic forget --keep-daily 14 --keep-weekly 8 --prune` (nicht bei `RESTIC_FORGET=0`),
    sonntags zusätzlich `restic check`
@@ -463,11 +571,28 @@ cat /var/lib/bakery/state/hq-sync.ok      # Zeitpunkt + Commit des letzten Erfol
 | ---- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 0    | aktuell                                                                 | –                                                                                                                                                                                               |
 | 2    | kein Klon, nicht als Lese-Klon markiert, oder `HQ_DIR` = `HQ_WRITE_DIR` | `install.sh` erneut; Markierung **nur, wenn es wirklich der Lese-Klon ist** (der Sync setzt ihn hart zurück): `sudo -u bakery git -C /var/lib/bakery/hq config bakery.role read-clone`          |
-| 3    | `fetch` fehlgeschlagen                                                  | Internet? Token abgelaufen (`HQ_GITHUB_TOKEN`, Q3)? App läuft mit altem Stand weiter                                                                                                            |
+| 3    | `fetch` fehlgeschlagen                                                  | Internet? Token abgelaufen (App-Token: `journalctl -u bakery-hq-token`, sonst `HQ_GITHUB_TOKEN`, Q3)? App läuft mit altem Stand weiter                                                          |
 | 4    | lokale Commits im Lese-Klon                                             | Jemand hat hineingeschrieben. Commits ansehen (`git -C … log origin/main..HEAD`), nötigenfalls im Schreib-Klon nachziehen, dann `sudo -u bakery env HQ_SYNC_FORCE=1 /opt/bakery/bin/hq-sync.sh` |
 | 5    | reset/clean fehlgeschlagen                                              | Platte voll? Rechte (`chown -R bakery: /var/lib/bakery/hq`)?                                                                                                                                    |
 
 Der Health-Check meldet, wenn der letzte erfolgreiche Sync älter als 90 Minuten ist.
+
+**GitHub-Token (Q3).** `hq-sync.sh` liest das Token bei jedem Lauf frisch aus
+`HQ_GITHUB_TOKEN_FILE` (fehlt die Datei: WARNUNG, Versuch ohne Token). Erneuert wird es von
+`bakery-hq-token.timer` (§3.6):
+
+```bash
+sudo systemctl start bakery-hq-token.service && journalctl -u bakery-hq-token -n 10
+sudo ls -l --time-style=+%H:%M /etc/bakery/hq-token   # root bakery, 0640, höchstens 30 min alt
+```
+
+| Exit (`hq-token.sh`) | Bedeutung                                                         | Abhilfe                                                                            |
+| -------------------- | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 0                    | erneuert (oder `GH_APP_ID` leer: nichts zu tun)                   | –                                                                                  |
+| 2                    | Schlüssel fehlt oder zu offen, App-ID passt nicht, Uhr falsch     | §3.6; `chown root:root` + `chmod 600`; `timedatectl` (JWT ist nur 10 min gültig)   |
+| 3                    | GitHub nicht erreichbar / Fehler – die alte Datei bleibt (60 min) | Internet? Wiederholt sich alle 30 min                                              |
+| 4                    | App für hq nicht installiert oder Rechte fehlen                   | GitHub → Organisation → GitHub Apps: hq freigeben, Contents + Pull requests: write |
+| 5                    | `/etc/bakery/hq-token` nicht schreibbar                           | Platte voll? Rechte von `/etc/bakery`?                                             |
 
 ### 6.1 Schreiben nach hq (B5b, Z9)
 
@@ -485,8 +610,10 @@ Die API schreibt an zwei Stellen, beide im **Schreib-Klon**, nie im Lese-Klon (r
   (Mengen, Hefeteig-Wiegeliste, Füllungen, Vorbereitung; „Freigegeben (Backstube)“ – **nie ein
   Name**), jede Nacht 22:15 `data/production/vorbestellungen/<Tag>.json` (Summen je Produkt/Sorte,
   Zahl je Kanal und Sammelstelle – keine Kundendaten).
-- Ohne `HQ_GITHUB_TOKEN` ist die PR-Übertragung aus (Produktänderungen bleiben lokale Commits);
-  ohne `HQ_SNAPSHOT_DIR` gibt es keine Snapshots. Der Status sagt beides.
+- Ohne Token (fehlende oder leere `HQ_GITHUB_TOKEN_FILE`, kein `HQ_GITHUB_TOKEN`) ist die
+  PR-Übertragung aus (Produktänderungen bleiben lokale Commits); ohne `HQ_SNAPSHOT_DIR` gibt es
+  keine Snapshots. Der Status sagt beides – `token` nennt Quelle, Datei, Stand und Problem, nie
+  das Token. Kommt das Token später (Timer), geht es beim nächsten Versuch von selbst weiter.
 
 Status (als Inhaber angemeldet; in der Oberfläche folgt er mit F4):
 
@@ -511,7 +638,7 @@ sudo -u bakery git -C /var/lib/bakery/hq-write-main log --oneline origin/main..m
 
 | `lastError.code`                 | Bedeutung                                                                                                     | Abhilfe                                                                                                                                                                                       |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `network`                        | GitHub nicht erreichbar oder Token ungültig                                                                   | Internet? Token (Q3)? Wiederholt sich selbst                                                                                                                                                  |
+| `network`                        | GitHub nicht erreichbar oder Token ungültig                                                                   | Internet? Token (Q3, `journalctl -u bakery-hq-token`)? Wiederholt sich selbst                                                                                                                 |
 | `push_rejected`                  | jemand hat parallel geschrieben, auch der zweite Versuch scheiterte                                           | wiederholt sich selbst; bleibt es, Log ansehen                                                                                                                                                |
 | `rebase_conflict` (`files`)      | dieselbe Datei wurde in hq anders geändert                                                                    | Commits bleiben auf der Box. In `files` nachsehen, Konflikt im Schreib-Klon von Hand auflösen (`git rebase origin/main`, Dateien richten, `git rebase --continue`), dann `/api/hq-sync/retry` |
 | `github_failed`                  | Push ok, PR ließ sich nicht anlegen                                                                           | wiederholt sich selbst; Token braucht „Pull requests: write“                                                                                                                                  |
@@ -581,6 +708,8 @@ Minute der Störung.
 | Alarm „API": Seiten laden, aber Daten fehlen / Fehler | `journalctl -u bakery-api -n 100`                                              | Absturzschleife nach Deploy → `deploy.sh --rollback`; DB gesperrt/kaputt → §5.4         |
 | Alarm „Verwaltung": Seite lädt nicht                  | `journalctl -u bakery-management -n 100`                                       | `systemctl restart bakery-management`; nach Deploy → `--rollback`                       |
 | Seite lädt auf keinem Gerät, Box läuft                | `systemctl status caddy`, vom Handy `https://intern.<domain>`                  | Zertifikat (`journalctl -u caddy`), DNS-Rebind-Ausnahme (§3.2), feste IP geändert?      |
+| LAN-HTTP: `http://<IP der Box>` lädt nicht            | `sudo ss -ltnp \| grep ':80 '`, `sudo ufw status`                              | Caddyfile passend? `install.sh --check` nennt den Modus; Port 80 belegt oder gesperrt   |
+| Alarm „GitHub-Token (hq)"                             | `journalctl -u bakery-hq-token -n 20`                                          | Exit-Codes §6; die App läuft weiter, nur hq-Abgleich und PRs warten                     |
 | Browser warnt vor dem Zertifikat / Alarm „HTTPS"      | `journalctl -u caddy -g acme`                                                  | DNS-Token abgelaufen/geändert (Q2) → `/etc/caddy/bakery.env`, `systemctl restart caddy` |
 | Box antwortet gar nicht (kein Ping, kein SSH)         | Strom, Kabel, LED                                                              | Stromstecker ziehen und wieder einstecken; Papier-Fallback; Entwickler anrufen          |
 | Alarm „Backup"                                        | `journalctl -u bakery-backup -n 50`                                            | Exit 10–13 siehe `backup.sh`; Ziel/Netz prüfen; `systemctl start bakery-backup`         |
@@ -624,8 +753,9 @@ Stammdaten (neue Posten) das Notfallblatt neu drucken.
 
 ## 10. Offene Punkte
 
-- **Q1** Hardware, **Q2** feste IP + DNS-Weg (§3.7), **Q3** hq-Token, **Q4** Backup-Ziel,
-  **Q8** Tailscale – ohne sie bleibt O1/O2/O4 Vorbereitung.
+- **Q1** Hardware (vorläufig `robot0`, §3.1), **Q2** feste IP + DNS-Weg (§3.7; bis dahin
+  LAN-HTTP), **Q4** Backup-Ziel, **Q8** Tailscale – ohne sie bleibt O1/O2/O4 Vorbereitung.
+  **Q3** ist entschieden (2026-11-08): GitHub-App statt PAT (§3.6).
 - **B0 (erledigt, `pilot` 2026-11-05):** `bakery-api:bundle` schreibt
   `dist/apps/bakery-api/bundle/main.js`, `DB_PATH` ist in Produktion Pflicht, `HOST` geht an
   `listen()`, das Bundle loggt nur nach stdout. `deploy/bakery.env.example` ist mit
@@ -636,8 +766,9 @@ Stammdaten (neue Posten) das Notfallblatt neu drucken.
   Snapshot-Worktree an (§3.5, §6.1) – auf der Box noch nicht ausprobiert. Vor dem ersten Push:
   H1 muss gemergt sein (die Pipeline committet sonst ohne Pfadangabe und scheitert an unseren
   Pushes nach `main`), und H2 für das Automerge der PR.
-- Die Caddyfile ist ohne Caddy-Binary geschrieben und nicht maschinell geprüft; auf der Box
-  nach dem Ausfüllen von `/etc/caddy/bakery.env` prüfen:
+- Die Caddyfiles sind ohne Caddy-Binary geschrieben und nicht maschinell geprüft (die Tests
+  vergleichen nur den gemeinsamen Block); auf der Box nach dem Ausfüllen von
+  `/etc/caddy/bakery.env` prüfen:
   `sudo bash -c 'set -a; . /etc/caddy/bakery.env; caddy validate --config /etc/caddy/Caddyfile'`.
 - Die systemd-Units sind ohne systemd geschrieben; auf der Box
   `systemd-analyze verify /etc/systemd/system/bakery-*` und

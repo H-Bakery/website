@@ -70,7 +70,7 @@ Rechenwege in `details` (zugeklappt) oder als Tooltip. Höchstens 4 Kennzahlen
 nebeneinander, höchstens zwei Hinweise (`Alert`) oben auf der Seite.
 Nebenwerte als zweite Zeile in `text.secondary`, nicht als eigener Chip.
 
-**Nicht wegkürzen.** Was CLAUDE.md als „nicht wegoptimieren“ führt, bleibt
+**Nicht wegkürzen.** Was `docs/domains/` als „nicht wegoptimieren“ führt, bleibt
 sichtbar - nur ordentlich platziert: vorläufig/offen, „(geschätzt)“, „kein
 Bericht“, „Wartet auf Freigabe“, Nachträge, offen ≠ 0, Rest-/Erstattungs-Chips,
 Hinweise an der PIN-Station. Solche Marker gehören in `status` (Kopf),

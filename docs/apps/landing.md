@@ -1,0 +1,17 @@
+# Landing page (`apps/bakery-landing`)
+
+Public website, static export to GitHub Pages (xn--bckerei-heusser-0kb.de) on every push to
+`main` (`deploy-to-github-pages.yml`). Not part of the pilot box.
+
+- **Build:** `build-static-standalone` → `apps/bakery-landing/out/` (not `dist/`); delete
+  `apps/bakery-landing/.next` first - a stale dev cache breaks the export. Details in
+  [development.md](../development.md#landing-page-static-export--github-pages).
+- **Products** come from `hq/products` (`src/lib/products.ts`, `HQ_PRODUCTS_DIR`) at build time.
+  Without `hq` (CI) it falls back to the bundled JSON in `src/mocks/products/` and logs
+  `HQ products directory not found` - check for that log before suspecting a cache when a product
+  edit doesn't show up.
+- **Opening hours** have one source, `src/config/openingHours.ts`, mirrored into
+  `libs/shared/ui/src/lib/footer/footer-openings.tsx` and the shop's
+  `libs/bakery-shop/feature-cart/src/lib/pickup.ts` - change all three together.
+- Shared brand claims (`REVIEW_SUMMARY` etc.) live in `libs/shared/utils/src/lib/brand.ts`; the
+  shop's rules for them (nothing invented, snapshot values) are in [shop.md](./shop.md).
